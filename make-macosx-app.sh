@@ -1,5 +1,6 @@
 #!/bin/bash
 # Create a macOS .app bundle for Quake Live
+set -euo pipefail
 
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
 	echo "Usage: $0 <release|debug> [arch]"
@@ -47,51 +48,134 @@ if [ -f "${BUILT_PRODUCTS_DIR}/opengl2${ARCH}.dylib" ]; then
 	cp "${BUILT_PRODUCTS_DIR}/opengl2${ARCH}.dylib" "${MACOS}/opengl2${ARCH}.dylib"
 fi
 
-# Bundle SDL2 into Contents/Frameworks/ and rewrite the load path.
-# The binary links against SDL2 via its Homebrew/system install name (an
-# absolute path); macOS hardened-runtime rejects loading a non-platform dylib
-# whose Team ID doesn't match the app's.  Bundling SDL2 and signing it with
-# the same Developer ID certificate is the correct fix.
+# Populate Contents/Resources/baseq3/ with our bundled pk3s.
+# fs_apppath on macOS points to Contents/Resources (via Sys_DefaultAppPath),
+# so the engine finds these regardless of where the .app lives.
+RESOURCES="${CONTENTS}/Resources"
+mkdir -p "${RESOURCES}/baseq3"
+
+# CI passes a pre-built universal iobin.pk3 via PREBUILT_IOBIN_PK3 - that
+# pk3 contains signed macOS dylibs alongside the Linux/Windows modules and
+# is the single authoritative copy shipped across all platforms. Dev builds
+# (no env var) fall back to a macOS-only pk3 from the local dylibs.
+#
+# If PREBUILT_IOBIN_PK3 is *set* but the file is missing we hard-fail
+# instead of silently dropping back to the local-dylibs branch - the latter
+# would build an incomplete pk3 (or none at all if there are no dylibs)
+# and the user wouldn't notice until the engine crashed at runtime with
+# "VM_Create: failed to extract game module 'ui'".
+DYLIB_DIR="${BUILT_PRODUCTS_DIR}/baseq3"
+if [ -n "${PREBUILT_IOBIN_PK3:-}" ]; then
+	if [ ! -f "${PREBUILT_IOBIN_PK3}" ]; then
+		echo "ERROR: PREBUILT_IOBIN_PK3 is set to '${PREBUILT_IOBIN_PK3}' but that file does not exist." >&2
+		exit 1
+	fi
+	cp "${PREBUILT_IOBIN_PK3}" "${RESOURCES}/baseq3/iobin.pk3"
+	echo "Bundled pre-built iobin.pk3 from ${PREBUILT_IOBIN_PK3}"
+elif [ -d "${DYLIB_DIR}" ]; then
+	# Stage to a temp dir - baseq3/ may also contain pak01.pk3 which must
+	# not end up inside iobin.pk3.
+	STAGE=$(mktemp -d)
+	dylib_count=0
+	for dylib in "${DYLIB_DIR}"/*.dylib; do
+		[ -f "$dylib" ] || continue
+		cp "$dylib" "${STAGE}/"
+		dylib_count=$((dylib_count + 1))
+	done
+	if [ "$dylib_count" -eq 0 ]; then
+		echo "ERROR: ${DYLIB_DIR} exists but contains no *.dylib files." >&2
+		echo "       Either set PREBUILT_IOBIN_PK3 or build the game dylibs first." >&2
+		rm -rf "${STAGE}"
+		exit 1
+	fi
+	python3 code/tools/make_deterministic_pk3.py \
+		--input "${STAGE}" \
+		--output "${RESOURCES}/baseq3/iobin.pk3"
+	rm -rf "${STAGE}"
+	echo "Bundled iobin.pk3 in Contents/Resources/baseq3/ (from ${dylib_count} local dylibs)"
+else
+	echo "ERROR: no source for iobin.pk3 - PREBUILT_IOBIN_PK3 is unset and ${DYLIB_DIR} does not exist." >&2
+	exit 1
+fi
+
+# Belt-and-braces: the iobin step above is supposed to leave a file behind.
+# Hard-fail if it didn't (e.g. cp silently mangled by something exotic).
+if [ ! -f "${RESOURCES}/baseq3/iobin.pk3" ]; then
+	echo "ERROR: ${RESOURCES}/baseq3/iobin.pk3 was not created." >&2
+	exit 1
+fi
+
+# Copy pak01.pk3 if the CI built it before this step.
+if [ -f "${BUILT_PRODUCTS_DIR}/baseq3/pak01.pk3" ]; then
+	cp "${BUILT_PRODUCTS_DIR}/baseq3/pak01.pk3" "${RESOURCES}/baseq3/"
+	echo "Bundled pak01.pk3 in Contents/Resources/baseq3/"
+fi
+
+# Bundle all Homebrew dylib dependencies into Contents/Frameworks/.
+#
+# The hardened-runtime app (signed with a Developer ID) cannot load dylibs
+# from Homebrew because their Team ID doesn't match.  The fix is to copy
+# every non-system dylib into Contents/Frameworks/, rewrite all load paths
+# to @rpath/<name>, sign them with the same certificate (done by build.yml),
+# and add an @executable_path/../Frameworks rpath to each in-bundle binary.
+#
+# This is done recursively so transitive deps (e.g. freetype → libpng) are
+# also caught automatically.
 FRAMEWORKS="${CONTENTS}/Frameworks"
 mkdir -p "${FRAMEWORKS}"
 
-# Locate the SDL2 dylib that the linker used (try build dir, then common locations).
-SDL2_SRC=""
-for candidate in \
-    "${BUILT_PRODUCTS_DIR}/libSDL2-2.0.0.dylib" \
-    "$(brew --prefix sdl2 2>/dev/null)/lib/libSDL2-2.0.0.dylib" \
-    /opt/homebrew/lib/libSDL2-2.0.0.dylib \
-    /usr/local/lib/libSDL2-2.0.0.dylib; do
-    if [ -f "$candidate" ]; then
-        SDL2_SRC="$candidate"
-        break
-    fi
+# bundle_dep <src_path>
+#   Copy a Homebrew dylib into Frameworks/, fix its -id, add a self-relative
+#   rpath, and recurse into its own deps.  No-op if already bundled.
+bundle_dep() {
+    local src="$1"
+    local name
+    name=$(basename "$src")
+    local dst="${FRAMEWORKS}/${name}"
+    [ -f "$dst" ] && return 0   # already bundled
+    [ -f "$src" ] || { echo "  Warning: $src not found"; return 1; }
+    cp "$src" "$dst"
+    chmod 755 "$dst"
+    install_name_tool -id "@rpath/${name}" "$dst"
+    # Bundled dylibs find their peers via @loader_path (= Frameworks/)
+    install_name_tool -add_rpath "@loader_path/" "$dst" 2>/dev/null || true
+    echo "  Bundled ${name}"
+    rewrite_homebrew_deps "$dst"
+}
+
+# rewrite_homebrew_deps <binary>
+#   For every /opt/homebrew or /usr/local dep in <binary>:
+#     - rewrite the load command to @rpath/<name>
+#     - bundle the dep (which recurses)
+rewrite_homebrew_deps() {
+    local bin="$1"
+    # Collect deps first (otool output can't pipe into install_name_tool safely)
+    local deps
+    deps=$(otool -L "$bin" 2>/dev/null | awk 'NR>1 {print $1}')
+    local dep
+    while IFS= read -r dep; do
+        case "$dep" in
+            /opt/homebrew/*|/usr/local/Cellar/*|/usr/local/opt/*)
+                local name
+                name=$(basename "$dep")
+                install_name_tool -change "$dep" "@rpath/${name}" "$bin" 2>/dev/null
+                bundle_dep "$dep"
+                ;;
+        esac
+    done <<< "$deps"
+}
+
+echo "Bundling Homebrew dependencies..."
+for bin in \
+    "${MACOS}/${PRODUCT_NAME}" \
+    "${MACOS}/quakelive_dedicated" \
+    "${MACOS}/opengl2${ARCH}.dylib"; do
+    [ -f "$bin" ] || continue
+    # Add rpath so this binary (and any dylib it dlopen's) can find Frameworks/
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$bin" 2>/dev/null || true
+    rewrite_homebrew_deps "$bin"
 done
-
-if [ -n "$SDL2_SRC" ]; then
-    SDL2_DST="${FRAMEWORKS}/libSDL2-2.0.0.dylib"
-    cp "$SDL2_SRC" "$SDL2_DST"
-    # Set the install name inside the bundled copy so dyld resolves it correctly
-    # when any binary in the bundle loads it.
-    install_name_tool -id "@rpath/libSDL2-2.0.0.dylib" "$SDL2_DST"
-
-    # Rewrite the SDL2 load path in every Mach-O binary we placed in the bundle.
-    NEW_SDL2="@executable_path/../Frameworks/libSDL2-2.0.0.dylib"
-    for bin in \
-        "${MACOS}/${PRODUCT_NAME}" \
-        "${MACOS}/quakelive_dedicated" \
-        "${MACOS}/opengl2${ARCH}.dylib"; do
-        [ -f "$bin" ] || continue
-        OLD_SDL2=$(otool -L "$bin" 2>/dev/null | awk '/libSDL2/{print $1; exit}')
-        if [ -n "$OLD_SDL2" ] && [ "$OLD_SDL2" != "$NEW_SDL2" ]; then
-            install_name_tool -change "$OLD_SDL2" "$NEW_SDL2" "$bin"
-            echo "  Rewrote SDL2 path in $(basename "$bin")"
-        fi
-    done
-    echo "Bundled SDL2 from $SDL2_SRC"
-else
-    echo "Warning: SDL2 dylib not found; app may fail to launch on machines without Homebrew"
-fi
+echo "Done bundling Homebrew dependencies."
 
 # Generate .icns from quakelive.ico
 ICNS_NAME="quakelive.icns"

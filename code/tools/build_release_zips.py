@@ -2,23 +2,28 @@
 Assemble per-platform release zips for ioquakelive.
 
 Inputs:
-  --shared <dir>    Directory to drop into every release zip as-is. Typically
-                    contains baseq3/iobin.pk3 and baseq3/pak01.pk3 (the
-                    deterministic universal paks built by the package job).
+  --shared <dir>    Directory to drop into Linux/Windows release zips as-is.
+                    Typically contains baseq3/iobin.pk3 and baseq3/pak01.pk3
+                    (the deterministic universal paks built once upstream).
                     pak00.pk3 is NOT included - end users supply it themselves
-                    from their existing Quake Live install.
+                    from their existing Quake Live install. The macOS zip
+                    does NOT receive the shared layer (see LAYER_SHARED).
   --engines <dir>   Parent directory containing one subdirectory per platform
                     artifact, e.g. engines/engine-linux-x86_64/quakelive.x86_64
                     (matches actions/download-artifact layout for the
                     "engine-*" artifacts).
   --output <dir>    Where to write quakelive-<platform>.zip files.
 
-Each per-platform zip ends up with the engine binaries flattened at the root
-plus a baseq3/ subdirectory containing whatever is in --shared/baseq3.
+Linux/Windows zips end up with engine binaries flattened at the root plus a
+baseq3/ subdirectory sourced from --shared/baseq3. The macOS zip contains
+only quakelive.app/... - the bundled pk3s live inside Contents/Resources/
+and no sibling baseq3/ is added.
 
-The zips themselves are NOT byte-deterministic (different platforms ship
-different engine binaries by definition), but every zip's baseq3/iobin.pk3
-and baseq3/pak01.pk3 are byte-identical because they came from --shared.
+Byte-determinism across platforms: the iobin.pk3 and pak01.pk3 at each
+platform's canonical load path (baseq3/ for linux/windows,
+quakelive.app/Contents/Resources/baseq3/ for macOS) are byte-identical,
+because they all trace back to a single iobin-pk3 / pak01-pk3 artifact
+built once upstream.
 """
 import argparse
 import os
@@ -31,6 +36,20 @@ PLATFORM_OUT = {
     'engine-linux-x86_64': 'quakelive-linux-x86_64.zip',
     'engine-windows-x64':  'quakelive-windows-x64.zip',
     'engine-macos-arm64':  'quakelive-macos-arm64.zip',
+}
+
+# Whether to layer shared/baseq3/ on top of the engine artifact for each
+# platform. macOS is excluded: the signed + notarised quakelive.app already
+# bundles the pk3s inside Contents/Resources/baseq3/, and shipping a sibling
+# baseq3/ next to the .app would be dead weight (the engine reads from
+# fs_apppath = Contents/Resources via Sys_DefaultAppPath). The bundle copy
+# is byte-identical to Linux/Windows' top-level baseq3/iobin.pk3 because
+# they all come from the same iobin-pk3 artifact, so determinism is
+# preserved at a different path rather than lost.
+LAYER_SHARED = {
+    'engine-linux-x86_64': True,
+    'engine-windows-x64':  True,
+    'engine-macos-arm64':  False,
 }
 
 
@@ -60,13 +79,17 @@ def add_tree(zf, root, dest_prefix):
             zf.writestr(zi, data)
 
 
-def build_one(engine_dir, shared_dir, out_path):
+def build_one(engine_dir, shared_dir, out_path, layer_shared):
     print(f'building {out_path}')
     with zipfile.ZipFile(out_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         # Engine binaries flatten to the root of the zip
         add_tree(zf, engine_dir, '')
-        # Shared content (baseq3/...) layered on top
-        add_tree(zf, shared_dir, '')
+        if layer_shared:
+            # Shared content (baseq3/...) layered on top
+            add_tree(zf, shared_dir, '')
+        else:
+            print(f'  skipping shared/ layering for {os.path.basename(engine_dir)} '
+                  '(pk3s already inside bundle)')
 
 
 def main():
@@ -92,7 +115,7 @@ def main():
             print(f'  skipping unknown engine artifact dir: {entry}')
             continue
         out_path = os.path.join(args.output, out_basename)
-        build_one(engine_dir, args.shared, out_path)
+        build_one(engine_dir, args.shared, out_path, LAYER_SHARED[entry])
         size = os.path.getsize(out_path)
         print(f'  wrote {out_path} ({size} bytes)')
         found_any = True

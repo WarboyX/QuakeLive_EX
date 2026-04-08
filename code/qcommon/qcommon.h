@@ -1065,6 +1065,9 @@ char* Sys_MicrosoftStorePath(void);
 
 #ifdef __APPLE__
 char* Sys_DefaultAppPath(void);
+#ifndef DEDICATED
+qboolean Sys_LocatePak0(const char *destDir);
+#endif
 #endif
 
 void Sys_SetDefaultHomePath(const char* path);

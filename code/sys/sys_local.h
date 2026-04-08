@@ -54,6 +54,8 @@ unsigned int CON_LogRead(char* out, unsigned int outSize);
 char* Sys_StripAppBundle(char* pwd);
 #endif
 
+char* Sys_BinaryPath(void);
+
 void Sys_GLimpSafeInit(void);
 void Sys_GLimpInit(void);
 void Sys_PlatformInit(void);

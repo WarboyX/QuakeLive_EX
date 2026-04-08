@@ -98,9 +98,11 @@ char* Sys_DefaultInstallPath(void) {
 Sys_DefaultAppPath
 =================
 */
+#ifndef __APPLE__
 char* Sys_DefaultAppPath(void) {
     return Sys_BinaryPath();
 }
+#endif
 
 /*
 =================

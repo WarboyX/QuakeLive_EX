@@ -2797,16 +2797,20 @@ void FS_AddGameDirectory(const char* path, const char* dir) {
 		}
 
 		if (pakwhich) {
-			// [QL] iobin.pk3 may ONLY be loaded from fs_basepath. Reject any
-			// copy found under fs_homepath / fs_steampath / fs_apppath so a
-			// user can't drop a modified cgame/ui/qagame DLL into their
-			// writable home dir and bypass sv_pure (which only verifies
-			// checksums, never re-extracts what the engine already loaded).
-			// Defence in depth on top of the pure-checksum match in
-			// SV_VerifyPaks_f.
+			// [QL] iobin.pk3 may ONLY be loaded from a canonical install
+			// location: fs_basepath (Linux/Windows) or fs_apppath (macOS,
+			// where Sys_DefaultAppPath returns Contents/Resources inside
+			// the .app bundle - the equivalent of fs_basepath on those
+			// platforms). Reject any copy found under fs_homepath /
+			// fs_steampath. Defence in depth on top of the pure-checksum 
+			// match in SV_VerifyPaks_f.
 			if (!Q_stricmp(pakfiles[pakfilesi], IOBIN_FILENAME) &&
-			    Q_stricmp(path, fs_basepath->string) != 0) {
-				Com_DPrintf("FS_AddGameDirectory: rejecting %s from non-basepath '%s'\n",
+			    Q_stricmp(path, fs_basepath->string) != 0
+#ifdef __APPLE__
+			    && (!fs_apppath->string[0] || Q_stricmp(path, fs_apppath->string) != 0)
+#endif
+			    ) {
+				Com_DPrintf("FS_AddGameDirectory: rejecting %s from non-canonical path '%s'\n",
 				            pakfiles[pakfilesi], path);
 				pakfilesi++;
 				continue;
@@ -4079,7 +4083,12 @@ qboolean FS_VerifyPureGamecode(void) {
 		return qfalse;
 	}
 
-	if (fs_uiBinChecksum == fs_cgameBinChecksum == fs_qagameBinChecksum) {
+	// All three modules must come from the same pak (same checksum).
+	// The original `a == b == c` was a chained-comparison bug: it
+	// evaluates as `(a == b) == c`, i.e. compares 0/1 against c, which
+	// is true only by accident.
+	if (fs_uiBinChecksum != fs_cgameBinChecksum ||
+	    fs_cgameBinChecksum != fs_qagameBinChecksum) {
 		Com_DPrintf("different paks for ui/cgame/qagame modules\n");
 		return qfalse;
 	}
@@ -4283,10 +4292,9 @@ void FS_InitFilesystem(void) {
 	// try to start up normally
 	FS_Startup(com_basegame->string);
 
+#ifndef DEDICATED
 #ifdef _WIN32
-	// If pak00.pk3 is missing, try to copy it from a Steam installation
-	// of Quake Live. If successful, restart the filesystem so the new
-	// pak is picked up in the search paths.
+	// Try to copy pak00.pk3 from a local Steam installation.
 	{
 		char pak00Path[MAX_OSPATH];
 		Com_sprintf(pak00Path, sizeof(pak00Path), "%s%c%s%cpak00.pk3",
@@ -4301,7 +4309,67 @@ void FS_InitFilesystem(void) {
 		}
 	}
 
-#endif
+#elif defined(__APPLE__)
+	// If pak00.pk3 is missing from both homepath and basepath, prompt the user
+	// to locate it. Copy to homepath (writable, survives App Translocation).
+	{
+		char pak00Path[MAX_OSPATH];
+		qboolean found = qfalse;
+
+		Com_sprintf(pak00Path, sizeof(pak00Path), "%s%c%s%cpak00.pk3",
+		            fs_homepath->string, PATH_SEP, BASEGAME_DIR, PATH_SEP);
+		if (FS_FileInPathExists(pak00Path))
+			found = qtrue;
+
+		if (!found) {
+			Com_sprintf(pak00Path, sizeof(pak00Path), "%s%c%s%cpak00.pk3",
+			            fs_basepath->string, PATH_SEP, BASEGAME_DIR, PATH_SEP);
+			if (FS_FileInPathExists(pak00Path))
+				found = qtrue;
+		}
+
+		if (!found) {
+			if (Sys_LocatePak0(fs_homepath->string)) {
+				// pak00.pk3 was copied - restart filesystem to pick it up
+				FS_Shutdown(qfalse);
+				FS_Startup(com_basegame->string);
+			}
+		}
+	}
+
+#endif // _WIN32 / __APPLE__
+#else // DEDICATED
+	// No UI on a dedicated server. Warn loudly if pak00.pk3 is missing;
+	// the server will hit a fatal error at default.cfg load anyway.
+	{
+		char pak00Base[MAX_OSPATH];
+		char pak00Home[MAX_OSPATH];
+
+		Com_sprintf(pak00Base, sizeof(pak00Base), "%s%c%s%cpak00.pk3",
+		            fs_basepath->string, PATH_SEP, BASEGAME_DIR, PATH_SEP);
+		Com_sprintf(pak00Home, sizeof(pak00Home), "%s%c%s%cpak00.pk3",
+		            fs_homepath->string, PATH_SEP, BASEGAME_DIR, PATH_SEP);
+
+		if (!FS_FileInPathExists(pak00Base) && !FS_FileInPathExists(pak00Home)) {
+			Com_Printf(
+			    "\n"
+			    "********************************************************\n"
+			    "WARNING: pak00.pk3 not found.\n"
+			    "\n"
+			    "The dedicated server requires pak00.pk3 to load game data.\n"
+			    "Place the file in one of the following locations and\n"
+			    "restart the server:\n"
+			    "\n"
+			    "  %s\n"
+			    "  %s\n"
+			    "\n"
+			    "The server will fail to load default.cfg without it.\n"
+			    "********************************************************\n"
+			    "\n",
+			    pak00Base, pak00Home);
+		}
+	}
+#endif // !DEDICATED
 
 	// if we can't find default.cfg, assume that the paths are
 	// busted and error out now, rather than getting an unreadable

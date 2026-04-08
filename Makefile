@@ -550,6 +550,7 @@ ifeq ($(PLATFORM),darwin)
   BASE_CFLAGS += -D_THREAD_SAFE=1
 
   CLIENT_LIBS += -framework IOKit
+  CLIENT_LIBS += -framework UniformTypeIdentifiers
   RENDERER_LIBS += -framework OpenGL
 
   # Use system SDL2 (Homebrew or framework)
@@ -1329,6 +1330,20 @@ endef
 define DO_DED_CC
 $(echo_cmd) "DED_CC $<"
 $(Q)$(CC) $(NOTSHLIBCFLAGS) -DDEDICATED $(CFLAGS) $(SERVER_CFLAGS) $(OPTIMIZE) -o $@ -c $<
+endef
+
+# Objective-C compile with ARC enabled. Used only for sys_osx.m (the only .m
+# file in the engine). -fobjc-arc makes the compiler insert retain/release
+# automatically, so the file must not contain manual retain/release/autorelease
+# calls or it will fail to compile.
+define DO_OBJCC
+$(echo_cmd) "OBJCC $<"
+$(Q)$(CC) $(NOTSHLIBCFLAGS) $(CFLAGS) $(CLIENT_CFLAGS) $(OPTIMIZE) -fobjc-arc -o $@ -c $<
+endef
+
+define DO_DED_OBJCC
+$(echo_cmd) "DED_OBJCC $<"
+$(Q)$(CC) $(NOTSHLIBCFLAGS) -DDEDICATED $(CFLAGS) $(SERVER_CFLAGS) $(OPTIMIZE) -fobjc-arc -o $@ -c $<
 endef
 
 define DO_WINDRES
@@ -2308,7 +2323,7 @@ $(B)/client/%.o: $(SYSDIR)/%.c
 	$(DO_CC)
 
 $(B)/client/%.o: $(SYSDIR)/%.m
-	$(DO_CC)
+	$(DO_OBJCC)
 
 $(B)/client/win_resource.o: $(SYSDIR)/win_resource.rc $(SYSDIR)/win_manifest.xml
 	$(DO_WINDRES)
@@ -2352,7 +2367,7 @@ $(B)/ded/%.o: $(SYSDIR)/%.c
 	$(DO_DED_CC)
 
 $(B)/ded/%.o: $(SYSDIR)/%.m
-	$(DO_DED_CC)
+	$(DO_DED_OBJCC)
 
 $(B)/ded/win_resource.o: $(SYSDIR)/win_resource.rc $(SYSDIR)/win_manifest.xml
 	$(DO_WINDRES)
