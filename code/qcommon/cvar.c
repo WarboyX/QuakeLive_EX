@@ -37,6 +37,29 @@ static cvar_t* hashTable[FILE_HASH_SIZE];
 
 /*
 ================
+Cvar_ComputeNumeric
+
+[QL] Fill var->value / var->integer from var->string. A leading "0x"/"0X" is
+parsed as hex, so packed-colour cvars (cg_enemyLowerColor "0x2a8000FF",
+cg_screenDamage, cg_deadBodyColor, ...) carry the packed value in .integer the
+way the shipped engine does. Everything else stays plain decimal - the prefix
+test avoids strtol's octal handling for leading-zero decimals.
+================
+*/
+static void Cvar_ComputeNumeric(cvar_t* var) {
+    const char* s = var->string;
+
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X') && s[2] != '\0') {
+        var->integer = (int)strtoul(s, NULL, 16);
+        var->value = (float)var->integer;
+    } else {
+        var->value = atof(s);
+        var->integer = atoi(s);
+    }
+}
+
+/*
+================
 return a hash value for the filename
 ================
 */
@@ -336,15 +359,6 @@ cvar_t* Cvar_Get(const char* var_name, const char* var_value, int flags) {
             }
         }
 
-        // Make sure servers cannot mark engine-added variables as SERVER_CREATED
-        if (var->flags & CVAR_SERVER_CREATED) {
-            if (!(flags & CVAR_SERVER_CREATED))
-                var->flags &= ~CVAR_SERVER_CREATED;
-        } else {
-            if (flags & CVAR_SERVER_CREATED)
-                flags &= ~CVAR_SERVER_CREATED;
-        }
-
         var->flags |= flags;
 
         // only allow one non-empty reset string without a warning
@@ -399,8 +413,7 @@ cvar_t* Cvar_Get(const char* var_name, const char* var_value, int flags) {
     var->string = CopyString(var_value);
     var->modified = qtrue;
     var->modificationCount = 1;
-    var->value = atof(var->string);
-    var->integer = atoi(var->string);
+    Cvar_ComputeNumeric(var);
     var->resetString = CopyString(var_value);
     var->validate = qfalse;
     var->description = NULL;
@@ -565,8 +578,7 @@ cvar_t* Cvar_Set2(const char* var_name, const char* value, qboolean force) {
     Z_Free(var->string);  // free the old value string
 
     var->string = CopyString(value);
-    var->value = atof(var->string);
-    var->integer = atoi(var->string);
+    Cvar_ComputeNumeric(var);
 
     return var;
 }
@@ -844,15 +856,19 @@ Cvar_WriteVariables
   f_rep = repconfig.cfg (replicated/user-created settings)
 
 Routing logic (matches binary):
-  - CVAR_REPLICATE (0x800) cvars → repconfig
-  - CVAR_USER_CREATED (0x80) cvars → repconfig
-  - Other CVAR_ARCHIVE (0x1) cvars → qzconfig
+  - CVAR_REPLICATE (0x800) cvars -> repconfig
+  - CVAR_USER_CREATED (0x80) cvars -> repconfig
+  - Other CVAR_ARCHIVE (0x1) cvars -> qzconfig
 
 Pass the same handle for both to write everything to one file.
 Skips "password" cvar (matches binary).
+
+clientOnly: if non-zero (Com_WriteClientConfig_f calls Cvar_WriteVariables(f, f, 1)) only
+writes CVAR_USERSAVE cvars (flag 0x80000, the "CVAR_USERINFO_ALL" subset) whose value differs
+from their resetString. Otherwise writes all CVAR_ARCHIVE or CVAR_REPLICATE cvars.
 ============
 */
-void Cvar_WriteVariables(fileHandle_t f_hw, fileHandle_t f_rep) {
+void Cvar_WriteVariables(fileHandle_t f_hw, fileHandle_t f_rep, int clientOnly) {
     cvar_t* var;
     char buffer[2048];
     const char* value;
@@ -862,6 +878,16 @@ void Cvar_WriteVariables(fileHandle_t f_hw, fileHandle_t f_rep) {
         // [QL] skip sensitive cvars
         if (!Q_stricmp(var->name, "password"))
             continue;
+
+        // [QL] Address: 0x004cb630 (Com_WriteClientConfig_f) - client config mode writes only
+        // the CVAR_USERSAVE (0x80000) subset, and only cvars that differ from their reset value.
+        if (clientOnly) {
+            if (!(var->flags & CVAR_USERSAVE))
+                continue;
+            value = var->latchedString ? var->latchedString : var->string;
+            if (!Q_stricmp(value, var->resetString))
+                continue;
+        }
 
         if (!((var->flags & CVAR_ARCHIVE) || (var->flags & CVAR_REPLICATE)))
             continue;
@@ -1262,10 +1288,6 @@ void Cvar_Register(vmCvar_t* vmCvar, const char* varName, const char* defaultVal
     if (flags & CVAR_USER_CREATED) {
         Com_DPrintf(S_COLOR_YELLOW "WARNING: VM tried to set CVAR_USER_CREATED on cvar '%s'\n", varName);
         flags &= ~CVAR_USER_CREATED;
-    }
-    if (flags & CVAR_SERVER_CREATED) {
-        Com_DPrintf(S_COLOR_YELLOW "WARNING: VM tried to set CVAR_SERVER_CREATED on cvar '%s'\n", varName);
-        flags &= ~CVAR_SERVER_CREATED;
     }
     if (flags & CVAR_PROTECTED) {
         Com_DPrintf(S_COLOR_YELLOW "WARNING: VM tried to set CVAR_PROTECTED on cvar '%s'\n", varName);

@@ -796,7 +796,10 @@ default values.
 #define CVAR_NORESTART 0x0400     // do not clear when a cvar_restart is issued
 
 #define CVAR_REPLICATE 0x0800       // [QL] archived in repconfig.cfg (replicated settings)
-#define CVAR_SERVER_CREATED CVAR_REPLICATE   // ioquake3 compat alias (QL repurposed this bit)
+// [QL] QL has no CVAR_SERVER_CREATED. Stock ioquake3's server-created bit was 0x0800, which QL
+// repurposed as CVAR_REPLICATE, and the QL engine does no server-created flag handling
+// (CL_SystemInfoChanged uses a plain Cvar_Set, Cvar_Register does no flag validation). Do not
+// reintroduce the flag - it aliased CVAR_REPLICATE and got stripped off cg_enemy*Color.
 #define CVAR_VM_CREATED 0x1000      // cvar was created exclusively in one of the VMs.
 #define CVAR_PROTECTED 0x2000       // prevent modifying this var from VMs or the server
 
@@ -1245,6 +1248,10 @@ typedef enum {
 #define DEFAULT_FONT "fonts/handelgothic.ttf"
 #define DEFAULT_SANS_FONT "fonts/notosans-regular.ttf"
 #define DEFAULT_MONO_FONT "fonts/droidsansmono.ttf"
+// [QL] Text draw flags for trap_R_Font_DrawString / re.Font_DrawString. These
+// values MUST match FONS_TEXT_* in code/renderercommon/tr_fontstash.h.
+#define TEXT_LITERAL 0x40000000   // draw '^' colour codes as literal glyphs
+#define TEXT_NORECOLOR 0x20000000 // skip '^' colour codes without changing colour
 #define GLYPH_START 0
 #define GLYPH_END 255
 #define GLYPH_CHARSTART 32

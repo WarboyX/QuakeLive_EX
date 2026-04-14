@@ -236,11 +236,12 @@ qboolean PM_SlideMove(qboolean gravity) {
 
 /*
 ==================
-PM_CanCrouchStepJump - [QL] pure predicate: can we do a crouch-step-jump?
-Matches binary's PM_CheckDoubleJump used in step-slide context (does NOT call PM_DoJump).
+PM_WouldCrouchStepJump - [QL] pure predicate: can we do a crouch-step-jump?
+.so symbol PM_WouldCrouchStepJump (qagamex64.so 0x191f5; x86 DLL 0x1002e580).
+Does NOT call PM_DoJump.
 ==================
 */
-static qboolean PM_CanCrouchStepJump(void) {
+static qboolean PM_WouldCrouchStepJump(void) {
     if (!(pm->ps->pm_flags & PMF_DUCKED)) {
         return qfalse;
     }
@@ -280,17 +281,22 @@ void PM_StepSlideMove(qboolean gravity) {
     // [QL] predict position after one frame (used for ground checks and step-jump validation)
     VectorMA(start_o, pml.frametime, start_v, pred);
 
-    // [QL] upward-velocity rejection: only check when airborne (binary skips this when grounded)
-    if (!pml.groundPlane) {
+    // [QL] pmove_AirSteps gate (binary global 0x1008feac): when air-stepping is disabled
+    // (pm_airSteps == 0) reject a step-up while still moving upward unless there is walkable
+    // ground ahead. The gate is the cvar-cached pm_airSteps, NOT pml.groundPlane.
+    if (!pm_airSteps) {
         vec3_t predDown;
 
         // trace from start to predicted position
         pm->trace(&trace, start_o, pm->mins, pm->maxs, pred, pm->ps->clientNum, pm->tracemask);
 
-        // from trace endpoint, trace down by stepHeight to find ground
-        VectorCopy(trace.endpos, predDown);
+        // [QL] clamp pred to the trace endpoint; the later step-jump traces reuse pred
+        VectorCopy(trace.endpos, pred);
+
+        // from clamped pred, trace down by stepHeight to find ground
+        VectorCopy(pred, predDown);
         predDown[2] -= actualStepHeight;
-        pm->trace(&trace, trace.endpos, pm->mins, pm->maxs, predDown, pm->ps->clientNum, pm->tracemask);
+        pm->trace(&trace, pred, pm->mins, pm->maxs, predDown, pm->ps->clientNum, pm->tracemask);
 
         // if moving upward and no walkable ground at predicted position, skip step-up
         if (start_v[2] > 0 && (trace.fraction == 1.0 ||
@@ -356,7 +362,7 @@ void PM_StepSlideMove(qboolean gravity) {
         // [QL] step-jump: auto-jump off stairs when holding jump
         if (pm_stepJump && pm->ps->pm_type == PM_NORMAL
             && delta > 0 && pm->waterlevel < 2) {
-            if (PM_WouldJump() || (pm_doubleJump && PM_CanCrouchStepJump())) {
+            if (PM_WouldJump() || (pm_doubleJump && PM_WouldCrouchStepJump())) {
                 // verify walkable ground at predicted position
                 vec3_t sjUp, sjDown;
                 trace_t sjTrace;
@@ -374,7 +380,7 @@ void PM_StepSlideMove(qboolean gravity) {
                         pml.stepJumpFlag = 1;
                         PM_DoJump();
                         pml.stepJumpFlag = 0;
-                    } else if (pm_doubleJump && PM_CanCrouchStepJump()) {
+                    } else if (pm_doubleJump && PM_WouldCrouchStepJump()) {
                         // crouch step jump: verify clearance with shrunk bounding box
                         vec3_t sjMins, sjMaxs, crouchDown;
                         trace_t crouchTrace;

@@ -150,15 +150,18 @@ typedef enum {
 #define CS_GENERIC_COUNT_BLUE 699
 #define CS_AD_SCORES 700
 #define CS_ROUND_WINNER 701
-#define CS_CUSTOM_SETTINGS 702
-#define CS_ROTATIONMAPS 703
-#define CS_ROTATIONVOTES 704
-#define CS_INTERMISSION_VOTE_MAPS 705  // map vote data infostring (set in BeginIntermission)
-#define CS_INTERMISSION_VOTE_STATE 706 // map vote state/tracking (set in BeginIntermission)
+// [QL] g_customSettings publishes to CS 704 (binary G_UpdateCvars sets 0x2c0; wolfcam's
+// CS91_CUSTOM_SETTINGS = 704). The old 702 was wrong, nothing read it. End-map vote data
+// sits at 705/706: BeginIntermission fills 0x2c1 with the map options and 0x2c2 with the
+// tallies, so the rotation map/vote strings live there. We had them at 703/704, which
+// clashed with custom settings. 703 (0x2bf) is a separate RR configstring, not touched yet.
+#define CS_CUSTOM_SETTINGS 704
+#define CS_ROTATIONMAPS 705    // map-vote options infostring
+#define CS_ROTATIONVOTES 706   // map-vote tallies/state
 #define CS_DISABLE_VOTE_UI 707         // cleared alongside vote CS in ClearVote; triggers ui_voteactive
 #define CS_ALLREADY_TIME 708           // allready countdown time (used in CG_DrawWarmupMessages)
 #define CS_INFECTED_SURVIVOR_MINSPEED 709 // g_rrInfectedSurvivorMinSpeed float (Red Rover infected mode)
-#define CS_RACE_POINTS 710             // race checkpoint count (set in ClientBegin_Race)
+#define CS_RACE_POINTS 710             // race checkpoint count (set in RACE_ClientBegin)
 #define CS_DISABLE_LOADOUT 711         // bitmask of disabled loadout weapons (set in SP_worldspawn + G_UpdateCvars)
 #define CS_MATCH_GUID 712              // also sent in the ZMQ stats
 #define CS_STARTING_WEAPONS 713   // bitmask of weapons identical to g_startingWeapons
@@ -410,9 +413,10 @@ typedef enum {
     HI_MEDKIT,
     HI_KAMIKAZE,
     HI_PORTAL,
-    HI_INVULNERABILITY,
+    HI_INVULNERABILITY,   // 5
+    HI_FLIGHT,            // 6 [QL] flight holdable (grants flight fuel/thrust)
 
-    HI_NUM_HOLDABLE
+    HI_NUM_HOLDABLE       // 7
 } holdable_t;
 
 typedef enum {
@@ -442,6 +446,7 @@ typedef enum {
 #define PLAYEREVENT_DENIEDREWARD 0x0001
 #define PLAYEREVENT_GAUNTLETREWARD 0x0002
 #define PLAYEREVENT_HOLYSHIT 0x0004
+#define PLAYEREVENT_FIRSTFRAG 0x0008    // [QL] player_die XORs this into PERS_PLAYEREVENTS on first frag
 
 // entityState_t->event values
 // entity events are for effects that take place relative
@@ -584,28 +589,38 @@ typedef enum {
     EV_NUM_ETYPES                   // 0x64 - sentinel
 } entity_event_t;
 
+// [QL] Global team-sound indices for EV_GLOBAL_TEAM_SOUND (see CG_EntityEvent).
+// Binary-verified transport (qagamex86.dll / cgamex86.dll, build 1069):
+//   te->s.eventParm    = the GTS_* index below (the reader switches on this)
+//   te->s.modelindex2  = affected / surviving / capturing team (0 = none); the
+//                        reader gates the announcement on the local player's team
+//   te->s.powerups     = DOM point identifier (GTS_DOMINATION_POINT_CAPTURE only)
+// NOTE: QL does NOT use otherEntityNum2 for GTS transport (that was a Ghidra
+// offset mislabel). Indices 21-22 are unused (gap) in the shipped enum.
 typedef enum {
-    GTS_RED_CAPTURE,
-    GTS_BLUE_CAPTURE,
-    GTS_RED_RETURN,
-    GTS_BLUE_RETURN,
-    GTS_RED_TAKEN,
-    GTS_BLUE_TAKEN,
-    GTS_REDOBELISK_ATTACKED,
-    GTS_BLUEOBELISK_ATTACKED,
-    GTS_REDTEAM_SCORED,
-    GTS_BLUETEAM_SCORED,
-    GTS_REDTEAM_TOOK_LEAD,
-    GTS_BLUETEAM_TOOK_LEAD,
-    GTS_TEAMS_ARE_TIED,
-    GTS_KAMIKAZE,
-    GTS_REDTEAM_WON,       // 14 [QL]
-    GTS_BLUETEAM_WON,       // 15 [QL]
-    GTS_RED_WINS_ROUND,     // 16 [QL]
-    GTS_BLUE_WINS_ROUND,    // 17 [QL]
-    GTS_LAST_STANDING,      // 18 [QL] last man standing announcement
-    GTS_DRAW_ROUND,         // 19 [QL]
-    GTS_ROUND_OVER          // 20 [QL]
+    GTS_RED_CAPTURE,            // 0
+    GTS_BLUE_CAPTURE,           // 1
+    GTS_RED_RETURN,             // 2
+    GTS_BLUE_RETURN,            // 3
+    GTS_RED_TAKEN,              // 4
+    GTS_BLUE_TAKEN,             // 5
+    GTS_REDOBELISK_ATTACKED,    // 6
+    GTS_BLUEOBELISK_ATTACKED,   // 7
+    GTS_REDTEAM_SCORED,         // 8
+    GTS_BLUETEAM_SCORED,        // 9
+    GTS_REDTEAM_TOOK_LEAD,      // 10
+    GTS_BLUETEAM_TOOK_LEAD,     // 11
+    GTS_TEAMS_ARE_TIED,         // 12
+    GTS_KAMIKAZE,               // 13
+    GTS_REDTEAM_WON,            // 14 [QL]
+    GTS_BLUETEAM_WON,           // 15 [QL]
+    GTS_RED_WINS_ROUND,         // 16 [QL]
+    GTS_BLUE_WINS_ROUND,        // 17 [QL]
+    GTS_DRAW_ROUND,             // 18 [QL] round draw (binary case 0x12)
+    GTS_LAST_STANDING,          // 19 [QL] last man standing announcement (binary case 0x13)
+    GTS_ROUND_OVER,             // 20 [QL] (binary case 0x14)
+    GTS_DOMINATION_POINT_CAPTURE = 23,  // [QL] DOM point captured (binary case 0x17)
+    GTS_SURVIVOR = 24                   // [QL] RR survivor bonus (binary case 0x18)
 } global_team_sound_t;
 
 // [QL] Award indices for EV_AWARD events (eventParm)
@@ -797,6 +812,14 @@ typedef struct gitem_s {
 
     char* precaches;  // string of all models and images this item will use
     char* sounds;     // string of all sounds this item will use
+
+    int itemTimer;    // [QL] item has an item-timer / respawn-timer entry
+                      // (gates g_itemTimers HUD + spec-timer broadcast + FL_ITEM_TIMER)
+
+    int validGametypes; // [QL] gitem_t+0x44: force-spawn mask, bit 1<<gametype. When the
+                        // current gametype's bit is set the item bypasses the notteam/
+                        // notfree/gametype spawn filters (G_ItemValidForGametype 0x10065f90).
+                        // Last field so positional initializers default it to 0.
 } gitem_t;
 
 // included in both the game dll and the client
@@ -853,7 +876,23 @@ gitem_t* BG_FindItemForPowerup(powerup_t pw);
 gitem_t* BG_FindItemForHoldable(holdable_t pw);
 #define ITEM_INDEX(x) ((x) - bg_itemlist)
 
-qboolean BG_CanItemBeGrabbed(int gametype, const entityState_t* ent, const playerState_t* ps);
+// [QL] 7-arg pickup check (qagamex86.dll @0x1002ced0). Same rules run server-side
+// (Touch_Item) and client-side (cgame prediction).
+qboolean BG_CanItemBeGrabbed(int atTime, int warmupTime, int armorTiered, int weaponRespawn,
+                             int gametype, const entityState_t* ent, const playerState_t* ps);
+qboolean BG_IsRoundBasedGameType(int gametype);
+// [QL] Maps a MOD_* means-of-death to its WP_* weapon index; returns 0 (WP_NONE) for
+// environmental / non-weapon MODs. Used by STAT_AddPlayerDeathStat / STAT_AddDamageStat /
+// player_die. .so: BG_GetWeaponFromMeansOfDeath.
+int BG_GetWeaponFromMeansOfDeath(int mod);
+
+// [QL] 0x1002da40: parse a space-separated weapon short-name list (e.g. the
+// worldspawn "disable_loadout" key) into a 1<<weapon bitmask.
+int BG_ParseWeaponStringtoFlag(char *string);
+
+// [QL] Per-weapon ammo cap, indexed by weapon_t. Single canonical copy lives in
+// bg_misc.c (shared) so both qagame and cgame link it; cgame does not compile g_items.c.
+extern const int maxAmmoStandard[WP_NUM_WEAPONS];
 
 // [QL] g_dmflags->integer flags (binary-verified bit assignments)
 #define DF_NO_TEAM_DAMAGE           1   // bit 0: no team health damage (CA/FT/DOM)

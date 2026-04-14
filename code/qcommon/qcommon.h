@@ -506,7 +506,7 @@ qboolean Cvar_Command(void);
 // command.  Returns true if the command was a variable reference that
 // was handled. (print or change)
 
-void Cvar_WriteVariables(fileHandle_t f_hw, fileHandle_t f_rep);
+void Cvar_WriteVariables(fileHandle_t f_hw, fileHandle_t f_rep, int clientOnly);
 // [QL] writes archived cvars to two files: f_hw (qzconfig/hardware) and
 // f_rep (repconfig/replicated). CVAR_REPLICATE and CVAR_USER_CREATED
 // cvars go to f_rep; other CVAR_ARCHIVE cvars go to f_hw.

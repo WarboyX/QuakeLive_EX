@@ -79,7 +79,7 @@ An item fires all of its targets when it is picked up.  If the toucher can't car
 // Defaults match QL's weapon_reload_* cvar defaults
 int bg_weaponReloadTime[WP_NUM_WEAPONS] = {
     0,     // WP_NONE
-    100,   // WP_GAUNTLET (weapon_reload_gh)
+    400,   // WP_GAUNTLET (weapon_reload_gauntlet) - QL default 400, not 100
     100,   // WP_MACHINEGUN (weapon_reload_mg)
     1000,  // WP_SHOTGUN (weapon_reload_sg)
     800,   // WP_GRENADE_LAUNCHER (weapon_reload_gl)
@@ -149,7 +149,8 @@ gitem_t bg_itemlist[] =
             IT_ARMOR,
             0,
             /* precache */ "",
-            /* sounds */ ""},
+            /* sounds */ "",
+            /* itemTimer */ 1},
 
         /*QUAKED item_armor_body (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
          */
@@ -164,7 +165,25 @@ gitem_t bg_itemlist[] =
             IT_ARMOR,
             0,
             /* precache */ "",
-            /* sounds */ ""},
+            /* sounds */ "",
+            /* itemTimer */ 1},
+
+        // [QL] Green Armor (25 points) - bg_itemlist index 4
+        /*QUAKED item_armor_jacket (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
+         */
+        {
+            "item_armor_jacket",
+            "sound/misc/ar2_pkup.wav",
+            {"models/powerups/armor/armor_grn.md3",
+             NULL, NULL, NULL},
+            /* icon */ "icons/iconr_green",
+            /* pickup */ "Green Armor",
+            25,
+            IT_ARMOR,
+            3,
+            /* precache */ "",
+            /* sounds */ "",
+            /* itemTimer */ 1},
 
         //
         // health
@@ -231,7 +250,8 @@ gitem_t bg_itemlist[] =
             IT_HEALTH,
             0,
             /* precache */ "",
-            /* sounds */ ""},
+            /* sounds */ "",
+            /* itemTimer */ 1},
 
         //
         // WEAPONS
@@ -657,7 +677,9 @@ gitem_t bg_itemlist[] =
             IT_TEAM,
             PW_REDFLAG,
             /* precache */ "",
-            /* sounds */ ""},
+            /* sounds */ "",
+            /* itemTimer */ 0,
+            /* validGametypes */ (1 << GT_AD)},
 
         /*QUAKED team_CTF_blueflag (0 0 1) (-16 -16 -16) (16 16 16)
         Only in CTF games
@@ -673,7 +695,9 @@ gitem_t bg_itemlist[] =
             IT_TEAM,
             PW_BLUEFLAG,
             /* precache */ "",
-            /* sounds */ ""},
+            /* sounds */ "",
+            /* itemTimer */ 0,
+            /* validGametypes */ (1 << GT_AD)},
 
         /*QUAKED holdable_kamikaze (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
          */
@@ -765,37 +789,6 @@ gitem_t bg_itemlist[] =
             /* precache */ "",
             /* sounds */ ""},
 
-        // [QL] Heavy Machine Gun ammo
-        /*QUAKED ammo_hmg (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
-         */
-        {
-            "ammo_hmg",
-            "sound/misc/am_pkup.wav",
-            {"models/powerups/ammo/hmgam.md3",
-             NULL, NULL, NULL},
-            /* icon */ "icons/ammo_hmg",
-            /* pickup */ "Heavy Bullets",
-            50,
-            IT_AMMO,
-            WP_HMG,
-            /* precache */ "",
-            /* sounds */ ""},
-
-        // [QL] Ammo Pack - gives a portion of all ammo types
-        // giTag=15 is a sentinel (WP_NUM_WEAPONS) meaning "all weapons"
-        {
-            "ammo_pack",
-            "sound/misc/am_pkup.wav",
-            {"models/powerups/ammo/ammopack.md3",
-             NULL, NULL, NULL},
-            /* icon */ "icons/ammo_pack",
-            /* pickup */ "Ammo Pack",
-            1,
-            IT_AMMO,
-            WP_NUM_WEAPONS,
-            /* precache */ "",
-            /* sounds */ ""},
-
         //
         // PERSISTANT POWERUP ITEMS
         //
@@ -847,12 +840,12 @@ gitem_t bg_itemlist[] =
         /*QUAKED item_doubler (.3 .3 1) (-16 -16 -16) (16 16 16) suspended redTeam blueTeam
          */
         {
-            "item_ammoregen",
-            "sound/items/armorregen.ogg",  // [QL] renamed from ammoregen.wav
+            "item_armorregen",  // [QL] bg_itemlist index 46 (was item_ammoregen)
+            "sound/items/armorregen.ogg",
             {"models/powerups/ammo.md3",
              NULL, NULL, NULL},
-            /* icon */ "icons/ammo_regen",
-            /* pickup */ "Ammo Regen",
+            /* icon */ "icons/armor_regen",
+            /* pickup */ "Armor Regen",
             30,
             IT_PERSISTANT_POWERUP,
             PW_AMMOREGEN,
@@ -948,6 +941,21 @@ gitem_t bg_itemlist[] =
             /* precache */ "",
             /* sounds */ "sound/weapons/vulcan/wvulwind.wav"},
 
+        // [QL] Spawn Armor (spawn protection, granted not picked up) - bg_itemlist index 53
+        /*QUAKED item_spawnarmor (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
+         */
+        {
+            "item_spawnarmor",
+            NULL,
+            {NULL, NULL, NULL, NULL},
+            /* icon */ "icons/spawnarmor",
+            /* pickup */ "Spawn Armor",
+            0,
+            IT_POWERUP,
+            0,
+            /* precache */ "",
+            /* sounds */ ""},
+
         // [QL] Heavy Machine Gun
         /*QUAKED weapon_hmg (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
          */
@@ -961,6 +969,37 @@ gitem_t bg_itemlist[] =
             100,
             IT_WEAPON,
             WP_HMG,
+            /* precache */ "",
+            /* sounds */ ""},
+
+        // [QL] Heavy Machine Gun ammo - bg_itemlist index 55 (QL orders it after weapon_hmg)
+        /*QUAKED ammo_hmg (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
+         */
+        {
+            "ammo_hmg",
+            "sound/misc/am_pkup.wav",
+            {"models/powerups/ammo/hmgam.md3",
+             NULL, NULL, NULL},
+            /* icon */ "icons/ammo_hmg",
+            /* pickup */ "Heavy Bullets",
+            50,
+            IT_AMMO,
+            WP_HMG,
+            /* precache */ "",
+            /* sounds */ ""},
+
+        // [QL] Ammo Pack - gives a portion of all ammo types (bg_itemlist index 56)
+        // giTag=15 is a sentinel (WP_NUM_WEAPONS) meaning "all weapons"
+        {
+            "ammo_pack",
+            "sound/misc/am_pkup.wav",
+            {"models/powerups/ammo/ammopack.md3",
+             NULL, NULL, NULL},
+            /* icon */ "icons/ammo_pack",
+            /* pickup */ "Ammo Pack",
+            1,
+            IT_AMMO,
+            WP_NUM_WEAPONS,
             /* precache */ "",
             /* sounds */ ""},
 
@@ -1091,6 +1130,60 @@ gitem_t* BG_FindItem(const char* pickupName) {
 }
 
 /*
+===============
+BG_ParseWeaponStringtoFlag
+
+[QL] binary 0x1002da40: tokenises a whitespace-separated list of weapon short
+names and ORs together the matching weapon bits (weapon w -> bit 1<<w).
+SP_worldspawn uses it to turn the "disable_loadout" worldspawn key into the
+g_disableLoadout / CS_DISABLE_LOADOUT bitmask.
+
+The binary walks its 14-entry weapon table (weapons 1..14) with a bit starting at
+1<<1 and shifting left per entry, via COM_ParseExt with a 16-token cap. The name
+table below matches it exactly. Lives in bg_misc.c (shared) so it must not
+reference the qagame-only weaponShortName[] table.
+===============
+*/
+static const char* bg_weaponFlagNames[] = {
+    "g",    // 1  WP_GAUNTLET
+    "mg",   // 2  WP_MACHINEGUN
+    "sg",   // 3  WP_SHOTGUN
+    "gl",   // 4  WP_GRENADE_LAUNCHER
+    "rl",   // 5  WP_ROCKET_LAUNCHER
+    "lg",   // 6  WP_LIGHTNING
+    "rg",   // 7  WP_RAILGUN
+    "pg",   // 8  WP_PLASMAGUN
+    "bfg",  // 9  WP_BFG
+    "gh",   // 10 WP_GRAPPLING_HOOK
+    "ng",   // 11 WP_NAILGUN
+    "pl",   // 12 WP_PROX_LAUNCHER
+    "cg",   // 13 WP_CHAINGUN
+    "hmg"   // 14 WP_HMG
+};
+
+int BG_ParseWeaponStringtoFlag(char* string) {
+    const char* token;
+    int mask = 0;
+    int count;
+    int i;
+
+    // binary caps the parse at 16 tokens
+    for (count = 0; count < 16; count++) {
+        token = COM_ParseExt(&string, qtrue);
+        if (!token[0]) {
+            break;
+        }
+        for (i = 0; i < (int)ARRAY_LEN(bg_weaponFlagNames); i++) {
+            if (bg_weaponFlagNames[i] && !Q_stricmp(token, bg_weaponFlagNames[i])) {
+                mask |= 1 << (i + 1);
+            }
+        }
+    }
+
+    return mask;
+}
+
+/*
 ============
 BG_PlayerTouchesItem
 
@@ -1113,142 +1206,263 @@ qboolean BG_PlayerTouchesItem(playerState_t* ps, entityState_t* item, int atTime
 
 /*
 ================
+BG_IsRoundBasedGameType
+
+[QL] True for the round-based gametypes: CA, Freeze Tag, Attack & Defend, Red Rover.
+Address: 0x1002c9a0
+================
+*/
+qboolean BG_IsRoundBasedGameType(int gametype) {
+    switch (gametype) {
+    case GT_CA:
+    case GT_FREEZE:
+    case GT_AD:
+    case GT_RR:
+        return qtrue;
+    default:
+        return qfalse;
+    }
+}
+
+// [QL] Per-weapon ammo cap, indexed by weapon_t. Canonical copy shared by qagame
+// (Add_Ammo) and the IT_AMMO cap check below. Declared extern in bg_public.h so
+// cgame links it too (cgame compiles bg_misc.c but not g_items.c).
+// Binary weapon-info table @0x1008ff18 (stride 0x30, maxAmmo @ +0xc); all 15 cells
+// verified byte-for-byte against qagamex86.dll.
+const int maxAmmoStandard[WP_NUM_WEAPONS] = {
+    0,    // WP_NONE
+    -1,   // WP_GAUNTLET (unlimited)
+    150,  // WP_MACHINEGUN
+    25,   // WP_SHOTGUN
+    25,   // WP_GRENADE_LAUNCHER
+    25,   // WP_ROCKET_LAUNCHER
+    150,  // WP_LIGHTNING
+    25,   // WP_RAILGUN
+    150,  // WP_PLASMAGUN
+    25,   // WP_BFG
+    -1,   // WP_GRAPPLING_HOOK (unlimited)
+    25,   // WP_NAILGUN
+    5,    // WP_PROX_LAUNCHER
+    200,  // WP_CHAINGUN
+    150,  // WP_HMG
+};
+
+/*
+================
+BG_CanWeaponBeGrabbed
+
+[QL] .so symbol BG_CanWeaponBeGrabbed (0x53cb0), qagame binary @0x1002d1c0.
+Whether an IT_WEAPON item may be picked up. weaponRespawn = g_weaponRespawn.integer.
+Grabbable unless in loadout mode; then grab only if weapons respawn, or you don't
+own the weapon, or you own it with no ammo, or the item is a dropped weapon.
+================
+*/
+static qboolean BG_CanWeaponBeGrabbed(const entityState_t* ent, const playerState_t* ps,
+                                      int weaponRespawn) {
+    gitem_t* item = &bg_itemlist[ent->modelindex];
+
+    if (ps->pm_flags & PMF_LOADOUT_FORCED) {  // loadout mode: no weapon pickups
+        return qfalse;
+    }
+    if (weaponRespawn != 0 ||                              // weapons respawn -> always grab
+        !(ps->stats[STAT_WEAPONS] & (1 << item->giTag)) || // don't own the weapon
+        ps->ammo[item->giTag] == 0 ||                      // own it but no ammo
+        ent->modelindex2 != 0) {                           // dropped weapon
+        return qtrue;
+    }
+    return qfalse;
+}
+
+/*
+================
 BG_CanItemBeGrabbed
 
-Returns false if the item should not be picked up.
+[QL] qagame binary @0x1002ced0. Returns false if the item should not be picked up.
 This needs to be the same for client side prediction and server use.
 ================
 */
-qboolean BG_CanItemBeGrabbed(int gametype, const entityState_t* ent, const playerState_t* ps) {
+qboolean BG_CanItemBeGrabbed(int atTime, int warmupTime, int armorTiered, int weaponRespawn,
+                             int gametype, const entityState_t* ent, const playerState_t* ps) {
     gitem_t* item;
-    int upperBound;
+    int i;
 
     if (ent->modelindex < 1 || ent->modelindex >= bg_numItems) {
         Com_Error(ERR_DROP, "BG_CanItemBeGrabbed: index out of range");
+    }
+
+    // [QL] dropped-item re-grab guard: the dropper cannot re-touch their own dropped
+    // item for 1000 ms (ent->clientNum stores the dropper; modelindex2 marks it dropped).
+    if (ent->modelindex2 != 0 &&
+        atTime < ent->time + 1000 &&
+        ps->clientNum == ent->clientNum) {
+        return qfalse;
     }
 
     item = &bg_itemlist[ent->modelindex];
 
     switch (item->giType) {
         case IT_WEAPON:
-            return qtrue;  // weapons are always picked up
+            return BG_CanWeaponBeGrabbed(ent, ps, weaponRespawn);
 
         case IT_AMMO:
-            if (ps->ammo[item->giTag] >= 200) {
-                return qfalse;  // can't hold any more
+            if (gametype != GT_DOMINATION) {          // GT_DOM: always grab ammo
+                if (item->giTag != WP_NUM_WEAPONS) {  // normal ammo item
+                    return (qboolean)(ps->ammo[item->giTag] < maxAmmoStandard[item->giTag]);
+                }
+                // [QL] giTag == WP_NUM_WEAPONS: "all ammo" pack. Grabbable if any owned
+                // weapon (index >= WP_MACHINEGUN) is below its cap.
+                for (i = WP_MACHINEGUN; i < WP_NUM_WEAPONS; i++) {
+                    if ((ps->stats[STAT_WEAPONS] & (1 << i)) &&
+                        maxAmmoStandard[i] >= 1 &&
+                        ps->ammo[i] < maxAmmoStandard[i]) {
+                        return qtrue;
+                    }
+                }
+                return qfalse;
             }
-            return qtrue;
+            break;  // GT_DOMINATION -> qtrue
 
         case IT_ARMOR:
-            if (bg_itemlist[ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_SCOUT) {
-                return qfalse;
+            if (armorTiered == 0) {  // tiered-armor cvar off: simple cap
+                return (qboolean)(ps->stats[STAT_ARMOR] < ps->stats[STAT_MAX_HEALTH] * 2);
             }
-
-            // we also clamp armor to the maxhealth for handicapping
-            if (bg_itemlist[ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD) {
-                upperBound = ps->stats[STAT_MAX_HEALTH];
-            } else {
-                upperBound = ps->stats[STAT_MAX_HEALTH] * 2;
+            if (item->quantity == 100) {  // red body armor
+                return (qboolean)(ps->stats[STAT_ARMOR] < 200);
             }
-
-            if (ps->stats[STAT_ARMOR] >= upperBound) {
-                return qfalse;
+            if (item->quantity == 50) {  // yellow combat armor
+                if (ps->stats[STAT_ARMORTYPE] < 2) {
+                    return (qboolean)(ps->stats[STAT_ARMOR] < 150);
+                }
+                if ((double)ps->stats[STAT_ARMOR] * 0.75 > 99.0) {
+                    return qfalse;
+                }
+            } else if (item->quantity == 25) {  // +25 armor
+                if (ps->stats[STAT_ARMORTYPE] == 0) {
+                    return (qboolean)(ps->stats[STAT_ARMOR] < 100);
+                }
+                if (ps->stats[STAT_ARMORTYPE] == 1) {
+                    if ((double)ps->stats[STAT_ARMOR] * 0.66 > 50.0) {
+                        return qfalse;
+                    }
+                } else {
+                    if ((double)ps->stats[STAT_ARMOR] * 0.75 > 50.0) {
+                        return qfalse;
+                    }
+                }
+            } else {  // shard (5) and anything else
+                return (qboolean)(ps->stats[STAT_ARMOR] < ps->stats[STAT_MAX_HEALTH] * 2);
             }
             return qtrue;
 
         case IT_HEALTH:
-            // small and mega healths will go over the max, otherwise
-            // don't pick up if already at max
-            if (bg_itemlist[ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD) {
-            } else if (item->quantity == 5 || item->quantity == 100) {
-                if (ps->stats[STAT_HEALTH] >= ps->stats[STAT_MAX_HEALTH] * 2) {
-                    return qfalse;
-                }
-                return qtrue;
+            // small(5) and mega(100) overheal to 2x max; everything else caps at max.
+            if (item->quantity != 5 && item->quantity != 100) {
+                return (qboolean)(ps->stats[STAT_HEALTH] < ps->stats[STAT_MAX_HEALTH]);
             }
-
-            if (ps->stats[STAT_HEALTH] >= ps->stats[STAT_MAX_HEALTH]) {
-                return qfalse;
-            }
-            return qtrue;
+            return (qboolean)(ps->stats[STAT_HEALTH] < ps->stats[STAT_MAX_HEALTH] * 2);
 
         case IT_POWERUP:
-            return qtrue;  // powerups are always picked up
+        case IT_KEY:
+            break;  // always pick up
+
+        case IT_HOLDABLE:
+            return (qboolean)(ps->stats[STAT_HOLDABLE_ITEM] == 0);
 
         case IT_PERSISTANT_POWERUP:
-            // can only hold one item at a time
-            if (ps->stats[STAT_PERSISTANT_POWERUP]) {
+            if (ps->stats[STAT_PERSISTANT_POWERUP]) {  // STAT_RUNE
                 return qfalse;
             }
-
-            // check team only
-            if ((ent->generic1 & 2) && (ps->persistant[PERS_TEAM] != TEAM_RED)) {
+            if ((ent->generic1 & 2) && ps->persistant[PERS_TEAM] != TEAM_RED) {
                 return qfalse;
             }
-            if ((ent->generic1 & 4) && (ps->persistant[PERS_TEAM] != TEAM_BLUE)) {
+            if ((ent->generic1 & 4) && ps->persistant[PERS_TEAM] != TEAM_BLUE) {
                 return qfalse;
             }
-
-            return qtrue;
+            break;
 
         case IT_TEAM:  // team items, such as flags
+            if (gametype == GT_AD) {
+                if (warmupTime != 0) {  // no objective grab during warmup
+                    return qfalse;
+                }
+                if (ps->persistant[PERS_TEAM] == TEAM_RED) {
+                    if (item->giTag == PW_BLUEFLAG) {
+                        return qtrue;
+                    }
+                    if (item->giTag != PW_REDFLAG) {
+                        return qfalse;
+                    }
+                    return (qboolean)(ps->powerups[PW_BLUEFLAG] != 0);
+                }
+                if (ps->persistant[PERS_TEAM] == TEAM_BLUE) {
+                    if (item->giTag == PW_REDFLAG) {
+                        return qtrue;
+                    }
+                    if (item->giTag != PW_BLUEFLAG) {
+                        return qfalse;
+                    }
+                    return (qboolean)(ps->powerups[PW_REDFLAG] != 0);
+                }
+                return qfalse;
+            }
+            if (gametype == GT_CTF) {
+                // ent->modelindex2 is non-zero on items if they are dropped: we can pick
+                // up our own dropped flag (return it) but not our flag at base.
+                if (ps->persistant[PERS_TEAM] == TEAM_RED) {
+                    if (item->giTag == PW_BLUEFLAG) {
+                        return qtrue;
+                    }
+                    if (item->giTag != PW_REDFLAG) {
+                        return qfalse;
+                    }
+                    if (ent->modelindex2) {  // our own flag, dropped -> return it
+                        return qtrue;
+                    }
+                    return (qboolean)(ps->powerups[PW_BLUEFLAG] != 0);  // at base -> only if capping
+                }
+                if (ps->persistant[PERS_TEAM] == TEAM_BLUE) {
+                    if (item->giTag == PW_REDFLAG) {
+                        return qtrue;
+                    }
+                    if (item->giTag != PW_BLUEFLAG) {
+                        return qfalse;
+                    }
+                    if (ent->modelindex2) {
+                        return qtrue;
+                    }
+                    return (qboolean)(ps->powerups[PW_REDFLAG] != 0);
+                }
+                return qfalse;
+            }
             if (gametype == GT_1FCTF) {
-                // neutral flag can always be picked up
                 if (item->giTag == PW_NEUTRALFLAG) {
                     return qtrue;
                 }
                 if (ps->persistant[PERS_TEAM] == TEAM_RED) {
-                    if (item->giTag == PW_BLUEFLAG && ps->powerups[PW_NEUTRALFLAG]) {
-                        return qtrue;
+                    if (item->giTag != PW_BLUEFLAG) {
+                        return qfalse;
                     }
-                } else if (ps->persistant[PERS_TEAM] == TEAM_BLUE) {
-                    if (item->giTag == PW_REDFLAG && ps->powerups[PW_NEUTRALFLAG]) {
-                        return qtrue;
+                    return (qboolean)(ps->powerups[PW_NEUTRALFLAG] != 0);
+                }
+                if (ps->persistant[PERS_TEAM] == TEAM_BLUE) {
+                    if (item->giTag != PW_REDFLAG) {
+                        return qfalse;
                     }
+                    return (qboolean)(ps->powerups[PW_NEUTRALFLAG] != 0);
                 }
+                return qfalse;
             }
-            if (gametype == GT_CTF) {
-                // ent->modelindex2 is non-zero on items if they are dropped
-                // we need to know this because we can pick up our dropped flag (and return it)
-                // but we can't pick up our flag at base
-                if (ps->persistant[PERS_TEAM] == TEAM_RED) {
-                    if (item->giTag == PW_BLUEFLAG ||
-                        (item->giTag == PW_REDFLAG && ent->modelindex2) ||
-                        (item->giTag == PW_REDFLAG && ps->powerups[PW_BLUEFLAG]))
-                        return qtrue;
-                } else if (ps->persistant[PERS_TEAM] == TEAM_BLUE) {
-                    if (item->giTag == PW_REDFLAG ||
-                        (item->giTag == PW_BLUEFLAG && ent->modelindex2) ||
-                        (item->giTag == PW_BLUEFLAG && ps->powerups[PW_REDFLAG]))
-                        return qtrue;
-                }
-            }
-
             if (gametype == GT_HARVESTER) {
                 return qtrue;
             }
             return qfalse;
 
-        case IT_HOLDABLE:
-            // can only hold one item at a time
-            if (ps->stats[STAT_HOLDABLE_ITEM]) {
-                return qfalse;
-            }
-            return qtrue;
-
-        case IT_KEY:
-            return qtrue;  // [QL] keys are always pickupable
-
-        case IT_BAD:
-            Com_Error(ERR_DROP, "BG_CanItemBeGrabbed: IT_BAD");
         default:
-#ifndef NDEBUG
-            Com_Printf("BG_CanItemBeGrabbed: unknown enum %d\n", item->giType);
-#endif
-            break;
+            Com_Error(ERR_DROP, "BG_CanItemBeGrabbed: invalid item type %d", item->giType);
+            return qfalse;
     }
 
-    return qfalse;
+    return qtrue;
 }
 
 //======================================================================
@@ -1292,6 +1506,12 @@ void BG_EvaluateTrajectory(const trajectory_t* tr, int atTime, vec3_t result) {
             VectorMA(tr->trBase, deltaTime, tr->trDelta, result);
             result[2] -= 0.5 * DEFAULT_GRAVITY * deltaTime * deltaTime;  // FIXME: local gravity...
             break;
+        case TR_CUSTOM_GRAVITY:
+            // [QL] per-trajectory gravity stored in tr->gravity (offset 0x24)
+            deltaTime = (atTime - tr->trTime) * 0.001;  // milliseconds to seconds
+            VectorMA(tr->trBase, deltaTime, tr->trDelta, result);
+            result[2] -= 0.5 * tr->gravity * deltaTime * deltaTime;
+            break;
         default:
             Com_Error(ERR_DROP, "BG_EvaluateTrajectory: unknown trType: %i", tr->trType);
             break;
@@ -1334,6 +1554,12 @@ void BG_EvaluateTrajectoryDelta(const trajectory_t* tr, int atTime, vec3_t resul
             deltaTime = (atTime - tr->trTime) * 0.001;  // milliseconds to seconds
             VectorCopy(tr->trDelta, result);
             result[2] -= DEFAULT_GRAVITY * deltaTime;  // FIXME: local gravity...
+            break;
+        case TR_CUSTOM_GRAVITY:
+            // [QL] per-trajectory gravity stored in tr->gravity (offset 0x24)
+            deltaTime = (atTime - tr->trTime) * 0.001;  // milliseconds to seconds
+            VectorCopy(tr->trDelta, result);
+            result[2] -= tr->gravity * deltaTime;
             break;
         default:
             Com_Error(ERR_DROP, "BG_EvaluateTrajectoryDelta: unknown trType: %i", tr->trType);
@@ -1480,12 +1706,8 @@ BG_TouchJumpPad
 ========================
 */
 void BG_TouchJumpPad(playerState_t* ps, entityState_t* jumppad) {
-    vec3_t angles;
-    float p;
-    int effectNum;
-
-    // spectators don't use jump pads
-    if (ps->pm_type != PM_NORMAL) {
+    // [QL] only PM_NORMAL and PM_FREEZE touch jump pads (spectators/dead do not)
+    if (ps->pm_type != PM_NORMAL && ps->pm_type != PM_FREEZE) {
         return;
     }
 
@@ -1494,23 +1716,73 @@ void BG_TouchJumpPad(playerState_t* ps, entityState_t* jumppad) {
         return;
     }
 
-    // if we didn't hit this same jumppad the previous frame
-    // then don't play the event sound again if we are in a fat trigger
+    // if we didn't hit this same jumppad the previous frame then play the event.
+    // [QL] the binary inlines a ps->events add here (eventParm 0, no vectoangles/
+    // effectNum) rather than calling BG_AddPredictableEventToPlayerstate. That
+    // standalone function writes the pmove-side event array, which is not valid
+    // when BG_TouchJumpPad runs from a trigger touch or client prediction.
     if (ps->jumppad_ent != jumppad->number) {
-        vectoangles(jumppad->origin2, angles);
-        p = fabs(AngleNormalize180(angles[PITCH]));
-        if (p < 45) {
-            effectNum = 0;
-        } else {
-            effectNum = 1;
-        }
-        BG_AddPredictableEventToPlayerstate(EV_JUMP_PAD, effectNum, ps);
+        ps->events[ps->eventSequence & (MAX_PS_EVENTS - 1)] = EV_JUMP_PAD;
+        ps->eventParms[ps->eventSequence & (MAX_PS_EVENTS - 1)] = 0;
+        ps->eventSequence++;
     }
     // remember hitting this jumppad this frame
     ps->jumppad_ent = jumppad->number;
     ps->jumppad_frame = ps->pmove_framecount;
+    ps->doubleJumped = 1;  // [QL] set on jumppad touch (ps+0x1d0)
     // give the player the velocity from the jumppad
     VectorCopy(jumppad->origin2, ps->velocity);
+}
+
+/*
+========================
+BG_GetWeaponFromMeansOfDeath
+
+[QL] Maps a MOD_* means-of-death to its WP_* weapon index; returns WP_NONE for
+environmental / non-weapon MODs (WATER..TRIGGER_HURT, KAMIKAZE, JUICED, GRAPPLE,
+SWITCH_TEAMS, THAW, UNKNOWN). Used by the stat-accumulation code for the per-weapon
+kill/death/damage array indices and by player_die's weapon-gated award checks.
+Binary is a switch/table lookup.
+========================
+*/
+// Address: 0x1002d540
+int BG_GetWeaponFromMeansOfDeath(int mod) {
+    switch (mod) {
+    case MOD_SHOTGUN:
+        return WP_SHOTGUN;
+    case MOD_GAUNTLET:
+        return WP_GAUNTLET;
+    case MOD_MACHINEGUN:
+        return WP_MACHINEGUN;
+    case MOD_GRENADE:
+    case MOD_GRENADE_SPLASH:
+        return WP_GRENADE_LAUNCHER;
+    case MOD_ROCKET:
+    case MOD_ROCKET_SPLASH:
+        return WP_ROCKET_LAUNCHER;
+    case MOD_PLASMA:
+    case MOD_PLASMA_SPLASH:
+        return WP_PLASMAGUN;
+    case MOD_RAILGUN:
+    case MOD_RAILGUN_HEADSHOT:
+        return WP_RAILGUN;
+    case MOD_LIGHTNING:
+    case MOD_LIGHTNING_DISCHARGE:
+        return WP_LIGHTNING;
+    case MOD_BFG:
+    case MOD_BFG_SPLASH:
+        return WP_BFG;
+    case MOD_NAIL:
+        return WP_NAILGUN;
+    case MOD_CHAINGUN:
+        return WP_CHAINGUN;
+    case MOD_PROXIMITY_MINE:
+        return WP_PROX_LAUNCHER;
+    case MOD_HMG:
+        return WP_HMG;
+    default:
+        return WP_NONE;
+    }
 }
 
 /*
@@ -1554,7 +1826,10 @@ void BG_PlayerStateToEntityState(playerState_t* ps, entityState_t* s, qboolean s
     s->clientNum = ps->clientNum;  // ET_PLAYER looks here instead of at number
                                    // so corpses can also reference the proper config
     s->eFlags = ps->eFlags;
-    if (ps->stats[STAT_HEALTH] <= 0) {
+    // [QL] a frozen player (powerups[PW_FREEZE] != 0, i.e. 0x7fffffff) reads
+    // health<=0 but must keep the else-branch so the frozen statue is not drawn
+    // as a dead corpse.
+    if (ps->stats[STAT_HEALTH] <= 0 && ps->powerups[PW_FREEZE] == 0) {
         s->eFlags |= EF_DEAD;
     } else {
         s->eFlags &= ~EF_DEAD;
@@ -1586,7 +1861,10 @@ void BG_PlayerStateToEntityState(playerState_t* ps, entityState_t* s, qboolean s
     }
 
     s->loopSound = ps->loopSound;
-    s->generic1 = ps->generic1;
+    // [QL] mask to low 6 bits: bits 0-1 = thaw progress, bits 2-5 =
+    // PERS_ATTACKEE_ARMOR damage-tier; the upper bits are server-only and must
+    // be stripped before networking.
+    s->generic1 = ps->generic1 & 0x3f;
 }
 
 /*
@@ -1634,7 +1912,10 @@ void BG_PlayerStateToEntityStateExtraPolate(playerState_t* ps, entityState_t* s,
     s->clientNum = ps->clientNum;  // ET_PLAYER looks here instead of at number
                                    // so corpses can also reference the proper config
     s->eFlags = ps->eFlags;
-    if (ps->stats[STAT_HEALTH] <= 0) {
+    // [QL] a frozen player (powerups[PW_FREEZE] != 0, i.e. 0x7fffffff) reads
+    // health<=0 but must keep the else-branch so the frozen statue is not drawn
+    // as a dead corpse.
+    if (ps->stats[STAT_HEALTH] <= 0 && ps->powerups[PW_FREEZE] == 0) {
         s->eFlags |= EF_DEAD;
     } else {
         s->eFlags &= ~EF_DEAD;
@@ -1666,5 +1947,8 @@ void BG_PlayerStateToEntityStateExtraPolate(playerState_t* ps, entityState_t* s,
     }
 
     s->loopSound = ps->loopSound;
-    s->generic1 = ps->generic1;
+    // [QL] mask to low 6 bits: bits 0-1 = thaw progress, bits 2-5 =
+    // PERS_ATTACKEE_ARMOR damage-tier; the upper bits are server-only and must
+    // be stripped before networking.
+    s->generic1 = ps->generic1 & 0x3f;
 }

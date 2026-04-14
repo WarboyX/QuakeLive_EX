@@ -660,7 +660,7 @@ cmodel_t* CM_ClipHandleToModel(clipHandle_t handle) {
     if (handle < cm.numSubModels) {
         return &cm.cmodels[handle];
     }
-    if (handle == BOX_MODEL_HANDLE) {
+    if (handle == BOX_MODEL_HANDLE || handle == CAPSULE_MODEL_HANDLE) {
         return &box_model;
     }
     if (handle < MAX_SUBMODELS) {

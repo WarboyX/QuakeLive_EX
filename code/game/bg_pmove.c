@@ -539,7 +539,7 @@ static void PM_LadderMove(void) {
         } else if (pm->cmd.upmove < 0) {
             // going down on ladder
             pm->ps->pm_flags &= ~PMF_DUCKED;
-            pm->ps->legsAnim = LEGS_IDLE;  // 26
+            pm->ps->viewheight = DEFAULT_VIEWHEIGHT;
             wishvel[2] = -pm->ps->speed * 0.66f;
         }
     } else {
@@ -557,7 +557,9 @@ static void PM_LadderMove(void) {
         wishspeed = vel;
     }
 
-    PM_Accelerate(wishdir, wishspeed, pm_walkAccel);
+    // [QL] ladder acceleration uses the server-configured walk accel (pm_cfg_walkAccel),
+    // not the CPM-overridable pm_walkAccel
+    PM_Accelerate(wishdir, wishspeed, pm_cfg_walkAccel);
 
     // if moving against the ground, clip and preserve speed
     if (pml.groundPlane && DotProduct(pm->ps->velocity, pml.groundTrace.plane.normal) < 0.0f) {
@@ -677,10 +679,10 @@ qboolean PM_WouldJump(void) {
 
 /*
 =============
-PM_WouldCrouchSlideJump - [QL] check if a crouch-slide jump would occur
+PM_WouldCrouchStepJump - [QL] check if a crouch-slide jump would occur
 =============
 */
-static qboolean PM_WouldCrouchSlideJump(void) {
+static qboolean PM_WouldCrouchStepJump(void) {
     if (!(pm->ps->pm_flags & PMF_DUCKED)) {
         return qfalse;
     }
@@ -702,10 +704,6 @@ PM_CheckJump - [QL] rewritten with autoHop, chain-jump, crouch-slide support
 =============
 */
 static qboolean PM_CheckJump(void) {
-    if (pm->ps->pm_flags & PMF_RESPAWNED) {
-        return qfalse;
-    }
-
     if (!PM_WouldJump()) {
         return qfalse;
     }
@@ -1076,6 +1074,15 @@ static void PM_AirMove(void) {
 
     PM_StepSlideMove(qtrue);
 
+    // [QL] airborne idle-leg posing (used while flying with the flight holdable)
+    if (pm->ps->pm_flags & PMF_DUCKED) {
+        PM_ForceLegsAnim(LEGS_IDLECR);
+    } else if ((pm->ps->legsAnim & ~ANIM_TOGGLEBIT) == LEGS_IDLECR) {
+        PM_ForceLegsAnim(LEGS_IDLE);
+    }
+    // [QL] TODO: binary calls PM_FlightMove() here (flight thrust + fuel drain);
+    // not yet implemented.
+
     // [QL] double-jump: allow a second jump while airborne
     if (pm->ps->pm_flags & PMF_DOUBLE_JUMPED) {
         PM_CheckDoubleJump();
@@ -1291,7 +1298,7 @@ static void PM_NoclipMove(void) {
     } else {
         drop = 0;
 
-        friction = pm_friction * 1.5;  // extra friction
+        friction = 10.0f;  // [QL] noclip/free-fly friction (was pm_friction*1.5 in Q3)
         control = speed < pm_stopspeed ? pm_stopspeed : speed;
         drop += control * friction * pml.frametime;
 
@@ -1318,7 +1325,7 @@ static void PM_NoclipMove(void) {
     wishspeed = VectorNormalize(wishdir);
     wishspeed *= scale;
 
-    PM_Accelerate(wishdir, wishspeed, pm_accelerate);
+    PM_Accelerate(wishdir, wishspeed, pm_walkAccel);
 
     // move
     VectorMA(pm->ps->origin, pml.frametime, pm->ps->velocity, pm->ps->origin);
@@ -1391,10 +1398,7 @@ static void PM_CrashLand(void) {
     delta = vel + t * acc;
     delta = delta * delta * 0.0001;
 
-    // ducking while falling doubles damage
-    if (pm->ps->pm_flags & PMF_DUCKED) {
-        delta *= 2;
-    }
+    // [QL] no ducking-doubles-damage in QL
 
     // never take falling damage if completely underwater
     if (pm->waterlevel == 3) {
@@ -1417,23 +1421,28 @@ static void PM_CrashLand(void) {
 
     // SURF_NODAMAGE is used for bounce pads where you don't ever
     // want to take damage or play a crunch sound
-    if (!(pml.groundTrace.surfaceFlags & SURF_NODAMAGE)) {
-        if (delta > 60) {
+    if (!(pml.groundTrace.surfaceFlags & SURF_NODAMAGE) && pm->ps->stats[STAT_HEALTH] > -40) {
+        if (delta > 62) {
             PM_AddEvent(EV_FALL_FAR);
-        } else if (delta > 40) {
+        } else if (delta > 42) {
             // this is a pain grunt, so don't play it if dead
             if (pm->ps->stats[STAT_HEALTH] > 0) {
                 PM_AddEvent(EV_FALL_MEDIUM);
             }
         } else if (delta > 7) {
             PM_AddEvent(EV_FALL_SHORT);
-        } else {
+        } else if (pm->ps->stats[STAT_RUNE] != 1) {
             PM_AddEvent(PM_FootstepForSurface());
         }
     }
 
     // start footstep cycle over
     pm->ps->bobCycle = 0;
+
+    // [QL] reset double-jump on landing
+    if (pm->ps->pm_flags & PMF_DOUBLE_JUMPED) {
+        pm->ps->doubleJumped = 0;
+    }
 }
 
 /*
@@ -1612,9 +1621,6 @@ static void PM_GroundTrace(void) {
         }
 
         PM_CrashLand();
-
-        // [QL] reset double-jump on landing
-        pm->ps->doubleJumped = 0;
 
         // don't do landing time if we were just going down a slope
         if (pml.previous_velocity[2] < -200) {
@@ -1931,6 +1937,9 @@ static void PM_FinishWeaponChange(void) {
     }
 
     pm->ps->weapon = weapon;
+    // [QL] switching weapons resets the chaingun spin-up (PM_FinishWeaponChange
+    // @0x10005df0 zeroes STAT_SPINUP).
+    pm->ps->stats[STAT_SPINUP] = 0;
     pm->ps->weaponstate = WEAPON_RAISING;
     pm->ps->weaponTime += pm_weaponRaiseTime;  // [QL] configurable
     PM_StartTorsoAnim(TORSO_RAISE);
@@ -1993,6 +2002,16 @@ static void PM_Weapon(void) {
         return;
     }
 
+    // [QL] set EF_FIRING while attack is held with a usable weapon (lightning
+    // always qualifies). PmoveSingle clears it before PM_Weapon, so this is what
+    // keeps continuous-beam weapons on a steady beam and looping sound instead of
+    // flickering at the fire rate. (PM_Weapon @0x10031a50)
+    if ((pm->cmd.buttons & BUTTON_ATTACK)
+        && !(pm->ps->pm_flags & PMF_RESPAWNED)
+        && (pm->ps->ammo[pm->ps->weapon] != 0 || pm->ps->weapon == WP_LIGHTNING)) {
+        pm->ps->eFlags |= EF_FIRING;
+    }
+
     // check for item using
     if (pm->cmd.buttons & BUTTON_USE_HOLDABLE) {
         if (!(pm->ps->pm_flags & PMF_USE_ITEM_HELD)) {
@@ -2045,8 +2064,18 @@ static void PM_Weapon(void) {
 
     // check for fire
     if (!(pm->cmd.buttons & BUTTON_ATTACK)) {
+        int spin;
         pm->ps->weaponTime = 0;
         pm->ps->weaponstate = WEAPON_READY;
+        // [QL] chaingun spins down while not firing (STAT_SPINUP is 0 for other
+        // weapons, no-op there). PM_Weapon @0x10031d2d.
+        spin = pm->ps->stats[STAT_SPINUP] - pml.msec;
+        if (spin < 0) {
+            spin = 0;
+        } else if (spin > 1000) {
+            spin = 1000;
+        }
+        pm->ps->stats[STAT_SPINUP] = spin;
         return;
     }
 
@@ -2083,12 +2112,32 @@ static void PM_Weapon(void) {
     // [QL] fire intervals from bg_weaponReloadTime[] (updated by weapon_reload_* cvars)
     addTime = bg_weaponReloadTime[pm->ps->weapon];
 
-    if (bg_itemlist[pm->ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_SCOUT) {
-        addTime /= 1.5;
-    } else if (bg_itemlist[pm->ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_AMMOREGEN) {
-        addTime /= 1.3;
-    } else if (pm->ps->powerups[PW_HASTE]) {
-        addTime /= 1.3;
+    // [QL] chaingun spin-up: while STAT_SPINUP < 1000 the fire interval is doubled
+    // (10 rps). The interval is then accumulated into STAT_SPINUP clamped [0,1000],
+    // so the chaingun ramps to 20 rps over ~10 shots and spins back down when it
+    // stops firing (see below). Verified vs qagamex86.dll PM_Weapon @0x10031c90.
+    if (pm->ps->weapon == WP_CHAINGUN) {
+        int spin;
+        if (pm->ps->stats[STAT_SPINUP] < 1000) {
+            addTime *= 2;
+        }
+        spin = pm->ps->stats[STAT_SPINUP] + addTime;
+        if (spin < 0) {
+            spin = 0;
+        } else if (spin > 1000) {
+            spin = 1000;
+        }
+        pm->ps->stats[STAT_SPINUP] = spin;
+    }
+
+    // [QL] fire-rate powerup/rune modifiers (PM_Weapon @0x10031ce6). PW_HASTE
+    // scales the interval by 10/13 (=/1.3) and takes precedence. Otherwise the
+    // scout rune (stats[STAT_RUNE]==1) scales it by /1.25. QL does not apply the
+    // ammo-regen rune here, and keys on the rune id, not a bg_itemlist lookup.
+    if (pm->ps->powerups[PW_HASTE]) {
+        addTime = (int)(addTime * (10.0 / 13.0));
+    } else if (pm->ps->stats[STAT_RUNE] == 1) {
+        addTime = (int)(addTime / 1.25);
     }
 
     pm->ps->weaponTime += addTime;
@@ -2225,8 +2274,6 @@ PmoveSingle
 
 ================
 */
-void trap_SnapVector(float* v);
-
 void PmoveSingle(pmove_t* pmove) {
     pm = pmove;
 
@@ -2260,12 +2307,9 @@ void PmoveSingle(pmove_t* pmove) {
         pm->ps->eFlags &= ~EF_TALK;
     }
 
-    // set the firing flag for continuous beam weapons
-    if (!(pm->ps->pm_flags & PMF_RESPAWNED) && pm->ps->pm_type != PM_INTERMISSION && pm->ps->pm_type != PM_NOCLIP && (pm->cmd.buttons & BUTTON_ATTACK) && pm->ps->ammo[pm->ps->weapon]) {
-        pm->ps->eFlags |= EF_FIRING;
-    } else {
-        pm->ps->eFlags &= ~EF_FIRING;
-    }
+    // [QL] EF_FIRING is cleared by default here. PM_Weapon (called below) sets it
+    // again when attack is held with a usable weapon.
+    pm->ps->eFlags &= ~EF_FIRING;
 
     // clear the respawned flag if attack and use are cleared
     if (pm->ps->stats[STAT_HEALTH] > 0 &&
@@ -2315,13 +2359,13 @@ void PmoveSingle(pmove_t* pmove) {
     // update the viewangles
     PM_UpdateViewAngles(pm->ps, &pm->cmd);
 
-    // [QL] copy cmd.weaponPrimary → ps->weaponPrimary (valid weapon indices 1-14)
+    // [QL] copy cmd.weaponPrimary -> ps->weaponPrimary (valid weapon indices 1-14)
     if (pm->cmd.weaponPrimary >= 1 && pm->cmd.weaponPrimary <= 14 &&
         pm->ps->weaponPrimary != pm->cmd.weaponPrimary) {
         pm->ps->weaponPrimary = pm->cmd.weaponPrimary;
     }
 
-    // [QL] copy cmd.fov → ps->fov (valid FOV range 10-130)
+    // [QL] copy cmd.fov -> ps->fov (valid FOV range 10-130)
     if (pm->cmd.fov >= 10 && pm->cmd.fov <= 130 &&
         pm->ps->fov != pm->cmd.fov) {
         pm->ps->fov = pm->cmd.fov;
@@ -2396,18 +2440,9 @@ void PmoveSingle(pmove_t* pmove) {
     // set groundentity
     PM_GroundTrace();
 
-    // [QL] dead players: friction only when on ground, no free camera
+    // [QL] dead players get dead-move friction (no free camera)
     if (pm->ps->pm_type == PM_DEAD) {
-        if (pml.walking) {
-            float speed = VectorLength(pm->ps->velocity);
-            float newspeed = speed - 20.0f;
-            if (newspeed <= 0.0f) {
-                VectorClear(pm->ps->velocity);
-            } else {
-                VectorNormalize(pm->ps->velocity);
-                VectorScale(pm->ps->velocity, newspeed, pm->ps->velocity);
-            }
-        }
+        PM_DeadMove();
     }
 
     PM_DropTimers();
@@ -2432,12 +2467,12 @@ void PmoveSingle(pmove_t* pmove) {
         PM_GrappleMove();
         PM_AirMove();
     } else if (pm->ps->pm_flags & PMF_TIME_WATERJUMP) {
-        PM_DeadMove();
+        PM_WaterJumpMove();
+    } else if (pm->waterlevel > 1) {
+        PM_WaterMove();
     } else if (pml.ladder) {
         // [QL] ladder movement
         PM_LadderMove();
-    } else if (pm->waterlevel > 1) {
-        PM_WaterMove();
     } else if (pml.walking) {
         PM_WalkMove();
     } else {
@@ -2446,6 +2481,17 @@ void PmoveSingle(pmove_t* pmove) {
     }
 
 postMovement:
+    // [QL] flight-fuel regen: accumulate STAT_FLIGHT_REFUEL*frametime into
+    // STAT_MAX_FLIGHT_FUEL (accumulator), clamped to STAT_CUR_FLIGHT_FUEL (max)
+    if (pm->ps->stats[STAT_FLIGHT_REFUEL] != 0 && !(pm->ps->pm_flags & PMF_USE_ITEM_HELD)) {
+        int fuel = (int)((float)pm->ps->stats[STAT_FLIGHT_REFUEL] * pml.frametime)
+                 + pm->ps->stats[STAT_MAX_FLIGHT_FUEL];
+        if (fuel > pm->ps->stats[STAT_CUR_FLIGHT_FUEL]) {
+            fuel = pm->ps->stats[STAT_CUR_FLIGHT_FUEL];
+        }
+        pm->ps->stats[STAT_MAX_FLIGHT_FUEL] = fuel;
+    }
+
     PM_Animate();
 
     // set groundentity, watertype, and waterlevel
@@ -2463,9 +2509,6 @@ postMovement:
 
     // entering / leaving water splashes
     PM_WaterEvents();
-
-    // snap some parts of playerstate to save network bandwidth
-    trap_SnapVector(pm->ps->velocity);
 }
 
 /*
