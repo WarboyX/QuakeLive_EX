@@ -47,15 +47,26 @@ to their packets, to make it more difficult for malicious servers
 to hi-jack client connections.
 =================
 */
-void SV_GetChallenge(netadr_t from) {
+/*
+==================
+SV_ValidateSteamAuth
+
+[QL] Stub for Steamworks auth-ticket validation (BeginAuthSession). For now
+the server trusts the Steam ID the client gave in getchallenge. Ticket
+validation via libsteam_api goes here, returning qfalse to reject a client.
+==================
+*/
+static qboolean SV_ValidateSteamAuth(challenge_t* challenge) {
+    (void)challenge;
+    return qtrue;
+}
+
+void SV_GetChallenge(netadr_t from, msg_t* msg) {
     int i;
     int oldest;
     int oldestTime;
-    int oldestClientTime;
-    int clientChallenge;
+    int tokenLen;
     challenge_t* challenge;
-    qboolean wasfound = qfalse;
-    char* gameName;
 
     // Prevent using getchallenge as an amplifier
     if (SVC_RateLimitAddress(from, 10, 1000)) {
@@ -71,38 +82,21 @@ void SV_GetChallenge(netadr_t from) {
         return;
     }
 
-    // Do not allow game clients who advertise a different game name to connect to this server
-    gameName = Cmd_Argv(2);
-    if (*gameName) {
-        if (strcmp(gameName, com_gamename->string) != 0) {
-            NET_OutOfBandPrint(NS_SERVER, from, "print\nGame mismatch: This is a %s server\n",
-                               com_gamename->string);
-            Com_DPrintf("SV_GetChallenge: dropping connection from %s due to game mismatch (%s is not %s)\n",
-                        NET_AdrToString(from), gameName, com_gamename->string);
-            return;
-        }
-    }    
+    // [QL] LAN-only servers reject non-LAN clients
+    if (sv_serverType->integer == 1 && !Sys_IsLANAddress(from)) {
+        NET_OutOfBandPrint(NS_SERVER, from, "print\nServer is for LAN clients only.\n");
+        return;
+    }
 
     oldest = 0;
-    oldestClientTime = oldestTime = 0x7fffffff;
+    oldestTime = 0x7fffffff;
 
     // see if we already have a challenge for this ip
     challenge = &svs.challenges[0];
-    clientChallenge = atoi(Cmd_Argv(1));
-
     for (i = 0; i < MAX_CHALLENGES; i++, challenge++) {
         if (!challenge->connected && NET_CompareAdr(from, challenge->adr)) {
-            wasfound = qtrue;
-
-            if (challenge->time < oldestClientTime)
-                oldestClientTime = challenge->time;
-        }
-
-        if (wasfound && i >= 4) {
-            i = MAX_CHALLENGES;
             break;
         }
-
         if (challenge->time < oldestTime) {
             oldestTime = challenge->time;
             oldest = i;
@@ -110,21 +104,41 @@ void SV_GetChallenge(netadr_t from) {
     }
 
     if (i == MAX_CHALLENGES) {
-        // this is the first time this client has asked for a challenge
+        // first time from this address: grab the oldest slot and make a fresh
+        // challenge. [QL] an existing-address match reuses its challenge, no regen.
         challenge = &svs.challenges[oldest];
+        challenge->challenge = (((unsigned int)rand() << 16) ^ (unsigned int)rand()) ^ svs.time;
         challenge->adr = from;
         challenge->firstTime = svs.time;
+        challenge->time = svs.time;
         challenge->connected = qfalse;
+        challenge->wasRefused[0] = '\0';
     }
 
-    // always generate a new challenge number, so the client cannot circumvent sv_maxping
-    challenge->challenge = (((unsigned int)rand() << 16) ^ (unsigned int)rand()) ^ svs.time;
-    challenge->wasRefused[0] = '\0';
-    challenge->time = svs.time;
-
+    // [QL] getchallenge appends a raw Steam ID and auth ticket after the command
+    // word, read straight from the packet bytes (the Steam ID has NUL bytes that
+    // break Cmd_Argv tokenization):
+    //   offset 0x11: uint64 Steam ID
+    //   offset 0x19: Steam auth ticket, runs to the end of the packet
+    // tokenLen spans the 8-byte key plus the ticket, as the QL binary does; this
+    // copies 8 bytes past the ticket like QL, source stays inside the 32K message
+    // buffer. The real ticket is msg->data + 0x19, length msg->cursize - 0x19.
+    tokenLen = msg->cursize - 0x11;
+    if (tokenLen < 11) {
+        NET_OutOfBandPrint(NS_SERVER, from, "print\nNo Steam auth token.\n");
+        return;
+    }
+    if (tokenLen > (int)sizeof(challenge->authToken)) {
+        NET_OutOfBandPrint(NS_SERVER, from, "print\nAuth token too large.\n");
+        return;
+    }
+    Com_Memcpy(&challenge->steamKey, msg->data + 0x11, sizeof(challenge->steamKey));
+    Com_Memcpy(challenge->authToken, msg->data + 0x19, tokenLen);
+    challenge->authTokenLen = tokenLen;
     challenge->pingTime = svs.time;
-    NET_OutOfBandPrint(NS_SERVER, challenge->adr, "challengeResponse %d %d %d",
-                       challenge->challenge, clientChallenge, com_protocol->integer);
+
+    // [QL] response is a single signed challenge integer (no clientChallenge, no protocol)
+    NET_OutOfBandPrint(NS_SERVER, from, "challengeResponse %i", challenge->challenge);
 }
 
 /*
@@ -175,6 +189,7 @@ void SV_DirectConnect(netadr_t from) {
     int version;
     int qport;
     int challenge;
+    int challengeNum = -1;  // [QL] index into svs.challenges, -1 for a local client
     char* password;
     int startIndex;
     char* denied;
@@ -249,9 +264,16 @@ void SV_DirectConnect(netadr_t from) {
         }
 
         challengeptr = &svs.challenges[i];
+        challengeNum = i;
 
         if (challengeptr->wasRefused[0]) {
             // Return silently, so that error messages written by the server keep being displayed.
+            return;
+        }
+
+        // [QL] Steam auth validation hook (currently store-and-trust)
+        if (!SV_ValidateSteamAuth(challengeptr)) {
+            NET_OutOfBandPrint(NS_SERVER, from, "print\nSteam authentication failed.\n");
             return;
         }
 
@@ -372,6 +394,15 @@ gotnewcl:
     // init the netchan queue
     newcl->netchan_end_queue = &newcl->netchan_start_queue;
 
+    // [QL] stamp the Steam ID into the game module's userinfo and onto the client.
+    // Remote clients use the ID from getchallenge (store-and-trust); the local host
+    // uses a Steam_GetSteamID() stub (0).
+    {
+        uint64_t steamId = (challengeNum >= 0) ? svs.challenges[challengeNum].steamKey : 0;
+        newcl->steam_id = steamId;
+        Info_SetValueForKey(userinfo, "steam", va("%llu", (unsigned long long)steamId));
+    }
+
     // save the userinfo
     Q_strncpyz(newcl->userinfo, userinfo, sizeof(newcl->userinfo));
 
@@ -386,7 +417,8 @@ gotnewcl:
     SV_UserinfoChanged(newcl);
 
     // send the connect packet to the client
-    NET_OutOfBandPrint(NS_SERVER, from, "connectResponse %d", challenge);
+    // [QL] bare "connectResponse", no challenge echo
+    NET_OutOfBandPrint(NS_SERVER, from, "connectResponse");
 
     Com_DPrintf("SV_DirectConnect: client %d (%s) CS_FREE -> CS_CONNECTED (svs.time=%d)\n",
                 clientNum, newcl->name, svs.time);

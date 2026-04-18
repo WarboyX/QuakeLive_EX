@@ -367,8 +367,6 @@ void CL_SystemInfoChanged(void) {
     // scan through all the variables in the systeminfo and locally set cvars to match
     s = systemInfo;
     while (s) {
-        int cvar_flags;
-
         Info_NextPair(&s, key, value);
         if (!key[0]) {
             break;
@@ -384,17 +382,11 @@ void CL_SystemInfoChanged(void) {
             gameSet = qtrue;
         }
 
-        if ((cvar_flags = Cvar_Flags(key)) == CVAR_NONEXISTENT)
-            Cvar_Get(key, value, CVAR_SERVER_CREATED | CVAR_ROM);
-        else {
-            // If this cvar may not be modified by a server discard the value.
-            if (!(cvar_flags & (CVAR_SYSTEMINFO | CVAR_SERVER_CREATED | CVAR_USER_CREATED))) {
-                Com_Printf(S_COLOR_YELLOW "WARNING: server is not allowed to set %s=%s\n", key, value);
-                continue;
-            }
-
-            Cvar_SetSafe(key, value);
-        }
+        // [QL] CL_SystemInfoChanged (0x004bd620) applies every systeminfo key with a plain
+        // Cvar_Set - no cvar flag and no "server is not allowed to set" gating. QL has no
+        // CVAR_SERVER_CREATED flag. The fs_game guard above is a deliberate security exception
+        // to the raw binary behaviour.
+        Cvar_Set(key, value);
     }
     // if game folder should not be set and it is set at the client side
     if (!gameSet && *Cvar_VariableString("fs_game")) {
@@ -507,7 +499,21 @@ void CL_ParseGamestate(msg_t* msg) {
         Q_strncpyz(cl_oldGame, oldGame, sizeof(cl_oldGame));
     }
 
-    FS_ConditionalRestart(clc.checksumFeed, qfalse);
+    // Address: 0x004bd790 - reinitialise the filesystem if the game directory or checksum
+    // changed. When a restart happens QL stops and restarts the background track from the
+    // CS_MUSIC configstring (S_StopMusic + S_StartBackgroundTrack in the binary).
+    if (FS_ConditionalRestart(clc.checksumFeed, qfalse)) {
+        char* music;
+        char track[MAX_QPATH];
+        char loopTrack[MAX_QPATH];
+
+        S_StopBackgroundTrack();
+
+        music = cl.gameState.stringData + cl.gameState.stringOffsets[CS_MUSIC];
+        Q_strncpyz(track, COM_Parse(&music), sizeof(track));
+        Q_strncpyz(loopTrack, COM_Parse(&music), sizeof(loopTrack));
+        S_StartBackgroundTrack(track, loopTrack);
+    }
 
     // This used to call CL_StartHunkUsers, but now we enter the download state before loading the
     // cgame

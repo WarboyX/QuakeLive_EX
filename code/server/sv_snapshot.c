@@ -504,14 +504,18 @@ static void SV_BuildClientSnapshot(client_t* client) {
         state = &svs.snapshotEntities[svs.nextSnapshotEntities % svs.numSnapshotEntities];
         *state = ent->s;
 
-        // [QL] strip enemy position data in team gametypes when game module
-        // says this pair should NOT have visibility (returns 0 = obfuscate).
-        // The game function returns 1 for "allow" (same team, spectator, flag carrier, etc.)
-        if (state->number < sv_maxclients->integer && state->number != clientNum) {
-            if (!SV_GameSnapshotVisibility(clientNum, state->number)) {
-                VectorClear(state->pos.trBase);
-                VectorClear(state->apos.trBase);
-            }
+        // [QL] obfuscate the per-entity HUD copy in team gametypes. SV_BuildClientSnapshot
+        // (0x004e5680) clears entityState health (+0xc8), armor (+0xcc) and location (+0xd4) - it
+        // does NOT touch position - for every client entity where the game module's snapshot
+        // callback returns non-zero. G_ObfuscateEnemyInfoInSnapshotCheck (0x10052e30) returns
+        // non-zero for same-team / spectator / 1FCTF flag-carrier / RR-infected, and zero for an
+        // enemy, so QL strips this copy for teammates and spectated players (their real values are
+        // delivered over the separate tinfo team-overlay command) and leaves the enemy copy alone
+        // (the client never reads these fields). Guard is the hardcoded MAX_CLIENTS, no self-check.
+        if (state->number < MAX_CLIENTS && SV_GameSnapshotVisibility(clientNum, state->number)) {
+            state->health = 0;
+            state->armor = 0;
+            state->location = 0;
         }
 
         svs.nextSnapshotEntities++;

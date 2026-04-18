@@ -48,6 +48,7 @@ cvar_t* sv_maxRate;
 cvar_t* sv_dlRate;
 cvar_t* sv_minPing;
 cvar_t* sv_maxPing;
+cvar_t* sv_serverType;  // [QL] 1 = LAN-only server
 cvar_t* sv_gametype;
 cvar_t* sv_pure;
 cvar_t* sv_floodProtect;
@@ -617,7 +618,7 @@ static void SV_ConnectionlessPacket(netadr_t from, msg_t* msg) {
     } else if (!Q_stricmp(c, "getinfo")) {
         SVC_Info(from);
     } else if (!Q_stricmp(c, "getchallenge")) {
-        SV_GetChallenge(from);
+        SV_GetChallenge(from, msg);
     } else if (!Q_stricmp(c, "connect")) {
         SV_DirectConnect(from);
     } else if (!Q_stricmp(c, "rcon")) {

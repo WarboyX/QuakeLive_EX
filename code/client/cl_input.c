@@ -846,7 +846,10 @@ void CL_WritePacket(void) {
     // write the last reliable message we received
     MSG_WriteLong(&buf, clc.serverCommandSequence);
 
-    // [QL] extra byte after header (read and discarded by server)
+    // [QL] extra header byte. The QL client writes
+    // SteamAPI_GetCallbackCount() ^ (byte)clc.serverCommandSequence here; the
+    // server reads and discards it (SV_ExecuteClientMessage). We have no Steam
+    // callback-count source and the byte is unused on the wire, so send 0.
     MSG_WriteByte(&buf, 0);
 
     // write any unacknowledged clientCommands

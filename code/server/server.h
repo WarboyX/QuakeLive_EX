@@ -247,6 +247,7 @@ extern cvar_t* sv_maxRate;
 extern cvar_t* sv_dlRate;
 extern cvar_t* sv_minPing;
 extern cvar_t* sv_maxPing;
+extern cvar_t* sv_serverType;  // [QL] 1 = LAN-only server
 extern cvar_t* sv_gametype;
 extern cvar_t* sv_pure;
 extern cvar_t* sv_floodProtect;
@@ -307,7 +308,7 @@ void SV_SpawnServer(char* server, qboolean killBots);
 //
 // sv_client.c
 //
-void SV_GetChallenge(netadr_t from);
+void SV_GetChallenge(netadr_t from, msg_t* msg);
 
 void SV_DirectConnect(netadr_t from);
 

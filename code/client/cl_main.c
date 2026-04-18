@@ -2611,7 +2611,10 @@ void CL_Web_ChangeHash_f(void) {
 
     web_path = Cmd_Argv(1);
 
-	if (web_path[0] == "/") {
+	// [QL] our glue for the binary handler Web_SetLocation_f (0x004f31d0). Strip one
+	// leading '/'. Compare against the char '/', not the string "/" (that was a
+	// char-vs-pointer bug, C4047, and always false).
+	if (web_path[0] == '/') {
 		web_path++;
 	}
     
