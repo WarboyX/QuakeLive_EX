@@ -599,7 +599,12 @@ const void* RB_TakeScreenshotCmd(const void* data) {
     if (tess.numIndexes)
         RB_EndSurface();
 
-    RB_TakeScreenshot(cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName);
+    // pick the format. Without this every screenshot, .jpg included, went out
+    // as raw TGA through RB_TakeScreenshot.
+    if (cmd->jpeg)
+        RB_TakeScreenshotJPEG(cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName);
+    else
+        RB_TakeScreenshot(cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName);
 
     return (const void*)(cmd + 1);
 }
@@ -634,6 +639,25 @@ R_ScreenshotFilename
 ==================
 */
 void R_ScreenshotFilename(int lastNumber, char* fileName) {
+    int a, b, c, d;
+
+    if (lastNumber < 0 || lastNumber > 9999) {
+        Com_sprintf(fileName, MAX_OSPATH, "screenshots/shot9999.tga");
+        return;
+    }
+
+    a = lastNumber / 1000;
+    lastNumber -= a * 1000;
+    b = lastNumber / 100;
+    lastNumber -= b * 100;
+    c = lastNumber / 10;
+    lastNumber -= c * 10;
+    d = lastNumber;
+
+    Com_sprintf(fileName, MAX_OSPATH, "screenshots/shot%i%i%i%i.tga", a, b, c, d);
+}
+
+void R_ScreenshotFilenameJPEG(int lastNumber, char* fileName) {
     int a, b, c, d;
 
     if (lastNumber < 0 || lastNumber > 9999) {
@@ -731,11 +755,59 @@ screenshot [filename]
 Doesn't print the pacifier message if there is a second arg
 ==================
 */
-void R_ScreenShotJPEG_f(void) {
-    R_ScreenShot_f();  // no more TGAs.
+void R_ScreenShot_f(void) {
+    char checkname[MAX_OSPATH];
+    static int lastNumber = -1;
+    qboolean silent;
+
+    if (!strcmp(ri.Cmd_Argv(1), "levelshot")) {
+        R_LevelShot();
+        return;
+    }
+
+    if (!strcmp(ri.Cmd_Argv(1), "silent")) {
+        silent = qtrue;
+    } else {
+        silent = qfalse;
+    }
+
+    if (ri.Cmd_Argc() == 2 && !silent) {
+        // explicit filename
+        Com_sprintf(checkname, MAX_OSPATH, "screenshots/%s.tga", ri.Cmd_Argv(1));
+    } else {
+        // scan for a free filename
+
+        // if we have saved a previous screenshot, don't scan
+        // again, because recording demo avis can involve
+        // thousands of shots
+        if (lastNumber == -1) {
+            lastNumber = 0;
+        }
+        // scan for a free number
+        for (; lastNumber <= 9999; lastNumber++) {
+            R_ScreenshotFilename(lastNumber, checkname);
+
+            if (!ri.FS_FileExists(checkname)) {
+                break;  // file doesn't exist
+            }
+        }
+
+        if (lastNumber == 10000) {
+            ri.Printf(PRINT_ALL, "Screenshot: Couldn't create a file\n");
+            return;
+        }
+
+        lastNumber++;
+    }
+
+    R_TakeScreenshot(0, 0, glConfig.vidWidth, glConfig.vidHeight, checkname, qfalse);
+
+    if (!silent) {
+        ri.Printf(PRINT_ALL, "Wrote %s\n", checkname);
+    }
 }
 
-void R_ScreenShot_f(void) {
+void R_ScreenShotJPEG_f(void) {
     char checkname[MAX_OSPATH];
     static int lastNumber = -1;
     qboolean silent;
@@ -765,7 +837,7 @@ void R_ScreenShot_f(void) {
         }
         // scan for a free number
         for (; lastNumber <= 9999; lastNumber++) {
-            R_ScreenshotFilename(lastNumber, checkname);
+            R_ScreenshotFilenameJPEG(lastNumber, checkname);
 
             if (!ri.FS_FileExists(checkname)) {
                 break;  // file doesn't exist
@@ -1434,7 +1506,7 @@ void R_Init(void) {
 
     R_ModelInit();
 
-    R_InitFreeType();
+    R_InitFonts();
 
     R_InitQueries();
 
@@ -1477,7 +1549,7 @@ void RE_Shutdown(qboolean destroyWindow) {
         GLSL_ShutdownGPUShaders();
     }
 
-    R_DoneFreeType();
+    R_FontShutdown();
 
     // shut down platform specific OpenGL stuff
     if (destroyWindow) {
@@ -1569,6 +1641,10 @@ refexport_t* GetRefAPI(int apiVersion, refimport_t* rimp) {
     re.Get_Advertisements = RE_Get_Advertisements;
 
     re.RegisterFont = RE_RegisterFont;
+    re.Font_DrawString = RE_Font_DrawString;
+    re.TextBounds = RE_TextBounds;
+    re.GetGlyphInfo = RE_GetGlyphInfo;
+    re.SetCompositionFont = RE_SetCompositionFont;
     re.RemapShader = R_RemapShader;
     re.GetEntityToken = R_GetEntityToken;
     re.inPVS = R_inPVS;

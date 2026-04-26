@@ -237,6 +237,17 @@ void RE_SetColor(const float* rgba) {
     cmd->color[1] = rgba[1];
     cmd->color[2] = rgba[2];
     cmd->color[3] = rgba[3];
+
+    // [QL] shadow the current 2D colour so the fontstash text path can use it
+    // as the base glyph colour (text colour is set via RE_SetColor before
+    // RE_Font_DrawString). See tr_font_gl.c.
+    {
+        extern vec4_t g_fontColor2D;
+        g_fontColor2D[0] = rgba[0];
+        g_fontColor2D[1] = rgba[1];
+        g_fontColor2D[2] = rgba[2];
+        g_fontColor2D[3] = rgba[3];
+    }
 }
 
 /*

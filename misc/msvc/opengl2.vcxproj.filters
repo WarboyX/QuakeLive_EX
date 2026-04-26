@@ -3,7 +3,9 @@
   <ItemGroup>
     <ClCompile Include="..\..\code\qcommon\q_math.c" />
     <ClCompile Include="..\..\code\qcommon\q_shared.c" />
-    <ClCompile Include="..\..\code\renderercommon\tr_font.c" />
+    <ClCompile Include="..\..\code\renderercommon\tr_stbtt.c" />
+    <ClCompile Include="..\..\code\renderercommon\tr_fontstash.c" />
+    <ClCompile Include="..\..\code\renderergl2\tr_font_gl.c" />
     <ClCompile Include="..\..\code\renderercommon\tr_image_bmp.c" />
     <ClCompile Include="..\..\code\renderercommon\tr_image_jpg.c" />
     <ClCompile Include="..\..\code\renderercommon\tr_image_pcx.c" />

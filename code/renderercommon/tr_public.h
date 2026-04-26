@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_types.h"
 
-#define REF_API_VERSION 8
+#define REF_API_VERSION 9
 
 //
 // these are the functions exported by the refresh module
@@ -90,6 +90,15 @@ typedef struct {
     void (*A3D_RenderGeometry)(void* pVoidA3D, void* pVoidGeom, void* pVoidMat, void* pVoidGeomStatus);
 #endif
     void (*RegisterFont)(const char* fontName, int pointSize, fontInfo_t* font);
+
+    // [QL] TrueType (fontstash/stb_truetype) text rendering. Fonts are loaded
+    // internally by the renderer (RegisterFont is a no-op stub); these draw and
+    // measure through the engine-side glyph atlas.
+    void (*Font_DrawString)(int x, int y, const char* text, int fontIndex, float scale, int limit, float* maxX, int flags);
+    void (*TextBounds)(const char* text, int start, int limit, float scale, int fontIndex, int* outX, int* outY, int* outW, int* outH);
+    void (*GetGlyphInfo)(int fontIndex, int charValue, glyphInfo_t* glyph);
+    void (*SetCompositionFont)(int fontIndex, float scale);
+
     void (*RemapShader)(const char* oldShader, const char* newShader, const char* offsetTime);
     qboolean (*GetEntityToken)(char* buffer, int size);
     qboolean (*inPVS)(const vec3_t p1, const vec3_t p2);

@@ -185,9 +185,8 @@ ifndef USE_VOIP
 USE_VOIP=0
 endif
 
-ifndef USE_FREETYPE
-USE_FREETYPE=1
-endif
+# [QL] FreeType has been removed: text rendering is fontstash/stb_truetype
+# (renderercommon/tr_fontstash.c + tr_stbtt.c, renderergl2/tr_font_gl.c).
 
 ifndef USE_INTERNAL_LIBS
 USE_INTERNAL_LIBS=1
@@ -678,10 +677,6 @@ ifdef MINGW
   endif
   CLIENT_LIBS = -lgdi32 -lole32
   RENDERER_LIBS = -lgdi32 -lole32 -static-libgcc
-
-  ifeq ($(USE_FREETYPE),1)
-    FREETYPE_CFLAGS = -I$(MOUNT_DIR)/freetype/include
-  endif
 
   ifeq ($(USE_CURL),1)
     CLIENT_CFLAGS += $(CURL_CFLAGS)
@@ -1229,14 +1224,6 @@ else
   RENDERER_LIBS += $(JPEG_LIBS)
 endif
 
-ifeq ($(USE_FREETYPE),1)
-  FREETYPE_CFLAGS ?= $(shell $(PKG_CONFIG) --silence-errors --cflags freetype2 || true)
-  FREETYPE_LIBS ?= $(shell $(PKG_CONFIG) --silence-errors --libs freetype2 || echo -lfreetype)
-
-  BASE_CFLAGS += -DBUILD_FREETYPE $(FREETYPE_CFLAGS)
-  RENDERER_LIBS += $(FREETYPE_LIBS)
-endif
-
 
 ifeq ("$(CC)", $(findstring "$(CC)", "clang" "clang++"))
   BASE_CFLAGS += -Qunused-arguments
@@ -1652,7 +1639,9 @@ Q3R2OBJ = \
   $(B)/renderergl2/tr_extensions.o \
   $(B)/renderergl2/tr_fbo.o \
   $(B)/renderergl2/tr_flares.o \
-  $(B)/renderergl2/tr_font.o \
+  $(B)/renderergl2/tr_stbtt.o \
+  $(B)/renderergl2/tr_fontstash.o \
+  $(B)/renderergl2/tr_font_gl.o \
   $(B)/renderergl2/tr_glsl.o \
   $(B)/renderergl2/tr_image.o \
   $(B)/renderergl2/tr_image_bmp.o \

@@ -1860,6 +1860,12 @@ static GLenum PixelDataFormatFromInternalFormat(GLenum internalFormat) {
         case GL_DEPTH_COMPONENT24_ARB:
         case GL_DEPTH_COMPONENT32_ARB:
             return GL_DEPTH_COMPONENT;
+        case GL_R8:
+        case GL_RED:
+            // [QL] single-channel font atlas (see tr_font_gl.c). The coverage
+            // byte is uploaded as GL_RED and read back as alpha via a texture
+            // swizzle, so R_UpdateSubImage streams the right data format.
+            return GL_RED;
         default:
             return GL_RGBA;
             break;
@@ -2082,6 +2088,13 @@ image_t* R_CreateImage2(const char* name, byte* pic, int width, int height, GLen
                 internalFormat = GL_RGBA;
                 dataFormat = GL_RGBA;
                 dataType = GL_UNSIGNED_SHORT_4_4_4_4;
+                break;
+            case GL_R8:
+            case GL_RED:
+                // [QL] single-channel font atlas (GLES3 sized format)
+                internalFormat = GL_R8;
+                dataFormat = GL_RED;
+                dataType = GL_UNSIGNED_BYTE;
                 break;
             default:
                 ri.Error(ERR_DROP, "Missing OpenGL ES support for image '%s' with internal format 0x%X\n", name, internalFormat);

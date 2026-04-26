@@ -137,8 +137,8 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <AdditionalIncludeDirectories>..\..\code\SDL2\include;..\..\code\libcurl;..\..\code\AL;..\..\code\libspeex\include;..\..\code\zlib;..\..\code\freetype\include;..\..\code\jpeg-8c;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_WIN32;WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;BOTLIB;USE_ICON;USE_CURL;USE_CURL_DLOPEN;USE_OPENAL;USE_OPENAL_DLOPEN;USE_VOIP;HAVE_CONFIG_H;MISSIONPACK;USE_INTERNAL_JPEG;USE_RENDERER_DLOPEN;BUILD_FREETYPE;USE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\code\SDL2\include;..\..\code\libcurl;..\..\code\AL;..\..\code\libspeex\include;..\..\code\zlib;..\..\code\jpeg-8c;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32;WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;BOTLIB;USE_ICON;USE_CURL;USE_CURL_DLOPEN;USE_OPENAL;USE_OPENAL_DLOPEN;USE_VOIP;HAVE_CONFIG_H;MISSIONPACK;USE_INTERNAL_JPEG;USE_RENDERER_DLOPEN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -157,7 +157,7 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>user32.lib;advapi32.lib;winmm.lib;wsock32.lib;ws2_32.lib;SDL2.lib;OpenGL32.lib;psapi.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;advapi32.lib;winmm.lib;wsock32.lib;ws2_32.lib;SDL2.lib;OpenGL32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>..\..\code\libs\win32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -217,8 +217,8 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\code\SDL2\include;..\..\code\libcurl;..\..\code\AL;..\..\code\zlib;..\..\code\freetype\include;..\..\code\jpeg-8c;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_WIN32;WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;BOTLIB;USE_ICON;USE_CURL;USE_CURL_DLOPEN;USE_OPENAL;USE_OPENAL_DLOPEN;HAVE_CONFIG_H;MISSIONPACK;USE_INTERNAL_JPEG;USE_RENDERER_DLOPEN;BUILD_FREETYPE;USE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\code\SDL2\include;..\..\code\libcurl;..\..\code\AL;..\..\code\zlib;..\..\code\jpeg-8c;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32;WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;BOTLIB;USE_ICON;USE_CURL;USE_CURL_DLOPEN;USE_OPENAL;USE_OPENAL_DLOPEN;HAVE_CONFIG_H;MISSIONPACK;USE_INTERNAL_JPEG;USE_RENDERER_DLOPEN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PrecompiledHeader />
       <PrecompiledHeaderOutputFile>$(IntDir)\$(TargetName).pch</PrecompiledHeaderOutputFile>
@@ -239,7 +239,7 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
       <ResourceOutputFileName>$(ProductName).res</ResourceOutputFileName>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>user32.lib;advapi32.lib;winmm.lib;wsock32.lib;ws2_32.lib;SDL2.lib;OpenGL32.lib;psapi.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;advapi32.lib;winmm.lib;wsock32.lib;ws2_32.lib;SDL2.lib;OpenGL32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>..\..\code\libs\win32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -296,8 +296,8 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <AdditionalIncludeDirectories>..\..\code\SDL2\include;..\..\code\libcurl;..\..\code\AL;..\..\code\libspeex\include;..\..\code\zlib;..\..\code\freetype\include;..\..\code\jpeg-8c;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_WIN32;WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;BOTLIB;USE_ICON;USE_CURL;USE_CURL_DLOPEN;USE_OPENAL;USE_OPENAL_DLOPEN;USE_VOIP;HAVE_CONFIG_H;MISSIONPACK;USE_INTERNAL_JPEG;USE_RENDERER_DLOPEN;BUILD_FREETYPE;USE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\code\SDL2\include;..\..\code\libcurl;..\..\code\AL;..\..\code\libspeex\include;..\..\code\zlib;..\..\code\jpeg-8c;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32;WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;BOTLIB;USE_ICON;USE_CURL;USE_CURL_DLOPEN;USE_OPENAL;USE_OPENAL_DLOPEN;USE_VOIP;HAVE_CONFIG_H;MISSIONPACK;USE_INTERNAL_JPEG;USE_RENDERER_DLOPEN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -312,7 +312,7 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
       <FloatingPointModel>Fast</FloatingPointModel>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>user32.lib;advapi32.lib;winmm.lib;wsock32.lib;ws2_32.lib;SDL2.lib;OpenGL32.lib;psapi.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;advapi32.lib;winmm.lib;wsock32.lib;ws2_32.lib;SDL2.lib;OpenGL32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>..\..\code\libs\win64;..\..\code\SDL2\VisualC\SDL\x64\Debug;..\..\code\SDL2\VisualC\SDLmain\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -363,8 +363,8 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
     </PreBuildEvent>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\code\SDL2\include;..\..\code\libcurl;..\..\code\AL;..\..\code\zlib;..\..\code\freetype\include;..\..\code\jpeg-8c;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_WIN32;WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;BOTLIB;USE_ICON;USE_CURL;USE_CURL_DLOPEN;USE_OPENAL;USE_OPENAL_DLOPEN;HAVE_CONFIG_H;MISSIONPACK;USE_INTERNAL_JPEG;USE_RENDERER_DLOPEN;BUILD_FREETYPE;USE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\code\SDL2\include;..\..\code\libcurl;..\..\code\AL;..\..\code\zlib;..\..\code\jpeg-8c;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32;WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;BOTLIB;USE_ICON;USE_CURL;USE_CURL_DLOPEN;USE_OPENAL;USE_OPENAL_DLOPEN;HAVE_CONFIG_H;MISSIONPACK;USE_INTERNAL_JPEG;USE_RENDERER_DLOPEN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PrecompiledHeader />
       <PrecompiledHeaderOutputFile>$(IntDir)\$(TargetName).pch</PrecompiledHeaderOutputFile>
@@ -380,7 +380,7 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
       <FloatingPointModel>Fast</FloatingPointModel>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>user32.lib;advapi32.lib;winmm.lib;wsock32.lib;ws2_32.lib;SDL2.lib;OpenGL32.lib;psapi.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;advapi32.lib;winmm.lib;wsock32.lib;ws2_32.lib;SDL2.lib;OpenGL32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>..\..\code\libs\win64;..\..\code\SDL2\VisualC\SDL\x64\Debug;..\..\code\SDL2\VisualC\SDLmain\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -472,7 +472,9 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
     <ClCompile Include="..\..\code\qcommon\puff.c" />
     <ClCompile Include="..\..\code\qcommon\q_math.c" />
     <ClCompile Include="..\..\code\qcommon\q_shared.c" />
-    <ClCompile Include="..\..\code\renderercommon\tr_font.c" />
+    <ClCompile Include="..\..\code\renderercommon\tr_stbtt.c" />
+    <ClCompile Include="..\..\code\renderercommon\tr_fontstash.c" />
+    <ClCompile Include="..\..\code\renderergl2\tr_font_gl.c" />
     <ClCompile Include="..\..\code\renderercommon\tr_image_bmp.c" />
     <ClCompile Include="..\..\code\renderercommon\tr_image_jpg.c" />
     <ClCompile Include="..\..\code\renderercommon\tr_image_pcx.c" />
@@ -547,13 +549,6 @@ cscript.exe glsl_stringify.vbs ..\..\code\renderergl2\glsl\tonemap_vp.glsl ..\..
     <ClInclude Include="..\..\code\renderergl2\tr_local.h" />
     <ClInclude Include="..\..\code\renderergl2\tr_postprocess.h" />
     <ClInclude Include="..\..\code\server\server.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\code\freetype\builds\windows\vc2010\freetype.vcxproj">
-      <Project>{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}</Project>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <AdditionalProperties>SolutionDir=$(MSBuildThisFileDirectory)</AdditionalProperties>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

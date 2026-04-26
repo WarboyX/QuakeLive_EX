@@ -148,7 +148,6 @@
       <Command>copy /Y "..\..\code\libs\win32\SDL2.dll" "$(OutDir)" 2&gt;nul
 copy /Y "..\..\code\libs\win32\libvorbis.dll" "$(OutDir)" 2&gt;nul
 copy /Y "..\..\code\libs\win32\libvorbisfile.dll" "$(OutDir)" 2&gt;nul
-copy /Y "..\..\code\libs\win32\freetype.dll" "$(OutDir)" 2&gt;nul
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-BinPk3.ps1" "$(TargetDir)"
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-Pak01Pk3.ps1" "$(TargetDir)"</Command>
     </PostBuildEvent>
@@ -204,7 +203,6 @@ powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-Pak0
       <Command>copy /Y "..\..\code\libs\win32\SDL2.dll" "$(OutDir)" 2&gt;nul
 copy /Y "..\..\code\libs\win32\libvorbis.dll" "$(OutDir)" 2&gt;nul
 copy /Y "..\..\code\libs\win32\libvorbisfile.dll" "$(OutDir)" 2&gt;nul
-copy /Y "..\..\code\libs\win32\freetype.dll" "$(OutDir)" 2&gt;nul
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-BinPk3.ps1" "$(TargetDir)"
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-Pak01Pk3.ps1" "$(TargetDir)"</Command>
     </PostBuildEvent>
@@ -258,7 +256,6 @@ powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-Pak0
       <Command>copy /Y "..\..\code\libs\win64\SDL2.dll" "$(OutDir)" 2&gt;nul
 copy /Y "..\..\code\libs\win64\libvorbis.dll" "$(OutDir)" 2&gt;nul
 copy /Y "..\..\code\libs\win64\libvorbisfile.dll" "$(OutDir)" 2&gt;nul
-copy /Y "..\..\code\libs\win64\freetype.dll" "$(OutDir)" 2&gt;nul
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-BinPk3.ps1" "$(TargetDir)"
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-Pak01Pk3.ps1" "$(TargetDir)"</Command>
     </PostBuildEvent>
@@ -311,7 +308,6 @@ powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-Pak0
       <Command>copy /Y "..\..\code\libs\win64\SDL2.dll" "$(OutDir)" 2&gt;nul
 copy /Y "..\..\code\libs\win64\libvorbis.dll" "$(OutDir)" 2&gt;nul
 copy /Y "..\..\code\libs\win64\libvorbisfile.dll" "$(OutDir)" 2&gt;nul
-copy /Y "..\..\code\libs\win64\freetype.dll" "$(OutDir)" 2&gt;nul
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-BinPk3.ps1" "$(TargetDir)"
 powershell.exe -NoLogo -ExecutionPolicy Bypass -File "..\..\code\tools\Make-Pak01Pk3.ps1" "$(TargetDir)"</Command>
     </PostBuildEvent>

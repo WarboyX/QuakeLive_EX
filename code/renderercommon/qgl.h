@@ -32,6 +32,41 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <SDL_opengl.h>
 #endif
 
+// Single-channel font-atlas formats and pixel-store params for the QL font
+// backend (tr_font_gl.c). Core in modern GL and provided by SDL_opengl_glext.h,
+// but defined here defensively so the font atlas code builds whatever GL headers
+// a translation unit pulls in.
+#ifndef GL_RED
+#define GL_RED 0x1903
+#endif
+#ifndef GL_R8
+#define GL_R8 0x8229
+#endif
+#ifndef GL_TEXTURE_SWIZZLE_RGBA
+#define GL_TEXTURE_SWIZZLE_RGBA 0x8E46
+#endif
+#ifndef GL_TEXTURE_SWIZZLE_R
+#define GL_TEXTURE_SWIZZLE_R 0x8E42
+#endif
+#ifndef GL_TEXTURE_SWIZZLE_G
+#define GL_TEXTURE_SWIZZLE_G 0x8E43
+#endif
+#ifndef GL_TEXTURE_SWIZZLE_B
+#define GL_TEXTURE_SWIZZLE_B 0x8E44
+#endif
+#ifndef GL_TEXTURE_SWIZZLE_A
+#define GL_TEXTURE_SWIZZLE_A 0x8E45
+#endif
+#ifndef GL_UNPACK_ROW_LENGTH
+#define GL_UNPACK_ROW_LENGTH 0x0CF2
+#endif
+#ifndef GL_UNPACK_SKIP_ROWS
+#define GL_UNPACK_SKIP_ROWS 0x0CF3
+#endif
+#ifndef GL_UNPACK_SKIP_PIXELS
+#define GL_UNPACK_SKIP_PIXELS 0x0CF4
+#endif
+
 extern void(APIENTRYP qglActiveTextureARB)(GLenum texture);
 extern void(APIENTRYP qglClientActiveTextureARB)(GLenum texture);
 extern void(APIENTRYP qglMultiTexCoord2fARB)(GLenum target, GLfloat s, GLfloat t);
@@ -70,6 +105,7 @@ extern void(APIENTRYP qglUnlockArraysEXT)(void);
     GLE(const GLubyte*, GetString, GLenum name)                                                                                                                            \
     GLE(void, LineWidth, GLfloat width)                                                                                                                                    \
     GLE(void, PolygonOffset, GLfloat factor, GLfloat units)                                                                                                                \
+    GLE(void, PixelStorei, GLenum pname, GLint param)                                                                                                                      \
     GLE(void, ReadPixels, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid* pixels)                                                     \
     GLE(void, Scissor, GLint x, GLint y, GLsizei width, GLsizei height)                                                                                                    \
     GLE(void, StencilFunc, GLenum func, GLint ref, GLuint mask)                                                                                                            \
@@ -78,6 +114,7 @@ extern void(APIENTRYP qglUnlockArraysEXT)(void);
     GLE(void, TexImage2D, GLenum target, GLint level, GLint internalFormat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid* pixels) \
     GLE(void, TexParameterf, GLenum target, GLenum pname, GLfloat param)                                                                                                   \
     GLE(void, TexParameteri, GLenum target, GLenum pname, GLint param)                                                                                                     \
+    GLE(void, TexParameteriv, GLenum target, GLenum pname, const GLint* params)                                                                                            \
     GLE(void, TexSubImage2D, GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid* pixels)    \
     GLE(void, Viewport, GLint x, GLint y, GLsizei width, GLsizei height)
 

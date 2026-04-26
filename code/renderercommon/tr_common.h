@@ -127,9 +127,14 @@ qhandle_t RE_RegisterShader(const char* name);
 qhandle_t RE_RegisterShaderNoMip(const char* name);
 qhandle_t RE_RegisterShaderFromImage(const char* name, int lightmapIndex, image_t* image, qboolean mipRawImage);
 
-// font stuff
-void R_InitFreeType(void);
-void R_DoneFreeType(void);
+// font stuff ([QL] fontstash/stb_truetype - see tr_font_gl.c)
+void R_InitFonts(void);
+void R_FontShutdown(void);
+void RE_Font_DrawString(int x, int y, const char* text, int fontIndex, float scale, int limit, float* maxX, int flags);
+void RE_TextBounds(const char* text, int start, int limit, float scale, int fontIndex, int* outX, int* outY, int* outW, int* outH);
+void RE_GetGlyphInfo(int fontIndex, int charValue, glyphInfo_t* glyph);
+void RE_SetCompositionFont(int fontIndex, float scale);
+// dead stub kept for the legacy re.RegisterFont slot
 void RE_RegisterFont(const char* fontName, int pointSize, fontInfo_t* font);
 
 /*
