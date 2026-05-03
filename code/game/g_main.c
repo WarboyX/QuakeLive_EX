@@ -213,6 +213,7 @@ vmCvar_t g_suddenDeathRespawnMax;
 vmCvar_t g_suddenDeathRespawnPrint;
 vmCvar_t g_suddenDeathRespawnStart;
 vmCvar_t g_suddenDeathRespawnTick;
+vmCvar_t g_suicidePenaltyTime;   // [QL] see g_local.h
 vmCvar_t g_switchTeamDelay;
 vmCvar_t g_tackleFlag;
 vmCvar_t g_teamSpawnAsSpec;
@@ -223,6 +224,7 @@ vmCvar_t g_throwFlagVelocity;
 vmCvar_t g_timeoutLen;
 vmCvar_t g_vampiricDamage;
 vmCvar_t gamedate;
+vmCvar_t g_version;  // [QL] build string, CVAR_ROM; registered in G_RegisterCvars tail by binary
 vmCvar_t practiceflags;
 vmCvar_t sv_mapname;
 vmCvar_t ui_singlePlayerActive;
@@ -501,12 +503,57 @@ vmCvar_t pmove_DoubleJump;
 vmCvar_t pmove_CrouchSlide;
 vmCvar_t pmove_VelocityGH;
 
-// [QL] dirty flag - set when any pmove cvar changes, cleared after sending CS_PMOVEINFO
+// [QL] dirty flags - set when a gamerule cvar in the matching subsystem changes, cleared
+// after the corresponding configstring is (re)published. CS_PMOVEINFO/ARMORINFO/WEAPONINFO/
+// PLAYERINFO carry the pmove_*, armor_tiered, weapon_* and player model/scale rules to clients.
 static qboolean pmoveInfoDirty = qtrue;
+static qboolean armorInfoDirty = qtrue;
+static qboolean weaponInfoDirty = qtrue;
+static qboolean playerInfoDirty = qtrue;
 
 // [QL] starting weapons callback - publish bitmask to configstring
 static void OnChangedStartingWeapons(void) {
     trap_SetConfigstring(CS_STARTING_WEAPONS, va("%i", g_startingWeapons.integer));
+}
+
+// [QL] g_playermodelOverride / g_playerheadmodelOverride onChanged: re-run
+// ClientUserinfoChanged for every connected client so the new forced model is
+// applied to each player's configstring live (OnChangedModelOverride, .so 0x17bda0).
+static void OnChangedModelOverride(void) {
+    int i;
+    for (i = 0; i < level.maxclients; i++) {
+        if (g_entities[i].client && g_entities[i].client->pers.connected == CON_CONNECTED) {
+            ClientUserinfoChanged(i);
+        }
+    }
+}
+
+// [QL] g_infiniteAmmo onChanged: apply the new setting to every connected client at
+// once (OnChangedInfiniteAmmo -> SetInfiniteAmmo, .so 0x1842b0/0x1841f0). Infinite ammo
+// is encoded as ammo[weapon] == -1. Spawn-time setting is in ClientSpawn; this handles a
+// live toggle (e.g. via callvote), which never respawns players.
+static void OnChangedInfiniteAmmo(void) {
+    int i, w;
+    for (i = 0; i < level.maxclients; i++) {
+        gclient_t* client = g_entities[i].client;
+        if (!client || client->pers.connected != CON_CONNECTED) {
+            continue;
+        }
+        if (g_infiniteAmmo.integer) {
+            // turned on: set all ammo to -1
+            for (w = 1; w < WP_NUM_WEAPONS; w++) {
+                client->ps.ammo[w] = -1;
+            }
+        } else {
+            // turned off: restore default ammo quantities
+            for (w = 1; w < WP_NUM_WEAPONS; w++) {
+                if (w != WP_GAUNTLET && w != WP_GRAPPLING_HOOK && client->ps.ammo[w] == -1) {
+                    gitem_t* item = BG_FindItemForWeapon(w);
+                    client->ps.ammo[w] = item ? item->quantity : 0;
+                }
+            }
+        }
+    }
 }
 
 // [QL] pmove_* onChanged callbacks - update PM_Set* globals and mark configstring dirty
@@ -556,8 +603,12 @@ static void OnChangedWeaponReloadLG(void)   { BG_SetWeaponReload(WP_LIGHTNING, w
 static void OnChangedWeaponReloadRG(void)   { BG_SetWeaponReload(WP_RAILGUN, weapon_reload_rg.integer); }
 static void OnChangedWeaponReloadPG(void)   { BG_SetWeaponReload(WP_PLASMAGUN, weapon_reload_pg.integer); }
 static void OnChangedWeaponReloadBFG(void)  { BG_SetWeaponReload(WP_BFG, weapon_reload_bfg.integer); }
-static void OnChangedWeaponReloadGH(void)   { BG_SetWeaponReload(WP_GAUNTLET, weapon_reload_gh.integer);
-                                              BG_SetWeaponReload(WP_GRAPPLING_HOOK, weapon_reload_gh.integer); }
+// [QL] the gauntlet has its own reload cvar (default 400); weapon_reload_gh
+// drives ONLY the grappling hook (default 100). Previously the GH callback wrote
+// both and weapon_reload_gauntlet had a NULL callback, so the gauntlet was stuck
+// at 100 (4x too fast).
+static void OnChangedWeaponReloadGauntlet(void) { BG_SetWeaponReload(WP_GAUNTLET, weapon_reload_gauntlet.integer); }
+static void OnChangedWeaponReloadGH(void)   { BG_SetWeaponReload(WP_GRAPPLING_HOOK, weapon_reload_gh.integer); }
 static void OnChangedWeaponReloadNG(void)   { BG_SetWeaponReload(WP_NAILGUN, weapon_reload_ng.integer); }
 static void OnChangedWeaponReloadProx(void) { BG_SetWeaponReload(WP_PROX_LAUNCHER, weapon_reload_prox.integer); }
 static void OnChangedWeaponReloadCG(void)   { BG_SetWeaponReload(WP_CHAINGUN, weapon_reload_cg.integer); }
@@ -568,7 +619,8 @@ static cvarTable_t gameCvarTable[] = {
     {&g_cheats, "sv_cheats", "", 0, 0, NULL},
 
     // noset vars
-    {NULL, "gamedate", PRODUCT_DATE, CVAR_ROM, 0, NULL},
+    {&gamedate, "gamedate", "May 25 2016", CVAR_ROM, 0, NULL},  // [QL] binary __DATE__
+    {&g_version, "g_version", "1069 win-x86 May 25 2016 15:18:16", CVAR_ROM, 0, NULL},  // [QL] binary build string
     {&g_restarted, "g_restarted", "0", CVAR_ROM, 0, NULL},
 
     // latched vars
@@ -587,8 +639,7 @@ static cvarTable_t gameCvarTable[] = {
 
     {&g_friendlyFire, "g_friendlyFire", "0", CVAR_GAMERULE, 0, NULL},  // [QL] binary: 0x100000
 
-    {&g_teamAutoJoin, "g_teamAutoJoin", "0", CVAR_ARCHIVE},
-    {&g_teamForceBalance, "g_teamForceBalance", "1", CVAR_SERVERINFO | CVAR_ARCHIVE},  // [QL] binary default "1"
+    // [QL] g_teamAutoJoin / g_teamForceBalance registered once below (near g_tackleFlag)
 
     {&g_warmup, "g_warmup", "10", CVAR_ARCHIVE, 0, NULL},  // [QL] binary default "10"
     {&g_doWarmup, "g_doWarmup", "1", CVAR_ARCHIVE, 0, NULL},
@@ -650,7 +701,7 @@ static cvarTable_t gameCvarTable[] = {
 
     {&g_localTeamPref, "g_localTeamPref", "", 0, 0, NULL},
 
-    {&g_infiniteAmmo, "g_infiniteAmmo", "0", CVAR_GAMERULE, 0, NULL},  // [QL] binary: CVAR_GAMERULE only
+    {&g_infiniteAmmo, "g_infiniteAmmo", "0", CVAR_GAMERULE, 0, OnChangedInfiniteAmmo},  // [QL] binary: CVAR_GAMERULE only; live toggle applies to all clients
     {&g_dropFlag, "g_dropFlag", "7", 0, 0, NULL},  // [QL] bitmask: 1=flag, 2=powerup, 4=weapon
     {&g_runes, "g_runes", "0", CVAR_GAMERULE | CVAR_LATCH, 0, NULL},  // [QL] binary: 0x100020
 
@@ -995,8 +1046,8 @@ static cvarTable_t gameCvarTable[] = {
     {&g_playerModelScale, "g_playerModelScale", "1.1", CVAR_GAMERULE | CVAR_GAMERULE_MODEL, 0, NULL},
     {&g_playerheadScale, "g_playerheadScale", "1.0", CVAR_GAMERULE | CVAR_GAMERULE_MODEL, 0, NULL},
     {&g_playerheadScaleOffset, "g_playerheadScaleOffset", "1.0", CVAR_GAMERULE | CVAR_GAMERULE_MODEL, 0, NULL},
-    {&g_playerheadmodelOverride, "g_playerheadmodelOverride", "", CVAR_GAMERULE | CVAR_GAMERULE_MODEL, 0, NULL},
-    {&g_playermodelOverride, "g_playermodelOverride", "", CVAR_GAMERULE | CVAR_GAMERULE_MODEL, 0, NULL},
+    {&g_playerheadmodelOverride, "g_playerheadmodelOverride", "", CVAR_GAMERULE | CVAR_GAMERULE_MODEL, 0, OnChangedModelOverride},
+    {&g_playermodelOverride, "g_playermodelOverride", "", CVAR_GAMERULE | CVAR_GAMERULE_MODEL, 0, OnChangedModelOverride},
     {&g_powerupRespawn, "g_powerupRespawn", "120", CVAR_GAMERULE, 0, NULL},
     {&g_quadHogIdle, "g_quadHogIdle", "20", CVAR_GAMERULE, 0, NULL},
     {&g_quadHogPingRate, "g_quadHogPingRate", "1500", CVAR_GAMERULE, 0, NULL},
@@ -1032,6 +1083,7 @@ static cvarTable_t gameCvarTable[] = {
     {&g_suddenDeathRespawnPrint, "g_suddenDeathRespawnPrint", "1", CVAR_GAMERULE, 0, NULL},
     {&g_suddenDeathRespawnStart, "g_suddenDeathRespawnStart", "3", CVAR_GAMERULE, 0, NULL},
     {&g_suddenDeathRespawnTick, "g_suddenDeathRespawnTick", "60", CVAR_GAMERULE, 0, NULL},
+    {&g_suicidePenaltyTime, "g_suicidePenaltyTime", "0", CVAR_GAMERULE, 0, NULL},   // [QL] DAT_105a136c; ms penalty added to respawnTime on suicide (unregistered/0 in shipped DLL)
     {&g_switchTeamDelay, "g_switchTeamDelay", "3", CVAR_GAMERULE, 0, NULL},
     {&g_tackleFlag, "g_tackleFlag", "0", CVAR_GAMERULE, 0, NULL},
     {&g_teamAutoJoin, "g_teamAutoJoin", "0", CVAR_ARCHIVE, 0, NULL},
@@ -1043,11 +1095,10 @@ static cvarTable_t gameCvarTable[] = {
     {&g_throwFlagVelocity, "g_throwFlagVelocity", "0", 0, 0, NULL},
     {&g_timeoutLen, "g_timeoutLen", "60", CVAR_GAMERULE, 0, NULL},
     {&g_vampiricDamage, "g_vampiricDamage", "0", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},
-    {&gamedate, "gamedate", "Jun  3 2016", CVAR_ROM, 0, NULL},
     {&practiceflags, "practiceflags", "0", CVAR_GAMERULE | CVAR_TEMP, 0, NULL},
     {&sv_mapname, "sv_mapname", "", CVAR_ROM | CVAR_SERVERINFO, 0, NULL},
     {&ui_singlePlayerActive, "ui_singlePlayerActive", "", 0, 0, NULL},
-    {&weapon_reload_gauntlet, "weapon_reload_gauntlet", "400", CVAR_GAMERULE | CVAR_GAMERULE_REPL | CVAR_GAMERULE_WEAPON, 0, NULL},
+    {&weapon_reload_gauntlet, "weapon_reload_gauntlet", "400", CVAR_GAMERULE | CVAR_GAMERULE_REPL | CVAR_GAMERULE_WEAPON, 0, OnChangedWeaponReloadGauntlet},
     {&weapon_reload_hook, "weapon_reload_hook", "100", CVAR_GAMERULE | CVAR_GAMERULE_REPL | CVAR_GAMERULE_WEAPON, 0, NULL},
 
 
@@ -1159,21 +1210,265 @@ void G_FindTeams(void) {
     G_Printf("%i teams with %i entities\n", c, c2);
 }
 
+// [QL] running g_customSettings bitmask (binary global DAT_1059674c). one bit per
+// rule category; a bit is set while any cvar in that category differs from its
+// factory default. published as the g_customSettings serverinfo cvar and CS_CUSTOM_SETTINGS.
+static int g_customSettingsFlags;
+
+typedef struct {
+    const char  *cvarName;
+    int         bit;
+} customSetting_t;
+
+// [QL] cvar name -> custom-settings bit, recovered from G_ParseCustomSettings
+// (0x10053470) and cross-checked against wolfcamql's SERVER_SETTING_MODIFIED_* list.
+// each weapon gets one bit; the rest are gameplay categories. a few entries never
+// fire in practice (g_speed/pmove_BunnyHop/pmove_WalkFriction are not tagged
+// CVAR_GAMERULE_REPL, so they are never passed in; "g_spawnItemWeapon" is missing a
+// trailing 's' in the binary so it never matches the real g_spawnItemWeapons cvar) but
+// they are kept to mirror the binary chain exactly.
+static const customSetting_t customSettingsBits[] = {
+    // 0x00000001  gauntlet
+    { "weapon_reload_gauntlet", 0x00000001 },
+    { "g_damage_g", 0x00000001 },
+    { "g_knockback_g", 0x00000001 },
+    // 0x00000002  machinegun
+    { "weapon_reload_mg", 0x00000002 },
+    { "g_damage_mg", 0x00000002 },
+    { "g_knockback_mg", 0x00000002 },
+    { "g_ironsights_mg", 0x00000002 },
+    // 0x00000004  shotgun
+    { "weapon_reload_sg", 0x00000004 },
+    { "g_damage_sg", 0x00000004 },
+    { "g_damage_sg_outer", 0x00000004 },
+    { "g_knockback_sg", 0x00000004 },
+    { "g_damage_sg_falloff", 0x00000004 },
+    // 0x00000008  grenade launcher
+    { "weapon_reload_gl", 0x00000008 },
+    { "g_damage_gl", 0x00000008 },
+    { "g_splashdamage_gl", 0x00000008 },
+    { "g_splashradius_gl", 0x00000008 },
+    { "g_velocity_gl", 0x00000008 },
+    { "g_knockback_gl", 0x00000008 },
+    // 0x00000010  rocket launcher
+    { "weapon_reload_rl", 0x00000010 },
+    { "g_damage_rl", 0x00000010 },
+    { "g_splashdamage_rl", 0x00000010 },
+    { "g_splashradius_rl", 0x00000010 },
+    { "g_velocity_rl", 0x00000010 },
+    { "g_knockback_rl", 0x00000010 },
+    { "g_knockback_rl_self", 0x00000010 },
+    { "g_accelFactor_rl", 0x00000010 },
+    { "weapon_gravity_rl", 0x00000010 },
+    // 0x00000020  lightning gun
+    { "weapon_reload_lg", 0x00000020 },
+    { "g_damage_lg", 0x00000020 },
+    { "g_knockback_lg", 0x00000020 },
+    { "g_damage_lg_falloff", 0x00000020 },
+    // 0x00000040  railgun
+    { "weapon_reload_rg", 0x00000040 },
+    { "g_damage_rg", 0x00000040 },
+    { "g_knockback_rg", 0x00000040 },
+    // 0x00000080  plasma gun
+    { "weapon_reload_pg", 0x00000080 },
+    { "g_damage_pg", 0x00000080 },
+    { "g_splashdamage_pg", 0x00000080 },
+    { "g_splashradius_pg", 0x00000080 },
+    { "g_velocity_pg", 0x00000080 },
+    { "g_knockback_pg", 0x00000080 },
+    { "g_knockback_pg_self", 0x00000080 },
+    { "g_accelFactor_pg", 0x00000080 },
+    { "weapon_gravity_pg", 0x00000080 },
+    // 0x00000100  bfg
+    { "weapon_reload_bfg", 0x00000100 },
+    { "g_damage_bfg", 0x00000100 },
+    { "g_splashdamage_bfg", 0x00000100 },
+    { "g_splashradius_bfg", 0x00000100 },
+    { "g_velocity_bfg", 0x00000100 },
+    { "g_knockback_bfg", 0x00000100 },
+    { "g_accelFactor_bfg", 0x00000100 },
+    { "weapon_gravity_bfg", 0x00000100 },
+    // 0x00000200  grapple / gauntlet hook
+    { "g_damage_gh", 0x00000200 },
+    { "weapon_reload_gh", 0x00000200 },
+    { "weapon_reload_hook", 0x00000200 },
+    { "g_velocity_gh", 0x00000200 },
+    { "g_knockback_gh", 0x00000200 },
+    { "pmove_velocity_gh", 0x00000200 },
+    // 0x00000400  nailgun
+    { "weapon_reload_ng", 0x00000400 },
+    { "g_damage_ng", 0x00000400 },
+    { "g_nailspeed", 0x00000400 },
+    { "g_knockback_ng", 0x00000400 },
+    { "g_nailcount", 0x00000400 },
+    { "g_nailspread", 0x00000400 },
+    { "g_nailbounce", 0x00000400 },
+    { "g_nailbouncepercentage", 0x00000400 },
+    { "weapon_gravity_ng", 0x00000400 },
+    // 0x00000800  prox mine
+    { "weapon_reload_prox", 0x00000800 },
+    { "g_splashdamage_pl", 0x00000800 },
+    { "g_splashradius_pl", 0x00000800 },
+    { "g_knockback_pl", 0x00000800 },
+    { "g_proxMineTimeout", 0x00000800 },
+    // 0x00001000  chaingun
+    { "weapon_reload_cg", 0x00001000 },
+    { "g_damage_cg", 0x00001000 },
+    { "g_knockback_cg", 0x00001000 },
+    // 0x00002000  air control
+    { "pmove_AirControl", 0x00002000 },
+    // 0x00004000  ramp jump
+    { "pmove_RampJump", 0x00004000 },
+    // 0x00008000  modified physics
+    { "g_speed", 0x00008000 },
+    { "pmove_AirAccel", 0x00008000 },
+    { "pmove_WalkAccel", 0x00008000 },
+    { "pmove_WalkFriction", 0x00008000 },
+    { "pmove_AirSteps", 0x00008000 },
+    { "pmove_BunnyHop", 0x00008000 },
+    { "pmove_StepJump", 0x00008000 },
+    { "pmove_StepHeight", 0x00008000 },
+    // 0x00010000  modified weapon switch
+    { "pmove_WeaponRaiseTime", 0x00010000 },
+    { "pmove_WeaponDropTime", 0x00010000 },
+    // 0x00020000  instagib
+    { "g_instaGib", 0x00020000 },
+    // 0x00040000  quad hog
+    { "g_quadHog", 0x00040000 },
+    // 0x00080000  regen
+    { "g_regenHealth", 0x00080000 },
+    { "g_regenArmor", 0x00080000 },
+    // 0x00100000  dropped damaged health
+    { "g_dropDamagedHealth", 0x00100000 },
+    // 0x00200000  vampiric damage
+    { "g_vampiricDamage", 0x00200000 },
+    // 0x00400000  modified item spawning
+    { "g_spawnItemWeapon", 0x00400000 },
+    { "g_spawnItemPowerup", 0x00400000 },
+    { "g_spawnItemHoldable", 0x00400000 },
+    { "g_spawnItemHealth", 0x00400000 },
+    { "g_spawnItemArmor", 0x00400000 },
+    { "g_spawnItemAmmo", 0x00400000 },
+    { "g_spawnDelay_key", 0x00400000 },
+    { "g_spawnDelay_powerup", 0x00400000 },
+    { "g_spawnDelayRandom_key", 0x00400000 },
+    { "g_spawnDelayRandom_powerup", 0x00400000 },
+    // 0x00800000  headshots
+    { "g_headShotDamage_rg", 0x00800000 },
+    // 0x01000000  rail jump
+    { "g_railJump", 0x01000000 },
+    // 0x02000000  no player clip
+    { "pmove_noPlayerClip", 0x02000000 },
+    // 0x04000000  infected (red rover)
+    { "g_rrInfected", 0x04000000 },
+    // 0x08000000  lightning discharge
+    { "g_lightningDischarge", 0x08000000 }
+};
+
+/*
+=================
+G_ParseCustomSettings
+
+Address: 0x10053470 (Ghidra mislabels this "ExecuteVoteCommand")
+
+[QL] look up the g_customSettings bit this cvar drives, then set it when the cvar
+differs from its factory default (its registered defaultString) or clear it when the
+cvar is back at default. noClear (binary EBX) is passed during registration so a
+default-valued cvar cannot wipe a bit another cvar in the same category has already
+set; runtime updates pass noClear = qfalse so a rule going back to default clears it.
+=================
+*/
+static void G_ParseCustomSettings(cvarTable_t *cv, qboolean noClear) {
+    int         i;
+    int         bit;
+    qboolean    custom;
+
+    if (!cv->cvarName) {
+        return;
+    }
+
+    bit = 0;
+    for (i = 0; i < (int)ARRAY_LEN(customSettingsBits); i++) {
+        if (!Q_stricmp(cv->cvarName, customSettingsBits[i].cvarName)) {
+            bit = customSettingsBits[i].bit;
+            break;
+        }
+    }
+    if (!bit) {
+        return;     // cvar is not one of the tracked rules
+    }
+
+    // custom when there is no factory default, or the live value differs from it
+    custom = (cv->defaultString == NULL) ||
+             (cv->vmCvar != NULL && Q_stricmp(cv->defaultString, cv->vmCvar->string) != 0);
+
+    if (custom) {
+        g_customSettingsFlags |= bit;
+    } else if (!noClear) {
+        g_customSettingsFlags &= ~bit;
+    }
+}
+
+/*
+=================
+G_UpdateCustomSettings
+
+Address: 0x100523a0
+
+[QL] custom settings changed: refresh every connected client's userinfo so the new
+rules propagate to them.
+=================
+*/
+void G_UpdateCustomSettings(void) {
+    int         i;
+    gentity_t   *ent;
+
+    for (i = 0; i < level.maxclients; i++) {
+        ent = &g_entities[i];
+        if (ent->client && ent->client->pers.connected == CON_CONNECTED) {
+            ClientUserinfoChanged(i);
+        }
+    }
+}
+
 /*
 =================
 G_RegisterCvars
+
+Address: 0x100549xx
 =================
 */
 void G_RegisterCvars(void) {
     int i;
     cvarTable_t *cv;
 
+    // [QL] start each load with a clean bitmask (binary sets g_customSettings "0" here)
+    g_customSettingsFlags = 0;
+    trap_Cvar_Set("g_customSettings", "0");
+
     for (i = 0, cv = gameCvarTable; cv->cvarName != NULL; i++, cv++) {
         trap_Cvar_Register(cv->vmCvar, cv->cvarName,
                            cv->defaultString, cv->cvarFlags);
         if (cv->vmCvar)
             cv->modCount = cv->vmCvar->modificationCount;
+
+        // [QL] accumulate custom-settings bits (noClear so a default-valued cvar
+        // cannot clear a bit an earlier cvar in the same category has set)
+        if (cv->cvarFlags & CVAR_GAMERULE_REPL) {
+            G_ParseCustomSettings(cv, qtrue);
+        }
     }
+
+    // [QL] clamp g_gametype to a valid range (binary: GT max = 12); reset to 0 if out of range
+    if (g_gametype.integer < 0 || g_gametype.integer > 12) {
+        G_Printf("g_gametype %i is out of range, defaulting to 0\n", g_gametype.integer);
+        trap_Cvar_Set("g_gametype", "0");
+    }
+
+    // [QL] publish the initial bitmask. the binary defers this to its per-config apply
+    // pass; we fold it into registration so clients get correct rules from the first snapshot
+    trap_Cvar_Set("g_customSettings", va("%i", g_customSettingsFlags));
+    trap_SetConfigstring(CS_CUSTOM_SETTINGS, va("%i", g_customSettingsFlags));
 }
 
 /*
@@ -1184,6 +1479,7 @@ G_UpdateCvars
 void G_UpdateCvars(void) {
     int i;
     cvarTable_t *cv;
+    qboolean customChanged = qfalse;
 
     for (i = 0, cv = gameCvarTable; cv->cvarName != NULL; i++, cv++) {
         if (cv->vmCvar) {
@@ -1195,8 +1491,27 @@ void G_UpdateCvars(void) {
                 if (cv->onChanged) {
                     cv->onChanged();
                 }
+
+                // [QL] mark the owning gamerule configstring dirty so it is republished
+                if (cv->cvarFlags & CVAR_GAMERULE_ARMOR)  armorInfoDirty = qtrue;
+                if (cv->cvarFlags & CVAR_GAMERULE_WEAPON) weaponInfoDirty = qtrue;
+                if (cv->cvarFlags & CVAR_GAMERULE_MODEL)  playerInfoDirty = qtrue;
+
+                // [QL] a tracked rule changed: recompute its bit and push the new
+                // bitmask into the g_customSettings serverinfo cvar (noClear = qfalse
+                // so returning to default clears the bit)
+                if (cv->cvarFlags & CVAR_GAMERULE_REPL) {
+                    G_ParseCustomSettings(cv, qfalse);
+                    trap_Cvar_Set("g_customSettings", va("%i", g_customSettingsFlags));
+                    customChanged = qtrue;
+                }
             }
         }
+    }
+
+    // [QL] republish the configstring once if any rule changed this pass
+    if (customChanged) {
+        trap_SetConfigstring(CS_CUSTOM_SETTINGS, va("%i", g_customSettingsFlags));
     }
 }
 
@@ -1254,6 +1569,65 @@ static void G_SendPmoveInfo(void) {
 }
 
 /*
+=================
+G_SendArmorInfo / G_SendWeaponInfo / G_SendPlayerInfo
+
+[QL] Publish the tiered-armor, weapon and player model/scale gamerule cvars to their
+configstrings so clients parse them (CG_ParseArmorTiered / CG_ParseWeaponConfig /
+CG_ParseConfigParams). Verified byte-for-byte against a live QL server demo: values are the
+raw cvar strings, and CS_PLAYERINFO carries only the numeric model params - the model/head
+OVERRIDES are NOT published here (they are applied server-side in ClientUserinfoChanged).
+=================
+*/
+static void G_SendArmorInfo(void) {
+    char info[MAX_INFO_STRING];
+
+    info[0] = '\0';
+    Info_SetValueForKey(info, "armor_tiered", armor_tiered.string);
+
+    trap_SetConfigstring(CS_ARMORINFO, info);
+}
+
+static void G_SendWeaponInfo(void) {
+    char info[MAX_INFO_STRING];
+
+    info[0] = '\0';
+    Info_SetValueForKey(info, "weapon_gravity_bfg", weapon_gravity_bfg.string);
+    Info_SetValueForKey(info, "weapon_gravity_ng", weapon_gravity_ng.string);
+    Info_SetValueForKey(info, "weapon_gravity_pg", weapon_gravity_pg.string);
+    Info_SetValueForKey(info, "weapon_gravity_rl", weapon_gravity_rl.string);
+    Info_SetValueForKey(info, "weapon_reload_bfg", weapon_reload_bfg.string);
+    Info_SetValueForKey(info, "weapon_reload_cg", weapon_reload_cg.string);
+    Info_SetValueForKey(info, "weapon_reload_gauntlet", weapon_reload_gauntlet.string);
+    Info_SetValueForKey(info, "weapon_reload_gh", weapon_reload_gh.string);
+    Info_SetValueForKey(info, "weapon_reload_gl", weapon_reload_gl.string);
+    Info_SetValueForKey(info, "weapon_reload_hmg", weapon_reload_hmg.string);
+    Info_SetValueForKey(info, "weapon_reload_hook", weapon_reload_hook.string);
+    Info_SetValueForKey(info, "weapon_reload_lg", weapon_reload_lg.string);
+    Info_SetValueForKey(info, "weapon_reload_mg", weapon_reload_mg.string);
+    Info_SetValueForKey(info, "weapon_reload_ng", weapon_reload_ng.string);
+    Info_SetValueForKey(info, "weapon_reload_pg", weapon_reload_pg.string);
+    Info_SetValueForKey(info, "weapon_reload_prox", weapon_reload_prox.string);
+    Info_SetValueForKey(info, "weapon_reload_rg", weapon_reload_rg.string);
+    Info_SetValueForKey(info, "weapon_reload_rl", weapon_reload_rl.string);
+    Info_SetValueForKey(info, "weapon_reload_sg", weapon_reload_sg.string);
+
+    trap_SetConfigstring(CS_WEAPONINFO, info);
+}
+
+static void G_SendPlayerInfo(void) {
+    char info[MAX_INFO_STRING];
+
+    info[0] = '\0';
+    Info_SetValueForKey(info, "g_allowCustomHeadmodels", g_allowCustomHeadmodels.string);
+    Info_SetValueForKey(info, "g_playerheadScale", g_playerheadScale.string);
+    Info_SetValueForKey(info, "g_playerheadScaleOffset", g_playerheadScaleOffset.string);
+    Info_SetValueForKey(info, "g_playerModelScale", g_playerModelScale.string);
+
+    trap_SetConfigstring(CS_PLAYERINFO, info);
+}
+
+/*
 ============
 G_InitGame
 
@@ -1270,7 +1644,9 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
 
     G_RegisterCvars();
 
-    G_ProcessIPBans();
+    // [QL] load the steamId access list at boot (binary G_InitGame calls G_InitAccessList).
+    // QL has no IP-filter system, so the old G_ProcessIPBans() is dead code.
+    G_InitAccessList();
 
     G_InitMemory();
 
@@ -1342,7 +1718,7 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
     // general initialization
     G_FindTeams();
 
-    // [QL] Lag compensation init
+    // [QL] Lag compensation - allocate the per-client position-history rings
     if (g_lagHaxMs.integer != 0 && g_lagHaxHistory.integer != 0) {
         HAX_Init();
     }
@@ -1379,8 +1755,19 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
     // [QL] publish survivor min speed for infection mode
     trap_SetConfigstring(CS_INFECTED_SURVIVOR_MINSPEED, va("%f", g_rrInfectedSurvivorMinSpeed.value));
 
-    // [QL] send pmove parameters to clients for prediction
+    // [QL] publish the remaining server-setting configstrings the client expects (verified
+    // against a live QL server demo). Formats match the QL server (%d ints, %f for the float).
+    trap_SetConfigstring(CS_PRACTICE, va("%d", practiceflags.integer));
+    trap_SetConfigstring(CS_FREECAM, va("%d", g_teamSpecFreeCam.integer));
+    trap_SetConfigstring(CS_PLAYER_CYLINDERS, va("%d", g_playerCylinders.integer));
+    trap_SetConfigstring(CS_DEBUGFLAGS, va("%d", g_debugFlags.integer));
+    trap_SetConfigstring(CS_DMGTHROUGHDEPTH, va("%f", g_dmgThroughSurfaceDistance.value));
+
+    // [QL] send pmove / armor / weapon / player gamerule parameters to clients
     G_SendPmoveInfo();
+    G_SendArmorInfo();
+    G_SendWeaponInfo();
+    G_SendPlayerInfo();
 }
 
 /*
@@ -1898,7 +2285,7 @@ void SendScoreboardMessageToAllClients(void) {
 
     for (i = 0; i < level.maxclients; i++) {
         if (level.clients[i].pers.connected == CON_CONNECTED) {
-            DeathmatchScoreboardMessage(g_entities + i);
+            FreeForAllScoreboardMessage(g_entities + i);
         }
     }
 }
@@ -2624,14 +3011,56 @@ qboolean G_CheckTeamBalance(void) {
 
 /*
 =============
-CheckWarmupMinPlayers
+TeamsPresent
 
-[QL] Returns qtrue if enough players are present/ready for warmup to proceed.
-Checks g_doWarmup, ready percentage, team sizes, team balance.
-Binary: FUN_10057830 in qagamex86.dll
+[QL] Small team-presence gate. Called by Cmd_ReadyUp_f. Distinct from
+CheckWarmupConditions (the reimpl previously conflated the two).
+.so symbol: TeamsPresent   Binary: 0x10068120 in qagamex86.dll
 =============
 */
-qboolean CheckWarmupMinPlayers(void) {
+qboolean TeamsPresent(void) {
+    int redCount, blueCount;
+
+    if (g_teamForcePresent.integer == 0) {
+        return qtrue;
+    }
+
+    // [QL] TeamCount order matches the binary: BLUE first, RED second. The gate
+    // tests blueCount OR'd against g_forfeit (old code used redCount + AND).
+    blueCount = TeamCount(-1, TEAM_BLUE);
+    redCount = TeamCount(-1, TEAM_RED);
+
+    if (g_forfeit.integer == 0 ||
+        (blueCount < g_teamSizeMin.integer && level.numPlayingClients < g_teamSizeMin.integer)) {
+        if (g_gametype.integer < GT_TEAM) {
+            if (level.numPlayingClients < 2) {
+                return qfalse;
+            }
+        } else {
+            if (redCount < g_teamSizeMin.integer) {
+                return qfalse;
+            }
+            if (blueCount < g_teamSizeMin.integer) {
+                return qfalse;
+            }
+        }
+    }
+
+    return qtrue;
+}
+
+/*
+=============
+CheckWarmupConditions
+
+[QL] Full warmup readiness evaluation (the inner "CheckWarmup"). Builds the
+STAT_CLIENTS_READY bitmask, counts ready players into level.numReadyClients /
+numReadyHumans, enforces g_teamForcePresent / g_teamForceBalance, and returns
+whether warmup may advance. During COUNT_DOWN it re-freezes playing clients.
+.so symbol: CheckWarmupConditions   Binary: 0x10057830 in qagamex86.dll
+=============
+*/
+static qboolean CheckWarmupConditions(void) {
     int i;
     int numPlaying = 0;
     int numReady = 0;
@@ -2689,13 +3118,14 @@ qboolean CheckWarmupMinPlayers(void) {
         }
     }
 
-    // [QL] Check g_teamForcePresent / g_teamSizeMin (binary: 0x10068120)
+    // [QL] g_teamForcePresent gate (inline in 0x10057830). TeamCount order = BLUE,
+    // RED; the gate tests blueCount OR'd against g_forfeit (was AND + redCount).
     if (g_teamForcePresent.integer != 0) {
-        redCount = TeamCount(-1, TEAM_RED);
         blueCount = TeamCount(-1, TEAM_BLUE);
+        redCount = TeamCount(-1, TEAM_RED);
 
-        if (g_forfeit.integer == 0 &&
-            !(redCount >= g_teamSizeMin.integer && level.numPlayingClients >= g_teamSizeMin.integer)) {
+        if (g_forfeit.integer == 0 ||
+            (blueCount < g_teamSizeMin.integer && level.numPlayingClients < g_teamSizeMin.integer)) {
             if (g_gametype.integer < GT_TEAM) {
                 if (level.numPlayingClients < 2) {
                     return qfalse;
@@ -2724,20 +3154,22 @@ qboolean CheckWarmupMinPlayers(void) {
                 return qtrue;
             }
         } else {
-            // Team/FFA: check ready percentage
+            // Team/FFA: at least one human readied AND the ready fraction meets the
+            // threshold. Binary numerator is numPlaying (ready humans + auto-ready
+            // bots), not numReady, and it compares threshold <= fraction.
             if ((numReady != 0 &&
-                 (float)numReady / (float)level.numPlayingClients >= sv_warmupReadyPercentage.value) ||
+                 sv_warmupReadyPercentage.value <= (float)numPlaying / (float)level.numPlayingClients) ||
                 sv_warmupReadyPercentage.value == 0.0f) {
                 return qtrue;
             }
         }
     } else {
-        // During countdown: set PMF_FROZEN on all playing clients
+        // During COUNT_DOWN: re-freeze every connected client. Binary tests only
+        // pers.connected == CON_CONNECTED (no sessionTeam check).
         if (level.warmupTime != 0) {
             for (i = 0; i < level.maxclients; i++) {
                 cl = level.clients + i;
-                if (cl->pers.connected == CON_CONNECTED &&
-                    cl->sess.sessionTeam != TEAM_SPECTATOR) {
+                if (cl->pers.connected == CON_CONNECTED) {
                     cl->ps.pm_flags |= PMF_FROZEN;
                 }
             }
@@ -2750,42 +3182,117 @@ qboolean CheckWarmupMinPlayers(void) {
 
 /*
 =============
-CheckForfeit
+CheckForfeitConditions
 
-[QL] Returns qtrue if the match should be forfeited (not enough players).
-Binary: FUN_10057d60 in qagamex86.dll (param_1=0 for auto-check)
+[QL] Two modes (binary FUN_10057d60, .so symbol CheckForfeitConditions):
+  mode != 0  -> manual "/forfeit" command path: validates the caller may forfeit,
+               prints the appropriate rejection message, and (for a valid forfeit)
+               pre-marks the loser's PERS_SCORE, returning qtrue.
+  mode == 0  -> automatic driver check from CheckWarmupAndForfeit; ent is NULL and
+               only the "not enough players" logic runs.
 =============
 */
-static qboolean CheckForfeit(void) {
+qboolean CheckForfeitConditions(gentity_t *ent, int mode) {
     int elapsed;
     int redCount, blueCount;
 
-    // Not during timeout
-    // (level.timePauseBegin != 0 means timeout active)
+    // [QL] level.timePauseBegin (Ghidra mislabelled the global "level_restarted"
+    // at 0x105dea08; it is the pause/timeout start time) - no forfeits while frozen.
+    if (level.timePauseBegin != 0) {
+        return qfalse;
+    }
 
     elapsed = level.time - level.startTime;
+    // Binary computes both counts up front regardless of mode; order BLUE, RED.
+    blueCount = TeamCount(-1, TEAM_BLUE);
+    redCount = TeamCount(-1, TEAM_RED);
 
-    // Need at least 1 second of play time
-    if (elapsed / 1000 <= 1) {
-        return qfalse;
-    }
-
-    // Not during warmup
-    if (level.warmupTime != 0) {
-        return qfalse;
-    }
-
-    if (g_gametype.integer < GT_TEAM || g_gametype.integer == GT_RR) {
-        // FFA/Duel/RR: forfeit if less than 2 playing clients
-        if (level.numPlayingClients < 2) {
-            return qtrue;
+    if (mode != 0) {
+        // ---- manual /forfeit command path ----
+        if (g_gametype.integer == GT_FFA || g_gametype.integer == GT_RACE ||
+            g_gametype.integer == GT_RR) {
+            const char *gtName;
+            if (g_gametype.integer < 13) {
+                gtName = gametypeDisplayNames[g_gametype.integer];
+            } else {
+                gtName = "Unknown Gametype";
+            }
+            trap_SendServerCommand(ent - g_entities,
+                va("print \"Forfeit is not available in %s.\n\"", gtName));
+            return qfalse;
         }
-    } else {
-        // Team games: forfeit if either team is empty
-        redCount = TeamCount(-1, TEAM_RED);
-        blueCount = TeamCount(-1, TEAM_BLUE);
-        if (redCount < 1 || blueCount < 1) {
-            return qtrue;
+
+        if (g_allowForfeit.integer == 0) {
+            trap_SendServerCommand(ent - g_entities,
+                "print \"Forfeits are not enabled on this server.\n\"");
+            return qfalse;
+        }
+        if (level.warmupTime != 0) {
+            trap_SendServerCommand(ent - g_entities,
+                "print \"Forfeit is not available in warmup.\n\"");
+            return qfalse;
+        }
+
+        if (g_gametype.integer == GT_DUEL) {
+            // PERS_RANK bit 0x4000 = "tied"; any other bit means "not first" (losing).
+            int rank = ent->client->ps.persistant[PERS_RANK];
+            if (rank != 0 && (rank & ~0x4000) != 0) {
+                ent->client->ps.persistant[PERS_SCORE] = -999;
+                return qtrue;
+            }
+            trap_SendServerCommand(ent - g_entities,
+                "print \"Forfeit is only available to the losing player.\n\"");
+            return qfalse;
+        }
+
+        if (g_gametype.integer < GT_TEAM) {
+            return qfalse;
+        }
+
+        if (ent->client->sess.sessionTeam == TEAM_RED &&
+            level.teamScores[TEAM_RED] < level.teamScores[TEAM_BLUE]) {
+            if (redCount == 1) {
+                ent->client->ps.persistant[PERS_SCORE] = -999;
+                return qtrue;
+            }
+            trap_SendServerCommand(ent - g_entities,
+                "print \"Forfeit is only available to the last remaining player on the losing team.\n\"");
+        } else if (ent->client->sess.sessionTeam == TEAM_BLUE &&
+                   level.teamScores[TEAM_BLUE] < level.teamScores[TEAM_RED]) {
+            if (blueCount == 1) {
+                ent->client->ps.persistant[PERS_SCORE] = -999;
+                return qtrue;
+            }
+            trap_SendServerCommand(ent - g_entities,
+                "print \"Forfeit is only available to the last remaining player on the losing team.\n\"");
+        } else {
+            trap_SendServerCommand(ent - g_entities,
+                "print \"Forfeit is only available to members of the losing team.\n\"");
+        }
+        return qfalse;
+    }
+
+    // ---- automatic driver check (mode == 0) ----
+    if (elapsed / 1000 > 1 && level.intermissionQueued == 0 && level.intermissionTime == 0) {
+        if (BG_IsRoundBasedGameType(g_gametype.integer)) {
+            // Round-based: only after the round is being played.
+            if (level.roundState.eCurrent < RS_PLAYING) {
+                return qfalse;
+            }
+        } else {
+            if (level.warmupTime != 0) {
+                return qfalse;
+            }
+        }
+
+        // [QL] g_training (Ghidra global 0x105dea44 "level_isTraining", set from the
+        // trainingMap worldspawn key) suppresses auto-forfeit on tour/training maps.
+        if (g_training.integer == 0) {
+            if (((g_gametype.integer < GT_TEAM || g_gametype.integer == GT_RR) &&
+                 level.numPlayingClients < 2) ||
+                (BG_IsScoreBasedGameType() && (redCount < 1 || blueCount < 1))) {
+                return qtrue;
+            }
         }
     }
 
@@ -2794,39 +3301,39 @@ static qboolean CheckForfeit(void) {
 
 /*
 =============
-HandleForfeit
+ForfeitMatch
 
-[QL] Ends the match due to forfeit.
-Binary: FUN_10057f90 in qagamex86.dll
+[QL] Applies the -999 forfeit penalty and ends the match.
+.so symbol: ForfeitMatch   Binary: 0x10057f90 in qagamex86.dll
 =============
 */
-static void HandleForfeit(void) {
+void ForfeitMatch(void) {
     int redCount, blueCount;
 
     if (g_gametype.integer == GT_DUEL) {
-        // Duel: set losing score on disconnected/spectating players
-        int i;
-        for (i = 0; i < 2; i++) {
-            int idx = (i == 0) ? level.clientNum1stPlayer : level.clientNum2ndPlayer;
-            if (idx >= 0) {
-                gclient_t *cl = level.clients + idx;
-                if (cl->pers.connected == CON_DISCONNECTED ||
-                    cl->sess.sessionTeam == TEAM_SPECTATOR) {
-                    cl->ps.persistant[PERS_SCORE] = -999;
-                }
-            }
+        // Duel: penalise a duellist who disconnected or is no longer on TEAM_FREE.
+        // Uses the two tracked duel client indices (globals 0x105dcea4 / 0x105dcea8);
+        // binary has no idx>=0 guard and tests sessionTeam != TEAM_FREE (not == SPEC).
+        gclient_t *cl;
+        cl = level.clients + level.clientNum1stPlayer;
+        if (cl->pers.connected == CON_DISCONNECTED || cl->sess.sessionTeam != TEAM_FREE) {
+            cl->ps.persistant[PERS_SCORE] = -999;
+        }
+        cl = level.clients + level.clientNum2ndPlayer;
+        if (cl->pers.connected == CON_DISCONNECTED || cl->sess.sessionTeam != TEAM_FREE) {
+            cl->ps.persistant[PERS_SCORE] = -999;
         }
     } else if (g_gametype.integer >= GT_TEAM && g_gametype.integer != GT_RR) {
-        // Team games: set losing score on empty teams
-        redCount = TeamCount(-1, TEAM_RED);
+        // Team games: set losing score on empty teams. TeamCount order = BLUE, RED.
         blueCount = TeamCount(-1, TEAM_BLUE);
-        if (blueCount < 1) {
-            level.teamScores[TEAM_BLUE] = -999;
-            trap_SetConfigstring(CS_SCORES2, va("%i", -999));
-        }
+        redCount = TeamCount(-1, TEAM_RED);
         if (redCount < 1) {
             level.teamScores[TEAM_RED] = -999;
             trap_SetConfigstring(CS_SCORES1, va("%i", -999));
+        }
+        if (blueCount < 1) {
+            level.teamScores[TEAM_BLUE] = -999;
+            trap_SetConfigstring(CS_SCORES2, va("%i", -999));
         }
     }
 
@@ -2837,18 +3344,19 @@ static void HandleForfeit(void) {
 
 /*
 =============
-CheckWarmup
+CheckWarmupAndForfeit
 
-[QL] Warmup state machine for ALL gametypes (separate from CheckTournament).
-Binary: FUN_10058760 in qagamex86.dll
+[QL] Outer warmup / forfeit driver, called every frame from G_RunFrame. Binary
+FUN_10058760 (no dedicated .so symbol - GCC inlined it into G_RunFrame in the
+Linux build; this name is the Ghidra label kept for the separate MSVC function).
 
 States:
-  warmupTime == 0  → match in progress (check forfeit)
-  warmupTime == -1 → PRE_GAME (waiting for players)
-  warmupTime > 0   → COUNT_DOWN (countdown to match start)
+  warmupTime == 0  -> match in progress (auto forfeit check)
+  warmupTime == -1 -> PRE_GAME (waiting for players)
+  warmupTime > 0   -> COUNT_DOWN (countdown to match start)
 =============
 */
-static void CheckWarmup(void) {
+static void CheckWarmupAndForfeit(void) {
     int i;
     gclient_t *cl;
 
@@ -2857,36 +3365,37 @@ static void CheckWarmup(void) {
     }
 
     if (level.warmupTime == 0) {
-        // Match in progress - check for forfeit
-        if (CheckForfeit()) {
-            HandleForfeit();
+        // Live match: automatic forfeit check.
+        if (CheckForfeitConditions(NULL, 0)) {
+            ForfeitMatch();
         }
         return;
     }
 
-    // Warmup active (PRE_GAME or COUNT_DOWN)
-    if (!CheckWarmupMinPlayers()) {
-        // Not enough players
+    // Warmup active (PRE_GAME or COUNT_DOWN).
+    if (!CheckWarmupConditions()) {
+        // Not enough ready players.
         if (level.warmupTime == -1) {
-            // Already in PRE_GAME, nothing to do
+            // Still PRE_GAME: run the duel ready-start countdown (no-op off duel).
+            CheckTournament();
             return;
         }
 
-        // Was in COUNT_DOWN, revert to PRE_GAME
+        // Countdown was running: drop back to PRE_GAME. (Binary inlines the
+        // SetWarmupState(-1) transition and also calls G_AutoRecordAndScreenshot(-1),
+        // which ioquakelive does not model.)
         SetWarmupState(-1);
         G_LogPrintf("Warmup:\n");
 
-        // Clear PMF_FROZEN on all playing clients (countdown cancelled)
+        // Unfreeze every connected client and clear their ready flag. Binary tests
+        // only pers.connected == CON_CONNECTED (no sessionTeam check) and operates
+        // on pers.ready (0x2E8), not sess.specOnly.
         for (i = 0; i < level.maxclients; i++) {
             cl = level.clients + i;
-            if (cl->pers.connected == CON_CONNECTED &&
-                cl->sess.sessionTeam != TEAM_SPECTATOR) {
-                if (cl->ps.pm_flags & PMF_FROZEN) {
-                    cl->ps.pm_flags &= ~PMF_FROZEN;
-                }
-                // Reset specOnly if it was set during countdown
-                if (cl->sess.specOnly == 1) {
-                    cl->sess.specOnly = 0;
+            if (cl->pers.connected == CON_CONNECTED) {
+                cl->ps.pm_flags &= ~PMF_FROZEN;
+                if (cl->pers.ready == 1) {
+                    cl->pers.ready = 0;
                     ClientUserinfoChanged(cl->ps.clientNum);
                 }
             }
@@ -2894,33 +3403,32 @@ static void CheckWarmup(void) {
         return;
     }
 
-    // Enough players - check if g_warmup cvar changed (force restart countdown)
+    // Enough players ready. If g_warmup changed, force back to PRE_GAME.
     if (g_warmup.modificationCount != level.warmupModificationCount) {
         level.warmupModificationCount = g_warmup.modificationCount;
         SetWarmupState(-1);
     }
 
-    // Start countdown if in PRE_GAME
+    // Start the COUNT_DOWN from PRE_GAME. Binary is unconditional:
+    // warmupTime = g_warmup.integer * 1000 + level.time (no ">1"/"-1" adjustment).
     if (level.warmupTime < 0) {
-        if (g_warmup.integer > 1) {
-            SetWarmupState(level.time + (g_warmup.integer - 1) * 1000);
-        } else {
-            SetWarmupState(0);
-        }
+        SetWarmupState(g_warmup.integer * 1000 + level.time);
         return;
     }
 
-    // Countdown expired - start match
-    if (level.time > level.warmupTime) {
+    // Countdown elapsed: begin the match via map_restart.
+    if (level.time >= level.warmupTime) {
+        // [QL] Binary calls STAT_MatchReport() here first (not modelled in ioquakelive).
         level.warmupTime += 10000;
         trap_Cvar_Set("g_restarted", "1");
         trap_SendConsoleCommand(EXEC_APPEND, "map_restart 0\n");
+        // [QL] Binary: if (global 0x105961ac) { trap#27(5); trap#27(13); } - an
+        // engine-set cvar gating an unmapped QL syscall (_unused_1b); unresolved,
+        // omitted. See handover notes.
         level.restarted = qtrue;
         return;
     }
 }
-
-// CheckTournament moved to g_gametype_duel.c
 
 /*
 ==================
@@ -3221,6 +3729,12 @@ Runs thinking code for this frame if necessary
 void G_RunThink(gentity_t* ent) {
     int thinktime;
 
+    // [QL] per-frame think runs every frame, before the scheduled think. Used by the
+    // domination points (DOM_FrameThink) to accumulate capture progress.
+    if (ent->framethink) {
+        ent->framethink(ent);
+    }
+
     thinktime = ent->nextthink;
     if (thinktime <= 0) {
         return;
@@ -3255,13 +3769,62 @@ void G_RunFrame(int levelTime) {
     level.frametime = levelTime - level.time;
     level.time = levelTime;
 
+    // [QL] pause/timeout: keep the match clock frozen by advancing startTime in lockstep
+    // with level.time, and run the auto-unpause countdown.
+    if (level.timePauseBegin) {
+        level.startTime += level.frametime;
+        MP_PauseThink();
+    }
+
     // get any cvar changes
     G_UpdateCvars();
 
-    // [QL] update pmove configstring for client prediction (only when dirty)
+    // [QL] Respawn-delay computation (== QL G_RunFrame @0x100594e0, DAT_105df41c).
+    // player_die reads the effective delay from level.forceRespawnDelay whenever
+    // g_forcerespawn is set (its default is 20, so this is the normal path); it
+    // is only computed here.  Without it the field stayed 0, so respawnTime =
+    // level.time and any death where the attack/use button was held (mid-fight,
+    // or mashing to respawn) came back instantly instead of after the ~2.1s
+    // delay.  In overtime (past the time limit) the delay scales up via the
+    // g_suddenDeathRespawn* cvars, announced once per change.
+    if (g_forcerespawn.integer && !level.intermissionTime && !level.intermissionQueued) {
+        int overtime = level.time - level.startTime - g_timelimit.integer * 60000;
+        if (g_timelimit.integer && level.warmupTime == 0 && overtime > 0) {
+            int tickMs = g_suddenDeathRespawnTick.integer * 1000;
+            int delay = (tickMs > 0)
+                            ? (overtime / tickMs) * g_suddenDeathRespawnIncrement.integer +
+                                  g_suddenDeathRespawnStart.integer
+                            : g_suddenDeathRespawnStart.integer;
+            if (delay > g_suddenDeathRespawnMax.integer) {
+                delay = g_suddenDeathRespawnMax.integer;
+            }
+            level.forceRespawnDelay = delay * 1000;
+            if (level.forceRespawnDelay != level.suddenDeathRespawnDelayLastAnnounced) {
+                trap_SendServerCommand(-1, va("cp \"%d second respawn delay\n\"",
+                                              level.forceRespawnDelay / 1000));
+                level.suddenDeathRespawnDelayLastAnnounced = level.forceRespawnDelay;
+            }
+        } else {
+            level.forceRespawnDelay = g_respawn_delay_min.integer;
+        }
+    }
+
+    // [QL] republish gamerule configstrings for clients when their cvars change
     if (pmoveInfoDirty) {
         G_SendPmoveInfo();
         pmoveInfoDirty = qfalse;
+    }
+    if (armorInfoDirty) {
+        G_SendArmorInfo();
+        armorInfoDirty = qfalse;
+    }
+    if (weaponInfoDirty) {
+        G_SendWeaponInfo();
+        weaponInfoDirty = qfalse;
+    }
+    if (playerInfoDirty) {
+        G_SendPlayerInfo();
+        playerInfoDirty = qfalse;
     }
 
     // [QL listen server] Auto-begin connecting clients.
@@ -3272,6 +3835,25 @@ void G_RunFrame(int levelTime) {
     for (i = 0; i < level.maxclients; i++) {
         if (level.clients[i].pers.connected == CON_CONNECTING) {
             ClientBegin(i);
+        }
+    }
+
+    // [QL] Intermission map-vote UI: re-enable a client's vote UI ~2.25s after
+    // their last map vote (lastMapVoteTime). Cmd_IntermissionVote_f sends
+    // "disable_vote_ui" on each vote; this edge-triggers "enable_vote_ui" once
+    // when (level.time - lastMapVoteTime) crosses 2250ms so they can re-vote.
+    // Binary: G_RunFrame 0x10059540 (intermission branch, gclient+0x33c).
+    if (level.intermissionTime) {
+        for (i = 0; i < level.maxclients; i++) {
+            gclient_t* cl = &level.clients[i];
+            int elapsed;
+            if (cl->pers.connected != CON_CONNECTED) {
+                continue;
+            }
+            elapsed = level.time - cl->pers.lastMapVoteTime;
+            if (elapsed > 2250 && elapsed - level.frametime <= 2250) {
+                trap_SendServerCommand(i, "enable_vote_ui");
+            }
         }
     }
 
@@ -3347,14 +3929,37 @@ void G_RunFrame(int levelTime) {
     }
 
     // [QL] duel queue rotation (pull in spectators)
-    CheckTournament();
+    AddDuelPlayer();
 
-    // [QL] warmup state machine (all gametypes)
-    CheckWarmup();
+    // [QL] warmup / forfeit driver (all gametypes)
+    CheckWarmupAndForfeit();
 
-    // [QL] Red Rover per-frame logic (infection, survival bonus, round end)
+    // [QL] per-gametype frame logic
     if (g_gametype.integer == GT_RR) {
-        RR_RunFrame();
+        // infection, survival bonus, round end
+        RR_Think();
+    } else if (g_gametype.integer == GT_DOMINATION) {
+        // owned-point count -> team-count configstrings
+        DOM_CheckPlayers();
+    } else if (g_gametype.integer == GT_AD) {
+        // advance the round countdown, then end the round on timeout / objective
+        if (!level.intermissionQueued && !level.intermissionTime && !level.warmupTime) {
+            if (AD_GetRoundState() == RS_PLAYING) {
+                int redAlive, blueAlive;
+                Team_LivingTeamCounts(&redAlive, &blueAlive);
+                if (AD_CheckRoundEnd(redAlive, blueAlive)) {
+                    level.roundState.tNext = 0;
+                    level.roundState.eCurrent = RS_ROUND_OVER;
+                    AD_RoundStateTransition();
+                }
+            }
+        }
+    } else if (g_gametype.integer == GT_CA) {
+        // drive the round countdown even when nobody dies
+        CA_GetRoundState();
+    } else if (g_gametype.integer == GT_FREEZE) {
+        // advance the round state and end the round when a team is all frozen
+        Freeze_Think();
     }
 
     // see if it is time to end the level

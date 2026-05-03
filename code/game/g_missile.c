@@ -25,10 +25,19 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Binary uses 1000/sv_fps.integer instead of hardcoded 50ms
 #define MISSILE_PRESTEP_TIME (1000 / sv_fps.integer)
 
+// [QL] s.eFlags bit set by weapon_nailgun_fire on a bouncing nail. G_MissileImpact
+// tests the bounce mask as 0x100030 (EF_BOUNCE|EF_BOUNCE_HALF|EF_QL_NAILBOUNCE) and
+// caps nail bounces at g_nailbounce. Not yet named in bg_public.h (see report).
+#define EF_QL_NAILBOUNCE 0x100000
+
 /*
 ================
 G_BounceMissile
-
+// Address: 0x1005b3c0
+// [QL] Ghidra mislabels this "G_BounceItem"; the .so symbol at the g_missile.c
+// cluster (0x86140) is G_BounceMissile. The physicsBounce variant Ghidra labels
+// "G_BounceMissile" (0x10050c70) is G_BounceProjectile (.so 0x98680),
+// used only by G_RunItem.
 ================
 */
 void G_BounceMissile(gentity_t* ent, trace_t* trace) {
@@ -46,8 +55,9 @@ void G_BounceMissile(gentity_t* ent, trace_t* trace) {
         VectorScale(ent->s.pos.trDelta, 0.65, ent->s.pos.trDelta);
         // check for stop
         if (trace->plane.normal[2] > 0.2 && VectorLength(ent->s.pos.trDelta) < 40) {
+            // [QL] binary snaps endpos, then G_SetOrigin; it does NOT set ent->s.time
+            SnapVector(trace->endpos);
             G_SetOrigin(ent, trace->endpos);
-            ent->s.time = level.time / 4;
             return;
         }
     }
@@ -86,8 +96,14 @@ void G_ExplodeMissile(gentity_t* ent) {
     if (ent->splashDamage) {
         if (G_RadiusDamage(ent->r.currentOrigin, NULL, ent->parent, ent->splashDamage, ent->splashRadius, ent, 0, ent->splashMethodOfDeath)) {
             g_entities[ent->r.ownerNum].client->accuracy_hits++;
-            if (ent->s.weapon < 16) {
-                g_entities[ent->r.ownerNum].client->expandedStats.shotsHit[ent->s.weapon]++;
+            g_entities[ent->r.ownerNum].client->expandedStats.shotsHit[ent->s.weapon]++;
+            // [QL] binary inlines STAT_AddScore (engine syscall table +0x324); it
+            //      internally gates on !warmupTime && !scoringDisabled.
+            if (g_gametype.integer != GT_RACE) {
+                STAT_AddScore(&g_entities[ent->r.ownerNum], ent->s.weapon, 1);
+            }
+            if (BG_IsRoundBasedGameType(g_gametype.integer)) {
+                g_entities[ent->r.ownerNum].client->round_hits++;
             }
         }
     }
@@ -237,8 +253,9 @@ static void ProximityMine_Player(gentity_t* mine, gentity_t* player) {
     G_AddEvent(mine, EV_PROXIMITY_MINE_STICK, 0);
 
     if (player->s.eFlags & EF_TICKING) {
+        // [QL] binary (0x1005bb20) only accumulates splashDamage; the Q3
+        //      splashRadius *= 1.5 line is NOT present.
         player->activator->splashDamage += mine->splashDamage;
-        player->activator->splashRadius *= 1.50;
         mine->think = G_FreeEntity;
         mine->nextthink = level.time;
         return;
@@ -274,10 +291,15 @@ void G_MissileImpact(gentity_t* ent, trace_t* trace) {
     other = &g_entities[trace->entityNum];
 
     // check for bounce
+    // [QL] binary mask is 0x100030 (EF_BOUNCE|EF_BOUNCE_HALF|EF_QL_NAILBOUNCE).
+    //      Only EF_QL_NAILBOUNCE missiles are capped (g_nailbounce); every bounce
+    //      increments bouncecount.
     if (!other->takedamage &&
-        (ent->s.eFlags & (EF_BOUNCE | EF_BOUNCE_HALF))) {
+        (ent->s.eFlags & (EF_BOUNCE | EF_BOUNCE_HALF | EF_QL_NAILBOUNCE)) &&
+        (!(ent->s.eFlags & EF_QL_NAILBOUNCE) || ent->bouncecount < g_nailbounce.integer)) {
         G_BounceMissile(ent, trace);
         G_AddEvent(ent, EV_GRENADE_BOUNCE, 0);
+        ent->bouncecount++;
         return;
     }
 
@@ -308,10 +330,14 @@ void G_MissileImpact(gentity_t* ent, trace_t* trace) {
 
             if (LogAccuracyHit(other, &g_entities[ent->r.ownerNum])) {
                 g_entities[ent->r.ownerNum].client->accuracy_hits++;
-                if (ent->s.weapon < 16) {
-                    g_entities[ent->r.ownerNum].client->expandedStats.shotsHit[ent->s.weapon]++;
+                g_entities[ent->r.ownerNum].client->expandedStats.shotsHit[ent->s.weapon]++;
+                if (g_gametype.integer != GT_RACE) {
+                    STAT_AddScore(&g_entities[ent->r.ownerNum], ent->s.weapon, 1);
                 }
                 hitClient = qtrue;
+                if (BG_IsRoundBasedGameType(g_gametype.integer)) {
+                    g_entities[ent->r.ownerNum].client->round_hits++;
+                }
             }
             BG_EvaluateTrajectoryDelta(&ent->s.pos, level.time, velocity);
             if (VectorLength(velocity) == 0) {
@@ -453,8 +479,12 @@ void G_MissileImpact(gentity_t* ent, trace_t* trace) {
             }
             if (hit && !hitClient) {
                 g_entities[ent->r.ownerNum].client->accuracy_hits++;
-                if (ent->s.weapon < 16) {
-                    g_entities[ent->r.ownerNum].client->expandedStats.shotsHit[ent->s.weapon]++;
+                g_entities[ent->r.ownerNum].client->expandedStats.shotsHit[ent->s.weapon]++;
+                if (g_gametype.integer != GT_RACE) {
+                    STAT_AddScore(&g_entities[ent->r.ownerNum], ent->s.weapon, 1);
+                }
+                if (BG_IsRoundBasedGameType(g_gametype.integer)) {
+                    g_entities[ent->r.ownerNum].client->round_hits++;
                 }
             }
         }
@@ -536,39 +566,85 @@ void G_RunMissile(gentity_t* ent) {
 
 /*
 =================
-fire_plasma
+CreateMissile
+// Address: 0x1005cba0
+[QL] Shared missile factory used by fire_grenade / fire_rocket / fire_plasma /
+fire_bfg. Spawns the entity, sets ET_MISSILE + SVF_USE_CURRENT_ORIGIN, the
+MASK_SHOT clip (minus CONTENTS_BODY under pmove_NoPlayerClip: 0x6000001 ->
+0x4000001), snaps origin and velocity, and gives the bolt a tiny +/-0.01 bbox.
+trType is TR_GRAVITY unless weapon_gravity_rl is 0 or g_guidedRocket is set.
+NOTE: VectorNormalize(dir) happens INSIDE here, so callers must not pre-normalize.
+=================
+*/
+static gentity_t* CreateMissile(vec3_t start, vec3_t dir, int speed, gentity_t* owner) {
+    gentity_t* bolt;
 
+    bolt = G_Spawn();
+    bolt->think = G_ExplodeMissile;
+    bolt->s.eType = ET_MISSILE;
+    bolt->s.eFlags = 0;
+    bolt->r.svFlags = SVF_USE_CURRENT_ORIGIN;
+    bolt->r.ownerNum = owner->s.number;
+    bolt->parent = owner;
+    bolt->clipmask = MASK_SHOT;  // [QL] SOLID|BODY|CORPSE = 0x6000001
+    bolt->target_ent = NULL;
+
+    // [QL] pmove_NoPlayerClip strips CONTENTS_BODY so missiles pass through players
+    if (pmove_NoPlayerClip.integer) {
+        bolt->clipmask &= ~CONTENTS_BODY;  // 0x6000001 -> 0x4000001
+    }
+
+    VectorCopy(start, bolt->s.pos.trBase);
+    SnapVector(bolt->s.pos.trBase);
+    VectorCopy(bolt->s.pos.trBase, bolt->r.currentOrigin);
+
+    // [QL] weapon_gravity_rl selects gravity; g_guidedRocket forces linear
+    if (weapon_gravity_rl.integer == 0 || g_guidedRocket.integer != 0) {
+        bolt->s.pos.trType = TR_LINEAR;
+    } else {
+        bolt->s.pos.trType = TR_GRAVITY;
+    }
+    bolt->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;  // move a bit on the very first frame
+
+    VectorNormalize(dir);
+    VectorScale(dir, speed, bolt->s.pos.trDelta);
+    SnapVector(bolt->s.pos.trDelta);  // save net bandwidth
+
+    // small bbox for precise collision
+    VectorSet(bolt->r.mins, -0.01f, -0.01f, -0.01f);
+    VectorSet(bolt->r.maxs, 0.01f, 0.01f, 0.01f);
+
+    return bolt;
+}
+
+//=============================================================================
+
+/*
+=================
+fire_plasma
+// Address: 0x1005d0e0
 =================
 */
 gentity_t* fire_plasma(gentity_t* self, vec3_t start, vec3_t dir) {
     gentity_t* bolt;
 
-    VectorNormalize(dir);
-
-    bolt = G_Spawn();
+    bolt = CreateMissile(start, dir, g_velocity_pg.integer, self);
     bolt->classname = "plasma";
     bolt->nextthink = level.time + 10000;
-    bolt->think = G_ExplodeMissile;
-    bolt->s.eType = ET_MISSILE;
-    bolt->r.svFlags = SVF_USE_CURRENT_ORIGIN;
     bolt->s.weapon = WP_PLASMAGUN;
     bolt->r.ownerNum = self->s.number;
-    bolt->parent = self;
+    bolt->s.otherEntityNum = self->s.number;
     bolt->damage = g_damage_pg.integer;
     bolt->splashDamage = g_splashdamage_pg.integer;
     bolt->splashRadius = g_splashradius_pg.integer;
     bolt->methodOfDeath = MOD_PLASMA;
     bolt->splashMethodOfDeath = MOD_PLASMA_SPLASH;
-    bolt->clipmask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;  //
-    bolt->target_ent = NULL;
     bolt->s.pos.trType = weapon_gravity_pg.integer ? TR_GRAVITY : TR_LINEAR;  // [QL]
-    bolt->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;  // move a bit on the very first frame
 
-    VectorCopy(start, bolt->s.pos.trBase);
-    VectorScale(dir, g_velocity_pg.integer, bolt->s.pos.trDelta);
-    SnapVector(bolt->s.pos.trDelta);  // save net bandwidth
-
-    VectorCopy(start, bolt->r.currentOrigin);
+    // [QL] TODO: binary fire_plasma has a projectile speed-SCALE cvar
+    //      (DAT_105aa008, default 1.0 - NOT g_velocity_pg which is 2000) that, when != 1.0,
+    //      rescales nextthink via ftol() and sets an alternate think (LAB_1005d090). Real cvar
+    //      name + exact ftol formula unresolved; dead at default 1.0. Resolve in #74 groundwork.
 
     return bolt;
 }
@@ -578,38 +654,26 @@ gentity_t* fire_plasma(gentity_t* self, vec3_t start, vec3_t dir) {
 /*
 =================
 fire_grenade
+// Address: 0x1005cd40
 =================
 */
 gentity_t* fire_grenade(gentity_t* self, vec3_t start, vec3_t dir) {
     gentity_t* bolt;
 
-    VectorNormalize(dir);
-
-    bolt = G_Spawn();
+    bolt = CreateMissile(start, dir, g_velocity_gl.integer, self);
     bolt->classname = "grenade";
     bolt->nextthink = level.time + 2500;
-    bolt->think = G_ExplodeMissile;
-    bolt->s.eType = ET_MISSILE;
-    bolt->r.svFlags = SVF_USE_CURRENT_ORIGIN;
     bolt->s.weapon = WP_GRENADE_LAUNCHER;
-    bolt->s.eFlags = EF_BOUNCE_HALF;
     bolt->r.ownerNum = self->s.number;
-    bolt->parent = self;
+    bolt->s.otherEntityNum = self->s.number;
     bolt->damage = g_damage_gl.integer;
     bolt->splashDamage = g_splashdamage_gl.integer;
     bolt->splashRadius = g_splashradius_gl.integer;
     bolt->methodOfDeath = MOD_GRENADE;
     bolt->splashMethodOfDeath = MOD_GRENADE_SPLASH;
-    bolt->clipmask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;  //
-    bolt->target_ent = NULL;
-
+    bolt->s.eFlags = EF_BOUNCE_HALF;
     bolt->s.pos.trType = TR_GRAVITY;
-    bolt->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;  // move a bit on the very first frame
-    VectorCopy(start, bolt->s.pos.trBase);
-    VectorScale(dir, g_velocity_gl.integer, bolt->s.pos.trDelta);
-    SnapVector(bolt->s.pos.trDelta);  // save net bandwidth
-
-    VectorCopy(start, bolt->r.currentOrigin);
+    bolt->s.clientNum = self->s.clientNum;  // [QL] binary copies self->s.clientNum
 
     return bolt;
 }
@@ -619,50 +683,50 @@ gentity_t* fire_grenade(gentity_t* self, vec3_t start, vec3_t dir) {
 /*
 =================
 fire_bfg
+// Address: 0x1005d210
 =================
 */
 gentity_t* fire_bfg(gentity_t* self, vec3_t start, vec3_t dir) {
     gentity_t* bolt;
 
-    VectorNormalize(dir);
-
-    bolt = G_Spawn();
+    bolt = CreateMissile(start, dir, g_velocity_bfg.integer, self);
     bolt->classname = "bfg";
     bolt->nextthink = level.time + 10000;
-    bolt->think = G_ExplodeMissile;
-    bolt->s.eType = ET_MISSILE;
-    bolt->r.svFlags = SVF_USE_CURRENT_ORIGIN;
     bolt->s.weapon = WP_BFG;
     bolt->r.ownerNum = self->s.number;
-    bolt->parent = self;
+    bolt->s.otherEntityNum = self->s.number;
     bolt->damage = g_damage_bfg.integer;
     bolt->splashDamage = g_splashdamage_bfg.integer;
     bolt->splashRadius = g_splashradius_bfg.integer;
     bolt->methodOfDeath = MOD_BFG;
     bolt->splashMethodOfDeath = MOD_BFG_SPLASH;
-    bolt->clipmask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;  //
-    bolt->target_ent = NULL;
+    // [QL] binary does NOT override trType here; BFG keeps CreateMissile's
+    //      weapon_gravity_rl-based trajectory (weapon_gravity_bfg is unused).
 
-    bolt->s.pos.trType = weapon_gravity_bfg.integer ? TR_GRAVITY : TR_LINEAR;  // [QL]
-    bolt->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;  // move a bit on the very first frame
-    VectorCopy(start, bolt->s.pos.trBase);
-    VectorScale(dir, g_velocity_bfg.integer, bolt->s.pos.trDelta);
-    SnapVector(bolt->s.pos.trDelta);  // save net bandwidth
-    VectorCopy(start, bolt->r.currentOrigin);
+    // [QL] TODO: binary fire_bfg has a projectile speed-SCALE cvar
+    //      (DAT_1059db28, default 1.0) that rescales nextthink via ftol() when != 1.0.
+    //      Real cvar name + formula unresolved; dead at default. Resolve in #74 groundwork.
 
     return bolt;
 }
 
-// [QL] guided rocket - steers toward shooter's view direction each frame
+/*
+=================
+G_GuidedRocketThink
+// Address: 0x1005ce30
+// .so name: G_GuidedRocketThink (Ghidra mislabels it "Weapon_RocketHomingThink")
+[QL] Steers a guided rocket toward the shooter's view direction each frame.
+Speed is HARDCODED to 20; trTime is NOT updated; think interval is 25ms.
+=================
+*/
 static void G_GuidedRocketThink(gentity_t *ent) {
-    gclient_t *cl = ent->parent->client;
-    if (cl) {
+    if (ent->parent->client) {
         vec3_t forward;
-        AngleVectors(cl->ps.viewangles, forward, NULL, NULL);
-        VectorCopy(ent->r.currentOrigin, ent->s.pos.trBase);
+        AngleVectors(ent->parent->client->ps.viewangles, forward, NULL, NULL);
         VectorCopy(forward, ent->movedir);
-        VectorScale(forward, g_velocity_rl.integer, ent->s.pos.trDelta);
-        ent->s.pos.trTime = level.time;
+        VectorCopy(ent->r.currentOrigin, ent->s.pos.trBase);
+        VectorScale(forward, 20, ent->s.pos.trDelta);
+        // [QL] binary does NOT set ent->s.pos.trTime here
     }
     ent->nextthink = level.time + 25;
 }
@@ -672,42 +736,33 @@ static void G_GuidedRocketThink(gentity_t *ent) {
 /*
 =================
 fire_rocket
+// Address: 0x1005cf90
 =================
 */
 gentity_t* fire_rocket(gentity_t* self, vec3_t start, vec3_t dir) {
     gentity_t* bolt;
 
-    VectorNormalize(dir);
-
-    bolt = G_Spawn();
+    bolt = CreateMissile(start, dir, g_velocity_rl.integer, self);
     bolt->classname = "rocket";
     bolt->nextthink = level.time + 15000;
-    bolt->think = G_ExplodeMissile;
-    bolt->s.eType = ET_MISSILE;
-    bolt->r.svFlags = SVF_USE_CURRENT_ORIGIN;
     bolt->s.weapon = WP_ROCKET_LAUNCHER;
     bolt->r.ownerNum = self->s.number;
-    bolt->parent = self;
+    bolt->s.otherEntityNum = self->s.number;
     bolt->damage = g_damage_rl.integer;
-    bolt->splashDamage = g_splashdamage_rl.integer;
+    bolt->splashDamage = 100;  // [QL] binary hardcodes 100 (NOT g_splashdamage_rl)
     bolt->splashRadius = g_splashradius_rl.integer;
     bolt->methodOfDeath = MOD_ROCKET;
     bolt->splashMethodOfDeath = MOD_ROCKET_SPLASH;
-    bolt->clipmask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;  //
-    bolt->target_ent = NULL;
-
-    bolt->s.pos.trType = weapon_gravity_rl.integer ? TR_GRAVITY : TR_LINEAR;  // [QL]
-    bolt->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;  // move a bit on the very first frame
-    VectorCopy(start, bolt->s.pos.trBase);
-    VectorScale(dir, g_velocity_rl.integer, bolt->s.pos.trDelta);
-    SnapVector(bolt->s.pos.trDelta);  // save net bandwidth
-    VectorCopy(start, bolt->r.currentOrigin);
 
     // [QL] guided rocket mode
     if (g_guidedRocket.integer) {
+        bolt->nextthink = level.time - MISSILE_PRESTEP_TIME;  // [QL] think next frame
         bolt->think = G_GuidedRocketThink;
-        bolt->nextthink = level.time + MISSILE_PRESTEP_TIME;
     }
+
+    // [QL] TODO: binary fire_rocket has a projectile speed-SCALE cvar
+    //      (DAT_105a5808, default 1.0) that rescales nextthink via ftol() when != 1.0.
+    //      Real cvar name + formula unresolved; dead at default. Resolve in #74 groundwork.
 
     return bolt;
 }
@@ -715,6 +770,7 @@ gentity_t* fire_rocket(gentity_t* self, vec3_t start, vec3_t dir) {
 /*
 =================
 fire_grapple
+// Address: 0x1005d2e0
 =================
 */
 gentity_t* fire_grapple(gentity_t* self, vec3_t start, vec3_t dir) {
@@ -725,18 +781,24 @@ gentity_t* fire_grapple(gentity_t* self, vec3_t start, vec3_t dir) {
     hook = G_Spawn();
     hook->classname = "hook";
     hook->nextthink = level.time + 10000;
-    hook->think = Weapon_HookFree;
+    hook->think = Weapon_HookFree;  // [QL] Ghidra label at 0x1006e320 is a guess ("G_ReleaseGrapple"); .so symbol is Weapon_HookFree
     hook->s.eType = ET_MISSILE;
     hook->r.svFlags = SVF_USE_CURRENT_ORIGIN;
     hook->s.weapon = WP_GRAPPLING_HOOK;
     hook->r.ownerNum = self->s.number;
     hook->methodOfDeath = MOD_GRAPPLE;
-    hook->clipmask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;  //
+    hook->clipmask = MASK_SHOT;  // [QL] 0x6000001, minus CONTENTS_BODY under pmove
+    if (pmove_NoPlayerClip.integer) {
+        hook->clipmask &= ~CONTENTS_BODY;
+    }
     hook->parent = self;
     hook->target_ent = NULL;
+    hook->bouncecount = 0;
+    hook->count = 0;
     hook->s.pos.trType = TR_LINEAR;
     hook->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;  // move a bit on the very first frame
     hook->s.otherEntityNum = self->s.number;                 // use to match beam in client
+    hook->damage = g_damage_gh.integer;                      // [QL] binary sets damage from g_damage_gh
 
     VectorCopy(start, hook->s.pos.trBase);
     VectorScale(dir, g_velocity_gh.integer, hook->s.pos.trDelta);
@@ -751,6 +813,10 @@ gentity_t* fire_grapple(gentity_t* self, vec3_t start, vec3_t dir) {
 /*
 =================
 fire_nail
+[QL] NOTE: qagamex86.dll has NO standalone fire_nail; the nail spawn is inlined
+into weapon_nailgun_fire (0x1006da90, g_weapon.c). This Q3-style helper is kept
+only because g_weapon.c still calls it. The binary sets the bouncing-nail flag
+as EF_QL_NAILBOUNCE (0x100000), not EF_BOUNCE. See report.
 =================
 */
 gentity_t* fire_nail(gentity_t* self, vec3_t start, vec3_t forward, vec3_t right, vec3_t up) {
@@ -806,6 +872,7 @@ gentity_t* fire_nail(gentity_t* self, vec3_t start, vec3_t forward, vec3_t right
 /*
 =================
 fire_prox
+// Address: 0x1005d480
 =================
 */
 gentity_t* fire_prox(gentity_t* self, vec3_t start, vec3_t dir) {
@@ -822,19 +889,23 @@ gentity_t* fire_prox(gentity_t* self, vec3_t start, vec3_t dir) {
     bolt->s.weapon = WP_PROX_LAUNCHER;
     bolt->s.eFlags = 0;
     bolt->r.ownerNum = self->s.number;
+    bolt->s.otherEntityNum = self->s.number;  // [QL] binary sets s.otherEntityNum (0x94)
     bolt->parent = self;
     bolt->damage = g_damage_pl.integer;
     bolt->splashDamage = g_splashdamage_pl.integer;
     bolt->splashRadius = g_splashradius_pl.integer;
     bolt->methodOfDeath = MOD_PROXIMITY_MINE;
     bolt->splashMethodOfDeath = MOD_PROXIMITY_MINE;
-    bolt->clipmask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;  //
+    bolt->clipmask = MASK_SHOT;  // [QL] 0x6000001, minus CONTENTS_BODY under pmove
+    if (pmove_NoPlayerClip.integer) {
+        bolt->clipmask &= ~CONTENTS_BODY;
+    }
     bolt->target_ent = NULL;
     // count is used to check if the prox mine left the player bbox
     // if count == 1 then the prox mine left the player bbox and can attack to it
     bolt->count = 0;
 
-    // FIXME: we prolly wanna abuse another field
+    // [QL] team stored in s.generic1 (0xE0); ProximityMine_Trigger reads it back
     bolt->s.generic1 = self->client->sess.sessionTeam;
 
     bolt->s.pos.trType = TR_GRAVITY;

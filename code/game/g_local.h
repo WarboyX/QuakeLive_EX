@@ -60,6 +60,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define FL_NO_BOTS 0x00002000        // spawn point not for bot use
 #define FL_NO_HUMANS 0x00004000      // spawn point just for bots
 #define FL_FORCE_GESTURE 0x00008000  // force gesture on client
+#define FL_NOPICKUP 0x00010000            // [QL] player can't pick items up
+#define FL_NOPOWERUP 0x00040000           // [QL] player can't pick up IT_POWERUP
+#define FL_DROPPED_ITEM_TIMED 0x00080000  // [QL] dropped powerup: ground age reduces duration
+#define FL_ITEM_TIMER 0x00100000          // [QL] item has an armed respawn timer
 
 // movers are things like doors, plats, buttons, etc
 typedef enum {
@@ -355,7 +359,6 @@ typedef struct {
     int         xp;
     int         domThreeFlagsTime;
     int         numMidairShotgunKills;
-    int         roundHits;
 } expandedStatObj_t;
 
 // [QL] Per-client race data (552 bytes)
@@ -522,9 +525,13 @@ typedef struct {
     qboolean        locationLinked;
     /* 4 bytes padding */
     gentity_t       *locationHead;
-    int             timePauseBegin;         /* [QL] */
+    int             timePauseBegin;         /* [QL] level.time the pause started (CS_PAUSE_START_TIME) */
+    int             mp_unpauseTime;         /* [QL] level.time the pause auto-ends (0 = indefinite) */
+    int             mp_pauseClient;         /* [QL] clientNum who paused (-1 = server) */
+    int             teamTimeoutsUsed[4];    /* [QL] timeouts used per team_t (team modes) */
     int             timeOvertime;           /* [QL] */
-    int             timeInitialPowerupSpawn; /* [QL] */
+    int             timeInitialPowerupSpawn; /* [QL] level+0x1BD4: IT_POWERUP initial spawn delay (sec) */
+    int             timeInitialKeySpawn;     /* [QL] level+0x1BD0: IT_KEY initial spawn delay (sec) */
     int             bodyQueIndex;
     gentity_t       *bodyQue[BODY_QUEUE_SIZE];
     int             portalSequence;
@@ -546,6 +553,7 @@ typedef struct {
     int             itemCount[60];          /* [QL] */
     int             suddenDeathRespawnDelay; /* [QL] */
     int             suddenDeathRespawnDelayLastAnnounced; /* [QL] */
+    int             forceRespawnDelay;       /* [QL] level+0x5DC (DAT_105df41c): effective forced-respawn delay (ms) used when g_forcerespawn != 0 */
     int             numRedArmorPickups[4];
     int             numYellowArmorPickups[4];
     int             numGreenArmorPickups[4];
@@ -664,6 +672,7 @@ void G_InitGentity(gentity_t* e);
 gentity_t* G_Spawn(void);
 gentity_t* G_TempEntity(vec3_t origin, int event);
 void G_Sound(gentity_t* ent, int channel, int soundIndex);
+void G_GlobalSound(int soundIndex);   // [QL] 0x1006bf70: broadcast EV_GLOBAL_SOUND (no SVF_BROADCAST)
 void G_FreeEntity(gentity_t* e);
 qboolean G_EntitiesFree(void);
 
@@ -690,6 +699,7 @@ qboolean G_RadiusDamageThrough(vec3_t origin, gentity_t* inflictor, gentity_t* a
 qboolean G_WaterRadiusDamage(vec3_t origin, gentity_t *attacker, float damage, float radius);
 int G_InvulnerabilityEffect(gentity_t* targ, vec3_t dir, vec3_t point, vec3_t impactpoint, vec3_t bouncedir);
 void body_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int damage, int meansOfDeath);
+void Kamikaze_DeathActivate(gentity_t* self);  // [QL] .so Kamikaze_DeathActivate (0x6f7d0); unified gib/death-finalizer + freeze thaw-respawn
 void TossClientItems(gentity_t* self);
 void TossClientPersistantPowerups(gentity_t* self);
 void TossClientCubes(gentity_t* self);
@@ -757,6 +767,8 @@ void InitBodyQue(void);
 void ClientSpawn(gentity_t* ent);
 void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int damage, int mod);
 void AddScore(gentity_t* ent, vec3_t origin, int score);
+qboolean FreezeTagInGame(void);      // [QL] 0x10067e00
+qboolean FreezeTagInWarmup(void);    // [QL] 0x10067e30
 void CalculateRanks(void);
 qboolean SpotWouldTelefrag(gentity_t* spot);
 
@@ -764,8 +776,10 @@ qboolean SpotWouldTelefrag(gentity_t* spot);
 // g_svcmds.c
 //
 qboolean ConsoleCommand(void);
-void G_ProcessIPBans(void);
+void G_ProcessIPBans(void);   // [QL] DEAD - QL has no IP-filter; G_InitGame uses G_InitAccessList
 qboolean G_FilterPacket(char* from);
+void G_InitAccessList(void);  // [QL] 0x100325f0 - loads the steamId access list at boot
+int  G_GetAccess(int clientNum);   // [QL] 0x10032520
 void Svcmd_ForceShuffle_f(void);
 
 //
@@ -777,20 +791,20 @@ void G_StartKamikaze(gentity_t* ent);
 //
 // g_cmds.c
 //
-void DeathmatchScoreboardMessage(gentity_t* ent);
+void FreeForAllScoreboardMessage(gentity_t* ent);   // "scores_ffa" (Ghidra: QL's FreeForAllScoreboardMessage; the Q3 name Deathmatch... is QL's info parser)
 int STAT_GetBestWeapon(gclient_t *cl);
 void FFAScoreboardMessage_impl(void);
 void DuelScoreboardMessage_impl(void);
 void DuelScoreboardMessage(gentity_t *ent);
 void RaceScoreboardMessage(gentity_t *ent);
-void TDMScoreboardMessage(gentity_t *ent);
-void TDMScoreboardMessage_impl(gentity_t *ent);
-void CAScoreboardMessage(gentity_t *ent);
-void CTFScoreboardMessage(gentity_t *ent);
-void CTFScoreboardMessage_impl(gentity_t *ent);
-void FTScoreboardMessage(gentity_t *ent);
-void FTScoreboardMessage_impl(gentity_t *ent);
-void RRScoreboardMessage(gentity_t *ent);
+void TeamDeathmatchScoreboardMessage(gentity_t *ent);
+void TeamDeathmatchStatisticsMessage(gentity_t *ent);
+void ClanArenaScoreboardMessage(gentity_t *ent);
+void ClanArenaStatisticsMessage(gentity_t *ent);   // "castats"
+void CaptureTheFlagScoreboardMessage(gentity_t *ent);
+void CaptureTheFlagStatisticsMessage(gentity_t *ent);  // "ctfstats"
+void FreezeTagScoreboardMessage(gentity_t *ent);
+void RedRoverScoreboardMessage(gentity_t *ent);
 void ADScoreboardMessage(gentity_t *ent);
 void SendScoreboardMessageToTeam(int team);
 void AddDuelScore(void);
@@ -804,8 +818,10 @@ void SetLeader(int team, int client);
 void CheckTeamLeader(int team);
 void G_RunThink(gentity_t* ent);
 void AddTournamentQueue(gclient_t* client);
-void SetWarmupState(int warmupTime);
-qboolean CheckWarmupMinPlayers(void);
+void SetWarmupState(int warmupTime);    // [QL] .so symbol: SetWarmupTime (0x10059c80)
+qboolean TeamsPresent(void);   // [QL] small team-present gate (0x10068120, .so: TeamsPresent)
+qboolean CheckForfeitConditions(gentity_t *ent, int mode);  // [QL] 0x10057d60
+void ForfeitMatch(void);                // [QL] .so symbol: ForfeitMatch (0x10057f90)
 qboolean G_CheckTeamBalance(void);
 qboolean BG_IsScoreBasedGameType(void);
 qboolean ScoreIsTied(void);
@@ -817,16 +833,26 @@ void QDECL G_Error(const char* fmt, ...) __attribute__((noreturn, format(printf,
 void G_ShutdownGame(int restart);
 void G_InitGame(int levelTime, int randomSeed, int restart);
 void G_RunFrame(int levelTime);
+void MP_Pause(gentity_t* ent, int duration);  // [QL] pause/timeout the match
+void MP_PauseThink(void);                      // [QL] per-frame while paused: auto-unpause
 
 // g_gametype_common.c - Shared gametype helpers
 int STAT_GetBestWeapon(gclient_t *cl);
-void STAT_PublishMedal(gentity_t *ent, const char *medal);
-void STAT_RoundOver(int round, int winTeam, int isDraw);
+void STAT_AddPlayerMedalStat(gentity_t *ent, const char *medal);
+void STAT_AddRoundOverStat(int round, int winTeam, int isDraw);
+void STAT_AddScore(gentity_t *ent, int weapon, int amount);   // [QL] 0x10072250 (external stats wire stubbed)
+void STAT_AddPlayerDeathStat(gentity_t *self, gentity_t *attacker, int mod);  // [QL] .so 0xa0420 (Win STAT_PublishDeath); numKills/numDeaths/killStreak/per-weapon accum
+void STAT_AddDamageStat(gentity_t *targ, gentity_t *attacker, int mod, int damage);  // [QL] .so 0x9f5a0 (Win STAT_PublishDamage); totalDamage{Dealt,Taken}/per-weapon accum, called from G_Damage
+void STAT_UpdatePlaytime(gentity_t *ent);  // [QL] .so STAT_UpdatePlaytime (0x10078890); totalPlayTime/weaponUsageTime, called from ClientThink_real
+// [QL] Award emitters (shared non-static; used by player_die + CA/AD/FT/RR round transitions).
+void PlayerAwardEV(gentity_t *ent, int award);          // .so PlayerAwardEV (0x6f990); EV_AWARD broadcast + ps.localPersistant[award+1]++
+void PlayerAwardEF(gentity_t *ent, int persIdx, int efBit);  // .so PlayerAwardEF (0x6fa20); ps.persistant[persIdx]++ + EF_AWARD_* sprite bit
 void LastManStanding(int team);
 qboolean G_ObfuscateEnemyInfoInSnapshotCheck(int clientNum1, int clientNum2);
 
 // g_gametype_duel.c - Duel / Tournament
-void CheckTournament(void);
+void CheckTournament(void);   // [QL] duel ready-start countdown (0x10058600)
+void AddDuelPlayer(void);     // [QL] .so symbol: AddDuelPlayer - queue fill (0x100557f0)
 void AddDuelScore(void);
 void AddTournamentPlayer(void);
 
@@ -857,7 +883,7 @@ void DOM_FragBonuses(gentity_t *attacker, gentity_t *victim);
 // g_gametype_ad.c - Attack & Defend round state machine
 void AD_RoundStateTransition(void);
 qboolean AD_CheckExitRules(int doExit);
-void AD_RunFrame(void);
+void AD_Think(void);
 int AD_IsInPlayState(void);
 int AD_CanScore(void);
 
@@ -880,28 +906,49 @@ extern vmCvar_t g_rrDeathScorePenalty;
 void RR_InitRoundState(void);
 qboolean RR_CheckExitRules(int doExit);
 void RR_RoundStateTransition(void);
-void RR_RunFrame(void);
+void RR_Think(void);
 void RR_OnPlayerDeath(gentity_t *victim);
-void RR_CheckInfection(void);
+void RR_SpreadInfection(void);
 void ClientSpawn_RedRover(gentity_t *ent);
 team_t PickTeam_RoundAware(int clientNum);
-void RR_SurvivalBonus(int mode);
+void RR_SurvivorBonuses(int mode);
+// last survivor on each team from the previous round, defined in g_gametype_rr.c
+extern int rr_lastRedClient;
+extern int rr_lastBlueClient;
+
+// shared round framework (g_gametype_common.c) + per-gametype hooks the frame
+// dispatch calls
+int RR_GetRoundState(void);
+int CheckRoundTimeout(int redAlive, int blueAlive);
+void ClientBegin_RoundBased_impl(gentity_t *ent);
+void Team_InitGame(void);
+void DOM_CheckPlayers(void);
+int AD_GetRoundState(void);
+qboolean AD_CheckRoundEnd(int redAlive, int blueAlive);
 
 // g_gametype_ft.c - Freeze Tag round state machine
 void Freeze_RoundStateTransition(void);
+int Freeze_GetRoundState(void);
+void Freeze_InstaKill(gentity_t *self, int mode);  // [QL] .so Freeze_InstaKill (0x76fa0); mode 1 = destroy frozen body (gib), mode 0 = auto-thaw respawn
 void Freeze_Think(void);
-void Freeze_ClientThawCheck(gentity_t *ent);
+void Freeze_ClientThawCheck(gentity_t *ent, int msec);  // [QL] msec = clamped pmove frame delta from ClientThink_real (binary 0x1004cdc0)
 void Freeze_PlayerFrozen(gentity_t *self);
+void Freeze_AutoThaw(int team);   // [QL] 0x1004cca0 (twin of CA_PlayerKilled; last-man-standing announce)
+void G_ThrowFlag(gentity_t *self, vec3_t point);        // [QL] 0x10051420 (gauntlet flag toss, g_dropFlag)
+void Drop_DamagedHealth(gentity_t *attacker, gentity_t *targ, int amount);  // [QL] 0x1004f930 (bleeding health, g_dropDamagedHealth)
 qboolean Freeze_TeamFrozen(int team);
 qboolean Freeze_GameIsOver(int *aliveCounts, int *healthTotals);
 
 // g_gametype_ca.c - Clan Arena round state machine
-int CA_CheckTimer(void);
+int CA_GetRoundState(void);
 void CA_RoundStateTransition(void);
 qboolean CA_CheckExitRules(int doExit);
-qboolean CA_AccuracyMessage(gentity_t *target, gentity_t *attacker, int *damage, int *knockback);
-void CA_RunFrame(void);
+qboolean CA_AdjustDamage(gentity_t *target, gentity_t *attacker, int *take, int *asave);  // [QL] 0x100380d0 (Win Ghidra mislabel "AccuracyMessage")
+qboolean AD_AdjustDamage(gentity_t *target, gentity_t *attacker, int *take, int *asave);  // [QL] 0x10035880 (Win Ghidra mislabel "AccuracyMessage")
+qboolean RR_AdjustDamage(gentity_t *target, gentity_t *attacker, int *take, int *asave);  // [QL] 0x10064440 (Win Ghidra mislabel "ModifyDamage")
+void CA_Think(void);
 void G_RegisterCvars(void);
+void G_UpdateCustomSettings(void);
 
 //
 // g_client.c
@@ -911,12 +958,12 @@ void ClientUserinfoChanged(int clientNum);
 void ClientDisconnect(int clientNum);
 void ClientBegin(int clientNum);
 void ClientCommand(int clientNum);
-void ClientBegin_Race(gentity_t* ent);
+void RACE_ClientBegin(gentity_t* ent);
 void ClientBegin_RoundBased(gentity_t* ent);
-void ClientBegin_Freeze(gentity_t* ent);
-void ClientBegin_RedRover(gentity_t* ent);
+void Freeze_ClientBegin(gentity_t* ent);
+void RR_ClientBegin(gentity_t* ent);
 void SelectSpawnWeapon(gentity_t* ent);
-void UpdateTeamAliveCount(int *outRed, int *outBlue);
+void Team_LivingTeamCounts(int *outRed, int *outBlue);
 int G_GetAccessLevel(const char* ip);
 void G_ReleaseGrapple(gentity_t* ent);
 void STAT_InitClient(gentity_t* ent);
@@ -1004,6 +1051,7 @@ extern gameImport_t *imports;  // [QL] engine syscall table
 
 #define FOFS(x) ((size_t)&(((gentity_t*)0)->x))
 
+extern vmCvar_t g_version;   // [QL] game version cvar (defined in g_main.c)
 extern vmCvar_t g_gametype;
 extern vmCvar_t g_dedicated;
 extern vmCvar_t g_cheats;
@@ -1253,11 +1301,11 @@ extern vmCvar_t g_freezeAllowRespawn;
 extern vmCvar_t g_lagHaxHistory;
 extern vmCvar_t g_lagHaxMs;
 
-// g_unlagged.c - lag compensation (HAX_* system)
+// g_unlagged.c - hitscan lag compensation (the HAX_* system, per qagamex64.so.symbols)
 void HAX_Init(void);
-void HAX_Clear(gentity_t *ent);
 void HAX_Update(gentity_t *ent);
-void HAX_Begin(gentity_t *shooter, int commandTime);
+void HAX_Clear(gentity_t *ent);
+void HAX_Begin(gentity_t *shooter, int startTime);
 void HAX_End(gentity_t *shooter);
 
 // [QL] weapon modifiers
@@ -1409,6 +1457,7 @@ extern vmCvar_t g_suddenDeathRespawnMax;
 extern vmCvar_t g_suddenDeathRespawnPrint;
 extern vmCvar_t g_suddenDeathRespawnStart;
 extern vmCvar_t g_suddenDeathRespawnTick;
+extern vmCvar_t g_suicidePenaltyTime;   // [QL] DAT_105a136c: ms added to respawnTime on MOD_SUICIDE (player_die/Cmd_Kill_f). Unregistered global in the shipped DLL (reads 0); name is the spec's best-guess. Default "0".
 extern vmCvar_t g_switchTeamDelay;
 extern vmCvar_t g_tackleFlag;
 extern vmCvar_t g_teamSpawnAsSpec;
@@ -1450,6 +1499,8 @@ void trap_SendServerCommand(int clientNum, const char* text);
 void trap_SetConfigstring(int num, const char* string);
 void trap_GetConfigstring(int num, char* buffer, int bufferSize);
 void trap_GetUserinfo(int num, char* buffer, int bufferSize);
+qboolean trap_HasAchievement(int clientNum, int achievementId);  // [QL] inert in standalone
+void trap_SetAchievement(int clientNum, int achievementId);      // [QL] inert in standalone
 void trap_SetUserinfo(int num, const char* buffer);
 void trap_GetServerinfo(char* buffer, int bufferSize);
 void trap_SetBrushModel(gentity_t* ent, const char* name);

@@ -43,6 +43,32 @@ void ScorePlum(gentity_t* ent, vec3_t origin, int score) {
 
 /*
 ============
+DamagePlum
+
+[QL] non-shotgun floating damage number (binary 0x10046680). Spawns an
+EV_DAMAGEPLUM over the victim (z + 32) carrying the amount in s.time, the
+attacker's clientNum (the recipient of the number) in s.clientNum, and the hit
+weapon in s.generic1. Delivered single-client unless g_damagePlums == 2 (then
+broadcast). Shotgun damage is instead accumulated and flushed once per blast.
+============
+*/
+static void DamagePlum(gentity_t *attacker, gentity_t *victim, int damage, int mod) {
+    gentity_t *te;
+    vec3_t org;
+
+    VectorCopy(victim->r.currentOrigin, org);
+    org[2] += 32.0f;
+
+    te = G_TempEntity(org, EV_DAMAGEPLUM);
+    te->r.svFlags |= (g_damagePlums.integer != 2) ? SVF_SINGLECLIENT : SVF_BROADCAST;
+    te->r.singleClient = attacker->client->ps.clientNum;
+    te->s.time = damage;
+    te->s.clientNum = attacker->client->ps.clientNum;
+    te->s.generic1 = BG_GetWeaponFromMeansOfDeath(mod);
+}
+
+/*
+============
 AddScore
 
 Adds score to both the client and his team
@@ -79,13 +105,15 @@ void AddScore( gentity_t *ent, vec3_t origin, int score ) {
 		}
 	}
 
-	// ent->client->ps.persistant[PERS_SCORE] += score;
 	ScorePlum( ent, origin, score );
 	ent->client->ps.persistant[PERS_SCORE] += score;
 
-	// [QL] Team score update
-	if ( g_gametype.integer >= GT_TEAM && g_gametype.integer != GT_RR ) {
-		level.teamScores[ ent->client->ps.persistant[PERS_TEAM] ] += score;
+	// [QL] binary AddScore updates the team score via AddTeamScore only for TDM
+	// (gametype == GT_TEAM); CTF/1FCTF/HARV/DOM maintain level.teamScores through
+	// their own capture/point paths. The old ">= GT_TEAM" test folded individual
+	// bonuses into those modes' team scores, inflating them.
+	if ( g_gametype.integer == GT_TEAM ) {
+		AddTeamScore( origin, ent->client->ps.persistant[PERS_TEAM], score );
 	}
 
 	CalculateRanks();
@@ -322,7 +350,13 @@ char* modNames[] = {
     "MOD_PROXIMITY_MINE",
     "MOD_KAMIKAZE",
     "MOD_JUICED",
-    "MOD_GRAPPLE"};
+    "MOD_GRAPPLE",
+    // [QL] MOD 29-33 added by Quake Live (binary: PTR_s_MOD_UNKNOWN_1008fd58, 34 entries)
+    "MOD_SWITCHTEAM",
+    "MOD_THAW",
+    "MOD_LIGHTNING_DISCHARGE",
+    "MOD_HMG",
+    "MOD_RAILGUN_HEADSHOT"};
 
 /*
 ==================
@@ -367,7 +401,8 @@ void CheckAlmostCapture(gentity_t* self, gentity_t* attacker) {
         self->client->ps.powerups[PW_BLUEFLAG] ||
         self->client->ps.powerups[PW_NEUTRALFLAG]) {
         // get the goal flag this player should have been going for
-        if (g_gametype.integer == GT_CTF) {
+        // [QL] GT_AD carries flags like CTF; head for your own team's flag stand
+        if (g_gametype.integer == GT_CTF || g_gametype.integer == GT_AD) {
             if (self->client->sess.sessionTeam == TEAM_BLUE) {
                 classname = "team_CTF_blueflag";
             } else {
@@ -385,13 +420,22 @@ void CheckAlmostCapture(gentity_t* self, gentity_t* attacker) {
             ent = G_Find(ent, FOFS(classname), classname);
         } while (ent && (ent->flags & FL_DROPPED_ITEM));
         // if we found the destination flag and it's not picked up
-        if (ent && !(ent->r.svFlags & SVF_NOCLIENT)) {
+        // [QL] binary tests s.eFlags & EF_NODRAW, not svFlags
+        if (ent && !(ent->s.eFlags & EF_NODRAW)) {
             // if the player was *very* close
             VectorSubtract(self->client->ps.origin, ent->s.origin, dir);
             if (VectorLength(dir) < 200) {
                 self->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
                 if (attacker->client) {
                     attacker->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
+                    // [QL] numHolyShits: killer denied an enemy carrier near the objective
+                    if (self->client->sess.sessionTeam != attacker->client->sess.sessionTeam) {
+                        attacker->client->expandedStats.numHolyShits++;
+                        if (!trap_HasAchievement(attacker->client->ps.clientNum, 0x18) &&
+                            attacker->client->expandedStats.numHolyShits > 1) {
+                            trap_SetAchievement(attacker->client->ps.clientNum, 0x18);
+                        }
+                    }
                 }
             }
         }
@@ -424,10 +468,55 @@ void CheckAlmostScored(gentity_t* self, gentity_t* attacker) {
                 self->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
                 if (attacker->client) {
                     attacker->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
+                    // [QL] numHolyShits: killer denied an enemy cube-carrier near the obelisk
+                    if (self->client->sess.sessionTeam != attacker->client->sess.sessionTeam) {
+                        attacker->client->expandedStats.numHolyShits++;
+                    }
                 }
             }
         }
     }
+}
+
+// [QL] forward decl - binary sets the EF_TICKING activator's think to SP_info_null
+// (frees on next think), not G_FreeEntity. Defined in g_misc.c.
+void SP_info_null(gentity_t* self);
+
+/*
+==================
+PlayerAwardEV
+[QL] .so PlayerAwardEV (0x6f990) / Win 0x10046730. Broadcasts an EV_AWARD temp entity
+for a medal earned by 'self'. 'award' is the award_t subtype (0..9) carried in s.generic1;
+the localPersistant slot is (award+1) (localPersistant[0] is never an award slot).
+==================
+*/
+void PlayerAwardEV(gentity_t* self, int award) {
+    gentity_t* te;
+    int idx = award + 1;
+
+    self->client->ps.localPersistant[idx]++;
+    te = G_TempEntity(self->client->ps.origin, EV_AWARD);
+    te->r.svFlags |= SVF_BROADCAST;
+    te->s.clientNum = self->client->ps.clientNum;
+    te->s.generic1 = award;
+    te->s.modelindex2 = self->client->ps.localPersistant[idx];
+    self->client->rewardTime = level.time + REWARD_SPRITE_TIME;
+}
+
+/*
+==================
+PlayerAwardEF
+[QL] .so PlayerAwardEF (0x6fa20) / Win 0x100467b0. Sets a persistent EF_AWARD_* sprite bit
+and increments ps.persistant[persIdx]. Clears the six switchable award bits (mask ~0x38848);
+EF_AWARD_DENIED is NOT cleared.
+==================
+*/
+void PlayerAwardEF(gentity_t* self, int persIdx, int efBit) {
+    self->client->ps.persistant[persIdx]++;
+    self->client->ps.eFlags &= ~(EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_CAP |
+                                 EF_AWARD_IMPRESSIVE | EF_AWARD_DEFEND | EF_AWARD_ASSIST);
+    self->client->ps.eFlags |= efBit;
+    self->client->rewardTime = level.time + REWARD_SPRITE_TIME;
 }
 
 /*
@@ -437,43 +526,70 @@ player_die
 */
 void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int damage, int meansOfDeath) {
     gentity_t* ent;
+    gentity_t* te;
     int anim;
     int contents;
     int killer;
     int i;
     char *killerName, *obit;
+    qboolean isLiveFreeze;
 
-    if (self->client->ps.pm_type == PM_DEAD) {
+    // 1. prologue guard (0x100473e8)
+    if (self->client->ps.pm_type == PM_DEAD || self->client->ps.pm_type == PM_FREEZE) {
+        return;
+    }
+    if (level.intermissionQueued || level.intermissionTime) {
         return;
     }
 
-    if (level.intermissionTime) {
-        return;
+    // 2. bot humour (training mode)
+    if ((self->r.svFlags & SVF_BOT) && (g_training.integer == 1 || g_training.integer == 2)) {
+        // [QL] binary uses syscall +0x15c (force client console command); reimpl approximates
+        // with trap_SendServerCommand (imprecise, cosmetic). TODO: exact bot force-command trap.
+        trap_SendServerCommand(self->client->ps.clientNum,
+            "say Oops! Um... I meant to do that! Just don't you do it, ok?");
     }
 
-    // check for an almost capture
+    // 3. almost-capture / almost-score
     CheckAlmostCapture(self, attacker);
-    // check for a player that almost brought in cubes
     CheckAlmostScored(self, attacker);
 
-    if (self->client && self->client->hook) {
+    // 4. release own grapple
+    if (self->client->hook) {
         Weapon_HookFree(self->client->hook);
     }
 
-    // [QL] respawn any held keys back into the world
-    if (self->client->ps.stats[STAT_KEY]) {
-        if (self->client->ps.stats[STAT_KEY] & KEY_SILVER) G_RespawnKey(KEY_SILVER);
-        if (self->client->ps.stats[STAT_KEY] & KEY_GOLD)   G_RespawnKey(KEY_GOLD);
-        if (self->client->ps.stats[STAT_KEY] & KEY_MASTER) G_RespawnKey(KEY_MASTER);
-        self->client->ps.stats[STAT_KEY] = 0;
+    // 5. release enemies grappled to self
+    for (i = 0; i < level.maxclients; i++) {
+        gclient_t* cl = &level.clients[i];
+        if (cl->pers.connected != CON_CONNECTED) {
+            continue;
+        }
+        if (cl->sess.sessionTeam == TEAM_SPECTATOR) {
+            continue;
+        }
+        if (cl->hook && cl->hook->enemy == self) {
+            Weapon_HookFree(cl->hook);
+        }
     }
+
+    // 6. EF_TICKING (prox/kamikaze bomb) cleanup
     if ((self->client->ps.eFlags & EF_TICKING) && self->activator) {
         self->client->ps.eFlags &= ~EF_TICKING;
-        self->activator->think = G_FreeEntity;
+        self->activator->think = SP_info_null;  // [QL] binary: SP_info_null, not G_FreeEntity
         self->activator->nextthink = level.time;
     }
-    self->client->ps.pm_type = PM_DEAD;
 
+    // 7. set pm_type (Freeze-Tag fork)
+    if (!level.intermissionTime && !level.intermissionQueued &&
+        g_gametype.integer == GT_FREEZE && meansOfDeath != MOD_SWITCH_TEAMS) {
+        self->client->ps.pm_type = PM_FREEZE;
+        self->client->ps.thawtime = g_freezeThawTime.integer;
+    } else {
+        self->client->ps.pm_type = PM_DEAD;
+    }
+
+    // 8. resolve killer / obituary string
     if (attacker) {
         killer = attacker->s.number;
         if (attacker->client) {
@@ -485,219 +601,456 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
         killer = ENTITYNUM_WORLD;
         killerName = "<world>";
     }
-
     if (killer < 0 || killer >= MAX_CLIENTS) {
         killer = ENTITYNUM_WORLD;
         killerName = "<world>";
     }
-
     if (meansOfDeath < 0 || meansOfDeath >= ARRAY_LEN(modNames)) {
         obit = "<bad obituary>";
     } else {
         obit = modNames[meansOfDeath];
     }
 
+    // 9. shotgun damage-plum temp entity (before the "Kill:" log)
+    if (attacker && attacker->client && meansOfDeath == MOD_SHOTGUN) {
+        te = G_TempEntity(self->r.currentOrigin, EV_SHOTGUN_KILL);
+        te->s.generic1 = attacker->client->damagePlum[self->s.number];  // accumulated shotgun dmg
+        te->s.otherEntityNum = attacker->s.number;
+        te->s.otherEntityNum2 = self->s.number;
+    }
+
+    // 10. kill log
     G_LogPrintf("Kill: %i %i %i: %s killed %s by %s\n",
                 killer, self->s.number, meansOfDeath, killerName,
                 self->client->pers.netname, obit);
 
-    // broadcast the death event to everyone
-    ent = G_TempEntity(self->r.currentOrigin, EV_OBITUARY);
-    ent->s.eventParm = meansOfDeath;
-    ent->s.otherEntityNum = self->s.number;
-    ent->s.otherEntityNum2 = killer;
-    ent->r.svFlags = SVF_BROADCAST;  // send to everyone
-
-    self->enemy = attacker;
-
-    self->client->ps.persistant[PERS_KILLED]++;
-    self->client->expandedStats.numDeaths++;
-
-    // [QL] GT_RR: death score penalty applied to victim (binary: g_rrDeathScorePenalty)
-    if (g_gametype.integer == GT_RR && g_rrDeathScorePenalty.integer) {
-        AddScore(self, self->r.currentOrigin, g_rrDeathScorePenalty.integer);
+    // 12. EV_OBITUARY (gated on !scoringDisabled)
+    if (!level.scoringDisabled) {
+        ent = G_TempEntity(self->r.currentOrigin, EV_OBITUARY);
+        ent->s.eventParm = meansOfDeath;
+        ent->s.otherEntityNum = self->s.number;
+        ent->s.otherEntityNum2 = killer;
+        ent->r.svFlags = SVF_BROADCAST;
     }
 
+    // 13. enemy / PERS_KILLED / death stat.  STAT_AddPlayerDeathStat does numKills/numDeaths/
+    //     killStreak/per-weapon internally (when !scoringDisabled), so player_die must NOT
+    //     increment numKills/numDeaths itself.
+    self->enemy = attacker;
+    self->client->ps.persistant[PERS_KILLED]++;
+    STAT_AddPlayerDeathStat(self, attacker, meansOfDeath);
+
+    // 14. scoring + award engine
     if (attacker && attacker->client) {
         attacker->client->lastkilled_client = self->s.number;
+        self->client->lastClientKilled = attacker->s.number;
 
-        if (attacker == self || OnSameTeam(self, attacker)) {
+        if (attacker == self) {
+            // 14b. self kill
             AddScore(attacker, self->r.currentOrigin, -1);
+            if (meansOfDeath == MOD_SUICIDE) {   // [QL] binary increments unconditionally
+                self->client->expandedStats.numSuicides++;
+            }
+        } else if (OnSameTeam(self, attacker)) {
+            // 14b. friendly fire (complaint system)
+            if (g_complaintLimit.integer && BG_IsScoreBasedGameType() &&
+                level.warmupTime == 0 && meansOfDeath != MOD_TELEFRAG &&
+                !(attacker->r.svFlags & SVF_BOT)) {
+                if (attacker->client->sess.privileges == 2) {  // VERIFY C1: admin (privileges==2)
+                    trap_SendServerCommand(self->s.number, "complaint -4");
+                } else {
+                    trap_SendServerCommand(self->s.number, va("complaint %i", attacker->s.number));
+                    self->client->pers.complaintClient = attacker->s.clientNum;   // VERIFY C2
+                    self->client->pers.complaintEndTime = level.time + 15500;
+                    attacker->client->pers.damageToTeammates = 0;   // VERIFY C3 (not "complaintCount")
+                    self->client->pers.damageFromTeammates = 0;
+                }
+            }
+            AddScore(attacker, self->r.currentOrigin, -1);
+            attacker->client->expandedStats.numTeamKills++;   // [QL] binary: unconditional
+            self->client->expandedStats.numTeamKilled++;
         } else {
-            attacker->client->expandedStats.numKills++;
-            // [QL] RR Infection: zombie frag bonus - attacker is zombie (binary: player_die)
-            if (g_gametype.integer == GT_RR && g_rrInfected.integer != 0
-                && attacker->client->sess.sessionTeam == TEAM_RED) {
-                AddScore(attacker, self->r.currentOrigin, g_rrInfectedZombieFragBonus.integer);
-            } else {
+            // 14c. enemy kill (award engine)
+
+            // ---- score ----
+            if (g_quadHog.integer == 0) {
+                int score = 1;
+                if (g_gametype.integer == GT_RR && g_rrInfected.integer &&
+                    self->client->sess.sessionTeam == TEAM_RED) {  // VERIFY C4: victim's team
+                    score = g_rrInfectedZombieFragBonus.integer;
+                }
+                AddScore(attacker, self->r.currentOrigin, score);
+                if (g_gametype.integer == GT_RR && g_rrDamageScoreBonus.integer) {
+                    AddScore(attacker, self->r.currentOrigin, g_rrDamageScoreBonus.integer);
+                }
+            } else if (g_quadHog.integer == 1 && g_gametype.integer == GT_FFA &&
+                       (attacker->client->ps.powerups[PW_QUAD] ||
+                        self->client->ps.powerups[PW_QUAD])) {  // VERIFY C5: attacker OR victim quad
                 AddScore(attacker, self->r.currentOrigin, 1);
             }
 
-            // [QL] GT_RR: additional score bonus per kill (binary: DAT_1059da0c)
-            if (g_gametype.integer == GT_RR && g_rrDamageScoreBonus.integer) {
-                AddScore(attacker, self->r.currentOrigin, g_rrDamageScoreBonus.integer);
+            // ---- battlesuit / quad kill counters (ps.stats[5]/[13] are award-gate counters) ----
+            if (attacker->client->ps.powerups[PW_BATTLESUIT]) {
+                attacker->client->ps.stats[5]++;  // [QL] running battlesuit-kill counter (client+0xd4)
+            }
+            if (attacker->client->ps.powerups[PW_QUAD]) {
+                attacker->client->ps.stats[13]++;  // [QL] running quad-kill counter (client+0xf4, QUADGOD gate)
+                attacker->client->expandedStats.numQuadDamageKills++;  // [QL] binary: unconditional
+                if (!trap_HasAchievement(attacker->client->ps.clientNum, 0x2F) &&
+                    attacker->client->expandedStats.numQuadDamageKills > 9) {
+                    trap_SetAchievement(attacker->client->ps.clientNum, 0x2F);
+                }
             }
 
-            if (meansOfDeath == MOD_GAUNTLET) {
-                // play humiliation on player
-                attacker->client->ps.persistant[PERS_GAUNTLET_FRAG_COUNT]++;
+            // ---- FIRSTFRAG (once per match; level.firstFrag[0]=='\0' is the gate) ----
+            if (level.firstFrag[0] == '\0' && level.warmupTime == 0) {
+                // [QL] binary calls G_GetClientCleanNameByClient(level.firstFrag, attacker->client)
+                // to fill the buffer (closing the gate). pers.netname is already the cleaned name.
+                Q_strncpyz(level.firstFrag, attacker->client->pers.netname, sizeof(level.firstFrag));
+                attacker->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_FIRSTFRAG;
+                PlayerAwardEV(attacker, AWARD_FIRSTFRAG);
+                STAT_AddPlayerMedalStat(attacker, "FIRSTFRAG");
+            }
 
-                // add the sprite over the player's head
-                attacker->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP);
-                attacker->client->ps.eFlags |= EF_AWARD_GAUNTLET;
-                attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
-
-                // also play humiliation on target
+            // ---- GAUNTLET humiliation ----
+            if (meansOfDeath == MOD_GAUNTLET &&
+                !(g_gametype.integer == GT_RR && g_rrInfected.integer &&
+                  attacker->client->sess.sessionTeam == TEAM_RED)) {
+                PlayerAwardEF(attacker, PERS_GAUNTLET_FRAG_COUNT, EF_AWARD_GAUNTLET);
                 self->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_GAUNTLETREWARD;
+                STAT_AddPlayerMedalStat(attacker, "GAUNTLET");
+                if (!trap_HasAchievement(attacker->client->ps.clientNum, 0x30) &&
+                    g_gametype.integer == GT_DUEL) {
+                    trap_SetAchievement(attacker->client->ps.clientNum, 0x30);
+                }
             }
 
-            // check for two kills in a short amount of time
-            // if this is close enough to the last kill, give a reward sound
+            // ---- EXCELLENT (two kills within CARNAGE_REWARD_TIME) ----
             if (level.time - attacker->client->lastKillTime < CARNAGE_REWARD_TIME) {
-                // play excellent on player
-                attacker->client->ps.persistant[PERS_EXCELLENT_COUNT]++;
-
-                // add the sprite over the player's head
-                attacker->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP);
-                attacker->client->ps.eFlags |= EF_AWARD_EXCELLENT;
-                attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
+                PlayerAwardEF(attacker, PERS_EXCELLENT_COUNT, EF_AWARD_EXCELLENT);
+                STAT_AddPlayerMedalStat(attacker, "EXCELLENT");
+                if (!trap_HasAchievement(attacker->client->ps.clientNum, 0x17) &&
+                    attacker->client->ps.persistant[PERS_EXCELLENT_COUNT] > 2) {
+                    trap_SetAchievement(attacker->client->ps.clientNum, 0x17);
+                }
             }
+
+            // ---- REVENGE ----
+            self->client->revengeCounter[attacker->s.number]++;
+            if (attacker->client->revengeCounter[self->s.number] > 2) {
+                PlayerAwardEV(attacker, AWARD_REVENGE);
+                STAT_AddPlayerMedalStat(attacker, "REVENGE");
+            }
+            attacker->client->revengeCounter[self->s.number] = 0;
+
+            // ---- COMBOKILL (two rail hits on the victim within 1.5s, 2nd by attacker) ----
+            {
+                // [QL] VERIFY: the binary reads the VICTIM's (self->client) lasthurt tracking,
+                // not the attacker's - the second rail hit on the victim was by the attacker.
+                int wpn = BG_GetWeaponFromMeansOfDeath(meansOfDeath);
+                if ((meansOfDeath == MOD_RAILGUN || meansOfDeath == MOD_RAILGUN_HEADSHOT) &&
+                    wpn != 0 && wpn != WP_ROCKET_LAUNCHER &&
+                    self->client->lasthurt_client[1] == attacker->s.number &&
+                    self->client->lasthurt_time[0] < self->client->lasthurt_time[1] + 1500) {
+                    PlayerAwardEV(attacker, AWARD_COMBOKILL);
+                    STAT_AddPlayerMedalStat(attacker, "COMBOKILL");
+                }
+            }
+
+            // ---- shotgun airborne kill (stat) OR MIDAIR / HEADSHOT / PERFORATED ----
+            if (meansOfDeath == MOD_SHOTGUN) {
+                if (self->client->ps.groundEntityNum == ENTITYNUM_NONE && self->waterlevel == 0) {
+                    attacker->client->expandedStats.numMidairShotgunKills++;  // [QL] binary: unconditional
+                    if (!trap_HasAchievement(attacker->client->ps.clientNum, 0x35) &&
+                        attacker->client->expandedStats.numMidairShotgunKills > 4) {
+                        trap_SetAchievement(attacker->client->ps.clientNum, 0x35);
+                    }
+                }
+            } else {
+                // MIDAIR: splash weapon vs airborne target with clear space below
+                if ((meansOfDeath == MOD_GRENADE || meansOfDeath == MOD_ROCKET ||
+                     meansOfDeath == MOD_PLASMA || meansOfDeath == MOD_BFG ||
+                     meansOfDeath == MOD_NAIL) &&
+                    self->client->ps.groundEntityNum == ENTITYNUM_NONE &&
+                    self->waterlevel == 0) {
+                    vec3_t end;
+                    trace_t tr;
+                    VectorCopy(self->client->ps.origin, end);
+                    end[2] -= g_midAirMinHeight.value;
+                    trap_Trace(&tr, self->client->ps.origin, NULL, NULL, end, ENTITYNUM_NONE, MASK_SOLID);
+                    if (tr.fraction == 1.0f) {
+                        PlayerAwardEV(attacker, AWARD_MIDAIR);
+                        STAT_AddPlayerMedalStat(attacker, "MIDAIR");
+                    }
+                }
+                if (meansOfDeath == MOD_RAILGUN_HEADSHOT) {
+                    PlayerAwardEV(attacker, AWARD_HEADSHOT);
+                    STAT_AddPlayerMedalStat(attacker, "HEADSHOT");
+                } else if (meansOfDeath == MOD_TELEFRAG) {
+                    PlayerAwardEV(attacker, AWARD_PERFORATED);
+                    STAT_AddPlayerMedalStat(attacker, "PERFORATED");
+                }
+            }
+
+            // ---- QUADGOD (every 10th quad kill) ----
+            if (attacker->client->ps.powerups[PW_QUAD]) {
+                int qk = attacker->client->ps.stats[13];
+                if (qk > 9 && (qk % 10) == 0) {
+                    PlayerAwardEV(attacker, AWARD_QUADGOD);
+                    STAT_AddPlayerMedalStat(attacker, "QUADGOD");
+                }
+            }
+
+            // ---- KAMIKAZE achievement ----
+            if (!trap_HasAchievement(attacker->client->ps.clientNum, 0x12) &&
+                meansOfDeath == MOD_KAMIKAZE) {
+                trap_SetAchievement(attacker->client->ps.clientNum, 0x12);
+            }
+
             attacker->client->lastKillTime = level.time;
         }
     } else {
+        // 14a. world / non-client attacker
         AddScore(self, self->r.currentOrigin, -1);
+        if (meansOfDeath == MOD_WATER || meansOfDeath == MOD_SLIME || meansOfDeath == MOD_LAVA ||
+            meansOfDeath == MOD_CRUSH || meansOfDeath == MOD_TELEFRAG || meansOfDeath == MOD_FALLING ||
+            meansOfDeath == MOD_TARGET_LASER || meansOfDeath == MOD_TRIGGER_HURT) {
+            self->client->expandedStats.numSuicides++;   // [QL] binary: unconditional
+        }
     }
 
-    // Add team bonuses
+    // 15. full frag-bonus scoring (defence/assist/carrier).  The reimpl's Team_FragBonuses
+    //     unifies the binary's Team_FragBonuses (carrier-kill broadcast) + Team_FragBonuses_Full
+    //     (defence/assist scoring); a single call covers both split calls (11 + 15).
     Team_FragBonuses(self, inflictor, attacker);
-
-    // [QL] Domination defense bonuses (binary: DOM_FragBonuses 0x1004bb40)
     if (g_gametype.integer == GT_DOMINATION && attacker && attacker->client) {
         DOM_FragBonuses(attacker, self);
     }
 
-    // if I committed suicide, the flag does not fall, it returns.
-    if (meansOfDeath == MOD_SUICIDE) {
-        if (self->client->ps.powerups[PW_NEUTRALFLAG]) {  // only happens in One Flag CTF
+    // 16. flag return on suicide (if g_returnFlagOnSuicide) / always on team-switch
+    if ((meansOfDeath == MOD_SUICIDE && g_returnFlagOnSuicide.integer) ||
+        meansOfDeath == MOD_SWITCH_TEAMS) {
+        if (self->client->ps.powerups[PW_NEUTRALFLAG]) {
             Team_ReturnFlag(TEAM_FREE);
             self->client->ps.powerups[PW_NEUTRALFLAG] = 0;
-        } else if (self->client->ps.powerups[PW_REDFLAG]) {  // only happens in standard CTF
+        } else if (self->client->ps.powerups[PW_REDFLAG]) {
             Team_ReturnFlag(TEAM_RED);
             self->client->ps.powerups[PW_REDFLAG] = 0;
-        } else if (self->client->ps.powerups[PW_BLUEFLAG]) {  // only happens in standard CTF
+        } else if (self->client->ps.powerups[PW_BLUEFLAG]) {
             Team_ReturnFlag(TEAM_BLUE);
             self->client->ps.powerups[PW_BLUEFLAG] = 0;
         }
     }
 
-    TossClientItems(self);
+    // 17. respawn any held keys back into the world (moved late, matching binary order)
+    if (self->client->ps.stats[STAT_KEY]) {
+        if (self->client->ps.stats[STAT_KEY] & KEY_SILVER) G_RespawnKey(KEY_SILVER);
+        if (self->client->ps.stats[STAT_KEY] & KEY_GOLD)   G_RespawnKey(KEY_GOLD);
+        if (self->client->ps.stats[STAT_KEY] & KEY_MASTER) G_RespawnKey(KEY_MASTER);
+        self->client->ps.stats[STAT_KEY] = 0;
+    }
+
+    // 18. nodrop: return any held flag; otherwise toss items
+    contents = trap_PointContents(self->r.currentOrigin, -1);
+    if (contents & CONTENTS_NODROP) {
+        if (self->client->ps.powerups[PW_NEUTRALFLAG]) {
+            Team_ReturnFlag(TEAM_FREE);
+        } else if (self->client->ps.powerups[PW_REDFLAG]) {
+            Team_ReturnFlag(TEAM_RED);
+        } else if (self->client->ps.powerups[PW_BLUEFLAG]) {
+            Team_ReturnFlag(TEAM_BLUE);
+        }
+    } else {
+        TossClientItems(self);
+    }
     TossClientPersistantPowerups(self);
-    if (g_gametype.integer == GT_HARVESTER) {
+
+    // 19. harvester cubes
+    if (g_gametype.integer == GT_HARVESTER && meansOfDeath != MOD_SWITCH_TEAMS) {
         TossClientCubes(self);
     }
 
-    Cmd_Score_f(self);  // show scores
-    // send updated scores to any clients that are following this one,
-    // or they would get stale scoreboards
+    // 20. remove powerups + refresh scoreboards for followers
+    memset(self->client->ps.powerups, 0, sizeof(self->client->ps.powerups));
+    Cmd_Score_f(self);
     for (i = 0; i < level.maxclients; i++) {
-        gclient_t* client;
-
-        client = &level.clients[i];
-        if (client->pers.connected != CON_CONNECTED) {
+        gclient_t* cl = &level.clients[i];
+        if (cl->pers.connected != CON_CONNECTED) {
             continue;
         }
-        if (client->sess.sessionTeam != TEAM_SPECTATOR) {
+        if (cl->sess.sessionTeam != TEAM_SPECTATOR) {
             continue;
         }
-        if (client->sess.spectatorClient == self->s.number) {
-            Cmd_Score_f(g_entities + i);
+        if (cl->sess.spectatorClient == self->s.number && g_entities[i].client) {
+            Cmd_Score_f(&g_entities[i]);
         }
     }
 
-    self->takedamage = qtrue;  // can still be gibbed
-
+    // 21. corpse presentation.  A live Freeze-Tag frozen player keeps normal contents +
+    //     bounding box so teammates can touch to thaw (isLiveFreeze).
+    self->takedamage = qtrue;
     self->s.weapon = WP_NONE;
     self->s.powerups = 0;
-    self->r.contents = CONTENTS_CORPSE;
-
-    self->s.angles[0] = 0;
-    self->s.angles[2] = 0;
-    LookAtKiller(self, inflictor, attacker);
-
-    VectorCopy(self->s.angles, self->client->ps.viewangles);
-
     self->s.loopSound = 0;
 
-    self->r.maxs[2] = -8;
+    isLiveFreeze = (!level.intermissionTime && !level.intermissionQueued &&
+                    g_gametype.integer == GT_FREEZE && meansOfDeath != MOD_SWITCH_TEAMS);
 
-    // don't allow respawn until the death anim is done
-    // g_forcerespawn may force spawning at some later time
-    self->client->respawnTime = level.time + 1700;
+    if (!isLiveFreeze) {
+        self->r.contents = CONTENTS_CORPSE;
+    }
 
-    // remove powerups
-    memset(self->client->ps.powerups, 0, sizeof(self->client->ps.powerups));
+    // LookAtKiller (inlined; QL viewangles live at ps+0xa0)
+    self->s.angles[0] = 0;
+    self->s.angles[2] = 0;
+    if (attacker && attacker != self) {
+        vec3_t dir;
+        dir[0] = attacker->s.pos.trBase[0] - self->s.pos.trBase[0];
+        dir[1] = attacker->s.pos.trBase[1] - self->s.pos.trBase[1];
+        dir[2] = attacker->s.pos.trBase[2] - self->s.pos.trBase[2];
+        self->s.angles[1] = vectoyaw(dir);
+    }
+    self->client->ps.viewangles[0] = 0;
+    self->client->ps.viewangles[1] = self->s.angles[1];
+    self->client->ps.viewangles[2] = self->s.angles[2];
 
-    // never gib in a nodrop
-    contents = trap_PointContents(self->r.currentOrigin, -1);
+    if (!isLiveFreeze) {
+        self->r.maxs[2] = -8;
+    }
 
-    if ((self->health <= GIB_HEALTH && !(contents & CONTENTS_NODROP)) || meansOfDeath == MOD_SUICIDE) {
-        // gib death
-        GibEntity(self, killer);
-    } else {
-        // normal death
-        static int i;
+    // 22. respawn time
+    {
+        qboolean roundGT = (g_gametype.integer == GT_CA || g_gametype.integer == GT_FREEZE ||
+                            g_gametype.integer == GT_AD || g_gametype.integer == GT_RR);
+        qboolean handled = qfalse;
+        if (roundGT && (level.warmupTime > 0 || level.roundState.eCurrent == RS_COUNTDOWN)) {
+            self->client->respawnTime = level.time + 500;
+            handled = qtrue;
+        }
+        if (!handled) {
+            if (level.intermissionTime || level.intermissionQueued ||
+                g_gametype.integer != GT_FREEZE || meansOfDeath == MOD_SWITCH_TEAMS) {
+                int delay = g_forcerespawn.integer ? level.forceRespawnDelay
+                                                   : g_respawn_delay_min.integer;
+                self->client->respawnTime = level.time + delay;
+            }
+        }
+    }
 
-        switch (i) {
-            case 0:
-                anim = BOTH_DEATH1;
-                break;
-            case 1:
-                anim = BOTH_DEATH2;
-                break;
-            case 2:
-            default:
-                anim = BOTH_DEATH3;
-                break;
+    // 23/24. suicide penalty + gib / death-anim / freeze (control flow per VERIFY C7)
+    {
+        qboolean doDeathBranch = qtrue;
+        if (meansOfDeath == MOD_SUICIDE) {
+            if (g_suicidePenaltyTime.integer != 0) {
+                self->client->respawnTime += g_suicidePenaltyTime.integer;
+            }
+            // SUICIDE_ACTIVATE: unless live-freeze, gib-finalize and SKIP the gib/death block
+            if (!(!level.intermissionTime && !level.intermissionQueued &&
+                  g_gametype.integer == GT_FREEZE)) {
+                GibEntity(self, killer);  // [QL] binary Kamikaze_DeathActivate (gib finalizer)
+                doDeathBranch = qfalse;
+            }
         }
 
-        // for the no-blood option, we need to prevent the health
-        // from going to gib level
-        if (self->health <= GIB_HEALTH) {
-            self->health = GIB_HEALTH + 1;
+        if (doDeathBranch) {
+            if (self->health <= GIB_HEALTH &&
+                (level.intermissionTime || level.intermissionQueued ||
+                 g_gametype.integer != GT_FREEZE)) {
+                // ---- GIB + RAMPAGE ----
+                GibEntity(self, killer);
+                if (attacker && attacker->client) {
+                    if (attacker != self && !OnSameTeam(attacker, self)) {
+                        int r = attacker->client->rampageCounter;
+                        if (r == 0 ||
+                            (r == 1 && level.time <= attacker->client->lastGibTime + 3000)) {
+                            attacker->client->rampageCounter++;
+                        } else if (r > 1 && level.time < attacker->client->lastGibTime + 3000) {
+                            PlayerAwardEV(attacker, AWARD_RAMPAGE);
+                            STAT_AddPlayerMedalStat(attacker, "RAMPAGE");
+                            attacker->client->rampageCounter = 0;
+                        }
+                    }
+                    attacker->client->lastGibTime = level.time;
+                }
+            } else {
+                // ---- death anim (or FREEZE) ----
+                static int deathAnim;
+
+                switch (deathAnim) {
+                    case 0:  anim = BOTH_DEATH1; break;
+                    case 1:  anim = BOTH_DEATH2; break;
+                    case 2:
+                    default: anim = BOTH_DEATH3; break;
+                }
+                G_AddEvent(self, EV_DEATH1 + deathAnim, killer);
+                deathAnim = (deathAnim + 1) % 3;
+
+                // prevent the health from staying at gib level (no-blood option)
+                if (self->health <= GIB_HEALTH) {
+                    self->health = GIB_HEALTH + 1;
+                }
+
+                if (!level.intermissionTime && !level.intermissionQueued &&
+                    g_gametype.integer == GT_FREEZE && meansOfDeath != MOD_SWITCH_TEAMS) {
+                    // ---- FREEZE the player instead of body_die ----
+                    self->client->ps.powerups[PW_FREEZE] = 0x7fffffff;
+                    self->s.powerups = 0x8000;  // per-entity freeze/ice presentation bit
+                    self->client->ps.freezetime = level.time;
+                    self->die = player_die;
+                    // insta-kill (gib the frozen body) for {CRUSH, TELEFRAG, LIGHTNING_DISCHARGE}
+                    if (meansOfDeath > MOD_LAVA &&
+                        (meansOfDeath < MOD_FALLING || meansOfDeath == MOD_LIGHTNING_DISCHARGE)) {
+                        Freeze_InstaKill(self, 1);
+                    }
+                } else {
+                    // ---- normal body_die ----
+                    self->client->ps.legsAnim =
+                        ((self->client->ps.legsAnim & ANIM_TOGGLEBIT) ^ ANIM_TOGGLEBIT) | anim;
+                    self->client->ps.torsoAnim =
+                        ((self->client->ps.torsoAnim & ANIM_TOGGLEBIT) ^ ANIM_TOGGLEBIT) | anim;
+                    self->die = body_die;
+                }
+
+                // kamikaze timer entity (both freeze & normal paths)
+                if (self->s.eFlags & EF_KAMIKAZE) {
+                    gentity_t* e = G_Spawn();
+                    e->classname = "kamikaze timer";
+                    VectorCopy(self->s.pos.trBase, e->s.pos.trBase);
+                    e->r.svFlags |= SVF_NOCLIENT;
+                    e->think = G_FreeEntity;  // [QL] binary: G_FreeEntity, nextthink +3000
+                    e->nextthink = level.time + 3000;
+                    e->activator = self;
+                }
+            }
         }
+    }
 
-        self->client->ps.legsAnim =
-            ((self->client->ps.legsAnim & ANIM_TOGGLEBIT) ^ ANIM_TOGGLEBIT) | anim;
-        self->client->ps.torsoAnim =
-            ((self->client->ps.torsoAnim & ANIM_TOGGLEBIT) ^ ANIM_TOGGLEBIT) | anim;
-
-        G_AddEvent(self, EV_DEATH1 + i, killer);
-
-        // the body can still be gibbed
-        self->die = body_die;
-
-        // globally cycle through the different death animations
-        i = (i + 1) % 3;
-
-        if (self->s.eFlags & EF_KAMIKAZE) {
-            Kamikaze_DeathTimer(self);
+    // 25. CA end-of-round achievements
+    if (g_gametype.integer == GT_CA && attacker && attacker->client) {
+        int aliveRed, aliveBlue;
+        Team_LivingTeamCounts(&aliveRed, &aliveBlue);
+        if (aliveRed == 0 || aliveBlue == 0) {
+            if (!trap_HasAchievement(attacker->client->ps.clientNum, 0x32) &&
+                meansOfDeath == MOD_GAUNTLET) {
+                trap_SetAchievement(attacker->client->ps.clientNum, 0x32);
+            }
+            if (!trap_HasAchievement(attacker->client->ps.clientNum, 0x33) &&
+                (meansOfDeath == MOD_GRENADE || meansOfDeath == MOD_GRENADE_SPLASH)) {
+                trap_SetAchievement(attacker->client->ps.clientNum, 0x33);
+            }
         }
+    }
+
+    // 26. gametype death hooks + link
+    if (g_gametype.integer == GT_CA) {
+        CA_Think();  // [QL] TODO: binary CA_PlayerKilled (.so 0x60720); reimpl exposes CA_Think
+    } else if (g_gametype.integer == GT_AD) {
+        AD_Think();
+    } else if (g_gametype.integer == GT_RR) {
+        RR_OnPlayerDeath(self);  // [QL] TODO: binary RR_PlayerKilled (.so 0x905a0)
     }
 
     trap_LinkEntity(self);
-
-    // [QL] Gametype-specific death hooks
-    if (g_gametype.integer == GT_RACE) {
-        Race_ResetCheckpoints(self);
-    } else if (g_gametype.integer == GT_FREEZE) {
-        Freeze_PlayerFrozen(self);
-    } else if (g_gametype.integer == GT_RR) {
-        RR_OnPlayerDeath(self);
-    } else if (g_gametype.integer == GT_CA) {
-        CA_RunFrame();
-    } else if (g_gametype.integer == GT_AD) {
-        AD_RunFrame();
-    }
 }
 
 /*
@@ -743,16 +1096,9 @@ int CheckArmor(gentity_t* ent, int damage, int dflags) {
     if (save >= count)
         save = count;
 
-    if (!save)
-        return 0;
-
-    client->ps.stats[STAT_ARMOR] -= save;
-
-    // [QL] Clear armor type when armor is depleted
-    if (client->ps.stats[STAT_ARMOR] < 1) {
-        client->ps.stats[STAT_ARMORTYPE] = 0;
-    }
-
+    // [QL] binary CheckArmor (0x10048d30) is side-effect free: it only computes the
+    // absorbed amount. The armor deduction and STAT_ARMORTYPE clear are performed by
+    // G_Damage AFTER dmflags/AccuracyMessage may have zeroed asave, not here.
     return save;
 }
 
@@ -855,6 +1201,19 @@ dflags		these flags are used to control how T_Damage works
 
 /*
 ================
+DamageTier - [QL] maps an incoming damage amount to a 2-bit severity tier for the
+crosshair hit-marker. DLL-only helper (Win 0x10048de0, inlined in the Linux build).
+Thresholds (signed): 0-24 -> 0, 25-49 -> 1, 50-74 -> 2, 75+ -> 3.
+================
+*/
+static int DamageTier(int damage) {
+    if (damage > 74) return 3;
+    if (damage > 49) return 2;
+    return (damage > 24);
+}
+
+/*
+================
 G_KnockbackScale - [QL] per-weapon knockback multiplier from cvars
 ================
 */
@@ -880,8 +1239,10 @@ static float G_KnockbackScale(int mod, qboolean isSelf) {
         case MOD_GRENADE_SPLASH: return g_knockback_gl.value;
         case MOD_ROCKET:
         case MOD_ROCKET_SPLASH:  return g_knockback_rl.value;
-        case MOD_LIGHTNING:      return g_knockback_lg.value;
-        case MOD_RAILGUN:        return g_knockback_rg.value;
+        case MOD_LIGHTNING:
+        case MOD_LIGHTNING_DISCHARGE: return g_knockback_lg.value;  // [QL] binary: case 0xb,0x1f -> "lg"
+        case MOD_RAILGUN:
+        case MOD_RAILGUN_HEADSHOT:    return g_knockback_rg.value;  // [QL] binary: case 10,0x21 -> "rg"
         case MOD_PLASMA:
         case MOD_PLASMA_SPLASH:  return g_knockback_pg.value;
         case MOD_BFG:
@@ -890,8 +1251,135 @@ static float G_KnockbackScale(int mod, qboolean isSelf) {
         case MOD_NAIL:           return g_knockback_ng.value;
         case MOD_PROXIMITY_MINE: return g_knockback_pl.value;
         case MOD_CHAINGUN:       return g_knockback_cg.value;
+        case MOD_HMG:            return g_knockback_hmg.value;    // [QL] binary: case 0x20 -> "hmg"
         default:                 return 1.0f;
     }
+}
+
+// [QL] Round-based damage-adjust dispatch targets for G_Damage section 20 are
+// CA_AdjustDamage / AD_AdjustDamage / RR_AdjustDamage, all prototyped in
+// g_local.h. CA_AdjustDamage is the Win Ghidra mislabel "AccuracyMessage".
+
+/*
+============
+G_ThrowFlag
+
+// [QL] G_ThrowFlag (binary 0x10051420)
+On a gauntlet kill (g_dropFlag) the victim tosses whatever flag it carries. Traces a
+small box from the carrier origin to the drop point and only drops if the path is
+clear. Flag priority matches the binary: neutral, then red, then blue. point is the
+drop location (the G_Damage caller passes the victim ps.origin raised 64 units); when
+NULL the drop is placed forward of the carrier.
+============
+*/
+void G_ThrowFlag(gentity_t* self, vec3_t point) {
+    gclient_t* client = self->client;
+    vec3_t launch;
+    vec3_t velocity = { 0, 0, 0 };
+    vec3_t mins = { -15, -15, -15 };
+    vec3_t maxs = { 15, 15, 15 };
+    trace_t tr;
+    int pw;
+    gitem_t* item;
+    gentity_t* drop;
+
+    if (!client) {
+        return;
+    }
+    if (client->ps.pm_type == PM_SPECTATOR) {
+        return;
+    }
+    if (client->ps.pm_flags & PMF_PAUSED) {   // binary: (ps.pm_flags & 0x100) == 0
+        return;
+    }
+
+    if (point) {
+        VectorCopy(point, launch);
+    } else {
+        vec3_t forward;
+        AngleVectors(client->ps.viewangles, forward, NULL, NULL);
+        VectorMA(client->ps.origin, 64.0f, forward, launch);
+    }
+
+    // don't drop the flag into a wall
+    trap_Trace(&tr, client->ps.origin, mins, maxs, launch, ENTITYNUM_NONE, CONTENTS_SOLID);
+    if (tr.fraction != 1.0f) {
+        return;
+    }
+
+    if (client->ps.powerups[PW_NEUTRALFLAG]) {
+        pw = PW_NEUTRALFLAG;
+    } else if (client->ps.powerups[PW_REDFLAG]) {
+        pw = PW_REDFLAG;
+    } else if (client->ps.powerups[PW_BLUEFLAG]) {
+        pw = PW_BLUEFLAG;
+    } else {
+        return;
+    }
+
+    item = BG_FindItemForPowerup(pw);
+    if (!item) {
+        return;
+    }
+
+    drop = LaunchItem(item, launch, velocity);
+    drop->s.modelindex2 = 1;               // dropped-item marker (binary +0x26c)
+    drop->parent = self;                   // binary +0x2e0
+    drop->nextthink = level.time + 10000;  // binary +0x2f4: 10s timeout
+    client->ps.powerups[pw] = 0;
+}
+
+/*
+============
+Drop_DamagedHealth_Ring - launch count copies of item outward in a horizontal ring
+around the target (binary inline loop, speed 200, up 225, spawn offset velocity*0.2).
+============
+*/
+static void Drop_DamagedHealth_Ring(gentity_t* targ, gitem_t* item, int count) {
+    float angle;
+    float step;
+    int i;
+
+    if (!item || count <= 0) {
+        return;
+    }
+    angle = (float)(rand() % 360);
+    step = (float)(360 / count);
+    for (i = 0; i < count; i++) {
+        vec3_t velocity;
+        vec3_t origin;
+        float a = DEG2RAD(targ->s.pos.trBase[1] + angle);
+        velocity[0] = cos(a) * 200.0f;
+        velocity[1] = sin(a) * 200.0f;
+        velocity[2] = 225.0f;
+        origin[0] = targ->s.pos.trBase[0] + velocity[0] * 0.2f;
+        origin[1] = targ->s.pos.trBase[1] + velocity[1] * 0.2f;
+        origin[2] = targ->s.pos.trBase[2] + velocity[2] * 0.2f;
+        LaunchItem(item, origin, velocity);
+        angle += step;
+    }
+}
+
+/*
+============
+Drop_DamagedHealth
+
+// [QL] Drop_DamagedHealth (binary 0x1004f930)
+"Bleeding health": the victim sheds small health pickups worth the damage taken.
+amount/25 copies of "25 Health" and (amount%25)/5 copies of "5 Health" are launched
+outward in a ring.
+============
+*/
+void Drop_DamagedHealth(gentity_t* attacker, gentity_t* targ, int amount) {
+    if (!g_dropDamagedHealth.integer) {
+        return;
+    }
+    // binary skips self-drops when self health damage is disabled
+    if (targ == attacker && (g_dmflags.integer & DF_NO_SELF_DAMAGE)) {
+        return;
+    }
+    Drop_DamagedHealth_Ring(targ, BG_FindItem("25 Health"), amount / 25);
+    Drop_DamagedHealth_Ring(targ, BG_FindItem("5 Health"), (amount % 25) / 5);
 }
 
 void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t dir, vec3_t point, int damage, int dflags, int mod) {
@@ -899,26 +1387,38 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
     int take;
     int asave;
     int knockback;
-    int max;
     vec3_t bouncedir, impactpoint;
 
+    client = targ->client;
+
+    // 1. opening guards
     if (!targ->takedamage) {
         return;
     }
-
-    // the intermission has already been qualified for, so don't
-    // allow any extra scoring
+    if (client && client->noclip) {  // VERIFY #1: noclip guard is early (NOT pm_type)
+        return;
+    }
     if (level.intermissionQueued) {
         return;
     }
-    if (targ->client && mod != MOD_JUICED) {
-        if (targ->client->invulnerabilityTime > level.time) {
+    if (level.intermissionTime) {
+        return;
+    }
+
+    // 2. invulnerability mask + spectator
+    if (client) {
+        if (mod != MOD_JUICED && client->invulnerabilityTime > level.time) {
             if (dir && point) {
                 G_InvulnerabilityEffect(targ, dir, point, impactpoint, bouncedir);
             }
             return;
         }
+        if (client->ps.pm_type == PM_SPECTATOR) {  // VERIFY #1: pm_type==2 == PM_SPECTATOR
+            return;
+        }
     }
+
+    // 3. world-default inflictor / attacker
     if (!inflictor) {
         inflictor = &g_entities[ENTITYNUM_WORLD];
     }
@@ -926,50 +1426,48 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
         attacker = &g_entities[ENTITYNUM_WORLD];
     }
 
-    // shootable doors / buttons don't actually have any health
+    // 4. no player-vs-player damage in race mode
+    // [QL] binary reads an unresolved cvar (DAT_105a0b8c) that blocks ALL client-vs-client
+    // damage; its semantics == race/ghost mode. reimpl keys this off GT_RACE (as missile code does).
+    if (g_gametype.integer == GT_RACE && attacker->client && targ->client && targ != attacker) {
+        return;
+    }
+
+    // 5. shootable movers (doors/buttons)
     if (targ->s.eType == ET_MOVER) {
         if (targ->use && targ->moverState == MOVER_POS1) {
             targ->use(targ, inflictor, attacker);
         }
         return;
     }
+
+    // 6. GT_OBELISK: attacking the obelisk
     if (g_gametype.integer == GT_OBELISK && CheckObeliskAttack(targ, attacker)) {
         return;
     }
-    // reduce damage by the attacker's handicap value
-    // unless they are rocket jumping
-    if (attacker->client && attacker != targ) {
-        max = attacker->client->ps.stats[STAT_MAX_HEALTH];
-        if (bg_itemlist[attacker->client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD) {
-            max /= 2;
-        }
-        damage = damage * max / 100;
-    }
 
-    client = targ->client;
-
-    if (client) {
-        if (client->noclip) {
-            return;
-        }
-    }
-
+    // 7. direction normalise
     if (!dir) {
         dflags |= DAMAGE_NO_KNOCKBACK;
     } else {
         VectorNormalize(dir);
     }
 
-    // [QL] per-weapon knockback multiplier applied BEFORE capping (binary-verified)
-    {
-        float kbScale = G_KnockbackScale(mod, (targ == attacker));
-        // [QL] negative knockback reverses direction (e.g. grapple hook pulls)
-        if (kbScale < 0) {
-            VectorNegate(dir, dir);
-            kbScale = -kbScale;
-        }
-        knockback = (int)(damage * kbScale);
+    // 8. knockback = (int)(scale * damage).  G_KnockbackScale handles the self rl_self/pg_self
+    // variants internally (self RL/PG -> g_knockback_{rl,pg}_self, else per-mod cvar).
+    knockback = (int)((float)damage * G_KnockbackScale(mod, (targ == attacker)));
+    if (client && targ == attacker && g_gametype.integer == GT_RACE && knockback > 0) {
+        client->race.weaponUsed = 1;
     }
+    // [QL] Grapple knockback reduction (binary 0x1004901a, inside G_Damage): for a
+    // non-self MOD_GRAPPLE hit whose hook entity carries a live wait marker, knockback
+    // is cut to 20%. inflictor->wait (+0x370) is only the gate (compared != 0); the 0.2
+    // is a hardcoded double constant (0x1008b350).
+    if (mod == MOD_GRAPPLE && targ != attacker && inflictor->wait != 0.0f) {
+        knockback = (int)(knockback * 0.2);
+    }
+
+    // 9. knockback caps
     if (knockback > g_max_knockback.integer) {
         knockback = g_max_knockback.integer;
     }
@@ -980,43 +1478,81 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
         knockback = 0;
     }
 
-    // figure momentum add, even if the damage won't be taken
-    if (knockback && targ->client) {
+    // 10. [QL] MOD_ROCKET_SPLASH damage recalc (binary 0x10049081). The binary re-derives:
+    //       damage = ftol((1.0 - G_DistanceToBBox(targ, inflictor->r.currentOrigin)
+    //                / inflictor->splashRadius) * (int)g_global_0x105a9a6c) * inflictor->damageFactor
+    //     Fields verified: +0x334 = splashRadius, +0x32c = damageFactor (NOT splashDamage @ +0x330).
+    //     Omitted deliberately: inflictor->damageFactor is 0 for every rocket (neither fire_rocket
+    //     nor CreateMissile writes +0x32c), and the global at 0x105a9a6c reads 0 with no identifiable
+    //     cvar, so the literal recalc would zero rocket splash then clamp to 1. The real falloff
+    //     (splashDamage * (1 - dist/radius)) is applied in G_RadiusDamage, which matches the binary
+    //     G_RadiusDamage Path B; reproducing this branch verbatim would regress that.
+
+    // 11. reduce damage by the attacker's handicap (AFTER knockback)
+    if (attacker->client && attacker != targ) {
+        char userinfo[MAX_INFO_STRING];
+        int h;
+        trap_GetUserinfo(attacker->client->ps.clientNum, userinfo, sizeof(userinfo));
+        h = atoi(Info_ValueForKey(userinfo, "handicap"));
+        if (h < 1 || h > 100) {
+            h = 100;
+        }
+        damage = (damage * h) / 100;
+    }
+
+    // 12. apply knockback velocity + pm_time
+    if (knockback && client) {
         vec3_t kvel;
-        float mass;
+        vec3_t kdir;
+        int k = knockback;
 
-        mass = 200;
+        if (k < 0) {
+            k = -k;
+            VectorNegate(dir, kdir);
+        } else {
+            VectorCopy(dir, kdir);
+        }
+        VectorScale(kdir, g_knockback.value * (float)k / 200.0f, kvel);
+        VectorAdd(client->ps.velocity, kvel, client->ps.velocity);
 
-        VectorScale(dir, g_knockback.value * (float)knockback / mass, kvel);
-        VectorAdd(targ->client->ps.velocity, kvel, targ->client->ps.velocity);
-
-        // set the timer so that the other client can't cancel
-        // out the movement immediately
-        if (!targ->client->ps.pm_time) {
-            int t;
-
-            t = knockback * 2;
-            // [QL] g_knockback_cripple sets minimum pm_time
-            if (t < g_knockback_cripple.integer) {
-                t = g_knockback_cripple.integer;
+        // set the timer so the other client can't immediately cancel the movement
+        if (client->ps.pm_time == 0) {
+            float cr = g_knockback_cripple.value;
+            float t = (float)(k * 2);
+            float r = cr;
+            if (cr <= t) {  // VERIFY V1: the 200 cap only applies on the cripple<=t branch
+                r = t;
+                if (t > 200.0f) {
+                    r = 200.0f;
+                }
             }
-            if (t > 200) {
-                t = 200;
-            }
-            targ->client->ps.pm_time = t;
-            targ->client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
+            client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
+            client->ps.pm_time = (int)r;
         }
     }
 
-    // check for completely getting out of the damage
+    // 13. RR infected-gauntlet insta-666
+    if (g_gametype.integer == GT_RR && g_rrInfected.integer && attacker->client &&
+        attacker->client->sess.sessionTeam == TEAM_RED && mod == MOD_GAUNTLET) {
+        damage = 666;
+    }
+
+    // 14. protection block
     if (!(dflags & DAMAGE_NO_PROTECTION)) {
-        // if TF_NO_FRIENDLY_FIRE is set, don't do damage to the target
-        // if the attacker was on the same team
-        if (mod != MOD_JUICED && targ != attacker && !(dflags & DAMAGE_NO_TEAM_PROTECTION) && OnSameTeam(targ, attacker)) {
-            if (!g_friendlyFire.integer) {
+        // friendly fire
+        if (mod != MOD_JUICED && targ != attacker && !(dflags & DAMAGE_NO_TEAM_PROTECTION)) {
+            if (OnSameTeam(targ, attacker) && !g_friendlyFire.integer) {
                 return;
             }
         }
+        // quad-only FFA (DAT_1059dd6c == g_quadHog): only quad holders may deal damage
+        if (targ->client && attacker->client && g_quadHog.integer &&
+            g_gametype.integer == GT_FFA && attacker != targ) {
+            if (!attacker->client->ps.powerups[PW_QUAD] && !targ->client->ps.powerups[PW_QUAD]) {
+                return;
+            }
+        }
+        // proximity mine
         if (mod == MOD_PROXIMITY_MINE) {
             if (inflictor && inflictor->parent && OnSameTeam(targ, inflictor->parent)) {
                 return;
@@ -1025,59 +1561,99 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
                 return;
             }
         }
-
-        // check for godmode
+        // training bot-vs-bot
+        if (g_training.integer && (attacker->r.svFlags & SVF_BOT) && (targ->r.svFlags & SVF_BOT)) {
+            return;
+        }
+        // godmode
         if (targ->flags & FL_GODMODE) {
+            // [QL] TODO: binary emits a bot-help taunt here (rand + SendServerCommand) before return; omitted.
             return;
         }
     }
 
-    // battlesuit protects from all radius damage (but takes knockback)
-    // and protects 50% against all damage
-    if (client && client->ps.powerups[PW_BATTLESUIT]) {
-        G_AddEvent(targ, EV_POWERUP_BATTLESUIT, 0);
-        if ((dflags & DAMAGE_RADIUS) || (mod == MOD_FALLING)) {
-            return;
+    // 15. battlesuit + armored-spawn dampen
+    if (client) {
+        if (client->ps.powerups[PW_BATTLESUIT]) {
+            G_AddEvent(targ, EV_POWERUP_BATTLESUIT, 0);
+            if (mod == MOD_FALLING) {  // VERIFY: battlesuit blocks ONLY falling (not all radius)
+                return;
+            }
+            damage = (int)((float)damage * g_battleSuitDampen.value);
         }
-        damage *= 0.5;
+        if (client->ps.powerups[0] != 0) {  // armored/spawn-protection slot (powerups[0])
+            damage = (int)((float)damage * g_spawnArmorDmgScale.value);  // .value @ 0x105ab7a8
+        }
     }
 
-    // add to the attacker's hit counter (if the target isn't a general entity like a prox mine)
-    if (attacker->client && client && targ != attacker && targ->health > 0 && targ->s.eType != ET_MISSILE && targ->s.eType != ET_GENERAL) {
+    // 16. attacker hit counter + generic1 damage-tier (DamageTier spec + VERIFY)
+    if (attacker->client && targ != attacker && targ->health > 0 &&
+        targ->s.eType != ET_MISSILE && targ->s.eType != ET_GENERAL) {
         if (OnSameTeam(targ, attacker)) {
             attacker->client->ps.persistant[PERS_HITS]--;
+            damage = (int)((float)damage * g_friendlyFireDampen.value);
         } else {
             attacker->client->ps.persistant[PERS_HITS]++;
+            // [QL] top 2 bits of generic1 = damage-severity tier; low 6 bits (skull count) preserved
+            attacker->client->ps.generic1 =
+                (attacker->client->ps.generic1 & 0x3F) | (DamageTier(damage) << 6);
         }
-        attacker->client->ps.persistant[PERS_ATTACKEE_ARMOR] = (targ->health << 8) | (client->ps.stats[STAT_ARMOR]);
     }
 
-    // always give half damage if hurting self
-    // calculated after knockback, so rocket jumping works
+    // 17. self-damage
     if (targ == attacker) {
-        damage *= 0.5;
+        if (g_instaGib.integer) {
+            return;
+        }
+        damage = (int)((float)damage * 0.5f);
     }
-
     if (damage < 1) {
         damage = 1;
     }
-    take = damage;
 
-    // save some from armor
-    asave = CheckArmor(targ, take, dflags);
-    take -= asave;
+    // 18. rune pre-multiply (stats[STAT_PERSISTANT_POWERUP]; VERIFY #2)
+    if (client) {
+        if (client->ps.stats[STAT_PERSISTANT_POWERUP] == 2) {
+            damage = (int)((float)damage * 0.5f);
+        } else if (client->ps.stats[STAT_PERSISTANT_POWERUP] == 1 &&
+                   targ == attacker && mod != MOD_KAMIKAZE) {
+            damage = 0;
+        }
+    }
 
-    // [QL] CA/AD damage filtering - suppress damage outside playing state, track score-per-damage
+    // 19. save some from armor
+    asave = CheckArmor(targ, damage, dflags);
+    take = damage - asave;
+
+    // 20. CA/AD/RR damage adjust
+    // [QL] The binary calls each gametype's adjust fn as (targ, &take, &asave)
+    // where asave is the CheckArmor result local (NOT knockback, which was
+    // already spent on the velocity push in section 12). Each returns 0 to
+    // abort ALL damage (jump straight to the G_Damage return). CA and AD are
+    // byte-identical except the round-transition + rank recompute; RR gates its
+    // score bump on g_rrDamageScoreBonus and double-books the round score.
     if (!(dflags & DAMAGE_NO_PROTECTION)) {
-        if (g_gametype.integer == GT_CA || g_gametype.integer == GT_AD) {
-            if (!CA_AccuracyMessage(targ, attacker, &take, &knockback)) {
+        if (g_gametype.integer == GT_CA) {
+            // .so CA_AdjustDamage (binary 0x100380d0)
+            if (!CA_AdjustDamage(targ, attacker, &take, &asave)) {
+                return;
+            }
+        } else if (g_gametype.integer == GT_AD) {
+            // .so AD_AdjustDamage (binary 0x10035880)
+            if (!AD_AdjustDamage(targ, attacker, &take, &asave)) {
+                return;
+            }
+        } else if (g_gametype.integer == GT_RR) {
+            // .so RR_AdjustDamage (binary 0x10064440)
+            if (!RR_AdjustDamage(targ, attacker, &take, &asave)) {
                 return;
             }
         }
     }
 
-    // [QL] dmflags: self-damage suppression (not for CA/AD which have their own AdjustDamage)
-    if (g_dmflags.integer && targ == attacker) {
+    // 21. dmflags self-damage suppression (not for CA/AD which have their own adjust)
+    if (g_gametype.integer != GT_CA && g_gametype.integer != GT_AD &&
+        g_dmflags.integer != 0 && targ == attacker) {
         if ((g_dmflags.integer & DF_NO_SELF_DAMAGE) && mod != MOD_KAMIKAZE) {
             take = 0;
         }
@@ -1086,67 +1662,224 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
         }
     }
 
+    // 22. freeze immunity + environmental insta-kill
+    if (client && client->ps.powerups[PW_FREEZE]) {
+        take = 0;
+    }
+    if ((client && client->ps.powerups[PW_FREEZE]) || (targ->s.powerups & 0x8000)) {
+        if (client) {
+            // [QL] TODO: binary QG_SpecialQuad(mod) -> Freeze_InstaKill branch not in reimpl.
+            switch (mod) {
+                case MOD_SLIME:
+                case MOD_LAVA:
+                case MOD_SUICIDE:
+                case MOD_TRIGGER_HURT:
+                    if (level.time > client->ps.freezetime + g_freezeEnvironmentalRespawnDelay.integer) {
+                        Freeze_InstaKill(targ, 1);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    // 23. debug
     if (g_debugDamage.integer) {
         G_Printf("%i: client:%i health:%i damage:%i armor:%i\n", level.time, targ->s.number,
                  targ->health, take, asave);
     }
 
-    // [QL] track damage dealt in expanded stats
-    if (attacker && attacker->client && client && targ != attacker && !OnSameTeam(targ, attacker)) {
-        attacker->client->expandedStats.totalDamageDealt += take + asave;
-    }
-
-    // add to the damage inflicted on a player this frame
-    // the total will be turned into screen blends and view angle kicks
-    // at the end of the frame
+    // 24. damage tracking
     if (client) {
-        if (attacker) {
-            client->ps.persistant[PERS_ATTACKER] = attacker->s.number;
-        } else {
-            client->ps.persistant[PERS_ATTACKER] = ENTITYNUM_WORLD;
-        }
         client->damage_armor += asave;
         client->damage_blood += take;
+        client->ps.persistant[PERS_ATTACKER] = attacker->s.number;
         if (dir) {
             VectorCopy(dir, client->damage_from);
             client->damage_fromWorld = qfalse;
         } else {
-            VectorCopy(targ->r.currentOrigin, client->damage_from);
+            VectorClear(client->damage_from);  // VERIFY #9: zeroed, not targ origin
             client->damage_fromWorld = qtrue;
+        }
+        client->lasthurt_client[1] = client->lasthurt_client[0];
+        client->lasthurt_client[0] = attacker->s.number;
+        client->lasthurt_mod[1] = client->lasthurt_mod[0];
+        client->lasthurt_mod[0] = mod;
+        client->lasthurt_time[1] = client->lasthurt_time[0];
+        client->lasthurt_time[0] = level.time;
+        // [QL] flag regen on the target when the regen gamerules are enabled (binary 0x1004996f/0x1004997e):
+        //      if (g_regenHealth.integer) client->healthRegenActive = 1;
+        //      if (g_regenArmor.integer)  client->armorRegenActive  = 1;
+        if (g_regenHealth.integer) {
+            client->healthRegenActive = qtrue;
+        }
+        if (g_regenArmor.integer) {
+            client->armorRegenActive = qtrue;
         }
     }
 
-    // See if it's the player hurting the emeny flag carrier
-    if (g_gametype.integer == GT_CTF || g_gametype.integer == GT_1FCTF) {
+    // 25. carrier hurt tracking
+    if (g_gametype.integer == GT_CTF || g_gametype.integer == GT_1FCTF ||
+        g_gametype.integer == GT_AD) {
         Team_CheckHurtCarrier(targ, attacker);
     }
 
-    if (targ->client) {
-        // set the last client who damaged the target
-        targ->client->lasthurt_client[0] = attacker->s.number;
-        targ->client->lasthurt_mod[0] = mod;
+    // 26. instagib resolution
+    if (g_instaGib.integer && client) {
+        if (client->ps.powerups[0] != 0) {  // armored: no instagib
+            if (attacker->client && targ != attacker) {
+                attacker->client->ps.persistant[PERS_HITS]--;
+            }
+            return;
+        }
+        switch (mod) {
+            case MOD_SHOTGUN:
+            case MOD_GAUNTLET:
+            case MOD_MACHINEGUN:
+            case MOD_GRENADE:
+            case MOD_ROCKET:
+            case MOD_PLASMA:
+            case MOD_RAILGUN:
+            case MOD_LIGHTNING:
+            case MOD_BFG:
+            case MOD_NAIL:
+            case MOD_CHAINGUN:
+            case MOD_PROXIMITY_MINE:
+            case MOD_GRAPPLE:
+            case MOD_HMG:
+            case MOD_RAILGUN_HEADSHOT:
+                targ->health = -39;  // VERIFY #8: -39 (NOT -999)
+                if (attacker->client && targ != attacker) {
+                    attacker->client->ps.persistant[PERS_ATTACKEE_ARMOR]++;  // lethal-hit kill counter
+                }
+                break;
+            case MOD_GRENADE_SPLASH:
+            case MOD_ROCKET_SPLASH:
+            case MOD_PLASMA_SPLASH:
+            case MOD_BFG_SPLASH:
+                if (attacker->client && targ != attacker) {
+                    attacker->client->ps.persistant[PERS_HITS]--;
+                }
+                return;
+            default:
+                break;
+        }
     }
 
-    // do the damage
-    if (take) {
-        targ->health = targ->health - take;
-        if (targ->client) {
-            targ->client->ps.stats[STAT_HEALTH] = targ->health;
+    // 27. no-op guard
+    if (take == 0 && asave == 0) {
+        return;
+    }
+
+    // 28. [QL] g_dropFlag gauntlet flag toss (binary 0x100499cb, inside G_Damage): on a
+    // gauntlet kill the victim tosses any flag it carries. Binary gate is g_dropFlag != 0
+    // (any bit; the manual /dropflag command separately tests bit 0), mod == MOD_GAUNTLET,
+    // targ has a client. Drop point is the victim ps.origin raised 64 units.
+    if (g_dropFlag.integer && mod == MOD_GAUNTLET && targ->client) {
+        vec3_t flagPoint;
+        flagPoint[0] = targ->client->ps.origin[0];
+        flagPoint[1] = targ->client->ps.origin[1];
+        flagPoint[2] = targ->client->ps.origin[2] + 64.0f;
+        G_ThrowFlag(targ, flagPoint);
+    }
+
+    // 29. DamagePlum
+    if (g_damagePlums.integer && targ->client && attacker->client &&
+        attacker != targ && targ->health > 0) {
+        if (mod == MOD_SHOTGUN) {
+            attacker->client->damagePlum[targ->client->ps.clientNum] += damage;
+        } else {
+            DamagePlum(attacker, targ, damage, mod);
         }
+    }
 
-        if (targ->health <= 0) {
-            if (client)
-                targ->flags |= FL_NO_KNOCKBACK;
+    // 30. damage stats + round damage
+    STAT_AddDamageStat(targ, attacker, mod, damage);
+    if (targ->client && BG_IsRoundBasedGameType(g_gametype.integer)) {
+        targ->client->round_damage += damage;
+    }
 
-            if (targ->health < -999)
-                targ->health = -999;
+    // 31. kill-track + apply damage
+    if (targ->health > 0 && (targ->health - take) <= 0 &&
+        targ->client && attacker->client && targ != attacker) {
+        attacker->client->ps.persistant[PERS_ATTACKEE_ARMOR]++;  // lethal-hit kill counter
+    }
+    targ->health -= take;
+    if (targ->client) {
+        targ->s.health = targ->health;
+        targ->client->ps.stats[STAT_HEALTH] = targ->health;
+        targ->client->ps.stats[STAT_ARMOR] -= asave;
+        targ->s.armor = targ->client->ps.stats[STAT_ARMOR];
+    }
 
-            targ->enemy = attacker;
-            targ->die(targ, inflictor, attacker, take, mod);
+    // 32. [QL] g_dropDamagedHealth "bleeding health" (binary Drop_DamagedHealth 0x1004f930,
+    // called here from G_Damage): the victim sheds health pickups worth the damage just
+    // taken. overkill trims the part of the hit that drove health below zero.
+    if (g_dropDamagedHealth.integer && targ->client && take != 0) {
+        int overkill = 0;
+        if (targ->health < 0) {
+            overkill = -targ->health;
+        }
+        Drop_DamagedHealth(attacker, targ, take - overkill);
+    }
+
+    // 33. vampiric leech
+    if (g_vampiricDamage.value != 0.0f && attacker->client && targ->client && attacker != targ &&
+        !OnSameTeam(attacker, targ) && attacker->health > 0 &&
+        targ->client->ps.pm_type != PM_DEAD && take != 0 &&
+        attacker->health < attacker->client->ps.stats[STAT_MAX_HEALTH] * 2) {
+        int overkill = 0;
+        int heal;
+        if (targ->health < 0) {
+            overkill = -targ->health;
+        }
+        heal = (int)((float)(take - overkill) * g_vampiricDamage.value);
+        attacker->health += heal;
+        attacker->s.health = attacker->health;
+        attacker->client->ps.stats[STAT_HEALTH] = attacker->health;
+        if (attacker->health > attacker->client->ps.stats[STAT_MAX_HEALTH] * 2) {
+            attacker->health = attacker->client->ps.stats[STAT_MAX_HEALTH] * 2;
+            attacker->s.health = attacker->health;
+            attacker->client->ps.stats[STAT_HEALTH] = attacker->health;
+        }
+        attacker->s.health = attacker->client->ps.stats[STAT_HEALTH];
+        if (g_debugVampiricDamage.integer) {
+            G_Printf("%i: client:%i health:%i damage:%i leeched:%i\n",
+                     level.time, targ->s.number, targ->health, take, heal);
+        }
+    }
+
+    // 34. armor-type deplete
+    if (targ->client && armor_tiered.integer && targ->client->ps.stats[STAT_ARMOR] <= 0) {
+        targ->client->ps.stats[STAT_ARMORTYPE] = 0;
+    }
+
+    // 35. death / pain
+    if (targ->health <= 0) {
+        // [QL] binary gates FL_NO_KNOCKBACK on !FreezeTagInGame() && !FreezeTagInWarmup()
+        // so a frozen body can still be shoved during a live/warmup freeze round.
+        if (targ->client && !FreezeTagInGame() && !FreezeTagInWarmup()) {
+            targ->flags |= FL_NO_KNOCKBACK;
+        }
+        if (targ->health < -999) {
+            targ->health = -999;
+        }
+        targ->enemy = attacker;
+        targ->die(targ, inflictor, attacker, take, mod);
+        if (g_gametype.integer == GT_FREEZE && targ->client) {
+            if (g_freezeAutoThawTime.integer &&
+                level.time < targ->client->respawnTime + g_freezeAutoThawTime.integer) {
+                Freeze_InstaKill(targ, 1);
+                return;
+            }
+            Freeze_AutoThaw(targ->client->sess.sessionTeam);
             return;
-        } else if (targ->pain) {
-            targ->pain(targ, attacker, take);
         }
+        return;
+    }
+    if (targ->pain) {
+        targ->pain(targ, attacker, take);
     }
 }
 

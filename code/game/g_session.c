@@ -43,19 +43,23 @@ void G_WriteClientSessionData(gclient_t* client) {
     const char* s;
     const char* var;
 
-    s = va("%i %i %i %i %i %i %i %i %i %i %i %i",
+    // [QL] 13 fields. QL field order: weaponPrimary comes before
+    // wins/losses/teamLeader, and prevScore is appended. updatePlayQueue and
+    // joinTime are not serialised.
+    s = va("%i %ld %i %i %i %i %i %i %i %i %i %i %i",
            client->sess.sessionTeam,
            client->sess.spectatorTime,
            client->sess.spectatorState,
            client->sess.spectatorClient,
+           client->sess.weaponPrimary,
            client->sess.wins,
            client->sess.losses,
            client->sess.teamLeader,
-           client->sess.weaponPrimary,
            client->sess.privileges,
            client->sess.specOnly,
            client->sess.playQueue,
-           client->sess.muted);
+           client->sess.muted,
+           client->sess.prevScore);
 
     var = va("session%i", (int)(client - level.clients));
 
@@ -79,22 +83,25 @@ void G_ReadSessionData(gclient_t* client) {
     var = va("session%i", (int)(client - level.clients));
     trap_Cvar_VariableStringBuffer(var, s, sizeof(s));
 
-    sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i",
+    sscanf(s, "%i %ld %i %i %i %i %i %i %i %i %i %i %i",
            &sessionTeam,
            &client->sess.spectatorTime,
            &spectatorState,
            &client->sess.spectatorClient,
+           &client->sess.weaponPrimary,
            &client->sess.wins,
            &client->sess.losses,
            &teamLeader,
-           &client->sess.weaponPrimary,
            &client->sess.privileges,
            &client->sess.specOnly,
            &client->sess.playQueue,
-           &client->sess.muted);
+           &client->sess.muted,
+           &client->sess.prevScore);
 
-    // if the gametype changed to a team game, force spectator
-    if (g_gametype.integer >= GT_TEAM && level.newSession) {
+    // [QL] force spectator on reconnect only when g_teamSpawnAsSpec is set,
+    // this is a team game and warmup is running (binary reads the cvar's
+    // integer directly, not level.newSession)
+    if (g_teamSpawnAsSpec.integer && g_gametype.integer >= GT_TEAM && level.warmupTime) {
         sessionTeam = TEAM_SPECTATOR;
     }
 
@@ -128,15 +135,12 @@ void G_InitSessionData(gclient_t* client, char* userinfo) {
     }
 
     sess->spectatorState = SPECTATOR_FREE;
-    sess->spectatorTime = level.time;
-    sess->privileges = 0;
-    sess->specOnly = (g_gametype.integer == GT_DUEL) ? 1 : 0;
+    sess->spectatorTime = (int)time(NULL);          // [QL] wall clock, not level.time
+    // [QL] binary calls G_GetAccess(clientNum), which fetches the client's
+    // userinfo/ip and looks it up in the access list itself
+    sess->privileges = G_GetAccess((int)(client - level.clients));
     sess->playQueue = 0;
-    sess->muted = 0;
-    sess->weaponPrimary = 0;
-    sess->prevScore = 0;
-
-    AddTournamentQueue(client);
+    sess->specOnly = (g_gametype.integer == GT_DUEL) ? 1 : 0;
 
     G_WriteClientSessionData(client);
 }

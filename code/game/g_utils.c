@@ -24,48 +24,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "g_local.h"
 
-typedef struct {
-    char oldShader[MAX_QPATH];
-    char newShader[MAX_QPATH];
-    float timeOffset;
-} shaderRemap_t;
-
-#define MAX_SHADER_REMAPS 128
-
-int remapCount = 0;
-shaderRemap_t remappedShaders[MAX_SHADER_REMAPS];
-
-void AddRemap(const char* oldShader, const char* newShader, float timeOffset) {
-    int i;
-
-    for (i = 0; i < remapCount; i++) {
-        if (Q_stricmp(oldShader, remappedShaders[i].oldShader) == 0) {
-            // found it, just update this one
-            strcpy(remappedShaders[i].newShader, newShader);
-            remappedShaders[i].timeOffset = timeOffset;
-            return;
-        }
-    }
-    if (remapCount < MAX_SHADER_REMAPS) {
-        strcpy(remappedShaders[remapCount].newShader, newShader);
-        strcpy(remappedShaders[remapCount].oldShader, oldShader);
-        remappedShaders[remapCount].timeOffset = timeOffset;
-        remapCount++;
-    }
-}
-
-const char* BuildShaderStateConfig(void) {
-    static char buff[MAX_STRING_CHARS * 4];
-    char out[(MAX_QPATH * 2) + 5];
-    int i;
-
-    memset(buff, 0, sizeof(buff));
-    for (i = 0; i < remapCount; i++) {
-        Com_sprintf(out, (MAX_QPATH * 2) + 5, "%s=%s:%5.2f@", remappedShaders[i].oldShader, remappedShaders[i].newShader, remappedShaders[i].timeOffset);
-        Q_strcat(buff, sizeof(buff), out);
-    }
-    return buff;
-}
+// [QL] The Q3 shader-remap subsystem (shaderRemap_t / remappedShaders[] /
+// AddRemap / BuildShaderStateConfig) is absent from qagamex86.dll and
+// qagamex64.so.symbols, and G_UseTargets no longer touches
+// targetShaderName/targetShaderNewName or CS_SHADERSTATE. Removed to stay
+// byte-faithful.
 
 /*
 =========================================================================
@@ -228,11 +191,7 @@ void G_UseTargets(gentity_t* ent, gentity_t* activator) {
         return;
     }
 
-    if (ent->targetShaderName && ent->targetShaderNewName) {
-        float f = level.time * 0.001;
-        AddRemap(ent->targetShaderName, ent->targetShaderNewName, f);
-        trap_SetConfigstring(CS_SHADERSTATE, BuildShaderStateConfig());
-    }
+    // [QL] no targetShaderName/targetShaderNewName shader-remap handling
 
     if (!ent->target) {
         return;
@@ -296,7 +255,8 @@ char* vtos(const vec3_t v) {
     s = str[index];
     index = (index + 1) & 7;
 
-    Com_sprintf(s, 32, "(%i %i %i)", (int)v[0], (int)v[1], (int)v[2]);
+    // [QL] vtos formats components as %.2f floats (Q3 used %i integer casts)
+    Com_sprintf(s, 32, "(%.2f %.2f %.2f)", v[0], v[1], v[2]);
 
     return s;
 }
@@ -449,6 +409,10 @@ Marks the entity as free
 =================
 */
 void G_FreeEntity(gentity_t* ed) {
+    // [QL] qagamex86.dll G_FreeEntity (0x10047100) calls G_StartKamikaze(ed)
+    // first (it self-guards and only detonates for kamikaze-carrying entities).
+    G_StartKamikaze(ed);
+
     trap_UnlinkEntity(ed);  // unlink from world
 
     if (ed->neverFree) {
@@ -557,10 +521,9 @@ Adds an event+parm and twiddles the event counter
 void G_AddEvent(gentity_t* ent, int event, int eventParm) {
     int bits;
 
-    if (!event) {
-        G_Printf("G_AddEvent: zero event added for entity %i\n", ent->s.number);
-        return;
-    }
+    // [QL] no zero-event guard: qagamex86.dll G_AddEvent (0x1006c650) has no
+    // "if (!event)" check or "zero event added" G_Printf; it goes straight to
+    // the client/entity branch.
 
     // clients need to add the event in playerState_t instead of entityState_t
     if (ent->client) {
@@ -587,6 +550,22 @@ void G_Sound(gentity_t* ent, int channel, int soundIndex) {
     gentity_t* te;
 
     te = G_TempEntity(ent->r.currentOrigin, EV_GENERAL_SOUND);
+    te->s.eventParm = soundIndex;
+}
+
+/*
+=============
+G_GlobalSound
+
+[QL] G_GlobalSound (binary 0x1006bf70): plays a non-positional (unattenuated)
+sound by spawning an EV_GLOBAL_SOUND temp entity at the world origin. Unlike Q3's
+version the binary does NOT set SVF_BROADCAST here.
+=============
+*/
+void G_GlobalSound(int soundIndex) {
+    gentity_t* te;
+
+    te = G_TempEntity(vec3_origin, EV_GLOBAL_SOUND);
     te->s.eventParm = soundIndex;
 }
 

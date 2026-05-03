@@ -100,15 +100,16 @@ qboolean CheckGauntletAttack(gentity_t* ent) {
         return qfalse;
     }
 
+    // [QL] Quad and the doubler rune are mutually exclusive, matching FireWeapon.
+    // Quad -> g_quadDamageFactor; else doubler rune (ps.stats[STAT_RUNE] == 3)
+    // gives a flat 1.5x; else 1.0. QL has NO persistantPowerup->PW_DOUBLER path.
     if (ent->client->ps.powerups[PW_QUAD]) {
         G_AddEvent(ent, EV_POWERUP_QUAD, 0);
         s_quadFactor = g_quadDamageFactor.value;
+    } else if (ent->client->ps.stats[STAT_RUNE] == 3) {
+        s_quadFactor = 1.5f;
     } else {
         s_quadFactor = 1;
-    }
-
-    if (ent->client->persistantPowerup && ent->client->persistantPowerup->item && ent->client->persistantPowerup->item->giTag == PW_DOUBLER) {
-        s_quadFactor *= 2;
     }
 
     damage = g_damage_g.integer * s_quadFactor;
@@ -152,6 +153,10 @@ void SnapVectorTowards(vec3_t v, vec3_t to) {
 #define CHAINGUN_DAMAGE 7
 
 // [QL] Heavy Machine Gun
+// TODO [QL faithfulness]: the binary computes HMG spread dynamically per shot in
+// FireWeapon (case 0xe) from a per-client field (spin-up/heat style), not a fixed
+// constant. Formula needs a disassembly pass to recover; until then this uses
+// a fixed spread.
 #define HMG_SPREAD  350
 #define HMG_DAMAGE  8
 
@@ -179,10 +184,10 @@ void Bullet_Fire(gentity_t* ent, float spread, int damage, int mod) {
     VectorMA(end, u, up, end);
 
     passent = ent->s.number;
-    for (i = 0; i < 10; i++) {
+    for (i = 0; i < 2; i++) {  // [QL] 2 invuln bounces, not 10
         // g_playerCylinders: capsule trace for player hits; pmove_noPlayerClip: adjust mask
         {
-            int mask = pmove_NoPlayerClip.integer ? (MASK_SHOT & ~CONTENTS_PLAYERCLIP) : MASK_SHOT;
+            int mask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;
             G_TracePlayerHit(&tr, muzzle, NULL, NULL, end, passent, mask);
         }
         if (tr.surfaceFlags & SURF_NOIMPACT) {
@@ -198,12 +203,6 @@ void Bullet_Fire(gentity_t* ent, float spread, int damage, int mod) {
         if (traceEnt->takedamage && traceEnt->client) {
             tent = G_TempEntity(tr.endpos, EV_BULLET_HIT_FLESH);
             tent->s.eventParm = traceEnt->s.number;
-            if (LogAccuracyHit(traceEnt, ent)) {
-                ent->client->accuracy_hits++;
-                if (ent->s.weapon < 16) {
-                    ent->client->expandedStats.shotsHit[ent->s.weapon]++;
-                }
-            }
         } else {
             tent = G_TempEntity(tr.endpos, EV_BULLET_HIT_WALL);
             tent->s.eventParm = DirToByte(tr.plane.normal);
@@ -223,6 +222,14 @@ void Bullet_Fire(gentity_t* ent, float spread, int damage, int mod) {
                 }
                 continue;
             } else {
+                // [QL] accuracy is counted on the actual-damage path only, not
+                // against invulnerable targets (which bounce/continue above).
+                if (LogAccuracyHit(traceEnt, ent)) {
+                    ent->client->accuracy_hits++;
+                    if (ent->s.weapon < 16) {
+                        ent->client->expandedStats.shotsHit[ent->s.weapon]++;
+                    }
+                }
                 G_Damage(traceEnt, ent, ent, forward, tr.endpos,
                          damage, 0, mod);
             }
@@ -261,7 +268,8 @@ SHOTGUN
 // client predicts same spreads
 #define DEFAULT_SHOTGUN_DAMAGE 10
 
-qboolean ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
+// [QL] returns damage dealt to a valid accuracy target (0 otherwise)
+int ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
     trace_t tr;
     int damage, i, passent;
     gentity_t* traceEnt;
@@ -274,17 +282,17 @@ qboolean ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
     for (i = 0; i < 2; i++) {  // [QL] 2 bounces, not 10
         // g_playerCylinders + pmove_noPlayerClip
         {
-            int mask = pmove_NoPlayerClip.integer ? (MASK_SHOT & ~CONTENTS_PLAYERCLIP) : MASK_SHOT;
+            int mask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;
             G_TracePlayerHit(&tr, tr_start, NULL, NULL, tr_end, passent, mask);
         }
         traceEnt = &g_entities[tr.entityNum];
 
         if (tr.surfaceFlags & SURF_NOIMPACT) {
-            return qfalse;
+            return 0;
         }
 
         if (!traceEnt->takedamage) {
-            return qfalse;
+            return 0;
         }
 
         // [QL] inner vs outer ring damage
@@ -293,6 +301,9 @@ qboolean ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
         } else {
             damage = g_damage_sg_outer.integer;
         }
+
+        // [QL] quad is applied before falloff (binary bakes it into the initial ftol)
+        damage = (int)(damage * s_quadFactor);
 
         // [QL] distance-based damage falloff
         if (g_damage_sg_falloff.integer && g_range_sg_falloff.integer > 0) {
@@ -304,8 +315,6 @@ qboolean ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
             }
             if (damage < 1) damage = 1;
         }
-
-        damage = (int)(damage * s_quadFactor);
 
         if (traceEnt->client && traceEnt->client->invulnerabilityTime > level.time) {
             if (G_InvulnerabilityEffect(traceEnt, forward, tr.endpos, impactpoint, bouncedir)) {
@@ -325,11 +334,11 @@ qboolean ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
         }
         G_Damage(traceEnt, ent, ent, forward, tr.endpos, damage, 0, MOD_SHOTGUN);
         if (LogAccuracyHit(traceEnt, ent)) {
-            return qtrue;
+            return damage;
         }
-        return qfalse;
+        return 0;
     }
-    return qfalse;
+    return 0;
 }
 
 // [QL] Ring-based shotgun pattern (binary-verified from 0x1006d450)
@@ -339,6 +348,8 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
     int i;
     float r, u, angle, ringRadius;
     int ring;
+    int totalDamage = 0;
+    int quality;
     vec3_t end;
     vec3_t forward, right, up;
     qboolean hitClient = qfalse;
@@ -352,19 +363,19 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
         memset(ent->client->damagePlum, 0, sizeof(ent->client->damagePlum));
     }
 
-    // [QL] ring-based pattern (binary-verified from qagamex86.dll 0x1006d450)
-    // Server uses larger radii (8,16,24) and no jitter - clean ring pattern
+    // [QL] concentric ring pattern (binary-verified from qagamex86.dll 0x1006d450)
+    // 3 rings of absolute radii - the muzzle offset is already scaled, no extra spread
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
         if (i < 6) {
-            ringRadius = 8;
+            ringRadius = 4000;
             angle = (float)(i - 20) * (M_PI / 3.0f);
-            ring = 1;  // inner = full damage
+            ring = 1;  // inner ring, full damage
         } else if (i < 12) {
-            ringRadius = 16;
-            angle = (float)i * (M_PI / 3.0f) + (30.0f * M_PI / 180.0f);
+            ringRadius = 8000;
+            angle = (float)i * (M_PI / 3.0f) + 30.0f;  // binary adds 30.0 radians
             ring = 0;  // outer damage
         } else {
-            ringRadius = 24;
+            ringRadius = 12000;
             angle = (float)i * (M_PI / 4.0f);
             ring = 0;  // outer damage
         }
@@ -373,26 +384,41 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
         u = sin(angle) * ringRadius;
 
         VectorMA(origin, 8192 * 16, forward, end);
-        VectorMA(end, r * DEFAULT_SHOTGUN_SPREAD, right, end);
-        VectorMA(end, u * DEFAULT_SHOTGUN_SPREAD, up, end);
+        VectorMA(end, r, right, end);
+        VectorMA(end, u, up, end);
 
-        if (ShotgunPellet(origin, end, ent, ring) && !hitClient) {
-            hitClient = qtrue;
-            ent->client->accuracy_hits++;
-            ent->client->expandedStats.shotsHit[WP_SHOTGUN]++;
+        // [QL] shotsHit counts every pellet that connects; accuracy_hits once per blast
+        {
+            int pelletDamage = ShotgunPellet(origin, end, ent, ring);
+            totalDamage += pelletDamage;
+            if (pelletDamage) {
+                if (!hitClient) {
+                    hitClient = qtrue;
+                    ent->client->accuracy_hits++;
+                }
+                ent->client->expandedStats.shotsHit[WP_SHOTGUN]++;
+            }
         }
     }
 
-    // [QL] Emit EV_DAMAGEPLUM events for each hit client
+    // [QL] encode shotgun quality into ps.generic1 (the "damage tier" field, ps+0x1C0)
+    // bits 6-7, preserving the low 6 bits. Binary (0x1006d450): generic1 = (generic1 & 0x3f)
+    // | (quality << 6). NOT ps.eFlags (which is ps+0x68).
+    if (totalDamage >= 75) quality = 3;
+    else if (totalDamage >= 50) quality = 2;
+    else if (totalDamage > 24) quality = 1;
+    else quality = 0;
+    if (ent->client) {
+        ent->client->ps.generic1 = (ent->client->ps.generic1 & 0x3f) | (quality << 6);
+    }
+
+    // [QL] emit EV_DAMAGEPLUM events for each hit client
     if (g_damagePlums.integer && ent->client) {
         int j;
-        int totalDamage = 0;
         for (j = 0; j < level.maxclients; j++) {
             if (ent->client->damagePlum[j] != 0) {
                 gentity_t *plum;
                 vec3_t org;
-
-                totalDamage += ent->client->damagePlum[j];
 
                 VectorCopy(g_entities[j].r.currentOrigin, org);
                 org[2] += 32.0f;
@@ -405,20 +431,10 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
                 ent->client->damagePlum[j] = 0;
             }
         }
-
-        // [QL] Encode shotgun quality into eFlags bits 6-7
-        {
-            int quality;
-            if (totalDamage >= 75) quality = 3;
-            else if (totalDamage >= 50) quality = 2;
-            else if (totalDamage > 24) quality = 1;
-            else quality = 0;
-            ent->client->ps.eFlags = (ent->client->ps.eFlags & ~0xC0) | (quality << 6);
-        }
     }
 }
 
-void Weapon_Shotgun_Fire(gentity_t* ent) {
+void weapon_supershotgun_fire(gentity_t* ent) {
     gentity_t* tent;
 
     // send shotgun blast
@@ -499,11 +515,11 @@ RAILGUN
 
 /*
 =================
-Weapon_Railgun_Fire
+weapon_railgun_fire
 =================
 */
 #define MAX_RAIL_HITS 4
-void Weapon_Railgun_Fire(gentity_t* ent) {
+void weapon_railgun_fire(gentity_t* ent) {
     vec3_t end;
     vec3_t impactpoint, bouncedir;
     trace_t trace;
@@ -520,6 +536,23 @@ void Weapon_Railgun_Fire(gentity_t* ent) {
 
     VectorMA(muzzle, 8192, forward, end);
 
+    // [QL] rail jump: kick back off a solid surface within 120 units (done before the beam trace)
+    if (g_railJump.integer) {
+        trace_t jumpTr;
+        vec3_t jumpEnd, kickDir;
+
+        VectorMA(muzzle, 120, forward, jumpEnd);
+        trap_Trace(&jumpTr, muzzle, NULL, NULL, jumpEnd, ent->s.number, CONTENTS_SOLID);
+        if (jumpTr.fraction != 1.0f && ent->client) {
+            VectorCopy(end, kickDir);
+            VectorNormalize(kickDir);
+            ent->client->ps.velocity[0] -= (float)g_railJump.integer * kickDir[0];
+            ent->client->ps.velocity[1] -= (float)g_railJump.integer * kickDir[1];
+            ent->client->ps.velocity[2] -= (float)g_railJump.integer * kickDir[2];
+            ent->client->ps.velocity[2] += 20.0f;
+        }
+    }
+
     // trace only against the solids, so the railgun will go through people
     unlinked = 0;
     hits = 0;
@@ -527,7 +560,7 @@ void Weapon_Railgun_Fire(gentity_t* ent) {
     do {
         // g_playerCylinders + pmove_noPlayerClip
         {
-            int mask = pmove_NoPlayerClip.integer ? (MASK_SHOT & ~CONTENTS_PLAYERCLIP) : MASK_SHOT;
+            int mask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;
             G_TracePlayerHit(&trace, muzzle, NULL, NULL, end, passent, mask);
         }
         if (trace.entityNum >= ENTITYNUM_MAX_NORMAL) {
@@ -558,12 +591,21 @@ void Weapon_Railgun_Fire(gentity_t* ent) {
                 if (LogAccuracyHit(traceEnt, ent)) {
                     hits++;
                 }
-                // [QL] headshot detection: surface flag 0x400 on player models = head
-                if ((trace.surfaceFlags & 0x400) && g_headShotDamage_rg.integer) {
-                    G_Damage(traceEnt, ent, ent, forward, trace.endpos,
-                             damage + g_headShotDamage_rg.integer, 0, MOD_RAILGUN_HEADSHOT);
-                } else {
-                    G_Damage(traceEnt, ent, ent, forward, trace.endpos, damage, 0, MOD_RAILGUN);
+                // [QL] per-hit impact effect (binary 0x1006dad0: G_TempEntity(EV_MISSILE_HIT)
+                // with otherEntityNum + weapon, no eventParm) - one per non-invuln hit.
+                tent = G_TempEntity(trace.endpos, EV_MISSILE_HIT);
+                tent->s.otherEntityNum = traceEnt->s.number;
+                tent->s.weapon = ent->s.weapon;
+                // [QL] headshot detection: surface flag 0x400 on player models = head.
+                // The headshot MOD applies whenever the head is hit, even if the bonus is 0.
+                {
+                    int rgDamage = damage;
+                    int rgMod = MOD_RAILGUN;
+                    if (trace.surfaceFlags & 0x400) {
+                        rgDamage += g_headShotDamage_rg.integer;
+                        rgMod = MOD_RAILGUN_HEADSHOT;
+                    }
+                    G_Damage(traceEnt, ent, ent, forward, trace.endpos, rgDamage, 0, rgMod);
                 }
             }
         }
@@ -605,17 +647,6 @@ void Weapon_Railgun_Fire(gentity_t* ent) {
     }
     tent->s.clientNum = ent->s.clientNum;
 
-    // [QL] rail jump: self-knockback when shooting a wall at close range
-    if (g_railJump.integer && trace.entityNum == ENTITYNUM_WORLD) {
-        float dist = Distance(muzzle, trace.endpos);
-        if (dist < 120.0f) {
-            vec3_t kickDir;
-            VectorScale(forward, -1, kickDir);
-            VectorMA(ent->client->ps.velocity, (float)g_railJump.integer, kickDir, ent->client->ps.velocity);
-            ent->client->ps.velocity[2] += 20.0f;
-        }
-    }
-
     // give the shooter a reward sound if they have made two railgun hits in a row
     if (hits == 0) {
         // complete miss
@@ -630,6 +661,7 @@ void Weapon_Railgun_Fire(gentity_t* ent) {
             ent->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP);
             ent->client->ps.eFlags |= EF_AWARD_IMPRESSIVE;
             ent->client->rewardTime = level.time + REWARD_SPRITE_TIME;
+            STAT_AddPlayerMedalStat(ent, "IMPRESSIVE");
         }
         ent->client->accuracy_hits++;
         ent->client->expandedStats.shotsHit[WP_RAILGUN]++;
@@ -645,8 +677,10 @@ GRAPPLING HOOK
 */
 
 void Weapon_GrapplingHook_Fire(gentity_t* ent) {
-    if (!ent->client->fireHeld && !ent->client->hook)
-        fire_grapple(ent, muzzle, forward);
+    if (!ent->client->fireHeld && !ent->client->hook) {
+        gentity_t* hook = fire_grapple(ent, muzzle, forward);
+        hook->damage *= s_quadFactor;
+    }
 
     ent->client->fireHeld = qtrue;
 }
@@ -717,14 +751,14 @@ LIGHTNING GUN
 ======================================================================
 */
 
-void Weapon_Lightning_Fire(gentity_t* ent) {
+void Weapon_LightningFire(gentity_t* ent) {
     trace_t tr;
     vec3_t end;
     vec3_t impactpoint, bouncedir;
     gentity_t *traceEnt, *tent;
     int damage, i, passent;
 
-    damage = g_damage_lg.integer * s_quadFactor;
+    damage = g_damage_lg.integer;  // base; quad is applied at G_Damage time
 
     passent = ent->s.number;
     for (i = 0; i < 2; i++) {  // [QL] binary uses 2 iterations, not 10
@@ -754,7 +788,7 @@ void Weapon_Lightning_Fire(gentity_t* ent) {
 
         // g_playerCylinders + pmove_noPlayerClip
         {
-            int mask = pmove_NoPlayerClip.integer ? (MASK_SHOT & ~CONTENTS_PLAYERCLIP) : MASK_SHOT;
+            int mask = pmove_NoPlayerClip.integer ? CONTENTS_SOLID : MASK_SHOT;
             G_TracePlayerHit(&tr, muzzle, NULL, NULL, end, passent, mask);
         }
 
@@ -794,16 +828,19 @@ void Weapon_Lightning_Fire(gentity_t* ent) {
                 ent->client->accuracy_hits++;
                 ent->client->expandedStats.shotsHit[WP_LIGHTNING]++;
             }
-            // [QL] LG distance falloff
+            // [QL] LG distance falloff on base damage, then quad at G_Damage (matches binary)
             {
                 int actualDamage = damage;
                 if (g_damage_lg_falloff.integer && g_range_lg_falloff.integer > 0) {
-                    float dist = Distance(muzzle, tr.endpos);
-                    int steps = (int)(dist / g_range_lg_falloff.integer);
-                    actualDamage -= steps * g_damage_lg_falloff.integer;
+                    int falloffRange = (int)Distance(muzzle, tr.endpos);
+                    while (falloffRange > 0 && g_range_lg_falloff.integer != 0) {
+                        falloffRange -= g_range_lg_falloff.integer;
+                        actualDamage -= g_damage_lg_falloff.integer;
+                    }
                     if (actualDamage < 1) actualDamage = 1;
                 }
-                G_Damage(traceEnt, ent, ent, forward, tr.endpos, actualDamage, 0, MOD_LIGHTNING);
+                G_Damage(traceEnt, ent, ent, forward, tr.endpos,
+                         (int)(actualDamage * s_quadFactor), 0, MOD_LIGHTNING);
             }
         }
 
@@ -850,7 +887,7 @@ PROXIMITY MINE LAUNCHER
 ======================================================================
 */
 
-void Weapon_ProxLauncher_Fire(gentity_t* ent) {
+void weapon_proxlauncher_fire(gentity_t* ent) {
     gentity_t* m;
 
     // extra vertical velocity
@@ -907,11 +944,12 @@ set muzzle location relative to pivoting eye
 ===============
 */
 void CalcMuzzlePoint(gentity_t* ent, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint) {
+    // [QL] muzzle forward offset is 5 standing / 3 ducked, and there is NO SnapVector.
+    // Binary CalcMuzzlePoint 0x1006c8c0 (Q3 used 14 + SnapVector).
+    float offset = (ent->client->ps.pm_flags & PMF_DUCKED) ? 3.0f : 5.0f;
     VectorCopy(ent->s.pos.trBase, muzzlePoint);
     muzzlePoint[2] += ent->client->ps.viewheight;
-    VectorMA(muzzlePoint, 14, forward, muzzlePoint);
-    // snap to integer coordinates for more efficient network bandwidth usage
-    SnapVector(muzzlePoint);
+    VectorMA(muzzlePoint, offset, forward, muzzlePoint);
 }
 
 /*
@@ -922,11 +960,12 @@ set muzzle location relative to pivoting eye
 ===============
 */
 void CalcMuzzlePointOrigin(gentity_t* ent, vec3_t origin, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint) {
+    // [QL] muzzle forward offset is 5 standing / 3 ducked, and there is NO SnapVector.
+    // Binary CalcMuzzlePoint 0x1006c8c0 (Q3 used 14 + SnapVector).
+    float offset = (ent->client->ps.pm_flags & PMF_DUCKED) ? 3.0f : 5.0f;
     VectorCopy(ent->s.pos.trBase, muzzlePoint);
     muzzlePoint[2] += ent->client->ps.viewheight;
-    VectorMA(muzzlePoint, 14, forward, muzzlePoint);
-    // snap to integer coordinates for more efficient network bandwidth usage
-    SnapVector(muzzlePoint);
+    VectorMA(muzzlePoint, offset, forward, muzzlePoint);
 }
 
 /*
@@ -935,26 +974,45 @@ FireWeapon
 ===============
 */
 void FireWeapon(gentity_t* ent) {
+    // [QL] Quad and the doubler rune are mutually exclusive. Quad -> g_quadDamageFactor;
+    // otherwise the doubler rune (ps.stats[STAT_RUNE] == 3) gives a flat 1.5x; else 1.0.
+    // QL has NO persistantPowerup->PW_DOUBLER mechanism here.
+    // Verified vs qagamex86.dll FireWeapon 0x1006f280.
     if (ent->client->ps.powerups[PW_QUAD]) {
         s_quadFactor = g_quadDamageFactor.value;
+    } else if (ent->client->ps.stats[STAT_RUNE] == 3) {
+        s_quadFactor = 1.5f;
     } else {
-        s_quadFactor = 1;
-    }
-
-    if (ent->client->persistantPowerup && ent->client->persistantPowerup->item && ent->client->persistantPowerup->item->giTag == PW_DOUBLER) {
-        s_quadFactor *= 2;
+        s_quadFactor = 1.0f;
     }
 
     // track shots taken for accuracy tracking.  Grapple is not a weapon and gauntet is just not tracked
-    if (ent->s.weapon != WP_GRAPPLING_HOOK && ent->s.weapon != WP_GAUNTLET) {
-        if (ent->s.weapon == WP_NAILGUN) {
+    if (ent->s.weapon != WP_GRAPPLING_HOOK && ent->s.weapon != WP_GAUNTLET
+        && ent->s.weapon != WP_NUM_WEAPONS) {
+        int shotsFired;
+        // [QL] shotgun counts all 20 pellets, nailgun counts each nail
+        if (ent->s.weapon == WP_SHOTGUN) {
+            shotsFired = DEFAULT_SHOTGUN_COUNT;
+            ent->client->accuracy_shots++;
+        } else if (ent->s.weapon == WP_NAILGUN) {
+            shotsFired = g_nailcount.integer;
             ent->client->accuracy_shots += g_nailcount.integer;
         } else {
+            shotsFired = 1;
             ent->client->accuracy_shots++;
         }
         // [QL] per-weapon shot tracking
         if (ent->s.weapon < 16) {
-            ent->client->expandedStats.shotsFired[ent->s.weapon]++;
+            ent->client->expandedStats.shotsFired[ent->s.weapon] += shotsFired;
+        }
+        // [QL] FireWeapon @0x1006f280 also publishes the shot to the stats
+        // backend (STAT_AddScore, unless GT_RACE) and, in round-based gametypes,
+        // accumulates the per-round accuracy shot count.
+        if (g_gametype.integer != GT_RACE) {
+            STAT_AddScore(ent, ent->s.weapon, shotsFired);
+        }
+        if (BG_IsRoundBasedGameType(g_gametype.integer)) {
+            ent->client->round_shots += shotsFired;
         }
     }
 
@@ -977,14 +1035,21 @@ void FireWeapon(gentity_t* ent) {
             Weapon_Gauntlet(ent);
             break;
         case WP_LIGHTNING:
-            Weapon_Lightning_Fire(ent);
+            Weapon_LightningFire(ent);
             break;
         case WP_SHOTGUN:
-            Weapon_Shotgun_Fire(ent);
+            weapon_supershotgun_fire(ent);
             break;
-        case WP_MACHINEGUN:
-            Bullet_Fire(ent, MACHINEGUN_SPREAD, g_damage_mg.integer, MOD_MACHINEGUN);
+        case WP_MACHINEGUN: {
+            // [QL] MG spread is 150 base, scaled by g_ironsights_mg when crouched
+            // (binary FireWeapon case 2 @0x1006f4b9). Q3 used a fixed 200.
+            float mgSpread = 150.0f;
+            if (ent->client->ps.pm_flags & PMF_DUCKED) {
+                mgSpread *= g_ironsights_mg.value;
+            }
+            Bullet_Fire(ent, mgSpread, g_damage_mg.integer, MOD_MACHINEGUN);
             break;
+        }
         case WP_GRENADE_LAUNCHER:
             Weapon_GrenadeLauncher_Fire(ent);
             break;
@@ -995,7 +1060,7 @@ void FireWeapon(gentity_t* ent) {
             Weapon_Plasmagun_Fire(ent);
             break;
         case WP_RAILGUN:
-            Weapon_Railgun_Fire(ent);
+            weapon_railgun_fire(ent);
             break;
         case WP_BFG:
             Weapon_BFG_Fire(ent);
@@ -1007,22 +1072,27 @@ void FireWeapon(gentity_t* ent) {
             Weapon_Nailgun_Fire(ent);
             break;
         case WP_PROX_LAUNCHER:
-            Weapon_ProxLauncher_Fire(ent);
+            weapon_proxlauncher_fire(ent);
             break;
         case WP_CHAINGUN:
-            Bullet_Fire(ent, CHAINGUN_SPREAD, g_damage_cg.integer, MOD_CHAINGUN);
+            // [QL] binary FireWeapon pushes mod 0x20 (MOD_HMG) for the chaingun and
+            // 0x18 (MOD_CHAINGUN) for the HMG - the two means-of-death are swapped
+            // relative to the intuitive mapping. This drives knockback cvar,
+            // obituary text, kill icon and MOD-keyed stats.
+            Bullet_Fire(ent, CHAINGUN_SPREAD, g_damage_cg.integer, MOD_HMG);
             break;
         case WP_HMG:
-            Bullet_Fire(ent, HMG_SPREAD, g_damage_hmg.integer, MOD_HMG);
+            Bullet_Fire(ent, HMG_SPREAD, g_damage_hmg.integer, MOD_CHAINGUN);
             break;
         default:
             // FIXME		G_Error( "Bad ent->s.weapon" );
             break;
     }
 
-    // [QL] End lag compensation
+    // [QL] End lag compensation - restore the rewound players. The binary skips
+    // the restore for bots (FireWeapon @0x1006f616: r.svFlags & SVF_BOT).
     if (g_lagHaxMs.integer != 0 && g_lagHaxHistory.integer != 0) {
-        if ((0x60cc >> (ent->s.weapon & 0x1f)) & 1) {
+        if (((0x60cc >> (ent->s.weapon & 0x1f)) & 1) && !(ent->r.svFlags & SVF_BOT)) {
             HAX_End(ent);
         }
     }
@@ -1224,6 +1294,20 @@ void G_StartKamikaze(gentity_t* ent) {
     gentity_t* explosion;
     gentity_t* te;
     vec3_t snapped;
+
+    // [QL] G_FreeEntity (0x10047100) calls this on EVERY freed entity (temp
+    // entities, missiles, info_null, ...), so it must early-out for anything that
+    // isn't detonating a kamikaze. A client kamikaze carries EF_KAMIKAZE;
+    // a non-client kamikaze corpse carries a valid activator. A plain freed entity
+    // has neither, so return before spawning the explosion (and before the
+    // activator deref below that was crashing on info_null spawn).
+    if (ent->client) {
+        if (!(ent->s.eFlags & EF_KAMIKAZE)) {
+            return;
+        }
+    } else if (!ent->activator) {
+        return;
+    }
 
     // start up the explosion logic
     explosion = G_Spawn();

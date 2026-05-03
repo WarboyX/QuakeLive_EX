@@ -324,7 +324,7 @@ typedef struct {
     /* 0x660 */ int     (*trap_GetSteamStat)(int clientNum, int statID);
     /* 0x668 */ qboolean(*trap_VerifySteamAuth)(int clientNum);
 
-    /* 0x670 */ /* end - total 206 slots × 8 = 1648 bytes */
+    /* 0x670 */ /* end - total 206 slots x 8 = 1648 bytes */
 } gameImport_t;
 
 // [QL] vmMain export table - completely reordered vs Q3.
