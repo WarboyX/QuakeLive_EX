@@ -24,17 +24,86 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../../ui/menudef.h"  // for the voice chats
 
-// DeathmatchScoreboardMessage moved to g_gametype_ffa.c
+// FreeForAllScoreboardMessage moved to g_gametype_ffa.c
 
 /*
 ==================
 Cmd_Score_f
 
-Request current scoreboard information
+Request current scoreboard information.
+
+[QL] Q3 sent the FFA scoreboard for every gametype. QL dispatches to a
+per-gametype scoreboard emitter and, at intermission, also broadcasts the
+extended per-client team-stats rows that feed cgame
+CG_ParseTeamStats_TDM/CA/CTF: TeamDeathmatchStatisticsMessage -> "tdmstats" (TEAM + FREEZE),
+ClanArenaStatisticsMessage -> "castats" (CA), CaptureTheFlagStatisticsMessage -> "ctfstats"
+(CTF/1FCTF/HARVESTER/DOMINATION/AD). The Ghidra project mislabelled the last two
+(CTF_impl was tagged the castats fn, CTF's ctfstats fn was tagged FT_impl); corrected
+here and in the project to match what each emits.
+
+// Address: 0x1003f690 (Cmd_Score_f) -> 0x1003cde0 (Cmd_Score_impl)
 ==================
 */
 void Cmd_Score_f(gentity_t* ent) {
-    DeathmatchScoreboardMessage(ent);
+    if (!ent || !ent->client) {
+        return;
+    }
+
+    switch (g_gametype.integer) {
+        case GT_FFA:
+            FreeForAllScoreboardMessage(ent);
+            break;
+        case GT_DUEL:
+            DuelScoreboardMessage(ent);
+            break;
+        case GT_RACE:
+            RaceScoreboardMessage(ent);
+            break;
+        case GT_TEAM:
+            TeamDeathmatchScoreboardMessage(ent);
+            break;
+        case GT_CA:
+            ClanArenaScoreboardMessage(ent);
+            break;
+        case GT_CTF:
+        case GT_1FCTF:
+        case GT_HARVESTER:
+        case GT_DOMINATION:
+        case GT_AD:
+            CaptureTheFlagScoreboardMessage(ent);
+            break;
+        case GT_FREEZE:
+            FreezeTagScoreboardMessage(ent);
+            break;
+        case GT_RR:
+            RedRoverScoreboardMessage(ent);
+            break;
+        default:
+            // GT_OBELISK (7) has no dedicated scoreboard emitter in QL.
+            break;
+    }
+
+    // QL only sends the extended per-client team stats at intermission.
+    if (level.intermissionTime) {
+        switch (g_gametype.integer) {
+            case GT_TEAM:
+            case GT_FREEZE:
+                TeamDeathmatchStatisticsMessage(ent);   // "tdmstats"
+                break;
+            case GT_CA:
+                ClanArenaStatisticsMessage(ent);    // "castats"
+                break;
+            case GT_CTF:
+            case GT_1FCTF:
+            case GT_HARVESTER:
+            case GT_DOMINATION:
+            case GT_AD:
+                CaptureTheFlagStatisticsMessage(ent);   // "ctfstats"
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 /*
@@ -382,8 +451,23 @@ void Cmd_Kill_f(gentity_t* ent) {
     if (ent->health <= 0) {
         return;
     }
-    ent->flags &= ~FL_GODMODE;
-    ent->client->ps.stats[STAT_HEALTH] = ent->health = -999;
+    // [QL] Cmd_Kill_f (binary 0x100403b0): /kill is gated on the g_allowKill cvar
+    // (DAT_105a136c). The binary only tests it for zero (on/off) - despite the
+    // "1000" default that looks like a millisecond value there is no cooldown,
+    // rate limit or timestamp field read/written here. When disabled it prints the
+    // message and returns without killing.
+    if (!g_allowKill.integer) {
+        trap_SendServerCommand(ent - g_entities,
+                               "print \"Kill is not enabled on this server.\n\"");
+        return;
+    }
+
+    // [QL] binary does NOT clear FL_GODMODE here (Q3 did). It forces -999 into
+    // s.health (networked entityState), ent->health and ps.stats[STAT_HEALTH],
+    // then calls player_die.
+    ent->s.health = -999;
+    ent->health = -999;
+    ent->client->ps.stats[STAT_HEALTH] = -999;
     player_die(ent, ent, ent, 100000, MOD_SUICIDE);
 }
 
@@ -617,23 +701,23 @@ Cmd_Team_f
 void Cmd_Team_f(gentity_t* ent) {
     int oldTeam;
     char s[MAX_TOKEN_CHARS];
+    const char* teamName;
 
     if (trap_Argc() != 2) {
+        // [QL] Binary (0x10040f70) prints a single "print \"%s\n\"" with the
+        // team name: RED->"Red Team", BLUE->"Blue Team", SPECTATOR->"Spectator",
+        // anything else (incl. TEAM_FREE)->"Team Free".
         oldTeam = ent->client->sess.sessionTeam;
-        switch (oldTeam) {
-            case TEAM_BLUE:
-                trap_SendServerCommand(ent - g_entities, "print \"Blue team\n\"");
-                break;
-            case TEAM_RED:
-                trap_SendServerCommand(ent - g_entities, "print \"Red team\n\"");
-                break;
-            case TEAM_FREE:
-                trap_SendServerCommand(ent - g_entities, "print \"Free team\n\"");
-                break;
-            case TEAM_SPECTATOR:
-                trap_SendServerCommand(ent - g_entities, "print \"Spectator team\n\"");
-                break;
+        if (oldTeam == TEAM_RED) {
+            teamName = "Red Team";
+        } else if (oldTeam == TEAM_BLUE) {
+            teamName = "Blue Team";
+        } else if (oldTeam == TEAM_SPECTATOR) {
+            teamName = "Spectator";
+        } else {
+            teamName = "Team Free";
         }
+        trap_SendServerCommand(ent - g_entities, va("print \"%s\n\"", teamName));
         return;
     }
 
@@ -643,7 +727,8 @@ void Cmd_Team_f(gentity_t* ent) {
     }
 
     // if they are playing a tournement game, count as a loss
-    if ((g_gametype.integer == GT_DUEL) && ent->client->sess.sessionTeam == TEAM_FREE) {
+    // [QL] Binary also gates this on level.warmupTime == 0.
+    if ((level.warmupTime == 0) && (g_gametype.integer == GT_DUEL) && ent->client->sess.sessionTeam == TEAM_FREE) {
         ent->client->sess.losses++;
     }
 
@@ -710,16 +795,18 @@ void Cmd_FollowCycle_f(gentity_t* ent, int dir) {
     int original;
 
     // if they are playing a tournement game, count as a loss
-    if ((g_gametype.integer == GT_DUEL) && ent->client->sess.sessionTeam == TEAM_FREE) {
+    // [QL] Binary (0x100414c0) also gates this on level.warmupTime == 0.
+    if ((level.warmupTime == 0) && (g_gametype.integer == GT_DUEL) && ent->client->sess.sessionTeam == TEAM_FREE) {
         ent->client->sess.losses++;
     }
     // first set them to spectator
-    if (ent->client->sess.spectatorState == SPECTATOR_NOT) {
+    // [QL] Binary tests sessionTeam != TEAM_SPECTATOR (not spectatorState).
+    if (ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
         SetTeam(ent, "spectator");
     }
 
     if (dir != 1 && dir != -1) {
-        G_Error("Cmd_FollowCycle_f: bad dir %i", dir);
+        G_Error("FollowCycle: bad dir %i", dir);
     }
 
     // if dedicated follow client, just switch between the two auto clients
@@ -756,6 +843,20 @@ void Cmd_FollowCycle_f(gentity_t* ent, int dir) {
         // this is good, we can use it
         ent->client->sess.spectatorClient = clientnum;
         ent->client->sess.spectatorState = SPECTATOR_FOLLOW;
+
+        // [QL] Race: send the followed player's race timing to the spectator.
+        // Binary: Cmd_FollowCycle_f 0x10041310 -> va("race_info %i %i %i %i %i %i", ...)
+        if (g_gametype.integer == GT_RACE) {
+            gclient_t* cl = &level.clients[clientnum];
+            trap_SendServerCommand(ent - g_entities,
+                va("race_info %i %i %i %i %i %i",
+                   cl->race.racingActive == 1,
+                   cl->race.startTime,
+                   cl->race.lastTime,
+                   cl->race.currentCheckPoint,
+                   cl->race.nextRacePoint ? cl->race.nextRacePoint->s.number : -1,
+                   cl->race.nextRacePoint2 ? cl->race.nextRacePoint2->s.number : -1));
+        }
         return;
     } while (clientnum != original);
 
@@ -789,8 +890,14 @@ static void G_SayTo(gentity_t* ent, gentity_t* other, int mode, int color, const
         return;
     }
 
-    trap_SendServerCommand(other - g_entities, va("%s \"%s%c%c%s\"",
+    // [QL] The chat/tchat relay carries the sender's clientNum as a leading
+    // "%02d " field inside the quoted payload; the cgame chat/tchat handler
+    // reads it via atoi(CG_Argv(1)) to associate the message (and its voice
+    // sound) with the speaking client. Q3 omitted this field.
+    // Address: 0x10041510 (per-recipient chat/voice emitter)
+    trap_SendServerCommand(other - g_entities, va("%s \"%02d %s%c%c%s\"",
                                                   mode == SAY_TEAM ? "tchat" : "chat",
+                                                  ent->s.number,
                                                   name, Q_COLOR_ESCAPE, color, message));
 }
 
@@ -1180,7 +1287,13 @@ Cmd_Where_f
 ==================
 */
 void Cmd_Where_f(gentity_t* ent) {
-    trap_SendServerCommand(ent - g_entities, va("print \"%s\n\"", vtos(ent->r.currentOrigin)));
+    // [QL] Binary (0x10042360) formats the origin as "(%.2f %.2f %.2f)" (floats,
+    // parenthesised) via a rotating static buffer, NOT Q3's vtos() ("%i %i %i").
+    char buf[32];
+
+    Com_sprintf(buf, sizeof(buf), "(%.2f %.2f %.2f)",
+                ent->r.currentOrigin[0], ent->r.currentOrigin[1], ent->r.currentOrigin[2]);
+    trap_SendServerCommand(ent - g_entities, va("print \"%s\n\"", buf));
 }
 
 // [QL] use shared gametypeDisplayNames[] from bg_misc.c
@@ -1211,26 +1324,34 @@ static void StartVote(void) {
     int i;
 
     level.voteTime = level.time;
-    level.voteYes = 0;
+    level.voteYes = 1;  // the caller's implicit yes
     level.voteNo = 0;
 
+    // [QL] seed per-client vote state. Bots, and (unless g_allowSpecVote) spectators, are
+    // not eligible voters and are excluded from the CheckVote tally, so a lone human's own
+    // yes can carry a majority. Previously bots counted as pending voters, so a solo player
+    // plus any bots could never reach voteYes > eligible/2.
     for (i = 0; i < level.maxclients; i++) {
-        if (level.clients[i].pers.connected == CON_DISCONNECTED) {
+        if (level.clients[i].pers.connected != CON_CONNECTED) {
             continue;
         }
-        if (i == level.pendingVoteCaller) {
-            level.clients[i].pers.voteState = VOTE_YES;
+        if (g_entities[i].r.svFlags & SVF_BOT) {
+            level.clients[i].pers.voteState = VOTE_NONE;
+        } else if (!g_allowSpecVote.integer &&
+                   level.clients[i].sess.sessionTeam == TEAM_SPECTATOR) {
+            level.clients[i].pers.voteState = VOTE_NONE;
         } else {
             level.clients[i].pers.voteState = VOTE_PENDING;
         }
         level.clients[i].ps.eFlags &= ~EF_VOTED;
     }
-    // caller has voted
+    // caller has voted yes
+    level.clients[level.pendingVoteCaller].pers.voteState = VOTE_YES;
     g_entities[level.pendingVoteCaller].client->ps.eFlags |= EF_VOTED;
 
     trap_SetConfigstring(CS_VOTE_TIME, va("%i", level.voteTime));
     trap_SetConfigstring(CS_VOTE_STRING, level.voteDisplayString);
-    trap_SetConfigstring(CS_VOTE_YES, "1");
+    trap_SetConfigstring(CS_VOTE_YES, va("%i", level.voteYes));
     trap_SetConfigstring(CS_VOTE_NO, "0");
 
     trap_SendServerCommand(-1, va("print \"%s called a vote.\n\"",
@@ -1705,6 +1826,11 @@ static void Cmd_IntermissionVote_f(gentity_t *ent) {
     ent->client->pers.lastMapVoteIndex = choice;
     level.intermissionMapVotes[choice - 1]++;
 
+    // [QL] Hide this client's map-vote UI now that they have voted.
+    // Binary: Cmd_IntermissionVote_f 0x100441d0 -> trap_SendServerCommand(client, "disable_vote_ui").
+    // G_RunFrame re-sends "enable_vote_ui" ~2.25s after lastMapVoteTime so they can change it.
+    trap_SendServerCommand(clientNum, "disable_vote_ui");
+
     // Broadcast vote
     trap_SendServerCommand(-1,
         va("print \"%s" S_COLOR_WHITE " voted for %s.\n\"",
@@ -1900,15 +2026,18 @@ static void Cmd_ReadyUp_f(gentity_t* ent) {
     if (level.warmupTime >= 0 && level.intermissionTime == 0)
         return;
 
+    // [QL] Binary also runs a bot-only training pre-step here (g_isBotOnly +
+    // Cmd_SkipTraining_f); ioquakelive has no Cmd_SkipTraining_f, so it is skipped.
     cl = ent->client;
     if (!cl) return;
     if (cl->ps.pm_type == PM_SPECTATOR) return;
     if (cl->sess.sessionTeam == TEAM_SPECTATOR) return;
-    if (cl->ps.pm_flags & PMF_FROZEN) return;
+    // Binary tests pm_flags & 0x1000 (PMF_FOLLOW), not PMF_FROZEN.
+    if (cl->ps.pm_flags & PMF_FOLLOW) return;
 
     if (level.warmupTime < 0) {
         // Validate minimum players
-        if (!CheckWarmupMinPlayers()) {
+        if (!TeamsPresent()) {
             // If already ready, un-ready them
             if (cl->pers.ready) {
                 cl->pers.ready = qfalse;
@@ -2098,21 +2227,24 @@ Binary: qagamex86.dll 0x10045890
 */
 static void Cmd_Forfeit_f(gentity_t* ent) {
     if (!ent->client) return;
-    if (ent->client->sess.sessionTeam == TEAM_SPECTATOR) return;
+    // Binary guard is ps.pm_type == PM_SPECTATOR (client+4 == 2), NOT sessionTeam.
+    if (ent->client->ps.pm_type == PM_SPECTATOR) return;
 
+    // level.timePauseBegin (global 0x105dea08, Ghidra "level_restarted") = pause/
+    // timeout start time; no forfeits while frozen.
     if (level.timePauseBegin != 0) {
         trap_SendServerCommand(ent - g_entities,
             "print \"Forfeit is not available during a pause or timeout.\n\"");
         return;
     }
 
-    // Only available in round-based gametypes during active play
+    // Round-based gametypes: not during the round countdown (eCurrent, not eNext).
     switch (g_gametype.integer) {
     case GT_CA:
     case GT_FREEZE:
     case GT_AD:
     case GT_RR:
-        if (level.warmupTime > 0 || level.roundState.eNext == 1) {
+        if (level.warmupTime > 0 || level.roundState.eCurrent == RS_COUNTDOWN) {
             trap_SendServerCommand(ent - g_entities,
                 "print \"Forfeit is not available during a round countdown.\n\"");
             return;
@@ -2120,9 +2252,9 @@ static void Cmd_Forfeit_f(gentity_t* ent) {
         break;
     }
 
-    level.matchForfeited = qtrue;
-    trap_SendServerCommand(-1, va("cp \"%s ^7has forfeited the match.\n\"",
-        ent->client->pers.netname));
+    if (CheckForfeitConditions(ent, 1)) {
+        ForfeitMatch();
+    }
 }
 
 /*
@@ -2165,49 +2297,177 @@ static void Cmd_Players_f(gentity_t* ent) {
     }
 }
 
-// "timeout" - Call a timeout (uses player's timeout allowance)
-static void Cmd_Timeout_f(gentity_t* ent) {
-    if (level.timePauseBegin != 0) {
-        trap_SendServerCommand(ent - g_entities,
-            "print \"A timeout is already in progress.\n\"");
+/*
+=================
+[QL] MP_Pause -- pause the match (qagame 0x18ba00 / .so MP_Pause).
+
+duration is in seconds (0 = indefinite pause). Records level.timePauseBegin (the frozen
+match-clock base), schedules the auto-unpause, and publishes CS_PAUSE_START_TIME /
+CS_PAUSE_END_TIME so every client freezes its match timer, stops autofire, and shows the
+pause. G_RunFrame freezes the clock per-frame; players are frozen via PMF_PAUSED.
+=================
+*/
+void MP_Pause(gentity_t* ent, int duration) {
+    const char* name;
+
+    // [QL] binary MP_Pause (0x10061e10) gates via the shared command-phase helper
+    // FUN_100610f0(2): pause is allowed only during live match play. Reject
+    // intermission / warmup / round-countdown (round-based modes) with the exact
+    // binary strings (client-initiated only). The already-paused case is handled by
+    // the caller (Cmd_Pause_f).
+    if (level.intermissionTime != 0) {
+        if (ent) trap_SendServerCommand(ent - g_entities,
+            "print \"This command can not be used during intermission\n\"");
         return;
     }
     if (level.warmupTime != 0) {
-        trap_SendServerCommand(ent - g_entities,
-            "print \"Cannot call timeout during warmup.\n\"");
+        if (ent) trap_SendServerCommand(ent - g_entities,
+            "print \"This command can not be used during warmup\n\"");
         return;
     }
-    if (g_timeoutCount.integer > 0 && ent->client->pers.timeouts >= g_timeoutCount.integer) {
-        trap_SendServerCommand(ent - g_entities,
-            "print \"You have no timeouts remaining.\n\"");
+    if ((g_gametype.integer == GT_CA || g_gametype.integer == GT_FREEZE ||
+         g_gametype.integer == GT_AD || g_gametype.integer == GT_RR) &&
+        level.roundState.eCurrent == RS_COUNTDOWN) {
+        if (ent) trap_SendServerCommand(ent - g_entities,
+            "print \"This command can not be used during a round countdown\n\"");
+        return;
+    }
+    if (level.timePauseBegin != 0) {
         return;
     }
 
-    ent->client->pers.timeouts++;
     level.timePauseBegin = level.time;
-    trap_SendServerCommand(-1, va("cp \"%s ^7called a timeout.\n\"",
-        ent->client->pers.netname));
-    trap_SetConfigstring(CS_LEVEL_START_TIME,
-        va("%i", level.startTime));
+    level.mp_unpauseTime = duration ? level.time + duration * 1000 : 0;
+    // [QL] binary stores mp_pauseClient=0 for a server pause plus a separate
+    // server-pause flag (uRam1049abd8); the reimpl folds both into the -1 sentinel.
+    level.mp_pauseClient = ent ? (int)(ent - g_entities) : -1;
+
+    trap_SetConfigstring(CS_PAUSE_START_TIME, va("%i", level.timePauseBegin));
+    trap_SetConfigstring(CS_PAUSE_END_TIME, va("%i", level.mp_unpauseTime));
+
+    name = ent ? ent->client->pers.netname : "The server";
+    if (duration) {
+        trap_SendServerCommand(-1, va("pcp \"%s has called timeout (%ds)\n\"", name, duration));
+    } else {
+        trap_SendServerCommand(-1, va("pcp \"%s has paused the match\n\"", name));
+    }
 }
 
-// "timein" - Cancel a timeout (resume play)
-static void Cmd_Timein_f(gentity_t* ent) {
-    int pauseDuration;
+/*
+=================
+[QL] MP_PauseThink -- called each frame from G_RunFrame while paused.
 
+Once the scheduled unpause time is reached, shifts every active client's respawn/powerup/
+weapon timers forward by the paused duration (so nothing that was pending fires early on
+resume), then clears the pause and republishes the match clock (CS_LEVEL_START_TIME, which
+G_RunFrame advanced by the paused duration).
+=================
+*/
+void MP_PauseThink(void) {
+    int pauseDuration, i, j;
+
+    if (level.mp_unpauseTime == 0 || level.mp_unpauseTime > level.time) {
+        return;
+    }
+
+    pauseDuration = level.time - level.timePauseBegin;
+
+    for (i = 0; i < level.maxclients; i++) {
+        gentity_t* ent = &g_entities[i];
+        gclient_t* cl;
+        if (!ent->inuse || !ent->client) {
+            continue;
+        }
+        cl = ent->client;
+        if (cl->sess.sessionTeam == TEAM_SPECTATOR) {
+            continue;
+        }
+        cl->pers.enterTime += pauseDuration;
+        cl->respawnTime += pauseDuration;
+        for (j = 0; j < MAX_POWERUPS; j++) {
+            if (cl->ps.powerups[j] != 0 && cl->ps.powerups[j] != INT_MAX) {
+                cl->ps.powerups[j] += pauseDuration;
+            }
+        }
+        if (cl->ps.weaponTime != 0) {
+            cl->ps.weaponTime += pauseDuration;
+        }
+    }
+
+    // resume play
+    level.timePauseBegin = 0;
+    level.mp_unpauseTime = 0;
+    trap_SetConfigstring(CS_PAUSE_START_TIME, "0");
+    trap_SetConfigstring(CS_PAUSE_END_TIME, "0");
+    trap_SetConfigstring(CS_LEVEL_START_TIME, va("%i", level.startTime));
+}
+
+// "timeout" - Call a timeout (uses the caller's per-player or per-team timeout allowance)
+static void Cmd_Timeout_f(gentity_t* ent) {
+    team_t team;
+
+    if (!ent->client) {
+        return;
+    }
+    team = ent->client->sess.sessionTeam;
+    if (team == TEAM_SPECTATOR || level.timePauseBegin != 0) {
+        return;
+    }
+    if (g_timeoutCount.integer == 0) {
+        trap_SendServerCommand(ent - g_entities,
+            "print \"Timeouts are not enabled on this server.\n\"");
+        return;
+    }
+
+    if (g_gametype.integer < GT_TEAM) {
+        // non-team: per-player timeout tracking
+        if (ent->client->pers.timeouts >= g_timeoutCount.integer) {
+            trap_SendServerCommand(ent - g_entities,
+                "print \"You have no timeouts left to call\n\"");
+            return;
+        }
+        ent->client->pers.timeouts++;
+    } else {
+        // team modes: per-team timeout tracking, published to the HUD
+        if (level.teamTimeoutsUsed[team] >= g_timeoutCount.integer) {
+            trap_SendServerCommand(ent - g_entities,
+                "print \"Your team has no timeouts left to call\n\"");
+            return;
+        }
+        level.teamTimeoutsUsed[team]++;
+        trap_SetConfigstring(CS_TIMEOUTS_RED,
+            va("%d", g_timeoutCount.integer - level.teamTimeoutsUsed[TEAM_RED]));
+        trap_SetConfigstring(CS_TIMEOUTS_BLUE,
+            va("%d", g_timeoutCount.integer - level.teamTimeoutsUsed[TEAM_BLUE]));
+    }
+
+    MP_Pause(ent, g_timeoutLen.integer);
+}
+
+// "timein" / "unpause" - Resume play. Starts a 5-second countdown before unpausing.
+static void Cmd_Timein_f(gentity_t* ent) {
     if (level.timePauseBegin == 0) {
         trap_SendServerCommand(ent - g_entities,
             "print \"No timeout is in progress.\n\"");
         return;
     }
+    // already counting down within the last 5 seconds?
+    if (level.mp_unpauseTime != 0 && level.mp_unpauseTime <= level.time + 4999) {
+        return;
+    }
+    // only the player who called the timeout (or a referee/admin) may call timein
+    if (level.mp_pauseClient >= 0 && ent && ent->client &&
+        (int)(ent - g_entities) != level.mp_pauseClient &&
+        ent->client->sess.privileges == 0) {
+        trap_SendServerCommand(ent - g_entities,
+            "print \"You did not call the current timeout\n\"");
+        return;
+    }
 
-    pauseDuration = level.time - level.timePauseBegin;
-    level.startTime += pauseDuration;
-    level.timePauseBegin = 0;
-
-    trap_SetConfigstring(CS_LEVEL_START_TIME,
-        va("%i", level.startTime));
-    trap_SendServerCommand(-1, "cp \"Timeout ended. Play resumed.\n\"");
+    level.mp_unpauseTime = level.time + 5000;
+    trap_SetConfigstring(CS_PAUSE_END_TIME, va("%i", level.mp_unpauseTime));
+    trap_SendServerCommand(-1, va("pcp \"%s has called timein\n\"",
+        ent->client ? ent->client->pers.netname : "The server"));
 }
 
 // "allready" - Force all players to ready state (referee+)
@@ -2239,22 +2499,14 @@ static void Cmd_AllReady_f(gentity_t* ent) {
     }
 }
 
-// "pause" - Pause the match (referee+)
+// "pause" - Pause the match indefinitely (referee+)
 static void Cmd_Pause_f(gentity_t* ent) {
     if (level.timePauseBegin != 0) {
         trap_SendServerCommand(ent - g_entities,
             "print \"Match is already paused.\n\"");
         return;
     }
-    if (level.warmupTime != 0) {
-        trap_SendServerCommand(ent - g_entities,
-            "print \"Cannot pause during warmup.\n\"");
-        return;
-    }
-
-    level.timePauseBegin = level.time;
-    trap_SendServerCommand(-1, va("cp \"%s ^7paused the match.\n\"",
-        ent->client->pers.netname));
+    MP_Pause(ent, 0);  // 0 = indefinite; MP_Pause rejects warmup/intermission
 }
 
 // "unpause" - Unpause the match (referee+), same handler as timein
@@ -2666,53 +2918,55 @@ typedef struct {
     const char* description;
 } permissionCmd_t;
 
+// Levels and description strings verified against the binary's table at
+// 0x10080748. Cmd_Help_f prints "name" immediately followed by "description",
+// so the descriptions carry their own leading params/colour codes. The
+// "permenantly" typo in the ban description is present in the binary.
 static permissionCmd_t permissionCmds[] = {
-    { "?",            0, NULL,              "show available commands" },
-    { "players",      0, Cmd_Players_f,     "show connected players" },
-    { "timeout",      0, Cmd_Timeout_f,     "call a time out" },
-    { "timein",       0, Cmd_Timein_f,      "call a time in" },
-    { "allready",     1, Cmd_AllReady_f,    "force all players to ready" },
-    { "pause",        1, Cmd_Pause_f,       "pause the current match" },
-    { "unpause",      1, Cmd_Timein_f,      "unpause the current match" },
-    { "lock",         1, Cmd_Lock_f,        "stop players from joining a team" },
-    { "unlock",       1, Cmd_Unlock_f,      "allows players to join a team" },
-    { "put",          1, Cmd_Put_f,         "move a player to a team" },
-    { "mute",         1, Cmd_Mute_f,        "mute a player" },
-    { "unmute",       1, Cmd_Unmute_f,      "restore a muted player's chat" },
-    { "tempban",      1, Cmd_Ban_f,         "temporarily kick a player" },
-    { "ban",          1, Cmd_Ban_f,          "permanently ban a player" },
-    { "listaccess",   1, Cmd_ListAccess_f,  "list access control entries" },
-    { "unban",        1, Cmd_Unban_f,       "remove a ban" },
-    { "opsay",        1, Cmd_OpSay_f,       "send an admin message" },
-    { "addadmin",     2, Cmd_AddAdmin_f,    "give a player admin privileges" },
-    { "addmod",       2, Cmd_AddMod_f,      "give a player moderator privileges" },
-    { "demote",       2, Cmd_Demote_f,      "remove a player's privileges" },
-    { "abort",        1, Cmd_Abort_f,       "abandon the game and go to warmup" },
-    { "addscore",     1, Cmd_AddScore_f,    "add points to a player's score" },
-    { "addteamscore", 1, Cmd_AddTeamScore_f, "add points to a team's score" },
-    { "setmatchtime", 1, Cmd_SetMatchTime_f, "set match time in seconds" },
-    { "rcon",         2, NULL,              "run command on server" },
+    { "?",            0, Cmd_PermHelp_f,    "" },
+    { "players",      0, Cmd_Players_f,     "^3 show currently connected players and their status" },
+    { "timeout",      0, Cmd_Timeout_f,     "^3 call a time out, temporarily pausing the game" },
+    { "timein",       0, Cmd_Timein_f,      "^3 call a time in, unpausing the game" },
+    { "allready",     1, Cmd_AllReady_f,    "^3 force all players to 'ready' and start the match" },
+    { "pause",        1, Cmd_Pause_f,       "^3 pause the current match indefinitely" },
+    { "unpause",      1, Cmd_Timein_f,      "^3 unpause the current match" },
+    { "lock",         1, Cmd_Lock_f,        " [team]^3 stops players from joining the team" },
+    { "unlock",       1, Cmd_Unlock_f,      " [team]^3 allows players to join the team" },
+    { "put",          1, Cmd_Put_f,         " <playerid> <team>^3 move a player to a team, use (R/B/S) or (F/S)" },
+    { "mute",         1, Cmd_Mute_f,        " <playerid>^3 temporarily mutes a player on the server" },
+    { "unmute",       1, Cmd_Unmute_f,      " <playerid>^3 restores a muted player's ability to chat" },
+    { "tempban",      1, Cmd_Ban_f,         " <playerid>^3 temporarily kicks a player from the server for the match" },
+    { "ban",          1, Cmd_Ban_f,         " <playerid>^3 permenantly bans a player from the server" },
+    { "listaccess",   1, Cmd_ListAccess_f,  " <page>^3 lists the accounts with access " },
+    { "unban",        1, Cmd_Unban_f,       " <account>^3 removes a player from the banlist" },
+    { "opsay",        1, Cmd_OpSay_f,       " <message> ^3send a message to everyone on the server" },
+    { "addadmin",     2, Cmd_AddAdmin_f,    " <playerid>^3 give a player admin privileges" },
+    { "addmod",       2, Cmd_AddMod_f,      " <playerid>^3 give a player moderator privileges" },
+    { "demote",       2, Cmd_Demote_f,      " <playerid>^3 remove a player's privileges" },
+    { "abort",        1, Cmd_Abort_f,       "^3 abandon the current game and go back to warmup" },
+    { "addscore",     1, Cmd_AddScore_f,    " <playerid> <score>^3 add points to a player's score" },
+    { "addteamscore", 1, Cmd_AddTeamScore_f, " <team> <score>^3 add points to a team's score, use (R/B)" },
+    { "setmatchtime", 1, Cmd_SetMatchTime_f, " <time> ^3set match time in seconds" },
+    { "rcon",         2, NULL,              " <command> ^3run command on server" },
     { NULL,           0, NULL,              NULL }  // terminator
 };
 
-// "?" handler - print the permission command list
+// "?" handler (binary Cmd_Help_f 0x10062dc0). Lists every command whose
+// required level is within the caller's privileges, printing the name
+// immediately followed by its description.
 static void Cmd_PermHelp_f(gentity_t* ent) {
     int i;
     int privLevel;
-    char msg[128];
 
     privLevel = ent->client->sess.privileges;
-    if (ent->client->pers.localClient) privLevel = 2;
-
-    trap_SendServerCommand(ent - g_entities,
-        "print \"\n^3--- Available Commands ---\n\"");
+    if (ent->client->pers.localClient) privLevel = 3;
 
     for (i = 0; permissionCmds[i].cmd; i++) {
         if (permissionCmds[i].requiredLevel > privLevel) continue;
-        Com_sprintf(msg, sizeof(msg), "print \"  ^5%-14s ^7%s\n\"",
-                   permissionCmds[i].cmd,
-                   permissionCmds[i].description ? permissionCmds[i].description : "");
-        trap_SendServerCommand(ent - g_entities, msg);
+        trap_SendServerCommand(ent - g_entities,
+            va("print \"%s%s\n\"",
+               permissionCmds[i].cmd,
+               permissionCmds[i].description ? permissionCmds[i].description : ""));
     }
 }
 
@@ -2739,8 +2993,10 @@ static qboolean ClientCommandPermissionCheck(gentity_t* ent, const char* cmd) {
         return qfalse;  // not a permission command
     }
 
-    if (permissionCmds[i].requiredLevel == 3) {
-        return qfalse;  // console-only, not handled here
+    // Entries with no handler (rcon) are not handled here - fall through so the
+    // engine/rcon path can deal with them. Matches the binary.
+    if (!permissionCmds[i].handler) {
+        return qfalse;
     }
 
     // Check privileges
@@ -2753,15 +3009,7 @@ static qboolean ClientCommandPermissionCheck(gentity_t* ent, const char* cmd) {
         return qtrue;
     }
 
-    // Handle "?" specially
-    if (Q_stricmp(cmd, "?") == 0) {
-        Cmd_PermHelp_f(ent);
-        return qtrue;
-    }
-
-    if (permissionCmds[i].handler) {
-        permissionCmds[i].handler(ent);
-    }
+    permissionCmds[i].handler(ent);
     return qtrue;
 }
 
@@ -3059,6 +3307,11 @@ void ClientCommand(int clientNum) {
         Cmd_Tell_f(ent);
         return;
     }
+    // [QL] botsay is dispatched pre-intermission, right after tell
+    if (Q_stricmp(cmd, "botsay") == 0) {
+        Cmd_BotSay_f(ent);
+        return;
+    }
     if (Q_stricmp(cmd, "vsay") == 0) {
         Cmd_Voice_f(ent, SAY_ALL, qfalse, qfalse);
         return;
@@ -3105,10 +3358,19 @@ void ClientCommand(int clientNum) {
         Cmd_ReadyUp_f(ent);
         return;
     }
+    // [QL] ragequit and vote work at intermission too, so they sit before the gate
+    if (Q_stricmp(cmd, "ragequit") == 0) {
+        trap_DropClient(clientNum, "ragequit");
+        return;
+    }
+    if (Q_stricmp(cmd, "vote") == 0) {
+        Cmd_Vote_f(ent);
+        return;
+    }
 
-    // ignore all other commands when at intermission
-    if (level.intermissionTime) {
-        Cmd_Say_f(ent, qfalse, qtrue);
+    // everything below runs only during play, not at (or heading to)
+    // intermission. Unlike Q3, QL does not fall back to a say command here.
+    if (level.intermissionQueued || level.intermissionTime) {
         return;
     }
 
@@ -3138,14 +3400,10 @@ void ClientCommand(int clientNum) {
         Cmd_Where_f(ent);
     else if (Q_stricmp(cmd, "callvote") == 0 || Q_stricmp(cmd, "cv") == 0)
         Cmd_CallVote_f(ent);
-    else if (Q_stricmp(cmd, "vote") == 0)
-        Cmd_Vote_f(ent);
     else if (Q_stricmp(cmd, "gc") == 0)
         Cmd_GameCommand_f(ent);
     else if (Q_stricmp(cmd, "setviewpos") == 0)
         Cmd_SetViewpos_f(ent);
-    else if (Q_stricmp(cmd, "stats") == 0)
-        Cmd_Stats_f(ent);
     // [QL] drop commands
     else if (Q_stricmp(cmd, "dropflag") == 0)
         Cmd_DropFlag_f(ent);
@@ -3156,20 +3414,16 @@ void ClientCommand(int clientNum) {
     else if (Q_stricmp(cmd, "dropweapon") == 0)
         Cmd_DropWeapon_f(ent);
     // [QL] additional commands
-    else if (Q_stricmp(cmd, "forfeit") == 0)
-        Cmd_Forfeit_f(ent);
-    else if (Q_stricmp(cmd, "ragequit") == 0)
-        trap_DropClient(clientNum, "ragequit");
-    else if (Q_stricmp(cmd, "botsay") == 0)
-        Cmd_BotSay_f(ent);
     else if (Q_stricmp(cmd, "spec") == 0)
         Cmd_Spec_f(ent);  // [QL] filtered follow (stats/red/blue/powerup)
+    else if (Q_stricmp(cmd, "forfeit") == 0)
+        Cmd_Forfeit_f(ent);
     else if (Q_stricmp(cmd, "specresp") == 0)
         Cmd_SpecResp_f(ent);
-    else if (Q_stricmp(cmd, "raceinit") == 0)
-        Cmd_RaceInit_f(ent);
     else if (Q_stricmp(cmd, "racepoint") == 0)
         Cmd_RacePoint_f(ent);
+    else if (Q_stricmp(cmd, "raceinit") == 0)
+        Cmd_RaceInit_f(ent);
     else
         trap_SendServerCommand(clientNum, va("print \"unknown cmd %s\n\"", cmd));
 }

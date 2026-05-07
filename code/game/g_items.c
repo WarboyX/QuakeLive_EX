@@ -47,14 +47,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 int Pickup_Powerup(gentity_t* ent, gentity_t* other) {
     int quantity;
     int i;
+    int giTag;
+    int team;
     gclient_t* client;
 
-    if (!other->client->ps.powerups[ent->item->giTag]) {
-        // round timing to seconds to make multiple powerup timers
-        // count in sync
-        other->client->ps.powerups[ent->item->giTag] =
-            level.time - (level.time % 1000);
-    }
+    giTag = ent->item->giTag;
+    team = other->client->sess.sessionTeam;
 
     if (ent->count) {
         quantity = ent->count;
@@ -62,7 +60,52 @@ int Pickup_Powerup(gentity_t* ent, gentity_t* other) {
         quantity = ent->item->quantity;
     }
 
-    other->client->ps.powerups[ent->item->giTag] += quantity * 1000;
+    if (!other->client->ps.powerups[giTag]) {
+        // round timing to seconds to make multiple powerup timers
+        // count in sync
+        other->client->ps.powerups[giTag] =
+            level.time - (level.time % 1000);
+    }
+
+    other->client->ps.powerups[giTag] += quantity * 1000;
+
+    // [QL] pickup statistics
+    other->client->expandedStats.powerups[giTag]++;
+
+    // only fixed (non-dropped) powerup spawns count towards the per-powerup tallies
+    if (ent->s.modelindex2 == 0) {
+        switch (giTag) {
+            case PW_QUAD:
+                other->client->expandedStats.numQuadDamagePickups++;
+                if (g_gametype.integer > GT_RACE)
+                    level.numQuadDamagePickups[team]++;
+                break;
+            case PW_BATTLESUIT:
+                other->client->expandedStats.numBattleSuitPickups++;
+                if (g_gametype.integer > GT_RACE)
+                    level.numBattleSuitPickups[team]++;
+                break;
+            // [QL] PW_REGEN/PW_INVIS are swapped vs the old stat field order, so
+            // PW_INVIS lands in the regen counters and PW_REGEN in the invis ones
+            case PW_INVIS:
+                other->client->expandedStats.numRegenerationPickups++;
+                if (g_gametype.integer > GT_RACE)
+                    level.numRegenerationPickups[team]++;
+                break;
+            case PW_HASTE:
+                other->client->expandedStats.numHastePickups++;
+                if (g_gametype.integer > GT_RACE)
+                    level.numHastePickups[team]++;
+                break;
+            case PW_REGEN:
+                other->client->expandedStats.numInvisibilityPickups++;
+                if (g_gametype.integer > GT_RACE)
+                    level.numInvisibilityPickups[team]++;
+                break;
+            default:
+                break;
+        }
+    }
 
     // give any nearby players a "denied" anti-reward
     for (i = 0; i < level.maxclients; i++) {
@@ -109,6 +152,7 @@ int Pickup_Powerup(gentity_t* ent, gentity_t* other) {
 
         // anti-reward
         client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_DENIEDREWARD;
+        other->client->expandedStats.numDenials++;
     }
     return RESPAWN_POWERUP;
 }
@@ -195,6 +239,13 @@ int Pickup_Holdable(gentity_t* ent, gentity_t* other) {
         other->client->ps.eFlags |= EF_KAMIKAZE;
     }
 
+    // [QL] pickup statistics
+    if (ent->item->giTag == HI_MEDKIT && g_gametype.integer > GT_RACE) {
+        other->client->expandedStats.numMedkitPickups++;
+        level.numMedkitPickups[other->client->sess.sessionTeam]++;
+    }
+    other->client->expandedStats.holdablePickups[ent->item->giTag]++;
+
     return RESPAWN_HOLDABLE;
 }
 
@@ -239,24 +290,9 @@ static const int ammoPackQuantity[WP_NUM_WEAPONS] = {
     50,   // WP_HMG
 };
 
-// Maximum ammo per weapon for standard gametypes (binary offset +0x18 in weapon table)
-static const int maxAmmoStandard[WP_NUM_WEAPONS] = {
-    0,    // WP_NONE
-    -1,   // WP_GAUNTLET (unlimited)
-    150,  // WP_MACHINEGUN
-    25,   // WP_SHOTGUN
-    25,   // WP_GRENADE_LAUNCHER
-    25,   // WP_ROCKET_LAUNCHER
-    150,  // WP_LIGHTNING
-    25,   // WP_RAILGUN
-    150,  // WP_PLASMAGUN
-    25,   // WP_BFG
-    -1,   // WP_GRAPPLING_HOOK (unlimited)
-    25,   // WP_NAILGUN
-    5,    // WP_PROX_LAUNCHER
-    200,  // WP_CHAINGUN
-    150,  // WP_HMG
-};
+// Maximum ammo per weapon for standard gametypes: canonical table now lives in
+// bg_misc.c (shared, declared in bg_public.h) so cgame links it too. Add_Ammo
+// below still uses maxAmmoStandard by name.
 
 /*
 ===============
@@ -374,6 +410,9 @@ int Pickup_Ammo(gentity_t* ent, gentity_t* other) {
 
     Add_Ammo(other, ent->item->giTag, quantity);
 
+    // [QL] pickup statistics
+    other->client->expandedStats.numAmmoPickups++;
+
     return g_ammoRespawn.integer;
 }
 
@@ -381,35 +420,62 @@ int Pickup_Ammo(gentity_t* ent, gentity_t* other) {
 
 int Pickup_Weapon(gentity_t* ent, gentity_t* other) {
     int quantity;
+    int giTag;
+    gclient_t* client;
 
-    if (ent->count < 0) {
-        quantity = 0;  // None for you, sir!
-    } else {
-        if (ent->count) {
-            quantity = ent->count;
-        } else {
-            quantity = ent->item->quantity;
-        }
+    client = other->client;
+    giTag = ent->item->giTag;
 
-        // dropped items and teamplay weapons always have full ammo
-        if (!(ent->flags & FL_DROPPED_ITEM) && g_gametype.integer != GT_TEAM) {
-            // respawning rules
-            // drop the quantity if the already have over the minimum
-            if (other->client->ps.ammo[ent->item->giTag] < quantity) {
-                quantity = quantity - other->client->ps.ammo[ent->item->giTag];
-            } else {
-                quantity = 1;  // only add a single shot
-            }
+    // [QL] when weapons don't respawn (g_weaponRespawn == 0), walking over a fixed
+    // (non-dropped) weapon spawn does nothing if you already own the weapon and it
+    // still has ammo. Binary gates this on g_weaponRespawn (0x1004e9d5), not g_loadout.
+    if (g_weaponRespawn.integer == 0) {
+        if ((client->ps.stats[STAT_WEAPONS] & (1 << giTag)) &&
+            client->ps.ammo[giTag] != 0 &&
+            ent->s.modelindex2 == 0) {
+            return 0;
         }
     }
 
+    // [QL] negative count is treated as a fatal map error
+    if (ent->count < 0) {
+        G_Error("Pickup_Weapon: item has infinite ammo");
+    }
+
     // add the weapon
-    other->client->ps.stats[STAT_WEAPONS] |= (1 << ent->item->giTag);
+    client->ps.stats[STAT_WEAPONS] |= (1 << giTag);
 
-    Add_Ammo(other, ent->item->giTag, quantity);
+    if (ent->count) {
+        quantity = ent->count;
+    } else {
+        quantity = ent->item->quantity;
+    }
 
-    if (ent->item->giTag == WP_GRAPPLING_HOOK)
-        other->client->ps.ammo[ent->item->giTag] = -1;  // unlimited ammo
+    Add_Ammo(other, giTag, quantity);
+
+    // [QL] when weapons don't respawn, a fixed weapon spawn sets ammo to the weapon's
+    // base amount; dropped weapons keep the ammo Add_Ammo just gave them.
+    // Binary gates this on g_weaponRespawn (0x1004ea3f), not g_loadout.
+    if (g_weaponRespawn.integer == 0 && ent->s.modelindex2 == 0) {
+        client->ps.ammo[giTag] = ent->item->quantity;
+    }
+
+    if (giTag == WP_GRAPPLING_HOOK)
+        client->ps.ammo[giTag] = -1;  // unlimited ammo
+
+    // [QL] pickup statistics
+    client->expandedStats.weaponPickups[giTag]++;
+
+    // [QL] When weapons don't respawn, Pickup_Weapon returns 0, so Touch_Item bails
+    // out on respawn==0 before emitting the pickup event. Emit it here instead
+    // (binary 0x1004eaa0). Predicting clients get a predictable event.
+    if (g_weaponRespawn.integer == 0) {
+        if (client->pers.predictItemPickup) {
+            G_AddPredictableEvent(other, EV_ITEM_PICKUP, ent->s.modelindex);
+        } else {
+            G_AddEvent(other, EV_ITEM_PICKUP, ent->s.modelindex);
+        }
+    }
 
     // [QL] Binary uses g_weaponRespawn for all gametypes; Q3's g_weaponTeamRespawn
     // override is gone.
@@ -420,32 +486,39 @@ int Pickup_Weapon(gentity_t* ent, gentity_t* other) {
 
 int Pickup_Health(gentity_t* ent, gentity_t* other) {
     int max;
-    int quantity;
+    gclient_t* client;
 
-    // small and mega healths will go over the max
-    if (bg_itemlist[other->client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD) {
-        max = other->client->ps.stats[STAT_MAX_HEALTH];
-    } else if (ent->item->quantity != 5 && ent->item->quantity != 100) {
-        max = other->client->ps.stats[STAT_MAX_HEALTH];
+    client = other->client;
+
+    // small (5) and mega (100) healths overheal to 2x max; others cap at max
+    if (ent->item->quantity == 5 || ent->item->quantity == 100) {
+        max = client->ps.stats[STAT_MAX_HEALTH] * 2;
     } else {
-        max = other->client->ps.stats[STAT_MAX_HEALTH] * 2;
+        max = client->ps.stats[STAT_MAX_HEALTH];
     }
 
-    if (ent->count) {
-        quantity = ent->count;
-    } else {
-        quantity = ent->item->quantity;
-    }
-
-    other->health += quantity;
+    other->health += ent->item->quantity;
 
     if (other->health > max) {
         other->health = max;
     }
-    other->client->ps.stats[STAT_HEALTH] = other->health;
+    client->ps.stats[STAT_HEALTH] = other->health;
 
-    if (ent->item->quantity == 100) {  // mega health respawns slow
-        return RESPAWN_MEGAHEALTH;
+    // [QL] pickup statistics
+    if (ent->item->quantity == 100) {
+        // mega health
+        if (ent->pickupCount == 0) {
+            client->expandedStats.numFirstMegaHealthPickups++;
+        }
+        client->expandedStats.numMegaHealthPickups++;
+        if (ent->pickupCount > 0) {
+            client->expandedStats.megaHealthPickupTime += level.time - ent->spawnTime;
+        }
+        if (g_gametype.integer > GT_RACE) {
+            level.numMegaHealthPickups[client->sess.sessionTeam]++;
+        }
+    } else {
+        client->expandedStats.numHealthPickups++;
     }
 
     return RESPAWN_HEALTH;
@@ -456,9 +529,48 @@ int Pickup_Health(gentity_t* ent, gentity_t* other) {
 int Pickup_Armor(gentity_t* ent, gentity_t* other) {
     int max;
     int giTag;
+    int team;
+    gclient_t* client;
 
-    max = other->client->ps.stats[STAT_MAX_HEALTH] * 2;
+    client = other->client;
+    max = client->ps.stats[STAT_MAX_HEALTH] * 2;
     giTag = ent->item->giTag;
+    team = client->sess.sessionTeam;
+
+    // [QL] pickup statistics, keyed on the armour tier giTag (1=red, 2=yellow,
+    // 3=green, anything else counts as a shard)
+    switch (giTag) {
+        case 1:  // red
+            if (ent->pickupCount == 0)
+                client->expandedStats.numFirstRedArmorPickups++;
+            client->expandedStats.numRedArmorPickups++;
+            if (ent->pickupCount > 0)
+                client->expandedStats.redArmorPickupTime += level.time - ent->spawnTime;
+            if (g_gametype.integer > GT_RACE)
+                level.numRedArmorPickups[team]++;
+            break;
+        case 2:  // yellow
+            if (ent->pickupCount == 0)
+                client->expandedStats.numFirstYellowArmorPickups++;
+            client->expandedStats.numYellowArmorPickups++;
+            if (ent->pickupCount > 0)
+                client->expandedStats.yellowArmorPickupTime += level.time - ent->spawnTime;
+            if (g_gametype.integer > GT_RACE)
+                level.numYellowArmorPickups[team]++;
+            break;
+        case 3:  // green
+            if (ent->pickupCount == 0)
+                client->expandedStats.numFirstGreenArmorPickups++;
+            client->expandedStats.numGreenArmorPickups++;
+            if (ent->pickupCount > 0)
+                client->expandedStats.greenArmorPickupTime += level.time - ent->spawnTime;
+            if (g_gametype.integer > GT_RACE)
+                level.numGreenArmorPickups[team]++;
+            break;
+        default:  // shard
+            client->expandedStats.numArmorPickups++;
+            break;
+    }
 
     if (armor_tiered.integer == 0) {
         // Classic armor: just add quantity
@@ -488,7 +600,9 @@ int Pickup_Armor(gentity_t* ent, gentity_t* other) {
     } else {  // Armor shard
         if (other->client->ps.stats[STAT_ARMOR] < 1)
             other->client->ps.stats[STAT_ARMORTYPE] = 0;
-        other->client->ps.stats[STAT_ARMOR] += ent->item->quantity;
+        // [QL] tiered-armor shard adds a fixed 2 (binary literal at 0x1004e6b8),
+        // NOT ent->item->quantity (that path is only the non-tiered branch above)
+        other->client->ps.stats[STAT_ARMOR] += 2;
     }
 
     if (other->client->ps.stats[STAT_ARMOR] > max) {
@@ -742,6 +856,9 @@ void RespawnItem(gentity_t* ent) {
     // play the normal respawn sound only to nearby clients
     G_AddEvent(ent, EV_ITEM_RESPAWN, 0);
 
+    // [QL] mark when the item became available again, for time-held item stats
+    ent->spawnTime = level.time;
+
     ent->nextthink = 0;
 
     // [QL] Notify spectators that this item has respawned
@@ -767,7 +884,13 @@ void G_RespawnKey(int keyTag) {
 
     ent = NULL;
     while ((ent = G_Find(ent, FOFS(classname), classname)) != NULL) {
-        RespawnItem(ent);
+        // [QL] fixed (map-placed) keys respawn in place; dropped keys are removed.
+        // Binary distinguishes on FL_DROPPED_ITEM (0x1004d61c) and inlines G_FreeEntity.
+        if (!(ent->flags & FL_DROPPED_ITEM)) {
+            RespawnItem(ent);
+        } else {
+            G_FreeEntity(ent);
+        }
     }
 }
 
@@ -786,7 +909,9 @@ void Touch_Item(gentity_t* ent, gentity_t* other, trace_t* trace) {
         return;  // dead people can't pickup
 
     // the same pickup rules are used for client side and server side
-    if (!BG_CanItemBeGrabbed(g_gametype.integer, &ent->s, &other->client->ps)) {
+    if (!BG_CanItemBeGrabbed(level.time, level.warmupTime, armor_tiered.integer,
+                             g_weaponRespawn.integer, g_gametype.integer,
+                             &ent->s, &other->client->ps)) {
         return;
     }
 
@@ -834,6 +959,10 @@ void Touch_Item(gentity_t* ent, gentity_t* other, trace_t* trace) {
         default:
             return;
     }
+
+    // [QL] count every touch that reached a pickup handler; drives the
+    // "first pickup" and time-held item stats
+    ent->pickupCount++;
 
     if (!respawn) {
         return;
@@ -911,14 +1040,15 @@ void Touch_Item(gentity_t* ent, gentity_t* other, trace_t* trace) {
         ent->nextthink = 0;
         ent->think = 0;
     } else {
-        // [QL] Item timer: broadcast respawn time to spectators/clients
-        if (g_itemTimers.integer && ent->item &&
-            (ent->item->giType == IT_ARMOR || ent->item->giType == IT_POWERUP ||
-             (ent->item->giType == IT_HEALTH && ent->item->quantity >= 100))) {
+        // [QL] Item timer: broadcast respawn time to spectators/clients. Gated on the
+        // per-item itemTimer field (binary item+0x3c) and g_itemTimers, and marks the
+        // entity FL_ITEM_TIMER. Binary: Touch_Item @0x1004f090.
+        if (g_itemTimers.integer && ent->item && ent->item->itemTimer) {
             ent->s.time2 = respawn * 1000;
             ent->s.time = level.time + respawn * 1000;
             ent->r.svFlags &= ~SVF_NOCLIENT;
             ent->s.generic1 = (ent->team != NULL) ? 1 : 0;
+            ent->flags |= FL_ITEM_TIMER;
         }
         ent->nextthink = level.time + respawn * 1000;
         ent->think = RespawnItem;

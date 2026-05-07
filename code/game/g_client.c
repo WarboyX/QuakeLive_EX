@@ -24,6 +24,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 // g_client.c -- client functions that don't happen every frame
 
+extern qboolean itemRegistered[];  // g_items.c: set by RegisterItem, read by the warmup grant
+
 static vec3_t playerMins = {-15, -15, -24};
 static vec3_t playerMaxs = {15, 15, 32};
 
@@ -507,6 +509,22 @@ ClientRespawn
 ================
 */
 void ClientRespawn(gentity_t* ent) {
+    // [QL] in a live CA/AD round a dead player sits the round out as a spectator
+    // instead of respawning. ClientBegin_RoundBased_impl queues the body and drops
+    // them into follow. Countdown still spawns normally.
+    // TODO: make byte-faithful to binary ClientRespawn 0x1003a110. Full
+    // structure: outer guard skips respawn when (FreezeTag && ps.pm_type==PM_FREEZE
+    // && !intermission); gate on client->respawnTime<=level.time; CA/AD RoundBased
+    // branch is inside that gate; a force-respawn window ((client+0x264 & 5)==0 &&
+    // level.time-respawnTime<=DAT_104b2dac) returns early for gametypes 4/9/0xb/0xc;
+    // CopyToBodyQue is gated on ((intermission||warmup||gametype!=FREEZE) &&
+    // !AD_IsWarmup()); then pm_type=0, ClientSpawn. Needs freeze context (phase 3).
+    if (!level.intermissionTime && !level.warmupTime &&
+        (g_gametype.integer == GT_CA || g_gametype.integer == GT_AD) &&
+        level.roundState.eCurrent != RS_COUNTDOWN) {
+        ClientBegin_RoundBased_impl(ent);
+        return;
+    }
     CopyToBodyQue(ent);
     ClientSpawn(ent);
 }
@@ -729,9 +747,20 @@ void ClientUserinfoChanged(int clientNum) {
 
     client->ps.stats[STAT_MAX_HEALTH] = client->pers.maxHealth;
 
-    // [QL] set model - QL uses "model" for all gametypes (no team_model)
-    Q_strncpyz(model, Info_ValueForKey(userinfo, "model"), sizeof(model));
-    Q_strncpyz(headModel, Info_ValueForKey(userinfo, "headmodel"), sizeof(headModel));
+    // [QL] set model - QL uses "model" for all gametypes (no team_model). A non-empty
+    // g_playermodelOverride / g_playerheadmodelOverride replaces the client's own choice
+    // server-side, so every player is forced to that model (OnChangedModelOverride re-runs
+    // this for all clients when the cvar changes).
+    if (g_playermodelOverride.string[0] != '\0') {
+        Q_strncpyz(model, g_playermodelOverride.string, sizeof(model));
+    } else {
+        Q_strncpyz(model, Info_ValueForKey(userinfo, "model"), sizeof(model));
+    }
+    if (g_playerheadmodelOverride.string[0] != '\0') {
+        Q_strncpyz(headModel, g_playerheadmodelOverride.string, sizeof(headModel));
+    } else {
+        Q_strncpyz(headModel, Info_ValueForKey(userinfo, "headmodel"), sizeof(headModel));
+    }
 
     /*	NOTE: all client side now
 
@@ -874,10 +903,10 @@ char* ClientConnect(int clientNum, qboolean firstTime, qboolean isBot) {
         {
             int r;
             memset(&client->expandedStats, 0, sizeof(client->expandedStats));
-            client->expandedStats.teamJoinTime = level.time;
-            client->expandedStats.lastThinkTime = level.time - level.startTime;
+            client->expandedStats.lastThinkTime = level.time;                    // +0x56c (binary order)
+            client->expandedStats.teamJoinTime = level.time - level.startTime;   // +0x570
             r = rand();
-            client->expandedStats.statId = level.time + r + 636 + (int)(intptr_t)client;
+            client->expandedStats.statId = level.time + r + 636 + (int)(intptr_t)client;   // +0x568
         }
     }
     G_ReadSessionData(client);
@@ -904,7 +933,10 @@ char* ClientConnect(int clientNum, qboolean firstTime, qboolean isBot) {
             trap_SendServerCommand(-1, va("print \"%s" S_COLOR_WHITE " connected\n\"", client->pers.netname));
         }
 
-        STAT_InitClient(ent);
+        // NOTE: binary ClientConnect does NOT call STAT_InitClient here; the
+        // expandedStats init is done inline above (firstTime || newSession).
+        // STAT_InitClient's only binary caller is SetTeam_Execute (team-change
+        // re-init), which is not yet reimplemented. See STAT_InitClient below.
 
         if (g_gametype.integer > GT_RACE &&
             client->sess.sessionTeam != TEAM_SPECTATOR) {
@@ -982,17 +1014,17 @@ void ClientBegin(int clientNum) {
     // [QL] gametype-specific begin dispatch
     switch (g_gametype.integer) {
     case GT_RACE:
-        ClientBegin_Race(ent);
+        RACE_ClientBegin(ent);
         break;
     case GT_CA:
     case GT_AD:
         ClientBegin_RoundBased(ent);
         break;
     case GT_FREEZE:
-        ClientBegin_Freeze(ent);
+        Freeze_ClientBegin(ent);
         break;
     case GT_RR:
-        ClientBegin_RedRover(ent);
+        RR_ClientBegin(ent);
         break;
     default:
         ClientSpawn(ent);
@@ -1169,12 +1201,33 @@ void ClientSpawn(gentity_t* ent) {
             &g_startingAmmo_cg,     // WP_CHAINGUN = 13
             &g_startingAmmo_hmg,    // WP_HMG = 14
         };
+        // [QL] fixed per-weapon warmup ammo. The binary's warmup grant (GiveDefaultWeapons
+        // 0x1003bcf5) reads this static table (weapon-info table at 0x1008ff18, stride 0x30,
+        // field +0x14), NOT the g_startingAmmo cvars. Values read straight from qagamex86.dll.
+        static const int warmupDefaultAmmo[WP_NUM_WEAPONS] = {
+            0,    // WP_NONE
+            -1,   // WP_GAUNTLET
+            150,  // WP_MACHINEGUN
+            25,   // WP_SHOTGUN
+            25,   // WP_GRENADE_LAUNCHER
+            25,   // WP_ROCKET_LAUNCHER
+            150,  // WP_LIGHTNING
+            25,   // WP_RAILGUN
+            150,  // WP_PLASMAGUN
+            25,   // WP_BFG
+            -1,   // WP_GRAPPLING_HOOK
+            25,   // WP_NAILGUN
+            5,    // WP_PROX_LAUNCHER
+            200,  // WP_CHAINGUN
+            150,  // WP_HMG
+        };
         int w;
         qboolean isBot = (ent->r.svFlags & SVF_BOT) != 0;
 
         // Validate/default weaponPrimary for loadout mode (binary: GiveDefaultWeapons)
         // Only re-default if current primary is out of range or disabled by map.
-        if (g_loadout.integer && !(client->ps.pm_flags & PMF_FROZEN)) {
+        // [QL] binary gates on pm_flags & 0x80000 (PMF_LOADOUT_FORCED), not PMF_FROZEN
+        if (g_loadout.integer && !(client->ps.pm_flags & PMF_LOADOUT_FORCED)) {
             int wp = client->sess.weaponPrimary;
             qboolean invalid = (wp <= 0 || wp >= WP_NUM_WEAPONS ||
                                 (g_disableLoadout.integer & (1 << wp)) != 0);
@@ -1196,9 +1249,9 @@ void ClientSpawn(gentity_t* ent) {
             }
         }
 
-        // Path 1: Loadout grant - weaponPrimary (if loadout enabled, not frozen, not disabled)
-        // Binary: GiveStartingAmmo first loop
-        if (g_loadout.integer && !(client->ps.pm_flags & PMF_FROZEN)) {
+        // Path 1: Loadout grant - weaponPrimary (if loadout enabled, not forced-loadout, not disabled)
+        // Binary: GiveStartingAmmo whole-body gate is (pm_flags & 0x80000)==0, i.e. PMF_LOADOUT_FORCED
+        if (g_loadout.integer && !(client->ps.pm_flags & PMF_LOADOUT_FORCED)) {
             int wp = client->sess.weaponPrimary;
             if (wp > 0 && wp < WP_NUM_WEAPONS && !(g_disableLoadout.integer & (1 << wp))) {
                 client->ps.stats[STAT_WEAPONS] |= (1 << wp);
@@ -1208,12 +1261,22 @@ void ClientSpawn(gentity_t* ent) {
             }
         }
 
+        // [QL] always-registered weapons (top of GiveDefaultWeapons, binary 0x1003b8b0):
+        // gauntlet, machinegun and grapple are registered every spawn regardless of
+        // g_startingWeapons, so the warmup grant below and the CS_ITEMS precache include them.
+        RegisterItem(BG_FindItemForWeapon(WP_GAUNTLET));
+        RegisterItem(BG_FindItemForWeapon(WP_MACHINEGUN));
+        RegisterItem(BG_FindItemForWeapon(WP_GRAPPLING_HOOK));
+
         // Path 2: Normal bitmask grant - runs regardless of loadout mode
         // Binary: GiveStartingAmmo second block (unconditional on loadout)
         for (w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++) {
             if (g_startingWeapons.integer & (1 << (w - 1))) {
                 client->ps.stats[STAT_WEAPONS] |= (1 << w);
                 client->ps.ammo[w] = startingAmmoCvars[w]->integer;
+                // [QL] register each granted weapon so the warmup grant re-grants only this
+                // set, not the full arsenal (GiveStartingAmmo calls RegisterItem per bit).
+                RegisterItem(BG_FindItemForWeapon(w));
             }
         }
 
@@ -1223,14 +1286,11 @@ void ClientSpawn(gentity_t* ent) {
         if (client->ps.stats[STAT_WEAPONS] & (1 << WP_GRAPPLING_HOOK))
             client->ps.ammo[WP_GRAPPLING_HOOK] = -1;
 
-        // Loadout or instagib: ALL ammo = infinite
-        if (g_loadout.integer || (g_dmflags.integer & DF_INSTAGIB)) {
-            for (w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++) {
-                client->ps.ammo[w] = -1;
-            }
-        }
-        // Non-loadout g_infiniteAmmo override
-        else if (g_infiniteAmmo.integer) {
+        // [QL] all ammo becomes infinite for g_infiniteAmmo or instagib. The binary's top block
+        // (GiveDefaultWeapons 0x1003b8b0) keys on g_infiniteAmmo (0x105a31cc) || g_instaGib - NOT
+        // g_loadout - so loadout mode keeps the finite g_startingAmmo cvar ammo that the bitmask
+        // grant above assigned (GiveStartingAmmo does the same).
+        if (g_infiniteAmmo.integer || (g_dmflags.integer & DF_INSTAGIB)) {
             for (w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++) {
                 client->ps.ammo[w] = -1;
             }
@@ -1240,13 +1300,24 @@ void ClientSpawn(gentity_t* ent) {
         // Only when loadout is OFF, not bot-only, and not instagib.
         // MG (2) and grapple (10) are only granted if already in g_startingWeapons.
         // RR infected red team (zombies) don't get warmup extras.
-        if (level.warmupTime && !g_loadout.integer &&
+        if (level.warmupTime && !g_loadout.integer && !g_isBotOnly.integer &&
             !(g_dmflags.integer & DF_INSTAGIB)) {
             qboolean infectedRedZombie = (g_gametype.integer == GT_RR &&
                                           g_rrInfected.integer != 0 &&
                                           client->sess.sessionTeam == TEAM_RED);
             for (w = WP_MACHINEGUN; w < WP_NUM_WEAPONS; w++) {
-                // MG and grapple are gated on g_startingWeapons bits
+                gitem_t* wItem = BG_FindItemForWeapon(w);
+                // [QL] only re-grant weapons registered for this match (binary warmup block
+                // gates on itemRegistered). With no map weapon spawns the registered set is the
+                // always-present weapons plus g_startingWeapons, so the player keeps exactly that
+                // loadout in warmup instead of the full arsenal.
+                if (!wItem || !itemRegistered[wItem - bg_itemlist]) {
+                    continue;
+                }
+                // [QL] MG and grapple are registered every spawn, so the itemRegistered gate
+                // alone would grant them in warmup. The binary also skips them unless
+                // g_startingWeapons includes the weapon (TEST bit; JZ skip), so with
+                // 8447 (no grapple bit) the grapple is not handed out.
                 if (w == WP_MACHINEGUN && !(g_startingWeapons.integer & 0x2))
                     continue;
                 if (w == WP_GRAPPLING_HOOK && !(g_startingWeapons.integer & 0x200))
@@ -1254,7 +1325,15 @@ void ClientSpawn(gentity_t* ent) {
                 if (!infectedRedZombie) {
                     client->ps.stats[STAT_WEAPONS] |= (1 << w);
                 }
-                client->ps.ammo[w] = startingAmmoCvars[w]->integer;
+                // [QL] warmup ammo comes from the fixed warmupDefaultAmmo table, not the
+                // g_startingAmmo cvars (binary GiveDefaultWeapons warmup block, 0x1003bcf5:
+                // ammo[w] = (g_infiniteAmmo || g_instaGib) ? -1 : warmupDefaultAmmo[w]).
+                // g_infiniteAmmo still yields the infinite sentinel here.
+                if (g_infiniteAmmo.integer || (g_dmflags.integer & DF_INSTAGIB)) {
+                    client->ps.ammo[w] = -1;
+                } else {
+                    client->ps.ammo[w] = warmupDefaultAmmo[w];
+                }
             }
         }
     }
@@ -1311,14 +1390,14 @@ void ClientSpawn(gentity_t* ent) {
     if (pmove_CrouchSlide.integer) {
         client->ps.pm_flags |= PMF_CROUCH_SLIDE;
     }
-    if (pmove_AutoHop.integer && g_gametype.integer != GT_CA) {
+    if (pmove_AutoHop.integer) {
         // autoHop is opt-in per-client via userinfo "cg_autoHop"
-        // [QL] binary skips this for GT_CA
+        // [QL] binary (ClientSpawn 0x1003be20) has NO gametype gate here - runs in every gametype
         char *s = Info_ValueForKey(userinfo, "cg_autoHop");
-        if (*s && atoi(s)) {
-            client->ps.pm_flags &= ~PMF_NO_AUTOHOP;
-        } else {
+        if (!*s || !atoi(s)) {
             client->ps.pm_flags |= PMF_NO_AUTOHOP;
+        } else {
+            client->ps.pm_flags &= ~PMF_NO_AUTOHOP;
         }
     }
 
@@ -1420,7 +1499,7 @@ void ClientSpawn(gentity_t* ent) {
 
     // [QL] team alive counting for team gametypes
     if (g_gametype.integer > GT_RACE) {
-        UpdateTeamAliveCount(NULL, NULL);
+        Team_LivingTeamCounts(NULL, NULL);
     }
 
     // clear entity state values
@@ -1470,7 +1549,7 @@ void ClientDisconnect(int clientNum) {
     }
 
     // [QL] update alive counts immediately
-    UpdateTeamAliveCount(NULL, NULL);
+    Team_LivingTeamCounts(NULL, NULL);
 
     // [QL] complex follow cleanup: stop followers, release grapple, clear complaint/damage tracking
     for (i = 0; i < level.maxclients; i++) {
@@ -1566,16 +1645,16 @@ void ClientDisconnect(int clientNum) {
     case GT_FREEZE:
     case GT_AD:
     case GT_RR:
-        UpdateTeamAliveCount(NULL, NULL);
+        Team_LivingTeamCounts(NULL, NULL);
         break;
     }
 }
 
-// ClientBegin_Race moved to g_gametype_race.c
+// RACE_ClientBegin moved to g_gametype_race.c
 
 // ClientBegin_RoundBased moved to g_gametype_common.c
-// ClientBegin_Freeze moved to g_gametype_ft.c
-// ClientBegin_RedRover moved to g_gametype_rr.c
+// Freeze_ClientBegin moved to g_gametype_ft.c
+// RR_ClientBegin moved to g_gametype_rr.c
 // Functions moved to g_gametype_*.c files
 
 /*
@@ -1619,13 +1698,13 @@ void SelectSpawnWeapon(gentity_t* ent) {
 
 /*
 ============
-UpdateTeamAliveCount
+Team_LivingTeamCounts
 
 [QL] Count alive (non-spectator, non-dead, connected) players per team.
 Sets configstring for each team's alive count.
 ============
 */
-void UpdateTeamAliveCount(int *outRed, int *outBlue) {
+void Team_LivingTeamCounts(int *outRed, int *outBlue) {
     int i;
     int aliveRed = 0, aliveBlue = 0;
 
@@ -1675,7 +1754,27 @@ void G_ReleaseGrapple(gentity_t* ent) {
 
 // DuelScoreboardMessage moved to g_gametype_duel.c
 
-void STAT_InitClient(gentity_t* ent) { }
+/*
+============
+STAT_InitClient
+
+[QL] Zero the per-client expandedStats block (0x32C bytes) and seed timing plus a
+unique statId. In the binary this standalone helper (0x10078330) has exactly one
+caller: SetTeam_Execute, the team-change re-init path. ClientConnect performs the
+identical init inline.
+============
+*/
+// Address: 0x10078330
+void STAT_InitClient(gentity_t* ent) {
+    gclient_t* client = ent->client;
+    int r;
+
+    memset(&client->expandedStats, 0, sizeof(client->expandedStats));   // 0x32C bytes
+    client->expandedStats.lastThinkTime = level.time;                    // +0x56c
+    client->expandedStats.teamJoinTime = level.time - level.startTime;   // +0x570
+    r = rand();
+    client->expandedStats.statId = level.time + r + 636 + (int)(intptr_t)client;   // +0x568
+}
 void STAT_PublishClientDisconnect(gclient_t* client, int reason) { }
 void STAT_SubscribeClient(gentity_t* ent) { }
 void STAT_LogDisconnect(int clientNum) { }

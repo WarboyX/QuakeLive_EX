@@ -1,234 +1,188 @@
 /*
- * g_unlagged.c - Lag compensation (HAX_* system)
+ * g_unlagged.c - hitscan lag compensation (the HAX_* system)
  *
- * Based on Quake Live's lag compensation system (qagamex64.so symbols:
- * HAX_Init, HAX_Clear, HAX_Update, HAX_Begin, HAX_End).
+ * QL rewinds every other player to where the firer saw them, around a
+ * hitscan trace, so shots register against the target's rendered position rather
+ * than its current one. Verified against qagamex86.dll (build 1069): FireWeapon
+ * (0x1006f280) brackets the fire with HAX_Begin before and HAX_End after, for the
+ * hitscan weapons (mask 0x60cc = MG, SG, LG, RG, CG, HMG), gated on g_lagHaxMs and
+ * g_lagHaxHistory.
  *
- * Stores position history per client. When a hitscan weapon fires,
- * all OTHER clients are rewound to their positions at the firer's
- * command time, traces are performed, then positions are restored.
+ * Each client keeps a small ring of g_lagHaxHistory snapshots (default 4) of its
+ * origin and bbox, pushed once per frame from ClientEndFrame. On a fire the ring
+ * is interpolated to the firer's command time; g_lagHaxMs (default 80) caps how
+ * far back the rewind can reach.
  *
- * Controlled by g_lagHaxMs (max rewind in ms) and g_lagHaxHistory
- * (number of history entries per client).
+ * Names are from qagamex64.so.symbols. The qagamex86.dll Ghidra project had these
+ * mislabelled as Item_*SpecTimer / Item_*SpecPositions (a separate, unrelated
+ * Item_InitSpecTimers exists in the symbols); trust the HAX_* symbol names.
  */
 #include "g_local.h"
 
-#define MAX_LAG_HISTORY 32  // max entries per client (g_lagHaxHistory clamped to this)
+// Address: 0x100516d0 (HAX_Init), 0x100517c0 (HAX_Update), 0x100519e0 (HAX_Begin),
+//          0x10051ac0 (HAX_End). The interpolation helper below is a separate
+//          function at 0x10051850 in the DLL, inlined into HAX_Begin in the .so.
 
-typedef struct {
+// One recorded position in a client's history ring. QL allocates these as a
+// circular doubly-linked list (48 bytes each) via G_Alloc in HAX_Init.
+typedef struct haxSnap_s {
+    struct haxSnap_s* next;
+    struct haxSnap_s* prev;
+    vec3_t origin;              // s.pos.trBase at 'time'
     vec3_t mins;
     vec3_t maxs;
-    vec3_t currentOrigin;
-    int time;
-    qboolean valid;
-} lagRecord_t;
+    int time;                   // level.time of this snapshot, 0 = empty slot
+} haxSnap_t;
 
+// The live position we saved before rewinding a client, so HAX_End can put it back.
 typedef struct {
-    lagRecord_t history[MAX_LAG_HISTORY];
-    int head;           // current write index
-    int numEntries;     // g_lagHaxHistory.integer (clamped)
-    // saved state for restore
-    vec3_t savedOrigin;
-    vec3_t savedMins;
-    vec3_t savedMaxs;
-    qboolean rewound;
-} lagState_t;
+    vec3_t origin;
+    vec3_t mins;
+    vec3_t maxs;
+    int time;                   // level.time when rewound this fire, else 0
+} haxSaved_t;
 
-static lagState_t lagState[MAX_CLIENTS];
+static haxSnap_t* haxHistory[MAX_CLIENTS];   // ring head per client (DAT_10092ac8)
+static haxSaved_t haxSaved[MAX_CLIENTS];      // saved live pos during a rewind (DAT_10091ed0)
 
-/*
-============
-HAX_Init - allocate/initialize history buffers
-Called from G_InitGame when g_lagHaxMs and g_lagHaxHistory are both non-zero.
-============
-*/
+// HAX_Init - allocate each client's snapshot ring. Called from G_InitGame when
+// g_lagHaxMs and g_lagHaxHistory are both set.
 void HAX_Init(void) {
-    int i;
-    int numEntries = g_lagHaxHistory.integer;
+    int i, j, count;
+    haxSnap_t* ring;
 
-    if (numEntries > MAX_LAG_HISTORY) {
-        numEntries = MAX_LAG_HISTORY;
-    }
-    if (numEntries < 1) {
-        numEntries = 1;
-    }
-
-    memset(lagState, 0, sizeof(lagState));
-    for (i = 0; i < MAX_CLIENTS; i++) {
-        lagState[i].numEntries = numEntries;
-    }
-}
-
-/*
-============
-HAX_Clear - clear history for a specific player
-Called on ClientSpawn and ClientDisconnect.
-============
-*/
-void HAX_Clear(gentity_t *ent) {
-    int clientNum = ent->s.number;
-
-    if (clientNum < 0 || clientNum >= MAX_CLIENTS) {
+    count = g_lagHaxHistory.integer;
+    if (count < 1) {
         return;
     }
-
-    memset(lagState[clientNum].history, 0, sizeof(lagState[clientNum].history));
-    lagState[clientNum].head = 0;
-    lagState[clientNum].rewound = qfalse;
-}
-
-/*
-============
-HAX_Update - store current position in history ring buffer
-Called at the end of ClientEndFrame for each connected player.
-============
-*/
-void HAX_Update(gentity_t *ent) {
-    int clientNum = ent->s.number;
-    lagState_t *ls;
-    lagRecord_t *rec;
-
-    if (clientNum < 0 || clientNum >= MAX_CLIENTS) {
-        return;
-    }
-    if (!ent->client) {
-        return;
-    }
-
-    ls = &lagState[clientNum];
-    rec = &ls->history[ls->head % ls->numEntries];
-
-    VectorCopy(ent->r.currentOrigin, rec->currentOrigin);
-    VectorCopy(ent->r.mins, rec->mins);
-    VectorCopy(ent->r.maxs, rec->maxs);
-    rec->time = level.time;
-    rec->valid = qtrue;
-
-    ls->head++;
-}
-
-/*
-============
-HAX_Begin - rewind all OTHER clients to historical positions
-Called before hitscan weapon traces. commandTime is the firing
-player's ps.commandTime (their latency-adjusted server time).
-============
-*/
-void HAX_Begin(gentity_t *shooter, int commandTime) {
-    int i, j;
-    int maxRewind = g_lagHaxMs.integer;
-    int targetTime;
-    int shooterNum = shooter->s.number;
-
-    // Clamp rewind to g_lagHaxMs
-    targetTime = commandTime;
-    if (level.time - targetTime > maxRewind) {
-        targetTime = level.time - maxRewind;
-    }
-
     for (i = 0; i < level.maxclients; i++) {
-        lagState_t *ls = &lagState[i];
-        gentity_t *ent = &g_entities[i];
-
-        ls->rewound = qfalse;
-
-        // Don't rewind the shooter
-        if (i == shooterNum) {
-            continue;
+        ring = G_Alloc(count * sizeof(haxSnap_t));
+        haxHistory[i] = ring;
+        for (j = 0; j < count; j++) {
+            ring[j].next = &ring[(j + 1) % count];
+            ring[j].prev = &ring[(j + count - 1) % count];
+            ring[j].time = 0;
         }
-        // Only rewind connected, alive players
-        if (!ent->inuse || !ent->client) {
-            continue;
+    }
+}
+
+// HAX_Update - push this client's current position into its ring. One step per
+// frame from ClientEndFrame. Non-player entities push an empty slot.
+void HAX_Update(gentity_t* ent) {
+    haxSnap_t* slot;
+
+    slot = haxHistory[ent->s.number];
+    if (!slot) {
+        return;
+    }
+    slot = slot->next;
+    if (ent->s.eType == ET_PLAYER) {
+        slot->time = level.time;
+        VectorCopy(ent->s.pos.trBase, slot->origin);
+        VectorCopy(ent->r.mins, slot->mins);
+        VectorCopy(ent->r.maxs, slot->maxs);
+    } else {
+        slot->time = 0;
+    }
+    haxHistory[ent->s.number] = slot;
+}
+
+// HAX_Clear - invalidate the head slot so a respawn or disconnect doesn't leave a
+// stale position for the rewind to interpolate against. QL does this inline in
+// ClientSpawn / ClientDisconnect (haxHistory[clientNum]->time = 0).
+void HAX_Clear(gentity_t* ent) {
+    if (haxHistory[ent->s.number]) {
+        haxHistory[ent->s.number]->time = 0;
+    }
+}
+
+// HAX_Replay - move ent back to where it was at 'time' by interpolating the two
+// ring snapshots that bracket it, then relink so the trace sees it there. The bbox
+// is taken from the newer snapshot. Bails if there is no valid history. Separate
+// helper at 0x10051850 in the DLL; the .so inlines it into HAX_Begin.
+static void HAX_Replay(gentity_t* ent, int time) {
+    haxSnap_t* cur;
+    haxSnap_t* older;
+    haxSnap_t* newer;
+    float frac;
+    vec3_t diff;
+
+    cur = haxHistory[ent->s.number];
+    if (!cur || time > cur->time) {
+        return;                     // nothing newer than 'time' to rewind from
+    }
+    older = cur;
+    newer = cur;
+    while (older->time > time) {
+        haxSnap_t* prev = older->prev;
+        newer = older;
+        if (prev->time >= older->time) {
+            break;                  // wrapped past the oldest snapshot, clamp here
         }
-        if (ent->client->pers.connected != CON_CONNECTED) {
-            continue;
+        older = prev;
+    }
+    if (older->time == 0) {
+        return;                     // ran into an empty slot, not enough history
+    }
+    trap_UnlinkEntity(ent);
+    if (older == newer || older->time == newer->time) {
+        VectorCopy(older->origin, ent->r.currentOrigin);
+    } else {
+        // origin = older + frac * (older - newer), frac spanning older..newer
+        frac = (float)(time - older->time) / (float)(older->time - newer->time);
+        VectorSubtract(older->origin, newer->origin, diff);
+        VectorMA(older->origin, frac, diff, ent->r.currentOrigin);
+    }
+    VectorCopy(newer->mins, ent->r.mins);
+    VectorCopy(newer->maxs, ent->r.maxs);
+    trap_LinkEntity(ent);
+}
+
+// HAX_Begin - rewind every other live client to 'startTime' (the firer's command
+// time), saving their current position first. The firer's own shots aren't
+// compensated if it's a bot. startTime is clamped so we never rewind further back
+// than g_lagHaxMs. Paired with HAX_End.
+void HAX_Begin(gentity_t* shooter, int startTime) {
+    int i;
+    gentity_t* ent;
+
+    if (shooter->r.svFlags & SVF_BOT) {
+        return;
+    }
+    if (startTime < level.time - g_lagHaxMs.integer) {
+        startTime = level.time - g_lagHaxMs.integer;
+    }
+    for (i = 0; i < level.maxclients; i++) {
+        ent = &g_entities[i];
+        haxSaved[i].time = 0;
+        // [QL] binary (0x100519e0) gates on inuse + pers.connected==CON_CONNECTED, ent!=shooter,
+        // and ps.pm_type != PM_SPECTATOR (client+4 != 2), NOT s.eType != ET_ITEM. The live
+        // position saved for restore is r.currentOrigin (0x220), NOT s.pos.trBase.
+        if (ent->client && ent->client->pers.connected == CON_CONNECTED && ent != shooter &&
+            ent->client->ps.pm_type != PM_SPECTATOR) {
+            VectorCopy(ent->r.currentOrigin, haxSaved[i].origin);
+            VectorCopy(ent->r.mins, haxSaved[i].mins);
+            VectorCopy(ent->r.maxs, haxSaved[i].maxs);
+            haxSaved[i].time = level.time;
+            HAX_Replay(ent, startTime);
         }
-        if (ent->client->sess.sessionTeam == TEAM_SPECTATOR) {
-            continue;
-        }
-        if (ent->health <= 0) {
-            continue;
-        }
+    }
+}
 
-        // Save current position
-        VectorCopy(ent->r.currentOrigin, ls->savedOrigin);
-        VectorCopy(ent->r.mins, ls->savedMins);
-        VectorCopy(ent->r.maxs, ls->savedMaxs);
+// HAX_End - put every rewound client back to its live position and relink.
+// haxSaved[i].time == level.time marks who was moved this fire.
+void HAX_End(gentity_t* shooter) {
+    int i;
+    gentity_t* ent;
 
-        // Find the two history entries bracketing targetTime and interpolate
-        {
-            lagRecord_t *prev = NULL;
-            lagRecord_t *next = NULL;
-
-            for (j = ls->head - 1; j >= 0 && j >= ls->head - ls->numEntries; j--) {
-                lagRecord_t *rec = &ls->history[((j % ls->numEntries) + ls->numEntries) % ls->numEntries];
-                if (!rec->valid) {
-                    break;
-                }
-                if (rec->time <= targetTime) {
-                    prev = rec;
-                    break;
-                }
-                next = rec;
-            }
-
-            if (prev && next && next->time != prev->time) {
-                // Interpolate between prev and next
-                float frac = (float)(targetTime - prev->time) / (float)(next->time - prev->time);
-                vec3_t newOrigin;
-
-                newOrigin[0] = prev->currentOrigin[0] + frac * (next->currentOrigin[0] - prev->currentOrigin[0]);
-                newOrigin[1] = prev->currentOrigin[1] + frac * (next->currentOrigin[1] - prev->currentOrigin[1]);
-                newOrigin[2] = prev->currentOrigin[2] + frac * (next->currentOrigin[2] - prev->currentOrigin[2]);
-
-                VectorCopy(newOrigin, ent->r.currentOrigin);
-                VectorCopy(prev->mins, ent->r.mins);
-                VectorCopy(prev->maxs, ent->r.maxs);
-                ls->rewound = qtrue;
-            } else if (prev) {
-                // Exact match or only older record - use prev
-                VectorCopy(prev->currentOrigin, ent->r.currentOrigin);
-                VectorCopy(prev->mins, ent->r.mins);
-                VectorCopy(prev->maxs, ent->r.maxs);
-                ls->rewound = qtrue;
-            } else if (next) {
-                // Only newer record - use it
-                VectorCopy(next->currentOrigin, ent->r.currentOrigin);
-                VectorCopy(next->mins, ent->r.mins);
-                VectorCopy(next->maxs, ent->r.maxs);
-                ls->rewound = qtrue;
-            }
-            // If no records found, don't rewind (use current position)
-        }
-
-        if (ls->rewound) {
+    (void)shooter;
+    for (i = 0; i < level.maxclients; i++) {
+        if (haxSaved[i].time == level.time) {
+            ent = &g_entities[i];
+            VectorCopy(haxSaved[i].origin, ent->r.currentOrigin);
+            VectorCopy(haxSaved[i].mins, ent->r.mins);
+            VectorCopy(haxSaved[i].maxs, ent->r.maxs);
             trap_LinkEntity(ent);
         }
-    }
-}
-
-/*
-============
-HAX_End - restore all clients to current positions
-Called after hitscan weapon traces.
-============
-*/
-void HAX_End(gentity_t *shooter) {
-    int i;
-
-    for (i = 0; i < level.maxclients; i++) {
-        lagState_t *ls = &lagState[i];
-        gentity_t *ent = &g_entities[i];
-
-        if (!ls->rewound) {
-            continue;
-        }
-
-        VectorCopy(ls->savedOrigin, ent->r.currentOrigin);
-        VectorCopy(ls->savedMins, ent->r.mins);
-        VectorCopy(ls->savedMaxs, ent->r.maxs);
-        ls->rewound = qfalse;
-
-        trap_LinkEntity(ent);
     }
 }

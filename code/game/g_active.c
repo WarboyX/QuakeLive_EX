@@ -69,12 +69,26 @@ void P_DamageFeedback(gentity_t* player) {
     }
 
     // play an appropriate pain sound
+    // [QL] binary (0x100338c0) queues EV_PAIN with a BUCKETED pain value
+    // (20/40/60/80 at health thresholds 25/50/75), not raw health. The Ghidra
+    // label "G_Sound" at 0x1006c650 is a mislabel of the event adder (G_AddEvent).
+    // damageEvent is incremented unconditionally below.
     if ((level.time > player->pain_debounce_time) && !(player->flags & FL_GODMODE)) {
+        int painValue;
         player->pain_debounce_time = level.time + 700;
-        G_AddEvent(player, EV_PAIN, player->health);
-        client->ps.damageEvent++;
+        if (player->health < 25) {
+            painValue = 20;
+        } else if (player->health < 50) {
+            painValue = 40;
+        } else if (player->health < 75) {
+            painValue = 60;
+        } else {
+            painValue = 80;
+        }
+        G_AddEvent(player, EV_PAIN, painValue);
     }
 
+    client->ps.damageEvent++;
     client->ps.damageCount = count;
 
     //
@@ -565,6 +579,53 @@ void ClientTimerActions(gentity_t* ent, int msec) {
             }
         }
     }
+
+    // [QL] health regen (binary ClientTimerActions 0x10034320): once g_regenHealth ms
+    // have passed since the last hurt, drip HP back at g_regenHealthRate ms per point.
+    // G_Damage sets client->healthRegenActive; this consumes it. g_regenHealth is a
+    // delay in ms (and the enable), *Rate is ms-per-point.
+    if (g_regenHealth.integer) {
+        if (ent->health >= client->ps.stats[STAT_MAX_HEALTH]) {
+            client->healthRegenActive = qfalse;
+        }
+        if (client->healthRegenActive && client->lasthurt_time[0] &&
+            g_regenHealth.integer < level.time - client->lasthurt_time[0]) {
+            client->timeResidualHealth += msec;
+        }
+        while (client->timeResidualHealth >= g_regenHealthRate.integer) {
+            ent->health += 1;
+            client->timeResidualHealth -= g_regenHealthRate.integer;
+        }
+    }
+
+    // [QL] armor regen (binary ClientTimerActions_Powerups tail 0x100344a0): drip
+    // armour back after g_regenArmor ms, capped by the armour tier (150/100/50 when
+    // armor_tiered, else max health) and optionally gated on full HP first.
+    if (g_regenArmor.integer) {
+        qboolean atCap;
+        if (armor_tiered.integer) {
+            int tier = client->ps.stats[STAT_ARMORTYPE];
+            atCap = (tier == 2 && client->ps.stats[STAT_ARMOR] >= 150) ||
+                    (tier == 1 && client->ps.stats[STAT_ARMOR] >= 100) ||
+                    (tier == 0 && client->ps.stats[STAT_ARMOR] >= 50);
+        } else {
+            atCap = client->ps.stats[STAT_ARMOR] >= client->ps.stats[STAT_MAX_HEALTH];
+        }
+        if (atCap) {
+            client->armorRegenActive = qfalse;
+        }
+        if (client->armorRegenActive &&
+            g_regenArmor.integer < level.time - client->lasthurt_time[0] &&
+            (!g_regenArmorAfterHealth.integer ||
+             ent->health >= client->ps.stats[STAT_MAX_HEALTH])) {
+            client->timeResidualArmor += msec;
+        }
+        while (client->timeResidualArmor >= g_regenArmorRate.integer) {
+            client->ps.stats[STAT_ARMOR] += 1;
+            ent->s.armor = client->ps.stats[STAT_ARMOR];
+            client->timeResidualArmor -= g_regenArmorRate.integer;
+        }
+    }
 }
 
 /*
@@ -585,8 +646,9 @@ void ClientIntermissionThink(gclient_t* client) {
     client->oldbuttons = client->buttons;
     client->buttons = client->pers.cmd.buttons;
     if (client->buttons & (BUTTON_ATTACK | BUTTON_USE_HOLDABLE) & (client->oldbuttons ^ client->buttons)) {
-        // this used to be an ^1 but once a player says ready, it should stick
-        clientReadyToExit[client - level.clients] = qtrue;
+        // [QL] binary (ClientThink_real intermission inline @ 0x10034d40) toggles
+        // readyToExit each press (readyToExit ^= 1) at client+0x2e8; it does NOT stick.
+        clientReadyToExit[client - level.clients] = !clientReadyToExit[client - level.clients];
     }
 }
 
@@ -814,7 +876,6 @@ usually be a couple times for each server frame on fast clients.
 ==============
 */
 
-static int infiniteAmmoLastModification = -1;
 void ClientThink_real(gentity_t* ent) {
     gclient_t* client;
     pmove_t pm;
@@ -861,6 +922,17 @@ void ClientThink_real(gentity_t* ent) {
         return;
     }
 
+    // [QL] pause/timeout: freeze the client and skip the rest of think. Binary
+    // ClientThink_real (0x10034d40) sets PMF_PAUSED + commandTime=serverTime right
+    // after the intermission block and early-returns; PMF_PAUSED is cleared on
+    // unpause. Clear-then-set each frame gives the same net effect.
+    client->ps.pm_flags &= ~PMF_PAUSED;
+    if (level.timePauseBegin != 0) {
+        client->ps.pm_flags |= PMF_PAUSED;
+        client->ps.commandTime = ucmd->serverTime;
+        return;
+    }
+
     // spectators don't do much
     if (client->sess.sessionTeam == TEAM_SPECTATOR) {
         if (client->sess.spectatorState == SPECTATOR_SCOREBOARD) {
@@ -883,10 +955,28 @@ void ClientThink_real(gentity_t* ent) {
     if (client->noclip) {
         client->ps.pm_type = PM_NOCLIP;
     } else if (client->ps.stats[STAT_HEALTH] <= 0) {
-        client->ps.pm_type = PM_DEAD;
+        // [QL] frozen players (freeze tag) keep their pm_type rather than going
+        // PM_DEAD, so the statue stays put and can be thawed. Binary
+        // ClientThink_real (0x10034d40) gates PM_DEAD on ps.powerups[PW_FREEZE]
+        // (client+0x17c), not the freezePlayer flag.
+        if (client->ps.powerups[PW_FREEZE] <= 0) {
+            client->ps.pm_type = PM_DEAD;
+        }
+    } else if (client->freezePlayer) {
+        // [QL] alive but frozen: full movement lock. The binary writes pm_type 6
+        // (PM_TUTORIAL) here, not PM_FREEZE, and drops this frame's input.
+        client->ps.pm_type = PM_TUTORIAL;
+        ucmd->buttons = 0;
+    } else if (g_gametype.integer == GT_AD && level.roundState.eCurrent == RS_COUNTDOWN) {
+        // [QL] attack & defend locks players in place during the round countdown
+        // (binary: gametype==GT_AD && roundState.eCurrent==RS_COUNTDOWN -> PM_FREEZE).
+        client->ps.pm_type = PM_FREEZE;
     } else {
         client->ps.pm_type = PM_NORMAL;
     }
+
+    // [QL] PMF_PAUSED is handled above (early-return right after the intermission
+    // block, matching binary ClientThink_real 0x10034d40).
 
     // set gravity
     client->ps.gravity = g_gravity.value;
@@ -914,26 +1004,9 @@ void ClientThink_real(gentity_t* ent) {
         Weapon_HookFree(client->hook);
     }
 
-    // [QL] infinite ammo: ammo is set to -1 at spawn time only (g_client.c ClientSpawn),
-    // NOT every frame. Per-frame setting causes ammo delta → spurious pickup sounds.
-    // The cvar change handler below restores default ammo when g_infiniteAmmo is turned OFF.
-    if (g_infiniteAmmo.modificationCount != infiniteAmmoLastModification) {
-        infiniteAmmoLastModification = g_infiniteAmmo.modificationCount;
-        if (!g_infiniteAmmo.integer) {
-            // Turned off: restore default ammo quantities
-            for (int i = 1; i < WP_NUM_WEAPONS; i++) {
-                if (i != WP_GAUNTLET && i != WP_GRAPPLING_HOOK && client->ps.ammo[i] == -1) {
-                    gitem_t *item = BG_FindItemForWeapon(i);
-                    client->ps.ammo[i] = item ? item->quantity : 0;
-                }
-            }
-        } else {
-            // Turned on: set all ammo to -1 once
-            for (int i = 1; i < WP_NUM_WEAPONS; i++) {
-                client->ps.ammo[i] = -1;
-            }
-        }
-    }
+    // [QL] infinite ammo (ammo == -1) is set at spawn (ClientSpawn) and, on a live cvar
+    // toggle, applied to every client by OnChangedInfiniteAmmo (g_main.c). Nothing to do
+    // per-frame here.
 
     // set up for pmove
     oldEventSequence = client->ps.eventSequence;
@@ -1043,6 +1116,16 @@ void ClientThink_real(gentity_t* ent) {
     // swap and latch button actions
     client->oldbuttons = client->buttons;
     client->buttons = ucmd->buttons;
+
+    // [QL] Freeze Tag: frozen players run the thaw check every frame instead
+    // of the normal respawn path, so they can't respawn by pressing fire.
+    // Binary ClientThink_real (0x10034d40) gates this on ps.powerups[PW_FREEZE]
+    // != 0 (client+0x17c, set by the player_die FreezeTag fork) and passes the
+    // clamped pmove frame delta (msec) that Pmove used this command.
+    if (client->ps.powerups[PW_FREEZE] != 0) {
+        Freeze_ClientThawCheck(ent, msec);
+        return;
+    }
 
     // check for respawning
     if (client->ps.stats[STAT_HEALTH] <= 0) {
@@ -1168,10 +1251,29 @@ void ClientEndFrame(gentity_t* ent) {
 
     // [QL] Persist the latest loadout primary weapon from pmove so the next
     // ClientSpawn (after kill/respawn) uses it. bg_pmove.c already copies
-    // cmd.weaponPrimary → ps.weaponPrimary each frame; we snapshot it into
+    // cmd.weaponPrimary -> ps.weaponPrimary each frame; we snapshot it into
     // the session struct here. Matches qagamex86.dll ClientEndFrame.
     if (ent->client->ps.weaponPrimary != 0) {
         ent->client->sess.weaponPrimary = ent->client->ps.weaponPrimary;
+    }
+
+    // [QL] connection/AFK flag - evaluated before the pause gate so a lagging player's
+    // icon still updates while paused. Written to the entity state directly (as well as
+    // the playerState) because the playerState->entityState copy below is skipped during
+    // a pause; on live frames both hold the same value.
+    if (level.time - ent->client->lastCmdTime > 1000) {
+        ent->client->ps.eFlags |= EF_CONNECTION;
+        ent->s.eFlags |= EF_CONNECTION;
+    } else {
+        ent->client->ps.eFlags &= ~EF_CONNECTION;
+        ent->s.eFlags &= ~EF_CONNECTION;
+    }
+
+    // [QL] paused players skip everything below (matches ClientEndFrame's PMF_PAUSED
+    // early-out): powerup timers do not expire, no world/damage effects, and the
+    // player's pose freezes because the playerState->entityState update is skipped.
+    if (ent->client->ps.pm_flags & PMF_PAUSED) {
+        return;
     }
 
     // turn off any expired powerups
@@ -1212,12 +1314,7 @@ void ClientEndFrame(gentity_t* ent) {
     // apply all the damage taken this frame
     P_DamageFeedback(ent);
 
-    // add the EF_CONNECTION flag if we haven't gotten commands recently
-    if (level.time - ent->client->lastCmdTime > 1000) {
-        ent->client->ps.eFlags |= EF_CONNECTION;
-    } else {
-        ent->client->ps.eFlags &= ~EF_CONNECTION;
-    }
+    // (EF_CONNECTION is now set earlier, before the pause gate)
 
     ent->client->ps.stats[STAT_HEALTH] = ent->health;  // FIXME: get rid of ent->health...
 
@@ -1228,7 +1325,7 @@ void ClientEndFrame(gentity_t* ent) {
     BG_PlayerStateToEntityStateExtraPolate(&ent->client->ps, &ent->s, ent->client->ps.commandTime, qtrue);
     SendPendingPredictableEvents(&ent->client->ps);
 
-    // [QL] Lag compensation - store position history
+    // [QL] Lag compensation - record this client's position for this frame
     if (g_lagHaxMs.integer != 0 && g_lagHaxHistory.integer != 0) {
         HAX_Update(ent);
     }
