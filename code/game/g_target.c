@@ -173,6 +173,11 @@ Multiple identical looping sounds will just increase volume without any speed co
 "random"	wait variance, default is 0
 */
 void Use_Target_Speaker(gentity_t* ent, gentity_t* other, gentity_t* activator) {
+    // [QL] a player attached to the grapple hook does not trigger the speaker
+    if (activator->client && activator->client->hook) {
+        return;
+    }
+
     if (ent->spawnflags & 3) {  // looping sound toggles
         if (ent->s.loopSound)
             ent->s.loopSound = 0;  // turn it off
@@ -392,6 +397,64 @@ void target_kill_use(gentity_t* self, gentity_t* other, gentity_t* activator) {
 
 void SP_target_kill(gentity_t* self) {
     self->use = target_kill_use;
+}
+
+//==========================================================
+
+/*QUAKED target_cvar (.5 .5 .5) (-8 -8 -8) (8 8 8)
+[QL] Sets a server cvar when used. The cvar name comes from the "cvar" key,
+the value from the "cvarValue" key. The value is stored in ent->random.
+*/
+// Address: 0x10067cb0
+void Use_Target_Cvar(gentity_t* ent, gentity_t* other, gentity_t* activator) {
+    // binary formats the cvar name through va("%s", ...) as well as the value
+    trap_Cvar_Set(va("%s", ent->cvar), va("%f", ent->random));
+}
+
+// Address: 0x10067d00
+void SP_target_cvar(gentity_t* ent) {
+    char* s;
+
+    G_SpawnString("cvarValue", "-1.0f", &s);
+    ent->random = atof(s);
+    ent->use = Use_Target_Cvar;
+}
+
+//==========================================================
+
+// [QL] Steam achievement ids granted by target_achievement, indexed 1..7
+static const int target_achievementIds[8] = { 0, 2, 3, 4, 5, 6, 7, 8 };
+
+/*QUAKED target_achievement (1 0 0) (-8 -8 -8) (8 8 8)
+[QL] Grants a Steam achievement to the activator. The "achievement" key picks
+which one (1-7).
+*/
+// Address: 0x10067d40
+void Use_Target_Achievement(gentity_t* ent, gentity_t* other, gentity_t* activator) {
+    int index;
+
+    if (!activator->client) {
+        return;
+    }
+
+    index = ent->health;
+    if (index == 0 || index >= 8) {
+        return;
+    }
+
+    if (!trap_HasAchievement(activator->client->ps.clientNum, target_achievementIds[index])) {
+        trap_SetAchievement(activator->client->ps.clientNum, target_achievementIds[index]);
+    }
+}
+
+// Address: 0x10067dc0
+void SP_target_achievement(gentity_t* ent) {
+    char* s;
+
+    // binary reads the "id" spawn key (default "0"), not "achievement"
+    G_SpawnString("id", "0", &s);
+    ent->health = atoi(s);
+    ent->use = Use_Target_Achievement;
 }
 
 /*QUAKED target_position (0 0.5 0) (-4 -4 -4) (4 4 4)

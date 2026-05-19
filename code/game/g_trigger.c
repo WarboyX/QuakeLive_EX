@@ -138,6 +138,10 @@ void trigger_push_touch(gentity_t* self, gentity_t* other, trace_t* trace) {
     if (!other->client) {
         return;
     }
+    // [QL] a player attached to the grapple hook is not affected by the jump pad
+    if (other->client->hook) {
+        return;
+    }
 
     BG_TouchJumpPad(&other->client->ps, &self->s);
 }
@@ -181,6 +185,11 @@ void AimAtTarget(gentity_t* self) {
     VectorScale(self->s.origin2, forward, self->s.origin2);
 
     self->s.origin2[2] = time * gravity;
+
+    // [QL] truncate the push velocity components to integers
+    self->s.origin2[0] = (int)self->s.origin2[0];
+    self->s.origin2[1] = (int)self->s.origin2[1];
+    self->s.origin2[2] = (int)self->s.origin2[2];
 }
 
 /*QUAKED trigger_push (.5 .5 .5) ?
@@ -198,8 +207,9 @@ void SP_trigger_push(gentity_t* self) {
 
     self->s.eType = ET_PUSH_TRIGGER;
     self->touch = trigger_push_touch;
-    self->think = AimAtTarget;
-    self->nextthink = level.time + FRAMETIME;
+    // [QL] AimAtTarget runs via the per-frame framethink callback (gentity+0x2fc),
+    // not the Q3 think/nextthink deferral
+    self->framethink = AimAtTarget;
     trap_LinkEntity(self);
 }
 
@@ -214,13 +224,19 @@ void Use_target_push(gentity_t* self, gentity_t* other, gentity_t* activator) {
     if (activator->client->ps.powerups[PW_FLIGHT]) {
         return;
     }
+    // [QL] a player attached to the grapple hook is not pushed
+    if (activator->client->hook) {
+        return;
+    }
 
     VectorCopy(self->s.origin2, activator->client->ps.velocity);
 
     // play fly sound every 1.5 seconds
     if (activator->fly_sound_debounce_time < level.time) {
         activator->fly_sound_debounce_time = level.time + 1500;
-        G_Sound(activator, CHAN_AUTO, self->noise_index);
+        // [QL] binary (Use_target_push) plays the windfly/bounce sound as a global
+        // (non-positional) sound, not a positional entity sound.
+        G_GlobalSound(self->noise_index);
     }
 }
 
@@ -375,6 +391,9 @@ void SP_trigger_hurt(gentity_t* self) {
     if (!self->damage) {
         self->damage = 5;
     }
+
+    // [QL] explicitly (re)assert trigger contents; InitTrigger already set it
+    self->r.contents = CONTENTS_TRIGGER;
 
     self->use = hurt_use;
 

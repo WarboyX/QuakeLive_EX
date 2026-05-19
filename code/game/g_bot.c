@@ -398,6 +398,42 @@ int G_CountBotPlayers(int team) {
 
 /*
 ===============
+G_CountBotPlayersWithQueued
+
+[QL] Like G_CountBotPlayers but also counts bots queued to spawn whose spawn
+time is already due. (binary G_CountBotPlayersWithQueued 0x10036ee0)
+===============
+*/
+static int G_CountBotPlayersWithQueued(int team) {
+    int i, num;
+    gclient_t* cl;
+
+    num = 0;
+    // connected bots
+    for (i = 0; i < g_maxclients.integer; i++) {
+        cl = level.clients + i;
+        if (cl->pers.connected != CON_CONNECTED) {
+            continue;
+        }
+        if (!(g_entities[i].r.svFlags & SVF_BOT)) {
+            continue;
+        }
+        if (team >= 0 && cl->sess.sessionTeam != team) {
+            continue;
+        }
+        num++;
+    }
+    // bots queued to spawn that are already due
+    for (i = 0; i < BOT_SPAWN_QUEUE_DEPTH; i++) {
+        if (botSpawnQueue[i].spawnTime && botSpawnQueue[i].spawnTime <= level.time) {
+            num++;
+        }
+    }
+    return num;
+}
+
+/*
+===============
 G_CheckMinimumPlayers
 ===============
 */
@@ -406,10 +442,10 @@ void G_CheckMinimumPlayers(void) {
     int humanplayers, botplayers;
     static int checkminimumplayers_time;
 
-    if (level.intermissionTime)
+    if (level.intermissionTime || level.intermissionQueued)
         return;
-    // only check once each 10 seconds
-    if (checkminimumplayers_time > level.time - 10000) {
+    // [QL] only check once each second (binary throttle: 1000ms)
+    if (checkminimumplayers_time > level.time - 1000) {
         return;
     }
     checkminimumplayers_time = level.time;
@@ -424,7 +460,7 @@ void G_CheckMinimumPlayers(void) {
         }
 
         humanplayers = G_CountHumanPlayers(TEAM_RED);
-        botplayers = G_CountBotPlayers(TEAM_RED);
+        botplayers = G_CountBotPlayersWithQueued(TEAM_RED);
         //
         if (humanplayers + botplayers < minplayers) {
             G_AddRandomBot(TEAM_RED);
@@ -433,7 +469,7 @@ void G_CheckMinimumPlayers(void) {
         }
         //
         humanplayers = G_CountHumanPlayers(TEAM_BLUE);
-        botplayers = G_CountBotPlayers(TEAM_BLUE);
+        botplayers = G_CountBotPlayersWithQueued(TEAM_BLUE);
         //
         if (humanplayers + botplayers < minplayers) {
             G_AddRandomBot(TEAM_BLUE);
@@ -445,7 +481,7 @@ void G_CheckMinimumPlayers(void) {
             minplayers = g_maxclients.integer - 1;
         }
         humanplayers = G_CountHumanPlayers(-1);
-        botplayers = G_CountBotPlayers(-1);
+        botplayers = G_CountBotPlayersWithQueued(-1);
         //
         if (humanplayers + botplayers < minplayers) {
             G_AddRandomBot(TEAM_FREE);
@@ -461,7 +497,7 @@ void G_CheckMinimumPlayers(void) {
             minplayers = g_maxclients.integer - 1;
         }
         humanplayers = G_CountHumanPlayers(TEAM_FREE);
-        botplayers = G_CountBotPlayers(TEAM_FREE);
+        botplayers = G_CountBotPlayersWithQueued(TEAM_FREE);
         //
         if (humanplayers + botplayers < minplayers) {
             G_AddRandomBot(TEAM_FREE);
@@ -582,6 +618,9 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     }
 
     // set default team
+    // [QL] for non-team gametypes the binary defaults the team string to "red"
+    // (not "free"); the value is inert for FFA/Duel but is written verbatim into
+    // the "team" userinfo key below. (0x10037620)
     if (!team || !*team) {
         if (g_gametype.integer >= GT_TEAM) {
             if (PickTeam(clientNum) == TEAM_RED) {
@@ -590,7 +629,7 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
                 team = "blue";
             }
         } else {
-            team = "free";
+            team = "red";
         }
     }
 
@@ -694,8 +733,11 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     }
     Info_SetValueForKey(userinfo, "characterfile", s);
 
-    // don't send tinfo to bots, they don't parse it
-    Info_SetValueForKey(userinfo, "teamoverlay", "0");
+    // [QL] the binary rewrites "skill" here with %5.2f (this is the final value
+    // in the userinfo; it overrides the %1.2f value written earlier) and stores
+    // the resolved team in the "team" key. It does NOT set "teamoverlay". (0x10037620)
+    Info_SetValueForKey(userinfo, "skill", va("%5.2f", skill));
+    Info_SetValueForKey(userinfo, "team", team);
 
     // [QL] mark entity as bot before ClientConnect
     g_entities[clientNum].r.svFlags |= SVF_BOT;
@@ -735,6 +777,13 @@ void Svcmd_AddBot_f(void) {
         return;
     }
 
+    // [QL] bots may not be added manually while in bot-only training mode
+    // (0x10037a10)
+    if (g_isBotOnly.integer) {
+        G_Printf("Addbot not allowed during training.\n");
+        return;
+    }
+
     // name
     trap_Argv(1, name, sizeof(name));
     if (!name[0]) {
@@ -743,11 +792,13 @@ void Svcmd_AddBot_f(void) {
     }
 
     // skill
+    // [QL] default skill comes from g_spSkill (not a hardcoded 4), and the
+    // supplied value is NOT clamped here - the binary just atof()s it. (0x10037a10)
     trap_Argv(2, string, sizeof(string));
     if (!string[0]) {
-        skill = 4;
+        skill = trap_Cvar_VariableValue("g_spSkill");
     } else {
-        skill = Com_Clamp(1, 5, atof(string));
+        skill = atof(string);
     }
 
     // team
@@ -768,9 +819,16 @@ void Svcmd_AddBot_f(void) {
 
     // if this was issued during gameplay and we are playing locally,
     // go ahead and load the bot's media immediately
+    // [QL] the command is spelled correctly ("loaddeferred"); QL fixed the Q3 typo.
     if (level.time - level.startTime > 1000 &&
         trap_Cvar_VariableIntegerValue("cl_running")) {
-        trap_SendServerCommand(-1, "loaddefered\n");  // FIXME: spelled wrong, but not changing for demo
+        trap_SendServerCommand(-1, "loaddeferred\n");
+    }
+
+    // [QL] in bot-only training mode, force the client to reload media now
+    // regardless of the elapsed-time / cl_running gate above. (0x10037a10)
+    if (g_isBotOnly.integer) {
+        trap_SendServerCommand(-1, "loaddeferred\n");
     }
 }
 

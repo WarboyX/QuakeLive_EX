@@ -39,16 +39,32 @@ teamgame_t teamgame;
 
 gentity_t* neutralObelisk;
 
+extern qboolean itemRegistered[];
+
 void Team_SetFlagStatus(int team, flagStatus_t status);
 
+/*
+==============
+Team_InitGame
+
+Reset flag status at game start and warn about missing team entities.
+Called from G_InitGame. Handles CTF, 1FCTF, AD, Obelisk and Harvester.
+Address: 0x1004fda0
+==============
+*/
 void Team_InitGame(void) {
+    gitem_t* item;
+
     memset(&teamgame, 0, sizeof teamgame);
+
+    // binary also clears two level shuffle flags here (see manifest)
 
     switch (g_gametype.integer) {
         case GT_CTF:
+        case GT_AD:
             teamgame.redStatus = -1;  // Invalid to force update
+            teamgame.blueStatus = -1;
             Team_SetFlagStatus(TEAM_RED, FLAG_ATBASE);
-            teamgame.blueStatus = -1;  // Invalid to force update
             Team_SetFlagStatus(TEAM_BLUE, FLAG_ATBASE);
             break;
         case GT_1FCTF:
@@ -57,6 +73,53 @@ void Team_InitGame(void) {
             break;
         default:
             break;
+    }
+
+    if (g_gametype.integer == GT_CTF || g_gametype.integer == GT_AD) {
+        item = BG_FindItemForPowerup(PW_REDFLAG);
+        if (!item || !itemRegistered[item - bg_itemlist]) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_CTF_redflag in map");
+        }
+        item = BG_FindItemForPowerup(PW_BLUEFLAG);
+        if (!item || !itemRegistered[item - bg_itemlist]) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_CTF_blueflag in map");
+        }
+    }
+
+    if (g_gametype.integer == GT_1FCTF) {
+        item = BG_FindItemForPowerup(PW_REDFLAG);
+        if (!item || !itemRegistered[item - bg_itemlist]) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_CTF_redflag in map");
+        }
+        item = BG_FindItemForPowerup(PW_BLUEFLAG);
+        if (!item || !itemRegistered[item - bg_itemlist]) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_CTF_blueflag in map");
+        }
+        item = BG_FindItemForPowerup(PW_NEUTRALFLAG);
+        if (!item || !itemRegistered[item - bg_itemlist]) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_CTF_neutralflag in map");
+        }
+    }
+
+    if (g_gametype.integer == GT_OBELISK) {
+        if (!G_Find(NULL, FOFS(classname), "team_redobelisk")) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_redobelisk in map");
+        }
+        if (!G_Find(NULL, FOFS(classname), "team_blueobelisk")) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_blueobelisk in map");
+        }
+    }
+
+    if (g_gametype.integer == GT_HARVESTER) {
+        if (!G_Find(NULL, FOFS(classname), "team_redobelisk")) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_redobelisk in map");
+        }
+        if (!G_Find(NULL, FOFS(classname), "team_blueobelisk")) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_blueobelisk in map");
+        }
+        if (!G_Find(NULL, FOFS(classname), "team_neutralobelisk")) {
+            G_Printf(S_COLOR_YELLOW "WARNING: No team_neutralobelisk in map");
+        }
     }
 }
 
@@ -109,44 +172,87 @@ static __attribute__((format(printf, 2, 3))) void QDECL PrintMsg(gentity_t* ent,
 
 /*
 ==============
+FreezeTagInGame / FreezeTagInWarmup
+
+[QL] freeze-tag live/warmup predicates (binary 0x10067e00 / 0x10067e30).
+==============
+*/
+qboolean FreezeTagInGame(void) {
+    return (level.intermissionTime == 0 && level.intermissionQueued == 0 &&
+            level.warmupTime == 0 && g_gametype.integer == GT_FREEZE);
+}
+
+qboolean FreezeTagInWarmup(void) {
+    return (level.intermissionTime == 0 && level.intermissionQueued == 0 &&
+            level.warmupTime != 0 && g_gametype.integer == GT_FREEZE);
+}
+
+/*
+==============
 AddTeamScore
 
- used for gametype > GT_TEAM
- for gametype GT_TEAM the level.teamScores is updated in AddScore in g_combat.c
+[QL] byte-faithful port of binary 0x10068190. Updates level.teamScores[team]
+and broadcasts a team announcer sound (EV_GLOBAL_TEAM_SOUND) only on a tie,
+lead change, or generic team-scored event - ordinary frags emit nothing (the
+event parm stays -1). The sound is suppressed while approaching the capture
+limit (handled elsewhere), except during warmup. The temp-entity
+origin is irrelevant here (the event is broadcast to everyone).
 ==============
 */
 void AddTeamScore(vec3_t origin, int team, int score) {
-    gentity_t* te;
-
-    te = G_TempEntity(origin, EV_GLOBAL_TEAM_SOUND);
-    te->r.svFlags |= SVF_BROADCAST;
+    int otherTeam;
+    int ev = -1;
+    int myScore, otherScore, newScore;
+    int gt = g_gametype.integer;
 
     if (team == TEAM_RED) {
-        if (level.teamScores[TEAM_RED] + score == level.teamScores[TEAM_BLUE]) {
-            // teams are tied sound
-            te->s.eventParm = GTS_TEAMS_ARE_TIED;
-        } else if (level.teamScores[TEAM_RED] <= level.teamScores[TEAM_BLUE] &&
-                   level.teamScores[TEAM_RED] + score > level.teamScores[TEAM_BLUE]) {
-            // red took the lead sound
-            te->s.eventParm = GTS_REDTEAM_TOOK_LEAD;
-        } else {
-            // red scored sound
-            te->s.eventParm = GTS_REDTEAM_SCORED;
-        }
+        otherTeam = TEAM_BLUE;
     } else {
-        if (level.teamScores[TEAM_BLUE] + score == level.teamScores[TEAM_RED]) {
-            // teams are tied sound
-            te->s.eventParm = GTS_TEAMS_ARE_TIED;
-        } else if (level.teamScores[TEAM_BLUE] <= level.teamScores[TEAM_RED] &&
-                   level.teamScores[TEAM_BLUE] + score > level.teamScores[TEAM_RED]) {
-            // blue took the lead sound
-            te->s.eventParm = GTS_BLUETEAM_TOOK_LEAD;
-        } else {
-            // blue scored sound
-            te->s.eventParm = GTS_BLUETEAM_SCORED;
+        otherTeam = TEAM_RED;
+        if (team != TEAM_BLUE) {
+            otherTeam = team;
         }
     }
+
+    if (level.intermissionQueued) {
+        return;
+    }
+    if (level.intermissionTime) {
+        return;
+    }
+
+    myScore    = level.teamScores[team];
+    newScore   = myScore + score;
+    otherScore = level.teamScores[otherTeam];
+
+    if (newScore == otherScore) {
+        ev = GTS_TEAMS_ARE_TIED;
+    } else if (gt == GT_CTF || gt == GT_1FCTF || FreezeTagInGame() || gt == GT_AD) {
+        // generic team-scored announce
+        ev = (team != TEAM_RED) + GTS_REDTEAM_SCORED;      // RED->8, BLUE->9
+    } else if (myScore == otherScore) {
+        // teams were level before this score - it is a lead change
+        if (newScore > otherScore) {
+            ev = (team != TEAM_RED) + GTS_REDTEAM_TOOK_LEAD;   // RED->10, BLUE->11
+        } else if (newScore < otherScore) {
+            // fell behind, so the other team took the lead
+            ev = (team == TEAM_RED) ? GTS_BLUETEAM_TOOK_LEAD : GTS_REDTEAM_TOOK_LEAD;
+        }
+    }
+
+    // suppress the announce when one score away from the capture limit in
+    // capture-based modes (unless in warmup); TDM and freeze always announce.
+    if (gt == GT_TEAM || FreezeTagInGame() || g_capturelimit.integer == 0 ||
+        myScore + 1 < g_capturelimit.integer || level.warmupTime != 0) {
+        if (ev >= 0) {
+            gentity_t *te = G_TempEntity(origin, EV_GLOBAL_TEAM_SOUND);
+            te->r.svFlags |= SVF_BROADCAST;
+            te->s.eventParm = ev;
+        }
+    }
+
     level.teamScores[team] += score;
+    CalculateRanks();
 }
 
 /*
@@ -338,6 +444,8 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
         AddScore(attacker, targ->r.currentOrigin, CTF_CARRIER_DANGER_PROTECT_BONUS);
 
         attacker->client->pers.teamState.carrierdefense++;
+        // [QL] Team_FragBonuses_Full 0x10068950: recent-attacker defend bumps numDefends (+0x800)
+        attacker->client->expandedStats.numDefends++;
         targ->client->pers.teamState.lasthurtcarrier = 0;
 
         attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
@@ -412,6 +520,8 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
         // we defended the base flag
         AddScore(attacker, targ->r.currentOrigin, CTF_FLAG_DEFENSE_BONUS);
         attacker->client->pers.teamState.basedefense++;
+        // [QL] Team_FragBonuses_Full 0x10068950: base/flagstand defend bumps numDefends (+0x800)
+        attacker->client->expandedStats.numDefends++;
 
         attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
         // add the sprite over the player's head
@@ -433,6 +543,8 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
             attacker->client->sess.sessionTeam != targ->client->sess.sessionTeam) {
             AddScore(attacker, targ->r.currentOrigin, CTF_CARRIER_PROTECT_BONUS);
             attacker->client->pers.teamState.carrierdefense++;
+            // [QL] Team_FragBonuses_Full 0x10068950: carrier-proximity defend bumps numDefends (+0x800)
+            attacker->client->expandedStats.numDefends++;
 
             attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
             // add the sprite over the player's head
@@ -551,7 +663,7 @@ void Team_TakeFlagSound(gentity_t* ent, int team) {
     switch (team) {
         case TEAM_RED:
             if (teamgame.blueStatus != FLAG_ATBASE) {
-                if (teamgame.blueTakenTime > level.time - 10000)
+                if (teamgame.blueTakenTime > level.time - 2000)
                     return;
             }
             teamgame.blueTakenTime = level.time;
@@ -559,7 +671,7 @@ void Team_TakeFlagSound(gentity_t* ent, int team) {
 
         case TEAM_BLUE:  // CTF
             if (teamgame.redStatus != FLAG_ATBASE) {
-                if (teamgame.redTakenTime > level.time - 10000)
+                if (teamgame.redTakenTime > level.time - 2000)
                     return;
             }
             teamgame.redTakenTime = level.time;
@@ -688,6 +800,8 @@ int Team_TouchOurFlag(gentity_t* ent, gentity_t* other, int team) {
     Team_ForceGesture(other->client->sess.sessionTeam);
 
     other->client->pers.teamState.captures++;
+    // [QL] Team_TouchOurFlag 0x100697e0: capturer's numCaptures (+0x7f8)
+    other->client->expandedStats.numCaptures++;
     // add the sprite over the player's head
     other->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP);
     other->client->ps.eFlags |= EF_AWARD_CAP;
@@ -719,6 +833,8 @@ int Team_TouchOurFlag(gentity_t* ent, gentity_t* other, int team) {
                 level.time) {
                 AddScore(player, ent->r.currentOrigin, CTF_RETURN_FLAG_ASSIST_BONUS);
                 other->client->pers.teamState.assists++;
+                // [QL] Team_TouchOurFlag 0x100697e0: assisting teammate's numAssists (+0x7fc)
+                player->client->expandedStats.numAssists++;
 
                 player->client->ps.persistant[PERS_ASSIST_COUNT]++;
                 // add the sprite over the player's head
@@ -731,6 +847,8 @@ int Team_TouchOurFlag(gentity_t* ent, gentity_t* other, int team) {
                 level.time) {
                 AddScore(player, ent->r.currentOrigin, CTF_FRAG_CARRIER_ASSIST_BONUS);
                 other->client->pers.teamState.assists++;
+                // [QL] Team_TouchOurFlag 0x100697e0: assisting teammate's numAssists (+0x7fc)
+                player->client->expandedStats.numAssists++;
                 player->client->ps.persistant[PERS_ASSIST_COUNT]++;
                 // add the sprite over the player's head
                 player->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP);
@@ -772,6 +890,19 @@ int Team_TouchEnemyFlag(gentity_t* ent, gentity_t* other, int team) {
     }
 
     AddScore(other, ent->r.currentOrigin, CTF_FLAG_BONUS);
+
+    // [QL] Team_TouchEnemyFlag 0x10069e10: flag-pickup statistics, fixed/base flags
+    // only (binary gates on ent+0xac==0, i.e. s.modelindex2==0, a non-dropped spawn).
+    if (ent->s.modelindex2 == 0) {
+        if (g_gametype.integer == GT_1FCTF)
+            cl->expandedStats.numNeutralFlagPickups++;
+        else if (team == TEAM_RED)
+            cl->expandedStats.numRedFlagPickups++;
+        else if (team == TEAM_BLUE)
+            cl->expandedStats.numBlueFlagPickups++;
+        level.numFlagPickups[cl->sess.sessionTeam]++;
+    }
+
     cl->pers.teamState.flagsince = level.time;
     Team_TakeFlagSound(ent, team);
 
@@ -975,7 +1106,7 @@ Format:
 
 ==================
 */
-void TeamplayInfoMessage(gentity_t* ent) {
+void TeamOverlayMessage(gentity_t* ent) {
     char entry[1024];
     char string[8192];
     int stringlength;
@@ -1078,7 +1209,7 @@ void CheckTeamStatus(void) {
             }
 
             if (ent->inuse) {
-                TeamplayInfoMessage(ent);
+                TeamOverlayMessage(ent);
             }
         }
     }

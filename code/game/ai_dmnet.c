@@ -2635,3 +2635,276 @@ int AINode_Battle_NBG(bot_state_t* bs) {
     //
     return qtrue;
 }
+
+/*
+==================
+FindInstaGibTarget
+
+[QL] Pick the nearest visible, reachable, live player for the InstaGib
+hunting node. Returns the target entity number or -1.
+(binary FindInstaGibTarget 0x10020200)
+==================
+*/
+int FindInstaGibTarget(bot_state_t* bs) {
+    int i, besttarget, area, numareas;
+    float bestdist, dist;
+    vec3_t dir, end;
+    aas_entityinfo_t entinfo;
+    gentity_t* ent;
+    int areas[10];
+
+    bestdist = 100000000.0;
+    besttarget = -1;
+
+    // keep the current enemy if it is still visible and reachable
+    if (bs->enemy != -1 &&
+        BotEntityVisible(bs->entitynum, bs->eye, bs->viewangles, 360, bs->enemy)) {
+        BotEntityInfo(bs->enemy, &entinfo);
+        VectorSubtract(bs->origin, entinfo.origin, dir);
+        area = BotPointAreaNum(entinfo.origin);
+        if (area > 0 &&
+            trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, area, TFL_DEFAULT) > 0) {
+            bestdist = VectorLength(dir);
+            besttarget = bs->enemy;
+        }
+    }
+
+    // find the nearest visible, reachable, live client
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        if (i == bs->entitynum) {
+            continue;
+        }
+        BotEntityInfo(i, &entinfo);
+        if (!entinfo.valid) {
+            continue;
+        }
+        // only hunt clients that are alive and playing
+        if (entinfo.number < MAX_CLIENTS) {
+            ent = &g_entities[entinfo.number];
+            if (ent->inuse && ent->client && ent->client->ps.pm_type != PM_NORMAL) {
+                continue;
+            }
+        }
+        VectorSubtract(bs->origin, entinfo.origin, dir);
+        dist = VectorLength(dir);
+        if (dist < bestdist) {
+            area = BotPointAreaNum(entinfo.origin);
+            if (area != 0 &&
+                trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, area, TFL_DEFAULT) != 0) {
+                bestdist = dist;
+                besttarget = i;
+            }
+        }
+    }
+
+    // fall back to the nearest client we can trace an area to
+    if (besttarget == -1) {
+        for (i = 0; i < MAX_CLIENTS; i++) {
+            if (i == bs->entitynum) {
+                continue;
+            }
+            BotEntityInfo(i, &entinfo);
+            if (!entinfo.valid) {
+                continue;
+            }
+            VectorSubtract(bs->origin, entinfo.origin, dir);
+            dist = VectorLength(dir);
+            if (dist < bestdist) {
+                area = trap_AAS_PointAreaNum(entinfo.origin);
+                if (area == 0) {
+                    VectorCopy(entinfo.origin, end);
+                    end[2] += 10;
+                    numareas = trap_AAS_TraceAreas(entinfo.origin, end, areas, NULL, 10);
+                    if (numareas < 1 || !areas[0]) {
+                        continue;
+                    }
+                    area = areas[0];
+                }
+                if (trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, area, TFL_DEFAULT) != 0) {
+                    bestdist = dist;
+                    besttarget = i;
+                }
+            }
+        }
+    }
+    return besttarget;
+}
+
+/*
+==================
+AIEnter_InstaGib
+
+[QL] (binary AIEnter_InstaGib 0x100133c0)
+==================
+*/
+void AIEnter_InstaGib(bot_state_t* bs, char* s) {
+    // never time out the long term goal while hunting
+    bs->ltg_time = FloatTime() + 99999;
+    // ltgtype 21 marks this node so BotDeathmatchAI does not re-enter it every frame
+    bs->ltgtype = 21;
+    bs->ainode = AINode_InstaGib;
+    BotRecordNodeSwitch(bs, "insta gib!", "", s);
+}
+
+/*
+==================
+AINode_InstaGib
+
+[QL] Per-frame InstaGib hunting node: find the nearest player, path to it and
+shoot. (binary AINode_InstaGib 0x10013410)
+==================
+*/
+int AINode_InstaGib(bot_state_t* bs) {
+    int target;
+    bot_goal_t goal;
+    vec3_t dir, target_org;
+    aas_entityinfo_t entinfo;
+    bot_moveresult_t moveresult;
+
+    // pick a target up front
+    target = FindInstaGibTarget(bs);
+
+    if (BotIsObserver(bs)) {
+        bs->ltgtype = 0;
+        AIEnter_Observer(bs, "insta gib!: observer");
+        return qfalse;
+    }
+    // if in the intermission
+    if (bs->cur_ps.pm_type == PM_INTERMISSION) {
+        g_entities[bs->client].flags &= ~FL_NOPICKUP;
+        g_entities[bs->client].client->ps.powerups[6] = 0;  // client+0x158
+        g_entities[bs->client].client->ps.powerups[7] = 0;  // client+0x15c
+        bs->ltgtype = 0;
+        AIEnter_Intermission(bs, "insta gib!: intermission");
+        return qfalse;
+    }
+    // respawn if dead
+    if (bs->cur_ps.pm_type == PM_DEAD) {
+        g_entities[bs->client].flags &= ~FL_NOPICKUP;
+        g_entities[bs->client].client->ps.powerups[6] = 0;  // client+0x158
+        g_entities[bs->client].client->ps.powerups[7] = 0;  // client+0x15c
+        bs->ltgtype = 0;
+        AIEnter_Respawn(bs, "insta gib!: bot dead");
+        return qfalse;
+    }
+    // instagib turned off, hand back to the normal seek node
+    if (!g_instaGib.integer) {
+        bs->ltgtype = 0;
+        AIEnter_Seek_LTG(bs, "insta gib!: no ai node");
+        return qfalse;
+    }
+    // if there is an enemy go and fight it
+    if (BotFindEnemy(bs, -1)) {
+        bs->ltgtype = 0;
+        trap_BotResetLastAvoidReach(bs->ms);
+        trap_BotEmptyGoalStack(bs->gs);
+        AIEnter_Battle_Fight(bs, "insta gib!: found enemy");
+        return qfalse;
+    }
+    // no target found, aim around now and then
+    if (target == -1) {
+        if (random() < bs->thinktime * 0.8) {
+            BotAimAtEnemy(bs);
+        }
+        return qtrue;
+    }
+    // hunt the chosen target
+    bs->tfl = TFL_DEFAULT;
+    BotEntityInfo(target, &entinfo);
+    // build a fresh goal on the target and push it
+    trap_BotEmptyGoalStack(bs->gs);
+    goal.areanum = BotPointAreaNum(entinfo.origin);
+    VectorCopy(entinfo.origin, goal.origin);
+    goal.entitynum = target;
+    VectorSet(goal.mins, 0, 0, 0);
+    VectorSet(goal.maxs, 0, 0, 0);
+    goal.number = 0;
+    goal.flags = 0;
+    goal.iteminfo = 0;
+    trap_BotPushGoal(bs->gs, &goal);
+    // very close, just aim
+    VectorSubtract(bs->origin, entinfo.origin, dir);
+    if (VectorLength(dir) < 50) {
+        if (random() < bs->thinktime * 0.8) {
+            BotAimAtEnemy(bs);
+            return qtrue;
+        }
+    }
+    // travel flags
+    if (BotInLavaOrSlime(bs)) {
+        bs->tfl |= TFL_LAVA | TFL_SLIME;
+    }
+    if (BotCanAndWantsToRocketJump(bs)) {
+        bs->tfl |= TFL_ROCKETJUMP;
+    }
+    // [QL] binary also calls BotCheckAutoHopFromUserinfo(&bs->tfl) here (0x10024e10);
+    //      that helper is not yet ported.
+    // predict obstacles
+    if (BotAIPredictObstacles(bs, &goal)) {
+        bs->ltgtype = 0;
+        return qfalse;
+    }
+    // initialise the movement state
+    BotSetupForMovement(bs);
+    // move towards the target
+    trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    if (moveresult.failure) {
+        // reset the avoid reach and just face the target this frame
+        trap_BotResetAvoidReach(bs->ms);
+        BotAimAtEnemy(bs);
+        return qtrue;
+    }
+    BotAIBlocked(bs, &moveresult, qtrue);
+    BotClearPath(bs, &moveresult);
+    // if the view angles are used for the movement
+    if (moveresult.flags & (MOVERESULT_MOVEMENTVIEWSET | MOVERESULT_MOVEMENTVIEW | MOVERESULT_SWIMVIEW)) {
+        VectorCopy(moveresult.ideal_viewangles, bs->ideal_viewangles);
+    } else if (moveresult.flags & MOVERESULT_WAITING) {
+        if (random() < bs->thinktime * 0.8) {
+            BotAimAtEnemy(bs);
+        }
+    } else if (!(bs->flags & BFL_IDEALVIEWSET)) {
+        if (trap_BotMovementViewTarget(bs->ms, &goal, bs->tfl, 300, target_org)) {
+            VectorSubtract(target_org, bs->origin, dir);
+            vectoangles(dir, bs->ideal_viewangles);
+        } else if (VectorLengthSquared(moveresult.movedir)) {
+            vectoangles(moveresult.movedir, bs->ideal_viewangles);
+        } else if (random() < bs->thinktime * 0.8) {
+            BotAimAtEnemy(bs);
+        }
+    }
+    // if the weapon is used for the bot movement
+    if (moveresult.flags & MOVERESULT_MOVEMENTWEAPON) {
+        bs->weaponnum = moveresult.weapon;
+    }
+    return qtrue;
+}
+
+/*
+==================
+BotSetFreezeState
+
+[QL] Freeze or unfreeze a bot. Used by the freeze-tag / team-training nodes
+(AINode_Seek_Teammate, AINode_Teach_Teammate_To_Attack) which are not yet
+ported, so it has no in-tree callers yet.
+(binary BotSetFreezeState 0x100245c0)
+==================
+*/
+void BotSetFreezeState(bot_state_t* bs, int freeze) {
+    gentity_t* ent;
+    gclient_t* client;
+
+    ent = &g_entities[bs->client];
+    client = ent->client;
+    if (freeze) {
+        ent->flags |= FL_GODMODE | FL_NOPICKUP;      // 0x10010
+        client->ps.ammo[5] = 9999;                    // client+0x194
+        client->ps.stats[STAT_WEAPONS] |= 0x20;       // client+0xcc, grant weapon bit 5
+        ent->flags |= FL_NOTARGET | FL_NO_KNOCKBACK;  // 0x20800
+        client->ps.stats[STAT_WEAPONS] |= 0x8000;     // client+0xcc, grant weapon bit 15
+    } else {
+        ent->flags &= ~(FL_GODMODE | FL_NOPICKUP);
+        client->ps.ammo[3] = 10;                       // client+0x18c
+        ent->flags &= ~(FL_NOTARGET | FL_NO_KNOCKBACK);
+    }
+}

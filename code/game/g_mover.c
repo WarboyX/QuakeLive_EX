@@ -345,8 +345,10 @@ qboolean G_MoverPush(gentity_t* pusher, vec3_t move, vec3_t amove, gentity_t** o
             }
         }
 
-        // only push items and players
-        if (check->s.eType != ET_ITEM && check->s.eType != ET_PLAYER && !check->physicsObject) {
+        // only push items, players, grapple hooks and physics objects
+        // [QL] ET_GRAPPLE was added to the pushable set
+        if (check->s.eType != ET_ITEM && check->s.eType != ET_PLAYER &&
+            check->s.eType != ET_GRAPPLE && !check->physicsObject) {
             continue;
         }
 
@@ -495,35 +497,40 @@ void SetMoverState(gentity_t* ent, moverState_t moverState, int time) {
     vec3_t delta;
     float f;
 
-    ent->moverState = moverState;
+    // [QL] SetMoverState walks the team chain itself (in Q3 the callers did this
+    // via MatchTeam).  Iterating here also stops G_MoverTeam from re-firing
+    // reached() on team slaves, since every part is set STATIONARY at once.
+    for (; ent; ent = ent->teamchain) {
+        ent->moverState = moverState;
 
-    ent->s.pos.trTime = time;
-    switch (moverState) {
-        case MOVER_POS1:
-            VectorCopy(ent->pos1, ent->s.pos.trBase);
-            ent->s.pos.trType = TR_STATIONARY;
-            break;
-        case MOVER_POS2:
-            VectorCopy(ent->pos2, ent->s.pos.trBase);
-            ent->s.pos.trType = TR_STATIONARY;
-            break;
-        case MOVER_1TO2:
-            VectorCopy(ent->pos1, ent->s.pos.trBase);
-            VectorSubtract(ent->pos2, ent->pos1, delta);
-            f = 1000.0 / ent->s.pos.trDuration;
-            VectorScale(delta, f, ent->s.pos.trDelta);
-            ent->s.pos.trType = TR_LINEAR_STOP;
-            break;
-        case MOVER_2TO1:
-            VectorCopy(ent->pos2, ent->s.pos.trBase);
-            VectorSubtract(ent->pos1, ent->pos2, delta);
-            f = 1000.0 / ent->s.pos.trDuration;
-            VectorScale(delta, f, ent->s.pos.trDelta);
-            ent->s.pos.trType = TR_LINEAR_STOP;
-            break;
+        ent->s.pos.trTime = time;
+        switch (moverState) {
+            case MOVER_POS1:
+                VectorCopy(ent->pos1, ent->s.pos.trBase);
+                ent->s.pos.trType = TR_STATIONARY;
+                break;
+            case MOVER_POS2:
+                VectorCopy(ent->pos2, ent->s.pos.trBase);
+                ent->s.pos.trType = TR_STATIONARY;
+                break;
+            case MOVER_1TO2:
+                VectorCopy(ent->pos1, ent->s.pos.trBase);
+                VectorSubtract(ent->pos2, ent->pos1, delta);
+                f = 1000.0 / ent->s.pos.trDuration;
+                VectorScale(delta, f, ent->s.pos.trDelta);
+                ent->s.pos.trType = TR_LINEAR_STOP;
+                break;
+            case MOVER_2TO1:
+                VectorCopy(ent->pos2, ent->s.pos.trBase);
+                VectorSubtract(ent->pos1, ent->pos2, delta);
+                f = 1000.0 / ent->s.pos.trDuration;
+                VectorScale(delta, f, ent->s.pos.trDelta);
+                ent->s.pos.trType = TR_LINEAR_STOP;
+                break;
+        }
+        BG_EvaluateTrajectory(&ent->s.pos, level.time, ent->r.currentOrigin);
+        trap_LinkEntity(ent);
     }
-    BG_EvaluateTrajectory(&ent->s.pos, level.time, ent->r.currentOrigin);
-    trap_LinkEntity(ent);
 }
 
 /*
@@ -531,15 +538,12 @@ void SetMoverState(gentity_t* ent, moverState_t moverState, int time) {
 MatchTeam
 
 All entities in a mover team will move from pos1 to pos2
-in the same amount of time
+in the same amount of time.  [QL] SetMoverState now iterates the team itself,
+so this is a thin wrapper kept for the existing call sites.
 ================
 */
 void MatchTeam(gentity_t* teamLeader, int moverState, int time) {
-    gentity_t* slave;
-
-    for (slave = teamLeader; slave; slave = slave->teamchain) {
-        SetMoverState(slave, moverState, time);
-    }
+    SetMoverState(teamLeader, moverState, time);
 }
 
 /*
@@ -628,7 +632,14 @@ void Use_BinaryMover(gentity_t* ent, gentity_t* other, gentity_t* activator) {
 
         // starting sound
         if (ent->sound1to2) {
-            G_AddEvent(ent, EV_GENERAL_SOUND, ent->sound1to2);
+            // [QL] key doors play a dedicated open sound
+            if (ent->spawnflags & 0x10) {
+                G_AddEvent(ent, EV_GENERAL_SOUND, G_SoundIndex("sound/movers/doors/door_silver.wav"));
+            } else if (ent->spawnflags & 0x20) {
+                G_AddEvent(ent, EV_GENERAL_SOUND, G_SoundIndex("sound/movers/doors/door_gold.wav"));
+            } else {
+                G_AddEvent(ent, EV_GENERAL_SOUND, ent->sound1to2);
+            }
         }
 
         // looping sound
@@ -778,7 +789,12 @@ void Blocked_Door(gentity_t* ent, gentity_t* other) {
     if (!other->client) {
         // except CTF flags!!!!
         if (other->s.eType == ET_ITEM && other->item->giType == IT_TEAM) {
-            Team_DroppedFlagThink(other);
+            Team_FreeEntity(other);
+            return;
+        }
+        // [QL] release an attached grapple hook rather than destroying it
+        if (other->s.eType == ET_GRAPPLE && other->count) {
+            G_ReleaseGrapple(other);
             return;
         }
         G_TempEntity(other->s.origin, EV_ITEM_POP);
@@ -797,6 +813,10 @@ void Blocked_Door(gentity_t* ent, gentity_t* other) {
     Use_BinaryMover(ent, ent, other);
 }
 
+// [QL] normal doors and plats share this trigger; forward-declared because the
+// door-trigger spawners (above) reference it before its definition (in PLAT).
+void Touch_PlatCenterTrigger(gentity_t* ent, gentity_t* other, trace_t* trace);
+
 /*
 ================
 Touch_DoorTriggerSpectator
@@ -804,26 +824,35 @@ Touch_DoorTriggerSpectator
 */
 static void Touch_DoorTriggerSpectator(gentity_t* ent, gentity_t* other, trace_t* trace) {
     int axis;
-    float doorMin, doorMax;
-    vec3_t origin;
+    vec3_t origin, dir, angles;
 
     axis = ent->count;
-    // the constants below relate to constants in Think_SpawnNewDoorTrigger()
-    doorMin = ent->r.absmin[axis] + 100;
-    doorMax = ent->r.absmax[axis] - 100;
+    VectorClear(dir);
 
-    VectorCopy(other->client->ps.origin, origin);
-
-    if (origin[axis] < doorMin || origin[axis] > doorMax)
-        return;
-
-    if (fabs(origin[axis] - doorMax) < fabs(origin[axis] - doorMin)) {
-        origin[axis] = doorMin - 10;
+    // teleport the spectator to the far side of the door (opposite the side
+    // they are closest to), facing along the door axis
+    if (fabs(other->s.origin[axis] - ent->r.absmin[axis]) <=
+        fabs(other->s.origin[axis] - ent->r.absmax[axis])) {
+        dir[axis] = 1.0;
+        origin[axis] = ent->r.absmax[axis] + 10;
     } else {
-        origin[axis] = doorMax + 10;
+        dir[axis] = -1.0;
+        origin[axis] = ent->r.absmin[axis] - 10;
     }
 
-    TeleportPlayer(other, origin, tv(10000000.0, 0, 0));
+    // centre on the door in the two perpendicular axes
+    if (axis != 0) {
+        origin[0] = (ent->r.absmax[0] + ent->r.absmin[0]) * 0.5;
+    }
+    if (axis != 1) {
+        origin[1] = (ent->r.absmax[1] + ent->r.absmin[1]) * 0.5;
+    }
+    if (axis != 2) {
+        origin[2] = (ent->r.absmax[2] + ent->r.absmin[2]) * 0.5;
+    }
+
+    vectoangles(dir, angles);
+    TeleportPlayer(other, origin, angles);
 }
 
 /*
@@ -832,72 +861,47 @@ Touch_DoorTrigger
 ================
 */
 void Touch_DoorTrigger(gentity_t* ent, gentity_t* other, trace_t* trace) {
-    if (other->client && other->client->sess.sessionTeam == TEAM_SPECTATOR) {
-        // if the door is not open and not opening
-        if (ent->parent->moverState != MOVER_1TO2 &&
-            ent->parent->moverState != MOVER_POS2) {
-            Touch_DoorTriggerSpectator(ent, other, trace);
-        }
-    } else if (ent->parent->moverState != MOVER_1TO2) {
-        Use_BinaryMover(ent->parent, ent, other);
-    }
-}
-
-/*
-================
-Touch_DoorTrigger_Keyed
-[QL] Touch handler for doors that require a key (silver/gold/master)
-================
-*/
-static void Touch_DoorTrigger_Keyed(gentity_t* ent, gentity_t* other, trace_t* trace) {
     gentity_t* door;
     gclient_t* client;
 
-    if (!other->client)
+    client = other->client;
+    if (!client) {
         return;
+    }
 
     door = ent->parent;
-    client = other->client;
 
-    // door already open or opening - ignore
-    if (door->moverState == MOVER_POS2)
+    // already fully open - ignore
+    if (door->moverState == MOVER_POS2) {
         return;
+    }
 
-    if (client->sess.sessionTeam == TEAM_SPECTATOR ||
-        client->ps.pm_type == PM_SPECTATOR) {
-        // spectators get pushed back (with cooldown)
+    if (client->sess.sessionTeam == TEAM_SPECTATOR) {
+        // push spectators through the door (with a cooldown) unless it is opening
         if (door->moverState != MOVER_1TO2 &&
             other->pain_debounce_time < level.time) {
             other->pain_debounce_time = level.time + 1000;
             Touch_DoorTriggerSpectator(ent, other, trace);
         }
-        return;
-    }
-
-    // check key requirements
-    if ((door->spawnflags & 0x10) &&
-        (client->ps.stats[STAT_KEY] & (KEY_SILVER | KEY_MASTER))) {
-        Use_BinaryMover(door, ent, other);
-    } else if ((door->spawnflags & 0x20) &&
-               (client->ps.stats[STAT_KEY] & (KEY_GOLD | KEY_MASTER))) {
+    } else if (((door->spawnflags & 0x10) && (client->ps.stats[STAT_KEY] & (KEY_SILVER | KEY_MASTER))) ||
+               ((door->spawnflags & 0x20) && (client->ps.stats[STAT_KEY] & (KEY_GOLD | KEY_MASTER)))) {
+        // player carries the matching key (or master) - open it
         Use_BinaryMover(door, ent, other);
     }
-    // else: player doesn't have the right key - silently blocked
+    // else: no key - silently blocked (no message in the binary)
 }
 
 /*
 ======================
-Think_SpawnKeyDoorTrigger
-[QL] Like Think_SpawnNewDoorTrigger but for key-requiring doors
+Think_KeyDoor
+[QL] Door-trigger spawner for key-requiring doors.  The parts are made
+non-shootable and the trigger uses the key-aware Touch_DoorTrigger.
 ======================
 */
-static void Think_SpawnKeyDoorTrigger(gentity_t* ent) {
+static void Think_KeyDoor(gentity_t* ent) {
     gentity_t* other;
     vec3_t mins, maxs;
     int i, best;
-
-    if (!ent)
-        return;
 
     // key doors are not shootable
     for (other = ent; other; other = other->teamchain) {
@@ -930,7 +934,7 @@ static void Think_SpawnKeyDoorTrigger(gentity_t* ent) {
     VectorCopy(maxs, other->r.maxs);
     other->parent = ent;
     other->r.contents = CONTENTS_TRIGGER;
-    other->touch = Touch_DoorTrigger_Keyed;
+    other->touch = Touch_DoorTrigger;
     other->count = best;
     trap_LinkEntity(other);
 
@@ -949,10 +953,6 @@ void Think_SpawnNewDoorTrigger(gentity_t* ent) {
     gentity_t* other;
     vec3_t mins, maxs;
     int i, best;
-
-    if (!ent) {
-        return;
-    }
 
     // set all of the slaves as shootable
     for (other = ent; other; other = other->teamchain) {
@@ -985,7 +985,9 @@ void Think_SpawnNewDoorTrigger(gentity_t* ent) {
     VectorCopy(maxs, other->r.maxs);
     other->parent = ent;
     other->r.contents = CONTENTS_TRIGGER;
-    other->touch = Touch_DoorTrigger;
+    // [QL] normal doors use the plat-center trigger (spectator push-through);
+    // the key-aware Touch_DoorTrigger is reserved for key doors
+    other->touch = Touch_PlatCenterTrigger;
     // remember the thinnest axis
     other->count = best;
     trap_LinkEntity(other);
@@ -1076,7 +1078,7 @@ void SP_func_door(gentity_t* ent) {
         }
         // [QL] key doors take priority over targetname/health
         if (ent->spawnflags & 0x30) {
-            ent->think = Think_SpawnKeyDoorTrigger;
+            ent->think = Think_KeyDoor;
         } else if (ent->targetname || health) {
             // non touch/shoot doors
             ent->think = Think_MatchTeam;
@@ -1120,12 +1122,22 @@ If the plat is at the bottom position, start it going up
 ===============
 */
 void Touch_PlatCenterTrigger(gentity_t* ent, gentity_t* other, trace_t* trace) {
-    if (!other->client) {
+    // [QL] non-clients and non-spectators activate the mover unless it is
+    // already fully up
+    if (!other->client || other->client->sess.sessionTeam != TEAM_SPECTATOR) {
+        if (ent->parent->moverState != MOVER_POS2) {
+            Use_BinaryMover(ent->parent, ent, other);
+        }
         return;
     }
 
-    if (ent->parent->moverState == MOVER_POS1) {
-        Use_BinaryMover(ent->parent, ent, other);
+    // spectators get pushed through the door/plat (with a cooldown) unless it
+    // is up or opening
+    if (ent->parent->moverState != MOVER_POS2 &&
+        ent->parent->moverState != MOVER_1TO2 &&
+        other->pain_debounce_time < level.time) {
+        other->pain_debounce_time = level.time + 1000;
+        Touch_DoorTriggerSpectator(ent, other, trace);
     }
 }
 
@@ -1192,12 +1204,12 @@ void SP_func_plat(gentity_t* ent) {
 
     VectorClear(ent->s.angles);
 
+    G_SpawnFloat("lip", "8", &lip);
     G_SpawnFloat("speed", "200", &ent->speed);
     G_SpawnInt("dmg", "2", &ent->damage);
+    // [QL] the plat honours the "wait" key (Q3 forced it to 1 second)
     G_SpawnFloat("wait", "1", &ent->wait);
-    G_SpawnFloat("lip", "8", &lip);
-
-    ent->wait = 1000;
+    ent->wait *= 1000;
 
     // create second position
     trap_SetBrushModel(ent, ent->model);
@@ -1251,6 +1263,31 @@ void Touch_Button(gentity_t* ent, gentity_t* other, trace_t* trace) {
     }
 }
 
+/*
+==============
+Touch_KeyButton
+[QL] A func_button carrying a key spawnflag opens only for a player holding the
+matching key (or the master key).
+===============
+*/
+static void Touch_KeyButton(gentity_t* ent, gentity_t* other, trace_t* trace) {
+    gclient_t* client;
+
+    client = other->client;
+    if (!client) {
+        return;
+    }
+
+    if (ent->moverState != MOVER_POS1) {
+        return;
+    }
+
+    if (((ent->spawnflags & 0x10) && (client->ps.stats[STAT_KEY] & (KEY_SILVER | KEY_MASTER))) ||
+        ((ent->spawnflags & 0x20) && (client->ps.stats[STAT_KEY] & (KEY_GOLD | KEY_MASTER)))) {
+        Use_BinaryMover(ent, other, other);
+    }
+}
+
 /*QUAKED func_button (0 .5 .8) ?
 When a button is touched, it moves some distance in the direction of its angle, triggers all of its targets, waits some time, then returns to its original position where it can be triggered again.
 
@@ -1296,6 +1333,13 @@ void SP_func_button(gentity_t* ent) {
     VectorSubtract(ent->r.maxs, ent->r.mins, size);
     distance = abs_movedir[0] * size[0] + abs_movedir[1] * size[1] + abs_movedir[2] * size[2] - lip;
     VectorMA(ent->pos1, distance, ent->movedir, ent->pos2);
+
+    // [QL] key buttons take priority over shootable/touchable
+    if (ent->spawnflags & 0x30) {
+        ent->touch = Touch_KeyButton;
+        InitMover(ent);
+        return;
+    }
 
     if (ent->health) {
         // shootable button
@@ -1373,25 +1417,6 @@ void Reached_Train(gentity_t* ent) {
     length = VectorLength(move);
 
     ent->s.pos.trDuration = length * 1000 / speed;
-
-    // Tequila comment: Be sure to send to clients after any fast move case
-    ent->r.svFlags &= ~SVF_NOCLIENT;
-
-    // Tequila comment: Fast move case
-    if (ent->s.pos.trDuration < 1) {
-        // Tequila comment: As trDuration is used later in a division, we need to avoid that case now
-        // With null trDuration,
-        // the calculated rocks bounding box becomes infinite and the engine think for a short time
-        // any entity is riding that mover but not the world entity... In rare case, I found it
-        // can also stuck every map entities after func_door are used.
-        // The desired effect with very very big speed is to have instant move, so any not null duration
-        // lower than a frame duration should be sufficient.
-        // Afaik, the negative case don't have to be supported.
-        ent->s.pos.trDuration = 1;
-
-        // Tequila comment: Don't send entity to clients so it becomes really invisible
-        ent->r.svFlags |= SVF_NOCLIENT;
-    }
 
     // looping sound
     ent->s.loopSound = next->soundLoop;
@@ -1486,14 +1511,6 @@ The train spawns at the first target it is pointing at.
 void SP_func_train(gentity_t* self) {
     VectorClear(self->s.angles);
 
-    if (self->spawnflags & TRAIN_BLOCK_STOPS) {
-        self->damage = 0;
-    } else {
-        if (!self->damage) {
-            self->damage = 2;
-        }
-    }
-
     if (!self->speed) {
         self->speed = 100;
     }
@@ -1504,9 +1521,16 @@ void SP_func_train(gentity_t* self) {
         return;
     }
 
+    // [QL] a non-zero "dmg" turns the train into a BLOCK_STOPS crusher
+    G_SpawnInt("dmg", "0", &self->damage);
+    if (self->damage > 0) {
+        self->spawnflags |= 4;
+    }
+
     trap_SetBrushModel(self, self->model);
     InitMover(self);
 
+    self->blocked = Blocked_Door;
     self->reached = Reached_Train;
 
     // start trains on the second frame, to make sure their targets have had
@@ -1570,16 +1594,17 @@ void SP_func_rotating(gentity_t* ent) {
         ent->s.apos.trDelta[1] = ent->speed;
     }
 
-    if (!ent->damage) {
-        ent->damage = 2;
-    }
+    // [QL] func_rotating honours the "dmg" key (Q3 only used an existing value)
+    G_SpawnInt("dmg", "2", &ent->damage);
 
     trap_SetBrushModel(ent, ent->model);
     InitMover(ent);
 
-    VectorCopy(ent->s.origin, ent->s.pos.trBase);
-    VectorCopy(ent->s.pos.trBase, ent->r.currentOrigin);
     VectorCopy(ent->s.apos.trBase, ent->r.currentAngles);
+    // [QL] rotating movers can crush/reverse like a door
+    ent->blocked = Blocked_Door;
+    VectorCopy(ent->s.origin, ent->s.pos.trBase);
+    VectorCopy(ent->s.origin, ent->r.currentOrigin);
 
     trap_LinkEntity(ent);
 }

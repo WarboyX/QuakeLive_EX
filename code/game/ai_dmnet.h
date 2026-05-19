@@ -55,6 +55,11 @@ int AINode_Battle_Fight(bot_state_t* bs);
 int AINode_Battle_Chase(bot_state_t* bs);
 int AINode_Battle_Retreat(bot_state_t* bs);
 int AINode_Battle_NBG(bot_state_t* bs);
+// [QL] InstaGib bot combat node (binary AINode_InstaGib 0x10013410, AIEnter_InstaGib 0x100133c0)
+void AIEnter_InstaGib(bot_state_t* bs, char* s);
+int AINode_InstaGib(bot_state_t* bs);
+// [QL] freeze-tag / team-training bot freeze helper (binary BotSetFreezeState 0x100245c0)
+void BotSetFreezeState(bot_state_t* bs, int freeze);
 
 void BotResetNodeSwitches(void);
 void BotDumpNodeSwitches(bot_state_t* bs);

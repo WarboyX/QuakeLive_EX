@@ -152,7 +152,7 @@ void locateCamera(gentity_t* ent) {
 
     owner = G_PickTarget(ent->target);
     if (!owner) {
-        G_Printf("Couldn't find target for misc_partal_surface\n");
+        G_Printf("Couldn't find target for misc_portal_surface\n");
         G_FreeEntity(ent);
         return;
     }
@@ -173,8 +173,9 @@ void locateCamera(gentity_t* ent) {
         ent->s.powerups = 1;
     }
 
-    // clientNum holds the rotate offset
-    ent->s.clientNum = owner->s.clientNum;
+    // [QL] the rotate offset is carried in s.angles2 (float vec3), not the
+    // byte-packed s.clientNum that stock Q3 used
+    VectorCopy(owner->s.angles2, ent->s.angles2);
 
     VectorCopy(owner->s.origin, ent->s.origin2);
 
@@ -221,9 +222,13 @@ void SP_misc_portal_camera(gentity_t* ent) {
     VectorClear(ent->r.maxs);
     trap_LinkEntity(ent);
 
+    // [QL] roll is stored as a float in s.angles2[ROLL], not packed into
+    // s.clientNum (roll/360*256) as stock Q3 did. locateCamera propagates it.
+    VectorClear(ent->s.angles2);
+
     G_SpawnFloat("roll", "0", &roll);
 
-    ent->s.clientNum = roll / 360.0 * 256;
+    ent->s.angles2[ROLL] = roll;
 }
 
 /*

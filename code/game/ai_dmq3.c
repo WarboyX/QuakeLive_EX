@@ -1732,6 +1732,22 @@ void BotUpdateInventory(bot_state_t* bs) {
     bs->inventory[INVENTORY_NAILS] = bs->cur_ps.ammo[WP_NAILGUN];
     bs->inventory[INVENTORY_MINES] = bs->cur_ps.ammo[WP_PROX_LAUNCHER];
     bs->inventory[INVENTORY_BELT] = bs->cur_ps.ammo[WP_CHAINGUN];
+    // [QL] clamp the infinite-ammo sentinel (-1) to 999. The fuzzy weapon-weight logic treats
+    // ammo < 1 as empty, so without this a bot with g_infiniteAmmo/loadout (all ammo == -1)
+    // scores every ammo weapon as out of ammo and only ever fires the gauntlet.
+    {
+        static const int ammoSlots[] = {
+            INVENTORY_SHELLS, INVENTORY_BULLETS, INVENTORY_GRENADES, INVENTORY_CELLS,
+            INVENTORY_LIGHTNINGAMMO, INVENTORY_ROCKETS, INVENTORY_SLUGS, INVENTORY_BFGAMMO,
+            INVENTORY_NAILS, INVENTORY_MINES, INVENTORY_BELT
+        };
+        int a;
+        for (a = 0; a < (int)ARRAY_LEN(ammoSlots); a++) {
+            if (bs->inventory[ammoSlots[a]] == -1) {
+                bs->inventory[ammoSlots[a]] = 999;
+            }
+        }
+    }
     // powerups
     bs->inventory[INVENTORY_HEALTH] = bs->cur_ps.stats[STAT_HEALTH];
     bs->inventory[INVENTORY_TELEPORTER] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_TELEPORTER;
@@ -5271,6 +5287,15 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
     if (!BotIntermission(bs) && !BotIsObserver(bs)) {
         // do team AI
         BotTeamAI(bs);
+    }
+    // [QL] InstaGib: when g_instaGib is set and the bot has no enemy, drop into
+    // the InstaGib hunting node. (binary BotDeathmatchAI dispatch 0x1001f359)
+    // NOTE: the binary also gates this on a "busy" field (bs+0x1bd4) shared by the
+    // unported team-AI nodes; that gate is omitted here.
+    if (!BotIntermission(bs) && !BotIsObserver(bs) && !BotIsDead(bs)) {
+        if (g_instaGib.integer && bs->ltgtype != 21 && bs->enemy == -1) {
+            AIEnter_InstaGib(bs, "insta gib");
+        }
     }
     // if the bot has no ai node
     if (!bs->ainode) {
