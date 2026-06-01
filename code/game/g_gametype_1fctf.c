@@ -3,13 +3,13 @@
  *
  * Single neutral flag mode. Teams compete to capture a neutral flag
  * into the enemy base. Flag logic is in g_team.c.
- * Scoreboard: CTFScoreboardMessage (shared with CTF) in g_cmds.c.
+ * Scoreboard: CaptureTheFlagScoreboardMessage (shared with CTF) in g_cmds.c.
  */
 #include "g_local.h"
 
 // 1FCTF uses capturelimit/timelimit exit rules.
 // Neutral flag entity: team_CTF_neutralflag (in g_team.c).
-// Uses CTFScoreboardMessage (same format as CTF).
+// Uses CaptureTheFlagScoreboardMessage (same format as CTF).
 // No round state.
 
 extern qboolean itemRegistered[];

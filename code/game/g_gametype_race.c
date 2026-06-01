@@ -14,6 +14,68 @@
 
 static int numRacePoints;
 
+/*
+==================
+RaceScoreboardMessage
+
+[QL] Race scoreboard emitter (dispatched from Cmd_Score_f for GT_RACE). Four
+fields per connected client: clientNum, best finish time in ms (-1 if no run),
+ping (-1 while connecting, else clamped to 999), and minutes connected. Sent as
+"scores_race <numPlaying><perClient...>".
+
+QL returns the va() string and lets Cmd_Score send it; ioquakelive follows the
+sibling *ScoreboardMessage convention and sends it here directly.
+Address: 0x1003dd80
+==================
+*/
+void RaceScoreboardMessage(gentity_t *ent) {
+    char entry[1024];
+    char string[1024];
+    int stringlength;
+    int i, j;
+    gclient_t *cl;
+    int numSorted;
+    int bestTime, ping;
+
+    // don't send scores to bots, they don't parse it
+    if (ent->r.svFlags & SVF_BOT) {
+        return;
+    }
+
+    string[0] = 0;
+    stringlength = 0;
+    numSorted = level.numConnectedClients;
+
+    for (i = 0; i < numSorted; i++) {
+        cl = &level.clients[level.sortedClients[i]];
+
+        if (cl->pers.connected == CON_CONNECTING) {
+            ping = -1;
+        } else {
+            ping = cl->ps.ping < 999 ? cl->ps.ping : 999;
+        }
+
+        // best/last completed run; <= 0 means no time yet (binary sentinel -1)
+        bestTime = cl->race.lastTime;
+        if (bestTime <= 0) {
+            bestTime = -1;
+        }
+
+        Com_sprintf(entry, sizeof(entry), " %i %i %i %i",
+                    level.sortedClients[i], bestTime, ping,
+                    (level.time - cl->pers.enterTime) / 60000);
+        j = strlen(entry);
+        if (stringlength + j >= sizeof(string)) {
+            break;
+        }
+        strcpy(string + stringlength, entry);
+        stringlength += j;
+    }
+
+    trap_SendServerCommand(ent - g_entities,
+                           va("scores_race %i%s", level.numPlayingClients, string));
+}
+
 // ============================================================================
 // FinishSpawningRacePoint - drop to ground, quantize coordinates
 // ============================================================================
@@ -267,9 +329,9 @@ void SP_race_point(gentity_t *ent) {
 }
 
 // ============================================================================
-// ClientBegin_Race - race gametype begin
+// RACE_ClientBegin - race gametype begin
 // ============================================================================
-void ClientBegin_Race(gentity_t* ent) {
+void RACE_ClientBegin(gentity_t* ent) {
     gclient_t* client = ent->client;
 
     // clear race info (timing, checkpoints)

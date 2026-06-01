@@ -7,14 +7,14 @@
  * Rounds award +1 to the winning team's score.
  *
  * Key functions and their binary addresses:
- *   CA_CheckTimer          0x10038080
- *   CA_AccuracyMessage     0x100380d0
+ *   CA_GetRoundState          0x10038080
+ *   CA_AdjustDamage         0x100380d0
  *   CA_CheckExitRules      0x100382e0
  *   CA_RoundStateTransition 0x10038420
- *   CA_RunFrame            0x10038be0
+ *   CA_Think            0x10038be0
  *   TeamCount_Health       0x1006b100
  *   LastManStanding        0x1006b200
- *   CAScoreboardMessage    0x1003e4f0
+ *   ClanArenaScoreboardMessage    0x1003e4f0
  */
 #include "g_local.h"
 
@@ -26,7 +26,7 @@
 // Takes a 4-element int array, fills healthTotals[team] with sum of
 // (health + armor) for all alive players (pm_type == PM_NORMAL) on that team.
 // Note: binary passes this via registers (fastcall), not as explicit params
-// to UpdateTeamAliveCount.
+// to Team_LivingTeamCounts.
 static void TeamCount_Health(int *healthTotals) {
     int i;
     healthTotals[TEAM_FREE] = 0;
@@ -44,29 +44,27 @@ static void TeamCount_Health(int *healthTotals) {
 }
 
 
-// [QL] EV_AWARD-based award: broadcasts medal event to all clients
-// Binary: 0x10046730 - increments the persistant award counter at
-// ps.persistant[PERS_AWARD_BASE + awardIndex] and broadcasts EV_AWARD.
-static void PlayerAwardEV(gentity_t *ent, int awardIndex) {
-    gentity_t *te;
+// [QL] PlayerAwardEV (0x10046730) is the shared byte-faithful helper in g_combat.c
+// (declared in g_local.h). CA/AD/FT/RR round transitions call it with an award_t
+// subtype (AWARD_ACCURACY/AWARD_PERFECT); it writes s.generic1=subtype +
+// localPersistant[subtype+1]++. The old wrong-payload static here was removed.
 
-    te = G_TempEntity(ent->r.currentOrigin, EV_AWARD);
-    te->r.svFlags |= SVF_BROADCAST;
-    te->s.otherEntityNum = ent->s.number;
-    te->s.eventParm = awardIndex;
-    te->s.otherEntityNum2 = 1;
-    ent->client->rewardTime = level.time + REWARD_SPRITE_TIME;
+// team colour code for the round-win print
+static const char *CA_TeamColor(int team) {
+    if (team == TEAM_RED) return "^1";
+    if (team == TEAM_BLUE) return "^4";
+    return "^7";
 }
 
 // Stats stubs - ZMQ stats publishing requires Steam backend
 
 // ============================================================================
-// CA_CheckTimer (binary: 0x10038080)
+// CA_GetRoundState (binary: 0x10038080)
 //
 // Advance the round state if the pending timer has elapsed.
 // Returns the current round state, or -1 if still waiting.
 // ============================================================================
-int CA_CheckTimer(void) {
+int CA_GetRoundState(void) {
     if (level.roundState.tNext != 0) {
         if (level.time < level.roundState.tNext)
             return -1;
@@ -114,7 +112,7 @@ void CA_RoundStateTransition(void) {
                 cl->ps.pm_flags |= PMF_FROZEN;
             }
         }
-        UpdateTeamAliveCount(NULL, NULL);
+        Team_LivingTeamCounts(NULL, NULL);
 
         if (g_roundWarmupDelay.integer == 0) {
             level.roundState.tNext = 0;
@@ -171,70 +169,74 @@ void CA_RoundStateTransition(void) {
             }
         }
 
-        UpdateTeamAliveCount(&aliveCounts[TEAM_RED], &aliveCounts[TEAM_BLUE]);
+        Team_LivingTeamCounts(&aliveCounts[TEAM_RED], &aliveCounts[TEAM_BLUE]);
         TeamCount_Health(healthTotals);
 
-        // Determine winner
-        if (aliveCounts[TEAM_RED] == 0) {
-            if (aliveCounts[TEAM_BLUE] != 0) {
-                winTeam = TEAM_BLUE;
-                level.teamScores[TEAM_BLUE]++;
-            }
-        } else if (aliveCounts[TEAM_BLUE] == 0) {
-            winTeam = TEAM_RED;
-            level.teamScores[TEAM_RED]++;
-        } else {
-            // Both teams alive - tiebreaker by living count then health
-            if (g_roundDrawLivingCount.integer != 0 &&
-                aliveCounts[TEAM_RED] != aliveCounts[TEAM_BLUE]) {
-                if (aliveCounts[TEAM_BLUE] < aliveCounts[TEAM_RED]) {
-                    winTeam = TEAM_RED;
-                    level.teamScores[TEAM_RED]++;
-                } else {
+        // Determine winner. The binary only bumps the round counter,
+        // recalculates ranks and announces when the round is decided. A
+        // genuine draw (both teams alive, no tiebreaker winner) falls
+        // straight through without any of that.
+        if (aliveCounts[TEAM_RED] == 0 || aliveCounts[TEAM_BLUE] == 0) {
+            // One (or both) teams eliminated
+            if (aliveCounts[TEAM_RED] == 0) {
+                if (aliveCounts[TEAM_BLUE] != 0) {
                     winTeam = TEAM_BLUE;
                     level.teamScores[TEAM_BLUE]++;
                 }
-            } else if (g_roundDrawHealthCount.integer != 0) {
-                if (healthTotals[TEAM_BLUE] < healthTotals[TEAM_RED]) {
-                    winTeam = TEAM_RED;
-                    level.teamScores[TEAM_RED]++;
-                } else if (healthTotals[TEAM_RED] < healthTotals[TEAM_BLUE]) {
-                    winTeam = TEAM_BLUE;
-                    level.teamScores[TEAM_BLUE]++;
-                }
-                // If health equal, no winner - draw
+            } else {
+                winTeam = TEAM_RED;
+                level.teamScores[TEAM_RED]++;
             }
-        }
 
-        level.roundState.round++;
-        CalculateRanks();
+            level.roundState.round++;
+            CalculateRanks();
 
-        // Announce winner
-        if (winTeam) {
-            const char *teamName = TeamName(winTeam);
-            const char *teamColor;
-            if (winTeam == TEAM_RED) teamColor = "^1";
-            else if (winTeam == TEAM_BLUE) teamColor = "^4";
-            else teamColor = "^7";
-
-            // Health tiebreaker: show both teams' HP
-            if (aliveCounts[TEAM_RED] != 0 && aliveCounts[TEAM_BLUE] != 0 &&
-                g_roundDrawHealthCount.integer != 0) {
-                trap_SendServerCommand(-1,
-                    va("print \"%s%s TEAM^3 WINS the round!^7 (^1%i^7 hp vs ^4%i^7 hp)\n\"",
-                        teamColor, teamName,
-                        healthTotals[TEAM_RED], healthTotals[TEAM_BLUE]));
-            } else if (aliveCounts[winTeam] < 2) {
+            if (aliveCounts[winTeam] < 2) {
                 trap_SendServerCommand(-1,
                     va("print \"%s%s TEAM^3 WINS the round!^7 (%i hp remaining)\n\"",
-                        teamColor, teamName, healthTotals[winTeam]));
+                        CA_TeamColor(winTeam), TeamName(winTeam), healthTotals[winTeam]));
             } else {
                 trap_SendServerCommand(-1,
                     va("print \"%s%s TEAM^3 WINS the round!^7 (%i players remaining)\n\"",
-                        teamColor, teamName, aliveCounts[winTeam]));
+                        CA_TeamColor(winTeam), TeamName(winTeam), aliveCounts[winTeam]));
             }
+        } else if (g_roundDrawLivingCount.integer != 0 &&
+                   aliveCounts[TEAM_RED] != aliveCounts[TEAM_BLUE]) {
+            // Both alive - decide on living count
+            if (aliveCounts[TEAM_BLUE] < aliveCounts[TEAM_RED]) {
+                winTeam = TEAM_RED;
+                level.teamScores[TEAM_RED]++;
+            } else {
+                winTeam = TEAM_BLUE;
+                level.teamScores[TEAM_BLUE]++;
+            }
+
+            level.roundState.round++;
+            CalculateRanks();
+
+            trap_SendServerCommand(-1,
+                va("print \"%s%s TEAM^3 WINS the round!^7 (%i players remaining)\n\"",
+                    CA_TeamColor(winTeam), TeamName(winTeam), aliveCounts[winTeam]));
+        } else if (g_roundDrawHealthCount.integer != 0 &&
+                   healthTotals[TEAM_RED] != healthTotals[TEAM_BLUE]) {
+            // Both alive - decide on total health
+            if (healthTotals[TEAM_BLUE] < healthTotals[TEAM_RED]) {
+                winTeam = TEAM_RED;
+                level.teamScores[TEAM_RED]++;
+            } else {
+                winTeam = TEAM_BLUE;
+                level.teamScores[TEAM_BLUE]++;
+            }
+
+            level.roundState.round++;
+            CalculateRanks();
+
+            trap_SendServerCommand(-1,
+                va("print \"%s%s TEAM^3 WINS the round!^7 (^1%i^7 hp vs ^4%i^7 hp)\n\"",
+                    CA_TeamColor(winTeam), TeamName(winTeam),
+                    healthTotals[TEAM_RED], healthTotals[TEAM_BLUE]));
         }
-        // when winner decided by g_roundDrawHealthCount
+        // Genuine draw: round not bumped, no announce (matches binary)
 
         // Award medals
         for (i = 0; i < level.maxclients; i++) {
@@ -249,7 +251,7 @@ void CA_RoundStateTransition(void) {
                 int acc = (cl->round_hits * 100) / cl->round_shots;
                 if ((double)acc > 50.0) {
                     PlayerAwardEV(ent, AWARD_ACCURACY);
-                    STAT_PublishMedal(ent, "ACCURACY");
+                    STAT_AddPlayerMedalStat(ent, "ACCURACY");
                 }
             }
 
@@ -257,7 +259,7 @@ void CA_RoundStateTransition(void) {
             if (cl->sess.sessionTeam == winTeam &&
                 cl->round_damage == 0) {
                 PlayerAwardEV(ent, AWARD_PERFECT);
-                STAT_PublishMedal(ent, "PERFECT");
+                STAT_AddPlayerMedalStat(ent, "PERFECT");
             }
 
             // Clutch: one-time Steam achievement for last-alive win with kills
@@ -273,7 +275,7 @@ void CA_RoundStateTransition(void) {
             }
         }
 
-        STAT_RoundOver(level.roundState.round - 1, winTeam, winTeam == 0);
+        STAT_AddRoundOverStat(level.roundState.round - 1, winTeam, winTeam == 0);
 
         // Check for game end
         if (level.teamScores[TEAM_RED] != level.teamScores[TEAM_BLUE]) {
@@ -305,21 +307,24 @@ void CA_RoundStateTransition(void) {
             int soundType;
             if (g_gametype.integer == GT_RR) {
                 if (winTeam == TEAM_RED || winTeam == TEAM_BLUE)
-                    soundType = 20;  // 0x14
+                    soundType = GTS_ROUND_OVER;   // 0x14
                 else
-                    soundType = 18;  // 0x12
+                    soundType = GTS_DRAW_ROUND;   // 0x12
             } else {
                 if (winTeam == TEAM_RED)
-                    soundType = 16;  // 0x10
+                    soundType = GTS_RED_WINS_ROUND;    // 0x10
                 else if (winTeam == TEAM_BLUE)
-                    soundType = 17;  // 0x11
+                    soundType = GTS_BLUE_WINS_ROUND;   // 0x11
                 else
-                    soundType = 18;  // 0x12
+                    soundType = GTS_DRAW_ROUND;        // 0x12
             }
             {
+                // [QL] binary carries the GTS index in eventParm (0xc0), not otherEntityNum2
+                // Binary sets gentity offset 0x1e0 |= 0x20 == r.svFlags |= SVF_BROADCAST
+                // (SVF_BROADCAST is 0x20; EF_NODRAW is 0x80 - the earlier EF_NODRAW was wrong).
                 gentity_t *te = G_TempEntity(vec3_origin, EV_GLOBAL_TEAM_SOUND);
-                te->s.eFlags |= EF_NODRAW;
-                te->s.otherEntityNum2 = soundType;
+                te->r.svFlags |= SVF_BROADCAST;
+                te->s.eventParm = soundType;
             }
         }
 
@@ -398,19 +403,24 @@ qboolean CA_CheckExitRules(int doExit) {
 }
 
 // ============================================================================
-// CA_AccuracyMessage (binary: 0x100380d0)
+// CA_AdjustDamage (binary: 0x100380d0)
 //
-// Damage/knockback filter based on g_accuracyFlags and round state.
-// Also implements CA score-per-damage mechanic (100 dmg = +1 score).
-// Returns qtrue if damage should be applied, qfalse to suppress.
+// Called from G_Damage section 20 as (targ, attacker, &take, &asave). The two
+// int* are the post-CheckArmor health-damage (take) and armour-save (asave)
+// locals; the routine may zero/clamp both and returns qfalse to abort ALL
+// damage. Also implements the CA score-per-damage mechanic (+1 score per 100
+// clamped damage). The self/team suppression keys off g_dmflags (binary
+// DAT_10597dcc), NOT g_accuracyFlags. All three round adjusters and G_Damage
+// section 21 read the same 0x10597dcc.
 // ============================================================================
-qboolean CA_AccuracyMessage(gentity_t *target, gentity_t *attacker,
-                             int *damage, int *knockback) {
-    int flags = g_accuracyFlags.integer;
+qboolean CA_AdjustDamage(gentity_t *target, gentity_t *attacker,
+                             int *take, int *asave) {
+    int flags = g_dmflags.integer;
 
     if (target == attacker) {
-        // Self-damage
-        if (flags & 4) *damage = 0;
+        // Self-damage: DF_NO_SELF_DAMAGE zeroes take; DF_NO_SELF_ARMOR_DAMAGE
+        // (bit 8) survives into the asave gate below.
+        if (flags & 4) *take = 0;
         flags &= 8;
     } else {
         gclient_t *tCl = target->client;
@@ -419,12 +429,12 @@ qboolean CA_AccuracyMessage(gentity_t *target, gentity_t *attacker,
         if (tCl == NULL)
             goto checkRound;
 
-        // Team damage filter
+        // Team damage filter (bit 1 zeroes take on same-team hits)
         if (aCl != NULL &&
             (g_gametype.integer >= GT_TEAM || tCl->sess.sessionTeam == TEAM_SPECTATOR) &&
             tCl->sess.sessionTeam == aCl->sess.sessionTeam &&
             (flags & 1)) {
-            *damage = 0;
+            *take = 0;
         }
 
         if (tCl == NULL || aCl == NULL ||
@@ -432,11 +442,11 @@ qboolean CA_AccuracyMessage(gentity_t *target, gentity_t *attacker,
             tCl->sess.sessionTeam != aCl->sess.sessionTeam)
             goto checkRound;
 
-        flags &= 2;
+        flags &= 2;  // team: bit 2 gates the asave zero below
     }
 
     if (flags != 0)
-        *knockback = 0;
+        *asave = 0;
 
 checkRound:
     if (level.warmupTime != 0)
@@ -456,20 +466,20 @@ checkRound:
     if (level.roundState.eCurrent != RS_PLAYING)
         return qfalse;
 
-    // CA score-per-damage: accumulate damage, +1 score per 100
-    // Binary clamps damage/knockback to target's current armor/health,
-    // then replaces *damage and *knockback with the clamped values.
+    // CA score-per-damage: clamp take to the target's remaining health and
+    // asave to its remaining armour, write the clamped values back, then
+    // accumulate their sum and award +1 score (with rank recompute) per 100.
     if (attacker->client != NULL && !OnSameTeam(target, attacker) &&
         target->client != NULL && target->health > 0) {
-        int armorDmg = target->client->ps.stats[STAT_ARMOR];
-        if (armorDmg > *damage) armorDmg = *damage;
-        int healthDmg = target->client->ps.stats[STAT_MAX_HEALTH];
-        if (healthDmg > *knockback) healthDmg = *knockback;
+        int takeClamp = target->client->ps.stats[STAT_HEALTH];  // @0xc0
+        if (takeClamp > *take) takeClamp = *take;
+        int armorClamp = target->client->ps.stats[STAT_ARMOR];  // @0xd0
+        if (armorClamp > *asave) armorClamp = *asave;
 
-        *damage = armorDmg;
-        *knockback = healthDmg;
+        *take = takeClamp;
+        *asave = armorClamp;
 
-        attacker->client->pers.teamState.dmgAccumulator += healthDmg + armorDmg;
+        attacker->client->pers.teamState.dmgAccumulator += armorClamp + takeClamp;
         if (attacker->client->pers.teamState.dmgAccumulator >= 100) {
             attacker->client->pers.teamState.dmgAccumulator -= 100;
             attacker->client->ps.persistant[PERS_SCORE]++;
@@ -481,13 +491,13 @@ checkRound:
 }
 
 // ============================================================================
-// CA_RunFrame (binary: 0x10038be0)
+// CA_Think (binary: 0x10038be0)
 //
 // Called both per-frame from G_RunFrame AND from player_die for GT_CA.
 // Checks alive counts and triggers LastManStanding warnings.
 // Round-over is NOT triggered here - it happens via the death call path.
 // ============================================================================
-void CA_RunFrame(void) {
+void CA_Think(void) {
     int redAlive, blueAlive;
 
     // Advance pending timer
@@ -505,7 +515,7 @@ void CA_RunFrame(void) {
     if (level.intermissionQueued || level.intermissionTime || level.warmupTime)
         return;
 
-    UpdateTeamAliveCount(&redAlive, &blueAlive);
+    Team_LivingTeamCounts(&redAlive, &blueAlive);
 
     // Check if round is over (one team eliminated)
     if (redAlive == 0 || blueAlive == 0) {
@@ -526,7 +536,7 @@ void CA_RunFrame(void) {
 }
 
 // ============================================================================
-// CAScoreboardMessage (binary: 0x1003e4f0)
+// ClanArenaScoreboardMessage (binary: 0x1003e4f0)
 //
 // Clan Arena scoreboard. 16 fields per player.
 // Format: "scores_ca %i %i %i%s" numPlayers redScore blueScore playerData
@@ -534,7 +544,64 @@ void CA_RunFrame(void) {
 //   client team score ping time kills deaths accuracy bestWeapon
 //   bestWeaponAccuracy damageDone impressive excellent gauntlet perfect alive
 // ============================================================================
-void CAScoreboardMessage(gentity_t *ent) {
+/*
+==================
+ClanArenaStatisticsMessage
+
+[QL] CA per-player detail stats sent as the "castats" command (parsed client-side by
+CG_ParseTeamStats_CA). Per player: damageDone damageTaken + per-weapon
+(accuracy numWeaponKills) * 15. Emitted at intermission from Cmd_Score_f for GT_CA.
+(Ghidra mislabelled this CaptureTheFlagStatisticsMessage; it emits castats, so it is the CA
+impl - corrected here and in the Ghidra project.)
+Address: 0x1003e700
+==================
+*/
+void ClanArenaStatisticsMessage(gentity_t *ent) {
+    char entry[1024];
+    char string[1024];
+    int stringlength;
+    int i, w;
+    gclient_t *cl;
+
+    for (i = 0; i < level.numConnectedClients; i++) {
+        cl = &level.clients[level.sortedClients[i]];
+
+        string[0] = 0;
+        stringlength = 0;
+
+        // First: damageDone damageTaken
+        Com_sprintf(entry, sizeof(entry), " %i %i",
+                    cl->expandedStats.totalDamageDealt,
+                    cl->expandedStats.totalDamageTaken);
+        stringlength = strlen(entry);
+        if (stringlength < (int)sizeof(string)) {
+            strcpy(string, entry);
+        }
+
+        // Per-weapon: accuracy numWeaponKills (weapons 0-14)
+        for (w = 0; w < 15; w++) {
+            int j, weapAcc = 0;
+
+            if (cl->expandedStats.shotsHit[w] && cl->expandedStats.shotsFired[w]) {
+                weapAcc = cl->expandedStats.shotsHit[w] * 100 / cl->expandedStats.shotsFired[w];
+            }
+
+            Com_sprintf(entry, sizeof(entry), " %i %i",
+                        weapAcc, cl->expandedStats.numWeaponKills[w]);
+            j = strlen(entry);
+            if (stringlength + j >= (int)sizeof(string))
+                break;
+            strcpy(string + stringlength, entry);
+            stringlength += j;
+        }
+
+        trap_SendServerCommand(ent - g_entities,
+            va("castats %i%s", i, string));
+    }
+}
+
+// ============================================================================
+void ClanArenaScoreboardMessage(gentity_t *ent) {
     char entry[1024];
     char string[1024];
     int stringlength;

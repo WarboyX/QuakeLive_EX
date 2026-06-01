@@ -8,16 +8,20 @@
  */
 #include "g_local.h"
 
+// RR round survivors list, published for the scoreboard (binary CS 0x2bf)
+#define CS_RR_SURVIVORS 703
+
 // RR infection mode globals (binary: DAT_105df5a8-105df5b4)
-static int rr_lastRedClient = -1;
-static int rr_lastBlueClient = -1;
+// rr_last{Red,Blue}Client are shared with CheckRoundTimeout in g_gametype_common.c
+int rr_lastRedClient = -1;
+int rr_lastBlueClient = -1;
 static int rr_survivalNextTime = 0;
 static int rr_infectionStartTime = -1;
 
 // ============================================================================
-// RR_CheckInfection - periodic forced team switch (weakest blue → red)
+// RR_SpreadInfection - periodic forced team switch (weakest blue -> red)
 // ============================================================================
-void RR_CheckInfection(void) {
+void RR_SpreadInfection(void) {
     int i;
     int redAlive, blueAlive;
 
@@ -27,7 +31,7 @@ void RR_CheckInfection(void) {
     if (g_rrInfectedSpreadTime.integer == 0 || rr_infectionStartTime == -1)
         return;
 
-    UpdateTeamAliveCount(&redAlive, &blueAlive);
+    Team_LivingTeamCounts(&redAlive, &blueAlive);
     if (blueAlive <= 1)
         return;
 
@@ -61,9 +65,9 @@ void RR_CheckInfection(void) {
 }
 
 // ============================================================================
-// RR_SurvivalBonus - award points to surviving blue team
+// RR_SurvivorBonuses - award points to surviving blue team
 // ============================================================================
-void RR_SurvivalBonus(int mode) {
+void RR_SurvivorBonuses(int mode) {
     int i;
 
     if (g_rrInfected.integer == 0 || g_rrInfectedSurvivorScoreMethod.integer == 0)
@@ -74,12 +78,17 @@ void RR_SurvivalBonus(int mode) {
     }
 
     if (g_rrInfectedSurvivorScoreMethod.integer == 1) {
-        if (level.time <= rr_survivalNextTime)
+        if (level.time <= rr_survivalNextTime) {
+            CalculateRanks();
             return;
+        }
     } else if (g_rrInfectedSurvivorScoreMethod.integer == 2) {
-        if (mode != 1)
+        if (mode != 1) {
+            CalculateRanks();
             return;
+        }
     } else {
+        CalculateRanks();
         return;
     }
 
@@ -93,10 +102,12 @@ void RR_SurvivalBonus(int mode) {
     }
 
     {
+        // [QL] binary (RR_SurvivorBonuses @ 0x10065310): eventParm=GTS_SURVIVOR,
+        // modelindex2=surviving team. Survivors are always blue in RR-infected.
         gentity_t *te = G_TempEntity(vec3_origin, EV_GLOBAL_TEAM_SOUND);
-        te->s.eFlags |= EF_NODRAW;
-        te->s.otherEntityNum2 = 24;
-        te->s.otherEntityNum = TEAM_BLUE;
+        te->r.svFlags |= SVF_BROADCAST;
+        te->s.eventParm = GTS_SURVIVOR;
+        te->s.modelindex2 = TEAM_BLUE;
     }
 
     if (g_rrInfectedSurvivorScoreMethod.integer == 1) {
@@ -270,16 +281,18 @@ void RR_RoundStateTransition(void) {
         return;
 
     case RS_COUNTDOWN:
+        Team_LivingTeamCounts(NULL, NULL);
         for (i = 0; i < level.maxclients; i++) {
             gclient_t *cl = &level.clients[i];
             gentity_t *ent = &g_entities[i];
             if (cl->pers.connected == CON_CONNECTED && cl->sess.sessionTeam != TEAM_SPECTATOR) {
                 cl->ps.pm_type = PM_NORMAL;
                 ClientSpawn(ent);
+                cl->ps.localPersistant[0] = 0;  // reset round score
                 cl->ps.pm_flags |= PMF_FROZEN;
             }
         }
-        UpdateTeamAliveCount(NULL, NULL);
+        Team_LivingTeamCounts(NULL, NULL);
 
         if (g_roundWarmupDelay.integer == 0) {
             level.roundState.tNext = 0;
@@ -304,7 +317,7 @@ void RR_RoundStateTransition(void) {
             return;
         }
         // Infected mode: no-op here. The infected RS_SHUFFLE team reset
-        // (StartNewRound) is handled in RR_RunFrame after state transition.
+        // (StartNewRound) is handled in RR_Think after state transition.
         return;
 
     case RS_PLAYING:
@@ -334,56 +347,134 @@ void RR_RoundStateTransition(void) {
     case RS_ROUND_OVER:
     {
         int redAlive, blueAlive;
+        int j;
+        int survivor[MAX_CLIENTS];
+        char survivorList[1024];
 
-        // Freeze all non-spectators
+        // Freeze all non-spectators and hand out the per-round score bonus.
         for (i = 0; i < level.maxclients; i++) {
             gclient_t *cl = &level.clients[i];
             if (cl->pers.connected == CON_CONNECTED && cl->sess.sessionTeam != TEAM_SPECTATOR) {
                 cl->ps.pm_flags |= PMF_FROZEN;
+                cl->ps.persistant[PERS_SCORE] += g_rrRoundScoreBonus.integer;
+                cl->ps.localPersistant[0] += g_rrRoundScoreBonus.integer;
             }
         }
 
-        UpdateTeamAliveCount(&redAlive, &blueAlive);
+        Team_LivingTeamCounts(&redAlive, &blueAlive);
 
-        // Determine winner
-        if (redAlive == 0 && blueAlive != 0) {
-            winTeam = TEAM_BLUE;
-            level.teamScores[TEAM_BLUE]++;
-        } else if (blueAlive == 0 && redAlive != 0) {
+        // Determine winner and award the round point.
+        if (redAlive == 0) {
+            if (blueAlive != 0) {
+                winTeam = TEAM_BLUE;
+                level.teamScores[TEAM_BLUE]++;
+            }
+        } else if (blueAlive == 0) {
             winTeam = TEAM_RED;
             level.teamScores[TEAM_RED]++;
+        } else {
+            // Timeout with both teams alive: the trailing team (or the
+            // survivors when infected) takes the point, no winner announced.
+            if (level.teamScores[TEAM_BLUE] < level.teamScores[TEAM_RED] ||
+                g_rrInfected.integer != 0) {
+                level.teamScores[TEAM_BLUE]++;
+            } else {
+                level.teamScores[TEAM_RED]++;
+            }
         }
 
-        level.roundState.round++;
         CalculateRanks();
 
-        // Announce winner
-        if (winTeam) {
-            const char *teamColor = (winTeam == TEAM_RED) ? "^1" : "^4";
-            trap_SendServerCommand(-1,
-                va("print \"%s%s TEAM^3 WINS the round!\n\"",
-                    teamColor, TeamName(winTeam)));
+        // Build the survivor set and the survivor configstring.
+        memset(survivor, 0, sizeof(survivor));
+        survivorList[0] = '\0';
+        if (g_rrInfected.integer == 0) {
+            if (winTeam != 0) {
+                int best = -0x7fffffff;
+                for (j = 0; j < level.numConnectedClients; j++) {
+                    int cn = level.sortedClients[j];
+                    if (level.clients[cn].ps.localPersistant[0] > best) {
+                        best = level.clients[cn].ps.localPersistant[0];
+                    }
+                }
+                for (j = 0; j < level.numConnectedClients; j++) {
+                    int cn = level.sortedClients[j];
+                    if (level.clients[cn].pers.connected == CON_CONNECTED &&
+                        level.clients[cn].ps.localPersistant[0] == best) {
+                        survivor[cn] = 1;
+                        Q_strcat(survivorList, sizeof(survivorList), va(" %i", cn));
+                    }
+                }
+            }
+        } else if (rr_lastBlueClient == -1) {
+            for (j = 0; j < level.numConnectedClients; j++) {
+                int cn = level.sortedClients[j];
+                if (level.clients[cn].sess.sessionTeam == TEAM_BLUE) {
+                    survivor[cn] = 1;
+                    Q_strcat(survivorList, sizeof(survivorList), va(" %i", cn));
+                }
+            }
+        } else {
+            survivor[rr_lastBlueClient] = 1;
+            Q_strcat(survivorList, sizeof(survivorList), va(" %i", rr_lastBlueClient));
         }
 
-        // Check for game end
-        if (level.teamScores[TEAM_RED] != level.teamScores[TEAM_BLUE]) {
+        // Round-over medals: accuracy for a >50% round, perfect for surviving
+        // the round untouched.
+        for (i = 0; i < level.maxclients; i++) {
+            gclient_t *cl = &level.clients[i];
+            gentity_t *ent = &g_entities[i];
+            if (cl->pers.connected != CON_CONNECTED) continue;
+
+            if (cl->round_shots != 0) {
+                int acc = (cl->round_hits * 100) / cl->round_shots;
+                if ((double)acc > 50.0) {
+                    gentity_t *te = G_TempEntity(ent->r.currentOrigin, EV_AWARD);
+                    te->r.svFlags |= SVF_BROADCAST;
+                    te->s.otherEntityNum = ent->s.number;
+                    te->s.eventParm = AWARD_ACCURACY;
+                    te->s.otherEntityNum2 = 1;
+                    cl->rewardTime = level.time + REWARD_SPRITE_TIME;
+                    STAT_AddPlayerMedalStat(ent, "ACCURACY");
+                }
+            }
+
+            if (survivor[i] == 1 && cl->round_damage == 0) {
+                gentity_t *te = G_TempEntity(ent->r.currentOrigin, EV_AWARD);
+                te->r.svFlags |= SVF_BROADCAST;
+                te->s.otherEntityNum = ent->s.number;
+                te->s.eventParm = AWARD_PERFECT;
+                te->s.otherEntityNum2 = 1;
+                cl->rewardTime = level.time + REWARD_SPRITE_TIME;
+                STAT_AddPlayerMedalStat(ent, "PERFECT");
+            }
+        }
+
+        trap_SetConfigstring(CS_RR_SURVIVORS, survivorList);
+
+        STAT_AddRoundOverStat(level.roundState.round - 1, winTeam, winTeam == 0);
+
+        // Round-end sound
+        {
+            int soundType = (winTeam != 0) ? GTS_ROUND_OVER    // 0x14
+                                           : GTS_DRAW_ROUND;   // 0x12
+            // [QL] binary carries the GTS index in eventParm (0xc0) and broadcasts
+            gentity_t *te = G_TempEntity(vec3_origin, EV_GLOBAL_TEAM_SOUND);
+            te->r.svFlags |= SVF_BROADCAST;
+            te->s.eventParm = soundType;
+        }
+
+        // Game end: unless enough players remain and the score is tied, exit
+        // when the timelimit or roundlimit (total rounds) is reached.
+        if (!(level.numPlayingClients > 1 && ScoreIsTied())) {
             if ((g_timelimit.integer != 0 &&
                  g_timelimit.integer * 60000 <= level.time - level.startTime) ||
                 (roundlimit.integer != 0 &&
-                 (roundlimit.integer <= level.teamScores[TEAM_RED] ||
-                  roundlimit.integer <= level.teamScores[TEAM_BLUE]))) {
+                 roundlimit.integer <= level.teamScores[TEAM_RED] + level.teamScores[TEAM_BLUE])) {
                 level.roundState.tNext = level.time + 1500;
                 level.roundState.eNext = RS_EXIT;
                 return;
             }
-        }
-
-        // Round-end sound
-        {
-            int soundType = (winTeam == TEAM_RED || winTeam == TEAM_BLUE) ? 20 : 18;
-            gentity_t *te = G_TempEntity(vec3_origin, EV_GLOBAL_TEAM_SOUND);
-            te->s.eFlags |= EF_NODRAW;
-            te->s.otherEntityNum2 = soundType;
         }
 
         level.roundState.tNext = level.time + 3500;
@@ -404,37 +495,121 @@ void RR_RoundStateTransition(void) {
 }
 
 // ============================================================================
-// RR_RunFrame - per-frame logic for Red Rover
-// Binary: RR_CheckRound (called from G_RunFrame case 0xc)
+// RR_AdjustDamage (.so RR_AdjustDamage, binary: 0x10064440)
 //
-// Handles round state transitions via G_GetRoundState pattern:
+// GT_RR damage adjust, called from G_Damage section 20 as
+// (targ, attacker, &take, &asave). Same self/team suppression + round gate as
+// the CA/AD adjusts (keys off g_dmflags), advancing via RR_RoundStateTransition.
+// Differs from CA/AD in the scoring block:
+//   - the whole score block is also gated on g_rrDamageScoreBonus != 0
+//     (binary DAT_1059eaec), and
+//   - per 100 accumulated damage it adds g_rrDamageScoreBonus to BOTH
+//     ps.persistant[PERS_SCORE] (@0x100) and ps.localPersistant[0] (@0x204,
+//     the RR round score), then calls CalculateRanks().
+// Returns qfalse to abort ALL damage.
+// ============================================================================
+qboolean RR_AdjustDamage(gentity_t *target, gentity_t *attacker,
+                             int *take, int *asave) {
+    int flags = g_dmflags.integer;
+
+    if (target == attacker) {
+        if (flags & 4) *take = 0;
+        flags &= 8;
+    } else {
+        gclient_t *tCl = target->client;
+        gclient_t *aCl = attacker->client;
+
+        if (tCl == NULL)
+            goto checkRound;
+
+        if (aCl != NULL &&
+            (g_gametype.integer >= GT_TEAM || tCl->sess.sessionTeam == TEAM_SPECTATOR) &&
+            tCl->sess.sessionTeam == aCl->sess.sessionTeam &&
+            (flags & 1)) {
+            *take = 0;
+        }
+
+        if (tCl == NULL || aCl == NULL ||
+            (g_gametype.integer < GT_TEAM && tCl->sess.sessionTeam != TEAM_SPECTATOR) ||
+            tCl->sess.sessionTeam != aCl->sess.sessionTeam)
+            goto checkRound;
+
+        flags &= 2;
+    }
+
+    if (flags != 0)
+        *asave = 0;
+
+checkRound:
+    if (level.warmupTime != 0)
+        return qtrue;
+
+    if (level.roundState.tNext != 0) {
+        if (level.time < level.roundState.tNext)
+            return qfalse;
+        level.roundState.tNext = 0;
+        level.roundState.eCurrent = level.roundState.eNext;
+        level.roundState.startTime = level.time;
+        RR_RoundStateTransition();  // [QL] RR variant
+    }
+
+    if (level.roundState.eCurrent != RS_PLAYING)
+        return qfalse;
+
+    // [QL] RR scoring is only active when g_rrDamageScoreBonus is set.
+    if (attacker->client != NULL && !OnSameTeam(target, attacker) &&
+        target->client != NULL && target->health > 0 &&
+        g_rrDamageScoreBonus.integer != 0) {
+        int takeClamp = target->client->ps.stats[STAT_HEALTH];  // @0xc0
+        if (takeClamp > *take) takeClamp = *take;
+        int armorClamp = target->client->ps.stats[STAT_ARMOR];  // @0xd0
+        if (armorClamp > *asave) armorClamp = *asave;
+
+        *take = takeClamp;
+        *asave = armorClamp;
+
+        attacker->client->pers.teamState.dmgAccumulator += armorClamp + takeClamp;
+        if (attacker->client->pers.teamState.dmgAccumulator >= 100) {
+            attacker->client->pers.teamState.dmgAccumulator -= 100;
+            attacker->client->ps.persistant[PERS_SCORE] += g_rrDamageScoreBonus.integer;
+            attacker->client->ps.localPersistant[0] += g_rrDamageScoreBonus.integer;  // @0x204 round score
+            CalculateRanks();
+        }
+    }
+
+    return qtrue;
+}
+
+// ============================================================================
+// RR_Think - per-frame logic for Red Rover, called from G_RunFrame.
+// Binary: 0x10065600
+//
+// Advances the round state, then:
 //  - RS_SHUFFLE (2) + infected: calls StartNewRound, schedules RS_COUNTDOWN
 //  - RS_PLAYING (3): alive count, survival bonus, infection, round timeout
 // ============================================================================
-void RR_RunFrame(void) {
+void RR_Think(void) {
     int redAlive, blueAlive;
     int state;
 
     if (level.intermissionQueued || level.intermissionTime || level.warmupTime > 0)
         return;
 
-    if (level.restarted) {
+    // [QL] binary (RR_CheckRound @ 0x10065600) tests level.timePauseBegin, not
+    // level.restarted: while paused, advance the round start-time by the frame
+    // delta so the round timer excludes paused frames.
+    if (level.timePauseBegin != 0) {
         level.roundState.startTime += level.frametime;
     }
 
-    // G_GetRoundState: process pending transition, return current state
-    if (level.roundState.tNext != 0) {
-        if (level.time < level.roundState.tNext)
-            return;
-        level.roundState.tNext = 0;
-        level.roundState.eCurrent = level.roundState.eNext;
-        level.roundState.startTime = level.time;
-        RR_RoundStateTransition();
+    // advance any due round transition; -1 means one is pending but not yet due
+    state = RR_GetRoundState();
+    if (state == -1) {
+        return;
     }
-    state = level.roundState.eCurrent;
 
     // Infected RS_SHUFFLE: reset teams and schedule countdown
-    // Binary: RR_CheckRound handles this AFTER G_GetRoundState, not in
+    // Binary: RR_Think handles this AFTER RR_GetRoundState, not in
     // RR_RoundStateTransition (where infected RS_SHUFFLE is a no-op).
     if (state == RS_SHUFFLE) {
         if (g_rrInfected.integer != 0) {
@@ -448,20 +623,21 @@ void RR_RunFrame(void) {
     if (state != RS_PLAYING)
         return;
 
-    UpdateTeamAliveCount(&redAlive, &blueAlive);
+    Team_LivingTeamCounts(&redAlive, &blueAlive);
 
     // [QL] Infection mode: survival bonus + periodic team switch (binary order)
-    RR_SurvivalBonus(0);
-    RR_CheckInfection();
+    RR_SurvivorBonuses(0);
+    RR_SpreadInfection();
 
-    // Check round end: team eliminated or timelimit (binary: CheckRoundTimeout)
-    if (redAlive == 0 || blueAlive == 0 ||
-        (roundtimelimit.integer != 0 &&
-         level.time - level.roundState.startTime >= roundtimelimit.integer * 1000)) {
-        level.roundState.tNext = 0;
-        level.roundState.eCurrent = RS_ROUND_OVER;
-        RR_RoundStateTransition();
+    // the round keeps going while both teams are alive and the round timelimit has
+    // not run out; CheckRoundTimeout also records the lone blue survivor as MVP
+    if (!CheckRoundTimeout(redAlive, blueAlive)) {
+        return;
     }
+
+    level.roundState.tNext = 0;
+    level.roundState.eCurrent = RS_ROUND_OVER;
+    RR_RoundStateTransition();
 }
 
 // ============================================================================
@@ -512,12 +688,12 @@ void RR_OnPlayerDeath(gentity_t *victim) {
         }
     }
 
-    UpdateTeamAliveCount(&redAlive, &blueAlive);
+    Team_LivingTeamCounts(&redAlive, &blueAlive);
 
     // Infected mode: reset infection timer + survival bonus on blue death
     if (g_rrInfected.integer != 0 && killedTeam == TEAM_BLUE) {
         rr_infectionStartTime = level.time;
-        RR_SurvivalBonus(1);
+        RR_SurvivorBonuses(1);
         if (blueAlive == 0) {
             rr_lastBlueClient = victim->client->ps.clientNum;
         }
@@ -570,12 +746,12 @@ void ClientSpawn_RedRover(gentity_t *ent) {
 
 /*
 ============
-ClientBegin_RedRover
+RR_ClientBegin
 
 [QL] Red Rover begin - spawn normally, freeze during countdown
 ============
 */
-void ClientBegin_RedRover(gentity_t* ent) {
+void RR_ClientBegin(gentity_t* ent) {
     gclient_t* client = ent->client;
 
     if (level.roundState.eCurrent != RS_COUNTDOWN) {
@@ -592,7 +768,7 @@ void ClientBegin_RedRover(gentity_t* ent) {
 
 /*
 ==================
-RRScoreboardMessage
+RedRoverScoreboardMessage
 
 Red Rover scoreboard. 19 fields per player.
 Address: 0x1003f440
@@ -603,7 +779,7 @@ Fields per player (19):
   damageDone impressive excellent gauntlet defend assist perfect captures alive
 ==================
 */
-void RRScoreboardMessage(gentity_t *ent) {
+void RedRoverScoreboardMessage(gentity_t *ent) {
     char entry[1024];
     char string[1024];
     int stringlength;

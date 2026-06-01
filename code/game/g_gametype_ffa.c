@@ -12,11 +12,11 @@
 
 /*
 ==================
-DeathmatchScoreboardMessage
+FreeForAllScoreboardMessage
 
 ==================
 */
-void DeathmatchScoreboardMessage(gentity_t* ent) {
+void FreeForAllScoreboardMessage(gentity_t* ent) {
     char entry[1024];
     char string[1400];
     int stringlength;

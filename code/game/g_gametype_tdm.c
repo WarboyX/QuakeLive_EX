@@ -2,7 +2,7 @@
  * g_gametype_tdm.c -- Team Deathmatch (GT_TEAM, 3)
  *
  * Team-based fraglimit/timelimit mode. Team scoring via kills.
- * Scoreboard: TDMScoreboardMessage, TDMScoreboardMessage_impl (below).
+ * Scoreboard: TeamDeathmatchScoreboardMessage, TeamDeathmatchStatisticsMessage (below).
  */
 #include "g_local.h"
 
@@ -12,12 +12,20 @@
 
 /*
 ==================
-TDMScoreboardMessage
+TeamDeathmatchScoreboardMessage
 
 TDM scoreboard. Includes team item pickup stats (14 categories * 2 teams = 28 header values).
 Hides opponent team's item stats unless spectating or at intermission.
 15 fields per player.
 Address: 0x1003df10
+
+In the binary this is a *builder*: it returns the
+"scores_tdm" string (char *) via va() and returns NULL on overflow; the
+trap_SendServerCommand is done by the caller (Cmd_Score), which also
+applies the `strlen(msg) < 1024 && !level.scoringDisabled` gate and falls back
+to FreeForAllScoreboardMessage otherwise. ioquakelive uses a self-consistent
+send-internally model (this fn is void and sends), so that gate/fallback is not
+reproduced here.
 
 Header (31 values before player data):
   redArmor[RED] redArmor[BLUE] yellowArmor[R] yellowArmor[B] greenArmor[R] greenArmor[B]
@@ -32,7 +40,7 @@ Fields per player (15):
   impressive excellent gauntlet teamKills teamKilled damageDone
 ==================
 */
-void TDMScoreboardMessage(gentity_t *ent) {
+void TeamDeathmatchScoreboardMessage(gentity_t *ent) {
     char entry[1024];
     char string[1024];
     int stringlength;
@@ -96,12 +104,21 @@ void TDMScoreboardMessage(gentity_t *ent) {
 
         bestWeapon = STAT_GetBestWeapon(cl);
 
-        // Hide opponent team's stats (unless spectating or intermission)
+        // Hide opponent team's stats (unless spectating or intermission).
+        // NOTE (byte-faithful): the binary zeroes only 13 of the 14 categories:
+        // index 8 (numInvisibilityPickups) of the hidden team is left visible.
+        // Both the RED-viewer and BLUE-viewer branches skip [8] (original QL bug).
         viewerTeam = ent->client->sess.sessionTeam;
         if (viewerTeam == TEAM_RED && level.intermissionTime == 0) {
-            memset(blueStats, 0, sizeof(blueStats));
+            for (j = 0; j < 14; j++) {
+                if (j != 8)
+                    blueStats[j] = 0;
+            }
         } else if (viewerTeam == TEAM_BLUE && level.intermissionTime == 0) {
-            memset(redStats, 0, sizeof(redStats));
+            for (j = 0; j < 14; j++) {
+                if (j != 8)
+                    redStats[j] = 0;
+            }
         }
 
         // 15 fields per player
@@ -120,7 +137,8 @@ void TDMScoreboardMessage(gentity_t *ent) {
                     cl->expandedStats.totalDamageDealt);
         j = strlen(entry);
         if (stringlength + j >= (int)sizeof(string))
-            break;
+            return;     // byte-faithful: on overflow the QL builder returns NULL
+                        // (nothing sent). Caller's FFA fallback is handled in Cmd_Score.
         strcpy(string + stringlength, entry);
         stringlength += j;
     }
@@ -140,7 +158,7 @@ void TDMScoreboardMessage(gentity_t *ent) {
 
 /*
 ==================
-TDMScoreboardMessage_impl
+TeamDeathmatchStatisticsMessage
 
 TDM detail stats sent per-player as "tdmstats" command.
 11 fields per player: suicides teamKills teamKilled damageDone damageTaken
@@ -149,7 +167,7 @@ TDM detail stats sent per-player as "tdmstats" command.
 Address: 0x1003e3a0
 ==================
 */
-void TDMScoreboardMessage_impl(gentity_t *ent) {
+void TeamDeathmatchStatisticsMessage(gentity_t *ent) {
     char entry[1024];
     char string[1024];
     int i;
@@ -172,9 +190,10 @@ void TDMScoreboardMessage_impl(gentity_t *ent) {
                     cl->expandedStats.numMegaHealthPickups,
                     cl->expandedStats.numQuadDamagePickups,
                     cl->expandedStats.numBattleSuitPickups);
-        if (strlen(entry) < sizeof(string)) {
-            strcpy(string, entry);
-        }
+        if (strlen(entry) > sizeof(string) - 1)
+            break;      // byte-faithful: overflow stops the loop (no send for this
+                        // or any later player); binary breaks, does not skip-and-send.
+        strcpy(string, entry);
         trap_SendServerCommand(ent - g_entities,
             va("tdmstats %i%s", i, string));
     }

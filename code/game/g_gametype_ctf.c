@@ -3,7 +3,7 @@
  *
  * Flag-based team mode. Flag logic is in g_team.c (Team_TouchOurFlag,
  * Team_TouchEnemyFlag, Team_ReturnFlag, Team_CaptureFlagAt).
- * Scoreboard: CTFScoreboardMessage, CTFScoreboardMessage_impl (below).
+ * Scoreboard: CaptureTheFlagScoreboardMessage, CaptureTheFlagStatisticsMessage (below).
  */
 #include "g_local.h"
 
@@ -28,7 +28,7 @@ void CTF_CheckTeamItems(void) {
 
 /*
 ==================
-CTFScoreboardMessage
+CaptureTheFlagScoreboardMessage
 
 CTF scoreboard. Includes 17 team stat categories * 2 teams = 34 header values.
 17 fields per player.
@@ -43,7 +43,7 @@ Fields per player (17):
   impressive excellent gauntlet defend assist captures perfect alive
 ==================
 */
-void CTFScoreboardMessage(gentity_t *ent) {
+void CaptureTheFlagScoreboardMessage(gentity_t *ent) {
     char entry[1024];
     char string[1024];
     int stringlength;
@@ -163,53 +163,46 @@ void CTFScoreboardMessage(gentity_t *ent) {
 
 /*
 ==================
-CTFScoreboardMessage_impl
+CaptureTheFlagStatisticsMessage
 
-CTF/CA per-player detail stats sent as "castats" command.
-Per player: damageDone damageTaken + per-weapon (accuracy numWeaponKills) * 15.
-Address: 0x1003e700
+[QL] CTF-family per-player detail stats sent as the "ctfstats" command (parsed
+client-side by CG_ParseTeamStats_CTF). Emitted at intermission from Cmd_Score_f for
+GT_CTF / 1FCTF / HARVESTER / DOMINATION / AD. 12 fields per player: suicides
+damageDone damageTaken redArmor yellowArmor greenArmor megaHealth quad battleSuit
+regen haste invis.
+(Ghidra mislabelled this FTScoreboardMessage_impl; it emits ctfstats, so it is the
+CTF impl - corrected here and in the Ghidra project.)
+Address: 0x1003ee30
 ==================
 */
-void CTFScoreboardMessage_impl(gentity_t *ent) {
+void CaptureTheFlagStatisticsMessage(gentity_t *ent) {
     char entry[1024];
     char string[1024];
-    int stringlength;
-    int i, w;
+    int i;
     gclient_t *cl;
 
     for (i = 0; i < level.numConnectedClients; i++) {
         cl = &level.clients[level.sortedClients[i]];
 
         string[0] = 0;
-        stringlength = 0;
-
-        // First: damageDone damageTaken
-        Com_sprintf(entry, sizeof(entry), " %i %i",
+        Com_sprintf(entry, sizeof(entry),
+                    " %i %i %i %i %i %i %i %i %i %i %i %i",
+                    cl->expandedStats.numSuicides,
                     cl->expandedStats.totalDamageDealt,
-                    cl->expandedStats.totalDamageTaken);
-        stringlength = strlen(entry);
-        if (stringlength < (int)sizeof(string)) {
+                    cl->expandedStats.totalDamageTaken,
+                    cl->expandedStats.numRedArmorPickups,
+                    cl->expandedStats.numYellowArmorPickups,
+                    cl->expandedStats.numGreenArmorPickups,
+                    cl->expandedStats.numMegaHealthPickups,
+                    cl->expandedStats.numQuadDamagePickups,
+                    cl->expandedStats.numBattleSuitPickups,
+                    cl->expandedStats.numRegenerationPickups,
+                    cl->expandedStats.numHastePickups,
+                    cl->expandedStats.numInvisibilityPickups);
+        if (strlen(entry) < sizeof(string)) {
             strcpy(string, entry);
         }
-
-        // Per-weapon: accuracy numWeaponKills (weapons 0-14)
-        for (w = 0; w < 15; w++) {
-            int j, weapAcc = 0;
-
-            if (cl->expandedStats.shotsHit[w] && cl->expandedStats.shotsFired[w]) {
-                weapAcc = cl->expandedStats.shotsHit[w] * 100 / cl->expandedStats.shotsFired[w];
-            }
-
-            Com_sprintf(entry, sizeof(entry), " %i %i",
-                        weapAcc, cl->expandedStats.numWeaponKills[w]);
-            j = strlen(entry);
-            if (stringlength + j >= (int)sizeof(string))
-                break;
-            strcpy(string + stringlength, entry);
-            stringlength += j;
-        }
-
         trap_SendServerCommand(ent - g_entities,
-            va("castats %i%s", i, string));
+            va("ctfstats %i%s", i, string));
     }
 }

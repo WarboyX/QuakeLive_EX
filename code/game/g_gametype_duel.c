@@ -2,7 +2,7 @@
  * g_gametype_duel.c -- Duel / Tournament (GT_DUEL, 1)
  *
  * 1v1 mode with a queue. Players wait as spectators and rotate in.
- * Queue management: CheckTournament() (below).
+ * Queue management: AddDuelPlayer() (below). Ready countdown: CheckTournament().
  * Scoreboard: DuelScoreboardMessage (below).
  */
 #include "g_local.h"
@@ -14,68 +14,20 @@
 ==================
 DuelScoreboardMessage_impl
 
-Simple duel scoreboard (scores command) - same 18 fields as FFA but with
-zeros for frags/deaths fields, adds bestWeapon at end.
 Address: 0x1003d0b0
+
+[QL] In the binary this builds a generic "scores %i %i %i%s" string and *returns*
+it (tail-call to va) to Cmd_Score_impl, which uses it ONLY as the default-gametype
+fallback and sends it to the single requesting client. GT_DUEL never reaches this
+path - it uses DuelScoreboardMessage / "scores_duel" instead. QL therefore never
+broadcasts a bare "scores" command for duel, and the cgame scoreboard parser drops
+it. The previous trap_SendServerCommand(-1, "scores ...") here was a stray emit
+(this function has no callers in ioquakelive), so it has been removed.
 ==================
 */
 void DuelScoreboardMessage_impl(void) {
-    char entry[1024];
-    char string[1024];
-    int stringlength;
-    int i, j;
-    gclient_t *cl;
-
-    string[0] = 0;
-    stringlength = 0;
-
-    for (i = 0; i < level.numConnectedClients; i++) {
-        int ping, accuracy, perfect, bestWeapon;
-
-        cl = &level.clients[level.sortedClients[i]];
-
-        if (cl->pers.connected == CON_CONNECTING) {
-            ping = -1;
-        } else {
-            ping = cl->ps.ping < 999 ? cl->ps.ping : 999;
-        }
-
-        if (cl->accuracy_shots) {
-            accuracy = cl->accuracy_hits * 100 / cl->accuracy_shots;
-        } else {
-            accuracy = 0;
-        }
-        perfect = (cl->ps.persistant[PERS_RANK] == 0 && cl->ps.persistant[PERS_KILLED] == 0) ? 1 : 0;
-        bestWeapon = STAT_GetBestWeapon(cl);
-
-        // 18 fields per player (frags/deaths hardcoded to 0)
-        Com_sprintf(entry, sizeof(entry),
-                    " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
-                    level.sortedClients[i],
-                    cl->ps.persistant[PERS_SCORE], ping, (level.time - cl->pers.enterTime) / 60000,
-                    0, 0,  // frags, deaths hardcoded to 0 in binary
-                    accuracy,
-                    cl->ps.persistant[PERS_IMPRESSIVE_COUNT],
-                    cl->ps.persistant[PERS_EXCELLENT_COUNT],
-                    cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
-                    cl->ps.persistant[PERS_DEFEND_COUNT],
-                    cl->ps.persistant[PERS_ASSIST_COUNT],
-                    perfect,
-                    cl->ps.persistant[PERS_CAPTURES],
-                    (cl->ps.pm_type == PM_NORMAL) ? 1 : 0,
-                    cl->expandedStats.numKills,
-                    cl->expandedStats.numDeaths,
-                    bestWeapon);
-        j = strlen(entry);
-        if (stringlength + j >= (int)sizeof(string))
-            break;
-        strcpy(string + stringlength, entry);
-        stringlength += j;
-    }
-
-    trap_SendServerCommand(-1, va("scores %i %i %i%s", i,
-                                   level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE],
-                                   string));
+    // Intentionally empty: see note above. Duel scoreboards go out via
+    // DuelScoreboardMessage() as "scores_duel".
 }
 
 /*
@@ -381,23 +333,34 @@ void DuelScoreboardMessage(gentity_t *ent) {
 
 /*
 =============
-CheckTournament
+AddDuelPlayer
 
-[QL] Duel-only: pull in spectators from the queue when a slot opens.
-Binary: FUN_100557f0 in qagamex86.dll - only runs for GT_DUEL.
-Warmup state machine is now in CheckWarmup() (separate function).
+[QL] Duel-only: pull in spectators from the queue when a slot opens. Called every
+frame from G_RunFrame. Only runs for GT_DUEL and never while an intermission is
+queued/active or the match is paused/timed-out.
+.so symbol: AddDuelPlayer   Binary: 0x100557f0 (Ghidra had mislabelled this
+"CheckTournament"; the real CheckTournament is the ready countdown below).
+
+Note: the binary also calls G_AutoRecordAndScreenshot(-1) when a player is
+pulled in; ioquakelive has no equivalent yet, so that step is skipped.
 =============
 */
-void CheckTournament(void) {
+void AddDuelPlayer(void) {
     int i;
     int numNonSpec;
+    int prevPlaying;
     gclient_t *cl;
 
     if (g_gametype.integer != GT_DUEL) {
         return;
     }
+    // Binary guards on level.timePauseBegin (global 0x105dea08, mislabelled
+    // "level_restarted"), i.e. the pause/timeout start time - not level.restarted.
+    if (level.intermissionQueued || level.intermissionTime || level.timePauseBegin) {
+        return;
+    }
 
-    // Count non-spectator connected clients
+    // Count connected non-spectators
     numNonSpec = 0;
     for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
@@ -412,27 +375,105 @@ void CheckTournament(void) {
         return;
     }
 
-    // Pull in next spectator from the queue
+    // Pull the next queued spectator in. AddTournamentPlayer sets warmupTime=-1
+    // and moves them to TEAM_FREE, but only if the queue had someone.
+    prevPlaying = level.numPlayingClients;
     AddTournamentPlayer();
-
-    if (level.warmupTime != -1) {
-        SetWarmupState(-1);
-
-        // Clear allReadyTime countdown if active
-        if (level.allReadyTime != 0) {
-            level.allReadyTime = 0;
-        }
+    if (level.numPlayingClients == prevPlaying) {
+        // queue empty, nobody came in
+        return;
     }
 
-    // Reset specOnly on connected playing clients
+    // A player was added: drop back to PRE_GAME warmup and kill any ready countdown
+    SetWarmupState(-1);
+    if (level.allReadyTime != 0) {
+        level.allReadyTime = 0;
+        trap_SetConfigstring(CS_ALLREADY_TIME, va("%i", 0));
+    }
+
+    // Clear the ready flag on every connected client and refresh their userinfo.
+    // Binary operates on pers.ready (0x2E8), not sess.specOnly.
     for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
-        if (cl->pers.connected != CON_DISCONNECTED &&
-            cl->sess.sessionTeam != TEAM_SPECTATOR) {
-            if (cl->sess.specOnly == 1) {
-                cl->sess.specOnly = 0;
+        if (cl->pers.connected == CON_CONNECTED) {
+            if (cl->pers.ready == 1) {
+                cl->pers.ready = 0;
             }
             ClientUserinfoChanged(i);
         }
     }
+}
+
+/*
+=============
+CheckTournament
+
+[QL] Duel ready-start countdown. When exactly one of the two duellists has
+readied (numPlayingClients == 2 && numReadyHumans == 1), arm an "allready"
+countdown of g_warmupReadyDelay seconds and publish it in CS_ALLREADY_TIME. When
+it elapses, g_warmupReadyDelayAction decides the still-not-ready player's fate
+(1 = un-ready if ready else force spectate; 2 = force ready).
+Binary FUN_10058600 (no dedicated .so symbol - inlined into G_RunFrame on Linux).
+Called from CheckWarmupAndForfeit while in PRE_GAME.
+=============
+*/
+void CheckTournament(void) {
+    int i;
+    gentity_t *ent;
+    gclient_t *cl;
+
+    if (g_gametype.integer != GT_DUEL) {
+        return;
+    }
+    if (g_warmupReadyDelay.integer == 0) {
+        return;
+    }
+
+    if (level.numPlayingClients == 2 && level.numReadyHumans == 1) {
+        if (level.allReadyTime != 0) {
+            if (level.time <= level.allReadyTime) {
+                // Countdown still running.
+                return;
+            }
+            // Countdown elapsed: apply g_warmupReadyDelayAction to the duellists.
+            for (i = 0; i < level.maxclients; i++) {
+                ent = &g_entities[i];
+                if (!ent->client) {
+                    continue;
+                }
+                cl = ent->client;
+                if (cl->pers.connected != CON_CONNECTED) {
+                    continue;
+                }
+                if (cl->sess.sessionTeam != TEAM_FREE) {
+                    continue;
+                }
+                if (g_warmupReadyDelayAction.integer == 1) {
+                    if (cl->pers.ready == 1) {
+                        cl->pers.ready = 0;
+                        ClientUserinfoChanged(cl->ps.clientNum);
+                    } else {
+                        // Binary: SetTeam_Execute(ent, TEAM_SPECTATOR, 0, 0) then sets
+                        // gentity+0x36c = 1. SetTeam("s") is the reimpl equivalent and
+                        // refreshes userinfo itself; the 0x36c flag is not modelled.
+                        SetTeam(ent, "s");
+                    }
+                } else if (g_warmupReadyDelayAction.integer == 2) {
+                    cl->pers.ready = 1;
+                }
+            }
+            level.allReadyTime = 0;
+            trap_SetConfigstring(CS_ALLREADY_TIME, va("%i", 0));
+            return;
+        }
+        // Arm the countdown.
+        level.allReadyTime = g_warmupReadyDelay.integer * 1000 + level.time;
+    } else {
+        // Condition no longer holds: cancel any running countdown.
+        if (level.allReadyTime == 0) {
+            return;
+        }
+        level.allReadyTime = 0;
+    }
+    trap_SetConfigstring(CS_ALLREADY_TIME, va("%i", level.allReadyTime));
 }

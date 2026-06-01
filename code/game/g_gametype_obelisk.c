@@ -3,7 +3,7 @@
  *
  * Teams attack each other's obelisk. Obelisk logic is in g_team.c
  * (ObeliskTouch, ObeliskDie, ObeliskRegen, ObeliskPain).
- * Scoreboard: DeathmatchScoreboardMessage (FFA format fallback).
+ * Scoreboard: FreeForAllScoreboardMessage (FFA format fallback).
  */
 #include "g_local.h"
 
