@@ -230,6 +230,22 @@ void trap_R_RegisterFont(const char* fontName, int pointSize, fontInfo_t* font) 
     syscall(CG_R_REGISTERFONT, fontName, pointSize, font);
 }
 
+void trap_R_Font_DrawString(int x, int y, const char* text, int fontIndex, float scale, int limit, float* maxX, int flags) {
+    syscall(CG_R_FONT_DRAWSTRING, x, y, text, fontIndex, PASSFLOAT(scale), limit, maxX, flags);
+}
+
+void trap_R_Font_TextExtents(const char* text, int start, int limit, float scale, int fontIndex, int* outX, int* outY, int* outW, int* outH) {
+    syscall(CG_R_FONT_TEXTEXTENTS, text, start, limit, PASSFLOAT(scale), fontIndex, outX, outY, outW, outH);
+}
+
+void trap_R_GetGlyphInfo(int fontIndex, int charValue, glyphInfo_t* glyph) {
+    syscall(CG_R_GETGLYPHINFO, fontIndex, charValue, glyph);
+}
+
+void trap_IME_SetCompositionFont(int fontIndex, float scale) {
+    syscall(CG_IME_SETCOMPOSITIONFONT, fontIndex, PASSFLOAT(scale));
+}
+
 void trap_R_ClearScene(void) {
     syscall(CG_R_CLEARSCENE);
 }

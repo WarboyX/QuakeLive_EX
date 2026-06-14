@@ -206,6 +206,161 @@ static void CG_NailgunEjectBrass(centity_t* cent) {
 
 /*
 ==========================
+CG_GetRailColorFloat
+Address: 0x1004f280
+[QL] Team rail-colour override (float form, core colour scaled by 0.75).
+Returns qtrue and fills coreColor/ringColor from cg_teamRailColor1/2 when the
+force-team-rail-colour cvars are on for this rail's owner; qfalse falls back to
+the client's own colour1/colour2. ci is the rail owner.
+Binary tests cg_forceTeamRailColor1/2.integer == 1 exactly, not any nonzero value.
+Ring colour always uses cg_teamRailColor1 (QL quirk).
+Static in the binary; ci passed implicitly (EAX), an explicit parameter here.
+==========================
+*/
+static qboolean CG_GetRailColorFloat(clientInfo_t* ci, float* coreColor, byte* ringColor) {
+    int viewer, owner;
+    qboolean forceTeamSkin;
+
+    if (cg_forceTeamRailColor1.integer != 1 && cg_forceTeamRailColor2.integer != 1) {
+        return qfalse;
+    }
+
+    viewer = cg.snap->ps.clientNum;              // DAT_10a9c298 = cg.snap->ps.clientNum
+    owner = ci - cgs.clientinfo;                 // rail owner's client index
+
+    forceTeamSkin = CG_ShouldForceTeamSkin(cgs.clientinfo[viewer].team, ci->team);
+
+    // Non-team gametypes: only the viewed player's own rail is "forced"
+    if (cgs.gametype < GT_TEAM) {
+        forceTeamSkin = (viewer == owner);
+    }
+
+    // don't force the viewer's own rail
+    if (viewer == owner) {
+        return qfalse;
+    }
+
+    if (forceTeamSkin) {
+        if (cg_forceTeamRailColor1.integer != 1) {
+            return qfalse;
+        }
+        if (coreColor) {
+            coreColor[0] = (((cg_teamRailColor1[0] >> 24) & 0xff) / 255.0f) * 0.75f;
+            coreColor[1] = (((cg_teamRailColor1[0] >> 16) & 0xff) / 255.0f) * 0.75f;
+            coreColor[2] = (((cg_teamRailColor1[0] >> 8) & 0xff) / 255.0f) * 0.75f;
+        }
+    } else {
+        if (cg_forceTeamRailColor2.integer != 1) {
+            return qfalse;
+        }
+        if (coreColor) {
+            coreColor[0] = (((cg_teamRailColor2[0] >> 24) & 0xff) / 255.0f) * 0.75f;
+            coreColor[1] = (((cg_teamRailColor2[0] >> 16) & 0xff) / 255.0f) * 0.75f;
+            coreColor[2] = (((cg_teamRailColor2[0] >> 8) & 0xff) / 255.0f) * 0.75f;
+        }
+    }
+
+    if (ringColor) {
+        ringColor[0] = (cg_teamRailColor1[0] >> 24) & 0xff;
+        ringColor[1] = (cg_teamRailColor1[0] >> 16) & 0xff;
+        ringColor[2] = (cg_teamRailColor1[0] >> 8) & 0xff;
+    }
+
+    return qtrue;
+}
+
+/*
+==========================
+CG_GetRailColorByte
+Address: 0x1004f420
+[QL] Team rail-colour override (byte form, scaled by 0.75 and rounded). Same
+selection logic as CG_GetRailColorFloat; used for the ring sprite shaderRGBA.
+==========================
+*/
+static qboolean CG_GetRailColorByte(clientInfo_t* ci, byte* color) {
+    int viewer, owner;
+    qboolean forceTeamSkin;
+
+    if (cg_forceTeamRailColor1.integer != 1 && cg_forceTeamRailColor2.integer != 1) {
+        return qfalse;
+    }
+
+    viewer = cg.snap->ps.clientNum;
+    owner = ci - cgs.clientinfo;
+
+    forceTeamSkin = CG_ShouldForceTeamSkin(cgs.clientinfo[viewer].team, ci->team);
+
+    if (cgs.gametype < GT_TEAM) {
+        forceTeamSkin = (viewer == owner);
+    }
+
+    if (viewer == owner) {
+        return qfalse;
+    }
+
+    if (forceTeamSkin) {
+        if (cg_forceTeamRailColor1.integer != 1) {
+            return qfalse;
+        }
+        if (color) {
+            color[0] = (byte)(((cg_teamRailColor1[0] >> 24) & 0xff) * 0.75f + 0.5f);
+            color[1] = (byte)(((cg_teamRailColor1[0] >> 16) & 0xff) * 0.75f + 0.5f);
+            color[2] = (byte)(((cg_teamRailColor1[0] >> 8) & 0xff) * 0.75f + 0.5f);
+        }
+    } else {
+        if (cg_forceTeamRailColor2.integer != 1) {
+            return qfalse;
+        }
+        if (color) {
+            color[0] = (byte)(((cg_teamRailColor2[0] >> 24) & 0xff) * 0.75f + 0.5f);
+            color[1] = (byte)(((cg_teamRailColor2[0] >> 16) & 0xff) * 0.75f + 0.5f);
+            color[2] = (byte)(((cg_teamRailColor2[0] >> 8) & 0xff) * 0.75f + 0.5f);
+        }
+    }
+
+    return qtrue;
+}
+
+/*
+==========================
+CG_RailTrailCore
+Address: 0x1004f670
+[QL] Old-rail rings-only disc beam (cg_oldRail == 2). One local entity, reType
+RT_RAIL_RINGS with railRingsShader; despite the "core" symbol name the binary
+sets reType = 5 (RT_RAIL_RINGS), not RT_RAIL_CORE.
+==========================
+*/
+static void CG_RailTrailCore(clientInfo_t* ci, vec3_t start, vec3_t end) {
+    localEntity_t* le;
+    refEntity_t* re;
+
+    le = CG_AllocLocalEntity();
+    re = &le->refEntity;
+
+    le->leType = LE_FADE_RGB;
+    le->startTime = cg.time;
+    le->endTime = cg.time + cg_railTrailTime.value;
+    le->lifeRate = 1.0 / (le->endTime - le->startTime);
+
+    re->shaderTime = cg.time / 1000.0f;
+    re->reType = RT_RAIL_RINGS;  // [QL] binary offset 0xa0 = 5 (RT_RAIL_RINGS)
+    re->customShader = cgs.media.railRingsShader;
+
+    VectorCopy(start, re->origin);
+    VectorCopy(end, re->oldorigin);
+
+    if (!CG_GetRailColorFloat(ci, le->color, NULL)) {
+        le->color[0] = ci->color1[0] * 0.75;
+        le->color[1] = ci->color1[1] * 0.75;
+        le->color[2] = ci->color1[2] * 0.75;
+    }
+    le->color[3] = 1.0f;
+
+    AxisClear(re->axis);
+}
+
+/*
+==========================
 CG_RailTrail
 ==========================
 */
@@ -221,8 +376,6 @@ void CG_RailTrail(clientInfo_t* ci, vec3_t start, vec3_t end) {
 #define ROTATION 1
 #define SPACING 5
 
-    start[2] -= 4;
-
     le = CG_AllocLocalEntity();
     re = &le->refEntity;
 
@@ -234,32 +387,62 @@ void CG_RailTrail(clientInfo_t* ci, vec3_t start, vec3_t end) {
     re->shaderTime = cg.time / 1000.0f;
     re->reType = RT_RAIL_CORE;
     re->customShader = cgs.media.railCoreShader;
+    re->radius = 256;  // [QL] wide core beam (binary sets refEntity offset 0x124 = 256.0)
 
     VectorCopy(start, re->origin);
     VectorCopy(end, re->oldorigin);
 
-    re->shaderRGBA[0] = ci->color1[0] * 255;
-    re->shaderRGBA[1] = ci->color1[1] * 255;
-    re->shaderRGBA[2] = ci->color1[2] * 255;
-    re->shaderRGBA[3] = 255;
+    // [QL] the core beam LE is LE_FADE_RGB driven by le->color; the binary does
+    // NOT write re->shaderRGBA for the core entity.
 
-    le->color[0] = ci->color1[0] * 0.75;
-    le->color[1] = ci->color1[1] * 0.75;
-    le->color[2] = ci->color1[2] * 0.75;
+    // [QL] team rail-colour override for the core beam
+    if (!CG_GetRailColorFloat(ci, le->color, NULL)) {
+        le->color[0] = ci->color1[0] * 0.75;
+        le->color[1] = ci->color1[1] * 0.75;
+        le->color[2] = ci->color1[2] * 0.75;
+    }
     le->color[3] = 1.0f;
 
     AxisClear(re->axis);
 
-    // QL binary: cg_railStyle.integer == 2 enables ring spiral (vmCvar 0x10A62400)
-    if (cg_railStyle.integer != 2) {
-        // nudge down a bit so it isn't exactly in center
-        re->origin[2] -= 8;
-        re->oldorigin[2] -= 8;
+    // [QL] view-relative origin adjustment (binary CG_RailTrail @0x1004f7b0).
+    // Nudges the beam start (and therefore the spiral start) toward the drawn muzzle.
+    {
+        int viewer = cg.snap->ps.clientNum;
+        int owner = ci - cgs.clientinfo;
+
+        if (viewer != owner) {
+            // another player's rail (seen in third person)
+            VectorMA(re->origin, 5.0f, cg.refdef.viewaxis[1], re->origin);
+            VectorMA(re->origin, -4.0f, cg.refdef.viewaxis[2], re->origin);
+        } else if (!cg.renderingThirdPerson) {
+            // own rail, first person: reconstruct the view-model muzzle offset
+            // (mirrors CG_AddViewWeapon's gun positioning; +4/-4/*0.75 are QL tweaks)
+            float fovOffset = (cg_fov.integer > 90) ? -0.2f * (cg_fov.integer - 90) : 0.0f;
+            VectorMA(re->origin, cg_gun_x.value + 4.0f, cg.refdef.viewaxis[0], re->origin);
+            VectorMA(re->origin, cg_gun_y.value * 0.75f, cg.refdef.viewaxis[1], re->origin);
+            VectorMA(re->origin, fovOffset + cg_gun_z.value - 4.0f, cg.refdef.viewaxis[2], re->origin);
+        } else {
+            // own rail, third person: per-view-model vertical offset
+            float zOffset = 1.0f;
+            // TODO [QL] the binary selects zOffset via a Q_stricmpn ladder over the
+            //   rail view-model path (-3.5 / -4.0 / -8.0); the compared strings were
+            //   not resolved from the binary, so the default (1.0) is used here.
+            VectorMA(re->origin, -5.5f, cg.refdef.viewaxis[1], re->origin);
+            VectorMA(re->origin, zOffset, cg.refdef.viewaxis[2], re->origin);
+        }
+    }
+
+    // [QL] cg_oldRail == 2 draws the spiral ring trail; anything else draws the
+    // rings-only disc beam (CG_RailTrailCore) and stops.
+    // (binary: if (cg_oldRail == 2) { spiral } else { CG_RailTrailCore })
+    if (cg_oldRail.integer != 2) {
+        CG_RailTrailCore(ci, start, end);
         return;
     }
 
-    VectorCopy(start, move);
-    VectorSubtract(end, start, vec);
+    VectorCopy(re->origin, move);
+    VectorSubtract(end, move, vec);
     len = VectorNormalize(vec);
     PerpendicularVector(temp, vec);
     for (i = 0; i < 36; i++) {
@@ -288,14 +471,19 @@ void CG_RailTrail(clientInfo_t* ci, vec3_t start, vec3_t end) {
             re->radius = 1.1f;
             re->customShader = cgs.media.railRingsShader;
 
-            re->shaderRGBA[0] = ci->color2[0] * 255;
-            re->shaderRGBA[1] = ci->color2[1] * 255;
-            re->shaderRGBA[2] = ci->color2[2] * 255;
+            // [QL] team rail-colour override for the ring sprites
+            if (!CG_GetRailColorByte(ci, re->shaderRGBA)) {
+                re->shaderRGBA[0] = ci->color2[0] * 255;
+                re->shaderRGBA[1] = ci->color2[1] * 255;
+                re->shaderRGBA[2] = ci->color2[2] * 255;
+            }
             re->shaderRGBA[3] = 255;
 
-            le->color[0] = ci->color2[0] * 0.75;
-            le->color[1] = ci->color2[1] * 0.75;
-            le->color[2] = ci->color2[2] * 0.75;
+            if (!CG_GetRailColorFloat(ci, le->color, NULL)) {
+                le->color[0] = ci->color2[0] * 0.75;
+                le->color[1] = ci->color2[1] * 0.75;
+                le->color[2] = ci->color2[2] * 0.75;
+            }
             le->color[3] = 1.0f;
 
             le->pos.trType = TR_LINEAR;
@@ -318,6 +506,30 @@ void CG_RailTrail(clientInfo_t* ci, vec3_t start, vec3_t end) {
 
 /*
 ==========================
+CG_SpawnRailTrail
+Address: 0x10052200
+[QL] Persistent rail-trail spawn. Unlike Q3 (which spawns the rail LE directly
+from the EV_RAILTRAIL server origin), QL records the fire on the player centity
+and re-spawns the trail from the rendered weapon flash tag (cg_players.c), so
+the beam originates at the drawn muzzle. START = pe.railgunTrailStart (captured
+at fire), END = currentState.origin2 (server-reported endpoint). railFireTime is
+reused as the spawn gate and set to 1 once consumed.
+==========================
+*/
+void CG_SpawnRailTrail(centity_t* cent) {
+    if (cent->currentState.weapon == WP_RAILGUN && cent->pe.railFireTime != 0) {
+        cent->pe.railFireTime = 1;  // mark as consumed
+        CG_RailTrail(&cgs.clientinfo[cent->currentState.clientNum],
+                     cent->pe.railgunTrailStart, cent->currentState.origin2);
+    }
+}
+
+// [QL] forward decl: CG_RocketTrail compares wi->missileTrailFunc against
+// CG_GrenadeTrail (defined below) to choose which trail-radius cvar to use.
+static void CG_GrenadeTrail(centity_t* ent, const weaponInfo_t* wi);
+
+/*
+==========================
 CG_RocketTrail
 ==========================
 */
@@ -330,10 +542,9 @@ static void CG_RocketTrail(centity_t* ent, const weaponInfo_t* wi) {
     entityState_t* es;
     vec3_t up;
     localEntity_t* smoke;
+    float trailRadius;
 
-    if (cg_noProjectileTrail.integer) {
-        return;
-    }
+    trailRadius = wi->trailRadius;
 
     up[0] = 0;
     up[1] = 0;
@@ -366,11 +577,23 @@ static void CG_RocketTrail(centity_t* ent, const weaponInfo_t* wi) {
         return;
     }
 
+    // [QL] trail radius comes from cvars, disabled radius returns early. The binary
+    // replaced Q3's cg_noProjectileTrail early-return with this.
+    if (wi->missileTrailFunc == CG_RocketTrail) {
+        trailRadius = cg_rocketTrailRadius.value;
+    }
+    if (wi->missileTrailFunc == CG_GrenadeTrail) {
+        trailRadius = cg_grenadeTrailRadius.value;
+    }
+    if (trailRadius == 0.0f) {
+        return;
+    }
+
     for (; t <= ent->trailTime; t += step) {
         BG_EvaluateTrajectory(&es->pos, t, lastPos);
 
         smoke = CG_SmokePuff(lastPos, up,
-                             wi->trailRadius,
+                             trailRadius,
                              1, 1, 1, 0.33f,
                              wi->wiTrailTime,
                              t,
@@ -396,8 +619,12 @@ static void CG_NailTrail(centity_t* ent, const weaponInfo_t* wi) {
     entityState_t* es;
     vec3_t up;
     localEntity_t* smoke;
+    float trailRadius;
 
-    if (cg_noProjectileTrail.integer) {
+    // [QL] nail trail radius comes from cg_nailTrailRadius; 0 disables the trail
+    // (binary replaced the cg_noProjectileTrail early-return with this).
+    trailRadius = cg_nailTrailRadius.value;
+    if (trailRadius == 0.0f) {
         return;
     }
 
@@ -436,7 +663,7 @@ static void CG_NailTrail(centity_t* ent, const weaponInfo_t* wi) {
         BG_EvaluateTrajectory(&es->pos, t, lastPos);
 
         smoke = CG_SmokePuff(lastPos, up,
-                             wi->trailRadius,
+                             trailRadius,
                              1, 1, 1, 0.33f,
                              wi->wiTrailTime,
                              t,
@@ -463,8 +690,9 @@ static void CG_PlasmaTrail(centity_t* cent, const weaponInfo_t* wi) {
 
     float waterScale = 1.0f;
 
-    // QL binary: cg_plasmaStyle.integer == 2 enables plasma trail (vmCvar 0x10ABB0A0)
-    if (cg_noProjectileTrail.integer || cg_plasmaStyle.integer != 2) {
+    // QL binary: cg_plasmaStyle.integer == 2 enables plasma trail (vmCvar 0x10ABB0A0);
+    // the binary gates ONLY on cg_plasmaStyle (no cg_noProjectileTrail check).
+    if (cg_plasmaStyle.integer != 2) {
         return;
     }
 
@@ -546,25 +774,27 @@ CG_GrappleTrail
 void CG_GrappleTrail(centity_t* ent, const weaponInfo_t* wi) {
     vec3_t origin;
     entityState_t* es;
-    vec3_t forward, up;
     refEntity_t beam;
 
     es = &ent->currentState;
 
+    // [QL] only draw the chain for the grapple weapon (binary CG_GrappleTrail @0x10050990)
+    if (es->weapon != WP_GRAPPLING_HOOK) {
+        return;
+    }
+
     BG_EvaluateTrajectory(&es->pos, cg.time, origin);
-    ent->trailTime = cg.time;
 
     memset(&beam, 0, sizeof(beam));
 
-    // FIXME adjust for muzzle position
-    VectorCopy(cg_entities[ent->currentState.otherEntityNum].lerpOrigin, beam.origin);
-    beam.origin[2] += 26;
-    AngleVectors(cg_entities[ent->currentState.otherEntityNum].lerpAngles, forward, NULL, up);
-    VectorMA(beam.origin, -6, up, beam.origin);
+    // [QL] origin is the owner's lerp origin directly (no muzzle +26/-6 offset),
+    // endpoint is the hook position. Now called from CG_AddPlayerWeapon via
+    // tag_chain (not as a missileTrailFunc), so it doesn't touch ent->trailTime and
+    // has no Distance<16 early-out.
+    VectorCopy(cg_entities[es->otherEntityNum].lerpOrigin, beam.origin);
     VectorCopy(origin, beam.oldorigin);
 
-    if (Distance(beam.origin, beam.oldorigin) < 16)
-        return;  // Don't draw if too close
+    beam.radius = 64;  // [QL]
 
     // [QL] use RT_RAIL_CORE for single tiled quad (RT_LIGHTNING draws 4 overlapping rotated quads)
     beam.reType = RT_RAIL_CORE;
@@ -603,7 +833,8 @@ void CG_RegisterWeapon(int weaponNum) {
 
     weaponInfo = &cg_weapons[weaponNum];
 
-    if (weaponNum == 0) {
+    // [QL] weapon 0 and 15 (0xf) are not registered; grapple (10) IS registered.
+    if (weaponNum == 0 || weaponNum == 15) {
         return;
     }
 
@@ -650,9 +881,10 @@ void CG_RegisterWeapon(int weaponNum) {
     Q_strcat(path, sizeof(path), "_flash.md3");
     weaponInfo->flashModel = trap_R_RegisterModel(path);
 
-    // [QL] only gauntlet, machinegun, BFG, and chaingun have barrel models in pak
-    if (weaponNum == WP_GAUNTLET || weaponNum == WP_MACHINEGUN ||
-        weaponNum == WP_BFG || weaponNum == WP_CHAINGUN) {
+    // [QL] the binary tries a barrel model for every weapon, but only these ship a
+    // *_barrel.md3. Loading the rest spams "RegisterMD3: couldn't load" with no
+    // barrel, so only load the ones that have one.
+    if (weaponNum == WP_GAUNTLET || weaponNum == WP_MACHINEGUN || weaponNum == WP_BFG || weaponNum == WP_CHAINGUN) {
         COM_StripExtension(item->world_model[0], path, sizeof(path));
         Q_strcat(path, sizeof(path), "_barrel.md3");
         weaponInfo->barrelModel = trap_R_RegisterModel(path);
@@ -661,6 +893,13 @@ void CG_RegisterWeapon(int weaponNum) {
     COM_StripExtension(item->world_model[0], path, sizeof(path));
     Q_strcat(path, sizeof(path), "_hand.md3");
     weaponInfo->handsModel = trap_R_RegisterModel(path);
+
+    // [QL] the grapple carries its hook/ammo on tag_ammo (drawn in CG_AddPlayerWeapon)
+    if (weaponNum == WP_GRAPPLING_HOOK) {
+        COM_StripExtension(item->world_model[0], path, sizeof(path));
+        Q_strcat(path, sizeof(path), "_ammo.md3");
+        weaponInfo->ammoModel = trap_R_RegisterModel(path);
+    }
 
     if (!weaponInfo->handsModel) {
         weaponInfo->handsModel = trap_R_RegisterModel("models/weapons2/shotgun/shotgun_hand.md3");
@@ -691,18 +930,25 @@ void CG_RegisterWeapon(int weaponNum) {
             break;
 
         case WP_GRAPPLING_HOOK:
+            // [QL] binary: missileSound=grfire, NO missileTrailFunc (the chain is
+            // drawn via tag_chain in CG_AddPlayerWeapon), NO missileDlight,
+            // readySound=grhang, and grreset is precached.
             MAKERGB(weaponInfo->flashDlightColor, 0.6f, 0.6f, 1.0f);
             weaponInfo->missileModel = trap_R_RegisterModel("models/weapons2/grapple/grapple_hook.md3");
-            weaponInfo->missileTrailFunc = CG_GrappleTrail;
-            weaponInfo->missileDlight = 200;
-            weaponInfo->firingSound = trap_S_RegisterSound("sound/weapons/grapple/grfire.ogg", qfalse);
-            weaponInfo->missileSound = trap_S_RegisterSound("sound/weapons/grapple/grpull.ogg", qfalse);
             cgs.media.grapplingChainShader = trap_R_RegisterShader("grapplingChain");
+            weaponInfo->readySound = trap_S_RegisterSound("sound/weapons/grapple/grhang.ogg", qfalse);
+            weaponInfo->firingSound = trap_S_RegisterSound("sound/weapons/grapple/grfire.ogg", qfalse);
+            weaponInfo->missileTrailFunc = NULL;
+            weaponInfo->missileSound = trap_S_RegisterSound("sound/weapons/grapple/grfire.ogg", qfalse);
+            trap_S_RegisterSound("sound/weapons/grapple/grreset.ogg", qfalse);
             break;
 
         case WP_CHAINGUN:
             weaponInfo->firingSound = trap_S_RegisterSound("sound/weapons/vulcan/wvulfire.ogg", qfalse);
             MAKERGB(weaponInfo->flashDlightColor, 1, 1, 0);
+            // TODO [QL] binary sets weaponInfo->loopFireSound = 1 (offset 0x1c4) for the
+            //   chaingun (and 0 for all others). ioquakelive's weaponInfo_t has no such
+            //   field, so it can't be reproduced without a struct change.
             weaponInfo->flashSound[0] = trap_S_RegisterSound("sound/weapons/vulcan/vulcanf1b.ogg", qfalse);
             weaponInfo->flashSound[1] = trap_S_RegisterSound("sound/weapons/vulcan/vulcanf2b.ogg", qfalse);
             weaponInfo->flashSound[2] = trap_S_RegisterSound("sound/weapons/vulcan/vulcanf3b.ogg", qfalse);
@@ -735,6 +981,7 @@ void CG_RegisterWeapon(int weaponNum) {
             MAKERGB(weaponInfo->flashDlightColor, 1, 1, 0);
             weaponInfo->flashSound[0] = trap_S_RegisterSound("sound/weapons/shotgun/sshotf1b.ogg", qfalse);
             weaponInfo->ejectBrassFunc = CG_ShotgunEjectBrass;
+            cgs.media.bulletExplosionShader = trap_R_RegisterShader("bulletExplosion");  // [QL]
             break;
 
         case WP_ROCKET_LAUNCHER:
@@ -908,6 +1155,12 @@ static void CG_CalculateWeaponPosition(vec3_t origin, vec3_t angles) {
     VectorCopy(cg.refdef.vieworg, origin);
     VectorCopy(cg.refdefViewAngles, angles);
 
+    // [QL] only the standard gun (cg_drawGun == 1) gets bob/land/idle motion;
+    // left-handed/centered modes use the raw view origin and angles.
+    if (cg_drawGun.integer != 1) {
+        return;
+    }
+
     // on odd legs, invert some angles
     if (cg.bobcycle & 1) {
         scale = -cg.xyspeed;
@@ -945,6 +1198,15 @@ static void CG_CalculateWeaponPosition(vec3_t origin, vec3_t angles) {
     angles[ROLL] += scale * fracsin * 0.01;
     angles[YAW] += scale * fracsin * 0.01;
     angles[PITCH] += scale * fracsin * 0.01;
+
+    // [QL] extra sway while the chaingun is firing
+    if (cg.snap->ps.weapon == WP_CHAINGUN && cg.snap->ps.weaponstate == WEAPON_FIRING) {
+        float fireScale = 1.0 - (1000.0 - (float)cg.snap->ps.weaponTime) / 1000.0;
+        float fireSway = fireScale * (float)sin(cg.time * 0.001) * 0.01;
+        angles[ROLL] += fireSway * 100.0;
+        angles[YAW] += fireSway * 300.0;
+        angles[PITCH] += fireSway * 100.0;
+    }
 }
 
 /*
@@ -972,7 +1234,8 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
     memset(&beam, 0, sizeof(beam));
 
     // CPMA "true" lightning
-    if ((cent->currentState.number == cg.predictedPlayerState.clientNum) && (cg_trueLightning.value != 0)) {
+    if ((cent->currentState.number == cg.predictedPlayerState.clientNum) &&
+        (cg_trueLightning.value != 0) && !cg.renderingThirdPerson) {
         vec3_t angle;
         int i;
 
@@ -995,28 +1258,41 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
         }
 
         AngleVectors(angle, forward, NULL, NULL);
-        VectorCopy(cent->lerpOrigin, muzzlePoint);
+        // [QL] true-lightning starts from the actual view origin (not lerpOrigin + viewheight)
+        VectorCopy(cg.refdef.vieworg, muzzlePoint);
     } else {
         // !CPMA
+        anim = cent->currentState.legsAnim & ~ANIM_TOGGLEBIT;
         AngleVectors(cent->lerpAngles, forward, NULL, NULL);
         VectorCopy(cent->lerpOrigin, muzzlePoint);
+
+        if (anim == LEGS_WALKCR || anim == LEGS_IDLECR) {
+            muzzlePoint[2] += CROUCH_VIEWHEIGHT;
+        } else {
+            muzzlePoint[2] += DEFAULT_VIEWHEIGHT;
+        }
     }
 
-    anim = cent->currentState.legsAnim & ~ANIM_TOGGLEBIT;
-    if (anim == LEGS_WALKCR || anim == LEGS_IDLECR) {
-        muzzlePoint[2] += CROUCH_VIEWHEIGHT;
-    } else {
-        muzzlePoint[2] += DEFAULT_VIEWHEIGHT;
-    }
-
-    VectorMA(muzzlePoint, 14, forward, muzzlePoint);
+    // [QL] muzzle forward offset is 5 (Q3 used 14)
+    VectorMA(muzzlePoint, 5, forward, muzzlePoint);
 
     // project forward by the lightning range
     VectorMA(muzzlePoint, LIGHTNING_RANGE, forward, endPoint);
 
-    // see if it hit a wall
-    CG_Trace(&trace, muzzlePoint, vec3_origin, vec3_origin, endPoint,
-             cent->currentState.number, MASK_SHOT);
+    // see if it hit a wall (capsule player hulls when g_playerCylinders is set)
+    if (cgs.playerCylinders) {
+        CG_CapsuleTrace(&trace, muzzlePoint, vec3_origin, vec3_origin, endPoint,
+                        cent->currentState.number, MASK_SHOT);
+    } else {
+        CG_Trace(&trace, muzzlePoint, vec3_origin, vec3_origin, endPoint,
+                 cent->currentState.number, MASK_SHOT);
+    }
+
+    // NOTE [QL]: the binary skips the bolt only when a render flag AND a submerged
+    // muzzle are BOTH true (draw if !(flag & 0x8000000) || !(inWater)). The earlier
+    // "EF_NODRAW || inWater" skip used the wrong flag and inverted logic, suppressing
+    // the beam, so it's removed pending identification of that flag. Beam still
+    // draws (as before), correct in all non-underwater cases.
 
     // this is the endpoint
     VectorCopy(trace.endpos, beam.oldorigin);
@@ -1026,6 +1302,7 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
     VectorCopy(origin, beam.origin);
 
     beam.reType = RT_LIGHTNING;
+    beam.radius = 256;  // [QL]
 
     if (cg_lightningStyle.integer < 1 || cg_lightningStyle.integer > NUM_LIGHTNING_STYLES) {
         trap_Cvar_Set("cg_lightningStyle", "1");  // don't allow invalid values, default to 1
@@ -1036,13 +1313,14 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
 
     trap_R_AddRefEntityToScene(&beam);
 
-    // add the impact flare if it hit something
-    if (trace.fraction < 1.0) {
+    // [QL] add the impact flare if it hit something and cg_lightningImpact is set
+    if (cg_lightningImpact.integer && trace.fraction < 1.0) {
         vec3_t angles;
         vec3_t dir;
+        float dist;
 
         VectorSubtract(beam.oldorigin, beam.origin, dir);
-        VectorNormalize(dir);
+        dist = VectorNormalize(dir);
 
         memset(&beam, 0, sizeof(beam));
         beam.hModel = cgs.media.lightningExplosionModel;
@@ -1054,6 +1332,19 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
         angles[1] = rand() % 360;
         angles[2] = rand() % 360;
         AnglesToAxis(angles, beam.axis);
+
+        // [QL] shrink the crackle model when the impact is close (cg_lightningImpactCap)
+        if (cg_lightningImpactCap.integer && dist < cg_lightningImpactCap.integer) {
+            float scale = dist / (float)cg_lightningImpactCap.integer;
+            if (scale < 0.125f) {
+                scale = 0.125f;
+            }
+            beam.nonNormalizedAxes = qtrue;
+            VectorScale(beam.axis[0], scale, beam.axis[0]);
+            VectorScale(beam.axis[1], scale, beam.axis[1]);
+            VectorScale(beam.axis[2], scale, beam.axis[2]);
+        }
+
         trap_R_AddRefEntityToScene(&beam);
     }
 }
@@ -1100,6 +1391,15 @@ CG_AddWeaponWithPowerups
 ========================
 */
 static void CG_AddWeaponWithPowerups(refEntity_t* gun, int powerups) {
+    // TODO [QL] the binary (CG_AddWeaponWithPowerups @0x10052350) also, keyed off
+    //   gun->entityNum == cg.snap->ps.clientNum:
+    //     - draws cgs.media.freezeShader when the owner is dead/frozen and is NOT the
+    //       local player (freeze tag),
+    //     - draws an enemy-weapon shader when cg_drawGun == 3 for the local player,
+    //     - restricts the PW_INVIS shader to the local player.
+    //   ioquakelive's refEntity_t has no entityNum and cgs.media has no
+    //   enemyWeaponShader, so it can't be reproduced without struct changes.
+    //   Q3 powerup logic kept below.
     // add powerup effects
     if (powerups & (1 << PW_INVIS)) {
         gun->customShader = cgs.media.invisShader;
@@ -1148,18 +1448,25 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     gun.shadowPlane = parent->shadowPlane;
     gun.renderfx = parent->renderfx;
 
-    // set custom shading for railgun refire rate
+    // [QL] railgun view-model tint tracks the refire cooldown via ps->weaponstate
+    // and cg_railReloadTime (binary), not the Q3 railFireTime+1500 window. World
+    // model gets a fixed green tint; local view model fades from black up to the
+    // player's colour as the reload completes.
     if (weaponNum == WP_RAILGUN) {
         clientInfo_t* ci = &cgs.clientinfo[cent->currentState.clientNum];
-        if (cent->pe.railFireTime + 1500 > cg.time) {
-            int scale = 255 * (cg.time - cent->pe.railFireTime) / 1500;
-            gun.shaderRGBA[0] = (ci->c1RGBA[0] * scale) >> 8;
-            gun.shaderRGBA[1] = (ci->c1RGBA[1] * scale) >> 8;
-            gun.shaderRGBA[2] = (ci->c1RGBA[2] * scale) >> 8;
-            gun.shaderRGBA[3] = 255;
+        if (!ps) {
+            gun.shaderRGBA[0] = 0;
+            gun.shaderRGBA[1] = 255;
+            gun.shaderRGBA[2] = 0;
+        } else if (ps->weaponstate == WEAPON_FIRING) {
+            float fscale = (1.0f - (float)ps->weaponTime / (float)cg_railReloadTime.integer) * 255.0f;
+            gun.shaderRGBA[0] = (byte)(ci->color1[0] * fscale);
+            gun.shaderRGBA[1] = (byte)(ci->color1[1] * fscale);
+            gun.shaderRGBA[2] = (byte)(ci->color1[2] * fscale);
         } else {
             Byte4Copy(ci->c1RGBA, gun.shaderRGBA);
         }
+        gun.shaderRGBA[3] = 255;
     }
 
     gun.hModel = weapon->weaponModel;
@@ -1179,6 +1486,10 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
         }
     }
 
+    // TODO [QL] the binary positions the gun with CG_PositionEntityOnTag(&gun, parent,
+    //   parent->hModel, "tag_weapon") and has no cg_drawGun 2/3 handedness offset. The
+    //   manual LerpTag path below preserves ioquakelive's left-handed / centered gun
+    //   modes. Reconcile if exact parity is required.
     trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
                    1.0 - parent->backlerp, "tag_weapon");
     VectorCopy(parent->origin, gun.origin);
@@ -1213,6 +1524,21 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
 
         CG_PositionRotatedEntityOnTag(&barrel, &gun, weapon->weaponModel, "tag_barrel");
 
+        CG_AddWeaponWithPowerups(&barrel, cent->currentState.powerups);
+    }
+
+    // [QL] draw the grapple hook/ammo on tag_ammo while the hook is stowed (not firing)
+    if (weapon->ammoModel && !cent->pe.lightningFiring && weaponNum == WP_GRAPPLING_HOOK) {
+        memset(&barrel, 0, sizeof(barrel));
+        VectorCopy(parent->lightingOrigin, barrel.lightingOrigin);
+        barrel.shadowPlane = parent->shadowPlane;
+        barrel.renderfx = parent->renderfx;
+        angles[YAW] = 0;
+        angles[PITCH] = 0;
+        angles[ROLL] = 0;
+        barrel.hModel = weapon->ammoModel;
+        AnglesToAxis(angles, barrel.axis);
+        CG_PositionRotatedEntityOnTag(&barrel, &gun, weapon->weaponModel, "tag_ammo");
         CG_AddWeaponWithPowerups(&barrel, cent->currentState.powerups);
     }
 
@@ -1261,15 +1587,26 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     }
 
     CG_PositionRotatedEntityOnTag(&flash, &gun, weapon->weaponModel, "tag_flash");
-    // QL binary: cg_muzzleFlash.integer gates flash sprite (vmCvar 0x10A644A0)
-    if (!ps || cg_muzzleFlash.integer) {
+    // [QL] draw the flash sprite for world models, or for the view model when both
+    // cg_muzzleFlash and cg_drawGun are on (binary: ps==NULL || (cg_muzzleFlash && cg_drawGun))
+    if (!ps || (cg_muzzleFlash.integer && cg_drawGun.integer)) {
         trap_R_AddRefEntityToScene(&flash);
     }
 
     if (ps || cg.renderingThirdPerson ||
         cent->currentState.number != cg.predictedPlayerState.clientNum) {
+        // [QL] draw the grapple chain (CG_GrappleTrail self-guards on WP_GRAPPLING_HOOK)
+        // TODO [QL] the binary first repositions the flash onto its own tag_chain
+        //   (guarded by clientinfo infoValid && legsModel) before this call. Omitted
+        //   here, it would perturb the LG bolt origin for flash models without a
+        //   tag_chain.
+        CG_GrappleTrail(nonPredictedCent, weapon);
+
         // add lightning bolt
         CG_LightningBolt(nonPredictedCent, flash.origin);
+
+        // [QL] re-spawn the persistent rail trail from the drawn muzzle flash
+        CG_SpawnRailTrail(nonPredictedCent);
 
         // QL binary: cg_muzzleFlash.integer also gates the dlight
         if ((!ps || cg_muzzleFlash.integer) &&
@@ -1801,6 +2138,8 @@ void CG_FireWeapon(centity_t* cent) {
     entityState_t* ent;
     int c;
     weaponInfo_t* weap;
+    centity_t* nonPredictedCent;
+    static int lastQuadSoundTime;
 
     ent = &cent->currentState;
     if (ent->weapon == WP_NONE) {
@@ -1816,20 +2155,19 @@ void CG_FireWeapon(centity_t* cent) {
     // append the flash to the weapon model
     cent->muzzleFlashTime = cg.time;
 
-    // lightning gun only does this this on initial press
-    if (ent->weapon == WP_LIGHTNING) {
-        if (cent->pe.lightningFiring) {
-            return;
-        }
-    }
-
     if (ent->weapon == WP_RAILGUN) {
         cent->pe.railFireTime = cg.time;
     }
 
-    // play quad sound if needed
-    if (cent->currentState.powerups & (1 << PW_QUAD)) {
-        trap_S_StartSound(NULL, cent->currentState.number, CHAN_ITEM, cgs.media.quadSound);
+    // [QL] resolve the non-predicted centity (EF_NODRAW players are drawn from
+    // cg_entities[number]); the firing sound / brass / quad sound are skipped for
+    // ANY weapon while this entity is holding a lightning-style continuous fire.
+    nonPredictedCent = cent;
+    if (ent->eFlags & EF_NODRAW) {
+        nonPredictedCent = &cg_entities[ent->number];
+    }
+    if (nonPredictedCent->pe.lightningFiring) {
+        return;
     }
 
     // play a sound
@@ -1848,6 +2186,22 @@ void CG_FireWeapon(centity_t* cent) {
     // do brass ejection
     if (weap->ejectBrassFunc && cg_brassTime.integer > 0) {
         weap->ejectBrassFunc(cent);
+    }
+
+    // play quad sound if needed, rate-limited so continuous-fire weapons don't spam it
+    if (cent->currentState.powerups & (1 << PW_QUAD)) {
+        // [QL] binary gates this on (pe.barrelSpinning2 == 0 || cg.time - lastQuad > 999).
+        // ioquakelive's playerEntity_t has no barrelSpinning2 flag (binary pe offset
+        // 0x298), so approximate it: continuous-fire weapons (MG/plasma/CG/HMG while
+        // firing) get the 999 ms cooldown; every other weapon plays unthrottled.
+        qboolean continuousFire =
+            (nonPredictedCent->currentState.eFlags & EF_FIRING) &&
+            (ent->weapon == WP_MACHINEGUN || ent->weapon == WP_PLASMAGUN ||
+             ent->weapon == WP_CHAINGUN || ent->weapon == WP_HMG);
+        if (!continuousFire || cg.time - lastQuadSoundTime > 999) {
+            trap_S_StartSound(NULL, cent->currentState.number, CHAN_ITEM, cgs.media.quadSound);
+            lastQuadSoundTime = cg.time;
+        }
     }
 }
 
@@ -2040,10 +2394,15 @@ void CG_MissileHitWall(int weapon, int clientNum, vec3_t origin, vec3_t dir, imp
     //
     alphaFade = (mark == cgs.media.energyMarkShader);  // plasma fades alpha, all others fade color
     if (weapon == WP_RAILGUN) {
+        vec3_t teamColor;
         float* color;
 
-        // colorize with client color
-        color = cgs.clientinfo[clientNum].color1;
+        // [QL] apply the team rail-colour override to the mark, else the client's colour1
+        if (CG_GetRailColorFloat(&cgs.clientinfo[clientNum], teamColor, NULL)) {
+            color = teamColor;
+        } else {
+            color = cgs.clientinfo[clientNum].color1;
+        }
         CG_ImpactMark(mark, origin, dir, random() * 360, color[0], color[1], color[2], 1, alphaFade, radius, qfalse);
     } else {
         CG_ImpactMark(mark, origin, dir, random() * 360, 1, 1, 1, 1, alphaFade, radius, qfalse);
@@ -2075,15 +2434,68 @@ void CG_MissileHitPlayer(int weapon, vec3_t origin, vec3_t dir, int entityNum) {
     // some weapons will make an explosion with the blood, while
     // others will just make the blood
     switch (weapon) {
+        // [QL] binary splash set is GL, RL, BFG, PROX (weapons 4/5/9/12).
+        // Plasma does NOT make a wall explosion on players; prox does.
         case WP_GRENADE_LAUNCHER:
         case WP_ROCKET_LAUNCHER:
-        case WP_PLASMAGUN:
         case WP_BFG:
+        case WP_PROX_LAUNCHER:
             CG_MissileHitWall(weapon, 0, origin, dir, IMPACTSOUND_FLESH);
             break;
         default:
             break;
     }
+}
+
+/*
+=================
+CG_MissileHitWall_DmgThrough
+Address: 0x10054db0
+[QL] New "damage-through-surface" (wallbang) impact effect. Projects forward
+from the impact point by cgs.dmgThroughDepth (server-sent surface depth, parsed
+in cg_servercmds.c), traces back to the entry surface, lays a scorch mark there,
+throws 10 debris particles, then calls the normal CG_MissileHitWall for the
+visible impact. Called from CG_EntityEvent (cg_event.c) on
+EV_MISSILE_MISS_DMGTHROUGH.
+Verified against Ghidra:
+  - depth is cgs.dmgThroughDepth (_DAT_10a5fda8), NOT a cvar.
+  - trace back from projected point with mask CONTENTS_SOLID, skipNum -1.
+  - debris use CG_SpawnParticleEffect (type 0, debrisPuffShader), NOT CG_SmokePuff.
+  - debris velocity direction is the incoming missile dir.
+=================
+*/
+void CG_MissileHitWall_DmgThrough(vec3_t origin, vec3_t dir, int weapon) {
+    trace_t trace;
+    vec3_t end;
+    int i;
+
+    // Project forward through the surface by the server-sent depth, then trace back
+    VectorMA(origin, cgs.dmgThroughDepth, dir, end);
+    CG_Trace(&trace, end, NULL, NULL, origin, -1, CONTENTS_SOLID);
+
+    if (trace.fraction != 1.0f && trace.surfaceFlags == 0) {
+        // scorch mark at the exit surface (binary builds a white mark, radius 64)
+        CG_ImpactMark(cgs.media.burnMarkShader, trace.endpos, trace.plane.normal,
+                      random() * 360, 1, 1, 1, 1, qfalse, 64, qfalse);
+
+        // 10 debris particles thrown along the missile direction
+        for (i = 0; i < 10; i++) {
+            vec3_t vel;
+            float speed;
+
+            speed = 250.0f + 150.0f * crandom();
+            vel[0] = speed * dir[0] + (50.0f - 50.0f * crandom());
+            vel[1] = speed * dir[1] + (50.0f - 50.0f * crandom());
+            vel[2] = speed * dir[2] + (50.0f - 50.0f * crandom());
+
+            CG_SpawnParticleEffect(vel, 24.0f,
+                                   0.8f, 0.8f, 0.7f, 1.0f,
+                                   400.0f - (speed / 500.0f) * 200.0f,
+                                   cg.time, 0, cgs.media.debrisPuffShader);
+        }
+    }
+
+    CG_MissileHitWall(weapon, 0, origin, dir, IMPACTSOUND_DEFAULT);
 }
 
 /*
@@ -2103,7 +2515,11 @@ static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum) {
     trace_t tr;
     int sourceContentType, destContentType;
 
-    CG_Trace(&tr, start, NULL, NULL, end, skipNum, MASK_SHOT);
+    if (cgs.playerCylinders) {
+        CG_CapsuleTrace(&tr, start, NULL, NULL, end, skipNum, MASK_SHOT);
+    } else {
+        CG_Trace(&tr, start, NULL, NULL, end, skipNum, MASK_SHOT);
+    }
 
     sourceContentType = CG_PointContents(start, 0);
     destContentType = CG_PointContents(tr.endpos, 0);
@@ -2169,19 +2585,21 @@ static void CG_ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, int other
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
         if (i < 6) {
             jitter = 0.4f;
-            ringRadius = 4;
+            ringRadius = 4000;   // [QL] binary FILD 0xfa0 (server spread baked in)
             angle = (float)(i - 20) * 1.0471976f;   // pi/3 = 60 degree spacing
         } else if (i < 12) {
             jitter = 0.3f;
-            ringRadius = 8;
+            ringRadius = 8000;   // [QL] binary FILD 0x1f40
             angle = (float)i * 1.0471976f + 30.0f;  // 30 radian offset (binary value)
         } else {
             jitter = 0.2f;
-            ringRadius = 12;
+            ringRadius = 12000;  // [QL] binary FILD 0x2ee0
             angle = (float)i * 0.7853982f;           // pi/4 = 45 degree spacing
         }
 
-        if (cgs.gametype == GT_FREEZE) {
+        // [QL] jitter gate is cg_trueShotgun (DAT_10a63f0c), NOT gametype.
+        // When set, the concentric ring pattern is perfectly tight (no seed spread).
+        if (cg_trueShotgun.integer) {
             jitter = 0.0f;
         }
 
@@ -2194,8 +2612,9 @@ static void CG_ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, int other
         u = (sin(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
 
         VectorMA(origin, 8192 * 16, forward, end);
-        VectorMA(end, r * DEFAULT_SHOTGUN_SPREAD, right, end);
-        VectorMA(end, u * DEFAULT_SHOTGUN_SPREAD, up, end);
+        // [QL] r/u already include the (large) ring radius; no DEFAULT_SHOTGUN_SPREAD scale
+        VectorMA(end, r, right, end);
+        VectorMA(end, u, up, end);
 
         CG_ShotgunPellet(origin, end, otherEntNum);
     }
@@ -2220,6 +2639,47 @@ void CG_ShotgunFire(entityState_t* es) {
             VectorNormalize(v);
             VectorSet(up, 0, 0, 8);
             CG_SmokePuff(v, up, 32, 1, 1, 1, 0.33f, 900, cg.time, 0, LEF_PUFF_DONT_SCALE, cgs.media.shotgunSmokePuffShader);
+        }
+    }
+}
+
+/*
+==============
+CG_ShotgunKillEffect
+Address: 0x10055aa0
+[QL] New. Spawns blood splats at randomised offsets around the victim's origin
+for the shotgun multi-pellet kill visual. Count = currentState.generic1 / 5.
+Called from CG_EntityEvent (cg_event.c) on EV_SHOTGUN_KILL. Uses the impact-spark
+effect (gate DAT_10b6fbec = cg_impactSparks), mirroring CG_MissileHitPlayer,
+NOT a cg_blood puff.
+==============
+*/
+void CG_ShotgunKillEffect(centity_t* cent) {
+    int i, count;
+    vec3_t origin;
+
+    count = cent->currentState.generic1 / 5;
+
+    for (i = 0; i < count; i++) {
+        int j;
+
+        VectorCopy(cent->currentState.pos.trBase, origin);
+        origin[0] += (rand() & 31) - 16;
+        origin[1] += (rand() & 31) - 16;
+        origin[2] += rand() % 24 + 8;
+
+        for (j = 0; j < 2; j++) {
+            // [QL] blood colour comes from the VICTIM in otherEntityNum2 (0x98);
+            // otherEntityNum (0x94) is the attacker. Binary CG_ShotgunKillEffect 0x10055aa0.
+            CG_BloodSplatEffect(origin, cent->currentState.otherEntityNum2);
+        }
+
+        if (cg_impactSparks.integer) {
+            vec3_t vel = { 0, 0, cg_impactSparksVelocity.value };
+            CG_SpawnParticleEffect(vel, (float)cg_impactSparksSize.integer,
+                                   1.0f, 1.0f, 1.0f, 1.0f,
+                                   (float)cg_impactSparksLifetime.integer,
+                                   cg.time, 1, cgs.media.sparkParticleShader);
         }
     }
 }
@@ -2324,7 +2784,9 @@ static qboolean CG_CalcMuzzlePoint(int entityNum, vec3_t muzzle) {
         VectorCopy(cg.snap->ps.origin, muzzle);
         muzzle[2] += cg.snap->ps.viewheight;
         AngleVectors(cg.snap->ps.viewangles, forward, NULL, NULL);
-        VectorMA(muzzle, 14, forward, muzzle);
+        // [QL] muzzle forward offset is 3 when the local player is ducked, else 5
+    // (binary keys both branches off cg.snap->ps.pm_flags & PMF_DUCKED)
+    VectorMA(muzzle, (cg.snap->ps.pm_flags & PMF_DUCKED) ? 3 : 5, forward, muzzle);
         return qtrue;
     }
 
@@ -2343,7 +2805,9 @@ static qboolean CG_CalcMuzzlePoint(int entityNum, vec3_t muzzle) {
         muzzle[2] += DEFAULT_VIEWHEIGHT;
     }
 
-    VectorMA(muzzle, 14, forward, muzzle);
+    // [QL] muzzle forward offset is 3 when the local player is ducked, else 5
+    // (binary keys both branches off cg.snap->ps.pm_flags & PMF_DUCKED)
+    VectorMA(muzzle, (cg.snap->ps.pm_flags & PMF_DUCKED) ? 3 : 5, forward, muzzle);
 
     return qtrue;
 }
@@ -2390,7 +2854,8 @@ void CG_Bullet(vec3_t end, int sourceEntityNum, vec3_t normal, qboolean flesh, i
     }
 
     // impact splash and mark
-    if (flesh) {
+    // [QL] flesh vs wall is decided by the hit entity index, not the 'flesh' param
+    if (fleshEntityNum != ENTITYNUM_WORLD) {
         // QL binary: CG_BloodSplatEffect x2 + spark effect (not CG_Bleed), skip self
         if (fleshEntityNum != cg.snap->ps.clientNum) {
             int i;

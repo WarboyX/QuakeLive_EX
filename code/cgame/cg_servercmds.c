@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cg_local.h"
 #include "../../ui/menudef.h"
+#include "../ui/ui_shared.h"  // [QL] Menus_ActivateByName (voice-chat menu)
 
 typedef struct {
     const char* order;
@@ -210,7 +211,7 @@ static void CG_ParseScores_Tdm(void) {
 =================
 CG_ParseScores_Ca
 
-[QL] scores_ca: 17 fields per player (no team header)
+[QL] scores_ca: 16 fields per player (no team header)
 =================
 */
 static void CG_ParseScores_Ca(void) {
@@ -330,7 +331,7 @@ static void CG_ParseScores_Ctf(void) {
 =================
 CG_ParseScores_Ft
 
-[QL] scores_ft: same team header as TDM (28 fields) + 18 fields per player (includes thaws)
+[QL] scores_ft: same team header as TDM (28 fields) + 17 fields per player (includes thaws)
 =================
 */
 static void CG_ParseScores_Ft(void) {
@@ -399,7 +400,7 @@ static void CG_ParseScores_Ft(void) {
 =================
 CG_ParseScores_Rr
 
-[QL] scores_rr: 20 fields per player (includes roundScore)
+[QL] scores_rr: 19 fields per player (includes roundScore)
 =================
 */
 static void CG_ParseScores_Rr(void) {
@@ -426,6 +427,10 @@ static void CG_ParseScores_Rr(void) {
         sp->accuracy = atoi(CG_Argv(idx++));
         sp->bestWeapon = atoi(CG_Argv(idx++));
         sp->bestWeaponAccuracy = atoi(CG_Argv(idx++));
+        // [QL] binary CG_ParseScores_RR (0x10047de0): damageDone is argv 14
+        // (right after bestWeaponAccuracy), NOT last. The award/pickup block
+        // follows it. Reading impressive here shifted every field by one.
+        sp->damageDone = atoi(CG_Argv(idx++));
         sp->impressiveCount = atoi(CG_Argv(idx++));
         sp->excellentCount = atoi(CG_Argv(idx++));
         sp->guantletCount = atoi(CG_Argv(idx++));
@@ -434,7 +439,6 @@ static void CG_ParseScores_Rr(void) {
         sp->perfect = atoi(CG_Argv(idx++));
         sp->captures = atoi(CG_Argv(idx++));
         sp->alive = atoi(CG_Argv(idx++));
-        sp->damageDone = atoi(CG_Argv(idx++));
         sp->net = sp->frags - sp->deaths;
 
         if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
@@ -524,6 +528,60 @@ static void CG_ParseSmScores(void) {
 
 /*
 =================
+CG_ParseScores
+
+[QL] bare "scores" verb -> binary CG_ParseScores_Generic (0x100481f0).
+18 fields per player like FFA, but two per-player fields (argv +4,+5) are unused
+and there is no powerups field. Dispatched by CG_ServerCommand (0x1004ba75).
+Format: numScores teamScore0 teamScore1 [client score ping time _ _ accuracy
+impressive excellent gauntlet defend assist perfect captures alive frags deaths
+bestWeapon] ...
+=================
+*/
+static void CG_ParseScores(void) {
+    int i, idx;
+
+    cg.numScores = atoi(CG_Argv(1));
+    if (cg.numScores > MAX_CLIENTS) {
+        cg.numScores = MAX_CLIENTS;
+    }
+    cg.teamScores[0] = atoi(CG_Argv(2));
+    cg.teamScores[1] = atoi(CG_Argv(3));
+
+    memset(cg.scores, 0, sizeof(cg.scores));
+    for (i = 0; i < cg.numScores; i++) {
+        score_t *sp = &cg.scores[i];
+        idx = i * 18 + 4;
+        sp->client = atoi(CG_Argv(idx++));
+        sp->score = atoi(CG_Argv(idx++));
+        sp->ping = atoi(CG_Argv(idx++));
+        sp->time = atoi(CG_Argv(idx++));
+        idx += 2;  // two unused per-player fields (binary skips argv +4,+5)
+        sp->accuracy = atoi(CG_Argv(idx++));
+        sp->impressiveCount = atoi(CG_Argv(idx++));
+        sp->excellentCount = atoi(CG_Argv(idx++));
+        sp->guantletCount = atoi(CG_Argv(idx++));
+        sp->defendCount = atoi(CG_Argv(idx++));
+        sp->assistCount = atoi(CG_Argv(idx++));
+        sp->perfect = atoi(CG_Argv(idx++));
+        sp->captures = atoi(CG_Argv(idx++));
+        sp->alive = atoi(CG_Argv(idx++));
+        sp->frags = atoi(CG_Argv(idx++));
+        sp->deaths = atoi(CG_Argv(idx++));
+        sp->bestWeapon = atoi(CG_Argv(idx++));
+        sp->net = sp->frags - sp->deaths;
+
+        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+            sp->client = 0;
+        }
+        cgs.clientinfo[sp->client].score = sp->score;
+        sp->team = cgs.clientinfo[sp->client].team;
+    }
+    CG_SetScoreSelection(NULL);
+}
+
+/*
+=================
 CG_ParseTeamInfo
 
 =================
@@ -532,6 +590,12 @@ static void CG_ParseTeamInfo(void) {
     int i;
     int client;
 
+    // [QL] binary CG_ParseTeamInfo (0x100487b0, Ghidra-mislabelled
+    // CG_ParseAccuracyFromCS): QL's "tinfo" is NOT Q3's 6-fields-per-player
+    // overlay. The server (qagame SendTeamInfo, "tinfo %i %s" with a " %i" per
+    // player) sends only the sorted client-number list; teammate
+    // health/armour/location come through the snapshot, not here. So this is a
+    // flat list: argv(1) = count, argv(2..count+1) = client numbers.
     numSortedTeamPlayers = atoi(CG_Argv(1));
     if (numSortedTeamPlayers < 0 || numSortedTeamPlayers > TEAM_MAXOVERLAY) {
         CG_Error("CG_ParseTeamInfo: numSortedTeamPlayers out of range (%d)",
@@ -540,19 +604,12 @@ static void CG_ParseTeamInfo(void) {
     }
 
     for (i = 0; i < numSortedTeamPlayers; i++) {
-        client = atoi(CG_Argv(i * 6 + 2));
+        client = atoi(CG_Argv(i + 2));
         if (client < 0 || client >= MAX_CLIENTS) {
             CG_Error("CG_ParseTeamInfo: bad client number: %d", client);
             return;
         }
-
         sortedTeamPlayers[i] = client;
-
-        cgs.clientinfo[client].location = atoi(CG_Argv(i * 6 + 3));
-        cgs.clientinfo[client].health = atoi(CG_Argv(i * 6 + 4));
-        cgs.clientinfo[client].armor = atoi(CG_Argv(i * 6 + 5));
-        cgs.clientinfo[client].curWeapon = atoi(CG_Argv(i * 6 + 6));
-        cgs.clientinfo[client].powerups = atoi(CG_Argv(i * 6 + 7));
     }
 }
 
@@ -599,13 +656,13 @@ void CG_ParseServerinfo(void) {
     cgs.itemTimers = atoi(Info_ValueForKey(info, "g_itemTimers"));
     cgs.quadDamageFactor = atoi(Info_ValueForKey(info, "g_quadDamageFactor"));
 
-    // [QL] copy g_loadout from serverinfo → cg_loadout ROM cvar
+    // [QL] copy g_loadout from serverinfo -> cg_loadout ROM cvar
     trap_Cvar_Set("cg_loadout", Info_ValueForKey(info, "g_loadout"));
 
     mapname = Info_ValueForKey(info, "mapname");
     Com_sprintf(cgs.mapname, sizeof(cgs.mapname), "maps/%s.bsp", mapname);
 
-    // [QL] g_voteFlags → set voting disabled cvars for UI
+    // [QL] g_voteFlags -> set voting disabled cvars for UI
     cgs.voteFlags = atoi(Info_ValueForKey(info, "g_voteFlags"));
     if (cgs.voteFlags & (VF_MAP | VF_NEXTMAP)) {
         trap_Cvar_Set("ui_mapVotingDisabled", "1");
@@ -666,6 +723,82 @@ static void CG_ParseWarmup(void) {
     cg.warmup = warmup;
 
     trap_Cvar_Set("ui_warmup", va("%i", warmup));
+}
+
+/*
+================
+CG_ParseWarmupInfo
+
+[QL] cgamex86.dll: CG_ParseWarmupInfo @ 0x10048c80.  Parses the round-based
+warmup countdown from CS_ROUND_WARMUP.  The binary reads two extra per-team
+counts and bumps the countdown for gametype 11 (GT_AD).
+================
+*/
+static void CG_ParseWarmupInfo(void) {
+    const char* info;
+    int warmup;
+
+    info = CG_ConfigString(CS_ROUND_WARMUP);
+
+    warmup = atoi(Info_ValueForKey(info, "time"));
+    cg.warmupCount = atoi(Info_ValueForKey(info, "count"));
+
+    if (cgs.gametype == GT_AD) {
+        cg.warmupFreezeCount_red = atoi(Info_ValueForKey(info, "redCount"));
+        cg.warmupFreezeCount_blue = atoi(Info_ValueForKey(info, "blueCount"));
+        cg.warmupCount++;
+    }
+
+    cg.warmup = warmup;
+}
+
+/*
+================
+CG_ParseArmorTiered
+
+[QL] cgamex86.dll: CG_ParseArmorTiered @ 0x10048df0.  Reads the tiered-armor
+flag from CS_ARMORINFO and mirrors it into the cg_armorTiered cvar.
+================
+*/
+static void CG_ParseArmorTiered(void) {
+    const char* info;
+
+    info = CG_ConfigString(CS_ARMORINFO);
+    // [QL] key is "armor_tiered" (verified against a live QL server demo), not "t"
+    cgs.armorTiered = atoi(Info_ValueForKey(info, "armor_tiered"));
+    trap_Cvar_Set("cg_armorTiered", va("%d", cgs.armorTiered));
+}
+
+/*
+================
+CG_ParseConfigParams
+
+[QL] cgamex86.dll: CG_ParseConfigParams @ 0x10048e40. Reads the head/model scale factors
+and g_allowCustomHeadmodels from CS_PLAYERINFO, then recomputes model scales. Verified
+against a live QL server demo: CS_PLAYERINFO carries only these numeric params - the
+model/head OVERRIDE strings are applied server-side and are NOT in this configstring, so
+they are read but normally resolve empty. The scales keep sane defaults (matching the
+server cvar defaults 1.0/1.0/1.1) when the server did not send CS_PLAYERINFO, otherwise
+CG_CalcModelScale would scale every model to zero.
+================
+*/
+void CG_ParseConfigParams(void) {
+    const char* info;
+    const char* val;
+
+    info = CG_ConfigString(CS_PLAYERINFO);
+
+    Q_strncpyz(cgs.playermodelOverride, Info_ValueForKey(info, "g_playermodelOverride"),
+               sizeof(cgs.playermodelOverride));
+    Q_strncpyz(cgs.playerheadmodelOverride, Info_ValueForKey(info, "g_playerheadmodelOverride"),
+               sizeof(cgs.playerheadmodelOverride));
+    cgs.allowCustomHeadmodels = atoi(Info_ValueForKey(info, "g_allowCustomHeadmodels"));
+
+    val = Info_ValueForKey(info, "g_playerheadScale");       cgs.playerheadScale = *val ? atof(val) : 1.0f;
+    val = Info_ValueForKey(info, "g_playerheadScaleOffset");  cgs.playerheadScaleOffset = *val ? atof(val) : 1.0f;
+    val = Info_ValueForKey(info, "g_playerModelScale");       cgs.playerModelScale = *val ? atof(val) : 1.1f;
+
+    CG_UpdateAllModelScales();
 }
 
 /*
@@ -808,9 +941,25 @@ void CG_SetConfigValues(void) {
     cgs.scores1 = atoi(CG_ConfigString(CS_SCORES1));
     cgs.scores2 = atoi(CG_ConfigString(CS_SCORES2));
     cgs.levelStartTime = atoi(CG_ConfigString(CS_LEVEL_START_TIME));
+    // [QL] custom-settings bitmask (drives the RR-infected bones model), wallbang depth,
+    // and the capsule-hull flag for client-side hit prediction
+    cgs.customSettings = atoi(CG_ConfigString(CS_CUSTOM_SETTINGS));
+    cgs.dmgThroughDepth = atof(CG_ConfigString(CS_DMGTHROUGHDEPTH));
+    cgs.playerCylinders = atoi(CG_ConfigString(CS_PLAYER_CYLINDERS));
+    // [QL] pause/timeout: freezeEnd is the frozen match-clock base (CG_GetLevelTimerMsec),
+    // pauseEnd is the resume/countdown target (CG_DrawTimeout)
+    cgs.freezeEnd = atoi(CG_ConfigString(CS_PAUSE_START_TIME));
+    cgs.pauseEnd = atoi(CG_ConfigString(CS_PAUSE_END_TIME));
+    // [QL] CG_SetConfigValues (binary 0x10049420) seeds only practice (DAT_10a3ff30)
+    // and freecam (DAT_10a5fd0c) at init; allReadyTime/roundStartTime are NOT read
+    // here by the binary (they arrive later via CG_ConfigStringModified).
+    cgs.practice = atoi(CG_ConfigString(CS_PRACTICE));
+    cgs.freecam = atoi(CG_ConfigString(CS_FREECAM));
 
     // [QL] parse pmove parameters for client-side prediction
     CG_ParsePmoveParams();
+    // [QL] parse player model/head overrides + scales from CS_PLAYERINFO
+    CG_ParseConfigParams();
     if (cgs.gametype == GT_CTF) {
         s = CG_ConfigString(CS_FLAGSTATUS);
         cgs.redflag = s[0] - '0';
@@ -947,9 +1096,24 @@ static void CG_ConfigStringModified(void) {
         cgs.clientNum2ndPlayer = atoi(str);
         cg.duelPlayer2 = cgs.clientNum2ndPlayer;
     } else if (num == CS_ROUND_START_TIME) {
-        if (atoi(str)) {
+        // [QL] binary CG_ConfigStringModified (0x10049980): CS_ROUND_START_TIME
+        // (0x296) writes the round start time to DAT_10a403dc. The prior handler
+        // dropped the time and only latched roundStarted; keep roundStarted for
+        // the ioquakelive round state and record the time the binary stores.
+        cgs.roundStartTime = atoi(str);
+        if (cgs.roundStartTime) {
             cgs.roundStarted = qtrue;
         }
+    } else if (num == CS_ROUND_WARMUP) {
+        CG_ParseWarmupInfo();
+    } else if (num == CS_TEAMCOUNT_RED) {
+        cgs.teamCountRed = atoi(str);
+    } else if (num == CS_TEAMCOUNT_BLUE) {
+        cgs.teamCountBlue = atoi(str);
+    } else if (num == CS_ARMORINFO) {
+        CG_ParseArmorTiered();
+    } else if (num == CS_PLAYERINFO) {
+        CG_ParseConfigParams();
     } else if (num == CS_ROTATIONMAPS) {
         // [QL] map vote info - parse map names for vote display
         cg.mapVoteActive = (str[0] != '\0');
@@ -957,6 +1121,25 @@ static void CG_ConfigStringModified(void) {
         CG_ShaderStateChanged();
     } else if (num == CS_PMOVEINFO) {
         CG_ParsePmoveParams();
+    } else if (num == CS_CUSTOM_SETTINGS) {
+        cgs.customSettings = atoi(str);
+    } else if (num == CS_DMGTHROUGHDEPTH) {
+        cgs.dmgThroughDepth = atof(str);
+    } else if (num == CS_PLAYER_CYLINDERS) {
+        cgs.playerCylinders = atoi(str);
+    } else if (num == CS_PAUSE_START_TIME) {
+        cgs.freezeEnd = atoi(str);
+    } else if (num == CS_PAUSE_END_TIME) {
+        cgs.pauseEnd = atoi(str);
+    } else if (num == CS_PRACTICE) {
+        // [QL] practice-mode flag (binary 0x10049980 case 0x29b -> DAT_10a3ff30)
+        cgs.practice = atoi(str);
+    } else if (num == CS_FREECAM) {
+        // [QL] team-spectator free-camera flag (case 0x29c -> DAT_10a5fd0c)
+        cgs.freecam = atoi(str);
+    } else if (num == CS_ALLREADY_TIME) {
+        // [QL] all-ready countdown target time (case 0x2c4 -> DAT_10a403d8)
+        cgs.allReadyTime = atoi(str);
     } else if (num == CS_DISABLE_LOADOUT) {
         CG_ParseDisableLoadout(str);
     }
@@ -1033,6 +1216,405 @@ static void CG_AddToTeamChat(const char* str) {
 
     if (cgs.teamChatPos - cgs.teamLastChatPos > chatHeight)
         cgs.teamLastChatPos = cgs.teamChatPos - chatHeight;
+}
+
+/*
+===============================================================================
+
+[QL] CLIENT-SIDE VOICE-CHAT RECEIVE SYSTEM
+
+Ported from cgamex86.dll.  Quake Live kept the
+Quake 3 voice-chat plumbing but ships no loader for the parsed voice data:
+nothing in the binary ever writes the voiceFiles[] table (every xref to its base
+0x107d98c0 is a loop bound or the gender read), and there is no CG_LoadVoiceChats
+in the binary at all.  At runtime the tables therefore stay empty and
+CG_GetVoiceChat never matches, so the whole receive path is inert - but the code
+paths are all present in the binary and reproduced here.
+
+QL's storage does NOT match ioquake3's voiceChatList_t, so the file-static
+structs below are sized to the binary exactly:
+  - voiceFiles[8]       at 0x107d98c0, stride 0x45148  (the parsed voice lists)
+  - voiceChatLists[64]  at 0x107d87c0, stride 0x44     (model/skin -> file cache)
+  - voiceChatBuffer[32] at 0x10a02300, stride 0x138    (the received ring buffer)
+The public prototypes in cg_local.h are kept unchanged.  CG_VoiceChatListForClient
+resolves the "current" list; the binary passes that pointer to CG_GetVoiceChat in
+EBX, which the fixed 3-arg prototype cannot carry, so it is bridged through the
+file-static cg_currentVoiceChatList.
+
+===============================================================================
+*/
+
+#define MAX_VOICEFILESIZE 16384  // 0x4000 - max .vc file size the parser accepts
+#define MAX_VOICECHATS    64     // voice commands per file / name-cache slots
+#define MAX_VOICESOUNDS   64     // random sound variants per voice command
+#define MAX_CHATSIZE      64     // per-variant chat display string
+
+// One parsed voice command.  Binary stride 0x1144.
+typedef struct {
+    char        id[64];                                // +0x000 command name
+    int         numSounds;                             // +0x040 variant count
+    sfxHandle_t sounds[MAX_VOICESOUNDS];               // +0x044 sound handles
+    char        chats[MAX_VOICESOUNDS][MAX_CHATSIZE];  // +0x144 chat strings
+} qlVoiceChat_t;
+
+// One parsed voice file.  Binary stride 0x45148.
+typedef struct {
+    char          name[64];                    // +0x00000 list name
+    int           gender;                      // +0x00040
+    int           numVoiceChats;               // +0x00044
+    qlVoiceChat_t voiceChats[MAX_VOICECHATS];  // +0x00048
+} qlVoiceFile_t;
+
+// Maps a client model/skin string -> loaded voiceFiles[] slot.  Binary stride
+// 0x44 (matches cg_local.h's voiceChatList_t, but kept file-local).
+typedef struct {
+    char name[64];
+    int  index;
+} qlVoiceNameCache_t;
+
+static qlVoiceFile_t       voiceFiles[MAX_VOICEFILES];            // 0x107d98c0
+static qlVoiceNameCache_t  voiceChatLists[MAX_VOICECHATS];        // 0x107d87c0
+static bufferedVoiceChat_t voiceChatBuffer[MAX_VOICECHATBUFFER];  // 0x10a02300
+static qlVoiceFile_t*      cg_currentVoiceChatList;               // binary EBX bridge
+
+// [QL] gate cvars: defined in cg_main.c, not extern'd in cg_local.h.  Positive
+// sense (enable flags) - the opposite polarity to Q3's cg_noVoiceChats/Text.
+extern vmCvar_t cg_playVoiceChats;  // DAT_10a62acc - sound gate
+extern vmCvar_t cg_showVoiceText;   // DAT_10abb2ec - text gate
+
+/*
+=================
+CG_LoadVoiceChats
+
+[QL] No standalone loader exists in cgamex86.dll (voiceFiles[] is never
+populated - QL ships no .vc assets).  Reset the lookup state to a known-empty
+baseline so the receive path behaves exactly like the shipped, inert binary.
+=================
+*/
+void CG_LoadVoiceChats(void) {
+    memset(voiceChatLists, 0, sizeof(voiceChatLists));
+    memset(voiceFiles, 0, sizeof(voiceFiles));
+    cg_currentVoiceChatList = NULL;
+}
+
+/*
+=================
+CG_ParseVoiceChats
+
+Address: 0x1004a560
+
+[QL] NOT ioquake3's parser.  QL's version only opens the file, reads it (max
+0x4000 bytes), pulls the first token (the list name) and scans the already
+loaded voiceFiles[] table for a name match, returning that slot index or -1.
+The sound/message table is never loaded by any function in the binary.
+=================
+*/
+int CG_ParseVoiceChats(const char* filename) {
+    fileHandle_t f;
+    int len;
+    char buf[MAX_VOICEFILESIZE];
+    char* p;
+    const char* token;
+    int i;
+
+    len = trap_FS_FOpenFile(filename, &f, FS_READ);
+    if (!f) {
+        return -1;
+    }
+    if (len >= (int)sizeof(buf)) {
+        CG_Printf("^1voice chat file too large: %s is %i, max allowed is %i\n",
+                  filename, len, MAX_VOICEFILESIZE);
+        trap_FS_FCloseFile(f);
+        return -1;
+    }
+
+    trap_FS_Read(buf, len, f);
+    buf[len] = '\0';
+    trap_FS_FCloseFile(f);
+
+    p = buf;
+    token = COM_ParseExt(&p, qtrue);
+    if (!token || !token[0]) {
+        return -1;
+    }
+
+    // scan the loaded voice-file table for a matching list name
+    for (i = 0; i < MAX_VOICEFILES; i++) {
+        if (!Q_stricmpn(token, voiceFiles[i].name, sizeof(voiceFiles[i].name))) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/*
+=================
+CG_GetVoiceChat
+
+Address: 0x1004a6a0
+
+[QL] Look up cmd in the current voice list (passed in EBX by the binary, bridged
+here via cg_currentVoiceChatList), pick a random sound/chat variant, and return
+whether a match was found.
+=================
+*/
+qboolean CG_GetVoiceChat(const char* cmd, sfxHandle_t* snd, const char** chat) {
+    qlVoiceFile_t* list = cg_currentVoiceChatList;
+    int i, rnd;
+
+    if (!list) {
+        return qfalse;  // not in the binary; guards the EBX-bridge global
+    }
+
+    for (i = 0; i < list->numVoiceChats; i++) {
+        if (cmd == NULL) {
+            continue;
+        }
+        // binary uses Q_stricmpn(cmd, id, 99999), i.e. a full case-insensitive compare
+        if (!Q_stricmp(cmd, list->voiceChats[i].id)) {
+            // binary: (int)((rand() & 0x7fff) / 32768.0 * numSounds).  Reproduce
+            // the /0x8000 exactly rather than ioquakelive's random() (which uses
+            // /0x7fff and could index numSounds out of bounds).
+            rnd = (int)(((float)(rand() & 0x7fff) / 32768.0f) * list->voiceChats[i].numSounds);
+            *snd = list->voiceChats[i].sounds[rnd];
+            *chat = list->voiceChats[i].chats[rnd];
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+/*
+=================
+CG_VoiceChatListForClient
+
+Address: 0x1004a740
+
+[QL] Resolve the voice list for a client from its forced head model/skin
+(clientinfo +0x254 / +0x294), caching the model/skin -> file-slot mapping.
+The binary returns the resolved &voiceFiles[index] in EAX; here it is stored in
+cg_currentVoiceChatList (the header prototype is void).
+=================
+*/
+void CG_VoiceChatListForClient(int clientNum) {
+    clientInfo_t* ci;
+    char vchatName[64];
+    char vchatFile[64];
+    int pass;
+    int i, j;
+    int vchatIndex;
+    const char* name;
+    int searchGender;
+
+    if (clientNum < 0 || clientNum >= MAX_CLIENTS) {
+        clientNum = 0;
+    }
+    ci = &cgs.clientinfo[clientNum];
+
+    for (pass = 0; pass < 2; pass++) {
+        if (pass == 0) {
+            // model/skin-specific voice file
+            if (ci->forcedHeadModel[0] == '*') {
+                Com_sprintf(vchatName, sizeof(vchatName), "%s/%s",
+                            ci->forcedHeadModel + 1, ci->forcedHeadSkin);
+            } else {
+                Com_sprintf(vchatName, sizeof(vchatName), "%s/%s",
+                            ci->forcedHeadModel, ci->forcedHeadSkin);
+            }
+        } else {
+            // fallback: model name only
+            if (ci->forcedHeadModel[0] == '*') {
+                name = ci->forcedHeadModel + 1;
+            } else {
+                name = ci->forcedHeadModel;
+            }
+            Com_sprintf(vchatName, sizeof(vchatName), "%s", name);
+        }
+
+        // already cached?
+        for (i = 0; i < MAX_VOICECHATS; i++) {
+            if (voiceChatLists[i].name[0] &&
+                !Q_stricmp(vchatName, voiceChatLists[i].name)) {
+                cg_currentVoiceChatList = &voiceFiles[voiceChatLists[i].index];
+                return;
+            }
+        }
+
+        // first empty cache slot: try to load
+        for (i = 0; i < MAX_VOICECHATS; i++) {
+            if (!voiceChatLists[i].name[0]) {
+                Com_sprintf(vchatFile, sizeof(vchatFile), "scripts/%s.vc", vchatName);
+                vchatIndex = CG_ParseVoiceChats(vchatFile);
+                if (vchatIndex != -1) {
+                    Q_strncpyz(voiceChatLists[i].name, vchatName,
+                               sizeof(voiceChatLists[i].name));
+                    voiceChatLists[i].index = vchatIndex;
+                    cg_currentVoiceChatList = &voiceFiles[vchatIndex];
+                    return;
+                }
+                break;
+            }
+        }
+    }
+
+    // gender fallback: first try the client's gender, then gender 0 (default)
+    searchGender = ci->gender;
+    for (pass = 0; pass < 2; pass++) {
+        for (i = 0; i < MAX_VOICEFILES; i++) {
+            if (voiceFiles[i].name[0] && voiceFiles[i].gender == searchGender) {
+                for (j = 0; j < MAX_VOICECHATS; j++) {
+                    if (!voiceChatLists[j].name[0]) {
+                        Q_strncpyz(voiceChatLists[j].name, vchatName,
+                                   sizeof(voiceChatLists[j].name));
+                        voiceChatLists[j].index = i;
+                        break;
+                    }
+                }
+                cg_currentVoiceChatList = &voiceFiles[i];
+                return;
+            }
+        }
+        if (searchGender == 0) {
+            break;
+        }
+        searchGender = 0;
+    }
+
+    // last resort: default to voice file 0, recording into an empty cache slot
+    for (i = 0; i < MAX_VOICECHATS; i++) {
+        if (!voiceChatLists[i].name[0]) {
+            Q_strncpyz(voiceChatLists[i].name, vchatName,
+                       sizeof(voiceChatLists[i].name));
+            voiceChatLists[i].index = 0;
+            break;
+        }
+    }
+    cg_currentVoiceChatList = &voiceFiles[0];
+}
+
+/*
+=================
+CG_PlayVoiceChat
+
+Address: 0x1004aac0
+
+[QL] Play one buffered voice chat.  Gates (Ghidra-verified branch sense):
+  - cg.intermissionStarted != 1  (DAT_10a6f8b8) to proceed at all
+  - cg_playVoiceChats.integer     (DAT_10a62acc, != 0) plays the sound on CHAN_VOICE
+  - cg_showVoiceText.integer      (DAT_10abb2ec, != 0) prints the team-chat text
+These QL cvars are positive-sense (enable flags), the opposite polarity to Q3's
+cg_noVoiceChats / cg_noVoiceText.
+=================
+*/
+void CG_PlayVoiceChat(bufferedVoiceChat_t* vchat) {
+    int orderTask;
+
+    if (cg.intermissionStarted == 1) {
+        return;
+    }
+
+    if (cg_playVoiceChats.integer) {
+        trap_S_StartLocalSound(vchat->snd, CHAN_VOICE);  // syscall +0x9c, channel 3
+
+        if (vchat->clientNum != cg.snap->ps.clientNum) {
+            orderTask = CG_ValidOrder(vchat->cmd);
+            if (orderTask > 0) {
+                cgs.acceptOrderTime = cg.time + 5000;
+                Q_strncpyz(cgs.acceptVoice, vchat->cmd, sizeof(cgs.acceptVoice));
+                cgs.acceptTask = orderTask;
+                cgs.currentOrder = vchat->clientNum;
+            }
+            Menus_ActivateByName("voiceMenu");
+            cg.voiceTime = cg.time;
+        }
+    }
+
+    if (vchat->voiceOnly == qfalse && cg_showVoiceText.integer) {
+        CG_AddToTeamChat(vchat->message);
+        CG_Printf("%s\n", vchat->message);
+    }
+
+    // mark the current out-slot as consumed
+    voiceChatBuffer[cg.voiceChatBufferOut].snd = 0;
+}
+
+/*
+=================
+CG_AddBufferedVoiceChat
+
+Address: 0x1004ac30
+=================
+*/
+void CG_AddBufferedVoiceChat(bufferedVoiceChat_t* vchat) {
+    if (cg.intermissionStarted == 1) {
+        return;
+    }
+
+    memcpy(&voiceChatBuffer[cg.voiceChatBufferIn], vchat, sizeof(bufferedVoiceChat_t));
+    cg.voiceChatBufferIn = (cg.voiceChatBufferIn + 1) % MAX_VOICECHATBUFFER;
+
+    if (cg.voiceChatBufferIn == cg.voiceChatBufferOut) {
+        CG_PlayVoiceChat(&voiceChatBuffer[cg.voiceChatBufferOut]);
+        cg.voiceChatBufferOut++;
+    }
+}
+
+/*
+=================
+CG_PlayBufferedVoiceChats
+
+Address: 0x1004abc0
+=================
+*/
+void CG_PlayBufferedVoiceChats(void) {
+    if (cg.voiceChatTime < cg.time &&
+        cg.voiceChatBufferOut != cg.voiceChatBufferIn &&
+        voiceChatBuffer[cg.voiceChatBufferOut].snd != 0) {
+        CG_PlayVoiceChat(&voiceChatBuffer[cg.voiceChatBufferOut]);
+        cg.voiceChatBufferOut = (cg.voiceChatBufferOut + 1) % MAX_VOICECHATBUFFER;
+        cg.voiceChatTime = cg.time + 1000;
+    }
+}
+
+/*
+=================
+CG_VoiceChatLocal
+
+Address: 0x1004ac90
+
+[QL] Entry point for an incoming voice chat (driven by entity events via
+cg_event.c).  Resolves the client's list, looks up the command, formats the
+display line "(name): ^5<chat>" and buffers it.
+=================
+*/
+void CG_VoiceChatLocal(int clientNum, const char* cmd) {
+    bufferedVoiceChat_t vchat;
+    sfxHandle_t snd;
+    const char* chatStr;
+
+    if (cg.intermissionStarted == 1) {
+        return;
+    }
+
+    if (clientNum < 0 || clientNum >= MAX_CLIENTS) {
+        clientNum = 0;
+    }
+    cgs.currentVoiceClient = clientNum;  // DAT_10a5f2c0
+
+    CG_VoiceChatListForClient(clientNum);
+
+    if (!CG_GetVoiceChat(cmd, &snd, &chatStr)) {
+        return;
+    }
+
+    vchat.clientNum = clientNum;
+    vchat.snd = snd;
+    vchat.voiceOnly = qfalse;
+    Q_strncpyz(vchat.cmd, cmd, sizeof(vchat.cmd));
+    Com_sprintf(vchat.message, sizeof(vchat.message), "(%s): ^5%s",
+                cgs.clientinfo[clientNum].name, chatStr);
+
+    CG_AddBufferedVoiceChat(&vchat);
 }
 
 /*
@@ -1146,17 +1728,90 @@ void CG_ParseAccuracy(void) {
 
 /*
 =================
+CG_DuelScoreToScore
+
+[QL] Project a parsed duel-score record onto the generic score_t slot the
+scoreboard/selection code reads. score_t is a cgame-internal layout, so only the
+meaningful fields carry across. The binary parses argv into cg.scores[] first and
+then remaps into cg.duelScores[]; here the duel record is filled directly and
+mirrored back into cg.scores[] for the common scoreboard path.
+=================
+*/
+static void CG_DuelScoreToScore(score_t *sp, const duelScore_t *ds) {
+    sp->client = ds->clientNum;
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    sp->score = ds->score;
+    sp->ping = ds->ping;
+    sp->time = ds->time;
+    sp->frags = ds->kills;
+    sp->deaths = ds->deaths;
+    sp->accuracy = ds->accuracy;
+    sp->bestWeapon = ds->bestWeapon;
+    sp->damageDone = ds->damage;
+    sp->perfect = ds->perfect;
+    sp->impressiveCount = ds->awardImpressive;
+    sp->excellentCount = ds->awardExcellent;
+    sp->guantletCount = ds->awardHumiliation;
+    sp->net = ds->kills - ds->deaths;
+    sp->team = cgs.clientinfo[sp->client].team;
+}
+
+/*
+=================
 CG_ParseDuelScores
 
-[QL] Parse duel-specific score data with per-weapon stats
+[QL] Parse duel-specific score data with per-weapon stats.
+Binary CG_ParseScores_Duel (0x10045440): argv(1) is the player count and player
+records start at argv(2). The binary parses each record into cg.scores[] and then
+remaps into cg.duelScores[]; here cg.duelScores[] is filled directly (21 base +
+14x5 weapon fields per player) and each is mirrored into cg.scores[]. At
+intermission with a single reported duelist, the cached first duelist is
+re-injected as an extra scoreboard entry (spectator merge).
 =================
 */
 void CG_ParseDuelScores(void) {
-    int i, j, idx;
+    int j, idx;
+    int player;
+    int slot;
 
-    idx = 1;
-    for (i = 0; i < 2; i++) {
-        duelScore_t *ds = &cg.duelScores[i];
+    cg.numScores = atoi(CG_Argv(1));
+    if (cg.numScores > MAX_CLIENTS) {
+        cg.numScores = MAX_CLIENTS;
+    }
+
+    memset(cg.scores, 0, sizeof(cg.scores));
+
+    // [QL] the binary keeps cg.duelScores across parses in live play so the first
+    // duelist stays cached for the intermission merge below; only demo playback
+    // (DAT_10ab8f4c) clears the cache each parse.
+    if (cg.demoPlayback) {
+        memset(cg.duelScores, 0, sizeof(cg.duelScores));
+        cg.duelScores[0].clientNum = -1;
+        cg.duelScores[1].clientNum = -1;
+    }
+
+    idx = 2;
+    slot = 0;
+    for (player = 0; player < cg.numScores; player++) {
+        duelScore_t *ds;
+
+        // [QL] intermission spectator merge (binary gate: intermissionStarted==1
+        // && numScores<2): if the single reported duelist differs from the cached
+        // first duelist, re-inject the cached record into the scoreboard and shift
+        // the reported player to the next slot so cg.duelScores[0] stays cached.
+        if (cg.intermissionStarted == 1 && cg.numScores < 2 &&
+            atoi(CG_Argv(2)) != cg.duelScores[0].clientNum) {
+            if (slot < MAX_CLIENTS) {
+                CG_DuelScoreToScore(&cg.scores[slot], &cg.duelScores[0]);
+            }
+            slot++;
+        }
+
+        // cg.duelScores only holds 2 records; the reported player lands in slot 1
+        // when the merge above consumed slot 0.
+        ds = &cg.duelScores[slot < 2 ? slot : 1];
         ds->clientNum = atoi(CG_Argv(idx++));
         ds->score = atoi(CG_Argv(idx++));
         ds->ping = atoi(CG_Argv(idx++));
@@ -1178,7 +1833,9 @@ void CG_ParseDuelScores(void) {
         ds->greenArmorTime = atof(CG_Argv(idx++));
         ds->megaHealthPickups = atoi(CG_Argv(idx++));
         ds->megaHealthTime = atof(CG_Argv(idx++));
-        for (j = 0; j < MAX_WEAPONS; j++) {
+        // [QL] binary reads exactly 14 (0xe) weapon groups per duel player,
+        // NOT MAX_WEAPONS. Reading 16 over-runs into the next player's record.
+        for (j = 0; j < 14; j++) {
             if (idx >= trap_Argc()) break;
             ds->weaponStats[j].hits = atoi(CG_Argv(idx++));
             ds->weaponStats[j].atts = atoi(CG_Argv(idx++));
@@ -1186,8 +1843,43 @@ void CG_ParseDuelScores(void) {
             ds->weaponStats[j].damage = atoi(CG_Argv(idx++));
             ds->weaponStats[j].kills = atoi(CG_Argv(idx++));
         }
+
+        if (slot < MAX_CLIENTS) {
+            CG_DuelScoreToScore(&cg.scores[slot], ds);
+        }
+        slot++;
     }
+
     cg.duelScoresValid = qtrue;
+    CG_SetScoreSelection(NULL);
+}
+
+/*
+=================
+CG_InitScores
+
+[QL] cgamex86.dll: CG_InitScores @ 0x100475f0.  Parser for the A&D
+round-overlay scoreboard.  BOTH the "scores_ad" verb and its "adscores"
+alias dispatch here (verified in CG_ServerCommand @ 0x1004adc0); this is a
+dedicated 22-integer format and must NOT be routed through the 34-field CTF
+parser.  Wire:
+  scores_ad <s1>..<s20> <redTeamScore> <blueTeamScore>
+argv(1..20) fill cg.adScores[0..19] (memset to 0 first), argv(21)/argv(22)
+fill cg.teamScores[0] (red) / cg.teamScores[1] (blue).
+=================
+*/
+void CG_InitScores(void) {
+    int i;
+
+    memset(cg.adScores, 0, sizeof(cg.adScores));
+    cg.teamScores[0] = 0;
+    cg.teamScores[1] = 0;
+
+    for (i = 0; i < 20; i++) {
+        cg.adScores[i] = atoi(CG_Argv(i + 1));
+    }
+    cg.teamScores[0] = atoi(CG_Argv(21));
+    cg.teamScores[1] = atoi(CG_Argv(22));
 }
 
 /*
@@ -1248,6 +1940,9 @@ static void CG_ServerCommand(void) {
         } else if (!Q_stricmpn(cmd, "vote passed", 11) || !Q_stricmpn(cmd, "team vote passed", 16)) {
             trap_S_StartLocalSound(cgs.media.votePassed, CHAN_ANNOUNCER);
         }
+        // [QL] binary CG_ServerCommand (0x1004b065): "print" also feeds the text
+        // to CG_AddChat so server prints land in the chat/notify area.
+        CG_AddChat(CG_Argv(1), 0, 0);
         return;
     }
 
@@ -1259,18 +1954,28 @@ static void CG_ServerCommand(void) {
         if (cg_chatbeep.integer) {
             trap_S_StartLocalSound(cgs.media.talkSound, CHAN_LOCAL_SOUND);
         }
-        Q_strncpyz(text, CG_Argv(1), MAX_SAY_TEXT);
+        // [QL] the server relay prefixes the payload with the sender clientNum as
+        // "%02d " (g_cmds.c G_SayTo); skip it, the remainder is the display text.
+        {
+            const char* p = CG_Argv(1);
+            while (*p >= '0' && *p <= '9') { p++; }
+            if (*p == ' ') { p++; }
+            Q_strncpyz(text, p, MAX_SAY_TEXT);
+        }
         CG_RemoveChatEscapeChar(text);
         CG_AddChat(text, 0, 0);
         return;
     }
 
-    // [QL] bchat - broadcast chat with on-screen duration
+    // [QL] bchat - broadcast chat with on-screen duration. The binary
+    // (CG_ServerCommand 0x1004b255) copies argv(1) verbatim (no clientNum
+    // prefix skip, unlike chat/tchat) and passes atoi(argv(2))*1000 as the
+    // CG_AddChat duration.
     if (!strcmp(cmd, "bchat")) {
         trap_S_StartLocalSound(cgs.media.talkSound, CHAN_LOCAL_SOUND);
         Q_strncpyz(text, CG_Argv(1), MAX_SAY_TEXT);
         CG_RemoveChatEscapeChar(text);
-        CG_AddChat(text, 0, 0);
+        CG_AddChat(text, 0, atoi(CG_Argv(2)) * 1000);
         return;
     }
 
@@ -1312,7 +2017,13 @@ static void CG_ServerCommand(void) {
         if (cg_chatbeep.integer) {
             trap_S_StartLocalSound(cgs.media.talkSound, CHAN_LOCAL_SOUND);
         }
-        Q_strncpyz(text, CG_Argv(1), MAX_SAY_TEXT);
+        // [QL] skip the leading "%02d " sender-clientNum prefix added by the relay.
+        {
+            const char* p = CG_Argv(1);
+            while (*p >= '0' && *p <= '9') { p++; }
+            if (*p == ' ') { p++; }
+            Q_strncpyz(text, p, MAX_SAY_TEXT);
+        }
         CG_RemoveChatEscapeChar(text);
         CG_AddToTeamChat(text);
         CG_AddChat(text, 1, 0);
@@ -1338,7 +2049,7 @@ static void CG_ServerCommand(void) {
         CG_ParseScores_Ca();
         return;
     }
-    if (!strcmp(cmd, "scores_ctf") || !strcmp(cmd, "scores_ad")) {
+    if (!strcmp(cmd, "scores_ctf")) {
         CG_ParseScores_Ctf();
         return;
     }
@@ -1358,10 +2069,24 @@ static void CG_ServerCommand(void) {
         CG_ParseSmScores();
         return;
     }
+    // [QL] bare "scores" -> generic 18-field parser (binary 0x1004ba75)
+    if (!strcmp(cmd, "scores")) {
+        CG_ParseScores();
+        return;
+    }
 
-    // [QL] per-gametype stats commands
-    if (!strcmp(cmd, "tdmstats") || !strcmp(cmd, "castats") || !strcmp(cmd, "ctfstats")) {
-        CG_ParseTeamStats();
+    // [QL] per-gametype extended team stats (one command per client; arg1 = slot).
+    // Verified: CG_ServerCommand @ 0x1004adc0 routes each verb to a distinct parser.
+    if (!strcmp(cmd, "tdmstats")) {
+        CG_ParseTeamStats_TDM();
+        return;
+    }
+    if (!strcmp(cmd, "castats")) {
+        CG_ParseTeamStats_CA();
+        return;
+    }
+    if (!strcmp(cmd, "ctfstats")) {
+        CG_ParseTeamStats_CTF();
         return;
     }
     if (!strcmp(cmd, "acc")) {
@@ -1372,8 +2097,16 @@ static void CG_ServerCommand(void) {
         CG_ParseDuelScores();
         return;
     }
-    if (!strcmp(cmd, "adscores") || !strcmp(cmd, "pstats")) {
-        return;  // AD scores and pstats: consume silently (no UI display needed)
+    // [QL] scores_ad / adscores: dedicated 22-int A&D overlay parser.
+    // Verified: CG_ServerCommand @ 0x1004adc0 dispatches BOTH verbs to
+    // CG_InitScores @ 0x100475f0 (NOT the 34-field CTF format). Closes the
+    // prior mis-route of scores_ad -> CG_ParseScores_Ctf.
+    if (!strcmp(cmd, "scores_ad") || !strcmp(cmd, "adscores")) {
+        CG_InitScores();
+        return;
+    }
+    if (!strcmp(cmd, "pstats")) {
+        return;  // pstats: consumed silently (no cgame handler exists in the binary)
     }
 
     if (!strcmp(cmd, "tinfo")) {
@@ -1399,8 +2132,15 @@ static void CG_ServerCommand(void) {
         return;
     }
 
-    // [QL] complaint system (prefix match)
+    // [QL] complaint system (prefix match). binary CG_ServerCommand (0x1004adc0):
+    // gated on !cg.demoPlayback (DAT_10ab8f4c). complaintClient = atoi(argv(1))
+    // (DAT_10a5fdc8); complaintEndTime = cg.time + (client < 0 ? 10000 : 15000)
+    // (DAT_10a5fdcc; the negative code is a "no complaint available" status).
     if (!Q_stricmpn(cmd, "complaint", 9)) {
+        if (!cg.demoPlayback) {
+            cg.complaintClient = atoi(CG_Argv(1));
+            cg.complaintEndTime = cg.time + (cg.complaintClient < 0 ? 10000 : 15000);
+        }
         return;
     }
 

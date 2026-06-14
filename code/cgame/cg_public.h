@@ -182,7 +182,12 @@ typedef enum {
     CG_ACOS,
     CG_GET_ADVERTISEMENTS,
     CG_KEY_KEYNUMTOSTRINGBUF,
-    CG_S_MUTECLIENT               // [QL] mute/unmute a client's voice
+    CG_S_MUTECLIENT,              // [QL] mute/unmute a client's voice
+
+    CG_R_FONT_DRAWSTRING,         // [QL] fontstash/stb_truetype text rendering
+    CG_R_FONT_TEXTEXTENTS,
+    CG_R_GETGLYPHINFO,
+    CG_IME_SETCOMPOSITIONFONT
 } cgameImport_t;
 
 /*
@@ -226,6 +231,13 @@ typedef enum {
     CG_EVENT_HANDLING,
     //	void (*CG_EventHandling)(int type);
     // [QL] index 9 - handles sub-commands 0 (unknown), 4 (screen resize), 5 (unknown)
+
+    // [QL] slots 10-14: extra exports present in the 15-entry table at 0x100769a8.
+    CG_LAST_CHAT_COMMAND,   // 10  void CG_LastChatCommand( void )
+    CG_LAST_CHAT_COMMAND2,  // 11  void CG_LastChatCommand2( void )
+    CG_SET_KEY_CATCHER,     // 12  void CG_SetKeyCatcher( void )
+    CG_CLEAR_KEY_CATCHER,   // 13  void CG_ClearKeyCatcher( void )
+    CG_GET_ACTIVE_FRAME     // 14  int CG_GetActiveFrame( void )
 } cgameExport_t;
 
 //----------------------------------------------

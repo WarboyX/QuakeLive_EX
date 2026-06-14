@@ -323,13 +323,50 @@ static qboolean CG_RegisterClientSkin(clientInfo_t* ci, const char* modelName, c
 
 /*
 ==========================
+CG_CalcModelScale
+
+// Address: 0x1003d260
+[QL] Normalises every player model to a 56-unit standing height. Measures the combined
+legs+torso+head height using the tag_torso/tag_head lerp-tag offsets plus the head model
+bound, then scales by the server's g_playerModelScale. Result stored in ci->modelScale.
+==========================
+*/
+static void CG_CalcModelScale(clientInfo_t* ci) {
+    vec3_t legsMins, legsMaxs;
+    vec3_t torsoMins, torsoMaxs;
+    vec3_t headMins, headMaxs;
+    orientation_t tag;
+    float totalHeight;
+
+    trap_R_ModelBounds(ci->legsModel, legsMins, legsMaxs);
+    trap_R_ModelBounds(ci->torsoModel, torsoMins, torsoMaxs);
+    trap_R_ModelBounds(ci->headModel, headMins, headMaxs);
+
+    // legs contribution: tag_torso z-offset off the legs model, plus a fixed 24 units
+    trap_R_LerpTag(&tag, ci->legsModel, ci->animations[LEGS_IDLE].firstFrame,
+                   ci->animations[LEGS_IDLE].firstFrame, 1.0f, "tag_torso");
+    totalHeight = tag.origin[2] + 24.0f;
+
+    // torso+head contribution: tag_head z-offset off the torso model plus the head bound
+    trap_R_LerpTag(&tag, ci->torsoModel, ci->animations[TORSO_STAND].firstFrame,
+                   ci->animations[TORSO_STAND].firstFrame, 1.0f, "tag_head");
+    totalHeight += headMaxs[2] + tag.origin[2];
+
+    // [QL] factor is the server's g_playerModelScale (DAT_10a5fd98, from CS_PLAYERINFO),
+    // NOT the cg_scalePlayerModelsToBB client toggle (that only gates whether the scale is
+    // applied in CG_Player). Default 1.1 when the server did not send CS_PLAYERINFO.
+    ci->modelScale = (56.0f / totalHeight) * cgs.playerModelScale;
+}
+
+/*
+==========================
 CG_RegisterClientModelname
 
 [QL] Simplified - no characters/ fallback, no heads/ folder, no * prefix,
 no teamName param. Direct paths only, matching cgamex86.dll binary.
 ==========================
 */
-static qboolean CG_RegisterClientModelname(clientInfo_t* ci, const char* modelName, const char* skinName, const char* headModelName) {
+static qboolean CG_RegisterClientModelname(clientInfo_t* ci, const char* modelName, const char* skinName, const char* headModelName, const char* headSkinName) {
     char filename[MAX_QPATH];
     const char* headName;
 
@@ -363,15 +400,13 @@ static qboolean CG_RegisterClientModelname(clientInfo_t* ci, const char* modelNa
         return qfalse;
     }
 
-    // [QL] skins - direct paths
-    if (!CG_RegisterClientSkin(ci, modelName, skinName, headName, skinName)) {
-        Com_Printf("Failed to load skin %s/%s, head %s/%s\n", modelName, skinName, headName, skinName);
+    // [QL] skins - direct paths. Legs/torso use the body model+skin; the head uses the
+    // head model dir and the head skin (0x254/0x294), which differ from the body skin when
+    // a model is forced (e.g. keel/bright).
+    if (!CG_RegisterClientSkin(ci, modelName, skinName, headName, headSkinName)) {
+        Com_Printf("Failed to load skin %s/%s, head %s/%s\n", modelName, skinName, headName, headSkinName);
         return qfalse;
     }
-
-    // [QL] initialize model scale (1.0 = no scaling)
-    // TODO: compute actual bounding box ratio when cg_scalePlayerModelsToBB is implemented
-    ci->modelScale = 1.0f;
 
     // load the animations
     Com_sprintf(filename, sizeof(filename), "models/players/%s/animation.cfg", modelName);
@@ -386,6 +421,14 @@ static qboolean CG_RegisterClientModelname(clientInfo_t* ci, const char* modelNa
     if (!ci->modelIcon) {
         Com_Printf("Failed to load icon file: %s\n", filename);
         return qfalse;
+    }
+
+    // [QL] compute bounding-box model scale. "orbb" (the floating eyeball) is not a
+    // humanoid, so bounding-box normalisation is skipped and it is left at 1.0.
+    if (!Q_stricmpn(modelName, "orbb", 4)) {
+        ci->modelScale = 1.0f;
+    } else {
+        CG_CalcModelScale(ci);
     }
 
     return qtrue;
@@ -424,7 +467,7 @@ static void CG_ColorFromString(const char* v, vec3_t color) {
 CG_LoadClientInfo
 
 [QL] Rewritten to match binary (CG_RegisterClientModel at 0x1003d830).
-Team-aware fallback: red→"sarge/red", blue→"sarge/blue", ffa→"sarge/default".
+Team-aware fallback: red->"sarge/red", blue->"sarge/blue", ffa->"sarge/default".
 ===================
 */
 static void CG_LoadClientInfo(int clientNum, clientInfo_t* ci) {
@@ -432,33 +475,37 @@ static void CG_LoadClientInfo(int clientNum, clientInfo_t* ci) {
     int i, modelloaded;
     const char* s;
 
+    // [QL] the head model+skin come from the effective head pair (forcedHeadModel /
+    // forcedHeadSkin, 0x254/0x294), which CG_ResolveModelForClient maintains - NOT the raw
+    // headModelName/headSkinName (those stay the icon source). A forced enemy (keel/bright)
+    // therefore loads models/players/keel/head_bright.skin, not the bot's original head dir.
     modelloaded = qtrue;
-    if (!CG_RegisterClientModelname(ci, ci->modelName, ci->skinName, ci->headModelName)) {
+    if (!CG_RegisterClientModelname(ci, ci->modelName, ci->skinName, ci->forcedHeadModel, ci->forcedHeadSkin)) {
         // [QL] team-aware fallback
         if (ci->team == TEAM_RED) {
-            if (!CG_RegisterClientModelname(ci, ci->modelName, "red", ci->headModelName)) {
+            if (!CG_RegisterClientModelname(ci, ci->modelName, "red", ci->forcedHeadModel, "red")) {
                 // ultimate fallback: sarge/red
                 Q_strncpyz(ci->headModelName, "sarge", sizeof(ci->headModelName));
                 Q_strncpyz(ci->headSkinName, "red", sizeof(ci->headSkinName));
-                if (!CG_RegisterClientModelname(ci, "sarge", "red", "sarge")) {
+                if (!CG_RegisterClientModelname(ci, "sarge", "red", "sarge", "red")) {
                     modelloaded = qfalse;
                 }
             }
         } else if (ci->team == TEAM_BLUE) {
-            if (!CG_RegisterClientModelname(ci, ci->modelName, "blue", ci->headModelName)) {
+            if (!CG_RegisterClientModelname(ci, ci->modelName, "blue", ci->forcedHeadModel, "blue")) {
                 // ultimate fallback: sarge/blue
                 Q_strncpyz(ci->headModelName, "sarge", sizeof(ci->headModelName));
                 Q_strncpyz(ci->headSkinName, "blue", sizeof(ci->headSkinName));
-                if (!CG_RegisterClientModelname(ci, "sarge", "blue", "sarge")) {
+                if (!CG_RegisterClientModelname(ci, "sarge", "blue", "sarge", "blue")) {
                     modelloaded = qfalse;
                 }
             }
         } else {
             // FFA: try "default" skin, then sarge/default
-            if (!CG_RegisterClientModelname(ci, ci->modelName, "default", ci->headModelName)) {
+            if (!CG_RegisterClientModelname(ci, ci->modelName, "default", ci->forcedHeadModel, "default")) {
                 Q_strncpyz(ci->headModelName, "sarge", sizeof(ci->headModelName));
                 Q_strncpyz(ci->headSkinName, "default", sizeof(ci->headSkinName));
-                if (!CG_RegisterClientModelname(ci, "sarge", "default", "sarge")) {
+                if (!CG_RegisterClientModelname(ci, "sarge", "default", "sarge", "default")) {
                     modelloaded = qfalse;
                 }
             }
@@ -633,6 +680,335 @@ static void CG_SetDeferredClientInfo(int clientNum, clientInfo_t* ci) {
 }
 
 /*
+==============
+CG_ShouldForceTeamSkin
+
+// Address: 0x1003cad0
+[QL] Returns qtrue if the modelled client should be drawn with a forced team skin
+(rather than an enemy/neutral skin). Called by CG_EntityTeamColor and the
+rail-colour helpers in cg_weapons.c. playerTeam is the modelled client's team, viewerTeam
+is the local/followed viewer's team.
+==============
+*/
+qboolean CG_ShouldForceTeamSkin(int playerTeam, int viewerTeam) {
+    qboolean force = qtrue;
+
+    // [QL] pm_type & 2 (DAT_10a9c214) = spectator/dead; pm_flags & PMF_FOLLOW (DAT_10a9c21c) =
+    // following. Previously read from the swapped fields.
+    if (cgs.gametype < GT_TEAM || !(cg.snap->ps.pm_type & 2) ||
+        !(cg.snap->ps.pm_flags & PMF_FOLLOW) ||
+        playerTeam == TEAM_RED || playerTeam == TEAM_BLUE) {
+        if (playerTeam != viewerTeam || playerTeam == TEAM_FREE) {
+            force = qfalse;
+        }
+    } else if (viewerTeam == TEAM_BLUE) {
+        force = qfalse;
+        goto checkBlue;
+    }
+
+    if (viewerTeam == TEAM_RED) {
+        if (cg_forceRedTeamModel.string[0] == '\0') {
+            return force;
+        }
+        return qtrue;
+    }
+    if (viewerTeam != TEAM_BLUE) {
+        return force;
+    }
+checkBlue:
+    if (cg_forceBlueTeamModel.string[0] != '\0') {
+        force = qfalse;
+    }
+    return force;
+}
+
+/*
+==============
+CG_ResolveBodySkinName
+
+// Address: 0x1003d600
+[QL] Resolves ci->skinName, applying the "sport" team variants and the red/blue team
+defaults. NOTE: the binary takes a second internal flag (whether a body model was forced)
+that is distinct from forceTeamSkin; under the frozen 2-arg prototype the two collapse.
+They differ only in the rare spectator case where an enemy model was forced without a
+skin.
+==============
+*/
+void CG_ResolveBodySkinName(clientInfo_t* ci, int forceTeamSkin) {
+    char* skin = NULL;
+
+    if (forceTeamSkin == 0) {
+        // split "model/skin" out of the (possibly forced) model name
+        skin = strchr(ci->modelName, '/');
+        if (skin) {
+            *skin = '\0';
+            skin++;
+        }
+    } else {
+        skin = ci->skinName;
+    }
+
+    if (!skin && cgs.gametype < GT_TEAM) {
+        skin = "default";
+    }
+
+    // "sport*" skins pick up a team-coloured variant in team games
+    if (forceTeamSkin == 1 && skin) {
+        if (!Q_stricmpn(skin, "sport", 5) && cgs.gametype >= GT_TEAM) {
+            if (ci->team == TEAM_RED) {
+                skin = "sport_red";
+            } else if (ci->team == TEAM_BLUE) {
+                skin = "sport_blue";
+            } else {
+                skin = "sport";
+            }
+            goto done;
+        }
+    }
+
+    // non-forced: fall back to the team colour in team games
+    if (forceTeamSkin == 0) {
+        if (cgs.gametype < GT_TEAM) {
+            goto defaultSkin;
+        }
+        if (ci->team == TEAM_RED) {
+            skin = "red";
+        } else if (ci->team == TEAM_BLUE) {
+            skin = "blue";
+        } else {
+            goto defaultSkin;
+        }
+        goto done;
+    }
+
+    if (skin) {
+        goto done;
+    }
+
+defaultSkin:
+    skin = "default";
+
+done:
+    Q_strncpyz(ci->skinName, skin, sizeof(ci->skinName));
+}
+
+/*
+==============
+CG_ResolveHeadSkinName
+
+// Address: 0x1003d710
+[QL] As CG_ResolveBodySkinName but for the forced head/secondary pair (binary offsets
+0x254 / 0x294 == ci->forcedHeadModel / ci->forcedHeadSkin), which CG_ResolveModelForClient
+seeds. In FFA games the non-forced case keeps the existing skin untouched.
+==============
+*/
+void CG_ResolveHeadSkinName(clientInfo_t* ci, int forceTeamSkin) {
+    char* skin = NULL;
+
+    if (forceTeamSkin == 0) {
+        skin = strchr(ci->forcedHeadModel, '/');
+        if (skin) {
+            *skin = '\0';
+            skin++;
+        }
+    } else {
+        skin = ci->forcedHeadSkin;
+    }
+
+    // FFA, non-forced: leave the resolved head skin as-is
+    if (forceTeamSkin == 0 && cgs.gametype < GT_TEAM) {
+        return;
+    }
+
+    if (!skin && cgs.gametype < GT_TEAM) {
+        skin = "default";
+    }
+
+    if (forceTeamSkin == 0) {
+        if (ci->team == TEAM_RED) {
+            skin = "red";
+            goto done;
+        }
+        if (ci->team == TEAM_BLUE) {
+            skin = "blue";
+            goto done;
+        }
+        goto defaultSkin;
+    }
+
+    // forced: "sport*" team variants, else keep the forced skin
+    if (skin && !Q_stricmpn(skin, "sport", 5) && cgs.gametype >= GT_TEAM) {
+        if (ci->team == TEAM_RED) {
+            skin = "sport_red";
+        } else if (ci->team == TEAM_BLUE) {
+            skin = "sport_blue";
+        } else {
+            skin = "sport";
+        }
+        goto done;
+    }
+    if (skin) {
+        goto done;
+    }
+
+defaultSkin:
+    skin = "default";
+
+done:
+    Q_strncpyz(ci->forcedHeadSkin, skin, sizeof(ci->forcedHeadSkin));
+}
+
+/*
+==============
+CG_ResolveModelForClient
+
+// Address: 0x1003e0c0
+[QL] Skin-forcing routine (called from CG_NewClientInfo). Overrides a client's
+model/skin according to gametype and the enemy/team model cvars, then resolves the body
+and (unless suppressed) head skins:
+  - Duel: forces the opponent to cg_forceEnemyModel / cg_forceEnemySkin.
+  - Team games with forcing active: cg_forceEnemyModel/Skin vs cg_forceTeamModel/Skin,
+    plus the cg_forceRedTeamModel / cg_forceBlueTeamModel per-team overrides.
+  - Red Rover infected (customSettings bit 0x4000000 = g_rrInfected): forces red to "bones".
+Gated off entirely in training (g_training) and skipped per-part when the server pins a
+model via g_playermodelOverride / g_playerheadmodelOverride (CS_PLAYERINFO).
+Body result -> ci->modelName / ci->skinName; forced head/secondary -> ci->forcedHeadModel
+/ ci->forcedHeadSkin (0x254 / 0x294).
+==============
+*/
+static void CG_ResolveModelForClient(clientInfo_t* ci, int clientNum) {
+    const char* forcedModel = "";  // pcVar5
+    const char* forcedSkin = "";   // local_90
+    int viewerTeam;
+    int viewerClient;
+    char tmp[128];
+    char* slash;
+
+    // viewer is the local client, or the followed client while spectating
+    viewerClient = cg.clientNum;  // DAT_10a6f8a4
+    viewerTeam = cgs.clientinfo[cg.clientNum].team;
+    // [QL] follow check is pm_flags & PMF_FOLLOW (0x1000), NOT pm_type (which is a small enum
+    // and never has 0x1000). While following a player, the viewer's team becomes that player's
+    // team so enemies are forced relative to whom you're watching (binary DAT_10a9c21c).
+    if (cg.snap->ps.pm_flags & PMF_FOLLOW) {
+        viewerClient = cg.snap->ps.clientNum;  // DAT_10a9c298
+        viewerTeam = cgs.clientinfo[cg.snap->ps.clientNum].team;
+    }
+
+    // forcing is off entirely in training (g_training), and the model/skin selection
+    // is skipped when the server pins a model via g_playermodelOverride.
+    if (g_training.integer == 0) {
+        if (cgs.playermodelOverride[0] == '\0') {
+            // [QL] pm_type & 2 (DAT_10a9c214) is the spectator/dead test; pm_flags & PMF_FOLLOW
+            // (DAT_10a9c21c) is the follow test - previously read from the swapped fields.
+            if (cgs.gametype < GT_TEAM || !(cg.snap->ps.pm_type & 2) ||
+                (cg.snap->ps.pm_flags & PMF_FOLLOW) ||
+                viewerTeam == TEAM_RED || viewerTeam == TEAM_BLUE) {
+                if (cgs.gametype == GT_DUEL) {
+                    if (viewerClient != clientNum) {
+                        forcedModel = cg_forceEnemyModel.string;
+                        forcedSkin = cg_forceEnemySkin.string;
+                    }
+                } else if (ci->team != viewerTeam || viewerTeam == TEAM_FREE) {
+                    forcedModel = cg_forceEnemyModel.string;
+                    forcedSkin = cg_forceEnemySkin.string;
+                } else {
+                    forcedModel = cg_forceTeamModel.string;
+                    forcedSkin = cg_forceTeamSkin.string;
+                }
+            }
+            // per-team model override (model string only)
+            if (ci->team == TEAM_RED) {
+                if (cg_forceRedTeamModel.string[0]) {
+                    forcedModel = cg_forceRedTeamModel.string;
+                }
+            } else if (ci->team == TEAM_BLUE && cg_forceBlueTeamModel.string[0]) {
+                forcedModel = cg_forceBlueTeamModel.string;
+            }
+        }
+
+        // Red Rover infected: the red (infected) team is forced to the "bones" model.
+        // The trigger is the g_rrInfected bit (0x4000000) of the custom-settings bitmask
+        // (CS_CUSTOM_SETTINGS / DAT_10a3ff28), not dmflags.
+        if (cgs.gametype == GT_RR && (cgs.customSettings & 0x4000000) && ci->team == TEAM_RED) {
+            forcedModel = "bones";
+            forcedSkin = "bones";
+        } else if (forcedModel[0] == '\0') {
+            goto splitOnly;
+        }
+
+        Q_strncpyz(ci->modelName, forcedModel, sizeof(ci->modelName));
+    } else {
+    splitOnly:
+        // forcing disabled: strip any "model/skin" suffix in team games
+        if (cgs.gametype >= GT_TEAM) {
+            slash = strchr(ci->modelName, '/');
+            if (slash) {
+                *slash = '\0';
+            }
+        }
+    }
+
+    // if a forced skin was chosen, split "model/skin" and store both parts
+    if (forcedSkin[0] != '\0') {
+        const char* src = forcedModel[0] ? forcedModel : ci->modelName;
+        Q_strncpyz(tmp, src, sizeof(tmp));
+        slash = strchr(tmp, '/');  // binary: strtok(tmp, "/") -> the model part
+        if (slash) {
+            *slash = '\0';
+        }
+        Q_strncpyz(ci->modelName, tmp, sizeof(ci->modelName));
+        Q_strncpyz(ci->skinName, forcedSkin, sizeof(ci->skinName));
+    }
+
+    CG_ResolveBodySkinName(ci, (forcedSkin[0] != '\0'));
+
+    if (cgs.playerheadmodelOverride[0] == '\0') {
+        if (forcedModel[0] != '\0') {
+            Q_strncpyz(ci->forcedHeadModel, forcedModel, sizeof(ci->forcedHeadModel));
+        }
+        if (forcedSkin[0] != '\0') {
+            if (forcedModel[0] != '\0') {
+                Q_strncpyz(tmp, forcedModel, sizeof(tmp));
+                slash = strchr(tmp, '/');
+                if (slash) {
+                    *slash = '\0';
+                }
+                Q_strncpyz(ci->forcedHeadModel, tmp, sizeof(ci->forcedHeadModel));
+            }
+            Q_strncpyz(ci->forcedHeadSkin, forcedSkin, sizeof(ci->forcedHeadSkin));
+        }
+        CG_ResolveHeadSkinName(ci, (forcedSkin[0] != '\0'));
+    }
+}
+
+/*
+==============
+CG_UpdateAllModelScales
+
+// Address: 0x1003e4b0
+[QL] Recomputes the model scale for every valid client. Called when the
+server config that drives cg_scalePlayerModelsToBB changes. The stock "sarge" model is
+pinned at 1.0; everything else goes through CG_CalcModelScale.
+==============
+*/
+void CG_UpdateAllModelScales(void) {
+    int i;
+
+    for (i = 0; i < cgs.maxclients; i++) {
+        clientInfo_t* ci = &cgs.clientinfo[i];
+        if (!ci->infoValid) {
+            continue;
+        }
+        if (!Q_stricmpn(ci->modelName, "orbb", 4)) {
+            ci->modelScale = 1.0f;
+        } else {
+            CG_CalcModelScale(ci);
+        }
+    }
+}
+
+/*
 ======================
 CG_NewClientInfo
 ======================
@@ -722,44 +1098,45 @@ void CG_NewClientInfo(int clientNum) {
         Q_strncpyz(newInfo.skinName, (newInfo.team == TEAM_RED) ? "red" : "blue", sizeof(newInfo.skinName));
     }
 
-    // head model
-    v = Info_ValueForKey(configstring, "hmodel");
-    if (cg_forceModel.integer) {
-        // forcemodel makes everyone use a single model
-        // to prevent load hitches
-        char modelStr[MAX_QPATH];
-        char* skin;
+    // [QL] raw head model/skin (0x1d4/0x214) are the player-icon source. CG_NewClientInfo
+    // (0x1003e640) copies them from the body "model" value (never from hmodel), so the
+    // icon path stays models/players/<model>/icon_<skin>.tga. skinName already carries the team
+    // colour override in team games.
+    Q_strncpyz(newInfo.headModelName, newInfo.modelName, sizeof(newInfo.headModelName));
+    Q_strncpyz(newInfo.headSkinName, newInfo.skinName, sizeof(newInfo.headSkinName));
 
-        if (cgs.gametype >= GT_TEAM) {
-            Q_strncpyz(newInfo.headModelName, DEFAULT_MODEL, sizeof(newInfo.headModelName));
-            Q_strncpyz(newInfo.headSkinName, (newInfo.team == TEAM_RED) ? "red" : "blue", sizeof(newInfo.headSkinName));
-        } else {
-            trap_Cvar_VariableStringBuffer("headmodel", modelStr, sizeof(modelStr));
-            if ((skin = strchr(modelStr, '/')) == NULL) {
-                skin = "default";
-            } else {
-                *skin++ = 0;
-            }
-
-            Q_strncpyz(newInfo.headSkinName, skin, sizeof(newInfo.headSkinName));
-            Q_strncpyz(newInfo.headModelName, modelStr, sizeof(newInfo.headModelName));
-        }
-
+    // [QL] forced/effective head model+skin (0x254/0x294) are the loader source, parsed
+    // independently of the raw pair. They come from the client's own "hmodel" key, or fall back
+    // to the body model+skin when the server disallows custom head models (g_allowCustomHeadmodels
+    // 0). Team games then force the head skin to the team colour (the binary re-applies this for
+    // the local player; non-local players are overwritten by CG_ResolveModelForClient below).
+    if (cgs.allowCustomHeadmodels == 0) {
+        Q_strncpyz(newInfo.forcedHeadModel, newInfo.modelName, sizeof(newInfo.forcedHeadModel));
+        Q_strncpyz(newInfo.forcedHeadSkin, newInfo.skinName, sizeof(newInfo.forcedHeadSkin));
     } else {
-        Q_strncpyz(newInfo.headModelName, v, sizeof(newInfo.headModelName));
+        v = Info_ValueForKey(configstring, "hmodel");
+        Q_strncpyz(newInfo.forcedHeadModel, v, sizeof(newInfo.forcedHeadModel));
 
-        slash = strchr(newInfo.headModelName, '/');
+        slash = strchr(newInfo.forcedHeadModel, '/');
         if (!slash) {
-            Q_strncpyz(newInfo.headSkinName, "default", sizeof(newInfo.headSkinName));
+            Q_strncpyz(newInfo.forcedHeadSkin, "default", sizeof(newInfo.forcedHeadSkin));
         } else {
-            Q_strncpyz(newInfo.headSkinName, slash + 1, sizeof(newInfo.headSkinName));
+            Q_strncpyz(newInfo.forcedHeadSkin, slash + 1, sizeof(newInfo.forcedHeadSkin));
             *slash = 0;
         }
     }
 
-    // [QL] in team games, force head skin to team color
     if (cgs.gametype >= GT_TEAM) {
-        Q_strncpyz(newInfo.headSkinName, (newInfo.team == TEAM_RED) ? "red" : "blue", sizeof(newInfo.headSkinName));
+        Q_strncpyz(newInfo.forcedHeadSkin, (newInfo.team == TEAM_RED) ? "red" : "blue", sizeof(newInfo.forcedHeadSkin));
+    }
+
+    // [QL] apply gametype/enemy/team model forcing (CG_ResolveModelForClient, 0x1003e0c0).
+    // Non-local players get the forced enemy/team model+skin; the RR red team is forced to
+    // "bones" even for the local player. Guarded on cg.snap since this reads the player state.
+    if (cg.snap &&
+        (clientNum != cg.clientNum ||
+         (cgs.gametype == GT_RR && (cgs.customSettings & 0x4000000) && newInfo.team == TEAM_RED))) {
+        CG_ResolveModelForClient(&newInfo, clientNum);
     }
 
     // scan for an existing clientinfo that matches this modelname
@@ -786,6 +1163,16 @@ void CG_NewClientInfo(int clientNum) {
     // replace whatever was there with the new one
     newInfo.infoValid = qtrue;
     *ci = newInfo;
+
+    // [QL] when the LOCAL player's own info changes (join a team, leave spectator, change follow
+    // target - all rewrite our CS_PLAYERS configstring), re-resolve every other client's forced
+    // model/skin against the new viewer team. Without this a forced enemy model/skin is not
+    // re-applied on a team change and reverts to the team-colour skin (binary CG_NewClientInfo
+    // 0x1003e640 tail). CG_ForceModelChange skips cg.clientNum, so this does not recurse.
+    if (clientNum == cg.clientNum) {
+        CG_ForceModelChange();
+        CG_LoadDeferredPlayers();
+    }
 }
 
 /*
@@ -1563,31 +1950,34 @@ static void CG_PlayerPowerups(centity_t* cent, refEntity_t* torso) {
 ===============
 CG_PlayerFloatSprite
 
-Float a sprite over the player's head
+// Address: 0x10040cd0
+[QL] Float a sprite over the player's head via the shared floating-effect pool
+(FE_FLOAT_SPRITE billboard), replacing the Q3 RT_SPRITE ref-entity. Sizing comes from the
+teammate-POI width cvars (binary DAT_10a610e8 / DAT_10abb408). Skip the viewer's own head
+in first person (the binary gates this in CG_PlayerSprites / CG_PlayerFloatSprite).
 ===============
 */
 static void CG_PlayerFloatSprite(centity_t* cent, qhandle_t shader) {
-    int rf;
-    refEntity_t ent;
+    floatingEffect_t* fx;
 
     if (cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson) {
-        rf = RF_THIRD_PERSON;  // only show in mirrors
-    } else {
-        rf = 0;
+        return;  // do not draw your own head sprite in first person
     }
 
-    memset(&ent, 0, sizeof(ent));
-    VectorCopy(cent->lerpOrigin, ent.origin);
-    ent.origin[2] += 48;
-    ent.reType = RT_SPRITE;
-    ent.customShader = shader;
-    ent.radius = 10;
-    ent.renderfx = rf;
-    ent.shaderRGBA[0] = 255;
-    ent.shaderRGBA[1] = 255;
-    ent.shaderRGBA[2] = 255;
-    ent.shaderRGBA[3] = 255;
-    trap_R_AddRefEntityToScene(&ent);
+    fx = CG_AllocFloatingEffect();
+    if (!fx) {
+        return;
+    }
+
+    fx->type = FE_FLOAT_SPRITE;
+    fx->owner = cent;
+    fx->clientNum = cent->currentState.clientNum;
+    VectorCopy(cent->lerpOrigin, fx->origin);
+    fx->color[0] = fx->color[1] = fx->color[2] = fx->color[3] = 1.0f;
+    fx->shader = shader;
+    fx->zOffset = 48.0f;                            // 0x42400000
+    fx->worldSize = cg_teammatePOIsMaxWidth.value;  // 0xf  (DAT_10a610e8)
+    fx->minPixels = cg_teammatePOIsMinWidth.value;  // 0x11 (DAT_10abb408)
 }
 
 /*
@@ -1881,6 +2271,417 @@ int CG_LightVerts(vec3_t normal, int numVerts, polyVert_t* verts) {
 }
 
 /*
+==============
+Color_UnpackScale
+
+[QL] Unpacks a packed 0xRRGGBBAA colour (as held in the cg_*Color cvars' .integer) into
+a refEntity's byte shaderRGBA. Each RGB byte is multiplied by scale and clamped to 255;
+the alpha byte is copied straight through. scale is 2 when r_colorCorrectActive is set,
+otherwise 1 (a brighten-only step), matching Color_UnpackScale at 0x10057740.
+==============
+*/
+static void Color_UnpackScale(refEntity_t* ent, int packed, int scale) {
+    int c;
+
+    c = ((packed >> 24) & 0xff) * scale;
+    ent->shaderRGBA[0] = (c > 255) ? 255 : c;
+    c = ((packed >> 16) & 0xff) * scale;
+    ent->shaderRGBA[1] = (c > 255) ? 255 : c;
+    c = ((packed >> 8) & 0xff) * scale;
+    ent->shaderRGBA[2] = (c > 255) ? 255 : c;
+    ent->shaderRGBA[3] = packed & 0xff;
+}
+
+/*
+==============
+CG_PlayerTeamSkins
+
+// Address: 0x100419f0
+[QL] Tints the legs/torso/head refEntities with the enemy or team skin colour before they
+are added to the scene. The friend/enemy decision follows the spectator/follow rules used
+throughout QL; the per-part colours come from the cg_enemy*Color / cg_team*Color cvars
+(packed 0xRRGGBBAA). Dead bodies are darkened instead of team-tinted.
+==============
+*/
+static void CG_PlayerTeamSkins(centity_t* cent, refEntity_t* legs, refEntity_t* torso, refEntity_t* head) {
+    int specTeam;
+    int playerTeam;
+    qboolean useEnemy;
+    int scale;
+    vmCvar_t *legsColor, *torsoColor, *headColor;
+
+    specTeam = cgs.clientinfo[cg.snap->ps.clientNum].team;
+    playerTeam = cgs.clientinfo[cent->currentState.clientNum].team;
+
+    // [QL] pm_type & 2 (DAT_10a9c214) = spectator/dead; pm_flags & PMF_FOLLOW (DAT_10a9c21c) =
+    // following. Previously read from the swapped fields.
+    if (cgs.gametype < GT_TEAM || !(cg.snap->ps.pm_type & 2) ||
+        (cg.snap->ps.pm_flags & PMF_FOLLOW) ||
+        specTeam == TEAM_RED || specTeam == TEAM_BLUE) {
+        if (specTeam == playerTeam) {
+            useEnemy = (specTeam == TEAM_FREE);
+        } else {
+            useEnemy = qtrue;
+        }
+    } else {
+        useEnemy = (playerTeam == TEAM_BLUE);
+    }
+
+    // forcing a per-team model pins that team's colour side: a forced red team
+    // always draws with the team colour, a forced blue team with the enemy colour.
+    if (playerTeam == TEAM_RED) {
+        if (cg_forceRedTeamModel.string[0]) {
+            useEnemy = qfalse;
+        }
+    } else if (playerTeam == TEAM_BLUE && cg_forceBlueTeamModel.string[0]) {
+        useEnemy = qtrue;
+    }
+
+    // r_colorCorrectActive doubles the tint (brighten-only) to compensate the
+    // colour-correction pass; it is 1 otherwise.
+    scale = r_colorCorrectActive.integer ? 2 : 1;
+
+    // dead bodies are darkened with cg_deadBodyColor rather than team-tinted.
+    if (cg_deadBodyDarken.integer && (cent->currentState.eFlags & EF_DEAD)) {
+        Color_UnpackScale(legs, cg_deadBodyColor.integer, scale);
+        Color_UnpackScale(torso, cg_deadBodyColor.integer, scale);
+        Color_UnpackScale(head, cg_deadBodyColor.integer, scale);
+        return;
+    }
+
+    if (useEnemy) {
+        legsColor = &cg_enemyLowerColor;
+        torsoColor = &cg_enemyUpperColor;
+        headColor = &cg_enemyHeadColor;
+    } else {
+        legsColor = &cg_teamLowerColor;
+        torsoColor = &cg_teamUpperColor;
+        headColor = &cg_teamHeadColor;
+    }
+
+    // a zero (unparsed/cleared) colour leaves the part untinted white rather than black.
+    if (legsColor->integer == 0) {
+        legs->shaderRGBA[0] = legs->shaderRGBA[1] = legs->shaderRGBA[2] = legs->shaderRGBA[3] = 255;
+    } else {
+        Color_UnpackScale(legs, legsColor->integer, scale);
+    }
+    if (torsoColor->integer == 0) {
+        torso->shaderRGBA[0] = torso->shaderRGBA[1] = torso->shaderRGBA[2] = torso->shaderRGBA[3] = 255;
+    } else {
+        Color_UnpackScale(torso, torsoColor->integer, scale);
+    }
+    if (headColor->integer == 0) {
+        head->shaderRGBA[0] = head->shaderRGBA[1] = head->shaderRGBA[2] = head->shaderRGBA[3] = 255;
+    } else {
+        Color_UnpackScale(head, headColor->integer, scale);
+    }
+}
+
+/*
+==============
+CG_PlayerOutline
+
+// Address: 0x10041060
+[QL] Draws a coloured team/enemy outline decal under an entity. The shipped binary calls
+this from the entity dispatch (cg_ents.c) for the Attack & Defend objective entities - it
+is NOT called from CG_Player. The outline shader is chosen from the outline media by style
+(currentState.powerups-1, offset 0xC4) and friend/enemy; colour is by team
+(currentState.modelindex2, offset 0xAC); currentState.weapon (0xD0) selects the "powerup"
+shader variant.
+
+QL emits this as a screen-projected billboard through the shared floating-effect pool
+(FE_OUTLINE record -> CG_AllocFloatingEffect, rendered by CG_DrawFloatingEffects). The
+outline is a team-coloured billboard 80 world units above the entity, sized from the POI
+width cvars (binary DAT_10a634e8 / DAT_10a69248) - NOT a ground decal.
+==============
+*/
+void CG_PlayerOutline(centity_t* cent) {
+    int myTeam;
+    int theirTeam;
+    unsigned idx;
+    qhandle_t shader;
+    float r, g, b;
+    floatingEffect_t* fx;
+
+    myTeam = cgs.clientinfo[cg.clientNum].team;
+    idx = (unsigned)(cent->currentState.powerups - 1);  // 0xC4: outline style index
+    theirTeam = cent->currentState.modelindex2;         // 0xAC: friend/enemy + colour team
+
+    if (idx >= 5) {
+        idx = 0;
+    }
+
+    if (cent->currentState.weapon != 0) {  // 0xD0: powerup-active outline variant
+        shader = (myTeam == theirTeam) ? cgs.media.friendlyPowerupOutlineShader[idx]
+                                       : cgs.media.enemyPowerupOutlineShader[idx];
+    } else {
+        shader = (myTeam == theirTeam) ? cgs.media.friendlyOutlineShader[idx]
+                                       : cgs.media.enemyOutlineShader[idx];
+    }
+
+    // team colour (verified against the binary's packed constants):
+    //   red -> (1,0,0), blue -> (0,0.5,1), free -> (1,1,1), other -> (0,1,0)
+    r = (theirTeam == TEAM_FREE || theirTeam == TEAM_RED) ? 1.0f : 0.0f;
+    if (theirTeam == TEAM_RED) {
+        g = 0.0f;
+        b = 0.0f;
+    } else if (theirTeam == TEAM_BLUE) {
+        g = 0.5f;
+        b = 1.0f;
+    } else if (theirTeam == TEAM_FREE) {
+        g = 1.0f;
+        b = 1.0f;
+    } else {
+        g = 1.0f;
+        b = 0.0f;
+    }
+
+    fx = CG_AllocFloatingEffect();
+    if (!fx) {
+        return;
+    }
+
+    fx->type = FE_OUTLINE;
+    fx->owner = cent;
+    VectorCopy(cent->lerpOrigin, fx->origin);
+    fx->color[0] = r;
+    fx->color[1] = g;
+    fx->color[2] = b;
+    fx->color[3] = 1.0f;
+    fx->shader = shader;
+    fx->zOffset = 80.0f;                    // 0x42a00000
+    fx->worldSize = cg_poiMaxWidth.value;   // 0xf  (DAT_10a634e8)
+    fx->minPixels = cg_poiMinWidth.value;   // 0x11 (DAT_10a69248)
+}
+
+/*
+==============
+CG_PlayerFreezeEffect
+
+// Address: 0x10040870
+[QL] Draws a coloured ground glow under the local (followed) player when frozen or when
+carrying a flag, keyed on currentState.generic1 & 0x3f (offset 0xE0, the frozen bits) and
+the flag powerups. Runs only for the entity of the client being followed/played.
+
+QL emits these as screen-projected billboards through the shared floating-effect pool
+(FE_FREEZE records -> CG_AllocFloatingEffect, rendered by CG_DrawFloatingEffects) 64 world
+units above the entity, NOT ground decals.
+The binary's first block is gated on
+gametype 8, which couldn't be fully reconciled from the stripped build.
+==============
+*/
+static void CG_PlayerFreezeEffect(centity_t* cent) {
+    int myTeam;
+    int powerups;
+    float r, g, b;
+    floatingEffect_t* fx;
+
+    // only for the client we are playing / following
+    if (cent->currentState.clientNum != cg.snap->ps.clientNum) {
+        return;
+    }
+
+    myTeam = cgs.clientinfo[cg.clientNum].team;
+
+    // ice colour by viewer team (blue-ish for red team, red for blue team)
+    if (myTeam == TEAM_BLUE) {
+        r = 1.0f;
+        g = 0.2f;
+        b = 0.2f;
+    } else {
+        r = 0.2f;
+        g = 0.6f;
+        b = 1.0f;
+    }
+
+    // frozen (generic1 low 6 bits) -> ice overlay billboard (binary shader DAT_10a5fba8)
+    if (cent->currentState.generic1 & 0x3f) {
+        fx = CG_AllocFloatingEffect();
+        if (fx) {
+            fx->type = FE_FREEZE;
+            VectorCopy(cent->lerpOrigin, fx->origin);
+            fx->color[0] = r;
+            fx->color[1] = g;
+            fx->color[2] = b;
+            fx->color[3] = 1.0f;
+            fx->shader = cgs.media.iceMarkShader;
+            fx->zOffset = 64.0f;                    // 0x42800000
+            fx->worldSize = cg_poiMaxWidth.value;
+            fx->minPixels = cg_poiMinWidth.value;
+        }
+    }
+
+    // flag-carrier glow billboard (binary radius 0x42800000 == 64.0, shader DAT_10a5fc70)
+    powerups = cent->currentState.powerups;
+    if (!powerups) {
+        return;
+    }
+
+    if (powerups & (1 << PW_REDFLAG)) {
+        r = 1.0f;
+        g = 0.2f;
+        b = 0.2f;
+    } else if (powerups & (1 << PW_BLUEFLAG)) {
+        r = 0.2f;
+        g = 0.6f;
+        b = 1.0f;
+    }
+
+    if (powerups & ((1 << PW_REDFLAG) | (1 << PW_BLUEFLAG) | (1 << PW_NEUTRALFLAG))) {
+        fx = CG_AllocFloatingEffect();
+        if (fx) {
+            fx->type = FE_FREEZE;
+            VectorCopy(cent->lerpOrigin, fx->origin);
+            fx->color[0] = r;
+            fx->color[1] = g;
+            fx->color[2] = b;
+            fx->color[3] = 1.0f;
+            fx->shader = cgs.media.freezeShader;
+            fx->zOffset = 64.0f;
+            fx->worldSize = cg_poiMaxWidth.value;
+            fx->minPixels = cg_poiMinWidth.value;
+        }
+    }
+}
+
+/*
+===============
+CG_Draw3DPlayerModel
+
+// Address: 0x10008c40
+[QL] Renders a full legs+torso+head (and optional weapon) player model into a 2D box for
+the spectator/duel player-model owner-draws. It auto-frames the model to the box: the
+camera sits at the scene origin looking down +X, the model is pushed back along +X far
+enough to fit, and two fill lights (white + red) light it. Q3's CG_Draw3DModel only draws
+a single model; this is the QL player-specific variant that the owner-draws point at.
+
+Signature note: the shipped binary takes (clientNum in ECX, x, y, w, h, weapon) and
+auto-computes the framing, so there is no skin/angles parameter (the prior prototype guess
+was wrong). Skins come from the client clientInfo. The C signature below reorders the box
+coords first to match ioquakelive owner-draw conventions.
+===============
+*/
+void CG_Draw3DPlayerModel(float x, float y, float w, float h, int clientNum, int weapon) {
+    refdef_t refdef;
+    refEntity_t legs;
+    refEntity_t torso;
+    refEntity_t head;
+    clientInfo_t* ci;
+    vec3_t origin, angles, lightOrigin;
+    float size, dist;
+
+    if (clientNum < 0 || clientNum >= MAX_CLIENTS) {
+        return;
+    }
+    ci = &cgs.clientinfo[clientNum];
+
+    if (!ci->infoValid || !ci->legsModel || !ci->torsoModel || !ci->headModel) {
+        return;
+    }
+
+    // [QL] framing metric, normalised so a bounding-box-scaled model still fills the box
+    size = 32.0f;
+    if (ci->modelScale != 0.0f) {
+        size = 32.0f / (ci->modelScale * 0.85f);
+    }
+
+    CG_AdjustFrom640(&x, &y, &w, &h);
+
+    memset(&refdef, 0, sizeof(refdef));
+    memset(&legs, 0, sizeof(legs));
+    memset(&torso, 0, sizeof(torso));
+    memset(&head, 0, sizeof(head));
+
+    refdef.rdflags = RDF_NOWORLDMODEL;
+    AxisClear(refdef.viewaxis);
+
+    refdef.x = x;
+    refdef.y = y;
+    refdef.width = w;
+    refdef.height = h;
+
+    // fixed horizontal fov; vertical fov from the box aspect (binary constant 360/PI)
+    refdef.fov_x = 30;
+    dist = w / tan(refdef.fov_x / 360.0 * M_PI);
+    refdef.fov_y = atan2(h, dist) * (360.0 / M_PI);
+
+    refdef.time = cg.time;
+
+    // camera at the origin looking down +X; push the model back so it fits the box
+    origin[0] = (size + 24.0f) * 1.1f / tan(refdef.fov_x / 360.0 * M_PI);
+    origin[1] = 0.0f;
+    origin[2] = (size - 24.0f) * -0.5f;
+
+    // face the camera
+    VectorClear(angles);
+    angles[YAW] = 180;
+
+    trap_R_ClearScene();
+
+    // legs (standing idle pose)
+    legs.hModel = ci->legsModel;
+    legs.customSkin = ci->legsSkin;
+    legs.renderfx = RF_NOSHADOW;
+    legs.frame = legs.oldframe = ci->animations[LEGS_IDLE].firstFrame;
+    AnglesToAxis(angles, legs.axis);
+    VectorCopy(origin, legs.origin);
+    VectorCopy(origin, legs.oldorigin);
+    VectorCopy(origin, legs.lightingOrigin);
+    trap_R_AddRefEntityToScene(&legs);
+
+    // torso on the legs' tag_torso
+    torso.hModel = ci->torsoModel;
+    torso.customSkin = ci->torsoSkin;
+    torso.renderfx = RF_NOSHADOW;
+    torso.frame = torso.oldframe = ci->animations[TORSO_STAND].firstFrame;
+    VectorCopy(origin, torso.lightingOrigin);
+    CG_PositionRotatedEntityOnTag(&torso, &legs, ci->legsModel, "tag_torso");
+    trap_R_AddRefEntityToScene(&torso);
+
+    // head on the torso's tag_head
+    head.hModel = ci->headModel;
+    head.customSkin = ci->headSkin;
+    head.renderfx = RF_NOSHADOW;
+    VectorCopy(origin, head.lightingOrigin);
+    CG_PositionRotatedEntityOnTag(&head, &torso, ci->torsoModel, "tag_head");
+    trap_R_AddRefEntityToScene(&head);
+
+    // optional weapon on the torso's tag_weapon (owner-draws pass weapon 0 = body only)
+    if (weapon > 0 && weapon < MAX_WEAPONS && cg_weapons[weapon].weaponModel) {
+        refEntity_t gun;
+        memset(&gun, 0, sizeof(gun));
+        gun.hModel = cg_weapons[weapon].weaponModel;
+        gun.renderfx = RF_NOSHADOW;
+        VectorCopy(origin, gun.lightingOrigin);
+        CG_PositionRotatedEntityOnTag(&gun, &torso, ci->torsoModel, "tag_weapon");
+        trap_R_AddRefEntityToScene(&gun);
+
+        if (cg_weapons[weapon].barrelModel) {
+            refEntity_t barrel;
+            memset(&barrel, 0, sizeof(barrel));
+            barrel.hModel = cg_weapons[weapon].barrelModel;
+            barrel.renderfx = RF_NOSHADOW;
+            VectorCopy(origin, barrel.lightingOrigin);
+            CG_PositionRotatedEntityOnTag(&barrel, &gun, cg_weapons[weapon].weaponModel, "tag_barrel");
+            trap_R_AddRefEntityToScene(&barrel);
+        }
+    }
+
+    // two fill lights, matching the binary's offsets and colours
+    lightOrigin[0] = origin[0] - 100.0f;
+    lightOrigin[1] = origin[1] + 100.0f;
+    lightOrigin[2] = origin[2] + 100.0f;
+    trap_R_AddLightToScene(lightOrigin, 500, 1.0f, 1.0f, 1.0f);
+
+    lightOrigin[0] = origin[0] - 200.0f;
+    lightOrigin[1] = origin[1];
+    lightOrigin[2] = origin[2];
+    trap_R_AddLightToScene(lightOrigin, 500, 1.0f, 0.0f, 0.0f);
+
+    trap_R_RenderScene(&refdef);
+}
+
+/*
 ===============
 CG_Player
 ===============
@@ -1932,10 +2733,9 @@ void CG_Player(centity_t* cent) {
     memset(&torso, 0, sizeof(torso));
     memset(&head, 0, sizeof(head));
 
-    // TODO: QL binary calls CG_PlayerTeamSkins(&legs, &torso, &head) here
-    // which uses cg_enemyUpperColor (vmCvar 0x10A6EFA0), cg_enemyHeadColor (vmCvar 0x10A6D5C0),
-    // cg_teamHeadColor (vmCvar 0x10A63180), and cg_deadBodyDarken (vmCvar 0x10ABB880)
-    // to override skin colors for enemy/team models and darken dead bodies
+    // [QL] tint the body parts for enemy/team skins (and darken dead bodies) before they
+    // are added to the scene. Called here in the binary, right after the memsets.
+    CG_PlayerTeamSkins(cent, &legs, &torso, &head);
 
     // get the rotation information
     CG_PlayerAngles(cent, legs.axis, torso.axis, head.axis);
@@ -2243,6 +3043,9 @@ void CG_Player(centity_t* cent) {
 
     // add powerups floating behind the player
     CG_PlayerPowerups(cent, &torso);
+
+    // [QL] frozen / flag-carrier ground glow for the followed player (binary calls this last)
+    CG_PlayerFreezeEffect(cent);
 }
 
 //=====================================================================

@@ -58,318 +58,182 @@ void CG_KeyNameForCommand(const char* command, char* buf, int buflen) {
 	}
 }
 
-// [QL] Resolve fontIndex to a fontInfo_t pointer.
-// fontIndex 0 = textFont (NotoSans), 1 = bigFont (handelgothic), 2 = smallFont (DroidSansMono)
-// Falls back to scale-based selection for fontIndex 0.
-static fontInfo_t* CG_FontForIndex(int fontIndex) {
-	if (fontIndex > 0 && fontIndex < 3) {
-		return &cgDC.Assets.extraFonts[fontIndex];
+// [QL] Text is rendered by the engine glyph atlas (fontstash/stb_truetype) via
+// trap_R_Font_DrawString / trap_R_Font_TextExtents.  The legacy per-glyph
+// fontInfo_t path (FreeType) is gone; these functions convert the game's
+// 640x480 virtual coordinates and text scale into the screen-pixel coordinates
+// and pixel font size the engine expects, matching the QL binary.
+
+// Font index convention (QL engine / menudef): 0 = FONT_DEFAULT (handelgothic,
+// "normal"), 1 = FONT_SANS (notosans), 2 = FONT_MONO (droidsansmono).
+static int CG_EngineFont(int fontIndex) {
+	if (fontIndex >= 0 && fontIndex < 3)
+		return fontIndex;
+	return 0;
+}
+
+// Map a legacy fontInfo_t* back to a font index for the _Font variants.
+static int CG_IndexForFontPtr(const fontInfo_t* font) {
+	int i;
+	for (i = 0; i < 3; i++) {
+		if (font == &cgDC.Assets.extraFonts[i])
+			return i;
 	}
-	return &cgDC.Assets.extraFonts[0];
+	return 0;
 }
 
-// [QL] Font-pointer variants - used by DC wrappers to bypass scale-based selection
-float CG_Text_Width_Font(const char* text, float scale, int limit, fontInfo_t* font) {
-	int count, len;
-	float out;
-	glyphInfo_t* glyph;
-	float useScale;
-	const char* s = text;
-	useScale = scale * font->glyphScale;
-	out = 0;
-	if (text) {
-		len = strlen(text);
-		if (limit > 0 && len > limit) {
-			len = limit;
-		}
-		count = 0;
-		while (s && *s && count < len) {
-			if (Q_IsColorString(s)) {
-				s += 2;
-				continue;
-			} else {
-				glyph = &font->glyphs[*s & 255];
-				out += glyph->xSkip;
-				s++;
-				count++;
-			}
-		}
-	}
-	return out * useScale;
+// Pixel font size for a text scale (QL: screenFontScale = (vidHeight/768)*96).
+static float CG_FontPixelSize(float scale) {
+	return (((float)cgs.glconfig.vidHeight / 768.0f) * 96.0f) * scale;
 }
 
-float CG_Text_Height_Font(const char* text, float scale, int limit, fontInfo_t* font) {
-	int len, count;
-	float max;
-	glyphInfo_t* glyph;
-	float useScale;
-	const char* s = text;
-	useScale = scale * font->glyphScale;
-	max = 0;
-	if (text) {
-		len = strlen(text);
-		if (limit > 0 && len > limit) {
-			len = limit;
-		}
-		count = 0;
-		while (s && *s && count < len) {
-			if (Q_IsColorString(s)) {
-				s += 2;
-				continue;
-			} else {
-				glyph = &font->glyphs[*s & 255];
-				if (max < glyph->height) {
-					max = glyph->height;
-				}
-				s++;
-				count++;
-			}
-		}
-	}
-	return max * useScale;
+// Horizontal scale mapping 640-space x to screen pixels, honouring widescreen.
+static float CG_TextXScale(void) {
+	int ws = cg_currentWidescreen;
+	if (cgs.widescreenBias > 0.0f && (ws != 0 || (trap_Key_GetCatcher() & KEYCATCH_CGAME)))
+		return (cgs.glconfig.vidHeight * 4.0f / 3.0f) / 640.0f;
+	return cgs.screenXScale;
 }
 
-void CG_Text_Paint_Font(float x, float y, float scale, vec4_t color, const char* text, float adjust, int limit, int style, fontInfo_t* font) {
-	int len, count;
-	vec4_t newColor;
-	glyphInfo_t* glyph;
-	float useScale;
-	useScale = scale * font->glyphScale;
-	if (text) {
-		const char* s = text;
-		trap_R_SetColor(color);
-		memcpy(&newColor[0], &color[0], sizeof(vec4_t));
-		len = strlen(text);
-		if (limit > 0 && len > limit) {
-			len = limit;
-		}
-		count = 0;
-		while (s && *s && count < len) {
-			glyph = &font->glyphs[*s & 255];
-			if (Q_IsColorString(s)) {
-				memcpy(newColor, g_color_table[ColorIndex(*(s + 1))], sizeof(newColor));
-				newColor[3] = color[3];
-				trap_R_SetColor(newColor);
-				s += 2;
-				continue;
-			} else {
-				float yadj = useScale * glyph->top;
-				float xadj = useScale * glyph->left;
-				if (style == ITEM_TEXTSTYLE_SHADOWED || style == ITEM_TEXTSTYLE_SHADOWEDMORE) {
-					int ofs = style == ITEM_TEXTSTYLE_SHADOWED ? 1 : 2;
-					colorBlack[3] = newColor[3];
-					trap_R_SetColor(colorBlack);
-					CG_Text_PaintChar(x + xadj + ofs, y - yadj + ofs,
-									  glyph->imageWidth,
-									  glyph->imageHeight,
-									  useScale,
-									  glyph->s,
-									  glyph->t,
-									  glyph->s2,
-									  glyph->t2,
-									  glyph->glyph);
-					colorBlack[3] = 1.0;
-					trap_R_SetColor(newColor);
-				}
-				CG_Text_PaintChar(x + xadj, y - yadj,
-								  glyph->imageWidth,
-								  glyph->imageHeight,
-								  useScale,
-								  glyph->s,
-								  glyph->t,
-								  glyph->s2,
-								  glyph->t2,
-								  glyph->glyph);
-				x += (glyph->xSkip * useScale) + adjust;
-				s++;
-				count++;
-			}
-		}
-		trap_R_SetColor(NULL);
-	}
-}
-
-// [QL] DC wrapper functions - resolve fontIndex then delegate to _Font variants
-void CG_DrawText_DC(float x, float y, float scale, vec4_t color, const char* text,
-					float adjust, int limit, int style, int fontIndex) {
-	fontInfo_t* font = CG_FontForIndex(fontIndex);
-	CG_Text_Paint_Font(x, y, scale, color, text, adjust, limit, style, font);
-}
-
-float CG_TextWidth_DC(const char* text, float scale, int limit, int fontIndex) {
-	fontInfo_t* font = CG_FontForIndex(fontIndex);
-	return CG_Text_Width_Font(text, scale, limit, font);
-}
-
-float CG_TextHeight_DC(const char* text, float scale, int limit, int fontIndex) {
-	fontInfo_t* font = CG_FontForIndex(fontIndex);
-	return CG_Text_Height_Font(text, scale, limit, font);
-}
-
-void CG_DrawTextWithCursor_DC(float x, float y, float scale, vec4_t color, const char* text,
-							  int cursorPos, char cursor, int limit, int style, int fontIndex) {
-	fontInfo_t* font = CG_FontForIndex(fontIndex);
-	CG_Text_Paint_Font(x, y, scale, color, text, 0, limit, style, font);
-}
-
-// [QL] CG_DrawText - matching binary's 0x10008440 in cgamex86.dll.
-// Does bulk widescreen adjustment on x,y coords, then renders all glyphs at
-// screen-space coordinates. Shadow pass is done as a separate full-string pass
-// (not per-character like CG_Text_Paint_Font).
-static void CG_DrawText_Glyphs(float x, float y, float useScale,
-                                float xscale, float yscale,
-                                const char *text, float adjust, int maxChars,
-                                fontInfo_t *font) {
-	int count = 0, len = strlen(text);
-	vec4_t newColor;
-	const char *s = text;
-	if (maxChars > 0 && len > maxChars) len = maxChars;
-
-	while (s && *s && count < len) {
-		if (Q_IsColorString(s)) {
-			memcpy(newColor, g_color_table[ColorIndex(*(s + 1))], sizeof(newColor));
-			trap_R_SetColor(newColor);
-			s += 2;
-			continue;
-		}
-		glyphInfo_t *glyph = &font->glyphs[*s & 255];
-		float w = glyph->imageWidth * useScale * xscale;
-		float h = glyph->imageHeight * useScale * yscale;
-		float gx = x + (useScale * glyph->left) * xscale;
-		float gy = y - (useScale * glyph->top) * yscale;
-		trap_R_DrawStretchPic(gx, gy, w, h,
-		                      glyph->s, glyph->t, glyph->s2, glyph->t2,
-		                      glyph->glyph);
-		x += (glyph->xSkip * useScale + adjust) * xscale;
-		s++;
-		count++;
-	}
-}
-
-void CG_DrawText(float x, float y, int fontIndex, float scale, vec4_t color,
-                 const char *text, float adjust, int maxChars, int textStyle) {
-	float xscale, yscale, xbias;
-	int ws;
-	fontInfo_t *font;
-	float useScale;
-
-	if (!text || !*text) return;
-	if (maxChars == 0) maxChars = -1;
-
-	font = CG_FontForIndex(fontIndex);
-	useScale = scale * font->glyphScale;
-
-	// Compute widescreen-adjusted screen coordinates
-	xbias = 0;
-	ws = cg_currentWidescreen;
-
-	if (cgs.widescreenBias > 0.0f &&
-	    (ws != 0 || (trap_Key_GetCatcher() & KEYCATCH_CGAME))) {
-		xscale = (cgs.glconfig.vidHeight * 4.0f / 3.0f) / 640.0f;
-		yscale = cgs.screenYScale;
+// Convert 640x480 virtual coords to screen pixels with widescreen bias
+// (matches QL cg_drawtools.c CG_Text_Paint).
+static void CG_TextToScreen(float* x, float* y) {
+	float xscale = CG_TextXScale();
+	float xbias = 0.0f;
+	int ws = cg_currentWidescreen;
+	if (cgs.widescreenBias > 0.0f && (ws != 0 || (trap_Key_GetCatcher() & KEYCATCH_CGAME))) {
 		if (ws == 2 || (trap_Key_GetCatcher() & KEYCATCH_CGAME))
 			xbias = cgs.widescreenBias;
 		else if (ws == 3)
 			xbias = cgs.widescreenBias * 2.0f;
-	} else {
-		xscale = cgs.screenXScale;
-		yscale = cgs.screenYScale;
+	}
+	if (x)
+		*x = *x * xscale + xbias;
+	if (y)
+		*y = *y * cgs.screenYScale;
+}
+
+// Core painter: virtual coords + scale -> screen pixels, engine glyph atlas.
+// A shadow style draws the whole string offset in solid black first.
+static void CG_PaintText(float x, float y, int fontIndex, float scale, const vec4_t color,
+                         const char* text, int limit, int style) {
+	float sx = x, sy = y;
+	float size = CG_FontPixelSize(scale);
+	int efont = CG_EngineFont(fontIndex);
+	int lim = (limit > 0) ? limit : -1;
+
+	if (!text || !*text)
+		return;
+
+	CG_TextToScreen(&sx, &sy);
+
+	if (style == ITEM_TEXTSTYLE_SHADOWED || style == ITEM_TEXTSTYLE_SHADOWEDMORE) {
+		float ofs = (style == ITEM_TEXTSTYLE_SHADOWED) ? 1.0f : 2.0f;
+		vec4_t shadow;
+		shadow[0] = shadow[1] = shadow[2] = 0.0f;
+		shadow[3] = color ? color[3] : 1.0f;
+		trap_R_SetColor(shadow);
+		trap_R_Font_DrawString((int)(sx + ofs), (int)(sy + ofs), text, efont, size, lim, NULL, TEXT_NORECOLOR);
 	}
 
-	// Shadow pass
-	if (textStyle == ITEM_TEXTSTYLE_SHADOWED || textStyle == ITEM_TEXTSTYLE_SHADOWEDMORE) {
-		float ofs = (textStyle == ITEM_TEXTSTYLE_SHADOWED) ? 1.0f : 2.0f;
-		vec4_t shadowColor;
-		shadowColor[0] = shadowColor[1] = shadowColor[2] = 0;
-		shadowColor[3] = color[3];
-		trap_R_SetColor(shadowColor);
-		CG_DrawText_Glyphs((x + ofs) * xscale + xbias, (y + ofs) * yscale,
-		                    useScale, xscale, yscale, text, adjust, maxChars, font);
-	}
-
-	// Main pass
 	trap_R_SetColor(color);
-	CG_DrawText_Glyphs(x * xscale + xbias, y * yscale,
-	                    useScale, xscale, yscale, text, adjust, maxChars, font);
+	trap_R_Font_DrawString((int)sx, (int)sy, text, efont, size, lim, NULL, 0);
 	trap_R_SetColor(NULL);
 }
 
-int CG_DrawTextWidth(const char *text, float scale, int limit, int fontIndex) {
-	fontInfo_t *font = CG_FontForIndex(fontIndex);
-	return CG_Text_Width_Font(text, scale, limit, font);
+// Core measure: 640-space width/height for the given text.
+static void CG_MeasureText(const char* text, float scale, int fontIndex, int limit, int* w640, int* h640) {
+	int wpx = 0, hpx = 0;
+	float xscale, yscale;
+	float size = CG_FontPixelSize(scale);
+	int lim = (limit > 0) ? limit : -1;
+
+	trap_R_Font_TextExtents(text, 0, lim, size, CG_EngineFont(fontIndex), NULL, NULL, &wpx, &hpx);
+
+	xscale = CG_TextXScale();
+	if (xscale <= 0.0f)
+		xscale = 1.0f;
+	yscale = cgs.screenYScale;
+	if (yscale <= 0.0f)
+		yscale = 1.0f;
+
+	if (w640)
+		*w640 = (int)((float)wpx / xscale);
+	if (h640)
+		*h640 = (int)((float)hpx / yscale);
 }
 
-// Scale-based versions (unchanged) - used by ~90 direct call sites in cg_newdraw.c, cg_info.c, etc.
+// [QL] Font-pointer variants - used by DC wrappers.
+float CG_Text_Width_Font(const char* text, float scale, int limit, fontInfo_t* font) {
+	int w = 0;
+	CG_MeasureText(text, scale, CG_IndexForFontPtr(font), limit, &w, NULL);
+	return (float)w;
+}
+
+float CG_Text_Height_Font(const char* text, float scale, int limit, fontInfo_t* font) {
+	int h = 0;
+	CG_MeasureText(text, scale, CG_IndexForFontPtr(font), limit, NULL, &h);
+	return (float)h;
+}
+
+void CG_Text_Paint_Font(float x, float y, float scale, vec4_t color, const char* text, float adjust, int limit, int style, fontInfo_t* font) {
+	(void)adjust;
+	CG_PaintText(x, y, CG_IndexForFontPtr(font), scale, color, text, limit, style);
+}
+
+// [QL] DC wrapper functions - pass the font index straight to the engine.
+void CG_DrawText_DC(float x, float y, float scale, vec4_t color, const char* text,
+					float adjust, int limit, int style, int fontIndex) {
+	(void)adjust;
+	CG_PaintText(x, y, fontIndex, scale, color, text, limit, style);
+}
+
+float CG_TextWidth_DC(const char* text, float scale, int limit, int fontIndex) {
+	int w = 0;
+	CG_MeasureText(text, scale, fontIndex, limit, &w, NULL);
+	return (float)w;
+}
+
+float CG_TextHeight_DC(const char* text, float scale, int limit, int fontIndex) {
+	int h = 0;
+	CG_MeasureText(text, scale, fontIndex, limit, NULL, &h);
+	return (float)h;
+}
+
+void CG_DrawTextWithCursor_DC(float x, float y, float scale, vec4_t color, const char* text,
+							  int cursorPos, char cursor, int limit, int style, int fontIndex) {
+	(void)cursorPos;
+	(void)cursor;
+	CG_PaintText(x, y, fontIndex, scale, color, text, limit, style);
+}
+
+// [QL] CG_DrawText - matching binary's 0x10008440 in cgamex86.dll. Renders text
+// through the engine glyph atlas at screen coordinates with a full-string shadow
+// pass; the widescreen coordinate transform lives in CG_PaintText/CG_TextToScreen.
+void CG_DrawText(float x, float y, int fontIndex, float scale, vec4_t color,
+                 const char *text, float adjust, int maxChars, int textStyle) {
+	(void)adjust;
+	CG_PaintText(x, y, fontIndex, scale, color, text, maxChars, textStyle);
+}
+
+int CG_DrawTextWidth(const char *text, float scale, int limit, int fontIndex) {
+	int w = 0;
+	CG_MeasureText(text, scale, fontIndex, limit, &w, NULL);
+	return w;
+}
+
+// Scale-based versions - used by ~90 direct call sites in cg_newdraw.c, cg_info.c,
+// etc.  These use the default font (index 0), matching QL's CG_Text_Paint.
 int CG_Text_Width(const char* text, float scale, int limit) {
-	int count, len;
-	float out;
-	glyphInfo_t* glyph;
-	float useScale;
-	const char* s = text;
-	fontInfo_t* font = &cgDC.Assets.textFont;
-
-	if (scale > cg_bigFont.value) {
-		font = &cgDC.Assets.bigFont;
-	}
-
-	useScale = scale * font->glyphScale;
-	out = 0;
-	if (text) {
-		len = strlen(text);
-		if (limit > 0 && len > limit) {
-			len = limit;
-		}
-
-		count = 0;
-		while (s && *s && count < len) {
-			if (Q_IsColorString(s)) {
-				s += 2;
-				continue;
-			} else {
-				glyph = &font->glyphs[*s & 255];
-				out += glyph->xSkip;
-				s++;
-				count++;
-			}
-		}
-	}
-
-	return out * useScale;
+	int w = 0;
+	CG_MeasureText(text, scale, 0, limit, &w, NULL);
+	return w;
 }
 
 int CG_Text_Height(const char* text, float scale, int limit) {
-	int len, count;
-	float max;
-	glyphInfo_t* glyph;
-	float useScale;
-	const char* s = text;
-	fontInfo_t* font = &cgDC.Assets.textFont;
-	if (scale > cg_bigFont.value) {
-		font = &cgDC.Assets.bigFont;
-	}
-	useScale = scale * font->glyphScale;
-	max = 0;
-	if (text) {
-		len = strlen(text);
-		if (limit > 0 && len > limit) {
-			len = limit;
-		}
-		count = 0;
-		while (s && *s && count < len) {
-			if (Q_IsColorString(s)) {
-				s += 2;
-				continue;
-			} else {
-				glyph = &font->glyphs[*s & 255];
-				if (max < glyph->height) {
-					max = glyph->height;
-				}
-				s++;
-				count++;
-			}
-		}
-	}
-	return max * useScale;
+	int h = 0;
+	CG_MeasureText(text, scale, 0, limit, NULL, &h);
+	return h;
 }
 
 void CG_Text_PaintChar(float x, float y, float width, float height, float scale, float s, float t, float s2, float t2, qhandle_t hShader) {
@@ -381,69 +245,9 @@ void CG_Text_PaintChar(float x, float y, float width, float height, float scale,
 }
 
 void CG_Text_Paint(float x, float y, float scale, vec4_t color, const char* text, float adjust, int limit, int style) {
-	int len, count;
-	vec4_t newColor;
-	glyphInfo_t* glyph;
-	float useScale;
-	fontInfo_t* font = &cgDC.Assets.textFont;
-	if (scale > cg_bigFont.value) {
-		font = &cgDC.Assets.bigFont;
-	}
-	useScale = scale * font->glyphScale;
-	if (text) {
-		const char* s = text;
-		trap_R_SetColor(color);
-		memcpy(&newColor[0], &color[0], sizeof(vec4_t));
-		len = strlen(text);
-		if (limit > 0 && len > limit) {
-			len = limit;
-		}
-		count = 0;
-		while (s && *s && count < len) {
-			glyph = &font->glyphs[*s & 255];
-			// int yadj = Assets.textFont.glyphs[text[i]].bottom + Assets.textFont.glyphs[text[i]].top;
-			// float yadj = scale * (Assets.textFont.glyphs[text[i]].imageHeight - Assets.textFont.glyphs[text[i]].height);
-			if (Q_IsColorString(s)) {
-				memcpy(newColor, g_color_table[ColorIndex(*(s + 1))], sizeof(newColor));
-				newColor[3] = color[3];
-				trap_R_SetColor(newColor);
-				s += 2;
-				continue;
-			} else {
-				float yadj = useScale * glyph->top;
-				float xadj = useScale * glyph->left;
-				if (style == ITEM_TEXTSTYLE_SHADOWED || style == ITEM_TEXTSTYLE_SHADOWEDMORE) {
-					int ofs = style == ITEM_TEXTSTYLE_SHADOWED ? 1 : 2;
-					colorBlack[3] = newColor[3];
-					trap_R_SetColor(colorBlack);
-					CG_Text_PaintChar(x + xadj + ofs, y - yadj + ofs,
-									  glyph->imageWidth,
-									  glyph->imageHeight,
-									  useScale,
-									  glyph->s,
-									  glyph->t,
-									  glyph->s2,
-									  glyph->t2,
-									  glyph->glyph);
-					colorBlack[3] = 1.0;
-					trap_R_SetColor(newColor);
-				}
-				CG_Text_PaintChar(x + xadj, y - yadj,
-								  glyph->imageWidth,
-								  glyph->imageHeight,
-								  useScale,
-								  glyph->s,
-								  glyph->t,
-								  glyph->s2,
-								  glyph->t2,
-								  glyph->glyph);
-				x += (glyph->xSkip * useScale) + adjust;
-				s++;
-				count++;
-			}
-		}
-		trap_R_SetColor(NULL);
-	}
+	(void)adjust;
+	// QL: CG_Text_Paint uses the default font (index 0 = handelgothic).
+	CG_PaintText(x, y, 0, scale, color, text, limit, style);
 }
 
 /*
@@ -1772,6 +1576,39 @@ static void CG_DrawVote(void) {
 	char* s;
 	int sec;
 
+	// [QL] team-kill complaint prompt (binary CG_DrawVote 0x1000dc00). Only in team
+	// gametypes (>= GT_TEAM, excluding RR); replaces the vote line while pending.
+	if (cgs.gametype >= GT_TEAM && cgs.gametype != GT_RR &&
+	    cg_complaintWarning.integer && cg.complaintEndTime > cg.time && !cg.demoPlayback) {
+		if (cg.complaintClient >= 0 && cg.complaintClient < MAX_CLIENTS) {
+			char yesKey[32], noKey[32];
+			int csec = (cg.complaintEndTime - cg.time) / 1000;
+			if (csec < 0) {
+				csec = 0;
+			}
+			CG_KeyNameForCommand("vote yes", yesKey, sizeof(yesKey));
+			CG_KeyNameForCommand("vote no", noKey, sizeof(noKey));
+			s = va("File complaint against %s for team-killing?", cgs.clientinfo[cg.complaintClient].name);
+			CG_Text_Paint(4, 300, 0.22f, colorYellow, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED);
+			s = va("Press '%s' for Yes, or '%s' for No (%is)", yesKey, noKey, csec);
+			CG_Text_Paint(8, 312, 0.22f, colorWhite, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED);
+			return;
+		}
+		// negative status codes (binary strings, incl. the "Comlaints" typo)
+		s = NULL;
+		switch (cg.complaintClient) {
+			case -1: s = "Your complaint has been filed."; break;
+			case -2: s = "Your complaint has been dismissed."; break;
+			case -3: s = "Comlaints cannot be filed against server admins."; break;
+			case -4: s = "You received friendly fire from a server admin."; break;
+			default: break;
+		}
+		if (s) {
+			CG_Text_Paint(3, 300, 0.22f, colorWhite, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED);
+			return;
+		}
+	}
+
 	if (!cgs.voteTime) {
 		return;
 	}
@@ -2251,6 +2088,64 @@ void CG_DrawTimedMenus(void) {
 
 /*
 =================
+CG_DrawTimeout
+
+// Address: 0x1000ef30
+[QL] Pause/timeout overlay. Shows "Match Paused" during an indefinite pause, or
+"Match resuming in ^5N^7 seconds" once a timein countdown is running. Plays the pause
+klaxon once when a pause begins. Called every frame from CG_Draw2D; self-gates on
+cgs.freezeEnd (CS_PAUSE_START_TIME).
+=================
+*/
+static void CG_DrawTimeout(void) {
+	static int lastPause;     // cgs.freezeEnd of the pause we last announced
+	static int lastCountSec;  // last resume-countdown second we voiced
+	const char* s;
+	float w;
+	int sec;
+
+	if (!cgs.freezeEnd) {
+		lastPause = 0;
+		return;
+	}
+
+	// announce a newly-started pause once (klaxon)
+	if (lastPause != cgs.freezeEnd) {
+		lastPause = cgs.freezeEnd;
+		lastCountSec = -1;
+		trap_S_StartLocalSound(cgs.media.pauseSound, CHAN_ANNOUNCER);
+	}
+
+	if (cgs.pauseEnd == 0) {
+		s = "Match Paused";
+	} else {
+		sec = (cgs.pauseEnd - cg.time) / 1000;
+
+		// [QL] resume-countdown announcer, once per second as the timein countdown ticks.
+		// The binary calls CG_PlayMatchStateSound(secondsRemaining): 5 = prepare_to_fight,
+		// 3 = "two", 2 = "one", 1 = "fight".
+		if (sec != lastCountSec) {
+			lastCountSec = sec;
+			switch (sec) {
+			case 5: trap_S_StartLocalSound(cgs.media.countPrepareSound, CHAN_ANNOUNCER); break;
+			case 3: trap_S_StartLocalSound(cgs.media.count2Sound, CHAN_ANNOUNCER); break;
+			case 2: trap_S_StartLocalSound(cgs.media.count1Sound, CHAN_ANNOUNCER); break;
+			case 1: trap_S_StartLocalSound(cgs.media.countFightSound, CHAN_ANNOUNCER); break;
+			}
+		}
+
+		if (sec <= 0) {
+			return;  // countdown finished; server is about to resume
+		}
+		s = va("Match resuming in ^5%d^7 seconds", sec);
+	}
+
+	w = CG_Text_Width(s, 0.5f, 0);
+	CG_Text_Paint(320 - w / 2, 128, 0.5f, colorWhite, s, 0, 0, ITEM_TEXTSTYLE_SHADOWEDMORE);
+}
+
+/*
+=================
 CG_Draw2D
 =================
 */
@@ -2272,6 +2167,12 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 		CG_DrawIntermission();
 		return;
 	}
+
+	// [QL] shared floating-effect pool: damage numbers, player outlines, freeze/flag
+	// glows and head float-sprites, all projected to screen (binary CG_DrawDamagePlums
+	// called from CG_Draw2D @ 0x10010e9e).
+	CG_SetWidescreen(WIDESCREEN_STRETCH);
+	CG_DrawFloatingEffects();
 
 	/*
 		if (cg.cameraMode) {
@@ -2333,6 +2234,7 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 	if (!CG_DrawFollow()) {
 		CG_DrawWarmup();
 	}
+	CG_DrawTimeout();  // [QL] pause/timeout overlay
 	CG_SetWidescreen(WIDESCREEN_STRETCH);
 
 	// [QL] race timer is drawn by menu system via CG_DrawRaceTimes ownerdraw

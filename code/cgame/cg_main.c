@@ -27,7 +27,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // display context for new ui stuff
 displayContextDef_t cgDC;
 
-int forceModelModificationCount = -1;
+// [QL] per-cvar modificationCount cache for the six model/skin-forcing cvars watched by
+// CG_UpdateCvars (binary 0x10020CA0 stores six counts individually). QL has no single
+// cg_forceModel; forcing is the granular set.
+static int cg_forceModelModCounts[6] = { -1, -1, -1, -1, -1, -1 };
+static qboolean CG_ForceModelCvarsChanged(void);
 
 void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum);
 void CG_RegisterCvars(void);
@@ -72,6 +76,21 @@ Q_EXPORT intptr_t vmMain(int command, intptr_t arg0, intptr_t arg1, intptr_t arg
         case CG_EVENT_HANDLING:
             CG_EventHandling(arg0);
             return 0;
+        // [QL] cgamex86.dll exports 15 entries (table at 0x100769a8); slots 10-14 below.
+        case CG_LAST_CHAT_COMMAND:
+            CG_LastChatCommand();
+            return 0;
+        case CG_LAST_CHAT_COMMAND2:
+            CG_LastChatCommand2();
+            return 0;
+        case CG_SET_KEY_CATCHER:
+            CG_SetKeyCatcher();
+            return 0;
+        case CG_CLEAR_KEY_CATCHER:
+            CG_ClearKeyCatcher();
+            return 0;
+        case CG_GET_ACTIVE_FRAME:
+            return CG_GetActiveFrame();
         default:
             CG_Error("vmMain: unknown command %i", command);
             break;
@@ -142,7 +161,6 @@ vmCvar_t cg_drawAttacker;
 vmCvar_t cg_teamChatTime;
 vmCvar_t cg_teamChatHeight;
 vmCvar_t cg_stats;
-vmCvar_t cg_forceModel;
 vmCvar_t cg_paused;
 vmCvar_t cg_blood;
 vmCvar_t cg_predictItems;
@@ -188,6 +206,7 @@ vmCvar_t cg_armorTiered;
 vmCvar_t cg_allowTaunt;
 vmCvar_t cg_announcer;
 vmCvar_t cg_autoHop;
+vmCvar_t cg_predictLocalRailshots;  // [QL] predicted railgun autofire
 vmCvar_t cg_bob;
 vmCvar_t cg_bubbleTrail;
 vmCvar_t cg_buzzerSound;
@@ -212,6 +231,7 @@ vmCvar_t cg_drawTieredArmorAvailability;
 vmCvar_t cg_enemyHeadColor;
 vmCvar_t cg_enemyLowerColor;
 vmCvar_t cg_enemyUpperColor;
+vmCvar_t r_colorCorrectActive;  // [QL] renderer cvar, mirrored so CG_PlayerTeamSkins can scale the tint
 vmCvar_t cg_flagStyle;
 vmCvar_t cg_forceEnemyModel;
 vmCvar_t cg_forceTeamModel;
@@ -225,6 +245,10 @@ vmCvar_t cg_itemTimers;
 vmCvar_t cg_killBeep;
 vmCvar_t cg_levelTimerDirection;
 vmCvar_t cg_lightningImpact;
+vmCvar_t cg_rocketTrailRadius;
+vmCvar_t cg_grenadeTrailRadius;
+vmCvar_t cg_nailTrailRadius;
+vmCvar_t cg_railReloadTime;
 vmCvar_t cg_lowAmmoWarningPercentile;
 vmCvar_t cg_lowAmmoWarningSound;
 vmCvar_t cg_muzzleFlash;
@@ -443,11 +467,29 @@ vmCvar_t g_training;
 vmCvar_t cg_loadout;
 vmCvar_t cg_spectating;
 
+// [QL] Internal rail-forcing globals. These are NOT registered cvars in QL - the binary
+// populates them (cg_forceTeamRailColor1 DAT_10a658ec, cg_forceTeamRailColor2 DAT_10a6288c,
+// cg_teamRailColor1/2 packed colours) from server enforcement / the cvar-update path.
+// Zero-initialised here, so rail forcing is inactive on a fresh client. Model/skin forcing
+// is now driven by the real cg_force* cvars (see CG_ResolveModelForClient).
+vmCvar_t cg_forceTeamRailColor1;
+vmCvar_t cg_forceTeamRailColor2;
+int cg_teamRailColor1[1];
+int cg_teamRailColor2[1];
+
+// [QL] Last-standing announcer gate (DAT_10b716ec). Registered below so the announcer
+// defaults on; distinct from the cg_announcerLastStandingVO voice-set cvar.
+vmCvar_t cg_announcerLastStanding;
+
 typedef struct {
     vmCvar_t* vmCvar;
     char* cvarName;
     char* defaultString;
     int cvarFlags;
+    // [QL] cgamex86.dll cvarTable_t is 6 fields (24 bytes): entries whose cvarFlags
+    // carries CVAR_CG_RANGE (0x1000) are registered through the 5-arg range syscall.
+    float minValue;
+    float maxValue;
 } cvarTable_t;
 
 static cvarTable_t cvarTable[] = {
@@ -506,7 +548,6 @@ static cvarTable_t cvarTable[] = {
     {&cg_thirdPerson, "cg_thirdPerson", "0", CVAR_CHEAT},  // [QL] cheat-protected (binary: CVAR_CHEAT)
     {&cg_teamChatTime, "cg_teamChatTime", "3000", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_teamChatHeight, "cg_teamChatHeight", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
-    {&cg_forceModel, "cg_forceModel", "0", CVAR_ARCHIVE},
     {&cg_predictItems, "cg_predictItems", "1", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_USERINFO | CVAR_ARCHIVE},  // [QL] binary: CVAR_ARCHIVE | CVAR_USERINFO
     {&cg_deferPlayers, "cg_deferPlayers", "1", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0")
     {&cg_drawTeamOverlay, "cg_drawTeamOverlay", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0")
@@ -554,6 +595,7 @@ static cvarTable_t cvarTable[] = {
     {&cg_allowTaunt, "cg_allowTaunt", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_announcer, "cg_announcer", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_autoHop, "cg_autoHop", "1", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_USERINFO | CVAR_ARCHIVE},  // [QL] binary: CVAR_ARCHIVE | CVAR_USERINFO (server reads via userinfo)
+    {&cg_predictLocalRailshots, "cg_predictLocalRailshots", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] predicted railgun autofire trail
     {&cg_bob, "cg_bob", "0.25", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_bubbleTrail, "cg_bubbleTrail", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_buzzerSound, "cg_buzzerSound", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -578,6 +620,7 @@ static cvarTable_t cvarTable[] = {
     {&cg_enemyHeadColor, "cg_enemyHeadColor", "0x2a8000FF", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_enemyLowerColor, "cg_enemyLowerColor", "0x2a8000FF", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_enemyUpperColor, "cg_enemyUpperColor", "0x2a8000FF", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},
+    {&r_colorCorrectActive, "r_colorCorrectActive", "0", 0},  // [QL] mirror of the renderer cvar (tint scale)
     {&cg_flagStyle, "cg_flagStyle", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_forceEnemyModel, "cg_forceEnemyModel", "", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_forceTeamModel, "cg_forceTeamModel", "", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -591,6 +634,10 @@ static cvarTable_t cvarTable[] = {
     {&cg_killBeep, "cg_killBeep", "7", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_levelTimerDirection, "cg_levelTimerDirection", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lightningImpact, "cg_lightningImpact", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    {&cg_rocketTrailRadius, "cg_rocketTrailRadius", "64", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    {&cg_grenadeTrailRadius, "cg_grenadeTrailRadius", "32", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    {&cg_nailTrailRadius, "cg_nailTrailRadius", "16", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    {&cg_railReloadTime, "cg_railReloadTime", "1500", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lowAmmoWarningPercentile, "cg_lowAmmoWarningPercentile", "0.20", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lowAmmoWarningSound, "cg_lowAmmoWarningSound", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_muzzleFlash, "cg_muzzleFlash", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -807,9 +854,37 @@ static cvarTable_t cvarTable[] = {
     // [QL] internal/ROM cvars
     {&cg_loadout, "cg_loadout", "0", CVAR_ROM},
     {&cg_spectating, "cg_spectating", "0", CVAR_ROM},
+
+    // [QL] last-standing announcer gate (defaults on)
+    {&cg_announcerLastStanding, "cg_announcerLastStanding", "1", CVAR_ARCHIVE},
 };
 
 static int cvarTableSize = ARRAY_LEN(cvarTable);
+
+/*
+=================
+CG_QueueAnnouncement / CG_ResetAnnouncements
+
+[QL] cgamex86.dll announcer queue (CG_QueueAnnouncement @ 0x1004e110,
+CG_ResetAnnouncements @ 0x1004e180). In the binary these share the same ring the QL
+CG_PlayBufferedSounds drains, with a 1500ms (0x5dc) stagger delay per entry.
+ioquakelive has that buffered-sound ring (CG_AddBufferedSound /
+CG_PlayBufferedSounds in cg_view.c, drained each frame on CHAN_ANNOUNCER), so a queued
+announcement is routed straight through it. The per-entry stagger delay is not
+reproduced (minor - announcements drain in order).
+=================
+*/
+void CG_QueueAnnouncement(sfxHandle_t sound) {
+    if (sound) {
+        CG_AddBufferedSound(sound);
+    }
+}
+
+void CG_ResetAnnouncements(void) {
+    memset(cg.soundBuffer, 0, sizeof(cg.soundBuffer));
+    cg.soundBufferIn = 0;
+    cg.soundBufferOut = 0;
+}
 
 /*
 =================
@@ -822,15 +897,24 @@ void CG_RegisterCvars(void) {
     char var[MAX_TOKEN_CHARS];
 
     for (i = 0, cv = cvarTable; i < cvarTableSize; i++, cv++) {
+        // [QL] QL registers CVAR_CG_RANGE cvars through a 5-arg range-register syscall
+        // that the ioquake3 engine does not provide; fall back to standard
+        // registration (no cvarTable entry currently sets CVAR_CG_RANGE).
         trap_Cvar_Register(cv->vmCvar, cv->cvarName,
-                           cv->defaultString, cv->cvarFlags);
+                           cv->defaultString, cv->cvarFlags & ~CVAR_CG_RANGE);
     }
+
+    // [QL] ROM build-version cvar reported by cgamex86.dll build 1069.
+    trap_Cvar_Register(NULL, "cg_version", "1069 win-x86 May 25 2016 15:18:10", CVAR_ROM);
+
+    // [QL] clear any stale vote-active flag on (re)load.
+    trap_Cvar_Set("ui_voteactive", "0");
 
     // see if we are also running the server on this machine
     trap_Cvar_VariableStringBuffer("sv_running", var, sizeof(var));
     cgs.localServer = atoi(var);
 
-    forceModelModificationCount = cg_forceModel.modificationCount;
+    (void)CG_ForceModelCvarsChanged();  // seed the force-model modcount cache
 
     trap_Cvar_Register(NULL, "model", DEFAULT_MODEL, CVAR_USERINFO | CVAR_ARCHIVE);
     trap_Cvar_Register(NULL, "headmodel", DEFAULT_MODEL, CVAR_USERINFO | CVAR_ARCHIVE);
@@ -838,21 +922,57 @@ void CG_RegisterCvars(void) {
 
 /*
 ===================
+CG_ForceModelCvarsChanged
+
+[QL] Have any of the six model/skin-forcing cvars changed since last checked? Mirrors the six
+modificationCount comparisons in binary CG_UpdateCvars (0x10020CA0): all six are compared, and if
+any differ the whole cache is refreshed. QL has no single cg_forceModel; forcing is the granular set.
+===================
+*/
+static qboolean CG_ForceModelCvarsChanged(void) {
+    vmCvar_t* const cvars[6] = {
+        &cg_forceEnemyModel, &cg_forceEnemySkin,
+        &cg_forceTeamModel, &cg_forceTeamSkin,
+        &cg_forceRedTeamModel, &cg_forceBlueTeamModel,
+    };
+    qboolean changed = qfalse;
+    int i;
+
+    for (i = 0; i < 6; i++) {
+        if (cg_forceModelModCounts[i] != cvars[i]->modificationCount) {
+            changed = qtrue;
+        }
+    }
+    if (changed) {
+        for (i = 0; i < 6; i++) {
+            cg_forceModelModCounts[i] = cvars[i]->modificationCount;
+        }
+    }
+    return changed;
+}
+
+/*
+===================
 CG_ForceModelChange
 ===================
 */
-static void CG_ForceModelChange(void) {
+void CG_ForceModelChange(void) {
     int i;
 
-    for (i = 0; i < MAX_CLIENTS; i++) {
-        const char* clientInfo;
-
-        clientInfo = CG_ConfigString(CS_PLAYERS + i);
-        if (!clientInfo[0]) {
+    for (i = 0; i < cgs.maxclients; i++) {
+        // never force the local client's own model (binary CG_ForceModelChange 0x1003e440 skips
+        // cg.clientNum; this also keeps it safe to call from CG_NewClientInfo without recursing).
+        if (i == cg.clientNum) {
             continue;
         }
+        // CG_NewClientInfo handles an empty configstring itself (memset + return), so the binary
+        // calls it unconditionally - no empty-skip here.
         CG_NewClientInfo(i);
     }
+
+    // binary CG_ForceModelChange re-derives each re-registered client's model scale inline; that
+    // is the same per-client step as CG_UpdateAllModelScales (0x1003e4b0), so run it once here.
+    CG_UpdateAllModelScales();
 }
 
 /*
@@ -882,10 +1002,12 @@ void CG_UpdateCvars(void) {
         }
     }
 
-    // if force model changed
-    if (forceModelModificationCount != cg_forceModel.modificationCount) {
-        forceModelModificationCount = cg_forceModel.modificationCount;
-        CG_ForceModelChange();
+    // [QL] if any of the six model/skin-forcing cvars changed, re-register the LOCAL client.
+    // Binary CG_UpdateCvars (0x10020CA0), when !cg.demoPlayback, calls CG_NewClientInfo(cg.clientNum);
+    // its tail then cascades into CG_ForceModelChange + CG_LoadDeferredPlayers for every other
+    // client (CG_NewClientInfo 0x1003e640). Not run during demo playback.
+    if (!cg.demoPlayback && CG_ForceModelCvarsChanged()) {
+        CG_NewClientInfo(cg.clientNum);
     }
 }
 
@@ -901,6 +1023,265 @@ int CG_LastAttacker(void) {
         return -1;
     }
     return cg.snap->ps.persistant[PERS_ATTACKER];
+}
+
+// ============================================================================
+// [QL] vmMain export slots 10-14 (cgamex86.dll table at 0x100769a8).
+// ============================================================================
+
+// Address: 0x10029ff0
+// Re-adds the last outgoing chat line to the chat display and arms a 3s recall
+// timer. Matches: ioquakelive (QL-only export).
+void CG_LastChatCommand(void) {
+    char msg[256];
+
+    cg.lastChatTime = cg.time + 3000;
+    trap_Cvar_VariableStringBuffer("cg_lastmsg", msg, sizeof(msg));
+    CG_AddChat(msg, 0, 0);
+}
+
+// Address: 0x1002a060
+// Same as CG_LastChatCommand but arms the second recall timer.
+void CG_LastChatCommand2(void) {
+    char msg[256];
+
+    cg.lastChatTime2 = cg.time + 3000;
+    trap_Cvar_VariableStringBuffer("cg_lastmsg", msg, sizeof(msg));
+    CG_AddChat(msg, 0, 0);
+}
+
+// Address: 0x10007cd0
+// Sets the cgame key-catcher flag (global 0x10a9c9b4) if not already set.
+void CG_SetKeyCatcher(void) {
+    if (cg.keyCatcherActive == 0) {
+        cg.keyCatcherActive = 1;
+    }
+}
+
+// Address: 0x10007cf0
+// Clears the cgame key-catcher flag if set.
+void CG_ClearKeyCatcher(void) {
+    if (cg.keyCatcherActive != 0) {
+        cg.keyCatcherActive = 0;
+    }
+}
+
+// Address: 0x1004e4d0
+// Returns the client frame counter (dword at 0x10a9c1f4, cg.clientFrame),
+// bumped once per rendered scene in CG_DrawActiveFrame.
+int CG_GetActiveFrame(void) {
+    return cg.clientFrame;
+}
+
+// ============================================================================
+// [QL] match / race / map-name helpers
+// ============================================================================
+
+// Address: 0x10001320
+// Formats a millisecond race time as "[-]M:0S.mmm".
+const char* CG_FormatRaceTime(int msec) {
+    int absMsec = (msec < 0) ? -msec : msec;
+    float seconds = (float)absMsec / 1000.0f;
+    int minutes = (int)seconds / 60;
+    float secs = seconds - (float)minutes * 60.0f;
+    const char* pad = (secs < 10.0f) ? "0" : "";
+    const char* sign = (msec < 0) ? "-" : "";
+
+    return va("%s%d:%s%.03f", sign, minutes, pad, (double)secs);
+}
+
+// Address: 0x100253f0
+// Reads ui/country.txt and pre-caches every country flag shader.
+void CG_CacheCountryFlags(void) {
+    fileHandle_t f;
+    int len;
+    char buf[4096];
+    char code[32 + 1024];  // code[0..31] name + code[32..] path scratch
+    char* p;
+    int i;
+
+    code[0] = '\0';
+
+    trap_R_RegisterShaderNoMip("ui/assets/flags/none.tga");
+
+    len = trap_FS_FOpenFile("ui/country.txt", &f, FS_READ);
+    if (len <= 0) {
+        Com_Printf("ERROR: CG_CacheCountryFlags: %s too small\n", "ui/country.txt");
+        return;
+    }
+    if (len >= (int)sizeof(buf)) {
+        Com_Printf("ERROR: CG_CacheCountryFlags: %s too large. Size is %d, limit is %d\n",
+                   "ui/country.txt", len, (int)sizeof(buf));
+        return;
+    }
+
+    trap_FS_Read(buf, len, f);
+    buf[len] = '\0';
+    trap_FS_FCloseFile(f);
+
+    p = code;
+    for (i = 0; i < len; i++) {
+        char c = buf[i];
+        if (c == '\r' || c == '\t' || c == ' ') {
+            continue;
+        }
+        if (c == '\n') {
+            *p = '\0';
+            if (code[0] != '\0') {
+                Com_sprintf(code + 32, 1024, "ui/assets/flags/%s.tga", code);
+                trap_R_RegisterShaderNoMip(code + 32);
+            }
+            code[0] = '\0';
+            p = code;
+        } else {
+            *p++ = c;
+        }
+    }
+}
+
+// Address: 0x1002a4a0
+// Resets race-mode tracking state; on a full reset also clears the personal
+// best. Only acts in GT_RACE.
+// NOTE: the QL race globals (0x10abaab0..0x10abaad4) map onto ioquakelive's
+// cg.race sub-struct + cg.raceActive; the exact field pairing is a Phase-3
+// reconciliation item (see cg_local.h race notes).
+void CG_RaceInit(int fullReset) {
+    if (cgs.gametype != GT_RACE) {
+        return;
+    }
+
+    cg.raceActive = 0;                    // 0x10abaab0
+    cg.race.startTime = 0;                // 0x10abaab4
+    cg.race.finishTime = 0;               // 0x10abaac0
+    cg.race.bestSplit = -1;               // 0x10abaac4
+    cg.race.checkpointDiff = -1;          // 0x10abaac8
+    cg.race.hasDiff = qfalse;             // 0x10abaacc
+    cg.race.checkpointCount = 0;          // 0x10abaad0
+    cg.race.currentCheckpointEnt = 0;     // 0x10abaad4
+
+    if (fullReset) {
+        cg.race.bestTime = 0;             // 0x10abaab8
+        cg.race.totalCheckpoints = 0;     // 0x10abaabc
+    }
+
+    trap_SendConsoleCommand("race_reset");
+}
+
+// Address: 0x1002a500
+// Returns the local player's name (colour codes kept) for end-of-match display.
+const char* CG_DidLocalPlayerWin(void) {
+    static char name[40];
+    int clientNum = cg.snap->ps.clientNum;
+
+    Q_strncpyz(name, cgs.clientinfo[clientNum].name, sizeof(name));
+    return name;
+}
+
+// Address: 0x1002a5f0
+// Returns the number of overtime periods elapsed past the time limit.
+int CG_GetOvertimeCount(void) {
+    int timeUsed;
+    int elapsed;
+    int overtimeCount;
+    int i;
+
+    // [QL] 0x10a403e0: freeze/timeout end time, else current time.
+    timeUsed = cgs.freezeEnd;
+    if (timeUsed == 0) {
+        timeUsed = cg.time;
+    }
+
+    elapsed = (cgs.timelimit * 60000 - timeUsed + cgs.levelStartTime) / 1000;
+
+    if (elapsed <= 0) {
+        return 0;
+    }
+
+    overtimeCount = 1;
+    for (i = 1; i <= elapsed; i++) {
+        // [QL] 0x10a3ffa8 = overtime period length (g_overtime == cgs.timelimit_overtime).
+        if (cgs.timelimit_overtime != 0 && (i % cgs.timelimit_overtime) == 0) {
+            overtimeCount++;
+        }
+    }
+    return overtimeCount;
+}
+
+// Address: 0x10056f90
+// Translates an internal map filename to its display name via a fixed table
+// (49 entries, extracted from cgamex86.dll 0x10075df0). Falls back to the
+// input name when no prefix match is found.
+typedef struct {
+    const char* filename;
+    const char* displayName;
+} mapTranslation_t;
+
+static const mapTranslation_t mapTranslations[] = {
+    { "qzca1", "asylum" },
+    { "qzca2", "trinity" },
+    { "qzca3", "quarantine" },
+    { "qzctf1", "duelingkeeps" },
+    { "qzctf2", "troubledwaters" },
+    { "qzctf3", "stronghold" },
+    { "qzctf4", "spacectf" },
+    { "qzctf5", "falloutbunker" },
+    { "qzctf6", "beyondreality" },
+    { "qzctf7", "ironworks" },
+    { "qzctf8", "siberia" },
+    { "qzctf9", "bloodlust" },
+    { "qzctf10", "courtyard" },
+    { "qzdm1", "arenagate" },
+    { "qzdm2", "spillway" },
+    { "qzdm3", "hearth" },
+    { "qzdm4", "eviscerated" },
+    { "qzdm5", "forgotten" },
+    { "qzdm6", "campgrounds" },
+    { "qzdm7", "retribution" },
+    { "qzdm8", "brimstoneabbey" },
+    { "qzdm9", "heroskeep" },
+    { "qzdm10", "namelessplace" },
+    { "qzdm11", "chemicalreaction" },
+    { "qzdm12", "dredwerkz" },
+    { "qzdm13", "lostworld" },
+    { "qzdm14", "grimdungeons" },
+    { "qzdm15", "demonkeep" },
+    { "qzdm16", "cobaltstation" },
+    { "qzdm17", "longestyard" },
+    { "qzdm18", "spacechamber" },
+    { "qzdm19", "terminalheights" },
+    { "qzdm20", "hiddenfortress" },
+    { "qzteam1", "basesiege" },
+    { "qzteam2", "falloutbunker" },
+    { "qzteam3", "innersanctums" },
+    { "qzteam4", "scornforge" },
+    { "qzteam6", "vortexportal" },
+    { "qzteam7", "rebound" },
+    { "qztourney1", "powerstation" },
+    { "qztourney2", "provinggrounds" },
+    { "qztourney3", "hellsgate" },
+    { "qztourney4", "verticalvengeance" },
+    { "qztourney5", "hellsgateredux" },
+    { "qztourney6", "almostlost" },
+    { "qztourney7", "furiousheights" },
+    { "qztourney8", "sacellum" },
+    { "qztourney9", "houseofdecay" },
+    { "ztntourney1", "bloodrun" },
+};
+
+const char* CG_TranslateMapName(const char* mapname) {
+    int i;
+
+    if (!mapname) {
+        return NULL;
+    }
+
+    for (i = 0; i < (int)ARRAY_LEN(mapTranslations); i++) {
+        if (mapTranslations[i].filename &&
+            !Q_stricmpn(mapname, mapTranslations[i].filename, strlen(mapname))) {
+            return mapTranslations[i].displayName;
+        }
+    }
+    return mapname;
 }
 
 void QDECL CG_Printf(const char* msg, ...) {
@@ -1046,6 +1427,15 @@ static void CG_RegisterSounds(void) {
 
         cgs.media.redScoredSound = trap_S_RegisterSound("sound/vo/red_scores", qtrue);
         cgs.media.blueScoredSound = trap_S_RegisterSound("sound/vo/blue_scores", qtrue);
+
+        // [QL] match/round-win announcer VOs (GTS 14-18; binary CG_RegisterSounds
+        // registers red_wins.ogg/blue_wins.ogg/red_wins_round.ogg/blue_wins_round.ogg/
+        // round_draw.ogg). Queued via CG_QueueAnnouncement in the GTS event handler.
+        cgs.media.redWinsSound = trap_S_RegisterSound("sound/vo/red_wins", qtrue);
+        cgs.media.blueWinsSound = trap_S_RegisterSound("sound/vo/blue_wins", qtrue);
+        cgs.media.redWinsRoundSound = trap_S_RegisterSound("sound/vo/red_wins_round", qtrue);
+        cgs.media.blueWinsRoundSound = trap_S_RegisterSound("sound/vo/blue_wins_round", qtrue);
+        cgs.media.roundDrawSound = trap_S_RegisterSound("sound/vo/round_draw", qtrue);
 
         cgs.media.captureYourTeamSound = trap_S_RegisterSound("sound/teamplay/flagcapture_yourteam", qtrue);
         cgs.media.captureOpponentSound = trap_S_RegisterSound("sound/teamplay/flagcapture_opponent", qtrue);
@@ -1217,6 +1607,7 @@ static void CG_RegisterSounds(void) {
     // [QL] moved from sound/feedback/voc_youwin to sound/vo/you_win
     cgs.media.winnerSound = trap_S_RegisterSound("sound/vo/you_win.ogg", qfalse);
     cgs.media.loserSound = trap_S_RegisterSound("sound/vo/you_lose.ogg", qfalse);
+    cgs.media.newHighScoreSound = trap_S_RegisterSound("new_high_score.ogg", qfalse);  // [QL] binary path string 0x1006cfa4
 
     cgs.media.wstbimplSound = trap_S_RegisterSound("sound/weapons/proxmine/wstbimpl.ogg", qfalse);
     cgs.media.wstbimpmSound = trap_S_RegisterSound("sound/weapons/proxmine/wstbimpm.ogg", qfalse);
@@ -1234,6 +1625,7 @@ static void CG_RegisterSounds(void) {
     cgs.media.overtimeSound = trap_S_RegisterSound("sound/world/klaxon2.ogg", qfalse);
     cgs.media.thawTickSound = trap_S_RegisterSound("sound/misc/tim_pump.ogg", qfalse);
     cgs.media.raceFinishSound = trap_S_RegisterSound("sound/world/klaxon1.ogg", qfalse);
+    cgs.media.pauseSound = trap_S_RegisterSound("sound/world/klaxon1.ogg", qfalse);  // [QL] pause klaxon (DAT_10a5fcf4)
     cgs.media.infectedSound = trap_S_RegisterSound("sound/vo/infected.ogg", qfalse);
 
     // [QL] Race checkpoint assets (binary-verified from cgamex86.dll CG_RegisterGraphics)
@@ -1555,6 +1947,30 @@ static void CG_RegisterGraphics(void) {
     cgs.media.flagShaders[0] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_in_base.tga");
     cgs.media.flagShaders[1] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_capture.tga");
     cgs.media.flagShaders[2] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_missing.tga");
+
+    // [QL] flag-status HUD icon set for CG_DrawFlagStatus / CG_DrawOneFlagStatus.
+    // Indexed [icon + team*4]: team 0 neutral, 1 red, 2 blue; icon 0 at-base, 1 taken,
+    // 2 dropped, 3 stolen. (binary CG_RegisterGraphics, store base DAT_10a5fc2c @0x10023a4f.)
+    {
+        static const char* flagStatusShaders[12] = {
+            "gfx/2d/flag_status/flag_at_base.tga",
+            "gfx/2d/flag_status/flag_taken.tga",
+            "gfx/2d/flag_status/flag_dropped.tga",
+            "gfx/2d/flag_status/flag_stolen.tga",
+            "gfx/2d/flag_status/red_flag_at_base.tga",
+            "gfx/2d/flag_status/red_flag_taken.tga",
+            "gfx/2d/flag_status/red_flag_dropped.tga",
+            "gfx/2d/flag_status/red_flag_stolen.tga",
+            "gfx/2d/flag_status/blue_flag_at_base.tga",
+            "gfx/2d/flag_status/blue_flag_taken.tga",
+            "gfx/2d/flag_status/blue_flag_dropped.tga",
+            "gfx/2d/flag_status/blue_flag_stolen.tga",
+        };
+        int fi;
+        for (fi = 0; fi < 12; fi++) {
+            cgs.media.flagStatusHandles[fi] = trap_R_RegisterShaderNoMip(flagStatusShaders[fi]);
+        }
+    }
 
     // [QL] head models are in the player directory, not a separate heads/ directory
     trap_R_RegisterModel("models/players/james/lower.md3");
@@ -2569,6 +2985,7 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum) {
     cg.race.nextCheckpointEnt = -1;
     cg.race.nextNextCheckpointEnt = -1;
     cg.race.currentCheckpointEnt = -1;
+    cg.autoFollowClient = -1;  // [QL] deferred auto-follow idle (CG_CheckAutoFollow)
     CG_ClearChat();
 
     cgs.processedSnapshotNum = serverMessageNum;
@@ -2654,6 +3071,12 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum) {
     cgs.levelStartTime = atoi(s);
 
     CG_ParseServerinfo();
+    // [QL] parse player model/head overrides before clients are registered so the
+    // g_allowCustomHeadmodels / model-override rules apply on the initial load.
+    CG_ParseConfigParams();
+    // [QL] custom-settings bitmask must be set before CG_RegisterClients so the RR-infected
+    // bones model (customSettings bit 0x4000000) applies to clients on the initial load.
+    cgs.customSettings = atoi(CG_ConfigString(CS_CUSTOM_SETTINGS));
 
     // load the new map
     CG_LoadingString("collision map");
@@ -2694,6 +3117,9 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum) {
 
     // Make sure we have update values (scores)
     CG_SetConfigValues();
+
+    // [QL] pre-cache country flag shaders for the scoreboard/profile UI.
+    CG_CacheCountryFlags();
 
     CG_StartMusic();
 

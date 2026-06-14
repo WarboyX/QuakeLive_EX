@@ -262,6 +262,16 @@ static void CG_Obituary(entityState_t* ent) {
         case MOD_TRIGGER_HURT:
             message = "was in the wrong place";
             break;
+        // [QL] new environment/solo means-of-death
+        case MOD_SWITCH_TEAMS:
+            message = "switched teams";
+            break;
+        case MOD_THAW:
+            // [QL] auto-thaw (no attacker) shows a solo message
+            if (attacker == ENTITYNUM_WORLD || attacker < 0 || attacker >= MAX_CLIENTS) {
+                message = "was auto-thawed";
+            }
+            break;
         default:
             message = NULL;
             break;
@@ -308,6 +318,15 @@ static void CG_Obituary(entityState_t* ent) {
                 } else {
                     message = "found his prox mine";
                 }
+                break;
+            // [QL] lightning-gun water discharge self-kill
+            case MOD_LIGHTNING_DISCHARGE:
+                if (gender == GENDER_FEMALE)
+                    message = "discharged herself";
+                else if (gender == GENDER_NEUTER)
+                    message = "discharged itself";
+                else
+                    message = "discharged himself";
                 break;
             default:
                 if (gender == GENDER_FEMALE)
@@ -392,6 +411,7 @@ static void CG_Obituary(entityState_t* ent) {
                 message2 = "'s plasmagun";
                 break;
             case MOD_RAILGUN:
+            case MOD_RAILGUN_HEADSHOT:              // [QL]
                 message = "was railed by";
                 break;
             case MOD_LIGHTNING:
@@ -423,6 +443,17 @@ static void CG_Obituary(entityState_t* ent) {
             case MOD_TELEFRAG:
                 message = "tried to invade";
                 message2 = "'s personal space";
+                break;
+            // [QL] new means-of-death obituary lines
+            case MOD_THAW:
+                message = "was thawed by";
+                break;
+            case MOD_LIGHTNING_DISCHARGE:
+                message = "was discharged by";
+                break;
+            case MOD_HMG:
+                message = "was ripped up by";
+                message2 = "'s HMG";
                 break;
             default:
                 message = "was killed by";
@@ -754,7 +785,44 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_TAUNT:
             DEBUGNAME("EV_TAUNT");
-            trap_S_StartSound(NULL, es->number, CHAN_VOICE, CG_CustomSound(es->number, "*taunt.wav"));
+            // [QL] cg_allowTaunt gates the taunt sound (binary tests DAT_10a68eec, exact-nonzero)
+            if (cg_allowTaunt.integer) {
+                trap_S_StartSound(NULL, es->number, CHAN_VOICE, CG_CustomSound(es->number, "*taunt.wav"));
+            }
+            break;
+
+        // [QL] Voice-taunt events (0x4b-0x50). Each enqueues a voice chat for the
+        // taunting client via CG_VoiceChatLocal(client, token). Binary passes the
+        // client in es->number (0x0, [EBP]) NOT es->clientNum. Binary gates
+        // EV_TAUNT_YES/EV_TAUNT_NO on cg_allowTaunt; the four order taunts are
+        // never gated. Tokens are the literal voice-chat command names.
+        case EV_TAUNT_YES:                      // 0x4b
+            DEBUGNAME("EV_TAUNT_YES");
+            if (cg_allowTaunt.integer) {
+                CG_VoiceChatLocal(es->number, "yes");
+            }
+            break;
+        case EV_TAUNT_NO:                       // 0x4c
+            DEBUGNAME("EV_TAUNT_NO");
+            if (cg_allowTaunt.integer) {
+                CG_VoiceChatLocal(es->number, "no");
+            }
+            break;
+        case EV_TAUNT_FOLLOWME:                 // 0x4d
+            DEBUGNAME("EV_TAUNT_FOLLOWME");
+            CG_VoiceChatLocal(es->number, "followme");
+            break;
+        case EV_TAUNT_GETFLAG:                  // 0x4e
+            DEBUGNAME("EV_TAUNT_GETFLAG");
+            CG_VoiceChatLocal(es->number, "ongetflag");
+            break;
+        case EV_TAUNT_GUARDBASE:                // 0x4f
+            DEBUGNAME("EV_TAUNT_GUARDBASE");
+            CG_VoiceChatLocal(es->number, "ondefense");
+            break;
+        case EV_TAUNT_PATROL:                   // 0x50
+            DEBUGNAME("EV_TAUNT_PATROL");
+            CG_VoiceChatLocal(es->number, "onpatrol");
             break;
         case EV_WATER_TOUCH:
             DEBUGNAME("EV_WATER_TOUCH");
@@ -1004,7 +1072,14 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_JUICED:
             DEBUGNAME("EV_JUICED");
-            CG_InvulnerabilityJuiced(cent->lerpOrigin);
+            // [QL] repurposed (binary 0x47): in freeze tag this is the "player
+            // frozen" ice effect; in every other gametype it gibs the player.
+            // Binary gates on DAT_10a5f430 (freeze media / freeze-tag active).
+            if (cgs.gametype == GT_FREEZE) {
+                CG_FreezeEffect(cent->lerpOrigin);
+            } else {
+                CG_GibPlayer(cent->lerpOrigin);
+            }
             break;
         case EV_LIGHTNINGBOLT:
             DEBUGNAME("EV_LIGHTNINGBOLT");
@@ -1012,7 +1087,12 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_SCOREPLUM:
             DEBUGNAME("EV_SCOREPLUM");
-            CG_ScorePlum(cent->currentState.otherEntityNum, cent->lerpOrigin, cent->currentState.time);
+            // [QL] binary guards on the local player before spawning the plum
+            // (CG_EntityEvent 0x40: snap ps.clientNum == es->clientNum 0xb0).
+            // Score value rides es->time (0x5c).
+            if (cg.snap->ps.clientNum == es->clientNum) {
+                CG_ScorePlum(cent->currentState.otherEntityNum, cent->lerpOrigin, cent->currentState.time);
+            }
             break;
 
         //
@@ -1187,6 +1267,91 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 case GTS_KAMIKAZE:
                     trap_S_StartLocalSound(cgs.media.kamikazeFarSound, CHAN_ANNOUNCER);
                     break;
+
+                // ============================================================
+                // [QL] GTS 14-24 (binary CG_EntityEvent inner switch on eventParm).
+                // Binary-verified transport (see global_team_sound_t):
+                //   es->eventParm   = GTS_* index (this switch)
+                //   es->modelindex2 = affected/surviving/capturing team
+                //   es->powerups    = DOM point id (GTS_DOMINATION_POINT_CAPTURE)
+                // ============================================================
+                case GTS_REDTEAM_WON:  // 14 (binary case 0xe)
+                {
+                    int myTeam = cgs.clientinfo[cg.clientNum].team;
+                    CG_ResetAnnouncements();
+                    // TODO: match-win buzzer gated on cg_teamEventSounds in
+                    // the binary; that cvar is not yet in ioquakelive, so play the
+                    // fanfare unconditionally for now.
+                    trap_S_StartLocalSound(cgs.media.countFightSound, CHAN_ANNOUNCER);
+                    if (myTeam == TEAM_RED)
+                        trap_S_StartBackgroundTrack("music/win", "");
+                    else if (myTeam == TEAM_BLUE)
+                        trap_S_StartBackgroundTrack("music/loss", "");
+                    CG_QueueAnnouncement(cgs.media.redWinsSound);
+                    cg.intermissionStarted = qtrue;
+                    break;
+                }
+                case GTS_BLUETEAM_WON:  // 15 (binary case 0xf)
+                {
+                    int myTeam = cgs.clientinfo[cg.clientNum].team;
+                    CG_ResetAnnouncements();
+                    trap_S_StartLocalSound(cgs.media.countFightSound, CHAN_ANNOUNCER);
+                    if (myTeam == TEAM_BLUE)
+                        trap_S_StartBackgroundTrack("music/win", "");
+                    else if (myTeam == TEAM_RED)
+                        trap_S_StartBackgroundTrack("music/loss", "");
+                    CG_QueueAnnouncement(cgs.media.blueWinsSound);
+                    cg.intermissionStarted = qtrue;
+                    break;
+                }
+                case GTS_RED_WINS_ROUND:  // 16 (binary case 0x10)
+                    CG_CenterPrint("Red Team Wins Round!", 90, 0.5f);
+                    CG_QueueAnnouncement(cgs.media.redWinsRoundSound);
+                    break;
+                case GTS_BLUE_WINS_ROUND:  // 17 (binary case 0x11)
+                    CG_CenterPrint("Blue Team Wins Round!", 90, 0.5f);
+                    CG_QueueAnnouncement(cgs.media.blueWinsRoundSound);
+                    break;
+                case GTS_DRAW_ROUND:  // 18 (binary case 0x12)
+                    CG_ResetAnnouncements();
+                    CG_CenterPrint("Round Draw", 90, 0.5f);
+                    CG_QueueAnnouncement(cgs.media.roundDrawSound);
+                    // [QL] Red Rover elimination also lists the surviving
+                    // players parsed from a server id string (cgs.nextmaps in the
+                    // binary); that source is not yet mirrored into cgs, so only the
+                    // common path is ported.
+                    break;
+                case GTS_LAST_STANDING:  // 19 (binary case 0x13)
+                    // gate: cg_announcerLastStanding, and only for the surviving
+                    // team (es->modelindex2 == local player's team).
+                    if (cg_announcerLastStanding.integer &&
+                        cgs.clientinfo[cg.clientNum].team == es->modelindex2) {
+                        CG_QueueAnnouncement(cgs.media.lastStandingSound);
+                    }
+                    break;
+                case GTS_ROUND_OVER:  // 20 (binary case 0x14)
+                    CG_CenterPrint("Round Over", 90, 0.5f);
+                    // [QL] Red Rover elimination shows "<name> Wins!" / survivor list;
+                    // requires the parsed id source not yet in cgs.
+                    // TODO: round-over announcer sfx not yet in cgs.media
+                    break;
+                case GTS_DOMINATION_POINT_CAPTURE:  // 23 (binary case 0x17)
+                    if (es->modelindex2 == 0) {
+                        // round-start "fight" sound
+                        trap_S_StartLocalSound(cgs.media.countFightSound, CHAN_ANNOUNCER);
+                    } else {
+                        // es->modelindex2 = capturing team; es->powerups = DOM point id.
+                        // TODO: "captured point <name>" CenterPrint needs
+                        // BG_GetDomPointFromIdentifier, and the DOM-capture announcer
+                        // sfx is not yet in cgs.media; port when DOM is wired up.
+                    }
+                    break;
+                case GTS_SURVIVOR:  // 24 (binary case 0x18)
+                    if (cgs.clientinfo[cg.clientNum].team == es->modelindex2) {
+                        trap_S_StartLocalSound(cgs.media.survivorSound, CHAN_ANNOUNCER);
+                    }
+                    break;
+
                 default:
                     break;
             }
@@ -1296,13 +1461,17 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_ITEM_PICKUP_SPEC:
             DEBUGNAME("EV_ITEM_PICKUP_SPEC");
-            // [QL] spectator item pickup notification - updates tracking table
+            // [QL] spectator item pickup notification - updates tracking table.
+            // Binary CG_ItemPickupSpec (0x53) keys the table on the picking-up
+            // client in es->otherEntityNum (0x94), stores the item index from
+            // es->modelindex (0xa8), the amount from es->modelindex2 (0xac) and
+            // the origin from es->pos.trBase (0x18) - NOT eventParm/generic1.
             {
                 int slot, freeSlot = -1;
                 // search for existing entry or free slot
                 for (slot = 0; slot < MAX_SPEC_PICKUPS; slot++) {
                     if (cg.specPickups[slot].active &&
-                        cg.specPickups[slot].clientNum == es->eventParm) {
+                        cg.specPickups[slot].clientNum == es->otherEntityNum) {
                         freeSlot = slot;
                         break;
                     }
@@ -1312,9 +1481,9 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 }
                 if (freeSlot >= 0) {
                     cg.specPickups[freeSlot].active = qtrue;
-                    cg.specPickups[freeSlot].clientNum = es->eventParm;
+                    cg.specPickups[freeSlot].clientNum = es->otherEntityNum;
                     cg.specPickups[freeSlot].itemIndex = es->modelindex;
-                    cg.specPickups[freeSlot].amount = es->generic1;
+                    cg.specPickups[freeSlot].amount = es->modelindex2;
                     cg.specPickups[freeSlot].time = cg.time;
                     VectorCopy(es->pos.trBase, cg.specPickups[freeSlot].origin);
                 }
@@ -1348,39 +1517,16 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_MISSILE_MISS_DMGTHROUGH:
             DEBUGNAME("EV_MISSILE_MISS_DMGTHROUGH");
+            // [QL] wallbang impact -> dedicated damage-through effect (binary 0x56
+            // calls CG_MissileHitWall_DmgThrough, not the plain CG_MissileHitWall)
             ByteToDir(es->eventParm, dir);
-            CG_MissileHitWall(es->weapon, 0, position, dir, IMPACTSOUND_DEFAULT);
+            CG_MissileHitWall_DmgThrough(position, dir, es->weapon);
             break;
         case EV_THAW_PLAYER:
             DEBUGNAME("EV_THAW_PLAYER");
-            // [QL] freeze tag thaw - spawn 7 ice shard fragments
-            {
-                int shard;
-                for (shard = 0; shard < 7; shard++) {
-                    localEntity_t* le = CG_AllocLocalEntity();
-                    refEntity_t* re = &le->refEntity;
-                    le->leType = LE_FRAGMENT;
-                    le->startTime = cg.time;
-                    le->endTime = cg.time + 3000 + random() * 3000;
-                    re->hModel = cgs.media.iceShardModel;
-                    re->customShader = (shard & 1) ?
-                        cgs.media.iceShardShader2 : cgs.media.iceShardShader1;
-                    re->renderfx = 0;
-                    VectorCopy(cent->lerpOrigin, le->pos.trBase);
-                    le->pos.trBase[2] += 24;  // center height
-                    le->pos.trType = TR_GRAVITY;
-                    le->pos.trTime = cg.time;
-                    le->pos.trDelta[0] = crandom() * 150;
-                    le->pos.trDelta[1] = crandom() * 150;
-                    le->pos.trDelta[2] = 150 + random() * 100;
-                    AxisCopy(axisDefault, re->axis);
-                    le->bounceFactor = 0.3f;
-                    re->nonNormalizedAxes = qtrue;
-                    VectorScale(re->axis[0], 0.6f, re->axis[0]);
-                    VectorScale(re->axis[1], 0.6f, re->axis[1]);
-                    VectorScale(re->axis[2], 0.6f, re->axis[2]);
-                }
-            }
+            // [QL] freeze-tag thaw complete (binary 0x57): spawn the ice-shard
+            // burst. The shard spawning lives in cg_effects.c CG_ThawPlayer.
+            CG_ThawPlayer(cent->lerpOrigin);
             break;
         case EV_THAW_TICK:
             DEBUGNAME("EV_THAW_TICK");
@@ -1388,20 +1534,10 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_SHOTGUN_KILL:
             DEBUGNAME("EV_SHOTGUN_KILL");
-            // [QL] shotgun kill - spawns extra blood splatter at victim
-            {
-                int bursts = es->generic1 / 5;
-                int i;
-                vec3_t bloodOrigin;
-                for (i = 0; i < bursts; i++) {
-                    VectorCopy(cent->lerpOrigin, bloodOrigin);
-                    bloodOrigin[0] += (rand() & 31) - 16;
-                    bloodOrigin[1] += (rand() & 31) - 16;
-                    bloodOrigin[2] += (rand() % 24) + 8;
-                    CG_Bleed(bloodOrigin, es->number);
-                    CG_Bleed(bloodOrigin, es->number);
-                }
-            }
+            // [QL] delayed shotgun-kill blood burst (binary 0x59). The blood-puff
+            // logic (count = es->generic1/5, at es->otherEntityNum skin) lives in
+            // cg_weapons.c CG_ShotgunKillEffect.
+            CG_ShotgunKillEffect(cent);
             break;
         case EV_POI:
             DEBUGNAME("EV_POI");
@@ -1418,32 +1554,24 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_LIGHTNING_DISCHARGE:
             DEBUGNAME("EV_LIGHTNING_DISCHARGE");
-            // [QL] LG water discharge - electric sprite effect at player origin
-            {
-                localEntity_t *le = CG_AllocLocalEntity();
-                refEntity_t *re = &le->refEntity;
-                le->leType = LE_SPRITE_EXPLOSION;
-                le->startTime = cg.time;
-                le->endTime = cg.time + es->eventParm + 300;
-                le->lifeRate = 1.0f / (le->endTime - le->startTime);
-                VectorCopy(cent->lerpOrigin, re->origin);
-                re->radius = (float)(es->eventParm * 10 + 48) / 16.0f;
-                re->customShader = trap_R_RegisterShader("models/weaphits/electric");
-                re->shaderRGBA[0] = 0xff;
-                re->shaderRGBA[1] = 0xff;
-                re->shaderRGBA[2] = 0xff;
-                re->shaderRGBA[3] = 0xff;
-            }
+            // [QL] LG water-discharge electric burst (binary 0x5c). Intensity is
+            // taken from the event parameter; the sprite effect lives in
+            // cg_effects.c CG_LightningDischargeEffect.
+            CG_LightningDischargeEffect(es->eventParm);
             break;
         case EV_RACE_START:
             DEBUGNAME("EV_RACE_START");
             // [QL] race mode start - init race state for local player
             if (cg.snap->ps.clientNum == es->clientNum) {
+                // [QL] binary transport (CG_EntityEvent 0x5d): startTime rides
+                // es->time (0x5c), the total rides es->powerups (0xc4) and the
+                // first checkpoint ent rides es->otherEntityNum2 (0x98). It does
+                // NOT use otherEntityNum/eventParm here.
                 cg.race.active = qtrue;
-                cg.race.startTime = es->otherEntityNum;
+                cg.race.startTime = es->time;
                 cg.race.checkpointDiff = 0;
                 cg.race.hasDiff = qfalse;
-                cg.race.totalCheckpoints = es->eventParm;  // total checkpoint count
+                cg.race.totalCheckpoints = es->powerups;  // total checkpoint count
                 cg.race.bestSplit = 0;
                 cg.race.checkpointCount = 0;
                 cg.race.nextCheckpointEnt = es->otherEntityNum2;  // entity number of first checkpoint
@@ -1456,13 +1584,19 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_RACE_CHECKPOINT");
             // [QL] race checkpoint - show split time center print
             if (cg.snap->ps.clientNum == es->clientNum) {
-                cg.race.checkpointCount = es->generic1;  // checkpoint index from server
+                // [QL] binary transport (CG_EntityEvent 0x5e): the running count
+                // is incremented locally (not sent), the next checkpoint ent rides
+                // es->otherEntityNum2 (0x98), the total rides es->powerups (0xc4),
+                // and the split time rides es->time (0x5c) but is only valid when
+                // es->generic1 (0xe0) is nonzero. The binary has no second-level
+                // lookahead. Previously read generic1 as the count, otherEntityNum
+                // as the next ent, and gated the split on time.
+                cg.race.checkpointCount++;
+                cg.race.totalCheckpoints = es->powerups;
                 cg.race.currentCheckpointEnt = cent->currentState.number;
-                // Two-level lookahead from server
-                cg.race.nextCheckpointEnt = es->otherEntityNum ? es->otherEntityNum : -1;
-                cg.race.nextNextCheckpointEnt = es->otherEntityNum2 ? es->otherEntityNum2 : -1;
-                // es->time = delta from personal best (0 if no best)
-                if (es->time != 0) {
+                cg.race.nextCheckpointEnt = es->otherEntityNum2 ? es->otherEntityNum2 : -1;
+                cg.race.nextNextCheckpointEnt = -1;
+                if (es->generic1 != 0) {
                     cg.race.checkpointDiff = es->time;
                     cg.race.hasDiff = qtrue;
                 } else {
@@ -1509,7 +1643,9 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 cg.race.active = qfalse;
                 cg.race.nextCheckpointEnt = -1;
                 cg.race.currentCheckpointEnt = -1;
-                if (es->powerups == 0) {
+                // [QL] binary gates the DNF branch on es->generic1 (0xe0), not
+                // powerups; finish time still rides es->time (0x5c).
+                if (es->generic1 == 0) {
                     // invalid finish (DNF)
                     cg.race.hasDiff = qfalse;
                     cg.race.checkpointDiff = 0;
@@ -1547,18 +1683,24 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_DAMAGEPLUM:
             DEBUGNAME("EV_DAMAGEPLUM");
-            // [QL] floating damage number - only show for local player's hits
-            if (cg_damagePlum.string[0] && cg.snap->ps.clientNum == es->otherEntityNum) {
-                CG_DamagePlum(es->pos.trTime, es->weapon, cent->lerpOrigin);
+            // [QL] floating damage number - only show for the local player's hits.
+            // The server (DamagePlum 0x10046680 / the shotgun flush) packs the amount
+            // in s.time, the recipient clientNum in s.clientNum, and the weapon in
+            // s.generic1 - NOT pos.trTime/otherEntityNum/weapon.
+            if (cg_damagePlum.string[0] && cg.snap->ps.clientNum == es->clientNum) {
+                CG_DamagePlum(es->time, es->generic1, cent->lerpOrigin);
             }
             break;
         case EV_AWARD:
             DEBUGNAME("EV_AWARD");
-            // [QL] award notification - 10 types, uses existing reward display system
-            if (cg.snap->ps.clientNum == es->otherEntityNum) {
+            // [QL] award notification - 10 types, uses existing reward display system.
+            // Binary (CG_EntityEvent 0x61) guards on es->clientNum (0xb0), selects
+            // the medal from es->generic1 (0xe0) and takes the count from
+            // es->modelindex2 (0xac) - NOT otherEntityNum/weapon/generic1.
+            if (cg.snap->ps.clientNum == es->clientNum) {
                 qhandle_t shader = 0;
-                int count = es->generic1;
-                switch (es->weapon) {
+                int count = es->modelindex2;
+                switch (es->generic1) {
                 case 0: shader = cgs.media.medalComboKill; break;
                 case 1: shader = cgs.media.medalRampage; break;
                 case 2: shader = cgs.media.medalMidair; break;
@@ -1588,7 +1730,10 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             break;
         case EV_NEW_HIGH_SCORE:
             DEBUGNAME("EV_NEW_HIGH_SCORE");
-            // [QL] new high score - no handler in binary (no-op)
+            // [QL] new high score announce (binary CG_EntityEvent 0x1001c5c3 queues
+            // new_high_score.ogg via CG_QueueAnnouncement; routed through the buffered
+            // announcer ring here).
+            CG_AddBufferedSound(cgs.media.newHighScoreSound);
             break;
 
         default:

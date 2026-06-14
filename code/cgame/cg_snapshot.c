@@ -109,6 +109,13 @@ void CG_SetInitialSnapshot(snapshot_t* snap) {
         // check for events
         CG_CheckEvents(cent);
     }
+
+    // [QL] first snapshot makes cg.snap (and the viewer's team) valid. Re-apply model/skin
+    // forcing to the other clients now: any registered during the gamestate parse (while
+    // cg.snap was NULL) had forcing skipped, so a forced enemy model set before the local
+    // player connects would never take effect.
+    CG_ForceModelChange();
+    CG_LoadDeferredPlayers();
 }
 
 /*
