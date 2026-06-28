@@ -25,6 +25,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cg_local.h"
 #include "../ui/ui_shared.h"
 
+// [QL] cvars defined in cg_main.c; extern here since cg_local.h doesn't carry
+// these externs yet.
+extern vmCvar_t cg_filter_angles;
+extern vmCvar_t cg_levelTimerDirection;
+
 /*
 =============================================================================
 
@@ -610,6 +615,177 @@ static void CG_DamageBlendBlob(void) {
     trap_R_AddRefEntityToScene(&ent);
 }
 
+// Address: 0x1004db20
+// [QL] CG_FilterAngles -- smooth view angles over a ring buffer window.
+// Controlled by cg_filter_angles (<0 clamps to 0, >32 clamps to 31).
+// Averages pitch/yaw over the last N frames, handling 350deg yaw wraparound.
+#define FILTER_ANGLES_SIZE 32
+static void CG_FilterAngles(void) {
+    static float lastYaw;
+    static float yawHistory[FILTER_ANGLES_SIZE];
+    static float pitchHistory[FILTER_ANGLES_SIZE];
+    static int historyCount;
+    static int historyIndex;
+    static int lastFilterSetting;
+    float* angles;
+    float yawSum, pitchSum;
+    int i, idx, count;
+
+    angles = cg.refdefViewAngles;
+
+    if (cg_filter_angles.integer < 0) {
+        trap_Cvar_Set("cg_filter_angles", "0");
+        return;
+    }
+    if (cg_filter_angles.integer > FILTER_ANGLES_SIZE) {
+        trap_Cvar_Set("cg_filter_angles", va("%d", FILTER_ANGLES_SIZE - 1));
+    }
+
+    count = cg_filter_angles.integer;
+
+    // reset the window when the cvar changes
+    if (cg_filter_angles.integer != lastFilterSetting) {
+        memset(yawHistory, 0, sizeof(yawHistory));
+        memset(pitchHistory, 0, sizeof(pitchHistory));
+        lastYaw = 0.0f;
+        historyCount = 0;
+        historyIndex = 0;
+        lastFilterSetting = cg_filter_angles.integer;
+    }
+
+    // handle yaw wraparound (350+ degree discontinuity)
+    if (fabs(angles[YAW] - lastYaw) > 350.0f && historyCount > 1) {
+        for (i = 1; i < historyCount; i++) {
+            idx = historyIndex - i;
+            if (idx < 0) {
+                idx += FILTER_ANGLES_SIZE;
+            }
+            if (angles[YAW] - lastYaw >= 0.0f) {
+                yawHistory[idx] += 360.0f;
+            } else {
+                yawHistory[idx] -= 360.0f;
+            }
+        }
+    }
+
+    lastYaw = angles[YAW];
+
+    yawHistory[historyIndex] = angles[YAW];
+    pitchHistory[historyIndex] = angles[PITCH];
+
+    historyCount++;
+    if (historyCount > count) {
+        historyCount = count;
+    }
+
+    yawSum = 0.0f;
+    pitchSum = 0.0f;
+    idx = historyIndex;
+    for (i = historyCount; i > 0; i--) {
+        if (idx < 0) {
+            idx += FILTER_ANGLES_SIZE;
+        }
+        yawSum += yawHistory[idx];
+        pitchSum += pitchHistory[idx];
+        idx--;
+    }
+
+    angles[YAW] = yawSum / (float)historyCount;
+    angles[PITCH] = pitchSum / (float)historyCount;
+
+    historyIndex = (historyIndex + 1) % FILTER_ANGLES_SIZE;
+}
+
+// Address: 0x1004e2e0
+// [QL] CG_DrawDuelWeaponStats -- duel spectator weapon-accuracy overlay for the
+// 2nd duel player. Reads per-weapon accuracy keys out of that player's
+// configstring and draws a two-column table starting at y=300.
+// The 14 weapon key strings and the "Enemy"/"You" column labels live in a
+// pointer table at 0x10076568 spanning several .rdata regions. The guard and
+// configstring fetch are done; the per-weapon draw loop is still a stub.
+static void CG_DrawDuelWeaponStats(void) {
+    const char* info;
+
+    if (cg.snap->ps.stats[STAT_HEALTH] <= 0) {
+        return;
+    }
+
+    info = CG_ConfigString(CS_PLAYERS + cgs.clientNum2ndPlayer);
+    if (!info[0]) {
+        return;
+    }
+
+    // TODO: iterate the 14 weapon accuracy keys (table @0x10076568),
+    // Info_ValueForKey into a 15x30 buffer, then CG_DrawText two columns per row
+    // ("Enemy | You"), y = 300 + row*16. Key/label strings still to be extracted.
+}
+
+// Address: 0x1004e480
+// [QL] CG_CheckAutoFollow -- once the auto-follow delay elapses, issue a
+// "follow <client>" command if the local client is in follow mode, then clear.
+static void CG_CheckAutoFollow(void) {
+    if (cg.autoFollowClient < 0) {
+        return;
+    }
+    if (cg.autoFollowTime > cg.time) {
+        return;
+    }
+
+    if (cg.snap->ps.pm_flags & PMF_FOLLOW) {
+        trap_SendConsoleCommand(va("follow %d", cg.autoFollowClient));
+    }
+
+    cg.autoFollowClient = -1;
+}
+
+// Address: 0x10029770
+// [QL] CG_GetLevelTimerMsec -- remaining (countdown) or elapsed (countup) match
+// time in msec via *msec. Returns qtrue when a timer is shown. Round-based modes
+// (CA/FT/AD/RR) only run a timer once the round has started and a roundtimelimit
+// is set; all other modes with roundStarted show no timer.
+qboolean CG_GetLevelTimerMsec(int* msec) {
+    int serverTime;
+    int remaining;
+
+    // [QL] 0x10a403e0: freeze/timeout end time, else current time.
+    serverTime = cgs.freezeEnd ? cgs.freezeEnd : cg.time;
+
+    if (cgs.roundStarted) {
+        switch (cgs.gametype) {
+        case GT_CA:
+        case GT_FREEZE:
+        case GT_AD:
+        case GT_RR:
+            if (cgs.roundtimelimit != 0) {
+                break;
+            }
+            // fall through
+        default:
+            *msec = 0;
+            return qfalse;
+        }
+    }
+
+    remaining = (cgs.timelimit * 60000 - serverTime) + cgs.levelStartTime;
+
+    if (cgs.timelimit != 0) {
+        if (remaining < 0) {
+            // past the limit: report elapsed overtime
+            *msec = (serverTime + cgs.timelimit * -60000) - cgs.levelStartTime;
+            return qtrue;
+        }
+        // [QL] 0x10a6e6ac == 1: countdown direction (cg_levelTimerDirection).
+        if (cg_levelTimerDirection.integer == 1) {
+            *msec = remaining;
+            return qtrue;
+        }
+    }
+
+    // no limit, or count-up mode: report elapsed
+    *msec = serverTime - cgs.levelStartTime;
+    return qtrue;
+}
+
 /*
 ===============
 CG_CalcViewValues
@@ -669,6 +845,11 @@ static int CG_CalcViewValues(void) {
 
     VectorCopy(ps->origin, cg.refdef.vieworg);
     VectorCopy(ps->viewangles, cg.refdefViewAngles);
+
+    // [QL] apply angle-smoothing filter if enabled
+    if (cg_filter_angles.integer != 0) {
+        CG_FilterAngles();
+    }
 
     if (cg_cameraOrbit.integer) {
         if (cg.time > cg.nextOrbitTime) {
@@ -995,6 +1176,12 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     cg.time = serverTime;
     cg.demoPlayback = demoPlayback;
 
+    // [QL] refresh the level timer (result also recomputed by the HUD owner-draw)
+    {
+        int levelTimerMsec;
+        CG_GetLevelTimerMsec(&levelTimerMsec);
+    }
+
     // update cvars
     CG_UpdateCvars();
 
@@ -1012,6 +1199,11 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
     // clear all the render lists
     trap_R_ClearScene();
 
+    // [QL] age/expire the shared floating-effect pool (damage numbers, outlines,
+    // freeze/flag glows, head sprites) before this frame re-adds them during the
+    // entity phase. Binary calls this from CG_DrawActiveFrame @ 0x1004e536.
+    CG_UpdateFloatingEffects();
+
     // set up cg.snap and possibly cg.nextSnap
     CG_ProcessSnapshots();
 
@@ -1024,8 +1216,8 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
 
     // let the client system know what our weapon and zoom settings are
     // [QL] 4-arg call matches cgamex86.dll CG_DrawActiveFrame: also passes
-    //      queued loadout primary weapon (→ cmd.weaponPrimary) and effective
-    //      fov (→ cmd.fov), so the engine can stamp them each frame.
+    //      queued loadout primary weapon (-> cmd.weaponPrimary) and effective
+    //      fov (-> cmd.fov), so the engine can stamp them each frame.
     trap_SetUserCmdValue(cg.weaponSelect, CG_WeaponPrimaryFromCvar(),
                          cg.zoomSensitivity, (int)cg.refdef.fov_x);
 
@@ -1072,6 +1264,8 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
 
     // add buffered sounds
     CG_PlayBufferedSounds();
+    // [QL] drain buffered voice chats (inert unless a .voice file loaded, matching QL)
+    CG_PlayBufferedVoiceChats();
 
     // finish up the rest of the refdef
     if (cg.testModelEntity.hModel) {
@@ -1082,6 +1276,9 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
 
     // warning sounds when powerup is wearing off
     CG_PowerupTimerSounds();
+
+    // [QL] spectator auto-follow check
+    CG_CheckAutoFollow();
 
     // update audio positions
     trap_S_Respatialize(cg.snap->ps.clientNum, cg.refdef.vieworg, cg.refdef.viewaxis, inwater);
@@ -1112,6 +1309,9 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
 
     // actually issue the rendering calls
     CG_DrawActive(stereoView);
+
+    // [QL] duel spectator weapon-stats overlay
+    CG_DrawDuelWeaponStats();
 
     if (cg_stats.integer) {
         CG_Printf("cg.clientFrame:%i\n", cg.clientFrame);

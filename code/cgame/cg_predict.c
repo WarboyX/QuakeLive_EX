@@ -34,6 +34,12 @@ static centity_t* cg_solidEntities[MAX_ENTITIES_IN_SNAPSHOT];
 static int cg_numTriggerEntities;
 static centity_t* cg_triggerEntities[MAX_ENTITIES_IN_SNAPSHOT];
 
+// [QL] skip list for CG_CheckAutoFire penetration traces: entities already hit
+// are excluded from later traces, so the predicted rail passes through up to
+// 4 bodies before stopping at solid world.
+static int cg_numSkipEntities;
+static int cg_skipEntities[4];
+
 /*
 ====================
 CG_BuildSolidList
@@ -51,6 +57,7 @@ void CG_BuildSolidList(void) {
 
     cg_numSolidEntities = 0;
     cg_numTriggerEntities = 0;
+    cg_numSkipEntities = 0;
 
     if (cg.nextSnap && !cg.nextFrameTeleport && !cg.thisFrameTeleport) {
         snap = cg.nextSnap;
@@ -82,7 +89,7 @@ CG_ClipMoveToEntities
 
 ====================
 */
-static void CG_ClipMoveToEntities(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int skipNumber, int mask, trace_t* tr) {
+static void CG_ClipMoveToEntities(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int skipNumber, int mask, trace_t* tr, qboolean capsule) {
     int i, x, zd, zu;
     trace_t trace;
     entityState_t* ent;
@@ -97,6 +104,21 @@ static void CG_ClipMoveToEntities(const vec3_t start, const vec3_t mins, const v
 
         if (ent->number == skipNumber) {
             continue;
+        }
+
+        // [QL] skip entities already penetrated by an autofire trace this pass
+        {
+            int j;
+            qboolean skip = qfalse;
+            for (j = 0; j < cg_numSkipEntities; j++) {
+                if (ent->number == cg_skipEntities[j]) {
+                    skip = qtrue;
+                    break;
+                }
+            }
+            if (skip) {
+                continue;
+            }
         }
 
         if (ent->solid == SOLID_BMODEL) {
@@ -115,13 +137,20 @@ static void CG_ClipMoveToEntities(const vec3_t start, const vec3_t mins, const v
             bmins[2] = -zd;
             bmaxs[2] = zu;
 
-            cmodel = trap_CM_TempBoxModel(bmins, bmaxs);
+            // [QL] g_playerCylinders: capsule hull for player-vs-world prediction
+            cmodel = capsule ? trap_CM_TempCapsuleModel(bmins, bmaxs)
+                             : trap_CM_TempBoxModel(bmins, bmaxs);
             VectorCopy(vec3_origin, angles);
             VectorCopy(cent->lerpOrigin, origin);
         }
 
-        trap_CM_TransformedBoxTrace(&trace, start, end,
-                                    mins, maxs, cmodel, mask, origin, angles);
+        if (capsule) {
+            trap_CM_TransformedCapsuleTrace(&trace, start, end,
+                                            mins, maxs, cmodel, mask, origin, angles);
+        } else {
+            trap_CM_TransformedBoxTrace(&trace, start, end,
+                                        mins, maxs, cmodel, mask, origin, angles);
+        }
 
         if (trace.allsolid || trace.fraction < tr->fraction) {
             trace.entityNum = ent->number;
@@ -146,7 +175,27 @@ void CG_Trace(trace_t* result, const vec3_t start, const vec3_t mins, const vec3
     trap_CM_BoxTrace(&t, start, end, mins, maxs, 0, mask);
     t.entityNum = t.fraction != 1.0 ? ENTITYNUM_WORLD : ENTITYNUM_NONE;
     // check all other solid models
-    CG_ClipMoveToEntities(start, mins, maxs, end, skipNumber, mask, &t);
+    CG_ClipMoveToEntities(start, mins, maxs, end, skipNumber, mask, &t, qfalse);
+
+    *result = t;
+}
+
+/*
+================
+CG_CapsuleTrace
+
+[QL] As CG_Trace but with capsule (cylinder) player hulls. Used for client-side hit
+prediction (rail autofire, shotgun pellets, LG beam) when g_playerCylinders is set, so
+the prediction matches the server's capsule collision model. Address: 0x10044100.
+================
+*/
+void CG_CapsuleTrace(trace_t* result, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int skipNumber, int mask) {
+    trace_t t;
+
+    trap_CM_CapsuleTrace(&t, start, end, mins, maxs, 0, mask);
+    t.entityNum = t.fraction != 1.0 ? ENTITYNUM_WORLD : ENTITYNUM_NONE;
+    // check all other solid models
+    CG_ClipMoveToEntities(start, mins, maxs, end, skipNumber, mask, &t, qtrue);
 
     *result = t;
 }
@@ -268,7 +317,8 @@ static void CG_TouchItem(centity_t* cent) {
         return;
     }
 
-    if (!BG_CanItemBeGrabbed(cgs.gametype, &cent->currentState, &cg.predictedPlayerState)) {
+    if (!BG_CanItemBeGrabbed(cg.time, cg.warmup, cgs.armorTiered, cgs.weaponRespawn,
+                             cgs.gametype, &cent->currentState, &cg.predictedPlayerState)) {
         return;  // can't hold it
     }
 
@@ -376,6 +426,128 @@ static void CG_TouchTriggerPrediction(void) {
 
 /*
 =================
+CG_CheckAutoFire
+
+[QL] Predicted railgun autofire. cgamex86.dll: CG_CheckAutoFire @ 0x10044ce0,
+gated by the cg_predictLocalRailshots cvar. Draws the rail trail locally the
+instant the client fires instead of waiting for the server, tracing through up
+to 4 penetrated bodies via the skip-list before stopping at solid world.
+=================
+*/
+static void CG_CheckAutoFire(void) {
+    usercmd_t cmd;
+    int cmdNum;
+    vec3_t forward, right, up;
+    vec3_t muzzle, end, start;
+    trace_t trace;
+    int clientNum;
+
+    // already voted (spectator item-timer flag), don't fire
+    if (cg.predictedPlayerState.eFlags & EF_VOTED) {
+        return;
+    }
+
+    // no firing during intermission
+    if (cg.predictedPlayerState.pm_type == PM_INTERMISSION) {
+        return;
+    }
+
+    // [QL] if frozen, wait until we're unfreezing before firing
+    if (cg.predictedPlayerState.pm_flags & PMF_FROZEN) {
+        if (!cg.nextSnap || (cg.nextSnap->ps.pm_flags & PMF_FROZEN)) {
+            return;
+        }
+        cg.predictedPlayerState.weaponTime = 0;
+    }
+
+    // blocks weapon fire after respawn
+    if (cg.predictedPlayerState.pm_flags & PMF_RESPAWNED) {
+        return;
+    }
+
+    cmdNum = trap_GetCurrentCmdNumber();
+    trap_GetUserCmd(cmdNum, &cmd);
+
+    // don't fire while talking
+    if (cmd.buttons & BUTTON_TALK) {
+        return;
+    }
+
+    // [QL] don't predict rails while the game is paused or in timeout
+    // (binary caches these from CS_PAUSE_START_TIME / CS_PAUSE_END_TIME)
+    if (atoi(CG_ConfigString(CS_PAUSE_START_TIME)) != 0 ||
+        atoi(CG_ConfigString(CS_PAUSE_END_TIME)) != 0) {
+        return;
+    }
+
+    cg.predictedPlayerState.weaponTime -= cg.frametime;
+
+    if ((cmd.buttons & BUTTON_ATTACK) &&
+        cg.predictedPlayerState.weapon == WP_RAILGUN &&
+        cg.predictedPlayerState.weaponTime < 1 &&
+        cmd.weapon == WP_RAILGUN &&
+        (cg.predictedPlayerState.ammo[WP_RAILGUN] > 0 ||
+         cg.predictedPlayerState.ammo[WP_RAILGUN] == -1) &&
+        cg.time - cg.lastAutoFireTime > 100) {
+
+        clientNum = cg.predictedPlayerEntity.currentState.clientNum;
+
+        AngleVectors(cg.predictedPlayerState.viewangles, forward, right, up);
+
+        // muzzle = eye + forward * 5
+        muzzle[0] = cg.predictedPlayerState.origin[0] + forward[0] * 5.0f;
+        muzzle[1] = cg.predictedPlayerState.origin[1] + forward[1] * 5.0f;
+        muzzle[2] = cg.predictedPlayerState.origin[2] +
+                    cg.predictedPlayerState.viewheight + forward[2] * 5.0f;
+
+        // end = muzzle + forward * 8192
+        end[0] = muzzle[0] + forward[0] * 8192.0f;
+        end[1] = muzzle[1] + forward[1] * 8192.0f;
+        end[2] = muzzle[2] + forward[2] * 8192.0f;
+
+        // trace through up to 4 entities: record each body hit and re-trace,
+        // stopping at the world edge or on solid geometry (penetration)
+        do {
+            if (cgs.playerCylinders) {
+                CG_CapsuleTrace(&trace, muzzle, NULL, NULL, end,
+                                cg.predictedPlayerEntity.currentState.number,
+                                CONTENTS_SOLID | CONTENTS_BODY | CONTENTS_CORPSE);
+            } else {
+                CG_Trace(&trace, muzzle, NULL, NULL, end,
+                         cg.predictedPlayerEntity.currentState.number,
+                         CONTENTS_SOLID | CONTENTS_BODY | CONTENTS_CORPSE);
+            }
+
+            if (trace.entityNum >= ENTITYNUM_MAX_NORMAL ||
+                (trace.contents & CONTENTS_SOLID)) {
+                break;
+            }
+
+            cg_skipEntities[cg_numSkipEntities] = trace.entityNum;
+            cg_numSkipEntities++;
+        } while (cg_numSkipEntities < 4);
+
+        cg_numSkipEntities = 0;
+
+        // rail trail leaves the barrel: muzzle + right * 4 - up
+        start[0] = muzzle[0] + right[0] * 4.0f - up[0];
+        start[1] = muzzle[1] + right[1] * 4.0f - up[1];
+        start[2] = muzzle[2] + right[2] * 4.0f - up[2];
+
+        CG_RailTrail(&cgs.clientinfo[clientNum], start, trace.endpos);
+
+        if (!(trace.surfaceFlags & SURF_NOIMPACT)) {
+            CG_MissileHitWall(cg.predictedPlayerState.weapon,
+                              cg.predictedPlayerEntity.currentState.clientNum,
+                              trace.endpos, trace.plane.normal, IMPACTSOUND_DEFAULT);
+        }
+
+        cg.lastAutoFireTime = cg.time;
+    }
+}
+
+/*
+=================
 CG_PredictPlayerState
 
 Generates cg.predictedPlayerState for the current cg.time
@@ -470,6 +642,11 @@ void CG_PredictPlayerState(void) {
 
     // get the latest command so we can know which commands are from previous map_restarts
     trap_GetUserCmd(current, &latestCmd);
+
+    // [QL] predicted railgun autofire (draws the local rail trail immediately)
+    if (cg_predictLocalRailshots.integer) {
+        CG_CheckAutoFire();
+    }
 
     // get the most recent information we have, even if
     // the server time is beyond our current cg.time,
@@ -618,9 +795,26 @@ Called from score events when spectating.
 ===============
 */
 void CG_SpecAutoFollow(int clientNum, int mode) {
+    const char* suffix;
+
+    // must have auto-follow enabled and be a spectator
     if (!cg_followPowerup.integer) {
         return;
     }
-    // TODO: implement full QL auto-follow logic based on binary analysis
-    // Binary checks powerup status of the given client and issues follow command
+    if (cg.snap->ps.pm_type != PM_SPECTATOR) {
+        return;
+    }
+    if (cgs.clientinfo[cg.clientNum].team != TEAM_SPECTATOR) {
+        return;
+    }
+
+    // cg_followPowerup 2 on a powerup pickup (mode 0) appends the "pw" flag so
+    // the server keeps us on whoever is holding the powerup
+    if (cg_followPowerup.integer == 2 && mode == 0) {
+        suffix = " pw";
+    } else {
+        suffix = "";
+    }
+
+    trap_SendConsoleCommand(va("follow %d%s", clientNum, suffix));
 }

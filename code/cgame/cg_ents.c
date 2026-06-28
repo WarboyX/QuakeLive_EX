@@ -238,6 +238,15 @@ static void CG_General(centity_t* cent) {
         }
     }
 
+    // [QL] Domination point objectives (binary CG_General, gametype GT_DOMINATION,
+    // modelindex 1-3): draw the team-coloured objective outline. The binary also adds a
+    // floating marker sprite + ground ring here (0x10015c40+); those extra decorations
+    // are a follow-up. Outline colour/style come from the entity's modelindex2 (team)
+    // and powerups fields, read inside CG_PlayerOutline.
+    if (cgs.gametype == GT_DOMINATION && s1->modelindex >= 1 && s1->modelindex <= 3) {
+        CG_PlayerOutline(cent);
+    }
+
     // Standard general entity rendering
     ent.frame = s1->frame;
     ent.oldframe = ent.frame;
@@ -648,26 +657,51 @@ static void CG_Mover(centity_t* cent) {
 ===============
 CG_Beam
 
-Also called as an event
+Also called as an event.
+
+[QL] Unlike Q3's immediate RT_BEAM refEntity, QL draws the target_laser beam
+(entity eType ET_BEAM / 5, still emitted by SP_target_laser - verified in
+qagamex86.dll, which sets es->eType = 5 and installs target_laser_think) as a
+short-lived fading rail-core local entity. The beam runs from the entity's
+pos.trBase to its origin2 (the trace endpoint stored by target_laser_think)
+and fades its dark-red colour out over 500 ms via LE_FADE_RGB.
+
+The binary stores leType 7; QL's leType_t inserts an extra LE_MOVE_SCALE_FADE_RGB
+at index 5, so its numbering is shifted one past Q3. Value 7 maps to CG_AddFadeRGB,
+ioquakelive's LE_FADE_RGB, so the enum name is used here, not the raw 7.
+
+NOTE: the QL binary handler shares the CG_SpawnEffect symbol with an unrelated
+RT_MODEL teleport-dust effect at 0x10013140 (called only from CG_EntityEvent);
+different functions, do not conflate.
 ===============
 */
+// Address: 0x10017c60
 void CG_Beam(centity_t* cent) {
-    refEntity_t ent;
+    localEntity_t* le;
     entityState_t* s1;
 
     s1 = &cent->currentState;
 
-    // create the render entity
-    memset(&ent, 0, sizeof(ent));
-    VectorCopy(s1->pos.trBase, ent.origin);
-    VectorCopy(s1->origin2, ent.oldorigin);
-    AxisClear(ent.axis);
-    ent.reType = RT_BEAM;
+    le = CG_AllocLocalEntity();
+    le->leType = LE_FADE_RGB;
+    le->startTime = cg.time;
+    le->endTime = cg.time + 500;
+    le->lifeRate = 1.0 / (le->endTime - le->startTime);
 
-    ent.renderfx = RF_NOSHADOW;
+    le->refEntity.reType = RT_RAIL_CORE;
+    le->refEntity.customShader = cgs.media.railCoreShader;
+    le->refEntity.shaderTime = cg.time / 1000.0f;
+    le->refEntity.radius = 256.0;
 
-    // add to refresh list
-    trap_R_AddRefEntityToScene(&ent);
+    // beam endpoints: pos.trBase -> origin2 (target_laser trace endpoint)
+    VectorCopy(s1->pos.trBase, le->refEntity.origin);
+    VectorCopy(s1->origin2, le->refEntity.oldorigin);
+
+    // dark-red beam colour, fully opaque; LE_FADE_RGB fades it out over 500 ms
+    le->color[0] = 0.75;
+    le->color[1] = 0.0;
+    le->color[2] = 0.0;
+    le->color[3] = 1.0;
 }
 
 /*
