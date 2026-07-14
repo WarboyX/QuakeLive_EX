@@ -507,7 +507,7 @@ PC_Script_Parse
 =================
 */
 qboolean PC_Script_Parse(int handle, const char** out) {
-    char script[1024];
+    char script[2048];  // [QL] PC_MultiLineString_Parse 0x10014cf0 uses a 2048-byte buffer
     pc_token_t token;
 
     memset(script, 0, sizeof(script));
@@ -530,11 +530,11 @@ qboolean PC_Script_Parse(int handle, const char** out) {
         }
 
         if (token.string[1] != '\0') {
-            Q_strcat(script, 1024, va("\"%s\"", token.string));
+            Q_strcat(script, 2048, va("\"%s\"", token.string));
         } else {
-            Q_strcat(script, 1024, token.string);
+            Q_strcat(script, 2048, token.string);
         }
-        Q_strcat(script, 1024, " ");
+        Q_strcat(script, 2048, " ");
     }
     return qfalse;
 }
@@ -1126,6 +1126,26 @@ void Script_Close(itemDef_t* item, char** args) {
     }
 }
 
+// [QL] commandList entry "toggle" (binary 0x10016580). Despite the name this doesn't
+// toggle a cvar, it toggles a menu open/closed by name. Tracks its own
+// open(1)/closed(0) state in menu->window.rectEffects[0] (binary offset 0x4c),
+// separate from the WINDOW_VISIBLE flag.
+void Script_Toggle(itemDef_t* item, char** args) {
+    const char* name;
+    if (String_Parse(args, &name) && name && name[0]) {
+        menuDef_t* menu = Menus_FindByName(name);
+        if (menu) {
+            if (*(int*)&menu->window.rectEffects.x == 1) {
+                Menus_CloseByName(name);
+                *(int*)&menu->window.rectEffects.x = 0;
+            } else {
+                Menus_OpenByName(name);
+                *(int*)&menu->window.rectEffects.x = 1;
+            }
+        }
+    }
+}
+
 void Menu_TransitionItemByName(menuDef_t* menu, const char* p, rectDef_t rectFrom, rectDef_t rectTo, int time, float amt) {
     itemDef_t* item;
     int i;
@@ -1261,6 +1281,7 @@ commandDef_t commandList[] =
         {"open", &Script_Open},                        // menu
         {"conditionalopen", &Script_ConditionalOpen},  // menu
         {"close", &Script_Close},                      // menu
+        {"toggle", &Script_Toggle},                    // [QL] toggle a menu open/closed by name
         {"setasset", &Script_SetAsset},                // works on this
         {"setbackground", &Script_SetBackground},      // works on this
         {"setitemcolor", &Script_SetItemColor},        // group/name
@@ -1279,12 +1300,12 @@ commandDef_t commandList[] =
 int scriptCommandCount = ARRAY_LEN(commandList);
 
 void Item_RunScript(itemDef_t* item, const char* s) {
-    char script[1024], *p;
+    char script[2048], *p;  // [QL] Item_RunScript 0x... uses a 2048-byte script buffer
     int i;
     qboolean bRan;
     memset(script, 0, sizeof(script));
     if (item && s && s[0]) {
-        Q_strcat(script, 1024, s);
+        Q_strcat(script, 2048, s);
         p = script;
         while (1) {
             const char* command;
@@ -2024,19 +2045,14 @@ qboolean Item_ListBox_HandleKey(itemDef_t* item, int key, qboolean down, qboolea
 }
 
 qboolean Item_YesNo_HandleKey(itemDef_t* item, int key) {
-    if (item->cvar) {
-        qboolean action = qfalse;
-        if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3) {
-            if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) && item->window.flags & WINDOW_HASFOCUS) {
-                action = qtrue;
-            }
-        } else if (UI_SelectForKey(key) != 0) {
-            action = qtrue;
-        }
-        if (action) {
-            DC->setCVar(item->cvar, va("%i", !DC->getCVarValue(item->cvar)));
-            return qtrue;
-        }
+    // [QL] Item_YesNo_HandleKey 0x100180a0: single gated condition over the mouse
+    // buttons and ENTER only; no UI_SelectForKey arrow branch.
+    if (item->cvar &&
+        Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+        (item->window.flags & WINDOW_HASFOCUS) &&
+        (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3)) {
+        DC->setCVar(item->cvar, va("%i", !DC->getCVarValue(item->cvar)));
+        return qtrue;
     }
 
     return qfalse;
@@ -2076,6 +2092,18 @@ int Item_Multi_FindCvarByValue(itemDef_t* item) {
     return 0;
 }
 
+// [QL] Every legitimate multi cvarList entry is String_Alloc'd into strPool.
+// Some QL menu multis end up with a corrupt entry (e.g. the cl_demoRecordMessage
+// multi in ingame_options_advanced.menu, whose 3rd entry's pointer high dword is
+// clobbered), which would make the menu painter strlen a wild pointer and crash.
+// Reject any entry that is not inside the string pool and render nothing instead.
+static const char* Item_Multi_PoolString(const char* s) {
+    if (s >= strPool && s < strPool + STRING_POOL_SIZE) {
+        return s;
+    }
+    return "";
+}
+
 const char* Item_Multi_Setting(itemDef_t* item) {
     char buff[1024];
     float value = 0;
@@ -2090,11 +2118,11 @@ const char* Item_Multi_Setting(itemDef_t* item) {
         for (i = 0; i < multiPtr->count; i++) {
             if (multiPtr->strDef) {
                 if (Q_stricmp(buff, multiPtr->cvarStr[i]) == 0) {
-                    return multiPtr->cvarList[i];
+                    return Item_Multi_PoolString(multiPtr->cvarList[i]);
                 }
             } else {
                 if (multiPtr->cvarValue[i] == value) {
-                    return multiPtr->cvarList[i];
+                    return Item_Multi_PoolString(multiPtr->cvarList[i]);
                 }
             }
         }
@@ -2103,58 +2131,31 @@ const char* Item_Multi_Setting(itemDef_t* item) {
 }
 
 qboolean Item_Multi_HandleKey(itemDef_t* item, int key) {
+    // [QL] Item_Multi_HandleKey 0x10018370: gated by rect-contains && HASFOCUS && cvar
+    // over the mouse buttons and ENTER; advances by +1 (no UI_SelectForKey arrow
+    // stepping, no videoMode/r_mode special case).
     multiDef_t* multiPtr = (multiDef_t*)item->typeData;
-    if (multiPtr) {
-        if (item->cvar) {
-            int select = 0;
-            if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3) {
-                if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) && item->window.flags & WINDOW_HASFOCUS) {
-                    select = (key == K_MOUSE2) ? -1 : 1;
-                }
+    if (multiPtr && item->cvar &&
+        Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+        (item->window.flags & WINDOW_HASFOCUS) &&
+        (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3)) {
+        int current = Item_Multi_FindCvarByValue(item) + 1;
+        int max = Item_Multi_CountSettings(item);
+        if (current < 0 || current >= max) {
+            current = 0;
+        }
+
+        if (multiPtr->strDef) {
+            DC->setCVar(item->cvar, multiPtr->cvarStr[current]);
+        } else {
+            float value = multiPtr->cvarValue[current];
+            if (((float)((int)value)) == value) {
+                DC->setCVar(item->cvar, va("%i", (int)value));
             } else {
-                select = UI_SelectForKey(key);
-            }
-            if (select != 0) {
-                int current = Item_Multi_FindCvarByValue(item) + select;
-                int max = Item_Multi_CountSettings(item);
-                if (current < 0) {
-                    current = max - 1;
-                } else if (current >= max) {
-                    current = 0;
-                }
-
-                if (multiPtr->videoMode) {
-                    if (multiPtr->cvarValue[current] != -1) {
-                        DC->setCVar("r_mode", va("%i", (int)multiPtr->cvarValue[current]));
-                    } else {
-                        int w, h;
-                        char* x;
-                        char str[8];
-
-                        x = strchr(multiPtr->cvarStr[current], 'x') + 1;
-                        Q_strncpyz(str, multiPtr->cvarStr[current], MIN(x - multiPtr->cvarStr[current], sizeof(str)));
-                        w = atoi(str);
-                        h = atoi(x);
-
-                        DC->setCVar("r_mode", "-1");
-                        DC->setCVar("r_customwidth", va("%i", w));
-                        DC->setCVar("r_customheight", va("%i", h));
-                    }
-                }
-
-                if (multiPtr->strDef) {
-                    DC->setCVar(item->cvar, multiPtr->cvarStr[current]);
-                } else {
-                    float value = multiPtr->cvarValue[current];
-                    if (((float)((int)value)) == value) {
-                        DC->setCVar(item->cvar, va("%i", (int)value));
-                    } else {
-                        DC->setCVar(item->cvar, va("%f", value));
-                    }
-                }
-                return qtrue;
+                DC->setCVar(item->cvar, va("%f", value));
             }
         }
+        return qtrue;
     }
     return qfalse;
 }
@@ -2448,8 +2449,10 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
     float x, value, width, work;
 
     // DC->Print("slider handle key\n");
+    // [QL] Item_Slider_HandleKey 0x10019180: mouse-thumb path only, over the mouse
+    // buttons and ENTER; no UI_SelectForKey arrow stepping (arrow keys are inert).
     if (item->cvar) {
-        if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3) {
+        if (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3) {
             editFieldDef_t* editDef = item->typeData;
             if (editDef && Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) && item->window.flags & WINDOW_HASFOCUS) {
                 rectDef_t testRect;
@@ -2478,26 +2481,64 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
                     return qtrue;
                 }
             }
-        } else {
-            int select = UI_SelectForKey(key);
-            if (select != 0) {
-                editFieldDef_t* editDef = item->typeData;
-                if (editDef) {
-                    // 20 is number of steps
-                    value = DC->getCVarValue(item->cvar) + (((editDef->maxVal - editDef->minVal) / 20) * select);
-
-                    if (value < editDef->minVal)
-                        value = editDef->minVal;
-                    else if (value > editDef->maxVal)
-                        value = editDef->maxVal;
-
-                    DC->setCVar(item->cvar, va("%f", value));
-                    return qtrue;
-                }
-            }
         }
     }
     DC->Print("slider handle key exit\n");
+    return qfalse;
+}
+
+// [QL] Index of the preset whose name (cvarList[i]) equals the current
+// value of item->cvar; returns count if there is no match (binary Item_Combo_GetIndex
+// 0x100185d0).
+int Item_Combo_GetIndex(itemDef_t* item) {
+    char buff[1024];
+    int i;
+    multiDef_t* multiPtr = (multiDef_t*)item->typeData;
+    if (multiPtr) {
+        DC->getCVarString(item->cvar, buff, sizeof(buff));
+        for (i = 0; i < multiPtr->count; i++) {
+            if (multiPtr->cvarList[i] && Q_stricmp(buff, multiPtr->cvarList[i]) == 0) {
+                return i;
+            }
+        }
+        return multiPtr->count;
+    }
+    return 0;
+}
+
+// [QL] ITEM_TYPE_PRESETLIST click handler (binary Item_Combo_HandleKey 0x10018680).
+// Cycles to the next preset, applies every cvar of the linked ITEM_TYPE_PRESET item
+// to its preset value, then stores the preset's name into item->cvar. cvarList[i]
+// holds the preset display/name, cvarStr[i] the linked ITEM_TYPE_PRESET item name.
+qboolean Item_Combo_HandleKey(itemDef_t* item, int key) {
+    multiDef_t* multiPtr = (multiDef_t*)item->typeData;
+    if (multiPtr && item->cvar) {
+        if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+            (item->window.flags & WINDOW_HASFOCUS) &&
+            (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3 || key == K_ENTER)) {
+            int index = Item_Combo_GetIndex(item) + 1;
+            itemDef_t* linked;
+            if (index < 0 || index >= multiPtr->count) {
+                index = 0;
+            }
+            linked = Menu_FindItemByName((menuDef_t*)item->parent, multiPtr->cvarStr[index]);
+            if (linked) {
+                multiDef_t* linkedMulti = (multiDef_t*)linked->typeData;
+                if (linkedMulti) {
+                    int k;
+                    for (k = 0; k < linkedMulti->count; k++) {
+                        if (!Q_isanumber(linkedMulti->cvarStr[k])) {
+                            DC->setCVar(linkedMulti->cvarList[k], va("%s", linkedMulti->cvarStr[k]));
+                        } else {
+                            DC->setCVar(linkedMulti->cvarList[k], va("%f", linkedMulti->cvarValue[k]));
+                        }
+                    }
+                }
+            }
+            DC->setCVar(item->cvar, multiPtr->cvarList[index]);
+            return qtrue;
+        }
+    }
     return qfalse;
 }
 
@@ -2551,7 +2592,13 @@ qboolean Item_HandleKey(itemDef_t* item, int key, qboolean down) {
             return Item_Bind_HandleKey(item, key, down);
             break;
         case ITEM_TYPE_SLIDER:
+        case ITEM_TYPE_SLIDER_COLOR:
+            // [QL] Item_HandleKeyByType 0x10019350 groups types 10 and 0xe (SLIDER_COLOR)
             return Item_Slider_HandleKey(item, key, down);
+            break;
+        case ITEM_TYPE_PRESETLIST:
+            // [QL] binary Item_HandleKeyByType routes type 16 to the combo handler
+            return Item_Combo_HandleKey(item, key);
             break;
         // case ITEM_TYPE_IMAGE:
         //   Item_Image_Paint(item);
@@ -3248,6 +3295,58 @@ void Item_Multi_Paint(itemDef_t* item) {
     }
 }
 
+// [QL] Display string (cvarStr[i]) for the preset whose name
+// (cvarList[i]) equals the current value of item->cvar (binary
+// Item_Combo_FindCvarByValue 0x10018510).
+const char* Item_Combo_FindCvarByValue(itemDef_t* item) {
+    char buff[1024];
+    int i;
+    multiDef_t* multiPtr = (multiDef_t*)item->typeData;
+    if (multiPtr == NULL) {
+        return "???";
+    }
+    DC->getCVarString(item->cvar, buff, sizeof(buff));
+    if (buff[0] == '\0') {
+        return "???";
+    }
+    for (i = 0; i < multiPtr->count; i++) {
+        if (multiPtr->cvarList[i] && Q_stricmp(buff, multiPtr->cvarList[i]) == 0) {
+            return multiPtr->cvarStr[i];
+        }
+    }
+    return "???";
+}
+
+// [QL] ITEM_TYPE_PRESETLIST paint - draws the item label plus the current preset's
+// display string, mirroring Item_Multi_Paint (binary paint dispatch case 0x10).
+void Item_Combo_Paint(itemDef_t* item) {
+    vec4_t newColor, lowLight;
+    const char* text = "";
+    menuDef_t* parent = (menuDef_t*)item->parent;
+
+    if (item->window.flags & WINDOW_HASFOCUS) {
+        lowLight[0] = 0.8 * parent->focusColor[0];
+        lowLight[1] = 0.8 * parent->focusColor[1];
+        lowLight[2] = 0.8 * parent->focusColor[2];
+        lowLight[3] = 0.8 * parent->focusColor[3];
+        LerpColor(parent->focusColor, lowLight, newColor, 0.5 + 0.5 * sin(DC->realTime / PULSE_DIVISOR));
+    } else {
+        memcpy(&newColor, &item->window.foreColor, sizeof(vec4_t));
+    }
+
+    text = Item_Combo_FindCvarByValue(item);
+    if (text == NULL) {
+        text = "";
+    }
+
+    if (item->text) {
+        Item_Text_Paint(item);
+        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
+    } else {
+        DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
+    }
+}
+
 typedef struct {
     char* command;
     int defaultbind1;
@@ -3506,6 +3605,40 @@ void Item_Slider_Paint(itemDef_t* item) {
     DC->drawHandlePic(x, y, SLIDER_WIDTH, SLIDER_HEIGHT, DC->Assets.sliderBar);
 
     x = Item_Slider_ThumbPosition(item);
+    DC->drawHandlePic(x - (SLIDER_THUMB_WIDTH / 2), y - 2, SLIDER_THUMB_WIDTH, SLIDER_THUMB_HEIGHT, DC->Assets.sliderThumb);
+}
+
+// [QL] ITEM_TYPE_SLIDER_COLOR painter (binary 0x1001b5c0). Same layout as
+// Item_Slider_Paint, but the bar is drawn in white with the fx_base shader
+// (DC+0xf244 = Assets.fxBasePic, a separate asset from the normal slider bar
+// DC+0xf200 = Assets.sliderBar) and only the thumb takes the item's colour.
+void Item_SliderColor_Paint(itemDef_t* item) {
+    vec4_t newColor, lowLight;
+    float x, y;
+    menuDef_t* parent = (menuDef_t*)item->parent;
+
+    if (item->window.flags & WINDOW_HASFOCUS) {
+        lowLight[0] = 0.8 * parent->focusColor[0];
+        lowLight[1] = 0.8 * parent->focusColor[1];
+        lowLight[2] = 0.8 * parent->focusColor[2];
+        lowLight[3] = 0.8 * parent->focusColor[3];
+        LerpColor(parent->focusColor, lowLight, newColor, 0.5 + 0.5 * sin(DC->realTime / PULSE_DIVISOR));
+    } else {
+        memcpy(&newColor, &item->window.foreColor, sizeof(vec4_t));
+    }
+
+    y = item->window.rect.y;
+    if (item->text) {
+        Item_Text_Paint(item);
+        x = item->textRect.x + item->textRect.w + 8;
+    } else {
+        x = item->window.rect.x;
+    }
+    DC->setColor(NULL);  // 0x1001b5c0 draws the colour bar in white
+    DC->drawHandlePic(x, y, SLIDER_WIDTH, SLIDER_HEIGHT, DC->Assets.fxBasePic);
+
+    x = Item_Slider_ThumbPosition(item);
+    DC->setColor(newColor);
     DC->drawHandlePic(x - (SLIDER_THUMB_WIDTH / 2), y - 2, SLIDER_THUMB_WIDTH, SLIDER_THUMB_HEIGHT, DC->Assets.sliderThumb);
 }
 
@@ -4187,6 +4320,14 @@ void Item_Paint(itemDef_t* item) {
         case ITEM_TYPE_SLIDER:
             Item_Slider_Paint(item);
             break;
+        case ITEM_TYPE_SLIDER_COLOR:
+            // [QL] Item_Paint dispatch 0x1001b5c0 painter
+            Item_SliderColor_Paint(item);
+            break;
+        case ITEM_TYPE_PRESETLIST:
+            // [QL] binary paint dispatch (Item_Paint_Decoration) case 0x10
+            Item_Combo_Paint(item);
+            break;
         default:
             break;
     }
@@ -4273,6 +4414,19 @@ qboolean Menus_AnyFullScreenVisible(void) {
     int i;
     for (i = 0; i < menuCount; i++) {
         if (Menus[i].window.flags & WINDOW_VISIBLE && Menus[i].fullScreen) {
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+// [QL] Backing for the UI_CHECK_ACTIVE_MENU vmMain export (uix86.dll
+// UI_CheckActiveMenu @ 0x100103c0): returns qtrue if any menu is visible
+// (WINDOW_VISIBLE, bit 0x4), without the fullScreen requirement.
+qboolean Menus_AnyVisible(void) {
+    int i;
+    for (i = 0; i < menuCount; i++) {
+        if (Menus[i].window.flags & WINDOW_VISIBLE) {
             return qtrue;
         }
     }
@@ -4396,6 +4550,79 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
     }
 }
 
+// [QL] Menu_CheckPresetCvars (binary 0x100156b0). For each ITEM_TYPE_PRESETLIST
+// item, find the preset that matches the current preset cvar, then verify every
+// cvar of the linked ITEM_TYPE_PRESET item still equals its stored preset value.
+// If any differs (numeric compare within 0.001 tolerance, else string compare)
+// the preset cvar is set to "Custom". Called from Menu_Paint before drawing.
+void Menu_CheckPresetCvars(menuDef_t* menu) {
+    int i, j, k;
+
+    for (i = 0; i < menu->itemCount; i++) {
+        itemDef_t* item = menu->items[i];
+        multiDef_t* multiPtr;
+        char currentValue[1024];
+
+        // [QL] skip NULL / non-preset items
+        if (item == NULL || item->type != ITEM_TYPE_PRESETLIST) {
+            continue;
+        }
+        multiPtr = (multiDef_t*)item->typeData;
+        if (multiPtr == NULL || item->cvar == NULL) {
+            continue;
+        }
+
+        DC->getCVarString(item->cvar, currentValue, sizeof(currentValue));
+
+        for (j = 0; j < multiPtr->count; j++) {
+            itemDef_t* linkedItem;
+            multiDef_t* linkedMulti;
+
+            if (multiPtr->cvarList[j] == NULL || Q_stricmp(currentValue, multiPtr->cvarList[j]) != 0) {
+                continue;
+            }
+            if (multiPtr->cvarStr[j] == NULL) {
+                continue;
+            }
+
+            linkedItem = Menu_FindItemByName(menu, multiPtr->cvarStr[j]);
+            if (linkedItem == NULL) {
+                continue;
+            }
+            linkedMulti = (multiDef_t*)linkedItem->typeData;
+            if (linkedMulti == NULL) {
+                continue;
+            }
+
+            for (k = 0; k < linkedMulti->count; k++) {
+                char presetValue[64];
+                // [QL] guard a malformed preset item that left a NULL cvar name;
+                // the binary relies on a fully-populated cvarList here.
+                if (linkedMulti->cvarList[k] == NULL) {
+                    continue;
+                }
+                memset(presetValue, 0, sizeof(presetValue));
+                DC->getCVarString(linkedMulti->cvarList[k], presetValue, sizeof(presetValue));
+
+                if (strcmp(presetValue, linkedMulti->cvarStr[k]) != 0) {
+                    // Both numeric and within tolerance counts as a match.
+                    if (Q_isanumber(presetValue) && Q_isanumber(linkedMulti->cvarStr[k])) {
+                        float diff = DC->getCVarValue(linkedMulti->cvarList[k]) - linkedMulti->cvarValue[k];
+                        if (diff < 0) {
+                            diff = -diff;
+                        }
+                        if (diff <= 0.001f) {
+                            continue;
+                        }
+                    }
+                    DC->setCVar(item->cvar, "Custom");
+                    return;
+                }
+            }
+        }
+    }
+}
+
 void Menu_Paint(menuDef_t* menu, qboolean forcePaint) {
     int i;
 
@@ -4410,6 +4637,9 @@ void Menu_Paint(menuDef_t* menu, qboolean forcePaint) {
     if ((menu->window.ownerDrawFlags || menu->window.ownerDrawFlags2) && DC->ownerDrawVisible && !DC->ownerDrawVisible(menu->window.ownerDrawFlags, menu->window.ownerDrawFlags2)) {
         return;
     }
+
+    // [QL] binary calls Menu_CheckPresetCvars here, before painting the menu.
+    Menu_CheckPresetCvars(menu);
 
     if (forcePaint) {
         menu->window.flags |= WINDOW_FORCED;
@@ -4478,9 +4708,14 @@ void Item_ValidateTypeData(itemDef_t* item) {
                 ((editFieldDef_t*)item->typeData)->maxPaintChars = MAX_EDITFIELD;
             }
         }
-    } else if (item->type == ITEM_TYPE_MULTI) {
+    } else if (item->type == ITEM_TYPE_MULTI || item->type == ITEM_TYPE_PRESET || item->type == ITEM_TYPE_PRESETLIST) {
+        // [QL] ITEM_TYPE_PRESET (15) and ITEM_TYPE_PRESETLIST (16) share the
+        // multiDef_t layout used by MULTI (binary Item_ValidateTypeData 0x1001da70).
+        // Binary allocates without a memset here (only LISTBOX and the editfield
+        // group get zero-initialised); the cvar*List parsers set count/strDef.
         item->typeData = UI_Alloc(sizeof(multiDef_t));
     } else if (item->type == ITEM_TYPE_MODEL) {
+        // [QL] 0x1001da70 allocates the modelDef with no memset.
         item->typeData = UI_Alloc(sizeof(modelDef_t));
     }
 }
@@ -5051,6 +5286,19 @@ qboolean ItemParse_cvarTest4(itemDef_t* item, int handle) {
     return qtrue;
 }
 
+// [QL] True when the item's typeData is an editFieldDef_t (the edit-field group).
+// MULTI/PRESET/PRESETLIST keep a multiDef_t there and LISTBOX/MODEL their own
+// structs, so cvar/maxchars/cvarFloat/etc must not write editFieldDef fields for
+// those items; doing so corrupts the other struct (e.g. a preset list's cvarList),
+// which Q3 got away with only because the list keyword came last.
+static qboolean Item_HasEditFieldData(itemDef_t* item) {
+    return (item->typeData != NULL &&
+        (item->type == ITEM_TYPE_EDITFIELD || item->type == ITEM_TYPE_NUMERICFIELD ||
+         item->type == ITEM_TYPE_YESNO || item->type == ITEM_TYPE_BIND ||
+         item->type == ITEM_TYPE_SLIDER || item->type == ITEM_TYPE_SLIDER_COLOR ||
+         item->type == ITEM_TYPE_TEXT));
+}
+
 qboolean ItemParse_cvar(itemDef_t* item, int handle) {
     editFieldDef_t* editPtr;
 
@@ -5058,7 +5306,7 @@ qboolean ItemParse_cvar(itemDef_t* item, int handle) {
     if (!PC_String_Parse(handle, &item->cvar)) {
         return qfalse;
     }
-    if (item->typeData) {
+    if (Item_HasEditFieldData(item)) {
         editPtr = (editFieldDef_t*)item->typeData;
         editPtr->minVal = -1;
         editPtr->maxVal = -1;
@@ -5078,8 +5326,10 @@ qboolean ItemParse_maxChars(itemDef_t* item, int handle) {
     if (!PC_Int_Parse(handle, &maxChars)) {
         return qfalse;
     }
-    editPtr = (editFieldDef_t*)item->typeData;
-    editPtr->maxChars = maxChars;
+    if (Item_HasEditFieldData(item)) {
+        editPtr = (editFieldDef_t*)item->typeData;
+        editPtr->maxChars = maxChars;
+    }
     return qtrue;
 }
 
@@ -5098,8 +5348,10 @@ qboolean ItemParse_maxPaintChars(itemDef_t* item, int handle) {
         return qtrue;
     }
 
-    editPtr = (editFieldDef_t*)item->typeData;
-    editPtr->maxPaintChars = maxChars;
+    if (Item_HasEditFieldData(item)) {
+        editPtr = (editFieldDef_t*)item->typeData;
+        editPtr->maxPaintChars = maxChars;
+    }
 
     return qtrue;
 }
@@ -5130,7 +5382,7 @@ qboolean ItemParse_cvarStrList(itemDef_t* item, int handle) {
         return qfalse;
     multiPtr = (multiDef_t*)item->typeData;
     multiPtr->count = 0;
-    multiPtr->strDef = qtrue;
+    multiPtr->strDef = qfalse;  // [QL] ItemParse_cvarStrList 0x1001f010 stores 0 here
     multiPtr->videoMode = qfalse;
 
     if (!trap_PC_ReadToken(handle, &token))
@@ -5202,9 +5454,14 @@ qboolean ItemParse_cvarFloatList(itemDef_t* item, int handle) {
         }
 
         multiPtr->cvarList[multiPtr->count] = String_Alloc(token.string);
-        if (!PC_Float_Parse(handle, &multiPtr->cvarValue[multiPtr->count])) {
-            return qfalse;
+        // [QL] ItemParse_cvarFloatList 0x1001f1d0 parses the value as a string token
+        // into cvarStr[], then atof()'s it into cvarValue[]; on failure it stores 0
+        // and stops (rather than PC_Float_Parse-ing straight into cvarValue).
+        if (!PC_String_Parse(handle, &multiPtr->cvarStr[multiPtr->count])) {
+            multiPtr->cvarValue[multiPtr->count] = 0;
+            break;
         }
+        multiPtr->cvarValue[multiPtr->count] = atof(multiPtr->cvarStr[multiPtr->count]);
 
         multiPtr->count++;
         if (multiPtr->count >= MAX_MULTI_CVARS) {
@@ -5336,7 +5593,15 @@ qboolean ItemParse_cvara(itemDef_t* item, int handle) {
     if (!PC_String_Parse(handle, &item->cvar)) {
         return qfalse;
     }
-    if (item->typeData) {
+    // [QL] Only edit-field items store an editFieldDef_t at typeData. MULTI/PRESET/
+    // PRESETLIST use a multiDef_t and LISTBOX/MODEL use their own structs, so writing
+    // the editFieldDef min/max/def here corrupts that data (it was clobbering a
+    // preset list's cvarList[0] with -1.0f, crashing Menu_CheckPresetCvars).
+    if (item->typeData &&
+        (item->type == ITEM_TYPE_EDITFIELD || item->type == ITEM_TYPE_NUMERICFIELD ||
+         item->type == ITEM_TYPE_YESNO || item->type == ITEM_TYPE_BIND ||
+         item->type == ITEM_TYPE_SLIDER || item->type == ITEM_TYPE_SLIDER_COLOR ||
+         item->type == ITEM_TYPE_TEXT)) {
         editPtr = (editFieldDef_t*)item->typeData;
         editPtr->minVal = -1;
         editPtr->maxVal = -1;
@@ -5442,6 +5707,16 @@ qboolean ItemParse_outlineimage(itemDef_t* item, int handle) {
     return qtrue;
 }
 
+qboolean ItemParse_elementimage(itemDef_t* item, int handle) {
+    // [QL] element image shader (binary 0x1001dc00, stores at item+0x188)
+    const char *temp;
+    if (!PC_String_Parse(handle, &temp)) {
+        return qfalse;
+    }
+    item->elementImage = DC->registerShaderNoMip(temp);
+    return qtrue;
+}
+
 qboolean ItemParse_cellId(itemDef_t* item, int handle) {
     // [QL] advertisement cell ID
     if (!PC_Int_Parse(handle, &item->cellId)) {
@@ -5536,6 +5811,7 @@ keywordHash_t itemParseKeywords[] = {
     {"selectedcolor", ItemParse_selectedcolor, NULL},
     {"elementcolor", ItemParse_elementcolor, NULL},
     {"outlineimage", ItemParse_outlineimage, NULL},
+    {"elementimage", ItemParse_elementimage, NULL},
     {"background", ItemParse_background, NULL},
     {"onFocus", ItemParse_onFocus, NULL},
     {"leaveFocus", ItemParse_leaveFocus, NULL},

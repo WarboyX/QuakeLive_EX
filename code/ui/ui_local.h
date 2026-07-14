@@ -174,7 +174,10 @@ extern vmCvar_t ui_singlePlayerActive;
 #define MAX_EDIT_LINE 256
 
 #define MAX_MENUDEPTH 8
-#define MAX_MENUITEMS 96
+// [QL] renamed from MAX_MENUITEMS to avoid clashing with ui_shared.h's
+// MAX_MENUITEMS (2048, used by menuDef_t.items). This one sizes the legacy
+// menuframework_s.items only.
+#define MAX_MENUFRAMEWORK_ITEMS 96
 
 #define MTYPE_NULL 0
 #define MTYPE_SLIDER 1
@@ -220,7 +223,7 @@ typedef struct _tag_menuframework {
     int cursor_prev;
 
     int nitems;
-    void* items[MAX_MENUITEMS];
+    void* items[MAX_MENUFRAMEWORK_ITEMS];
 
     void (*draw)(void);
     sfxHandle_t (*key)(int key);
@@ -577,6 +580,17 @@ typedef struct {
     int barrelTime;
 
     int realWeapon;
+
+    // [QL] Custom model tint used by the team/enemy model previews. Mirrors
+    // uix86.dll playerInfo_t: customColor gate @0x468, headColor @0x46c,
+    // torsoColor @0x470, legsColor @0x474 (each a packed 0xRRGGBBAA value).
+    // When customColor is non-zero UI_DrawPlayer runs each part's packed colour
+    // through UI_IntToColor into refEntity.shaderRGBA. ioquakelive's struct does
+    // not otherwise match the binary offsets, so these are appended.
+    qboolean customColor;  // non-zero enables the tint (binary @0x468)
+    int headColor;         // packed 0xRRGGBBAA for the head  (binary @0x46c)
+    int torsoColor;        // packed 0xRRGGBBAA for the torso (binary @0x470)
+    int legsColor;         // packed 0xRRGGBBAA for the legs  (binary @0x474)
 } playerInfo_t;
 
 void UI_DrawPlayer(float x, float y, float w, float h, playerInfo_t* pi, int time);
@@ -878,31 +892,6 @@ extern qboolean m_entersound;
 extern uiStatic_t uis;
 
 //
-// ui_spLevel.c
-//
-void UI_SPLevelMenu_Cache(void);
-void UI_SPLevelMenu(void);
-void UI_SPLevelMenu_f(void);
-void UI_SPLevelMenu_ReInit(void);
-
-//
-// ui_spArena.c
-//
-void UI_SPArena_Start(const char* arenaInfo);
-
-//
-// ui_spPostgame.c
-//
-void UI_SPPostgameMenu_Cache(void);
-void UI_SPPostgameMenu_f(void);
-
-//
-// ui_spSkill.c
-//
-void UI_SPSkillMenu(const char* arenaInfo);
-void UI_SPSkillMenu_Cache(void);
-
-//
 // ui_syscalls.c
 //
 void trap_Print(const char* string);
@@ -972,6 +961,10 @@ int trap_LAN_ServerStatus(const char* serverAddress, char* serverStatus, int max
 int trap_LAN_CompareServers(int source, int sortKey, int sortDir, int s1, int s2);
 int trap_MemoryRemaining(void);
 void trap_R_RegisterFont(const char* pFontname, int pointSize, fontInfo_t* font);
+void trap_R_Font_DrawString(int x, int y, const char* text, int fontIndex, float scale, int limit, float* maxX, int flags);
+void trap_R_Font_TextExtents(const char* text, int start, int limit, float scale, int fontIndex, int* outX, int* outY, int* outW, int* outH);
+void trap_R_GetGlyphInfo(int fontIndex, int charValue, glyphInfo_t* glyph);
+void trap_IME_SetCompositionFont(int fontIndex, float scale);
 void trap_S_StopBackgroundTrack(void);
 void trap_S_StartBackgroundTrack(const char* intro, const char* loop);
 int trap_CIN_PlayCinematic(const char* arg0, int xpos, int ypos, int width, int height, int bits);

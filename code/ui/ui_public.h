@@ -131,7 +131,12 @@ typedef enum {
     UI_ATAN2,
     UI_SQRT,
     UI_FLOOR,
-    UI_CEIL
+    UI_CEIL,
+
+    UI_R_FONT_DRAWSTRING,  // [QL] fontstash/stb_truetype text rendering
+    UI_R_FONT_TEXTEXTENTS,
+    UI_R_GETGLYPHINFO,
+    UI_IME_SETCOMPOSITIONFONT
 } uiImport_t;
 
 typedef enum {

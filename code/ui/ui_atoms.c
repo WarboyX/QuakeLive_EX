@@ -194,6 +194,34 @@ static void UI_CalcPostGameStats(void) {
 
 /*
 =================
+UI_ListPlayerModels
+
+[QL] Console command "listPlayerModels": dumps the parsed player-model list,
+one per line, as "base/name" (or only "base" when the name is empty or
+"default"). Verified from uix86.dll @ 0x1000f960.
+
+QL sizes the loop with UI_BuildPlayerModelList(), which also validates each
+model against disk and toggles its .active flag; ioquakelive has no such
+validator, so this walks the already-parsed uiInfo.characterList[] directly.
+=================
+*/
+static void UI_ListPlayerModels(void) {
+    int i;
+
+    for (i = 0; i < uiInfo.characterCount; i++) {
+        const char* name = uiInfo.characterList[i].name;
+        const char* base = uiInfo.characterList[i].base;
+
+        if (name && Q_stricmp(name, "default")) {
+            Com_Printf("%s/%s\n", base, name);
+        } else {
+            Com_Printf("%s\n", base);
+        }
+    }
+}
+
+/*
+=================
 UI_ConsoleCommand
 =================
 */
@@ -208,8 +236,11 @@ qboolean UI_ConsoleCommand(int realTime) {
     // ensure minimum menu data is available
     // Menu_Cache();
 
-    if (Q_stricmp(cmd, "ui_test") == 0) {
-        UI_ShowPostGame(qtrue);
+    // [QL] uix86.dll UI_ConsoleCommand @0x10002ac0 dispatches exactly these 7
+    // commands in order, else returns qfalse so the engine handles it. Q3's
+    // ui_test / remapShader / ui_teamOrders are not present in the QL binary.
+    if (Q_stricmp(cmd, "listPlayerModels") == 0) {
+        UI_ListPlayerModels();
         return qtrue;
     }
 
@@ -223,21 +254,6 @@ qboolean UI_ConsoleCommand(int realTime) {
         return qtrue;
     }
 
-    if (Q_stricmp(cmd, "remapShader") == 0) {
-        if (trap_Argc() == 4) {
-            char shader1[MAX_QPATH];
-            char shader2[MAX_QPATH];
-            char shader3[MAX_QPATH];
-
-            Q_strncpyz(shader1, UI_Argv(1), sizeof(shader1));
-            Q_strncpyz(shader2, UI_Argv(2), sizeof(shader2));
-            Q_strncpyz(shader3, UI_Argv(3), sizeof(shader3));
-
-            trap_R_RemapShader(shader1, shader2, shader3);
-            return qtrue;
-        }
-    }
-
     if (Q_stricmp(cmd, "postgame") == 0) {
         UI_CalcPostGameStats();
         return qtrue;
@@ -248,7 +264,16 @@ qboolean UI_ConsoleCommand(int realTime) {
         return qtrue;
     }
 
-    if (Q_stricmp(cmd, "ui_teamOrders") == 0) {
+    // [QL] menu_close <name> / menu_open <name>: verified from uix86.dll
+    // @ 0x10002490 (Menus_CloseByName) and @ 0x10002520 -> 0x1001d4a0
+    // (Menus_ActivateByName).
+    if (Q_stricmp(cmd, "menu_close") == 0) {
+        Menus_CloseByName(UI_Argv(1));
+        return qtrue;
+    }
+
+    if (Q_stricmp(cmd, "menu_open") == 0) {
+        Menus_ActivateByName(UI_Argv(1));
         return qtrue;
     }
 

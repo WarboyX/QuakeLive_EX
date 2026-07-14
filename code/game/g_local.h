@@ -1677,3 +1677,4 @@ void trap_SnapVector(float* v);
 
 void trap_IncrementSteamStat(int clientNum, int statID);
 int trap_GetSteamStat(int clientNum, int statID);
+uint64_t trap_GetSteamID(int clientNum);

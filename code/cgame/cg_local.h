@@ -73,7 +73,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define GIANT_WIDTH 32
 #define GIANT_HEIGHT 48
 
-#define NUM_CROSSHAIRS 28
+#define NUM_CROSSHAIRS 30  // [QL] cgamex86.dll CG_RegisterGraphics @0x10022f40 registers 30; keep in sync with ui_shared.h
 
 #define TEAM_OVERLAY_MAXNAME_WIDTH 12
 #define TEAM_OVERLAY_MAXLOCATION_WIDTH 16
@@ -2125,9 +2125,6 @@ void CG_ClearChat(void);
 void CG_AddChat(const char *text, int teamOnly, int extraTime);
 void CG_DrawChat(void);
 void CG_InitColorWheel(void);
-// [QL] outgoing voice-tell console verbs
-void CG_VoiceTellTarget_f(void);
-void CG_VoiceTellAttacker_f(void);
 
 //
 // cg_servercmds.c
@@ -2222,6 +2219,7 @@ void trap_CM_LoadMap(const char* mapname);
 int trap_CM_NumInlineModels(void);
 clipHandle_t trap_CM_InlineModel(int index);  // 0 = world, 1+ = bmodels
 clipHandle_t trap_CM_TempBoxModel(const vec3_t mins, const vec3_t maxs);
+clipHandle_t trap_CM_TempCapsuleModel(const vec3_t mins, const vec3_t maxs);
 int trap_CM_PointContents(const vec3_t p, clipHandle_t model);
 int trap_CM_TransformedPointContents(const vec3_t p, clipHandle_t model, const vec3_t origin, const vec3_t angles);
 void trap_CM_BoxTrace(trace_t* results, const vec3_t start, const vec3_t end, const vec3_t mins, const vec3_t maxs, clipHandle_t model, int brushmask);

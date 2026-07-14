@@ -680,6 +680,40 @@ float UI_MachinegunSpinAngle(playerInfo_t* pi) {
 
 /*
 ===============
+UI_IntToColor
+
+Unpacks a packed 0xRRGGBBAA colour into a refEntity shaderRGBA, scaling the R,
+G and B channels by an integer brightness multiplier and clamping to 255. The
+alpha byte is copied through untouched. Matches uix86.dll UI_IntToColor
+@0x10001e20 (register args: ECX = out, EDX = color, ESI = multiplier).
+===============
+*/
+static void UI_IntToColor(byte* out, int color, int multiplier) {
+    int c;
+
+    c = ((color >> 24) & 0xff) * multiplier;
+    if (c > 255) {
+        c = 255;
+    }
+    out[0] = (byte)c;
+
+    c = ((color >> 16) & 0xff) * multiplier;
+    if (c > 255) {
+        c = 255;
+    }
+    out[1] = (byte)c;
+
+    c = ((color >> 8) & 0xff) * multiplier;
+    if (c > 255) {
+        c = 255;
+    }
+    out[2] = (byte)c;
+
+    out[3] = (byte)(color & 0xff);
+}
+
+/*
+===============
 UI_DrawPlayer
 ===============
 */
@@ -697,6 +731,7 @@ void UI_DrawPlayer(float x, float y, float w, float h, playerInfo_t* pi, int tim
     vec3_t maxs = {16, 16, 32};
     float len;
     float xx;
+    int brightMult;
 
     if (!pi->legsModel || !pi->torsoModel || !pi->headModel || !pi->animations[0].numFrames) {
         return;
@@ -705,6 +740,14 @@ void UI_DrawPlayer(float x, float y, float w, float h, playerInfo_t* pi, int tim
     // this allows the ui to cache the player model on the main menu
     if (w == 0 || h == 0) {
         return;
+    }
+
+    // [QL] Brightness for the custom model tint. uix86.dll UI_DrawPlayer
+    // @0x10012d90 doubles the packed colours when a custom colour is set and
+    // colour-correction post-processing is inactive, otherwise leaves them 1x.
+    brightMult = 1;
+    if (pi->customColor && trap_Cvar_VariableValue("r_colorCorrectActive") == 0) {
+        brightMult = 2;
     }
 
     dp_realtime = time;
@@ -743,7 +786,8 @@ void UI_DrawPlayer(float x, float y, float w, float h, playerInfo_t* pi, int tim
     refdef.fov_y *= (360 / (float)M_PI);
 
     // calculate distance so the player nearly fills the box
-    len = 0.7 * (maxs[2] - mins[2]);
+    // [QL] uix86.dll UI_DrawPlayer @0x10012d90 uses 1.1 (61.6 = 1.1*56), not Q3's 0.7
+    len = 1.1 * (maxs[2] - mins[2]);
     origin[0] = len / tan(DEG2RAD(refdef.fov_x) * 0.5);
     origin[1] = 0.5 * (mins[1] + maxs[1]);
     origin[2] = -0.5 * (mins[2] + maxs[2]);
@@ -773,6 +817,11 @@ void UI_DrawPlayer(float x, float y, float w, float h, playerInfo_t* pi, int tim
     legs.renderfx = renderfx;
     VectorCopy(legs.origin, legs.oldorigin);
 
+    // [QL] tint the legs with the packed custom colour (uix86.dll @0x10013258)
+    if (pi->customColor) {
+        UI_IntToColor(legs.shaderRGBA, pi->legsColor, brightMult);
+    }
+
     trap_R_AddRefEntityToScene(&legs);
 
     if (!legs.hModel) {
@@ -795,6 +844,11 @@ void UI_DrawPlayer(float x, float y, float w, float h, playerInfo_t* pi, int tim
 
     torso.renderfx = renderfx;
 
+    // [QL] tint the torso with the packed custom colour (uix86.dll @0x1001337a)
+    if (pi->customColor) {
+        UI_IntToColor(torso.shaderRGBA, pi->torsoColor, brightMult);
+    }
+
     trap_R_AddRefEntityToScene(&torso);
 
     //
@@ -811,6 +865,11 @@ void UI_DrawPlayer(float x, float y, float w, float h, playerInfo_t* pi, int tim
     UI_PositionRotatedEntityOnTag(&head, &torso, pi->torsoModel, "tag_head");
 
     head.renderfx = renderfx;
+
+    // [QL] tint the head with the packed custom colour (uix86.dll @0x10013428)
+    if (pi->customColor) {
+        UI_IntToColor(head.shaderRGBA, pi->headColor, brightMult);
+    }
 
     trap_R_AddRefEntityToScene(&head);
 

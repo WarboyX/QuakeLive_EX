@@ -101,7 +101,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define SLIDER_HEIGHT 16.0
 #define SLIDER_THUMB_WIDTH 12.0
 #define SLIDER_THUMB_HEIGHT 20.0
-#define NUM_CROSSHAIRS 28
+#define NUM_CROSSHAIRS 30  // [QL] uix86.dll UI_HandleCrosshair @0x1000a640 wraps at 0x1e (0..29)
 
 typedef struct {
     const char* command;
@@ -257,6 +257,7 @@ typedef struct itemDef_s {
     int precision;               // [QL] numeric precision for display
     int cvarInt;                 // [QL] 1 = integer slider mode
     sfxHandle_t focusSound;
+    qhandle_t elementImage;      // [QL] listbox/mouse-over element shader (binary offset 0x188)
     int numColors;               // number of color ranges
     colorRangeDef_t colorRanges[MAX_COLOR_RANGES];
     float special;               // used for feeder id's etc.. diff per type
@@ -436,6 +437,7 @@ void Menu_PaintAll(void);
 menuDef_t* Menus_ActivateByName(const char* p);
 void Menu_Reset(void);
 qboolean Menus_AnyFullScreenVisible(void);
+qboolean Menus_AnyVisible(void);
 void Menus_Activate(menuDef_t* menu);
 
 int UI_SelectForKey(int key);

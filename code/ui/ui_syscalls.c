@@ -134,6 +134,22 @@ void trap_R_RegisterFont(const char* fontName, int pointSize, fontInfo_t* font) 
     syscall(UI_R_REGISTERFONT, fontName, pointSize, font);
 }
 
+void trap_R_Font_DrawString(int x, int y, const char* text, int fontIndex, float scale, int limit, float* maxX, int flags) {
+    syscall(UI_R_FONT_DRAWSTRING, x, y, text, fontIndex, PASSFLOAT(scale), limit, maxX, flags);
+}
+
+void trap_R_Font_TextExtents(const char* text, int start, int limit, float scale, int fontIndex, int* outX, int* outY, int* outW, int* outH) {
+    syscall(UI_R_FONT_TEXTEXTENTS, text, start, limit, PASSFLOAT(scale), fontIndex, outX, outY, outW, outH);
+}
+
+void trap_R_GetGlyphInfo(int fontIndex, int charValue, glyphInfo_t* glyph) {
+    syscall(UI_R_GETGLYPHINFO, fontIndex, charValue, glyph);
+}
+
+void trap_IME_SetCompositionFont(int fontIndex, float scale) {
+    syscall(UI_IME_SETCOMPOSITIONFONT, fontIndex, PASSFLOAT(scale));
+}
+
 qhandle_t trap_R_RegisterShaderNoMip(const char* name) {
     return syscall(UI_R_REGISTERSHADERNOMIP, name);
 }
