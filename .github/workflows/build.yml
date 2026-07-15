@@ -47,9 +47,35 @@ jobs:
       with:
         submodules: recursive
     - name: Install Dependencies
-      run: brew install sdl2 freetype libogg libvorbis
+      # No brew sdl2: it is now sdl2-compat (SDL2 ABI over a dlopen'd SDL3),
+      # which dies on user machines without Homebrew. SDL2 is built from the
+      # code/SDL2 submodule below instead.
+      run: brew install freetype libogg libvorbis
+    - name: Build SDL2 from submodule
+      run: |
+        cmake -S code/SDL2 -B build/SDL2 \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_ARCHITECTURES=arm64 \
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+          -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/sdl2-local" \
+          -DSDL_STATIC=OFF -DSDL_TEST=OFF
+        cmake --build build/SDL2 -j"$(sysctl -n hw.logicalcpu)"
+        cmake --install build/SDL2
+        # The engine records the dylib id at link time; force @rpath so the
+        # binary resolves it via the .app's Frameworks rpath regardless of
+        # SDL's install-name default. Re-sign ad hoc afterwards (arm64
+        # requires a valid signature; install_name_tool invalidates it).
+        install_name_tool -id @rpath/libSDL2-2.0.0.dylib \
+          "$GITHUB_WORKSPACE/sdl2-local/lib/libSDL2-2.0.0.dylib"
+        codesign -f -s - "$GITHUB_WORKSPACE/sdl2-local/lib/libSDL2-2.0.0.dylib"
     - name: Compile
-      run: make release USE_LOCAL_HEADERS=0 ARCH=arm64 -j$(sysctl -n hw.logicalcpu)
+      # sdl2-config/pkg-config must resolve to the submodule build; with no
+      # brew sdl2 installed, losing these exports fails the link loudly
+      # instead of silently re-linking the shim.
+      run: |
+        export PATH="$GITHUB_WORKSPACE/sdl2-local/bin:$PATH"
+        export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/sdl2-local/lib/pkgconfig"
+        make release USE_LOCAL_HEADERS=0 ARCH=arm64 -j$(sysctl -n hw.logicalcpu)
     - name: Import signing certificate
       env:
         CERT_B64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
@@ -105,10 +131,13 @@ jobs:
         cp build/release-darwin-arm64/baseq3/cgamearm64.dylib  staging/libs/
         cp build/release-darwin-arm64/baseq3/qagamearm64.dylib staging/libs/
         cp build/release-darwin-arm64/baseq3/uiarm64.dylib     staging/libs/
+        # Ship the submodule-built SDL2 beside the raw binaries so
+        # make-macosx-app.sh can bundle it into Contents/Frameworks/.
+        cp "$GITHUB_WORKSPACE/sdl2-local/lib/libSDL2-2.0.0.dylib" build/release-darwin-arm64/
         # Tar the raw engine binaries to preserve +x. These are unsigned;
         # macos-bundle codesigns them after they're placed inside the .app.
         tar -C build/release-darwin-arm64 -cf staging/engine-raw/raw-macos-engine.tar \
-          quakelive.arm64 quakelive_dedicated.arm64 opengl2arm64.dylib
+          quakelive.arm64 quakelive_dedicated.arm64 opengl2arm64.dylib libSDL2-2.0.0.dylib
     - uses: actions/upload-artifact@v4
       with:
         name: libs-macos-arm64
@@ -130,7 +159,9 @@ jobs:
     - name: Install Dependencies
       # Needed by make-macosx-app.sh's Homebrew dylib bundling step (otool /
       # install_name_tool walk against the actual brew-installed dylibs).
-      run: brew install sdl2 freetype libogg libvorbis
+      # No sdl2: the walk must never pick up brew's sdl2-compat shim; the
+      # submodule-built libSDL2 arrives via the raw-macos-engine artifact.
+      run: brew install freetype libogg libvorbis
     - name: Download game library artifacts
       uses: actions/download-artifact@v4
       with:
@@ -233,6 +264,11 @@ jobs:
         done
         [ "$missing" -eq 0 ] || exit 1
         shasum -a 256 "$BASE/iobin.pk3" "$BASE/pak01.pk3"
+        # Log the bundled dylibs so a Frameworks regression is diagnosable
+        # from CI output alone (make-macosx-app.sh already hard-fails on a
+        # missing or sdl2-compat libSDL2).
+        echo "Listing $APP/Contents/Frameworks:"
+        ls -la "$APP/Contents/Frameworks"
 
     - name: Codesign app bundle
       env:
