@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 #ifndef __APPLE__
-#error This file is for Mac OS X only. You probably should not compile it.
+#error This file is for macOS only. You probably should not compile it.
 #endif
 
 // Please note that this file is just some Mac-specific bits. Most of the
@@ -118,6 +118,24 @@ char *Sys_StripAppBundle( char *dir )
 		return dir;
 	Q_strncpyz(cwd, Sys_Dirname(cwd), sizeof(cwd));
 	return cwd;
+}
+
+/*
+=================
+Sys_DisableStateRestoration
+
+macOS saves window state on exit and offers to reopen windows at the next
+launch, with a prompt after an unclean exit. This is very annoying and serves
+no purpose for this game, so switch the persistence machinery off through the
+app's defaults domain before AppKit initialises.
+=================
+*/
+void Sys_DisableStateRestoration( void )
+{
+	[[NSUserDefaults standardUserDefaults] registerDefaults: @{
+		@"ApplePersistenceIgnoreState" : @YES,
+		@"NSQuitAlwaysKeepsWindows" : @NO
+	}];
 }
 
 /*

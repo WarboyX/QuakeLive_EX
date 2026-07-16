@@ -52,6 +52,7 @@ unsigned int CON_LogRead(char* out, unsigned int outSize);
 
 #ifdef __APPLE__
 char* Sys_StripAppBundle(char* pwd);
+void Sys_DisableStateRestoration(void);
 #endif
 
 char* Sys_BinaryPath(void);
