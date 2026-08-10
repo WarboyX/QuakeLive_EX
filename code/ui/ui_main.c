@@ -30,7 +30,6 @@ static char* netnames[] = {
     "UDP6"};
 
 static int gamecodetoui[] = {4, 2, 3, 0, 5, 1, 6};
-static int uitogamecode[] = {4, 6, 2, 3, 1, 5, 7};
 
 static const char *skillLevels[] = {
     "I Can Win",
@@ -45,12 +44,10 @@ static void UI_FeederSelection(float feederID, int index);
 static const char* UI_GetGameTypeString(int gametype);
 static int UI_MapCountByGameType(qboolean singlePlayer);
 static int UI_MapCountByCallvoteGameType(void);
-static int UI_HeadCountByTeam(void);
 static void UI_ParseGameInfo(const char* teamFile);
 static void UI_ParseTeamInfo(const char* teamFile);
 static const char* UI_SelectedMap(int index, int* actual);
 static const char* UI_SelectedHead(int index, int* actual);
-static int UI_GetIndexFromSelection(int actual);
 static void UI_DrawCinematic(int handle, float x, float y, float w, float h);
 
 // [QL] Server-browser forward declarations (definitions live just before the feeders).
@@ -258,15 +255,6 @@ static int UI_EngineFont(int fontIndex) {
     return 0;
 }
 
-static int UI_IndexForFontPtr(const fontInfo_t* font) {
-    int i;
-    for (i = 0; i < 3; i++) {
-        if (font == &uiInfo.uiDC.Assets.extraFonts[i])
-            return i;
-    }
-    return 0;
-}
-
 // Pixel font size for a text scale (QL: screenFontScale = (vidHeight/768)*96).
 static float UI_FontPixelSize(float scale) {
     return (((float)uiInfo.uiDC.glconfig.vidHeight / 768.0f) * 96.0f) * scale;
@@ -406,24 +394,6 @@ static void Text_Paint_Limit(float* maxX, float x, float y, float scale, vec4_t 
 
     Text_Paint(x, y, scale, color, text, 0, limit, 0);
     *maxX = x + (float)w640;
-}
-
-// [QL] Font-pointer variants - delegate to the engine glyph atlas.
-static void Text_Paint_Font(float x, float y, float scale, vec4_t color, const char* text, float adjust, int limit, int style, fontInfo_t* font) {
-    (void)adjust;
-    UI_PaintText(x, y, UI_IndexForFontPtr(font), scale, color, text, limit, style);
-}
-
-static float Text_Width_Font(const char* text, float scale, int limit, fontInfo_t* font) {
-    int w = 0;
-    UI_MeasureText(text, scale, UI_IndexForFontPtr(font), limit, &w, NULL);
-    return (float)w;
-}
-
-static float Text_Height_Font(const char* text, float scale, int limit, fontInfo_t* font) {
-    int h = 0;
-    UI_MeasureText(text, scale, UI_IndexForFontPtr(font), limit, NULL, &h);
-    return (float)h;
 }
 
 // [QL] DC wrapper functions - pass the font index straight to the engine.
@@ -955,19 +925,6 @@ static void UI_DrawPreviewCinematic(rectDef_t* rect, float scale, vec4_t color) 
     }
 }
 
-static void UI_DrawTeamName(rectDef_t* rect, float scale, vec4_t color, qboolean blue, int textStyle) {
-    int i;
-    i = UI_TeamIndexFromName(UI_Cvar_VariableString((blue) ? "ui_blueteam" : "ui_redteam"));
-    if (i >= 0 && i < uiInfo.teamCount) {
-        Text_Paint(rect->x, rect->y, scale, color, va("%s: %s", (blue) ? "Blue" : "Red", uiInfo.teamList[i].teamName), 0, 0, textStyle);
-    }
-}
-
-static void UI_DrawEffects(rectDef_t* rect, float scale, vec4_t color) {
-    UI_DrawHandlePic(rect->x, rect->y - 14, 128, 8, uiInfo.uiDC.Assets.fxBasePic);
-    UI_DrawHandlePic(rect->x + uiInfo.effectsColor * 16 + 8, rect->y - 16, 16, 12, uiInfo.uiDC.Assets.fxPic[uiInfo.effectsColor]);
-}
-
 static void UI_DrawMapPreview(rectDef_t* rect, float scale, vec4_t color, qboolean net) {
     int map = (net) ? ui_currentNetMap.integer : ui_currentMap.integer;
     if (map < 0 || map > uiInfo.mapCount) {
@@ -1121,26 +1078,6 @@ static void UI_DrawNetMapCinematic(rectDef_t* rect, float scale, vec4_t color) {
     } else {
         UI_DrawNetMapPreview(rect, scale, color);
     }
-}
-
-static const char* UI_EnglishMapName(const char* map) {
-    int i;
-    for (i = 0; i < uiInfo.mapCount; i++) {
-        if (Q_stricmp(map, uiInfo.mapList[i].mapLoadName) == 0) {
-            return uiInfo.mapList[i].mapName;
-        }
-    }
-    return "";
-}
-
-static const char* UI_AIFromName(const char* name) {
-    int j;
-    for (j = 0; j < uiInfo.aliasCount; j++) {
-        if (Q_stricmp(uiInfo.aliasList[j].name, name) == 0) {
-            return uiInfo.aliasList[j].ai;
-        }
-    }
-    return "James";
 }
 
 static qboolean updateOpponentModel = qtrue;
@@ -2415,23 +2352,6 @@ static void UI_SPPostgameMenu_f(const char* mapname, int gameType) {
     UI_SetScoreBoardCvars(&info, qfalse);
 }
 
-static qboolean UI_Effects_HandleKey(int flags, float* special, int key) {
-    int select = UI_SelectForKey(key);
-    if (select != 0) {
-        uiInfo.effectsColor += select;
-
-        if (uiInfo.effectsColor > 6) {
-            uiInfo.effectsColor = 0;
-        } else if (uiInfo.effectsColor < 0) {
-            uiInfo.effectsColor = 6;
-        }
-
-        trap_Cvar_SetValue("color1", uitogamecode[uiInfo.effectsColor]);
-        return qtrue;
-    }
-    return qfalse;
-}
-
 static qboolean UI_GameType_HandleKey(int flags, float* special, int key, qboolean resetMap) {
     int select = UI_SelectForKey(key);
     if (select != 0) {
@@ -2516,26 +2436,6 @@ static qboolean UI_JoinGameType_HandleKey(int flags, float* special, int key) {
         // [QL] uix86.dll UI_HandleJoinGameType @0x1000a300 rebuilds the display list
         // after switching the join filter.
         UI_BuildServerDisplayList(qtrue);
-        return qtrue;
-    }
-    return qfalse;
-}
-
-static qboolean UI_TeamName_HandleKey(int flags, float* special, int key, qboolean blue) {
-    int select = UI_SelectForKey(key);
-    if (select != 0) {
-        int i;
-
-        i = UI_TeamIndexFromName(UI_Cvar_VariableString((blue) ? "ui_blueteam" : "ui_redteam"));
-        i += select;
-
-        if (i >= uiInfo.teamCount) {
-            i = 0;
-        } else if (i < 0) {
-            i = uiInfo.teamCount - 1;
-        }
-
-        trap_Cvar_Set((blue) ? "ui_blueteam" : "ui_redteam", uiInfo.teamList[i].teamName);
         return qtrue;
     }
     return qfalse;
@@ -2916,112 +2816,6 @@ static void UI_LoadDemos(void) {
         Q_strupr(demoname);
         uiInfo.demoList[i] = String_Alloc(demoname);
         demoname += len + 1;
-    }
-}
-
-static qboolean UI_SetNextMap(int actual, int index) {
-    int i;
-    for (i = actual + 1; i < uiInfo.mapCount; i++) {
-        if (uiInfo.mapList[i].active) {
-            Menu_SetFeederSelection(NULL, FEEDER_MAPS, index + 1, "skirmish");
-            return qtrue;
-        }
-    }
-    return qfalse;
-}
-
-static void UI_StartSkirmish(qboolean next) {
-    int i, k, g, delay, temp;
-    float skill;
-    char buff[MAX_STRING_CHARS];
-
-    if (next) {
-        int actual;
-        int index = trap_Cvar_VariableValue("ui_mapIndex");
-        UI_MapCountByGameType(qtrue);
-        UI_SelectedMap(index, &actual);
-        if (UI_SetNextMap(actual, index)) {
-        } else {
-            UI_GameType_HandleKey(0, NULL, K_MOUSE1, qfalse);
-            UI_MapCountByGameType(qtrue);
-            Menu_SetFeederSelection(NULL, FEEDER_MAPS, 0, "skirmish");
-        }
-    }
-
-    g = uiInfo.gameTypes[ui_gameType.integer].gtEnum;
-    trap_Cvar_SetValue("g_gametype", g);
-    trap_Cmd_ExecuteText(EXEC_APPEND, va("wait ; wait ; map %s\n", uiInfo.mapList[ui_currentMap.integer].mapLoadName));
-    skill = trap_Cvar_VariableValue("g_spSkill");
-    trap_Cvar_Set("ui_scoreMap", uiInfo.mapList[ui_currentMap.integer].mapName);
-
-    k = UI_TeamIndexFromName(UI_Cvar_VariableString("ui_opponentName"));
-
-    // set up sp overrides, will be replaced on postgame
-    temp = trap_Cvar_VariableValue("capturelimit");
-    trap_Cvar_Set("ui_saveCaptureLimit", va("%i", temp));
-    temp = trap_Cvar_VariableValue("fraglimit");
-    trap_Cvar_Set("ui_saveFragLimit", va("%i", temp));
-
-    UI_SetCapFragLimits(qfalse);
-
-    temp = trap_Cvar_VariableValue("cg_drawTimer");
-    trap_Cvar_Set("ui_drawTimer", va("%i", temp));
-    temp = trap_Cvar_VariableValue("g_doWarmup");
-    trap_Cvar_Set("ui_doWarmup", va("%i", temp));
-    temp = trap_Cvar_VariableValue("g_friendlyFire");
-    trap_Cvar_Set("ui_friendlyFire", va("%i", temp));
-    temp = trap_Cvar_VariableValue("sv_maxclients");
-    trap_Cvar_Set("ui_maxClients", va("%i", temp));
-    temp = trap_Cvar_VariableValue("g_warmup");
-    trap_Cvar_Set("ui_warmup", va("%i", temp));
-    temp = trap_Cvar_VariableValue("sv_pure");
-    trap_Cvar_Set("ui_pure", va("%i", temp));
-
-    trap_Cvar_Set("cg_cameraOrbit", "0");
-    trap_Cvar_Set("cg_thirdPerson", "0");
-    trap_Cvar_Set("cg_drawTimer", "1");
-    trap_Cvar_Set("g_doWarmup", "1");
-    trap_Cvar_Set("g_warmup", "15");
-    trap_Cvar_Set("sv_pure", "0");
-    trap_Cvar_Set("g_friendlyFire", "0");
-    trap_Cvar_Set("g_redTeam", UI_Cvar_VariableString("ui_teamName"));
-    trap_Cvar_Set("g_blueTeam", UI_Cvar_VariableString("ui_opponentName"));
-
-    if (trap_Cvar_VariableValue("ui_recordSPDemo")) {
-        Com_sprintf(buff, MAX_STRING_CHARS, "%s_%i", uiInfo.mapList[ui_currentMap.integer].mapLoadName, g);
-        trap_Cvar_Set("ui_recordSPDemoName", buff);
-    }
-
-    delay = 500;
-
-    if (g == GT_DUEL) {
-        trap_Cvar_Set("sv_maxclients", "2");
-        Com_sprintf(buff, sizeof(buff),
-                    "wait ; addbot %s %f "
-                    ", %i \n",
-                    uiInfo.mapList[ui_currentMap.integer].opponentName, skill, delay);
-        trap_Cmd_ExecuteText(EXEC_APPEND, buff);
-    } else {
-        temp = uiInfo.mapList[ui_currentMap.integer].teamMembers * 2;
-        trap_Cvar_Set("sv_maxclients", va("%d", temp));
-        for (i = 0; i < uiInfo.mapList[ui_currentMap.integer].teamMembers; i++) {
-            Com_sprintf(buff, sizeof(buff), "addbot %s %f %s %i %s\n", UI_AIFromName(uiInfo.teamList[k].teamMembers[i]), skill, (g == GT_FFA) ? "" : "Blue", delay, uiInfo.teamList[k].teamMembers[i]);
-            trap_Cmd_ExecuteText(EXEC_APPEND, buff);
-            delay += 500;
-        }
-        k = UI_TeamIndexFromName(UI_Cvar_VariableString("ui_teamName"));
-        for (i = 0; i < uiInfo.mapList[ui_currentMap.integer].teamMembers - 1; i++) {
-            Com_sprintf(buff, sizeof(buff), "addbot %s %f %s %i %s\n", UI_AIFromName(uiInfo.teamList[k].teamMembers[i]), skill, (g == GT_FFA) ? "" : "Red", delay, uiInfo.teamList[k].teamMembers[i]);
-            trap_Cmd_ExecuteText(EXEC_APPEND, buff);
-            delay += 500;
-        }
-    }
-    if (g >= GT_TEAM) {
-        // send team command for vanilla q3 game qvm
-        trap_Cmd_ExecuteText(EXEC_APPEND, "wait 5; team Red\n");
-
-        // set g_localTeamPref for ioq3 game qvm
-        trap_Cvar_Set("g_localTeamPref", "Red");
     }
 }
 
@@ -3569,65 +3363,6 @@ qboolean UI_hasSkinForBase(const char* base, const char* team) {
 
 /*
 ==================
-UI_MapCountByTeam
-==================
-*/
-static int UI_HeadCountByTeam(void) {
-    static int init = 0;
-    int i, j, k, c, tIndex;
-
-    c = 0;
-    if (!init) {
-        for (i = 0; i < uiInfo.characterCount; i++) {
-            uiInfo.characterList[i].reference = 0;
-            for (j = 0; j < uiInfo.teamCount; j++) {
-                if (UI_hasSkinForBase(uiInfo.characterList[i].base, uiInfo.teamList[j].teamName)) {
-                    uiInfo.characterList[i].reference |= (1 << j);
-                }
-            }
-        }
-        init = 1;
-    }
-
-    tIndex = UI_TeamIndexFromName(UI_Cvar_VariableString("ui_teamName"));
-
-    // do names
-    for (i = 0; i < uiInfo.characterCount; i++) {
-        uiInfo.characterList[i].active = qfalse;
-        for (j = 0; j < TEAM_MEMBERS; j++) {
-            if (uiInfo.teamList[tIndex].teamMembers[j] != NULL) {
-                if (uiInfo.characterList[i].reference & (1 << tIndex)) {  // && Q_stricmp(uiInfo.teamList[tIndex].teamMembers[j], uiInfo.characterList[i].name)==0) {
-                    uiInfo.characterList[i].active = qtrue;
-                    c++;
-                    break;
-                }
-            }
-        }
-    }
-
-    // and then aliases
-    for (j = 0; j < TEAM_MEMBERS; j++) {
-        for (k = 0; k < uiInfo.aliasCount; k++) {
-            if (uiInfo.aliasList[k].name != NULL) {
-                if (Q_stricmp(uiInfo.teamList[tIndex].teamMembers[j], uiInfo.aliasList[k].name) == 0) {
-                    for (i = 0; i < uiInfo.characterCount; i++) {
-                        if (uiInfo.characterList[i].headImage != -1 && uiInfo.characterList[i].reference & (1 << tIndex) && Q_stricmp(uiInfo.aliasList[k].ai, uiInfo.characterList[i].name) == 0) {
-                            if (uiInfo.characterList[i].active == qfalse) {
-                                uiInfo.characterList[i].active = qtrue;
-                                c++;
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return c;
-}
-
-/*
-==================
 stristr
 ==================
 */
@@ -3743,7 +3478,7 @@ static void UI_BinaryServerInsert(int num) {
 // [QL] Builds the filtered/sorted display list. Default motd is the unchanged
 // "Welcome to Team Arena!". force==2 rebuilds without resetting the master query.
 static void UI_BuildServerDisplayList(int force) {
-    int i, count, clients, maxClients, ping, game, len, visible;
+    int i, count, clients, maxClients, ping, game, len;
     char info[MAX_STRING_CHARS];
     static int numinvisible;
 
@@ -3782,12 +3517,10 @@ static void UI_BuildServerDisplayList(int force) {
         return;
     }
 
-    visible = qfalse;
     for (i = 0; i < count; i++) {
         if (!trap_LAN_ServerIsVisible(ui_netSource.integer, i)) {
             continue;
         }
-        visible = qtrue;
         ping = trap_LAN_GetServerPing(ui_netSource.integer, i);
         if (ping > 0 || ui_netSource.integer == AS_FAVORITES) {
             trap_LAN_GetServerInfo(ui_netSource.integer, i, info, sizeof(info));
@@ -4338,20 +4071,6 @@ static const char* UI_SelectedHead(int index, int* actual) {
         }
     }
     return "";
-}
-
-static int UI_GetIndexFromSelection(int actual) {
-    int i, c;
-    c = 0;
-    for (i = 0; i < uiInfo.mapCount; i++) {
-        if (uiInfo.mapList[i].active) {
-            if (i == actual) {
-                return c;
-            }
-            c++;
-        }
-    }
-    return 0;
 }
 
 static const char* UI_FeederItemText(float feederID, int index, int column, qhandle_t* handle) {

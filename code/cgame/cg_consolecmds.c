@@ -886,6 +886,10 @@ typedef struct {
 // [QL] Command table - matches cgamex86.dll binary at 0x10078DC0 (57 entries)
 static consoleCommand_t commands[] = {
     {"viewpos", CG_Viewpos_f},
+    // Scoreboard scrolling. Both handlers existed but were bound to nothing,
+    // so a scoreboard longer than its feeder could not be scrolled at all.
+    {"scrollScoresDown", CG_scrollScoresDown_f},
+    {"scrollScoresUp", CG_scrollScoresUp_f},
     // [QL] companions to the existing clientmute; see the ignore list above.
     {"clientunmute", CG_ClientUnmute_f},
     {"clientmutelist", CG_ClientMuteList_f},

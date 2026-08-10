@@ -34,9 +34,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Core engine traps
 // ============================================================
 
-// Q3 compatibility: trap_Print takes a simple string
+// Q3 compatibility: trap_Print takes a simple string. The engine-side import is
+// a printf-style sink, so the text has to go through a "%s" - a message that
+// happens to contain a '%' (a player name, a map name) would otherwise be
+// re-interpreted as a conversion and read arguments that were never passed.
 void trap_Print(const char* text) {
-    imports->trap_Printf(text);
+    imports->trap_Printf("%s", text);
 }
 
 void trap_Printf(const char* fmt, ...) {
@@ -45,7 +48,8 @@ void trap_Printf(const char* fmt, ...) {
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    imports->trap_Printf(buf);
+    // Already expanded - pass as data, not as another format string.
+    imports->trap_Printf("%s", buf);
 }
 
 void trap_Error(const char* fmt, ...) {
@@ -54,7 +58,8 @@ void trap_Error(const char* fmt, ...) {
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    imports->trap_Error(buf);
+    // Already expanded - pass as data, not as another format string.
+    imports->trap_Error("%s", buf);
     exit(1);  // shut up GCC warning, trap_Error doesn't return
 }
 

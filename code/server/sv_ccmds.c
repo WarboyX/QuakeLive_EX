@@ -208,7 +208,7 @@ This allows fair starts with variable load times.
 static void SV_MapRestart_f(void) {
     int i;
     client_t* client;
-    char* denied;
+    const char* denied;
     qboolean isBot;
     int delay;
 

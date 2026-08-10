@@ -5969,7 +5969,10 @@ static void Item_ApplyHacks(itemDef_t* item) {
     // Replace mode list and use a temporary ui_videomode cvar for handling custom modes
     if (item->type == ITEM_TYPE_MULTI && item->cvar && !Q_stricmp(item->cvar, "r_mode")) {
         multiDef_t* multiPtr = (multiDef_t*)item->typeData;
-        int i, oldCount;
+        int i;
+#ifdef _DEBUG
+        int oldCount;
+#endif
         char resbuf[MAX_STRING_CHARS];
         char modeName[32], aspect[8];
 
@@ -5977,7 +5980,9 @@ static void Item_ApplyHacks(itemDef_t* item) {
         multiPtr->strDef = qtrue;
         multiPtr->videoMode = qtrue;
 
+#ifdef _DEBUG
         oldCount = multiPtr->count;
+#endif
         multiPtr->count = 0;
 
         DC->getCVarString("r_availableModes", resbuf, sizeof(resbuf));

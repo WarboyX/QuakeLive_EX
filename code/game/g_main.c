@@ -1161,7 +1161,7 @@ void QDECL G_Error(const char* fmt, ...) {
     Q_vsnprintf(text, sizeof(text), fmt, argptr);
     va_end(argptr);
 
-    trap_Error(text);
+    trap_Error("%s", text);
 }
 
 /*
@@ -1817,7 +1817,7 @@ void QDECL Com_Error(int level, const char* error, ...) {
     Q_vsnprintf(text, sizeof(text), error, argptr);
     va_end(argptr);
 
-    trap_Error(text);
+    trap_Error("%s", text);
 }
 
 void QDECL Com_Printf(const char* msg, ...) {
