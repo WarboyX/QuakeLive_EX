@@ -1203,8 +1203,12 @@ Called for both a full init and a restart
 static void SV_InitGameVM(qboolean restart) {
     int i;
 
-    // start the entity parsing at the beginning
-    sv.entityParsePoint = CM_EntityString();
+    // start the entity parsing at the beginning. [QL] sv_altEntDir can supply a
+    // replacement entity set for this map; fall back to the .bsp's own lump.
+    sv.entityParsePoint = SV_AltEntityString();
+    if (!sv.entityParsePoint) {
+        sv.entityParsePoint = CM_EntityString();
+    }
 
     // clear all gentity pointers that might still be set from a previous level
     for (i = 0; i < sv_maxclients->integer; i++) {

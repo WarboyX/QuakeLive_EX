@@ -3482,6 +3482,9 @@ static void UI_RunMenuScript(char** args) {
     }
 }
 
+// Empty in stock ioquake3 too. No ui menu owner-draw consumes DC->getTeamColor;
+// the team-tinted drawing lives in cgame, which has its own CG_GetTeamColor.
+// Not a porting gap - left as-is so the DC table stays complete.
 static void UI_GetTeamColor(vec4_t* color) {
 }
 

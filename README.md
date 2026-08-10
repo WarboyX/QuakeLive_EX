@@ -102,17 +102,17 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 | Prediction/pmove | Done | 9 binary-verified fixes (freeze, dead float, hookEnemy, etc.) |
 | Obituary feed | Done | Attacker/victim name rendering with weapon icons |
 | Team overlay | Partial | Scrolling spectator list, team info. `clientInfo_t::curWeapon` is read by the overlay and the selected-player HUD but nothing ever writes it (no `tinfo` server command), so teammate weapon icons never draw |
-| Impact sparks | Done | Configurable spark particle system on bullet/rail impacts |
+| Impact sparks | Done | Configurable spark particle system on bullet/rail impacts. `CG_SpawnParticleEffect` was an empty stub until now, so nothing rendered; the spawner and its two shaders are implemented |
 | Weapon styles | Done | Muzzle flash control, shotgun smoke, weapon render cvars |
 | Vignette overlay | Done | Screen-edge darkening effect |
 | Zoom system | Done | Toggle zoom, zoom scaling, zoomOutOnDeath |
 | Player model scaling | Done | Bounding box scaling for player models |
 | Spectator features | Done | Auto-follow, FOV sync, `cg_followPowerup` |
 | Crosshair | Pending | QL crosshair set not fully verified |
-| Awards/medals display | Pending | Rendering present but QL-specific award set not fully audited |
+| Awards/medals display | Done | `CG_DrawMedal`, dispatched across the medal owner-draw range |
 | Damage direction indicator | Pending | Not yet verified against binary |
 | Chat beep sounds | Pending | QL-specific chat notification sounds not verified |
-| Warmup countdown display | Pending | Countdown overlay/announcer not fully tested |
+| Warmup countdown display | Done | `CG_DrawWarmupCountdown` with per-gametype handling |
 | Player clan tags | Pending | Clan tag rendering in scoreboard/nameplate not audited |
 | Intermission camera | Pending | QL intermission camera behaviour not verified |
 
@@ -127,7 +127,7 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 | Non-team scoreboards | Done | Implemented and fixed up visuals to ensure associated `.menu` files process accurately |
 | Server browser | Pending | Not yet adapted for QL master server protocol |
 | Team scoreboards | Pending | Still a lot of stuff not correctly drawing here |
-| UI script actions | Pending | 13 QL-specific UI scripts stubbed (clientViewProfile, modPlayer, putspec, banPlayer, etc.) |
+| UI script actions | Done | All 13 implemented in `UI_RunMenuScript`; every one now reaches a handler |
 | Player profile display | Pending | Steam profile/avatar integration removed; needs replacement |
 | Friend/social features | Pending | Friend invite, mute player, lobby system all stubbed |
 | Settings menus | Pending | Some QL-specific settings panels may need menu file updates |
@@ -153,13 +153,13 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 | Weapon systems | Done | Shotgun ring pellets, distance falloff, damage-through-surface, player cylinder traces |
 | Tiered armor | Done | `CheckArmor` rewrite, `Pickup_Armor` with armor tiers |
 | JSON stats reporting | Partial | Original uses C++ jsoncpp; JSON functions stubbed, non-JSON helpers preserved |
-| Loadout system | Pending | `g_loadout` cvar propagated but full loadout logic not audited |
-| Factories | Pending | Factory file parsing present but C++ JSON config application not implemented |
-| Premium/subscription | Pending | QL had premium/pro account checks; needs removal or stubbing |
-| Access control lists | Pending | `g_accessFile` parsing present but Steam ID-based ACL not fully tested |
-| Admin commands | Pending | Privilege system (`priv`) present but admin actions (OP/deOP, put team) need testing |
+| Loadout system | Done | End to end: `weaponPrimary` validation, `PMF_LOADOUT_FORCED`, default-weapon fallback |
+| Factories | Pending | **Not started.** Only `g_factory`/`g_factoryTitle` (read-only cvars) and five console commands that print "not yet implemented"; no factory file is ever opened |
+| Premium/subscription | N/A | No premium checks remain in the tree; nothing to remove |
+| Access control lists | Done | `g_accessFile` parsed into a Steam-ID table; connect-time ban check and privilege seeding both consult it |
+| Admin commands | Done | Privilege gate plus put/mute/lock/ban/promote. `ban` records a real address ban; `/lock` blocks team joins |
 | Training mode | Pending | `g_training` cvar checked in multiple places; training mode logic not audited |
-| Map entities override | Pending | `sv_altEntDir` entity file loading present but not tested |
+| Map entities override | Done | `sv_altEntDir`; spawns from `<dir>/<mapname>.ent` when present, else the .bsp lump. Server-side only |
 
 #### Renderer
 
@@ -167,11 +167,11 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 |------|--------|-------|
 | RT_RAIL_CORE | Done | Rendering case for grapple hook chain |
 | QL-specific shaders | Pending | Shader keywords not fully audited |
-| Freeze/thaw effects | Pending | Freeze Tag visual effects (ice shader, thaw progress) not implemented |
+| Freeze/thaw effects | Done | `CG_FreezeEffect`: LE_FREEZE entity, freeze model, scale-fade, freeze sound |
 | Infection visuals | Pending | Red Rover infection visual effects not implemented |
 | Post-processing (bloom) | Pending | Bloom is partially implemented in opengl2 but not QL-tuned |
 | Advertisement rendering | Pending | `UI_DRAW_ADVERTISEMENT` export exists but ad billboard rendering not implemented |
-| Damage plum rendering | Pending | Floating damage numbers partially implemented, needs verification |
+| Damage plum rendering | Done | Shared floating-effect pool (damage numbers, outlines, freeze/flag glows), screen-projected in one pass |
 
 ## Building
 

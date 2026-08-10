@@ -351,6 +351,8 @@ vmCvar_t g_forfeit;
 
 // [QL] serverinfo cvars read by cgame
 vmCvar_t g_teamsize;
+vmCvar_t g_teamRedLocked;
+vmCvar_t g_teamBlueLocked;
 vmCvar_t g_teamSizeMin;
 vmCvar_t g_overtime;
 vmCvar_t g_scorelimit;
@@ -818,6 +820,11 @@ static cvarTable_t gameCvarTable[] = {
 
     // [QL] serverinfo cvars read by cgame (all verified with CVAR_SERVERINFO in binary)
     {&g_teamsize, "teamsize", "0", CVAR_SERVERINFO, 0, NULL},
+    // [QL] per-team join locks, driven by the referee /lock and /unlock
+    // commands and read back by G_IsTeamLocked. Registered here so they exist
+    // and are listed even before a referee first uses /lock.
+    {&g_teamRedLocked, "g_teamRedLocked", "0", 0, 0, NULL},
+    {&g_teamBlueLocked, "g_teamBlueLocked", "0", 0, 0, NULL},
     {&g_teamSizeMin, "g_teamSizeMin", "1", CVAR_SERVERINFO, 0, NULL},  // [QL] binary default "1"
     {&g_overtime, "g_overtime", "120", CVAR_GAMERULE | CVAR_SERVERINFO, 0, NULL},  // [QL] binary default "120"
     // [QL] flags 0x100404 = CVAR_GAMERULE | CVAR_NORESTART | CVAR_SERVERINFO
@@ -1648,6 +1655,12 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
     // [QL] load the steamId access list at boot (binary G_InitGame calls G_InitAccessList).
     // QL has no IP-filter system, so the old G_ProcessIPBans() is dead code.
     G_InitAccessList();
+
+    // [QL] team locks are per-match: clear them so a lock set on the previous
+    // map does not silently keep players out of this one. Cvar_Register keeps
+    // an existing value, so this has to be an explicit set.
+    trap_Cvar_Set("g_teamRedLocked", "0");
+    trap_Cvar_Set("g_teamBlueLocked", "0");
 
     G_InitMemory();
 

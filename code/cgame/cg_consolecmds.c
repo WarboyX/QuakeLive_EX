@@ -170,6 +170,104 @@ static void CG_scrollScoresUp_f(void) {
     }
 }
 
+/*
+=================
+Client-side ignore list
+
+The ui player menu issues "clientmute <clientNum>" (UI_RunMenuScript
+clientMutePlayer). QL routes that through Steam's per-user mute; with no Steam
+backend the equivalent that can be honoured locally is dropping that client's
+chat before it is displayed. Purely client-side - the server is not told, and
+nothing else about the player is hidden.
+
+The list is deliberately not part of cgs: it persists across map changes for the
+lifetime of the cgame module, which is what a player muting someone expects.
+=================
+*/
+static qboolean cg_ignoredClients[MAX_CLIENTS];
+
+qboolean CG_IsClientIgnored(int clientNum) {
+    if (clientNum < 0 || clientNum >= MAX_CLIENTS) {
+        return qfalse;
+    }
+
+    return cg_ignoredClients[clientNum];
+}
+
+/*
+=================
+CG_ChatSenderClientNum
+
+Chat relays arrive as "<clientNum> <text>" (g_cmds.c G_SayTo writes the sender
+as "%02d "). Returns -1 when the payload carries no sender prefix, which is the
+case for server-originated messages - those are never ignored.
+=================
+*/
+int CG_ChatSenderClientNum(const char* payload) {
+    int clientNum;
+
+    if (!payload || payload[0] < '0' || payload[0] > '9') {
+        return -1;
+    }
+
+    clientNum = atoi(payload);
+    if (clientNum < 0 || clientNum >= MAX_CLIENTS) {
+        return -1;
+    }
+
+    return clientNum;
+}
+
+static void CG_ClientUnmute_f(void) {
+    int clientNum;
+
+    if (trap_Argc() < 2) {
+        CG_Printf("Usage: clientunmute <client number>\n");
+        return;
+    }
+
+    clientNum = atoi(CG_Argv(1));
+    if (clientNum < 0 || clientNum >= MAX_CLIENTS) {
+        CG_Printf("clientunmute: bad client number %i\n", clientNum);
+        return;
+    }
+
+    trap_S_MuteClient(clientNum, qfalse);
+    cg_ignoredClients[clientNum] = qfalse;
+    CG_Printf("Unmuted client %i.\n", clientNum);
+}
+
+static void CG_ClientMuteList_f(void) {
+    int i, count = 0;
+
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        if (!cg_ignoredClients[i]) {
+            continue;
+        }
+        count++;
+        CG_Printf("%3i  %s\n", i,
+                  cgs.clientinfo[i].infoValid ? cgs.clientinfo[i].name : "(not connected)");
+    }
+
+    if (!count) {
+        CG_Printf("No clients muted.\n");
+    }
+}
+
+/*
+=================
+CG_SteamOnlyCommand_f
+
+clientviewprofile and clientfriendinvite are issued by the ui player menu but
+map onto Steam overlay calls that this build has no backend for. They were
+reaching no handler at all, so selecting the menu entry did nothing and said
+nothing; report the reason instead of failing silently.
+=================
+*/
+static void CG_SteamOnlyCommand_f(void) {
+    CG_Printf("%s: requires Steam integration, which this build does not have.\n", CG_Argv(0));
+}
+
 static void CG_TellTarget_f(void) {
     int clientNum;
     char command[128];
@@ -735,8 +833,16 @@ static void CG_ClientMute_f(void) {
         return;
     }
 
+    // Voice muting: the CG_S_MUTECLIENT syscall is a stub in this engine and
+    // VOIP is compiled out (USE_VOIP=0), so on its own this call did nothing
+    // and the command reported a mute that never happened. Kept for when a
+    // voice backend exists; the chat-side mute below is what actually takes
+    // effect today.
     trap_S_MuteClient(clientNum, qtrue);
-    CG_Printf("Client %d muted.\n", clientNum);
+    cg_ignoredClients[clientNum] = qtrue;
+
+    CG_Printf("Muted %s^7 (client %d) - their chat is now hidden.\n",
+              cgs.clientinfo[clientNum].name, clientNum);
 }
 
 // [QL] Binary-matched acc/pstats handlers with spectator check and request throttling
@@ -780,6 +886,13 @@ typedef struct {
 // [QL] Command table - matches cgamex86.dll binary at 0x10078DC0 (57 entries)
 static consoleCommand_t commands[] = {
     {"viewpos", CG_Viewpos_f},
+    // [QL] companions to the existing clientmute; see the ignore list above.
+    {"clientunmute", CG_ClientUnmute_f},
+    {"clientmutelist", CG_ClientMuteList_f},
+    // [QL] issued by the ui player menu but previously registered nowhere, so
+    // picking the menu entry did nothing and reported nothing.
+    {"clientviewprofile", CG_SteamOnlyCommand_f},
+    {"clientfriendinvite", CG_SteamOnlyCommand_f},
     {"+scores", CG_ScoresDown_f},
     {"-scores", CG_ScoresUp_f},
     {"+acc", CG_AccDown_f},

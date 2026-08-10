@@ -253,6 +253,11 @@ extern cvar_t* sv_pure;
 extern cvar_t* sv_floodProtect;
 extern cvar_t* sv_lanForceRate;
 extern cvar_t* sv_banFile;
+extern cvar_t* sv_altEntDir;
+
+// [QL] sv_altEntDir entity override (sv_init.c)
+void SV_LoadAltEntityString(const char* mapname);
+char* SV_AltEntityString(void);
 
 extern serverBan_t serverBans[SERVER_MAXBANS];
 extern int serverBansCount;

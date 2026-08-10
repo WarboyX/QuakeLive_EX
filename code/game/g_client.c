@@ -1770,11 +1770,33 @@ void STAT_MatchEnd(void) { }
 ============
 G_IsTeamLocked
 
-[QL] Check if a team is locked (via /lock command by admin/referee)
-Currently returns qfalse (unlocked) - lock state would need
-a level-scope variable to track per-team lock status.
+[QL] Check if a team is locked (via the /lock command by an admin/referee).
+
+Cmd_Lock_f / Cmd_Unlock_f record the state in g_teamRedLocked and
+g_teamBlueLocked. Those are read here through the cvar trap rather than through
+the registered vmCvar copies, because the copies only refresh once per frame in
+G_UpdateCvars - a player joining in the same frame the referee locked the team
+would otherwise still get through.
 ============
 */
 qboolean G_IsTeamLocked(team_t team) {
+    if (team == TEAM_RED) {
+        return trap_Cvar_VariableIntegerValue("g_teamRedLocked") ? qtrue : qfalse;
+    }
+
+    if (team == TEAM_BLUE) {
+        return trap_Cvar_VariableIntegerValue("g_teamBlueLocked") ? qtrue : qfalse;
+    }
+
+    // Free-for-all has one pool rather than two teams, so /lock with no side
+    // (which sets both flags) is what locks the arena. Spectator is never
+    // locked - players must always be able to leave the game.
+    if (team == TEAM_FREE) {
+        return (trap_Cvar_VariableIntegerValue("g_teamRedLocked") &&
+                trap_Cvar_VariableIntegerValue("g_teamBlueLocked"))
+                   ? qtrue
+                   : qfalse;
+    }
+
     return qfalse;
 }

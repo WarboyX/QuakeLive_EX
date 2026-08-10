@@ -370,6 +370,71 @@ static void SV_ClearServer(void) {
 
 /*
 ================
+SV_LoadAltEntityString
+
+[QL] Entity override. When sv_altEntDir names a directory, the server looks for
+"<sv_altEntDir>/<mapname>.ent" and, if present, spawns the level from that file
+instead of the entity lump inside the .bsp. This lets an operator retune item
+placement, spawn points or gametype entities on a stock map without shipping a
+modified .bsp that every client would then have to download.
+
+The override is server-side only: entities drive spawning, not collision, so
+clients are unaffected and pure-server checks still see the original .bsp.
+
+Called once per SV_SpawnServer, after CM_LoadMap and before SV_InitGameProgs.
+================
+*/
+static char* sv_altEntityString = NULL;
+
+void SV_LoadAltEntityString(const char* mapname) {
+    char path[MAX_QPATH];
+    char* buffer;
+    long len;
+
+    // Drop whatever the previous map used.
+    if (sv_altEntityString) {
+        Z_Free(sv_altEntityString);
+        sv_altEntityString = NULL;
+    }
+
+    if (!sv_altEntDir || !sv_altEntDir->string[0]) {
+        return;
+    }
+
+    Com_sprintf(path, sizeof(path), "%s/%s.ent", sv_altEntDir->string, mapname);
+
+    len = FS_ReadFile(path, (void**)&buffer);
+    if (len <= 0 || !buffer) {
+        // Not an error: only some maps are expected to carry an override.
+        if (buffer) {
+            FS_FreeFile(buffer);
+        }
+        return;
+    }
+
+    // FS_ReadFile's buffer is freed on the next FS_Restart, so keep our own
+    // copy for the lifetime of the map. Null-terminated for the token parser.
+    sv_altEntityString = Z_Malloc(len + 1);
+    Com_Memcpy(sv_altEntityString, buffer, len);
+    sv_altEntityString[len] = '\0';
+    FS_FreeFile(buffer);
+
+    Com_Printf("Using entity override %s (%li bytes)\n", path, len);
+}
+
+/*
+================
+SV_AltEntityString
+
+Returns the loaded override for this map, or NULL to use the .bsp's own lump.
+================
+*/
+char* SV_AltEntityString(void) {
+    return sv_altEntityString;
+}
+
+/*
+================
 SV_SpawnServer
 
 Change the server to a new map, taking all connected
@@ -450,6 +515,11 @@ void SV_SpawnServer(char* server, qboolean killBots) {
     FS_Restart(sv.checksumFeed);
 
     CM_LoadMap(va("maps/%s.bsp", server), qfalse, &checksum);
+
+    // [QL] pick up an entity override for this map, if the operator configured
+    // one. Must come after CM_LoadMap (which owns the BSP's own entity lump)
+    // and before SV_InitGameProgs (which starts parsing entities).
+    SV_LoadAltEntityString(server);
 
     // set serverinfo visible name
     Cvar_Set("mapname", server);
@@ -640,6 +710,7 @@ void SV_Init(void) {
     sv_mapChecksum = Cvar_Get("sv_mapChecksum", "", CVAR_ROM);
     sv_lanForceRate = Cvar_Get("sv_lanForceRate", "1", CVAR_ARCHIVE);
     sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
+    sv_altEntDir = Cvar_Get("sv_altEntDir", "", CVAR_ARCHIVE);
 
     // Load the bans the operator saved in a previous session so they are in
     // force before the first client can connect. Queued rather than called

@@ -1243,6 +1243,8 @@ extern vmCvar_t g_spawnItemAmmo;
 
 // [QL] serverinfo cvars
 extern vmCvar_t g_teamsize;
+extern vmCvar_t g_teamRedLocked;
+extern vmCvar_t g_teamBlueLocked;
 extern vmCvar_t g_teamSizeMin;
 extern vmCvar_t g_overtime;
 extern vmCvar_t g_scorelimit;

@@ -1950,6 +1950,9 @@ static void CG_ServerCommand(void) {
         if (cgs.gametype >= GT_TEAM && cg_teamChatsOnly.integer) {
             return;
         }
+        if (CG_IsClientIgnored(CG_ChatSenderClientNum(CG_Argv(1)))) {
+            return;
+        }
         // QL binary: cg_chatbeep.integer gates the chat sound (vmCvar 0x10A6A9E0)
         if (cg_chatbeep.integer) {
             trap_S_StartLocalSound(cgs.media.talkSound, CHAN_LOCAL_SOUND);
@@ -2013,6 +2016,9 @@ static void CG_ServerCommand(void) {
     }
 
     if (!strcmp(cmd, "tchat")) {
+        if (CG_IsClientIgnored(CG_ChatSenderClientNum(CG_Argv(1)))) {
+            return;
+        }
         // QL binary: cg_chatbeep.integer gates the chat sound
         if (cg_chatbeep.integer) {
             trap_S_StartLocalSound(cgs.media.talkSound, CHAN_LOCAL_SOUND);
