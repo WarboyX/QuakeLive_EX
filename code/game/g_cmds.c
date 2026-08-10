@@ -2671,18 +2671,57 @@ static void Cmd_Unmute_f(gentity_t* ent) {
         g_clients[pid].pers.netname));
 }
 
-// "tempban" / "ban" - Kick and ban a player (referee+)
+/*
+==================
+G_SafeBanArgument
+
+The unban handler forwards its argument into the engine console, so anything
+that could terminate one command and start another has to be rejected first -
+otherwise a referee could reach every rcon-level command through it. Ban list
+arguments are only ever an address, a CIDR prefix, or a list index, so accept
+that alphabet and nothing else.
+==================
+*/
+static qboolean G_SafeBanArgument(const char* s) {
+    int i;
+
+    if (!s || !s[0] || strlen(s) >= 64) {
+        return qfalse;
+    }
+
+    for (i = 0; s[i]; i++) {
+        char c = s[i];
+
+        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') ||
+            c == '.' || c == ':' || c == '/') {
+            continue;
+        }
+        return qfalse;
+    }
+
+    return qtrue;
+}
+
+// "tempban" / "ban" - remove a player from the server (referee+)
+//
+// tempban kicks for the remainder of the match; ban hands the client off to the
+// engine's address ban list (banClient), which records the ban in sv_banFile and
+// drops the player itself.
 static void Cmd_Ban_f(gentity_t* ent) {
     char pidStr[MAX_TOKEN_CHARS];
     int pid;
     char cmd[MAX_TOKEN_CHARS];
+    qboolean permanent;
+
+    trap_Argv(0, cmd, sizeof(cmd));
 
     if (trap_Argc() < 2) {
-        trap_Argv(0, cmd, sizeof(cmd));
         trap_SendServerCommand(ent - g_entities,
             va("print \"Usage: %s <playerid>\n\"", cmd));
         return;
     }
+
+    permanent = (Q_stricmp(cmd, "ban") == 0);
 
     trap_Argv(1, pidStr, sizeof(pidStr));
     pid = atoi(pidStr);
@@ -2699,15 +2738,43 @@ static void Cmd_Ban_f(gentity_t* ent) {
         return;
     }
 
-    trap_SendServerCommand(-1, va("print \"%s ^7has been banned by %s.\n\"",
+    if (permanent) {
+        trap_SendServerCommand(-1, va("print \"%s ^7has been banned by %s.\n\"",
+            g_clients[pid].pers.netname, ent->client->pers.netname));
+
+        // banClient records the client's address in the server ban list, saves
+        // the list, and drops the client - so no trap_DropClient here.
+        trap_SendConsoleCommand(EXEC_APPEND, va("banClient %i\n", pid));
+        return;
+    }
+
+    trap_SendServerCommand(-1, va("print \"%s ^7has been kicked by %s.\n\"",
         g_clients[pid].pers.netname, ent->client->pers.netname));
-    trap_DropClient(pid, "Banned from server");
+    trap_DropClient(pid, "Kicked from server");
 }
 
-// "unban" - Remove a ban (referee+)
+// "unban" - remove an entry from the server ban list (referee+)
 static void Cmd_Unban_f(gentity_t* ent) {
+    char arg[MAX_TOKEN_CHARS];
+
+    if (trap_Argc() < 2) {
+        trap_SendServerCommand(ent - g_entities,
+            "print \"Usage: unban <address[/prefix]|ban number>  (see banlist)\n\"");
+        return;
+    }
+
+    trap_Argv(1, arg, sizeof(arg));
+
+    if (!G_SafeBanArgument(arg)) {
+        trap_SendServerCommand(ent - g_entities,
+            "print \"Expected an address, address/prefix, or a number from banlist.\n\"");
+        return;
+    }
+
+    trap_SendConsoleCommand(EXEC_APPEND, va("bandel %s\n", arg));
+
     trap_SendServerCommand(ent - g_entities,
-        "print \"Unban not implemented - use removeip from rcon.\n\"");
+        va("print \"Requested removal of ban %s.\n\"", arg));
 }
 
 // "listaccess" - List access control entries (referee+)

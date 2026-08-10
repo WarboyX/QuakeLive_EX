@@ -862,18 +862,12 @@ char* ClientConnect(int clientNum, qboolean firstTime, qboolean isBot) {
 
     trap_GetUserinfo(clientNum, userinfo, sizeof(userinfo));
 
-    // [QL] Access level check (replaces IP banning and password)
-    value = Info_ValueForKey(userinfo, "ip");
-    if (!isBot) {
-        int accessLevel = G_GetAccessLevel(value);
-        if (accessLevel == -1) {
-            return "You are banned from this server.";
-        }
-        // check for localhost
-        if (strcmp(value, "localhost") != 0) {
-            // store privilege level
-            // (will be set after client struct is zeroed)
-        }
+    // [QL] Access level check (replaces IP banning and password). G_GetAccess is
+    // the same lookup G_InitSessionData uses to seed sess.privileges: it keys on
+    // the client's Steam ID, which is what the access file is written in terms
+    // of, and reports 3 for localhost, -1 for a banned account.
+    if (!isBot && G_GetAccess(clientNum) == -1) {
+        return "You are banned from this server.";
     }
 
     // if a player reconnects quickly after a disconnect, the client disconnect may never be called
@@ -1725,18 +1719,10 @@ void Team_LivingTeamCounts(int *outRed, int *outBlue) {
     if (outBlue) *outBlue = aliveBlue;
 }
 
-/*
-============
-G_GetAccessLevel
-
-[QL] Stub - Steam-based access level check.
-Returns 0 (regular), 1 (mod), 2 (admin), -1 (banned).
-Without Steam auth, always returns 0.
-============
-*/
-int G_GetAccessLevel(const char* ip) {
-    return 0;
-}
+// G_GetAccessLevel used to sit here: an IP-keyed stub that always returned 0,
+// while the access file it was meant to consult is keyed by Steam ID. Its only
+// caller (the connect-time ban check) now uses G_GetAccess, which performs that
+// lookup properly.
 
 /*
 ============

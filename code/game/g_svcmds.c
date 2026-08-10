@@ -482,12 +482,12 @@ Verified against qagamex86.dll:
   G_ReloadAccessList  0x10032830  (reload + reapply; .so symbol G_ReloadAccessList)
 
 NOTE (coordination / see report): these three should live in a dedicated
-g_access.c and be declared in g_local.h so that ClientConnect() (auth/ban check)
-and the admin client-commands in g_cmds.c (Cmd_AddAdmin_f / Cmd_AddMod_f /
-Cmd_Demote_f / Cmd_Ban_f / Cmd_Unban_f) can consume them. They are placed here
-because Svcmd/ConsoleCommand's "reload_access" is the only in-scope caller. The
-existing g_client.c:G_GetAccessLevel(const char*) stub is a mis-typed invention;
-the binary's function is G_GetAccess(int clientNum) (below).
+g_access.c. They are declared in g_local.h and are consumed by ClientConnect()
+(the connect-time ban check) and G_InitSessionData() (privilege seeding); they
+are defined here because Svcmd/ConsoleCommand's "reload_access" was originally
+the only in-scope caller. The mis-typed g_client.c:G_GetAccessLevel(const char*)
+stub that used to shadow this lookup has been removed - the binary's function is
+G_GetAccess(int clientNum) (below), and that is what callers now use.
 ==============================================================================
 */
 

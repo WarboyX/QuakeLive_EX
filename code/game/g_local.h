@@ -964,7 +964,8 @@ void Freeze_ClientBegin(gentity_t* ent);
 void RR_ClientBegin(gentity_t* ent);
 void SelectSpawnWeapon(gentity_t* ent);
 void Team_LivingTeamCounts(int *outRed, int *outBlue);
-int G_GetAccessLevel(const char* ip);
+// Access levels come from G_GetAccess (g_svcmds.c), which is Steam-ID keyed to
+// match the access file. There is no IP-keyed variant.
 void G_ReleaseGrapple(gentity_t* ent);
 void STAT_InitClient(gentity_t* ent);
 void STAT_PublishClientDisconnect(gclient_t* client, int reason);
