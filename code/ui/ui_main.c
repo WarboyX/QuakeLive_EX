@@ -5249,6 +5249,10 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
         vec3_t v;
         v[0] = v[1] = v[2] = 0;
         switch (menu) {
+            case UIMENU_BAD_CD_KEY:
+                // [Q3 remnant] the enum value is kept for numbering only; QL
+                // has no CD key menu, so there is nothing to activate.
+                return;
             case UIMENU_NONE:
                 trap_Key_SetCatcher(trap_Key_GetCatcher() & ~KEYCATCH_UI);
                 trap_Key_ClearStates();

@@ -819,6 +819,37 @@ static void CG_GrenadeTrail(centity_t* ent, const weaponInfo_t* wi) {
 
 /*
 =================
+CG_ValidWeaponNum
+
+Weapon numbers reach cgame straight off the wire - entityState_t::weapon is an
+8-bit delta field and playerState_t::weapon a 5-bit one - so both can carry
+values well past MAX_WEAPONS. Anything that indexes cg_weapons[] with a
+network-supplied number has to be range-checked first.
+=================
+*/
+qboolean CG_ValidWeaponNum(int weaponNum) {
+    return (weaponNum > 0 && weaponNum < MAX_WEAPONS);
+}
+
+/*
+=================
+CG_WeaponInfo
+
+Range-checked cg_weapons[] lookup. Out-of-range numbers resolve to slot 0
+(WP_NONE), which is never registered and therefore stays zeroed - it reads back
+as "no model, no icon, no sounds" instead of running off the end of the array.
+=================
+*/
+weaponInfo_t* CG_WeaponInfo(int weaponNum) {
+    if (!CG_ValidWeaponNum(weaponNum)) {
+        return &cg_weapons[0];
+    }
+
+    return &cg_weapons[weaponNum];
+}
+
+/*
+=================
 CG_RegisterWeapon
 
 The server says this item is used on this level
@@ -831,12 +862,15 @@ void CG_RegisterWeapon(int weaponNum) {
     vec3_t mins, maxs;
     int i;
 
-    weaponInfo = &cg_weapons[weaponNum];
-
     // [QL] weapon 0 and 15 (0xf) are not registered; grapple (10) IS registered.
-    if (weaponNum == 0 || weaponNum == 15) {
+    // The range check has to come before the array access: this function
+    // memsets the slot it resolves, so an unchecked number is an out-of-bounds
+    // write, not just a bad read.
+    if (!CG_ValidWeaponNum(weaponNum) || weaponNum == 15) {
         return;
     }
+
+    weaponInfo = &cg_weapons[weaponNum];
 
     if (weaponInfo->registered) {
         return;
@@ -1440,7 +1474,7 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     weaponNum = cent->currentState.weapon;
 
     CG_RegisterWeapon(weaponNum);
-    weapon = &cg_weapons[weaponNum];
+    weapon = CG_WeaponInfo(weaponNum);
 
     // add the weapon
     memset(&gun, 0, sizeof(gun));
@@ -1494,6 +1528,12 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
                    1.0 - parent->backlerp, "tag_weapon");
     VectorCopy(parent->origin, gun.origin);
 
+    // Orientation first: the per-axis VectorMA calls below reference
+    // parent->axis[n] with constant indices, which narrows gcc's view of the
+    // object to a single vec3_t and makes the whole-matrix read here look like
+    // an overflow. Nothing in the origin maths depends on gun.axis.
+    MatrixMultiply(lerped.axis, parent->axis, gun.axis);
+
     VectorMA(gun.origin, lerped.origin[0], parent->axis[0], gun.origin);
 
     // Make weapon appear left-handed for 2 and centered for 3
@@ -1504,7 +1544,6 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
 
     VectorMA(gun.origin, lerped.origin[2], parent->axis[2], gun.origin);
 
-    MatrixMultiply(lerped.axis, ((refEntity_t*)parent)->axis, gun.axis);
     gun.backlerp = parent->backlerp;
 
     CG_AddWeaponWithPowerups(&gun, cent->currentState.powerups);
@@ -1673,7 +1712,7 @@ void CG_AddViewWeapon(playerState_t* ps) {
 
     cent = &cg.predictedPlayerEntity;  // &cg_entities[cg.snap->ps.clientNum];
     CG_RegisterWeapon(ps->weapon);
-    weapon = &cg_weapons[ps->weapon];
+    weapon = CG_WeaponInfo(ps->weapon);
 
     memset(&hand, 0, sizeof(hand));
 

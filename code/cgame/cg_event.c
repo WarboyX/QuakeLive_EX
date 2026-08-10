@@ -187,7 +187,10 @@ CG_Obituary
 static void CG_Obituary(entityState_t* ent) {
     int mod;
     int target, attacker;
-    char* message;
+    // MOD_THAW only sets a message for the no-attacker (auto-thaw) case and
+    // otherwise falls through to the attacker/target handling below, so this
+    // must start out NULL rather than holding whatever was on the stack.
+    char* message = NULL;
     char* message2;
     const char* targetInfo;
     const char* attackerInfo;

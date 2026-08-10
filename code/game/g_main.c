@@ -1106,7 +1106,8 @@ static cvarTable_t gameCvarTable[] = {
     {NULL, NULL, NULL, 0, 0, NULL}
 };
 
-static int gameCvarTableSize = ARRAY_LEN(gameCvarTable);
+// gameCvarTable is walked to its NULL sentinel everywhere it is used, so it
+// needs no separate element count.
 
 void G_InitGame(int levelTime, int randomSeed, int restart);
 void G_RunFrame(int levelTime);

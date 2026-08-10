@@ -46,7 +46,7 @@ void G_WriteClientSessionData(gclient_t* client) {
     // [QL] 13 fields. QL field order: weaponPrimary comes before
     // wins/losses/teamLeader, and prevScore is appended. updatePlayQueue and
     // joinTime are not serialised.
-    s = va("%i %ld %i %i %i %i %i %i %i %i %i %i %i",
+    s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i",
            client->sess.sessionTeam,
            client->sess.spectatorTime,
            client->sess.spectatorState,
@@ -83,7 +83,10 @@ void G_ReadSessionData(gclient_t* client) {
     var = va("session%i", (int)(client - level.clients));
     trap_Cvar_VariableStringBuffer(var, s, sizeof(s));
 
-    sscanf(s, "%i %ld %i %i %i %i %i %i %i %i %i %i %i",
+    // NOTE: every field below is an int; spectatorTime in particular must be
+    // read with %i. Reading it as %ld makes sscanf store 8 bytes into a 4-byte
+    // member on LP64 (Linux/macOS), corrupting the rest of clientSession_t.
+    sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i",
            &sessionTeam,
            &client->sess.spectatorTime,
            &spectatorState,

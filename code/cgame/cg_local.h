@@ -1996,6 +1996,8 @@ void CG_NextWeapon_f(void);
 void CG_PrevWeapon_f(void);
 void CG_Weapon_f(void);
 
+qboolean CG_ValidWeaponNum(int weaponNum);
+weaponInfo_t* CG_WeaponInfo(int weaponNum);
 void CG_RegisterWeapon(int weaponNum);
 void CG_RegisterItemVisuals(int itemNum);
 

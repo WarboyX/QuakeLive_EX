@@ -224,18 +224,20 @@ static void CG_DrawPlayerAmmoIcon(rectDef_t* rect, qboolean draw2D) {
 
     if (draw2D || (!cg_draw3dIcons.integer && cg_drawIcons.integer)) {
         qhandle_t icon;
-        icon = cg_weapons[cg.predictedPlayerState.weapon].ammoIcon;
+        icon = CG_WeaponInfo(cg.predictedPlayerState.weapon)->ammoIcon;
         if (icon) {
             CG_DrawPic(rect->x, rect->y, rect->w, rect->h, icon);
         }
     } else if (cg_draw3dIcons.integer) {
-        if (cent->currentState.weapon && cg_weapons[cent->currentState.weapon].ammoModel) {
+        qhandle_t ammoModel = CG_WeaponInfo(cent->currentState.weapon)->ammoModel;
+
+        if (cent->currentState.weapon && ammoModel) {
             VectorClear(angles);
             origin[0] = 70;
             origin[1] = 0;
             origin[2] = 0;
             angles[YAW] = 90 + 20 * sin(cg.time / 1000.0);
-            CG_Draw3DModel(rect->x, rect->y, rect->w, rect->h, cg_weapons[cent->currentState.weapon].ammoModel, 0, origin, angles);
+            CG_Draw3DModel(rect->x, rect->y, rect->w, rect->h, ammoModel, 0, origin, angles);
         }
     }
 }
@@ -466,8 +468,10 @@ static void CG_DrawSelectedPlayerWeapon(rectDef_t* rect) {
 
     ci = cgs.clientinfo + sortedTeamPlayers[CG_GetSelectedPlayer()];
     if (ci) {
-        if (cg_weapons[ci->curWeapon].weaponIcon) {
-            CG_DrawPic(rect->x, rect->y, rect->w, rect->h, cg_weapons[ci->curWeapon].weaponIcon);
+        qhandle_t weaponIcon = CG_WeaponInfo(ci->curWeapon)->weaponIcon;
+
+        if (weaponIcon) {
+            CG_DrawPic(rect->x, rect->y, rect->w, rect->h, weaponIcon);
         } else {
             CG_DrawPic(rect->x, rect->y, rect->w, rect->h, cgs.media.deferShader);
         }

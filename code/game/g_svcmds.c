@@ -556,6 +556,10 @@ void G_InitAccessList(void) {
     while (line) {
         if (*line != '#') {
             char* cr;
+            // %llu has to be fed an unsigned long long; uint64_t is a plain
+            // unsigned long on LP64, so scan into a matching temporary rather
+            // than let sscanf write through a mismatched pointer type.
+            unsigned long long scannedId;
             uint64_t steamId;
             char word[64];
 
@@ -566,9 +570,15 @@ void G_InitAccessList(void) {
             // [QL] binary G_InitAccessList uses unbounded "%llu|%s"; %63s (word[64]) is a
             // deliberate defensive cap to avoid a stack overflow on a malformed access file.
             // Identical parse for every valid keyword (ban/mod/admin).
-            if (sscanf(line, "%llu|%63s", &steamId, word) != 2) {
+            if (sscanf(line, "%llu|%63s", &scannedId, word) != 2) {
                 G_Printf("^1invalid admin access format, skipping: %s\n", line);
-            } else if (!strcmp(word, "ban")) {
+                line = strtok(NULL, "\n");
+                continue;
+            }
+
+            steamId = (uint64_t)scannedId;
+
+            if (!strcmp(word, "ban")) {
                 AccessList_Get(steamId)->level = -1;
             } else if (!strcmp(word, "mod")) {
                 AccessList_Get(steamId)->level = 1;

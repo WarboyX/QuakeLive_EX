@@ -279,6 +279,26 @@ qboolean OnSameTeam(gentity_t* ent1, gentity_t* ent2) {
 static char ctfFlagStatusRemap[] = {'0', '1', '*', '*', '2'};
 static char oneFlagStatusRemap[] = {'0', '1', '2', '3', '4'};
 
+/*
+==============
+Team_FlagStatusChar
+
+Team_InitGame seeds the per-team statuses with -1 to force the first
+configstring update through, so the very first Team_SetFlagStatus for CTF
+serialises one team that has been set and one that is still -1. Read the remap
+table through this helper so that transient state can never index out of
+bounds; an unset status reports as at-base, which is what the very next
+Team_SetFlagStatus call writes anyway.
+==============
+*/
+static char Team_FlagStatusChar(const char* remap, int remapCount, int status) {
+    if (status < 0 || status >= remapCount) {
+        return remap[FLAG_ATBASE];
+    }
+
+    return remap[status];
+}
+
 void Team_SetFlagStatus(int team, flagStatus_t status) {
     qboolean modified = qfalse;
 
@@ -309,11 +329,11 @@ void Team_SetFlagStatus(int team, flagStatus_t status) {
         char st[4];
 
         if (g_gametype.integer == GT_CTF) {
-            st[0] = ctfFlagStatusRemap[teamgame.redStatus];
-            st[1] = ctfFlagStatusRemap[teamgame.blueStatus];
+            st[0] = Team_FlagStatusChar(ctfFlagStatusRemap, ARRAY_LEN(ctfFlagStatusRemap), teamgame.redStatus);
+            st[1] = Team_FlagStatusChar(ctfFlagStatusRemap, ARRAY_LEN(ctfFlagStatusRemap), teamgame.blueStatus);
             st[2] = 0;
         } else {  // GT_1FCTF
-            st[0] = oneFlagStatusRemap[teamgame.flagStatus];
+            st[0] = Team_FlagStatusChar(oneFlagStatusRemap, ARRAY_LEN(oneFlagStatusRemap), teamgame.flagStatus);
             st[1] = 0;
         }
 

@@ -677,26 +677,8 @@ qboolean PM_WouldJump(void) {
     return qfalse;
 }
 
-/*
-=============
-PM_WouldCrouchStepJump - [QL] check if a crouch-slide jump would occur
-=============
-*/
-static qboolean PM_WouldCrouchStepJump(void) {
-    if (!(pm->ps->pm_flags & PMF_DUCKED)) {
-        return qfalse;
-    }
-    if (pml.groundPlane) {
-        return qfalse;
-    }
-    if (pm->ps->velocity[2] < 0) {
-        return qfalse;
-    }
-    if ((float)(pm->cmd.serverTime - pm->ps->jumpTime) < pm_jumpVelocityTimeThreshold) {
-        return qfalse;
-    }
-    return qtrue;
-}
+// PM_WouldCrouchStepJump lives in bg_slidemove.c next to PM_StepSlideMove, its
+// only caller. A second copy used to sit here and was never reachable.
 
 /*
 =============
@@ -2455,10 +2437,7 @@ void PmoveSingle(pmove_t* pmove) {
 
     // [QL] invulnerability sphere freezes all movement
     if (pm->ps->powerups[PW_INVULNERABILITY]) {
-        pm->cmd.forwardmove = 0;
-        pm->cmd.rightmove = 0;
-        pm->cmd.upmove = 0;
-        VectorClear(pm->ps->velocity);
+        PM_InvulnerabilityMove();
         goto postMovement;
     }
 
