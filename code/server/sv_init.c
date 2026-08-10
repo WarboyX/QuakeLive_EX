@@ -641,6 +641,12 @@ void SV_Init(void) {
     sv_lanForceRate = Cvar_Get("sv_lanForceRate", "1", CVAR_ARCHIVE);
     sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
 
+    // Load the bans the operator saved in a previous session so they are in
+    // force before the first client can connect. Queued rather than called
+    // directly: SV_AddOperatorCommands (which registers "rehashbans") runs
+    // above, but sv_banFile only exists as of this line.
+    Cbuf_AddText("rehashbans\n");
+
     // initialize bot cvars so they are listed and can be set before loading the botlib
     SV_BotInitCvars();
 

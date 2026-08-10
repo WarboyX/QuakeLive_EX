@@ -66,7 +66,7 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 | Demo recording/playback | Pending | Not yet tested with QL protocol |
 | Download system | Pending | HTTP redirect and pk3 downloads not yet audited |
 | VOIP / Steam voice | Pending | QL uses Steam P2P voice, not Q3 VOIP; current code is ioquake3 VOIP |
-| Console auto-complete | Pending | QL-specific commands/cvars not yet registered for tab-complete |
+| Console auto-complete | Partial | Player-name completion wired for `kick`/`banUser`; QL-specific commands/cvars not yet registered for tab-complete |
 | Screenshot system | Pending | QL screenshot path/naming conventions not audited |
 | Client-side prediction | Pending | Prediction error handling for QL-specific player states (freeze, tutorial) not fully tested |
 
@@ -78,7 +78,7 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 | Bot management | Done | `sv_bot.c` functional |
 | Steam auth bypass | Done | `com_build 1` skips Steam GS init and auth validation |
 | Game module loading | Done | Native DLL loading with `gameImport_t` function pointer table |
-| Ban system | Pending | `SV_Ban_f` / `SV_BanNum_f` print "Not yet implemented" |
+| Ban system | Done | Address/CIDR ban list persisted to `sv_banFile`, loaded at startup. `banUser`, `banClient`, `banaddr`, `exceptaddr`, `bandel`, `exceptdel`, `banlist`, `flushbans`, `rehashbans` |
 | ZMQ stats/rcon | Pending | QL uses ZeroMQ for remote console and stats publishing |
 | Server browser protocol | Pending | Valve's Server Query Protocol needed for server list |
 | Master server heartbeat | Pending | QL uses Steam master servers; needs custom implementation |
@@ -101,7 +101,7 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 | Spectator tracking | Done | `cg_spectating` cvar follows `PM_SPECTATOR` transitions |
 | Prediction/pmove | Done | 9 binary-verified fixes (freeze, dead float, hookEnemy, etc.) |
 | Obituary feed | Done | Attacker/victim name rendering with weapon icons |
-| Team overlay | Done | Scrolling spectator list, team info |
+| Team overlay | Partial | Scrolling spectator list, team info. `clientInfo_t::curWeapon` is read by the overlay and the selected-player HUD but nothing ever writes it (no `tinfo` server command), so teammate weapon icons never draw |
 | Impact sparks | Done | Configurable spark particle system on bullet/rail impacts |
 | Weapon styles | Done | Muzzle flash control, shotgun smoke, weapon render cvars |
 | Vignette overlay | Done | Screen-edge darkening effect |
@@ -188,7 +188,17 @@ Individual projects: `cgame.vcxproj`, `ui.vcxproj`, `qagame.vcxproj`, `quakelive
 
 ### Linux / macOS
 
-Standard ioquake3 Makefile build - not yet tested with QL-specific changes.
+Standard ioquake3 Makefile build:
+
+```
+make release -j$(nproc)
+```
+
+Builds clean on Linux x86_64 (needs `libsdl2-dev`, plus the `code/libogg` and
+`code/libvorbis` submodules). This produces the engine, the dedicated server,
+the OpenGL2 renderer and `baseq3/iobin.pk3`. Running the game still requires a
+legitimate `pak00.pk3`; the dedicated server binary starts and accepts console
+commands without one, but cannot load a map.
 
 ## Directory Layout
 
