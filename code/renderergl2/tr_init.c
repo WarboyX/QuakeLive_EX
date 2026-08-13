@@ -1333,7 +1333,11 @@ void R_Register(void) {
     r_railCoreWidth = ri.Cvar_Get("r_railCoreWidth", "6", CVAR_ARCHIVE);
     r_railSegmentLength = ri.Cvar_Get("r_railSegmentLength", "32", CVAR_ARCHIVE);
 
-    r_ambientScale = ri.Cvar_Get("r_ambientScale", "0.6", CVAR_CHEAT);
+    // Quake Live exposes this as "Ambient Light Scale" in the video menu, so it
+    // has to be settable. As CVAR_CHEAT the menu could not write it at all while
+    // connected to a normal server, and the engine reset it back to 0.6 on every
+    // connect - the control was inert by construction.
+    r_ambientScale = ri.Cvar_Get("r_ambientScale", "0.6", CVAR_ARCHIVE);
     r_directedScale = ri.Cvar_Get("r_directedScale", "1", CVAR_CHEAT);
 
     r_anaglyphMode = ri.Cvar_Get("r_anaglyphMode", "0", CVAR_ARCHIVE);

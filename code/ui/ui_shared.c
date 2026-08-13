@@ -3314,7 +3314,15 @@ const char* Item_Combo_FindCvarByValue(itemDef_t* item) {
             return multiPtr->cvarStr[i];
         }
     }
-    return "???";
+
+    // The cvar holds something this item has no display string for - it was set
+    // outside the menu, or the item's list does not cover the cvar's own
+    // default. Show the raw value rather than "???": the setting is not
+    // unknowable, it is just not one of the presets, and hiding it behind three
+    // question marks tells the player nothing about what their game is doing.
+    // "???" above is kept for the case where the cvar does not exist at all,
+    // which is a different fault and worth being able to tell apart.
+    return va("%s", buff);
 }
 
 // [QL] ITEM_TYPE_PRESETLIST paint - draws the item label plus the current preset's
@@ -3347,8 +3355,14 @@ void Item_Combo_Paint(itemDef_t* item) {
     }
 }
 
+// The command is stored inline rather than as a pointer to a literal, because
+// the table is no longer fixed: commands a menu references but this build's
+// default list has never heard of get registered at runtime (see
+// BindingIDFromName), and those need somewhere to live.
+#define MAX_UI_BINDINGS 256
+
 typedef struct {
-    char* command;
+    char command[64];
     int defaultbind1;
     int defaultbind2;
     int bind1;
@@ -3362,7 +3376,7 @@ typedef struct
     float value;
 } configcvar_t;
 
-static bind_t g_bindings[] =
+static const bind_t g_defaultBindings[] =
     {
         {"+scores", K_TAB, -1, -1, -1},
         {"+button2", K_ENTER, -1, -1, -1},
@@ -3425,7 +3439,33 @@ static bind_t g_bindings[] =
         {"messagemode3", -1, -1, -1, -1},
         {"messagemode4", -1, -1, -1, -1}};
 
-static const int g_bindCount = ARRAY_LEN(g_bindings);
+// Runtime table: seeded from g_defaultBindings, then grown on demand.
+static bind_t g_bindings[MAX_UI_BINDINGS];
+static int g_bindCount = 0;
+
+/*
+=================
+Controls_InitBindings
+
+Seed the runtime table from the defaults, once.
+=================
+*/
+static void Controls_InitBindings(void) {
+    int i, count;
+
+    if (g_bindCount != 0) {
+        return;
+    }
+
+    count = ARRAY_LEN(g_defaultBindings);
+    if (count > MAX_UI_BINDINGS) {
+        count = MAX_UI_BINDINGS;
+    }
+    for (i = 0; i < count; i++) {
+        g_bindings[i] = g_defaultBindings[i];
+    }
+    g_bindCount = count;
+}
 
 /*
 =================
@@ -3464,6 +3504,8 @@ void Controls_GetConfig(void) {
     int i;
     int twokeys[2];
 
+    Controls_InitBindings();
+
     // iterate each command, get its numeric binding
     for (i = 0; i < g_bindCount; i++) {
         Controls_GetKeyAssignment(g_bindings[i].command, twokeys);
@@ -3489,6 +3531,8 @@ Controls_SetConfig
 */
 void Controls_SetConfig(qboolean restart) {
     int i;
+
+    Controls_InitBindings();
 
     // iterate each command, get its numeric binding
     for (i = 0; i < g_bindCount; i++) {
@@ -3524,6 +3568,8 @@ Controls_SetDefaults
 void Controls_SetDefaults(void) {
     int i;
 
+    Controls_InitBindings();
+
     // iterate each command, set its default binding
     for (i = 0; i < g_bindCount; i++) {
         g_bindings[i].bind1 = g_bindings[i].defaultbind1;
@@ -3542,12 +3588,36 @@ void Controls_SetDefaults(void) {
 
 int BindingIDFromName(const char* name) {
     int i;
+    int twokeys[2];
+
+    Controls_InitBindings();
+
     for (i = 0; i < g_bindCount; i++) {
         if (Q_stricmp(name, g_bindings[i].command) == 0) {
             return i;
         }
     }
-    return -1;
+
+    // Not in the default list. That list is Q3's, and Quake Live's own control
+    // menus bind a good deal it never had - so every one of those items used to
+    // find no id here, which made Item_Bind_HandleKey drop the keypress on the
+    // floor and BindingFromName paint "???". Nothing bound, nothing displayed.
+    // Register the command instead, seeded from whatever it is bound to now, so
+    // any command a menu asks for is bindable whether or not this build shipped
+    // knowing about it.
+    if (!name || !name[0] || g_bindCount >= MAX_UI_BINDINGS) {
+        return -1;
+    }
+
+    i = g_bindCount++;
+    Q_strncpyz(g_bindings[i].command, name, sizeof(g_bindings[i].command));
+    g_bindings[i].defaultbind1 = -1;
+    g_bindings[i].defaultbind2 = -1;
+    Controls_GetKeyAssignment(g_bindings[i].command, twokeys);
+    g_bindings[i].bind1 = twokeys[0];
+    g_bindings[i].bind2 = twokeys[1];
+
+    return i;
 }
 
 char g_nameBind1[32];
@@ -3556,27 +3626,27 @@ char g_nameBind2[32];
 void BindingFromName(const char* cvar) {
     int i, b1, b2;
 
-    // iterate each command, set its default binding
-    for (i = 0; i < g_bindCount; i++) {
-        if (Q_stricmp(cvar, g_bindings[i].command) == 0) {
-            b1 = g_bindings[i].bind1;
-            if (b1 == -1) {
-                break;
-            }
-            DC->keynumToStringBuf(b1, g_nameBind1, 32);
-            Q_strupr(g_nameBind1);
+    // Registers the command if the default list did not have it, so an unknown
+    // command shows its real binding rather than "???".
+    i = BindingIDFromName(cvar);
+    b1 = (i == -1) ? -1 : g_bindings[i].bind1;
 
-            b2 = g_bindings[i].bind2;
-            if (b2 != -1) {
-                DC->keynumToStringBuf(b2, g_nameBind2, 32);
-                Q_strupr(g_nameBind2);
-                strcat(g_nameBind1, " or ");
-                strcat(g_nameBind1, g_nameBind2);
-            }
-            return;
-        }
+    if (b1 == -1) {
+        // genuinely unbound, or the table is full
+        strcpy(g_nameBind1, "???");
+        return;
     }
-    strcpy(g_nameBind1, "???");
+
+    DC->keynumToStringBuf(b1, g_nameBind1, 32);
+    Q_strupr(g_nameBind1);
+
+    b2 = g_bindings[i].bind2;
+    if (b2 != -1) {
+        DC->keynumToStringBuf(b2, g_nameBind2, 32);
+        Q_strupr(g_nameBind2);
+        strcat(g_nameBind1, " or ");
+        strcat(g_nameBind1, g_nameBind2);
+    }
 }
 
 void Item_Slider_Paint(itemDef_t* item) {
