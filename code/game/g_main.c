@@ -78,6 +78,7 @@ vmCvar_t g_voteFlags;
 vmCvar_t g_voteDelay;
 vmCvar_t g_voteLimit;
 vmCvar_t g_teamAutoJoin;
+vmCvar_t g_autoJoin;
 vmCvar_t g_teamForceBalance;
 vmCvar_t g_banIPs;
 vmCvar_t g_filterBan;
@@ -1117,6 +1118,8 @@ static cvarTable_t gameCvarTable[] = {
     {&g_switchTeamDelay, "g_switchTeamDelay", "3", CVAR_GAMERULE, 0, NULL},
     {&g_tackleFlag, "g_tackleFlag", "0", CVAR_GAMERULE, 0, NULL},
     {&g_teamAutoJoin, "g_teamAutoJoin", "0", CVAR_ARCHIVE, 0, NULL},
+    // [QL] put connecting players into the match instead of spectator
+    {&g_autoJoin, "g_autoJoin", "1", CVAR_ARCHIVE | CVAR_SERVERINFO, 0, NULL},
     {&g_teamForceBalance, "g_teamForceBalance", "1", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, NULL},
     {&g_teamSpawnAsSpec, "g_teamSpawnAsSpec", "0", 0, 0, NULL},
     {&g_teamSpecFreeCam, "g_teamSpecFreeCam", "0", 0, 0, NULL},

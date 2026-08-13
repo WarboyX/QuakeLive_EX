@@ -248,6 +248,15 @@ PROTOCOL
 // NOTE: that stuff only works with two digits protocols
 extern int demo_protocols[];
 
+// [QL] Master server protocol. The gamename is what a dpmaster filters its
+// server list on, so it has to be a single token - PRODUCT_NAME ("Quake Live")
+// contains a space and cannot be used here. The heartbeat name identifies the
+// protocol family to the master; point sv_master1 at a dpmaster configured to
+// accept these and servers will register themselves.
+#define MAX_MASTER_SERVERS 5
+#define GAMENAME_FOR_MASTER "QuakeLive"
+#define HEARTBEAT_FOR_MASTER "QuakeLive-1"
+
 #define PORT_MASTER 27950
 #define PORT_UPDATE 27951
 #define PORT_SERVER 27960

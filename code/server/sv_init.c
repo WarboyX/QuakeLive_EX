@@ -697,6 +697,15 @@ void SV_Init(void) {
     Cvar_Get("timelimit", "0", CVAR_SERVERINFO);
     sv_gametype = Cvar_Get("g_gametype", "0", CVAR_SERVERINFO | CVAR_LATCH);
     Cvar_Get("sv_keywords", "", CVAR_SERVERINFO);
+    // [QL] Master servers the browser queries and dedicated servers heartbeat
+    // to. Quake Live's own master is long gone, so there is no useful default
+    // to ship - point these at a dpmaster you control (or one that accepts the
+    // "QuakeLive" gamename) and both directions start working.
+    Cvar_Get("sv_master1", "", CVAR_ARCHIVE);
+    Cvar_Get("sv_master2", "", CVAR_ARCHIVE);
+    Cvar_Get("sv_master3", "", CVAR_ARCHIVE);
+    Cvar_Get("sv_master4", "", CVAR_ARCHIVE);
+    Cvar_Get("sv_master5", "", CVAR_ARCHIVE);
     sv_mapname = Cvar_Get("mapname", "nomap", CVAR_SERVERINFO | CVAR_ROM);
     sv_privateClients = Cvar_Get("sv_privateClients", "0", CVAR_SERVERINFO);
     sv_hostname = Cvar_Get("sv_hostname", "noname", CVAR_SERVERINFO | CVAR_ARCHIVE);
@@ -805,6 +814,9 @@ void SV_Shutdown(char* finalmsg) {
     if (svs.clients && !com_errorEntered) {
         SV_FinalMessage(finalmsg);
     }
+
+    // [QL] tell the masters we are going away before we stop answering them
+    SV_MasterShutdown();
 
     SV_RemoveOperatorCommands();
     SV_ShutdownGameProgs();

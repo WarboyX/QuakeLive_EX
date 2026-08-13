@@ -126,15 +126,31 @@ void G_InitSessionData(gclient_t* client, char* userinfo) {
     sess = &client->sess;
 
     // initial team determination
+    //
+    // [QL] Quake Live puts every connecting player into spectator and makes
+    // them pick JOIN MATCH from the menu. Quake 3 dropped you straight into
+    // the game, and g_autoJoin (default on) restores that: connect, spawn,
+    // play. Set g_autoJoin 0 for the Quake Live behaviour.
+    //
+    // Duel is deliberately exempt from the blanket case - it runs on a play
+    // queue, so a third player joining has to wait rather than barge in. The
+    // "fewer than two in the game" test is Quake 3's own tournament rule and
+    // matches what G_ClientCmd's join path already enforces (g_cmds.c).
     if (g_gametype.integer >= GT_TEAM) {
-        if (g_teamAutoJoin.integer) {
+        if (g_teamAutoJoin.integer || g_autoJoin.integer) {
             sess->sessionTeam = PickTeam(-1);
             BroadcastTeamChange(client, -1);
         } else {
             sess->sessionTeam = TEAM_SPECTATOR;
         }
-    } else {
+    } else if (!g_autoJoin.integer) {
         sess->sessionTeam = TEAM_SPECTATOR;
+    } else if (g_gametype.integer == GT_DUEL) {
+        sess->sessionTeam = (level.numNonSpectatorClients >= 2) ? TEAM_SPECTATOR : TEAM_FREE;
+    } else if (g_maxGameClients.integer > 0 && level.numNonSpectatorClients >= g_maxGameClients.integer) {
+        sess->sessionTeam = TEAM_SPECTATOR;
+    } else {
+        sess->sessionTeam = TEAM_FREE;
     }
 
     sess->spectatorState = SPECTATOR_FREE;
