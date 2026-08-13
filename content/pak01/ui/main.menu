@@ -1,5 +1,16 @@
 #include "ui/menudef.h"
 
+// Menu names here carry an io_ prefix. Menus_FindByName returns the first match,
+// and Quake Live's own paks define menus called createserver, joinserver and
+// playersetup as well - so "open joinserver" could activate ours while
+// "close joinserver" closed theirs, or the reverse. Both stayed visible, and
+// since both are fullScreen and Q3 paints every visible menu rather than only
+// the topmost, they drew on top of each other: doubled headers, overlapping
+// labels, two sets of BACK buttons.
+//
+// main is left unprefixed deliberately: this file replaces ui/main.menu in the
+// search path, so Quake Live's own main never loads and cannot collide.
+
 {
     assetGlobalDef {
         font            "fonts/font" 16
@@ -32,8 +43,8 @@
             // so one left open behind another shows through it, headers and
             // all. Closing them here means returning to main always clears
             // whatever was underneath.
-            close createserver ;
-            close joinserver ;
+            close io_createserver ;
+            close io_joinserver ;
             setitemcolor fadebox backcolor 0 0 0 1 ;
             fadeout fadebox ;
             uiScript stopRefresh ;
@@ -70,7 +81,7 @@
             textalign ITEM_ALIGN_LEFT
             forecolor 1 1 1 1
             visible 1
-            action { open renderoptions }
+            action { open io_renderoptions }
             mouseEnter { setitemcolor renderbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor renderbar backcolor 0.5 0.1 0 .25 }
         }
@@ -101,7 +112,7 @@
             textalign ITEM_ALIGN_LEFT
             forecolor 1 1 1 1
             visible 1
-            action { close createserver ; close main ; open joinserver }
+            action { close io_createserver ; close main ; open io_joinserver }
             mouseEnter { setitemcolor joinbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor joinbar backcolor 0.5 0.1 0 .25 }
         }
@@ -132,7 +143,7 @@
             textalign ITEM_ALIGN_LEFT
             forecolor 1 1 1 1
             visible 1
-            action { close joinserver ; close main ; open createserver }
+            action { close io_joinserver ; close main ; open io_createserver }
             mouseEnter { setitemcolor browserbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor browserbar backcolor 0.5 0.1 0 .25 }
         }
@@ -225,7 +236,7 @@
             textalign ITEM_ALIGN_LEFT
             forecolor 1 1 1 1
             visible 1
-            action { open playersetup }
+            action { open io_playersetup }
             mouseEnter { setitemcolor playerbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor playerbar backcolor 0.5 0.1 0 .25 }
         }
@@ -291,7 +302,7 @@
     // CREATE SERVER
     // =============================================
     menuDef {
-        name "createserver"
+        name "io_createserver"
         fullScreen MENU_TRUE
         rect 0 0 640 480
         visible MENU_FALSE
@@ -300,7 +311,7 @@
         backcolor 0.05 0.05 0.08 1
 
         onOpen { uiScript loadArenas }
-        onESC { close joinserver ; close createserver ; open main }
+        onESC { close io_joinserver ; close io_createserver ; open main }
 
         // ---- TITLE BAR ----
         itemDef {
@@ -433,7 +444,7 @@
             textaligny 19
             forecolor 1 1 1 1
             visible 1
-            action { close createserver ; open main }
+            action { close io_createserver ; open main }
             mouseEnter { setitemcolor backbtn forecolor 1 .75 0 1 }
             mouseExit { setitemcolor backbtn forecolor 1 1 1 1 }
         }
@@ -942,7 +953,7 @@
     // would override Quake Live's and stop its own menus from loading at all.
     // =============================================
     menuDef {
-        name "joinserver"
+        name "io_joinserver"
         fullScreen MENU_TRUE
         rect 0 0 640 480
         visible MENU_FALSE
@@ -951,11 +962,11 @@
         backcolor 0.05 0.05 0.08 1
 
         onOpen {
-            close createserver ;
+            close io_createserver ;
             setFocus serverlist ;
             uiScript UpdateFilter
         }
-        onESC { uiScript StopRefresh ; close joinserver ; open main }
+        onESC { uiScript StopRefresh ; close io_joinserver ; open main }
 
         itemDef {
             name title
@@ -1172,7 +1183,7 @@
             name back  text "BACK"  type ITEM_TYPE_BUTTON  textscale .3
             rect 500 436 120 28  textaligny 20  textalignx 10
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript StopRefresh ; close joinserver ; open main }
+            action { play "sound/misc/menu1.wav" ; uiScript StopRefresh ; close io_joinserver ; open main }
             mouseEnter { setitemcolor back forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor back forecolor 1 1 1 1 }
         }
@@ -1187,7 +1198,7 @@
     // on APPLY, so a half-typed name is never sent to the server.
     // =============================================
     menuDef {
-        name "playersetup"
+        name "io_playersetup"
         rect 120 120 400 240
         visible MENU_FALSE
         focusColor 1 .75 0 1
@@ -1198,7 +1209,7 @@
         bordercolor .5 .5 .5 1
 
         onOpen { uiScript ui_GetName ; setFocus namefield }
-        onESC { close playersetup }
+        onESC { close io_playersetup }
 
         itemDef {
             name title
@@ -1281,7 +1292,7 @@
             name apply  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .28
             rect 30 180 120 26  textaligny 19  textalignx 10
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript ui_SetName ; close playersetup }
+            action { play "sound/misc/menu1.wav" ; uiScript ui_SetName ; close io_playersetup }
             mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
         }
@@ -1289,7 +1300,7 @@
             name cancel  text "CANCEL"  type ITEM_TYPE_BUTTON  textscale .28
             rect 250 180 120 26  textaligny 19  textalignx 10
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close playersetup }
+            action { play "sound/misc/menu1.wav" ; close io_playersetup }
             mouseEnter { setitemcolor cancel forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor cancel forecolor 1 1 1 1 }
         }
@@ -1306,7 +1317,7 @@
     // Reachable anywhere, including mid-match:  \menu_open renderoptions
     // =============================================
     menuDef {
-        name "renderoptions"
+        name "io_renderoptions"
         rect 60 30 520 434
         visible MENU_FALSE
         focusColor 1 .75 0 1
@@ -1316,7 +1327,7 @@
         bordersize 1
         bordercolor .5 .5 .5 1
 
-        onESC { close renderoptions }
+        onESC { close io_renderoptions }
 
         itemDef {
             name title  text "RENDER OPTIONS"  textscale .3
@@ -1441,7 +1452,7 @@
         itemDef {
             name close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
             rect 400 400 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close renderoptions }
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions }
             mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor close forecolor 1 1 1 1 }
         }

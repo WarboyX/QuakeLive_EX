@@ -92,7 +92,28 @@ Affected rows in the screenshots: Impact Sparks, Teammate Indicators, Low Ammo
 Warning, Draw Rewards, Force Team/Enemy Model and Skin, Damage Indicator, Impact
 Marks, Lighting Model.
 
-### U9. Server browser painted over createserver — DONE (verify)
+### U9. Server browser painted over createserver — DONE (verify, 2nd attempt)
+**Real cause, second look.** `Menus_FindByName` returns the *first* menu whose
+name matches, and Quake Live's own paks define `createserver`, `joinserver` and
+`playersetup` too. So `open joinserver` could activate ours while
+`close joinserver` closed theirs, or the reverse — one of the pair stayed
+visible. Both being `fullScreen`, and Q3 painting every visible menu rather than
+only the topmost, they drew on top of each other: doubled headers, overlapping
+labels, two sets of BACK buttons, the map preview sitting where the server list
+should be. One bug, many symptoms.
+
+The menus this build defines now carry an `io_` prefix so they cannot collide.
+`main` is deliberately left unprefixed: this file replaces `ui/main.menu` in the
+search path, so Quake Live's own `main` never loads.
+
+**Console commands changed:** `menu_open io_playersetup`,
+`menu_open io_renderoptions`.
+
+The first attempt — closing the sibling from the menu script — was treating a
+symptom and could not have worked, since the `close` was landing on a different
+menu than the `open`.
+
+#### First attempt (did not work)
 Both are `fullScreen`, and Q3's menu system paints every visible menu rather than
 only the topmost, so one left open behind the other showed through it — doubled
 headers, overlapping labels, two sets of BACK buttons. The navigation now closes
