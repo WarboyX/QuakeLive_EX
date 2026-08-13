@@ -1226,6 +1226,7 @@
         itemDef {
             name namefield
             type ITEM_TYPE_EDITFIELD
+            text ""
             cvar "ui_Name"
             maxchars 36
             maxpaintchars 22
@@ -1254,6 +1255,7 @@
         itemDef {
             name handicap
             type ITEM_TYPE_MULTI
+            text ""
             cvar "handicap"
             cvarFloatList { "None" 100 "90" 90 "80" 80 "70" 70 "60" 60 "50" 50 "40" 40 "30" 30 "20" 20 "10" 10 }
             rect 110 90 120 20
