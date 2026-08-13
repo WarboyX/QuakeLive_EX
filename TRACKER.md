@@ -11,12 +11,12 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 
 | Area | Progress | Notes |
 |---|---|---|
-| **Client / UI** (U) | `██████████████░░░░░░  9/13` | U9 root-caused: a parser bug, not a menu bug |
+| **Client / UI** (U) | `███████████████░░░░░  11/15` | U9 root-caused: a parser bug, not a menu bug |
 | **Client / cgame** (C) | `███████████████░░░░░  3/4` | viewmodel framing still open |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | all blocked on disassembly or play-testing |
 | **Engine / server** (E) | `░░░░░░░░░░░░░░░░░░░░  0/5` | absent subsystems, none started |
-| **Overall** | `████████░░░░░░░░░░░░  14/34` | |
+| **Overall** | `█████████░░░░░░░░░░░  16/36` | |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -287,6 +287,39 @@ only the topmost, so one left open behind the other showed through it — double
 headers, overlapping labels, two sets of BACK buttons. The navigation now closes
 the sibling before opening, and `main`'s `onOpen` closes both, so returning to
 main always clears whatever was underneath. My bug, introduced with U8.
+
+### U16. Options BACK button disappears after joining a game — DONE (verify)
+Quake Live's own menus gate items on `ui_mainmenu`: `main_options`' BACK button
+and `demo.menu`'s both carry `cvarTest "ui_mainmenu"` with `showCvar { "1" }`,
+because in-game those panels are reached through the ingame nav and must not
+offer a route back to the main menu.
+
+`cgame` sets `ui_mainmenu` to `"0"` when a map loads (`cg_main.c`), and **nothing
+ever set it back**. So OPTIONS had a BACK button on a fresh launch and lost it
+for the rest of the session the moment you joined a game — gone from the screen,
+and unclickable where it should be, because the item genuinely was not there.
+
+That intermittency is the whole reason this looked like it came and went with
+unrelated menu changes: it tracked *whether a map had been loaded yet*, not the
+menu code. Both my earlier "fix" (a focus change) and my revert of it were
+coincidence. `_UI_SetActiveMenu(UIMENU_MAIN)` now sets it back to `"1"` — the
+point at which we are demonstrably out of a game.
+
+**Lesson worth keeping:** when a symptom appears and disappears across builds,
+check what *session state* differs before blaming the diff.
+
+### U17. iobin.pk3 has no visible build stamp — DONE (verify)
+The pak01 stamp is baked into the menu text at package time, so it identifies
+the **menus** only. The game modules ship in a separate pak and can be a
+different build entirely — exactly the case worth spotting when a fix appears
+not to have landed. The ui module now publishes `ui_iobinBuild` from its own
+compile (`PRODUCT_VERSION`) and the main menu shows it under the pak01 line.
+
+The menu item carries no `text` on purpose: `Item_Text_Paint` falls through to
+the cvar when `item->text` is NULL, so it shows the running module's build
+rather than a baked string that could disagree with it.
+
+`cgame`/`qagame` also print their build to the console at init.
 
 ### U10. Controls menu is empty — NEEDS INFO
 Not `???` rows: **no rows at all**. The tabs draw, so the menu loaded and it is
