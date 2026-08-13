@@ -7,6 +7,51 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 
 ---
 
+## Progress
+
+| Area | Progress | Notes |
+|---|---|---|
+| **Client / UI** (U) | `████████████░░░░░░░░  8/13` | menu system largely repaired |
+| **Client / cgame** (C) | `███████████████░░░░░  3/4` | viewmodel framing still open |
+| **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
+| **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | all blocked on disassembly or play-testing |
+| **Engine / server** (E) | `░░░░░░░░░░░░░░░░░░░░  0/5` | absent subsystems, none started |
+| **Overall** | `████████░░░░░░░░░░░░  13/34` | |
+
+"DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
+not finished-and-proven.
+
+## Priorities
+
+**P0 — blocking normal use or testing**
+1. **U9** menu overlap — untested since two changes landed. *One question to you:
+   does it still happen?* Everything else in the menu restructure waits on this.
+2. **C3** viewmodel is bigger and lower than it should be. `cg_fov` ruled out;
+   next move is diffing `CG_AddPlayerWeapon` against upstream `1487e89` for the
+   `MatrixMultiply` reorder.
+3. **R8** rocket blasts light far too weakly. My `r_dlightMode` diagnosis was
+   wrong; three leads recorded, none tried.
+
+**P1 — in flight**
+4. **R5** Vulkan renderer, milestone 1. Text is *not* optional here — the console
+   is the debugging surface, so a text-less Vulkan build cannot debug itself.
+   Stub only long enough to prove the link, then do fonts immediately.
+
+**P2 — correctness unknowns, need evidence**
+5. **W1 / W2** shotgun pattern shape and the 30-radians-or-degrees constant.
+6. **U10** empty Controls panel — four causes eliminated, needs a menu-list dump.
+7. **U11** cosmetic overlaps on QL's Advanced pages; **U13** widescreen bias.
+
+**P3 — absent subsystems, none started, none blocking**
+8. **E1** factory · **E2** teammate weapon icons · **E3** master heartbeat ·
+   **E4** ZMQ stats · **E5** Steam.
+
+**Deliberately parked**
+- **R1** restoring renderergl1 — likely moot if R5 lands, since Quake3e's Vulkan
+  renderer is GL1-equivalent in output.
+- **R6** Voodoo postfilter — only meaningful at `r_colorbits 16`.
+
+---
 ## Weapons / gameplay
 
 ### W1. Shotgun pattern shape is unverified — OPEN
@@ -57,6 +102,12 @@ recovered; `HMG_SPREAD 350` stands in for it.
 
 ## Client / UI
 
+The port ships **one** menu file — `content/pak01/ui/main.menu`, containing `main`,
+`createserver`, and (as of the server-browser work) `joinserver` and `playersetup`.
+Everything else the player sees comes from their Quake Live `pak00.pk3`, parsed by
+this port's re-implemented `ui` module. Most UI bugs are therefore our module
+mishandling Quake Live's menu scripts, not missing menus — but a few are both.
+
 ### U14. Console is unreadable at high resolution — DONE (verify)
 At 3840x2160 the console font is tiny and the text cramped, which makes the
 console painful to use for exactly the diagnostic work it is needed for. Q3 draws
@@ -79,12 +130,6 @@ Also visible in the same capture and worth chasing separately:
 - `WARNING: CM_SrfXPlane unreachable` repeated dozens of times on load
 - `WARNING: Failed to load sound mus_high_score.ogg` — falls back, harmless but noisy
 - red `ERROR:` lines about unknown mesa keywords in `scripts/*.menu` parsing
-
-The port ships **one** menu file — `content/pak01/ui/main.menu`, containing `main`,
-`createserver`, and (as of the server-browser work) `joinserver` and `playersetup`.
-Everything else the player sees comes from their Quake Live `pak00.pk3`, parsed by
-this port's re-implemented `ui` module. Most UI bugs are therefore our module
-mishandling Quake Live's menu scripts, not missing menus — but a few are both.
 
 ### U1. Advanced settings: blanks, stuck values and `???` — DONE (verify)
 Three separate faults, all found from the Advanced screenshots.
@@ -138,7 +183,8 @@ io_createserver` with both `fullScreen MENU_TRUE`. Matching QL's pattern — hid
 the nav group, make the sub-menus non-fullscreen overlays — would make the whole
 class of overlap impossible rather than relying on paired open/close.
 
-#### Earlier, also wrong Both being `fullScreen`, and Q3 painting every visible menu rather than
+#### Earlier, also wrong
+Both being `fullScreen`, and Q3 painting every visible menu rather than
 only the topmost, they drew on top of each other: doubled headers, overlapping
 labels, two sets of BACK buttons, the map preview sitting where the server list
 should be. One bug, many symptoms.
@@ -274,7 +320,7 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 
 ---
 
-## Renderer
+## Client / cgame
 
 ### C4. Console commands sent as chat in-game — DONE (verify), with a caveat
 `cl_keys.c` only prepends the implicit `\\` when `clc.state != CA_ACTIVE`. Once
@@ -415,6 +461,10 @@ Whether this fully answers the reported missing glow is unverified: R8 is still
 open on why explosions light so weakly, and if that turns out to be a renderer
 path fault it will affect this light too.
 
+---
+
+## Renderer
+
 ### R8. Dynamic light glow is weak or absent — OPEN, my earlier diagnosis was wrong
 **Correction.** I claimed `r_dlightMode 0` keeps dynamic lights off world surfaces
 entirely. That is not what it does. Reading its actual uses:
@@ -521,6 +571,12 @@ reset-string path rather than failing to start, so the row is safe to ship now.
 3. `sdl_glimp.c` split so it can request `SDL_WINDOW_VULKAN` and a surface
    rather than a GL context unconditionally.
 4. Milestone 1: builds, links, clears the screen.
+5. **Milestone 2, immediately after: text.** Stubbing the font exports is only
+   valid long enough to prove the link. The console *is* the debugging surface for
+   this renderer, so a Vulkan build that cannot draw text cannot be debugged from
+   inside itself — and every diagnostic added this far (`cg_debugShotgun`,
+   `con_scale`, cvar readouts) becomes unusable. Treat fonts as part of the first
+   usable build, not as polish.
 
 **Read `renderergl2/tr_font_gl.c` before estimating anything past milestone 1** —
 it is the GL half of the QL TrueType path and has no Vulkan counterpart. It is

@@ -33,6 +33,14 @@ but the backend half — `renderergl2/tr_font_gl.c`, which uploads the glyph atl
 and draws through GL — has no Vulkan equivalent. That file is the single largest
 piece of real work and should be read before anyone estimates the rest.
 
+## Text is not optional
+
+Stubbing the five font exports is valid only long enough to prove the link. The
+console is this renderer's debugging surface: a Vulkan build that cannot draw
+text cannot report its own errors, and every diagnostic in the tree
+(`cg_debugShotgun`, cvar readouts, the console itself) goes with it. Fonts are
+part of the first *usable* build, not polish afterwards.
+
 ## Milestone 1 (the only one worth aiming at first)
 
 Builds, links, and clears the screen, with the five exports above stubbed. That
