@@ -964,6 +964,14 @@ void CG_RegisterWeapon(int weaponNum) {
 
     if (!weaponInfo->handsModel) {
         weaponInfo->handsModel = trap_R_RegisterModel("models/weapons2/shotgun/shotgun_hand.md3");
+        if (!weaponInfo->handsModel) {
+            // Without this the first-person weapon has nothing to hang off and
+            // ends up drawn at the eye. Worth a line in the console, because the
+            // symptom (a sliver of barrel at the edge of the screen) looks like
+            // a field-of-view or camera problem and is not one.
+            CG_Printf("^3WARNING:^7 no hands model for weapon %d (tried %s and the shotgun fallback)\n",
+                      weaponNum, path);
+        }
     }
 
     switch (weaponNum) {
@@ -1551,8 +1559,28 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     //   parent->hModel, "tag_weapon") and has no cg_drawGun 2/3 handedness offset. The
     //   manual LerpTag path below preserves ioquakelive's left-handed / centered gun
     //   modes. Reconcile if exact parity is required.
-    trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
-                   1.0 - parent->backlerp, "tag_weapon");
+    // [QL] tag_weapon on the hands model carries the entire offset that puts the
+    // gun into the lower right of the view - the hands themselves are never
+    // drawn, they exist only to position the weapon. R_LerpTag zeroes the
+    // orientation when the model or the tag is missing and this call used to
+    // ignore that, so a failure silently drew the gun at the eye with the view
+    // orientation: only the very tip of the barrel pokes into frame, which is
+    // exactly what a missing hands model looks like from the player's side.
+    //
+    // Say so once per weapon rather than leaving it to be mistaken for a
+    // framing or FOV problem.
+    if (!trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
+                        1.0 - parent->backlerp, "tag_weapon")) {
+        static int warnedTag = 0;
+        int bit = 1 << (cent->currentState.weapon & 31);
+
+        if (!(warnedTag & bit)) {
+            warnedTag |= bit;
+            CG_Printf("^3WARNING:^7 weapon %d has no usable \"tag_weapon\" (hands model %s); "
+                      "the view model will draw at the eye\n",
+                      cent->currentState.weapon, parent->hModel ? "loaded" : "MISSING");
+        }
+    }
     VectorCopy(parent->origin, gun.origin);
 
     // Orientation first: the per-axis VectorMA calls below reference

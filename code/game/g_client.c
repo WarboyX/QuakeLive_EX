@@ -1284,7 +1284,16 @@ void ClientSpawn(gentity_t* ent) {
         // (GiveDefaultWeapons 0x1003b8b0) keys on g_infiniteAmmo (0x105a31cc) || g_instaGib - NOT
         // g_loadout - so loadout mode keeps the finite g_startingAmmo cvar ammo that the bitmask
         // grant above assigned (GiveStartingAmmo does the same).
-        if (g_infiniteAmmo.integer || (g_dmflags.integer & DF_INSTAGIB)) {
+        // [QL] g_instaGib and the DF_INSTAGIB dmflag are two halves of one
+        // feature that were keyed off different cvars and never connected:
+        // the damage resolution in g_combat.c tests g_instaGib, while the
+        // ammo grant and the warmup-extras suppression here tested only the
+        // dmflag. Setting g_instaGib 1 on its own therefore gave instagib
+        // damage with finite ammo and a full warmup arsenal, and setting the
+        // dmflag on its own gave infinite ammo with ordinary damage. Accept
+        // either, so g_instaGib works alone and existing dmflags configs keep
+        // working.
+        if (g_infiniteAmmo.integer || g_instaGib.integer || (g_dmflags.integer & DF_INSTAGIB)) {
             for (w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++) {
                 client->ps.ammo[w] = -1;
             }
@@ -1295,7 +1304,7 @@ void ClientSpawn(gentity_t* ent) {
         // MG (2) and grapple (10) are only granted if already in g_startingWeapons.
         // RR infected red team (zombies) don't get warmup extras.
         if (level.warmupTime && !g_loadout.integer && !g_isBotOnly.integer &&
-            !(g_dmflags.integer & DF_INSTAGIB)) {
+            !g_instaGib.integer && !(g_dmflags.integer & DF_INSTAGIB)) {
             qboolean infectedRedZombie = (g_gametype.integer == GT_RR &&
                                           g_rrInfected.integer != 0 &&
                                           client->sess.sessionTeam == TEAM_RED);
@@ -1323,7 +1332,7 @@ void ClientSpawn(gentity_t* ent) {
                 // g_startingAmmo cvars (binary GiveDefaultWeapons warmup block, 0x1003bcf5:
                 // ammo[w] = (g_infiniteAmmo || g_instaGib) ? -1 : warmupDefaultAmmo[w]).
                 // g_infiniteAmmo still yields the infinite sentinel here.
-                if (g_infiniteAmmo.integer || (g_dmflags.integer & DF_INSTAGIB)) {
+                if (g_infiniteAmmo.integer || g_instaGib.integer || (g_dmflags.integer & DF_INSTAGIB)) {
                     client->ps.ammo[w] = -1;
                 } else {
                     client->ps.ammo[w] = warmupDefaultAmmo[w];

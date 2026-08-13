@@ -62,6 +62,11 @@ cp -p TRACKER.md "$WD/" 2>/dev/null || true
 cp -p server.cfg.example "$LD/" 2>/dev/null || true
 cp -p server.cfg.example "$WD/" 2>/dev/null || true
 
+# Ready-to-run server configs land in baseq3/ so "+exec ffa.cfg" works without
+# the admin having to move anything first.
+cp -p content/serverconfigs/*.cfg "$LD/baseq3/"
+cp -p content/serverconfigs/*.cfg "$WD/baseq3/"
+
 mkdir -p "$OUT/out"
 rm -f "$OUT/out"/*-"$REV".zip
 (cd "$OUT/pkg" && zip -q -r -9 "$OUT/out/quakelive-linux-x86_64-$REV.zip" "quakelive-linux-x86_64-$REV")

@@ -3046,11 +3046,20 @@ void Item_SetTextExtents(itemDef_t* item, int* width, int* height, const char* t
 
     // keeps us from computing the widths and heights more than once
     if (*width == 0 || (item->type == ITEM_TYPE_OWNERDRAW && item->textalignment == ITEM_ALIGN_CENTER)) {
-        int originalWidth = DC->textWidth(item->text, item->textscale, 0, item->fontIndex);
+        // [QL] originalWidth is what CENTER and RIGHT alignment subtract to work
+        // out where the text has to start. Measuring item->text is right for the
+        // items below, which draw a label and then append something to it - but
+        // an item with no label at all, whose text comes from its cvar, measured
+        // NULL and got zero. Right-aligned, that put its start exactly on the
+        // alignment point and ran the text off to the right of it instead of
+        // ending there; the iobin stamp disappeared off the edge of the screen
+        // while the pak01 stamp above it, which has a literal text, sat
+        // correctly. textPtr already holds the resolved string.
+        int originalWidth = DC->textWidth(item->text ? item->text : textPtr, item->textscale, 0, item->fontIndex);
 
         if (item->type == ITEM_TYPE_OWNERDRAW && (item->textalignment == ITEM_ALIGN_CENTER || item->textalignment == ITEM_ALIGN_RIGHT)) {
             originalWidth += DC->ownerDrawWidth(item->window.ownerDraw, item->textscale);
-        } else if (item->type == ITEM_TYPE_EDITFIELD && item->textalignment == ITEM_ALIGN_CENTER && item->cvar) {
+        } else if (item->type == ITEM_TYPE_EDITFIELD && item->textalignment == ITEM_ALIGN_CENTER && item->text && item->cvar) {
             char buff[256];
             DC->getCVarString(item->cvar, buff, 256);
             originalWidth += DC->textWidth(buff, item->textscale, 0, item->fontIndex);
