@@ -294,6 +294,23 @@
             decoration
         }
 
+        // Build of iobin.pk3 (cgame/qagame/ui), published by the ui module at
+        // init as ui_iobinBuild. No "text" here on purpose: Item_Text_Paint
+        // falls through to the cvar when item->text is NULL, which is what makes
+        // this show the running module's own build rather than a baked string.
+        itemDef {
+            name iobinstamp
+            cvar "ui_iobinBuild"
+            textscale .2
+            rect 340 16 296 12
+            textalign ITEM_ALIGN_RIGHT
+            textalignx 292
+            textaligny 9
+            forecolor .45 .45 .45 1
+            visible 1
+            decoration
+        }
+
         itemDef {
             name copyright
             text "Quake Live (tm) Copyright 2015 Id Software LLC, a ZeniMax Media company. All Rights Reserved."

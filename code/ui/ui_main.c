@@ -4790,6 +4790,14 @@ void _UI_Init(qboolean inGameLoad) {
     UI_RegisterCvars();
     UI_InitMemory();
 
+    // [QL] Publish which iobin.pk3 this is. The pak01 stamp in the main menu is
+    // baked into the menu text at package time and so only identifies the menus;
+    // the game modules live in a separate pak and can be a different build
+    // entirely - which is exactly the case that needs identifying when a fix
+    // appears not to have landed. This comes from the module's own compile, so
+    // it cannot disagree with the code that is running.
+    trap_Cvar_Set("ui_iobinBuild", "iobin " PRODUCT_VERSION);
+
     // cache redundant calulations
     trap_GetGlconfig(&uiInfo.uiDC.glconfig);
 
@@ -4984,6 +4992,19 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 return;
             case UIMENU_MAIN:
                 trap_Key_SetCatcher(KEYCATCH_UI);
+                // [QL] We are out of a game, so say so. Quake Live's own menus
+                // gate items on this: main_options' BACK button and demo.menu's
+                // both carry cvarTest "ui_mainmenu" / showCvar { "1" }, because
+                // in-game those panels are reached through the ingame nav and
+                // must not offer a way back to the main menu.
+                //
+                // cgame sets it to "0" when a map loads (cg_main.c) and nothing
+                // ever set it back, so after the first time you joined a game
+                // the OPTIONS panel lost its BACK button for the rest of the
+                // session - visibly gone, and unclickable where it should be,
+                // because the item genuinely was not there. A fresh launch was
+                // fine, which is what made this look like it came and went.
+                trap_Cvar_Set("ui_mainmenu", "1");
                 // [QL] Update UI state from cvars (binary-verified)
                 uiInfo.effectsColor = gamecodetoui[(int)trap_Cvar_VariableValue("color1") - 1];
                 uiInfo.currentCrosshair = (int)trap_Cvar_VariableValue("cg_drawCrosshair");
