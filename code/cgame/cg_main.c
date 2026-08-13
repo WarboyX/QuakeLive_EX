@@ -2996,6 +2996,12 @@ Will perform callbacks to make the loading info screen update.
 void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum) {
     const char* s;
 
+    // [QL] Identify which iobin.pk3 is loaded. Menu fixes ship in pak01.pk3 and
+    // module fixes in iobin.pk3, and replacing only one of the two has more than
+    // once made a fixed bug look unfixed. The main menu stamps pak01; this
+    // stamps the game modules, so the console settles the other half.
+    CG_Printf("^3cgame^7 built %s %s\n", __DATE__, __TIME__);
+
     // clear everything
     memset(&cgs, 0, sizeof(cgs));
     memset(&cg, 0, sizeof(cg));

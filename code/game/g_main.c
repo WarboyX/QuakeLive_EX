@@ -1665,6 +1665,8 @@ G_InitGame
 ============
 */
 void G_InitGame(int levelTime, int randomSeed, int restart) {
+    G_Printf("^3qagame^7 built %s %s\n", __DATE__, __TIME__);
+
     int i;
 
     G_Printf("------- Game Initialization -------\n");
