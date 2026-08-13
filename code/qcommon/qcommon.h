@@ -828,6 +828,7 @@ extern cvar_t* com_gamename;
 extern cvar_t* com_protocol;
 #ifndef DEDICATED
 extern cvar_t* con_autochat;
+extern cvar_t* cl_allowConsoleChat;
 #endif
 
 // com_speeds times

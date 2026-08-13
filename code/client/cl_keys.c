@@ -608,7 +608,7 @@ void Console_Key(int key) {
     // enter finishes the line
     if (key == K_ENTER || key == K_KP_ENTER) {
         // if not in the game explicitly prepend a slash if needed
-        if (clc.state != CA_ACTIVE && con_autochat->integer &&
+        if (clc.state != CA_ACTIVE && (con_autochat->integer && cl_allowConsoleChat->integer) &&
             g_consoleField.buffer[0] &&
             g_consoleField.buffer[0] != '\\' &&
             g_consoleField.buffer[0] != '/') {
@@ -630,7 +630,7 @@ void Console_Key(int key) {
             if (!g_consoleField.buffer[0]) {
                 return;  // empty lines just scroll the console without adding to history
             } else {
-                if (con_autochat->integer) {
+                if ((con_autochat->integer && cl_allowConsoleChat->integer)) {
                     Cbuf_AddText("cmd say ");
                 }
 

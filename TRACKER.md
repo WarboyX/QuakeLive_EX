@@ -148,10 +148,26 @@ Not `???` rows: **no rows at all**. The tabs draw, so the menu loaded and it is
 the item list inside that is missing. That is a different fault from U7 (commands
 that could not be bound), so U7 is not the explanation here.
 
-**Next step:** need `ui/ingame_controls.menu` out of `pak00.pk3`. Worth checking
-whether it uses a feeder or owner draw this build does not implement, since an
-unimplemented feeder yields exactly this — a correctly drawn frame with nothing
-in it.
+**Menu file now read.** No feeder and no exotic owner draw — the bind rows are
+plain `ITEM_TYPE_BIND` items (`+forward`, `+back`, …) each carrying
+`group grpControls` and **`visible 0`**. They are revealed by the menu's own
+script:
+
+```
+onOpen { hide grpControls ; show move ; show header1 ; uiScript loadControls ... }
+```
+
+so the panel starts empty by design and `show move` is what fills it. The
+show/hide machinery checks out — `Menu_ItemsMatchingGroup` matches on name *or*
+group, and `Menu_ShowItemByName` sets `WINDOW_VISIBLE` correctly — so the fault is
+further along.
+
+**Next step:** the remaining suspects are (a) `onOpen` not running at all on this
+menu, (b) `uiScript loadControls` erroring before the shows take effect, or
+(c) the tab buttons that switch groups. Instrument `Script_Show` to print its
+argument, open the panel, and see whether `show move` is reached. Note the panel
+is reached from our main menu via `open main_options ; open ingame_controls`,
+which is not how Quake Live opens it, so (a) is worth ruling out first.
 
 ### U11. Cosmetic layout faults — OPEN
 Visible in the Advanced screenshots, none investigated yet:
@@ -242,10 +258,15 @@ already holds a value keeps it and the new default does nothing. Existing
 installs need `/con_autochat 0` once. Prefixing with `/` or `\\` always works
 regardless.
 
-**Still open:** the menu row *"Allow Console Chat"* reads No while chat was still
-happening, so that row is bound to some cvar other than `con_autochat`, or writes
-somewhere that does not reach it. Needs Quake Live's menu file to confirm which
-— same blocker as U1 and U10.
+**Menu row resolved.** From `ingame_options_advanced.menu:1757`, the row is
+`ITEM_TYPE_YESNO` bound to **`cl_allowConsoleChat`** — Quake Live's name for the
+setting. This build only ever read ioquake3's `con_autochat`, so the toggle wrote
+a cvar nothing consulted. `cl_allowConsoleChat` is now registered (default 0) and
+both must agree before a console line is chatted, so either turns it off and the
+menu row works.
+
+The row also carries `cvarTest "com_allowConsole"` with `disableCvar { "0" }`, so
+it greys out when the console itself is disabled.
 
 ### C3. Weapon viewmodel sits bigger and lower — OPEN, cg_fov ruled out
 `cg_fov` reads 100, the default, and was set to 100 and other values deliberately

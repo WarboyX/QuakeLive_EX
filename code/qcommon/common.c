@@ -97,6 +97,7 @@ cvar_t* com_homepath;
 cvar_t* com_busyWait;
 #ifndef DEDICATED
 cvar_t* con_autochat;
+cvar_t* cl_allowConsoleChat;
 #endif
 
 
@@ -2529,6 +2530,12 @@ void Com_Init(char* commandLine) {
     // used to administer and test servers, and it is the behaviour reported as
     // a bug. Set to 1 to get chat-by-default back.
     con_autochat = Cvar_Get("con_autochat", "0", CVAR_ARCHIVE);
+    // [QL] The "Allow Console Chat" row in ingame_options_advanced.menu binds to
+    // cl_allowConsoleChat, and nothing in this build read it - so setting it to
+    // No changed nothing and console lines kept going out as chat. This is Quake
+    // Live's name for the setting, con_autochat is ioquake3's. Both must agree
+    // before a line is chatted, so either one turns it off.
+    cl_allowConsoleChat = Cvar_Get("cl_allowConsoleChat", "0", CVAR_ARCHIVE);
 #endif
 
     Sys_Init();

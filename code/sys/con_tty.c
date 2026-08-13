@@ -333,7 +333,7 @@ char* CON_Input(void) {
                 if (key == '\n') {
 #ifndef DEDICATED
                     // if not in the game explicitly prepend a slash if needed
-                    if (clc.state != CA_ACTIVE && con_autochat->integer && TTY_con.cursor &&
+                    if (clc.state != CA_ACTIVE && (con_autochat->integer && cl_allowConsoleChat->integer) && TTY_con.cursor &&
                         TTY_con.buffer[0] != '/' && TTY_con.buffer[0] != '\\') {
                         memmove(TTY_con.buffer + 1, TTY_con.buffer, sizeof(TTY_con.buffer) - 1);
                         TTY_con.buffer[0] = '\\';
@@ -343,7 +343,7 @@ char* CON_Input(void) {
                     if (TTY_con.buffer[0] == '/' || TTY_con.buffer[0] == '\\') {
                         Q_strncpyz(text, TTY_con.buffer + 1, sizeof(text));
                     } else if (TTY_con.cursor) {
-                        if (con_autochat->integer) {
+                        if (con_autochat->integer && cl_allowConsoleChat->integer) {
                             Com_sprintf(text, sizeof(text), "cmd say %s", TTY_con.buffer);
                         } else {
                             Q_strncpyz(text, TTY_con.buffer, sizeof(text));
