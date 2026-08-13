@@ -206,6 +206,24 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 
 ## Renderer
 
+### C4. Console commands sent as chat in-game — DONE (verify), with a caveat
+`cl_keys.c` only prepends the implicit `\\` when `clc.state != CA_ACTIVE`. Once
+connected, any console line not starting with `\\` or `/` falls through to
+`if (con_autochat->integer) Cbuf_AddText("cmd say ")` and is chatted instead of
+run. That is stock ioquake3 behaviour with `con_autochat` defaulting to 1, not
+something this port broke — but it is a bad default for a build used to
+administer servers. Default is now 0.
+
+**Caveat, same trap as R8:** `con_autochat` is `CVAR_ARCHIVE`, so a config that
+already holds a value keeps it and the new default does nothing. Existing
+installs need `/con_autochat 0` once. Prefixing with `/` or `\\` always works
+regardless.
+
+**Still open:** the menu row *"Allow Console Chat"* reads No while chat was still
+happening, so that row is bound to some cvar other than `con_autochat`, or writes
+somewhere that does not reach it. Needs Quake Live's menu file to confirm which
+— same blocker as U1 and U10.
+
 ### C3. Weapon viewmodel sits bigger and lower than it used to — OPEN, NEEDS INFO
 Reported after the render preset work: the first-person weapon is larger and
 further down the screen, so less of it is visible. Most obvious on the lightning

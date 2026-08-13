@@ -2522,7 +2522,13 @@ void Com_Init(char* commandLine) {
     Cvar_Get("protocol", com_protocol->string, CVAR_ROM);
 
 #ifndef DEDICATED
-    con_autochat = Cvar_Get("con_autochat", "1", CVAR_ARCHIVE);
+    // [QL] 0: the console is a console. With 1 - the ioquake3 default - any
+    // console line typed while connected that does not begin with \ or / is
+    // sent as "cmd say" instead of being run, so console commands turn into
+    // chat the moment you join a game. That is a poor default for a build being
+    // used to administer and test servers, and it is the behaviour reported as
+    // a bug. Set to 1 to get chat-by-default back.
+    con_autochat = Cvar_Get("con_autochat", "0", CVAR_ARCHIVE);
 #endif
 
     Sys_Init();
