@@ -281,9 +281,9 @@
             name pakstamp
             text "pak01 @@PAKSTAMP@@"
             textscale .2
-            rect 4 466 300 12
-            textalign ITEM_ALIGN_LEFT
-            textalignx 4
+            rect 340 4 296 12
+            textalign ITEM_ALIGN_RIGHT
+            textalignx 632
             textaligny 9
             forecolor .45 .45 .45 1
             visible 1
