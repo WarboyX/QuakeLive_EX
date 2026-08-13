@@ -49,6 +49,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define SHOTGUN_SPREAD_SCALE_MAX 4.0f
 
+// [QL] which frame the pellet offsets are laid out in, selected by g_shotgunBasis.
+// COMPAT is what an unmodified cgame uses, so it is the default: a stock Quake
+// Live client cannot be told to use anything else, and it has to agree with the
+// server or the marks land nowhere near the damage.
+#define SHOTGUN_BASIS_COMPAT 0  // PerpendicularVector, as upstream/vanilla builds it
+#define SHOTGUN_BASIS_VIEW 1    // the player's own right/up, stable under turning
+
 // The ring pattern gives 6 of its 20 pellets the inner (full damage) tier. For
 // pellets spread uniformly over a square of half-width h, P(r <= k*h) = pi*k^2/4,
 // so k = sqrt(4*0.3/pi) puts the same 30% of cone-pattern pellets in that tier -
@@ -952,7 +959,7 @@ typedef enum {
                // this avoids having to set eFlags and eventNum
 } entityType_t;
 
-void BG_ShotgunBasis(const vec3_t dir, vec3_t forward, vec3_t right, vec3_t up);
+void BG_ShotgunBasis(const vec3_t dir, int basis, vec3_t forward, vec3_t right, vec3_t up);
 int BG_ShotgunPellet(int i, int seed, int pattern, float jitterScale, float spreadScale, float* r, float* u,
                      qboolean* inner);
 

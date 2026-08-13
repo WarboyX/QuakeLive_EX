@@ -1504,8 +1504,17 @@ pattern is fixed relative to the screen and stays learnable. It is still a pure
 function of the transmitted direction, so both sides still agree bit for bit.
 ================
 */
-void BG_ShotgunBasis(const vec3_t dir, vec3_t forward, vec3_t right, vec3_t up) {
+void BG_ShotgunBasis(const vec3_t dir, int basis, vec3_t forward, vec3_t right, vec3_t up) {
     VectorNormalize2(dir, forward);
+
+    if (basis != SHOTGUN_BASIS_VIEW) {
+        // What upstream and vanilla do. Kept as the default because a stock
+        // client draws the marks this way and cannot be told otherwise - the
+        // server matching it matters more than the frame being well behaved.
+        PerpendicularVector(right, forward);
+        CrossProduct(forward, right, up);
+        return;
+    }
 
     right[0] = forward[1];
     right[1] = -forward[0];

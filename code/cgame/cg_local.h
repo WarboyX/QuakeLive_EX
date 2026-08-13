@@ -1442,6 +1442,7 @@ typedef struct {
                             // pattern always matches the traced one
     float shotgunSpread;    // [QL] g_shotgunSpread - multiplier on the pellet offsets
     int shotgunPattern;     // [QL] g_shotgunPattern - SHOTGUN_PATTERN_*
+    int shotgunBasis;       // [QL] g_shotgunBasis - SHOTGUN_BASIS_*
     int teamSizeMin;        // [QL] g_teamSizeMin
     int teamForceBalance;   // [QL] g_teamForceBalance
     int dmflags;

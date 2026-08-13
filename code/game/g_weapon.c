@@ -364,7 +364,7 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
     // The three knobs are all CVAR_SERVERINFO, so the client derives the pattern
     // from the same numbers the server traced with rather than from anything
     // local.
-    BG_ShotgunBasis(origin2, forward, right, up);
+    BG_ShotgunBasis(origin2, g_shotgunBasis.integer, forward, right, up);
 
     // [QL] clear damage plum accumulator
     if (ent->client) {

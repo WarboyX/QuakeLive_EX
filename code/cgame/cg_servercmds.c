@@ -634,7 +634,11 @@ void CG_ParseServerinfo(void) {
     cgs.teamsize = atoi(Info_ValueForKey(info, "teamsize"));
     // [QL] Pellet spread scale. Read from the server rather than a local cvar so
     // the pattern drawn here is always the pattern the server traced.
-    cgs.shotgunJitter = atof(Info_ValueForKey(info, "g_shotgunJitter"));
+    // An absent key means the server does not publish these at all - a stock
+    // Quake Live server - so fall back to what a stock cgame does rather than
+    // to zero, or we would draw a pattern it never traced.
+    value = Info_ValueForKey(info, "g_shotgunJitter");
+    cgs.shotgunJitter = value[0] ? atof(value) : 1.0f;
     if (cgs.shotgunJitter < 0.0f) { cgs.shotgunJitter = 0.0f; }
     else if (cgs.shotgunJitter > 1.0f) { cgs.shotgunJitter = 1.0f; }
     // A server that does not publish g_shotgunSpread is running the pattern
@@ -644,6 +648,7 @@ void CG_ParseServerinfo(void) {
     if (cgs.shotgunSpread < 0.0f) { cgs.shotgunSpread = 0.0f; }
     else if (cgs.shotgunSpread > SHOTGUN_SPREAD_SCALE_MAX) { cgs.shotgunSpread = SHOTGUN_SPREAD_SCALE_MAX; }
     cgs.shotgunPattern = atoi(Info_ValueForKey(info, "g_shotgunPattern"));
+    cgs.shotgunBasis = atoi(Info_ValueForKey(info, "g_shotgunBasis"));
     cgs.teamSizeMin = atoi(Info_ValueForKey(info, "g_teamSizeMin"));
     cgs.teamForceBalance = atoi(Info_ValueForKey(info, "g_teamForceBalance"));
     cgs.dmflags = atoi(Info_ValueForKey(info, "dmflags"));

@@ -2656,8 +2656,8 @@ static void CG_DebugShotgun(const vec3_t origin, const vec3_t origin2, const vec
     CG_Printf("       muzzle %.1f units from the camera, %.2f/%.2f/%.2f off it\n",
               Distance(origin, cg.refdef.vieworg), origin[0] - cg.refdef.vieworg[0], origin[1] - cg.refdef.vieworg[1],
               origin[2] - cg.refdef.vieworg[2]);
-    CG_Printf("       pattern %i  spread %.2f  jitter %.2f\n", cgs.shotgunPattern, cgs.shotgunSpread,
-              cgs.shotgunJitter);
+    CG_Printf("       pattern %i  basis %i (%s)  spread %.2f  jitter %.2f\n", cgs.shotgunPattern, cgs.shotgunBasis,
+              cgs.shotgunBasis == SHOTGUN_BASIS_VIEW ? "view" : "compat", cgs.shotgunSpread, cgs.shotgunJitter);
 
     for (i = 0; i < numHits; i++) {
         vec3_t rel;
@@ -2700,7 +2700,7 @@ static void CG_ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, int other
     // server and not from a local cvar: cg_trueShotgun used to change the
     // pattern the player was shown without changing the pattern the server
     // traced, which is a desync by construction.
-    BG_ShotgunBasis(origin2, forward, right, up);
+    BG_ShotgunBasis(origin2, cgs.shotgunBasis, forward, right, up);
 
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
         qboolean inner;

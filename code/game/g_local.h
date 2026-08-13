@@ -1246,6 +1246,7 @@ extern vmCvar_t g_teamsize;
 extern vmCvar_t g_shotgunJitter;
 extern vmCvar_t g_shotgunSpread;
 extern vmCvar_t g_shotgunPattern;
+extern vmCvar_t g_shotgunBasis;
 extern vmCvar_t g_teamRedLocked;
 extern vmCvar_t g_teamBlueLocked;
 extern vmCvar_t g_teamSizeMin;
