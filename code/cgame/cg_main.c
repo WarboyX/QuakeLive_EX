@@ -271,6 +271,7 @@ vmCvar_t cg_teamLowerColor;
 vmCvar_t cg_teamUpperColor;
 vmCvar_t cg_thirdPersonPitch;
 vmCvar_t cg_trueShotgun;
+vmCvar_t cg_debugShotgun;
 vmCvar_t cg_vignette;
 vmCvar_t cg_waterWarp;
 vmCvar_t cg_weaponBar;
@@ -660,6 +661,8 @@ static cvarTable_t cvarTable[] = {
     {&cg_teamUpperColor, "cg_teamUpperColor", "0x808080FF", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_thirdPersonPitch, "cg_thirdPersonPitch", "-1", CVAR_CHEAT},
     {&cg_trueShotgun, "cg_trueShotgun", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    // [QL] diagnostic: report every shotgun blast's geometry against the view axis
+    {&cg_debugShotgun, "cg_debugShotgun", "0", CVAR_VM_CREATED | CVAR_ARCHIVE},
     {&cg_vignette, "cg_vignette", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_waterWarp, "cg_waterWarp", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_weaponBar, "cg_weaponBar", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},

@@ -1780,6 +1780,7 @@ extern vmCvar_t cg_teamHeadColor;
 extern vmCvar_t cg_teamLowerColor;
 extern vmCvar_t cg_teamUpperColor;
 extern vmCvar_t cg_trueShotgun;
+extern vmCvar_t cg_debugShotgun;
 extern vmCvar_t cg_vignette;
 extern vmCvar_t cg_zoomOutOnDeath;
 extern vmCvar_t cg_zoomScaling;

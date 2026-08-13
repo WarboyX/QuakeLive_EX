@@ -2558,7 +2558,7 @@ SHOTGUN TRACING
 CG_ShotgunPellet
 ================
 */
-static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum) {
+static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum, vec3_t hitOut, int* numHits) {
     trace_t tr;
     int sourceContentType, destContentType;
 
@@ -2566,6 +2566,13 @@ static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum) {
         CG_CapsuleTrace(&tr, start, NULL, NULL, end, skipNum, MASK_SHOT);
     } else {
         CG_Trace(&tr, start, NULL, NULL, end, skipNum, MASK_SHOT);
+    }
+
+    // cg_debugShotgun: record where this pellet landed, before any of the
+    // early-outs below can skip it
+    if (hitOut && tr.fraction < 1.0f) {
+        VectorCopy(tr.endpos, hitOut);
+        (*numHits)++;
     }
 
     sourceContentType = CG_PointContents(start, 0);
@@ -2615,11 +2622,76 @@ Perform the same traces the server did to locate the
 hit splashes
 ================
 */
+/*
+================
+CG_DebugShotgun
+
+cg_debugShotgun 1: report where a blast actually went, measured against the axis
+the crosshair is drawn on, so "the pellets do not land on the crosshair" becomes
+a number instead of an impression.
+
+Every angle is signed degrees in the player's own frame: + right, + up. If the
+event's direction disagrees with the view axis the fault is upstream of the
+pattern (the muzzle or the transmitted direction); if it agrees but the pellets
+are off-centre, the fault is the pattern itself.
+================
+*/
+static void CG_DebugShotgun(const vec3_t origin, const vec3_t origin2, const vec3_t hits, int numHits) {
+    vec3_t vf, vr, vu, evDir;
+    float aimRight, aimUp, dot;
+    float sumR = 0.0f, sumU = 0.0f, maxRad = 0.0f;
+    int i;
+
+    AngleVectors(cg.refdefViewAngles, vf, vr, vu);
+
+    VectorNormalize2(origin2, evDir);
+    dot = DotProduct(evDir, vf);
+    if (dot > 1.0f) {
+        dot = 1.0f;
+    }
+    aimRight = RAD2DEG(atan2(DotProduct(evDir, vr), dot));
+    aimUp = RAD2DEG(atan2(DotProduct(evDir, vu), dot));
+
+    CG_Printf("^3shotgun^7 fire dir vs view: right %+.2f deg  up %+.2f deg  (want 0.00/0.00)\n", aimRight, aimUp);
+    CG_Printf("       muzzle %.1f units from the camera, %.2f/%.2f/%.2f off it\n",
+              Distance(origin, cg.refdef.vieworg), origin[0] - cg.refdef.vieworg[0], origin[1] - cg.refdef.vieworg[1],
+              origin[2] - cg.refdef.vieworg[2]);
+    CG_Printf("       pattern %i  spread %.2f  jitter %.2f\n", cgs.shotgunPattern, cgs.shotgunSpread,
+              cgs.shotgunJitter);
+
+    for (i = 0; i < numHits; i++) {
+        vec3_t rel;
+        float pr, pu, rad;
+
+        VectorSubtract(&hits[i * 3], origin, rel);
+        VectorNormalize(rel);
+        dot = DotProduct(rel, vf);
+        if (dot < 0.001f) {
+            dot = 0.001f;
+        }
+        pr = RAD2DEG(atan2(DotProduct(rel, vr), dot));
+        pu = RAD2DEG(atan2(DotProduct(rel, vu), dot));
+        sumR += pr;
+        sumU += pu;
+        rad = sqrt(pr * pr + pu * pu);
+        if (rad > maxRad) {
+            maxRad = rad;
+        }
+    }
+
+    if (numHits > 0) {
+        CG_Printf("       %i pellets: centre %+.2f/%+.2f deg off crosshair, widest %.2f deg\n", numHits,
+                  sumR / numHits, sumU / numHits, maxRad);
+    }
+}
+
 static void CG_ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, int otherEntNum) {
     int i;
     float r, u;
     vec3_t end;
     vec3_t forward, right, up;
+    vec3_t debugHits[DEFAULT_SHOTGUN_COUNT];
+    int numDebugHits = 0;
 
     // The pattern is generated in shared code (BG_ShotgunBasis /
     // BG_ShotgunPellet) off the direction in origin2, the seed the server put in
@@ -2640,7 +2712,12 @@ static void CG_ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, int other
         VectorMA(end, r, right, end);
         VectorMA(end, u, up, end);
 
-        CG_ShotgunPellet(origin, end, otherEntNum);
+        CG_ShotgunPellet(origin, end, otherEntNum, cg_debugShotgun.integer ? debugHits[numDebugHits] : NULL,
+                         &numDebugHits);
+    }
+
+    if (cg_debugShotgun.integer) {
+        CG_DebugShotgun(origin, origin2, debugHits[0], numDebugHits);
     }
 }
 
@@ -2659,8 +2736,12 @@ void CG_ShotgunFire(entityState_t* es) {
         contents = CG_PointContents(es->pos.trBase, 0);
         if (!(contents & CONTENTS_WATER) && cgs.glconfig.hardwareType != GLHW_RAGEPRO) {
             vec3_t up;
-            VectorSubtract(es->origin2, es->pos.trBase, v);
-            VectorNormalize(v);
+            // The puff belongs 32 units in front of the muzzle. This used to
+            // normalise the direction and then pass it straight in as the
+            // origin, so every shotgun smoke puff in the game was spawned at
+            // world coordinates within one unit of the map origin.
+            VectorNormalize2(es->origin2, v);
+            VectorMA(es->pos.trBase, 32, v, v);
             VectorSet(up, 0, 0, 8);
             CG_SmokePuff(v, up, 32, 1, 1, 1, 0.33f, 900, cg.time, 0, LEF_PUFF_DONT_SCALE, cgs.media.shotgunSmokePuffShader);
         }
