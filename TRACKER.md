@@ -206,6 +206,33 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 
 ## Renderer
 
+### C3. Weapon viewmodel sits bigger and lower than it used to — OPEN, NEEDS INFO
+Reported after the render preset work: the first-person weapon is larger and
+further down the screen, so less of it is visible. Most obvious on the lightning
+gun. Explicitly *not* a brightness issue — the framing changed.
+
+**Nothing in the render work should be able to cause this.** `r_dither`,
+`r_dlightMode`, `r_ambientScale`, tonemapping and cubemapping do not move or
+scale the viewmodel, and neither `classic.cfg` nor `gloss.cfg` touches a gun or
+fov cvar. So either something else changed it, or it predates the preset work and
+was noticed alongside it. Do not assume the presets are the cause.
+
+**The cvars that actually control this:**
+- `cg_fov` — default here is **100**. Quake 3 shipped 90. The viewmodel is drawn
+  in the same refdef as the world, so a *lower* fov makes the gun look bigger and
+  crop lower, which is the direction reported. Worth checking whether the config
+  in use is overriding it, and what Quake Live's own default is.
+- `cg_gunX` / `cg_gunY` / `cg_gunZ` — all default 0, viewmodel offsets.
+- `cg_drawGun` — 1 normal; 2 and 3 select different positions, and note the
+  `EV_RAILTRAIL` handler already special-cases 2 and 3 by nudging `origin2`
+  along `cg.refdef.viewaxis[1]`, so those modes do shift things.
+
+**Next step:** screenshots, ideally the lightning gun before and after, plus the
+values of `cg_fov`, `cg_drawGun` and `cg_gunX/Y/Z`. Also worth checking
+`CG_CalcFov` for how the widescreen aspect correction is applied — a fov computed
+for 4:3 and then used unchanged at 16:9 would change the apparent gun size, which
+ties into U13.
+
 ### C1. Railgun draws two beams — DONE (verify, 2nd fix)
 **The one that mattered.** There are *three* rail trail sources, not two:
 1. `cg_predict.c:537` — predicted, local player only, from the barrel.
