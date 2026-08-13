@@ -37,6 +37,37 @@
             open quit_popmenu
         }
 
+        // JOIN SERVER
+        itemDef {
+            name joinbar
+            group mainnav
+            style WINDOW_STYLE_GRADIENT
+            rect -155 240 310 30
+            backcolor 0.5 0.1 0 .25
+            border 4
+            bordercolor 0.5 0.5 0.5 1
+            bordersize 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name joinserverbtn
+            group mainnav
+            text "JOIN SERVER"
+            type 1
+            textstyle 6
+            rect 0 240 310 30
+            textalignx 10
+            textaligny 24
+            textscale .416
+            textalign ITEM_ALIGN_LEFT
+            forecolor 1 1 1 1
+            visible 1
+            action { close main ; open joinserver }
+            mouseEnter { setitemcolor joinbar backcolor .75 0 0 .25 }
+            mouseExit { setitemcolor joinbar backcolor 0.5 0.1 0 .25 }
+        }
+
         // NEW GAME
         itemDef {
             name browserbar
@@ -128,6 +159,37 @@
             action { hide mainnav ; open main_options ; open ingame_controls }
             mouseEnter { setitemcolor optionsbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor optionsbar backcolor 0.5 0.1 0 .25 }
+        }
+
+        // PLAYER
+        itemDef {
+            name playerbar
+            group mainnav
+            style WINDOW_STYLE_GRADIENT
+            rect -155 400 310 30
+            backcolor 0.5 0.1 0 .25
+            border 4
+            bordercolor 0.5 0.5 0.5 1
+            bordersize 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name playerbtn
+            group mainnav
+            text "PLAYER"
+            type 1
+            textstyle 6
+            rect 0 400 310 30
+            textalignx 10
+            textaligny 24
+            textscale .416
+            textalign ITEM_ALIGN_LEFT
+            forecolor 1 1 1 1
+            visible 1
+            action { open playersetup }
+            mouseEnter { setitemcolor playerbar backcolor .75 0 0 .25 }
+            mouseExit { setitemcolor playerbar backcolor 0.5 0.1 0 .25 }
         }
 
         // QUIT
@@ -827,5 +889,368 @@
 
         itemDef { group grpWeapons  text "Grapple:"  textscale .2  rect 310 170 100 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
         itemDef { group grpWeapons  type ITEM_TYPE_MULTI  text ""  cvar "g_startingAmmo_gh"  cvarFloatList { "Infinite" -1 "Off" 0 "10" 10 "50" 50 }  rect 420 170 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
+    }
+
+    // =============================================
+    // JOIN SERVER (server browser)
+    //
+    // The browser back end - UI_BuildServerDisplayList, UI_StartServerRefresh,
+    // the FEEDER_SERVERS feeder, sorting and favourites - was already
+    // implemented in ui_main.c; only this menu was missing, which is why the
+    // main menu had no way to reach it.
+    //
+    // Lives in main.menu rather than its own file on purpose: menus are loaded
+    // from ui/menus.txt, and this build does not ship one. Shipping a menus.txt
+    // would override Quake Live's and stop its own menus from loading at all.
+    // =============================================
+    menuDef {
+        name "joinserver"
+        fullScreen MENU_TRUE
+        rect 0 0 640 480
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.05 0.05 0.08 1
+
+        onOpen {
+            setFocus serverlist ;
+            uiScript UpdateFilter
+        }
+        onESC { uiScript StopRefresh ; close joinserver ; open main }
+
+        itemDef {
+            name title
+            text "JOIN SERVER"
+            textscale .35
+            style WINDOW_STYLE_EMPTY
+            rect 0 18 640 30
+            textalign ITEM_ALIGN_CENTER
+            textalignx 320
+            textaligny 22
+            forecolor 1 .75 0 1
+            visible 1
+            decoration
+        }
+
+        // ---- source: local / internet / favorites -------------------------
+        itemDef {
+            name sourcelabel
+            text "Source:"
+            textscale .22
+            rect 20 52 70 18
+            textaligny 14
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name source
+            type ITEM_TYPE_OWNERDRAW
+            ownerdraw UI_NETSOURCE
+            rect 90 52 130 18
+            textscale .22
+            textaligny 14
+            forecolor 1 1 1 1
+            visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript RefreshServers }
+        }
+
+        // ---- gametype filter ---------------------------------------------
+        itemDef {
+            name gametypelabel
+            text "Game type:"
+            textscale .22
+            rect 240 52 90 18
+            textaligny 14
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name gametypefilter
+            type ITEM_TYPE_OWNERDRAW
+            ownerdraw UI_JOINGAMETYPE
+            rect 330 52 130 18
+            textscale .22
+            textaligny 14
+            forecolor 1 1 1 1
+            visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript UpdateFilter }
+        }
+
+        // ---- show full / show empty --------------------------------------
+        itemDef {
+            name showfulllabel
+            text "Show full:"
+            textscale .2
+            rect 480 52 70 18
+            textaligny 14
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name showfull
+            type ITEM_TYPE_YESNO
+            cvar "ui_browserShowFull"
+            rect 552 52 40 18
+            textscale .2
+            textaligny 14
+            textalignx 2
+            forecolor 1 1 1 1
+            visible 1
+            action { uiScript UpdateFilter }
+        }
+        itemDef {
+            name showemptylabel
+            text "Show empty:"
+            textscale .2
+            rect 480 70 70 18
+            textaligny 14
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name showempty
+            type ITEM_TYPE_YESNO
+            cvar "ui_browserShowEmpty"
+            rect 552 70 40 18
+            textscale .2
+            textaligny 14
+            textalignx 2
+            forecolor 1 1 1 1
+            visible 1
+            action { uiScript UpdateFilter }
+        }
+
+        // ---- column headers (click to sort) ------------------------------
+        // Column order must match UI_FeederItemText's SORT_* cases:
+        // 0 host, 1 map, 2 clients, 3 game, 4 ping.
+        itemDef {
+            name hdrhost  text "Server"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 24 92 180 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 0 }
+        }
+        itemDef {
+            name hdrmap  text "Map"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 214 92 90 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 1 }
+        }
+        itemDef {
+            name hdrplayers  text "Players"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 314 92 70 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 2 }
+        }
+        itemDef {
+            name hdrgame  text "Type"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 394 92 90 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 3 }
+        }
+        itemDef {
+            name hdrping  text "Ping"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 494 92 50 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 4 }
+        }
+
+        // ---- the list ------------------------------------------------------
+        itemDef {
+            name serverlist
+            rect 20 108 600 268
+            type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY
+            elementwidth 120
+            elementheight 14
+            elementtype LISTBOX_TEXT
+            feeder FEEDER_SERVERS
+            textscale .2
+            border 1
+            bordersize 1
+            bordercolor .5 .5 .5 .5
+            forecolor 1 1 1 1
+            backcolor 0 0 0 .25
+            outlinecolor .1 .1 .7 .5
+            visible 1
+            columns 5   4 190 34   194 100 16   294 70 12   374 90 14   474 50 8
+            doubleClick { play "sound/misc/menu1.wav" ; uiScript JoinServer }
+        }
+
+        // ---- refresh status --------------------------------------------------
+        itemDef {
+            name refreshdate
+            type ITEM_TYPE_OWNERDRAW
+            ownerdraw UI_SERVERREFRESHDATE
+            rect 20 380 300 16
+            textscale .2
+            textaligny 12
+            forecolor .8 .8 .8 1
+            visible 1
+            decoration
+        }
+
+        // ---- buttons ---------------------------------------------------------
+        itemDef {
+            name refresh  text "REFRESH"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 20 404 110 24  textaligny 18  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript RefreshServers }
+            mouseEnter { setitemcolor refresh forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor refresh forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name stoprefresh  text "STOP"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 140 404 90 24  textaligny 18  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript StopRefresh }
+            mouseEnter { setitemcolor stoprefresh forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor stoprefresh forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name addfav  text "ADD FAVORITE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 240 404 150 24  textaligny 18  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript addFavorite }
+            mouseEnter { setitemcolor addfav forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor addfav forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name delfav  text "DROP FAVORITE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 400 404 160 24  textaligny 18  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript deleteFavorite }
+            mouseEnter { setitemcolor delfav forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor delfav forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name join  text "JOIN"  type ITEM_TYPE_BUTTON  textscale .3
+            rect 20 436 120 28  textaligny 20  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript JoinServer }
+            mouseEnter { setitemcolor join forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor join forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name back  text "BACK"  type ITEM_TYPE_BUTTON  textscale .3
+            rect 500 436 120 28  textaligny 20  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript StopRefresh ; close joinserver ; open main }
+            mouseEnter { setitemcolor back forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor back forecolor 1 1 1 1 }
+        }
+    }
+
+    // =============================================
+    // PLAYER SETUP
+    //
+    // Reachable anywhere - including mid-match - with:  \menu_open playersetup
+    // ui_GetName/ui_SetName are the uiScripts the module already exposes; the
+    // edit field is bound to ui_Name and only committed to the real "name" cvar
+    // on APPLY, so a half-typed name is never sent to the server.
+    // =============================================
+    menuDef {
+        name "playersetup"
+        rect 120 120 400 240
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.05 0.05 0.08 1
+        border 1
+        bordersize 1
+        bordercolor .5 .5 .5 1
+
+        onOpen { uiScript ui_GetName ; setFocus namefield }
+        onESC { close playersetup }
+
+        itemDef {
+            name title
+            text "PLAYER SETUP"
+            textscale .3
+            rect 0 10 400 24
+            textalign ITEM_ALIGN_CENTER
+            textalignx 200
+            textaligny 18
+            forecolor 1 .75 0 1
+            visible 1
+            decoration
+        }
+
+        itemDef {
+            name namelabel
+            text "Name:"
+            textscale .25
+            rect 30 60 80 20
+            textaligny 15
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name namefield
+            type ITEM_TYPE_EDITFIELD
+            cvar "ui_Name"
+            maxchars 36
+            maxpaintchars 22
+            rect 110 60 260 20
+            textscale .25
+            textaligny 15
+            textalignx 4
+            forecolor 1 1 1 1
+            backcolor 0 0 0 .5
+            border 1
+            bordersize 1
+            bordercolor .5 .5 .5 .5
+            visible 1
+        }
+
+        itemDef {
+            name handicaplabel
+            text "Handicap:"
+            textscale .25
+            rect 30 90 80 20
+            textaligny 15
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name handicap
+            type ITEM_TYPE_MULTI
+            cvar "handicap"
+            cvarFloatList { "None" 100 "90" 90 "80" 80 "70" 70 "60" 60 "50" 50 "40" 40 "30" 30 "20" 20 "10" 10 }
+            rect 110 90 120 20
+            textscale .25
+            textaligny 15
+            textalignx 4
+            forecolor 1 1 1 1
+            visible 1
+        }
+
+        itemDef {
+            name hint
+            text "Colour codes are supported in names. Applies immediately, in match too."
+            textscale .18
+            rect 30 122 340 18
+            textaligny 12
+            forecolor .6 .6 .6 1
+            visible 1
+            decoration
+        }
+
+        itemDef {
+            name apply  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .28
+            rect 30 180 120 26  textaligny 19  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ui_SetName ; close playersetup }
+            mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name cancel  text "CANCEL"  type ITEM_TYPE_BUTTON  textscale .28
+            rect 250 180 120 26  textaligny 19  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close playersetup }
+            mouseEnter { setitemcolor cancel forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor cancel forecolor 1 1 1 1 }
+        }
     }
 }
