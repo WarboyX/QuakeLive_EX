@@ -1271,7 +1271,11 @@ void R_Register(void) {
     r_baseSpecular = ri.Cvar_Get("r_baseSpecular", "0.04", CVAR_ARCHIVE | CVAR_LATCH);
     r_baseGloss = ri.Cvar_Get("r_baseGloss", "0.3", CVAR_ARCHIVE | CVAR_LATCH);
     r_glossType = ri.Cvar_Get("r_glossType", "1", CVAR_ARCHIVE | CVAR_LATCH);
-    r_dlightMode = ri.Cvar_Get("r_dlightMode", "0", CVAR_ARCHIVE | CVAR_LATCH);
+    // [QL] 0 leaves dynamic lights off world surfaces entirely, so the quad
+    // glow, rocket blasts and muzzle flashes lit nothing around them even
+    // though cgame adds all of them via trap_R_AddLightToScene. 1 puts them on
+    // world geometry, which is what Quake 3 did; 2 adds shadows.
+    r_dlightMode = ri.Cvar_Get("r_dlightMode", "1", CVAR_ARCHIVE | CVAR_LATCH);
     r_pshadowDist = ri.Cvar_Get("r_pshadowDist", "128", CVAR_ARCHIVE);
     r_mergeLightmaps = ri.Cvar_Get("r_mergeLightmaps", "1", CVAR_ARCHIVE | CVAR_LATCH);
     r_imageUpsample = ri.Cvar_Get("r_imageUpsample", "0", CVAR_ARCHIVE | CVAR_LATCH);

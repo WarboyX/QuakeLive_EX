@@ -1208,7 +1208,7 @@
         bordersize 1
         bordercolor .5 .5 .5 1
 
-        onOpen { uiScript ui_GetName ; setFocus namefield }
+        onOpen { setFocus namefield }
         onESC { close io_playersetup }
 
         itemDef {
@@ -1238,7 +1238,10 @@
             name namefield
             type ITEM_TYPE_EDITFIELD
             text ""
-            cvar "ui_Name"
+            // Bound straight to the live cvar rather than to ui_Name and back
+            // through ui_GetName / ui_SetName. That round trip left the field
+            // showing nothing and never wrote the name through on APPLY.
+            cvar "name"
             maxchars 36
             maxpaintchars 22
             rect 110 60 260 20
@@ -1279,7 +1282,7 @@
 
         itemDef {
             name hint
-            text "Colour codes are supported in names. Applies immediately, in match too."
+            text "Colour codes are supported. The name applies as you type, in match too."
             textscale .18
             rect 30 122 340 18
             textaligny 12
@@ -1292,7 +1295,7 @@
             name apply  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .28
             rect 30 180 120 26  textaligny 19  textalignx 10
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript ui_SetName ; close io_playersetup }
+            action { play "sound/misc/menu1.wav" ; close io_playersetup }
             mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
         }
@@ -1318,7 +1321,7 @@
     // =============================================
     menuDef {
         name "io_renderoptions"
-        rect 60 30 520 434
+        rect 60 20 520 456
         visible MENU_FALSE
         focusColor 1 .75 0 1
         style WINDOW_STYLE_FILLED
@@ -1418,40 +1421,47 @@
             rect 20 262 250 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
         }
 
-        itemDef { text "Cubemap Reflections:"  textscale .22  rect 30 284 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name cubemap  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"  rect 230 284 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Dynamic Lights:"  textscale .22  rect 30 284 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name dlight  type ITEM_TYPE_MULTI  text ""  cvar "r_dlightMode"
+            cvarFloatList { "Off surfaces" 0 "On surfaces" 1 "With shadows" 2 }
+            rect 230 284 200 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
 
-        itemDef { text "Cubemap Size:"  textscale .22  rect 30 304 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { text "Cubemap Reflections:"  textscale .22  rect 30 304 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name cubemap  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"  rect 230 304 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Cubemap Size:"  textscale .22  rect 30 324 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
             name cubesize  type ITEM_TYPE_MULTI  text ""  cvar "r_cubemapSize"
             cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }
-            rect 230 304 120 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+            rect 230 324 120 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
-        itemDef { text "Specular Mapping:"  textscale .22  rect 30 324 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name specular  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"  rect 230 324 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Specular Mapping:"  textscale .22  rect 30 344 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name specular  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"  rect 230 344 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
-        itemDef { text "Normal Mapping:"  textscale .22  rect 30 344 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name normalmap  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"  rect 230 344 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Normal Mapping:"  textscale .22  rect 30 364 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name normalmap  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"  rect 230 364 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
-        itemDef { text "Ambient Light Scale:"  textscale .22  rect 30 364 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { text "Ambient Light Scale:"  textscale .22  rect 30 384 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
             name ambient  type ITEM_TYPE_SLIDER  text ""
             cvarFloat "r_ambientScale" 0.6 0 2
-            rect 230 364 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
+            rect 230 384 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
         }
 
         // ---- buttons -----------------------------------------------------------
         itemDef {
             name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 20 400 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 20 420 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
             mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
         }
         itemDef {
             name close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 400 400 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 400 420 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_renderoptions }
             mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor close forecolor 1 1 1 1 }
