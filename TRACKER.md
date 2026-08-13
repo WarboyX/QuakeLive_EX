@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `███████████████░░░░░  3/4` | viewmodel framing still open |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | all blocked on disassembly or play-testing |
-| **Engine / server** (E) | `░░░░░░░░░░░░░░░░░░░░  0/5` | absent subsystems, none started |
-| **Overall** | `█████████░░░░░░░░░░░  16/36` | |
+| **Engine / server** (E) | `██████░░░░░░░░░░░░░░  2/6` | server browser queries now exist |
+| **Overall** | `██████████░░░░░░░░░░  18/37` | |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -858,7 +858,55 @@ raw cvars instead.
 `clientInfo_t::curWeapon` is never written because the server never sends the
 `tinfo` command. The HUD field exists and is read; nothing populates it.
 
-### E3. No master server heartbeat / Valve server query — OPEN
+### E3. No master server heartbeat / server queries — DONE (verify)
+**The browser could never have found anything.** `UI_StartServerRefresh` shells
+out to `localservers` and `globalservers`, and neither command existed:
+
+- `CL_LocalServers_f` was fully implemented but never registered with
+  `Cmd_AddCommand`, so LAN scanning hit "unknown command";
+- `CL_GlobalServers_f` was declared in `client.h` and **never defined at all**;
+- there were no `sv_master` cvars anywhere in the tree.
+
+The receive half was already complete — `CL_ServersResponsePacket` parses both
+`getserversResponse` and `getserversExtResponse`, and the server answers
+`getinfo`/`getstatus`. Only the request side was missing.
+
+Both commands are now registered, `CL_GlobalServers_f` is implemented, and
+`sv_master1..5` exist. Dedicated servers heartbeat to them
+(`SV_MasterHeartbeat` from `SV_Frame`, `SV_MasterShutdown` on the way out).
+
+**The master cvars ship empty on purpose.** Quake Live's own master is long
+gone and there is no honest default to point at. Set them to a dpmaster that
+accepts the `QuakeLive` gamename and both directions start working:
+
+```
+seta sv_master1 "your.dpmaster.host"
+```
+
+LAN discovery needs none of that and works as soon as the command exists.
+
+`GAMENAME_FOR_MASTER` is a separate constant rather than `com_gamename`
+because `PRODUCT_NAME` is `"Quake Live"` — a master filters on a single token
+and the space would break it.
+
+**Verified:** both commands execute, the LAN scan runs, and the master address
+resolves and the request goes out. End-to-end discovery needs a running server
+with a real map, so that part is yours to confirm.
+
+**Still absent:** the Valve/Steam server query protocol (A2S). Only the Quake
+master protocol is implemented.
+
+### E6. Players connect as spectators — DONE (verify)
+Quake Live drops every connecting player into spectator and makes them pick
+JOIN MATCH from the menu. Quake 3 dropped you straight in. `g_autoJoin`
+(default **1**) restores the Quake 3 behaviour; set it to 0 for Quake Live's.
+
+Duel is exempt from the blanket case because it runs on a play queue — a third
+player has to wait rather than barge in. The "fewer than two in the game" test
+is Quake 3's own tournament rule and matches what the join path in `g_cmds.c`
+already enforces. `g_maxGameClients` is respected for the rest.
+
+**Server-side cvar** — it governs servers you run, not ones you join.
 The server does not announce itself, so it cannot appear in any public list. The
 client's browser can still reach it by direct connect or LAN.
 
