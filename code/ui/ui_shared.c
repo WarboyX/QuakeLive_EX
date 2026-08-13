@@ -3311,7 +3311,11 @@ const char* Item_Combo_FindCvarByValue(itemDef_t* item) {
     }
     for (i = 0; i < multiPtr->count; i++) {
         if (multiPtr->cvarList[i] && Q_stricmp(buff, multiPtr->cvarList[i]) == 0) {
-            return multiPtr->cvarStr[i];
+            // cvarList[i] is the preset's name and is what Item_Combo_HandleKey
+            // stores in the cvar, so it is also the string to display.
+            // cvarStr[i], which this used to return, is the name of the linked
+            // ITEM_TYPE_PRESET item - an internal identifier, not a label.
+            return multiPtr->cvarList[i];
         }
     }
 
@@ -4625,13 +4629,64 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
 // cvar of the linked ITEM_TYPE_PRESET item still equals its stored preset value.
 // If any differs (numeric compare within 0.001 tolerance, else string compare)
 // the preset cvar is set to "Custom". Called from Menu_Paint before drawing.
+static qboolean Menu_PresetMatches(menuDef_t* menu, multiDef_t* multiPtr, int index) {
+    itemDef_t* linkedItem;
+    multiDef_t* linkedMulti;
+    int k;
+
+    if (multiPtr->cvarStr[index] == NULL) {
+        return qfalse;
+    }
+
+    linkedItem = Menu_FindItemByName(menu, multiPtr->cvarStr[index]);
+    if (linkedItem == NULL) {
+        return qfalse;
+    }
+
+    linkedMulti = (multiDef_t*)linkedItem->typeData;
+    if (linkedMulti == NULL) {
+        return qfalse;
+    }
+
+    for (k = 0; k < linkedMulti->count; k++) {
+        char presetValue[64];
+
+        // [QL] guard a malformed preset item that left a NULL cvar name;
+        // the binary relies on a fully-populated cvarList here.
+        if (linkedMulti->cvarList[k] == NULL) {
+            continue;
+        }
+
+        memset(presetValue, 0, sizeof(presetValue));
+        DC->getCVarString(linkedMulti->cvarList[k], presetValue, sizeof(presetValue));
+
+        if (strcmp(presetValue, linkedMulti->cvarStr[k]) != 0) {
+            // Both numeric and within tolerance counts as a match.
+            if (Q_isanumber(presetValue) && Q_isanumber(linkedMulti->cvarStr[k])) {
+                float diff = DC->getCVarValue(linkedMulti->cvarList[k]) - linkedMulti->cvarValue[k];
+                if (diff < 0) {
+                    diff = -diff;
+                }
+                if (diff <= 0.001f) {
+                    continue;
+                }
+            }
+            return qfalse;
+        }
+    }
+
+    return qtrue;
+}
+
 void Menu_CheckPresetCvars(menuDef_t* menu) {
-    int i, j, k;
+    int i, j;
 
     for (i = 0; i < menu->itemCount; i++) {
         itemDef_t* item = menu->items[i];
         multiDef_t* multiPtr;
         char currentValue[1024];
+        int named = -1;
+        int resolved = -1;
 
         // [QL] skip NULL / non-preset items
         if (item == NULL || item->type != ITEM_TYPE_PRESETLIST) {
@@ -4645,50 +4700,38 @@ void Menu_CheckPresetCvars(menuDef_t* menu) {
         DC->getCVarString(item->cvar, currentValue, sizeof(currentValue));
 
         for (j = 0; j < multiPtr->count; j++) {
-            itemDef_t* linkedItem;
-            multiDef_t* linkedMulti;
+            if (multiPtr->cvarList[j] && Q_stricmp(currentValue, multiPtr->cvarList[j]) == 0) {
+                named = j;
+                break;
+            }
+        }
 
-            if (multiPtr->cvarList[j] == NULL || Q_stricmp(currentValue, multiPtr->cvarList[j]) != 0) {
-                continue;
-            }
-            if (multiPtr->cvarStr[j] == NULL) {
-                continue;
-            }
+        // The cvar already names a preset and that preset still describes the
+        // current settings - nothing to do.
+        if (named >= 0 && Menu_PresetMatches(menu, multiPtr, named)) {
+            continue;
+        }
 
-            linkedItem = Menu_FindItemByName(menu, multiPtr->cvarStr[j]);
-            if (linkedItem == NULL) {
-                continue;
+        // Otherwise the cvar names nothing this menu knows about - which is the
+        // state a config that has never been through this menu starts in, and
+        // is why these items painted "???" - or it names a preset the settings
+        // have since drifted away from. Either way, work out which preset the
+        // cvars actually correspond to rather than leaving the item unlabelled.
+        //
+        // This used to compare only against the preset the cvar named and, on
+        // the first mismatch, write "Custom" and return - abandoning every
+        // remaining preset item in the menu as well.
+        for (j = 0; j < multiPtr->count; j++) {
+            if (Menu_PresetMatches(menu, multiPtr, j)) {
+                resolved = j;
+                break;
             }
-            linkedMulti = (multiDef_t*)linkedItem->typeData;
-            if (linkedMulti == NULL) {
-                continue;
-            }
+        }
 
-            for (k = 0; k < linkedMulti->count; k++) {
-                char presetValue[64];
-                // [QL] guard a malformed preset item that left a NULL cvar name;
-                // the binary relies on a fully-populated cvarList here.
-                if (linkedMulti->cvarList[k] == NULL) {
-                    continue;
-                }
-                memset(presetValue, 0, sizeof(presetValue));
-                DC->getCVarString(linkedMulti->cvarList[k], presetValue, sizeof(presetValue));
-
-                if (strcmp(presetValue, linkedMulti->cvarStr[k]) != 0) {
-                    // Both numeric and within tolerance counts as a match.
-                    if (Q_isanumber(presetValue) && Q_isanumber(linkedMulti->cvarStr[k])) {
-                        float diff = DC->getCVarValue(linkedMulti->cvarList[k]) - linkedMulti->cvarValue[k];
-                        if (diff < 0) {
-                            diff = -diff;
-                        }
-                        if (diff <= 0.001f) {
-                            continue;
-                        }
-                    }
-                    DC->setCVar(item->cvar, "Custom");
-                    return;
-                }
-            }
+        if (resolved >= 0) {
+            DC->setCVar(item->cvar, multiPtr->cvarList[resolved]);
+        } else {
+            DC->setCVar(item->cvar, "Custom");
         }
     }
 }
@@ -5452,7 +5495,15 @@ qboolean ItemParse_cvarStrList(itemDef_t* item, int handle) {
         return qfalse;
     multiPtr = (multiDef_t*)item->typeData;
     multiPtr->count = 0;
-    multiPtr->strDef = qfalse;  // [QL] ItemParse_cvarStrList 0x1001f010 stores 0 here
+    // A string list, so the values are compared as strings. This used to store
+    // qfalse - read from a 0 in the disassembly - which sent every cvarStrList
+    // item down the numeric branch of Item_Multi_Setting, comparing against a
+    // cvarValue[] array this parser never fills. Every entry therefore compared
+    // equal to 0, so an item whose cvar happened to be non-numeric or zero
+    // always displayed the *first* entry (Texture Filter stuck reading "None")
+    // and any other value matched nothing and displayed blank (Ambient Light
+    // Scale, Crosshair Style, Gun Position, Damage Num Style, Sparks Velocity).
+    multiPtr->strDef = qtrue;
     multiPtr->videoMode = qfalse;
 
     if (!trap_PC_ReadToken(handle, &token))

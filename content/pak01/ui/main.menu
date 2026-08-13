@@ -27,6 +27,13 @@
         focusColor 1 .75 0 1
 
         onOpen {
+            // Both createserver and joinserver are fullScreen, and Q3's menu
+            // system paints every visible menu rather than just the top one -
+            // so one left open behind another shows through it, headers and
+            // all. Closing them here means returning to main always clears
+            // whatever was underneath.
+            close createserver ;
+            close joinserver ;
             setitemcolor fadebox backcolor 0 0 0 1 ;
             fadeout fadebox ;
             uiScript stopRefresh ;
@@ -63,7 +70,7 @@
             textalign ITEM_ALIGN_LEFT
             forecolor 1 1 1 1
             visible 1
-            action { close main ; open joinserver }
+            action { close createserver ; close main ; open joinserver }
             mouseEnter { setitemcolor joinbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor joinbar backcolor 0.5 0.1 0 .25 }
         }
@@ -94,7 +101,7 @@
             textalign ITEM_ALIGN_LEFT
             forecolor 1 1 1 1
             visible 1
-            action { close main ; open createserver }
+            action { close joinserver ; close main ; open createserver }
             mouseEnter { setitemcolor browserbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor browserbar backcolor 0.5 0.1 0 .25 }
         }
@@ -262,7 +269,7 @@
         backcolor 0.05 0.05 0.08 1
 
         onOpen { uiScript loadArenas }
-        onESC { close createserver ; open main }
+        onESC { close joinserver ; close createserver ; open main }
 
         // ---- TITLE BAR ----
         itemDef {
@@ -913,6 +920,7 @@
         backcolor 0.05 0.05 0.08 1
 
         onOpen {
+            close createserver ;
             setFocus serverlist ;
             uiScript UpdateFilter
         }

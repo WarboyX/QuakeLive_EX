@@ -63,12 +63,57 @@ Everything else the player sees comes from their Quake Live `pak00.pk3`, parsed 
 this port's re-implemented `ui` module. Most UI bugs are therefore our module
 mishandling Quake Live's menu scripts, not missing menus — but a few are both.
 
-### U1. Texture filter shows "none" and will not change — NEEDS INFO
-`r_textureMode` and its apply path (`GL_TextureMode` on `->modified`, `tr_cmds.c`)
-are intact, so this is the menu item. Cannot be diagnosed without seeing the item.
+### U1. Advanced settings: blanks, stuck values and `???` — DONE (verify)
+Three separate faults, all found from the Advanced screenshots.
 
-**Next step:** need the relevant `ui/*.menu` out of `pak00.pk3`. With the `???`
-change (see U6) the value now painted will name the mismatching cvar directly.
+**Blank rows and stuck values** — `ItemParse_cvarStrList` set `strDef = qfalse`.
+That sent every `cvarStrList` item down the *numeric* branch of
+`Item_Multi_Setting`, comparing against a `cvarValue[]` array this parser never
+populates. Every entry therefore compared equal to 0, so:
+- a cvar whose numeric value is 0 (or which is a non-numeric string, `atof` → 0)
+  always matched entry 0 and displayed the **first** item in the list —
+  "Texture Filter: None" was `r_textureMode` reading `GL_LINEAR_MIPMAP_LINEAR`
+  and landing on entry 0, which is why it would not change;
+- any other value matched nothing and displayed **blank** — Ambient Light Scale,
+  Crosshair Style, Gun Position, Damage Num Style, Sparks Velocity.
+
+**`???` on preset rows** — two causes. `Item_Combo_FindCvarByValue` returned
+`cvarStr[i]`, the name of the linked `ITEM_TYPE_PRESET` item, where it should
+return `cvarList[i]`, the preset name that `Item_Combo_HandleKey` actually stores
+in the cvar. And `Menu_CheckPresetCvars` could only ever *demote* a named preset
+to "Custom": if the cvar named no known preset — the state a config that has
+never been through the menu starts in — nothing matched, nothing was written,
+and the row painted `???` forever. It now resolves an unnamed or drifted cvar by
+scanning for the preset that matches the current settings, falling back to
+"Custom". It also no longer `return`s on the first mismatch, which was
+abandoning every remaining preset row in the menu.
+
+Affected rows in the screenshots: Impact Sparks, Teammate Indicators, Low Ammo
+Warning, Draw Rewards, Force Team/Enemy Model and Skin, Damage Indicator, Impact
+Marks, Lighting Model.
+
+### U9. Server browser painted over createserver — DONE (verify)
+Both are `fullScreen`, and Q3's menu system paints every visible menu rather than
+only the topmost, so one left open behind the other showed through it — doubled
+headers, overlapping labels, two sets of BACK buttons. The navigation now closes
+the sibling before opening, and `main`'s `onOpen` closes both, so returning to
+main always clears whatever was underneath. My bug, introduced with U8.
+
+### U10. Controls menu is empty — NEEDS INFO
+Not `???` rows: **no rows at all**. The tabs draw, so the menu loaded and it is
+the item list inside that is missing. That is a different fault from U7 (commands
+that could not be bound), so U7 is not the explanation here.
+
+**Next step:** need `ui/ingame_controls.menu` out of `pak00.pk3`. Worth checking
+whether it uses a feeder or owner draw this build does not implement, since an
+unimplemented feeder yields exactly this — a correctly drawn frame with nothing
+in it.
+
+### U11. Cosmetic layout faults — OPEN
+Visible in the Advanced screenshots, none investigated yet:
+- "Default" painting over the "Game Settings" title on the Weapons page — looks
+  like a preset name drawn at the title position.
+- "Zoom Sens" slider labels read `0.01 | 1 | 1`; the maximum label appears wrong.
 
 ### U2. No player-name prompt while in a match — PARTIAL
 A `playersetup` menu now exists and is reachable anywhere via `\menu_open
