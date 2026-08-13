@@ -266,8 +266,24 @@ further along.
 the tab bar drew because that is `main_options`, and the panel below was empty
 because the menu meant to fill it was never loaded.
 
-### U11. Cosmetic layout faults — OPEN
-Visible in the Advanced screenshots, none investigated yet:
+### U11. Cosmetic layout faults — PARTIAL (value offset fixed)
+
+**The systematic one is fixed.** Every value row carries `text ""` (see U12 for
+why it cannot be omitted), and the engine then added the 8-unit label gap on
+top — the gap that exists only to hold a value clear of its label. With no
+label there was nothing to be clear of, so every selector, yes/no toggle, key
+bind and slider bar painted 8 units right of its own rect, each one out of line
+with the label sitting at its left. Game Type, Bot Skill, Time Limit, Frag
+Limit, Cap Limit, and the browser's filter rows were all the same fault.
+
+`Item_ValueOffset()` now makes that test shared. `Item_TextField_Paint` and the
+owner-draw path already did it correctly; `Item_Multi_Paint`,
+`Item_YesNo_Paint`, `Item_Combo_Paint`, the bind painter and all five slider
+sites hardcoded the 8. All five slider sites matter together — the bar, the
+thumb and the click hit-test have to agree or the slider stops tracking the
+cursor.
+
+Still open, visible in the Advanced screenshots, none investigated yet:
 - "Default" painting over the "Game Settings" title on the Weapons page — looks
   like a preset name drawn at the title position.
 - "Zoom Sens" slider labels read `0.01 | 1 | 1`; the maximum label appears wrong.
@@ -419,8 +435,31 @@ was noticed alongside it. Do not assume the presets are the cause.
 
 Also still worth checking `CG_CalcFov`'s widescreen aspect handling (U13).
 
-### C1. Railgun draws two beams — DONE (verify, 2nd fix)
-**The one that mattered.** There are *three* rail trail sources, not two:
+### C1. Railgun draws two beams — DONE (verify, 3rd fix)
+**The one that mattered, at last: it was inside `CG_RailTrail` itself.**
+
+One call draws two beams. `CG_RailTrail` allocates the `RT_RAIL_CORE` entity,
+then applies the view-relative adjustment (`cg_weapons.c:408`) that nudges
+`re->origin` onto the drawn muzzle — the whole point of which is that the beam
+leaves the barrel instead of the eye. With `cg_oldRail != 2` (the default is
+**1**, so this is every shot) it then handed `CG_RailTrailCore` the *untouched*
+`start` argument, so the `RT_RAIL_RINGS` half of the same shot began at the raw
+server/predicted muzzle, out along the view axis.
+
+Two beams, two origins, one impact point — exactly as reported. The spiral path
+below it already used the adjusted origin, which is what disguised this as a
+branch-specific bug rather than a missing assignment.
+
+**Fixed** (`cgame: start the rail rings beam at the same muzzle as the core`):
+capture the adjusted origin into a local before allocating anything further —
+`CG_AllocLocalEntity` can recycle the oldest entity and invalidate `re` — and
+pass that to both halves.
+
+The two fixes below were both real bugs and both stay in; neither was what was
+on screen.
+
+#### Second fix (real, but drew from the world origin, not the view axis)
+There are *three* rail trail sources, not two:
 1. `cg_predict.c:537` — predicted, local player only, from the barrel.
 2. `cg_event.c:1141` — the server's `EV_RAILTRAIL`, from the transmitted muzzle.
 3. `cg_weapons.c:1648` → `CG_SpawnRailTrail` — QL's own path, which is supposed
@@ -442,7 +481,7 @@ placed, then let `CG_SpawnRailTrail` draw and drop the trail from the
 `EV_RAILTRAIL` handler. That restores QL's intended behaviour, where the beam
 tracks the drawn weapon rather than the server's muzzle.
 
-#### First fix (correct, but not the cause of what was visible)
+#### First fix (real, but also not the cause of what was visible)
 Firing the rail draws one trail from the barrel and a second along the view
 axis, both ending at the same impact point.
 
