@@ -994,10 +994,15 @@ void Menu_ShowItemByName(menuDef_t* menu, const char* p, qboolean bShow) {
             if (bShow) {
                 item->window.flags |= WINDOW_VISIBLE;
             } else {
-                // Drop focus with visibility. Hiding an item used to leave
-                // WINDOW_HASFOCUS set, so an item nobody could see was still the
-                // focused one and could be activated by a click or Enter.
-                item->window.flags &= ~(WINDOW_VISIBLE | WINDOW_HASFOCUS);
+                // NOTE: deliberately does NOT clear WINDOW_HASFOCUS. Clearing
+                // it here looked correct - a hidden item should not stay
+                // focused - but it is shared by every Quake Live menu, and
+                // doing so was followed by BACK going missing and unclickable
+                // in their options menu. Reverted on suspicion rather than
+                // proof; if the stale-focus problem needs solving, solve it
+                // where the focus is consumed, not by mutating every menu's
+                // state on hide.
+                item->window.flags &= ~WINDOW_VISIBLE;
                 // stop cinematics playing in the window
                 if (item->window.cinematic >= 0) {
                     DC->stopCinematic(item->window.cinematic);

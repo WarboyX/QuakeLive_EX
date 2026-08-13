@@ -314,7 +314,14 @@
         style WINDOW_STYLE_FILLED
         backcolor 0.05 0.05 0.08 1
 
-        onOpen { uiScript loadArenas }
+        onOpen {
+            // io_joinserver closes this one when it opens; without the mirror
+            // image, JOIN SERVER then back then NEW GAME left both open and
+            // both painting - two fullScreen menus on top of each other.
+            uiScript StopRefresh ;
+            close io_joinserver ;
+            uiScript loadArenas
+        }
         onESC { close io_joinserver ; close io_createserver ; open main }
 
         // ---- TITLE BAR ----
