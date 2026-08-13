@@ -5617,6 +5617,27 @@ qboolean ItemParse_cvarStrList(itemDef_t* item, int handle) {
             continue;
         }
 
+        // [QL] the tokeniser emits '-' and '+' as their own punctuation tokens,
+        // so an unquoted negative in either position arrives split in two and
+        // shifts every entry after it by one. Unlike cvarFloatList this cannot
+        // run past the closing brace - the '}' test above runs on every token -
+        // but it does silently mis-pair the list. Rejoin the sign.
+        if ((token.string[0] == '-' || token.string[0] == '+') && token.string[1] == '\0') {
+            char signedToken[MAX_TOKENLENGTH + 2];
+            char sign = token.string[0];
+
+            if (!trap_PC_ReadToken(handle, &token)) {
+                PC_SourceError(handle, "end of file inside menu item");
+                return qfalse;
+            }
+            if (*token.string == '}') {
+                PC_SourceError(handle, "cvarStrList ends with a bare '%c'", sign);
+                return qtrue;
+            }
+            Com_sprintf(signedToken, sizeof(signedToken), "%c%s", sign, token.string);
+            Q_strncpyz(token.string, signedToken, sizeof(token.string));
+        }
+
         if (pass == 0) {
             multiPtr->cvarList[multiPtr->count] = String_Alloc(token.string);
             pass = 1;
@@ -5665,17 +5686,61 @@ qboolean ItemParse_cvarFloatList(itemDef_t* item, int handle) {
         }
 
         multiPtr->cvarList[multiPtr->count] = String_Alloc(token.string);
-        // [QL] ItemParse_cvarFloatList 0x1001f1d0 parses the value as a string token
-        // into cvarStr[], then atof()'s it into cvarValue[]; on failure it stores 0
-        // and stops (rather than PC_Float_Parse-ing straight into cvarValue).
-        if (!PC_String_Parse(handle, &multiPtr->cvarStr[multiPtr->count])) {
-            multiPtr->cvarValue[multiPtr->count] = 0;
-            break;
+
+        // [QL] ItemParse_cvarFloatList 0x1001f1d0 parses the value as a string
+        // token into cvarStr[], then atof()'s it into cvarValue[] (rather than
+        // PC_Float_Parse-ing straight into cvarValue). Reading it with a bare
+        // PC_String_Parse, as that does, has two ways to run off the end of the
+        // list, and both of them silently consume the rest of the file:
+        //
+        //  - a '}' in the value position was taken as a value, so a list with an
+        //    odd number of tokens ate its own closing brace;
+        //  - the script tokeniser emits '-' as its own punctuation token, which
+        //    is why PC_Float_Parse has explicit sign handling. Without it,
+        //    { "Infinite" -1 "Off" 0 } consumed '-' as Infinite's value and left
+        //    '1' to be read as the next entry's *name*. Every pair after that
+        //    shifted by one, the list overran its '}', and it went on consuming
+        //    the remaining itemDef keywords - and then the menu's closing brace -
+        //    as name/value pairs. The menu never closed, so the next menuDef in
+        //    the file was parsed as more of this one: two menus' worth of items
+        //    in a single menu, with the second menu's name. Two BACK buttons on
+        //    screen, everything overlapping, and the absorbed menu unreachable
+        //    because nothing by that name existed any more.
+        //
+        // Quake Live's own ui/ingame_callvote.menu hits the same fault.
+        if (!trap_PC_ReadToken(handle, &token)) {
+            PC_SourceError(handle, "end of file inside menu item");
+            return qfalse;
         }
+
+        if (*token.string == '}') {
+            PC_SourceError(handle, "cvarFloatList entry \"%s\" has no value", multiPtr->cvarList[multiPtr->count]);
+            return qtrue;  // the brace is this list's terminator; do not consume it
+        }
+
+        if ((token.string[0] == '-' || token.string[0] == '+') && token.string[1] == '\0') {
+            char signedValue[MAX_TOKENLENGTH + 2];
+            char sign = token.string[0];
+
+            if (!trap_PC_ReadToken(handle, &token)) {
+                PC_SourceError(handle, "end of file inside menu item");
+                return qfalse;
+            }
+            if (*token.string == '}') {
+                PC_SourceError(handle, "cvarFloatList entry \"%s\" has a sign but no value", multiPtr->cvarList[multiPtr->count]);
+                return qtrue;
+            }
+            Com_sprintf(signedValue, sizeof(signedValue), "%c%s", sign, token.string);
+            multiPtr->cvarStr[multiPtr->count] = String_Alloc(signedValue);
+        } else {
+            multiPtr->cvarStr[multiPtr->count] = String_Alloc(token.string);
+        }
+
         multiPtr->cvarValue[multiPtr->count] = atof(multiPtr->cvarStr[multiPtr->count]);
 
         multiPtr->count++;
         if (multiPtr->count >= MAX_MULTI_CVARS) {
+            PC_SourceError(handle, "cvarFloatList has more than %d entries", MAX_MULTI_CVARS);
             return qfalse;
         }
     }

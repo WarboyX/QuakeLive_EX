@@ -281,9 +281,13 @@
             name pakstamp
             text "pak01 @@PAKSTAMP@@"
             textscale .2
+            // textalignx is relative to the item rect - Item_SetTextExtents
+            // computes textRect.x from it and then ToWindowCoords adds rect.x on
+            // top. 632 was written as if it were a screen coordinate, so the
+            // stamp painted at 340 + 632 - width, off the right of the screen.
             rect 340 4 296 12
             textalign ITEM_ALIGN_RIGHT
-            textalignx 632
+            textalignx 292
             textaligny 9
             forecolor .45 .45 .45 1
             visible 1

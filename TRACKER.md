@@ -11,12 +11,12 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 
 | Area | Progress | Notes |
 |---|---|---|
-| **Client / UI** (U) | `████████████░░░░░░░░  8/13` | menu system largely repaired |
+| **Client / UI** (U) | `██████████████░░░░░░  9/13` | U9 root-caused: a parser bug, not a menu bug |
 | **Client / cgame** (C) | `███████████████░░░░░  3/4` | viewmodel framing still open |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | all blocked on disassembly or play-testing |
 | **Engine / server** (E) | `░░░░░░░░░░░░░░░░░░░░  0/5` | absent subsystems, none started |
-| **Overall** | `████████░░░░░░░░░░░░  13/34` | |
+| **Overall** | `████████░░░░░░░░░░░░  14/34` | |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -24,26 +24,29 @@ not finished-and-proven.
 ## Priorities
 
 **P0 — blocking normal use or testing**
-1. **U9** menu overlap — untested since two changes landed. *One question to you:
-   does it still happen?* Everything else in the menu restructure waits on this.
-2. **C3** viewmodel is bigger and lower than it should be. `cg_fov` ruled out;
+1. **C3** viewmodel is bigger and lower than it should be. `cg_fov` ruled out;
    next move is diffing `CG_AddPlayerWeapon` against upstream `1487e89` for the
    `MatrixMultiply` reorder.
-3. **R8** rocket blasts light far too weakly. My `r_dlightMode` diagnosis was
+2. **R8** rocket blasts light far too weakly. My `r_dlightMode` diagnosis was
    wrong; three leads recorded, none tried.
 
+*(U9 closed — see below. It was `ItemParse_cvarFloatList` eating the menu's
+closing brace, which merged two menus into one. Run the headless parse check
+in U9 after touching any `.menu` file; parse errors are silent on screen and
+loud in the console.)*
+
 **P1 — in flight**
-4. **R5** Vulkan renderer, milestone 1. Text is *not* optional here — the console
+3. **R5** Vulkan renderer, milestone 1. Text is *not* optional here — the console
    is the debugging surface, so a text-less Vulkan build cannot debug itself.
    Stub only long enough to prove the link, then do fonts immediately.
 
 **P2 — correctness unknowns, need evidence**
-5. **W1 / W2** shotgun pattern shape and the 30-radians-or-degrees constant.
-6. **U10** empty Controls panel — four causes eliminated, needs a menu-list dump.
-7. **U11** cosmetic overlaps on QL's Advanced pages; **U13** widescreen bias.
+4. **W1 / W2** shotgun pattern shape and the 30-radians-or-degrees constant.
+5. **U10** empty Controls panel — four causes eliminated, needs a menu-list dump.
+6. **U11** cosmetic overlaps on QL's Advanced pages; **U13** widescreen bias.
 
 **P3 — absent subsystems, none started, none blocking**
-8. **E1** factory · **E2** teammate weapon icons · **E3** master heartbeat ·
+7. **E1** factory · **E2** teammate weapon icons · **E3** master heartbeat ·
    **E4** ZMQ stats · **E5** Steam.
 
 **Deliberately parked**
@@ -176,7 +179,69 @@ Note the mouse paths themselves were fine — `Menu_OverActiveItem` and
 `Menu_HandleMouseMove` both skip items without `WINDOW_VISIBLE`. The leak was
 purely the stale focus flag.
 
-### U9. Server browser painted over createserver — OPEN, both diagnoses were wrong
+### U9. Server browser painted over createserver — DONE, root cause found and verified
+
+**It was never two menus being open. It was one menu containing both.**
+
+`ui/main.menu` line 954 ends the createserver panel with
+
+```
+cvarFloatList { "Infinite" -1 "Off" 0 "10" 10 "50" 50 }
+```
+
+The botlib tokeniser emits `-` as its own punctuation token — which is exactly
+why `PC_Float_Parse` has explicit sign handling. `ItemParse_cvarFloatList` had
+none, and read the value with a bare `PC_String_Parse` that also never tested
+for `}`. So it took `-` as Infinite's value and left `1` to be read as the next
+entry's *name*. Every pair after that shifted by one, the list overran its own
+closing brace, and it carried on consuming `rect 420 170 80 15 textaligny 12
+…` as name/value pairs until it hit the itemDef's `}` — swallowing that as its
+terminator, and leaving the item to swallow the **menu's** closing brace at
+line 955.
+
+`io_createserver` therefore never closed. `Menu_Parse` kept going, hit
+`menuDef` at line 969, reported it as an unknown *menu* keyword and carried on
+— then hit `name "io_joinserver"`, which is a perfectly valid menu keyword, and
+**renamed the still-open menu**. Every item of the browser was appended to the
+createserver menu.
+
+One menu, both sets of items, named `io_joinserver`. That is:
+- two BACK buttons (createserver's `backbtn` and the browser's `back`);
+- NEW GAME doing nothing — `open io_createserver` had no such menu to find, the
+  name had been overwritten;
+- the orange JOIN SERVER title over createserver's title bar, the map preview
+  where the server list should be, and every "misalignment" in between.
+
+**Fixed** in `ItemParse_cvarFloatList`: read the value token directly, treat a
+`}` in the value position as the list terminator instead of a value, and rejoin
+a lone `-`/`+` with the token after it. `ItemParse_cvarStrList` got the sign
+rejoining too — it cannot eat a brace (it tests every token) but it silently
+mis-pairs the same way.
+
+**Verified**, not argued: a headless run of the shipped 410e3d5 build
+reproduces `ERROR: ui/main.menu, line 969: unknown menu keyword menuDef` exactly;
+the same run against the fixed build parses clean.
+
+```
+SDL_VIDEODRIVER=offscreen ./quakelive.x86_64 \
+  +set fs_basepath <dir> +set fs_homepath <dir>/home +set s_initsound 0 +quit
+```
+
+with a `baseq3/ui/menus.txt` containing `{ loadMenu { "ui/main.menu" } }` and a
+stub `baseq3/default.cfg`. Worth keeping — it parses every menu without needing
+a GPU, a server, or Quake Live's assets.
+
+This also hits **Quake Live's own menus**: `ui/ingame_callvote.menu` line 521
+failed with `couldn't parse menu item keyword cvarFloatList`, the same fault
+running long enough to exceed `MAX_MULTI_CVARS`. That menu should load now too.
+
+Three diagnoses before this one were wrong, and all three shared a mistake:
+reasoning about which menus were open from the outside, instead of asking
+whether the file had parsed at all. `ui_debugMenus` (added while chasing this)
+traces open/close/action and stays in — but the parse errors were in the console
+the whole time.
+
+#### Earlier: correction, from the actual menu files
 **Correction, from the actual menu files.** I claimed Quake Live's paks define
 `createserver`, `joinserver` and `playersetup`, so ours collided with theirs.
 **They do not.** Grepping every file QL loads: no menu anywhere in its `ui/` is
