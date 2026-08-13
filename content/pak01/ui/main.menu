@@ -49,7 +49,7 @@
             name renderbar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 200 310 30
+            rect -155 400 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -63,7 +63,7 @@
             text "RENDER"
             type 1
             textstyle 6
-            rect 0 200 310 30
+            rect 0 400 310 30
             textalignx 10
             textaligny 24
             textscale .416
@@ -80,7 +80,7 @@
             name joinbar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 240 310 30
+            rect -155 200 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -94,7 +94,7 @@
             text "JOIN SERVER"
             type 1
             textstyle 6
-            rect 0 240 310 30
+            rect 0 200 310 30
             textalignx 10
             textaligny 24
             textscale .416
@@ -111,7 +111,7 @@
             name browserbar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 280 310 30
+            rect -155 240 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -125,7 +125,7 @@
             text "NEW GAME"
             type 1
             textstyle 6
-            rect 0 280 310 30
+            rect 0 240 310 30
             textalignx 10
             textaligny 24
             textscale .416
@@ -142,7 +142,7 @@
             name demobar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 320 310 30
+            rect -155 280 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -156,7 +156,7 @@
             text "DEMOS"
             type 1
             textstyle 6
-            rect 0 320 310 30
+            rect 0 280 310 30
             textalignx 10
             textaligny 24
             textscale .416
@@ -173,7 +173,7 @@
             name optionsbar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 360 310 30
+            rect -155 320 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -187,7 +187,7 @@
             text "OPTIONS"
             type 1
             textstyle 6
-            rect 0 360 320 30
+            rect 0 320 320 30
             textalignx 10
             textaligny 24
             textscale .416
@@ -204,7 +204,7 @@
             name playerbar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 400 310 30
+            rect -155 360 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -218,7 +218,7 @@
             text "PLAYER"
             type 1
             textstyle 6
-            rect 0 400 310 30
+            rect 0 360 310 30
             textalignx 10
             textaligny 24
             textscale .416
@@ -1364,14 +1364,14 @@
 
         itemDef { text "Dither:"  textscale .22  rect 30 96 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            name dither  type ITEM_TYPE_MULTI  cvar "r_dither"
+            name dither  type ITEM_TYPE_MULTI  text ""  cvar "r_dither"
             cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2 }
             rect 230 96 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
         itemDef { text "Colour Depth:"  textscale .22  rect 30 116 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            name colorbits  type ITEM_TYPE_MULTI  cvar "r_colorbits"
+            name colorbits  type ITEM_TYPE_MULTI  text ""  cvar "r_colorbits"
             cvarFloatList { "Driver default" 0 "16-bit (3dfx look)" 16 "10-bit per channel" 30 }
             rect 230 116 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
@@ -1387,17 +1387,17 @@
         }
 
         itemDef { text "HDR Framebuffer:"  textscale .22  rect 30 180 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name hdr  type ITEM_TYPE_YESNO  cvar "r_hdr"  rect 230 180 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { name hdr  type ITEM_TYPE_YESNO  text ""  cvar "r_hdr"  rect 230 180 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
         itemDef { text "Tonemapping:"  textscale .22  rect 30 200 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name tonemap  type ITEM_TYPE_YESNO  cvar "r_toneMap"  rect 230 200 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { name tonemap  type ITEM_TYPE_YESNO  text ""  cvar "r_toneMap"  rect 230 200 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef {
             text "Off is the Quake 3 look - tonemapping compresses bright highlights."
             textscale .17  rect 30 218 460 16  textaligny 12  forecolor .55 .55 .55 1  visible 1  decoration
         }
 
         itemDef { text "Post Processing:"  textscale .22  rect 30 238 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name postproc  type ITEM_TYPE_YESNO  cvar "r_postProcess"  rect 230 238 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { name postproc  type ITEM_TYPE_YESNO  text ""  cvar "r_postProcess"  rect 230 238 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
         // ---- surfaces ---------------------------------------------------------
         itemDef {
@@ -1406,24 +1406,24 @@
         }
 
         itemDef { text "Cubemap Reflections:"  textscale .22  rect 30 284 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name cubemap  type ITEM_TYPE_YESNO  cvar "r_cubeMapping"  rect 230 284 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { name cubemap  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"  rect 230 284 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
         itemDef { text "Cubemap Size:"  textscale .22  rect 30 304 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            name cubesize  type ITEM_TYPE_MULTI  cvar "r_cubemapSize"
+            name cubesize  type ITEM_TYPE_MULTI  text ""  cvar "r_cubemapSize"
             cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }
             rect 230 304 120 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
         itemDef { text "Specular Mapping:"  textscale .22  rect 30 324 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name specular  type ITEM_TYPE_YESNO  cvar "r_specularMapping"  rect 230 324 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { name specular  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"  rect 230 324 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
         itemDef { text "Normal Mapping:"  textscale .22  rect 30 344 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name normalmap  type ITEM_TYPE_YESNO  cvar "r_normalMapping"  rect 230 344 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { name normalmap  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"  rect 230 344 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
         itemDef { text "Ambient Light Scale:"  textscale .22  rect 30 364 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            name ambient  type ITEM_TYPE_SLIDER
+            name ambient  type ITEM_TYPE_SLIDER  text ""
             cvarFloat "r_ambientScale" 0.6 0 2
             rect 230 364 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
         }

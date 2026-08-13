@@ -128,6 +128,13 @@ Covers: `r_dither` (off / ordered / temporal), `r_colorbits` (driver default /
 one-click buttons for the classic / gloss / voodoo / defaults presets and an
 APPLY that runs `vid_restart` for the latched ones.
 
+Every value row needs `text ""` even when the label is a separate decoration
+item: `Item_Multi_Paint`, `Item_YesNo_Paint` and `Item_Slider_Paint` all paint the
+value at `item->textRect`, and `textRect` is only computed inside
+`Item_Text_Paint`, which is skipped when `item->text` is NULL. Omitting it draws
+every value at 0,0 — off the panel entirely, which is what the first cut of this
+menu did. The `createserver` rows had it right; these did not.
+
 **Open:** the proper home is still Quake Live's own tabs. If its
 `ui/*.menu` files turn up (U1, U10 need them too) these rows should move there.
 
