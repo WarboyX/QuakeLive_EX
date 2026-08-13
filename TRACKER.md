@@ -206,6 +206,36 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 
 ## Renderer
 
+### C1. Railgun draws two beams — OPEN, diagnosed, fix known
+Firing the rail draws one trail from the barrel and a second along the view
+axis, both ending at the same impact point.
+
+Two separate call sites draw a trail for the same shot:
+- `cg_predict.c:537` — a **predicted** trail, drawn from `muzzle + right*4 - up`
+  the instant you fire, so the shot feels immediate rather than waiting a round
+  trip. This is the barrel one.
+- `cg_event.c:1141` — the server's `EV_RAILTRAIL`, `CG_RailTrail(ci,
+  es->origin2, es->pos.trBase)`, arriving a moment later. This is the view one.
+
+Nothing suppresses either for your own shots, so both draw.
+
+**Fix:** gate the `EV_RAILTRAIL` handler to skip when the event's client is the
+local predicted player and the predicted path already drew it — other players'
+rails must still come from the event. Note `cg.lastAutoFireTime` is set right
+after the predicted trail and may serve as the interlock. Do *not* simply delete
+the predicted trail: it is what makes the local rail feel instant.
+
+### C2. Quad pickup now lights the room — DONE (verify)
+`CG_Item` adds a dlight for a powerup resting on the ground, matching the
+colours `CG_PlayerPowerups` uses for a carried one — quad blue, battlesuit
+green, regen red, invis white, radius 200 + rand()&31. Quake 3 only ever lit the
+powered-up *player*, never the pickup. Suppressed while an item is scaling up on
+respawn (`frac != 1.0`).
+
+Whether this fully answers the reported missing glow is unverified: R8 is still
+open on why explosions light so weakly, and if that turns out to be a renderer
+path fault it will affect this light too.
+
 ### R8. Dynamic light glow is weak or absent — OPEN, my earlier diagnosis was wrong
 **Correction.** I claimed `r_dlightMode 0` keeps dynamic lights off world surfaces
 entirely. That is not what it does. Reading its actual uses:
