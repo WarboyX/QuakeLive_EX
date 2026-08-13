@@ -48,6 +48,8 @@ extern const char* fallbackShader_shadowmask_vp;
 extern const char* fallbackShader_shadowmask_fp;
 extern const char* fallbackShader_ssao_vp;
 extern const char* fallbackShader_ssao_fp;
+extern const char* fallbackShader_dither_vp;
+extern const char* fallbackShader_dither_fp;
 extern const char* fallbackShader_texturecolor_vp;
 extern const char* fallbackShader_texturecolor_fp;
 extern const char* fallbackShader_tonemap_vp;
@@ -935,6 +937,22 @@ void GLSL_InitGPUShaders(void) {
 
     numEtcShaders++;
 
+    // [QL] output dither - the pass that quantises the frame to the window
+    attribs = ATTR_POSITION | ATTR_TEXCOORD;
+
+    if (!GLSL_InitGPUShader(&tr.ditherShader, "dither", attribs, qtrue, extradefines, qtrue, fallbackShader_dither_vp,
+                            fallbackShader_dither_fp)) {
+        ri.Error(ERR_FATAL, "Could not load dither shader!");
+    }
+
+    GLSL_InitUniforms(&tr.ditherShader);
+
+    GLSL_SetUniformInt(&tr.ditherShader, UNIFORM_DIFFUSEMAP, TB_DIFFUSEMAP);
+
+    GLSL_FinishGPUShader(&tr.ditherShader);
+
+    numEtcShaders++;
+
     for (i = 0; i < FOGDEF_COUNT; i++) {
         if ((i & FOGDEF_USE_VERTEX_ANIMATION) && (i & FOGDEF_USE_BONE_ANIMATION))
             continue;
@@ -1382,6 +1400,7 @@ void GLSL_ShutdownGPUShaders(void) {
         GLSL_DeleteGPUShader(&tr.genericShader[i]);
 
     GLSL_DeleteGPUShader(&tr.textureColorShader);
+    GLSL_DeleteGPUShader(&tr.ditherShader);
 
     for (i = 0; i < FOGDEF_COUNT; i++)
         GLSL_DeleteGPUShader(&tr.fogShader[i]);

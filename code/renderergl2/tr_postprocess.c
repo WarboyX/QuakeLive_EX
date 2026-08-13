@@ -452,3 +452,68 @@ void RB_GaussianBlur(FBO_t* srcFbo, FBO_t* dstFbo, float blur) {
         FBO_Blit(tr.textureScratchFbo[0], srcBox, NULL, dstFbo, dstBox, NULL, color, GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA);
     }
 }
+
+/*
+=============
+RB_DitherToScreen
+
+The last step of the frame: copy the render target to the window.
+
+Everything up to here is computed at far higher precision than the window can
+hold - a float target under r_hdr, 8 bits per channel at worst - and all of that
+precision is discarded in this one write. Rounding each pixel independently is
+what puts bands across skies, fog and coloured lighting: a smooth ramp crossing
+a quantisation boundary snaps for every pixel at once, so the boundary shows up
+as a hard edge all the way across the screen.
+
+Adding under half a step of noise first breaks the boundary up, and the eye
+integrates the result back to the value that was actually there. This is the
+same trick 3dfx's "22-bit" mode used at 16 bits, applied at the only place it
+still buys anything.
+
+The amplitude comes from glConfig.colorBits, which sdl_glimp fills in from what
+the driver actually handed back rather than from what was asked for - so a
+10-bit framebuffer gets a quarter of the noise an 8-bit one does instead of four
+times what it needs.
+
+r_dither 0 keeps the plain hardware blit.
+=============
+*/
+void RB_DitherToScreen(FBO_t* src) {
+    static unsigned int ditherFrame = 0;
+    vec4_t params;
+    int perChannelBits;
+
+    if (!src) {
+        return;
+    }
+
+    if (!r_dither->integer) {
+        FBO_FastBlit(src, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        return;
+    }
+
+    // glConfig.colorBits is the sum over R, G and B of the framebuffer that was
+    // actually created. Fall back to 8 if it looks implausible rather than
+    // dividing by whatever happens to be there.
+    perChannelBits = glConfig.colorBits / 3;
+    if (perChannelBits < 4 || perChannelBits > 16) {
+        perChannelBits = 8;
+    }
+
+    // one quantisation step of that framebuffer
+    params[0] = 1.0f / (float)((1 << perChannelBits) - 1);
+
+    // Temporal phase. Offsetting the noise by the golden ratio each frame
+    // decorrelates successive frames, so the pattern averages out over time
+    // rather than sitting still on a surface - worth roughly another bit at the
+    // frame rates this runs at. Wrapped to keep float precision usable over a
+    // long session.
+    ditherFrame++;
+    params[1] = (r_dither->integer >= 2) ? (float)(ditherFrame % 64) * 0.61803398875f : 0.0f;
+
+    params[2] = (float)r_dither->integer;
+    params[3] = 1.0f;
+
+    FBO_Blit(src, NULL, NULL, NULL, NULL, &tr.ditherShader, params, 0);
+}

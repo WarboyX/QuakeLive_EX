@@ -50,8 +50,11 @@ void main()
 	color.rgb = sqrt(color.rgb);
 #endif
 
-	// add a bit of dither to reduce banding
-	color.rgb += vec3(1.0/510.0 * mod(gl_FragCoord.x + gl_FragCoord.y, 2.0) - 1.0/1020.0);
+	// Dither used to be applied here. It has moved to the output blit
+	// (RB_DitherToScreen), because this pass only runs when r_hdr and
+	// r_toneMap are both on - so any setup that turned tonemapping off, which
+	// includes the classic preset, lost the only dither in the renderer and
+	// banded worse than the defaults did.
 
 	gl_FragColor = color;
 }
