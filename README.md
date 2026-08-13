@@ -151,7 +151,7 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 | CVAR table | Done | ~390 cvars with 56 `OnChanged` callbacks |
 | Race checkpoints | Done | Race gametype module with init, checkpoint, and timing logic |
 | Unlagged (`lagHax`) | Done | Position history recording/rewinding for hitscan accuracy (`g_unlagged.c`) |
-| Weapon systems | Done | Shotgun ring pellets, distance falloff, damage-through-surface, player cylinder traces |
+| Weapon systems | Done | Shotgun ring pellets, distance falloff, damage-through-surface, player cylinder traces. Server `ShotgunPattern` now applies the same seeded jitter as `CG_ShotgunPattern` - it previously ignored the transmitted seed, so traced pellets did not match drawn ones |
 | Tiered armor | Done | `CheckArmor` rewrite, `Pickup_Armor` with armor tiers |
 | JSON stats reporting | Partial | Original uses C++ jsoncpp; JSON functions stubbed, non-JSON helpers preserved |
 | Loadout system | Done | End to end: `weaponPrimary` validation, `PMF_LOADOUT_FORCED`, default-weapon fallback |

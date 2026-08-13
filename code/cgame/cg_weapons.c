@@ -2255,6 +2255,14 @@ void CG_MissileHitWall(int weapon, int clientNum, vec3_t origin, vec3_t dir, imp
     qhandle_t mod;
     qhandle_t mark;
     qhandle_t shader;
+    // The impact media below (railExplosionShader, plasmaExplosionShader, ...)
+    // is only loaded by CG_RegisterWeapon, which normally runs when the weapon's
+    // item or model is first seen. An impact can easily arrive before that - a
+    // weapon handed out by loadout on a map with no pickup for it never triggers
+    // registration at all - and every handle is then still 0, so the effect
+    // silently does not draw. Registration early-outs once done, so this is
+    // free after the first call.
+    CG_RegisterWeapon(weapon);
     sfxHandle_t sfx;
     float radius;
     float light;

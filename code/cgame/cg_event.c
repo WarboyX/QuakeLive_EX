@@ -1123,6 +1123,14 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_RAILTRAIL");
             cent->currentState.weapon = WP_RAILGUN;
 
+            // CG_RailTrail draws with cgs.media.railCoreShader / railRingsShader,
+            // both of which are only loaded by CG_RegisterWeapon(WP_RAILGUN).
+            // Nothing pre-registers weapons at level load, so a rail shot seen
+            // before the railgun's own model or item has been drawn rendered
+            // with shader handle 0 - an invisible tracer, and an invisible
+            // impact once CG_MissileHitWall reached railExplosionShader.
+            CG_RegisterWeapon(WP_RAILGUN);
+
             if (es->clientNum == cg.snap->ps.clientNum && !cg.renderingThirdPerson) {
                 if (cg_drawGun.integer == 2)
                     VectorMA(es->origin2, 8, cg.refdef.viewaxis[1], es->origin2);

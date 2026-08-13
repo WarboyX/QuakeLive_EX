@@ -365,23 +365,46 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
 
     // [QL] concentric ring pattern (binary-verified from qagamex86.dll 0x1006d450)
     // 3 rings of absolute radii - the muzzle offset is already scaled, no extra spread
+    //
+    // The per-pellet jitter below MUST stay identical to CG_ShotgunPattern. The
+    // whole reason weapon_supershotgun_fire puts a random seed in eventParm and
+    // sends it is so both sides can reproduce the same spread: the server to
+    // decide what was hit, the client to draw where the pellets landed. This
+    // function used to take that seed and never reference it, so the server
+    // traced a perfectly rigid ring while the client drew a jittered one - the
+    // pellets you saw were up to 40% of a ring radius away from the ones that
+    // were actually traced, which reads as shotgun hit registration being
+    // misaligned.
+    //
+    // Angle and multiplier literals are written exactly as the client writes
+    // them (rather than M_PI/3 etc.) so both sides evaluate in float and land
+    // on bit-identical results.
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
+        float jitter;
+
         if (i < 6) {
+            jitter = 0.4f;
             ringRadius = 4000;
-            angle = (float)(i - 20) * (M_PI / 3.0f);
-            ring = 1;  // inner ring, full damage
+            angle = (float)(i - 20) * 1.0471976f;  // pi/3, 60 degree spacing
+            ring = 1;                              // inner ring, full damage
         } else if (i < 12) {
+            jitter = 0.3f;
             ringRadius = 8000;
-            angle = (float)i * (M_PI / 3.0f) + 30.0f;  // binary adds 30.0 radians
-            ring = 0;  // outer damage
+            angle = (float)i * 1.0471976f + 30.0f;  // binary adds 30.0 radians
+            ring = 0;                               // outer damage
         } else {
+            jitter = 0.2f;
             ringRadius = 12000;
-            angle = (float)i * (M_PI / 4.0f);
-            ring = 0;  // outer damage
+            angle = (float)i * 0.7853982f;  // pi/4, 45 degree spacing
+            ring = 0;                       // outer damage
         }
 
-        r = cos(angle) * ringRadius;
-        u = sin(angle) * ringRadius;
+        // LCG PRNG, 16-bit wrap - identical to the client's.
+        seed = (seed * 0xDCD + 1) & 0xFFFF;
+        r = (cos(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
+
+        seed = (seed * 0xDCD + 1) & 0xFFFF;
+        u = (sin(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
 
         VectorMA(origin, 8192 * 16, forward, end);
         VectorMA(end, r, right, end);
