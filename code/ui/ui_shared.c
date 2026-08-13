@@ -1058,7 +1058,12 @@ static void Menu_Trace(const char* what, const char* name) {
     char list[1024];
     int i;
 
-    if (DC == NULL || DC->getCVarValue == NULL || DC->getCVarValue("ui_debugMenus") == 0.0f) {
+    // DC->Print can legitimately be NULL - UI_Alloc guards it for the same
+    // reason. ui_shared.c is linked into cgame as well as ui, and menu
+    // open/close runs on paths where the display context is only partly set up,
+    // including the teardown after a server disconnect.
+    if (DC == NULL || DC->Print == NULL || DC->getCVarValue == NULL ||
+        DC->getCVarValue("ui_debugMenus") == 0.0f) {
         return;
     }
 
@@ -2566,7 +2571,9 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
             }
         }
     }
-    DC->Print("slider handle key exit\n");
+    // (Quake 3 shipped an unconditional DC->Print here. It fires on every key
+    // event that reaches a slider without being handled, so it is pure console
+    // noise, and it is an unguarded DC->Print on top of that.)
     return qfalse;
 }
 
