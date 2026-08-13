@@ -44,6 +44,37 @@
             open quit_popmenu
         }
 
+        // RENDER
+        itemDef {
+            name renderbar
+            group mainnav
+            style WINDOW_STYLE_GRADIENT
+            rect -155 200 310 30
+            backcolor 0.5 0.1 0 .25
+            border 4
+            bordercolor 0.5 0.5 0.5 1
+            bordersize 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name renderbtn
+            group mainnav
+            text "RENDER"
+            type 1
+            textstyle 6
+            rect 0 200 310 30
+            textalignx 10
+            textaligny 24
+            textscale .416
+            textalign ITEM_ALIGN_LEFT
+            forecolor 1 1 1 1
+            visible 1
+            action { open renderoptions }
+            mouseEnter { setitemcolor renderbar backcolor .75 0 0 .25 }
+            mouseExit { setitemcolor renderbar backcolor 0.5 0.1 0 .25 }
+        }
+
         // JOIN SERVER
         itemDef {
             name joinbar
@@ -1259,6 +1290,158 @@
             action { play "sound/misc/menu1.wav" ; close playersetup }
             mouseEnter { setitemcolor cancel forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor cancel forecolor 1 1 1 1 }
+        }
+    }
+
+    // =============================================
+    // RENDER OPTIONS
+    //
+    // Quake Live's own Video Options and Post Process tabs live in its
+    // pak00.pk3, which this build does not ship and cannot edit - so the
+    // renderer settings added here have nowhere to go in those tabs. This is a
+    // self-contained panel for them instead.
+    //
+    // Reachable anywhere, including mid-match:  \menu_open renderoptions
+    // =============================================
+    menuDef {
+        name "renderoptions"
+        rect 60 40 520 400
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.05 0.05 0.08 1
+        border 1
+        bordersize 1
+        bordercolor .5 .5 .5 1
+
+        onESC { close renderoptions }
+
+        itemDef {
+            name title  text "RENDER OPTIONS"  textscale .3
+            rect 0 8 520 24  textalign ITEM_ALIGN_CENTER  textalignx 260  textaligny 18
+            forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        // ---- presets ---------------------------------------------------------
+        itemDef {
+            name presetlabel  text "Presets:"  textscale .22
+            rect 20 40 90 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+        }
+        itemDef {
+            name pclassic  text "CLASSIC"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 110 40 90 18  textaligny 14  textalignx 6  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec classic.cfg" }
+            mouseEnter { setitemcolor pclassic forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor pclassic forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name pgloss  text "GLOSS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 205 40 80 18  textaligny 14  textalignx 6  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec gloss.cfg" }
+            mouseEnter { setitemcolor pgloss forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor pgloss forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name pvoodoo  text "VOODOO"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 290 40 90 18  textaligny 14  textalignx 6  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec voodoo.cfg" }
+            mouseEnter { setitemcolor pvoodoo forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor pvoodoo forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name pmodern  text "DEFAULTS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 385 40 100 18  textaligny 14  textalignx 6  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec modern.cfg" }
+            mouseEnter { setitemcolor pmodern forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor pmodern forecolor 1 1 1 1 }
+        }
+
+        // ---- output ----------------------------------------------------------
+        itemDef {
+            name hdr1  text "OUTPUT"  textscale .24
+            rect 20 74 200 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        itemDef { text "Dither:"  textscale .22  rect 30 96 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name dither  type ITEM_TYPE_MULTI  cvar "r_dither"
+            cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2 }
+            rect 230 96 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Colour Depth:"  textscale .22  rect 30 116 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name colorbits  type ITEM_TYPE_MULTI  cvar "r_colorbits"
+            cvarFloatList { "Driver default" 0 "16-bit (3dfx look)" 16 "10-bit per channel" 30 }
+            rect 230 116 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+        itemDef {
+            text "Dither strength follows the framebuffer the driver actually gives you."
+            textscale .17  rect 30 134 460 16  textaligny 12  forecolor .55 .55 .55 1  visible 1  decoration
+        }
+
+        // ---- post processing --------------------------------------------------
+        itemDef {
+            name hdr2  text "POST PROCESSING"  textscale .24
+            rect 20 158 250 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        itemDef { text "HDR Framebuffer:"  textscale .22  rect 30 180 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name hdr  type ITEM_TYPE_YESNO  cvar "r_hdr"  rect 230 180 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Tonemapping:"  textscale .22  rect 30 200 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name tonemap  type ITEM_TYPE_YESNO  cvar "r_toneMap"  rect 230 200 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            text "Off is the Quake 3 look - tonemapping compresses bright highlights."
+            textscale .17  rect 30 218 460 16  textaligny 12  forecolor .55 .55 .55 1  visible 1  decoration
+        }
+
+        itemDef { text "Post Processing:"  textscale .22  rect 30 238 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name postproc  type ITEM_TYPE_YESNO  cvar "r_postProcess"  rect 230 238 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        // ---- surfaces ---------------------------------------------------------
+        itemDef {
+            name hdr3  text "SURFACES"  textscale .24
+            rect 20 262 250 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        itemDef { text "Cubemap Reflections:"  textscale .22  rect 30 284 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name cubemap  type ITEM_TYPE_YESNO  cvar "r_cubeMapping"  rect 230 284 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Cubemap Size:"  textscale .22  rect 30 304 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name cubesize  type ITEM_TYPE_MULTI  cvar "r_cubemapSize"
+            cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }
+            rect 230 304 120 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Specular Mapping:"  textscale .22  rect 30 324 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name specular  type ITEM_TYPE_YESNO  cvar "r_specularMapping"  rect 230 324 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Normal Mapping:"  textscale .22  rect 30 344 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name normalmap  type ITEM_TYPE_YESNO  cvar "r_normalMapping"  rect 230 344 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Ambient Light Scale:"  textscale .22  rect 30 364 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name ambient  type ITEM_TYPE_SLIDER
+            cvarFloat "r_ambientScale" 0.6 0 2
+            rect 230 364 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
+        }
+
+        // ---- buttons -----------------------------------------------------------
+        itemDef {
+            name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 20 388 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
+            mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 400 388 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close renderoptions }
+            mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor close forecolor 1 1 1 1 }
         }
     }
 }

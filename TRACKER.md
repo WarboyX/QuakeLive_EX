@@ -115,6 +115,22 @@ Visible in the Advanced screenshots, none investigated yet:
   like a preset name drawn at the title position.
 - "Zoom Sens" slider labels read `0.01 | 1 | 1`; the maximum label appears wrong.
 
+### U12. Render options have no home in Quake Live's menus — DONE (verify)
+`r_dither` and the rest of the renderer work has nowhere to live: the Video
+Options and Post Process tabs are in Quake Live's `pak00.pk3`, which this build
+neither ships nor can edit. A self-contained `renderoptions` menu carries them
+instead — reachable from the main menu's RENDER entry or `\menu_open
+renderoptions` anywhere, including mid-match.
+
+Covers: `r_dither` (off / ordered / temporal), `r_colorbits` (driver default /
+16-bit / 10-bit), `r_hdr`, `r_toneMap`, `r_postProcess`, `r_cubeMapping`,
+`r_cubemapSize`, `r_specularMapping`, `r_normalMapping`, `r_ambientScale`, plus
+one-click buttons for the classic / gloss / voodoo / defaults presets and an
+APPLY that runs `vid_restart` for the latched ones.
+
+**Open:** the proper home is still Quake Live's own tabs. If its
+`ui/*.menu` files turn up (U1, U10 need them too) these rows should move there.
+
 ### U2. No player-name prompt while in a match — PARTIAL
 A `playersetup` menu now exists and is reachable anywhere via `\menu_open
 playersetup`, but nothing in Quake Live's in-game menu opens it — that menu is
