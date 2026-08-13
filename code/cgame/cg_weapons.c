@@ -2644,11 +2644,13 @@ static void CG_ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, int other
             angle = (float)i * 0.7853982f;           // pi/4 = 45 degree spacing
         }
 
-        // [QL] jitter gate is cg_trueShotgun (DAT_10a63f0c), NOT gametype.
-        // When set, the concentric ring pattern is perfectly tight (no seed spread).
-        if (cg_trueShotgun.integer) {
-            jitter = 0.0f;
-        }
+        // [QL] The jitter scale comes from the server (g_shotgunJitter, relayed in
+        // serverinfo), NOT from a local cvar. It used to be gated on
+        // cg_trueShotgun, which is client-side only - so a player could change the
+        // pattern they were shown without changing the pattern the server traced,
+        // which is a desync by construction. Whatever the spread is, both sides
+        // have to derive it from the same number.
+        jitter *= cgs.shotgunJitter;
 
         // LCG PRNG: seed = (seed * 0xDCD + 1) & 0xFFFF - 16-bit wrap
         // (binary uses int but 1/65536 normalizer implies 16-bit range)

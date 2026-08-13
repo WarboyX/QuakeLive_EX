@@ -346,7 +346,7 @@ int ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
 // this should match CG_ShotgunPattern
 void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
     int i;
-    float r, u, angle, ringRadius;
+    float r, u, angle, ringRadius, jitterScale;
     int ring;
     int totalDamage = 0;
     int quality;
@@ -379,6 +379,19 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
     // Angle and multiplier literals are written exactly as the client writes
     // them (rather than M_PI/3 etc.) so both sides evaluate in float and land
     // on bit-identical results.
+    // [QL] Jitter scale is server-authoritative (g_shotgunJitter, SERVERINFO) so
+    // both sides always agree. Default 0: the pure concentric ring pattern. The
+    // jitter throws pellets out to 15288 units against a 12000 outer ring, i.e.
+    // outside the pattern's own radius, and gives a 13.3 degree cone - wider
+    // than Q3's 9.8 - which does not match QL's notably tight shotgun. Set to 1
+    // to restore the full jitter if that turns out to be wanted.
+    jitterScale = g_shotgunJitter.value;
+    if (jitterScale < 0.0f) {
+        jitterScale = 0.0f;
+    } else if (jitterScale > 1.0f) {
+        jitterScale = 1.0f;
+    }
+
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
         float jitter;
 
@@ -398,6 +411,8 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
             angle = (float)i * 0.7853982f;  // pi/4, 45 degree spacing
             ring = 0;                       // outer damage
         }
+
+        jitter *= jitterScale;
 
         // LCG PRNG, 16-bit wrap - identical to the client's.
         seed = (seed * 0xDCD + 1) & 0xFFFF;

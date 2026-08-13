@@ -631,6 +631,11 @@ void CG_ParseServerinfo(void) {
     cgs.gametype = atoi(Info_ValueForKey(info, "g_gametype"));
     trap_Cvar_Set("cg_gametype", va("%i", cgs.gametype));
     cgs.teamsize = atoi(Info_ValueForKey(info, "teamsize"));
+    // [QL] Pellet spread scale. Read from the server rather than a local cvar so
+    // the pattern drawn here is always the pattern the server traced.
+    cgs.shotgunJitter = atof(Info_ValueForKey(info, "g_shotgunJitter"));
+    if (cgs.shotgunJitter < 0.0f) { cgs.shotgunJitter = 0.0f; }
+    else if (cgs.shotgunJitter > 1.0f) { cgs.shotgunJitter = 1.0f; }
     cgs.teamSizeMin = atoi(Info_ValueForKey(info, "g_teamSizeMin"));
     cgs.teamForceBalance = atoi(Info_ValueForKey(info, "g_teamForceBalance"));
     cgs.dmflags = atoi(Info_ValueForKey(info, "dmflags"));

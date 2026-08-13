@@ -1437,6 +1437,9 @@ typedef struct {
     // parsed from serverinfo (order matches QL binary's CG_ParseServerinfo)
     gametype_t gametype;
     int teamsize;           // [QL]
+    float shotgunJitter;    // [QL] g_shotgunJitter from serverinfo - the pellet
+                            // spread scale, server-authoritative so the drawn
+                            // pattern always matches the traced one
     int teamSizeMin;        // [QL] g_teamSizeMin
     int teamForceBalance;   // [QL] g_teamForceBalance
     int dmflags;

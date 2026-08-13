@@ -351,6 +351,7 @@ vmCvar_t g_forfeit;
 
 // [QL] serverinfo cvars read by cgame
 vmCvar_t g_teamsize;
+vmCvar_t g_shotgunJitter;
 vmCvar_t g_teamRedLocked;
 vmCvar_t g_teamBlueLocked;
 vmCvar_t g_teamSizeMin;
@@ -820,6 +821,10 @@ static cvarTable_t gameCvarTable[] = {
 
     // [QL] serverinfo cvars read by cgame (all verified with CVAR_SERVERINFO in binary)
     {&g_teamsize, "teamsize", "0", CVAR_SERVERINFO, 0, NULL},
+    // [QL] Shotgun spread jitter, 0..1, scaling the per-ring jitter in
+    // ShotgunPattern / CG_ShotgunPattern. SERVERINFO so the client reads the
+    // same value and both sides always compute the identical pattern.
+    {&g_shotgunJitter, "g_shotgunJitter", "0", CVAR_SERVERINFO, 0, NULL},
     // [QL] per-team join locks, driven by the referee /lock and /unlock
     // commands and read back by G_IsTeamLocked. Registered here so they exist
     // and are listed even before a referee first uses /lock.
