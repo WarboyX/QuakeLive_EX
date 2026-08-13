@@ -1138,6 +1138,20 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                     VectorMA(es->origin2, 4, cg.refdef.viewaxis[1], es->origin2);
             }
 
+            // CG_PredictRailFire already drew this shot's trail and impact
+            // straight from the barrel the moment the button went down, so that
+            // the local rail does not wait a round trip to appear. Drawing the
+            // event's copy as well put a second beam along the view axis ending
+            // at the same point. Only skip it for our own predicted shot and
+            // only briefly: every other player's rail arrives this way, and a
+            // shot we did not predict - paused, in a timeout, spectating - still
+            // needs drawing here. Rail refire is 1500ms, so 1000 cannot swallow
+            // a genuine second shot.
+            if (es->clientNum == cg.snap->ps.clientNum && cg.predictedRailTime &&
+                cg.time - cg.predictedRailTime < 1000) {
+                break;
+            }
+
             CG_RailTrail(ci, es->origin2, es->pos.trBase);
 
             // if the end was on a nomark surface, don't make an explosion

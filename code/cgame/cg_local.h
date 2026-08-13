@@ -782,7 +782,11 @@ typedef struct {
     int warmupGametype;     // [QL] gametype override from CS_WARMUP (-1 = use current)
     int warmupFreezeCount_red;   // [QL] GT_AD per-team count from CS_ROUND_WARMUP
     int warmupFreezeCount_blue;  // [QL] GT_AD per-team count from CS_ROUND_WARMUP
-    int lastAutoFireTime;        // [QL] last predicted railgun autofire (cg.time)
+    int lastAutoFireTime;
+    // [QL] cg.time at which the predicted railgun trail was last drawn, so the
+    // server's EV_RAILTRAIL for that same shot can be skipped instead of
+    // drawing a second beam over it.
+    int predictedRailTime;        // [QL] last predicted railgun autofire (cg.time)
 
     //==========================
 

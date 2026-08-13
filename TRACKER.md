@@ -206,7 +206,7 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 
 ## Renderer
 
-### C1. Railgun draws two beams — OPEN, diagnosed, fix known
+### C1. Railgun draws two beams — DONE (verify)
 Firing the rail draws one trail from the barrel and a second along the view
 axis, both ending at the same impact point.
 
@@ -219,11 +219,16 @@ Two separate call sites draw a trail for the same shot:
 
 Nothing suppresses either for your own shots, so both draw.
 
-**Fix:** gate the `EV_RAILTRAIL` handler to skip when the event's client is the
-local predicted player and the predicted path already drew it — other players'
-rails must still come from the event. Note `cg.lastAutoFireTime` is set right
-after the predicted trail and may serve as the interlock. Do *not* simply delete
-the predicted trail: it is what makes the local rail feel instant.
+**Fixed.** `cg.predictedRailTime` records when the predicted trail was drawn, and
+the `EV_RAILTRAIL` handler skips both the trail and the impact when the event is
+our own shot within 1000ms of it. A dedicated field rather than reusing
+`cg.lastAutoFireTime`, which doubles as the fire-rate gate. The window is
+deliberately short: every other player's rail arrives through this event, and a
+shot we did not predict — paused, in a timeout, spectating — still has to be
+drawn here. Rail refire is 1500ms so 1000 cannot swallow a genuine second shot.
+
+Note the predicted path drew the *impact* too, so `CG_MissileHitWall` was being
+called twice for the same hit as well — the fix covers both.
 
 ### C2. Quad pickup now lights the room — DONE (verify)
 `CG_Item` adds a dlight for a powerup resting on the ground, matching the

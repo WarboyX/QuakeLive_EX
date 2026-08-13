@@ -535,6 +535,7 @@ static void CG_CheckAutoFire(void) {
         start[2] = muzzle[2] + right[2] * 4.0f - up[2];
 
         CG_RailTrail(&cgs.clientinfo[clientNum], start, trace.endpos);
+        cg.predictedRailTime = cg.time;
 
         if (!(trace.surfaceFlags & SURF_NOIMPACT)) {
             CG_MissileHitWall(cg.predictedPlayerState.weapon,
