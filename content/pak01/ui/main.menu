@@ -1307,7 +1307,7 @@
     // =============================================
     menuDef {
         name "renderoptions"
-        rect 60 40 520 400
+        rect 60 30 520 434
         visible MENU_FALSE
         focusColor 1 .75 0 1
         style WINDOW_STYLE_FILLED
@@ -1433,14 +1433,14 @@
         // ---- buttons -----------------------------------------------------------
         itemDef {
             name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 20 388 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 20 400 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
             mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
         }
         itemDef {
             name close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 400 388 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 400 400 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close renderoptions }
             mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor close forecolor 1 1 1 1 }

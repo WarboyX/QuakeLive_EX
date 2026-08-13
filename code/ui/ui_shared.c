@@ -2401,7 +2401,21 @@ void Item_StartCapture(itemDef_t* item, int key) {
     int flags;
     switch (item->type) {
         case ITEM_TYPE_EDITFIELD:
-        case ITEM_TYPE_NUMERICFIELD:
+        case ITEM_TYPE_NUMERICFIELD: {
+            // These used to fall straight through into the listbox case, so
+            // clicking a text field ran Item_ListBox_OverLB against an item that
+            // has no listbox data and then did nothing. g_editingField was never
+            // set, which is what Item_TextField_HandleKey requires before it
+            // will accept a keystroke - so no text field anywhere in the UI
+            // could be typed into. Player name, hostname, callvote text, all of
+            // them.
+            editFieldDef_t* editPtr = (editFieldDef_t*)item->typeData;
+            if (editPtr) {
+                g_editingField = qtrue;
+                g_editItem = item;
+            }
+            break;
+        }
 
         case ITEM_TYPE_LISTBOX: {
             flags = Item_ListBox_OverLB(item, DC->cursorx, DC->cursory);
