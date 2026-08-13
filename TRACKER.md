@@ -182,6 +182,30 @@ change. Two things to be clear about before anyone starts:
 Worth doing for performance and driver-stability reasons. Not a route to the
 metallic look.
 
+### R6. Voodoo postfilter as a real post-process pass — OPEN, ready to build
+`voodoo.cfg` gets the 16-bit dither but not the thing that made it look good:
+Voodoo3 and later ran a filter over the dithered output on scanout — the "22-bit"
+mode — blending adjacent pixels so the dither pattern read as a smooth gradient
+rather than as noise. That is the missing half, and it is squarely reproducible:
+unlike reflection, dither-smoothing needs nothing but neighbouring pixels, which
+is exactly what a screen-space pass has.
+
+**Plan** (all mechanical, insertion point verified):
+- `glsl/voodoo_vp.glsl` + `glsl/voodoo_fp.glsl` — the 3dfx filter kernel.
+- Two entries in the Makefile's `renderergl2/glsl` object list; GLSL is
+  stringified into `.o` files at build time, not loaded from the pk3.
+- A program slot in `GLSL_InitGPUShaders` (`tr_glsl.c`).
+- `RB_VoodooFilter()` in `tr_postprocess.c`, called from `RB_PostProcess`
+  (`tr_backend.c`) just before the final `FBO_FastBlit` to `dstFbo`.
+- Cvar `r_voodooFilter`, folded into `voodoo.cfg`.
+
+Note this is unrelated to API lineage. OpenGL (1992, out of SGI's IRIS GL)
+predates Glide (1996), and Glide borrowed conventions from OpenGL rather than
+the reverse; Vulkan descends from AMD's Mantle and was a deliberate clean break
+from OpenGL's state machine. Glide is a dead branch — nothing of it survives in
+Vulkan to be recovered. What is recoverable is the hardware's *output stage*
+behaviour, which is what this item is.
+
 ### R3. Quake Live art is not Quake 3 art — OPEN
 The env-mapped metal shaders live in Quake 3's `pak0.pk3`. Quake Live retextured
 everything, so no renderer setting recovers surfaces whose shaders are not
