@@ -352,6 +352,8 @@ vmCvar_t g_forfeit;
 // [QL] serverinfo cvars read by cgame
 vmCvar_t g_teamsize;
 vmCvar_t g_shotgunJitter;
+vmCvar_t g_shotgunSpread;
+vmCvar_t g_shotgunPattern;
 vmCvar_t g_teamRedLocked;
 vmCvar_t g_teamBlueLocked;
 vmCvar_t g_teamSizeMin;
@@ -825,6 +827,15 @@ static cvarTable_t gameCvarTable[] = {
     // ShotgunPattern / CG_ShotgunPattern. SERVERINFO so the client reads the
     // same value and both sides always compute the identical pattern.
     {&g_shotgunJitter, "g_shotgunJitter", "0", CVAR_SERVERINFO, 0, NULL},
+    // [QL] Multiplier on every pellet offset, so the cone can be tightened or
+    // widened without a rebuild. 1 is the pattern as it comes out of the binary:
+    // the outer ring at 12000 units against a 8192*16 trace, i.e. 5.2 degrees.
+    {&g_shotgunSpread, "g_shotgunSpread", "1", CVAR_SERVERINFO, 0, NULL},
+    // [QL] Pattern shape: 0 = the QL concentric rings, 1 = Q3's filled square
+    // cone. The rings put no pellet anywhere near the aim axis, so on a distant
+    // wall they read as the spread not being centred on the crosshair; the cone
+    // is there to tell the two apart without guessing.
+    {&g_shotgunPattern, "g_shotgunPattern", "0", CVAR_SERVERINFO, 0, NULL},
     // [QL] per-team join locks, driven by the referee /lock and /unlock
     // commands and read back by G_IsTeamLocked. Registered here so they exist
     // and are listed even before a referee first uses /lock.

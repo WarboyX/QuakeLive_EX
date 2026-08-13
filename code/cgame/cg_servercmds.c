@@ -624,6 +624,7 @@ and whenever the server updates any serverinfo flagged cvars
 void CG_ParseServerinfo(void) {
     const char* info;
     const char* mapname;
+    const char* value;
 
     info = CG_ConfigString(CS_SERVERINFO);
 
@@ -636,6 +637,13 @@ void CG_ParseServerinfo(void) {
     cgs.shotgunJitter = atof(Info_ValueForKey(info, "g_shotgunJitter"));
     if (cgs.shotgunJitter < 0.0f) { cgs.shotgunJitter = 0.0f; }
     else if (cgs.shotgunJitter > 1.0f) { cgs.shotgunJitter = 1.0f; }
+    // A server that does not publish g_shotgunSpread is running the pattern
+    // unscaled, so an absent key has to mean 1, not 0.
+    value = Info_ValueForKey(info, "g_shotgunSpread");
+    cgs.shotgunSpread = value[0] ? atof(value) : 1.0f;
+    if (cgs.shotgunSpread < 0.0f) { cgs.shotgunSpread = 0.0f; }
+    else if (cgs.shotgunSpread > SHOTGUN_SPREAD_SCALE_MAX) { cgs.shotgunSpread = SHOTGUN_SPREAD_SCALE_MAX; }
+    cgs.shotgunPattern = atoi(Info_ValueForKey(info, "g_shotgunPattern"));
     cgs.teamSizeMin = atoi(Info_ValueForKey(info, "g_teamSizeMin"));
     cgs.teamForceBalance = atoi(Info_ValueForKey(info, "g_teamForceBalance"));
     cgs.dmflags = atoi(Info_ValueForKey(info, "dmflags"));

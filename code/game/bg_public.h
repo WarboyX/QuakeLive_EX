@@ -38,6 +38,23 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define DEFAULT_SHOTGUN_SPREAD 700
 #define DEFAULT_SHOTGUN_COUNT 20
 
+// [QL] shotgun pattern shapes, selected by g_shotgunPattern (relayed in serverinfo)
+#define SHOTGUN_PATTERN_RINGS 0  // three concentric rings, the pattern in the QL binary
+#define SHOTGUN_PATTERN_CONE 1   // Q3's filled square cone, centred on the aim axis
+
+// ring radii, as offsets against the 8192*16 unit pellet trace
+#define SHOTGUN_RING_INNER 4000.0f
+#define SHOTGUN_RING_MIDDLE 8000.0f
+#define SHOTGUN_RING_OUTER 12000.0f
+
+#define SHOTGUN_SPREAD_SCALE_MAX 4.0f
+
+// The ring pattern gives 6 of its 20 pellets the inner (full damage) tier. For
+// pellets spread uniformly over a square of half-width h, P(r <= k*h) = pi*k^2/4,
+// so k = sqrt(4*0.3/pi) puts the same 30% of cone-pattern pellets in that tier -
+// switching pattern then does not quietly change what a blast is worth.
+#define SHOTGUN_CONE_INNER_FRACTION 0.6180f
+
 #define ITEM_RADIUS 15  // item sizes are needed for client side pickup detection
 
 #define LIGHTNING_RANGE 768
@@ -934,6 +951,10 @@ typedef enum {
                // by setting eType to ET_EVENTS + eventNum
                // this avoids having to set eFlags and eventNum
 } entityType_t;
+
+void BG_ShotgunBasis(const vec3_t dir, vec3_t forward, vec3_t right, vec3_t up);
+int BG_ShotgunPellet(int i, int seed, int pattern, float jitterScale, float spreadScale, float* r, float* u,
+                     qboolean* inner);
 
 void BG_EvaluateTrajectory(const trajectory_t* tr, int atTime, vec3_t result);
 void BG_EvaluateTrajectoryDelta(const trajectory_t* tr, int atTime, vec3_t result);

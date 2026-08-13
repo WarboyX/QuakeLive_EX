@@ -1440,6 +1440,8 @@ typedef struct {
     float shotgunJitter;    // [QL] g_shotgunJitter from serverinfo - the pellet
                             // spread scale, server-authoritative so the drawn
                             // pattern always matches the traced one
+    float shotgunSpread;    // [QL] g_shotgunSpread - multiplier on the pellet offsets
+    int shotgunPattern;     // [QL] g_shotgunPattern - SHOTGUN_PATTERN_*
     int teamSizeMin;        // [QL] g_teamSizeMin
     int teamForceBalance;   // [QL] g_teamForceBalance
     int dmflags;

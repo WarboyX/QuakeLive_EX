@@ -2617,48 +2617,23 @@ hit splashes
 */
 static void CG_ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, int otherEntNum) {
     int i;
-    float r, u, angle, ringRadius, jitter;
+    float r, u;
     vec3_t end;
     vec3_t forward, right, up;
 
-    // derive the right and up vectors from the forward vector, because
-    // the client won't have any other information
-    VectorNormalize2(origin2, forward);
-    PerpendicularVector(right, forward);
-    CrossProduct(forward, right, up);
+    // The pattern is generated in shared code (BG_ShotgunBasis /
+    // BG_ShotgunPellet) off the direction in origin2, the seed the server put in
+    // the event, and three serverinfo values - so these traces reproduce the
+    // server's exactly. The shape, spread and jitter deliberately come from the
+    // server and not from a local cvar: cg_trueShotgun used to change the
+    // pattern the player was shown without changing the pattern the server
+    // traced, which is a desync by construction.
+    BG_ShotgunBasis(origin2, forward, right, up);
 
-    // [QL] Concentric ring pattern (binary-verified from cgamex86.dll 0x10055650)
-    // 3 rings: inner(6 pellets, r=4), middle(6, r=8), outer(8, r=12) = 20 total
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
-        if (i < 6) {
-            jitter = 0.4f;
-            ringRadius = 4000;   // [QL] binary FILD 0xfa0 (server spread baked in)
-            angle = (float)(i - 20) * 1.0471976f;   // pi/3 = 60 degree spacing
-        } else if (i < 12) {
-            jitter = 0.3f;
-            ringRadius = 8000;   // [QL] binary FILD 0x1f40
-            angle = (float)i * 1.0471976f + 30.0f;  // 30 radian offset (binary value)
-        } else {
-            jitter = 0.2f;
-            ringRadius = 12000;  // [QL] binary FILD 0x2ee0
-            angle = (float)i * 0.7853982f;           // pi/4 = 45 degree spacing
-        }
+        qboolean inner;
 
-        // [QL] The jitter scale comes from the server (g_shotgunJitter, relayed in
-        // serverinfo), NOT from a local cvar. It used to be gated on
-        // cg_trueShotgun, which is client-side only - so a player could change the
-        // pattern they were shown without changing the pattern the server traced,
-        // which is a desync by construction. Whatever the spread is, both sides
-        // have to derive it from the same number.
-        jitter *= cgs.shotgunJitter;
-
-        // LCG PRNG: seed = (seed * 0xDCD + 1) & 0xFFFF - 16-bit wrap
-        // (binary uses int but 1/65536 normalizer implies 16-bit range)
-        seed = (seed * 0xDCD + 1) & 0xFFFF;
-        r = (cos(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
-
-        seed = (seed * 0xDCD + 1) & 0xFFFF;
-        u = (sin(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
+        seed = BG_ShotgunPellet(i, seed, cgs.shotgunPattern, cgs.shotgunJitter, cgs.shotgunSpread, &r, &u, &inner);
 
         VectorMA(origin, 8192 * 16, forward, end);
         // [QL] r/u already include the (large) ring radius; no DEFAULT_SHOTGUN_SPREAD scale

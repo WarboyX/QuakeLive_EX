@@ -346,80 +346,36 @@ int ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
 // this should match CG_ShotgunPattern
 void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
     int i;
-    float r, u, angle, ringRadius, jitterScale;
-    int ring;
+    float r, u;
     int totalDamage = 0;
     int quality;
     vec3_t end;
     vec3_t forward, right, up;
     qboolean hitClient = qfalse;
 
-    VectorNormalize2(origin2, forward);
-    PerpendicularVector(right, forward);
-    CrossProduct(forward, right, up);
+    // The pellet geometry lives in BG_ShotgunBasis/BG_ShotgunPellet so that this
+    // and CG_ShotgunPattern cannot drift apart. The whole reason
+    // weapon_supershotgun_fire puts a random seed in eventParm and sends it is
+    // so both sides can reproduce the same spread: the server to decide what was
+    // hit, the client to draw where the pellets landed. This function used to
+    // take that seed and never reference it, and used to build its own frame off
+    // PerpendicularVector, whose result rotates with the player's facing.
+    //
+    // The three knobs are all CVAR_SERVERINFO, so the client derives the pattern
+    // from the same numbers the server traced with rather than from anything
+    // local.
+    BG_ShotgunBasis(origin2, forward, right, up);
 
     // [QL] clear damage plum accumulator
     if (ent->client) {
         memset(ent->client->damagePlum, 0, sizeof(ent->client->damagePlum));
     }
 
-    // [QL] concentric ring pattern (binary-verified from qagamex86.dll 0x1006d450)
-    // 3 rings of absolute radii - the muzzle offset is already scaled, no extra spread
-    //
-    // The per-pellet jitter below MUST stay identical to CG_ShotgunPattern. The
-    // whole reason weapon_supershotgun_fire puts a random seed in eventParm and
-    // sends it is so both sides can reproduce the same spread: the server to
-    // decide what was hit, the client to draw where the pellets landed. This
-    // function used to take that seed and never reference it, so the server
-    // traced a perfectly rigid ring while the client drew a jittered one - the
-    // pellets you saw were up to 40% of a ring radius away from the ones that
-    // were actually traced, which reads as shotgun hit registration being
-    // misaligned.
-    //
-    // Angle and multiplier literals are written exactly as the client writes
-    // them (rather than M_PI/3 etc.) so both sides evaluate in float and land
-    // on bit-identical results.
-    // [QL] Jitter scale is server-authoritative (g_shotgunJitter, SERVERINFO) so
-    // both sides always agree. Default 0: the pure concentric ring pattern. The
-    // jitter throws pellets out to 15288 units against a 12000 outer ring, i.e.
-    // outside the pattern's own radius, and gives a 13.3 degree cone - wider
-    // than Q3's 9.8 - which does not match QL's notably tight shotgun. Set to 1
-    // to restore the full jitter if that turns out to be wanted.
-    jitterScale = g_shotgunJitter.value;
-    if (jitterScale < 0.0f) {
-        jitterScale = 0.0f;
-    } else if (jitterScale > 1.0f) {
-        jitterScale = 1.0f;
-    }
-
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
-        float jitter;
+        qboolean inner;
 
-        if (i < 6) {
-            jitter = 0.4f;
-            ringRadius = 4000;
-            angle = (float)(i - 20) * 1.0471976f;  // pi/3, 60 degree spacing
-            ring = 1;                              // inner ring, full damage
-        } else if (i < 12) {
-            jitter = 0.3f;
-            ringRadius = 8000;
-            angle = (float)i * 1.0471976f + 30.0f;  // binary adds 30.0 radians
-            ring = 0;                               // outer damage
-        } else {
-            jitter = 0.2f;
-            ringRadius = 12000;
-            angle = (float)i * 0.7853982f;  // pi/4, 45 degree spacing
-            ring = 0;                       // outer damage
-        }
-
-        jitter *= jitterScale;
-
-        // LCG PRNG, 16-bit wrap - identical to the client's.
-        seed = (seed * 0xDCD + 1) & 0xFFFF;
-        r = (cos(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
-
-        seed = (seed * 0xDCD + 1) & 0xFFFF;
-        u = (sin(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
+        seed = BG_ShotgunPellet(i, seed, g_shotgunPattern.integer, g_shotgunJitter.value, g_shotgunSpread.value, &r,
+                                &u, &inner);
 
         VectorMA(origin, 8192 * 16, forward, end);
         VectorMA(end, r, right, end);
@@ -427,7 +383,7 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
 
         // [QL] shotsHit counts every pellet that connects; accuracy_hits once per blast
         {
-            int pelletDamage = ShotgunPellet(origin, end, ent, ring);
+            int pelletDamage = ShotgunPellet(origin, end, ent, inner ? 1 : 0);
             totalDamage += pelletDamage;
             if (pelletDamage) {
                 if (!hitClient) {
