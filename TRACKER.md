@@ -146,6 +146,42 @@ texture handling. `r_toneMap` is the important one: environment mapping
 (`TCGEN_ENVIRONMENT_MAPPED`) is implemented and working, but tonemapping
 compresses exactly the highlights that read as metallic.
 
+### R4. Getting the metallic look back — routes, in cost order — OPEN
+Three ways to put gloss on surfaces. A screen-space post-process is **not** one
+of them: once the frame is a 2D image the per-surface normals are gone, so a
+filter cannot know which pixels are metal or which way they face. Screen space
+can do the *Glide* half — dither, soften, bloom — because that genuinely is a
+screen-space effect. It cannot do the reflective half.
+
+1. **`r_cubeMapping 1` + `r_specularMapping 1`** — already in the renderer, off
+   by default, needs GL 3.0. Falls back to `info_player_deathmatch` spawns as
+   probes when a map has no `env.json` and no `misc_cubemap` entities, so it
+   works anywhere with no authoring. Shipped as `gloss.cfg`. This is *real*
+   reflection and will look glossier than Quake 3 ever did — Quake 3's effect
+   was a fixed smear, not a probe.
+2. **Shader overrides** — a pk3 of `scripts/*.shader` adding a `tcGen
+   environment` stage to the surfaces that should be metal. This is exactly how
+   Quake 3 did it: data, not code, per-surface correct, and renderer-agnostic
+   (it would survive a move to Vulkan). Best fidelity per unit effort. Needs the
+   Quake Live texture names to target.
+3. **Screen-space reflections** — needs a normal/depth G-buffer that renderergl2
+   does not currently write. Real work, and still approximate at surface edges.
+
+### R5. Vulkan renderer — OPEN
+Feasible: Quake3e (`ec-/Quake3e`) has a mature `renderer_vulkan`, and
+`cl_renderer` already dispatches by DLL name so a third target needs no engine
+change. Two things to be clear about before anyone starts:
+
+- **An API is not an aesthetic.** Quake3e's Vulkan renderer is a
+  reimplementation of the *classic* Q3 renderer. It would get the look closer to
+  Quake 3 than renderergl2 does — but by being GL1-equivalent, not by being
+  Vulkan. It adds no gloss on its own.
+- It would need the same `REF_API_VERSION 9` adaptation as R1, including a
+  Vulkan backend for the TrueType text path.
+
+Worth doing for performance and driver-stability reasons. Not a route to the
+metallic look.
+
 ### R3. Quake Live art is not Quake 3 art — OPEN
 The env-mapped metal shaders live in Quake 3's `pak0.pk3`. Quake Live retextured
 everything, so no renderer setting recovers surfaces whose shaders are not
