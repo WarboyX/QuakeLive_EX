@@ -366,6 +366,7 @@ CG_RailTrail
 */
 void CG_RailTrail(clientInfo_t* ci, vec3_t start, vec3_t end) {
     vec3_t axis[36], move, move2, vec, temp;
+    vec3_t muzzle;
     float len;
     int i, j, skip;
 
@@ -433,15 +434,25 @@ void CG_RailTrail(clientInfo_t* ci, vec3_t start, vec3_t end) {
         }
     }
 
+    // The adjustment above moved the core beam onto the drawn muzzle. Everything
+    // else that makes up this shot has to start from the same place, so capture
+    // it before allocating anything further - CG_AllocLocalEntity can recycle the
+    // oldest entity, which invalidates re.
+    VectorCopy(re->origin, muzzle);
+
     // [QL] cg_oldRail == 2 draws the spiral ring trail; anything else draws the
     // rings-only disc beam (CG_RailTrailCore) and stops.
     // (binary: if (cg_oldRail == 2) { spiral } else { CG_RailTrailCore })
     if (cg_oldRail.integer != 2) {
-        CG_RailTrailCore(ci, start, end);
+        // Not "start": the rings beam and the core beam are two halves of one
+        // rail, and passing the raw server/predicted muzzle here gave the rings
+        // their own origin along the view axis while the core left the barrel -
+        // two beams converging on the same impact point. This is the second beam.
+        CG_RailTrailCore(ci, muzzle, end);
         return;
     }
 
-    VectorCopy(re->origin, move);
+    VectorCopy(muzzle, move);
     VectorSubtract(end, move, vec);
     len = VectorNormalize(vec);
     PerpendicularVector(temp, vec);
@@ -525,8 +536,8 @@ void CG_SpawnRailTrail(centity_t* cent) {
         // function, and what makes QL's beam leave the drawn barrel rather than
         // the server's muzzle point. Nothing in this build ever writes it. The
         // field is declared and read and assigned nowhere, so this drew a beam
-        // from a zero vector on every rail shot, on top of the correct one the
-        // EV_RAILTRAIL handler draws - the second beam.
+        // from the world origin on every rail shot, on top of the correct one
+        // the EV_RAILTRAIL handler draws.
         //
         // Stay inert until the capture exists, rather than drawing from the
         // world origin. EV_RAILTRAIL covers the trail meanwhile.
