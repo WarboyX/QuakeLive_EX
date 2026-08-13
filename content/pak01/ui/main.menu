@@ -278,6 +278,19 @@
 
         // CREDITS
         itemDef {
+            name pakstamp
+            text "pak01 @@PAKSTAMP@@"
+            textscale .2
+            rect 4 466 300 12
+            textalign ITEM_ALIGN_LEFT
+            textalignx 4
+            textaligny 9
+            forecolor .45 .45 .45 1
+            visible 1
+            decoration
+        }
+
+        itemDef {
             name copyright
             text "Quake Live (tm) Copyright 2015 Id Software LLC, a ZeniMax Media company. All Rights Reserved."
             textscale .25
@@ -329,16 +342,6 @@
             style WINDOW_STYLE_FILLED
             rect 0 0 640 22
             backcolor 0.5 0.1 0 0.6
-            visible 1
-            decoration
-        }
-        itemDef {
-            text "CREATE SERVER"
-            textstyle 6
-            textscale .28
-            rect 10 2 200 20
-            textaligny 16
-            forecolor 1 1 1 1
             visible 1
             decoration
         }

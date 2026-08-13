@@ -26,6 +26,13 @@ L=build/release-linux-x86_64
 W=build/release-mingw32-x86_64
 
 echo "building $REV"
+
+# Stamp the loaded pak01 with the revision. Menu fixes live in pak01.pk3 and
+# module fixes in iobin.pk3, and replacing only one of the two has repeatedly
+# made a fixed bug look unfixed. The main menu now shows which pak01 is
+# actually loaded, so a screenshot settles it.
+sed -i "s/@@PAKSTAMP@@/$REV/g" content/pak01/ui/main.menu
+trap 'sed -i "s/pak01 $REV/pak01 @@PAKSTAMP@@/g" content/pak01/ui/main.menu' EXIT
 make -j"$JOBS"
 make PLATFORM=mingw32 ARCH=x86_64 -j"$JOBS"
 
