@@ -115,6 +115,50 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 
 ---
 
+## Renderer
+
+### R1. Only renderergl2 ships — OPEN
+`code/renderergl1`, the original Quake 3 renderer, was stripped from this repo.
+Only `renderergl2` is built, so there is no way to get Quake 3's actual render
+path — only an approximation of it.
+
+The switching machinery is entirely intact: `cl_renderer` exists in `cl_main.c`
+(default `"opengl2"`, `CVAR_ARCHIVE | CVAR_LATCH`) and falls back to its reset
+string if the named DLL is missing, and `USE_RENDERER_DLOPEN=1`. Dropping
+`renderergl1` back in and building `opengl1<arch>.so/.dll` would make
+`cl_renderer opengl1` work with no engine changes.
+
+**Cost:** ~15 files from ioquake3 upstream, plus adapting to this port's
+`REF_API_VERSION 9` `refexport_t`, which added Quake Live's TrueType text path
+(`Font_DrawString`, `TextBounds`, `GetGlyphInfo`, `SetCompositionFont`). The font
+core is shared in `renderercommon` (`tr_fontstash.c`, `tr_stbtt.c`), but
+`renderergl2/tr_font_gl.c` has no GL1 equivalent — that needs writing against
+fixed-function GL.
+
+**Next step:** judge `classic.cfg` first (R2). If it gets close enough, this may
+not be worth doing.
+
+### R2. Classic look presets — DONE (verify)
+`classic.cfg`, `voodoo.cfg`, `modern.cfg` in `pak01.pk3`. `classic.cfg` disables
+what renderergl2 does that Quake 3 did not — `r_hdr`, `r_toneMap`,
+`r_postProcess`, normal/specular/deluxe/cube mapping — and restores Quake 3's
+texture handling. `r_toneMap` is the important one: environment mapping
+(`TCGEN_ENVIRONMENT_MAPPED`) is implemented and working, but tonemapping
+compresses exactly the highlights that read as metallic.
+
+### R3. Quake Live art is not Quake 3 art — OPEN
+The env-mapped metal shaders live in Quake 3's `pak0.pk3`. Quake Live retextured
+everything, so no renderer setting recovers surfaces whose shaders are not
+loaded. Note the load order: `paksort` is `FS_PathCmp` ascending and later paks
+take precedence, so a Quake 3 `pak0.pk3` dropped into `baseq3` alongside Quake
+Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
+`zz_q3pak0.pk3`) for its shaders to win.
+
+**Next step:** test with Quake 3's paks to separate "renderer is wrong" from
+"art is different". This decides whether R1 is worth the effort.
+
+---
+
 ## Engine / server
 
 ### E1. Factory subsystem absent — OPEN
