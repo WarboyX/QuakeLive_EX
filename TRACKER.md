@@ -206,6 +206,40 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 
 ## Renderer
 
+### R8. Dynamic light glow is weak or absent — OPEN, my earlier diagnosis was wrong
+**Correction.** I claimed `r_dlightMode 0` keeps dynamic lights off world surfaces
+entirely. That is not what it does. Reading its actual uses:
+
+- `tr_shade.c:1509` — with `r_dlightMode` non-zero, a single-pass lightall shader
+  takes a *fast* dlight path folded into the main shader.
+- `>= 2` gates shadowed dlights (`tr_glsl.c:1032`, `tr_image.c:2650`,
+  `tr_scene.c:452`, `tr_shade.c:804`).
+
+So `0` still lights the world, via the legacy `ProjectDlightTexture` additive
+pass. Changing it alters *which* path runs, not whether lights exist. That is why
+setting it to 1 by hand changed little.
+
+**Also:** `r_dlightMode` is `CVAR_ARCHIVE | CVAR_LATCH`. Changing the default in
+`tr_init.c` cannot affect anyone whose config already contains a value — the
+archived one wins. The build did not "force enable" it and could not have. Any
+setting we actually need on must be applied through a cfg or checked at runtime,
+not just given a new default.
+
+**Still unexplained:** rocket blasts light far too weakly, and the quad pickup
+casts no glow at all.
+
+**Leads worth taking next:**
+1. The quad item may never have had a dlight. In Quake 3 it is the *powered-up
+   player* that emits light (`cg_players.c:1930`), not the item on the floor.
+   `CG_AddItem` adds no light for powerups. If Quake Live's pickup glows, that is
+   a dlight this port has not implemented — cgame work, not a renderer setting.
+2. For rockets, `CG_MakeExplosion` sets `le->light = 300` with an orange
+   `lightColor`. Check `CG_AddLocalEntities` actually forwards that to
+   `trap_R_AddLightToScene`, and whether the legacy dlight path scales it down.
+3. Compare both dlight paths directly: `r_dlightMode 0` vs `1` vs `2` on the same
+   explosion, and check `ProjectDlightTexture` is even reached.
+
+
 ### R1. Only renderergl2 ships — OPEN
 `code/renderergl1`, the original Quake 3 renderer, was stripped from this repo.
 Only `renderergl2` is built, so there is no way to get Quake 3's actual render
