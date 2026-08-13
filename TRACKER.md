@@ -57,6 +57,19 @@ recovered; `HMG_SPREAD 350` stands in for it.
 
 ## Client / UI
 
+### U14. Console is unreadable at high resolution — OPEN
+At 3840x2160 the console font is tiny and the text cramped, which makes the
+console painful to use for exactly the diagnostic work it is needed for. Q3 draws
+console text with `SCR_DrawSmallChar` at fixed 640x480 virtual metrics, so it
+does not scale with resolution.
+
+**Next step:** check whether `con_scale` or an equivalent exists in this tree; if
+not, scale the console font by `glConfig.vidHeight / 480` with a cvar to override.
+Also visible in the same capture and worth chasing separately:
+- `WARNING: CM_SrfXPlane unreachable` repeated dozens of times on load
+- `WARNING: Failed to load sound mus_high_score.ogg` — falls back, harmless but noisy
+- red `ERROR:` lines about unknown mesa keywords in `scripts/*.menu` parsing
+
 The port ships **one** menu file — `content/pak01/ui/main.menu`, containing `main`,
 `createserver`, and (as of the server-browser work) `joinserver` and `playersetup`.
 Everything else the player sees comes from their Quake Live `pak00.pk3`, parsed by
@@ -224,7 +237,25 @@ happening, so that row is bound to some cvar other than `con_autochat`, or write
 somewhere that does not reach it. Needs Quake Live's menu file to confirm which
 — same blocker as U1 and U10.
 
-### C3. Weapon viewmodel sits bigger and lower than it used to — OPEN, NEEDS INFO
+### C3. Weapon viewmodel sits bigger and lower — CAUSE FOUND
+`/cg_fov` reads **38.400208**, against a default of 100. The viewmodel shares the
+world refdef, so a fov that low enlarges the gun and crops it lower — exactly the
+reported symptom, and nothing to do with the render presets.
+
+**Immediate fix:** `/cg_fov 100`.
+
+**The real question is how it got there.** 38.400208 is not a value anyone types.
+The Game Options page has an FOV *slider* (`10 | 100 | 130`), and sliders were
+among the rows painting wrongly before U1/U12 — `Item_Slider_Paint` positions
+from `item->textRect` like the others. A slider whose hit region and drawn
+position disagree will write a value from wherever the click landed, and 38.4 is
+roughly where a click near the left of that track maps to. Suspect that opening
+or brushing the FOV row wrote it.
+
+**Next step:** confirm by resetting `cg_fov` to 100, opening Game Options, and
+checking whether it changes without a deliberate drag. If it does, the slider's
+hit region is wrong — check `Rect_ContainsWidescreenPoint` against where the
+slider actually paints, which ties directly to U13.
 Reported after the render preset work: the first-person weapon is larger and
 further down the screen, so less of it is visible. Most obvious on the lightning
 gun. Explicitly *not* a brightness issue — the framing changed.
@@ -245,11 +276,7 @@ was noticed alongside it. Do not assume the presets are the cause.
   `EV_RAILTRAIL` handler already special-cases 2 and 3 by nudging `origin2`
   along `cg.refdef.viewaxis[1]`, so those modes do shift things.
 
-**Next step:** screenshots, ideally the lightning gun before and after, plus the
-values of `cg_fov`, `cg_drawGun` and `cg_gunX/Y/Z`. Also worth checking
-`CG_CalcFov` for how the widescreen aspect correction is applied — a fov computed
-for 4:3 and then used unchanged at 16:9 would change the apparent gun size, which
-ties into U13.
+Also still worth checking `CG_CalcFov`'s widescreen aspect handling (U13).
 
 ### C1. Railgun draws two beams — DONE (verify, 2nd fix)
 **The one that mattered.** There are *three* rail trail sources, not two:
