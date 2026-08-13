@@ -45,6 +45,10 @@
             // whatever was underneath.
             close io_createserver ;
             close io_joinserver ;
+            // OPTIONS and DEMOS hide this group on the way out. Nothing used to
+            // bring it back, so returning to main left the background painted
+            // with no buttons on it.
+            show mainnav ;
             setitemcolor fadebox backcolor 0 0 0 1 ;
             fadeout fadebox ;
             uiScript stopRefresh ;

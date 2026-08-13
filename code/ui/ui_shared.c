@@ -994,7 +994,10 @@ void Menu_ShowItemByName(menuDef_t* menu, const char* p, qboolean bShow) {
             if (bShow) {
                 item->window.flags |= WINDOW_VISIBLE;
             } else {
-                item->window.flags &= ~WINDOW_VISIBLE;
+                // Drop focus with visibility. Hiding an item used to leave
+                // WINDOW_HASFOCUS set, so an item nobody could see was still the
+                // focused one and could be activated by a click or Enter.
+                item->window.flags &= ~(WINDOW_VISIBLE | WINDOW_HASFOCUS);
                 // stop cinematics playing in the window
                 if (item->window.cinematic >= 0) {
                     DC->stopCinematic(item->window.cinematic);

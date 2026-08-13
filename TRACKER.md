@@ -160,6 +160,22 @@ Affected rows in the screenshots: Impact Sparks, Teammate Indicators, Low Ammo
 Warning, Draw Rewards, Force Team/Enemy Model and Skin, Damage Indicator, Impact
 Marks, Lighting Model.
 
+### U15. Main menu returns with no buttons — DONE (verify)
+OPTIONS and DEMOS both do `hide mainnav` on the way out, and **nothing ever ran
+`show mainnav`**. Coming back from either left `main` painting its background with
+no navigation on it. My bug, from when the entries were written.
+
+`main`'s `onOpen` now shows the group, so any return path restores it.
+
+Second, related fault: `Menu_ShowItemByName` cleared `WINDOW_VISIBLE` when hiding
+an item but left `WINDOW_HASFOCUS` set, so an item nobody could see remained the
+focused one and could still be activated. That is why clicking empty space where
+a button used to be still triggered it. Both flags now clear together.
+
+Note the mouse paths themselves were fine — `Menu_OverActiveItem` and
+`Menu_HandleMouseMove` both skip items without `WINDOW_VISIBLE`. The leak was
+purely the stale focus flag.
+
 ### U9. Server browser painted over createserver — OPEN, both diagnoses were wrong
 **Correction, from the actual menu files.** I claimed Quake Live's paks define
 `createserver`, `joinserver` and `playersetup`, so ours collided with theirs.
