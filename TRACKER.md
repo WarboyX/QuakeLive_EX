@@ -115,12 +115,30 @@ Affected rows in the screenshots: Impact Sparks, Teammate Indicators, Low Ammo
 Warning, Draw Rewards, Force Team/Enemy Model and Skin, Damage Indicator, Impact
 Marks, Lighting Model.
 
-### U9. Server browser painted over createserver — DONE (verify, 2nd attempt)
-**Real cause, second look.** `Menus_FindByName` returns the *first* menu whose
-name matches, and Quake Live's own paks define `createserver`, `joinserver` and
-`playersetup` too. So `open joinserver` could activate ours while
-`close joinserver` closed theirs, or the reverse — one of the pair stayed
-visible. Both being `fullScreen`, and Q3 painting every visible menu rather than
+### U9. Server browser painted over createserver — OPEN, both diagnoses were wrong
+**Correction, from the actual menu files.** I claimed Quake Live's paks define
+`createserver`, `joinserver` and `playersetup`, so ours collided with theirs.
+**They do not.** Grepping every file QL loads: no menu anywhere in its `ui/` is
+named any of those. Its `menus.txt` has `joinserver.menu`, `createserver.menu`
+and `player.menu` **commented out** — the only menus it loads are `default`,
+`main`, `main_options`, `connect`, `quit_popmenu`, `demo`, `navframeBL`, `error`,
+plus the `ingame_*` set. There was never a collision.
+
+The `io_` prefix is harmless and worth keeping as insurance, but it was not a
+fix, and it changed the console commands for no reason. Both menus in the
+overlap were **ours**, both `fullScreen`, both visible at once.
+
+**Untested since:** the overlap has not been re-checked since the prefix landed.
+Confirm it still happens before digging further.
+
+**Worth copying from QL's own main menu:** it never closes `main` to show a
+sub-menu. It does `hide mainnav ; open main_options`, leaving `main` open as the
+backdrop with a `fullScreen 0` overlay on top. Ours does `close main ; open
+io_createserver` with both `fullScreen MENU_TRUE`. Matching QL's pattern — hide
+the nav group, make the sub-menus non-fullscreen overlays — would make the whole
+class of overlap impossible rather than relying on paired open/close.
+
+#### Earlier, also wrong Both being `fullScreen`, and Q3 painting every visible menu rather than
 only the topmost, they drew on top of each other: doubled headers, overlapping
 labels, two sets of BACK buttons, the map preview sitting where the server list
 should be. One bug, many symptoms.
@@ -162,12 +180,29 @@ show/hide machinery checks out — `Menu_ItemsMatchingGroup` matches on name *or
 group, and `Menu_ShowItemByName` sets `WINDOW_VISIBLE` correctly — so the fault is
 further along.
 
-**Next step:** the remaining suspects are (a) `onOpen` not running at all on this
-menu, (b) `uiScript loadControls` erroring before the shows take effect, or
-(c) the tab buttons that switch groups. Instrument `Script_Show` to print its
-argument, open the panel, and see whether `show move` is reached. Note the panel
-is reached from our main menu via `open main_options ; open ingame_controls`,
-which is not how Quake Live opens it, so (a) is worth ruling out first.
+**Ruled out by inspection — do not re-check these:**
+- *The route.* QL's own `main.menu` uses the identical action:
+  `hide mainnav ; open main_options ; open ingame_controls`. Ours is faithful.
+- *`;` handling.* `Item_RunScript` skips a bare `;` and resets `bRan` per
+  statement, so the chained `onOpen` runs to completion.
+- *Name-vs-group matching.* 18 items are named `move`; `Menu_ItemsMatchingGroup`
+  and `Menu_GetMatchingItemByNumber` both match name **or** group, identically.
+- *`Menus_Activate`.* Builds the stack `itemDef_t` with `parent` set before
+  running `onOpen`, matching Q3.
+
+**Remaining suspects, in order:**
+1. `uiScript loadControls` erroring or long-jumping before the `setitemcolor`
+   run, though the shows precede it so this would not explain an empty panel.
+2. `ingame_controls` not being *loaded* at the moment it is opened —
+   `ui/ingame.txt` is loaded separately from `ui/menus.txt`, so opening it from
+   the main menu may target a menu that does not exist yet. `Menus_ActivateByName`
+   on a missing name fails silently.
+3. The six `grpControlbutton` tab buttons that switch groups.
+
+**Next step:** print the menu list at the moment OPTIONS is pressed and confirm
+`ingame_controls` is present. Suspect 2 is cheap to test and fits the evidence:
+the tab bar drew because that is `main_options`, and the panel below was empty
+because the menu meant to fill it was never loaded.
 
 ### U11. Cosmetic layout faults — OPEN
 Visible in the Advanced screenshots, none investigated yet:
@@ -206,15 +241,11 @@ theirs and we do not ship a replacement.
 **Next step:** either ship an `ingame_options.menu` override (needs QL's original
 as a base) or accept the console command.
 
-### U3. `ui/menudef.h` is not packaged — OPEN
-`ui/menudef.h` exists at the repo root but is not in `pak01.pk3`, so our
-`main.menu` parses against Quake Live's copy. Fine while the two agree — and ours
-appears to be QL-derived — but nothing verifies that. Shipping ours would make the
-build self-contained *and* would override the header QL's own menus parse against,
-so any divergence would break every QL menu at once. Left alone deliberately.
-
-**Next step:** diff our `ui/menudef.h` against the copy in `pak00.pk3` before
-deciding.
+### U3. `ui/menudef.h` — DONE
+Diffed against Quake Live's copy: **identical apart from trailing whitespace on
+two lines.** The concern that shipping ours could break every QL menu at once was
+unfounded, so it is now in `pak01.pk3` and the build no longer depends on finding
+their header. Nothing else changes, since the two agree.
 
 ### U4. `ui/ingame.txt` is orphaned — OPEN
 `ui/ingame.txt` at the repo root lists nine `ui/ingame_*.menu` files. None exist in
