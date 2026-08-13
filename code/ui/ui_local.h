@@ -64,6 +64,7 @@ extern vmCvar_t ui_netSource;
 extern vmCvar_t ui_serverFilterType;
 extern vmCvar_t ui_dedicated;
 extern vmCvar_t ui_opponentName;
+extern vmCvar_t ui_debugMenus;
 extern vmCvar_t ui_menuFiles;
 extern vmCvar_t ui_currentMap;
 extern vmCvar_t ui_currentNetMap;

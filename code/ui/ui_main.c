@@ -113,6 +113,7 @@ This must be the very first function compiled into the .qvm file
 ================
 */
 vmCvar_t ui_debug;
+vmCvar_t ui_debugMenus;
 vmCvar_t ui_initialized;
 
 void _UI_Init(qboolean);
@@ -5516,6 +5517,8 @@ static cvarTable_t cvarTable[] = {
     {&ui_marks, "cg_marks", "1", CVAR_ARCHIVE},
 
     {&ui_debug, "ui_debug", "0", CVAR_TEMP},
+    // [QL] traces every menu open/close/action to the console (ui_shared.c Menu_Trace)
+    {&ui_debugMenus, "ui_debugMenus", "0", CVAR_TEMP},
     {&ui_initialized, "ui_initialized", "0", CVAR_TEMP},
     {&ui_dedicated, "ui_dedicated", "0", CVAR_ARCHIVE},
     {&ui_gameType, "ui_gametype", "3", CVAR_ARCHIVE},

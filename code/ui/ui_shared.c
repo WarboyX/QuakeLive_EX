@@ -1041,6 +1041,42 @@ menuDef_t* Menus_FindByName(const char* p) {
     return NULL;
 }
 
+/*
+===============
+Menu_Trace
+
+[QL] "ui_debugMenus 1" traces every menu open, close and item action, and
+prints which menus are visible afterwards ('*' marks the one with focus).
+
+Menus that overlap - two BACK buttons on screen, a button that appears to do
+nothing because its menu is already open underneath - can be caused by a
+script, by an onOpen, or by the click reaching more than one menu, and those
+are indistinguishable from the outside. This makes them distinguishable.
+===============
+*/
+static void Menu_Trace(const char* what, const char* name) {
+    char list[1024];
+    int i;
+
+    if (DC == NULL || DC->getCVarValue == NULL || DC->getCVarValue("ui_debugMenus") == 0.0f) {
+        return;
+    }
+
+    list[0] = '\0';
+    for (i = 0; i < menuCount; i++) {
+        if (!(Menus[i].window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+            continue;
+        }
+        Q_strcat(list, sizeof(list), Menus[i].window.name ? Menus[i].window.name : "(unnamed)");
+        if (Menus[i].window.flags & WINDOW_HASFOCUS) {
+            Q_strcat(list, sizeof(list), "*");
+        }
+        Q_strcat(list, sizeof(list), " ");
+    }
+
+    DC->Print("^3menu^7 %-6s %-18s visible: %s\n", what, name ? name : "(null)", list);
+}
+
 void Menus_ShowByName(const char* p) {
     menuDef_t* menu = Menus_FindByName(p);
     if (menu) {
@@ -1050,6 +1086,7 @@ void Menus_ShowByName(const char* p) {
 
 void Menus_OpenByName(const char* p) {
     Menus_ActivateByName(p);
+    Menu_Trace("open", p);
 }
 
 static void Menu_RunCloseScript(menuDef_t* menu) {
@@ -1066,6 +1103,7 @@ void Menus_CloseByName(const char* p) {
         Menu_RunCloseScript(menu);
         menu->window.flags &= ~(WINDOW_VISIBLE | WINDOW_HASFOCUS);
     }
+    Menu_Trace(menu ? "close" : "close?", p);
 }
 
 void Menus_CloseAll(void) {
@@ -1585,12 +1623,35 @@ int Item_ListBox_ThumbDrawPosition(itemDef_t* item) {
     }
 }
 
+/*
+===============
+Item_ValueOffset
+
+[QL] Gap between an item's label and the value drawn to the right of it.
+
+Value items in these menus carry `text ""`. They have no label of their own -
+the label is a separate decoration item positioned independently - and the
+empty string exists only so Item_Text_Paint runs and computes textRect, which
+is what anchors the value to the item's own rect. The fixed 8-unit gap exists
+solely to hold a value clear of a label, so with no label there is nothing to
+be clear of, and adding it anyway drew every such value 8 units right of its
+rect: selectors, yes/no toggles, key binds and slider bars all shifted, each
+one out of line with the label sitting at its left.
+
+Item_TextField_Paint and the owner-draw path already tested for an empty label
+before applying the gap. Everything else hardcoded the 8.
+===============
+*/
+static float Item_ValueOffset(const itemDef_t* item) {
+    return (item->text && *item->text) ? 8.0f : 0.0f;
+}
+
 float Item_Slider_ThumbPosition(itemDef_t* item) {
     float value, range, x;
     editFieldDef_t* editDef = item->typeData;
 
     if (item->text) {
-        x = item->textRect.x + item->textRect.w + 8;
+        x = item->textRect.x + item->textRect.w + Item_ValueOffset(item);
     } else {
         x = item->window.rect.x;
     }
@@ -2386,7 +2447,7 @@ static void Scroll_Slider_ThumbFunc(void* p) {
     editFieldDef_t* editDef = si->item->typeData;
 
     if (si->item->text) {
-        x = si->item->textRect.x + si->item->textRect.w + 8;
+        x = si->item->textRect.x + si->item->textRect.w + Item_ValueOffset(si->item);
     } else {
         x = si->item->window.rect.x;
     }
@@ -2480,7 +2541,7 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
                 rectDef_t testRect;
                 width = SLIDER_WIDTH;
                 if (item->text) {
-                    x = item->textRect.x + item->textRect.w + 8;
+                    x = item->textRect.x + item->textRect.w + Item_ValueOffset(item);
                 } else {
                     x = item->window.rect.x;
                 }
@@ -2635,6 +2696,13 @@ qboolean Item_HandleKey(itemDef_t* item, int key, qboolean down) {
 
 void Item_Action(itemDef_t* item) {
     if (item) {
+        if (item->action) {
+            menuDef_t* parent = (menuDef_t*)item->parent;
+            char label[128];
+            Com_sprintf(label, sizeof(label), "%s/%s", (parent && parent->window.name) ? parent->window.name : "?",
+                        item->window.name ? item->window.name : "?");
+            Menu_Trace("act", label);
+        }
         Item_RunScript(item, item->action);
     }
 }
@@ -3283,7 +3351,7 @@ void Item_YesNo_Paint(itemDef_t* item) {
 
     if (item->text) {
         Item_Text_Paint(item);
-        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
     }
@@ -3311,7 +3379,7 @@ void Item_Multi_Paint(itemDef_t* item) {
 
     if (item->text) {
         Item_Text_Paint(item);
-        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
     }
@@ -3375,7 +3443,7 @@ void Item_Combo_Paint(itemDef_t* item) {
 
     if (item->text) {
         Item_Text_Paint(item);
-        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
     }
@@ -3693,7 +3761,7 @@ void Item_Slider_Paint(itemDef_t* item) {
     y = item->window.rect.y;
     if (item->text) {
         Item_Text_Paint(item);
-        x = item->textRect.x + item->textRect.w + 8;
+        x = item->textRect.x + item->textRect.w + Item_ValueOffset(item);
     } else {
         x = item->window.rect.x;
     }
@@ -3726,7 +3794,7 @@ void Item_SliderColor_Paint(itemDef_t* item) {
     y = item->window.rect.y;
     if (item->text) {
         Item_Text_Paint(item);
-        x = item->textRect.x + item->textRect.w + 8;
+        x = item->textRect.x + item->textRect.w + Item_ValueOffset(item);
     } else {
         x = item->window.rect.x;
     }
@@ -3767,7 +3835,7 @@ void Item_Bind_Paint(itemDef_t* item) {
     if (item->text) {
         Item_Text_Paint(item);
         BindingFromName(item->cvar);
-        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, g_nameBind1, 0, maxChars, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, g_nameBind1, 0, maxChars, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, "FIXME", 0, maxChars, item->textStyle, item->fontIndex);
     }
