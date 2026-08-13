@@ -519,6 +519,22 @@ reused as the spawn gate and set to 1 once consumed.
 void CG_SpawnRailTrail(centity_t* cent) {
     if (cent->currentState.weapon == WP_RAILGUN && cent->pe.railFireTime != 0) {
         cent->pe.railFireTime = 1;  // mark as consumed
+
+        // pe.railgunTrailStart is meant to be captured from the rendered weapon
+        // flash tag when the rail fires - that is the whole point of this
+        // function, and what makes QL's beam leave the drawn barrel rather than
+        // the server's muzzle point. Nothing in this build ever writes it. The
+        // field is declared and read and assigned nowhere, so this drew a beam
+        // from a zero vector on every rail shot, on top of the correct one the
+        // EV_RAILTRAIL handler draws - the second beam.
+        //
+        // Stay inert until the capture exists, rather than drawing from the
+        // world origin. EV_RAILTRAIL covers the trail meanwhile.
+        if (cent->pe.railgunTrailStart[0] == 0.0f && cent->pe.railgunTrailStart[1] == 0.0f &&
+            cent->pe.railgunTrailStart[2] == 0.0f) {
+            return;
+        }
+
         CG_RailTrail(&cgs.clientinfo[cent->currentState.clientNum],
                      cent->pe.railgunTrailStart, cent->currentState.origin2);
     }

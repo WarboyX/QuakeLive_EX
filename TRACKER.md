@@ -206,7 +206,30 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 
 ## Renderer
 
-### C1. Railgun draws two beams — DONE (verify)
+### C1. Railgun draws two beams — DONE (verify, 2nd fix)
+**The one that mattered.** There are *three* rail trail sources, not two:
+1. `cg_predict.c:537` — predicted, local player only, from the barrel.
+2. `cg_event.c:1141` — the server's `EV_RAILTRAIL`, from the transmitted muzzle.
+3. `cg_weapons.c:1648` → `CG_SpawnRailTrail` — QL's own path, which is supposed
+   to re-spawn the beam from the **rendered weapon flash tag** so it leaves the
+   drawn barrel rather than the server's muzzle point.
+
+`CG_SpawnRailTrail` reads `cent->pe.railgunTrailStart` as its start. That field
+is declared (`cg_local.h:140`) and read (`cg_weapons.c:523`) and **written
+nowhere in the codebase** — so every rail shot drew a beam from a zero vector on
+top of the correct one. That is the second beam, and it happened for every
+player, which is why gating only the local predicted shot did not fix it.
+
+Made inert until the capture exists rather than drawing from the world origin;
+`EV_RAILTRAIL` covers the trail meanwhile.
+
+**Proper follow-up:** implement the capture — write `pe.railgunTrailStart` from
+the weapon flash tag origin in `CG_AddPlayerWeapon` when the rail muzzle flash is
+placed, then let `CG_SpawnRailTrail` draw and drop the trail from the
+`EV_RAILTRAIL` handler. That restores QL's intended behaviour, where the beam
+tracks the drawn weapon rather than the server's muzzle.
+
+#### First fix (correct, but not the cause of what was visible)
 Firing the rail draws one trail from the barrel and a second along the view
 axis, both ending at the same impact point.
 
