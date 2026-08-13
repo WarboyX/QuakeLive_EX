@@ -73,42 +73,23 @@ Returns scaled console character dimensions based on con_scale
 ================
 Con_Scale
 
-The console draws in native pixels, not in the 640x480 virtual space the rest of
-the UI is scaled from, so a fixed multiplier means the text shrinks as the
-display gets bigger. con_scale used to default to 0.5 and clamp to [0.5, 1.0]:
-8-pixel characters at half size, which is 4 pixels wide on a 3840-wide display -
-unreadable, and unadjustable because the clamp would not let you past 1.
+Console text is drawn through re.DrawStretchPic, and the renderer's 2D pass runs
+in a 640x480 ortho projection, so console glyphs already scale with the display -
+1.0 is the same apparent size at 720p and at 2160p. No resolution-derived factor
+is wanted here, and an earlier attempt to add one (vidHeight / 480, giving 4.0 at
+2160p) made the text four times too large.
 
-con_scale 0 now means "match the rest of the UI": vidHeight / 480, the same
-factor SCR_AdjustFrom640 applies, so console text ends up the size it would have
-been on a 640x480 screen no matter the resolution. Clamped to [1, 4] so a very
-tall display does not produce absurd glyphs and a small one still gets whole
-pixels. An explicit value overrides it and may go up to 8.
-
-  1280x720   -> 1.5
-  1920x1080  -> 2.25
-  2560x1440  -> 3.0
-  3840x2160  -> 4.0 (capped from 4.5)
+The actual fault was the default: 0.5, clamped to [0.5, 1.0]. Half-size glyphs
+are hard to read on any display, and the ceiling of 1.0 meant they could not be
+made bigger. Default is now 1.0 - full size - with the range opened up so it can
+be tuned in both directions.
 ================
 */
 static float Con_Scale(void) {
-    float scale;
-
     if (con_scale && con_scale->value > 0.0f) {
         return con_scale->value;
     }
-
-    if (cls.glconfig.vidHeight <= 0) {
-        return 1.0f;
-    }
-
-    scale = (float)cls.glconfig.vidHeight / 480.0f;
-    if (scale < 1.0f) {
-        scale = 1.0f;
-    } else if (scale > 4.0f) {
-        scale = 4.0f;
-    }
-    return scale;
+    return 1.0f;
 }
 
 static int Con_CharW(void) {
@@ -528,11 +509,12 @@ void Con_Init(void) {
     con_opacity = Cvar_Get("con_opacity", "0.9", CVAR_ARCHIVE);
     Cvar_CheckRange(con_opacity, 0.1f, 1.0f, qfalse);
 
-    // 0 = auto, sized from the display so the console reads the same at any
-    // resolution. The old default of 0.5 with a ceiling of 1.0 gave 4-pixel
-    // characters on a 4K display and no way to make them bigger.
-    con_scale = Cvar_Get("con_scale", "0", CVAR_ARCHIVE);
-    Cvar_CheckRange(con_scale, 0.0f, 8.0f, qfalse);
+    // Full size. The old default of 0.5 drew half-size glyphs and clamped at
+    // 1.0, so they could not be made any bigger. Range opened both ways for
+    // tuning; 2D drawing is already resolution independent, so this is a taste
+    // setting rather than a per-display one.
+    con_scale = Cvar_Get("con_scale", "1", CVAR_ARCHIVE);
+    Cvar_CheckRange(con_scale, 0.25f, 4.0f, qfalse);
 
     con_speed = Cvar_Get("con_speed", "3", CVAR_ARCHIVE);
     Cvar_CheckRange(con_speed, 0.1f, 1000.0f, qfalse);

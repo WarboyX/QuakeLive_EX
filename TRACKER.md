@@ -63,17 +63,18 @@ console painful to use for exactly the diagnostic work it is needed for. Q3 draw
 console text with `SCR_DrawSmallChar` at fixed 640x480 virtual metrics, so it
 does not scale with resolution.
 
-`con_scale` existed, defaulted to **0.5**, and was clamped to `[0.5, 1.0]`. The
-console draws in native pixels rather than the 640x480 virtual space the rest of
-the UI scales from, so that is 4-pixel-wide characters on a 3840-wide display,
-with no way to raise them past 1.0.
+`con_scale` existed, defaulted to **0.5**, and was clamped to `[0.5, 1.0]` —
+half-size glyphs with no way to make them bigger. Default is now **1.0**, range
+opened to `[0.25, 4]`.
 
-`con_scale 0` now means auto: `vidHeight / 480`, the same factor
-`SCR_AdjustFrom640` uses, clamped to `[1, 4]`. Console text is then the size it
-would have been at 640x480 whatever the display. An explicit value overrides and
-may go to 8.
-
-  1280x720 -> 1.5  ·  1920x1080 -> 2.25  ·  2560x1440 -> 3.0  ·  3840x2160 -> 4.0
+**Not a resolution problem.** Console text goes through `re.DrawStretchPic` and
+the renderer's 2D pass runs in a 640x480 ortho projection, so glyphs already
+scale with the display: 1.0 looks the same at 720p and 2160p. I first "fixed"
+this with a `vidHeight / 480` auto factor, which gives 4.0 at 2160p and made the
+text four times too large. Confirmed by testing: `con_scale 1` is right at
+3840x2160, which is exactly what resolution independence predicts. This is a
+taste setting, not a per-display one — do not reintroduce a resolution-derived
+scale here.
 Also visible in the same capture and worth chasing separately:
 - `WARNING: CM_SrfXPlane unreachable` repeated dozens of times on load
 - `WARNING: Failed to load sound mus_high_score.ogg` — falls back, harmless but noisy
