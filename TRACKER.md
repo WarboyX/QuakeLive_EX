@@ -206,6 +206,41 @@ from OpenGL's state machine. Glide is a dead branch — nothing of it survives i
 Vulkan to be recovered. What is recoverable is the hardware's *output stage*
 behaviour, which is what this item is.
 
+### R7. Output dither is one line, and classic.cfg switches it off — OPEN
+The entire renderer contains exactly one dither, in `glsl/tonemap_fp.glsl`:
+
+```glsl
+// add a bit of dither to reduce banding
+color.rgb += vec3(1.0/510.0 * mod(gl_FragCoord.x + gl_FragCoord.y, 2.0) - 1.0/1020.0);
+```
+
+That is a 2-phase checkerboard of about half an 8-bit step. Two problems.
+
+1. **It is gated behind tonemapping.** `RB_PostProcess` only runs the tonemap
+   pass when `r_hdr && (r_toneMap || r_forceToneMap)`, so `classic.cfg` — which
+   sets both `r_hdr 0` and `r_toneMap 0` — removes the only dither in the
+   pipeline. Skies and coloured lighting will band *worse* under the classic
+   preset than under the defaults. Introduced by R2; needs fixing here rather
+   than in the cfg, since the dither belongs at output, not inside tonemapping.
+2. **A 2-phase checkerboard is the weakest useful pattern.** An 8x8 Bayer matrix
+   or blue noise costs the same per pixel and bands visibly less.
+
+**This is the part of the "22-bit" idea that still pays at 32-bit.** The Voodoo
+postfilter recovered information the 16-bit dither had encoded spatially; at
+8-bit-per-channel output there is no dither and nothing hidden, so blending
+neighbours would only blur. But the renderer computes in float and quantises at
+the very end, so the precision genuinely exists right up to that step — dithering
+*that* conversion is the same principle applied where it still has something to
+work with.
+
+**Plan:** move the dither out of `tonemap_fp.glsl` into the final output blit so
+it applies on every path, upgrade it to an 8x8 Bayer or blue-noise pattern, and
+gate it on `r_dither` (default on). Shares its insertion point with R6.
+
+**Also worth having:** `r_colorbits 30` for a 10-bit `GL_RGB10_A2` framebuffer,
+where the display and driver support it. That is real extra precision rather than
+simulated, and would make the dither question mostly moot on that hardware.
+
 ### R3. Quake Live art is not Quake 3 art — OPEN
 The env-mapped metal shaders live in Quake 3's `pak0.pk3`. Quake Live retextured
 everything, so no renderer setting recovers surfaces whose shaders are not
