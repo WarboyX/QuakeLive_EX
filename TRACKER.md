@@ -502,7 +502,31 @@ screen-space effect. It cannot do the reflective half.
 3. **Screen-space reflections** — needs a normal/depth G-buffer that renderergl2
    does not currently write. Real work, and still approximate at surface edges.
 
-### R5. Vulkan renderer — OPEN, scoped
+### R5. Vulkan renderer — IN PROGRESS
+**Started.** `code/renderervk` is vendored from ec-/Quake3e (GPLv2, 29 files),
+with `code/renderervk/README.ioquakelive.md` carrying the plan. **Not wired up:**
+`BUILD_RENDERER_VULKAN` defaults to 0, no Makefile rule references the directory,
+so the OpenGL build cannot be affected.
+
+`cl_renderer` is exposed in the render options menu (OpenGL 2 / Vulkan). Picking
+Vulkan before the renderer exists falls back to `opengl2` through the existing
+reset-string path rather than failing to start, so the row is safe to ship now.
+
+**Next, in order:**
+1. `Makefile` target producing `vulkan<arch>.so` / `.dll`, behind
+   `BUILD_RENDERER_VULKAN=1` so it stays opt-in until it works.
+2. A shim satisfying this tree's `refexport_t` (v9) from Quake3e's (v8),
+   stubbing `Font_DrawString`, `TextBounds`, `GetGlyphInfo`,
+   `SetCompositionFont` and `Get_Advertisements`.
+3. `sdl_glimp.c` split so it can request `SDL_WINDOW_VULKAN` and a surface
+   rather than a GL context unconditionally.
+4. Milestone 1: builds, links, clears the screen.
+
+**Read `renderergl2/tr_font_gl.c` before estimating anything past milestone 1** —
+it is the GL half of the QL TrueType path and has no Vulkan counterpart. It is
+the largest unknown in the whole port.
+
+#### Original scoping
 Wanted. Feasible. Not small — this is a multi-session project, and worth being
 honest about that up front rather than starting it and stalling.
 
