@@ -25,6 +25,11 @@ fi
 L=build/release-linux-x86_64
 W=build/release-mingw32-x86_64
 
+# A mode config only sets what it cares about, so anything it does not mention
+# survives from whatever ran before it. common.cfg resets those; this fails the
+# build if a config sets something that reset block does not cover.
+python3 content/serverconfigs/check-configs.py
+
 echo "building $REV"
 
 # Stamp the loaded pak01 with the revision. Menu fixes live in pak01.pk3 and
