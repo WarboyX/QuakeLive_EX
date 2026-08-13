@@ -562,6 +562,17 @@ so the OpenGL build cannot be affected.
 Vulkan before the renderer exists falls back to `opengl2` through the existing
 reset-string path rather than failing to start, so the row is safe to ship now.
 
+**Interface gap now measured** (see `code/renderervk/README.ioquakelive.md`):
+5 exports to add, but **24 imports** — including four Vulkan windowing entries
+(`VK_CreateSurface`, `VK_GetInstanceProcAddr`, `VKimp_Init`, `VKimp_Shutdown`)
+and six `GLimp_*` / `GL_GetProcAddress` entries, because Quake3e drives the
+window from the engine side and this tree drives it from inside the renderer.
+
+That is the real cost, and it is bigger than the "stub five exports" framing I
+gave before measuring. 14 of the 24 are trivial wrappers; the 6 windowing ones
+mean restructuring `sdl_glimp.c` so the engine owns the window — shared code the
+OpenGL renderer also uses, which has to keep working throughout.
+
 **Next, in order:**
 1. `Makefile` target producing `vulkan<arch>.so` / `.dll`, behind
    `BUILD_RENDERER_VULKAN=1` so it stays opt-in until it works.
