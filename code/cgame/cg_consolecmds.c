@@ -878,6 +878,57 @@ static void CG_PStatsUp_f(void) {
     }
 }
 
+/*
+=================
+CG_WeaponReport_f
+
+[QL] Dumps how every weapon's first-person view model is positioned.
+
+tag_weapon on the hands model carries the entire offset that puts the gun into
+the lower right of the view - the hands are never drawn, they exist only to
+position the weapon - and R_LerpTag zeroes the orientation when the model or
+the tag is missing, which draws the gun at the eye with only the barrel tip in
+frame. How bad that looks varies per weapon, because what you see then depends
+on each model's own geometry, so the symptom reads as "some weapons are worse
+than others" rather than as one fault.
+
+This prints the state for all of them at once instead of leaving it to be
+inferred from which ones look wrong.
+=================
+*/
+static void CG_WeaponReport_f(void) {
+    int w;
+
+    CG_Printf("^3weapon  hands   tag_weapon  offset (fwd/right/up)\n");
+    CG_Printf("^3------  ------  ----------  ---------------------\n");
+
+    for (w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++) {
+        weaponInfo_t* weapon;
+        orientation_t lerped;
+        qboolean tagged;
+
+        if (w == 15) {
+            continue;
+        }
+
+        CG_RegisterWeapon(w);
+        weapon = CG_WeaponInfo(w);
+
+        memset(&lerped, 0, sizeof(lerped));
+        tagged = weapon->handsModel
+                     ? (qboolean)(trap_R_LerpTag(&lerped, weapon->handsModel, 0, 0, 0.0f, "tag_weapon") != 0)
+                     : qfalse;
+
+        CG_Printf("%-6d  %-6s  %-10s  %6.1f %6.1f %6.1f\n", w,
+                  weapon->handsModel ? "ok" : "^1none^7",
+                  tagged ? "ok" : "^1MISSING^7",
+                  lerped.origin[0], lerped.origin[1], lerped.origin[2]);
+    }
+
+    CG_Printf("\ngun offsets: cg_gun_x %s  cg_gun_y %s  cg_gun_z %s  cg_fov %d\n",
+              cg_gun_x.string, cg_gun_y.string, cg_gun_z.string, cg_fov.integer);
+}
+
 typedef struct {
     char* cmd;
     void (*function)(void);
@@ -886,6 +937,8 @@ typedef struct {
 // [QL] Command table - matches cgamex86.dll binary at 0x10078DC0 (57 entries)
 static consoleCommand_t commands[] = {
     {"viewpos", CG_Viewpos_f},
+    // [QL] why the first-person weapon is framed the way it is
+    {"weaponreport", CG_WeaponReport_f},
     // Scoreboard scrolling. Both handlers existed but were bound to nothing,
     // so a scoreboard longer than its feeder could not be scrolled at all.
     {"scrollScoresDown", CG_scrollScoresDown_f},

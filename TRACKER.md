@@ -475,7 +475,35 @@ menu row works.
 The row also carries `cvarTest "com_allowConsole"` with `disableCvar { "0" }`, so
 it greys out when the console itself is disabled.
 
-### C3. Weapon viewmodel sits bigger and lower — OPEN, cg_fov ruled out
+### C3. Weapon viewmodel barely visible — OPEN, mechanism found, awaiting one console dump
+**Affects several weapons, worst on the lightning gun (6).**
+
+`CG_AddViewWeapon` is byte-identical to upstream `1487e89`, so this is not a
+regression there. But `tag_weapon` on the hands model carries the **entire**
+offset that puts the first-person gun into the lower right of the view — the
+hands are never drawn, they exist only to position the weapon (`cg_local.h:522`)
+— and `R_LerpTag` zeroes the orientation when the model or the tag is missing
+(`tr_model.c:1237`). The call in `CG_AddPlayerWeapon` **ignored the return
+value**, so a failure silently drew the gun at the eye with the view
+orientation: only the barrel tip in frame.
+
+That the severity varies per weapon is consistent with this rather than
+against it — if every gun is drawn at the eye, what you see depends on each
+model's own geometry, and a long thin model with its origin at the grip (the
+LG) shows least.
+
+**Not yet proven.** Two diagnostics now ship:
+- a one-shot warning per weapon when `tag_weapon` fails, naming whether the
+  hands model loaded at all;
+- `\weaponreport` — a table of every weapon's hands model, whether
+  `tag_weapon` resolves, and the resulting offset, plus the current
+  `cg_gun_x/y/z` and `cg_fov`.
+
+If the tags are MISSING the fix is asset-side and the offset has to be
+reconstructed. If they resolve, the cause is elsewhere and this whole line of
+reasoning is wrong — which is the point of measuring it.
+
+#### Earlier: cg_fov ruled out
 `cg_fov` reads 100, the default, and was set to 100 and other values deliberately
 without fixing the framing. **My earlier read of the console capture was wrong** —
 38.400208 was a transient from an experiment, not the resting value. Fov is not
@@ -895,6 +923,23 @@ with a real map, so that part is yours to confirm.
 
 **Still absent:** the Valve/Steam server query protocol (A2S). Only the Quake
 master protocol is implemented.
+
+### E7. Instagib is split across two cvars, and one branch is dead — PARTIAL
+`g_instaGib` and the `DF_INSTAGIB` dmflag were two halves of one feature keyed
+off different cvars with nothing connecting them: damage resolution in
+`g_combat.c` tests `g_instaGib`, while the ammo grant and the warmup-extras
+suppression in `g_client.c` tested only the dmflag. `g_instaGib 1` alone gave
+instagib damage with **finite ammo and a full warmup arsenal**; the dmflag
+alone gave infinite ammo with ordinary damage. **Fixed** — either works now.
+
+**Still open:** `g_combat.c`'s instagib resolution guards on
+`client->ps.powerups[0] != 0` ("armored: no instagib"). `PW_NONE` is 0, so
+`powerups[0]` is never set and **the branch is unreachable**. The comment says
+armour, and QL reordered the powerup enum (`PW_BATTLESUIT` is 5), so this looks
+like an index that did not survive the reorder. Left alone rather than guessed
+at: making battlesuit confer instagib immunity is a gameplay change and needs
+checking against the binary first. The shipped instagib configs turn powerup
+spawning off, so it cannot bite either way meanwhile.
 
 ### E6. Players connect as spectators — DONE (verify)
 Quake Live drops every connecting player into spectator and makes them pick
