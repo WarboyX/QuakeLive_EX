@@ -69,20 +69,56 @@ Con_CharW / Con_CharH
 Returns scaled console character dimensions based on con_scale
 ================
 */
-static int Con_CharW(void) {
-    if (con_scale) {
-        int w = (int)(SMALLCHAR_WIDTH * con_scale->value);
-        return w > 0 ? w : 1;
+/*
+================
+Con_Scale
+
+The console draws in native pixels, not in the 640x480 virtual space the rest of
+the UI is scaled from, so a fixed multiplier means the text shrinks as the
+display gets bigger. con_scale used to default to 0.5 and clamp to [0.5, 1.0]:
+8-pixel characters at half size, which is 4 pixels wide on a 3840-wide display -
+unreadable, and unadjustable because the clamp would not let you past 1.
+
+con_scale 0 now means "match the rest of the UI": vidHeight / 480, the same
+factor SCR_AdjustFrom640 applies, so console text ends up the size it would have
+been on a 640x480 screen no matter the resolution. Clamped to [1, 4] so a very
+tall display does not produce absurd glyphs and a small one still gets whole
+pixels. An explicit value overrides it and may go up to 8.
+
+  1280x720   -> 1.5
+  1920x1080  -> 2.25
+  2560x1440  -> 3.0
+  3840x2160  -> 4.0 (capped from 4.5)
+================
+*/
+static float Con_Scale(void) {
+    float scale;
+
+    if (con_scale && con_scale->value > 0.0f) {
+        return con_scale->value;
     }
-    return SMALLCHAR_WIDTH;
+
+    if (cls.glconfig.vidHeight <= 0) {
+        return 1.0f;
+    }
+
+    scale = (float)cls.glconfig.vidHeight / 480.0f;
+    if (scale < 1.0f) {
+        scale = 1.0f;
+    } else if (scale > 4.0f) {
+        scale = 4.0f;
+    }
+    return scale;
+}
+
+static int Con_CharW(void) {
+    int w = (int)(SMALLCHAR_WIDTH * Con_Scale());
+    return w > 0 ? w : 1;
 }
 
 static int Con_CharH(void) {
-    if (con_scale) {
-        int h = (int)(SMALLCHAR_HEIGHT * con_scale->value);
-        return h > 0 ? h : 1;
-    }
-    return SMALLCHAR_HEIGHT;
+    int h = (int)(SMALLCHAR_HEIGHT * Con_Scale());
+    return h > 0 ? h : 1;
 }
 
 /*
@@ -330,8 +366,8 @@ void Con_CheckResize(void) {
 
     // [QL] calculate linewidth from vidWidth and con_scale
     con.xadjust = 0;
-    if (con_scale && cls.glconfig.vidWidth > 0) {
-        width = (int)(cls.glconfig.vidWidth / (con_scale->value * SMALLCHAR_WIDTH)) - 2;
+    if (cls.glconfig.vidWidth > 0) {
+        width = (int)(cls.glconfig.vidWidth / (Con_Scale() * SMALLCHAR_WIDTH)) - 2;
     } else {
         width = cls.glconfig.vidWidth / SMALLCHAR_WIDTH - 2;
     }
@@ -492,8 +528,11 @@ void Con_Init(void) {
     con_opacity = Cvar_Get("con_opacity", "0.9", CVAR_ARCHIVE);
     Cvar_CheckRange(con_opacity, 0.1f, 1.0f, qfalse);
 
-    con_scale = Cvar_Get("con_scale", "0.5", CVAR_ARCHIVE);
-    Cvar_CheckRange(con_scale, 0.5f, 1.0f, qfalse);
+    // 0 = auto, sized from the display so the console reads the same at any
+    // resolution. The old default of 0.5 with a ceiling of 1.0 gave 4-pixel
+    // characters on a 4K display and no way to make them bigger.
+    con_scale = Cvar_Get("con_scale", "0", CVAR_ARCHIVE);
+    Cvar_CheckRange(con_scale, 0.0f, 8.0f, qfalse);
 
     con_speed = Cvar_Get("con_speed", "3", CVAR_ARCHIVE);
     Cvar_CheckRange(con_speed, 0.1f, 1000.0f, qfalse);

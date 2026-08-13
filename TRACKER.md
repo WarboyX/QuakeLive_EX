@@ -57,14 +57,23 @@ recovered; `HMG_SPREAD 350` stands in for it.
 
 ## Client / UI
 
-### U14. Console is unreadable at high resolution — OPEN
+### U14. Console is unreadable at high resolution — DONE (verify)
 At 3840x2160 the console font is tiny and the text cramped, which makes the
 console painful to use for exactly the diagnostic work it is needed for. Q3 draws
 console text with `SCR_DrawSmallChar` at fixed 640x480 virtual metrics, so it
 does not scale with resolution.
 
-**Next step:** check whether `con_scale` or an equivalent exists in this tree; if
-not, scale the console font by `glConfig.vidHeight / 480` with a cvar to override.
+`con_scale` existed, defaulted to **0.5**, and was clamped to `[0.5, 1.0]`. The
+console draws in native pixels rather than the 640x480 virtual space the rest of
+the UI scales from, so that is 4-pixel-wide characters on a 3840-wide display,
+with no way to raise them past 1.0.
+
+`con_scale 0` now means auto: `vidHeight / 480`, the same factor
+`SCR_AdjustFrom640` uses, clamped to `[1, 4]`. Console text is then the size it
+would have been at 640x480 whatever the display. An explicit value overrides and
+may go to 8.
+
+  1280x720 -> 1.5  ·  1920x1080 -> 2.25  ·  2560x1440 -> 3.0  ·  3840x2160 -> 4.0
 Also visible in the same capture and worth chasing separately:
 - `WARNING: CM_SrfXPlane unreachable` repeated dozens of times on load
 - `WARNING: Failed to load sound mus_high_score.ogg` — falls back, harmless but noisy
@@ -237,7 +246,24 @@ happening, so that row is bound to some cvar other than `con_autochat`, or write
 somewhere that does not reach it. Needs Quake Live's menu file to confirm which
 — same blocker as U1 and U10.
 
-### C3. Weapon viewmodel sits bigger and lower — CAUSE FOUND
+### C3. Weapon viewmodel sits bigger and lower — OPEN, cg_fov ruled out
+`cg_fov` reads 100, the default, and was set to 100 and other values deliberately
+without fixing the framing. **My earlier read of the console capture was wrong** —
+38.400208 was a transient from an experiment, not the resting value. Fov is not
+the cause.
+
+Remaining candidates, none checked:
+- `cg_gunX` / `cg_gunY` / `cg_gunZ` — viewmodel offsets, all default 0.
+- `cg_drawGun` — 1 normal, 2 and 3 select different positions.
+- `CG_AddPlayerWeapon`'s placement, and the `MatrixMultiply` that was moved
+  before the `VectorMA` chain during the earlier weapon work. That change is in
+  the same function that positions the viewmodel and is the most likely thing
+  this port altered.
+- `CG_CalcFov`'s widescreen aspect handling (U13).
+
+**Next step:** the `MatrixMultiply` reorder is the one thing known to have been
+changed near this code. Diff `CG_AddPlayerWeapon` against upstream `1487e89`
+before looking anywhere else.
 `/cg_fov` reads **38.400208**, against a default of 100. The viewmodel shares the
 world refdef, so a fov that low enlarges the gun and crops it lower — exactly the
 reported symptom, and nothing to do with the render presets.
