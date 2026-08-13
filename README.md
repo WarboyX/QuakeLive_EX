@@ -76,7 +76,7 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 |------|--------|-------|
 | Snapshot system | Done | Entity/player state serialisation matches QL |
 | Bot management | Done | `sv_bot.c` functional |
-| Steam auth bypass | Done | `com_build 1` skips Steam GS init and auth validation |
+| Steam auth bypass | Done | `SV_ValidateSteamAuth` returns true unconditionally, so auth always passes with no configuration. (There is no `com_build` cvar in the tree - an earlier note here was wrong.) |
 | Game module loading | Done | Native DLL loading with `gameImport_t` function pointer table |
 | Ban system | Done | Address/CIDR ban list persisted to `sv_banFile`, loaded at startup. `banUser`, `banClient`, `banaddr`, `exceptaddr`, `bandel`, `exceptdel`, `banlist`, `flushbans`, `rehashbans` |
 | ZMQ stats/rcon | Pending | QL uses ZeroMQ for remote console and stats publishing |
@@ -84,6 +84,7 @@ I do not have any rights to use any Quake Live game assets and cannot/**will not
 | Master server heartbeat | Pending | QL uses Steam master servers; needs custom implementation |
 | Map download redirect | Pending | HTTP redirect for missing maps not implemented |
 | Rate limiting | Pending | QL-specific flood protection tuning not audited |
+| High player counts (32-48) | Partial | Hunk auto-sized from `sv_maxclients` (default 256 MB); snapshot-entity and reliable-buffer ceilings now report instead of failing silently. `MAX_SNAPSHOT_ENTITIES` (256) and `MAX_RELIABLE_COMMANDS` (64) are still hard caps - both are client-protocol constants |
 
 #### cgame (client-side game module)
 

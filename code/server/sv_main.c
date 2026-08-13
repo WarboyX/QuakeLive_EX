@@ -111,6 +111,24 @@ void SV_AddServerCommand(client_t* client, const char* cmd) {
         return;
 
     client->reliableSequence++;
+
+    // [QL] The reliable ring is MAX_RELIABLE_COMMANDS deep and must stay that
+    // deep to match the QL client, but broadcast traffic (chat, obituaries,
+    // score and configstring updates) is O(players) per event, so a 32-48
+    // player server pushes far closer to the ceiling than an 8 player one.
+    // Overflow drops the client outright, and until now the first sign of
+    // trouble was that drop. Warn while the buffer is merely under pressure so
+    // the flooding command is identifiable before anyone is disconnected.
+    {
+        int pending = client->reliableSequence - client->reliableAcknowledge;
+
+        if (pending >= (MAX_RELIABLE_COMMANDS * 3) / 4 && svs.time >= client->nextReliablePressureWarn) {
+            client->nextReliablePressureWarn = svs.time + 5000;
+            Com_Printf("WARNING: reliable command buffer %i/%i full for %s - latest: %s\n",
+                       pending, MAX_RELIABLE_COMMANDS, client->name, cmd);
+        }
+    }
+
     // if we would be losing an old command that hasn't been acknowledged,
     // we must drop the connection
     // we check == instead of >= so a broadcast print added by SV_DropClient()

@@ -78,6 +78,11 @@ typedef struct {
 
     int restartTime;
     int time;
+
+    // [QL] diagnostics for the MAX_SNAPSHOT_ENTITIES ceiling, which is reached
+    // routinely on a well-populated server and otherwise fails silently.
+    int snapshotEntitiesDropped;
+    int nextSnapshotOverflowWarn;
 } server_t;
 
 typedef struct {
@@ -118,6 +123,7 @@ typedef struct client_s {
     int reliableSequence;     // last added reliable message, not necessarily sent or acknowledged yet
     int reliableAcknowledge;  // last acknowledged reliable message
     int reliableSent;         // last sent reliable message, not necessarily acknowledged yet
+    int nextReliablePressureWarn;  // [QL] rate limit for the near-overflow warning
     int messageAcknowledge;
 
     int gamestateMessageNum;  // netchan->outgoingSequence of gamestate

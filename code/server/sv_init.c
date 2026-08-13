@@ -274,6 +274,34 @@ static void SV_Startup(void) {
         // we don't need nearly as many when playing locally
         svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
     }
+
+    // [QL] The snapshot entity ring below is the biggest thing a server ever
+    // puts on the hunk and it scales with sv_maxclients, so on a large server
+    // it can exhaust the hunk on its own and take the map load down with a bare
+    // "Hunk_Alloc failed on <n>". Com_InitHunkMemory sizes the hunk from
+    // sv_maxclients when that was set on the command line; it cannot when
+    // sv_maxclients comes from a config, which is exactly when this bites.
+    // Report the shortfall and the fix rather than leaving an opaque failure.
+    {
+        int needBytes = (int)(svs.numSnapshotEntities * sizeof(entityState_t));
+        int haveBytes = Hunk_MemoryRemaining();
+
+        if (needBytes > haveBytes) {
+            int haveMegs = Cvar_VariableIntegerValue("com_hunkMegs");
+            int needMegs = (haveMegs - (haveBytes / (1024 * 1024))) +
+                           (needBytes / (1024 * 1024)) + 16;
+
+            Com_Printf("^1----------------------------------------------------------\n");
+            Com_Printf("^1sv_maxclients %i needs %i MB for snapshot entities, but only\n",
+                       sv_maxclients->integer, needBytes / (1024 * 1024));
+            Com_Printf("^1%i MB of hunk remains. The map load is about to fail.\n",
+                       haveBytes / (1024 * 1024));
+            Com_Printf("^1Restart with: +set com_hunkMegs %i\n", needMegs);
+            Com_Printf("^1(com_hunkMegs is latched - it must be on the command line.)\n");
+            Com_Printf("^1----------------------------------------------------------\n");
+        }
+    }
+
     svs.initialized = qtrue;
 
     // Don't respect sv_killserver unless a server is actually running
