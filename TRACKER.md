@@ -146,6 +146,9 @@ texture handling. `r_toneMap` is the important one: environment mapping
 (`TCGEN_ENVIRONMENT_MAPPED`) is implemented and working, but tonemapping
 compresses exactly the highlights that read as metallic.
 
+`classic.cfg` also sets `r_dither 2` explicitly, because before R7 the dither
+lived inside the tonemap pass and turning tonemapping off silently removed it.
+
 ### R4. Getting the metallic look back — routes, in cost order — OPEN
 Three ways to put gloss on surfaces. A screen-space post-process is **not** one
 of them: once the frame is a 2D image the per-surface normals are gone, so a
@@ -167,79 +170,93 @@ screen-space effect. It cannot do the reflective half.
 3. **Screen-space reflections** — needs a normal/depth G-buffer that renderergl2
    does not currently write. Real work, and still approximate at surface edges.
 
-### R5. Vulkan renderer — OPEN
-Feasible: Quake3e (`ec-/Quake3e`) has a mature `renderer_vulkan`, and
-`cl_renderer` already dispatches by DLL name so a third target needs no engine
-change. Two things to be clear about before anyone starts:
+### R5. Vulkan renderer — OPEN, scoped
+Wanted. Feasible. Not small — this is a multi-session project, and worth being
+honest about that up front rather than starting it and stalling.
 
-- **An API is not an aesthetic.** Quake3e's Vulkan renderer is a
-  reimplementation of the *classic* Q3 renderer. It would get the look closer to
-  Quake 3 than renderergl2 does — but by being GL1-equivalent, not by being
-  Vulkan. It adds no gloss on its own.
-- It would need the same `REF_API_VERSION 9` adaptation as R1, including a
-  Vulkan backend for the TrueType text path.
+**What makes it tractable:** `cl_renderer` already dispatches by DLL name
+(`cl_main.c`, default `"opengl2"`, `CVAR_ARCHIVE | CVAR_LATCH`, falls back to its
+reset string when the named library is missing) and `USE_RENDERER_DLOPEN=1`. A
+third renderer needs no engine change at all — it needs to build as
+`vulkan<arch>.so/.dll` and export `GetRefAPI`. `renderercommon` is already shared,
+so image loading, the shader-script parser, skins, models and the font core come
+along for free.
 
-Worth doing for performance and driver-stability reasons. Not a route to the
-metallic look.
+**Base to port from:** Quake3e (`ec-/Quake3e`), `code/renderervk`. Mature,
+maintained, and a faithful reimplementation of the *classic* renderer — which
+suits the goal here, since the classic look is what we are chasing anyway.
 
-### R6. Voodoo postfilter as a real post-process pass — OPEN, ready to build
+**Known work beyond a straight copy:**
+1. `REF_API_VERSION 9`. This port's `refexport_t` adds Quake Live's TrueType text
+   path — `Font_DrawString`, `TextBounds`, `GetGlyphInfo`, `SetCompositionFont` —
+   and `Get_Advertisements`. The font core is shared in `renderercommon`
+   (`tr_fontstash.c`, `tr_stbtt.c`) but the GL-specific half,
+   `renderergl2/tr_font_gl.c`, has no Vulkan equivalent. That file is the single
+   biggest unknown; it wants reading before committing to an estimate.
+2. Quake3e's renderer expects Quake3e's engine-side helpers in places. Each
+   needs checking against this tree rather than assumed.
+3. The widescreen bias handling and anything else this port changed in the
+   refexport surface.
+4. `R_ExportCubemaps_f` and the cubemap path (R4) have no classic-renderer
+   equivalent — a Vulkan build would simply not have `r_cubeMapping`.
+5. SDL window creation currently requests a GL context unconditionally
+   (`sdl_glimp.c`); Vulkan needs `SDL_WINDOW_VULKAN` and a surface instead.
+
+**Suggested first milestone:** get it building and clearing the screen, with text
+rendering stubbed, before touching anything else. That answers the two real
+questions — whether the `refexport_t` surface can be satisfied and whether the
+SDL path can be split cleanly — and everything after it is incremental.
+
+**What it will and will not give you.** Expect better frame pacing, far better
+driver behaviour on Intel Arc and on Linux/Mesa, and a renderer that is
+GL1-equivalent in output — so closer to Quake 3 than renderergl2 is. Expect it to
+add no gloss and no cubemaps: an API is not an aesthetic. If the goal is the
+metallic look, R4 is the route, not this.
+
+### R6. Voodoo postfilter as a real post-process pass — OPEN
 `voodoo.cfg` gets the 16-bit dither but not the thing that made it look good:
 Voodoo3 and later ran a filter over the dithered output on scanout — the "22-bit"
-mode — blending adjacent pixels so the dither pattern read as a smooth gradient
-rather than as noise. That is the missing half, and it is squarely reproducible:
-unlike reflection, dither-smoothing needs nothing but neighbouring pixels, which
-is exactly what a screen-space pass has.
+mode — blending adjacent pixels so the dither read as a smooth gradient rather
+than as noise. Unlike reflection, this genuinely is reproducible in screen space:
+dither-smoothing needs nothing but neighbouring pixels.
 
-**Plan** (all mechanical, insertion point verified):
-- `glsl/voodoo_vp.glsl` + `glsl/voodoo_fp.glsl` — the 3dfx filter kernel.
-- Two entries in the Makefile's `renderergl2/glsl` object list; GLSL is
-  stringified into `.o` files at build time, not loaded from the pk3.
-- A program slot in `GLSL_InitGPUShaders` (`tr_glsl.c`).
-- `RB_VoodooFilter()` in `tr_postprocess.c`, called from `RB_PostProcess`
-  (`tr_backend.c`) just before the final `FBO_FastBlit` to `dstFbo`.
-- Cvar `r_voodooFilter`, folded into `voodoo.cfg`.
+R7 landed first and shares the insertion point. The postfilter would be a second
+pass in `RB_DitherToScreen`, reading neighbours instead of adding noise, and is
+only worth running under `r_colorbits 16` — at 8 bits and above there is no
+dither pattern coarse enough to be worth smoothing.
 
-Note this is unrelated to API lineage. OpenGL (1992, out of SGI's IRIS GL)
-predates Glide (1996), and Glide borrowed conventions from OpenGL rather than
-the reverse; Vulkan descends from AMD's Mantle and was a deliberate clean break
-from OpenGL's state machine. Glide is a dead branch — nothing of it survives in
-Vulkan to be recovered. What is recoverable is the hardware's *output stage*
-behaviour, which is what this item is.
+Note this has nothing to do with API lineage. OpenGL (1992, out of SGI's IRIS GL)
+predates Glide (1996), and Glide borrowed conventions from OpenGL rather than the
+reverse; Vulkan descends from AMD's Mantle and was a deliberate break from
+OpenGL's state machine. Glide is a dead branch — nothing of it survives in Vulkan
+to be recovered. What is recoverable is the hardware's *output stage* behaviour,
+which is what this item and R7 are.
 
-### R7. Output dither is one line, and classic.cfg switches it off — OPEN
-The entire renderer contains exactly one dither, in `glsl/tonemap_fp.glsl`:
+### R7. Output dither — DONE (verify)
+The renderer had exactly one dither: a 2-phase checkerboard hardcoded to half an
+8-bit step, inside `tonemap_fp.glsl`. It only ran when `r_hdr` and `r_toneMap`
+were both on, so `classic.cfg` — which turns both off — removed the only dither in
+the pipeline and banded *worse* than the defaults. A fixed 8-bit amplitude is also
+wrong on any other framebuffer: four times more noise than a 10-bit output needs.
 
-```glsl
-// add a bit of dither to reduce banding
-color.rgb += vec3(1.0/510.0 * mod(gl_FragCoord.x + gl_FragCoord.y, 2.0) - 1.0/1020.0);
-```
+Now `RB_DitherToScreen` (`tr_postprocess.c`), replacing the `FBO_FastBlit` calls
+at the end of `RB_SwapBuffers`, so it applies on every path. Amplitude derives
+from `glConfig.colorBits` — what the driver actually handed back, not what was
+requested — so a 10-bit framebuffer gets a quarter of the noise an 8-bit one does.
 
-That is a 2-phase checkerboard of about half an 8-bit step. Two problems.
+| value | pattern |
+|---|---|
+| `r_dither 0` | plain hardware blit |
+| `r_dither 1` | ordered 8x8 Bayer, stable frame to frame |
+| `r_dither 2` | *(default)* interleaved gradient noise, golden-ratio phase per frame off a frame counter |
 
-1. **It is gated behind tonemapping.** `RB_PostProcess` only runs the tonemap
-   pass when `r_hdr && (r_toneMap || r_forceToneMap)`, so `classic.cfg` — which
-   sets both `r_hdr 0` and `r_toneMap 0` — removes the only dither in the
-   pipeline. Skies and coloured lighting will band *worse* under the classic
-   preset than under the defaults. Introduced by R2; needs fixing here rather
-   than in the cfg, since the dither belongs at output, not inside tonemapping.
-2. **A 2-phase checkerboard is the weakest useful pattern.** An 8x8 Bayer matrix
-   or blue noise costs the same per pixel and bands visibly less.
+`r_dither 2` puts its error in high spatial frequencies where the eye discards
+it, and decorrelating successive frames lets it average out over time instead of
+sitting still on a surface — worth roughly another bit at these frame rates.
 
-**This is the part of the "22-bit" idea that still pays at 32-bit.** The Voodoo
-postfilter recovered information the 16-bit dither had encoded spatially; at
-8-bit-per-channel output there is no dither and nothing hidden, so blending
-neighbours would only blur. But the renderer computes in float and quantises at
-the very end, so the precision genuinely exists right up to that step — dithering
-*that* conversion is the same principle applied where it still has something to
-work with.
-
-**Plan:** move the dither out of `tonemap_fp.glsl` into the final output blit so
-it applies on every path, upgrade it to an 8x8 Bayer or blue-noise pattern, and
-gate it on `r_dither` (default on). Shares its insertion point with R6.
-
-**Also worth having:** `r_colorbits 30` for a 10-bit `GL_RGB10_A2` framebuffer,
-where the display and driver support it. That is real extra precision rather than
-simulated, and would make the dither question mostly moot on that hardware.
+`r_colorbits 30` asks for a real 10-bit framebuffer; the amplitude follows it
+automatically. That is actual precision rather than simulated, and makes the
+dither mostly moot on hardware and displays that support it.
 
 ### R3. Quake Live art is not Quake 3 art — OPEN
 The env-mapped metal shaders live in Quake 3's `pak0.pk3`. Quake Live retextured
