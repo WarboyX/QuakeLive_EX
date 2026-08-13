@@ -1118,8 +1118,18 @@ static cvarTable_t gameCvarTable[] = {
     {&g_switchTeamDelay, "g_switchTeamDelay", "3", CVAR_GAMERULE, 0, NULL},
     {&g_tackleFlag, "g_tackleFlag", "0", CVAR_GAMERULE, 0, NULL},
     {&g_teamAutoJoin, "g_teamAutoJoin", "0", CVAR_ARCHIVE, 0, NULL},
-    // [QL] put connecting players into the match instead of spectator
-    {&g_autoJoin, "g_autoJoin", "1", CVAR_ARCHIVE | CVAR_SERVERINFO, 0, NULL},
+    // [QL] Put connecting players into the match instead of spectator.
+    //
+    // Deliberately NOT CVAR_ARCHIVE. An archived cvar is written into the
+    // server's config on first run and that config then wins on every later
+    // launch, so the shipped default stops applying the moment one build has
+    // written it - a new build's default is silently overridden by a stale
+    // line in a file nobody remembers writing. That has already caught this
+    // project twice (r_dlightMode, con_scale). Without the flag the default
+    // here is what a dedicated server actually starts with, every build, every
+    // time, and an admin who wants it off puts it in server.cfg - which is
+    // re-exec'd on every start and is where server policy belongs anyway.
+    {&g_autoJoin, "g_autoJoin", "1", CVAR_SERVERINFO, 0, NULL},
     {&g_teamForceBalance, "g_teamForceBalance", "1", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, NULL},
     {&g_teamSpawnAsSpec, "g_teamSpawnAsSpec", "0", 0, 0, NULL},
     {&g_teamSpecFreeCam, "g_teamSpecFreeCam", "0", 0, 0, NULL},

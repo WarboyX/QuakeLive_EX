@@ -57,6 +57,11 @@ cp -p $L/baseq3/pak01.pk3 "$WD/baseq3/"
 cp -p TRACKER.md "$LD/" 2>/dev/null || true
 cp -p TRACKER.md "$WD/" 2>/dev/null || true
 
+# The dedicated server otherwise ships with no configuration and no hint that
+# sv_master needs setting before the Internet browser tab can work.
+cp -p server.cfg.example "$LD/" 2>/dev/null || true
+cp -p server.cfg.example "$WD/" 2>/dev/null || true
+
 mkdir -p "$OUT/out"
 rm -f "$OUT/out"/*-"$REV".zip
 (cd "$OUT/pkg" && zip -q -r -9 "$OUT/out/quakelive-linux-x86_64-$REV.zip" "quakelive-linux-x86_64-$REV")

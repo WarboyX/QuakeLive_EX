@@ -907,6 +907,24 @@ is Quake 3's own tournament rule and matches what the join path in `g_cmds.c`
 already enforces. `g_maxGameClients` is respected for the rest.
 
 **Server-side cvar** — it governs servers you run, not ones you join.
+
+**Deliberately not `CVAR_ARCHIVE`.** An archived cvar is written into the
+server's saved config on first run, and that config then wins on every later
+launch — so the shipped default stops applying the moment one build has written
+it, and a future build's default is silently overridden by a stale line in a
+file nobody remembers writing. That has already cost this project two rounds
+(`r_dlightMode`, `con_scale`). Without the flag, the default in `g_main.c` is
+what a dedicated server actually starts with, every build, every time.
+
+Admins who want it off put it in `server.cfg`, which is re-exec'd on every
+start and is where server policy belongs. `server.cfg.example` ships in both
+release archives documenting this and the `sv_master` cvars — the dedicated
+server previously shipped with no configuration at all and no hint that
+`sv_master` needs setting before the Internet tab can work.
+
+**Rule for this repo:** a cvar whose *shipped default* is part of the product
+should not be `CVAR_ARCHIVE`. Archive is for values a user sets, not for values
+we choose.
 The server does not announce itself, so it cannot appear in any public list. The
 client's browser can still reach it by direct connect or LAN.
 
