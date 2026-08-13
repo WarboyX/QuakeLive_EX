@@ -925,7 +925,7 @@ static void CG_WeaponReport_f(void) {
                   lerped.origin[0], lerped.origin[1], lerped.origin[2]);
     }
 
-    CG_Printf("\ngun offsets: cg_gun_x %s  cg_gun_y %s  cg_gun_z %s  cg_fov %d\n",
+    CG_Printf("\ngun offsets: cg_gunX %s  cg_gunY %s  cg_gunZ %s  cg_fov %d\n",
               cg_gun_x.string, cg_gun_y.string, cg_gun_z.string, cg_fov.integer);
 }
 

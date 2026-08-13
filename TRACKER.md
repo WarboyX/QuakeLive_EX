@@ -475,7 +475,26 @@ menu row works.
 The row also carries `cvarTest "com_allowConsole"` with `disableCvar { "0" }`, so
 it greys out when the console itself is disabled.
 
-### C3. Weapon viewmodel barely visible — OPEN, mechanism found, awaiting one console dump
+### C8. Phantom pickup sound over taken items — DONE (verify)
+Walk back over an armour spawn you already cleared and the pickup sound plays
+again, with nothing granted.
+
+`CG_TouchItem` **sets** `EF_NODRAW` to mean "already taken this prediction" and
+never **reads it back**. Quake 3 got away with that because a picked-up item
+was marked `SVF_NOCLIENT` and stopped being transmitted at all, so the client
+never saw it again. Quake Live's item timers need the entity client-side to
+count the respawn down, so `Touch_Item` clears `SVF_NOCLIENT` again and leaves
+only `EF_NODRAW` set (`g_items.c`). The entity keeps arriving, prediction
+re-takes it on every pass, and `EV_ITEM_PICKUP` fires locally each time.
+
+The server correctly ignores those touches — it zeroed `r.contents` on pickup —
+so nothing was granted. Sound only, which is why it read as a sound bug rather
+than an item bug. Bail out on `EF_NODRAW`.
+
+Armour is where it shows because armour and mega health are the items with
+`itemTimer` set; anything else with a timer would do the same.
+
+### C3. Weapon viewmodel barely visible — OPEN, my mechanism was wrong
 **Affects several weapons, worst on the lightning gun (6).**
 
 `CG_AddViewWeapon` is byte-identical to upstream `1487e89`, so this is not a
@@ -492,16 +511,26 @@ against it — if every gun is drawn at the eye, what you see depends on each
 model's own geometry, and a long thin model with its origin at the grip (the
 LG) shows least.
 
-**Not yet proven.** Two diagnostics now ship:
-- a one-shot warning per weapon when `tag_weapon` fails, naming whether the
-  hands model loaded at all;
-- `\weaponreport` — a table of every weapon's hands model, whether
-  `tag_weapon` resolves, and the resulting offset, plus the current
-  `cg_gun_x/y/z` and `cg_fov`.
+**Measured, and the theory was wrong.** `\weaponreport` on the live build:
+every weapon reports `hands ok` and `tag_weapon ok`. Nothing is missing. The
+offsets are real Quake Live tag data, e.g. LG (6) at fwd -8.3, right -2.9,
+up -9.0; RL (5) at -10.4 / -4.7 / -9.3; gauntlet (1) at +10.4 / 0.2 / -11.4.
 
-If the tags are MISSING the fix is asset-side and the offset has to be
-reconstructed. If they resolve, the cause is elsewhere and this whole line of
-reasoning is wrong — which is the point of measuring it.
+So: the tags resolve, `CG_AddViewWeapon` and `CG_CalcFov` and
+`CG_CalculateWeaponPosition` are all byte-identical to upstream `1487e89`, and
+`cg_gunX/Y/Z` are wired (the C symbols are `cg_gun_x/y/z`, the **cvars** are
+`cg_gunX/cg_gunY/cg_gunZ` — worth knowing before tuning them).
+
+What the numbers do show is that most weapons sit *behind* the eye: the LG's
+origin is 8.3 units back, so with `r_znear 4` the bulk of the model is behind
+the near plane and only the forward end survives clipping — "you can barely
+see the tip", literally. Whether that is wrong depends on how the models are
+authored relative to `tag_weapon`, which cannot be settled without the assets.
+
+**Next:** the remaining unknown is a constant. `cg_gunX` moves the gun forward;
+finding the value that frames it correctly and baking it in as the default (or
+as an fov-scaled term next to the existing `fovOffset`) closes this. That needs
+one number from someone who can see the result.
 
 #### Earlier: cg_fov ruled out
 `cg_fov` reads 100, the default, and was set to 100 and other values deliberately
