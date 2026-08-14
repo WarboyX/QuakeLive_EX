@@ -15,7 +15,7 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `███████████████░░░░░  3/4` | viewmodel framing still open |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | all blocked on disassembly or play-testing |
-| **Engine / server** (E) | `██████░░░░░░░░░░░░░░  2/6` | server browser queries now exist |
+| **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  2/8` | 186 cvars registered but unread (E8) |
 | **Overall** | `██████████░░░░░░░░░░  18/37` | |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
@@ -977,6 +977,47 @@ Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
 ---
 
 ## Engine / server
+
+### E8. 186 cvars are registered but read by nothing — OPEN, survey done
+Registering a cvar creates it, gives it a default, exposes it to configs and
+lists it in `\cvarlist`. **None of that makes it do anything.** A cvar nothing
+reads is indistinguishable from a working setting: you set it, it takes the
+value, and the game ignores it.
+
+This has already produced two real bugs. `g_spawnItemWeapons` was registered,
+exposed as a gamerule, documented, set to `0` in the shipped instagib configs —
+and read by no code at all, so instagib servers kept spawning weapons.
+`g_instaGib` itself was half-wired the same way (E7).
+
+`tools/dead-cvars.py` surveys this and is repeatable. Pass a directory of
+Quake Live's own `ui/` files so cvars its menus consume are not miscounted:
+
+    tools/dead-cvars.py /path/to/ql/ui
+
+Current count: **186** — 78 game, 84 cgame, 24 ui. Not all matter; the survey
+does not distinguish. Three groups:
+
+- **Harmless.** Pure advertisement (`g_version`, `gamedate`, `sv_mapname`,
+  `ui_version`) and bot debug knobs (`bot_show*`, `bot_debugVar`) that Quake
+  Live registered and never used either.
+- **Silently missing server features.** `g_powerupRespawn`, `g_allTalk`,
+  `g_dropCmds`, `g_shuffle_*`, `g_switchTeamDelay`, `g_spawnMinDistance`,
+  `g_spawnRandomRatio`, `g_kickBadUserinfo`, `g_flagPhysics`, `g_flagBounce`,
+  `g_droppedFlagBonus`, `g_freezeAllowRespawn`, `g_freezeProtectedSpawnTime`,
+  `g_quadHog*`, `g_flight*`, `g_grantItemOnSpawn`, `g_accuracyFlags`. An admin
+  setting any of these gets no error and no effect.
+- **Silently missing client features.** `cg_itemTimers` and
+  `cg_specItemTimers*` (the timers the server already sends), the whole
+  `cg_drawTeamOverlay*` group, `cg_projectileNudge` / `cg_autoProjectileNudge`,
+  `cg_simpleItems*`, `cg_hitBeep`, `cg_raceBeep`, `cg_noTaunt`, `cg_ignore`,
+  `cg_oldPlasma`, `cg_oldRocket`, `cg_thirdPersonPitch`,
+  `cg_teammateCrosshairNames`, `cg_screenDamage_*`.
+
+`g_freezeAllowRespawn` and `g_freezeProtectedSpawnTime` are worth doing first —
+the shipped `a2m-instagib-freeze.cfg` runs freeze tag, and neither knob works.
+
+**Rule this establishes:** adding a cvar is not implementing a feature. Run the
+survey after adding one.
 
 ### E1. Factory subsystem absent — OPEN
 Quake Live's "factory" layer (named rule presets loaded from `scripts/*.factories`,
