@@ -69,7 +69,27 @@ typedef struct bot_character_s {
     bot_characteristic_t c[1];  // variable sized
 } bot_character_t;
 
-bot_character_t* botcharacters[MAX_CLIENTS + 1];
+/*
+[QL] The character pool is indexed by an opaque handle, not by client number,
+so sizing it MAX_CLIENTS+1 assumed one character per bot. It is not one.
+
+BotLoadCharacter only loads a file directly when the skill is exactly 1, 4 or
+5. Any other value - g_spSkill 2 and 3, which are the useful ones - loads the
+two bracketing skills and interpolates, so one bot consumes THREE slots:
+skill 1, skill 4 and the interpolated result. Characters are also never freed
+(BotFreeCharacter is a deliberate no-op unless bot_reloadcharacters is set),
+because the cache is what makes reconnects cheap.
+
+64 slots / 3 per bot is why bots stopped loading at around 21, with
+"Fatal: couldn't load skill 2.000000 from bots/<name>_c.c" and the bot
+immediately dropped for "BotAISetupClient failed".
+
+Four per client covers the three-slot case with room for the default-character
+fallbacks, for every client slot the engine allows.
+*/
+#define MAX_BOT_CHARACTERS (4 * MAX_CLIENTS)
+
+bot_character_t* botcharacters[MAX_BOT_CHARACTERS + 1];
 
 //========================================================================
 //
@@ -78,7 +98,7 @@ bot_character_t* botcharacters[MAX_CLIENTS + 1];
 // Changes Globals:		-
 //========================================================================
 bot_character_t* BotCharacterFromHandle(int handle) {
-    if (handle <= 0 || handle > MAX_CLIENTS) {
+    if (handle <= 0 || handle > MAX_BOT_CHARACTERS) {
         botimport.Print(PRT_FATAL, "character handle %d out of range\n", handle);
         return NULL;
     }  // end if
@@ -137,7 +157,7 @@ void BotFreeCharacterStrings(bot_character_t* ch) {
 // Changes Globals:		-
 //========================================================================
 void BotFreeCharacter2(int handle) {
-    if (handle <= 0 || handle > MAX_CLIENTS) {
+    if (handle <= 0 || handle > MAX_BOT_CHARACTERS) {
         botimport.Print(PRT_FATAL, "character handle %d out of range\n", handle);
         return;
     }  // end if
@@ -328,7 +348,7 @@ bot_character_t* BotLoadCharacterFromFile(char* charfile, int skill) {
 int BotFindCachedCharacter(char* charfile, float skill) {
     int handle;
 
-    for (handle = 1; handle <= MAX_CLIENTS; handle++) {
+    for (handle = 1; handle <= MAX_BOT_CHARACTERS; handle++) {
         if (!botcharacters[handle])
             continue;
         if (strcmp(botcharacters[handle]->filename, charfile) == 0 &&
@@ -353,14 +373,10 @@ int BotLoadCachedCharacter(char* charfile, float skill, int reload) {
     starttime = Sys_MilliSeconds();
 #endif  // DEBUG
 
-    // find a free spot for a character
-    for (handle = 1; handle <= MAX_CLIENTS; handle++) {
-        if (!botcharacters[handle])
-            break;
-    }  // end for
-    if (handle > MAX_CLIENTS)
-        return 0;
-    // try to load a cached character with the given skill
+    // [QL] Cache lookup first. A cached hit returns an existing handle and needs
+    // no free slot, so bailing out on a full pool before looking made an
+    // already-loaded character fail to load - the pool being full defeated the
+    // very cache that exists to stop it filling.
     if (!reload) {
         cachedhandle = BotFindCachedCharacter(charfile, skill);
         if (cachedhandle) {
@@ -368,6 +384,16 @@ int BotLoadCachedCharacter(char* charfile, float skill, int reload) {
             return cachedhandle;
         }  // end if
     }  // end else
+    // find a free spot for a character
+    for (handle = 1; handle <= MAX_BOT_CHARACTERS; handle++) {
+        if (!botcharacters[handle])
+            break;
+    }  // end for
+    if (handle > MAX_BOT_CHARACTERS) {
+        botimport.Print(PRT_FATAL, "cannot load %s: all %d bot character slots are in use\n",
+                        charfile, MAX_BOT_CHARACTERS);
+        return 0;
+    }  // end if
     //
     intskill = (int)(skill + 0.5);
     // try to load the character with the given skill
@@ -472,12 +498,18 @@ int BotInterpolateCharacters(int handle1, int handle2, float desiredskill) {
     if (!ch1 || !ch2)
         return 0;
     // find a free spot for a character
-    for (handle = 1; handle <= MAX_CLIENTS; handle++) {
+    for (handle = 1; handle <= MAX_BOT_CHARACTERS; handle++) {
         if (!botcharacters[handle])
             break;
     }  // end for
-    if (handle > MAX_CLIENTS)
+    if (handle > MAX_BOT_CHARACTERS) {
+        // [QL] This one genuinely needs a slot - it is building a new character.
+        // Returning 0 rather than writing to index 0, which silently corrupted
+        // the unused first entry and leaked the allocation.
+        botimport.Print(PRT_FATAL, "cannot interpolate %s: all %d bot character slots are in use\n",
+                        ch1->filename, MAX_BOT_CHARACTERS);
         return 0;
+    }  // end if
     out = (bot_character_t*)GetClearedMemory(sizeof(bot_character_t) +
                                              MAX_CHARACTERISTICS * sizeof(bot_characteristic_t));
     out->skill = desiredskill;
@@ -717,7 +749,7 @@ void Characteristic_String(int character, int index, char* buf, int size) {
 void BotShutdownCharacters(void) {
     int handle;
 
-    for (handle = 1; handle <= MAX_CLIENTS; handle++) {
+    for (handle = 1; handle <= MAX_BOT_CHARACTERS; handle++) {
         if (botcharacters[handle]) {
             BotFreeCharacter2(handle);
         }  // end if
