@@ -1765,6 +1765,31 @@ void CG_AddViewWeapon(playerState_t* ps) {
         fovOffset = 0;
     }
 
+    // [QL] Widescreen puts the gun off the bottom of the screen.
+    //
+    // cg_fov is a *horizontal* field of view, so a wider display does not show
+    // more - it shows the same width over less height. At 16:9 the vertical FOV
+    // is a quarter narrower than the 4:3 the Quake 3 viewmodel maths was written
+    // for, and the term above makes it worse by pushing the gun further down as
+    // the FOV rises. The weapon tags sit about 11 units below the view axis, so
+    // at 3840x2160 with cg_fov 100 (vertical half-FOV 33.8 degrees) nothing
+    // closer than ~16 units ahead of the eye clears the bottom edge. Most tags
+    // are *behind* the eye - the lightning gun's is 8.3 back - so the first ~25
+    // units of the model are off screen and all that is left is the barrel tip.
+    //
+    // Raise it by however much vertical FOV the aspect ratio has taken away.
+    // The term is zero at 4:3, so nothing changes on the aspect the original
+    // maths assumed, and it grows with the display's width. The constant is
+    // calibrated against 16:9, where it gives 3.0 units.
+    if (cg_gunAspect.integer && cg.refdef.width > 0 && cg.refdef.height > 0) {
+        const float refAspect = 4.0f / 3.0f;
+        float aspect = (float)cg.refdef.width / (float)cg.refdef.height;
+
+        if (aspect > refAspect) {
+            fovOffset += 9.0f * (aspect / refAspect - 1.0f);
+        }
+    }
+
     cent = &cg.predictedPlayerEntity;  // &cg_entities[cg.snap->ps.clientNum];
     CG_RegisterWeapon(ps->weapon);
     weapon = CG_WeaponInfo(ps->weapon);

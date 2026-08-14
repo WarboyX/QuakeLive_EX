@@ -177,6 +177,46 @@ vm_t* VM_Create(const char* module, intptr_t (*systemCalls)(intptr_t*)) {
 
 /*
 ==============
+VM_UnloadDeferred
+
+[QL] Unload modules that VM_Free could not safely unload at the time.
+
+VM_Free is routinely reached from *inside* a VM call. The common case is a
+server terminating: cgame calls trap_GetServerCommand, the engine's
+CL_GetServerCommand sees the server's "disconnect" and raises
+Com_Error(ERR_SERVERDISCONNECT), and Com_Error then tears the client down and
+longjmps back to Com_Frame - all while cgame's stack frames are still live
+underneath it.
+
+forced_unload only ever suppressed the "VM_Free on running vm" error; it did
+not stop Sys_UnloadDll. So the module was unmapped and *then* longjmp had to
+unwind past stack frames belonging to it. On Windows x64 longjmp unwinds
+through SEH, which looks up unwind data in the module each frame came from -
+so that lookup lands in an unmapped image and the process dies instantly, in
+the unwinder, with nothing in the log to connect it to the disconnect. On
+Linux longjmp just restores the stack pointer and never touches the module,
+which is why this only shows up on Windows.
+
+Hold the handle instead and unload it at the top of Com_Frame, once the
+longjmp has completed and no frame from that module is on the stack.
+==============
+*/
+#define MAX_DEFERRED_UNLOADS 8
+static void* deferredUnload[MAX_DEFERRED_UNLOADS];
+static int numDeferredUnload;
+
+void VM_UnloadDeferred(void) {
+    int i;
+
+    for (i = 0; i < numDeferredUnload; i++) {
+        Sys_UnloadDll(deferredUnload[i]);
+        deferredUnload[i] = NULL;
+    }
+    numDeferredUnload = 0;
+}
+
+/*
+==============
 VM_Free
 ==============
 */
@@ -198,7 +238,13 @@ void VM_Free(vm_t* vm) {
         vm->destroy(vm);
 
     if (vm->dllHandle) {
-        Sys_UnloadDll(vm->dllHandle);
+        // Freeing a VM that is still executing means our caller is inside it.
+        // Defer the unmap until the stack is clean - see VM_UnloadDeferred.
+        if (vm->callLevel && forced_unload && numDeferredUnload < MAX_DEFERRED_UNLOADS) {
+            deferredUnload[numDeferredUnload++] = vm->dllHandle;
+        } else {
+            Sys_UnloadDll(vm->dllHandle);
+        }
     }
 
     Com_Memset(vm, 0, sizeof(*vm));

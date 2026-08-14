@@ -2863,6 +2863,11 @@ void Com_Frame(void) {
     int timeBeforeClient;
     int timeAfter;
 
+    // [QL] Any module VM_Free could not unmap while its frames were live is
+    // unmapped here: the longjmp that brought us out has completed, so nothing
+    // from it is on the stack any more. Must stay above the setjmp.
+    VM_UnloadDeferred();
+
     if (setjmp(abortframe)) {
         return;  // an ERR_DROP was thrown
     }

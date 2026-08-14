@@ -494,7 +494,63 @@ than an item bug. Bail out on `EF_NODRAW`.
 Armour is where it shows because armour and mega health are the items with
 `itemTimer` set; anything else with a timer would do the same.
 
-### C3. Weapon viewmodel barely visible — OPEN, my mechanism was wrong
+### C9. Client dies the moment the server terminates — DONE (verify)
+`VM_Free` is routinely reached from *inside* a VM call. The common case is
+exactly this one: cgame calls `trap_GetServerCommand`, the engine's
+`CL_GetServerCommand` sees the server's `disconnect` and raises
+`Com_Error(ERR_SERVERDISCONNECT)`, and `Com_Error` tears the client down and
+`longjmp`s back to `Com_Frame` — all while cgame's stack frames are still live
+underneath it.
+
+`forced_unload` only ever suppressed the "VM_Free on running vm" error. **It
+did not stop `Sys_UnloadDll`.** So the module was unmapped and *then* `longjmp`
+had to unwind past stack frames belonging to it. On Windows x64 `longjmp`
+unwinds through SEH, which looks up unwind data in the module each frame came
+from — that lookup lands in an unmapped image and the process dies instantly,
+inside the unwinder, with nothing in the log tying it to the disconnect.
+
+On Linux `longjmp` just restores the stack pointer and never consults the
+module, which is why this is Windows-only and why it could not be reproduced
+here.
+
+**Fixed:** when a VM is freed with live frames, the handle is held and unmapped
+at the top of `Com_Frame`, after the longjmp has completed. Everything else —
+normal shutdown, `VM_Clear`, any `VM_Free` at `callLevel` 0 — still unloads
+immediately, so the change only touches the pathological case.
+
+### C3. Weapon viewmodel barely visible — DONE (verify)
+**Not a missing tag and not a regression.** `\weaponreport` showed every hands
+model loading and every `tag_weapon` resolving, and `CG_AddViewWeapon`,
+`CG_CalcFov` and `CG_CalculateWeaponPosition` are byte-identical to upstream
+`1487e89`. It is geometry.
+
+`cg_fov` is a **horizontal** field of view, so a wider display does not show
+more — it shows the same width over less height. At 16:9 the vertical FOV is a
+quarter narrower than the 4:3 the Quake 3 viewmodel maths assumed, and Q3's own
+`-0.2 * (cg_fov - 90)` term makes it worse by pushing the gun further *down* as
+the FOV rises. The weapon tags sit ~11 units below the view axis, so at
+3840x2160 with `cg_fov 100` (vertical half-FOV **33.8 degrees**) nothing closer
+than ~16 units ahead of the eye clears the bottom edge:
+
+| weapon | tag fwd | down | on screen past | model shown from |
+|---|---|---|---|---|
+| lightning | −8.3 | 11.0 | 16.4 fwd | 24.7 units along it |
+| rocket | −10.4 | 11.3 | 16.9 fwd | 27.3 units along it |
+| railgun | +1.8 | 12.5 | 18.6 fwd | 16.8 units along it |
+| gauntlet | +10.4 | 13.4 | 20.0 fwd | 9.6 units along it |
+
+Most tags are *behind* the eye, so the first 10–27 units of each model are off
+screen. That is why it hit several weapons and hit the LG and RL hardest.
+
+**Fixed** with `cg_gunAspect` (default on): raise the gun by however much
+vertical FOV the aspect ratio has taken away, `9.0 * (aspect / (4/3) - 1)`.
+Zero at 4:3, so nothing changes on the aspect the original maths assumed; 3.0
+at 16:9, which is the value confirmed by eye; ~7 on 21:9. `cg_gunAspect 0`
+restores the old framing, and `cg_gunZ` still stacks on top for taste.
+
+**Lesson:** three wrong diagnoses here came from reasoning about the code path.
+The one that worked came from printing the actual numbers and doing the
+trigonometry.
 **Affects several weapons, worst on the lightning gun (6).**
 
 `CG_AddViewWeapon` is byte-identical to upstream `1487e89`, so this is not a

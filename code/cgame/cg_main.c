@@ -142,6 +142,7 @@ vmCvar_t cg_brassTime;
 vmCvar_t cg_viewsize;
 vmCvar_t cg_drawGun;
 vmCvar_t cg_gun_frame;
+vmCvar_t cg_gunAspect;
 vmCvar_t cg_gun_x;
 vmCvar_t cg_gun_y;
 vmCvar_t cg_gun_z;
@@ -523,6 +524,8 @@ static cvarTable_t cvarTable[] = {
     {&cg_addMarks, "cg_marks", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lagometer, "cg_lagometer", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 0 (was Q3 "1")
     {&cg_railTrailTime, "cg_railTrailTime", "400", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    // [QL] raise the view weapon by the vertical FOV widescreen takes away
+    {&cg_gunAspect, "cg_gunAspect", "1", CVAR_ARCHIVE},
     {&cg_gun_x, "cg_gunX", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] binary: CVAR_ARCHIVE (player viewmodel offset, not a cheat)
     {&cg_gun_y, "cg_gunY", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_gun_z, "cg_gunZ", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
