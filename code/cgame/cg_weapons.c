@@ -1723,6 +1723,7 @@ void CG_AddViewWeapon(playerState_t* ps) {
     centity_t* cent;
     clientInfo_t* ci;
     float fovOffset;
+    float gunForward = 0.0f;
     vec3_t angles;
     weaponInfo_t* weapon;
 
@@ -1777,16 +1778,43 @@ void CG_AddViewWeapon(playerState_t* ps) {
     // are *behind* the eye - the lightning gun's is 8.3 back - so the first ~25
     // units of the model are off screen and all that is left is the barrel tip.
     //
-    // Raise it by however much vertical FOV the aspect ratio has taken away.
-    // The term is zero at 4:3, so nothing changes on the aspect the original
-    // maths assumed, and it grows with the display's width. The constant is
-    // calibrated against 16:9, where it gives 3.0 units.
+    // The correction goes *forward*, not up. Raising the gun works arithmetically
+    // but slides it up the screen and away from where it belongs; pushing it
+    // forward walks the model into the part of the view cone that has widened
+    // enough to contain it, so it keeps its downward angle and simply stops
+    // being cropped.
+    //
+    // The shape of the correction is derived, not fitted. The first forward
+    // distance that clears the bottom edge is
+    //
+    //     down / tan(halfFovY),  and  tan(halfFovY) = tan(halfFovX) / aspect
+    //
+    // so that distance is down * aspect / tan(halfFovX): exactly linear in the
+    // aspect ratio, and inversely proportional to tan(halfFovX). Hence the two
+    // terms below. Only the constant is empirical - it sets how far past merely
+    // grazing the edge the gun sits, which is a matter of taste rather than
+    // geometry.
+    //
+    // Zero at 4:3, so nothing changes on the aspect the original maths assumed.
+    // Exactly 1.0 on the fov term at cg_fov 100, so the configuration this was
+    // tuned on is untouched, and other fields of view follow the derivation.
     if (cg_gunAspect.integer && cg.refdef.width > 0 && cg.refdef.height > 0) {
         const float refAspect = 4.0f / 3.0f;
+        const float refTanHalfFovX = 1.19175f;  // tan(100 / 2 degrees)
         float aspect = (float)cg.refdef.width / (float)cg.refdef.height;
 
         if (aspect > refAspect) {
-            fovOffset += 9.0f * (aspect / refAspect - 1.0f);
+            float tanHalfFovX = tan(DEG2RAD(cg_fov.value) * 0.5f);
+            float fovScale = (tanHalfFovX > 0.01f) ? refTanHalfFovX / tanHalfFovX : 1.0f;
+
+            // A very narrow or very wide fov should not run away with this.
+            if (fovScale < 0.5f) {
+                fovScale = 0.5f;
+            } else if (fovScale > 2.0f) {
+                fovScale = 2.0f;
+            }
+
+            gunForward = 19.5f * (aspect / refAspect - 1.0f) * fovScale;
         }
     }
 
@@ -1799,7 +1827,7 @@ void CG_AddViewWeapon(playerState_t* ps) {
     // set up gun position
     CG_CalculateWeaponPosition(hand.origin, angles);
 
-    VectorMA(hand.origin, cg_gun_x.value, cg.refdef.viewaxis[0], hand.origin);
+    VectorMA(hand.origin, cg_gun_x.value + gunForward, cg.refdef.viewaxis[0], hand.origin);
     VectorMA(hand.origin, cg_gun_y.value, cg.refdef.viewaxis[1], hand.origin);
     VectorMA(hand.origin, (cg_gun_z.value + fovOffset), cg.refdef.viewaxis[2], hand.origin);
 

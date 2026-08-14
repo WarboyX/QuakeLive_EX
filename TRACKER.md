@@ -542,11 +542,27 @@ than ~16 units ahead of the eye clears the bottom edge:
 Most tags are *behind* the eye, so the first 10–27 units of each model are off
 screen. That is why it hit several weapons and hit the LG and RL hardest.
 
-**Fixed** with `cg_gunAspect` (default on): raise the gun by however much
-vertical FOV the aspect ratio has taken away, `9.0 * (aspect / (4/3) - 1)`.
-Zero at 4:3, so nothing changes on the aspect the original maths assumed; 3.0
-at 16:9, which is the value confirmed by eye; ~7 on 21:9. `cg_gunAspect 0`
-restores the old framing, and `cg_gunZ` still stacks on top for taste.
+**Fixed** with `cg_gunAspect` (default on). The correction goes **forward**,
+not up: raising the gun works arithmetically but slides it up the screen away
+from where it belongs, while pushing it forward walks the model into the part
+of the view cone that has widened enough to contain it, so it keeps its
+downward angle and simply stops being cropped. Confirmed by eye — `cg_gunZ`
+adjustments were rejected in testing, `cg_gunX 6.5` was not.
+
+The shape is derived rather than fitted. The first forward distance clearing
+the bottom edge is `down / tan(halfFovY)`, and `tan(halfFovY) =
+tan(halfFovX) / aspect`, so it is `down * aspect / tan(halfFovX)` — exactly
+**linear in aspect** and inversely proportional to `tan(halfFovX)`. Both terms
+follow from that; only the constant is empirical, and it only sets how far past
+grazing the edge the gun sits, which is taste rather than geometry.
+
+    gunForward = 19.5 * (aspect / (4/3) - 1) * (tan(50 deg) / tan(cg_fov / 2))
+
+Zero at 4:3, so nothing changes on the aspect the original maths assumed. The
+fov term is exactly 1.0 at `cg_fov 100`, so the configuration this was tuned on
+is bit-identical and other fields of view follow the derivation. 6.50 at 16:9,
+5.42 at 16:9 / fov 110, 15.17 on 21:9; the fov factor is clamped to [0.5, 2.0].
+`cg_gunAspect 0` restores the old framing, and `cg_gunX` still stacks on top.
 
 **Lesson:** three wrong diagnoses here came from reasoning about the code path.
 The one that worked came from printing the actual numbers and doing the
