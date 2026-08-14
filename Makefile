@@ -37,6 +37,12 @@ endif
 ifndef BUILD_RENDERER_OPENGL2
   BUILD_RENDERER_OPENGL2=
 endif
+# [QL] Vulkan renderer (code/renderervk, vendored from Quake3e). Opt-in and off
+# by default until it works, so it cannot affect an OpenGL build:
+#   make BUILD_RENDERER_VULKAN=1
+ifndef BUILD_RENDERER_VULKAN
+  BUILD_RENDERER_VULKAN=0
+endif
 
 #############################################################################
 #
@@ -237,6 +243,7 @@ CDIR=$(MOUNT_DIR)/client
 SDIR=$(MOUNT_DIR)/server
 RCOMMONDIR=$(MOUNT_DIR)/renderercommon
 RGL2DIR=$(MOUNT_DIR)/renderergl2
+RVKDIR=$(MOUNT_DIR)/renderervk
 CMDIR=$(MOUNT_DIR)/qcommon
 SDLDIR=$(MOUNT_DIR)/sdl
 SYSDIR=$(MOUNT_DIR)/sys
@@ -1083,6 +1090,9 @@ ifneq ($(BUILD_CLIENT),0)
     ifneq ($(BUILD_RENDERER_OPENGL2),0)
       TARGETS += $(B)/opengl2$(SHLIBNAME)
     endif
+    ifneq ($(BUILD_RENDERER_VULKAN),0)
+      TARGETS += $(B)/vulkan$(SHLIBNAME)
+    endif
   else
     ifneq ($(BUILD_RENDERER_OPENGL2),0)
       TARGETS += $(B)/$(CLIENTBIN)_opengl2$(FULLBINEXT)
@@ -1275,6 +1285,14 @@ endif
 define DO_CC
 $(echo_cmd) "CC $<"
 $(Q)$(CC) $(NOTSHLIBCFLAGS) $(CFLAGS) $(CLIENT_CFLAGS) $(OPTIMIZE) -o $@ -c $<
+endef
+
+# [QL] renderervk is vendored from Quake3e unmodified. It expects a few types
+# this tree does not have, so tr_q3e_compat.h is force-included for that
+# directory only - no vendored file is edited, and nothing else sees it.
+define DO_REF_VK_CC
+$(echo_cmd) "REF_VK_CC $<"
+$(Q)$(CC) $(SHLIBCFLAGS) $(CFLAGS) $(OPTIMIZE) -include $(RVKDIR)/tr_q3e_compat.h -o $@ -c $<
 endef
 
 define DO_REF_CC
@@ -1477,6 +1495,7 @@ makedirs:
 	@$(MKDIR) $(B)/client/vorbis
 	@$(MKDIR) $(B)/renderergl2
 	@$(MKDIR) $(B)/renderergl2/glsl
+	@$(MKDIR) $(B)/renderervk
 	@$(MKDIR) $(B)/tools
 	@$(MKDIR) $(B)/ded
 	@$(MKDIR) $(B)/$(BASEGAME)/cgame
@@ -1671,6 +1690,41 @@ Q3R2OBJ = \
   \
   $(B)/renderergl2/sdl_gamma.o \
   $(B)/renderergl2/sdl_glimp.o
+
+Q3RVKOBJ = \
+  $(B)/renderervk/tr_animation.o \
+  $(B)/renderervk/tr_backend.o \
+  $(B)/renderervk/tr_bsp.o \
+  $(B)/renderervk/tr_cmds.o \
+  $(B)/renderervk/tr_curve.o \
+  $(B)/renderervk/tr_image.o \
+  $(B)/renderervk/tr_init.o \
+  $(B)/renderervk/tr_light.o \
+  $(B)/renderervk/tr_main.o \
+  $(B)/renderervk/tr_marks.o \
+  $(B)/renderervk/tr_mesh.o \
+  $(B)/renderervk/tr_model.o \
+  $(B)/renderervk/tr_model_iqm.o \
+  $(B)/renderervk/tr_scene.o \
+  $(B)/renderervk/tr_shade.o \
+  $(B)/renderervk/tr_shade_calc.o \
+  $(B)/renderervk/tr_shader.o \
+  $(B)/renderervk/tr_shadows.o \
+  $(B)/renderervk/tr_sky.o \
+  $(B)/renderervk/tr_surface.o \
+  $(B)/renderervk/tr_world.o \
+  $(B)/renderervk/vk.o \
+  $(B)/renderervk/vk_flares.o \
+  $(B)/renderervk/vk_vbo.o \
+  $(B)/renderervk/tr_image_bmp.o \
+  $(B)/renderervk/tr_image_jpg.o \
+  $(B)/renderervk/tr_image_pcx.o \
+  $(B)/renderervk/tr_image_png.o \
+  $(B)/renderervk/tr_image_tga.o \
+  $(B)/renderervk/tr_noise.o \
+  \
+  $(B)/renderervk/sdl_gamma.o \
+  $(B)/renderervk/sdl_glimp.o
 
 Q3R2STRINGOBJ = \
   $(B)/renderergl2/glsl/bokeh_fp.o \
@@ -1984,6 +2038,11 @@ $(B)/$(CLIENTBIN)$(FULLBINEXT): $(Q3OBJ) $(LIBSDLMAIN)
 $(B)/opengl2$(SHLIBNAME): $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ)
 	$(echo_cmd) "LD $@"
 	$(Q)$(CC) $(CFLAGS) $(SHLIBLDFLAGS) -o $@ $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ) \
+		$(THREAD_LIBS) $(LIBSDLMAIN) $(RENDERER_LIBS) $(LIBS)
+
+$(B)/vulkan$(SHLIBNAME): $(Q3RVKOBJ) $(JPGOBJ)
+	$(echo_cmd) "LD $@"
+	$(Q)$(CC) $(CFLAGS) $(SHLIBLDFLAGS) -o $@ $(Q3RVKOBJ) $(JPGOBJ) \
 		$(THREAD_LIBS) $(LIBSDLMAIN) $(RENDERER_LIBS) $(LIBS)
 else
 $(B)/$(CLIENTBIN)_opengl2$(FULLBINEXT): $(Q3OBJ) $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ) $(LIBSDLMAIN)
@@ -2340,6 +2399,21 @@ $(B)/renderergl2/%.o: $(RCOMMONDIR)/%.c
 
 $(B)/renderergl2/%.o: $(RGL2DIR)/%.c
 	$(DO_REF_CC)
+
+$(B)/renderervk/%.o: $(CMDIR)/%.c
+	$(DO_REF_CC)
+
+$(B)/renderervk/%.o: $(SDLDIR)/%.c
+	$(DO_REF_CC)
+
+$(B)/renderervk/%.o: $(JPDIR)/%.c
+	$(DO_REF_CC)
+
+$(B)/renderervk/%.o: $(RCOMMONDIR)/%.c
+	$(DO_REF_CC)
+
+$(B)/renderervk/%.o: $(RVKDIR)/%.c
+	$(DO_REF_VK_CC)
 
 
 $(B)/ded/%.o: $(SDIR)/%.c

@@ -10,7 +10,47 @@ CVAR_LATCH`, falling back to its reset string when the named library is missing)
 and `USE_RENDERER_DLOPEN=1`, so a third renderer needs no engine change at all.
 It needs to build as `vulkan<arch>.so` / `.dll` and export `GetRefAPI`.
 
-## Status: NOT WIRED UP
+## Status: BUILDS OPT-IN, does not link yet
+
+`make BUILD_RENDERER_VULKAN=1` compiles `code/renderervk`. It is off by default
+and no default-build rule touches the directory, so it cannot affect an OpenGL
+build — verified: `opengl2x86_64.so` is byte-identical with the target added.
+
+Progress: from twelve distinct classes of blocker down to the interface gap
+this file predicted. Two objects compile; the rest stop on missing
+`refimport_t` members.
+
+### How the vendored source stays vendored
+
+`tr_q3e_compat.h` collects the declarations Quake3e has and this tree does not,
+and the Makefile force-includes it for `renderervk` only (`DO_REF_VK_CC`).
+Nothing else in the tree sees it. So far: `color4ub_t` (a union of `rgba[4]`
+and `u32` — declaring it as a plain `byte[4]` was rejected by every `.u32`
+use, which is the right way to find that out), `MAX_VIDEO_HANDLES`,
+`refShutdownCode_t`, `MAX_UINT`, `CONTENTS_NODE`, and `extern refimport_t ri`.
+
+### Patches to vendored files — keep this list short
+
+**`tr_backend.c`, 2 sites.** Quake3e made `refEntity_t.shaderTime` a
+`floatint_t` union and added an `intShaderTime` flag to pick a half. This
+tree's `refEntity_t` has a plain `float` and no flag, and that struct is shared
+with cgame — changing it is an ABI change across the game modules, not a
+renderer detail. Collapsed to the float branch, which is what the integer path
+degrades to anyway.
+
+### What is left, in the order the compiler hits it
+
+1. **Four `q_shared` helpers to port from Quake3e:** `log2pad`, `crc32_buffer`,
+   `Q_atof`, `Com_Split`. Self-contained; put them next to the compat header
+   rather than in this tree's `q_shared.c`, so the OpenGL build is untouched.
+2. **The `refimport_t` gap, as measured below.** First ones the compiler
+   reaches: `CL_IsMinimized`, `Cvar_ResetGroup`, `Cvar_CheckGroup`.
+3. **`shaderRGBA`**, which is `color4ub_t` in Quake3e and `byte[4]` here — same
+   shape as the `shaderTime` divergence and needs the same decision: adapt the
+   renderer, or change the shared struct.
+4. Then the windowing restructure, which is still the real cost.
+
+## Original status note: NOT WIRED UP
 
 Vendored only. `BUILD_RENDERER_VULKAN` defaults to 0 and nothing in the default
 build touches this directory. It cannot break an OpenGL build.

@@ -676,10 +676,13 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 			if ( entityNum != REFENTITYNUM_WORLD ) {
 				backEnd.currentEntity = &backEnd.refdef.entities[entityNum];
-				if ( backEnd.currentEntity->intShaderTime )
-					backEnd.refdef.floatTime = originalTime - (double)(backEnd.currentEntity->e.shaderTime.i) * 0.001;
-				else
-					backEnd.refdef.floatTime = originalTime - (double)backEnd.currentEntity->e.shaderTime.f;
+				// [QL PATCH 1/1] Quake3e made refEntity_t.shaderTime a floatint_t
+				// union and added an intShaderTime flag to select the halves.
+				// This tree's refEntity_t has a plain float and no flag, and it
+				// is shared with cgame, so changing it here would be an ABI
+				// change across the game modules. Collapse to the float branch,
+				// which is what the integer path degrades to anyway.
+				backEnd.refdef.floatTime = originalTime - (double)backEnd.currentEntity->e.shaderTime;
 
 				// set up the transformation matrix
 				R_RotateForEntity( backEnd.currentEntity, &backEnd.viewParms, &backEnd.or );
@@ -903,10 +906,13 @@ static void RB_RenderLitSurfList( dlight_t* dl ) {
 			if ( entityNum != REFENTITYNUM_WORLD ) {
 				backEnd.currentEntity = &backEnd.refdef.entities[entityNum];
 
-				if ( backEnd.currentEntity->intShaderTime )
-					backEnd.refdef.floatTime = originalTime - (double)(backEnd.currentEntity->e.shaderTime.i) * 0.001;
-				else
-					backEnd.refdef.floatTime = originalTime - (double)backEnd.currentEntity->e.shaderTime.f;
+				// [QL PATCH 1/1] Quake3e made refEntity_t.shaderTime a floatint_t
+				// union and added an intShaderTime flag to select the halves.
+				// This tree's refEntity_t has a plain float and no flag, and it
+				// is shared with cgame, so changing it here would be an ABI
+				// change across the game modules. Collapse to the float branch,
+				// which is what the integer path degrades to anyway.
+				backEnd.refdef.floatTime = originalTime - (double)backEnd.currentEntity->e.shaderTime;
 
 				// set up the transformation matrix
 				R_RotateForEntity( backEnd.currentEntity, &backEnd.viewParms, &backEnd.or );
