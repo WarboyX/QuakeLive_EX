@@ -1083,6 +1083,7 @@ extern vmCvar_t g_motd;
 extern vmCvar_t g_warmup;
 extern vmCvar_t g_doWarmup;
 extern vmCvar_t g_gameState;
+extern vmCvar_t g_debugWarmup;
 extern vmCvar_t sv_warmupReadyPercentage;
 extern vmCvar_t g_warmupDelay;
 extern vmCvar_t g_warmupReadyDelay;

@@ -341,6 +341,7 @@ vmCvar_t g_spawnItemAmmo;
 
 // [QL] game state management
 vmCvar_t g_gameState;
+vmCvar_t g_debugWarmup;
 vmCvar_t sv_warmupReadyPercentage;
 vmCvar_t g_warmupDelay;
 vmCvar_t g_warmupReadyDelay;
@@ -650,7 +651,9 @@ static cvarTable_t gameCvarTable[] = {
 
     {&g_warmup, "g_warmup", "10", CVAR_ARCHIVE, 0, NULL},  // [QL] binary default "10"
     {&g_doWarmup, "g_doWarmup", "1", CVAR_ARCHIVE, 0, NULL},
-    {&g_gameState, "g_gameState", "PRE_GAME", CVAR_ROM | CVAR_SERVERINFO, 0, NULL},  // [QL] binary: 0x44
+    {&g_gameState, "g_gameState", "PRE_GAME", CVAR_ROM | CVAR_SERVERINFO, 0, NULL},
+    // [QL] traces the warmup -> countdown -> live state machine (see SetWarmupState)
+    {&g_debugWarmup, "g_debugWarmup", "0", 0, 0, NULL},  // [QL] binary: 0x44
     {&sv_warmupReadyPercentage, "sv_warmupReadyPercentage", "0.51", CVAR_LATCH | CVAR_ARCHIVE, 0, NULL},  // [QL] binary: 0x21
     {&g_warmupDelay, "g_warmupDelay", "15", 0, 0, NULL},
     {&g_warmupReadyDelay, "g_warmupReadyDelay", "0", 0, 0, NULL},
@@ -3016,6 +3019,12 @@ Binary: FUN_10059c80 in qagamex86.dll
 void SetWarmupState(int warmupTime) {
     const char *gameState;
 
+    if (g_debugWarmup.integer) {
+        G_Printf("^3warmup^7 %d -> %d  (level.time %d, playing %d, ready %d/%d)\n",
+                 level.warmupTime, warmupTime, level.time, level.numPlayingClients,
+                 level.numReadyHumans, level.numReadyClients);
+    }
+
     level.warmupTime = warmupTime;
     trap_SetConfigstring(CS_WARMUP, va("\\time\\%i", warmupTime));
 
@@ -3112,6 +3121,34 @@ whether warmup may advance. During COUNT_DOWN it re-freezes playing clients.
 .so symbol: CheckWarmupConditions   Binary: 0x10057830 in qagamex86.dll
 =============
 */
+/*
+=============
+WarmupBlocked
+
+[QL] Names the gate that is holding the match in warmup. "Not enough ready
+players" has six separate causes and they are indistinguishable from outside,
+so g_debugWarmup 1 says which one fired. Rate-limited to once a second per
+reason - this runs every frame.
+=============
+*/
+static void WarmupBlocked(const char *reason) {
+    static const char *lastReason;
+    static int lastPrint;
+
+    if (!g_debugWarmup.integer) {
+        return;
+    }
+    if (reason == lastReason && level.time - lastPrint < 1000) {
+        return;
+    }
+    lastReason = reason;
+    lastPrint = level.time;
+
+    G_Printf("^3warmup^7 held: %s  (playing %d, connected %d, red %d, blue %d)\n",
+             reason, level.numPlayingClients, level.numConnectedClients,
+             TeamCount(-1, TEAM_RED), TeamCount(-1, TEAM_BLUE));
+}
+
 static qboolean CheckWarmupConditions(void) {
     int i;
     int numPlaying = 0;
@@ -3128,6 +3165,7 @@ static qboolean CheckWarmupConditions(void) {
     // before allowing countdown (binary: early check in FUN_10057830)
     if (g_warmupDelay.integer != 0 && g_gametype.integer != GT_DUEL &&
         level.time - level.startTime < g_warmupDelay.integer * 1000) {
+        WarmupBlocked("g_warmupDelay grace period still running");
         return qfalse;
     }
 
@@ -3180,13 +3218,16 @@ static qboolean CheckWarmupConditions(void) {
             (blueCount < g_teamSizeMin.integer && level.numPlayingClients < g_teamSizeMin.integer)) {
             if (g_gametype.integer < GT_TEAM) {
                 if (level.numPlayingClients < 2) {
+                    WarmupBlocked("g_teamForcePresent: fewer than 2 playing clients");
                     return qfalse;
                 }
             } else {
                 if (redCount < g_teamSizeMin.integer) {
+                    WarmupBlocked("g_teamForcePresent: red below g_teamSizeMin");
                     return qfalse;
                 }
                 if (blueCount < g_teamSizeMin.integer) {
+                    WarmupBlocked("g_teamForcePresent: blue below g_teamSizeMin");
                     return qfalse;
                 }
             }
@@ -3195,6 +3236,7 @@ static qboolean CheckWarmupConditions(void) {
 
     // Check g_teamForceBalance (teams can't differ by more than 1)
     if (!G_CheckTeamBalance()) {
+        WarmupBlocked("g_teamForceBalance: teams uneven");
         return qfalse;
     }
 
@@ -3205,6 +3247,7 @@ static qboolean CheckWarmupConditions(void) {
             if (level.numPlayingClients == 2 && numPlaying == 2) {
                 return qtrue;
             }
+            WarmupBlocked("duel needs exactly 2 playing clients");
         } else {
             // Team/FFA: at least one human readied AND the ready fraction meets the
             // threshold. Binary numerator is numPlaying (ready humans + auto-ready
@@ -3214,6 +3257,8 @@ static qboolean CheckWarmupConditions(void) {
                 sv_warmupReadyPercentage.value == 0.0f) {
                 return qtrue;
             }
+            WarmupBlocked("not enough ready: needs a readied human and the "
+                          "sv_warmupReadyPercentage fraction");
         }
     } else {
         // During COUNT_DOWN: re-freeze every connected client. Binary tests only
@@ -3419,6 +3464,12 @@ static void CheckWarmupAndForfeit(void) {
     if (level.warmupTime == 0) {
         // Live match: automatic forfeit check.
         if (CheckForfeitConditions(NULL, 0)) {
+            if (g_debugWarmup.integer) {
+                G_Printf("^1warmup^7 AUTO-FORFEIT at %d (playing %d, red %d, blue %d) - "
+                         "this ends the match that just started\n",
+                         level.time, level.numPlayingClients,
+                         TeamCount(-1, TEAM_RED), TeamCount(-1, TEAM_BLUE));
+            }
             ForfeitMatch();
         }
         return;
@@ -3471,6 +3522,9 @@ static void CheckWarmupAndForfeit(void) {
     // Countdown elapsed: begin the match via map_restart.
     if (level.time >= level.warmupTime) {
         // [QL] Binary calls STAT_MatchReport() here first (not modelled in ioquakelive).
+        if (g_debugWarmup.integer) {
+            G_Printf("^3warmup^7 countdown elapsed at %d, issuing map_restart 0\n", level.time);
+        }
         level.warmupTime += 10000;
         trap_Cvar_Set("g_restarted", "1");
         trap_SendConsoleCommand(EXEC_APPEND, "map_restart 0\n");
