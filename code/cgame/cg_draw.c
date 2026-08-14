@@ -715,9 +715,9 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 			// draw weapon icon
 			xx += TINYCHAR_WIDTH * 3;
 
-			if (cg_weapons[ci->curWeapon].weaponIcon) {
+			if (CG_WeaponInfo(ci->curWeapon)->weaponIcon) {
 				CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
-						   cg_weapons[ci->curWeapon].weaponIcon);
+						   CG_WeaponInfo(ci->curWeapon)->weaponIcon);
 			} else {
 				CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
 						   cgs.media.deferShader);
@@ -1185,13 +1185,11 @@ static void CG_DrawLagometer(void) {
 		static int lastPing;
 		const char* text;
 		int textX, textY;
-		float tw;
 
 		if (cg.snap->ping) {
 			lastPing = cg.snap->ping;
 		}
 		text = va("%d", lastPing);
-		tw = CG_Text_Width(text, 0.175f, 0);
 		textX = x + 2;
 		textY = y + 8;
 		CG_Text_Paint((float)textX, (float)textY,

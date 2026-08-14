@@ -366,6 +366,7 @@ CG_RailTrail
 */
 void CG_RailTrail(clientInfo_t* ci, vec3_t start, vec3_t end) {
     vec3_t axis[36], move, move2, vec, temp;
+    vec3_t muzzle;
     float len;
     int i, j, skip;
 
@@ -433,15 +434,25 @@ void CG_RailTrail(clientInfo_t* ci, vec3_t start, vec3_t end) {
         }
     }
 
+    // The adjustment above moved the core beam onto the drawn muzzle. Everything
+    // else that makes up this shot has to start from the same place, so capture
+    // it before allocating anything further - CG_AllocLocalEntity can recycle the
+    // oldest entity, which invalidates re.
+    VectorCopy(re->origin, muzzle);
+
     // [QL] cg_oldRail == 2 draws the spiral ring trail; anything else draws the
     // rings-only disc beam (CG_RailTrailCore) and stops.
     // (binary: if (cg_oldRail == 2) { spiral } else { CG_RailTrailCore })
     if (cg_oldRail.integer != 2) {
-        CG_RailTrailCore(ci, start, end);
+        // Not "start": the rings beam and the core beam are two halves of one
+        // rail, and passing the raw server/predicted muzzle here gave the rings
+        // their own origin along the view axis while the core left the barrel -
+        // two beams converging on the same impact point. This is the second beam.
+        CG_RailTrailCore(ci, muzzle, end);
         return;
     }
 
-    VectorCopy(re->origin, move);
+    VectorCopy(muzzle, move);
     VectorSubtract(end, move, vec);
     len = VectorNormalize(vec);
     PerpendicularVector(temp, vec);
@@ -519,6 +530,22 @@ reused as the spawn gate and set to 1 once consumed.
 void CG_SpawnRailTrail(centity_t* cent) {
     if (cent->currentState.weapon == WP_RAILGUN && cent->pe.railFireTime != 0) {
         cent->pe.railFireTime = 1;  // mark as consumed
+
+        // pe.railgunTrailStart is meant to be captured from the rendered weapon
+        // flash tag when the rail fires - that is the whole point of this
+        // function, and what makes QL's beam leave the drawn barrel rather than
+        // the server's muzzle point. Nothing in this build ever writes it. The
+        // field is declared and read and assigned nowhere, so this drew a beam
+        // from the world origin on every rail shot, on top of the correct one
+        // the EV_RAILTRAIL handler draws.
+        //
+        // Stay inert until the capture exists, rather than drawing from the
+        // world origin. EV_RAILTRAIL covers the trail meanwhile.
+        if (cent->pe.railgunTrailStart[0] == 0.0f && cent->pe.railgunTrailStart[1] == 0.0f &&
+            cent->pe.railgunTrailStart[2] == 0.0f) {
+            return;
+        }
+
         CG_RailTrail(&cgs.clientinfo[cent->currentState.clientNum],
                      cent->pe.railgunTrailStart, cent->currentState.origin2);
     }
@@ -819,6 +846,37 @@ static void CG_GrenadeTrail(centity_t* ent, const weaponInfo_t* wi) {
 
 /*
 =================
+CG_ValidWeaponNum
+
+Weapon numbers reach cgame straight off the wire - entityState_t::weapon is an
+8-bit delta field and playerState_t::weapon a 5-bit one - so both can carry
+values well past MAX_WEAPONS. Anything that indexes cg_weapons[] with a
+network-supplied number has to be range-checked first.
+=================
+*/
+qboolean CG_ValidWeaponNum(int weaponNum) {
+    return (weaponNum > 0 && weaponNum < MAX_WEAPONS);
+}
+
+/*
+=================
+CG_WeaponInfo
+
+Range-checked cg_weapons[] lookup. Out-of-range numbers resolve to slot 0
+(WP_NONE), which is never registered and therefore stays zeroed - it reads back
+as "no model, no icon, no sounds" instead of running off the end of the array.
+=================
+*/
+weaponInfo_t* CG_WeaponInfo(int weaponNum) {
+    if (!CG_ValidWeaponNum(weaponNum)) {
+        return &cg_weapons[0];
+    }
+
+    return &cg_weapons[weaponNum];
+}
+
+/*
+=================
 CG_RegisterWeapon
 
 The server says this item is used on this level
@@ -831,12 +889,15 @@ void CG_RegisterWeapon(int weaponNum) {
     vec3_t mins, maxs;
     int i;
 
-    weaponInfo = &cg_weapons[weaponNum];
-
     // [QL] weapon 0 and 15 (0xf) are not registered; grapple (10) IS registered.
-    if (weaponNum == 0 || weaponNum == 15) {
+    // The range check has to come before the array access: this function
+    // memsets the slot it resolves, so an unchecked number is an out-of-bounds
+    // write, not just a bad read.
+    if (!CG_ValidWeaponNum(weaponNum) || weaponNum == 15) {
         return;
     }
+
+    weaponInfo = &cg_weapons[weaponNum];
 
     if (weaponInfo->registered) {
         return;
@@ -903,6 +964,14 @@ void CG_RegisterWeapon(int weaponNum) {
 
     if (!weaponInfo->handsModel) {
         weaponInfo->handsModel = trap_R_RegisterModel("models/weapons2/shotgun/shotgun_hand.md3");
+        if (!weaponInfo->handsModel) {
+            // Without this the first-person weapon has nothing to hang off and
+            // ends up drawn at the eye. Worth a line in the console, because the
+            // symptom (a sliver of barrel at the edge of the screen) looks like
+            // a field-of-view or camera problem and is not one.
+            CG_Printf("^3WARNING:^7 no hands model for weapon %d (tried %s and the shotgun fallback)\n",
+                      weaponNum, path);
+        }
     }
 
     switch (weaponNum) {
@@ -1440,7 +1509,7 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     weaponNum = cent->currentState.weapon;
 
     CG_RegisterWeapon(weaponNum);
-    weapon = &cg_weapons[weaponNum];
+    weapon = CG_WeaponInfo(weaponNum);
 
     // add the weapon
     memset(&gun, 0, sizeof(gun));
@@ -1490,9 +1559,35 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     //   parent->hModel, "tag_weapon") and has no cg_drawGun 2/3 handedness offset. The
     //   manual LerpTag path below preserves ioquakelive's left-handed / centered gun
     //   modes. Reconcile if exact parity is required.
-    trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
-                   1.0 - parent->backlerp, "tag_weapon");
+    // [QL] tag_weapon on the hands model carries the entire offset that puts the
+    // gun into the lower right of the view - the hands themselves are never
+    // drawn, they exist only to position the weapon. R_LerpTag zeroes the
+    // orientation when the model or the tag is missing and this call used to
+    // ignore that, so a failure silently drew the gun at the eye with the view
+    // orientation: only the very tip of the barrel pokes into frame, which is
+    // exactly what a missing hands model looks like from the player's side.
+    //
+    // Say so once per weapon rather than leaving it to be mistaken for a
+    // framing or FOV problem.
+    if (!trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
+                        1.0 - parent->backlerp, "tag_weapon")) {
+        static int warnedTag = 0;
+        int bit = 1 << (cent->currentState.weapon & 31);
+
+        if (!(warnedTag & bit)) {
+            warnedTag |= bit;
+            CG_Printf("^3WARNING:^7 weapon %d has no usable \"tag_weapon\" (hands model %s); "
+                      "the view model will draw at the eye\n",
+                      cent->currentState.weapon, parent->hModel ? "loaded" : "MISSING");
+        }
+    }
     VectorCopy(parent->origin, gun.origin);
+
+    // Orientation first: the per-axis VectorMA calls below reference
+    // parent->axis[n] with constant indices, which narrows gcc's view of the
+    // object to a single vec3_t and makes the whole-matrix read here look like
+    // an overflow. Nothing in the origin maths depends on gun.axis.
+    MatrixMultiply(lerped.axis, parent->axis, gun.axis);
 
     VectorMA(gun.origin, lerped.origin[0], parent->axis[0], gun.origin);
 
@@ -1504,7 +1599,6 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
 
     VectorMA(gun.origin, lerped.origin[2], parent->axis[2], gun.origin);
 
-    MatrixMultiply(lerped.axis, ((refEntity_t*)parent)->axis, gun.axis);
     gun.backlerp = parent->backlerp;
 
     CG_AddWeaponWithPowerups(&gun, cent->currentState.powerups);
@@ -1629,6 +1723,7 @@ void CG_AddViewWeapon(playerState_t* ps) {
     centity_t* cent;
     clientInfo_t* ci;
     float fovOffset;
+    float gunForward = 0.0f;
     vec3_t angles;
     weaponInfo_t* weapon;
 
@@ -1671,16 +1766,68 @@ void CG_AddViewWeapon(playerState_t* ps) {
         fovOffset = 0;
     }
 
+    // [QL] Widescreen puts the gun off the bottom of the screen.
+    //
+    // cg_fov is a *horizontal* field of view, so a wider display does not show
+    // more - it shows the same width over less height. At 16:9 the vertical FOV
+    // is a quarter narrower than the 4:3 the Quake 3 viewmodel maths was written
+    // for, and the term above makes it worse by pushing the gun further down as
+    // the FOV rises. The weapon tags sit about 11 units below the view axis, so
+    // at 3840x2160 with cg_fov 100 (vertical half-FOV 33.8 degrees) nothing
+    // closer than ~16 units ahead of the eye clears the bottom edge. Most tags
+    // are *behind* the eye - the lightning gun's is 8.3 back - so the first ~25
+    // units of the model are off screen and all that is left is the barrel tip.
+    //
+    // The correction goes *forward*, not up. Raising the gun works arithmetically
+    // but slides it up the screen and away from where it belongs; pushing it
+    // forward walks the model into the part of the view cone that has widened
+    // enough to contain it, so it keeps its downward angle and simply stops
+    // being cropped.
+    //
+    // The shape of the correction is derived, not fitted. The first forward
+    // distance that clears the bottom edge is
+    //
+    //     down / tan(halfFovY),  and  tan(halfFovY) = tan(halfFovX) / aspect
+    //
+    // so that distance is down * aspect / tan(halfFovX): exactly linear in the
+    // aspect ratio, and inversely proportional to tan(halfFovX). Hence the two
+    // terms below. Only the constant is empirical - it sets how far past merely
+    // grazing the edge the gun sits, which is a matter of taste rather than
+    // geometry.
+    //
+    // Zero at 4:3, so nothing changes on the aspect the original maths assumed.
+    // Exactly 1.0 on the fov term at cg_fov 100, so the configuration this was
+    // tuned on is untouched, and other fields of view follow the derivation.
+    if (cg_gunAspect.integer && cg.refdef.width > 0 && cg.refdef.height > 0) {
+        const float refAspect = 4.0f / 3.0f;
+        const float refTanHalfFovX = 1.19175f;  // tan(100 / 2 degrees)
+        float aspect = (float)cg.refdef.width / (float)cg.refdef.height;
+
+        if (aspect > refAspect) {
+            float tanHalfFovX = tan(DEG2RAD(cg_fov.value) * 0.5f);
+            float fovScale = (tanHalfFovX > 0.01f) ? refTanHalfFovX / tanHalfFovX : 1.0f;
+
+            // A very narrow or very wide fov should not run away with this.
+            if (fovScale < 0.5f) {
+                fovScale = 0.5f;
+            } else if (fovScale > 2.0f) {
+                fovScale = 2.0f;
+            }
+
+            gunForward = 19.5f * (aspect / refAspect - 1.0f) * fovScale;
+        }
+    }
+
     cent = &cg.predictedPlayerEntity;  // &cg_entities[cg.snap->ps.clientNum];
     CG_RegisterWeapon(ps->weapon);
-    weapon = &cg_weapons[ps->weapon];
+    weapon = CG_WeaponInfo(ps->weapon);
 
     memset(&hand, 0, sizeof(hand));
 
     // set up gun position
     CG_CalculateWeaponPosition(hand.origin, angles);
 
-    VectorMA(hand.origin, cg_gun_x.value, cg.refdef.viewaxis[0], hand.origin);
+    VectorMA(hand.origin, cg_gun_x.value + gunForward, cg.refdef.viewaxis[0], hand.origin);
     VectorMA(hand.origin, cg_gun_y.value, cg.refdef.viewaxis[1], hand.origin);
     VectorMA(hand.origin, (cg_gun_z.value + fovOffset), cg.refdef.viewaxis[2], hand.origin);
 
@@ -2216,6 +2363,14 @@ void CG_MissileHitWall(int weapon, int clientNum, vec3_t origin, vec3_t dir, imp
     qhandle_t mod;
     qhandle_t mark;
     qhandle_t shader;
+    // The impact media below (railExplosionShader, plasmaExplosionShader, ...)
+    // is only loaded by CG_RegisterWeapon, which normally runs when the weapon's
+    // item or model is first seen. An impact can easily arrive before that - a
+    // weapon handed out by loadout on a map with no pickup for it never triggers
+    // registration at all - and every handle is then still 0, so the effect
+    // silently does not draw. Registration early-outs once done, so this is
+    // free after the first call.
+    CG_RegisterWeapon(weapon);
     sfxHandle_t sfx;
     float radius;
     float light;
@@ -2424,10 +2579,10 @@ void CG_MissileHitPlayer(int weapon, vec3_t origin, vec3_t dir, int entityNum) {
         // QL binary: impact sparks (vmCvar 0x10B6FBE0, 0x10A63CC0, 0x10A67AA0, 0x10A66D20)
         if (cg_impactSparks.integer) {
             vec3_t vel = { 0, 0, cg_impactSparksVelocity.value };
-            CG_SpawnParticleEffect(vel, (float)cg_impactSparksSize.integer,
+            CG_SpawnParticleEffect(origin, vel, (float)cg_impactSparksSize.integer,
                 1.0f, 1.0f, 1.0f, 1.0f,
                 (float)cg_impactSparksLifetime.integer,
-                cg.time, 1, cgs.media.sparkParticleShader);
+                cg.time, PARTICLE_FX_SPARKS, cgs.media.sparkParticleShader);
         }
     }
 
@@ -2488,10 +2643,10 @@ void CG_MissileHitWall_DmgThrough(vec3_t origin, vec3_t dir, int weapon) {
             vel[1] = speed * dir[1] + (50.0f - 50.0f * crandom());
             vel[2] = speed * dir[2] + (50.0f - 50.0f * crandom());
 
-            CG_SpawnParticleEffect(vel, 24.0f,
+            CG_SpawnParticleEffect(trace.endpos, vel, 24.0f,
                                    0.8f, 0.8f, 0.7f, 1.0f,
                                    400.0f - (speed / 500.0f) * 200.0f,
-                                   cg.time, 0, cgs.media.debrisPuffShader);
+                                   cg.time, PARTICLE_FX_DEBRIS, cgs.media.debrisPuffShader);
         }
     }
 
@@ -2511,7 +2666,7 @@ SHOTGUN TRACING
 CG_ShotgunPellet
 ================
 */
-static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum) {
+static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum, vec3_t hitOut, int* numHits) {
     trace_t tr;
     int sourceContentType, destContentType;
 
@@ -2519,6 +2674,13 @@ static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum) {
         CG_CapsuleTrace(&tr, start, NULL, NULL, end, skipNum, MASK_SHOT);
     } else {
         CG_Trace(&tr, start, NULL, NULL, end, skipNum, MASK_SHOT);
+    }
+
+    // cg_debugShotgun: record where this pellet landed, before any of the
+    // early-outs below can skip it
+    if (hitOut && tr.fraction < 1.0f) {
+        VectorCopy(tr.endpos, hitOut);
+        (*numHits)++;
     }
 
     sourceContentType = CG_PointContents(start, 0);
@@ -2568,55 +2730,102 @@ Perform the same traces the server did to locate the
 hit splashes
 ================
 */
+/*
+================
+CG_DebugShotgun
+
+cg_debugShotgun 1: report where a blast actually went, measured against the axis
+the crosshair is drawn on, so "the pellets do not land on the crosshair" becomes
+a number instead of an impression.
+
+Every angle is signed degrees in the player's own frame: + right, + up. If the
+event's direction disagrees with the view axis the fault is upstream of the
+pattern (the muzzle or the transmitted direction); if it agrees but the pellets
+are off-centre, the fault is the pattern itself.
+================
+*/
+static void CG_DebugShotgun(const vec3_t origin, const vec3_t origin2, const vec3_t hits, int numHits) {
+    vec3_t vf, vr, vu, evDir;
+    float aimRight, aimUp, dot;
+    float sumR = 0.0f, sumU = 0.0f, maxRad = 0.0f;
+    int i;
+
+    AngleVectors(cg.refdefViewAngles, vf, vr, vu);
+
+    VectorNormalize2(origin2, evDir);
+    dot = DotProduct(evDir, vf);
+    if (dot > 1.0f) {
+        dot = 1.0f;
+    }
+    aimRight = RAD2DEG(atan2(DotProduct(evDir, vr), dot));
+    aimUp = RAD2DEG(atan2(DotProduct(evDir, vu), dot));
+
+    CG_Printf("^3shotgun^7 fire dir vs view: right %+.2f deg  up %+.2f deg  (want 0.00/0.00)\n", aimRight, aimUp);
+    CG_Printf("       muzzle %.1f units from the camera, %.2f/%.2f/%.2f off it\n",
+              Distance(origin, cg.refdef.vieworg), origin[0] - cg.refdef.vieworg[0], origin[1] - cg.refdef.vieworg[1],
+              origin[2] - cg.refdef.vieworg[2]);
+    CG_Printf("       pattern %i  basis %i (%s)  spread %.2f  jitter %.2f\n", cgs.shotgunPattern, cgs.shotgunBasis,
+              cgs.shotgunBasis == SHOTGUN_BASIS_VIEW ? "view" : "compat", cgs.shotgunSpread, cgs.shotgunJitter);
+
+    for (i = 0; i < numHits; i++) {
+        vec3_t rel;
+        float pr, pu, rad;
+
+        VectorSubtract(&hits[i * 3], origin, rel);
+        VectorNormalize(rel);
+        dot = DotProduct(rel, vf);
+        if (dot < 0.001f) {
+            dot = 0.001f;
+        }
+        pr = RAD2DEG(atan2(DotProduct(rel, vr), dot));
+        pu = RAD2DEG(atan2(DotProduct(rel, vu), dot));
+        sumR += pr;
+        sumU += pu;
+        rad = sqrt(pr * pr + pu * pu);
+        if (rad > maxRad) {
+            maxRad = rad;
+        }
+    }
+
+    if (numHits > 0) {
+        CG_Printf("       %i pellets: centre %+.2f/%+.2f deg off crosshair, widest %.2f deg\n", numHits,
+                  sumR / numHits, sumU / numHits, maxRad);
+    }
+}
+
 static void CG_ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, int otherEntNum) {
     int i;
-    float r, u, angle, ringRadius, jitter;
+    float r, u;
     vec3_t end;
     vec3_t forward, right, up;
+    vec3_t debugHits[DEFAULT_SHOTGUN_COUNT];
+    int numDebugHits = 0;
 
-    // derive the right and up vectors from the forward vector, because
-    // the client won't have any other information
-    VectorNormalize2(origin2, forward);
-    PerpendicularVector(right, forward);
-    CrossProduct(forward, right, up);
+    // The pattern is generated in shared code (BG_ShotgunBasis /
+    // BG_ShotgunPellet) off the direction in origin2, the seed the server put in
+    // the event, and three serverinfo values - so these traces reproduce the
+    // server's exactly. The shape, spread and jitter deliberately come from the
+    // server and not from a local cvar: cg_trueShotgun used to change the
+    // pattern the player was shown without changing the pattern the server
+    // traced, which is a desync by construction.
+    BG_ShotgunBasis(origin2, cgs.shotgunBasis, forward, right, up);
 
-    // [QL] Concentric ring pattern (binary-verified from cgamex86.dll 0x10055650)
-    // 3 rings: inner(6 pellets, r=4), middle(6, r=8), outer(8, r=12) = 20 total
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
-        if (i < 6) {
-            jitter = 0.4f;
-            ringRadius = 4000;   // [QL] binary FILD 0xfa0 (server spread baked in)
-            angle = (float)(i - 20) * 1.0471976f;   // pi/3 = 60 degree spacing
-        } else if (i < 12) {
-            jitter = 0.3f;
-            ringRadius = 8000;   // [QL] binary FILD 0x1f40
-            angle = (float)i * 1.0471976f + 30.0f;  // 30 radian offset (binary value)
-        } else {
-            jitter = 0.2f;
-            ringRadius = 12000;  // [QL] binary FILD 0x2ee0
-            angle = (float)i * 0.7853982f;           // pi/4 = 45 degree spacing
-        }
+        qboolean inner;
 
-        // [QL] jitter gate is cg_trueShotgun (DAT_10a63f0c), NOT gametype.
-        // When set, the concentric ring pattern is perfectly tight (no seed spread).
-        if (cg_trueShotgun.integer) {
-            jitter = 0.0f;
-        }
-
-        // LCG PRNG: seed = (seed * 0xDCD + 1) & 0xFFFF - 16-bit wrap
-        // (binary uses int but 1/65536 normalizer implies 16-bit range)
-        seed = (seed * 0xDCD + 1) & 0xFFFF;
-        r = (cos(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
-
-        seed = (seed * 0xDCD + 1) & 0xFFFF;
-        u = (sin(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
+        seed = BG_ShotgunPellet(i, seed, cgs.shotgunPattern, cgs.shotgunJitter, cgs.shotgunSpread, &r, &u, &inner);
 
         VectorMA(origin, 8192 * 16, forward, end);
         // [QL] r/u already include the (large) ring radius; no DEFAULT_SHOTGUN_SPREAD scale
         VectorMA(end, r, right, end);
         VectorMA(end, u, up, end);
 
-        CG_ShotgunPellet(origin, end, otherEntNum);
+        CG_ShotgunPellet(origin, end, otherEntNum, cg_debugShotgun.integer ? debugHits[numDebugHits] : NULL,
+                         &numDebugHits);
+    }
+
+    if (cg_debugShotgun.integer) {
+        CG_DebugShotgun(origin, origin2, debugHits[0], numDebugHits);
     }
 }
 
@@ -2635,8 +2844,12 @@ void CG_ShotgunFire(entityState_t* es) {
         contents = CG_PointContents(es->pos.trBase, 0);
         if (!(contents & CONTENTS_WATER) && cgs.glconfig.hardwareType != GLHW_RAGEPRO) {
             vec3_t up;
-            VectorSubtract(es->origin2, es->pos.trBase, v);
-            VectorNormalize(v);
+            // The puff belongs 32 units in front of the muzzle. This used to
+            // normalise the direction and then pass it straight in as the
+            // origin, so every shotgun smoke puff in the game was spawned at
+            // world coordinates within one unit of the map origin.
+            VectorNormalize2(es->origin2, v);
+            VectorMA(es->pos.trBase, 32, v, v);
             VectorSet(up, 0, 0, 8);
             CG_SmokePuff(v, up, 32, 1, 1, 1, 0.33f, 900, cg.time, 0, LEF_PUFF_DONT_SCALE, cgs.media.shotgunSmokePuffShader);
         }
@@ -2676,10 +2889,10 @@ void CG_ShotgunKillEffect(centity_t* cent) {
 
         if (cg_impactSparks.integer) {
             vec3_t vel = { 0, 0, cg_impactSparksVelocity.value };
-            CG_SpawnParticleEffect(vel, (float)cg_impactSparksSize.integer,
+            CG_SpawnParticleEffect(origin, vel, (float)cg_impactSparksSize.integer,
                                    1.0f, 1.0f, 1.0f, 1.0f,
                                    (float)cg_impactSparksLifetime.integer,
-                                   cg.time, 1, cgs.media.sparkParticleShader);
+                                   cg.time, PARTICLE_FX_SPARKS, cgs.media.sparkParticleShader);
         }
     }
 }
@@ -2865,10 +3078,10 @@ void CG_Bullet(vec3_t end, int sourceEntityNum, vec3_t normal, qboolean flesh, i
             // QL binary: impact sparks (vmCvar 0x10B6FBE0)
             if (cg_impactSparks.integer) {
                 vec3_t vel = { 0, 0, cg_impactSparksVelocity.value };
-                CG_SpawnParticleEffect(vel, (float)cg_impactSparksSize.integer,
+                CG_SpawnParticleEffect(end, vel, (float)cg_impactSparksSize.integer,
                     1.0f, 1.0f, 1.0f, 1.0f,
                     (float)cg_impactSparksLifetime.integer,
-                    cg.time, 1, cgs.media.sparkParticleShader);
+                    cg.time, PARTICLE_FX_SPARKS, cgs.media.sparkParticleShader);
             }
         }
     } else {

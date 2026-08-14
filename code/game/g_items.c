@@ -1309,6 +1309,49 @@ void G_SpawnItem(gentity_t* ent, gitem_t* item) {
     G_SpawnFloat("random", "0", &ent->random);
     G_SpawnFloat("wait", "0", &ent->wait);
 
+    // [QL] Item-category spawn filtering.
+    //
+    // Six g_spawnItem* cvars are registered, but only g_spawnItemAmmo was ever
+    // read - the other five were declared, exposed as gamerules, settable from
+    // a config, and consulted by nothing. Setting g_spawnItemWeapons 0 looked
+    // like it worked and changed nothing at all, which is exactly the failure
+    // mode that makes an instagib server hand out rocket launchers.
+    //
+    // IT_TEAM is deliberately absent: flags and their stands are objectives,
+    // not pickups, and suppressing them would break CTF outright. Runes
+    // (IT_PERSISTANT_POWERUP) and keys (IT_KEY) have no cvar of their own and
+    // are left alone for the same reason - nothing here should be able to make
+    // a map unfinishable.
+    switch (item->giType) {
+        case IT_WEAPON:
+            if (!g_spawnItemWeapons.integer) {
+                return;
+            }
+            break;
+        case IT_ARMOR:
+            if (!g_spawnItemArmor.integer) {
+                return;
+            }
+            break;
+        case IT_HEALTH:
+            if (!g_spawnItemHealth.integer) {
+                return;
+            }
+            break;
+        case IT_POWERUP:
+            if (!g_spawnItemPowerup.integer) {
+                return;
+            }
+            break;
+        case IT_HOLDABLE:
+            if (!g_spawnItemHoldable.integer) {
+                return;
+            }
+            break;
+        default:
+            break;
+    }
+
     // [QL] Ammo spawn filtering (binary-matched from qagamex86.dll)
     if (item->giType == IT_AMMO) {
         if (!g_spawnItemAmmo.integer) {

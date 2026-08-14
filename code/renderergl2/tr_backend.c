@@ -1303,9 +1303,9 @@ const void* RB_SwapBuffers(const void* data) {
         if (tr.msaaResolveFbo && r_hdr->integer) {
             // Resolving an RGB16F MSAA FBO to the screen messes with the brightness, so resolve to an RGB16F FBO first
             FBO_FastBlit(tr.renderFbo, NULL, tr.msaaResolveFbo, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-            FBO_FastBlit(tr.msaaResolveFbo, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            RB_DitherToScreen(tr.msaaResolveFbo);
         } else if (tr.renderFbo) {
-            FBO_FastBlit(tr.renderFbo, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            RB_DitherToScreen(tr.renderFbo);
         }
     }
 

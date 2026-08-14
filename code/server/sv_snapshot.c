@@ -271,6 +271,20 @@ static void SV_AddEntToSnapshot(svEntity_t* svEnt, sharedEntity_t* gEnt, snapsho
 
     // if we are full, silently discard entities
     if (eNums->numSnapshotEntities == MAX_SNAPSHOT_ENTITIES) {
+        // [QL] "Silently" is the problem on a busy server: past
+        // MAX_SNAPSHOT_ENTITIES visible entities the surplus simply never
+        // reaches that client, so players and items wink in and out and shots
+        // miss things the shooter can see - with nothing at all in the log to
+        // explain it. On a 32-48 player server this is reached routinely.
+        // Count it, and say so occasionally so the cause is at least visible.
+        sv.snapshotEntitiesDropped++;
+
+        if (svs.time >= sv.nextSnapshotOverflowWarn) {
+            sv.nextSnapshotOverflowWarn = svs.time + 10000;
+            Com_Printf("WARNING: snapshot entity limit (%i) reached - %i entities dropped so far.\n"
+                       "         Players and items may be invisible to some clients this frame.\n",
+                       MAX_SNAPSHOT_ENTITIES, sv.snapshotEntitiesDropped);
+        }
         return;
     }
 

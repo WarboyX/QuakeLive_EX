@@ -1468,6 +1468,155 @@ qboolean BG_CanItemBeGrabbed(int atTime, int warmupTime, int armorTiered, int we
 //======================================================================
 
 /*
+==============================================================================
+
+SHOTGUN PATTERN
+
+The server traces the pellets to decide what was hit; the client traces the same
+pellets to place the impact marks, driven off the seed the server puts in the
+EV_SHOTGUN event. If the two sides ever compute a different ray then the marks
+land somewhere the damage did not, which is indistinguishable from broken hit
+registration - so the generation lives here, in code both modules link, and is
+driven entirely by numbers the server publishes in the serverinfo.
+
+==============================================================================
+*/
+
+/*
+================
+BG_ShotgunBasis
+
+Build the frame the pellet offsets are laid out in, from the fire direction
+alone - that is all the client is sent.
+
+This used to be PerpendicularVector() + a cross product. PerpendicularVector
+picks whichever world axis has the smallest component in the fire direction, so
+the frame it returns jumps between world axes - and flips handedness - as the
+player turns. The pellet ring therefore spun with the player's facing: the same
+shot at the same wall put pellet i in a different place depending on which way
+you happened to be looking, which is exactly the "the spread's hit position
+changes based on what direction the player is standing" symptom.
+
+Crossing against world up instead reproduces the player's own right/up vectors
+exactly for any roll-free view (AngleVectors with roll 0 yields right =
+(sin yaw, -cos yaw, 0), which is what normalising (fy, -fx, 0) gives), so the
+pattern is fixed relative to the screen and stays learnable. It is still a pure
+function of the transmitted direction, so both sides still agree bit for bit.
+================
+*/
+void BG_ShotgunBasis(const vec3_t dir, int basis, vec3_t forward, vec3_t right, vec3_t up) {
+    VectorNormalize2(dir, forward);
+
+    if (basis != SHOTGUN_BASIS_VIEW) {
+        // What upstream and vanilla do. Kept as the default because a stock
+        // client draws the marks this way and cannot be told otherwise - the
+        // server matching it matters more than the frame being well behaved.
+        PerpendicularVector(right, forward);
+        CrossProduct(forward, right, up);
+        return;
+    }
+
+    right[0] = forward[1];
+    right[1] = -forward[0];
+    right[2] = 0.0f;
+    if (VectorNormalize(right) < 0.0001f) {
+        // straight up or straight down: the view direction carries no yaw, so
+        // there is no "screen right" to recover. Any fixed choice will do as
+        // long as both sides make the same one.
+        VectorSet(right, 1.0f, 0.0f, 0.0f);
+    }
+
+    CrossProduct(right, forward, up);
+}
+
+/*
+================
+BG_ShotgunPellet
+
+Offsets for pellet 'i' in the plane perpendicular to the fire direction, scaled
+against the 8192*16 unit trace length the callers use. Returns the advanced
+PRNG seed, which must be fed back in for the next pellet.
+
+'inner' reports whether the pellet belongs to the full-damage inner group.
+================
+*/
+int BG_ShotgunPellet(int i, int seed, int pattern, float jitterScale, float spreadScale, float* r, float* u,
+                     qboolean* inner) {
+    float angle, ringRadius, jitter;
+
+    if (jitterScale < 0.0f) {
+        jitterScale = 0.0f;
+    } else if (jitterScale > 1.0f) {
+        jitterScale = 1.0f;
+    }
+    if (spreadScale < 0.0f) {
+        spreadScale = 0.0f;
+    } else if (spreadScale > SHOTGUN_SPREAD_SCALE_MAX) {
+        spreadScale = SHOTGUN_SPREAD_SCALE_MAX;
+    }
+
+    if (pattern == SHOTGUN_PATTERN_CONE) {
+        // Q3's pattern: every pellet independently placed inside a square cone,
+        // so the middle of the crosshair is as likely to be hit as the rim.
+        // Offered as an alternative to the rings because the ring pattern has
+        // no pellet anywhere near the aim axis - the eight outer pellets sit at
+        // the full 5.2 degrees - and on a distant wall that reads as the spread
+        // not being centred on the crosshair at all.
+        float half = DEFAULT_SHOTGUN_SPREAD * 16.0f * spreadScale;
+
+        seed = (seed * 0xDCD + 1) & 0xFFFF;
+        *r = ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * half;
+
+        seed = (seed * 0xDCD + 1) & 0xFFFF;
+        *u = ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * half;
+
+        ringRadius = half * SHOTGUN_CONE_INNER_FRACTION;
+        *inner = (*r * *r + *u * *u) <= (ringRadius * ringRadius) ? qtrue : qfalse;
+        return seed;
+    }
+
+    // [QL] Concentric ring pattern (binary-verified from qagamex86.dll 0x1006d450
+    // and cgamex86.dll 0x10055650): inner(6) middle(6) outer(8) = 20 pellets.
+    // The ring radii are absolute offsets against the 8192*16 trace length, so
+    // the outer ring lands at atan(12000/131072) = 5.2 degrees - a shade wider
+    // than Q3's 700*16 spread limit.
+    //
+    // Angle and multiplier literals are written exactly as the client used to
+    // write them (rather than M_PI/3 and friends) so the two sides evaluate the
+    // same float expressions and land on bit-identical results.
+    if (i < 6) {
+        jitter = 0.4f;
+        ringRadius = SHOTGUN_RING_INNER;
+        angle = (float)(i - 20) * 1.0471976f;  // pi/3, 60 degree spacing
+        *inner = qtrue;                        // inner ring, full damage
+    } else if (i < 12) {
+        jitter = 0.3f;
+        ringRadius = SHOTGUN_RING_MIDDLE;
+        angle = (float)i * 1.0471976f + 30.0f;  // binary adds 30.0 radians
+        *inner = qfalse;
+    } else {
+        jitter = 0.2f;
+        ringRadius = SHOTGUN_RING_OUTER;
+        angle = (float)i * 0.7853982f;  // pi/4, 45 degree spacing
+        *inner = qfalse;
+    }
+
+    jitter *= jitterScale;
+    ringRadius *= spreadScale;
+
+    // LCG PRNG, 16-bit wrap.
+    seed = (seed * 0xDCD + 1) & 0xFFFF;
+    *r = (cos(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
+
+    seed = (seed * 0xDCD + 1) & 0xFFFF;
+    *u = (sin(angle) + ((float)seed * 1.5258789e-05f - 0.5f) * 2.0f * jitter) * ringRadius;
+
+    return seed;
+}
+
+//======================================================================
+
+/*
 ================
 BG_EvaluateTrajectory
 

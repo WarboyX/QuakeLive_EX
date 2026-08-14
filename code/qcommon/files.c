@@ -4164,9 +4164,13 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 		// whitelist when sv_pure is active - same as every other asset pak.
 		// Anti-cheat: a tampered iobin (different checksum) gets rejected here
 		// instead of slipping through a special-case bypass.
+
+		// Recorded below as the module's checksum, so it has to be picked up
+		// whether or not a pure-server whitelist is in force.
+		checksum = pak->checksum;
+
 		if (fs_numServerPaks > 0) {
 			qboolean matched = qfalse;
-			checksum = pak->checksum;
 
 			for (int i = 0; i < fs_numServerPaks; i++) {
 				if (fs_serverPaks[i] == checksum) {

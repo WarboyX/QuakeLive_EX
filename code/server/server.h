@@ -78,6 +78,11 @@ typedef struct {
 
     int restartTime;
     int time;
+
+    // [QL] diagnostics for the MAX_SNAPSHOT_ENTITIES ceiling, which is reached
+    // routinely on a well-populated server and otherwise fails silently.
+    int snapshotEntitiesDropped;
+    int nextSnapshotOverflowWarn;
 } server_t;
 
 typedef struct {
@@ -118,6 +123,7 @@ typedef struct client_s {
     int reliableSequence;     // last added reliable message, not necessarily sent or acknowledged yet
     int reliableAcknowledge;  // last acknowledged reliable message
     int reliableSent;         // last sent reliable message, not necessarily acknowledged yet
+    int nextReliablePressureWarn;  // [QL] rate limit for the near-overflow warning
     int messageAcknowledge;
 
     int gamestateMessageNum;  // netchan->outgoingSequence of gamestate
@@ -207,6 +213,7 @@ typedef struct {
     challenge_t challenges[MAX_CHALLENGES]; // to prevent invalid IPs from connecting
     netadr_t redirectAddress;               // for rcon return messages
     netadr_t authorizeAddress;              // authorize server address
+    int nextHeartbeatTime;                  // [QL] next SV_MasterHeartbeat send
 } serverStatic_t;
 
 #define SERVER_MAXBANS 1024
@@ -253,6 +260,11 @@ extern cvar_t* sv_pure;
 extern cvar_t* sv_floodProtect;
 extern cvar_t* sv_lanForceRate;
 extern cvar_t* sv_banFile;
+extern cvar_t* sv_altEntDir;
+
+// [QL] sv_altEntDir entity override (sv_init.c)
+void SV_LoadAltEntityString(const char* mapname);
+char* SV_AltEntityString(void);
 
 extern serverBan_t serverBans[SERVER_MAXBANS];
 extern int serverBansCount;
@@ -286,6 +298,9 @@ qboolean SVC_RateLimitAddress(netadr_t from, int burst, int period);
 
 void SV_FinalMessage(char* message);
 void QDECL SV_SendServerCommand(client_t* cl, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+
+void SV_MasterHeartbeat(const char* message);
+void SV_MasterShutdown(void);
 
 void SV_AddOperatorCommands(void);
 void SV_RemoveOperatorCommands(void);

@@ -437,12 +437,31 @@ int PC_StringizeTokens(token_t* tokens, token_t* token) {
     token->type = TT_STRING;
     token->whitespace_p = NULL;
     token->endwhitespace_p = NULL;
-    token->string[0] = '\0';
-    strcat(token->string, "\"");
+    // Built by explicit index rather than strcat/strncat: the buffer is a fixed
+    // MAX_TOKEN array and one slot must stay reserved for the closing quote, so
+    // tracking the write position directly is both clearer and provably bounded.
+    size_t used = 0;
+
+    token->string[used++] = '"';
+
     for (t = tokens; t; t = t->next) {
-        strncat(token->string, t->string, MAX_TOKEN - strlen(token->string) - 1);
+        size_t len = strlen(t->string);
+
+        // leave room for the closing quote and the terminator
+        if (used + len > MAX_TOKEN - 2) {
+            len = MAX_TOKEN - 2 - used;
+        }
+        if (len == 0) {
+            break;
+        }
+
+        memcpy(token->string + used, t->string, len);
+        used += len;
     }  // end for
-    strncat(token->string, "\"", MAX_TOKEN - strlen(token->string) - 1);
+
+    token->string[used++] = '"';
+    token->string[used] = '\0';
+
     return qtrue;
 }  // end of the function PC_StringizeTokens
 //============================================================================

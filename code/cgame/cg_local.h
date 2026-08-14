@@ -782,7 +782,11 @@ typedef struct {
     int warmupGametype;     // [QL] gametype override from CS_WARMUP (-1 = use current)
     int warmupFreezeCount_red;   // [QL] GT_AD per-team count from CS_ROUND_WARMUP
     int warmupFreezeCount_blue;  // [QL] GT_AD per-team count from CS_ROUND_WARMUP
-    int lastAutoFireTime;        // [QL] last predicted railgun autofire (cg.time)
+    int lastAutoFireTime;
+    // [QL] cg.time at which the predicted railgun trail was last drawn, so the
+    // server's EV_RAILTRAIL for that same shot can be skipped instead of
+    // drawing a second beam over it.
+    int predictedRailTime;        // [QL] last predicted railgun autofire (cg.time)
 
     //==========================
 
@@ -1437,6 +1441,12 @@ typedef struct {
     // parsed from serverinfo (order matches QL binary's CG_ParseServerinfo)
     gametype_t gametype;
     int teamsize;           // [QL]
+    float shotgunJitter;    // [QL] g_shotgunJitter from serverinfo - the pellet
+                            // spread scale, server-authoritative so the drawn
+                            // pattern always matches the traced one
+    float shotgunSpread;    // [QL] g_shotgunSpread - multiplier on the pellet offsets
+    int shotgunPattern;     // [QL] g_shotgunPattern - SHOTGUN_PATTERN_*
+    int shotgunBasis;       // [QL] g_shotgunBasis - SHOTGUN_BASIS_*
     int teamSizeMin;        // [QL] g_teamSizeMin
     int teamForceBalance;   // [QL] g_teamForceBalance
     int dmflags;
@@ -1640,6 +1650,7 @@ extern vmCvar_t cg_footsteps;
 extern vmCvar_t cg_addMarks;
 extern vmCvar_t cg_brassTime;
 extern vmCvar_t cg_gun_frame;
+extern vmCvar_t cg_gunAspect;
 extern vmCvar_t cg_gun_x;
 extern vmCvar_t cg_gun_y;
 extern vmCvar_t cg_gun_z;
@@ -1775,6 +1786,7 @@ extern vmCvar_t cg_teamHeadColor;
 extern vmCvar_t cg_teamLowerColor;
 extern vmCvar_t cg_teamUpperColor;
 extern vmCvar_t cg_trueShotgun;
+extern vmCvar_t cg_debugShotgun;
 extern vmCvar_t cg_vignette;
 extern vmCvar_t cg_zoomOutOnDeath;
 extern vmCvar_t cg_zoomScaling;
@@ -1996,6 +2008,8 @@ void CG_NextWeapon_f(void);
 void CG_PrevWeapon_f(void);
 void CG_Weapon_f(void);
 
+qboolean CG_ValidWeaponNum(int weaponNum);
+weaponInfo_t* CG_WeaponInfo(int weaponNum);
 void CG_RegisterWeapon(int weaponNum);
 void CG_RegisterItemVisuals(int itemNum);
 
@@ -2092,7 +2106,15 @@ void CG_BigExplode(vec3_t playerOrigin);
 
 void CG_Bleed(vec3_t origin, int entityNum);
 void CG_BloodSplatEffect(vec3_t origin, int entityNum);  // QL: blood splat (replaces CG_Bleed for hit effects)
-void CG_SpawnParticleEffect(vec3_t vel, float size, float r, float g, float b, float a, float lifetime, int startTime, int type, qhandle_t shader);  // QL: particle effects
+// QL: particle effects. The `type` selector, as used by the impact call sites.
+#define PARTICLE_FX_DEBRIS 0
+#define PARTICLE_FX_SPARKS 1
+
+// NOTE: the transcribed QL signature carried no origin, which left the spawner
+// unable to place anything - it was an empty stub, so the omission never showed.
+// Every call site has the impact point to hand, so it is passed explicitly.
+void CG_SpawnParticleEffect(const vec3_t origin, const vec3_t vel, float size, float r, float g, float b,
+                            float a, float lifetime, int startTime, int type, qhandle_t shader);
 void CG_SpecAutoFollow(int clientNum, int mode);  // QL: auto-follow spectator
 
 localEntity_t* CG_MakeExplosion(vec3_t origin, vec3_t dir, qhandle_t hModel, qhandle_t shader, int msec, qboolean isSprite);
@@ -2120,6 +2142,9 @@ void CG_DrawTourneyScoreboard(void);
 // cg_consolecmds.c
 //
 qboolean CG_ConsoleCommand(void);
+// [QL] client-side ignore list, driven by the clientmute console command.
+qboolean CG_IsClientIgnored(int clientNum);
+int CG_ChatSenderClientNum(const char* payload);
 void CG_InitConsoleCommands(void);
 void CG_ClearChat(void);
 void CG_AddChat(const char *text, int teamOnly, int extraTime);

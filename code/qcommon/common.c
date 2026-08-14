@@ -37,7 +37,18 @@ int demo_protocols[] = {0};
 
 #define MIN_DEDICATED_COMHUNKMEGS 1
 #define MIN_COMHUNKMEGS 64
-#define DEF_COMHUNKMEGS 128
+
+// [QL] Headroom left for everything that is not the snapshot entity pool:
+// the BSP and collision model, the game module's entity/client arrays, and
+// per-map allocations. Sized from a large map plus a full 64-slot gentity set.
+#define SV_HUNK_HEADROOM_MEGS 96
+// [QL] Raised from 128. The dedicated server's snapshot entity pool is
+// sv_maxclients * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES * sizeof(entityState_t),
+// which is ~59 MB at 32 players and ~89 MB at 48 - enough that a 128 MB hunk
+// left no room for the map on a well-populated server, and the map load died
+// with a bare "Hunk_Alloc failed on <n>". Com_InitHunkMemory raises this floor
+// further from sv_maxclients when running dedicated.
+#define DEF_COMHUNKMEGS 256
 #define DEF_COMZONEMEGS 64
 #define DEF_COMHUNKMEGS_S XSTRING(DEF_COMHUNKMEGS)
 #define DEF_COMZONEMEGS_S XSTRING(DEF_COMZONEMEGS)
@@ -86,6 +97,7 @@ cvar_t* com_homepath;
 cvar_t* com_busyWait;
 #ifndef DEDICATED
 cvar_t* con_autochat;
+cvar_t* cl_allowConsoleChat;
 #endif
 
 
@@ -1498,6 +1510,35 @@ void Com_InitHunkMemory(void) {
     if (com_dedicated && com_dedicated->integer) {
         nMinAlloc = MIN_DEDICATED_COMHUNKMEGS;
         pMsg = "Minimum com_hunkMegs for a dedicated server is %i, allocating %i megs.\n";
+
+        // [QL] A dedicated server's largest single allocation is the snapshot
+        // entity ring in SV_Startup, which scales linearly with sv_maxclients
+        // and is far and away the dominant hunk consumer on a big server. The
+        // stock floor of 1 MB is meaningless for it, so derive a real floor.
+        //
+        // Command-line "+set sv_maxclients" is already applied at this point
+        // (Com_StartupVariable runs before us); a value set later in a config
+        // is not, which is what the SV_Startup check exists to catch.
+        {
+            int maxClients = Cvar_VariableIntegerValue("sv_maxclients");
+
+            if (maxClients > 0) {
+                int poolMegs;
+
+                if (maxClients > MAX_CLIENTS) {
+                    maxClients = MAX_CLIENTS;
+                }
+
+                poolMegs = (int)(((int64_t)maxClients * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES *
+                                  sizeof(entityState_t)) /
+                                 (1024 * 1024));
+
+                if (poolMegs + SV_HUNK_HEADROOM_MEGS > nMinAlloc) {
+                    nMinAlloc = poolMegs + SV_HUNK_HEADROOM_MEGS;
+                    pMsg = "Minimum com_hunkMegs for this sv_maxclients is %i, allocating %i megs.\n";
+                }
+            }
+        }
     } else {
         nMinAlloc = MIN_COMHUNKMEGS;
         pMsg = "Minimum com_hunkMegs is %i, allocating %i megs.\n";
@@ -2482,7 +2523,19 @@ void Com_Init(char* commandLine) {
     Cvar_Get("protocol", com_protocol->string, CVAR_ROM);
 
 #ifndef DEDICATED
-    con_autochat = Cvar_Get("con_autochat", "1", CVAR_ARCHIVE);
+    // [QL] 0: the console is a console. With 1 - the ioquake3 default - any
+    // console line typed while connected that does not begin with \ or / is
+    // sent as "cmd say" instead of being run, so console commands turn into
+    // chat the moment you join a game. That is a poor default for a build being
+    // used to administer and test servers, and it is the behaviour reported as
+    // a bug. Set to 1 to get chat-by-default back.
+    con_autochat = Cvar_Get("con_autochat", "0", CVAR_ARCHIVE);
+    // [QL] The "Allow Console Chat" row in ingame_options_advanced.menu binds to
+    // cl_allowConsoleChat, and nothing in this build read it - so setting it to
+    // No changed nothing and console lines kept going out as chat. This is Quake
+    // Live's name for the setting, con_autochat is ioquake3's. Both must agree
+    // before a line is chatted, so either one turns it off.
+    cl_allowConsoleChat = Cvar_Get("cl_allowConsoleChat", "0", CVAR_ARCHIVE);
 #endif
 
     Sys_Init();
@@ -2809,6 +2862,11 @@ void Com_Frame(void) {
     int timeBeforeEvents;
     int timeBeforeClient;
     int timeAfter;
+
+    // [QL] Any module VM_Free could not unmap while its frames were live is
+    // unmapped here: the longjmp that brought us out has completed, so nothing
+    // from it is on the stack any more. Must stay above the setjmp.
+    VM_UnloadDeferred();
 
     if (setjmp(abortframe)) {
         return;  // an ERR_DROP was thrown

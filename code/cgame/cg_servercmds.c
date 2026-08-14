@@ -624,6 +624,7 @@ and whenever the server updates any serverinfo flagged cvars
 void CG_ParseServerinfo(void) {
     const char* info;
     const char* mapname;
+    const char* value;
 
     info = CG_ConfigString(CS_SERVERINFO);
 
@@ -631,6 +632,23 @@ void CG_ParseServerinfo(void) {
     cgs.gametype = atoi(Info_ValueForKey(info, "g_gametype"));
     trap_Cvar_Set("cg_gametype", va("%i", cgs.gametype));
     cgs.teamsize = atoi(Info_ValueForKey(info, "teamsize"));
+    // [QL] Pellet spread scale. Read from the server rather than a local cvar so
+    // the pattern drawn here is always the pattern the server traced.
+    // An absent key means the server does not publish these at all - a stock
+    // Quake Live server - so fall back to what a stock cgame does rather than
+    // to zero, or we would draw a pattern it never traced.
+    value = Info_ValueForKey(info, "g_shotgunJitter");
+    cgs.shotgunJitter = value[0] ? atof(value) : 1.0f;
+    if (cgs.shotgunJitter < 0.0f) { cgs.shotgunJitter = 0.0f; }
+    else if (cgs.shotgunJitter > 1.0f) { cgs.shotgunJitter = 1.0f; }
+    // A server that does not publish g_shotgunSpread is running the pattern
+    // unscaled, so an absent key has to mean 1, not 0.
+    value = Info_ValueForKey(info, "g_shotgunSpread");
+    cgs.shotgunSpread = value[0] ? atof(value) : 1.0f;
+    if (cgs.shotgunSpread < 0.0f) { cgs.shotgunSpread = 0.0f; }
+    else if (cgs.shotgunSpread > SHOTGUN_SPREAD_SCALE_MAX) { cgs.shotgunSpread = SHOTGUN_SPREAD_SCALE_MAX; }
+    cgs.shotgunPattern = atoi(Info_ValueForKey(info, "g_shotgunPattern"));
+    cgs.shotgunBasis = atoi(Info_ValueForKey(info, "g_shotgunBasis"));
     cgs.teamSizeMin = atoi(Info_ValueForKey(info, "g_teamSizeMin"));
     cgs.teamForceBalance = atoi(Info_ValueForKey(info, "g_teamForceBalance"));
     cgs.dmflags = atoi(Info_ValueForKey(info, "dmflags"));
@@ -1950,6 +1968,9 @@ static void CG_ServerCommand(void) {
         if (cgs.gametype >= GT_TEAM && cg_teamChatsOnly.integer) {
             return;
         }
+        if (CG_IsClientIgnored(CG_ChatSenderClientNum(CG_Argv(1)))) {
+            return;
+        }
         // QL binary: cg_chatbeep.integer gates the chat sound (vmCvar 0x10A6A9E0)
         if (cg_chatbeep.integer) {
             trap_S_StartLocalSound(cgs.media.talkSound, CHAN_LOCAL_SOUND);
@@ -2013,6 +2034,9 @@ static void CG_ServerCommand(void) {
     }
 
     if (!strcmp(cmd, "tchat")) {
+        if (CG_IsClientIgnored(CG_ChatSenderClientNum(CG_Argv(1)))) {
+            return;
+        }
         // QL binary: cg_chatbeep.integer gates the chat sound
         if (cg_chatbeep.integer) {
             trap_S_StartLocalSound(cgs.media.talkSound, CHAN_LOCAL_SOUND);

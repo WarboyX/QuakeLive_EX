@@ -54,6 +54,7 @@ cvar_t* sv_pure;
 cvar_t* sv_floodProtect;
 cvar_t* sv_lanForceRate;  // dedicated 1 (LAN) server forces local client rates to 99999 (bug #491)
 cvar_t* sv_banFile;
+cvar_t* sv_altEntDir;
 
 serverBan_t serverBans[SERVER_MAXBANS];
 int serverBansCount = 0;
@@ -110,6 +111,24 @@ void SV_AddServerCommand(client_t* client, const char* cmd) {
         return;
 
     client->reliableSequence++;
+
+    // [QL] The reliable ring is MAX_RELIABLE_COMMANDS deep and must stay that
+    // deep to match the QL client, but broadcast traffic (chat, obituaries,
+    // score and configstring updates) is O(players) per event, so a 32-48
+    // player server pushes far closer to the ceiling than an 8 player one.
+    // Overflow drops the client outright, and until now the first sign of
+    // trouble was that drop. Warn while the buffer is merely under pressure so
+    // the flooding command is identifiable before anyone is disconnected.
+    {
+        int pending = client->reliableSequence - client->reliableAcknowledge;
+
+        if (pending >= (MAX_RELIABLE_COMMANDS * 3) / 4 && svs.time >= client->nextReliablePressureWarn) {
+            client->nextReliablePressureWarn = svs.time + 5000;
+            Com_Printf("WARNING: reliable command buffer %i/%i full for %s - latest: %s\n",
+                       pending, MAX_RELIABLE_COMMANDS, client->name, cmd);
+        }
+    }
+
     // if we would be losing an old command that hasn't been acknowledged,
     // we must drop the connection
     // we check == instead of >= so a broadcast print added by SV_DropClient()
@@ -849,6 +868,115 @@ int SV_FrameMsec() {
 }
 
 /*
+================
+SV_MasterHeartbeat
+
+Send a message to the masters every few minutes to let it know we are alive,
+and log information. We will also have a heartbeat sent when a server changes
+from empty to non-empty, and full to non-full, but not on every player enter
+or exit.
+================
+*/
+#define HEARTBEAT_MSEC 300 * 1000
+
+void SV_MasterHeartbeat(const char* message) {
+    static netadr_t adr[MAX_MASTER_SERVERS][2];  // [2] for v4 and v6 address for the same address string.
+    int i;
+    int res;
+    int netenabled;
+
+    netenabled = Cvar_VariableIntegerValue("net_enabled");
+
+    // "dedicated 1" is for lan play, "dedicated 2" is for public internet play
+    if (!com_dedicated || com_dedicated->integer != 2 || !(netenabled & (NET_ENABLEV4 | NET_ENABLEV6))) {
+        return;  // only dedicated servers send heartbeats
+    }
+
+    // if not time yet, don't send anything
+    if (svs.time < svs.nextHeartbeatTime) {
+        return;
+    }
+
+    svs.nextHeartbeatTime = svs.time + HEARTBEAT_MSEC;
+
+    for (i = 0; i < MAX_MASTER_SERVERS; i++) {
+        const char* master;
+
+        master = Cvar_VariableString(va("sv_master%d", i + 1));
+        if (!*master) {
+            continue;
+        }
+
+        // see if we haven't already resolved the name or if it's been a while
+        // since we last did, in case the master's address changed
+        if (adr[i][0].type == NA_BAD && adr[i][1].type == NA_BAD) {
+            Com_Printf("Resolving %s\n", master);
+
+            if (netenabled & NET_ENABLEV4) {
+                res = NET_StringToAdr(master, &adr[i][0], NA_IP);
+                if (res == 2) {
+                    adr[i][0].port = BigShort(PORT_MASTER);
+                }
+                if (res) {
+                    Com_Printf("%s resolved to %s\n", master, NET_AdrToStringwPort(adr[i][0]));
+                } else {
+                    Com_Printf("%s has no IPv4 address.\n", master);
+                }
+            }
+
+            if (netenabled & NET_ENABLEV6) {
+                res = NET_StringToAdr(master, &adr[i][1], NA_IP6);
+                if (res == 2) {
+                    adr[i][1].port = BigShort(PORT_MASTER);
+                }
+                if (res) {
+                    Com_Printf("%s resolved to %s\n", master, NET_AdrToStringwPort(adr[i][1]));
+                } else {
+                    Com_Printf("%s has no IPv6 address.\n", master);
+                }
+            }
+
+            if (adr[i][0].type == NA_BAD && adr[i][1].type == NA_BAD) {
+                Com_Printf("Couldn't resolve address: %s\n", master);
+                Cvar_Set(va("sv_master%d", i + 1), "");
+                continue;
+            }
+        }
+
+        Com_Printf("Sending heartbeat to %s\n", master);
+
+        // this command should be changed if the server info / status format
+        // ever incompatibly changes
+        if (adr[i][0].type != NA_BAD) {
+            NET_OutOfBandPrint(NS_SERVER, adr[i][0], "heartbeat %s\n", message);
+        }
+        if (adr[i][1].type != NA_BAD) {
+            NET_OutOfBandPrint(NS_SERVER, adr[i][1], "heartbeat %s\n", message);
+        }
+    }
+}
+
+/*
+=================
+SV_MasterShutdown
+
+Informs all masters that this server is going down
+=================
+*/
+void SV_MasterShutdown(void) {
+    // send a hearbeat right now
+    svs.nextHeartbeatTime = -9999;
+    SV_MasterHeartbeat(HEARTBEAT_FOR_MASTER);
+
+    // send it again to minimize chance of drops
+    svs.nextHeartbeatTime = -9999;
+    SV_MasterHeartbeat(HEARTBEAT_FOR_MASTER);
+
+    // when the master tries to poll the server, it won't respond, so
+    // it will be removed from the list
+}
+
+/*
 ==================
 SV_Frame
 
@@ -962,6 +1090,10 @@ void SV_Frame(int msec) {
 
     // send messages back to the clients
     SV_SendClientMessages();
+
+    // [QL] send a heartbeat to the masters so this server appears in the
+    // browser's Internet list
+    SV_MasterHeartbeat(HEARTBEAT_FOR_MASTER);
 }
 
 /*

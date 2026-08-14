@@ -90,7 +90,7 @@ static void* S_CodecGetSound(const char* filename, snd_info_t* info) {
             rtn = codec->open(altName);
 
         if (rtn) {
-            if (orgNameFailed && codec->ext != "ogg") {
+            if (orgNameFailed && Q_stricmp(codec->ext, "ogg")) {
                 Com_DPrintf(S_COLOR_YELLOW "WARNING: %s not present, using %s instead\n",
                             filename, altName);
             }

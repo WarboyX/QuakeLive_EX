@@ -526,7 +526,6 @@ void R_LoadAdvertisements(lump_t* l) {
         Q_strncpyz(s_worldData.adShaders[i], ads->model, MAX_QPATH);
 
         int width, height;
-        float scale;
 
         // width = Distance(verts[3].xyz, verts[0].xyz);
         width = Distance(s_worldData.ads[i].rect[3], s_worldData.ads[i].rect[0]);
@@ -534,12 +533,10 @@ void R_LoadAdvertisements(lump_t* l) {
         // height = Distance(verts[3].xyz, verts[2].xyz);
         height = Distance(s_worldData.ads[i].rect[3], s_worldData.ads[i].rect[2]);
 
-        if (height > 0.0) {
-            scale = (float)width / (float)height;
-        } else {
-            scale = 0;
-        }
-        //ri.Printf(PRINT_ALL, "  %d x %d   (%f)\n", width, height, scale);
+        // Aspect ratio (width / height) is what the billboard renderer will
+        // need once advertisement drawing exists; nothing consumes it yet.
+        (void)width;
+        (void)height;
     }
 }
 

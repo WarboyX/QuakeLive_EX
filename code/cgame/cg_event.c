@@ -187,7 +187,10 @@ CG_Obituary
 static void CG_Obituary(entityState_t* ent) {
     int mod;
     int target, attacker;
-    char* message;
+    // MOD_THAW only sets a message for the no-attacker (auto-thaw) case and
+    // otherwise falls through to the attacker/target handling below, so this
+    // must start out NULL rather than holding whatever was on the stack.
+    char* message = NULL;
     char* message2;
     const char* targetInfo;
     const char* attackerInfo;
@@ -1120,11 +1123,33 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_RAILTRAIL");
             cent->currentState.weapon = WP_RAILGUN;
 
+            // CG_RailTrail draws with cgs.media.railCoreShader / railRingsShader,
+            // both of which are only loaded by CG_RegisterWeapon(WP_RAILGUN).
+            // Nothing pre-registers weapons at level load, so a rail shot seen
+            // before the railgun's own model or item has been drawn rendered
+            // with shader handle 0 - an invisible tracer, and an invisible
+            // impact once CG_MissileHitWall reached railExplosionShader.
+            CG_RegisterWeapon(WP_RAILGUN);
+
             if (es->clientNum == cg.snap->ps.clientNum && !cg.renderingThirdPerson) {
                 if (cg_drawGun.integer == 2)
                     VectorMA(es->origin2, 8, cg.refdef.viewaxis[1], es->origin2);
                 else if (cg_drawGun.integer == 3)
                     VectorMA(es->origin2, 4, cg.refdef.viewaxis[1], es->origin2);
+            }
+
+            // CG_PredictRailFire already drew this shot's trail and impact
+            // straight from the barrel the moment the button went down, so that
+            // the local rail does not wait a round trip to appear. Drawing the
+            // event's copy as well put a second beam along the view axis ending
+            // at the same point. Only skip it for our own predicted shot and
+            // only briefly: every other player's rail arrives this way, and a
+            // shot we did not predict - paused, in a timeout, spectating - still
+            // needs drawing here. Rail refire is 1500ms, so 1000 cannot swallow
+            // a genuine second shot.
+            if (es->clientNum == cg.snap->ps.clientNum && cg.predictedRailTime &&
+                cg.time - cg.predictedRailTime < 1000) {
+                break;
             }
 
             CG_RailTrail(ci, es->origin2, es->pos.trBase);

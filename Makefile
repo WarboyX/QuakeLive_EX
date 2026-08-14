@@ -1678,6 +1678,8 @@ Q3R2STRINGOBJ = \
   $(B)/renderergl2/glsl/calclevels4x_fp.o \
   $(B)/renderergl2/glsl/calclevels4x_vp.o \
   $(B)/renderergl2/glsl/depthblur_fp.o \
+  $(B)/renderergl2/glsl/dither_fp.o \
+  $(B)/renderergl2/glsl/dither_vp.o \
   $(B)/renderergl2/glsl/depthblur_vp.o \
   $(B)/renderergl2/glsl/dlight_fp.o \
   $(B)/renderergl2/glsl/dlight_vp.o \

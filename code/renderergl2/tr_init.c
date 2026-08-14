@@ -131,6 +131,7 @@ cvar_t* r_parallaxMapping;
 cvar_t* r_parallaxMapOffset;
 cvar_t* r_parallaxMapShadows;
 cvar_t* r_cubeMapping;
+cvar_t* r_dither;
 cvar_t* r_cubemapSize;
 cvar_t* r_deluxeSpecular;
 cvar_t* r_pbr;
@@ -1257,6 +1258,10 @@ void R_Register(void) {
     r_parallaxMapOffset = ri.Cvar_Get("r_parallaxMapOffset", "0", CVAR_ARCHIVE | CVAR_LATCH);
     r_parallaxMapShadows = ri.Cvar_Get("r_parallaxMapShadows", "0", CVAR_ARCHIVE | CVAR_LATCH);
     r_cubeMapping = ri.Cvar_Get("r_cubeMapping", "0", CVAR_ARCHIVE | CVAR_LATCH);
+    // [QL] 0 off, 1 ordered 8x8 Bayer, 2 temporally animated interleaved gradient
+    // noise. Applied where the frame is quantised to the window, so unlike the
+    // dither that used to live inside the tonemap shader it survives r_toneMap 0.
+    r_dither = ri.Cvar_Get("r_dither", "2", CVAR_ARCHIVE);
     r_cubemapSize = ri.Cvar_Get("r_cubemapSize", "128", CVAR_ARCHIVE | CVAR_LATCH);
     r_deluxeSpecular = ri.Cvar_Get("r_deluxeSpecular", "0.3", CVAR_ARCHIVE | CVAR_LATCH);
     r_pbr = ri.Cvar_Get("r_pbr", "0", CVAR_ARCHIVE | CVAR_LATCH);
@@ -1266,7 +1271,11 @@ void R_Register(void) {
     r_baseSpecular = ri.Cvar_Get("r_baseSpecular", "0.04", CVAR_ARCHIVE | CVAR_LATCH);
     r_baseGloss = ri.Cvar_Get("r_baseGloss", "0.3", CVAR_ARCHIVE | CVAR_LATCH);
     r_glossType = ri.Cvar_Get("r_glossType", "1", CVAR_ARCHIVE | CVAR_LATCH);
-    r_dlightMode = ri.Cvar_Get("r_dlightMode", "0", CVAR_ARCHIVE | CVAR_LATCH);
+    // [QL] 0 leaves dynamic lights off world surfaces entirely, so the quad
+    // glow, rocket blasts and muzzle flashes lit nothing around them even
+    // though cgame adds all of them via trap_R_AddLightToScene. 1 puts them on
+    // world geometry, which is what Quake 3 did; 2 adds shadows.
+    r_dlightMode = ri.Cvar_Get("r_dlightMode", "1", CVAR_ARCHIVE | CVAR_LATCH);
     r_pshadowDist = ri.Cvar_Get("r_pshadowDist", "128", CVAR_ARCHIVE);
     r_mergeLightmaps = ri.Cvar_Get("r_mergeLightmaps", "1", CVAR_ARCHIVE | CVAR_LATCH);
     r_imageUpsample = ri.Cvar_Get("r_imageUpsample", "0", CVAR_ARCHIVE | CVAR_LATCH);
@@ -1333,7 +1342,11 @@ void R_Register(void) {
     r_railCoreWidth = ri.Cvar_Get("r_railCoreWidth", "6", CVAR_ARCHIVE);
     r_railSegmentLength = ri.Cvar_Get("r_railSegmentLength", "32", CVAR_ARCHIVE);
 
-    r_ambientScale = ri.Cvar_Get("r_ambientScale", "0.6", CVAR_CHEAT);
+    // Quake Live exposes this as "Ambient Light Scale" in the video menu, so it
+    // has to be settable. As CVAR_CHEAT the menu could not write it at all while
+    // connected to a normal server, and the engine reset it back to 0.6 on every
+    // connect - the control was inert by construction.
+    r_ambientScale = ri.Cvar_Get("r_ambientScale", "0.6", CVAR_ARCHIVE);
     r_directedScale = ri.Cvar_Get("r_directedScale", "1", CVAR_CHEAT);
 
     r_anaglyphMode = ri.Cvar_Get("r_anaglyphMode", "0", CVAR_ARCHIVE);

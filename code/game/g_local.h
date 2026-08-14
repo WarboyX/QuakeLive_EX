@@ -964,7 +964,8 @@ void Freeze_ClientBegin(gentity_t* ent);
 void RR_ClientBegin(gentity_t* ent);
 void SelectSpawnWeapon(gentity_t* ent);
 void Team_LivingTeamCounts(int *outRed, int *outBlue);
-int G_GetAccessLevel(const char* ip);
+// Access levels come from G_GetAccess (g_svcmds.c), which is Steam-ID keyed to
+// match the access file. There is no IP-keyed variant.
 void G_ReleaseGrapple(gentity_t* ent);
 void STAT_InitClient(gentity_t* ent);
 void STAT_PublishClientDisconnect(gclient_t* client, int reason);
@@ -1097,6 +1098,7 @@ extern vmCvar_t g_voteFlags;
 extern vmCvar_t g_voteDelay;
 extern vmCvar_t g_voteLimit;
 extern vmCvar_t g_teamAutoJoin;
+extern vmCvar_t g_autoJoin;
 extern vmCvar_t g_teamForceBalance;
 extern vmCvar_t g_banIPs;
 extern vmCvar_t g_filterBan;
@@ -1242,6 +1244,12 @@ extern vmCvar_t g_spawnItemAmmo;
 
 // [QL] serverinfo cvars
 extern vmCvar_t g_teamsize;
+extern vmCvar_t g_shotgunJitter;
+extern vmCvar_t g_shotgunSpread;
+extern vmCvar_t g_shotgunPattern;
+extern vmCvar_t g_shotgunBasis;
+extern vmCvar_t g_teamRedLocked;
+extern vmCvar_t g_teamBlueLocked;
 extern vmCvar_t g_teamSizeMin;
 extern vmCvar_t g_overtime;
 extern vmCvar_t g_scorelimit;
@@ -1474,7 +1482,8 @@ extern vmCvar_t ui_singlePlayerActive;
 extern vmCvar_t weapon_reload_gauntlet;
 extern vmCvar_t weapon_reload_hook;
 void trap_Print(const char* text);
-void trap_Error(const char* fmt, ...) __attribute__((noreturn));
+void trap_Printf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void trap_Error(const char* fmt, ...) __attribute__((noreturn, format(printf, 1, 2)));
 int trap_Milliseconds(void);
 int trap_RealTime(qtime_t* qtime);
 int trap_Argc(void);

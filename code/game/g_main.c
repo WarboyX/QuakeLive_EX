@@ -78,6 +78,7 @@ vmCvar_t g_voteFlags;
 vmCvar_t g_voteDelay;
 vmCvar_t g_voteLimit;
 vmCvar_t g_teamAutoJoin;
+vmCvar_t g_autoJoin;
 vmCvar_t g_teamForceBalance;
 vmCvar_t g_banIPs;
 vmCvar_t g_filterBan;
@@ -351,6 +352,12 @@ vmCvar_t g_forfeit;
 
 // [QL] serverinfo cvars read by cgame
 vmCvar_t g_teamsize;
+vmCvar_t g_shotgunJitter;
+vmCvar_t g_shotgunSpread;
+vmCvar_t g_shotgunPattern;
+vmCvar_t g_shotgunBasis;
+vmCvar_t g_teamRedLocked;
+vmCvar_t g_teamBlueLocked;
 vmCvar_t g_teamSizeMin;
 vmCvar_t g_overtime;
 vmCvar_t g_scorelimit;
@@ -818,6 +825,30 @@ static cvarTable_t gameCvarTable[] = {
 
     // [QL] serverinfo cvars read by cgame (all verified with CVAR_SERVERINFO in binary)
     {&g_teamsize, "teamsize", "0", CVAR_SERVERINFO, 0, NULL},
+    // [QL] Shotgun spread jitter, 0..1, scaling the per-ring jitter in
+    // ShotgunPattern / CG_ShotgunPattern. SERVERINFO so the client reads the
+    // same value and both sides always compute the identical pattern.
+    {&g_shotgunJitter, "g_shotgunJitter", "1", CVAR_SERVERINFO, 0, NULL},
+    // [QL] Multiplier on every pellet offset, so the cone can be tightened or
+    // widened without a rebuild. 1 is the pattern as it comes out of the binary:
+    // the outer ring at 12000 units against a 8192*16 trace, i.e. 5.2 degrees.
+    {&g_shotgunSpread, "g_shotgunSpread", "1", CVAR_SERVERINFO, 0, NULL},
+    // [QL] Pattern shape: 0 = the QL concentric rings, 1 = Q3's filled square
+    // cone. The rings put no pellet anywhere near the aim axis, so on a distant
+    // wall they read as the spread not being centred on the crosshair; the cone
+    // is there to tell the two apart without guessing.
+    {&g_shotgunPattern, "g_shotgunPattern", "0", CVAR_SERVERINFO, 0, NULL},
+    // [QL] Frame the pellet offsets are laid out in. 0 reproduces what an
+    // unmodified cgame does, so stock clients - which cannot be told to use
+    // anything else - draw the marks where the server traced them. 1 uses the
+    // player's own right/up, which does not rotate with facing, and is only
+    // safe when every client is running this build.
+    {&g_shotgunBasis, "g_shotgunBasis", "0", CVAR_SERVERINFO, 0, NULL},
+    // [QL] per-team join locks, driven by the referee /lock and /unlock
+    // commands and read back by G_IsTeamLocked. Registered here so they exist
+    // and are listed even before a referee first uses /lock.
+    {&g_teamRedLocked, "g_teamRedLocked", "0", 0, 0, NULL},
+    {&g_teamBlueLocked, "g_teamBlueLocked", "0", 0, 0, NULL},
     {&g_teamSizeMin, "g_teamSizeMin", "1", CVAR_SERVERINFO, 0, NULL},  // [QL] binary default "1"
     {&g_overtime, "g_overtime", "120", CVAR_GAMERULE | CVAR_SERVERINFO, 0, NULL},  // [QL] binary default "120"
     // [QL] flags 0x100404 = CVAR_GAMERULE | CVAR_NORESTART | CVAR_SERVERINFO
@@ -1087,6 +1118,18 @@ static cvarTable_t gameCvarTable[] = {
     {&g_switchTeamDelay, "g_switchTeamDelay", "3", CVAR_GAMERULE, 0, NULL},
     {&g_tackleFlag, "g_tackleFlag", "0", CVAR_GAMERULE, 0, NULL},
     {&g_teamAutoJoin, "g_teamAutoJoin", "0", CVAR_ARCHIVE, 0, NULL},
+    // [QL] Put connecting players into the match instead of spectator.
+    //
+    // Deliberately NOT CVAR_ARCHIVE. An archived cvar is written into the
+    // server's config on first run and that config then wins on every later
+    // launch, so the shipped default stops applying the moment one build has
+    // written it - a new build's default is silently overridden by a stale
+    // line in a file nobody remembers writing. That has already caught this
+    // project twice (r_dlightMode, con_scale). Without the flag the default
+    // here is what a dedicated server actually starts with, every build, every
+    // time, and an admin who wants it off puts it in server.cfg - which is
+    // re-exec'd on every start and is where server policy belongs anyway.
+    {&g_autoJoin, "g_autoJoin", "1", CVAR_SERVERINFO, 0, NULL},
     {&g_teamForceBalance, "g_teamForceBalance", "1", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, NULL},
     {&g_teamSpawnAsSpec, "g_teamSpawnAsSpec", "0", 0, 0, NULL},
     {&g_teamSpecFreeCam, "g_teamSpecFreeCam", "0", 0, 0, NULL},
@@ -1106,7 +1149,8 @@ static cvarTable_t gameCvarTable[] = {
     {NULL, NULL, NULL, 0, 0, NULL}
 };
 
-static int gameCvarTableSize = ARRAY_LEN(gameCvarTable);
+// gameCvarTable is walked to its NULL sentinel everywhere it is used, so it
+// needs no separate element count.
 
 void G_InitGame(int levelTime, int randomSeed, int restart);
 void G_RunFrame(int levelTime);
@@ -1153,7 +1197,7 @@ void QDECL G_Error(const char* fmt, ...) {
     Q_vsnprintf(text, sizeof(text), fmt, argptr);
     va_end(argptr);
 
-    trap_Error(text);
+    trap_Error("%s", text);
 }
 
 /*
@@ -1634,6 +1678,8 @@ G_InitGame
 ============
 */
 void G_InitGame(int levelTime, int randomSeed, int restart) {
+    G_Printf("^3qagame^7 built %s %s\n", __DATE__, __TIME__);
+
     int i;
 
     G_Printf("------- Game Initialization -------\n");
@@ -1647,6 +1693,12 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
     // [QL] load the steamId access list at boot (binary G_InitGame calls G_InitAccessList).
     // QL has no IP-filter system, so the old G_ProcessIPBans() is dead code.
     G_InitAccessList();
+
+    // [QL] team locks are per-match: clear them so a lock set on the previous
+    // map does not silently keep players out of this one. Cvar_Register keeps
+    // an existing value, so this has to be an explicit set.
+    trap_Cvar_Set("g_teamRedLocked", "0");
+    trap_Cvar_Set("g_teamBlueLocked", "0");
 
     G_InitMemory();
 
@@ -1803,7 +1855,7 @@ void QDECL Com_Error(int level, const char* error, ...) {
     Q_vsnprintf(text, sizeof(text), error, argptr);
     va_end(argptr);
 
-    trap_Error(text);
+    trap_Error("%s", text);
 }
 
 void QDECL Com_Printf(const char* msg, ...) {

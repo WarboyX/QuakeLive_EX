@@ -1,0 +1,74 @@
+// server.cfg.example - copy to baseq3/server.cfg and edit.
+//
+// Start a dedicated server with:
+//   quakelive_dedicated +set dedicated 2 +exec server.cfg +map <mapname>
+//
+// dedicated 1 = LAN only, dedicated 2 = public (heartbeats to the masters).
+//
+// This file is exec'd on every start, so it - not the engine's saved config -
+// is where server policy belongs. Anything set here overrides the shipped
+// default and keeps overriding it across upgrades, which is what you want for
+// deliberate choices and emphatically not what you want by accident.
+
+// ---------------------------------------------------------------------------
+// identity
+// ---------------------------------------------------------------------------
+set sv_hostname     "ioquakelive server"
+set sv_maxclients   "16"
+set g_motd          ""
+
+// rcon: leave empty to disable remote administration entirely.
+set rconpassword    ""
+
+// ---------------------------------------------------------------------------
+// master servers
+// ---------------------------------------------------------------------------
+// Quake Live's own master is long gone, so these ship empty and both the
+// server browser's Internet tab and this server's heartbeats do nothing until
+// you fill one in. Point it at a dpmaster configured to accept the "QuakeLive"
+// gamename. LAN discovery needs none of this and works regardless.
+//
+// Only heartbeats when dedicated is 2.
+set sv_master1      ""
+set sv_master2      ""
+
+// ---------------------------------------------------------------------------
+// joining
+// ---------------------------------------------------------------------------
+// g_autoJoin 1 (the default) drops connecting players straight into the match,
+// the way Quake 3 did. Set it to 0 for Quake Live's behaviour, where everyone
+// lands in spectator and picks JOIN MATCH from the menu.
+//
+// Duel ignores this and keeps its play queue either way: a third player waits
+// rather than barging into a running match.
+set g_autoJoin      "1"
+
+// Team games can also auto-balance new players onto the smaller team.
+set g_teamAutoJoin  "0"
+set g_teamForceBalance "0"
+
+// ---------------------------------------------------------------------------
+// match rules
+// ---------------------------------------------------------------------------
+set g_gametype      "0"     // 0 FFA, 1 duel, 2 race, 3 TDM, 4 CA, 5 CTF
+set timelimit       "15"
+set fraglimit       "0"
+set capturelimit    "8"
+
+set g_inactivity    "0"     // seconds before an idle player is kicked, 0 = off
+set g_allowVote     "1"
+
+// ---------------------------------------------------------------------------
+// bots
+// ---------------------------------------------------------------------------
+set bot_enable      "1"
+set g_spSkill       "3"     // 1 easy .. 5 nightmare
+
+// ---------------------------------------------------------------------------
+// map rotation
+// ---------------------------------------------------------------------------
+// The simplest rotation is a pair of vstrs that chain into each other.
+//
+// set d1 "map campgrounds ; set nextmap vstr d2"
+// set d2 "map bloodrun    ; set nextmap vstr d1"
+// vstr d1

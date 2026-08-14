@@ -903,9 +903,48 @@ CG_SpawnParticleEffect
 QL binary: spawns impact spark particles.
 ==================
 */
-void CG_SpawnParticleEffect(vec3_t vel, float size, float r, float g, float b, float a, float lifetime, int startTime, int type, qhandle_t shader) {
-    // TODO: implement QL particle effect system
-    // Binary creates a particle emitter with the given parameters
+void CG_SpawnParticleEffect(const vec3_t origin, const vec3_t vel, float size, float r, float g, float b,
+                            float a, float lifetime, int startTime, int type, qhandle_t shader) {
+    int i, count;
+
+    if (!shader || lifetime <= 0.0f || size <= 0.0f) {
+        return;
+    }
+
+    // type 1 is the impact spark burst: a handful of small sprites thrown out
+    // from the impact point. type 0 is a single puff carried along the supplied
+    // velocity, which is what the wallbang debris path wants.
+    count = (type == PARTICLE_FX_SPARKS) ? 6 : 1;
+
+    for (i = 0; i < count; i++) {
+        localEntity_t* le;
+        vec3_t partVel;
+
+        if (count == 1) {
+            VectorCopy(vel, partVel);
+        } else {
+            // Spread the burst around the supplied velocity. The caller passes
+            // a pure +Z vector scaled by cg_impactSparksVelocity, so the
+            // horizontal jitter is what turns it into a spray rather than a
+            // column, and the vertical jitter keeps the sprites from moving in
+            // lockstep.
+            partVel[0] = vel[0] + crandom() * 96.0f;
+            partVel[1] = vel[1] + crandom() * 96.0f;
+            partVel[2] = vel[2] * (0.5f + random() * 0.75f);
+        }
+
+        le = CG_SmokePuff(origin, partVel,
+                          size * (0.6f + random() * 0.6f),
+                          r, g, b, a,
+                          lifetime * (0.7f + random() * 0.6f),
+                          startTime, 0, LEF_PUFF_DONT_SCALE, shader);
+
+        // Sparks arc rather than travel in a straight line, so give them
+        // gravity. CG_SmokePuff leaves the trajectory linear.
+        if (le && type == PARTICLE_FX_SPARKS) {
+            le->pos.trType = TR_GRAVITY;
+        }
+    }
 }
 
 /*

@@ -191,30 +191,6 @@ const char* G_GetArenaInfoByMap(const char* map) {
 }
 
 /*
-=================
-PlayerIntroSound
-=================
-*/
-static void PlayerIntroSound(const char* modelAndSkin) {
-    char model[MAX_QPATH];
-    char* skin;
-
-    Q_strncpyz(model, modelAndSkin, sizeof(model));
-    skin = strrchr(model, '/');
-    if (skin) {
-        *skin++ = '\0';
-    } else {
-        skin = model;
-    }
-
-    if (Q_stricmp(skin, "default") == 0) {
-        skin = model;
-    }
-
-    trap_SendConsoleCommand(EXEC_APPEND, va("play sound/player/announce/%s.wav\n", skin));
-}
-
-/*
 ===============
 G_CountBotPlayersByName
 
@@ -863,62 +839,6 @@ void Svcmd_BotList_f(void) {
             strcpy(aifile, "bots/default_c.c");
         }
         trap_Print(va("%-16s %-16s %-20s %-20s\n", name, model, aifile, funname));
-    }
-}
-
-/*
-===============
-G_SpawnBots
-===============
-*/
-static void G_SpawnBots(char* botList, int baseDelay) {
-    char* bot;
-    char* p;
-    float skill;
-    int delay;
-    char bots[MAX_INFO_VALUE];
-
-    podium1 = NULL;
-    podium2 = NULL;
-    podium3 = NULL;
-
-    skill = trap_Cvar_VariableValue("g_spSkill");
-    if (skill < 1) {
-        trap_Cvar_Set("g_spSkill", "1");
-        skill = 1;
-    } else if (skill > 5) {
-        trap_Cvar_Set("g_spSkill", "5");
-        skill = 5;
-    }
-
-    Q_strncpyz(bots, botList, sizeof(bots));
-    p = &bots[0];
-    delay = baseDelay;
-    while (*p) {
-        // skip spaces
-        while (*p && *p == ' ') {
-            p++;
-        }
-        if (!*p) {
-            break;
-        }
-
-        // mark start of bot name
-        bot = p;
-
-        // skip until space of null
-        while (*p && *p != ' ') {
-            p++;
-        }
-        if (*p) {
-            *p++ = 0;
-        }
-
-        // we must add the bot this way, calling G_AddBot directly at this stage
-        // does "Bad Things"
-        trap_SendConsoleCommand(EXEC_INSERT, va("addbot %s %f free %i\n", bot, skill, delay));
-
-        delay += BOT_BEGIN_DELAY_INCREMENT;
     }
 }
 

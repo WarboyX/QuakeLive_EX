@@ -278,6 +278,8 @@ static int sv_apiVersion;
 
 // --- Core trap wrappers ---
 
+static void QDECL SV_GI_Printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+
 static void QDECL SV_GI_Printf(const char *fmt, ...) {
     va_list ap;
     char text[1024];
@@ -286,6 +288,8 @@ static void QDECL SV_GI_Printf(const char *fmt, ...) {
     va_end(ap);
     Com_Printf("%s", text);
 }
+
+static void SV_GI_Error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 static void SV_GI_Error(const char *fmt, ...) {
     va_list ap;
@@ -1203,8 +1207,12 @@ Called for both a full init and a restart
 static void SV_InitGameVM(qboolean restart) {
     int i;
 
-    // start the entity parsing at the beginning
-    sv.entityParsePoint = CM_EntityString();
+    // start the entity parsing at the beginning. [QL] sv_altEntDir can supply a
+    // replacement entity set for this map; fall back to the .bsp's own lump.
+    sv.entityParsePoint = SV_AltEntityString();
+    if (!sv.entityParsePoint) {
+        sv.entityParsePoint = CM_EntityString();
+    }
 
     // clear all gentity pointers that might still be set from a previous level
     for (i = 0; i < sv_maxclients->integer; i++) {

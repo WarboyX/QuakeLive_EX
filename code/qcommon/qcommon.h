@@ -248,6 +248,15 @@ PROTOCOL
 // NOTE: that stuff only works with two digits protocols
 extern int demo_protocols[];
 
+// [QL] Master server protocol. The gamename is what a dpmaster filters its
+// server list on, so it has to be a single token - PRODUCT_NAME ("Quake Live")
+// contains a space and cannot be used here. The heartbeat name identifies the
+// protocol family to the master; point sv_master1 at a dpmaster configured to
+// accept these and servers will register themselves.
+#define MAX_MASTER_SERVERS 5
+#define GAMENAME_FOR_MASTER "QuakeLive"
+#define HEARTBEAT_FOR_MASTER "QuakeLive-1"
+
 #define PORT_MASTER 27950
 #define PORT_UPDATE 27951
 #define PORT_SERVER 27960
@@ -321,6 +330,8 @@ void VM_Free(vm_t* vm);
 void VM_Clear(void);
 void VM_Forced_Unload_Start(void);
 void VM_Forced_Unload_Done(void);
+// [QL] unmap modules VM_Free had to keep mapped; safe only at a clean stack
+void VM_UnloadDeferred(void);
 vm_t* VM_Restart(vm_t* vm, qboolean unpure);
 
 intptr_t QDECL VM_Call(vm_t* vm, int callNum, ...);
@@ -828,6 +839,7 @@ extern cvar_t* com_gamename;
 extern cvar_t* com_protocol;
 #ifndef DEDICATED
 extern cvar_t* con_autochat;
+extern cvar_t* cl_allowConsoleChat;
 #endif
 
 // com_speeds times

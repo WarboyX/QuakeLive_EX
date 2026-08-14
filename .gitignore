@@ -62,3 +62,5 @@ profile
 *.pk3
 misc/msvc/.vs/
 misc/msvc/.res
+# build output from package-release.sh
+release/

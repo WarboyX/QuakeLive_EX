@@ -1553,6 +1553,7 @@ typedef struct {
     //
     shaderProgram_t genericShader[GENERICDEF_COUNT];
     shaderProgram_t textureColorShader;
+    shaderProgram_t ditherShader;
     shaderProgram_t fogShader[FOGDEF_COUNT];
     shaderProgram_t dlightShader[DLIGHTDEF_COUNT];
     shaderProgram_t lightallShader[LIGHTDEF_COUNT];
@@ -1752,6 +1753,7 @@ extern cvar_t* r_parallaxMapping;
 extern cvar_t* r_parallaxMapOffset;
 extern cvar_t* r_parallaxMapShadows;
 extern cvar_t* r_cubeMapping;
+extern cvar_t* r_dither;
 extern cvar_t* r_cubemapSize;
 extern cvar_t* r_deluxeSpecular;
 extern cvar_t* r_pbr;

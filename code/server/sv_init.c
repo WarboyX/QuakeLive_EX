@@ -274,6 +274,34 @@ static void SV_Startup(void) {
         // we don't need nearly as many when playing locally
         svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
     }
+
+    // [QL] The snapshot entity ring below is the biggest thing a server ever
+    // puts on the hunk and it scales with sv_maxclients, so on a large server
+    // it can exhaust the hunk on its own and take the map load down with a bare
+    // "Hunk_Alloc failed on <n>". Com_InitHunkMemory sizes the hunk from
+    // sv_maxclients when that was set on the command line; it cannot when
+    // sv_maxclients comes from a config, which is exactly when this bites.
+    // Report the shortfall and the fix rather than leaving an opaque failure.
+    {
+        int needBytes = (int)(svs.numSnapshotEntities * sizeof(entityState_t));
+        int haveBytes = Hunk_MemoryRemaining();
+
+        if (needBytes > haveBytes) {
+            int haveMegs = Cvar_VariableIntegerValue("com_hunkMegs");
+            int needMegs = (haveMegs - (haveBytes / (1024 * 1024))) +
+                           (needBytes / (1024 * 1024)) + 16;
+
+            Com_Printf("^1----------------------------------------------------------\n");
+            Com_Printf("^1sv_maxclients %i needs %i MB for snapshot entities, but only\n",
+                       sv_maxclients->integer, needBytes / (1024 * 1024));
+            Com_Printf("^1%i MB of hunk remains. The map load is about to fail.\n",
+                       haveBytes / (1024 * 1024));
+            Com_Printf("^1Restart with: +set com_hunkMegs %i\n", needMegs);
+            Com_Printf("^1(com_hunkMegs is latched - it must be on the command line.)\n");
+            Com_Printf("^1----------------------------------------------------------\n");
+        }
+    }
+
     svs.initialized = qtrue;
 
     // Don't respect sv_killserver unless a server is actually running
@@ -370,6 +398,71 @@ static void SV_ClearServer(void) {
 
 /*
 ================
+SV_LoadAltEntityString
+
+[QL] Entity override. When sv_altEntDir names a directory, the server looks for
+"<sv_altEntDir>/<mapname>.ent" and, if present, spawns the level from that file
+instead of the entity lump inside the .bsp. This lets an operator retune item
+placement, spawn points or gametype entities on a stock map without shipping a
+modified .bsp that every client would then have to download.
+
+The override is server-side only: entities drive spawning, not collision, so
+clients are unaffected and pure-server checks still see the original .bsp.
+
+Called once per SV_SpawnServer, after CM_LoadMap and before SV_InitGameProgs.
+================
+*/
+static char* sv_altEntityString = NULL;
+
+void SV_LoadAltEntityString(const char* mapname) {
+    char path[MAX_QPATH];
+    char* buffer;
+    long len;
+
+    // Drop whatever the previous map used.
+    if (sv_altEntityString) {
+        Z_Free(sv_altEntityString);
+        sv_altEntityString = NULL;
+    }
+
+    if (!sv_altEntDir || !sv_altEntDir->string[0]) {
+        return;
+    }
+
+    Com_sprintf(path, sizeof(path), "%s/%s.ent", sv_altEntDir->string, mapname);
+
+    len = FS_ReadFile(path, (void**)&buffer);
+    if (len <= 0 || !buffer) {
+        // Not an error: only some maps are expected to carry an override.
+        if (buffer) {
+            FS_FreeFile(buffer);
+        }
+        return;
+    }
+
+    // FS_ReadFile's buffer is freed on the next FS_Restart, so keep our own
+    // copy for the lifetime of the map. Null-terminated for the token parser.
+    sv_altEntityString = Z_Malloc(len + 1);
+    Com_Memcpy(sv_altEntityString, buffer, len);
+    sv_altEntityString[len] = '\0';
+    FS_FreeFile(buffer);
+
+    Com_Printf("Using entity override %s (%li bytes)\n", path, len);
+}
+
+/*
+================
+SV_AltEntityString
+
+Returns the loaded override for this map, or NULL to use the .bsp's own lump.
+================
+*/
+char* SV_AltEntityString(void) {
+    return sv_altEntityString;
+}
+
+/*
+================
 SV_SpawnServer
 
 Change the server to a new map, taking all connected
@@ -451,6 +544,11 @@ void SV_SpawnServer(char* server, qboolean killBots) {
 
     CM_LoadMap(va("maps/%s.bsp", server), qfalse, &checksum);
 
+    // [QL] pick up an entity override for this map, if the operator configured
+    // one. Must come after CM_LoadMap (which owns the BSP's own entity lump)
+    // and before SV_InitGameProgs (which starts parsing entities).
+    SV_LoadAltEntityString(server);
+
     // set serverinfo visible name
     Cvar_Set("mapname", server);
 
@@ -490,7 +588,7 @@ void SV_SpawnServer(char* server, qboolean killBots) {
     for (i = 0; i < sv_maxclients->integer; i++) {
         // send the new gamestate to all connected clients
         if (svs.clients[i].state >= CS_CONNECTED) {
-            char* denied;
+            const char* denied;
 
             if (svs.clients[i].netchan.remoteAddress.type == NA_BOT) {
                 if (killBots) {
@@ -599,6 +697,15 @@ void SV_Init(void) {
     Cvar_Get("timelimit", "0", CVAR_SERVERINFO);
     sv_gametype = Cvar_Get("g_gametype", "0", CVAR_SERVERINFO | CVAR_LATCH);
     Cvar_Get("sv_keywords", "", CVAR_SERVERINFO);
+    // [QL] Master servers the browser queries and dedicated servers heartbeat
+    // to. Quake Live's own master is long gone, so there is no useful default
+    // to ship - point these at a dpmaster you control (or one that accepts the
+    // "QuakeLive" gamename) and both directions start working.
+    Cvar_Get("sv_master1", "", CVAR_ARCHIVE);
+    Cvar_Get("sv_master2", "", CVAR_ARCHIVE);
+    Cvar_Get("sv_master3", "", CVAR_ARCHIVE);
+    Cvar_Get("sv_master4", "", CVAR_ARCHIVE);
+    Cvar_Get("sv_master5", "", CVAR_ARCHIVE);
     sv_mapname = Cvar_Get("mapname", "nomap", CVAR_SERVERINFO | CVAR_ROM);
     sv_privateClients = Cvar_Get("sv_privateClients", "0", CVAR_SERVERINFO);
     sv_hostname = Cvar_Get("sv_hostname", "noname", CVAR_SERVERINFO | CVAR_ARCHIVE);
@@ -640,6 +747,13 @@ void SV_Init(void) {
     sv_mapChecksum = Cvar_Get("sv_mapChecksum", "", CVAR_ROM);
     sv_lanForceRate = Cvar_Get("sv_lanForceRate", "1", CVAR_ARCHIVE);
     sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
+    sv_altEntDir = Cvar_Get("sv_altEntDir", "", CVAR_ARCHIVE);
+
+    // Load the bans the operator saved in a previous session so they are in
+    // force before the first client can connect. Queued rather than called
+    // directly: SV_AddOperatorCommands (which registers "rehashbans") runs
+    // above, but sv_banFile only exists as of this line.
+    Cbuf_AddText("rehashbans\n");
 
     // initialize bot cvars so they are listed and can be set before loading the botlib
     SV_BotInitCvars();
@@ -700,6 +814,9 @@ void SV_Shutdown(char* finalmsg) {
     if (svs.clients && !com_errorEntered) {
         SV_FinalMessage(finalmsg);
     }
+
+    // [QL] tell the masters we are going away before we stop answering them
+    SV_MasterShutdown();
 
     SV_RemoveOperatorCommands();
     SV_ShutdownGameProgs();

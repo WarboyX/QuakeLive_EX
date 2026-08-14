@@ -346,42 +346,36 @@ int ShotgunPellet(vec3_t start, vec3_t end, gentity_t* ent, int ring) {
 // this should match CG_ShotgunPattern
 void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
     int i;
-    float r, u, angle, ringRadius;
-    int ring;
+    float r, u;
     int totalDamage = 0;
     int quality;
     vec3_t end;
     vec3_t forward, right, up;
     qboolean hitClient = qfalse;
 
-    VectorNormalize2(origin2, forward);
-    PerpendicularVector(right, forward);
-    CrossProduct(forward, right, up);
+    // The pellet geometry lives in BG_ShotgunBasis/BG_ShotgunPellet so that this
+    // and CG_ShotgunPattern cannot drift apart. The whole reason
+    // weapon_supershotgun_fire puts a random seed in eventParm and sends it is
+    // so both sides can reproduce the same spread: the server to decide what was
+    // hit, the client to draw where the pellets landed. This function used to
+    // take that seed and never reference it, and used to build its own frame off
+    // PerpendicularVector, whose result rotates with the player's facing.
+    //
+    // The three knobs are all CVAR_SERVERINFO, so the client derives the pattern
+    // from the same numbers the server traced with rather than from anything
+    // local.
+    BG_ShotgunBasis(origin2, g_shotgunBasis.integer, forward, right, up);
 
     // [QL] clear damage plum accumulator
     if (ent->client) {
         memset(ent->client->damagePlum, 0, sizeof(ent->client->damagePlum));
     }
 
-    // [QL] concentric ring pattern (binary-verified from qagamex86.dll 0x1006d450)
-    // 3 rings of absolute radii - the muzzle offset is already scaled, no extra spread
     for (i = 0; i < DEFAULT_SHOTGUN_COUNT; i++) {
-        if (i < 6) {
-            ringRadius = 4000;
-            angle = (float)(i - 20) * (M_PI / 3.0f);
-            ring = 1;  // inner ring, full damage
-        } else if (i < 12) {
-            ringRadius = 8000;
-            angle = (float)i * (M_PI / 3.0f) + 30.0f;  // binary adds 30.0 radians
-            ring = 0;  // outer damage
-        } else {
-            ringRadius = 12000;
-            angle = (float)i * (M_PI / 4.0f);
-            ring = 0;  // outer damage
-        }
+        qboolean inner;
 
-        r = cos(angle) * ringRadius;
-        u = sin(angle) * ringRadius;
+        seed = BG_ShotgunPellet(i, seed, g_shotgunPattern.integer, g_shotgunJitter.value, g_shotgunSpread.value, &r,
+                                &u, &inner);
 
         VectorMA(origin, 8192 * 16, forward, end);
         VectorMA(end, r, right, end);
@@ -389,7 +383,7 @@ void ShotgunPattern(vec3_t origin, vec3_t origin2, int seed, gentity_t* ent) {
 
         // [QL] shotsHit counts every pellet that connects; accuracy_hits once per blast
         {
-            int pelletDamage = ShotgunPellet(origin, end, ent, ring);
+            int pelletDamage = ShotgunPellet(origin, end, ent, inner ? 1 : 0);
             totalDamage += pelletDamage;
             if (pelletDamage) {
                 if (!hitClient) {

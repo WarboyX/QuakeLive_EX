@@ -994,6 +994,14 @@ void Menu_ShowItemByName(menuDef_t* menu, const char* p, qboolean bShow) {
             if (bShow) {
                 item->window.flags |= WINDOW_VISIBLE;
             } else {
+                // NOTE: deliberately does NOT clear WINDOW_HASFOCUS. Clearing
+                // it here looked correct - a hidden item should not stay
+                // focused - but it is shared by every Quake Live menu, and
+                // doing so was followed by BACK going missing and unclickable
+                // in their options menu. Reverted on suspicion rather than
+                // proof; if the stale-focus problem needs solving, solve it
+                // where the focus is consumed, not by mutating every menu's
+                // state on hide.
                 item->window.flags &= ~WINDOW_VISIBLE;
                 // stop cinematics playing in the window
                 if (item->window.cinematic >= 0) {
@@ -1033,6 +1041,47 @@ menuDef_t* Menus_FindByName(const char* p) {
     return NULL;
 }
 
+/*
+===============
+Menu_Trace
+
+[QL] "ui_debugMenus 1" traces every menu open, close and item action, and
+prints which menus are visible afterwards ('*' marks the one with focus).
+
+Menus that overlap - two BACK buttons on screen, a button that appears to do
+nothing because its menu is already open underneath - can be caused by a
+script, by an onOpen, or by the click reaching more than one menu, and those
+are indistinguishable from the outside. This makes them distinguishable.
+===============
+*/
+static void Menu_Trace(const char* what, const char* name) {
+    char list[1024];
+    int i;
+
+    // DC->Print can legitimately be NULL - UI_Alloc guards it for the same
+    // reason. ui_shared.c is linked into cgame as well as ui, and menu
+    // open/close runs on paths where the display context is only partly set up,
+    // including the teardown after a server disconnect.
+    if (DC == NULL || DC->Print == NULL || DC->getCVarValue == NULL ||
+        DC->getCVarValue("ui_debugMenus") == 0.0f) {
+        return;
+    }
+
+    list[0] = '\0';
+    for (i = 0; i < menuCount; i++) {
+        if (!(Menus[i].window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+            continue;
+        }
+        Q_strcat(list, sizeof(list), Menus[i].window.name ? Menus[i].window.name : "(unnamed)");
+        if (Menus[i].window.flags & WINDOW_HASFOCUS) {
+            Q_strcat(list, sizeof(list), "*");
+        }
+        Q_strcat(list, sizeof(list), " ");
+    }
+
+    DC->Print("^3menu^7 %-6s %-18s visible: %s\n", what, name ? name : "(null)", list);
+}
+
 void Menus_ShowByName(const char* p) {
     menuDef_t* menu = Menus_FindByName(p);
     if (menu) {
@@ -1042,6 +1091,7 @@ void Menus_ShowByName(const char* p) {
 
 void Menus_OpenByName(const char* p) {
     Menus_ActivateByName(p);
+    Menu_Trace("open", p);
 }
 
 static void Menu_RunCloseScript(menuDef_t* menu) {
@@ -1058,6 +1108,7 @@ void Menus_CloseByName(const char* p) {
         Menu_RunCloseScript(menu);
         menu->window.flags &= ~(WINDOW_VISIBLE | WINDOW_HASFOCUS);
     }
+    Menu_Trace(menu ? "close" : "close?", p);
 }
 
 void Menus_CloseAll(void) {
@@ -1577,12 +1628,35 @@ int Item_ListBox_ThumbDrawPosition(itemDef_t* item) {
     }
 }
 
+/*
+===============
+Item_ValueOffset
+
+[QL] Gap between an item's label and the value drawn to the right of it.
+
+Value items in these menus carry `text ""`. They have no label of their own -
+the label is a separate decoration item positioned independently - and the
+empty string exists only so Item_Text_Paint runs and computes textRect, which
+is what anchors the value to the item's own rect. The fixed 8-unit gap exists
+solely to hold a value clear of a label, so with no label there is nothing to
+be clear of, and adding it anyway drew every such value 8 units right of its
+rect: selectors, yes/no toggles, key binds and slider bars all shifted, each
+one out of line with the label sitting at its left.
+
+Item_TextField_Paint and the owner-draw path already tested for an empty label
+before applying the gap. Everything else hardcoded the 8.
+===============
+*/
+static float Item_ValueOffset(const itemDef_t* item) {
+    return (item->text && *item->text) ? 8.0f : 0.0f;
+}
+
 float Item_Slider_ThumbPosition(itemDef_t* item) {
     float value, range, x;
     editFieldDef_t* editDef = item->typeData;
 
     if (item->text) {
-        x = item->textRect.x + item->textRect.w + 8;
+        x = item->textRect.x + item->textRect.w + Item_ValueOffset(item);
     } else {
         x = item->window.rect.x;
     }
@@ -2378,7 +2452,7 @@ static void Scroll_Slider_ThumbFunc(void* p) {
     editFieldDef_t* editDef = si->item->typeData;
 
     if (si->item->text) {
-        x = si->item->textRect.x + si->item->textRect.w + 8;
+        x = si->item->textRect.x + si->item->textRect.w + Item_ValueOffset(si->item);
     } else {
         x = si->item->window.rect.x;
     }
@@ -2401,7 +2475,21 @@ void Item_StartCapture(itemDef_t* item, int key) {
     int flags;
     switch (item->type) {
         case ITEM_TYPE_EDITFIELD:
-        case ITEM_TYPE_NUMERICFIELD:
+        case ITEM_TYPE_NUMERICFIELD: {
+            // These used to fall straight through into the listbox case, so
+            // clicking a text field ran Item_ListBox_OverLB against an item that
+            // has no listbox data and then did nothing. g_editingField was never
+            // set, which is what Item_TextField_HandleKey requires before it
+            // will accept a keystroke - so no text field anywhere in the UI
+            // could be typed into. Player name, hostname, callvote text, all of
+            // them.
+            editFieldDef_t* editPtr = (editFieldDef_t*)item->typeData;
+            if (editPtr) {
+                g_editingField = qtrue;
+                g_editItem = item;
+            }
+            break;
+        }
 
         case ITEM_TYPE_LISTBOX: {
             flags = Item_ListBox_OverLB(item, DC->cursorx, DC->cursory);
@@ -2458,7 +2546,7 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
                 rectDef_t testRect;
                 width = SLIDER_WIDTH;
                 if (item->text) {
-                    x = item->textRect.x + item->textRect.w + 8;
+                    x = item->textRect.x + item->textRect.w + Item_ValueOffset(item);
                 } else {
                     x = item->window.rect.x;
                 }
@@ -2483,7 +2571,9 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
             }
         }
     }
-    DC->Print("slider handle key exit\n");
+    // (Quake 3 shipped an unconditional DC->Print here. It fires on every key
+    // event that reaches a slider without being handled, so it is pure console
+    // noise, and it is an unguarded DC->Print on top of that.)
     return qfalse;
 }
 
@@ -2613,6 +2703,13 @@ qboolean Item_HandleKey(itemDef_t* item, int key, qboolean down) {
 
 void Item_Action(itemDef_t* item) {
     if (item) {
+        if (item->action) {
+            menuDef_t* parent = (menuDef_t*)item->parent;
+            char label[128];
+            Com_sprintf(label, sizeof(label), "%s/%s", (parent && parent->window.name) ? parent->window.name : "?",
+                        item->window.name ? item->window.name : "?");
+            Menu_Trace("act", label);
+        }
         Item_RunScript(item, item->action);
     }
 }
@@ -2956,11 +3053,20 @@ void Item_SetTextExtents(itemDef_t* item, int* width, int* height, const char* t
 
     // keeps us from computing the widths and heights more than once
     if (*width == 0 || (item->type == ITEM_TYPE_OWNERDRAW && item->textalignment == ITEM_ALIGN_CENTER)) {
-        int originalWidth = DC->textWidth(item->text, item->textscale, 0, item->fontIndex);
+        // [QL] originalWidth is what CENTER and RIGHT alignment subtract to work
+        // out where the text has to start. Measuring item->text is right for the
+        // items below, which draw a label and then append something to it - but
+        // an item with no label at all, whose text comes from its cvar, measured
+        // NULL and got zero. Right-aligned, that put its start exactly on the
+        // alignment point and ran the text off to the right of it instead of
+        // ending there; the iobin stamp disappeared off the edge of the screen
+        // while the pak01 stamp above it, which has a literal text, sat
+        // correctly. textPtr already holds the resolved string.
+        int originalWidth = DC->textWidth(item->text ? item->text : textPtr, item->textscale, 0, item->fontIndex);
 
         if (item->type == ITEM_TYPE_OWNERDRAW && (item->textalignment == ITEM_ALIGN_CENTER || item->textalignment == ITEM_ALIGN_RIGHT)) {
             originalWidth += DC->ownerDrawWidth(item->window.ownerDraw, item->textscale);
-        } else if (item->type == ITEM_TYPE_EDITFIELD && item->textalignment == ITEM_ALIGN_CENTER && item->cvar) {
+        } else if (item->type == ITEM_TYPE_EDITFIELD && item->textalignment == ITEM_ALIGN_CENTER && item->text && item->cvar) {
             char buff[256];
             DC->getCVarString(item->cvar, buff, 256);
             originalWidth += DC->textWidth(buff, item->textscale, 0, item->fontIndex);
@@ -3261,7 +3367,7 @@ void Item_YesNo_Paint(itemDef_t* item) {
 
     if (item->text) {
         Item_Text_Paint(item);
-        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
     }
@@ -3289,7 +3395,7 @@ void Item_Multi_Paint(itemDef_t* item) {
 
     if (item->text) {
         Item_Text_Paint(item);
-        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
     }
@@ -3311,10 +3417,22 @@ const char* Item_Combo_FindCvarByValue(itemDef_t* item) {
     }
     for (i = 0; i < multiPtr->count; i++) {
         if (multiPtr->cvarList[i] && Q_stricmp(buff, multiPtr->cvarList[i]) == 0) {
-            return multiPtr->cvarStr[i];
+            // cvarList[i] is the preset's name and is what Item_Combo_HandleKey
+            // stores in the cvar, so it is also the string to display.
+            // cvarStr[i], which this used to return, is the name of the linked
+            // ITEM_TYPE_PRESET item - an internal identifier, not a label.
+            return multiPtr->cvarList[i];
         }
     }
-    return "???";
+
+    // The cvar holds something this item has no display string for - it was set
+    // outside the menu, or the item's list does not cover the cvar's own
+    // default. Show the raw value rather than "???": the setting is not
+    // unknowable, it is just not one of the presets, and hiding it behind three
+    // question marks tells the player nothing about what their game is doing.
+    // "???" above is kept for the case where the cvar does not exist at all,
+    // which is a different fault and worth being able to tell apart.
+    return va("%s", buff);
 }
 
 // [QL] ITEM_TYPE_PRESETLIST paint - draws the item label plus the current preset's
@@ -3341,14 +3459,20 @@ void Item_Combo_Paint(itemDef_t* item) {
 
     if (item->text) {
         Item_Text_Paint(item);
-        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, text, 0, 0, item->textStyle, item->fontIndex);
     }
 }
 
+// The command is stored inline rather than as a pointer to a literal, because
+// the table is no longer fixed: commands a menu references but this build's
+// default list has never heard of get registered at runtime (see
+// BindingIDFromName), and those need somewhere to live.
+#define MAX_UI_BINDINGS 256
+
 typedef struct {
-    char* command;
+    char command[64];
     int defaultbind1;
     int defaultbind2;
     int bind1;
@@ -3362,7 +3486,7 @@ typedef struct
     float value;
 } configcvar_t;
 
-static bind_t g_bindings[] =
+static const bind_t g_defaultBindings[] =
     {
         {"+scores", K_TAB, -1, -1, -1},
         {"+button2", K_ENTER, -1, -1, -1},
@@ -3425,7 +3549,33 @@ static bind_t g_bindings[] =
         {"messagemode3", -1, -1, -1, -1},
         {"messagemode4", -1, -1, -1, -1}};
 
-static const int g_bindCount = ARRAY_LEN(g_bindings);
+// Runtime table: seeded from g_defaultBindings, then grown on demand.
+static bind_t g_bindings[MAX_UI_BINDINGS];
+static int g_bindCount = 0;
+
+/*
+=================
+Controls_InitBindings
+
+Seed the runtime table from the defaults, once.
+=================
+*/
+static void Controls_InitBindings(void) {
+    int i, count;
+
+    if (g_bindCount != 0) {
+        return;
+    }
+
+    count = ARRAY_LEN(g_defaultBindings);
+    if (count > MAX_UI_BINDINGS) {
+        count = MAX_UI_BINDINGS;
+    }
+    for (i = 0; i < count; i++) {
+        g_bindings[i] = g_defaultBindings[i];
+    }
+    g_bindCount = count;
+}
 
 /*
 =================
@@ -3464,6 +3614,8 @@ void Controls_GetConfig(void) {
     int i;
     int twokeys[2];
 
+    Controls_InitBindings();
+
     // iterate each command, get its numeric binding
     for (i = 0; i < g_bindCount; i++) {
         Controls_GetKeyAssignment(g_bindings[i].command, twokeys);
@@ -3489,6 +3641,8 @@ Controls_SetConfig
 */
 void Controls_SetConfig(qboolean restart) {
     int i;
+
+    Controls_InitBindings();
 
     // iterate each command, get its numeric binding
     for (i = 0; i < g_bindCount; i++) {
@@ -3524,6 +3678,8 @@ Controls_SetDefaults
 void Controls_SetDefaults(void) {
     int i;
 
+    Controls_InitBindings();
+
     // iterate each command, set its default binding
     for (i = 0; i < g_bindCount; i++) {
         g_bindings[i].bind1 = g_bindings[i].defaultbind1;
@@ -3542,12 +3698,36 @@ void Controls_SetDefaults(void) {
 
 int BindingIDFromName(const char* name) {
     int i;
+    int twokeys[2];
+
+    Controls_InitBindings();
+
     for (i = 0; i < g_bindCount; i++) {
         if (Q_stricmp(name, g_bindings[i].command) == 0) {
             return i;
         }
     }
-    return -1;
+
+    // Not in the default list. That list is Q3's, and Quake Live's own control
+    // menus bind a good deal it never had - so every one of those items used to
+    // find no id here, which made Item_Bind_HandleKey drop the keypress on the
+    // floor and BindingFromName paint "???". Nothing bound, nothing displayed.
+    // Register the command instead, seeded from whatever it is bound to now, so
+    // any command a menu asks for is bindable whether or not this build shipped
+    // knowing about it.
+    if (!name || !name[0] || g_bindCount >= MAX_UI_BINDINGS) {
+        return -1;
+    }
+
+    i = g_bindCount++;
+    Q_strncpyz(g_bindings[i].command, name, sizeof(g_bindings[i].command));
+    g_bindings[i].defaultbind1 = -1;
+    g_bindings[i].defaultbind2 = -1;
+    Controls_GetKeyAssignment(g_bindings[i].command, twokeys);
+    g_bindings[i].bind1 = twokeys[0];
+    g_bindings[i].bind2 = twokeys[1];
+
+    return i;
 }
 
 char g_nameBind1[32];
@@ -3556,27 +3736,27 @@ char g_nameBind2[32];
 void BindingFromName(const char* cvar) {
     int i, b1, b2;
 
-    // iterate each command, set its default binding
-    for (i = 0; i < g_bindCount; i++) {
-        if (Q_stricmp(cvar, g_bindings[i].command) == 0) {
-            b1 = g_bindings[i].bind1;
-            if (b1 == -1) {
-                break;
-            }
-            DC->keynumToStringBuf(b1, g_nameBind1, 32);
-            Q_strupr(g_nameBind1);
+    // Registers the command if the default list did not have it, so an unknown
+    // command shows its real binding rather than "???".
+    i = BindingIDFromName(cvar);
+    b1 = (i == -1) ? -1 : g_bindings[i].bind1;
 
-            b2 = g_bindings[i].bind2;
-            if (b2 != -1) {
-                DC->keynumToStringBuf(b2, g_nameBind2, 32);
-                Q_strupr(g_nameBind2);
-                strcat(g_nameBind1, " or ");
-                strcat(g_nameBind1, g_nameBind2);
-            }
-            return;
-        }
+    if (b1 == -1) {
+        // genuinely unbound, or the table is full
+        strcpy(g_nameBind1, "???");
+        return;
     }
-    strcpy(g_nameBind1, "???");
+
+    DC->keynumToStringBuf(b1, g_nameBind1, 32);
+    Q_strupr(g_nameBind1);
+
+    b2 = g_bindings[i].bind2;
+    if (b2 != -1) {
+        DC->keynumToStringBuf(b2, g_nameBind2, 32);
+        Q_strupr(g_nameBind2);
+        strcat(g_nameBind1, " or ");
+        strcat(g_nameBind1, g_nameBind2);
+    }
 }
 
 void Item_Slider_Paint(itemDef_t* item) {
@@ -3597,7 +3777,7 @@ void Item_Slider_Paint(itemDef_t* item) {
     y = item->window.rect.y;
     if (item->text) {
         Item_Text_Paint(item);
-        x = item->textRect.x + item->textRect.w + 8;
+        x = item->textRect.x + item->textRect.w + Item_ValueOffset(item);
     } else {
         x = item->window.rect.x;
     }
@@ -3630,7 +3810,7 @@ void Item_SliderColor_Paint(itemDef_t* item) {
     y = item->window.rect.y;
     if (item->text) {
         Item_Text_Paint(item);
-        x = item->textRect.x + item->textRect.w + 8;
+        x = item->textRect.x + item->textRect.w + Item_ValueOffset(item);
     } else {
         x = item->window.rect.x;
     }
@@ -3671,7 +3851,7 @@ void Item_Bind_Paint(itemDef_t* item) {
     if (item->text) {
         Item_Text_Paint(item);
         BindingFromName(item->cvar);
-        DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, g_nameBind1, 0, maxChars, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, g_nameBind1, 0, maxChars, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, "FIXME", 0, maxChars, item->textStyle, item->fontIndex);
     }
@@ -4555,13 +4735,64 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
 // cvar of the linked ITEM_TYPE_PRESET item still equals its stored preset value.
 // If any differs (numeric compare within 0.001 tolerance, else string compare)
 // the preset cvar is set to "Custom". Called from Menu_Paint before drawing.
+static qboolean Menu_PresetMatches(menuDef_t* menu, multiDef_t* multiPtr, int index) {
+    itemDef_t* linkedItem;
+    multiDef_t* linkedMulti;
+    int k;
+
+    if (multiPtr->cvarStr[index] == NULL) {
+        return qfalse;
+    }
+
+    linkedItem = Menu_FindItemByName(menu, multiPtr->cvarStr[index]);
+    if (linkedItem == NULL) {
+        return qfalse;
+    }
+
+    linkedMulti = (multiDef_t*)linkedItem->typeData;
+    if (linkedMulti == NULL) {
+        return qfalse;
+    }
+
+    for (k = 0; k < linkedMulti->count; k++) {
+        char presetValue[64];
+
+        // [QL] guard a malformed preset item that left a NULL cvar name;
+        // the binary relies on a fully-populated cvarList here.
+        if (linkedMulti->cvarList[k] == NULL) {
+            continue;
+        }
+
+        memset(presetValue, 0, sizeof(presetValue));
+        DC->getCVarString(linkedMulti->cvarList[k], presetValue, sizeof(presetValue));
+
+        if (strcmp(presetValue, linkedMulti->cvarStr[k]) != 0) {
+            // Both numeric and within tolerance counts as a match.
+            if (Q_isanumber(presetValue) && Q_isanumber(linkedMulti->cvarStr[k])) {
+                float diff = DC->getCVarValue(linkedMulti->cvarList[k]) - linkedMulti->cvarValue[k];
+                if (diff < 0) {
+                    diff = -diff;
+                }
+                if (diff <= 0.001f) {
+                    continue;
+                }
+            }
+            return qfalse;
+        }
+    }
+
+    return qtrue;
+}
+
 void Menu_CheckPresetCvars(menuDef_t* menu) {
-    int i, j, k;
+    int i, j;
 
     for (i = 0; i < menu->itemCount; i++) {
         itemDef_t* item = menu->items[i];
         multiDef_t* multiPtr;
         char currentValue[1024];
+        int named = -1;
+        int resolved = -1;
 
         // [QL] skip NULL / non-preset items
         if (item == NULL || item->type != ITEM_TYPE_PRESETLIST) {
@@ -4575,50 +4806,38 @@ void Menu_CheckPresetCvars(menuDef_t* menu) {
         DC->getCVarString(item->cvar, currentValue, sizeof(currentValue));
 
         for (j = 0; j < multiPtr->count; j++) {
-            itemDef_t* linkedItem;
-            multiDef_t* linkedMulti;
+            if (multiPtr->cvarList[j] && Q_stricmp(currentValue, multiPtr->cvarList[j]) == 0) {
+                named = j;
+                break;
+            }
+        }
 
-            if (multiPtr->cvarList[j] == NULL || Q_stricmp(currentValue, multiPtr->cvarList[j]) != 0) {
-                continue;
-            }
-            if (multiPtr->cvarStr[j] == NULL) {
-                continue;
-            }
+        // The cvar already names a preset and that preset still describes the
+        // current settings - nothing to do.
+        if (named >= 0 && Menu_PresetMatches(menu, multiPtr, named)) {
+            continue;
+        }
 
-            linkedItem = Menu_FindItemByName(menu, multiPtr->cvarStr[j]);
-            if (linkedItem == NULL) {
-                continue;
+        // Otherwise the cvar names nothing this menu knows about - which is the
+        // state a config that has never been through this menu starts in, and
+        // is why these items painted "???" - or it names a preset the settings
+        // have since drifted away from. Either way, work out which preset the
+        // cvars actually correspond to rather than leaving the item unlabelled.
+        //
+        // This used to compare only against the preset the cvar named and, on
+        // the first mismatch, write "Custom" and return - abandoning every
+        // remaining preset item in the menu as well.
+        for (j = 0; j < multiPtr->count; j++) {
+            if (Menu_PresetMatches(menu, multiPtr, j)) {
+                resolved = j;
+                break;
             }
-            linkedMulti = (multiDef_t*)linkedItem->typeData;
-            if (linkedMulti == NULL) {
-                continue;
-            }
+        }
 
-            for (k = 0; k < linkedMulti->count; k++) {
-                char presetValue[64];
-                // [QL] guard a malformed preset item that left a NULL cvar name;
-                // the binary relies on a fully-populated cvarList here.
-                if (linkedMulti->cvarList[k] == NULL) {
-                    continue;
-                }
-                memset(presetValue, 0, sizeof(presetValue));
-                DC->getCVarString(linkedMulti->cvarList[k], presetValue, sizeof(presetValue));
-
-                if (strcmp(presetValue, linkedMulti->cvarStr[k]) != 0) {
-                    // Both numeric and within tolerance counts as a match.
-                    if (Q_isanumber(presetValue) && Q_isanumber(linkedMulti->cvarStr[k])) {
-                        float diff = DC->getCVarValue(linkedMulti->cvarList[k]) - linkedMulti->cvarValue[k];
-                        if (diff < 0) {
-                            diff = -diff;
-                        }
-                        if (diff <= 0.001f) {
-                            continue;
-                        }
-                    }
-                    DC->setCVar(item->cvar, "Custom");
-                    return;
-                }
-            }
+        if (resolved >= 0) {
+            DC->setCVar(item->cvar, multiPtr->cvarList[resolved]);
+        } else {
+            DC->setCVar(item->cvar, "Custom");
         }
     }
 }
@@ -5382,7 +5601,15 @@ qboolean ItemParse_cvarStrList(itemDef_t* item, int handle) {
         return qfalse;
     multiPtr = (multiDef_t*)item->typeData;
     multiPtr->count = 0;
-    multiPtr->strDef = qfalse;  // [QL] ItemParse_cvarStrList 0x1001f010 stores 0 here
+    // A string list, so the values are compared as strings. This used to store
+    // qfalse - read from a 0 in the disassembly - which sent every cvarStrList
+    // item down the numeric branch of Item_Multi_Setting, comparing against a
+    // cvarValue[] array this parser never fills. Every entry therefore compared
+    // equal to 0, so an item whose cvar happened to be non-numeric or zero
+    // always displayed the *first* entry (Texture Filter stuck reading "None")
+    // and any other value matched nothing and displayed blank (Ambient Light
+    // Scale, Crosshair Style, Gun Position, Damage Num Style, Sparks Velocity).
+    multiPtr->strDef = qtrue;
     multiPtr->videoMode = qfalse;
 
     if (!trap_PC_ReadToken(handle, &token))
@@ -5404,6 +5631,27 @@ qboolean ItemParse_cvarStrList(itemDef_t* item, int handle) {
 
         if (*token.string == ',' || *token.string == ';') {
             continue;
+        }
+
+        // [QL] the tokeniser emits '-' and '+' as their own punctuation tokens,
+        // so an unquoted negative in either position arrives split in two and
+        // shifts every entry after it by one. Unlike cvarFloatList this cannot
+        // run past the closing brace - the '}' test above runs on every token -
+        // but it does silently mis-pair the list. Rejoin the sign.
+        if ((token.string[0] == '-' || token.string[0] == '+') && token.string[1] == '\0') {
+            char signedToken[MAX_TOKENLENGTH + 2];
+            char sign = token.string[0];
+
+            if (!trap_PC_ReadToken(handle, &token)) {
+                PC_SourceError(handle, "end of file inside menu item");
+                return qfalse;
+            }
+            if (*token.string == '}') {
+                PC_SourceError(handle, "cvarStrList ends with a bare '%c'", sign);
+                return qtrue;
+            }
+            Com_sprintf(signedToken, sizeof(signedToken), "%c%s", sign, token.string);
+            Q_strncpyz(token.string, signedToken, sizeof(token.string));
         }
 
         if (pass == 0) {
@@ -5454,17 +5702,61 @@ qboolean ItemParse_cvarFloatList(itemDef_t* item, int handle) {
         }
 
         multiPtr->cvarList[multiPtr->count] = String_Alloc(token.string);
-        // [QL] ItemParse_cvarFloatList 0x1001f1d0 parses the value as a string token
-        // into cvarStr[], then atof()'s it into cvarValue[]; on failure it stores 0
-        // and stops (rather than PC_Float_Parse-ing straight into cvarValue).
-        if (!PC_String_Parse(handle, &multiPtr->cvarStr[multiPtr->count])) {
-            multiPtr->cvarValue[multiPtr->count] = 0;
-            break;
+
+        // [QL] ItemParse_cvarFloatList 0x1001f1d0 parses the value as a string
+        // token into cvarStr[], then atof()'s it into cvarValue[] (rather than
+        // PC_Float_Parse-ing straight into cvarValue). Reading it with a bare
+        // PC_String_Parse, as that does, has two ways to run off the end of the
+        // list, and both of them silently consume the rest of the file:
+        //
+        //  - a '}' in the value position was taken as a value, so a list with an
+        //    odd number of tokens ate its own closing brace;
+        //  - the script tokeniser emits '-' as its own punctuation token, which
+        //    is why PC_Float_Parse has explicit sign handling. Without it,
+        //    { "Infinite" -1 "Off" 0 } consumed '-' as Infinite's value and left
+        //    '1' to be read as the next entry's *name*. Every pair after that
+        //    shifted by one, the list overran its '}', and it went on consuming
+        //    the remaining itemDef keywords - and then the menu's closing brace -
+        //    as name/value pairs. The menu never closed, so the next menuDef in
+        //    the file was parsed as more of this one: two menus' worth of items
+        //    in a single menu, with the second menu's name. Two BACK buttons on
+        //    screen, everything overlapping, and the absorbed menu unreachable
+        //    because nothing by that name existed any more.
+        //
+        // Quake Live's own ui/ingame_callvote.menu hits the same fault.
+        if (!trap_PC_ReadToken(handle, &token)) {
+            PC_SourceError(handle, "end of file inside menu item");
+            return qfalse;
         }
+
+        if (*token.string == '}') {
+            PC_SourceError(handle, "cvarFloatList entry \"%s\" has no value", multiPtr->cvarList[multiPtr->count]);
+            return qtrue;  // the brace is this list's terminator; do not consume it
+        }
+
+        if ((token.string[0] == '-' || token.string[0] == '+') && token.string[1] == '\0') {
+            char signedValue[MAX_TOKENLENGTH + 2];
+            char sign = token.string[0];
+
+            if (!trap_PC_ReadToken(handle, &token)) {
+                PC_SourceError(handle, "end of file inside menu item");
+                return qfalse;
+            }
+            if (*token.string == '}') {
+                PC_SourceError(handle, "cvarFloatList entry \"%s\" has a sign but no value", multiPtr->cvarList[multiPtr->count]);
+                return qtrue;
+            }
+            Com_sprintf(signedValue, sizeof(signedValue), "%c%s", sign, token.string);
+            multiPtr->cvarStr[multiPtr->count] = String_Alloc(signedValue);
+        } else {
+            multiPtr->cvarStr[multiPtr->count] = String_Alloc(token.string);
+        }
+
         multiPtr->cvarValue[multiPtr->count] = atof(multiPtr->cvarStr[multiPtr->count]);
 
         multiPtr->count++;
         if (multiPtr->count >= MAX_MULTI_CVARS) {
+            PC_SourceError(handle, "cvarFloatList has more than %d entries", MAX_MULTI_CVARS);
             return qfalse;
         }
     }
@@ -5969,7 +6261,10 @@ static void Item_ApplyHacks(itemDef_t* item) {
     // Replace mode list and use a temporary ui_videomode cvar for handling custom modes
     if (item->type == ITEM_TYPE_MULTI && item->cvar && !Q_stricmp(item->cvar, "r_mode")) {
         multiDef_t* multiPtr = (multiDef_t*)item->typeData;
-        int i, oldCount;
+        int i;
+#ifdef _DEBUG
+        int oldCount;
+#endif
         char resbuf[MAX_STRING_CHARS];
         char modeName[32], aspect[8];
 
@@ -5977,7 +6272,9 @@ static void Item_ApplyHacks(itemDef_t* item) {
         multiPtr->strDef = qtrue;
         multiPtr->videoMode = qtrue;
 
+#ifdef _DEBUG
         oldCount = multiPtr->count;
+#endif
         multiPtr->count = 0;
 
         DC->getCVarString("r_availableModes", resbuf, sizeof(resbuf));

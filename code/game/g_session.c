@@ -46,7 +46,7 @@ void G_WriteClientSessionData(gclient_t* client) {
     // [QL] 13 fields. QL field order: weaponPrimary comes before
     // wins/losses/teamLeader, and prevScore is appended. updatePlayQueue and
     // joinTime are not serialised.
-    s = va("%i %ld %i %i %i %i %i %i %i %i %i %i %i",
+    s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i",
            client->sess.sessionTeam,
            client->sess.spectatorTime,
            client->sess.spectatorState,
@@ -83,7 +83,10 @@ void G_ReadSessionData(gclient_t* client) {
     var = va("session%i", (int)(client - level.clients));
     trap_Cvar_VariableStringBuffer(var, s, sizeof(s));
 
-    sscanf(s, "%i %ld %i %i %i %i %i %i %i %i %i %i %i",
+    // NOTE: every field below is an int; spectatorTime in particular must be
+    // read with %i. Reading it as %ld makes sscanf store 8 bytes into a 4-byte
+    // member on LP64 (Linux/macOS), corrupting the rest of clientSession_t.
+    sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i",
            &sessionTeam,
            &client->sess.spectatorTime,
            &spectatorState,
@@ -123,15 +126,31 @@ void G_InitSessionData(gclient_t* client, char* userinfo) {
     sess = &client->sess;
 
     // initial team determination
+    //
+    // [QL] Quake Live puts every connecting player into spectator and makes
+    // them pick JOIN MATCH from the menu. Quake 3 dropped you straight into
+    // the game, and g_autoJoin (default on) restores that: connect, spawn,
+    // play. Set g_autoJoin 0 for the Quake Live behaviour.
+    //
+    // Duel is deliberately exempt from the blanket case - it runs on a play
+    // queue, so a third player joining has to wait rather than barge in. The
+    // "fewer than two in the game" test is Quake 3's own tournament rule and
+    // matches what G_ClientCmd's join path already enforces (g_cmds.c).
     if (g_gametype.integer >= GT_TEAM) {
-        if (g_teamAutoJoin.integer) {
+        if (g_teamAutoJoin.integer || g_autoJoin.integer) {
             sess->sessionTeam = PickTeam(-1);
             BroadcastTeamChange(client, -1);
         } else {
             sess->sessionTeam = TEAM_SPECTATOR;
         }
-    } else {
+    } else if (!g_autoJoin.integer) {
         sess->sessionTeam = TEAM_SPECTATOR;
+    } else if (g_gametype.integer == GT_DUEL) {
+        sess->sessionTeam = (level.numNonSpectatorClients >= 2) ? TEAM_SPECTATOR : TEAM_FREE;
+    } else if (g_maxGameClients.integer > 0 && level.numNonSpectatorClients >= g_maxGameClients.integer) {
+        sess->sessionTeam = TEAM_SPECTATOR;
+    } else {
+        sess->sessionTeam = TEAM_FREE;
     }
 
     sess->spectatorState = SPECTATOR_FREE;

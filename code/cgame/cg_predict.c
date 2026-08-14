@@ -312,6 +312,23 @@ static void CG_TouchItem(centity_t* cent) {
         return;
     }
 
+    // [QL] An item that has already been taken is still in the snapshot.
+    //
+    // Quake 3 could skip this test because a picked-up item was marked
+    // SVF_NOCLIENT and stopped being transmitted at all. Quake Live's item
+    // timers need the entity on the client to count the respawn down, so
+    // Touch_Item clears SVF_NOCLIENT again and leaves only EF_NODRAW set
+    // (g_items.c). The entity therefore keeps arriving, and prediction - which
+    // sets EF_NODRAW below to mean "already taken" but never read it back -
+    // re-took it on every pass, firing EV_ITEM_PICKUP locally each time.
+    //
+    // The server ignores those touches (it zeroed r.contents on pickup), so
+    // nothing was actually granted: you got the pickup sound, repeatedly, over
+    // an empty armour spawn.
+    if (cent->currentState.eFlags & EF_NODRAW) {
+        return;
+    }
+
     // never pick an item up twice in a prediction
     if (cent->miscTime == cg.time) {
         return;
@@ -535,6 +552,7 @@ static void CG_CheckAutoFire(void) {
         start[2] = muzzle[2] + right[2] * 4.0f - up[2];
 
         CG_RailTrail(&cgs.clientinfo[clientNum], start, trace.endpos);
+        cg.predictedRailTime = cg.time;
 
         if (!(trace.surfaceFlags & SURF_NOIMPACT)) {
             CG_MissileHitWall(cg.predictedPlayerState.weapon,

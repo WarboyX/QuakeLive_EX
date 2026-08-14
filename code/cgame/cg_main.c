@@ -142,6 +142,7 @@ vmCvar_t cg_brassTime;
 vmCvar_t cg_viewsize;
 vmCvar_t cg_drawGun;
 vmCvar_t cg_gun_frame;
+vmCvar_t cg_gunAspect;
 vmCvar_t cg_gun_x;
 vmCvar_t cg_gun_y;
 vmCvar_t cg_gun_z;
@@ -271,6 +272,7 @@ vmCvar_t cg_teamLowerColor;
 vmCvar_t cg_teamUpperColor;
 vmCvar_t cg_thirdPersonPitch;
 vmCvar_t cg_trueShotgun;
+vmCvar_t cg_debugShotgun;
 vmCvar_t cg_vignette;
 vmCvar_t cg_waterWarp;
 vmCvar_t cg_weaponBar;
@@ -522,6 +524,8 @@ static cvarTable_t cvarTable[] = {
     {&cg_addMarks, "cg_marks", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lagometer, "cg_lagometer", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 0 (was Q3 "1")
     {&cg_railTrailTime, "cg_railTrailTime", "400", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    // [QL] raise the view weapon by the vertical FOV widescreen takes away
+    {&cg_gunAspect, "cg_gunAspect", "1", CVAR_ARCHIVE},
     {&cg_gun_x, "cg_gunX", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] binary: CVAR_ARCHIVE (player viewmodel offset, not a cheat)
     {&cg_gun_y, "cg_gunY", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_gun_z, "cg_gunZ", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -660,6 +664,8 @@ static cvarTable_t cvarTable[] = {
     {&cg_teamUpperColor, "cg_teamUpperColor", "0x808080FF", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_thirdPersonPitch, "cg_thirdPersonPitch", "-1", CVAR_CHEAT},
     {&cg_trueShotgun, "cg_trueShotgun", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    // [QL] diagnostic: report every shotgun blast's geometry against the view axis
+    {&cg_debugShotgun, "cg_debugShotgun", "0", CVAR_VM_CREATED | CVAR_ARCHIVE},
     {&cg_vignette, "cg_vignette", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_waterWarp, "cg_waterWarp", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_weaponBar, "cg_weaponBar", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -1702,6 +1708,20 @@ static void CG_RegisterGraphics(void) {
     cgs.media.smokePuffRageProShader = trap_R_RegisterShader("smokePuffRagePro");
     cgs.media.shotgunSmokePuffShader = trap_R_RegisterShader("shotgunSmokePuff");
 
+    // [QL] impact spark burst and wallbang debris. Both handles were declared
+    // and referenced by the impact paths but never registered, so they resolved
+    // to 0 and nothing would have drawn even once the spawner existed. Fall
+    // back to the smoke puff sprite, which is always present, if the QL-named
+    // shaders are missing from the loaded paks.
+    cgs.media.sparkParticleShader = trap_R_RegisterShader("sparkParticle");
+    if (!cgs.media.sparkParticleShader) {
+        cgs.media.sparkParticleShader = cgs.media.smokePuffShader;
+    }
+    cgs.media.debrisPuffShader = trap_R_RegisterShader("debrisPuff");
+    if (!cgs.media.debrisPuffShader) {
+        cgs.media.debrisPuffShader = cgs.media.smokePuffShader;
+    }
+
     cgs.media.nailPuffShader = trap_R_RegisterShader("nailtrail");
     cgs.media.blueProxMine = trap_R_RegisterModel("models/weaphits/proxmineb.md3");
 
@@ -2396,6 +2416,9 @@ void CG_LoadMenus(const char* menuFile) {
     Com_Printf("UI menu load time = %d milliseconds\n", trap_Milliseconds() - start);
 }
 
+// cgame owner-draws are HUD elements and take no input; the interactive
+// owner-draws live in the ui module, which implements UI_OwnerDrawHandleKey
+// properly. Returns qfalse in stock ioquake3 as well; not a gap.
 static qboolean CG_OwnerDrawHandleKey(int ownerDraw, int flags, float* special, int key) {
     return qfalse;
 }
@@ -2758,7 +2781,9 @@ static const char* CG_FeederItemText(float feederID, int index, int column, qhan
 static qhandle_t CG_FeederItemImage(float feederID, int index) {
     // [QL] Return country flag or other per-player image for premium scoreboard.
     // Standard scoreboard uses column 0 icon handle from CG_FeederItemText instead.
-    // FEEDER_ENDSCOREBOARD could show country flags here if we had the data.
+    // FEEDER_ENDSCOREBOARD could show country flags here if we had the data -
+    // clientInfo_t carries no country field on the client, so there is nothing
+    // to look one up with. Returns 0 in stock ioquake3 as well; not a gap.
     return 0;
 }
 
@@ -2973,6 +2998,12 @@ Will perform callbacks to make the loading info screen update.
 */
 void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum) {
     const char* s;
+
+    // [QL] Identify which iobin.pk3 is loaded. Menu fixes ship in pak01.pk3 and
+    // module fixes in iobin.pk3, and replacing only one of the two has more than
+    // once made a fixed bug look unfixed. The main menu stamps pak01; this
+    // stamps the game modules, so the console settles the other half.
+    CG_Printf("^3cgame^7 built %s %s\n", __DATE__, __TIME__);
 
     // clear everything
     memset(&cgs, 0, sizeof(cgs));

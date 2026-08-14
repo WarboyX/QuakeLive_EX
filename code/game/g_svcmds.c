@@ -482,12 +482,12 @@ Verified against qagamex86.dll:
   G_ReloadAccessList  0x10032830  (reload + reapply; .so symbol G_ReloadAccessList)
 
 NOTE (coordination / see report): these three should live in a dedicated
-g_access.c and be declared in g_local.h so that ClientConnect() (auth/ban check)
-and the admin client-commands in g_cmds.c (Cmd_AddAdmin_f / Cmd_AddMod_f /
-Cmd_Demote_f / Cmd_Ban_f / Cmd_Unban_f) can consume them. They are placed here
-because Svcmd/ConsoleCommand's "reload_access" is the only in-scope caller. The
-existing g_client.c:G_GetAccessLevel(const char*) stub is a mis-typed invention;
-the binary's function is G_GetAccess(int clientNum) (below).
+g_access.c. They are declared in g_local.h and are consumed by ClientConnect()
+(the connect-time ban check) and G_InitSessionData() (privilege seeding); they
+are defined here because Svcmd/ConsoleCommand's "reload_access" was originally
+the only in-scope caller. The mis-typed g_client.c:G_GetAccessLevel(const char*)
+stub that used to shadow this lookup has been removed - the binary's function is
+G_GetAccess(int clientNum) (below), and that is what callers now use.
 ==============================================================================
 */
 
@@ -556,6 +556,10 @@ void G_InitAccessList(void) {
     while (line) {
         if (*line != '#') {
             char* cr;
+            // %llu has to be fed an unsigned long long; uint64_t is a plain
+            // unsigned long on LP64, so scan into a matching temporary rather
+            // than let sscanf write through a mismatched pointer type.
+            unsigned long long scannedId;
             uint64_t steamId;
             char word[64];
 
@@ -566,9 +570,15 @@ void G_InitAccessList(void) {
             // [QL] binary G_InitAccessList uses unbounded "%llu|%s"; %63s (word[64]) is a
             // deliberate defensive cap to avoid a stack overflow on a malformed access file.
             // Identical parse for every valid keyword (ban/mod/admin).
-            if (sscanf(line, "%llu|%63s", &steamId, word) != 2) {
+            if (sscanf(line, "%llu|%63s", &scannedId, word) != 2) {
                 G_Printf("^1invalid admin access format, skipping: %s\n", line);
-            } else if (!strcmp(word, "ban")) {
+                line = strtok(NULL, "\n");
+                continue;
+            }
+
+            steamId = (uint64_t)scannedId;
+
+            if (!strcmp(word, "ban")) {
                 AccessList_Get(steamId)->level = -1;
             } else if (!strcmp(word, "mod")) {
                 AccessList_Get(steamId)->level = 1;

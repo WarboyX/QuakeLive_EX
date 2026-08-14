@@ -2942,6 +2942,12 @@ void CL_Init(void) {
     Cmd_AddCommand("rcon", CL_Rcon_f);
     Cmd_SetCommandCompletionFunc("rcon", CL_CompleteRcon);
     Cmd_AddCommand("showip", CL_ShowIP_f);
+    // [QL] Both of these existed only as unregistered functions, so the
+    // server browser's refresh - which shells out to "localservers" and
+    // "globalservers" - was hitting "unknown command" and quietly showing
+    // an empty list on every source.
+    Cmd_AddCommand("localservers", CL_LocalServers_f);
+    Cmd_AddCommand("globalservers", CL_GlobalServers_f);
     Cmd_AddCommand("fs_openedList", CL_OpenedPK3List_f);
     Cmd_AddCommand("fs_referencedList", CL_ReferencedPK3List_f);
     Cmd_AddCommand("model", CL_SetModel_f);
@@ -3392,6 +3398,72 @@ void CL_LocalServers_f(void) {
             NET_SendPacket(NS_CLIENT, strlen(message), message, to);
         }
     }
+}
+
+/*
+==================
+CL_GlobalServers_f
+
+globalservers <master# 0-4> <protocol> [keywords]
+
+Asks a master server for its list of servers. The reply comes back as
+getserversResponse / getserversExtResponse, which CL_ServersResponsePacket
+already parses - only the request side was missing, so the UI's Internet
+source had nothing to populate it and the browser always came up empty.
+==================
+*/
+void CL_GlobalServers_f(void) {
+    netadr_t to;
+    int count, i, masterNum;
+    char command[1024];
+    const char* masteraddress;
+
+    if ((count = Cmd_Argc()) < 3 || (masterNum = atoi(Cmd_Argv(1))) < 0 || masterNum >= MAX_MASTER_SERVERS) {
+        Com_Printf("usage: globalservers <master# 0-%d> <protocol> [keywords]\n", MAX_MASTER_SERVERS - 1);
+        return;
+    }
+
+    Com_sprintf(command, sizeof(command), "sv_master%d", masterNum + 1);
+    masteraddress = Cvar_VariableString(command);
+
+    if (!*masteraddress) {
+        Com_Printf("CL_GlobalServers_f: no address set for %s\n", command);
+        return;
+    }
+
+    // reset the list, waiting for response.
+    // -1 is used to distinguish a no-response from an empty list.
+    i = NET_StringToAdr(masteraddress, &to, NA_UNSPEC);
+    if (!i) {
+        Com_Printf("CL_GlobalServers_f: could not resolve address of master %s\n", masteraddress);
+        return;
+    } else if (i == 2) {
+        to.port = BigShort(PORT_MASTER);
+    }
+
+    Com_Printf("Requesting servers from master %s...\n", masteraddress);
+
+    cls.numglobalservers = -1;
+    cls.pingUpdateSource = AS_GLOBAL;
+
+    if (to.type == NA_IP6 || to.type == NA_MULTICAST6) {
+        int v4enabled = Cvar_VariableIntegerValue("net_enabled") & NET_ENABLEV4;
+
+        if (v4enabled) {
+            Com_sprintf(command, sizeof(command), "getserversExt " GAMENAME_FOR_MASTER " %s", Cmd_Argv(2));
+        } else {
+            Com_sprintf(command, sizeof(command), "getserversExt " GAMENAME_FOR_MASTER " %s ipv6", Cmd_Argv(2));
+        }
+    } else {
+        Com_sprintf(command, sizeof(command), "getservers %s", Cmd_Argv(2));
+    }
+
+    for (i = 3; i < count; i++) {
+        Q_strcat(command, sizeof(command), " ");
+        Q_strcat(command, sizeof(command), Cmd_Argv(i));
+    }
+
+    NET_OutOfBandPrint(NS_SERVER, to, "%s", command);
 }
 
 /*

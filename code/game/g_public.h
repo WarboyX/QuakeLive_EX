@@ -105,7 +105,7 @@ typedef struct {
     /* --- Core Engine Traps --- */
     /* 0x00  */ void    (*trap_SendConsoleCommand)(const char *text);
     /* 0x08  */ void    *_unused_01;
-    /* 0x10  */ void    (*trap_Printf)(const char *fmt, ...);
+    /* 0x10  */ void    (*trap_Printf)(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
     /* 0x18  */ void    *_unused_03;
     /* 0x20  */ int     (*trap_FS_Write)(const void *buf, int len, fileHandle_t f);
     /* 0x28  */ void    *_unused_05;
@@ -113,7 +113,7 @@ typedef struct {
     /* 0x38  */ void    *_unused_07;
     /* 0x40  */ int     (*trap_FS_FOpenFile)(const char *name, fileHandle_t *f, fsMode_t mode);
     /* 0x48  */ void    (*trap_FS_FCloseFile)(fileHandle_t f);
-    /* 0x50  */ void    (*trap_Error)(const char *fmt, ...);
+    /* 0x50  */ void    (*trap_Error)(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
     /* 0x58  */ float   (*trap_Cvar_VariableValue)(const char *name);
     /* 0x60  */ void    (*trap_Cvar_Update)(vmCvar_t *cv);
     /* 0x68  */ void    (*trap_Cvar_VariableStringBuffer)(const char *name, char *buf, int size);

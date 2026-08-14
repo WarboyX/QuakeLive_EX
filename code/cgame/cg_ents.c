@@ -458,6 +458,33 @@ static void CG_Item(centity_t* cent) {
                     ent.nonNormalizedAxes = qtrue;
                 }
                 trap_R_AddRefEntityToScene(&ent);
+
+                // [QL] Light the area around a powerup on the ground. Quake 3
+                // only ever lit the powered-up *player* (CG_PlayerPowerups),
+                // never the pickup, so the item sat in an unlit room glowing
+                // only on its own shader. Colours and radius are taken from the
+                // player-side lights so a quad on the floor and a quad being
+                // carried tint the room the same way.
+                if (frac == 1.0f) {
+                    float radius = 200 + (rand() & 31);
+
+                    switch (item->giTag) {
+                        case PW_QUAD:
+                            trap_R_AddLightToScene(cent->lerpOrigin, radius, 0.2f, 0.2f, 1.0f);
+                            break;
+                        case PW_BATTLESUIT:
+                            trap_R_AddLightToScene(cent->lerpOrigin, radius, 0.2f, 1.0f, 0.2f);
+                            break;
+                        case PW_REGEN:
+                            trap_R_AddLightToScene(cent->lerpOrigin, radius, 1.0f, 0.2f, 0.2f);
+                            break;
+                        case PW_INVIS:
+                            trap_R_AddLightToScene(cent->lerpOrigin, radius, 1.0f, 1.0f, 1.0f);
+                            break;
+                        default:
+                            break;
+                    }
+                }
             }
         }
     }

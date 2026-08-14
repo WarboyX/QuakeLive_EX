@@ -1,5 +1,16 @@
 #include "ui/menudef.h"
 
+// Menu names here carry an io_ prefix. Menus_FindByName returns the first match,
+// and Quake Live's own paks define menus called createserver, joinserver and
+// playersetup as well - so "open joinserver" could activate ours while
+// "close joinserver" closed theirs, or the reverse. Both stayed visible, and
+// since both are fullScreen and Q3 paints every visible menu rather than only
+// the topmost, they drew on top of each other: doubled headers, overlapping
+// labels, two sets of BACK buttons.
+//
+// main is left unprefixed deliberately: this file replaces ui/main.menu in the
+// search path, so Quake Live's own main never loads and cannot collide.
+
 {
     assetGlobalDef {
         font            "fonts/font" 16
@@ -27,6 +38,17 @@
         focusColor 1 .75 0 1
 
         onOpen {
+            // Both createserver and joinserver are fullScreen, and Q3's menu
+            // system paints every visible menu rather than just the top one -
+            // so one left open behind another shows through it, headers and
+            // all. Closing them here means returning to main always clears
+            // whatever was underneath.
+            close io_createserver ;
+            close io_joinserver ;
+            // OPTIONS and DEMOS hide this group on the way out. Nothing used to
+            // bring it back, so returning to main left the background painted
+            // with no buttons on it.
+            show mainnav ;
             setitemcolor fadebox backcolor 0 0 0 1 ;
             fadeout fadebox ;
             uiScript stopRefresh ;
@@ -37,12 +59,74 @@
             open quit_popmenu
         }
 
+        // RENDER
+        itemDef {
+            name renderbar
+            group mainnav
+            style WINDOW_STYLE_GRADIENT
+            rect -155 400 310 30
+            backcolor 0.5 0.1 0 .25
+            border 4
+            bordercolor 0.5 0.5 0.5 1
+            bordersize 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name renderbtn
+            group mainnav
+            text "RENDER"
+            type 1
+            textstyle 6
+            rect 0 400 310 30
+            textalignx 10
+            textaligny 24
+            textscale .416
+            textalign ITEM_ALIGN_LEFT
+            forecolor 1 1 1 1
+            visible 1
+            action { open io_renderoptions }
+            mouseEnter { setitemcolor renderbar backcolor .75 0 0 .25 }
+            mouseExit { setitemcolor renderbar backcolor 0.5 0.1 0 .25 }
+        }
+
+        // JOIN SERVER
+        itemDef {
+            name joinbar
+            group mainnav
+            style WINDOW_STYLE_GRADIENT
+            rect -155 200 310 30
+            backcolor 0.5 0.1 0 .25
+            border 4
+            bordercolor 0.5 0.5 0.5 1
+            bordersize 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name joinserverbtn
+            group mainnav
+            text "JOIN SERVER"
+            type 1
+            textstyle 6
+            rect 0 200 310 30
+            textalignx 10
+            textaligny 24
+            textscale .416
+            textalign ITEM_ALIGN_LEFT
+            forecolor 1 1 1 1
+            visible 1
+            action { close io_createserver ; close main ; open io_joinserver }
+            mouseEnter { setitemcolor joinbar backcolor .75 0 0 .25 }
+            mouseExit { setitemcolor joinbar backcolor 0.5 0.1 0 .25 }
+        }
+
         // NEW GAME
         itemDef {
             name browserbar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 280 310 30
+            rect -155 240 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -56,14 +140,14 @@
             text "NEW GAME"
             type 1
             textstyle 6
-            rect 0 280 310 30
+            rect 0 240 310 30
             textalignx 10
             textaligny 24
             textscale .416
             textalign ITEM_ALIGN_LEFT
             forecolor 1 1 1 1
             visible 1
-            action { close main ; open createserver }
+            action { close io_joinserver ; close main ; open io_createserver }
             mouseEnter { setitemcolor browserbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor browserbar backcolor 0.5 0.1 0 .25 }
         }
@@ -73,7 +157,7 @@
             name demobar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 320 310 30
+            rect -155 280 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -87,7 +171,7 @@
             text "DEMOS"
             type 1
             textstyle 6
-            rect 0 320 310 30
+            rect 0 280 310 30
             textalignx 10
             textaligny 24
             textscale .416
@@ -104,7 +188,7 @@
             name optionsbar
             group mainnav
             style WINDOW_STYLE_GRADIENT
-            rect -155 360 310 30
+            rect -155 320 310 30
             backcolor 0.5 0.1 0 .25
             border 4
             bordercolor 0.5 0.5 0.5 1
@@ -118,7 +202,7 @@
             text "OPTIONS"
             type 1
             textstyle 6
-            rect 0 360 320 30
+            rect 0 320 320 30
             textalignx 10
             textaligny 24
             textscale .416
@@ -128,6 +212,37 @@
             action { hide mainnav ; open main_options ; open ingame_controls }
             mouseEnter { setitemcolor optionsbar backcolor .75 0 0 .25 }
             mouseExit { setitemcolor optionsbar backcolor 0.5 0.1 0 .25 }
+        }
+
+        // PLAYER
+        itemDef {
+            name playerbar
+            group mainnav
+            style WINDOW_STYLE_GRADIENT
+            rect -155 360 310 30
+            backcolor 0.5 0.1 0 .25
+            border 4
+            bordercolor 0.5 0.5 0.5 1
+            bordersize 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name playerbtn
+            group mainnav
+            text "PLAYER"
+            type 1
+            textstyle 6
+            rect 0 360 310 30
+            textalignx 10
+            textaligny 24
+            textscale .416
+            textalign ITEM_ALIGN_LEFT
+            forecolor 1 1 1 1
+            visible 1
+            action { open io_playersetup }
+            mouseEnter { setitemcolor playerbar backcolor .75 0 0 .25 }
+            mouseExit { setitemcolor playerbar backcolor 0.5 0.1 0 .25 }
         }
 
         // QUIT
@@ -163,6 +278,40 @@
 
         // CREDITS
         itemDef {
+            name pakstamp
+            text "pak01 @@PAKSTAMP@@"
+            textscale .2
+            // textalignx is relative to the item rect - Item_SetTextExtents
+            // computes textRect.x from it and then ToWindowCoords adds rect.x on
+            // top. 632 was written as if it were a screen coordinate, so the
+            // stamp painted at 340 + 632 - width, off the right of the screen.
+            rect 340 4 296 12
+            textalign ITEM_ALIGN_RIGHT
+            textalignx 292
+            textaligny 9
+            forecolor .45 .45 .45 1
+            visible 1
+            decoration
+        }
+
+        // Build of iobin.pk3 (cgame/qagame/ui), published by the ui module at
+        // init as ui_iobinBuild. No "text" here on purpose: Item_Text_Paint
+        // falls through to the cvar when item->text is NULL, which is what makes
+        // this show the running module's own build rather than a baked string.
+        itemDef {
+            name iobinstamp
+            cvar "ui_iobinBuild"
+            textscale .2
+            rect 340 16 296 12
+            textalign ITEM_ALIGN_RIGHT
+            textalignx 292
+            textaligny 9
+            forecolor .45 .45 .45 1
+            visible 1
+            decoration
+        }
+
+        itemDef {
             name copyright
             text "Quake Live (tm) Copyright 2015 Id Software LLC, a ZeniMax Media company. All Rights Reserved."
             textscale .25
@@ -191,7 +340,7 @@
     // CREATE SERVER
     // =============================================
     menuDef {
-        name "createserver"
+        name "io_createserver"
         fullScreen MENU_TRUE
         rect 0 0 640 480
         visible MENU_FALSE
@@ -199,24 +348,21 @@
         style WINDOW_STYLE_FILLED
         backcolor 0.05 0.05 0.08 1
 
-        onOpen { uiScript loadArenas }
-        onESC { close createserver ; open main }
+        onOpen {
+            // io_joinserver closes this one when it opens; without the mirror
+            // image, JOIN SERVER then back then NEW GAME left both open and
+            // both painting - two fullScreen menus on top of each other.
+            uiScript StopRefresh ;
+            close io_joinserver ;
+            uiScript loadArenas
+        }
+        onESC { close io_joinserver ; close io_createserver ; open main }
 
         // ---- TITLE BAR ----
         itemDef {
             style WINDOW_STYLE_FILLED
             rect 0 0 640 22
             backcolor 0.5 0.1 0 0.6
-            visible 1
-            decoration
-        }
-        itemDef {
-            text "CREATE SERVER"
-            textstyle 6
-            textscale .28
-            rect 10 2 200 20
-            textaligny 16
-            forecolor 1 1 1 1
             visible 1
             decoration
         }
@@ -333,7 +479,7 @@
             textaligny 19
             forecolor 1 1 1 1
             visible 1
-            action { close createserver ; open main }
+            action { close io_createserver ; open main }
             mouseEnter { setitemcolor backbtn forecolor 1 .75 0 1 }
             mouseExit { setitemcolor backbtn forecolor 1 1 1 1 }
         }
@@ -827,5 +973,540 @@
 
         itemDef { group grpWeapons  text "Grapple:"  textscale .2  rect 310 170 100 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
         itemDef { group grpWeapons  type ITEM_TYPE_MULTI  text ""  cvar "g_startingAmmo_gh"  cvarFloatList { "Infinite" -1 "Off" 0 "10" 10 "50" 50 }  rect 420 170 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
+    }
+
+    // =============================================
+    // JOIN SERVER (server browser)
+    //
+    // The browser back end - UI_BuildServerDisplayList, UI_StartServerRefresh,
+    // the FEEDER_SERVERS feeder, sorting and favourites - was already
+    // implemented in ui_main.c; only this menu was missing, which is why the
+    // main menu had no way to reach it.
+    //
+    // Lives in main.menu rather than its own file on purpose: menus are loaded
+    // from ui/menus.txt, and this build does not ship one. Shipping a menus.txt
+    // would override Quake Live's and stop its own menus from loading at all.
+    // =============================================
+    menuDef {
+        name "io_joinserver"
+        fullScreen MENU_TRUE
+        rect 0 0 640 480
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.05 0.05 0.08 1
+
+        onOpen {
+            close io_createserver ;
+            setFocus serverlist ;
+            uiScript UpdateFilter
+        }
+        onESC { uiScript StopRefresh ; close io_joinserver ; open main }
+
+        itemDef {
+            name title
+            text "JOIN SERVER"
+            textscale .35
+            style WINDOW_STYLE_EMPTY
+            rect 0 18 640 30
+            textalign ITEM_ALIGN_CENTER
+            textalignx 320
+            textaligny 22
+            forecolor 1 .75 0 1
+            visible 1
+            decoration
+        }
+
+        // ---- source: local / internet / favorites -------------------------
+        itemDef {
+            name sourcelabel
+            text "Source:"
+            textscale .22
+            rect 20 52 70 18
+            textaligny 14
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name source
+            type ITEM_TYPE_OWNERDRAW
+            ownerdraw UI_NETSOURCE
+            rect 90 52 130 18
+            textscale .22
+            textaligny 14
+            forecolor 1 1 1 1
+            visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript RefreshServers }
+        }
+
+        // ---- gametype filter ---------------------------------------------
+        itemDef {
+            name gametypelabel
+            text "Game type:"
+            textscale .22
+            rect 240 52 90 18
+            textaligny 14
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name gametypefilter
+            type ITEM_TYPE_OWNERDRAW
+            ownerdraw UI_JOINGAMETYPE
+            rect 330 52 130 18
+            textscale .22
+            textaligny 14
+            forecolor 1 1 1 1
+            visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript UpdateFilter }
+        }
+
+        // ---- show full / show empty --------------------------------------
+        itemDef {
+            name showfulllabel
+            text "Show full:"
+            textscale .2
+            rect 480 52 70 18
+            textaligny 14
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name showfull
+            type ITEM_TYPE_YESNO
+            cvar "ui_browserShowFull"
+            rect 552 52 40 18
+            textscale .2
+            textaligny 14
+            textalignx 2
+            forecolor 1 1 1 1
+            visible 1
+            action { uiScript UpdateFilter }
+        }
+        itemDef {
+            name showemptylabel
+            text "Show empty:"
+            textscale .2
+            rect 480 70 70 18
+            textaligny 14
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name showempty
+            type ITEM_TYPE_YESNO
+            cvar "ui_browserShowEmpty"
+            rect 552 70 40 18
+            textscale .2
+            textaligny 14
+            textalignx 2
+            forecolor 1 1 1 1
+            visible 1
+            action { uiScript UpdateFilter }
+        }
+
+        // ---- column headers (click to sort) ------------------------------
+        // Column order must match UI_FeederItemText's SORT_* cases:
+        // 0 host, 1 map, 2 clients, 3 game, 4 ping.
+        itemDef {
+            name hdrhost  text "Server"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 24 92 180 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 0 }
+        }
+        itemDef {
+            name hdrmap  text "Map"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 214 92 90 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 1 }
+        }
+        itemDef {
+            name hdrplayers  text "Players"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 314 92 70 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 2 }
+        }
+        itemDef {
+            name hdrgame  text "Type"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 394 92 90 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 3 }
+        }
+        itemDef {
+            name hdrping  text "Ping"  type ITEM_TYPE_BUTTON  textscale .2
+            rect 494 92 50 16  textaligny 12  forecolor 1 .75 0 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript ServerSort 4 }
+        }
+
+        // ---- the list ------------------------------------------------------
+        itemDef {
+            name serverlist
+            rect 20 108 600 268
+            type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY
+            elementwidth 120
+            elementheight 14
+            elementtype LISTBOX_TEXT
+            feeder FEEDER_SERVERS
+            textscale .2
+            border 1
+            bordersize 1
+            bordercolor .5 .5 .5 .5
+            forecolor 1 1 1 1
+            backcolor 0 0 0 .25
+            outlinecolor .1 .1 .7 .5
+            visible 1
+            columns 5   4 190 34   194 100 16   294 70 12   374 90 14   474 50 8
+            doubleClick { play "sound/misc/menu1.wav" ; uiScript JoinServer }
+        }
+
+        // ---- refresh status --------------------------------------------------
+        itemDef {
+            name refreshdate
+            type ITEM_TYPE_OWNERDRAW
+            ownerdraw UI_SERVERREFRESHDATE
+            rect 20 380 300 16
+            textscale .2
+            textaligny 12
+            forecolor .8 .8 .8 1
+            visible 1
+            decoration
+        }
+
+        // ---- buttons ---------------------------------------------------------
+        itemDef {
+            name refresh  text "REFRESH"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 20 404 110 24  textaligny 18  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript RefreshServers }
+            mouseEnter { setitemcolor refresh forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor refresh forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name stoprefresh  text "STOP"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 140 404 90 24  textaligny 18  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript StopRefresh }
+            mouseEnter { setitemcolor stoprefresh forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor stoprefresh forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name addfav  text "ADD FAVORITE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 240 404 150 24  textaligny 18  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript addFavorite }
+            mouseEnter { setitemcolor addfav forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor addfav forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name delfav  text "DROP FAVORITE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 400 404 160 24  textaligny 18  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript deleteFavorite }
+            mouseEnter { setitemcolor delfav forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor delfav forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name join  text "JOIN"  type ITEM_TYPE_BUTTON  textscale .3
+            rect 20 436 120 28  textaligny 20  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript JoinServer }
+            mouseEnter { setitemcolor join forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor join forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name back  text "BACK"  type ITEM_TYPE_BUTTON  textscale .3
+            rect 500 436 120 28  textaligny 20  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript StopRefresh ; close io_joinserver ; open main }
+            mouseEnter { setitemcolor back forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor back forecolor 1 1 1 1 }
+        }
+    }
+
+    // =============================================
+    // PLAYER SETUP
+    //
+    // Reachable anywhere - including mid-match - with:  \menu_open playersetup
+    // ui_GetName/ui_SetName are the uiScripts the module already exposes; the
+    // edit field is bound to ui_Name and only committed to the real "name" cvar
+    // on APPLY, so a half-typed name is never sent to the server.
+    // =============================================
+    menuDef {
+        name "io_playersetup"
+        rect 120 120 400 240
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.05 0.05 0.08 1
+        border 1
+        bordersize 1
+        bordercolor .5 .5 .5 1
+
+        onOpen { setFocus namefield }
+        onESC { close io_playersetup }
+
+        itemDef {
+            name title
+            text "PLAYER SETUP"
+            textscale .3
+            rect 0 10 400 24
+            textalign ITEM_ALIGN_CENTER
+            textalignx 200
+            textaligny 18
+            forecolor 1 .75 0 1
+            visible 1
+            decoration
+        }
+
+        itemDef {
+            name namelabel
+            text "Name:"
+            textscale .25
+            rect 30 60 80 20
+            textaligny 15
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name namefield
+            type ITEM_TYPE_EDITFIELD
+            text ""
+            // Bound straight to the live cvar rather than to ui_Name and back
+            // through ui_GetName / ui_SetName. That round trip left the field
+            // showing nothing and never wrote the name through on APPLY.
+            cvar "name"
+            maxchars 36
+            maxpaintchars 22
+            rect 110 60 260 20
+            textscale .25
+            textaligny 15
+            textalignx 4
+            forecolor 1 1 1 1
+            backcolor 0 0 0 .5
+            border 1
+            bordersize 1
+            bordercolor .5 .5 .5 .5
+            visible 1
+        }
+
+        itemDef {
+            name handicaplabel
+            text "Handicap:"
+            textscale .25
+            rect 30 90 80 20
+            textaligny 15
+            forecolor 0.8 0.8 0.8 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name handicap
+            type ITEM_TYPE_MULTI
+            text ""
+            cvar "handicap"
+            cvarFloatList { "None" 100 "90" 90 "80" 80 "70" 70 "60" 60 "50" 50 "40" 40 "30" 30 "20" 20 "10" 10 }
+            rect 110 90 120 20
+            textscale .25
+            textaligny 15
+            textalignx 4
+            forecolor 1 1 1 1
+            visible 1
+        }
+
+        itemDef {
+            name hint
+            text "Colour codes are supported. The name applies as you type, in match too."
+            textscale .18
+            rect 30 122 340 18
+            textaligny 12
+            forecolor .6 .6 .6 1
+            visible 1
+            decoration
+        }
+
+        itemDef {
+            name apply  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .28
+            rect 30 180 120 26  textaligny 19  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_playersetup }
+            mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name cancel  text "CANCEL"  type ITEM_TYPE_BUTTON  textscale .28
+            rect 250 180 120 26  textaligny 19  textalignx 10
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_playersetup }
+            mouseEnter { setitemcolor cancel forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor cancel forecolor 1 1 1 1 }
+        }
+    }
+
+    // =============================================
+    // RENDER OPTIONS
+    //
+    // Quake Live's own Video Options and Post Process tabs live in its
+    // pak00.pk3, which this build does not ship and cannot edit - so the
+    // renderer settings added here have nowhere to go in those tabs. This is a
+    // self-contained panel for them instead.
+    //
+    // Reachable anywhere, including mid-match:  \menu_open renderoptions
+    // =============================================
+    menuDef {
+        name "io_renderoptions"
+        rect 60 8 520 468
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.05 0.05 0.08 1
+        border 1
+        bordersize 1
+        bordercolor .5 .5 .5 1
+
+        onESC { close io_renderoptions }
+
+        itemDef {
+            name title  text "RENDER OPTIONS"  textscale .3
+            rect 0 8 520 24  textalign ITEM_ALIGN_CENTER  textalignx 260  textaligny 18
+            forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        // ---- presets ---------------------------------------------------------
+        itemDef {
+            name presetlabel  text "Presets:"  textscale .22
+            rect 20 40 90 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+        }
+        itemDef {
+            name pclassic  text "CLASSIC"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 110 40 90 18  textaligny 14  textalignx 6  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec classic.cfg" }
+            mouseEnter { setitemcolor pclassic forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor pclassic forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name pgloss  text "GLOSS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 205 40 80 18  textaligny 14  textalignx 6  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec gloss.cfg" }
+            mouseEnter { setitemcolor pgloss forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor pgloss forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name pvoodoo  text "VOODOO"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 290 40 90 18  textaligny 14  textalignx 6  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec voodoo.cfg" }
+            mouseEnter { setitemcolor pvoodoo forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor pvoodoo forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name pmodern  text "DEFAULTS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 385 40 100 18  textaligny 14  textalignx 6  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec modern.cfg" }
+            mouseEnter { setitemcolor pmodern forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor pmodern forecolor 1 1 1 1 }
+        }
+
+        // ---- output ----------------------------------------------------------
+        itemDef {
+            name hdr1  text "OUTPUT"  textscale .24
+            rect 20 74 200 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        itemDef { text "Renderer:"  textscale .22  rect 30 96 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name renderer  type ITEM_TYPE_MULTI  text ""  cvar "cl_renderer"
+            cvarStrList { "OpenGL 2" "opengl2" "Vulkan" "vulkan" }
+            rect 230 96 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Dither:"  textscale .22  rect 30 116 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name dither  type ITEM_TYPE_MULTI  text ""  cvar "r_dither"
+            cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2 }
+            rect 230 116 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Colour Depth:"  textscale .22  rect 30 136 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name colorbits  type ITEM_TYPE_MULTI  text ""  cvar "r_colorbits"
+            cvarFloatList { "Driver default" 0 "16-bit (3dfx look)" 16 "10-bit per channel" 30 }
+            rect 230 136 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+        itemDef {
+            text "Dither strength follows the framebuffer the driver actually gives you."
+            textscale .17  rect 30 154 460 16  textaligny 12  forecolor .55 .55 .55 1  visible 1  decoration
+        }
+
+        // ---- post processing --------------------------------------------------
+        itemDef {
+            name hdr2  text "POST PROCESSING"  textscale .24
+            rect 20 178 250 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        itemDef { text "HDR Framebuffer:"  textscale .22  rect 30 200 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name hdr  type ITEM_TYPE_YESNO  text ""  cvar "r_hdr"  rect 230 200 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Tonemapping:"  textscale .22  rect 30 220 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name tonemap  type ITEM_TYPE_YESNO  text ""  cvar "r_toneMap"  rect 230 220 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            text "Off is the Quake 3 look - tonemapping compresses bright highlights."
+            textscale .17  rect 30 238 460 16  textaligny 12  forecolor .55 .55 .55 1  visible 1  decoration
+        }
+
+        itemDef { text "Post Processing:"  textscale .22  rect 30 258 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name postproc  type ITEM_TYPE_YESNO  text ""  cvar "r_postProcess"  rect 230 258 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        // ---- surfaces ---------------------------------------------------------
+        itemDef {
+            name hdr3  text "SURFACES"  textscale .24
+            rect 20 282 250 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        itemDef { text "Dynamic Lights:"  textscale .22  rect 30 304 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name dlight  type ITEM_TYPE_MULTI  text ""  cvar "r_dlightMode"
+            cvarFloatList { "Off surfaces" 0 "On surfaces" 1 "With shadows" 2 }
+            rect 230 304 200 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Cubemap Reflections:"  textscale .22  rect 30 324 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name cubemap  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"  rect 230 324 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Cubemap Size:"  textscale .22  rect 30 344 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name cubesize  type ITEM_TYPE_MULTI  text ""  cvar "r_cubemapSize"
+            cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }
+            rect 230 344 120 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Specular Mapping:"  textscale .22  rect 30 364 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name specular  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"  rect 230 364 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Normal Mapping:"  textscale .22  rect 30 384 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name normalmap  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"  rect 230 384 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+
+        itemDef { text "Ambient Light Scale:"  textscale .22  rect 30 404 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name ambient  type ITEM_TYPE_SLIDER  text ""
+            cvarFloat "r_ambientScale" 0.6 0 2
+            rect 230 404 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
+        }
+
+        // ---- buttons -----------------------------------------------------------
+        itemDef {
+            name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 20 440 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
+            mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 400 440 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions }
+            mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor close forecolor 1 1 1 1 }
+        }
     }
 }
