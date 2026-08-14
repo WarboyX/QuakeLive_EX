@@ -413,6 +413,35 @@ static int G_CountBotPlayersWithQueued(int team) {
 G_CheckMinimumPlayers
 ===============
 */
+/*
+===============
+G_FillBots
+
+[QL] Adds bots toward a target, several per tick rather than one.
+
+G_CheckMinimumPlayers used to issue a single G_AddRandomBot per call and is
+throttled to once a second, so bot_minplayers 40 took forty seconds to fill and
+looked like it had stalled at whatever number you happened to look at. Quake 3
+was worse still - its throttle was ten seconds.
+
+Capped per tick because each add goes out as a console command via EXEC_INSERT;
+letting a large shortfall issue forty at once would push that many commands into
+the buffer in a single frame.
+===============
+*/
+#define BOT_FILL_PER_TICK 4
+
+static void G_FillBots(int team, int shortfall) {
+    int i;
+
+    if (shortfall > BOT_FILL_PER_TICK) {
+        shortfall = BOT_FILL_PER_TICK;
+    }
+    for (i = 0; i < shortfall; i++) {
+        G_AddRandomBot(team);
+    }
+}
+
 void G_CheckMinimumPlayers(void) {
     int minplayers;
     int humanplayers, botplayers;
@@ -431,7 +460,13 @@ void G_CheckMinimumPlayers(void) {
         return;
 
     if (g_gametype.integer >= GT_TEAM) {
+        // Team modes apply minplayers *per team*, so the ceiling is half the slots.
         if (minplayers >= g_maxclients.integer / 2) {
+            if (bot_minplayers.integer >= g_maxclients.integer / 2) {
+                G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d per team: sv_maxclients "
+                         "is %d (latched - a full 'map' command is needed after changing it)\n",
+                         bot_minplayers.integer, (g_maxclients.integer / 2) - 1, g_maxclients.integer);
+            }
             minplayers = (g_maxclients.integer / 2) - 1;
         }
 
@@ -439,7 +474,7 @@ void G_CheckMinimumPlayers(void) {
         botplayers = G_CountBotPlayersWithQueued(TEAM_RED);
         //
         if (humanplayers + botplayers < minplayers) {
-            G_AddRandomBot(TEAM_RED);
+            G_FillBots(TEAM_RED, minplayers - (humanplayers + botplayers));
         } else if (humanplayers + botplayers > minplayers && botplayers) {
             G_RemoveRandomBot(TEAM_RED);
         }
@@ -448,7 +483,7 @@ void G_CheckMinimumPlayers(void) {
         botplayers = G_CountBotPlayersWithQueued(TEAM_BLUE);
         //
         if (humanplayers + botplayers < minplayers) {
-            G_AddRandomBot(TEAM_BLUE);
+            G_FillBots(TEAM_BLUE, minplayers - (humanplayers + botplayers));
         } else if (humanplayers + botplayers > minplayers && botplayers) {
             G_RemoveRandomBot(TEAM_BLUE);
         }
@@ -469,14 +504,24 @@ void G_CheckMinimumPlayers(void) {
             }
         }
     } else if (g_gametype.integer == GT_FFA) {
+        // [QL] bot_minplayers counts *everyone*, so it can never exceed the slots
+        // the server has. sv_maxclients is CVAR_LATCH: raising it at the console
+        // does nothing until a full "map" command - map_restart is not enough -
+        // so this clamp is usually hit because the new value has not taken effect
+        // yet, and silently capping made that indistinguishable from a bot limit.
         if (minplayers >= g_maxclients.integer) {
+            if (bot_minplayers.integer >= g_maxclients.integer) {
+                G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d: sv_maxclients is %d "
+                         "(latched - a full 'map' command is needed after changing it)\n",
+                         bot_minplayers.integer, g_maxclients.integer - 1, g_maxclients.integer);
+            }
             minplayers = g_maxclients.integer - 1;
         }
         humanplayers = G_CountHumanPlayers(TEAM_FREE);
         botplayers = G_CountBotPlayersWithQueued(TEAM_FREE);
         //
         if (humanplayers + botplayers < minplayers) {
-            G_AddRandomBot(TEAM_FREE);
+            G_FillBots(TEAM_FREE, minplayers - (humanplayers + botplayers));
         } else if (humanplayers + botplayers > minplayers && botplayers) {
             G_RemoveRandomBot(TEAM_FREE);
         }
