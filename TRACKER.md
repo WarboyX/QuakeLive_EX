@@ -12,14 +12,101 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | Area | Progress | Notes |
 |---|---|---|
 | **Client / UI** (U) | `███████████████░░░░░  11/15` | U9 root-caused: a parser bug, not a menu bug |
-| **Client / cgame** (C) | `███████████████░░░░░  3/4` | viewmodel framing still open |
+| **Client / cgame** (C) | `████████████████████  6/6` | C9 confirmed resolved in play |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | all blocked on disassembly or play-testing |
 | **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  2/8` | 186 cvars registered but unread (E8) |
-| **Overall** | `██████████░░░░░░░░░░  18/37` | |
+| **Overall** | `██████████░░░░░░░░░░  22/42` | 32 ours · 10 both · 0 vanilla (untested) |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
+
+## Which client is affected
+
+Bugs here live in one of two places, and it matters which:
+
+| Tag | Meaning |
+|---|---|
+| `ours` | The ioquakelive client only — our `cgame`, `ui` or engine. A vanilla Steam Quake Live client does not run this code and does not have the bug. |
+| `both` | Server side (`qagame`) or protocol. Every client connecting to our server sees it, vanilla included. |
+| `vanilla` | Shows up on the stock Steam Quake Live client but not ours — usually because our client compensates for something the stock one does not. |
+
+Every item below carries an **Affects:** line. `●` done or resolved, `○` open.
+
+`vanilla` is the category that bites hardest, because it cannot be reproduced
+in the client we develop in. The shotgun alignment fault was exactly this: it
+looked correct in our client for weeks while being wrong for everyone else,
+because our cgame and the server had drifted together. Anything server side
+should be sanity-checked against a stock client before it is called done.
+
+### both — every client, including vanilla Steam Quake Live
+
+| | ID | Item | State |
+|---|---|---|---|
+| ○ | **W1** | Shotgun pattern shape is unverified | OPEN |
+| ○ | **W2** | Middle ring angle: 30 radians or 30 degrees? | OPEN |
+| ○ | **W3** | Improved shotgun basis is locked behind custom clients | OPEN |
+| ○ | **W4** | HMG spread is a fixed constant | OPEN |
+| ○ | **E8** | 186 cvars are registered but read by nothing | OPEN, survey done |
+| ○ | **E1** | Factory subsystem absent | OPEN |
+| ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
+| ● | **E6** | Players connect as spectators | DONE (verify) |
+| ○ | **E4** | ZMQ stats feed absent | OPEN |
+| ○ | **E5** | Steam integration absent | OPEN |
+
+### ours — ioquakelive client only
+
+| | ID | Item | State |
+|---|---|---|---|
+| ● | **U14** | Console is unreadable at high resolution | DONE (verify) |
+| ● | **U1** | Advanced settings: blanks, stuck values and `???` | DONE (verify) |
+| ● | **U15** | Main menu returns with no buttons | DONE (verify) |
+| ● | **U9** | Server browser painted over createserver | DONE, root cause found and verified |
+| ● | **U16** | Options BACK button disappears after joining a game | DONE (verify) |
+| ● | **U17** | iobin.pk3 has no visible build stamp | DONE (verify) |
+| ○ | **U10** | Controls menu is empty | NEEDS INFO |
+| ○ | **U11** | Cosmetic layout faults | PARTIAL (value offset fixed) |
+| ● | **U12** | Render options have no home in Quake Live's menus | DONE (verify) |
+| ○ | **U2** | No player-name prompt while in a match | PARTIAL |
+| ● | **U3** | `ui/menudef.h` | DONE |
+| ○ | **U4** | `ui/ingame.txt` is orphaned | OPEN |
+| ● | **U5** | Ambient Light Scale | DONE (verify) |
+| ● | **U6** | `???` on Advanced settings | DONE (verify) |
+| ● | **U7** | Control mapping | DONE (verify) |
+| ● | **U8** | Server browser | DONE (verify) |
+| ● | **C4** | Console commands sent as chat in-game | DONE (verify), with a caveat |
+| ● | **C8** | Phantom pickup sound over taken items | DONE (verify) |
+| ● | **C9** | Client dies the moment the server terminates | RESOLVED |
+| ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
+| ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
+| ● | **C2** | Quad pickup now lights the room | DONE (verify) |
+| ○ | **R8** | Dynamic light glow is weak or absent | OPEN, my earlier diagnosis was wrong |
+| ○ | **R1** | Only renderergl2 ships | OPEN |
+| ● | **R2** | Classic look presets | DONE (verify) |
+| ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
+| ○ | **R5** | Vulkan renderer | IN PROGRESS |
+| ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
+| ● | **R7** | Output dither | DONE (verify) |
+| ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
+| ○ | **E2** | Teammate weapon icons never draw | OPEN |
+| ● | **E3** | No master server heartbeat / server queries | DONE (verify) |
+
+### vanilla — stock Steam Quake Live client only
+
+| | ID | Item | State |
+|---|---|---|---|
+| | | _(none tracked)_ | |
+
+**Empty because nothing has been tested there, not because nothing is wrong.**
+Every fault in this file was found by playing our own client. A `both` item is
+only *assumed* to behave the same on a stock client until someone checks, and
+the one time that assumption was tested it was false — see W3.
+
+To check: point a stock Steam Quake Live client at the server (`connect
+<host>`) and repeat the same test. It loads its own `cgame`/`ui` from
+`pak00.pk3` and only our `qagame`, so anything that still misbehaves is server
+side and anything that stops misbehaving was ours all along. That single
+comparison is the fastest way to classify a new bug.
 
 ## Priorities
 
@@ -58,6 +145,8 @@ loud in the console.)*
 ## Weapons / gameplay
 
 ### W1. Shotgun pattern shape is unverified — OPEN
+**Affects:** `both` — server side, so every connecting client sees it
+
 The ring pattern transcribed from the binary has a **hollow centre**: its centroid
 is exactly on the aim axis, but the nearest pellet is 1.75° off it and the outer
 ring sits at 5.23°. On a wall the marks form a donut with nothing where you aimed.
@@ -77,6 +166,8 @@ the transcription are wrong.
 `0.7`. Note that a vanilla client will not follow either.
 
 ### W2. Middle ring angle: 30 radians or 30 degrees? — OPEN
+**Affects:** `both` — server side, so every connecting client sees it
+
 `g_weapon.c` / `bg_misc.c`, middle ring: `angle = i * 1.0471976f + 30.0f`. The
 literal is added as **radians** (≈278.87° once reduced). 30 *degrees* (π/6) would
 interleave the middle ring neatly between the inner ring's points, which is what a
@@ -87,6 +178,8 @@ not hit registration, since both sides compute it identically.
 the constant is `30.0` or `0.5235988`.
 
 ### W3. Improved shotgun basis is locked behind custom clients — OPEN
+**Affects:** `both` — server side, so every connecting client sees it · the whole point of this item is the split between the two
+
 `g_shotgunBasis 1` lays the pellets out in the player's own right/up, so the
 pattern stops rotating with facing (pellet 0 measured at −60°/−150°/+120° on
 screen depending on yaw with the stock frame; a constant −120° with the new one).
@@ -97,6 +190,8 @@ be told to follow it and would draw marks nowhere near the damage.
 are custom clients the target? That answer also gates `g_shotgunPattern 1`.
 
 ### W4. HMG spread is a fixed constant — OPEN
+**Affects:** `both` — server side, so every connecting client sees it
+
 `g_weapon.c`: the binary computes Heavy Machine Gun spread per shot in `FireWeapon`
 (case 0xe) from a per-client field, spin-up/heat style. The formula has not been
 recovered; `HMG_SPREAD 350` stands in for it.
@@ -112,6 +207,8 @@ this port's re-implemented `ui` module. Most UI bugs are therefore our module
 mishandling Quake Live's menu scripts, not missing menus — but a few are both.
 
 ### U14. Console is unreadable at high resolution — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 At 3840x2160 the console font is tiny and the text cramped, which makes the
 console painful to use for exactly the diagnostic work it is needed for. Q3 draws
 console text with `SCR_DrawSmallChar` at fixed 640x480 virtual metrics, so it
@@ -135,6 +232,8 @@ Also visible in the same capture and worth chasing separately:
 - red `ERROR:` lines about unknown mesa keywords in `scripts/*.menu` parsing
 
 ### U1. Advanced settings: blanks, stuck values and `???` — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 Three separate faults, all found from the Advanced screenshots.
 
 **Blank rows and stuck values** — `ItemParse_cvarStrList` set `strDef = qfalse`.
@@ -164,6 +263,8 @@ Warning, Draw Rewards, Force Team/Enemy Model and Skin, Damage Indicator, Impact
 Marks, Lighting Model.
 
 ### U15. Main menu returns with no buttons — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 OPTIONS and DEMOS both do `hide mainnav` on the way out, and **nothing ever ran
 `show mainnav`**. Coming back from either left `main` painting its background with
 no navigation on it. My bug, from when the entries were written.
@@ -180,6 +281,8 @@ Note the mouse paths themselves were fine — `Menu_OverActiveItem` and
 purely the stale focus flag.
 
 ### U9. Server browser painted over createserver — DONE, root cause found and verified
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 
 **It was never two menus being open. It was one menu containing both.**
 
@@ -289,6 +392,8 @@ the sibling before opening, and `main`'s `onOpen` closes both, so returning to
 main always clears whatever was underneath. My bug, introduced with U8.
 
 ### U16. Options BACK button disappears after joining a game — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 Quake Live's own menus gate items on `ui_mainmenu`: `main_options`' BACK button
 and `demo.menu`'s both carry `cvarTest "ui_mainmenu"` with `showCvar { "1" }`,
 because in-game those panels are reached through the ingame nav and must not
@@ -309,6 +414,8 @@ point at which we are demonstrably out of a game.
 check what *session state* differs before blaming the diff.
 
 ### U17. iobin.pk3 has no visible build stamp — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 The pak01 stamp is baked into the menu text at package time, so it identifies
 the **menus** only. The game modules ship in a separate pak and can be a
 different build entirely — exactly the case worth spotting when a fix appears
@@ -322,6 +429,8 @@ rather than a baked string that could disagree with it.
 `cgame`/`qagame` also print their build to the console at init.
 
 ### U10. Controls menu is empty — NEEDS INFO
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 Not `???` rows: **no rows at all**. The tabs draw, so the menu loaded and it is
 the item list inside that is missing. That is a different fault from U7 (commands
 that could not be bound), so U7 is not the explanation here.
@@ -365,6 +474,8 @@ the tab bar drew because that is `main_options`, and the panel below was empty
 because the menu meant to fill it was never loaded.
 
 ### U11. Cosmetic layout faults — PARTIAL (value offset fixed)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 
 **The systematic one is fixed.** Every value row carries `text ""` (see U12 for
 why it cannot be omitted), and the engine then added the 8-unit label gap on
@@ -387,6 +498,8 @@ Still open, visible in the Advanced screenshots, none investigated yet:
 - "Zoom Sens" slider labels read `0.01 | 1 | 1`; the maximum label appears wrong.
 
 ### U12. Render options have no home in Quake Live's menus — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `r_dither` and the rest of the renderer work has nowhere to live: the Video
 Options and Post Process tabs are in Quake Live's `pak00.pk3`, which this build
 neither ships nor can edit. A self-contained `renderoptions` menu carries them
@@ -410,6 +523,8 @@ menu did. The `createserver` rows had it right; these did not.
 `ui/*.menu` files turn up (U1, U10 need them too) these rows should move there.
 
 ### U2. No player-name prompt while in a match — PARTIAL
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 A `playersetup` menu now exists and is reachable anywhere via `\menu_open
 playersetup`, but nothing in Quake Live's in-game menu opens it — that menu is
 theirs and we do not ship a replacement.
@@ -418,32 +533,44 @@ theirs and we do not ship a replacement.
 as a base) or accept the console command.
 
 ### U3. `ui/menudef.h` — DONE
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 Diffed against Quake Live's copy: **identical apart from trailing whitespace on
 two lines.** The concern that shipping ours could break every QL menu at once was
 unfounded, so it is now in `pak01.pk3` and the build no longer depends on finding
 their header. Nothing else changes, since the two agree.
 
 ### U4. `ui/ingame.txt` is orphaned — OPEN
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `ui/ingame.txt` at the repo root lists nine `ui/ingame_*.menu` files. None exist in
 the repo and the file is not packaged. Either write those menus or delete the file.
 
 ### U5. Ambient Light Scale — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `r_ambientScale` was `CVAR_CHEAT`: the menu could not write it while connected and
 the engine reset it to 0.6 on every connect. Now `CVAR_ARCHIVE`. Reported as
 "blank", which this may or may not explain — needs a re-test.
 
 ### U6. `???` on Advanced settings — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `Item_Combo_FindCvarByValue` painted `???` whenever a cvar's value was not one of
 the item's presets, including when the cvar's own default is absent from the list.
 It now shows the raw value; `???` is kept only for cvar-does-not-exist, so the two
 faults are distinguishable from a screenshot.
 
 ### U7. Control mapping — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `g_bindings` was a fixed table of Q3's commands; `BindingIDFromName` returned −1 for
 anything else, so any command QL's control menus bind that Q3 did not have could
 not be bound and painted `???`. The table now grows on demand. Capacity 256.
 
 ### U8. Server browser — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 All the machinery was already implemented (`UI_BuildServerDisplayList`,
 `UI_StartServerRefresh`, `FEEDER_SERVERS`, sorting, favourites, `UI_NETSOURCE`,
 `UI_NETFILTER`). Only the menu was missing.
@@ -453,6 +580,8 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 ## Client / cgame
 
 ### C4. Console commands sent as chat in-game — DONE (verify), with a caveat
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `cl_keys.c` only prepends the implicit `\\` when `clc.state != CA_ACTIVE`. Once
 connected, any console line not starting with `\\` or `/` falls through to
 `if (con_autochat->integer) Cbuf_AddText("cmd say ")` and is chatted instead of
@@ -476,6 +605,8 @@ The row also carries `cvarTest "com_allowConsole"` with `disableCvar { "0" }`, s
 it greys out when the console itself is disabled.
 
 ### C8. Phantom pickup sound over taken items — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 Walk back over an armour spawn you already cleared and the pickup sound plays
 again, with nothing granted.
 
@@ -494,7 +625,9 @@ than an item bug. Bail out on `EF_NODRAW`.
 Armour is where it shows because armour and mega health are the items with
 `itemTimer` set; anything else with a timer would do the same.
 
-### C9. Client dies the moment the server terminates — DONE (verify)
+### C9. Client dies the moment the server terminates — RESOLVED (confirmed in play)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `VM_Free` is routinely reached from *inside* a VM call. The common case is
 exactly this one: cgame calls `trap_GetServerCommand`, the engine's
 `CL_GetServerCommand` sees the server's `disconnect` and raises
@@ -519,6 +652,8 @@ normal shutdown, `VM_Clear`, any `VM_Free` at `callLevel` 0 — still unloads
 immediately, so the change only touches the pathological case.
 
 ### C3. Weapon viewmodel barely visible — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 **Not a missing tag and not a regression.** `\weaponreport` showed every hands
 model loading and every `tag_weapon` resolving, and `CG_AddViewWeapon`,
 `CG_CalcFov` and `CG_CalculateWeaponPosition` are byte-identical to upstream
@@ -663,6 +798,8 @@ was noticed alongside it. Do not assume the presets are the cause.
 Also still worth checking `CG_CalcFov`'s widescreen aspect handling (U13).
 
 ### C1. Railgun draws two beams — DONE (verify, 3rd fix)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 **The one that mattered, at last: it was inside `CG_RailTrail` itself.**
 
 One call draws two beams. `CG_RailTrail` allocates the `RT_RAIL_CORE` entity,
@@ -733,6 +870,8 @@ Note the predicted path drew the *impact* too, so `CG_MissileHitWall` was being
 called twice for the same hit as well — the fix covers both.
 
 ### C2. Quad pickup now lights the room — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `CG_Item` adds a dlight for a powerup resting on the ground, matching the
 colours `CG_PlayerPowerups` uses for a carried one — quad blue, battlesuit
 green, regen red, invis white, radius 200 + rand()&31. Quake 3 only ever lit the
@@ -748,6 +887,8 @@ path fault it will affect this light too.
 ## Renderer
 
 ### R8. Dynamic light glow is weak or absent — OPEN, my earlier diagnosis was wrong
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 **Correction.** I claimed `r_dlightMode 0` keeps dynamic lights off world surfaces
 entirely. That is not what it does. Reading its actual uses:
 
@@ -782,6 +923,8 @@ casts no glow at all.
 
 
 ### R1. Only renderergl2 ships — OPEN
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `code/renderergl1`, the original Quake 3 renderer, was stripped from this repo.
 Only `renderergl2` is built, so there is no way to get Quake 3's actual render
 path — only an approximation of it.
@@ -803,6 +946,8 @@ fixed-function GL.
 not be worth doing.
 
 ### R2. Classic look presets — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `classic.cfg`, `voodoo.cfg`, `modern.cfg` in `pak01.pk3`. `classic.cfg` disables
 what renderergl2 does that Quake 3 did not — `r_hdr`, `r_toneMap`,
 `r_postProcess`, normal/specular/deluxe/cube mapping — and restores Quake 3's
@@ -814,6 +959,8 @@ compresses exactly the highlights that read as metallic.
 lived inside the tonemap pass and turning tonemapping off silently removed it.
 
 ### R4. Getting the metallic look back — routes, in cost order — OPEN
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 Three ways to put gloss on surfaces. A screen-space post-process is **not** one
 of them: once the frame is a 2D image the per-surface normals are gone, so a
 filter cannot know which pixels are metal or which way they face. Screen space
@@ -835,6 +982,8 @@ screen-space effect. It cannot do the reflective half.
    does not currently write. Real work, and still approximate at surface edges.
 
 ### R5. Vulkan renderer — IN PROGRESS
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 **Started.** `code/renderervk` is vendored from ec-/Quake3e (GPLv2, 29 files),
 with `code/renderervk/README.ioquakelive.md` carrying the plan. **Not wired up:**
 `BUILD_RENDERER_VULKAN` defaults to 0, no Makefile rule references the directory,
@@ -919,6 +1068,8 @@ add no gloss and no cubemaps: an API is not an aesthetic. If the goal is the
 metallic look, R4 is the route, not this.
 
 ### R6. Voodoo postfilter as a real post-process pass — OPEN
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `voodoo.cfg` gets the 16-bit dither but not the thing that made it look good:
 Voodoo3 and later ran a filter over the dithered output on scanout — the "22-bit"
 mode — blending adjacent pixels so the dither read as a smooth gradient rather
@@ -938,6 +1089,8 @@ to be recovered. What is recoverable is the hardware's *output stage* behaviour,
 which is what this item and R7 are.
 
 ### R7. Output dither — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 The renderer had exactly one dither: a 2-phase checkerboard hardcoded to half an
 8-bit step, inside `tonemap_fp.glsl`. It only ran when `r_hdr` and `r_toneMap`
 were both on, so `classic.cfg` — which turns both off — removed the only dither in
@@ -964,6 +1117,8 @@ automatically. That is actual precision rather than simulated, and makes the
 dither mostly moot on hardware and displays that support it.
 
 ### R3. Quake Live art is not Quake 3 art — OPEN
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 The env-mapped metal shaders live in Quake 3's `pak0.pk3`. Quake Live retextured
 everything, so no renderer setting recovers surfaces whose shaders are not
 loaded. Note the load order: `paksort` is `FS_PathCmp` ascending and later paks
@@ -979,6 +1134,8 @@ Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
 ## Engine / server
 
 ### E8. 186 cvars are registered but read by nothing — OPEN, survey done
+**Affects:** `both` — server side, so every connecting client sees it · game cvars hit both, cgame/ui cvars only ours
+
 Registering a cvar creates it, gives it a default, exposes it to configs and
 lists it in `\cvarlist`. **None of that makes it do anything.** A cvar nothing
 reads is indistinguishable from a working setting: you set it, it takes the
@@ -1020,15 +1177,21 @@ the shipped `a2m-instagib-freeze.cfg` runs freeze tag, and neither knob works.
 survey after adding one.
 
 ### E1. Factory subsystem absent — OPEN
+**Affects:** `both` — server side, so every connecting client sees it
+
 Quake Live's "factory" layer (named rule presets loaded from `scripts/*.factories`,
 selecting gametype plus a bundle of cvars) has no implementation. Servers configure
 raw cvars instead.
 
 ### E2. Teammate weapon icons never draw — OPEN
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine)
+
 `clientInfo_t::curWeapon` is never written because the server never sends the
 `tinfo` command. The HUD field exists and is read; nothing populates it.
 
 ### E3. No master server heartbeat / server queries — DONE (verify)
+**Affects:** `ours` — ioquakelive client only (our cgame/ui/engine) · the heartbeat half makes our server visible to any client's browser
+
 **The browser could never have found anything.** `UI_StartServerRefresh` shells
 out to `localservers` and `globalservers`, and neither command existed:
 
@@ -1067,6 +1230,8 @@ with a real map, so that part is yours to confirm.
 master protocol is implemented.
 
 ### E7. Instagib is split across two cvars, and one branch is dead — PARTIAL
+**Affects:** `both` — server side, so every connecting client sees it
+
 `g_instaGib` and the `DF_INSTAGIB` dmflag were two halves of one feature keyed
 off different cvars with nothing connecting them: damage resolution in
 `g_combat.c` tests `g_instaGib`, while the ammo grant and the warmup-extras
@@ -1084,6 +1249,8 @@ checking against the binary first. The shipped instagib configs turn powerup
 spawning off, so it cannot bite either way meanwhile.
 
 ### E6. Players connect as spectators — DONE (verify)
+**Affects:** `both` — server side, so every connecting client sees it
+
 Quake Live drops every connecting player into spectator and makes them pick
 JOIN MATCH from the menu. Quake 3 dropped you straight in. `g_autoJoin`
 (default **1**) restores the Quake 3 behaviour; set it to 0 for Quake Live's.
@@ -1116,10 +1283,14 @@ The server does not announce itself, so it cannot appear in any public list. The
 client's browser can still reach it by direct connect or LAN.
 
 ### E4. ZMQ stats feed absent — OPEN
+**Affects:** `both` — server side, so every connecting client sees it
+
 Quake Live publishes match events over ZeroMQ (`zmq_stats_enable` and friends).
 Nothing here implements it. Wanted by most server-stats tooling.
 
 ### E5. Steam integration absent — OPEN
+**Affects:** `both` — server side, so every connecting client sees it
+
 Auth, and `FS_CopyFromSteam` is defined but unused (it is one of the two remaining
 compiler warnings in engine code).
 
