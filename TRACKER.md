@@ -14,38 +14,52 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / UI** (U) | `███████████████░░░░░  11/15` | U9 root-caused: a parser bug, not a menu bug |
 | **Client / cgame** (C) | `████████████████████  6/6` | C9 confirmed resolved in play |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
-| **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | all blocked on disassembly or play-testing |
+| **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
 | **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  2/8` | 186 cvars registered but unread (E8) |
-| **Overall** | `██████████░░░░░░░░░░  22/42` | 32 ours · 10 both · 0 vanilla (untested) |
+| **Overall** | `██████████░░░░░░░░░░  22/42` | 32 ours · 8 both · 2 vanilla |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
 
 ## Which client is affected
 
-Bugs here live in one of two places, and it matters which:
-
 | Tag | Meaning |
 |---|---|
 | `ours` | The ioquakelive client only — our `cgame`, `ui` or engine. A vanilla Steam Quake Live client does not run this code and does not have the bug. |
-| `both` | Server side (`qagame`) or protocol. Every client connecting to our server sees it, vanilla included. |
-| `vanilla` | Shows up on the stock Steam Quake Live client but not ours — usually because our client compensates for something the stock one does not. |
+| `both` | Server side and resolved there. Every client sees the same thing, vanilla included. |
+| `vanilla` | Broken on a stock Steam Quake Live client while looking correct on ours. |
 
 Every item below carries an **Affects:** line. `●` done or resolved, `○` open.
 
-`vanilla` is the category that bites hardest, because it cannot be reproduced
-in the client we develop in. The shotgun alignment fault was exactly this: it
-looked correct in our client for weeks while being wrong for everyone else,
-because our cgame and the server had drifted together. Anything server side
-should be sanity-checked against a stock client before it is called done.
+**`vanilla` is not simply "server side".** Plenty of server-side behaviour is
+`both`: the server decides, every client is told, everyone sees the same thing.
+The dangerous case is different — where the server sends a *seed* and each
+client **regenerates the result locally**. That only agrees while both ends run
+the same generator. Our cgame reads the relevant cvars from serverinfo and
+follows the server; a stock client cannot be told about them and keeps running
+the stock code. Change the server and our client moves with it — both halves
+stay consistent and nothing looks wrong — while a stock client draws something
+that no longer matches the damage.
+
+The shotgun is exactly this (W1, W3), which is why it reads as correct here and
+wrong for everyone else, and why the server now deliberately reproduces what an
+unmodified client draws instead of the better behaviour.
+
+**So: any server change to something the client redraws from a seed is a
+`vanilla` risk until checked on a stock client.**
+
+### vanilla — broken on stock Steam Quake Live, fine on ours
+
+| | ID | Item | State |
+|---|---|---|---|
+| ○ | **W1** | Shotgun pattern shape is unverified | OPEN |
+| ○ | **W3** | Improved shotgun basis is locked behind custom clients | OPEN |
 
 ### both — every client, including vanilla Steam Quake Live
 
 | | ID | Item | State |
 |---|---|---|---|
-| ○ | **W1** | Shotgun pattern shape is unverified | OPEN |
 | ○ | **W2** | Middle ring angle: 30 radians or 30 degrees? | OPEN |
-| ○ | **W3** | Improved shotgun basis is locked behind custom clients | OPEN |
 | ○ | **W4** | HMG spread is a fixed constant | OPEN |
 | ○ | **E8** | 186 cvars are registered but read by nothing | OPEN, survey done |
 | ○ | **E1** | Factory subsystem absent | OPEN |
@@ -76,7 +90,7 @@ should be sanity-checked against a stock client before it is called done.
 | ● | **U8** | Server browser | DONE (verify) |
 | ● | **C4** | Console commands sent as chat in-game | DONE (verify), with a caveat |
 | ● | **C8** | Phantom pickup sound over taken items | DONE (verify) |
-| ● | **C9** | Client dies the moment the server terminates | RESOLVED |
+| ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -91,22 +105,11 @@ should be sanity-checked against a stock client before it is called done.
 | ○ | **E2** | Teammate weapon icons never draw | OPEN |
 | ● | **E3** | No master server heartbeat / server queries | DONE (verify) |
 
-### vanilla — stock Steam Quake Live client only
-
-| | ID | Item | State |
-|---|---|---|---|
-| | | _(none tracked)_ | |
-
-**Empty because nothing has been tested there, not because nothing is wrong.**
-Every fault in this file was found by playing our own client. A `both` item is
-only *assumed* to behave the same on a stock client until someone checks, and
-the one time that assumption was tested it was false — see W3.
-
-To check: point a stock Steam Quake Live client at the server (`connect
-<host>`) and repeat the same test. It loads its own `cgame`/`ui` from
-`pak00.pk3` and only our `qagame`, so anything that still misbehaves is server
-side and anything that stops misbehaving was ours all along. That single
-comparison is the fastest way to classify a new bug.
+Nothing else has been tested on a stock client, so `ours` and `both` above are
+classified by where the code lives, not by observation. To check one: point a
+stock client at the server and repeat the test. It loads its own `cgame`/`ui`
+from `pak00.pk3` and only our `qagame`, so whatever still misbehaves is server
+side and whatever stops was ours.
 
 ## Priorities
 
@@ -145,7 +148,7 @@ loud in the console.)*
 ## Weapons / gameplay
 
 ### W1. Shotgun pattern shape is unverified — OPEN
-**Affects:** `both` — server side, so every connecting client sees it
+**Affects:** `vanilla` — our client follows the server's pattern cvars, a stock one cannot
 
 The ring pattern transcribed from the binary has a **hollow centre**: its centroid
 is exactly on the aim axis, but the nearest pellet is 1.75° off it and the outer
@@ -165,6 +168,15 @@ the transcription are wrong.
 **Next step:** play-test `g_shotgunPattern 0` vs `1` and `g_shotgunSpread 1` vs
 `0.7`. Note that a vanilla client will not follow either.
 
+**Why this is `vanilla` and not `both`:** the shotgun is not resolved server side
+and drawn from the result. The server picks a seed, sends it, and the client
+*regenerates the same pattern locally* to place its marks. That only lines up
+while both ends run the same generator. Our cgame reads the pattern cvars from
+serverinfo and follows; a stock client cannot be told about them and keeps
+drawing the stock pattern. So changing the server's pattern is invisible on our
+client - both halves move together - and produces marks nowhere near the damage
+on a stock one. The bug exists only where we cannot see it.
+
 ### W2. Middle ring angle: 30 radians or 30 degrees? — OPEN
 **Affects:** `both` — server side, so every connecting client sees it
 
@@ -178,13 +190,19 @@ not hit registration, since both sides compute it identically.
 the constant is `30.0` or `0.5235988`.
 
 ### W3. Improved shotgun basis is locked behind custom clients — OPEN
-**Affects:** `both` — server side, so every connecting client sees it · the whole point of this item is the split between the two
+**Affects:** `vanilla` — the fix works on our client and is held back solely for stock ones
 
 `g_shotgunBasis 1` lays the pellets out in the player's own right/up, so the
 pattern stops rotating with facing (pellet 0 measured at −60°/−150°/+120° on
 screen depending on yaw with the stock frame; a constant −120° with the new one).
 It defaults to **0** (stock `PerpendicularVector`) because a vanilla client cannot
 be told to follow it and would draw marks nowhere near the damage.
+
+This is the fault that was reported as "aligns fine in our client, doesn't align
+in the vanilla client", and it is why the server now defaults to reproducing
+exactly what an unmodified client draws (`b4a3ef4`) rather than to the better
+behaviour. The improvement is written, tested and switched **off**, because
+turning it on breaks the client we cannot test in.
 
 **Decision needed:** is this server meant to serve vanilla clients permanently, or
 are custom clients the target? That answer also gates `g_shotgunPattern 1`.
