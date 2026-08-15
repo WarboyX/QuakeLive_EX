@@ -703,6 +703,10 @@ typedef struct {
     int teamScores[2];
     score_t scores[MAX_CLIENTS];
     qboolean showScores;
+    // [QL] set once the player scrolls the scoreboard by hand, so that
+    // CG_TrackLocalPlayerOnScoreboard stops dragging the view back to their own
+    // row. Cleared each time the scoreboard is opened.
+    qboolean scoreboardScrolled;
     qboolean scoreBoardShowing;
 
     // [QL] team-kill complaint prompt (server "complaint" verb). complaintClient is the

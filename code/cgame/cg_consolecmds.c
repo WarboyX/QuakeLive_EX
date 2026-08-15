@@ -191,6 +191,8 @@ static void CG_ScrollScoreboard(int key) {
         return;
     }
 
+    cg.scoreboardScrolled = qtrue;
+
     Menu_ScrollFeederKey(menu, FEEDER_SCOREBOARD, key);
     Menu_ScrollFeederKey(menu, FEEDER_ENDSCOREBOARD, key);
     Menu_ScrollFeederKey(menu, FEEDER_REDTEAM_LIST, key);

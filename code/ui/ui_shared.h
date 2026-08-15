@@ -421,6 +421,7 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y);
 void Menu_ScrollFeeder(menuDef_t* menu, int feeder, qboolean down);
 void Menu_ScrollFeederKey(menuDef_t* menu, int feeder, int key);
 void Menu_ShowFeederIndex(menuDef_t* menu, int feeder, int index);
+void Menu_SetFeederCursor(menuDef_t* menu, int feeder, int index);
 qboolean Float_Parse(char** p, float* f);
 qboolean Color_Parse(char** p, vec4_t* c);
 qboolean Int_Parse(char** p, int* i);

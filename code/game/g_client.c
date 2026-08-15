@@ -1062,6 +1062,7 @@ void ClientSpawn(gentity_t* ent) {
     int savedPing;
     //	char	*savedAreaBits;
     int accuracy_hits, accuracy_shots;
+    expandedStatObj_t savedStats;
     int eventSequence;
     char userinfo[MAX_INFO_STRING];
 
@@ -1108,6 +1109,28 @@ void ClientSpawn(gentity_t* ent) {
     accuracy_hits = client->accuracy_hits;
     accuracy_shots = client->accuracy_shots;
 
+    /*
+    [QL] expandedStats survives the respawn, like pers, sess and persistant[].
+
+    It is a match accumulator - kills, deaths, damage dealt and taken, shots
+    fired and hit per weapon - and the Com_Memset below clears the whole
+    gclient_t. Q3 saves everything that has to outlive a life by hand;
+    expandedStats is a Quake Live addition and was never added to that list, so
+    every one of those counters was reset on every respawn.
+
+    That is the whole of "K/D, accuracy and damage are wrong on the scoreboard".
+    The score column was right because PERS_SCORE is in persistant[] and is
+    restored; the columns beside it only ever showed the current life. Deaths
+    could never show anything at all - numDeaths is incremented at the moment of
+    death and wiped by the respawn that follows - which is why every player on
+    the board read 0 deaths, and why a player who had not died yet was the only
+    one whose row looked right.
+
+    killStreak is not exempted: STAT_AddPlayerDeathStat already zeroes it on
+    death, which is where a streak is supposed to end.
+    */
+    savedStats = client->expandedStats;
+
     for (i = 0; i < MAX_PERSISTANT; i++) {
         persistant[i] = client->ps.persistant[i];
     }
@@ -1121,6 +1144,7 @@ void ClientSpawn(gentity_t* ent) {
     //	client->areabits = savedAreaBits;
     client->accuracy_hits = accuracy_hits;
     client->accuracy_shots = accuracy_shots;
+    client->expandedStats = savedStats;
     client->lastkilled_client = -1;
 
     for (i = 0; i < MAX_PERSISTANT; i++) {

@@ -969,13 +969,26 @@ Three parts:
   alone: swallowing the press while the release still fires would leave the
   action stuck on.
 
-- **Opening the scoreboard puts you on your own page.** `CG_SetScoreSelection`
-  records the local player as the selection, but `Menu_SetFeederSelection` only
-  touches `startPos` when the index is zero, so on a list longer than the window
-  the selected row could sit off screen with nothing to say so.
-  `Menu_ShowFeederIndex` scrolls just far enough to bring it into view, and
-  leaves `startPos` alone when the row is already visible so it does not fight a
-  position the player chose.
+- **The view follows the local player's row.** `CG_SetScoreSelection` records
+  the local player as the selection, but `Menu_SetFeederSelection` only touches
+  `startPos` when the index is zero, so on a list longer than the window the
+  selected row could sit off screen with nothing to say so.
+  `Menu_ShowFeederIndex` scrolls just far enough to bring it into view and
+  leaves `startPos` alone when the row is already visible.
+
+  This runs every frame the scoreboard is drawn, not once when it opens: the
+  list re-sorts as scores change, so a row index recorded at open drifts within
+  seconds and the view is left on a page the player is no longer on. Scrolling
+  by hand takes the view back (`cg.scoreboardScrolled`) until the board is
+  closed and reopened. `Menu_SetFeederCursor` is the highlight half of the same
+  job — `Menu_SetFeederSelection` cannot be used per-frame because its
+  index-zero `startPos` reset would stop a first-place player scrolling away.
+
+- **The board refreshes while it is held.** `CG_ScoresDown_f` sends `score` on
+  the key press and nothing after it, so holding TAB showed whatever had arrived
+  at the moment it opened — visibly stale within a second on a sixty-player
+  instagib server. `CG_RefreshScoreboard` re-requests on the same two-second
+  throttle the key press already used, so it costs no more than tapping TAB.
 
 ### C14. Match summary: no cursor, no voting, no winner, no arena shots — PARTIAL
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -1020,7 +1033,7 @@ cgame. Any of them that Quake Live does not ship are silently 0 in the same way.
 
 The empty scoreboard on that screen was C13.
 
-### C18. Scoreboard K/D, damage and accuracy are wrong for everyone but you — OPEN
+### C18. Scoreboard K/D, damage and accuracy only ever showed the current life — DONE (verify)
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
 
 In a 60-player instagib FFA the local player's row is self-consistent — 102
@@ -1071,20 +1084,56 @@ Tag the assist count *is* the thaw count: thawing a teammate awards an assist.)
 `i++; // unknown`. They are `PERS_CAPTURES` and the alive flag, and `score_t`
 has a field for each.
 
-That accounts for the accuracy column and two more gametypes. **K/D and damage
-in FFA are still open** — those
-fields (14, 15 and 18) do line up between emitter and parser, so the numbers
-themselves are what is wrong, not where they are read from.
+That accounts for the accuracy column and two more gametypes. The field
+alignment was never the cause of the K/D and damage numbers, though — those
+fields do line up between emitter and parser.
 
-Ruled out this round:
+**Root cause — `ClientSpawn` wipes `expandedStats` on every respawn.**
+
+```c
+Com_Memset(client, 0, sizeof(*client));
+```
+
+Q3 clears the whole `gclient_t` on spawn and restores by hand everything that
+has to outlive a life: `pers`, `sess`, `ps.persistant[]`, the ping,
+`accuracy_hits` / `accuracy_shots`. `expandedStats` is a Quake Live addition —
+kills, deaths, suicides, team kills, and the per-weapon shot, hit and damage
+arrays, 812 bytes of match totals — and it was never added to that list. Every
+counter behind the K/D, DMG and WEAP columns was reset each time the player
+respawned.
+
+That explains the whole shape of the report:
+
+- **Score was right and everything beside it was wrong.** `PERS_SCORE` lives in
+  `persistant[]` and is restored; the columns next to it only ever showed the
+  current life.
+- **Every player read 0 deaths.** `numDeaths` is incremented at the moment of
+  death and wiped by the respawn immediately after, so a death could never be
+  displayed at all — not for bots, not for anyone.
+- **Damage was exactly 72 × kills.** Both counters covered the same single life,
+  so the ratio came out as one railgun hit per kill every time.
+- **The one row that looked right belonged to a player who had not died.**
+  A 35-0 local player showed 35 kills and 2.8k damage because nothing had
+  cleared them yet. That is why this first looked like a bots-only fault.
+
+Fixed by saving and restoring `expandedStats` across the memset alongside
+`pers` and `sess`. `killStreak` is not exempted: `STAT_AddPlayerDeathStat`
+already zeroes it on death, which is where a streak is meant to end.
+
+A correction to the previous round of this entry, which listed "`expandedStats`
+is zeroed only on connect and on team change, not on respawn" among the things
+ruled out. `STAT_InitClient` is indeed the only *named* reset and has no callers
+— but `ClientSpawn`'s blanket memset was the reset, and it was not looked for.
+The clue that settled it was the 0 deaths being universal rather than
+bot-specific: no gate in the stat path can produce that, only a wipe timed to
+the respawn.
+
+Still standing from that round:
 
 - `STAT_AddPlayerDeathStat` and `STAT_AddDamageStat` are called unconditionally
-  from `player_die` and `G_Damage`, and both read correctly — the victim-side
-  `numDeaths++` has no attacker-dependent gate at all.
+  from `player_die` and `G_Damage`, and both read correctly.
 - `OnSameTeam` returns qfalse below `GT_TEAM`, so the FFA case is not being
   treated as friendly fire and skipped.
-- `expandedStats` is zeroed only on connect and on team change, not on respawn,
-  so this is not a per-life reset.
 
 Two things to look at next. Bots on this map die to `<world>` constantly
 (`MOD_TRIGGER_HURT`, `MOD_FALLING` — the earlier logs are full of it); the

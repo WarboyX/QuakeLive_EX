@@ -1688,25 +1688,32 @@ void CG_SetEndScoreboardMenu(void) {
 }
 
 /*
-[QL] Put the local player's row on the visible page when the scoreboard opens.
+[QL] Keep the highlight and the visible page on the local player.
 
-CG_SetScoreSelection records the selection but Menu_SetFeederSelection only
-moves startPos when the index is zero, so on a server with more players than the
-ten rows the list box shows, the player opening the scoreboard was as likely as
-not to be looking at a page they were not on.
+Run every frame the scoreboard is drawn, not once when it opens. The list
+re-sorts as scores change, so a row index recorded at open drifts onto whoever
+happens to be standing there a few frags later - which is how the highlight
+ended up on another player's line and the view opened on a page the local player
+was not on. Scrolling by hand takes the view back (cg.scoreboardScrolled); the
+highlight keeps following.
+
+CG_SetScoreSelection cannot do this job: it goes through
+Menu_SetFeederSelection, which resets startPos whenever the index is zero, so a
+player in first place could never scroll away.
 */
-static void CG_ScrollScoreboardToLocalPlayer(menuDef_t *menu) {
+static void CG_TrackLocalPlayerOnScoreboard(menuDef_t *menu) {
 	int i, index = -1, teamIndex = 0;
+	int feeder;
 
 	if (!cg.snap) {
 		return;
 	}
 
+	// The team scoreboards split the players across two lists, so the row a
+	// player sits on is their position within their own team's list, not their
+	// position in cg.scores.
 	for (i = 0; i < cg.numScores; i++) {
 		if (cg.scores[i].client != cg.snap->ps.clientNum) {
-			if (cg.scores[i].team == cg.scores[cg.selectedScore].team) {
-				teamIndex++;
-			}
 			continue;
 		}
 		index = i;
@@ -1715,13 +1722,33 @@ static void CG_ScrollScoreboardToLocalPlayer(menuDef_t *menu) {
 	if (index < 0) {
 		return;
 	}
+	for (i = 0; i < index; i++) {
+		if (cg.scores[i].team == cg.scores[index].team) {
+			teamIndex++;
+		}
+	}
 
-	Menu_ShowFeederIndex(menu, FEEDER_SCOREBOARD, index);
-	Menu_ShowFeederIndex(menu, FEEDER_ENDSCOREBOARD, index);
 	if (cg.scores[index].team == TEAM_RED) {
-		Menu_ShowFeederIndex(menu, FEEDER_REDTEAM_LIST, teamIndex);
+		feeder = FEEDER_REDTEAM_LIST;
 	} else if (cg.scores[index].team == TEAM_BLUE) {
-		Menu_ShowFeederIndex(menu, FEEDER_BLUETEAM_LIST, teamIndex);
+		feeder = FEEDER_BLUETEAM_LIST;
+	} else {
+		feeder = FEEDER_SCOREBOARD;
+		teamIndex = index;
+	}
+
+	Menu_SetFeederCursor(menu, feeder, teamIndex);
+	if (feeder == FEEDER_SCOREBOARD) {
+		Menu_SetFeederCursor(menu, FEEDER_ENDSCOREBOARD, teamIndex);
+	}
+
+	// Leave the view where the player put it once they have scrolled.
+	if (cg.scoreboardScrolled) {
+		return;
+	}
+	Menu_ShowFeederIndex(menu, feeder, teamIndex);
+	if (feeder == FEEDER_SCOREBOARD) {
+		Menu_ShowFeederIndex(menu, FEEDER_ENDSCOREBOARD, teamIndex);
 	}
 }
 
@@ -1736,6 +1763,30 @@ not worth being clever about.
 */
 static void CG_PublishScoreboardState(qboolean showing) {
 	trap_Cvar_Set("cg_scoreboardActive", showing ? "1" : "0");
+}
+
+/*
+[QL] Ask the server for scores again while the board is being held.
+
+CG_ScoresDown_f sends "score" on the key press and nothing after it, so a
+scoreboard held open showed whatever arrived at the moment it was opened. On a
+sixty-player instagib server the numbers are visibly stale within a second, and
+holding TAB to watch the match is precisely when they need to move.
+
+Same two-second throttle CG_ScoresDown_f already applies, so this costs no more
+than tapping TAB does - it just stops the display freezing while the key is down.
+*/
+#define SCOREBOARD_REFRESH_TIME 2000
+
+static void CG_RefreshScoreboard(void) {
+	if (cg.predictedPlayerState.pm_type == PM_INTERMISSION) {
+		return;   // the final scores are not going to change
+	}
+	if (cg.scoresRequestTime + SCOREBOARD_REFRESH_TIME >= cg.time) {
+		return;
+	}
+	cg.scoresRequestTime = cg.time;
+	trap_SendClientCommand("score");
 }
 
 static qboolean CG_DrawScoreboardMenu(void) {
@@ -1781,10 +1832,12 @@ static qboolean CG_DrawScoreboardMenu(void) {
 
 		if (activeMenu) {
 			if (firstTime) {
-				CG_SetScoreSelection(activeMenu);
-				CG_ScrollScoreboardToLocalPlayer(activeMenu);
+				cg.scoreboardScrolled = qfalse;
 				firstTime = qfalse;
 			}
+			CG_RefreshScoreboard();
+			CG_SetScoreSelection(NULL);
+			CG_TrackLocalPlayerOnScoreboard(activeMenu);
 			Menu_Paint(activeMenu, qtrue);
 		}
 	}

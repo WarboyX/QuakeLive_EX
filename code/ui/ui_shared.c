@@ -4715,6 +4715,34 @@ void Menu_ShowFeederIndex(menuDef_t* menu, int feeder, int index) {
     }
 }
 
+/*
+[QL] Move a feeder's highlight without moving the view.
+
+Menu_SetFeederSelection resets startPos when the index is zero, which is right
+when the caller is opening a menu and wrong when it is only refreshing which row
+is highlighted. The scoreboard needs the latter every frame: the list re-sorts
+as scores change, so a highlight recorded once at open drifts onto whoever
+happens to be standing at that row later - which is how the local player's
+highlight ended up on somebody else's line.
+*/
+void Menu_SetFeederCursor(menuDef_t* menu, int feeder, int index) {
+    int i;
+
+    if (menu == NULL || index < 0) {
+        return;
+    }
+
+    for (i = 0; i < menu->itemCount; i++) {
+        if (menu->items[i]->special == feeder) {
+            if (menu->items[i]->cursorPos != index) {
+                menu->items[i]->cursorPos = index;
+                DC->feederSelection(menu->items[i]->special, index);
+            }
+            return;
+        }
+    }
+}
+
 void Menu_SetFeederSelection(menuDef_t* menu, int feeder, int index, const char* name) {
     if (menu == NULL) {
         if (name == NULL) {
