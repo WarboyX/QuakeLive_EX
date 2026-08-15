@@ -2019,21 +2019,38 @@ static void Cmd_PStats_f(gentity_t* ent) {
 Binary: qagamex86.dll 0x10045db0
 =================
 */
+/*
+[QL] Under g_debugWarmup, say why a readyup did nothing.
+
+Every early-out below is silent, and from the player's side they are all the
+same event: press the key, nothing happens, warmup reports "not enough ready".
+Six different reasons produce that, and none of them reaches the console.
+*/
+#define READYUP_REFUSED(reason)                                                        \
+    do {                                                                               \
+        if (g_debugWarmup.integer) {                                                   \
+            G_Printf("^3warmup^7 readyup from client %d refused: %s\n",                \
+                     (int)(ent - g_entities), reason);                                 \
+        }                                                                              \
+        return;                                                                        \
+    } while (0)
+
 static void Cmd_ReadyUp_f(gentity_t* ent) {
     gclient_t* cl;
 
     // Valid during warmup (warmupTime < 0) or intermission
     if (level.warmupTime >= 0 && level.intermissionTime == 0)
-        return;
+        READYUP_REFUSED(va("warmupTime is %d (readyup only applies in PRE_GAME or "
+                           "at intermission)", level.warmupTime));
 
     // [QL] Binary also runs a bot-only training pre-step here (g_isBotOnly +
     // Cmd_SkipTraining_f); ioquakelive has no Cmd_SkipTraining_f, so it is skipped.
     cl = ent->client;
     if (!cl) return;
-    if (cl->ps.pm_type == PM_SPECTATOR) return;
-    if (cl->sess.sessionTeam == TEAM_SPECTATOR) return;
+    if (cl->ps.pm_type == PM_SPECTATOR) READYUP_REFUSED("pm_type is PM_SPECTATOR");
+    if (cl->sess.sessionTeam == TEAM_SPECTATOR) READYUP_REFUSED("on the spectator team");
     // Binary tests pm_flags & 0x1000 (PMF_FOLLOW), not PMF_FROZEN.
-    if (cl->ps.pm_flags & PMF_FOLLOW) return;
+    if (cl->ps.pm_flags & PMF_FOLLOW) READYUP_REFUSED("following another client (PMF_FOLLOW)");
 
     if (level.warmupTime < 0) {
         // Validate minimum players
@@ -2052,13 +2069,13 @@ static void Cmd_ReadyUp_f(gentity_t* ent) {
                 trap_SendServerCommand(ent - g_entities,
                     "print \"Cannot ready up until more players are present.\n\"");
             }
-            return;
+            READYUP_REFUSED("TeamsPresent() is false");
         }
         // Validate team balance
         if (!G_CheckTeamBalance()) {
             trap_SendServerCommand(ent - g_entities,
                 "print \"Players cannot ready up until both teams are fully present.\n\"");
-            return;
+            READYUP_REFUSED("G_CheckTeamBalance() is false");
         }
     }
 
@@ -2069,6 +2086,12 @@ static void Cmd_ReadyUp_f(gentity_t* ent) {
     // Toggle ready state
     cl->pers.ready = !cl->pers.ready;
     ClientUserinfoChanged(ent - g_entities);
+
+    if (g_debugWarmup.integer) {
+        G_Printf("^3warmup^7 readyup: client %d is now %s (pers.ready read back as %d "
+                 "after ClientUserinfoChanged)\n",
+                 (int)(ent - g_entities), cl->pers.ready ? "READY" : "not ready", cl->pers.ready);
+    }
 
     // Announce during warmup
     if (level.warmupTime < 0) {

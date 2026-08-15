@@ -3160,8 +3160,15 @@ static void WarmupBlocked(const char *reason) {
     lastReason = reason;
     lastPrint = level.time;
 
-    G_Printf("^3warmup^7 held: %s  (playing %d, connected %d, red %d, blue %d)\n",
+    // numReadyHumans is the one that is invisible from outside and is usually
+    // the answer: bots count toward numReadyClients through bot_autoReady but
+    // never toward numReadyHumans, so a server full of bots and one human who
+    // has not pressed ready sits in warmup forever with nothing on screen
+    // saying whose turn it is.
+    G_Printf("^3warmup^7 held: %s  (playing %d, connected %d, ready %d of %d, humans ready %d, "
+             "red %d, blue %d)\n",
              reason, level.numPlayingClients, level.numConnectedClients,
+             level.numReadyClients, level.numPlayingClients, level.numReadyHumans,
              TeamCount(-1, TEAM_RED), TeamCount(-1, TEAM_BLUE));
 }
 
@@ -3273,8 +3280,17 @@ static qboolean CheckWarmupConditions(void) {
                 sv_warmupReadyPercentage.value == 0.0f) {
                 return qtrue;
             }
-            WarmupBlocked("not enough ready: needs a readied human and the "
-                          "sv_warmupReadyPercentage fraction");
+            // [QL] Two separate conditions, and welding them into one message
+            // made a trace that named the gate still not say which half failed.
+            // The first is the common one and it is not obvious: bots are
+            // "playing" via bot_autoReady but never "ready", so a server of
+            // bots plus one human waits on that human indefinitely.
+            if (numReady == 0) {
+                WarmupBlocked("no human has readied - bots never count as ready, "
+                              "so someone has to run readyup (or set g_doWarmup 0)");
+            } else {
+                WarmupBlocked("readied fraction is below sv_warmupReadyPercentage");
+            }
         }
     } else {
         // During COUNT_DOWN: re-freeze every connected client. Binary tests only
@@ -3503,6 +3519,12 @@ static void CheckWarmupAndForfeit(void) {
         // Countdown was running: drop back to PRE_GAME. (Binary inlines the
         // SetWarmupState(-1) transition and also calls G_AutoRecordAndScreenshot(-1),
         // which ioquakelive does not model.)
+        if (g_debugWarmup.integer) {
+            G_Printf("^1warmup^7 countdown ABANDONED at %d - conditions stopped being met "
+                     "mid-countdown, dropping to PRE_GAME and clearing every ready flag\n",
+                     level.time);
+        }
+
         SetWarmupState(-1);
         G_LogPrintf("Warmup:\n");
 
