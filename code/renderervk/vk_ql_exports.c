@@ -45,6 +45,32 @@ void RE_SetCompositionFont(int fontIndex, float scale);
 // tr_scene.c
 void RE_AddRefEntityToScene(const refEntity_t *ent, qboolean intShaderTime);
 
+// tr_init.c - takes Quake3e's refShutdownCode_t, not this tree's qboolean
+void RE_Shutdown(int code);
+
+/*
+===============
+VK_Shutdown
+
+The second arity mismatch, and this one had a visible symptom. This tree's
+refexport_t entry is Shutdown(qboolean destroyWindow); Quake3e's takes a
+refShutdownCode_t, where 0 is REF_KEEP_CONTEXT, 1 REF_KEEP_WINDOW, 2
+REF_DESTROY_WINDOW and 3 REF_UNLOAD_DLL.
+
+CL_ShutdownRef passes qtrue, which is 1, which renderervk read as "destroy the
+context but KEEP the window" - so VKimp_Shutdown left SDL_window alive, the
+engine unloaded the module out from under it, and the next renderer opened a
+second window beside the orphaned first. That is the reported "cl_renderer
+vulkan + vid_restart opens a new window and fails to close the original".
+
+CL_ShutdownRef unloads the library immediately afterwards, unconditionally, so
+REF_UNLOAD_DLL is the honest translation regardless of what it passes.
+===============
+*/
+static void VK_Shutdown(qboolean destroyWindow) {
+    RE_Shutdown(3 /* REF_UNLOAD_DLL */);
+}
+
 /*
 ===============
 VK_AddRefEntityToScene
@@ -91,6 +117,7 @@ void VK_QL_FillImports(refimport_t *rimp) {
 }
 
 void VK_QL_FillExports(refexport_t *rexp) {
+    rexp->Shutdown = VK_Shutdown;
     rexp->AddRefEntityToScene = VK_AddRefEntityToScene;
 
     rexp->Font_DrawString = RE_Font_DrawString;
