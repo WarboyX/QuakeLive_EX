@@ -430,7 +430,7 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
 
         // the target had the flag, clear the hurt carrier
         // field on the other team
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;
             if (ent->inuse && ent->client->sess.sessionTeam == otherteam)
                 ent->client->pers.teamState.lasthurtcarrier = 0;
@@ -448,7 +448,7 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
 
         // the target had the flag, clear the hurt carrier
         // field on the other team
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;
             if (ent->inuse && ent->client->sess.sessionTeam == otherteam)
                 ent->client->pers.teamState.lasthurtcarrier = 0;
@@ -510,7 +510,7 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
                 return;
         }
         // find attacker's team's flag carrier
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             carrier = g_entities + i;
             if (carrier->inuse && carrier->client->ps.powerups[flag_pw])
                 break;
@@ -834,7 +834,7 @@ int Team_TouchOurFlag(gentity_t* ent, gentity_t* other, int team) {
     Team_CaptureFlagSound(ent, team);
 
     // Ok, let's do the player loop, hand out the bonuses
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         player = &g_entities[i];
 
         // also make sure we don't award assist bonuses to the flag carrier himself.
@@ -1157,7 +1157,7 @@ void TeamOverlayMessage(gentity_t* ent) {
     // figure out what client should be on the display
     // we are limited to 8, but we want to use the top eight players
     // but in client order (so they don't keep changing position on the overlay)
-    for (i = 0, cnt = 0; i < g_maxclients.integer && cnt < TEAM_MAXOVERLAY; i++) {
+    for (i = 0, cnt = 0; i < level.maxclients && cnt < TEAM_MAXOVERLAY; i++) {
         player = g_entities + level.sortedClients[i];
         if (player->inuse && player->client->sess.sessionTeam == team) {
             clients[cnt++] = level.sortedClients[i];
@@ -1171,7 +1171,7 @@ void TeamOverlayMessage(gentity_t* ent) {
     string[0] = 0;
     stringlength = 0;
 
-    for (i = 0, cnt = 0; i < g_maxclients.integer && cnt < TEAM_MAXOVERLAY; i++) {
+    for (i = 0, cnt = 0; i < level.maxclients && cnt < TEAM_MAXOVERLAY; i++) {
         player = g_entities + i;
         if (player->inuse && player->client->sess.sessionTeam == team) {
             h = player->client->ps.stats[STAT_HEALTH];
@@ -1205,7 +1205,7 @@ void CheckTeamStatus(void) {
     if (level.time >= level.nextTeamInfoTime) {
         level.nextTeamInfoTime = level.time + TEAM_LOCATION_UPDATE_TIME;
 
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;
 
             if (ent->client->pers.connected != CON_CONNECTED) {
@@ -1221,7 +1221,7 @@ void CheckTeamStatus(void) {
             }
         }
 
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;
 
             if (ent->client->pers.connected != CON_CONNECTED) {

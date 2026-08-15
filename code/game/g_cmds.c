@@ -1590,7 +1590,7 @@ void Cmd_CallVote_f(gentity_t *ent) {
         if (ts < 0 || ts > 64) {
             trap_SendServerCommand(clientNum,
                 va("print \"Invalid team size. (Valid Range: %d - %d)\n\"",
-                   g_teamSizeMin.integer, g_maxclients.integer));
+                   g_teamSizeMin.integer, level.maxclients));
             return;
         }
     }

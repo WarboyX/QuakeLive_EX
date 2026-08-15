@@ -204,7 +204,7 @@ int G_CountBotPlayersByName(const char* name, int team) {
     gclient_t* cl;
 
     num = 0;
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected == CON_DISCONNECTED) {
             continue;
@@ -301,7 +301,7 @@ int G_RemoveRandomBot(int team) {
     int i;
     gclient_t* cl;
 
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -328,7 +328,7 @@ int G_CountHumanPlayers(int team) {
     gclient_t* cl;
 
     num = 0;
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -356,7 +356,7 @@ int G_CountBotPlayers(int team) {
     gclient_t* cl;
 
     num = 0;
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected == CON_DISCONNECTED) {
             continue;
@@ -386,7 +386,7 @@ static int G_CountBotPlayersWithQueued(int team) {
 
     num = 0;
     // connected bots
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -464,13 +464,13 @@ void G_CheckMinimumPlayers(void) {
 
     if (g_gametype.integer >= GT_TEAM) {
         // Team modes apply minplayers *per team*, so the ceiling is half the slots.
-        if (minplayers >= g_maxclients.integer / 2) {
-            if (bot_minplayers.integer >= g_maxclients.integer / 2) {
+        if (minplayers >= level.maxclients / 2) {
+            if (bot_minplayers.integer >= level.maxclients / 2) {
                 G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d per team: sv_maxclients "
                          "is %d (latched - a full 'map' command is needed after changing it)\n",
-                         bot_minplayers.integer, (g_maxclients.integer / 2) - 1, g_maxclients.integer);
+                         bot_minplayers.integer, (level.maxclients / 2) - 1, level.maxclients);
             }
-            minplayers = (g_maxclients.integer / 2) - 1;
+            minplayers = (level.maxclients / 2) - 1;
         }
 
         humanplayers = G_CountHumanPlayers(TEAM_RED);
@@ -491,8 +491,8 @@ void G_CheckMinimumPlayers(void) {
             G_RemoveRandomBot(TEAM_BLUE);
         }
     } else if (g_gametype.integer == GT_DUEL) {
-        if (minplayers >= g_maxclients.integer) {
-            minplayers = g_maxclients.integer - 1;
+        if (minplayers >= level.maxclients) {
+            minplayers = level.maxclients - 1;
         }
         humanplayers = G_CountHumanPlayers(-1);
         botplayers = G_CountBotPlayersWithQueued(-1);
@@ -512,13 +512,13 @@ void G_CheckMinimumPlayers(void) {
         // does nothing until a full "map" command - map_restart is not enough -
         // so this clamp is usually hit because the new value has not taken effect
         // yet, and silently capping made that indistinguishable from a bot limit.
-        if (minplayers >= g_maxclients.integer) {
-            if (bot_minplayers.integer >= g_maxclients.integer) {
+        if (minplayers >= level.maxclients) {
+            if (bot_minplayers.integer >= level.maxclients) {
                 G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d: sv_maxclients is %d "
                          "(latched - a full 'map' command is needed after changing it)\n",
-                         bot_minplayers.integer, g_maxclients.integer - 1, g_maxclients.integer);
+                         bot_minplayers.integer, level.maxclients - 1, level.maxclients);
             }
-            minplayers = g_maxclients.integer - 1;
+            minplayers = level.maxclients - 1;
         }
         humanplayers = G_CountHumanPlayers(TEAM_FREE);
         botplayers = G_CountBotPlayersWithQueued(TEAM_FREE);

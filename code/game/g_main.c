@@ -1741,6 +1741,22 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
 
     // initialize all clients for this game
     level.maxclients = g_maxclients.integer;
+
+    // [QL] g_clients is a fixed MAX_CLIENTS array and every loop below runs to
+    // level.maxclients, so a larger sv_maxclients corrupts memory rather than
+    // failing. The engine clamps the cvar now; this is the second half of that,
+    // because a game module can be loaded by a server that does not - and a
+    // silent clamp here would leave the admin wondering where their slots went.
+    if (level.maxclients > MAX_CLIENTS) {
+        G_Printf(S_COLOR_RED "sv_maxclients %d exceeds the %d-client limit this build is compiled for; "
+                             "using %d.\n",
+                 level.maxclients, MAX_CLIENTS, MAX_CLIENTS);
+        level.maxclients = MAX_CLIENTS;
+    }
+    if (level.maxclients < 1) {
+        level.maxclients = 1;
+    }
+
     memset(g_clients, 0, MAX_CLIENTS * sizeof(g_clients[0]));
     level.clients = g_clients;
 
@@ -2615,7 +2631,7 @@ void ExitLevel(void) {
     level.lastTeamRoundScores[TEAM_RED] = 0;
     level.lastTeamRoundScores[TEAM_BLUE] = 0;
 
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -2628,7 +2644,7 @@ void ExitLevel(void) {
 
     // change all client states to connecting, so the early players into the
     // next level will know the others aren't done reconnecting
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         if (level.clients[i].pers.connected == CON_CONNECTED) {
             level.clients[i].pers.connected = CON_CONNECTING;
         }
@@ -2783,7 +2799,7 @@ void CheckIntermissionExit(void) {
 
     // Build ready mask from per-client ready state
     readyMask = 0;
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -2799,7 +2815,7 @@ void CheckIntermissionExit(void) {
     }
 
     // Broadcast ready mask to all connected clients
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -2933,7 +2949,7 @@ void CheckExitRules(void) {
             return;
         }
 
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             cl = level.clients + i;
             if (cl->pers.connected != CON_CONNECTED) {
                 continue;

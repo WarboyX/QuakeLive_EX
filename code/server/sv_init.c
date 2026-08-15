@@ -710,6 +710,17 @@ void SV_Init(void) {
     sv_privateClients = Cvar_Get("sv_privateClients", "0", CVAR_SERVERINFO);
     sv_hostname = Cvar_Get("sv_hostname", "noname", CVAR_SERVERINFO | CVAR_ARCHIVE);
     sv_maxclients = Cvar_Get("sv_maxclients", "8", CVAR_SERVERINFO | CVAR_LATCH);
+    // [QL] MAX_CLIENTS is not a soft limit, and nothing was enforcing it.
+    //
+    // The server allocates svs.clients from this value, but the game module's
+    // client array is a fixed gclient_t g_clients[MAX_CLIENTS] and every loop
+    // in it runs to g_maxclients.integer. Set sv_maxclients above 64 and the
+    // game walks off the end of that array as soon as enough clients exist to
+    // reach past slot 63 - which is why it presented as "the server hard
+    // crashes after a certain number of bots" rather than as a bad cvar.
+    // botlib is the same shape: botchatstates, botgoalstates, botmovestates
+    // and botweaponstates are all [MAX_CLIENTS + 1].
+    Cvar_CheckRange(sv_maxclients, 1, MAX_CLIENTS, qtrue);
 
     sv_minRate = Cvar_Get("sv_minRate", "0", CVAR_ARCHIVE | CVAR_SERVERINFO);
     sv_maxRate = Cvar_Get("sv_maxRate", "0", CVAR_ARCHIVE | CVAR_SERVERINFO);
