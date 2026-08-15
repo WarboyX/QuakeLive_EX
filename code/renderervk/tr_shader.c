@@ -575,6 +575,56 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 ParseStage
 ===================
 */
+
+/*
+===============
+R_ShaderKeywordIgnored
+
+[QL] Unknown shader keywords are ignored, not fatal.
+
+Both parsers used to answer an unrecognised keyword with "return qfalse", and
+ParseShader turns that into defaultShader on the *whole shader* - one keyword
+it has never heard of and the entire material is replaced by the black box with
+the white border. There is no recovery and no way to tell from the screen what
+happened.
+
+That is the wrong trade for a renderer reading someone else's shader scripts.
+Quake Live's own keywords do not exist in Quake3e's parser and never will;
+novlcollapse is on every player skin in the game, and it is a *hint*, not
+geometry. Skipping a keyword whose meaning we lack renders the shader slightly
+wrong. Failing it renders the shader completely wrong, and takes the model with
+it.
+
+So: skip the line and keep going. Report each keyword once, with the first
+shader it appeared in - a per-shader message means 40 identical lines for one
+keyword across 40 player skins, which is what the console looked like.
+===============
+*/
+#define MAX_IGNORED_KEYWORDS 64
+
+static char ignoredKeyword[MAX_IGNORED_KEYWORDS][32];
+static int numIgnoredKeywords;
+
+static void R_ShaderKeywordIgnored( const char *keyword, const char *shaderName, qboolean inStage )
+{
+	int i;
+
+	for ( i = 0; i < numIgnoredKeywords; i++ ) {
+		if ( Q_stricmp( ignoredKeyword[i], keyword ) == 0 ) {
+			return;
+		}
+	}
+
+	if ( numIgnoredKeywords < MAX_IGNORED_KEYWORDS ) {
+		Q_strncpyz( ignoredKeyword[numIgnoredKeywords], keyword, sizeof( ignoredKeyword[0] ) );
+		numIgnoredKeywords++;
+	}
+
+	ri.Printf( PRINT_DEVELOPER, "shader keyword '%s' is not known to this renderer and is being "
+		"ignored (first seen %s '%s')\n", keyword, inStage ? "in a stage of" : "in", shaderName );
+}
+
+
 static qboolean ParseStage( shaderStage_t *stage, const char **text )
 {
 	const char *token;
@@ -1185,8 +1235,9 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		}
 		else
 		{
-			ri.Printf( PRINT_WARNING, "WARNING: unknown parameter '%s' in shader '%s'\n", token, shader.name );
-			return qfalse;
+			R_ShaderKeywordIgnored( token, shader.name, qtrue );
+			SkipRestOfLine( text );
+			continue;
 		}
 	}
 
@@ -2147,10 +2198,23 @@ static qboolean ParseShader( const char **text )
 
 			continue;
 		}
+		//
+		// [QL] novlcollapse - Quake Live's "do not collapse the vertex lighting
+		// stage". renderergl2 has had this since the port; renderervk had not,
+		// and because an unknown general keyword was fatal it took every shader
+		// carrying it down with it. That is every player skin in the game,
+		// which is why player models did not draw.
+		//
+		else if ( !Q_stricmp( token, "novlcollapse" ) )
+		{
+			shader.lightmapIndex = LIGHTMAP_NONE;
+			continue;
+		}
 		else
 		{
-			ri.Printf( PRINT_WARNING, "WARNING: unknown general shader parameter '%s' in '%s'\n", token, shader.name );
-			return qfalse;
+			R_ShaderKeywordIgnored( token, shader.name, qfalse );
+			SkipRestOfLine( text );
+			continue;
 		}
 	}
 
