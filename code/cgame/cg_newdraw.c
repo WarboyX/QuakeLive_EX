@@ -3486,8 +3486,17 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
             CG_DrawRaceTimes(&rect, scale, color, textStyle);
             break;
 
-        case UI_ADVERT:                     // 0x225  CG_DrawWeaponIcon
-            CG_DrawWeaponIcon(&rect, color, shader, ownerDrawFlags);
+        // [QL] 0x225. This is the in-map/scoreboard advertisement slot, not a
+        // weapon icon - it was wired to CG_DrawWeaponIcon, which drew a weapon
+        // into the panel on the scoreboard where a picture belongs.
+        //
+        // The menu item carries "style WINDOW_STYLE_SHADER" and a
+        // "defaultContent" shader (textures/ad_content/ad2x1.jpg), which the
+        // menu system paints when the owner-draw paints nothing. This build has
+        // no ad server - RE_Get_Advertisements reports none in both renderers -
+        // so painting nothing and letting defaultContent show is both the
+        // correct result and the one Quake Live gives without a live ad.
+        case UI_ADVERT:
             break;
 
         default:

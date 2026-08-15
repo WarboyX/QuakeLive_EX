@@ -58,7 +58,13 @@ void* G_Alloc(int size) {
     }
 
     if (allocPoint + size > POOLSIZE) {
-        G_Error("G_Alloc: failed on allocation of %i bytes (%i of %i already in use)", size, allocPoint, POOLSIZE);
+        // The build date is in here deliberately. This message is the one that
+        // reaches a bug report, and the first question it has to answer is
+        // "is the reporter running the build that changed this" - the previous
+        // round was spent on a crash that had already been fixed in the build
+        // that had not been installed yet.
+        G_Error("G_Alloc: failed on allocation of %i bytes (%i of %i already in use, qagame built %s %s)",
+                size, allocPoint, POOLSIZE, __DATE__, __TIME__);
         return NULL;
     }
 
@@ -74,5 +80,6 @@ void G_InitMemory(void) {
 }
 
 void Svcmd_GameMem_f(void) {
-    G_Printf("Game memory status: %i out of %i bytes allocated\n", allocPoint, POOLSIZE);
+    G_Printf("Game memory status: %i out of %i bytes allocated (qagame built %s %s)\n", allocPoint, POOLSIZE,
+             __DATE__, __TIME__);
 }

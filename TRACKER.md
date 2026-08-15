@@ -12,11 +12,11 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | Area | Progress | Notes |
 |---|---|---|
 | **Client / UI** (U) | `███████████████░░░░░  12/16` | U18 root-caused: missing commas, not the string pool |
-| **Client / cgame** (C) | `████████████████████  8/8` | C11: deferred models never finished loading |
+| **Client / cgame** (C) | `████████████████████  9/9` | C12: the scoreboard panel is an ad slot, not a levelshot |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan runs and draws text |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
 | **Engine / server** (E) | `███████░░░░░░░░░░░░░  5/13` | E13: the bot crash was the game's 256KB pool |
-| **Overall** | `███████████░░░░░░░░░  28/50` | by binary: 12 server · 35 client · 3 both |
+| **Overall** | `███████████░░░░░░░░░  29/51` | by binary: 12 server · 36 client · 3 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -109,6 +109,7 @@ for stock clients until proven otherwise.
 | ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
 | ● | **C10** | `+zoom` does nothing | DONE (verify) |
 | ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
+| ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -185,6 +186,7 @@ for stock clients until proven otherwise.
 | ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
 | ● | **C10** | `+zoom` does nothing | DONE (verify) |
 | ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
+| ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -818,6 +820,20 @@ were there had nothing to step. Registered as a set.
 This is the same trap as E8's 186 dead cvars, one layer over: a handler that
 exists and is reachable from nothing looks exactly like a working feature until
 someone presses the button.
+
+### C12. Scoreboard picture panel drew a weapon icon — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Reported as "the level image is not displayed on the scoreboard". It is not a
+level image: Quake Live's `ingame_scoreboard_*.menu` puts `ownerdraw UI_ADVERT`
+in that panel, with `style WINDOW_STYLE_SHADER` and
+`defaultContent "textures/ad_content/ad2x1.jpg"`.
+
+Our owner-draw table had `case UI_ADVERT` calling `CG_DrawWeaponIcon`, so the
+advertisement slot painted a weapon. It is now a no-op, which lets the menu
+system paint the item's own `defaultContent` — the same thing Quake Live shows
+without a live ad, and this build has no ad server (`RE_Get_Advertisements`
+reports none in both renderers).
 
 ### C3. Weapon viewmodel barely visible — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -1631,6 +1647,17 @@ Two halves:
 - `POOLSIZE` raised from Quake 3's 256KB to 1MB, because the ceiling was still
   map-dependent for everything else, and the failure now reports how much was in
   use rather than naming one allocation.
+
+**The second capture showed the same crash — from the old build.** The error
+line read `G_Alloc: failed on allocation of 9032 bytes`, with no `(N of M
+already in use)` suffix; that suffix was added by the same commit as the fix,
+and the shipped `iobin.pk3` was checked to confirm it carries the new string. So
+the crash log came from a `qagame` that predates the change, not from the change
+failing.
+
+That cost a round, so the failure message now carries the qagame build date, and
+so does `gamemem`. The first question a crash report has to answer is which
+build produced it.
 
 **Also seen in that log, unexplained:** *"Forcing disconnect on active client:
 N"* is logged for every bot added, on slots that have never held a client.
