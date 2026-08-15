@@ -114,6 +114,7 @@ for stock clients until proven otherwise.
 | ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
 | ○ | **C16** | Score tracker never shows the player's score | OPEN |
 | ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
+| ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
 | ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
@@ -198,6 +199,7 @@ for stock clients until proven otherwise.
 | ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
 | ○ | **C16** | Score tracker never shows the player's score | OPEN |
 | ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
+| ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
 | ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
@@ -910,6 +912,39 @@ active, 32x32 at the same -16 offset the ui uses so the hotspot matches.
   panel's own background is what is visible.
 
 The empty scoreboard on that screen was C13.
+
+### C18. Scoreboard K/D, damage and accuracy are wrong for everyone but you — OPEN
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+In a 60-player instagib FFA the local player's row is self-consistent — 102
+score, 90/0, 7.2k damage, which is 80 damage per kill and exactly one railgun
+hit each. Every bot's row is not: scores of 65 to 97 alongside **1 to 5 kills**,
+damage equal to 72 × kills, and **0 deaths** for all but one of them.
+
+Nobody goes 97-0 in instagib on Longest Yard. Either the kill and death counters
+are losing almost everything for bots, or the scores are inflated; the 0 deaths
+says the counters.
+
+Ruled out this round:
+
+- `STAT_AddPlayerDeathStat` and `STAT_AddDamageStat` are called unconditionally
+  from `player_die` and `G_Damage`, and both read correctly — the victim-side
+  `numDeaths++` has no attacker-dependent gate at all.
+- `OnSameTeam` returns qfalse below `GT_TEAM`, so the FFA case is not being
+  treated as friendly fire and skipped.
+- `expandedStats` is zeroed only on connect and on team change, not on respawn,
+  so this is not a per-life reset.
+
+Two things to look at next. Bots on this map die to `<world>` constantly
+(`MOD_TRIGGER_HURT`, `MOD_FALLING` — the earlier logs are full of it); the
+killer side is correctly skipped when `attacker->client` is NULL, but the victim
+side should still count and apparently does not. And 72 damage per bot kill
+against 80 for the player is its own discrepancy — 72 is the *clamped* victim-side
+figure, so the two sides of `STAT_AddDamageStat` may be feeding the wrong field.
+
+**Time on server** is reported as suspect in the same breath. `(level.time -
+cl->pers.enterTime) / 60000` is minutes, and the column read 7 on a 7-minute
+match, so it may be correct and simply coarse; not investigated.
 
 ### C17. A2M instagib dropped weapons on death — DONE (verify)
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
@@ -1931,6 +1966,23 @@ For the console output leading up to a crash: **`logfile 2`**, not `logfile 1`.
 `qconsole.log` lands in `fs_homepath/baseq3`.
 
 The >20-bot crash is still open and this is what it needs.
+
+### E15. Raising MAX_CLIENTS above 64 — DEFERRED
+**Lives in:** **both** of our binaries · **Seen by:** every client
+
+Asked for (64 -> 100) and set aside for a future version. Recording the cost so
+it does not have to be re-derived.
+
+It is not a constant bump. `MAX_CLIENTS` sets the width of every client-number
+field in the network protocol and the layout of the configstring table, so a
+server built at 100 and a **stock Steam Quake Live client** disagree about where
+things are in every snapshot — the "Seen by: stock QL only" trap. It also moves
+`MAX_GENTITIES` pressure, grows the bot-state array from 578KB to ~903KB
+(E13), and the scoreboard message is already capped near 20 players per
+reliable command (C13), so more players would not be visible without the
+chunking sketched there first.
+
+Doable as a deliberate protocol fork. Not doable as a one-line change.
 
 ### E4. ZMQ stats feed absent — OPEN
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client, vanilla included
