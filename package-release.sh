@@ -38,8 +38,12 @@ echo "building $REV"
 # actually loaded, so a screenshot settles it.
 sed -i "s/@@PAKSTAMP@@/$REV/g" content/pak01/ui/main.menu
 trap 'sed -i "s/pak01 $REV/pak01 @@PAKSTAMP@@/g" content/pak01/ui/main.menu' EXIT
-make -j"$JOBS"
-make PLATFORM=mingw32 ARCH=x86_64 -j"$JOBS"
+# BUILD_RENDERER_VULKAN is off in the Makefile's default so an ordinary build
+# cannot be affected by the port. It is on here because a renderer nobody can
+# select is a renderer nobody can test - and it is genuinely inert until
+# cl_renderer says otherwise: opengl2 is byte-identical either way.
+make BUILD_RENDERER_VULKAN=1 -j"$JOBS"
+make PLATFORM=mingw32 ARCH=x86_64 BUILD_RENDERER_VULKAN=1 -j"$JOBS"
 
 rm -rf "$OUT/pkg"
 mkdir -p "$OUT/pkg" "$OUT/stage"
@@ -50,6 +54,14 @@ mkdir -p "$LD/baseq3" "$WD/baseq3"
 
 cp -p $L/quakelive.x86_64 $L/quakelive_dedicated.x86_64 $L/opengl2x86_64.so "$LD/"
 cp -p $W/quakelive.x86_64.exe $W/quakelive_dedicated.x86_64.exe $W/opengl2x86_64.dll $W/SDL2.dll "$WD/"
+
+# The Vulkan renderer sits next to the OpenGL one and is reached with
+# "cl_renderer vulkan" + "vid_restart". Nothing loads it otherwise. Copied
+# only if it was built, so the package still forms with the target off.
+# ("if" rather than "[ ... ] && cp": set -e would take the false test as a
+# failed command and abort the whole package.)
+if [ -f $L/vulkanx86_64.so ]; then cp -p $L/vulkanx86_64.so "$LD/"; fi
+if [ -f $W/vulkanx86_64.dll ]; then cp -p $W/vulkanx86_64.dll "$WD/"; fi
 
 # iobin.pk3 holds every platform's game modules, so one pak serves a linux
 # server and its windows clients and both pass the same sv_pure checksum.

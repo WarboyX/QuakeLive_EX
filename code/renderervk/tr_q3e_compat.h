@@ -39,6 +39,16 @@ Quake3e: code/qcommon/q_shared.h
 #endif
 
 /*
+Quake3e: code/qcommon/q_shared.h — an alias for the yellow colour code, used
+for warnings. Only reachable in the Windows build (the Intel iGPU driver
+warning in vk.c is behind _WIN32), which is why the Linux build compiled
+without it.
+*/
+#ifndef S_COLOR_WARNING
+#define S_COLOR_WARNING S_COLOR_YELLOW
+#endif
+
+/*
 Quake3e: code/qcommon/surfaceflags.h — marks a BSP node rather than a leaf.
 */
 #ifndef CONTENTS_NODE
