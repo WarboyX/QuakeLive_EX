@@ -1085,9 +1085,21 @@ with `code/renderervk/README.ioquakelive.md` carrying the plan. **Not wired up:*
 `BUILD_RENDERER_VULKAN` defaults to 0, no Makefile rule references the directory,
 so the OpenGL build cannot be affected.
 
-`cl_renderer` is exposed in the render options menu (OpenGL 2 / Vulkan). Picking
-Vulkan before the renderer exists falls back to `opengl2` through the existing
-reset-string path rather than failing to start, so the row is safe to ship now.
+`cl_renderer` is exposed in the render options menu (OpenGL 2 / Vulkan).
+
+**That row was not safe to ship, and this entry previously said it was.** The
+claim was that picking Vulkan "falls back to `opengl2` through the existing
+reset-string path rather than failing to start". No such path existed.
+`CL_InitRef` tested for "the named renderer failed **and** it is not the
+default" and then called `Com_Error(ERR_FATAL)` regardless — the condition
+changed nothing. And because `cl_renderer` is `CVAR_ARCHIVE`, the choice was
+written to the config before the load was tried, so the client then failed to
+start on **every** later launch, unrecoverable without hand-editing the config.
+
+Fixed: that condition now does what ioquake3 uses it for — decide it is safe to
+*retry*. Reset the cvar, load the default, error only if that fails too.
+Verified against a deliberately unloadable `vulkanx86_64.so`: the client
+reports the fallback and starts on OpenGL.
 
 **Interface gap now measured** (see `code/renderervk/README.ioquakelive.md`):
 5 exports to add, but **24 imports** — including four Vulkan windowing entries
