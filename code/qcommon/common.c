@@ -2856,6 +2856,7 @@ void Com_Frame(void) {
     int msec, minMsec;
     int timeVal, timeValSV;
     static int lastTime = 0, bias = 0;
+    static float minMsecFrac = 0.0f;
 
     int timeBeforeFirstEvents;
     int timeBeforeServer;
@@ -2893,14 +2894,49 @@ void Com_Frame(void) {
         if (com_dedicated->integer)
             minMsec = SV_FrameMsec();
         else {
+            int targetFps;
+
             if (com_minimized->integer && com_maxfpsMinimized->integer > 0)
-                minMsec = 1000 / com_maxfpsMinimized->integer;
+                targetFps = com_maxfpsMinimized->integer;
             else if (com_unfocused->integer && com_maxfpsUnfocused->integer > 0)
-                minMsec = 1000 / com_maxfpsUnfocused->integer;
+                targetFps = com_maxfpsUnfocused->integer;
             else if (com_maxfps->integer > 0)
-                minMsec = 1000 / com_maxfps->integer;
+                targetFps = com_maxfps->integer;
             else
+                targetFps = 0;
+
+            // [QL] Carry the fractional millisecond instead of truncating it.
+            //
+            // This was minMsec = 1000 / fps in whole milliseconds, so the only
+            // rates it could actually produce were the ones that divide 1000
+            // exactly: 250, 200, 166, 142, 125... Everything from 201 to 250
+            // truncated to 4ms and ran at 250, which is why com_maxfps 210 and
+            // com_maxfps 240 both showed 250 on an fps overlay while 200 was
+            // right - the cvar was accepted and quietly ignored.
+            //
+            // Accumulating the remainder makes the frame interval alternate
+            // between the two neighbouring whole milliseconds in the right
+            // proportion: 240 fps asks for 4.1667ms and gets five 4ms frames
+            // then one 5ms frame, 25ms per six frames, which is 240.
+            //
+            // Sub-millisecond timing would be the other way to fix this, but it
+            // means replacing Com_TimeVal and Sys_Milliseconds throughout;
+            // this stays inside the existing millisecond loop.
+            if (targetFps > 0) {
+                minMsecFrac += 1000.0f / targetFps;
+                minMsec = (int)minMsecFrac;
+                minMsecFrac -= minMsec;
+
+                if (minMsec < 1) {
+                    // above 1000 fps there is no sub-millisecond sleep to give,
+                    // so stop carrying a debt that can never be paid off
+                    minMsec = 1;
+                    minMsecFrac = 0.0f;
+                }
+            } else {
                 minMsec = 1;
+                minMsecFrac = 0.0f;
+            }
 
             timeVal = com_frameTime - lastTime;
             bias += timeVal - minMsec;
