@@ -1709,6 +1709,25 @@ Verified by corrupting an extracted module by hand: clean start reports
 `Verified`, corrupted start reports `MISMATCH` with both checksums and replaces
 it, next start reports `Verified` again.
 
+**Confirmed in the field on the first run.** It caught a stale `qagame`:
+
+```
+MISMATCH: 'C:\Users\...\quakelive\baseq3\qagamex86_64.dll' on disk is 1192502 bytes
+          / checksum 0xed0bf242, 'baseq3/iobin.pk3' has 1192536 bytes / checksum
+          0x39a7771f - replacing it
+```
+
+34 bytes apart, not corrupt — that is a *different build* of the same source
+(the `__DATE__`/`__TIME__` strings and one changed format string account for the
+difference). So a module from an earlier build genuinely was being loaded while a
+newer `iobin.pk3` sat next to it, which is what the previous two rounds were
+arguing about.
+
+**How it got stale is still not established.** The old code removed and rewrote
+the file unconditionally and errors out if the write fails, so none of the
+obvious paths explain it. What has changed is that it can no longer persist
+quietly: every start now compares and repairs.
+
 The archives also carry `checksums.txt` — sha256 of every shipped file, so an
 install can be checked against the release it came from without running the
 game (`sha256sum -c checksums.txt`). The engine covers modules against the pak;
