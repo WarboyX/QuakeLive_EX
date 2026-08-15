@@ -112,7 +112,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ◐ | **R5** | Vulkan renderer | RUNS with text; 4 rendering faults open |
+| ◐ | **R5** | Vulkan renderer | 3 root causes fixed; player models still open |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -184,7 +184,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ◐ | **R5** | Vulkan renderer | RUNS with text; 4 rendering faults open |
+| ◐ | **R5** | Vulkan renderer | 3 root causes fixed; player models still open |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -1163,26 +1163,61 @@ atlas as a single-channel `GL_R8` texture read as coverage through a swizzle
 own descriptor, so this expands each dirty rect to RGBA on the way in — white
 with coverage in alpha, which is what that swizzle produces.
 
-**Four rendering faults are open, and none of them is diagnosed yet.**
+**Six rendering faults were reported; three root causes found, all fixed, none
+of them confirmed in play yet.**
 
-| | symptom |
-|---|---|
-| 1 | player models do not draw at all — their weapons do, floating in mid-air |
-| 2 | item spawn pads draw as `tr.defaultImage`: a black box with a white border |
-| 3 | wall teleporters draw as `tr.defaultImage`, tiled |
-| 4 | quad damage lighting is wrong |
+| | symptom | cause |
+|---|---|---|
+| 1 | item pads, wall teleporters, the lightning beam and grenades draw as a near-black box with a white border | material keywords |
+| 2 | quad damage glow missing | material keywords (assumed) |
+| 3 | in-game text is fragments of the wrong glyphs; the menu and console are fine | font atlas resize |
+| 4 | `vid_restart` opens a second window and leaves the first | `Shutdown` argument |
+| 5 | player models do not draw | **unexplained** |
 
-2 and 3 are the same failure — that black-box-with-white-border *is*
-`R_CreateDefaultImage`'s output, so those surfaces are resolving to
-`tr.defaultShader`. 1 is a different one: a shader that fell back to the default
-would draw the box texture, not nothing, so the player model is either failing
-to register or being culled.
+**Material keywords.** That black box with a white border is
+`R_CreateDefaultImage`'s output — those surfaces were resolving to
+`tr.defaultShader`, so it was never a missing texture. Quake Live's shaders
+carry the renderergl2 material set: `stage`, `diffuseMap`, `normalMap`,
+`bumpMap`, `specularMap`, `normalScale`, `specularScale`, `gloss`, `roughness`,
+`parallaxDepth`, `vertexLit` and the rest — 18 keywords renderergl2 knows and
+Quake3e's parser has never seen. An unknown keyword in `ParseStage` does not
+skip a line: it returns `qfalse`, and `ParseShader` then marks the **whole
+shader** default. Ordinary map surfaces carry no material keywords, which is
+why the world looked right and only the effects were wrong.
 
-**These cannot be reproduced here.** Both need a map, and maps live in
-`pak00.pk3`, which is Quake Live's and is not ours to hold. The renderer already
-prints what is needed under `\developer 1`: *"Couldn't find image file for
-shader %s"* answers 2 and 3, and *"no shader for surface %s in skin %s"*
-answers 1.
+This renderer has no material pipeline, so it now does what a non-material
+renderer should: accept the keywords, consume their arguments, render the
+diffuse. A stage explicitly declared a normal or specular map is dropped rather
+than drawn — painting a normal map on as if it were colour is worse than
+leaving it out.
+
+**Font atlas resize.** A `VkImage`'s extent is fixed at creation, so a bigger
+atlas means a new image — but `RE_RegisterShaderFromImage` looks the shader up
+by name and returns the existing one, still pointing at the **old** image.
+fontstash re-uploaded every glyph into the new image while the draw path kept
+sampling the old one. The menu and console survived because their glyphs were
+rasterised before the first growth past 512x512; a match needs far more glyphs,
+so it was the first thing to trip it. `renderResize` now reuses the image when
+the size is unchanged and re-points the shader when it is not.
+
+**Shutdown's argument.** This tree's `refexport_t` entry is
+`Shutdown(qboolean destroyWindow)`; Quake3e's takes a `refShutdownCode_t`,
+where 1 is `REF_KEEP_WINDOW`. `CL_ShutdownRef` passes `qtrue`, so renderervk
+read "keep the window", left `SDL_window` alive, and the engine then unloaded
+the module out from under it — the next renderer opened a second window beside
+the orphaned first. `CL_ShutdownRef` unloads the library immediately afterwards
+regardless, so `REF_UNLOAD_DLL` is the honest translation.
+
+**Player models are still unexplained.** A shader that fell back to the default
+would draw the box texture, not nothing, so this is a different failure from 1
+and 2 — the model is either failing to register or being culled. It may go away
+with the material-keyword fix if the skins were failing for a related reason,
+but that is a hope, not a diagnosis.
+
+**None of this could be reproduced here.** All of it needs a map, and maps live
+in `pak00.pk3`, which is Quake Live's and is not ours to hold. The three causes
+were found by reading, and the evidence for each is in the fix; only play will
+confirm them.
 
 Two real defects were found looking for these, neither of which is the cause:
 `RE_AddRefEntityToScene` was being called through a one-argument pointer while
