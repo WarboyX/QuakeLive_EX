@@ -93,7 +93,9 @@ static int CG_ValidOrder(const char* p) {
 CG_ParseScores_Ffa
 
 [QL] scores_ffa: 18 fields per player
-Format: numPlayers teamScore0 teamScore1 [client score ping time accuracy impressive excellent gauntlet defend assist perfect captures alive frags deaths bestWeapon powerups damageDone] ...
+Format: numPlayers teamScore0 teamScore1 [client score ping time accuracy impressive excellent gauntlet defend assist perfect captures alive frags deaths bestWeapon bestWeaponAccuracy damageDone] ...
+[QL] The 17th field is bestWeaponAccuracy, not powerups - this comment said
+powerups and the parser followed the comment rather than the emitter.
 =================
 */
 static void CG_ParseScores_Ffa(void) {
@@ -126,7 +128,14 @@ static void CG_ParseScores_Ffa(void) {
         sp->frags = atoi(CG_Argv(idx++));
         sp->deaths = atoi(CG_Argv(idx++));
         sp->bestWeapon = atoi(CG_Argv(idx++));
-        sp->powerUps = atoi(CG_Argv(idx++));
+        // [QL] Field 17 is bestWeaponAccuracy, which is what the emitter writes
+        // (g_gametype_ffa.c) and what score_t has a field for. It was being read
+        // into powerUps instead - so the WEAP column had nothing to show and
+        // drew 0% for every player including the local one, and
+        // cgs.clientinfo[].powerups below was overwritten with an accuracy
+        // percentage. The doc comment above this function had the wrong field
+        // list too, which is presumably how the two drifted apart.
+        sp->bestWeaponAccuracy = atoi(CG_Argv(idx++));
         sp->damageDone = atoi(CG_Argv(idx++));
         sp->net = sp->frags - sp->deaths;
 
@@ -134,7 +143,10 @@ static void CG_ParseScores_Ffa(void) {
             sp->client = 0;
         }
         cgs.clientinfo[sp->client].score = sp->score;
-        cgs.clientinfo[sp->client].powerups = sp->powerUps;
+        // powerups are not in this message at all - they come from the entity
+        // state. Assigning sp->powerUps here wrote whatever field 17 happened to
+        // hold over the real value.
+        sp->powerUps = cgs.clientinfo[sp->client].powerups;
         sp->team = cgs.clientinfo[sp->client].team;
     }
     CG_SetScoreSelection(NULL);

@@ -935,6 +935,24 @@ Nobody goes 97-0 in instagib on Longest Yard. Either the kill and death counters
 are losing almost everything for bots, or the scores are inflated; the 0 deaths
 says the counters.
 
+**Found — the WEAP column.** `CG_ParseScores_Ffa` read field 17 into
+`sp->powerUps` where the emitter writes `bestWeaponAccuracy`. `score_t` has a
+`bestWeaponAccuracy` field and the WEAP column renders from it
+(`cg_main.c:2541`), so it was never filled and drew **0% for every player,
+including the local one** — which is exactly what the screenshots show. The
+same field also overwrote `cgs.clientinfo[].powerups` with an accuracy
+percentage.
+
+FFA was the only parser with this; the CA and CTF ones fill
+`bestWeaponAccuracy` correctly. The function's own doc comment listed the 17th
+field as "powerups", which is presumably how the parser and the emitter drifted
+apart — the parser followed the comment rather than the code that writes the
+message. Both corrected.
+
+That accounts for the accuracy column. **K/D and damage are still open** — those
+fields (14, 15 and 18) do line up between emitter and parser, so the numbers
+themselves are what is wrong, not where they are read from.
+
 Ruled out this round:
 
 - `STAT_AddPlayerDeathStat` and `STAT_AddDamageStat` are called unconditionally
