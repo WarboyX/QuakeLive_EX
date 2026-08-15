@@ -1725,7 +1725,8 @@ Q3RVKOBJ = \
   $(B)/renderervk/tr_noise.o \
   \
   $(B)/renderervk/sdl_gamma.o \
-  $(B)/renderervk/sdl_glimp.o
+  $(B)/renderervk/vk_window.o \
+  $(B)/renderervk/vk_ql_exports.o
 
 Q3R2STRINGOBJ = \
   $(B)/renderergl2/glsl/bokeh_fp.o \

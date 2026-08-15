@@ -2420,6 +2420,92 @@ int CL_ScaledMilliseconds(void) {
 }
 
 /*
+=============================================================================
+
+[QL] Engine side of the Quake3e renderer imports.
+
+code/renderervk is vendored from Quake3e and calls a set of ri. entries this
+tree never had, because Quake3e splits engine and renderer differently. The
+declarations were appended to refimport_t; these are what fills them. Without
+them CL_InitRef leaves the pointers null and the renderer segfaults inside
+R_Init on the first call, which is exactly what it did.
+
+Several are honest no-ops rather than ports. Each says which, and why - a
+silent stub here is a feature that looks present and is not, which is the
+same trap as a registered cvar nothing reads.
+
+=============================================================================
+*/
+
+static void CL_RefFreeAll(void) { Z_FreeTags(TAG_RENDERER); }
+
+static qboolean CL_RefIsMinimized(void) { return com_minimized->integer ? qtrue : qfalse; }
+
+/*
+Quake3e scales mouse and 2D coordinates when the render target is a different
+size from the window - r_fbo with r_renderScale, or r_ext_supersample. This
+tree has no such indirection: it renders at window resolution and the client
+reads cls.glconfig directly. Ignoring it is correct as long as those cvars are
+off, and they are off by default. If render scaling is ever turned on for the
+Vulkan renderer, the mouse will be wrong until this does something.
+*/
+static void CL_RefSetScaling(float factor, int captureWidth, int captureHeight) {}
+
+/*
+Cvar groups are Quake3e's mechanism for "has any renderer cvar changed since
+the last frame", which drives its automatic vid_restart. This tree does not
+have the concept and its OpenGL renderer does not either - r_* changes here
+need a manual vid_restart. Keeping that behaviour for Vulkan is consistent;
+implementing groups would be a change to the OpenGL renderer's behaviour too,
+and belongs in its own piece of work rather than smuggled in with the port.
+*/
+static void CL_RefCvarSetGroup(cvar_t* cv, int group) {}
+static int CL_RefCvarCheckGroup(int group) { return 0; }
+static void CL_RefCvarResetGroup(int group, qboolean resetModifiedFlags) {}
+
+/*
+Quake3e's Cvar_CheckRange takes string bounds and a validator enum where this
+tree's takes floats and a qboolean. Both are real; this is the adapter, and
+the compat header points the renderer's calls here. NULL means "unbounded on
+that side", which Quake3e uses freely.
+*/
+static void CL_RefCvarCheckRangeQ3E(cvar_t* cv, const char* minVal, const char* maxVal, int type) {
+    // CV_INTEGER is 2 in the compat header's cvarValidator_t
+    qboolean integral = (type == 2) ? qtrue : qfalse;
+    float min = minVal ? atof(minVal) : -FLT_MAX;
+    float max = maxVal ? atof(maxVal) : FLT_MAX;
+
+    Cvar_CheckRange(cv, min, max, integral);
+}
+
+/*
+Quake3e has a microsecond clock; this tree's finest is Sys_Milliseconds. The
+renderer uses it only for backend timing readouts, so the coarser source is
+reported honestly rather than faked with a scaled counter.
+*/
+static int64_t CL_RefMicroseconds(void) { return (int64_t)Sys_Milliseconds() * 1000; }
+
+// Quake3e copies a screenshot to the clipboard as a DIB. Windows-only there,
+// and nothing in this tree can receive it.
+static void CL_RefSetClipboardBitmap(const byte* bitmap, int length) {}
+
+/*
+Quake3e moved the JPEG encoder into the engine; here it is still inside the
+renderer, and renderervk links its own copy. These two exist because the
+vendored screenshot path calls out through ri. rather than calling its own
+encoder, so wiring them to nothing would silently produce empty screenshots.
+Say so instead.
+*/
+static void CL_RefSaveJPG(const char* filename, int quality, int image_width, int image_height, byte* image_buffer, int padding) {
+    Com_Printf("^3WARNING:^7 JPEG screenshots are not wired up for this renderer - "
+               "use screenshotTGA, or cl_renderer opengl2\n");
+}
+
+static size_t CL_RefSaveJPGToBuffer(byte* buffer, size_t bufSize, int quality, int image_width, int image_height, byte* image_buffer, int padding) {
+    return 0;
+}
+
+/*
 ============
 CL_InitRef
 ============
@@ -2525,6 +2611,27 @@ void CL_InitRef(void) {
     ri.Sys_GLimpSafeInit = Sys_GLimpSafeInit;
     ri.Sys_GLimpInit = Sys_GLimpInit;
     ri.Sys_LowPhysicalMemory = Sys_LowPhysicalMemory;
+
+    // [QL] Quake3e renderer imports - see the block above CL_InitRef.
+    // The four VK_/VKimp_ entries and the two gamma ones are deliberately left
+    // null: the renderer owns the window in this tree, so it fills those in
+    // itself from its own SDL code (renderervk/vk_ql_exports.c).
+    ri.Cvar_VariableString = Cvar_VariableString;
+    ri.Cvar_VariableStringBuffer = Cvar_VariableStringBuffer;
+    ri.Cvar_SetGroup = CL_RefCvarSetGroup;
+    ri.Cvar_CheckRangeQ3E = CL_RefCvarCheckRangeQ3E;
+    ri.Cvar_CheckGroup = CL_RefCvarCheckGroup;
+    ri.Cvar_ResetGroup = CL_RefCvarResetGroup;
+
+    ri.Com_RealTime = Com_RealTime;
+    ri.Microseconds = CL_RefMicroseconds;
+    ri.FreeAll = CL_RefFreeAll;
+    ri.CL_IsMinimized = CL_RefIsMinimized;
+    ri.CL_SetScaling = CL_RefSetScaling;
+    ri.Sys_SetClipboardBitmap = CL_RefSetClipboardBitmap;
+
+    ri.CL_SaveJPG = CL_RefSaveJPG;
+    ri.CL_SaveJPGToBuffer = CL_RefSaveJPGToBuffer;
 
     ret = GetRefAPI(REF_API_VERSION, &ri);
 

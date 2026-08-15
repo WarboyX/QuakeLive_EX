@@ -160,6 +160,15 @@ typedef enum {
 extern tokenType_t com_tokentype;
 
 /*
+Implemented in vk_ql_exports.c. The only two lines added to the vendored
+GetRefAPI: one fills the windowing entries this tree's engine leaves null
+because the renderer owns the window, the other fills the five refexport_t
+entries Quake Live has and Quake3e does not.
+*/
+void VK_QL_FillImports(refimport_t *rimp);
+void VK_QL_FillExports(refexport_t *rexp);
+
+/*
 Implemented in tr_q3e_compat.c, ported verbatim from Quake3e's q_shared.c.
 */
 char *COM_ParseComplex(const char **data_p, qboolean allowLineBreaks);

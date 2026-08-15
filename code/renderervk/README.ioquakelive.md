@@ -10,87 +10,100 @@ CVAR_LATCH`, falling back to its reset string when the named library is missing)
 and `USE_RENDERER_DLOPEN=1`, so a third renderer needs no engine change at all.
 It needs to build as `vulkan<arch>.so` / `.dll` and export `GetRefAPI`.
 
-## Status: BUILDS OPT-IN, does not link yet
+## Status: RUNS. Draws the world. Cannot draw text.
 
-`make BUILD_RENDERER_VULKAN=1` compiles `code/renderervk`. It is off by default
-and no default-build rule touches the directory, so it cannot affect an OpenGL
-build — verified: `opengl2x86_64.so` is byte-identical with the target added.
+`make BUILD_RENDERER_VULKAN=1` builds `vulkan<arch>.so` / `.dll` alongside
+`opengl2`. It is off by default and no default-build rule touches the
+directory, so it cannot affect an OpenGL build — verified: `opengl2x86_64.so`
+is byte-identical with the target added.
 
-Progress: from twelve distinct classes of blocker down to the interface gap
-this file predicted. Two objects compile; the rest stop on missing
-`refimport_t` members.
+Select it with `\cl_renderer vulkan` and `\vid_restart`.
+
+Verified end to end on 2026-08-15 against Mesa lavapipe under Xvfb: instance,
+physical device, swapchain (IMMEDIATE, 3 images, `B8G8R8A8_UNORM`), shaders,
+60 frames of the main menu, clean shutdown, and a screenshot with the menu
+background art in it. **No text** — see below.
+
+If the window cannot be created (no Vulkan driver, or SDL built without Vulkan
+support for the current video driver), it prints why, sets `cl_renderer` back
+to `opengl2`, and exits. `cl_renderer` is `CVAR_ARCHIVE`, so without that reset
+a machine with no Vulkan driver would fail to start on every subsequent launch.
 
 ### How the vendored source stays vendored
 
 `tr_q3e_compat.h` collects the declarations Quake3e has and this tree does not,
 and the Makefile force-includes it for `renderervk` only (`DO_REF_VK_CC`).
-Nothing else in the tree sees it. So far: `color4ub_t` (a union of `rgba[4]`
-and `u32` — declaring it as a plain `byte[4]` was rejected by every `.u32`
-use, which is the right way to find that out), `MAX_VIDEO_HANDLES`,
-`refShutdownCode_t`, `MAX_UINT`, `CONTENTS_NODE`, and `extern refimport_t ri`.
+Nothing else in the tree sees it: `MAX_VIDEO_HANDLES`, `refShutdownCode_t`,
+`MAX_UINT`, `CONTENTS_NODE`, the cvar flags and groups, `tokenType_t`,
+`extern refimport_t ri`, and the two `VK_QL_Fill*` declarations.
+
+`tr_q3e_compat.c` carries the `q_shared` functions Quake3e has and this tree
+does not — `COM_ParseComplex` (its shader tokeniser, 215 lines), `crc32_buffer`,
+`Com_Split`, `Com_GenerateHashValue`, `Q_stradd`, the `hash_locase` table —
+ported verbatim from upstream so they can be re-diffed.
+
+Two files here are ours rather than vendored:
+
+- **`vk_window.c`** — SDL windowing. Quake3e's engine owns the window and hands
+  the renderer `VKimp_Init`, `VKimp_Shutdown`, `VK_CreateSurface` and
+  `VK_GetInstanceProcAddr`; this tree does the opposite, `sdl_glimp.c` is
+  compiled *into* renderergl2. Rather than restructure `sdl_glimp.c` — shared
+  code the OpenGL renderer depends on, which has to keep working throughout —
+  this provides the same four entry points from inside the Vulkan module, and
+  `GetRefAPI` points `ri` at them after copying the engine's import table. The
+  vendored source is unchanged: it still calls `ri.VKimp_Init()`, it just
+  reaches code in its own module. That also means `sdl_glimp.c` is not in this
+  link at all, which is why the window cvars (`r_mode`, `r_fullscreen`,
+  `r_custom*`) are registered here.
+- **`vk_ql_exports.c`** — the five `refexport_t` entries Quake Live has and
+  Quake3e has never heard of: four for the TrueType text system and one for
+  in-map advertisements. Left null the engine calls through a null pointer the
+  first time anything draws text, which is immediately.
 
 ### Patches to vendored files — keep this list short
 
-**`tr_backend.c`, 2 sites.** Quake3e made `refEntity_t.shaderTime` a
-`floatint_t` union and added an `intShaderTime` flag to pick a half. This
-tree's `refEntity_t` has a plain `float` and no flag, and that struct is shared
-with cgame — changing it is an ABI change across the game modules, not a
-renderer detail. Collapsed to the float branch, which is what the integer path
-degrades to anyway.
-
-### Where it stands
-
-**27 of 28 translation units compile.** Everything that was self-contained is
-done:
-
-- the `q_shared` gap is closed — `tr_q3e_compat.c` carries `COM_ParseComplex`
-  (Quake3e's shader tokeniser, 215 lines), `crc32_buffer`, `Com_Split`,
-  `Com_GenerateHashValue`, `Q_stradd` and the `hash_locase` table, ported
-  verbatim from upstream so they can be re-diffed;
-- the macros, cvar flags, cvar groups and `tokenType_t` are in the compat
-  header;
-- `refexport_t` gained the 8 entries Quake3e's renderer fills in, and
-  `refimport_t` the 20 it asks for, both **appended** so no existing offset
-  moves and renderergl2 is bit-identical;
-- `ri.Cvar_CheckRange` is redirected by macro to a second import with
-  Quake3e's string-bounds signature, so both renderers keep the one they
-  expect.
-
-### The one thing left, and it is a decision, not a task
-
-48 errors remain across 5 files, all from **two shared structs that Quake3e
-changed and we did not**:
-
-| | this tree | Quake3e |
+| file | sites | why |
 |---|---|---|
-| `refEntity_t` | `byte shaderRGBA[4]` | `color4ub_t shader` |
-| `drawVert_t` | `byte color[4]` | `color4ub_t color` |
+| `tr_backend.c` | 2 | Quake3e made `refEntity_t.shaderTime` a `floatint_t` union with an `intShaderTime` flag; this tree has a plain `float` in a struct shared with cgame. Collapsed to the float branch, which is what the integer path degrades to anyway. |
+| `tr_init.c` | 1 | `Com_Error( errorParm_t )` vs `int`. |
+| `tr_init.c` | 2 | `VK_QL_FillImports( &ri )` and `VK_QL_FillExports( &re )` in `GetRefAPI` — the whole of the interface bridge, two lines. |
+| `tr_init.c` | 1 | `vk_release_resources()` guarded on `vk.device`. `vk_shutdown()` just below already guards itself against a Vulkan that never came up; `vk_release_resources()` does not, and it runs first. Upstream never reaches it in that state because Quake3e's engine does not tear the renderer down mid-init — this tree's `Com_Error` unwinds through `CL_Shutdown` → `RE_Shutdown`, so a failure inside `VKimp_Init` used to die on a null `qvkDeviceWaitIdle` instead of printing why. |
 
-Both are shared with cgame, game and ui, so this is not a renderer detail.
-Two ways out, and they are genuinely different bets:
+The `refEntity_t.shaderRGBA` / `drawVert_t.color` divergence was resolved by
+**option A** for `drawVert_t` (the tree now has Quake3e's `color4ub_t` union,
+verified layout-identical: size 44, align 4, colour at offset 40) and by
+**option B** for `refEntity_t` (26 patched sites across `tr_shade.c`,
+`tr_shade_calc.c` and `tr_surface.c`), because that struct is shared with cgame
+and changing it is an ABI change across the game modules rather than a renderer
+detail.
 
-**A — align the tree with Quake3e.** Change both structs. ~149 call sites
-across 10 files, mechanical (`shaderRGBA` becomes `shader.rgba`), and the
-compiler finds every one. Ends with no vendored patches at all and makes future
-Quake3e updates cheap. Costs a wide diff through cgame and an ABI change across
-the game modules — they are always rebuilt together here, so that is a build
-concern rather than a compatibility one.
+### Engine side
 
-**B — patch the vendored files.** 48 sites in 5 files. Narrower today, but it
-is 48 conflicts every time renderervk is updated from upstream, and it defeats
-the reason the source was vendored unmodified.
+`refexport_t` gained 8 entries and `refimport_t` 20, both **appended** so no
+existing offset moves and renderergl2 is unaffected. `CL_InitRef` now fills the
+14 non-windowing imports — the six windowing ones are deliberately left null,
+because the renderer fills those itself. Leaving all 20 null is what made the
+first run segfault inside `R_Init`.
 
-A is the better bet if the Vulkan renderer is meant to live here long-term.
-B is right only if this stays an experiment. **Not doing either silently** —
-the `shaderTime` patch already in `tr_backend.c` was the smallest possible
-version of this same divergence, and it was two lines; this is forty-eight.
+Four of the fourteen are honest no-ops rather than ports, each documented at
+the definition in `cl_main.c`: cvar groups (Quake3e's automatic-`vid_restart`
+mechanism, which this tree's OpenGL renderer does not have either), render
+scaling (`r_fbo` + `r_renderScale`, off by default), clipboard bitmaps, and
+JPEG screenshots — that last one prints a warning rather than writing an empty
+file.
 
-### After that
+### What is left, in order
 
-The windowing restructure — the 4 `VK_*` and 6 `GLimp_*` imports are declared
-but not implemented, so it will compile and fail to link until `sdl_glimp.c`
-can hand out a `SDL_WINDOW_VULKAN` surface. That is still the real cost, and
-it is unchanged by any of the above.
+1. **Text.** `tr_font_gl.c` builds the glyph atlas as a `GL_R8` texture with a
+   swizzle and re-emits glyph quads through `RE_StretchPic`. The second half is
+   backend-agnostic; the atlas is not. A `tr_font_vk.c` doing the same upload
+   into a vk image is the whole job. Until then the console and every menu are
+   blank, and the renderer prints that once so it is not mistaken for a bug.
+2. `r_dither` range. renderervk's own `r_dither` is 0–1; this tree's is 0–2
+   (off / ordered / temporal), so selecting temporal logs *"cvar 'r_dither' out
+   of range (max 1), setting to 1"*.
+3. Windows build of the Vulkan target has not been exercised.
+
 
 ## Original status note: NOT WIRED UP
 

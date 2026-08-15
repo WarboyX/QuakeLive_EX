@@ -1964,7 +1964,17 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	//}
 
 #ifdef USE_VULKAN
-	vk_release_resources();
+	// [QL] vk_shutdown() just below guards itself against a Vulkan that was
+	// never brought up ("if ( qvkQueuePresentKHR == NULL ) goto __cleanup"),
+	// but vk_release_resources() does not, and it runs first. Upstream never
+	// reaches it in that state because Quake3e's engine does not tear the
+	// renderer down mid-init; this tree's Com_Error unwinds through
+	// CL_Shutdown -> CL_ClearMemory -> RE_Shutdown, so a failure inside
+	// VKimp_Init lands here with vk zeroed and dies on a null qvkDeviceWaitIdle
+	// instead of printing why. Same guard, same reason.
+	if ( vk.device != VK_NULL_HANDLE ) {
+		vk_release_resources();
+	}
 #endif
 
 	R_DoneFreeType();
@@ -2044,6 +2054,9 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 
 	ri = *rimp;
 
+	// [QL] windowing lives in this module, not the engine - see vk_window.c
+	VK_QL_FillImports( &ri );
+
 	Com_Memset( &re, 0, sizeof( re ) );
 
 	if ( apiVersion != REF_API_VERSION ) {
@@ -2101,6 +2114,9 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.GetConfig = RE_GetConfig;
 	re.VertexLighting = RE_VertexLighting;
 	re.SyncRender = RE_SyncRender;
+
+	// [QL] the five refexport_t entries Quake3e does not have - see vk_ql_exports.c
+	VK_QL_FillExports( &re );
 
 	return &re;
 }

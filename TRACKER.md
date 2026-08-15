@@ -13,7 +13,7 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 |---|---|---|
 | **Client / UI** (U) | `███████████████░░░░░  12/16` | U18 root-caused: missing commas, not the string pool |
 | **Client / cgame** (C) | `████████████████████  6/6` | C9 confirmed resolved in play |
-| **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
+| **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan runs; text is the next piece |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
 | **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  3/10` | 186 cvars registered but unread (E8) |
 | **Overall** | `██████████░░░░░░░░░░  24/45` | by binary: 9 server · 33 client · 3 both |
@@ -111,7 +111,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ○ | **R5** | Vulkan renderer | IN PROGRESS |
+| ◐ | **R5** | Vulkan renderer | RUNS, no text yet |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -182,7 +182,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ○ | **R5** | Vulkan renderer | IN PROGRESS |
+| ◐ | **R5** | Vulkan renderer | RUNS, no text yet |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -1121,103 +1121,50 @@ screen-space effect. It cannot do the reflective half.
 3. **Screen-space reflections** — needs a normal/depth G-buffer that renderergl2
    does not currently write. Real work, and still approximate at surface edges.
 
-### R5. Vulkan renderer — IN PROGRESS
+### R5. Vulkan renderer — RUNS, no text yet
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
-**Started.** `code/renderervk` is vendored from ec-/Quake3e (GPLv2, 29 files),
-with `code/renderervk/README.ioquakelive.md` carrying the plan. **Not wired up:**
-`BUILD_RENDERER_VULKAN` defaults to 0, no Makefile rule references the directory,
-so the OpenGL build cannot be affected.
+`code/renderervk` is vendored from ec-/Quake3e (GPLv2, 29 files) plus two files
+of ours. `code/renderervk/README.ioquakelive.md` carries the detail.
+`BUILD_RENDERER_VULKAN` still defaults to 0 and no default-build rule touches
+the directory, so an OpenGL build cannot be affected — `opengl2x86_64.so` is
+byte-identical with the target added.
 
-`cl_renderer` is exposed in the render options menu (OpenGL 2 / Vulkan).
+**It runs.** Verified end to end against Mesa lavapipe under Xvfb: instance,
+physical device, swapchain (IMMEDIATE, 3 images, `B8G8R8A8_UNORM`), shaders, 60
+frames of the main menu, clean shutdown, and a screenshot with the menu
+background art in it. Select it with `\cl_renderer vulkan` then `\vid_restart`.
 
-**That row was not safe to ship, and this entry previously said it was.** The
-claim was that picking Vulkan "falls back to `opengl2` through the existing
-reset-string path rather than failing to start". No such path existed.
-`CL_InitRef` tested for "the named renderer failed **and** it is not the
-default" and then called `Com_Error(ERR_FATAL)` regardless — the condition
-changed nothing. And because `cl_renderer` is `CVAR_ARCHIVE`, the choice was
-written to the config before the load was tried, so the client then failed to
-start on **every** later launch, unrecoverable without hand-editing the config.
+**It cannot draw text.** The console and every menu are blank. `tr_font_gl.c`
+builds the glyph atlas as a `GL_R8` texture and re-emits glyph quads through
+`RE_StretchPic`; the second half is backend-agnostic, the atlas is not. Until a
+`tr_font_vk.c` exists the renderer says so once on startup rather than letting
+it look like a bug. This is the next piece of work, not polish afterwards — the
+console is the debugging surface for a renderer.
 
-Fixed: that condition now does what ioquake3 uses it for — decide it is safe to
-*retry*. Reset the cvar, load the default, error only if that fails too.
-Verified against a deliberately unloadable `vulkanx86_64.so`: the client
-reports the fallback and starts on OpenGL.
+**The windowing question is answered.** The measured gap was 24 imports, of
+which the six windowing ones meant "restructure `sdl_glimp.c` so the engine owns
+the window" — shared code the OpenGL renderer depends on. It did not need
+restructuring: the renderer keeps ownership of its window, `vk_window.c`
+provides the same four `VK*imp_` entry points from inside the Vulkan module, and
+`GetRefAPI` points `ri` at them after copying the engine's import table. The
+vendored source still calls `ri.VKimp_Init()` and simply reaches code in its own
+module. Two lines of patch instead of a restructure.
 
-**Interface gap now measured** (see `code/renderervk/README.ioquakelive.md`):
-5 exports to add, but **24 imports** — including four Vulkan windowing entries
-(`VK_CreateSurface`, `VK_GetInstanceProcAddr`, `VKimp_Init`, `VKimp_Shutdown`)
-and six `GLimp_*` / `GL_GetProcAddress` entries, because Quake3e drives the
-window from the engine side and this tree drives it from inside the renderer.
+**Two things that were live bugs, now fixed:**
 
-That is the real cost, and it is bigger than the "stub five exports" framing I
-gave before measuring. 14 of the 24 are trivial wrappers; the 6 windowing ones
-mean restructuring `sdl_glimp.c` so the engine owns the window — shared code the
-OpenGL renderer also uses, which has to keep working throughout.
+- Picking a renderer that cannot load wrote the choice to the config *before*
+  trying it, and `CL_InitRef` then went straight to `ERR_FATAL` — unrecoverable
+  without hand-editing the config. It now resets and loads the default. Verified
+  against a deliberately unloadable `vulkanx86_64.so`.
+- The same trap one layer down: a machine with no Vulkan driver got as far as
+  loading the module and then died creating the window, on every launch
+  thereafter. `VKimp_Init` now resets `cl_renderer` before erroring, and says
+  why.
 
-**Next, in order:**
-1. `Makefile` target producing `vulkan<arch>.so` / `.dll`, behind
-   `BUILD_RENDERER_VULKAN=1` so it stays opt-in until it works.
-2. A shim satisfying this tree's `refexport_t` (v9) from Quake3e's (v8),
-   stubbing `Font_DrawString`, `TextBounds`, `GetGlyphInfo`,
-   `SetCompositionFont` and `Get_Advertisements`.
-3. `sdl_glimp.c` split so it can request `SDL_WINDOW_VULKAN` and a surface
-   rather than a GL context unconditionally.
-4. Milestone 1: builds, links, clears the screen.
-5. **Milestone 2, immediately after: text.** Stubbing the font exports is only
-   valid long enough to prove the link. The console *is* the debugging surface for
-   this renderer, so a Vulkan build that cannot draw text cannot be debugged from
-   inside itself — and every diagnostic added this far (`cg_debugShotgun`,
-   `con_scale`, cvar readouts) becomes unusable. Treat fonts as part of the first
-   usable build, not as polish.
-
-**Read `renderergl2/tr_font_gl.c` before estimating anything past milestone 1** —
-it is the GL half of the QL TrueType path and has no Vulkan counterpart. It is
-the largest unknown in the whole port.
-
-#### Original scoping
-Wanted. Feasible. Not small — this is a multi-session project, and worth being
-honest about that up front rather than starting it and stalling.
-
-**What makes it tractable:** `cl_renderer` already dispatches by DLL name
-(`cl_main.c`, default `"opengl2"`, `CVAR_ARCHIVE | CVAR_LATCH`, falls back to its
-reset string when the named library is missing) and `USE_RENDERER_DLOPEN=1`. A
-third renderer needs no engine change at all — it needs to build as
-`vulkan<arch>.so/.dll` and export `GetRefAPI`. `renderercommon` is already shared,
-so image loading, the shader-script parser, skins, models and the font core come
-along for free.
-
-**Base to port from:** Quake3e (`ec-/Quake3e`), `code/renderervk`. Mature,
-maintained, and a faithful reimplementation of the *classic* renderer — which
-suits the goal here, since the classic look is what we are chasing anyway.
-
-**Known work beyond a straight copy:**
-1. `REF_API_VERSION 9`. This port's `refexport_t` adds Quake Live's TrueType text
-   path — `Font_DrawString`, `TextBounds`, `GetGlyphInfo`, `SetCompositionFont` —
-   and `Get_Advertisements`. The font core is shared in `renderercommon`
-   (`tr_fontstash.c`, `tr_stbtt.c`) but the GL-specific half,
-   `renderergl2/tr_font_gl.c`, has no Vulkan equivalent. That file is the single
-   biggest unknown; it wants reading before committing to an estimate.
-2. Quake3e's renderer expects Quake3e's engine-side helpers in places. Each
-   needs checking against this tree rather than assumed.
-3. The widescreen bias handling and anything else this port changed in the
-   refexport surface.
-4. `R_ExportCubemaps_f` and the cubemap path (R4) have no classic-renderer
-   equivalent — a Vulkan build would simply not have `r_cubeMapping`.
-5. SDL window creation currently requests a GL context unconditionally
-   (`sdl_glimp.c`); Vulkan needs `SDL_WINDOW_VULKAN` and a surface instead.
-
-**Suggested first milestone:** get it building and clearing the screen, with text
-rendering stubbed, before touching anything else. That answers the two real
-questions — whether the `refexport_t` surface can be satisfied and whether the
-SDL path can be split cleanly — and everything after it is incremental.
-
-**What it will and will not give you.** Expect better frame pacing, far better
-driver behaviour on Intel Arc and on Linux/Mesa, and a renderer that is
-GL1-equivalent in output — so closer to Quake 3 than renderergl2 is. Expect it to
-add no gloss and no cubemaps: an API is not an aesthetic. If the goal is the
-metallic look, R4 is the route, not this.
+**Also open:** renderervk's own `r_dither` is 0–1 where this tree's is 0–2, so
+the temporal setting logs *"cvar 'r_dither' out of range (max 1), setting to
+1"*. The Windows build of the Vulkan target has not been exercised.
 
 ### R6. Voodoo postfilter as a real post-process pass — OPEN
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
