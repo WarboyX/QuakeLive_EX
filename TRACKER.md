@@ -11,12 +11,12 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 
 | Area | Progress | Notes |
 |---|---|---|
-| **Client / UI** (U) | `███████████████░░░░░  11/15` | U9 root-caused: a parser bug, not a menu bug |
+| **Client / UI** (U) | `███████████████░░░░░  12/16` | U18 root-caused: missing commas, not the string pool |
 | **Client / cgame** (C) | `████████████████████  6/6` | C9 confirmed resolved in play |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
-| **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  2/8` | 186 cvars registered but unread (E8) |
-| **Overall** | `██████████░░░░░░░░░░  22/42` | by binary: 8 server · 31 client · 3 both |
+| **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  3/10` | 186 cvars registered but unread (E8) |
+| **Overall** | `██████████░░░░░░░░░░  24/45` | by binary: 9 server · 33 client · 3 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -76,6 +76,7 @@ for stock clients until proven otherwise.
 | ○ | **E1** | Factory subsystem absent | OPEN |
 | ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
 | ● | **E6** | Players connect as spectators | DONE (verify) |
+| ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
 
 #### our client (cgame / ui / client engine)
@@ -91,6 +92,8 @@ for stock clients until proven otherwise.
 | ○ | **U10** | Controls menu is empty | NEEDS INFO |
 | ○ | **U11** | Cosmetic layout faults | PARTIAL (value offset fixed) |
 | ● | **U12** | Render options have no home in Quake Live's menus | DONE (verify) |
+| ● | **U18** | Renderer row in Render Options draws blank | DONE (verify) |
+| ● | **E9** | `com_maxfps` only lands on rates that divide 1000 | DONE (verify) |
 | ○ | **U2** | No player-name prompt while in a match | PARTIAL |
 | ● | **U3** | `ui/menudef.h` | DONE |
 | ○ | **U4** | `ui/ingame.txt` is orphaned | OPEN |
@@ -143,6 +146,7 @@ for stock clients until proven otherwise.
 | ○ | **E1** | Factory subsystem absent | OPEN |
 | ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
 | ● | **E6** | Players connect as spectators | DONE (verify) |
+| ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
 | ○ | **E5** | Steam integration absent | OPEN |
 
@@ -159,6 +163,8 @@ for stock clients until proven otherwise.
 | ○ | **U10** | Controls menu is empty | NEEDS INFO |
 | ○ | **U11** | Cosmetic layout faults | PARTIAL (value offset fixed) |
 | ● | **U12** | Render options have no home in Quake Live's menus | DONE (verify) |
+| ● | **U18** | Renderer row in Render Options draws blank | DONE (verify) |
+| ● | **E9** | `com_maxfps` only lands on rates that divide 1000 | DONE (verify) |
 | ○ | **U2** | No player-name prompt while in a match | PARTIAL |
 | ● | **U3** | `ui/menudef.h` | DONE |
 | ○ | **U4** | `ui/ingame.txt` is orphaned | OPEN |
@@ -617,6 +623,44 @@ menu did. The `createserver` rows had it right; these did not.
 
 **Open:** the proper home is still Quake Live's own tabs. If its
 `ui/*.menu` files turn up (U1, U10 need them too) these rows should move there.
+
+### U18. Renderer row in Render Options draws blank — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+The RENDER OPTIONS panel painted every row correctly except one: `Renderer:`
+had a label and no value. Two theories were wrong before the data arrived.
+
+Not the string pool — `ui_report` on a full menu load says *"String Pool is 9.3%
+full, 97697 bytes out of 1048576 used"*. Not the cvar either: the row's cvar
+`cl_renderer` exists and reads `opengl2`.
+
+The row's list was empty. `cvarStrList` was written as
+
+```
+cvarStrList { "OpenGL 2" "opengl2" "Vulkan" "vulkan" }
+```
+
+and botlib's `PS_ReadString` joins adjacent quoted strings the way a C compiler
+joins string literals, so all four arrived as **one** token,
+`"OpenGL 2opengl2Vulkanvulkan"`. The parser took it as a display name, waited
+for a value, hit `}` and returned with `count == 0`. `Item_Multi_Setting` then
+matched nothing and returned `""`.
+
+Every `cvarStrList` in Quake Live's own menus is comma-separated —
+`{ "Default", "globalpreset_default", ... }` — and that is why. Ours was the
+only one in this tree without commas, and the only broken row. The neighbouring
+rows are `cvarFloatList`, where the numbers sit between the strings and no two
+quoted strings are ever adjacent, which is why they were all fine.
+
+Fixed in the menu (commas added), and the parser now refuses to fail silently:
+an empty `cvarStrList` is a source error naming the cvar and the cause, and an
+odd-length one says the last name has no value. `Item_Multi_Setting` also warns
+once per value when a cvar holds something not in its row's list, separating
+"unregistered cvar" from "value not listed".
+
+Both diagnostics were what found this: the second one printed
+*"multi item cvar \"cl_renderer\" is \"opengl2\", which is not one of its 0
+listed values"*, and `0` was the whole answer.
 
 ### U2. No player-name prompt while in a match — PARTIAL
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -1389,6 +1433,74 @@ should not be `CVAR_ARCHIVE`. Archive is for values a user sets, not for values
 we choose.
 The server does not announce itself, so it cannot appear in any public list. The
 client's browser can still reach it by direct connect or LAN.
+
+### E9. `com_maxfps` only lands on rates that divide 1000 — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Reported as "com_maxfps 210 to 240 defaults to 250, but 200 does 200". Nothing
+is defaulting — the frame limiter was
+
+```c
+minMsec = 1000 / com_maxfps->integer;
+```
+
+in whole milliseconds. `1000/210` and `1000/240` are both `4`, and so is
+`1000/250`. The only rates the limiter could ever produce were the ones that
+divide 1000 exactly: 1000, 500, 333, 250, 200, 166, 142, 125, 111, 100. Every
+value in between was accepted, archived, and quietly rounded to the next one up.
+
+144 is the one worth calling out: it was running at 166.
+
+Fixed by carrying the fractional millisecond across frames instead of
+truncating it, so the interval alternates between the two neighbouring whole
+milliseconds in the right proportion — 240 fps asks for 4.1667 ms and gets five
+4 ms frames then one 5 ms frame, 25 ms per six frames, exactly 240.
+
+Verified over 100000 frames per rate against the old expression:
+
+| com_maxfps | before | after |
+|---|---|---|
+| 333 | 333.33 | 333.00 |
+| 240 | 250.00 | 240.00 |
+| 210 | 250.00 | 210.00 |
+| 200 | 200.00 | 200.00 |
+| 144 | 166.67 | 144.00 |
+| 90 | 90.91 | 90.00 |
+| 60 | 62.50 | 60.00 |
+
+Above 1000 fps there is still no sub-millisecond sleep to hand out, so the cap
+stays at 1 ms and the remainder is dropped rather than accumulated as a debt
+that can never be paid. Sub-millisecond timing throughout is the other fix and a
+much larger one — it means replacing `Com_TimeVal` and `Sys_Milliseconds`.
+
+### E10. Bots: pool ceiling, fill rate, and matches that never start — PARTIAL
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+Three separate faults reported together.
+
+**Fixed — the 21-bot ceiling.** `MAX_BOT_CHARACTERS` was `MAX_CLIENTS + 1`, so
+bot 22 onward failed with *"couldn't load skill 2.000000 from bots/\*_c.c"*
+while the console simultaneously said it had *"loaded cached skill 2.000000 from
+bots/major_c.c"* — the cache hit was found only after the free-slot search had
+already bailed out. The pool is now `4 * MAX_CLIENTS` and the cache lookup runs
+before the bailout; `BotInterpolateCharacters` returns 0 cleanly on a full pool
+instead of erroring.
+
+**Reverted — the fill rate.** `G_CheckMinimumPlayers` is throttled to once a
+second and added one bot per call, so `bot_minplayers 40` took forty seconds and
+looked stalled. Raising it to four per tick fixed the wait and **crashed
+dedicated servers while filling**. Four adds in one frame is four `ClientBegin`
+calls, four botlib character loads and four AAS clients appearing between two
+server frames; the one-per-second path has never done it. Back to 1 until the
+crash is understood — the right fix is not a bigger burst, it is not gating the
+whole thing behind a one-second timer, which is a change to
+`G_CheckMinimumPlayers`.
+
+**Open — the match does not start.** The countdown runs, the announcer talks
+about frags and leaderboard position, and the round never begins. `g_debugWarmup`
+is shipped and traces every `SetWarmupState` transition, names the gate in
+`WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
+back yet, so this is still unlocated.
 
 ### E4. ZMQ stats feed absent — OPEN
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client, vanilla included

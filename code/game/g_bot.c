@@ -417,19 +417,22 @@ G_CheckMinimumPlayers
 ===============
 G_FillBots
 
-[QL] Adds bots toward a target, several per tick rather than one.
+[QL] Adds bots toward a target, at most BOT_FILL_PER_TICK per call.
 
-G_CheckMinimumPlayers used to issue a single G_AddRandomBot per call and is
-throttled to once a second, so bot_minplayers 40 took forty seconds to fill and
-looked like it had stalled at whatever number you happened to look at. Quake 3
-was worse still - its throttle was ten seconds.
+G_CheckMinimumPlayers issues this once a second, so the rate here is also the
+fill rate: bot_minplayers 40 takes forty seconds at 1 per tick. That is slow,
+and the reason the 21-bot ceiling looked like a stall for so long, so this was
+raised to 4 - which then crashed dedicated servers while filling. Four adds in
+one frame is four ClientBegin calls plus four botlib character loads plus four
+AAS clients appearing between two server frames, and something in that burst
+does not survive; the throttled one-per-second path has never done it.
 
-Capped per tick because each add goes out as a console command via EXEC_INSERT;
-letting a large shortfall issue forty at once would push that many commands into
-the buffer in a single frame.
+Back to 1 until the crash is understood. The real fix for slow filling is not a
+bigger burst here - it is not gating the whole thing behind a one-second timer,
+which is a change to G_CheckMinimumPlayers, not to this cap.
 ===============
 */
-#define BOT_FILL_PER_TICK 4
+#define BOT_FILL_PER_TICK 1
 
 static void G_FillBots(int team, int shortfall) {
     int i;
