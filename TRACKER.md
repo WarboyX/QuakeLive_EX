@@ -112,7 +112,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ◐ | **R5** | Vulkan renderer | 3 root causes fixed; player models still open |
+| ◐ | **R5** | Vulkan renderer | shader parsing no longer fatal on unknown keywords |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -184,7 +184,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ◐ | **R5** | Vulkan renderer | 3 root causes fixed; player models still open |
+| ◐ | **R5** | Vulkan renderer | shader parsing no longer fatal on unknown keywords |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -1172,7 +1172,38 @@ of them confirmed in play yet.**
 | 2 | quad damage glow missing | material keywords (assumed) |
 | 3 | in-game text is fragments of the wrong glyphs; the menu and console are fine | font atlas resize |
 | 4 | `vid_restart` opens a second window and leaves the first | `Shutdown` argument |
-| 5 | player models do not draw | **unexplained** |
+| 5 | player models do not draw | `novlcollapse` |
+
+**`novlcollapse`, and the rule that made it fatal.** The console said it
+outright: *"unknown general shader parameter 'novlcollapse'"*, on every player
+skin in the game, both flags, the race markers and a map texture. `novlcollapse`
+is Quake Live's "do not collapse the vertex lighting stage" hint. renderergl2
+has always known it; renderervk did not.
+
+That alone should have cost a lighting hint. It cost the whole model, because
+**both** parsers answered an unrecognised keyword with `return qfalse`, and
+`ParseShader` turns that into `defaultShader` on the entire shader. One keyword
+it has never heard of and the material is replaced by the black box, with
+nothing on screen to say why.
+
+That is the wrong trade for a renderer reading someone else's shader scripts,
+and chasing the keywords one at a time was the wrong shape of fix. **Unknown
+keywords are now skipped rather than fatal, in both renderers** — skipping a
+keyword whose meaning we lack renders a shader slightly wrong, failing it
+renders the shader completely wrong and takes the model with it. Each unknown
+keyword is reported once, with the first shader it appeared in, instead of once
+per shader: one keyword across forty player skins was forty identical lines, and
+that is what the console looked like.
+
+**`developer 1` did nothing for the renderer.** `CL_RefPrintf` handled
+`PRINT_DEVELOPER` behind `#if DEBUG_RENDERER`, a macro defined nowhere in the
+tree — so every developer-level line from either renderer was discarded at
+compile time. That is not a debug switch, it is a deleted one, and it threw away
+the two messages that answer most "why is this surface wrong" questions:
+*"Couldn't find image file for shader %s"* and *"no shader for surface %s in
+skin %s"*. It now goes through `Com_DPrintf`, which is gated on the cvar, which
+is the gate it wanted. (This is also why asking for a `developer 1` trace last
+round produced nothing — the instruction was useless as given.)
 
 **Material keywords.** That black box with a white border is
 `R_CreateDefaultImage`'s output — those surfaces were resolving to
@@ -1207,12 +1238,6 @@ read "keep the window", left `SDL_window` alive, and the engine then unloaded
 the module out from under it — the next renderer opened a second window beside
 the orphaned first. `CL_ShutdownRef` unloads the library immediately afterwards
 regardless, so `REF_UNLOAD_DLL` is the honest translation.
-
-**Player models are still unexplained.** A shader that fell back to the default
-would draw the box texture, not nothing, so this is a different failure from 1
-and 2 — the model is either failing to register or being culled. It may go away
-with the material-keyword fix if the skins were failing for a related reason,
-but that is a hope, not a diagnosis.
 
 **None of this could be reproduced here.** All of it needs a map, and maps live
 in `pak00.pk3`, which is Quake Live's and is not ours to hold. The three causes
