@@ -42,6 +42,28 @@ void RE_TextBounds(const char *text, int start, int limit, float scale, int font
 void RE_GetGlyphInfo(int fontIndex, int charValue, glyphInfo_t *glyph);
 void RE_SetCompositionFont(int fontIndex, float scale);
 
+// tr_scene.c
+void RE_AddRefEntityToScene(const refEntity_t *ent, qboolean intShaderTime);
+
+/*
+===============
+VK_AddRefEntityToScene
+
+Quake3e's RE_AddRefEntityToScene takes a second argument, intShaderTime, which
+picks which half of its refEntity_t.shaderTime union to read. This tree's
+refEntity_t has a plain float and its refexport_t entry takes one argument, so
+the vendored GetRefAPI was assigning a two-argument function to a one-argument
+pointer - it compiled with a warning and left intShaderTime reading whatever
+happened to be in the second argument register.
+
+Harmless in practice, because the two shaderTime sites in tr_backend.c are
+already patched down to the float branch, but it is undefined behaviour on a
+call that happens for every entity in every frame. Pass the constant the patch
+assumes.
+===============
+*/
+static void VK_AddRefEntityToScene(const refEntity_t *ent) { RE_AddRefEntityToScene(ent, qfalse); }
+
 /*
 ===============
 VK_Get_Advertisements
@@ -69,6 +91,8 @@ void VK_QL_FillImports(refimport_t *rimp) {
 }
 
 void VK_QL_FillExports(refexport_t *rexp) {
+    rexp->AddRefEntityToScene = VK_AddRefEntityToScene;
+
     rexp->Font_DrawString = RE_Font_DrawString;
     rexp->TextBounds = RE_TextBounds;
     rexp->GetGlyphInfo = RE_GetGlyphInfo;

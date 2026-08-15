@@ -92,12 +92,21 @@ typedef enum {
 
 typedef uint32_t glIndex_t;
 
+// [QL] Quake3e widens this to 12; this tree's renderercommon/tr_types.h - which
+// tr_public.h pulls in above - says 10, and renderergl2 uses that. Redefining
+// it here gave three "macro redefined" warnings and left the two renderers
+// disagreeing on MAX_REFENTITIES (4095 vs 1023) and REFENTITYNUM_WORLD. The
+// cgame is written against the smaller cap, so the tree's value wins; only the
+// internal drawsurf sort-key packing depends on it, and that is consistent
+// either way.
+#ifndef REFENTITYNUM_BITS
 #define	REFENTITYNUM_BITS	12	// as we actually using only 1 bit for dlight mask in opengl1 renderer
 #define	REFENTITYNUM_MASK	((1<<REFENTITYNUM_BITS) - 1)
 // the last N-bit number (2^REFENTITYNUM_BITS - 1) is reserved for the special world refentity,
 //  and this is reflected by the value of MAX_REFENTITIES (which therefore is not a power-of-2)
 #define	MAX_REFENTITIES		((1<<REFENTITYNUM_BITS) - 1)
 #define	REFENTITYNUM_WORLD	((1<<REFENTITYNUM_BITS) - 1)
+#endif
 // 14 bits
 // can't be increased without changing bit packing for drawsurfs
 // see QSORT_SHADERNUM_SHIFT
