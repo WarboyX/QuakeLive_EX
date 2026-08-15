@@ -4153,6 +4153,43 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 	// Build expected filename (e.g., "cgamex86.dll", "uix86_64.dll" etc)
 	Com_sprintf(filename, sizeof(filename), "%s" ARCH_STRING DLL_EXT, module);
 
+	// [QL] Say so when more than one iobin.pk3 is in the search path.
+	//
+	// Game modules are extracted from the *first* matching pak, and the
+	// homepath is searched before the basepath - so a stale iobin.pk3 left in
+	// %APPDATA%\quakelive\baseq3 (or ~/.quakelive/baseq3) silently wins over
+	// the one that was just installed next to the executable, for as long as it
+	// is there. Every module keeps running the old code and the only visible
+	// symptom is that a fix "did not work".
+	//
+	// Not resolved automatically: which one an admin wants is genuinely
+	// ambiguous, and picking for them would be a worse surprise than saying
+	// what is going on. The extraction line below names the pak actually used.
+	{
+		const searchpath_t* sp;
+		int numGamecodePaks = 0;
+
+		for (sp = fs_searchpaths; sp != NULL; sp = sp->next) {
+			if (sp->pack && FS_IsGamecodePak(sp->pack->pakBasename)) {
+				numGamecodePaks++;
+			}
+		}
+
+		if (numGamecodePaks > 1) {
+			Com_Printf(S_COLOR_YELLOW "WARNING: %d copies of " IOBIN_FILENAME " are loaded. "
+					   "Game modules come from the first one, which is the one earliest in the "
+					   "search path - normally the homepath, not the install directory:\n",
+					   numGamecodePaks);
+			for (sp = fs_searchpaths; sp != NULL; sp = sp->next) {
+				if (sp->pack && FS_IsGamecodePak(sp->pack->pakBasename)) {
+					Com_Printf(S_COLOR_YELLOW "  %s\n", sp->pack->pakFilename);
+				}
+			}
+			Com_Printf(S_COLOR_YELLOW "Delete the stale one, or an update will appear not to "
+					   "take effect.\n");
+		}
+	}
+
 	for (search = fs_searchpaths; search != NULL; search = search->next) {
 		pak = search->pack;
 

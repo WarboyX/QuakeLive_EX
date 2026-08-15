@@ -1648,16 +1648,27 @@ Two halves:
   map-dependent for everything else, and the failure now reports how much was in
   use rather than naming one allocation.
 
-**The second capture showed the same crash — from the old build.** The error
-line read `G_Alloc: failed on allocation of 9032 bytes`, with no `(N of M
-already in use)` suffix; that suffix was added by the same commit as the fix,
-and the shipped `iobin.pk3` was checked to confirm it carries the new string. So
-the crash log came from a `qagame` that predates the change, not from the change
-failing.
+**The second capture showed the same crash, from a `qagame` that predates the
+fix.** The error line read `G_Alloc: failed on allocation of 9032 bytes` with no
+`(N of M already in use)` suffix — that suffix was added by the same commit as
+the fix, and the shipped `iobin.pk3` was checked to confirm it carries the new
+string. `sizeof(bot_state_t)` was also confirmed to be exactly 9032 by static
+assert, so the fix targets the right allocation, and in the new module that
+allocation cannot happen at all.
 
-That cost a round, so the failure message now carries the qagame build date, and
-so does `gamemem`. The first question a crash report has to answer is which
-build produced it.
+**Which module ran is not the same question as which build was installed, and
+conflating the two was a mistake.** Game modules are extracted from the *first*
+matching pak in the search path, and the homepath is searched before the
+basepath — so a stale `iobin.pk3` left in `%APPDATA%\quakelive\baseq3` wins over
+the one just installed next to the executable, for as long as it is there, and
+the only symptom is that a fix "did not work".
+
+`FS_ExtractGamecode` now says so: if more than one `iobin.pk3` is loaded it
+names every copy and which one modules come from. Not resolved automatically —
+which one an admin wants is genuinely ambiguous, and choosing for them would be
+a worse surprise than saying what is going on.
+
+The failure message and `gamemem` also carry the qagame build date now.
 
 **Also seen in that log, unexplained:** *"Forcing disconnect on active client:
 N"* is logged for every bot added, on slots that have never held a client.
