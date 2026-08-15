@@ -12,11 +12,11 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | Area | Progress | Notes |
 |---|---|---|
 | **Client / UI** (U) | `███████████████░░░░░  12/16` | U18 root-caused: missing commas, not the string pool |
-| **Client / cgame** (C) | `████████████████████  7/7` | C10: +zoom was registered nowhere |
+| **Client / cgame** (C) | `████████████████████  8/8` | C11: deferred models never finished loading |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan runs and draws text |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
-| **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  3/10` | 186 cvars registered but unread (E8) |
-| **Overall** | `███████████░░░░░░░░░  25/46` | by binary: 9 server · 34 client · 3 both |
+| **Engine / server** (E) | `██████░░░░░░░░░░░░░░  4/12` | E11: no score and no match start are one bug |
+| **Overall** | `███████████░░░░░░░░░  27/49` | by binary: 11 server · 35 client · 3 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -77,6 +77,8 @@ for stock clients until proven otherwise.
 | ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
 | ● | **E6** | Players connect as spectators | DONE (verify) |
 | ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
+| ○ | **E11** | No score for kills — the same bug as the match that never starts | OPEN |
+| ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
 
 #### our client (cgame / ui / client engine)
@@ -105,6 +107,7 @@ for stock clients until proven otherwise.
 | ● | **C8** | Phantom pickup sound over taken items | DONE (verify) |
 | ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
 | ● | **C10** | `+zoom` does nothing | DONE (verify) |
+| ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -148,6 +151,8 @@ for stock clients until proven otherwise.
 | ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
 | ● | **E6** | Players connect as spectators | DONE (verify) |
 | ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
+| ○ | **E11** | No score for kills — the same bug as the match that never starts | OPEN |
+| ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
 | ○ | **E5** | Steam integration absent | OPEN |
 
@@ -177,6 +182,7 @@ for stock clients until proven otherwise.
 | ● | **C8** | Phantom pickup sound over taken items | DONE (verify) |
 | ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
 | ● | **C10** | `+zoom` does nothing | DONE (verify) |
+| ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -1572,6 +1578,74 @@ about frags and leaderboard position, and the round never begins. `g_debugWarmup
 is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
+
+### C11. Mid-match arrivals keep a stand-in model — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+"Sometimes when a bot joins it doesn't load their model, sometimes it does."
+
+A client that arrives mid-match is *deferred*: `CG_SetDeferredClientInfo` copies
+some other client's model as a stand-in, and the real one is meant to load
+later. The only things that called `CG_LoadDeferredPlayers` were the scoreboard
+draw — and then only after it had been drawn eleven times
+(`cg.deferredPlayerLoading > 10`) — the local player's own info changing, and
+the first snapshot. So a bot joining a match in progress kept its stand-in until
+the player happened to die and look at the scoreboard. Whether the model was
+right came down to whether that had happened yet, which is exactly what
+"sometimes" means.
+
+Deferring is worth keeping: a snapshot can bring eight clients in at once and
+loading eight player models in one frame is a visible hitch, which is the whole
+reason it exists. It just never finished. One deferred client is now loaded per
+frame, which spreads the cost the way deferring intended and bounds the wait at
+one frame per client.
+
+### E11. No score for kills, and the match that never starts, are one bug — OPEN
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+Reported separately — "TDM/FFA kills don't add points" — and it is the same
+fault as the match that runs a countdown and never begins. `AddScore` opens
+with:
+
+```c
+if ( level.warmupTime ) {
+    return;
+}
+```
+
+Scoring is off for as long as warmup is on, which is correct behaviour. So "no
+points" is not a scoring bug at all: it says `level.warmupTime` is still
+non-zero while the match looks live, and that is the match-start fault seen from
+a different angle.
+
+The path is: countdown elapses → `g_restarted 1` → `map_restart 0` →
+`SP_worldspawn` sees `g_restarted` and calls `SetWarmupState(0)`. Read straight
+through, that works, and `SV_MapRestart_f`'s early-outs all look satisfiable, so
+where it actually stops is not established. `g_debugWarmup 1` traces every
+`SetWarmupState` transition, names the gate in `CheckWarmupConditions`, and logs
+countdown-elapsed and auto-forfeit — that trace is what is needed and has not
+been captured yet. (`developer 1` is the wrong cvar for this and was the wrong
+thing to ask for.)
+
+### E12. Nothing was written when Windows crashed — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+`sys_unix.c` has had `Sys_ErrorDialog` writing `crashlog.txt` for as long as
+this tree has existed. `sys_win32.c` had nothing, so a hard crash on the
+platform this actually ships on left nothing behind — which is why "does the
+server have a log file?" had no good answer.
+
+`SetUnhandledExceptionFilter` now writes the exception code, the faulting
+address, and the module plus offset within it. Module-and-offset is the part
+worth having: it says whether the fault was in `quakelive.exe`,
+`cgamex86_64.dll`, `qagamex86_64.dll` or a renderer, and the offset stays valid
+across runs.
+
+For the console output leading up to a crash: **`logfile 2`**, not `logfile 1`.
+1 buffers and loses exactly the tail worth reading; 2 flushes after every line.
+`qconsole.log` lands in `fs_homepath/baseq3`.
+
+The >20-bot crash is still open and this is what it needs.
 
 ### E4. ZMQ stats feed absent — OPEN
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client, vanilla included
