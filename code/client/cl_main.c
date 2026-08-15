@@ -2440,6 +2440,28 @@ void CL_InitRef(void) {
     Com_sprintf(dllName, sizeof(dllName), "%s" ARCH_STRING DLL_EXT, cl_renderer->string);
 
     if (!(rendererLib = Sys_LoadDll(dllName, qfalse)) && strcmp(cl_renderer->string, cl_renderer->resetString)) {
+        // [QL] Fall back to the default renderer rather than refusing to start.
+        //
+        // This tested for "the named renderer failed AND it is not the default"
+        // and then went straight to ERR_FATAL, so the test was pointless - the
+        // outcome was the same either way. ioquake3 uses that condition to
+        // decide it is *safe to retry*: reset the cvar and load the default.
+        //
+        // cl_renderer is CVAR_ARCHIVE, so without this, choosing a renderer
+        // that cannot load writes that choice to the config and the client
+        // then fails to start on every subsequent launch - unrecoverable
+        // without hand-editing the config. Selecting Vulkan from the render
+        // options menu did exactly that.
+        Com_Printf("failed:\n\"%s\"\n", Sys_LibraryError());
+        Com_Printf("^3falling back to the default renderer (%s)\n", cl_renderer->resetString);
+
+        Cvar_ForceReset("cl_renderer");
+
+        Com_sprintf(dllName, sizeof(dllName), "%s" ARCH_STRING DLL_EXT, cl_renderer->resetString);
+        rendererLib = Sys_LoadDll(dllName, qfalse);
+    }
+
+    if (!rendererLib) {
         Com_Printf("failed:\n\"%s\"\n", Sys_LibraryError());
         Com_Error(ERR_FATAL, "Failed to load renderer");
     }
