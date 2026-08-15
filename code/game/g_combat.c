@@ -133,6 +133,23 @@ void TossClientItems(gentity_t* self) {
     int i;
     gentity_t* drop;
 
+    /*
+    [QL] No weapon drops in instagib.
+
+    Instagib gives everyone the same weapon and infinite ammo, so a dropped one
+    is worth nothing to pick up - it just litters the map with railguns and
+    gives the pickup sound and the item timers something to report that does not
+    matter. The A2M modes are all instagib and all had this.
+
+    Gated on the mode rather than on a new cvar: a server that hands out a fixed
+    loadout and no ammo pickups has already decided this question, and a cvar
+    nobody sets is a cvar nobody reads (see E8). Powerups below still drop -
+    those are still worth taking.
+    */
+    if (g_instaGib.integer || (g_dmflags.integer & DF_INSTAGIB)) {
+        goto dropPowerups;
+    }
+
     // drop the weapon if not a gauntlet or machinegun
     weapon = self->s.weapon;
 
@@ -158,6 +175,7 @@ void TossClientItems(gentity_t* self) {
         Drop_Item(self, item, 0);
     }
 
+dropPowerups:
     // drop all the powerups if not in teamplay
     if (g_gametype.integer != GT_TEAM) {
         angle = 45;

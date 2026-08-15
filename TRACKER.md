@@ -112,7 +112,8 @@ for stock clients until proven otherwise.
 | ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
 | ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
 | ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
-| ○ | **C16** | Score tracker does not show negative scores | OPEN |
+| ○ | **C16** | Score tracker never shows the player's score | OPEN |
+| ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
 | ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
@@ -195,7 +196,8 @@ for stock clients until proven otherwise.
 | ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
 | ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
 | ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
-| ○ | **C16** | Score tracker does not show negative scores | OPEN |
+| ○ | **C16** | Score tracker never shows the player's score | OPEN |
+| ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
 | ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
@@ -902,16 +904,45 @@ That is why there was no voting. Whether the vote then works is untested.
 
 The empty scoreboard on that screen was C13.
 
-### C16. Score tracker does not show negative scores — OPEN
+### C17. A2M instagib dropped weapons on death — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+Instagib gives everyone the same weapon and infinite ammo, so a dropped one is
+worth nothing to pick up — it just litters the map with railguns and gives the
+pickup sound and the item timers something to report that does not matter. All
+three A2M modes are instagib and all had it.
+
+`TossClientItems` now skips the weapon when `g_instaGib` (or `DF_INSTAGIB`) is
+set. Gated on the mode rather than on a new cvar: a server handing out a fixed
+loadout with no ammo pickups has already decided this, and a cvar nobody sets is
+a cvar nobody reads (E8). Powerups still drop — those are still worth taking.
+
+### C16. Score tracker never shows the player's score — OPEN
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
-A player on -2 reads as 0 or 1 on the top-left tracker until they go positive.
+**This is C15, not a negative-number bug, and the screenshots settle it.** Four
+samples: tracker 12/11 with the player 10th on 8; 10/9 with the player 7th on 7;
+and 0/0 with the player on **-1** while everyone else sat on 0. In every case
+the two bars are 1st and 2nd place. The player's score is never shown at all —
+it only looked like a negative-handling fault because when scores are low the
+leader's numbers happen to look plausible.
 
-`CG_DrawPlayerScore` formats with `%i` and would print a negative fine, and
-`persistant[]` goes over the wire as a `MSG_WriteShort`/`MSG_ReadShort` pair, so
-neither the formatting nor the transmission is an obvious culprit. Not located.
-Worth checking whether the bar's fill fraction is clamped and being read back as
-the number, and whether `MSG_ReadShort` here sign-extends.
+So `CG_DrawPlayerScore` and the `%i` formatting are fine, and so is the wire
+format. What is wrong is that the `CG_PLAYER_SCORE` half of the pair never
+draws.
+
+Checked and ruled out this round: `cgDC.ownerDrawVisible` **is** wired
+(`cg_main.c`), `ui_shared.c` **does** consult it before painting, and
+`CG_OwnerDrawVisible`'s logic reads correctly — an item flagged
+`IF_PLYR_IS_FIRST_PLACE` falls through every branch and hits the closing
+`return qfalse` when the player is not first.
+
+Which leaves **which HUD file is actually loaded**. `comp_hud.menu` is the one
+with the four-item gated layout; Quake Live also ships `hud.menu`, `hud2`,
+`hud3` and others, selected by `cg_hudfiles`, and `hud3.menu` lays these out
+differently. If the loaded HUD asks for `CG_1STPLACE` and `CG_2NDPLACE`
+unconditionally then the rendering is faithful and the layout is the thing to
+change. That is the next thing to check and it has not been checked.
 
 ### C15. HUD score tracker shows 1st and 2nd, not 1st and yours — OPEN
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
