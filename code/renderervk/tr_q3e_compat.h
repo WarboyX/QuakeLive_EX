@@ -29,10 +29,7 @@ not an array: I first declared it as `byte[4]` and the compiler rejected every
 `.rgba` and `.u32` use, which is the outcome to want. This tree uses raw
 `byte[4]` in the equivalent structures, so the type does not exist here.
 */
-typedef union {
-    byte rgba[4];
-    uint32_t u32;
-} color4ub_t;
+/* Now defined in qcommon/q_shared.h - it is shared with drawVert_t. */
 
 /*
 Quake3e: code/qcommon/q_shared.h

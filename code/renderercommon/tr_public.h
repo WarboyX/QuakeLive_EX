@@ -239,7 +239,7 @@ typedef struct {
     // Vulkan windowing - this tree has never had any of this
     void (*VKimp_Init)(glconfig_t* config);
     void (*VKimp_Shutdown)(qboolean unloadDLL);
-    void (*VK_CreateSurface)(void* instance, void** surface);
+    qboolean (*VK_CreateSurface)(void* instance, void** surface);
     void* (*VK_GetInstanceProcAddr)(void* instance, const char* name);
 } refimport_t;
 

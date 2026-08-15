@@ -991,10 +991,10 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 					R_ComputeColors( i, tess.svars.colors[i], pStage );
 				}
 				if ( tess_flags & (TESS_ENT0 << i) && backEnd.currentEntity ) {
-					uniform.ent.color[i][0] = backEnd.currentEntity->e.shader.rgba[0] / 255.0;
-					uniform.ent.color[i][1] = backEnd.currentEntity->e.shader.rgba[1] / 255.0;
-					uniform.ent.color[i][2] = backEnd.currentEntity->e.shader.rgba[2] / 255.0;
-					uniform.ent.color[i][3] = pStage->bundle[i].alphaGen == AGEN_IDENTITY ? 1.0 : (backEnd.currentEntity->e.shader.rgba[3] / 255.0);
+					uniform.ent.color[i][0] = backEnd.currentEntity->e.shaderRGBA[0] / 255.0;
+					uniform.ent.color[i][1] = backEnd.currentEntity->e.shaderRGBA[1] / 255.0;
+					uniform.ent.color[i][2] = backEnd.currentEntity->e.shaderRGBA[2] / 255.0;
+					uniform.ent.color[i][3] = pStage->bundle[i].alphaGen == AGEN_IDENTITY ? 1.0 : (backEnd.currentEntity->e.shaderRGBA[3] / 255.0);
 					pushUniform = qtrue;
 				}
 			}

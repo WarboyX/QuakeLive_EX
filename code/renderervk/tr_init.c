@@ -252,7 +252,9 @@ static void R_ClearSymTables( void )
 
 // for modular renderer
 #ifdef USE_RENDERER_DLOPEN
-void QDECL Com_Error( errorParm_t code, const char *fmt, ... )
+// [QL PATCH] this tree declares Com_Error as (int, const char*, ...) and marks
+// it noreturn; Quake3e uses errorParm_t. Same values, incompatible declaration.
+void QDECL Com_Error( int code, const char *fmt, ... )
 {
 	char buf[ 4096 ];
 	va_list	argptr;

@@ -1292,7 +1292,7 @@ endef
 # directory only - no vendored file is edited, and nothing else sees it.
 define DO_REF_VK_CC
 $(echo_cmd) "REF_VK_CC $<"
-$(Q)$(CC) $(SHLIBCFLAGS) $(CFLAGS) $(OPTIMIZE) -include $(RVKDIR)/tr_q3e_compat.h -o $@ -c $<
+$(Q)$(CC) $(SHLIBCFLAGS) $(CFLAGS) $(CLIENT_CFLAGS) $(OPTIMIZE) -include $(RVKDIR)/tr_q3e_compat.h -o $@ -c $<
 endef
 
 define DO_REF_CC
@@ -1765,6 +1765,19 @@ ifneq ($(USE_RENDERER_DLOPEN), 0)
     $(B)/renderergl2/puff.o \
     $(B)/renderergl2/q_math.o \
     $(B)/renderergl2/tr_subs.o
+endif
+
+# [QL] The Vulkan renderer needs the same self-contained copies. A shared object
+# links happily with these undefined and only fails at dlopen, so the missing
+# objects were invisible until the symbol tables were compared against
+# opengl2x86_64.so.
+ifneq ($(USE_RENDERER_DLOPEN), 0)
+  # No tr_subs.o: that is renderergl2's Com_Error/Com_Printf forwarding, and
+  # renderervk provides its own in tr_init.c under USE_RENDERER_DLOPEN.
+  Q3RVKOBJ += \
+    $(B)/renderervk/q_shared.o \
+    $(B)/renderervk/puff.o \
+    $(B)/renderervk/q_math.o
 endif
 
 ifneq ($(USE_INTERNAL_JPEG),0)

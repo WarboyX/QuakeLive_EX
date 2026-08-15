@@ -827,7 +827,12 @@ SURFACES
 
 ==============================================================================
 */
-typedef byte color4ub_t[4];
+// [QL] color4ub_t is now a shared union in qcommon/q_shared.h (byte[4] or one
+// u32), introduced for the Vulkan renderer. This local array typedef shadowed
+// it. The only field using it here is written through as bytes, so it keeps a
+// plain byte[4] under its own name rather than taking on the union's member
+// syntax across this renderer.
+typedef byte glColor4ub_t[4];
 
 // any changes in surfaceType must be mirrored in rb_surfaceTable[]
 typedef enum {
@@ -1984,7 +1989,7 @@ TESSELATOR/SHADER DECLARATIONS
 */
 
 typedef struct stageVars {
-    color4ub_t colors[SHADER_MAX_VERTEXES];
+    glColor4ub_t colors[SHADER_MAX_VERTEXES];
     vec2_t texcoords[NUM_TEXTURE_BUNDLES][SHADER_MAX_VERTEXES];
 } stageVars_t;
 
@@ -2006,7 +2011,7 @@ typedef struct shaderCommands_s {
 
     stageVars_t svars QALIGN(16);
 
-    // color4ub_t	constantColor255[SHADER_MAX_VERTEXES] QALIGN(16);
+    // glColor4ub_t	constantColor255[SHADER_MAX_VERTEXES] QALIGN(16);
 
     shader_t* shader;
     double shaderTime;

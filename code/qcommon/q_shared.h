@@ -175,6 +175,16 @@ typedef union {
     unsigned int ui;
 } floatint_t;
 
+// [QL] A packed RGBA quadruple, addressable as four bytes or one 32-bit word.
+// Same size and alignment as the byte[4] it replaces, so structures read
+// straight off disk (drawVert_t over the BSP lump) are unaffected - verified.
+// Introduced for the Vulkan renderer, which is vendored from Quake3e and uses
+// this shape throughout.
+typedef union {
+    byte rgba[4];
+    uint32_t u32;
+} color4ub_t;
+
 typedef int qhandle_t;
 typedef int sfxHandle_t;
 typedef int fileHandle_t;
