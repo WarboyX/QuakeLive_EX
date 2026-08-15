@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `████████████████████  9/9` | C12: the scoreboard panel is an ad slot, not a levelshot |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan runs and draws text |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
-| **Engine / server** (E) | `███████░░░░░░░░░░░░░  5/13` | E13: the bot crash was the game's 256KB pool |
-| **Overall** | `███████████░░░░░░░░░  29/51` | by binary: 12 server · 36 client · 3 both |
+| **Engine / server** (E) | `████████░░░░░░░░░░░░  7/14` | E11: map_restart ran GAME_INIT twice |
+| **Overall** | `████████████░░░░░░░░  31/52` | by binary: 13 server · 36 client · 3 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -77,7 +77,7 @@ for stock clients until proven otherwise.
 | ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
 | ● | **E6** | Players connect as spectators | DONE (verify) |
 | ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
-| ○ | **E11** | No score for kills — the same bug as the match that never starts | OPEN |
+| ● | **E11** | The match never starts, and kills score nothing | DONE (verify) |
 | ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
 | ● | **E13** | More than ~25 bots crashed the server | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
@@ -154,7 +154,7 @@ for stock clients until proven otherwise.
 | ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
 | ● | **E6** | Players connect as spectators | DONE (verify) |
 | ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
-| ○ | **E11** | No score for kills — the same bug as the match that never starts | OPEN |
+| ● | **E11** | The match never starts, and kills score nothing | DONE (verify) |
 | ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
 | ● | **E13** | More than ~25 bots crashed the server | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
@@ -1733,32 +1733,48 @@ install can be checked against the release it came from without running the
 game (`sha256sum -c checksums.txt`). The engine covers modules against the pak;
 this covers the files on disk against the build.
 
-### E11. No score for kills, and the match that never starts, are one bug — OPEN
+### E11. The match never starts, and kills score nothing — DONE (verify)
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
 
-Reported separately — "TDM/FFA kills don't add points" — and it is the same
-fault as the match that runs a countdown and never begins. `AddScore` opens
-with:
+Reported twice from different angles: the countdown runs, the announcer talks
+about frags and leaderboard position, and the round never begins — and
+separately, TDM/FFA kills add no points. One fault. `AddScore` opens with
+`if (level.warmupTime) return;`, which is correct, so "no score" was never a
+scoring bug: it was evidence that warmup had not ended.
 
-```c
-if ( level.warmupTime ) {
-    return;
-}
+`g_debugWarmup` traced it end to end, and the log is unambiguous:
+
+```
+warmup countdown elapsed at 77750, issuing map_restart 0
+==== ShutdownGame ====
+InitGame: ...
+warmup -1 -> 0    (level.time 77750)      <- match live
+------- Game Initialization -------
+InitGame: ...
+warmup -1 -> -1   (level.time 77750)      <- straight back to warmup
+Warmup:
 ```
 
-Scoring is off for as long as warmup is on, which is correct behaviour. So "no
-points" is not a scoring bug at all: it says `level.warmupTime` is still
-non-zero while the match looks live, and that is the match-start fault seen from
-a different angle.
+**`map_restart` initialised the game twice.** `SV_RestartGameProgs` called
+`SV_InitGameProgs`, which ends in `SV_InitGameVM(qfalse)` and so had already run
+`GAME_INIT` — and then ran `SV_InitGameVM(qtrue)` on top of it.
 
-The path is: countdown elapses → `g_restarted 1` → `map_restart 0` →
-`SP_worldspawn` sees `g_restarted` and calls `SetWarmupState(0)`. Read straight
-through, that works, and `SV_MapRestart_f`'s early-outs all look satisfiable, so
-where it actually stops is not established. `g_debugWarmup 1` traces every
-`SetWarmupState` transition, names the gate in `CheckWarmupConditions`, and logs
-countdown-elapsed and auto-forfeit — that trace is what is needed and has not
-been captured yet. (`developer 1` is the wrong cvar for this and was the wrong
-thing to ask for.)
+`g_restarted` is a one-shot flag. The countdown sets it, `map_restart` fires, and
+`SP_worldspawn` reads it to decide whether to come up IN_PROGRESS or in
+PRE_GAME, clearing it as it goes. The first init consumed it and went live; the
+second saw 0 and went back to warmup, taking every client's ready flag with it.
+Hence the loop: countdown, announcer, warmup again, and no scoring throughout.
+
+ioquake3 has the same two-function split and does not have this problem, because
+its `VM_Restart` does not call `GAME_INIT` — only `SV_InitGameVM` does. The
+native-DLL loader in this tree folded the two together. Split into
+`SV_LoadGameDll` (load only) and `SV_InitGameProgs` (load + init once), so a
+restart initialises exactly once, with `restart=qtrue`.
+
+**Not a bug, from the same log:** 57 `MOD_TELEFRAG` kills in a chain at the
+restart. That is 40 players on `longestyard`, which has about ten spawn points —
+`SelectSpawnPoint` has nowhere free to put them and they spawn on top of each
+other. Quake doing what it does when the player count far exceeds the spawns.
 
 ### E12. Nothing was written when Windows crashed — DONE (verify)
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client

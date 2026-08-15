@@ -1230,6 +1230,8 @@ SV_RestartGameProgs
 Called on a map_restart, but not on a normal map change
 ===================
 */
+static void SV_LoadGameDll(void);
+
 void SV_RestartGameProgs(void) {
     if (!sv_gameLibHandle) {
         return;
@@ -1241,8 +1243,26 @@ void SV_RestartGameProgs(void) {
     sv_gameLibHandle = NULL;
     memset(sv_vmMainTable, 0, sizeof(sv_vmMainTable));
 
-    // Reload
-    SV_InitGameProgs();
+    /*
+    [QL] Load the module, then run GAME_INIT exactly once, with restart=qtrue.
+
+    This called SV_InitGameProgs(), which ends in SV_InitGameVM(qfalse) and so
+    had already run GAME_INIT - and then ran SV_InitGameVM(qtrue) on top of it.
+    Every map_restart therefore initialised the game twice.
+
+    That is what stopped matches ever starting. g_restarted is a one-shot flag:
+    the warmup countdown sets it, map_restart fires, and SP_worldspawn reads it
+    to decide whether to come up IN_PROGRESS or in PRE_GAME - clearing it as it
+    goes. The first init consumed it and went live; the second saw 0 and went
+    straight back to warmup, taking every client's ready flag with it. From the
+    outside the countdown finished, the announcer fired, and warmup started
+    over, with no scoring because AddScore returns while warmupTime is non-zero.
+
+    ioquake3 has the same two-function split and does not have this problem
+    because its VM_Restart does not call GAME_INIT - only SV_InitGameVM does.
+    The native-DLL loader here folded the two together.
+    */
+    SV_LoadGameDll();
     SV_InitGameVM(qtrue);
 }
 
@@ -1253,7 +1273,13 @@ SV_InitGameProgs
 Called on a normal map change, not on a map_restart
 ===============
 */
-void SV_InitGameProgs(void) {
+/*
+[QL] Everything SV_InitGameProgs does except running GAME_INIT.
+
+Split out so SV_RestartGameProgs can reload the module and then initialise it
+once, rather than inheriting the qfalse init from here and adding a qtrue one.
+*/
+static void SV_LoadGameDll(void) {
     cvar_t *var;
     extern int bot_enable;
     typedef void (*dllEntryProc)(void **vmMainTable, gameImport_t *imports, int *apiVersion);
@@ -1300,7 +1326,18 @@ void SV_InitGameProgs(void) {
     dllEntry(sv_vmMainTable, &sv_gameImports, &sv_apiVersion);
 
     Com_Printf("Game DLL loaded, API version %d\n", sv_apiVersion);
+}
 
+/*
+===============
+SV_InitGameProgs
+
+Called for a fresh server. Loads the module and runs GAME_INIT once with
+restart=qfalse.
+===============
+*/
+void SV_InitGameProgs(void) {
+    SV_LoadGameDll();
     SV_InitGameVM(qfalse);
 }
 
