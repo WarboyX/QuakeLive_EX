@@ -1034,6 +1034,73 @@ request and throttled client-side to one every two seconds, so it is a much
 smaller contributor than the per-frag broadcast was, but it is the reason to
 keep an eye on this queue.
 
+### E18. The engine ran in the machine's locale, so floats used a decimal comma — DONE (verify, not reproducible here)
+**Lives in:** our **client** and our **server** (both come out of one binary) · **Seen by:** every client
+
+Console lines like `CL_InitCGame: 0,53 seconds` looked like a font quirk. They
+were not. The give-away is in the bot userinfo configstrings going out over the
+wire:
+
+```
+cs 549 "\n\Keel\t\0\model\keel\...\skill\ 2,00\tt\0\tl\0"
+```
+
+Everything this engine parses and prints assumes a `.` decimal point — cvar
+values, shader scripts, configs, `atof`, `sprintf("%f")`. On a machine whose
+locale uses a decimal comma the whole engine switches over: floats are written
+with commas, and anything reading them back under a C locale gets the integer
+part and silently drops the fraction.
+
+It also corrupts configs. The startup warning
+
+```
+Warning: cvar "cg_stereoSeparation" given initial values: "0" and "0,4"
+```
+
+is a value that was written into `q3config.cfg` by an earlier run under the
+comma locale and read back as a cvar default. **Anyone who has run an affected
+build should check their config for comma decimals** — those values are being
+read as truncated integers.
+
+The C runtime starts in the `"C"` locale, so this is not the default state: SDL
+calls `setlocale(LC_ALL, "")` during init on several platforms and takes the
+process with it. `setlocale(LC_NUMERIC, "C")` is now asserted at the top of
+`main()` — which covers the dedicated server and the game module too, since they
+share the process — and again after each `SDL_Init(SDL_INIT_VIDEO)`, in both
+`GLimp_Init` and `VKimp_Init`. `LC_NUMERIC` only; the rest of the locale is
+nobody's business here.
+
+Not reproduced in the build container, which has no comma locale installed, so
+this is verified by inspection rather than by running it.
+
+### E19. Console noise at startup — PARTLY DONE
+**Lives in:** our **client** (cgame / renderer) · **Seen by:** our client only
+
+Reported as a batch of warnings on the console. Sorted by what they actually are:
+
+- **`unknown general shader parameter 'novlcollapse'`, forty-odd lines** —
+  already fixed, in `645b80e`. The build in the screenshots was stamped
+  `16:15:06` and that commit landed at `16:28`; the later screenshots show none.
+  Nothing to do, and a good argument for the build stamps.
+
+- **`Failed to load sound new_high_score.ogg!`** — real, fixed. `cg_main.c`
+  registered the bare filename with no directory, straight from the binary's
+  path string. `S_RegisterSound` takes the name as given and there is nothing at
+  the root of the pak. Every other voice line there lives under `sound/vo`, and
+  the ui module already asks for this one by that path. Now matches.
+
+- **`CM_AddFacetBevels... invalid bevel`** and **`reused image ... with mixed
+  flags`** — already `Com_DPrintf` / `PRINT_DEVELOPER`. They only appear because
+  `developer 1` is set; that is what asking for developer output means. Left
+  alone.
+
+- **`R_FindImageFile could not find 'gfx/misc/console01.tga' in shader
+  'console'`** and **`Can't read sound music/sonic5.wav`** — both are Quake Live
+  assets referenced by Quake Live content (the `console` shader, and the map's
+  worldspawn music key) that Quake Live does not ship. Not ours to add, and the
+  fallbacks are harmless. Could be silenced by shipping our own `console` shader
+  in `pak01`; not done, because that means drawing console art.
+
 ### E17. Returning after a drop mid-match leaves you spectating — OPEN
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
 
