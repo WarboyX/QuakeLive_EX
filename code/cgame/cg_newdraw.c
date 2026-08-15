@@ -2951,6 +2951,61 @@ static void CG_DrawOpponentScore(int useOwnTeam, rectDef_t *rect, float scale, v
     CG_OwnerDrawText(rect->x, rect->y, scale, color, va("%i", score), 0, 0, textStyle);
 }
 
+/*
+===============
+CG_DrawPlaceScore
+
+[QL] The two-bar tracker at the top left: the leader, and you.
+
+hud.menu asks for CG_1ST_PLACE_SCORE and CG_2ND_PLACE_SCORE with no
+ownerdrawflags at all - both are plain "visible 1" - so the four-item
+first-place/not-first-place arrangement in comp_hud.menu never applies to the
+HUD that actually loads. These two were mapped straight to CG_DrawRedScore and
+CG_DrawBlueScore, which read cgs.scores1 and cgs.scores2. In a team game those
+are the team scores and it is right; in a free-for-all they are 1st and 2nd
+place, so the tracker showed the top two players and never the viewer. A player
+sitting 40th with 1 point saw 39 and 38.
+
+What it should show, per the reported behaviour: the top line is the leader, the
+bottom line is your own score, and when you *are* the leader the bottom line
+becomes the runner-up so there is still something to chase. That is the same
+information comp_hud.menu builds out of four gated items, expressed as two.
+
+Team gametypes keep the team scores - there the two bars are red and blue, and
+the viewer's own score is not what belongs in them.
+===============
+*/
+static void CG_DrawPlaceScore(qboolean firstPlace, rectDef_t *rect, float scale, vec4_t color, qhandle_t shader,
+                              int textStyle) {
+    int score;
+
+    if (cgs.gametype >= GT_TEAM) {
+        if (firstPlace) {
+            CG_DrawRedScore(rect, scale, color, shader, textStyle);
+        } else {
+            CG_DrawBlueScore(rect, scale, color, shader, textStyle);
+        }
+        return;
+    }
+
+    if (firstPlace) {
+        score = cgs.scores1;
+    } else if (cg.snap && cg.snap->ps.persistant[PERS_RANK] == 0) {
+        // the viewer is leading, so the second line has the runner-up
+        score = cgs.scores2;
+    } else if (cg.snap) {
+        score = cg.snap->ps.persistant[PERS_SCORE];
+    } else {
+        score = cgs.scores2;
+    }
+
+    if (score == SCORE_NOT_PRESENT || score == -999) {
+        return;
+    }
+
+    CG_OwnerDrawText(rect->x, rect->y, scale, color, va("%i", score), 0, 0, textStyle);
+}
+
 // [QL] CG_DrawTeamScore (0x11c/0x138/0x122/0x13d). Numeric team score.
 // Binary shows scores1 only for id 0x11c (CG_RED_SCORE); every other selector
 // shows scores2. -9999/-999 draw nothing.
@@ -3209,14 +3264,14 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
         case CG_MATCH_WINNER:               // 0x52
             CG_DrawMatchWinner(&rect, scale, color, textStyle);
             break;
-        case CG_1ST_PLACE_SCORE:            // 0x54  CG_DrawRedScore
-            CG_DrawRedScore(&rect, scale, color, shader, textStyle);
+        case CG_1ST_PLACE_SCORE:            // 0x54
+            CG_DrawPlaceScore(qtrue, &rect, scale, color, shader, textStyle);
             break;
         case CG_1STPLACE_PLYR_MODEL:        // 0x55  CG_DrawSelectedPlayerModel
             CG_DrawSelectedPlayerModel(&rect);
             break;
-        case CG_2ND_PLACE_SCORE:            // 0x57  CG_DrawBlueScore
-            CG_DrawBlueScore(&rect, scale, color, shader, textStyle);
+        case CG_2ND_PLACE_SCORE:            // 0x57
+            CG_DrawPlaceScore(qfalse, &rect, scale, color, shader, textStyle);
             break;
         case CG_PLAYER_OBIT:                // 0x58
             CG_DrawPlayerObit(&rect, scale, color, textStyle);

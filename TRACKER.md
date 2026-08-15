@@ -1,3 +1,33 @@
+### C16. Score tracker never shows the player's score — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+The two-bar tracker top-left read 39/38 while the player was 40th with 1, and
+0/0 while the player was on -1. Four samples, always the top two players, never
+the viewer — so this was never a negative-number bug, which is how it was first
+reported.
+
+**The HUD that loads is not the one I was reading.** `cg_hudFiles` defaults to
+`ui/hud.txt`, which loads `ui/hud.menu`, and that asks for
+`CG_1ST_PLACE_SCORE` and `CG_2ND_PLACE_SCORE` with **no ownerdrawflags at all**
+— both are plain `visible 1`. The four-item
+first-place/not-first-place arrangement I traced through `comp_hud.menu` is a
+different HUD and never applied. So the earlier round spent ruling out
+`ownerDrawVisible`, `PERS_RANK` and the flag gating was looking at the wrong
+file the whole time; all three were fine.
+
+Both owner-draws were mapped straight to `CG_DrawRedScore` / `CG_DrawBlueScore`,
+which read `cgs.scores1` / `cgs.scores2`. In a team game those are the team
+scores and it is correct; in a free-for-all they are 1st and 2nd place.
+
+`CG_DrawPlaceScore` now serves both: team gametypes keep red and blue, and
+free-for-all draws the leader on the top line and **your** score on the bottom,
+swapping the bottom line to the runner-up when you are the one leading. That is
+the same information `comp_hud.menu` builds from four gated items, expressed as
+two.
+
+This follows the reported intent rather than a binary trace — the behaviour was
+stated as "one should be the client's player, one should be the top fragger".
+
 # ioquakelive — issue and feature tracker
 
 Working notes for the port. Open items first, resolved at the bottom so we do not
@@ -112,7 +142,7 @@ for stock clients until proven otherwise.
 | ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
 | ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
 | ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
-| ○ | **C16** | Score tracker never shows the player's score | OPEN |
+| ● | **C16** | Score tracker never shows the player's score | DONE (verify) |
 | ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
 | ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
 | ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
@@ -197,7 +227,7 @@ for stock clients until proven otherwise.
 | ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
 | ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
 | ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
-| ○ | **C16** | Score tracker never shows the player's score | OPEN |
+| ● | **C16** | Score tracker never shows the player's score | DONE (verify) |
 | ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
 | ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
 | ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
