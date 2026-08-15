@@ -721,10 +721,102 @@ Sys_PlatformInit
 Windows specific initialisation
 ==============
 */
+/*
+==============
+Sys_Win32ExceptionFilter
+
+[QL] Write crashlog.txt on Windows.
+
+sys_unix.c has had Sys_ErrorDialog writing a crashlog for as long as this tree
+has existed; sys_win32.c has never had anything, so a hard crash on Windows -
+the platform this actually ships on - left nothing behind at all. "Does the
+server have a log file" had no good answer.
+
+An address on its own is not much use without symbols, so this reports the
+module and the offset within it. That is enough to point at which of
+quakelive.exe, cgamex86_64.dll, qagamex86_64.dll or a renderer the fault was
+in, which is the question worth answering first, and enough to line up against
+a map file or a disassembly later.
+
+Written with the Win32 file API rather than FS_FOpenFileWrite: one of the ways
+to get here is exhausting the file handles, and recursing into the filesystem
+while unwinding a crash is how a crash handler becomes a second crash.
+==============
+*/
+static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
+    static volatile LONG entered;
+
+    char path[MAX_OSPATH * 2];
+    char text[2048];
+    char moduleName[MAX_OSPATH];
+    HMODULE module = NULL;
+    DWORD_PTR offset = 0;
+    const char *homepath;
+    void *address;
+    HANDLE f;
+    DWORD written;
+    int len;
+
+    // A fault inside this handler would otherwise loop forever.
+    if (InterlockedExchange(&entered, 1) != 0) {
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+
+    address = (void *)ep->ExceptionRecord->ExceptionAddress;
+
+    Q_strncpyz(moduleName, "unknown", sizeof(moduleName));
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          (LPCSTR)address, &module) &&
+        module != NULL) {
+        char full[MAX_OSPATH];
+
+        if (GetModuleFileNameA(module, full, sizeof(full))) {
+            const char *slash = strrchr(full, '\\');
+            Q_strncpyz(moduleName, slash ? slash + 1 : full, sizeof(moduleName));
+        }
+        offset = (DWORD_PTR)address - (DWORD_PTR)module;
+    }
+
+    len = Com_sprintf(text, sizeof(text),
+                      "Quake Live crashed.\r\n\r\n"
+                      "exception : 0x%08lx\r\n"
+                      "address   : 0x%p\r\n"
+                      "module    : %s\r\n"
+                      "offset    : 0x%llx\r\n"
+                      "\r\n"
+                      "The offset is relative to the module's load address, so it stays valid\r\n"
+                      "across runs and can be matched against a build of the same revision.\r\n"
+                      "\r\n"
+                      "For the console output leading up to this, set \"logfile 2\" before\r\n"
+                      "reproducing - qconsole.log is written next to this file and flushed\r\n"
+                      "after every line, so it survives a crash.\r\n",
+                      (unsigned long)ep->ExceptionRecord->ExceptionCode, address, moduleName,
+                      (unsigned long long)offset);
+
+    homepath = Cvar_VariableString("fs_homepath");
+    if (*homepath) {
+        Com_sprintf(path, sizeof(path), "%s\\crashlog.txt", homepath);
+    } else {
+        Q_strncpyz(path, "crashlog.txt", sizeof(path));
+    }
+
+    f = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f != INVALID_HANDLE_VALUE) {
+        WriteFile(f, text, len, &written, NULL);
+        CloseHandle(f);
+    }
+
+    Sys_Print(text);
+
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
 void Sys_PlatformInit(void) {
 #ifndef DEDICATED
     TIMECAPS ptc;
 #endif
+
+    SetUnhandledExceptionFilter(Sys_Win32ExceptionFilter);
 
     Sys_SetFloatEnv();
 
