@@ -110,6 +110,9 @@ for stock clients until proven otherwise.
 | ● | **C10** | `+zoom` does nothing | DONE (verify) |
 | ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
 | ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
+| ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
+| ○ | **C14** | End-of-match summary: winner model and arena shots | OPEN |
+| ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -189,6 +192,9 @@ for stock clients until proven otherwise.
 | ● | **C10** | `+zoom` does nothing | DONE (verify) |
 | ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
 | ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
+| ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
+| ○ | **C14** | End-of-match summary: winner model and arena shots | OPEN |
+| ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -836,6 +842,69 @@ advertisement slot painted a weapon. It is now a no-op, which lets the menu
 system paint the item's own `defaultContent` — the same thing Quake Live shows
 without a live ad, and this build has no ad server (`RE_Get_Advertisements`
 reports none in both renderers).
+
+### C13. Scoreboard is empty with a full server — PARTIAL
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+With 40 players the in-game scoreboard and the end-of-match summary both draw
+no rows at all, and the client's own stats are wrong (a player with one frag was
+credited with fourteen kills).
+
+A scoreboard is **one reliable command**. `trap_SendServerCommand` lands it in
+`client->reliableCommands[][MAX_STRING_CHARS]` and it is truncated there,
+silently, at 1024 bytes. Every emitter declared its buffer at or above that
+(`char string[1400]` in FFA, `[1024]` in the other seven) and then guarded on
+`sizeof(that buffer)` — so the guard could not fire before the truncation did,
+and the command name plus three leading numbers were never counted at all.
+
+Truncation does not just drop the tail players. **The entry count is in the
+header**, so the client is told to read N players' worth of fields out of a
+string that stops mid-entry: every field past the cut is read from whatever
+follows, or from nothing. That is a scoreboard with garbage in it, which is why
+the local player's kills were wrong as well as the rows being missing.
+
+Fixed: a shared `MAX_SCOREBOARD_PAYLOAD` (`MAX_STRING_CHARS - 64`) that all
+eight emitters guard on, so the count and the entries always agree, and
+`G_ScoreboardTruncated` says once per level when players are being dropped
+instead of dropping them quietly.
+
+**Still capped at roughly 20 of 40 players**, because the message is still one
+command. Sending all of them needs chunking, and that is a protocol change:
+a continuation command (`scores_ffa2 <startIndex> <count> ...`) that our client
+accumulates and a stock Steam client ignores, leaving it showing the first chunk
+rather than garbage. Designed, not built.
+
+### C14. End-of-match summary: winner model and arena shots — OPEN
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Two faults on the match summary, neither investigated:
+
+- the winner's model draws **legs only** — no torso, no head
+- the three "Vote for Next Arena" panels are solid white
+
+The empty scoreboard on that screen is C13 and should clear with it.
+
+### C15. HUD score tracker shows 1st and 2nd, not 1st and yours — OPEN
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+The two-bar tracker top-left read 39 / 38 while the player was 40th with 1. It
+should read 39 / 1.
+
+Quake Live's `comp_hud.menu` draws it as four items, gated in pairs:
+
+```
+OpponentInFirst      CG_1STPLACE      CG_SHOW_IF_PLYR_IS_NOT_FIRST_PLACE
+OpponentTrailingMe   CG_2NDPLACE      CG_SHOW_IF_PLYR_IS_FIRST_PLACE
+MyScoreWhenTrailing  CG_PLAYER_SCORE  CG_SHOW_IF_PLYR_IS_NOT_FIRST_PLACE
+MyScoreWhenInFirst   CG_PLAYER_SCORE  CG_SHOW_IF_PLYR_IS_FIRST_PLACE
+```
+
+So a trailing player should get 1STPLACE over PLAYER_SCORE. Seeing 1st and 2nd
+means the `IF_PLYR_IS_FIRST_PLACE` half is drawing when it should not.
+`CG_OwnerDrawVisible` tests `PERS_RANK == 0` for first place and returns qfalse
+by default, both of which look right, so the fault is not located yet —
+`PERS_RANK` itself, or which HUD file is actually loaded (`hud3.menu` lays these
+out differently from `comp_hud.menu`), are the two things to check next.
 
 ### C3. Weapon viewmodel barely visible — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only

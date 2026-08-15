@@ -589,7 +589,7 @@ void ClanArenaStatisticsMessage(gentity_t *ent) {
             Com_sprintf(entry, sizeof(entry), " %i %i",
                         weapAcc, cl->expandedStats.numWeaponKills[w]);
             j = strlen(entry);
-            if (stringlength + j >= (int)sizeof(string))
+            if (G_ScoreboardTruncated(stringlength + j, i))
                 break;
             strcpy(string + stringlength, entry);
             stringlength += j;
@@ -656,7 +656,7 @@ void ClanArenaScoreboardMessage(gentity_t *ent) {
                     cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
                     perfect, alive);
         j = strlen(entry);
-        if (stringlength + j >= (int)sizeof(string))
+        if (G_ScoreboardTruncated(stringlength + j, i))
             break;
         strcpy(string + stringlength, entry);
         stringlength += j;

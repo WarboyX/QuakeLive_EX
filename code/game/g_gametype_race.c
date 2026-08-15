@@ -65,7 +65,7 @@ void RaceScoreboardMessage(gentity_t *ent) {
                     level.sortedClients[i], bestTime, ping,
                     (level.time - cl->pers.enterTime) / 60000);
         j = strlen(entry);
-        if (stringlength + j >= sizeof(string)) {
+        if (G_ScoreboardTruncated(stringlength + j, i)) {
             break;
         }
         strcpy(string + stringlength, entry);

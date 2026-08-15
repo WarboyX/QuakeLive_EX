@@ -1047,6 +1047,29 @@ void BotTestAAS(vec3_t origin);
 
 extern level_locals_t level;
 extern gentity_t g_entities[MAX_GENTITIES];
+/*
+[QL] How much scoreboard payload fits in one reliable command.
+
+A scoreboard message is sent with trap_SendServerCommand, which lands in
+client->reliableCommands[][MAX_STRING_CHARS] and is truncated there without a
+word to anyone. Every emitter sized its buffer at or above MAX_STRING_CHARS and
+then guarded on sizeof(that buffer), so the guard could not fire before the
+truncation did - and the command name plus the three leading numbers were never
+counted at all.
+
+Truncation does not merely drop the tail players. The count of entries is sent
+in the header, so the client is told to read N players' worth of fields out of a
+string that stops mid-entry: every field after the cut is read from whatever
+comes next, or from nothing. That is a scoreboard with garbage in it, not a
+short one.
+
+64 bytes of headroom covers "scores_ffa " plus three ints and the separators,
+with room to spare.
+*/
+#define MAX_SCOREBOARD_PAYLOAD (MAX_STRING_CHARS - 64)
+
+qboolean G_ScoreboardTruncated(int wouldBe, int sent);
+
 extern gclient_t g_clients[MAX_CLIENTS];
 extern gameImport_t *imports;  // [QL] engine syscall table
 

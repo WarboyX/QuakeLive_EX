@@ -136,7 +136,7 @@ void TeamDeathmatchScoreboardMessage(gentity_t *ent) {
                     cl->expandedStats.numTeamKilled,
                     cl->expandedStats.totalDamageDealt);
         j = strlen(entry);
-        if (stringlength + j >= (int)sizeof(string))
+        if (G_ScoreboardTruncated(stringlength + j, i))
             return;     // byte-faithful: on overflow the QL builder returns NULL
                         // (nothing sent). Caller's FFA fallback is handled in Cmd_Score.
         strcpy(string + stringlength, entry);

@@ -89,7 +89,7 @@ void FreeForAllScoreboardMessage(gentity_t* ent) {
                     bestWeaponAccuracy,
                     damageDone);
         j = strlen(entry);
-        if (stringlength + j >= sizeof(string))
+        if (G_ScoreboardTruncated(stringlength + j, i))
             break;
         strcpy(string + stringlength, entry);
         stringlength += j;
@@ -141,7 +141,7 @@ void FFAScoreboardMessage_impl(void) {
                     cl->expandedStats.numKills,
                     cl->expandedStats.numDeaths);
         j = strlen(entry);
-        if (stringlength + j >= (int)sizeof(string))
+        if (G_ScoreboardTruncated(stringlength + j, i))
             break;
         strcpy(string + stringlength, entry);
         stringlength += j;

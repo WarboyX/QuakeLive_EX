@@ -1192,6 +1192,41 @@ void QDECL G_Printf(const char* fmt, ...) {
     trap_Print(text);
 }
 
+/*
+===============
+G_ScoreboardTruncated
+
+[QL] True when the next scoreboard entry will not fit, and says so once.
+
+Truncation here is not cosmetic. The entry count goes in the message header, so
+a client told about N players will read N players' worth of fields out of a
+string that stops mid-entry - every field past the cut comes from whatever
+follows, or from nothing. A scoreboard that is short is a bug; a scoreboard
+full of numbers that were never sent is a worse one, and it looked like scoring
+was broken rather than like a message that did not fit.
+
+Once per level: this is called per player per scoreboard request, and a
+scoreboard is requested every time anyone holds TAB.
+===============
+*/
+qboolean G_ScoreboardTruncated(int wouldBe, int sent) {
+    static int reportedAtLevelTime;
+
+    if (wouldBe < MAX_SCOREBOARD_PAYLOAD) {
+        return qfalse;
+    }
+
+    if (reportedAtLevelTime != level.startTime) {
+        reportedAtLevelTime = level.startTime;
+        G_Printf(S_COLOR_YELLOW "WARNING: the scoreboard does not fit in one reliable command "
+                 "(%d of %d players sent, %d byte limit). Players past that point are missing "
+                 "from every client's scoreboard.\n",
+                 sent, level.numConnectedClients, MAX_SCOREBOARD_PAYLOAD);
+    }
+
+    return qtrue;
+}
+
 void QDECL G_Error(const char* fmt, ...) {
     va_list argptr;
     char text[1024];

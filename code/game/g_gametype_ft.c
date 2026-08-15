@@ -908,7 +908,7 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
                     cl->expandedStats.totalDamageDealt,
                     alive);
         j = strlen(entry);
-        if (stringlength + j >= (int)sizeof(string))
+        if (G_ScoreboardTruncated(stringlength + j, i))
             break;
         strcpy(string + stringlength, entry);
         stringlength += j;
