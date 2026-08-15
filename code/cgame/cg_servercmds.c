@@ -391,7 +391,15 @@ static void CG_ParseScores_Ft(void) {
         sp->impressiveCount = atoi(CG_Argv(i++));
         sp->excellentCount = atoi(CG_Argv(i++));
         sp->guantletCount = atoi(CG_Argv(i++));
+        // [QL] The emitter (g_gametype_ft.c) writes 17 fields and this read 16:
+        // PERS_ASSIST_COUNT (which in Freeze Tag *is* the thaw count - thawing a
+        // teammate awards an assist), then numTeamKills, numTeamKilled,
+        // totalDamageDealt, alive. numTeamKills was missing here, so everything
+        // from this point shifted by one: tkd showed team kills, damage showed
+        // team-kill deaths, and alive got the damage figure - which made every
+        // player read as alive.
         sp->thaws = atoi(CG_Argv(i++));
+        sp->tks = atoi(CG_Argv(i++));
         sp->tkd = atoi(CG_Argv(i++));
         i++;  // unknown field
         sp->damageDone = atoi(CG_Argv(i++));
@@ -522,8 +530,11 @@ static void CG_ParseSmScores(void) {
         sp->score = atoi(CG_Argv(i++));
         sp->ping = atoi(CG_Argv(i++));
         sp->time = atoi(CG_Argv(i++));
-        i++;  // unknown
-        i++;  // unknown
+        // [QL] Not unknown: the emitter (FFAScoreboardMessage_impl in
+        // g_gametype_ffa.c) writes PERS_CAPTURES and the alive flag here, and
+        // score_t has a field for each. They were being skipped.
+        sp->captures = atoi(CG_Argv(i++));
+        sp->alive = atoi(CG_Argv(i++));
         sp->frags = atoi(CG_Argv(i++));
         sp->deaths = atoi(CG_Argv(i++));
         sp->net = sp->frags - sp->deaths;

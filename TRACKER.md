@@ -949,7 +949,33 @@ field as "powerups", which is presumably how the parser and the emitter drifted
 apart — the parser followed the comment rather than the code that writes the
 message. Both corrected.
 
-That accounts for the accuracy column. **K/D and damage are still open** — those
+**Full audit of every scoreboard verb**, emitter format against parser reads,
+after being asked to check them all rather than the one that was reported:
+
+| verb | emitter fields | parser reads | result |
+|---|---|---|---|
+| `scores_ffa` | 18 | 18 | field 17 was misread — **fixed** |
+| `smscores` | 8 | 6 + 2 skipped | captures and alive were skipped as "unknown" — **fixed** |
+| `scores_tdm` | 15 | 15 | aligned |
+| `scores_ca` | 16 | 16 | aligned |
+| `scores_ctf` | 17 | 17 | aligned |
+| `scores_ft` | 17 | **16** | one field short — **fixed** |
+| `scores_rr` | 19 | 19 | aligned |
+| `scores_race` | 4 | 4 | aligned |
+
+**Freeze Tag was a whole shifted tail.** The emitter writes
+`... GAUNTLET, ASSIST_COUNT, numTeamKills, numTeamKilled, totalDamageDealt,
+alive` and the parser read one fewer, missing `numTeamKills`. So team-kill
+deaths showed team kills, damage showed team-kill deaths, and `alive` was
+handed the damage figure — which made every player read as alive. (In Freeze
+Tag the assist count *is* the thaw count: thawing a teammate awards an assist.)
+
+`smscores`, the compact end-of-match FFA form, skipped two fields with
+`i++; // unknown`. They are `PERS_CAPTURES` and the alive flag, and `score_t`
+has a field for each.
+
+That accounts for the accuracy column and two more gametypes. **K/D and damage
+in FFA are still open** — those
 fields (14, 15 and 18) do line up between emitter and parser, so the numbers
 themselves are what is wrong, not where they are read from.
 
