@@ -1070,6 +1070,18 @@ with room to spare.
 
 qboolean G_ScoreboardTruncated(int wouldBe, int sent);
 
+/*
+[QL] Payload budget for an emitter whose header is not three small numbers.
+
+MAX_SCOREBOARD_PAYLOAD assumes the FFA header. The team gametypes put far more
+in front of the entries - scores_tdm leads with twenty-eight team totals, some
+of them possession times in milliseconds - and for those a fixed 64 bytes of
+headroom is not headroom at all. Pass the length of the header actually built
+and get back what is left for entries, with a margin for the count and the two
+team scores that are appended after it.
+*/
+int G_ScoreboardBudget(int headerLength);
+
 extern gclient_t g_clients[MAX_CLIENTS];
 extern gameImport_t *imports;  // [QL] engine syscall table
 

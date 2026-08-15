@@ -104,6 +104,8 @@ index just past them, so a caller can walk a list of entries without having to
 know how wide one is - which is how the parser and the emitter drifted apart in
 the first place.
 */
+typedef int (*scoreEntryParser_t)(score_t *sp, int idx);
+
 static int CG_ParseScoreEntry_Ffa(score_t *sp, int idx) {
     sp->client = atoi(CG_Argv(idx++));
     sp->score = atoi(CG_Argv(idx++));
@@ -160,10 +162,10 @@ static void CG_ParseScores_Ffa(void) {
 
 /*
 =================
-CG_ParseScores_FfaCont
+CG_ParseScoresCont
 
-[QL] "scores_ffa2 <startIndex> <count> <entries...>" - the rest of a scoreboard
-that did not fit in one reliable command.
+[QL] "scores_<gametype>2 <startIndex> <count> <entries...>" - the rest of a
+scoreboard that did not fit in one reliable command.
 
 A reliable command is capped at MAX_STRING_CHARS, which is about twenty players'
 worth of these 18 fields, so a full server's scoreboard cannot be sent as one
@@ -175,14 +177,19 @@ knows nothing about continuations. So the first message keeps the original form
 and reports only the entries *it* carries - a stock client renders that and is
 short but correct, exactly as it is today. Continuations arrive under a name it
 does not recognise and are ignored there; here they extend the list.
+
+One function for every gametype: the continuation header is the same shape in
+all of them and only the per-entry reader differs, so that is what gets passed
+in - the same reader the first message uses, which is the point. The two used to
+drift apart because each was written out longhand.
 =================
 */
-static void CG_ParseScores_FfaCont(void) {
+static void CG_ParseScoresCont(scoreEntryParser_t parse) {
     int i, idx;
     int start = atoi(CG_Argv(1));
     int count = atoi(CG_Argv(2));
 
-    if (start < 0 || start > MAX_CLIENTS) {
+    if (start < 0 || start >= MAX_CLIENTS) {
         return;
     }
     if (count < 0 || start + count > MAX_CLIENTS) {
@@ -190,12 +197,12 @@ static void CG_ParseScores_FfaCont(void) {
     }
 
     idx = 3;
-    for (i = 0; i < count; i++) {
-        idx = CG_ParseScoreEntry_Ffa(&cg.scores[start + i], idx);
+    for (i = 0; i < count && *CG_Argv(idx); i++) {
+        idx = parse(&cg.scores[start + i], idx);
     }
 
-    if (start + count > cg.numScores) {
-        cg.numScores = start + count;
+    if (start + i > cg.numScores) {
+        cg.numScores = start + i;
     }
     CG_SetScoreSelection(NULL);
 }
@@ -207,6 +214,34 @@ CG_ParseScores_Tdm
 [QL] scores_tdm: 28-field team header + 16 fields per player
 =================
 */
+/* [QL] one player's 15 fields, shared by scores_tdm and its continuations */
+static int CG_ParseScoreEntry_Tdm(score_t *sp, int i) {
+    sp->client = atoi(CG_Argv(i++));
+    sp->team = atoi(CG_Argv(i++));
+    sp->score = atoi(CG_Argv(i++));
+    sp->ping = atoi(CG_Argv(i++));
+    sp->time = atoi(CG_Argv(i++));
+    sp->frags = atoi(CG_Argv(i++));
+    sp->deaths = atoi(CG_Argv(i++));
+    sp->accuracy = atoi(CG_Argv(i++));
+    sp->bestWeapon = atoi(CG_Argv(i++));
+    sp->impressiveCount = atoi(CG_Argv(i++));
+    sp->excellentCount = atoi(CG_Argv(i++));
+    sp->guantletCount = atoi(CG_Argv(i++));
+    sp->tks = atoi(CG_Argv(i++));
+    sp->tkd = atoi(CG_Argv(i++));
+    sp->damageDone = atoi(CG_Argv(i++));
+    sp->net = sp->frags - sp->deaths;
+
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    cgs.clientinfo[sp->client].score = sp->score;
+    cgs.clientinfo[sp->client].team = sp->team;
+
+    return i;
+}
+
 static void CG_ParseScores_Tdm(void) {
     int i, n;
     tdmScoreHeader_t *h = &cg.tdmScoreHeader;
@@ -239,29 +274,7 @@ static void CG_ParseScores_Tdm(void) {
 
     memset(cg.scores, 0, sizeof(cg.scores));
     for (n = 0; n < cg.numScores && *CG_Argv(i); n++) {
-        score_t *sp = &cg.scores[n];
-        sp->client = atoi(CG_Argv(i++));
-        sp->team = atoi(CG_Argv(i++));
-        sp->score = atoi(CG_Argv(i++));
-        sp->ping = atoi(CG_Argv(i++));
-        sp->time = atoi(CG_Argv(i++));
-        sp->frags = atoi(CG_Argv(i++));
-        sp->deaths = atoi(CG_Argv(i++));
-        sp->accuracy = atoi(CG_Argv(i++));
-        sp->bestWeapon = atoi(CG_Argv(i++));
-        sp->impressiveCount = atoi(CG_Argv(i++));
-        sp->excellentCount = atoi(CG_Argv(i++));
-        sp->guantletCount = atoi(CG_Argv(i++));
-        sp->tks = atoi(CG_Argv(i++));
-        sp->tkd = atoi(CG_Argv(i++));
-        sp->damageDone = atoi(CG_Argv(i++));
-        sp->net = sp->frags - sp->deaths;
-
-        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
-            sp->client = 0;
-        }
-        cgs.clientinfo[sp->client].score = sp->score;
-        cgs.clientinfo[sp->client].team = sp->team;
+        i = CG_ParseScoreEntry_Tdm(&cg.scores[n], i);
     }
     cg.numScores = n;
     CG_SetScoreSelection(NULL);
@@ -274,6 +287,35 @@ CG_ParseScores_Ca
 [QL] scores_ca: 16 fields per player (no team header)
 =================
 */
+/* [QL] one player's 16 fields, shared by scores_ca and its continuations */
+static int CG_ParseScoreEntry_Ca(score_t *sp, int i) {
+    sp->client = atoi(CG_Argv(i++));
+    sp->team = atoi(CG_Argv(i++));
+    sp->score = atoi(CG_Argv(i++));
+    sp->ping = atoi(CG_Argv(i++));
+    sp->time = atoi(CG_Argv(i++));
+    sp->frags = atoi(CG_Argv(i++));
+    sp->deaths = atoi(CG_Argv(i++));
+    sp->accuracy = atoi(CG_Argv(i++));
+    sp->bestWeapon = atoi(CG_Argv(i++));
+    sp->bestWeaponAccuracy = atoi(CG_Argv(i++));
+    sp->damageDone = atoi(CG_Argv(i++));
+    sp->impressiveCount = atoi(CG_Argv(i++));
+    sp->excellentCount = atoi(CG_Argv(i++));
+    sp->guantletCount = atoi(CG_Argv(i++));
+    sp->perfect = atoi(CG_Argv(i++));
+    sp->alive = atoi(CG_Argv(i++));
+    sp->net = sp->frags - sp->deaths;
+
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    cgs.clientinfo[sp->client].score = sp->score;
+    cgs.clientinfo[sp->client].team = sp->team;
+
+    return i;
+}
+
 static void CG_ParseScores_Ca(void) {
     int i, n;
 
@@ -287,30 +329,7 @@ static void CG_ParseScores_Ca(void) {
 
     memset(cg.scores, 0, sizeof(cg.scores));
     for (n = 0; n < cg.numScores && *CG_Argv(i); n++) {
-        score_t *sp = &cg.scores[n];
-        sp->client = atoi(CG_Argv(i++));
-        sp->team = atoi(CG_Argv(i++));
-        sp->score = atoi(CG_Argv(i++));
-        sp->ping = atoi(CG_Argv(i++));
-        sp->time = atoi(CG_Argv(i++));
-        sp->frags = atoi(CG_Argv(i++));
-        sp->deaths = atoi(CG_Argv(i++));
-        sp->accuracy = atoi(CG_Argv(i++));
-        sp->bestWeapon = atoi(CG_Argv(i++));
-        sp->bestWeaponAccuracy = atoi(CG_Argv(i++));
-        sp->damageDone = atoi(CG_Argv(i++));
-        sp->impressiveCount = atoi(CG_Argv(i++));
-        sp->excellentCount = atoi(CG_Argv(i++));
-        sp->guantletCount = atoi(CG_Argv(i++));
-        sp->perfect = atoi(CG_Argv(i++));
-        sp->alive = atoi(CG_Argv(i++));
-        sp->net = sp->frags - sp->deaths;
-
-        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
-            sp->client = 0;
-        }
-        cgs.clientinfo[sp->client].score = sp->score;
-        cgs.clientinfo[sp->client].team = sp->team;
+        i = CG_ParseScoreEntry_Ca(&cg.scores[n], i);
     }
     cg.numScores = n;
     CG_SetScoreSelection(NULL);
@@ -323,6 +342,36 @@ CG_ParseScores_Ctf
 [QL] scores_ctf: 34-field team header + 19 fields per player
 =================
 */
+/* [QL] one player's 17 fields, shared by scores_ctf and its continuations */
+static int CG_ParseScoreEntry_Ctf(score_t *sp, int i) {
+    sp->client = atoi(CG_Argv(i++));
+    sp->team = atoi(CG_Argv(i++));
+    sp->score = atoi(CG_Argv(i++));
+    sp->ping = atoi(CG_Argv(i++));
+    sp->time = atoi(CG_Argv(i++));
+    sp->frags = atoi(CG_Argv(i++));
+    sp->deaths = atoi(CG_Argv(i++));
+    sp->accuracy = atoi(CG_Argv(i++));
+    sp->bestWeapon = atoi(CG_Argv(i++));
+    sp->impressiveCount = atoi(CG_Argv(i++));
+    sp->excellentCount = atoi(CG_Argv(i++));
+    sp->guantletCount = atoi(CG_Argv(i++));
+    sp->defendCount = atoi(CG_Argv(i++));
+    sp->assistCount = atoi(CG_Argv(i++));
+    sp->captures = atoi(CG_Argv(i++));
+    sp->perfect = atoi(CG_Argv(i++));
+    sp->alive = atoi(CG_Argv(i++));
+    sp->net = sp->frags - sp->deaths;
+
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    cgs.clientinfo[sp->client].score = sp->score;
+    cgs.clientinfo[sp->client].team = sp->team;
+
+    return i;
+}
+
 static void CG_ParseScores_Ctf(void) {
     int i, n;
     ctfScoreHeader_t *h = &cg.ctfScoreHeader;
@@ -357,31 +406,7 @@ static void CG_ParseScores_Ctf(void) {
 
     memset(cg.scores, 0, sizeof(cg.scores));
     for (n = 0; n < cg.numScores && *CG_Argv(i); n++) {
-        score_t *sp = &cg.scores[n];
-        sp->client = atoi(CG_Argv(i++));
-        sp->team = atoi(CG_Argv(i++));
-        sp->score = atoi(CG_Argv(i++));
-        sp->ping = atoi(CG_Argv(i++));
-        sp->time = atoi(CG_Argv(i++));
-        sp->frags = atoi(CG_Argv(i++));
-        sp->deaths = atoi(CG_Argv(i++));
-        sp->accuracy = atoi(CG_Argv(i++));
-        sp->bestWeapon = atoi(CG_Argv(i++));
-        sp->impressiveCount = atoi(CG_Argv(i++));
-        sp->excellentCount = atoi(CG_Argv(i++));
-        sp->guantletCount = atoi(CG_Argv(i++));
-        sp->defendCount = atoi(CG_Argv(i++));
-        sp->assistCount = atoi(CG_Argv(i++));
-        sp->captures = atoi(CG_Argv(i++));
-        sp->perfect = atoi(CG_Argv(i++));
-        sp->alive = atoi(CG_Argv(i++));
-        sp->net = sp->frags - sp->deaths;
-
-        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
-            sp->client = 0;
-        }
-        cgs.clientinfo[sp->client].score = sp->score;
-        cgs.clientinfo[sp->client].team = sp->team;
+        i = CG_ParseScoreEntry_Ctf(&cg.scores[n], i);
     }
     cg.numScores = n;
     CG_SetScoreSelection(NULL);
@@ -394,6 +419,44 @@ CG_ParseScores_Ft
 [QL] scores_ft: same team header as TDM (28 fields) + 17 fields per player (includes thaws)
 =================
 */
+/* [QL] one player's 17 fields, shared by scores_ft and its continuations */
+static int CG_ParseScoreEntry_Ft(score_t *sp, int i) {
+    sp->client = atoi(CG_Argv(i++));
+    sp->team = atoi(CG_Argv(i++));
+    sp->score = atoi(CG_Argv(i++));
+    sp->ping = atoi(CG_Argv(i++));
+    sp->time = atoi(CG_Argv(i++));
+    sp->frags = atoi(CG_Argv(i++));
+    sp->deaths = atoi(CG_Argv(i++));
+    sp->accuracy = atoi(CG_Argv(i++));
+    sp->bestWeapon = atoi(CG_Argv(i++));
+    sp->impressiveCount = atoi(CG_Argv(i++));
+    sp->excellentCount = atoi(CG_Argv(i++));
+    sp->guantletCount = atoi(CG_Argv(i++));
+    // [QL] The emitter (g_gametype_ft.c) writes 17 fields and this read 16:
+    // PERS_ASSIST_COUNT (which in Freeze Tag *is* the thaw count - thawing a
+    // teammate awards an assist), then numTeamKills, numTeamKilled,
+    // totalDamageDealt, alive. numTeamKills was missing here, so everything
+    // from this point shifted by one: tkd showed team kills, damage showed
+    // team-kill deaths, and alive got the damage figure - which made every
+    // player read as alive.
+    sp->thaws = atoi(CG_Argv(i++));
+    sp->tks = atoi(CG_Argv(i++));
+    sp->tkd = atoi(CG_Argv(i++));
+    i++;  // unknown field
+    sp->damageDone = atoi(CG_Argv(i++));
+    sp->alive = atoi(CG_Argv(i++));
+    sp->net = sp->frags - sp->deaths;
+
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    cgs.clientinfo[sp->client].score = sp->score;
+    cgs.clientinfo[sp->client].team = sp->team;
+
+    return i;
+}
+
 static void CG_ParseScores_Ft(void) {
     int i, n;
     tdmScoreHeader_t *h = &cg.tdmScoreHeader;
@@ -426,39 +489,7 @@ static void CG_ParseScores_Ft(void) {
 
     memset(cg.scores, 0, sizeof(cg.scores));
     for (n = 0; n < cg.numScores && *CG_Argv(i); n++) {
-        score_t *sp = &cg.scores[n];
-        sp->client = atoi(CG_Argv(i++));
-        sp->team = atoi(CG_Argv(i++));
-        sp->score = atoi(CG_Argv(i++));
-        sp->ping = atoi(CG_Argv(i++));
-        sp->time = atoi(CG_Argv(i++));
-        sp->frags = atoi(CG_Argv(i++));
-        sp->deaths = atoi(CG_Argv(i++));
-        sp->accuracy = atoi(CG_Argv(i++));
-        sp->bestWeapon = atoi(CG_Argv(i++));
-        sp->impressiveCount = atoi(CG_Argv(i++));
-        sp->excellentCount = atoi(CG_Argv(i++));
-        sp->guantletCount = atoi(CG_Argv(i++));
-        // [QL] The emitter (g_gametype_ft.c) writes 17 fields and this read 16:
-        // PERS_ASSIST_COUNT (which in Freeze Tag *is* the thaw count - thawing a
-        // teammate awards an assist), then numTeamKills, numTeamKilled,
-        // totalDamageDealt, alive. numTeamKills was missing here, so everything
-        // from this point shifted by one: tkd showed team kills, damage showed
-        // team-kill deaths, and alive got the damage figure - which made every
-        // player read as alive.
-        sp->thaws = atoi(CG_Argv(i++));
-        sp->tks = atoi(CG_Argv(i++));
-        sp->tkd = atoi(CG_Argv(i++));
-        i++;  // unknown field
-        sp->damageDone = atoi(CG_Argv(i++));
-        sp->alive = atoi(CG_Argv(i++));
-        sp->net = sp->frags - sp->deaths;
-
-        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
-            sp->client = 0;
-        }
-        cgs.clientinfo[sp->client].score = sp->score;
-        cgs.clientinfo[sp->client].team = sp->team;
+        i = CG_ParseScoreEntry_Ft(&cg.scores[n], i);
     }
     cg.numScores = n;
     CG_SetScoreSelection(NULL);
@@ -471,6 +502,41 @@ CG_ParseScores_Rr
 [QL] scores_rr: 19 fields per player (includes roundScore)
 =================
 */
+/* [QL] one player's 19 fields, shared by scores_rr and its continuations */
+static int CG_ParseScoreEntry_Rr(score_t *sp, int idx) {
+    sp->client = atoi(CG_Argv(idx++));
+    sp->score = atoi(CG_Argv(idx++));
+    sp->roundScore = atoi(CG_Argv(idx++));
+    sp->ping = atoi(CG_Argv(idx++));
+    sp->time = atoi(CG_Argv(idx++));
+    sp->frags = atoi(CG_Argv(idx++));
+    sp->deaths = atoi(CG_Argv(idx++));
+    sp->accuracy = atoi(CG_Argv(idx++));
+    sp->bestWeapon = atoi(CG_Argv(idx++));
+    sp->bestWeaponAccuracy = atoi(CG_Argv(idx++));
+    // [QL] binary CG_ParseScores_RR (0x10047de0): damageDone is argv 14
+    // (right after bestWeaponAccuracy), NOT last. The award/pickup block
+    // follows it. Reading impressive here shifted every field by one.
+    sp->damageDone = atoi(CG_Argv(idx++));
+    sp->impressiveCount = atoi(CG_Argv(idx++));
+    sp->excellentCount = atoi(CG_Argv(idx++));
+    sp->guantletCount = atoi(CG_Argv(idx++));
+    sp->defendCount = atoi(CG_Argv(idx++));
+    sp->assistCount = atoi(CG_Argv(idx++));
+    sp->perfect = atoi(CG_Argv(idx++));
+    sp->captures = atoi(CG_Argv(idx++));
+    sp->alive = atoi(CG_Argv(idx++));
+    sp->net = sp->frags - sp->deaths;
+
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    cgs.clientinfo[sp->client].score = sp->score;
+    sp->team = cgs.clientinfo[sp->client].team;
+
+    return idx;
+}
+
 static void CG_ParseScores_Rr(void) {
     int n, idx;
 
@@ -483,37 +549,8 @@ static void CG_ParseScores_Rr(void) {
 
     idx = 4;
     memset(cg.scores, 0, sizeof(cg.scores));
-    for (n = 0; n < cg.numScores; n++) {
-        score_t *sp = &cg.scores[n];
-        sp->client = atoi(CG_Argv(idx++));
-        sp->score = atoi(CG_Argv(idx++));
-        sp->roundScore = atoi(CG_Argv(idx++));
-        sp->ping = atoi(CG_Argv(idx++));
-        sp->time = atoi(CG_Argv(idx++));
-        sp->frags = atoi(CG_Argv(idx++));
-        sp->deaths = atoi(CG_Argv(idx++));
-        sp->accuracy = atoi(CG_Argv(idx++));
-        sp->bestWeapon = atoi(CG_Argv(idx++));
-        sp->bestWeaponAccuracy = atoi(CG_Argv(idx++));
-        // [QL] binary CG_ParseScores_RR (0x10047de0): damageDone is argv 14
-        // (right after bestWeaponAccuracy), NOT last. The award/pickup block
-        // follows it. Reading impressive here shifted every field by one.
-        sp->damageDone = atoi(CG_Argv(idx++));
-        sp->impressiveCount = atoi(CG_Argv(idx++));
-        sp->excellentCount = atoi(CG_Argv(idx++));
-        sp->guantletCount = atoi(CG_Argv(idx++));
-        sp->defendCount = atoi(CG_Argv(idx++));
-        sp->assistCount = atoi(CG_Argv(idx++));
-        sp->perfect = atoi(CG_Argv(idx++));
-        sp->captures = atoi(CG_Argv(idx++));
-        sp->alive = atoi(CG_Argv(idx++));
-        sp->net = sp->frags - sp->deaths;
-
-        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
-            sp->client = 0;
-        }
-        cgs.clientinfo[sp->client].score = sp->score;
-        sp->team = cgs.clientinfo[sp->client].team;
+    for (n = 0; n < cg.numScores && *CG_Argv(idx); n++) {
+        idx = CG_ParseScoreEntry_Rr(&cg.scores[n], idx);
     }
     cg.numScores = n;
     CG_SetScoreSelection(NULL);
@@ -526,6 +563,22 @@ CG_ParseScores_Race
 [QL] scores_race: 4 fields per player (minimal)
 =================
 */
+/* [QL] one player's 4 fields, shared by scores_race and its continuations */
+static int CG_ParseScoreEntry_Race(score_t *sp, int i) {
+    sp->client = atoi(CG_Argv(i++));
+    sp->score = atoi(CG_Argv(i++));
+    sp->ping = atoi(CG_Argv(i++));
+    sp->time = atoi(CG_Argv(i++));
+
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    cgs.clientinfo[sp->client].score = sp->score;
+    sp->team = cgs.clientinfo[sp->client].team;
+
+    return i;
+}
+
 static void CG_ParseScores_Race(void) {
     int i, n;
 
@@ -537,17 +590,7 @@ static void CG_ParseScores_Race(void) {
     i = 2;
     memset(cg.scores, 0, sizeof(cg.scores));
     for (n = 0; n < cg.numScores && *CG_Argv(i); n++) {
-        score_t *sp = &cg.scores[n];
-        sp->client = atoi(CG_Argv(i++));
-        sp->score = atoi(CG_Argv(i++));
-        sp->ping = atoi(CG_Argv(i++));
-        sp->time = atoi(CG_Argv(i++));
-
-        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
-            sp->client = 0;
-        }
-        cgs.clientinfo[sp->client].score = sp->score;
-        sp->team = cgs.clientinfo[sp->client].team;
+        i = CG_ParseScoreEntry_Race(&cg.scores[n], i);
     }
     cg.numScores = n;
     CG_SetScoreSelection(NULL);
@@ -560,6 +603,30 @@ CG_ParseSmScores
 [QL] smscores: compact 8-field per player format
 =================
 */
+/* [QL] one player's 8 fields, shared by smscores and its continuations */
+static int CG_ParseScoreEntry_Sm(score_t *sp, int i) {
+    sp->client = atoi(CG_Argv(i++));
+    sp->score = atoi(CG_Argv(i++));
+    sp->ping = atoi(CG_Argv(i++));
+    sp->time = atoi(CG_Argv(i++));
+    // [QL] Not unknown: the emitter (FFAScoreboardMessage_impl in
+    // g_gametype_ffa.c) writes PERS_CAPTURES and the alive flag here, and
+    // score_t has a field for each. They were being skipped.
+    sp->captures = atoi(CG_Argv(i++));
+    sp->alive = atoi(CG_Argv(i++));
+    sp->frags = atoi(CG_Argv(i++));
+    sp->deaths = atoi(CG_Argv(i++));
+    sp->net = sp->frags - sp->deaths;
+
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    cgs.clientinfo[sp->client].score = sp->score;
+    sp->team = cgs.clientinfo[sp->client].team;
+
+    return i;
+}
+
 static void CG_ParseSmScores(void) {
     int i, n;
 
@@ -573,25 +640,7 @@ static void CG_ParseSmScores(void) {
     i = 4;
     memset(cg.scores, 0, sizeof(cg.scores));
     for (n = 0; n < cg.numScores && *CG_Argv(i); n++) {
-        score_t *sp = &cg.scores[n];
-        sp->client = atoi(CG_Argv(i++));
-        sp->score = atoi(CG_Argv(i++));
-        sp->ping = atoi(CG_Argv(i++));
-        sp->time = atoi(CG_Argv(i++));
-        // [QL] Not unknown: the emitter (FFAScoreboardMessage_impl in
-        // g_gametype_ffa.c) writes PERS_CAPTURES and the alive flag here, and
-        // score_t has a field for each. They were being skipped.
-        sp->captures = atoi(CG_Argv(i++));
-        sp->alive = atoi(CG_Argv(i++));
-        sp->frags = atoi(CG_Argv(i++));
-        sp->deaths = atoi(CG_Argv(i++));
-        sp->net = sp->frags - sp->deaths;
-
-        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
-            sp->client = 0;
-        }
-        cgs.clientinfo[sp->client].score = sp->score;
-        sp->team = cgs.clientinfo[sp->client].team;
+        i = CG_ParseScoreEntry_Sm(&cg.scores[n], i);
     }
     cg.numScores = n;
     CG_SetScoreSelection(NULL);
@@ -2170,8 +2219,38 @@ static void CG_ServerCommand(void) {
         CG_ParseScores_Race();
         return;
     }
+    // [QL] continuations - the players who did not fit in the first message.
+    // A stock Steam client has no handler for these and drops them.
     if (!strcmp(cmd, "scores_ffa2")) {
-        CG_ParseScores_FfaCont();
+        CG_ParseScoresCont(CG_ParseScoreEntry_Ffa);
+        return;
+    }
+    if (!strcmp(cmd, "scores_tdm2")) {
+        CG_ParseScoresCont(CG_ParseScoreEntry_Tdm);
+        return;
+    }
+    if (!strcmp(cmd, "scores_ca2")) {
+        CG_ParseScoresCont(CG_ParseScoreEntry_Ca);
+        return;
+    }
+    if (!strcmp(cmd, "scores_ctf2")) {
+        CG_ParseScoresCont(CG_ParseScoreEntry_Ctf);
+        return;
+    }
+    if (!strcmp(cmd, "scores_ft2")) {
+        CG_ParseScoresCont(CG_ParseScoreEntry_Ft);
+        return;
+    }
+    if (!strcmp(cmd, "scores_rr2")) {
+        CG_ParseScoresCont(CG_ParseScoreEntry_Rr);
+        return;
+    }
+    if (!strcmp(cmd, "scores_race2")) {
+        CG_ParseScoresCont(CG_ParseScoreEntry_Race);
+        return;
+    }
+    if (!strcmp(cmd, "smscores2")) {
+        CG_ParseScoresCont(CG_ParseScoreEntry_Sm);
         return;
     }
 

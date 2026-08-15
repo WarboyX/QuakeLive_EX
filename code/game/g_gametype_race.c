@@ -30,8 +30,10 @@ Address: 0x1003dd80
 */
 void RaceScoreboardMessage(gentity_t *ent) {
     char entry[1024];
-    char string[1024];
+    char string[MAX_STRING_CHARS];
     int stringlength;
+    int chunkStart, numInChunk;
+    qboolean firstChunk;
     int i, j;
     gclient_t *cl;
     int numSorted;
@@ -44,6 +46,9 @@ void RaceScoreboardMessage(gentity_t *ent) {
 
     string[0] = 0;
     stringlength = 0;
+    chunkStart = 0;
+    numInChunk = 0;
+    firstChunk = qtrue;
     numSorted = level.numConnectedClients;
 
     for (i = 0; i < numSorted; i++) {
@@ -65,15 +70,37 @@ void RaceScoreboardMessage(gentity_t *ent) {
                     level.sortedClients[i], bestTime, ping,
                     (level.time - cl->pers.enterTime) / 60000);
         j = strlen(entry);
-        if (G_ScoreboardTruncated(stringlength + j, i)) {
-            break;
+
+        // [QL] see the comment in g_gametype_ffa.c: flush a chunk rather than
+        // stop at the first message. Four fields per player go a long way in
+        // one command, but not sixty-four players' worth.
+        if (stringlength + j >= MAX_SCOREBOARD_PAYLOAD && numInChunk > 0) {
+            if (firstChunk) {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_race %i%s", numInChunk, string));
+                firstChunk = qfalse;
+            } else {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_race2 %i %i%s", chunkStart, numInChunk, string));
+            }
+            chunkStart = i;
+            numInChunk = 0;
+            stringlength = 0;
+            string[0] = '\0';
         }
+
         strcpy(string + stringlength, entry);
         stringlength += j;
+        numInChunk++;
     }
 
-    trap_SendServerCommand(ent - g_entities,
-                           va("scores_race %i%s", level.numPlayingClients, string));
+    if (firstChunk) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_race %i%s", numInChunk, string));
+    } else if (numInChunk > 0) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_race2 %i %i%s", chunkStart, numInChunk, string));
+    }
 }
 
 // ============================================================================

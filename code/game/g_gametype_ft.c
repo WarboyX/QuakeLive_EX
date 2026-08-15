@@ -819,8 +819,11 @@ Fields per player (17):
 */
 void FreezeTagScoreboardMessage(gentity_t *ent) {
     char entry[1024];
-    char string[1024];
-    int stringlength;
+    char string[MAX_STRING_CHARS];
+    char header[512];
+    int stringlength, budget;
+    int chunkStart, numInChunk;
+    qboolean firstChunk;
     int i, j;
     gclient_t *cl;
     int viewerTeam;
@@ -828,6 +831,9 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
 
     string[0] = 0;
     stringlength = 0;
+    chunkStart = 0;
+    numInChunk = 0;
+    firstChunk = qtrue;
 
     // Load team item stats (same 14 categories as TDM)
     redStats[0]  = level.numRedArmorPickups[TEAM_RED];
@@ -860,6 +866,32 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
     blueStats[12] = level.hastePossessionTime[TEAM_BLUE];
     blueStats[13] = level.invisibilityPossessionTime[TEAM_BLUE];
 
+    // Hide opponent team's stats
+    //
+    // [QL] Hoisted out of the player loop, where it used to run once per
+    // player. The viewer does not change between iterations and the memset is
+    // idempotent, so the values sent are the same; the header is now built
+    // once, before the entries, because its length sets the chunk budget.
+    viewerTeam = ent->client->sess.sessionTeam;
+    if (viewerTeam == TEAM_RED && level.intermissionTime == 0) {
+        memset(blueStats, 0, sizeof(blueStats));
+    } else if (viewerTeam == TEAM_BLUE && level.intermissionTime == 0) {
+        memset(redStats, 0, sizeof(redStats));
+    }
+
+    // [QL] the twenty-eight team totals; the count and team scores are appended
+    // at send time, once a chunk knows how many entries it carries
+    Com_sprintf(header, sizeof(header),
+                "scores_ft %i %i %i %i %i %i %i %i %i %i %i %i %i %i "
+                "%i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+                redStats[0], redStats[1], redStats[2], redStats[3], redStats[4],
+                redStats[5], redStats[6], redStats[7], redStats[8],
+                redStats[9], redStats[10], redStats[11], redStats[12], redStats[13],
+                blueStats[0], blueStats[1], blueStats[2], blueStats[3], blueStats[4],
+                blueStats[5], blueStats[6], blueStats[7], blueStats[8],
+                blueStats[9], blueStats[10], blueStats[11], blueStats[12], blueStats[13]);
+    budget = G_ScoreboardBudget(strlen(header));
+
     for (i = 0; i < level.numConnectedClients; i++) {
         int ping, accuracy, bestWeapon;
         int alive;
@@ -882,14 +914,6 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
 
         bestWeapon = STAT_GetBestWeapon(cl);
 
-        // Hide opponent team's stats
-        viewerTeam = ent->client->sess.sessionTeam;
-        if (viewerTeam == TEAM_RED && level.intermissionTime == 0) {
-            memset(blueStats, 0, sizeof(blueStats));
-        } else if (viewerTeam == TEAM_BLUE && level.intermissionTime == 0) {
-            memset(redStats, 0, sizeof(redStats));
-        }
-
         // 17 fields per player
         Com_sprintf(entry, sizeof(entry),
                     " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
@@ -908,23 +932,38 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
                     cl->expandedStats.totalDamageDealt,
                     alive);
         j = strlen(entry);
-        if (G_ScoreboardTruncated(stringlength + j, i))
-            break;
+
+        // [QL] see the comment in g_gametype_ffa.c: flush a chunk rather than
+        // stop at the first message.
+        if (stringlength + j >= budget && numInChunk > 0) {
+            if (firstChunk) {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("%s %i %i %i%s", header, numInChunk,
+                                          level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+                firstChunk = qfalse;
+            } else {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_ft2 %i %i%s", chunkStart, numInChunk, string));
+            }
+            chunkStart = i;
+            numInChunk = 0;
+            stringlength = 0;
+            string[0] = '\0';
+        }
+
         strcpy(string + stringlength, entry);
         stringlength += j;
+        numInChunk++;
     }
 
-    trap_SendServerCommand(ent - g_entities,
-        va("scores_ft %i %i %i %i %i %i %i %i %i %i %i %i %i %i "
-           "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i%s",
-           redStats[0], redStats[1], redStats[2], redStats[3], redStats[4],
-           redStats[5], redStats[6], redStats[7], redStats[8],
-           redStats[9], redStats[10], redStats[11], redStats[12], redStats[13],
-           blueStats[0], blueStats[1], blueStats[2], blueStats[3], blueStats[4],
-           blueStats[5], blueStats[6], blueStats[7], blueStats[8],
-           blueStats[9], blueStats[10], blueStats[11], blueStats[12], blueStats[13],
-           i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE],
-           string));
+    if (firstChunk) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("%s %i %i %i%s", header, numInChunk,
+                                  level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+    } else if (numInChunk > 0) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_ft2 %i %i%s", chunkStart, numInChunk, string));
+    }
 }
 
 /*

@@ -603,13 +603,18 @@ void ClanArenaStatisticsMessage(gentity_t *ent) {
 // ============================================================================
 void ClanArenaScoreboardMessage(gentity_t *ent) {
     char entry[1024];
-    char string[1024];
+    char string[MAX_STRING_CHARS];
     int stringlength;
+    int chunkStart, numInChunk;
+    qboolean firstChunk;
     int i, j;
     gclient_t *cl;
 
     string[0] = 0;
     stringlength = 0;
+    chunkStart = 0;
+    numInChunk = 0;
+    firstChunk = qtrue;
 
     for (i = 0; i < level.numConnectedClients; i++) {
         int ping, accuracy, perfect, bestWeapon, bestWeaponAccuracy;
@@ -656,14 +661,36 @@ void ClanArenaScoreboardMessage(gentity_t *ent) {
                     cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
                     perfect, alive);
         j = strlen(entry);
-        if (G_ScoreboardTruncated(stringlength + j, i))
-            break;
+
+        // [QL] see the comment in g_gametype_ffa.c: flush a chunk rather than
+        // stop at the first message.
+        if (stringlength + j >= MAX_SCOREBOARD_PAYLOAD && numInChunk > 0) {
+            if (firstChunk) {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_ca %i %i %i%s", numInChunk,
+                                          level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+                firstChunk = qfalse;
+            } else {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_ca2 %i %i%s", chunkStart, numInChunk, string));
+            }
+            chunkStart = i;
+            numInChunk = 0;
+            stringlength = 0;
+            string[0] = '\0';
+        }
+
         strcpy(string + stringlength, entry);
         stringlength += j;
+        numInChunk++;
     }
 
-    trap_SendServerCommand(ent - g_entities,
-        va("scores_ca %i %i %i%s", i,
-           level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE],
-           string));
+    if (firstChunk) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_ca %i %i %i%s", numInChunk,
+                                  level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+    } else if (numInChunk > 0) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_ca2 %i %i%s", chunkStart, numInChunk, string));
+    }
 }

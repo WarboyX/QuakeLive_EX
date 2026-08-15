@@ -1240,6 +1240,25 @@ qboolean G_ScoreboardTruncated(int wouldBe, int sent) {
     return qtrue;
 }
 
+/*
+===============
+G_ScoreboardBudget
+
+[QL] How many bytes of player entries fit after a header of the given length.
+
+32 bytes cover the entry count and the two team scores that every chunked
+emitter appends between its header and the entries, plus the terminator and a
+little slack. The continuation messages carry a much shorter header than the
+first one, so budgeting all chunks against the first is conservative in the
+right direction.
+===============
+*/
+int G_ScoreboardBudget(int headerLength) {
+    int budget = MAX_STRING_CHARS - 32 - headerLength;
+
+    return (budget > 0) ? budget : 0;
+}
+
 void QDECL G_Error(const char* fmt, ...) {
     va_list argptr;
     char text[1024];

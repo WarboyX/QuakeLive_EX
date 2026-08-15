@@ -904,21 +904,39 @@ eight emitters guard on, so the count and the entries always agree, and
 `G_ScoreboardTruncated` says once per level when players are being dropped
 instead of dropping them quietly.
 
-**Chunking is now built, for FFA.** `G_SendScoreboardMessageFfa` flushes a chunk
-whenever the next entry would cross `MAX_SCOREBOARD_PAYLOAD`. The first chunk
-keeps the original `scores_ffa` shape, so a stock Steam client still gets a
-correct — if short — scoreboard; the rest go out as
-`scores_ffa2 <startIndex> <count> ...`, a verb a stock client has no handler for
-and drops. `CG_ParseScoreEntry_Ffa` is factored out of `CG_ParseScores_Ffa` so
-both verbs read a row through the same code.
+**Chunking is now built, for every emitter that can overflow.** Each one flushes
+a chunk whenever the next entry would cross the budget. The first chunk keeps
+the original verb's shape and reports only the entries *it* carries, so a stock
+Steam client still gets a correct — if short — scoreboard; the rest go out as
+`<verb>2 <startIndex> <count> ...`, which a stock client has no handler for and
+drops. Done for `scores_ffa`, `scores_tdm`, `scores_ca`, `scores_ctf`,
+`scores_ft`, `scores_rr`, `scores_race` and the broadcast `smscores`.
+(`scores_duel` is two players and `scores_ad` is a fixed score history, neither
+of which can overflow; `tinfo` is capped at `TEAM_MAXOVERLAY`.)
+
+On the client each parser's per-entry read is now a `CG_ParseScoreEntry_*`
+function and one `CG_ParseScoresCont(parser)` handles every continuation, so the
+first message and its continuations cannot read a row differently — which is how
+the parsers and emitters drifted apart in the first place.
+
+`MAX_SCOREBOARD_PAYLOAD` only ever described the FFA header. `scores_tdm` leads
+with twenty-eight team totals and `scores_ctf` with thirty-four, some of them
+possession times in milliseconds, so those four build their header first and take
+the budget from `G_ScoreboardBudget(strlen(header))`. Hiding the opposing team's
+totals moved out of the player loop at the same time — it ran once per player and
+the viewer does not change between iterations.
 
 `G_ScoreboardTruncated` now reports whenever the sent/total pair changes rather
 than once per level, so the log shows the point at which players start being
 dropped ("20 of 21", "20 of 22") instead of one line naming whatever the count
-happened to be the first time it overflowed.
+happened to be the first time it overflowed. Only `tinfo`, `castats` and the
+end-of-match `smscores` per-weapon rows still reach it.
 
-**The other seven emitters are still single-command** and still capped near 20
-players. Same shape of fix; not yet applied.
+One thing to watch: a full FFA scoreboard is now three or four reliable commands
+instead of one, against a 64-slot ring. Both broadcast sites are intermission
+only and the client throttles its own `score` request to one every two seconds,
+so nothing in normal play multiplies this — but a client that spams `score` costs
+four times what it used to.
 
 ### C19. The scoreboard could not be scrolled — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
