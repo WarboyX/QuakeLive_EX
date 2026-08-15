@@ -1687,7 +1687,58 @@ void CG_SetEndScoreboardMenu(void) {
 	}
 }
 
-static qboolean CG_DrawScoreboard(void) {
+/*
+[QL] Put the local player's row on the visible page when the scoreboard opens.
+
+CG_SetScoreSelection records the selection but Menu_SetFeederSelection only
+moves startPos when the index is zero, so on a server with more players than the
+ten rows the list box shows, the player opening the scoreboard was as likely as
+not to be looking at a page they were not on.
+*/
+static void CG_ScrollScoreboardToLocalPlayer(menuDef_t *menu) {
+	int i, index = -1, teamIndex = 0;
+
+	if (!cg.snap) {
+		return;
+	}
+
+	for (i = 0; i < cg.numScores; i++) {
+		if (cg.scores[i].client != cg.snap->ps.clientNum) {
+			if (cg.scores[i].team == cg.scores[cg.selectedScore].team) {
+				teamIndex++;
+			}
+			continue;
+		}
+		index = i;
+		break;
+	}
+	if (index < 0) {
+		return;
+	}
+
+	Menu_ShowFeederIndex(menu, FEEDER_SCOREBOARD, index);
+	Menu_ShowFeederIndex(menu, FEEDER_ENDSCOREBOARD, index);
+	if (cg.scores[index].team == TEAM_RED) {
+		Menu_ShowFeederIndex(menu, FEEDER_REDTEAM_LIST, teamIndex);
+	} else if (cg.scores[index].team == TEAM_BLUE) {
+		Menu_ShowFeederIndex(menu, FEEDER_BLUETEAM_LIST, teamIndex);
+	}
+}
+
+/*
+[QL] Tell the client whether the scoreboard is on screen.
+
+CL_ScoreboardScrollKey needs to know, so that it only takes the wheel and the
+page keys away from their bindings while there is a scoreboard for them to
+scroll. Written every frame rather than on change: a stuck value would cost the
+player their weapon switch, and one Cvar_Set of an unchanged string per frame is
+not worth being clever about.
+*/
+static void CG_PublishScoreboardState(qboolean showing) {
+	trap_Cvar_Set("cg_scoreboardActive", showing ? "1" : "0");
+}
+
+static qboolean CG_DrawScoreboardMenu(void) {
 	static qboolean firstTime = qtrue;
 
 	if (menuScoreboard) {
@@ -1731,6 +1782,7 @@ static qboolean CG_DrawScoreboard(void) {
 		if (activeMenu) {
 			if (firstTime) {
 				CG_SetScoreSelection(activeMenu);
+				CG_ScrollScoreboardToLocalPlayer(activeMenu);
 				firstTime = qfalse;
 			}
 			Menu_Paint(activeMenu, qtrue);
@@ -1743,6 +1795,13 @@ static qboolean CG_DrawScoreboard(void) {
 	}
 
 	return qtrue;
+}
+
+static qboolean CG_DrawScoreboard(void) {
+	qboolean showing = CG_DrawScoreboardMenu();
+
+	CG_PublishScoreboardState(showing);
+	return showing;
 }
 
 /*

@@ -3181,4 +3181,9 @@ Called before every level change or subsystem restart
 void CG_Shutdown(void) {
     // some mods may need to do cleanup work here,
     // like closing files or archiving session data
+
+    // [QL] CG_PublishScoreboardState writes this every frame the scoreboard is
+    // drawn; nothing draws after this point, so clear it rather than leave the
+    // client holding the wheel and page keys for a scoreboard that is gone.
+    trap_Cvar_Set("cg_scoreboardActive", "0");
 }

@@ -154,20 +154,71 @@ static void CG_LoadHud_f(void) {
     menuEndScoreboard = NULL;
 }
 
-static void CG_scrollScoresDown_f(void) {
-    if (menuScoreboard && cg.scoreBoardShowing) {
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_SCOREBOARD, qtrue);
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_REDTEAM_LIST, qtrue);
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_BLUETEAM_LIST, qtrue);
+/*
+=================
+Scoreboard scrolling
+
+The scoreboard list box shows ten rows. Past that the menu draws a scroll bar
+and nothing else: the bar is a decoration painted from startPos, there is no
+cursor in front of it to drag it with while +scores is held, and these commands
+were the only way to move it - unbound, so in practice there was no way at all
+to see anyone below tenth place.
+
+Two halves to the fix. Here, the commands move the list box that is actually on
+screen, which at intermission is the end-of-match menu rather than the in-game
+one, and cover a page and the ends of the list as well as single rows. In the
+client, CL_ScoreboardScrollKey routes the wheel and the page keys here while the
+scoreboard is up, so none of this has to be bound by hand.
+
+All three feeders are driven because the team scoreboards split the players
+across the red and blue lists; the feeder that is not in the current menu is a
+no-op.
+=================
+*/
+static void CG_ScrollScoreboard(int key) {
+    menuDef_t* menu;
+
+    if (!cg.scoreBoardShowing) {
+        return;
     }
+
+    if (cg.predictedPlayerState.pm_type == PM_INTERMISSION && menuEndScoreboard) {
+        menu = menuEndScoreboard;
+    } else {
+        menu = menuScoreboard;
+    }
+    if (!menu) {
+        return;
+    }
+
+    Menu_ScrollFeederKey(menu, FEEDER_SCOREBOARD, key);
+    Menu_ScrollFeederKey(menu, FEEDER_ENDSCOREBOARD, key);
+    Menu_ScrollFeederKey(menu, FEEDER_REDTEAM_LIST, key);
+    Menu_ScrollFeederKey(menu, FEEDER_BLUETEAM_LIST, key);
+}
+
+static void CG_scrollScoresDown_f(void) {
+    CG_ScrollScoreboard(K_DOWNARROW);
 }
 
 static void CG_scrollScoresUp_f(void) {
-    if (menuScoreboard && cg.scoreBoardShowing) {
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_SCOREBOARD, qfalse);
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_REDTEAM_LIST, qfalse);
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_BLUETEAM_LIST, qfalse);
-    }
+    CG_ScrollScoreboard(K_UPARROW);
+}
+
+static void CG_pageScoresDown_f(void) {
+    CG_ScrollScoreboard(K_PGDN);
+}
+
+static void CG_pageScoresUp_f(void) {
+    CG_ScrollScoreboard(K_PGUP);
+}
+
+static void CG_scrollScoresTop_f(void) {
+    CG_ScrollScoreboard(K_HOME);
+}
+
+static void CG_scrollScoresBottom_f(void) {
+    CG_ScrollScoreboard(K_END);
 }
 
 /*
@@ -943,6 +994,10 @@ static consoleCommand_t commands[] = {
     // so a scoreboard longer than its feeder could not be scrolled at all.
     {"scrollScoresDown", CG_scrollScoresDown_f},
     {"scrollScoresUp", CG_scrollScoresUp_f},
+    {"pageScoresDown", CG_pageScoresDown_f},
+    {"pageScoresUp", CG_pageScoresUp_f},
+    {"scrollScoresTop", CG_scrollScoresTop_f},
+    {"scrollScoresBottom", CG_scrollScoresBottom_f},
     // [QL] companions to the existing clientmute; see the ignore list above.
     {"clientunmute", CG_ClientUnmute_f},
     {"clientmutelist", CG_ClientMuteList_f},

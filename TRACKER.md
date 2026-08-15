@@ -904,11 +904,60 @@ eight emitters guard on, so the count and the entries always agree, and
 `G_ScoreboardTruncated` says once per level when players are being dropped
 instead of dropping them quietly.
 
-**Still capped at roughly 20 of 40 players**, because the message is still one
-command. Sending all of them needs chunking, and that is a protocol change:
-a continuation command (`scores_ffa2 <startIndex> <count> ...`) that our client
-accumulates and a stock Steam client ignores, leaving it showing the first chunk
-rather than garbage. Designed, not built.
+**Chunking is now built, for FFA.** `G_SendScoreboardMessageFfa` flushes a chunk
+whenever the next entry would cross `MAX_SCOREBOARD_PAYLOAD`. The first chunk
+keeps the original `scores_ffa` shape, so a stock Steam client still gets a
+correct — if short — scoreboard; the rest go out as
+`scores_ffa2 <startIndex> <count> ...`, a verb a stock client has no handler for
+and drops. `CG_ParseScoreEntry_Ffa` is factored out of `CG_ParseScores_Ffa` so
+both verbs read a row through the same code.
+
+`G_ScoreboardTruncated` now reports whenever the sent/total pair changes rather
+than once per level, so the log shows the point at which players start being
+dropped ("20 of 21", "20 of 22") instead of one line naming whatever the count
+happened to be the first time it overflowed.
+
+**The other seven emitters are still single-command** and still capped near 20
+players. Same shape of fix; not yet applied.
+
+### C19. The scoreboard could not be scrolled — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+*"It has a scrollbar on the right side, but there's no way to scroll and find
+where someone not in the top players is."*
+
+The scoreboard list box shows ten rows (`rect ... 180` over `elementheight 18`).
+The scroll bar beside it is painted from `startPos` and nothing moves it: while
+`+scores` is held the cgame does not hold the key catcher, so there is no cursor
+in front of the bar to drag, and `scrollScoresUp` / `scrollScoresDown` — the only
+things that could move it — are not bound to anything by default. So on a full
+server everyone below tenth place was unreachable.
+
+Three parts:
+
+- **The commands now move the list box that is on screen.** They were hardcoded
+  to `menuScoreboard`, which at intermission is the wrong menu — the end-of-match
+  summary is `menuEndScoreboard`. And they only ever sent an arrow key, one row
+  at a time. `Menu_ScrollFeederKey` forwards any key to a feeder's list box, so
+  `pageScoresUp` / `pageScoresDown` (a page) and `scrollScoresTop` /
+  `scrollScoresBottom` (the ends) join them. `Item_ListBox_HandleKey` already
+  understood all of these; `Menu_ScrollFeeder` just never offered them.
+
+- **The client routes the keys without anyone binding them.**
+  `CL_ScoreboardScrollKey` gives the wheel, the page keys and home/end to the
+  scoreboard while `cg_scoreboardActive` is set — the cgame writes that cvar
+  every frame it draws the scoreboard, so the wheel goes back to changing
+  weapons the moment TAB is released. A key bound to a `+` command is left
+  alone: swallowing the press while the release still fires would leave the
+  action stuck on.
+
+- **Opening the scoreboard puts you on your own page.** `CG_SetScoreSelection`
+  records the local player as the selection, but `Menu_SetFeederSelection` only
+  touches `startPos` when the index is zero, so on a list longer than the window
+  the selected row could sit off screen with nothing to say so.
+  `Menu_ShowFeederIndex` scrolls just far enough to bring it into view, and
+  leaves `startPos` alone when the row is already visible so it does not fight a
+  position the player chose.
 
 ### C14. Match summary: no cursor, no voting, no winner, no arena shots — PARTIAL
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -1838,15 +1887,14 @@ case it is ever loaded by a server that does not. The 30 loops that read
 `g_maxclients.integer` directly now read `level.maxclients`, so the clamp
 actually protects something — the cvar is read once, where it is validated.
 
-**Reverted — the fill rate.** `G_CheckMinimumPlayers` is throttled to once a
-second and added one bot per call, so `bot_minplayers 40` took forty seconds and
-looked stalled. Raising it to four per tick fixed the wait and **crashed
-dedicated servers while filling**. Four adds in one frame is four `ClientBegin`
-calls, four botlib character loads and four AAS clients appearing between two
-server frames; the one-per-second path has never done it. Back to 1 until the
-crash is understood — the right fix is not a bigger burst, it is not gating the
-whole thing behind a one-second timer, which is a change to
-`G_CheckMinimumPlayers`.
+**Fixed — the fill rate, and the earlier revert was on a wrong attribution.**
+`G_CheckMinimumPlayers` is throttled to once a second and added one bot per
+call, so `bot_minplayers 40` took forty seconds and looked stalled. Raising it
+to four per tick was blamed for crashing dedicated servers while filling; the
+crash was `G_Alloc` pool exhaustion at bot 26 (E13), which a faster fill only
+reached sooner. It is now `bot_fillRate`, default 1, clamped 1..16 — a setting
+rather than a number, so reproducing anything that only happens at a high player
+count is one cvar away.
 
 **Open — the match does not start.** The countdown runs, the announcer talks
 about frags and leaderboard position, and the round never begins. `g_debugWarmup`

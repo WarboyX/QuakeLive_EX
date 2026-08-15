@@ -4626,15 +4626,92 @@ menuDef_t* Menu_GetFocused(void) {
     return NULL;
 }
 
-void Menu_ScrollFeeder(menuDef_t* menu, int feeder, qboolean down) {
+/*
+[QL] Drive a feeder's list box with an arbitrary key rather than only the two
+arrows.
+
+Item_ListBox_HandleKey already understands the wheel, the page keys and
+home/end; Menu_ScrollFeeder just never offered any of them, so a caller outside
+the menu system could move a list one row at a time and no further. The
+scoreboard is the case that needs the rest: it is a list box with ten visible
+rows, and with a server full of players the only way to reach anyone below tenth
+place is to page.
+
+force is passed on, so the item does not have to hold focus or sit under the
+cursor - the caller has already decided which list it means.
+*/
+void Menu_ScrollFeederKey(menuDef_t* menu, int feeder, int key) {
     if (menu) {
         int i;
         for (i = 0; i < menu->itemCount; i++) {
             if (menu->items[i]->special == feeder) {
-                Item_ListBox_HandleKey(menu->items[i], (down) ? K_DOWNARROW : K_UPARROW, qtrue, qtrue);
+                Item_ListBox_HandleKey(menu->items[i], key, qtrue, qtrue);
                 return;
             }
         }
+    }
+}
+
+void Menu_ScrollFeeder(menuDef_t* menu, int feeder, qboolean down) {
+    Menu_ScrollFeederKey(menu, feeder, (down) ? K_DOWNARROW : K_UPARROW);
+}
+
+/*
+[QL] Scroll a feeder just far enough that a given row is on screen.
+
+Menu_SetFeederSelection records which row is selected but only touches startPos
+when the index is zero, so on a list longer than the window the selected row can
+sit outside the visible range with nothing to say so. The scoreboard sets the
+local player as the selection every time it opens; without this the player is
+simply not on the page they are shown.
+
+Leaves startPos alone when the row is already visible, so opening the scoreboard
+does not fight a scroll position the player chose.
+*/
+void Menu_ShowFeederIndex(menuDef_t* menu, int feeder, int index) {
+    int i;
+
+    if (menu == NULL || index < 0) {
+        return;
+    }
+
+    for (i = 0; i < menu->itemCount; i++) {
+        itemDef_t* item = menu->items[i];
+        listBoxDef_t* listPtr;
+        int viewmax, max;
+
+        if (item->special != feeder) {
+            continue;
+        }
+
+        listPtr = (listBoxDef_t*)item->typeData;
+        if (listPtr == NULL) {
+            return;
+        }
+
+        if (item->window.flags & WINDOW_HORIZONTAL) {
+            viewmax = (listPtr->elementWidth > 0) ? (int)(item->window.rect.w / listPtr->elementWidth) : 0;
+        } else {
+            viewmax = (listPtr->elementHeight > 0) ? (int)(item->window.rect.h / listPtr->elementHeight) : 0;
+        }
+        if (viewmax < 1) {
+            return;
+        }
+
+        if (index < listPtr->startPos) {
+            listPtr->startPos = index;
+        } else if (index >= listPtr->startPos + viewmax) {
+            listPtr->startPos = index - viewmax + 1;
+        }
+
+        max = Item_ListBox_MaxScroll(item);
+        if (listPtr->startPos > max) {
+            listPtr->startPos = max;
+        }
+        if (listPtr->startPos < 0) {
+            listPtr->startPos = 0;
+        }
+        return;
     }
 }
 

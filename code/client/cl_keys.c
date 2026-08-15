@@ -1185,6 +1185,73 @@ void CL_ParseBinding(int key, qboolean down, unsigned time) {
 
 /*
 ===================
+CL_ScoreboardScrollKey
+
+[QL] Give the wheel and the page keys to the scoreboard while it is on screen.
+
+The scoreboard is a list box with ten visible rows and a scroll bar that is
+painted, not driven: while +scores is held the cgame does not hold the key
+catcher, so there is no cursor to drag the bar with, and the scroll commands it
+does register are not bound to anything by default. On a full server that left
+everyone below tenth place unreachable.
+
+The cgame publishes cg_scoreboardActive every frame it draws the scoreboard, so
+this only takes a key when there is something to scroll - the wheel goes back to
+changing weapons the moment TAB is released. A key bound to a + command is left
+alone: swallowing its press while its release still fires would leave the action
+stuck on.
+
+Returns qtrue if the key was consumed.
+===================
+*/
+typedef struct {
+    int key;
+    const char* command;
+} scoreboardScrollKey_t;
+
+static const scoreboardScrollKey_t scoreboardScrollKeys[] = {
+    {K_MWHEELUP, "scrollScoresUp\n"},
+    {K_MWHEELDOWN, "scrollScoresDown\n"},
+    {K_PGUP, "pageScoresUp\n"},
+    {K_KP_PGUP, "pageScoresUp\n"},
+    {K_PGDN, "pageScoresDown\n"},
+    {K_KP_PGDN, "pageScoresDown\n"},
+    {K_HOME, "scrollScoresTop\n"},
+    {K_KP_HOME, "scrollScoresTop\n"},
+    {K_END, "scrollScoresBottom\n"},
+    {K_KP_END, "scrollScoresBottom\n"},
+};
+
+static qboolean CL_ScoreboardScrollKey(int key) {
+    int i;
+
+    if (!cgvm || clc.state != CA_ACTIVE) {
+        return qfalse;
+    }
+    if (Key_GetCatcher() & (KEYCATCH_CONSOLE | KEYCATCH_UI | KEYCATCH_MESSAGE)) {
+        return qfalse;
+    }
+    if (!Cvar_VariableIntegerValue("cg_scoreboardActive")) {
+        return qfalse;
+    }
+    if (keys[key].binding && keys[key].binding[0] == '+') {
+        return qfalse;
+    }
+
+    for (i = 0; i < ARRAY_LEN(scoreboardScrollKeys); i++) {
+        if (scoreboardScrollKeys[i].key == key) {
+            // queued rather than run here, the same as a binding: this is
+            // reached from event processing, and a wheel can report several
+            // clicks in one frame
+            Cbuf_AddText(scoreboardScrollKeys[i].command);
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+/*
+===================
 CL_KeyDownEvent
 
 Called by CL_KeyEvent to handle a keypress
@@ -1250,6 +1317,11 @@ void CL_KeyDownEvent(int key, unsigned time) {
         }
 
         VM_Call(uivm, UI_KEY_EVENT, key, qtrue);
+        return;
+    }
+
+    // [QL] the scoreboard gets first refusal on the scroll keys while it is up
+    if (CL_ScoreboardScrollKey(key)) {
         return;
     }
 
