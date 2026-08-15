@@ -87,4 +87,124 @@ in renderervk/tr_init.c by GetRefAPI.
 #include "../renderercommon/tr_public.h"
 extern refimport_t ri;
 
+/*
+Quake3e: code/qcommon/q_shared.h — vector and sign helpers this tree lacks.
+*/
+#ifndef SGN
+#define SGN(x) (((x) >= 0) ? !!(x) : -1)
+#endif
+#ifndef DotProduct4
+#define DotProduct4(a, b) ((a)[0] * (b)[0] + (a)[1] * (b)[1] + (a)[2] * (b)[2] + (a)[3] * (b)[3])
+#endif
+#ifndef VectorScale4
+#define VectorScale4(a, b, c) ((c)[0] = (a)[0] * (b), (c)[1] = (a)[1] * (b), (c)[2] = (a)[2] * (b), (c)[3] = (a)[3] * (b))
+#endif
+#ifndef Vector4Set
+#define Vector4Set(v, x, y, z, w) ((v)[0] = (x), (v)[1] = (y), (v)[2] = (z), (v)[3] = (w))
+#endif
+
+/*
+Quake3e uses myftol where this tree uses Q_ftol. Upstream's comment on the
+call sites is explicit that it avoids ri.ftol "to avoid precision losses", so
+this maps to the direct cast rather than back through the import table.
+*/
+#ifndef myftol
+#define myftol(x) ((int)(x))
+#endif
+
+/*
+Quake3e: code/qcommon/qcommon.h — size of the BSP visibility lump header
+(two ints: cluster count and cluster size).
+*/
+#ifndef VIS_HEADER
+#define VIS_HEADER 8
+#endif
+
+/*
+Quake3e: code/qcommon/q_shared.h — cvar flags and groups this tree lacks.
+CVAR_NODEFAULT does not exist here either, so ARCHIVE_ND degrades to plain
+CVAR_ARCHIVE: the "no default" half only affects config writing, which is
+engine-side and unchanged by the renderer.
+*/
+#ifndef CVAR_DEVELOPER
+#define CVAR_DEVELOPER 0x10000
+#endif
+#ifndef CVAR_ARCHIVE_ND
+#define CVAR_ARCHIVE_ND CVAR_ARCHIVE
+#endif
+
+typedef enum { CV_NONE = 0, CV_FLOAT, CV_INTEGER } cvarValidator_t;
+
+typedef enum { CVG_NONE = 0, CVG_RENDERER, CVG_MAX } cvarGroup_t;
+
+/*
+Quake3e: code/qcommon/q_shared.h — token types produced by COM_ParseComplex,
+which is Quake3e's shader-script tokeniser and has no counterpart here.
+*/
+typedef enum {
+    TK_GENERIC = 0,  // for single-char tokens
+    TK_STRING,
+    TK_QUOTED,
+    TK_EQ,
+    TK_NEQ,
+    TK_GT,
+    TK_GTE,
+    TK_LT,
+    TK_LTE,
+    TK_MATCH,
+    TK_OR,
+    TK_AND,
+    TK_SCOPE_OPEN,
+    TK_SCOPE_CLOSE,
+    TK_NEWLINE,
+    TK_EOF,
+} tokenType_t;
+
+extern tokenType_t com_tokentype;
+
+/*
+Implemented in tr_q3e_compat.c, ported verbatim from Quake3e's q_shared.c.
+*/
+char *COM_ParseComplex(const char **data_p, qboolean allowLineBreaks);
+char *Q_stradd(char *dst, const char *src);
+unsigned int crc32_buffer(const byte *buf, unsigned int len);
+int Com_Split(char *in, char **out, int outsz, int delim);
+unsigned long Com_GenerateHashValue(const char *fname, const unsigned int size);
+
+/*
+Quake3e: code/qcommon/qcommon.h, a static inline. Rounds v to a power of two,
+up or down.
+*/
+static ID_INLINE unsigned int log2pad(unsigned int v, int roundup) {
+    unsigned int x = 1;
+
+    while (x < v) {
+        x <<= 1;
+    }
+
+    if (roundup == 0) {
+        if (x > v) {
+            x >>= 1;
+        }
+    }
+
+    return x;
+}
+
+/*
+Quake3e: code/qcommon/q_shared.h. This tree has atof but not the wrapper.
+*/
+static ID_INLINE float Q_atof(const char *str) { return (float)atof(str); }
+
+/*
+Quake3e's Cvar_CheckRange takes string bounds and a validator enum; this
+tree's takes floats and a qboolean, and renderergl2 depends on that signature.
+Both are in refimport_t under different names, and this rewrites renderervk's
+`ri.Cvar_CheckRange(...)` to reach the Quake3e-shaped one. A macro is enough
+because the member name is an ordinary token.
+*/
+#ifndef Cvar_CheckRange
+#define Cvar_CheckRange Cvar_CheckRangeQ3E
+#endif
+
 #endif  // TR_Q3E_COMPAT_H

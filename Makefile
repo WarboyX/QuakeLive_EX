@@ -1716,6 +1716,7 @@ Q3RVKOBJ = \
   $(B)/renderervk/vk.o \
   $(B)/renderervk/vk_flares.o \
   $(B)/renderervk/vk_vbo.o \
+  $(B)/renderervk/tr_q3e_compat.o \
   $(B)/renderervk/tr_image_bmp.o \
   $(B)/renderervk/tr_image_jpg.o \
   $(B)/renderervk/tr_image_pcx.o \

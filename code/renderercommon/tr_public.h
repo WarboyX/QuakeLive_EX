@@ -106,6 +106,21 @@ typedef struct {
     void (*TakeVideoFrame)(int h, int w, byte* captureBuffer, byte* encodeBuffer, qboolean motionJpeg);
 
     void (*Get_Advertisements)(int* num, float* verts, char shaders[][MAX_QPATH]);
+
+    // [QL] Quake3e's renderervk assigns these in its GetRefAPI. This tree's
+    // engine does not call any of them, and renderergl2 leaves them NULL - they
+    // exist so the Vulkan renderer can be built against this refexport_t
+    // without editing the vendored source. Adding fields at the end keeps the
+    // offsets of everything above unchanged, so the OpenGL renderer's ABI is
+    // untouched.
+    void (*SetColorMappings)(void);
+    void (*AddLinearLightToScene)(const vec3_t start, const vec3_t end, float intensity, float r, float g, float b);
+    void (*ThrottleBackend)(void);
+    void (*FinishBloom)(void);
+    qboolean (*CanMinimize)(void);
+    const void* (*GetConfig)(void);
+    void (*VertexLighting)(qboolean allowed);
+    void (*SyncRender)(void);
 } refexport_t;
 
 //
@@ -187,6 +202,45 @@ typedef struct {
     void (*Sys_GLimpSafeInit)(void);
     void (*Sys_GLimpInit)(void);
     qboolean (*Sys_LowPhysicalMemory)(void);
+
+    // ================= [QL] Quake3e renderer imports =================
+    // code/renderervk expects the engine to provide these; this tree had no
+    // counterpart because it drives the window from inside the renderer while
+    // Quake3e drives it from the engine. Appended, so every offset above is
+    // unchanged and renderergl2 is unaffected.
+
+    // cvars
+    const char* (*Cvar_VariableString)(const char* name);
+    void (*Cvar_VariableStringBuffer)(const char* name, char* buffer, int bufsize);
+    void (*Cvar_SetGroup)(cvar_t* cv, int group);
+    // Quake3e's Cvar_CheckRange takes *string* bounds and a validator enum;
+    // this tree's takes floats and a qboolean, and renderergl2 uses that one.
+    // Both exist; the compat header points renderervk's calls at this.
+    void (*Cvar_CheckRangeQ3E)(cvar_t* cv, const char* minVal, const char* maxVal, int type);
+    int (*Cvar_CheckGroup)(int group);
+    void (*Cvar_ResetGroup)(int group, qboolean resetModifiedFlags);
+
+    // misc
+    int (*Com_RealTime)(qtime_t* qtime);
+    int64_t (*Microseconds)(void);
+    void (*FreeAll)(void);
+    qboolean (*CL_IsMinimized)(void);
+    void (*CL_SetScaling)(float factor, int captureWidth, int captureHeight);
+    void (*Sys_SetClipboardBitmap)(const byte* bitmap, int length);
+
+    // screenshots
+    void (*CL_SaveJPG)(const char* filename, int quality, int image_width, int image_height, byte* image_buffer, int padding);
+    size_t (*CL_SaveJPGToBuffer)(byte* buffer, size_t bufSize, int quality, int image_width, int image_height, byte* image_buffer, int padding);
+
+    // gamma
+    void (*GLimp_InitGamma)(glconfig_t* config);
+    void (*GLimp_SetGamma)(unsigned char red[256], unsigned char green[256], unsigned char blue[256]);
+
+    // Vulkan windowing - this tree has never had any of this
+    void (*VKimp_Init)(glconfig_t* config);
+    void (*VKimp_Shutdown)(qboolean unloadDLL);
+    void (*VK_CreateSurface)(void* instance, void** surface);
+    void* (*VK_GetInstanceProcAddr)(void* instance, const char* name);
 } refimport_t;
 
 // this is the only function actually exported at the linker level
