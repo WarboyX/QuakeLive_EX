@@ -580,6 +580,9 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 	const char *token;
 	int i, depthMaskBits = GLS_DEPTHMASK_TRUE, blendSrcBits = 0, blendDstBits = 0, atestBits = 0, depthFuncBits = 0;
 	qboolean depthMaskExplicit = qfalse;
+	// [QL] set when the stage declares itself a normal or specular map - see
+	// the material-keyword block below.
+	qboolean materialStage = qfalse;
 
 	stage->active = qfalse;
 
@@ -1089,11 +1092,109 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		{
 			stage->bundle[0].dlight = 1;
 		}
+		//
+		// [QL] renderergl2 material keywords.
+		//
+		// Quake Live's shaders carry the renderergl2 material set - stage,
+		// diffuseMap, normalMap/bumpMap, specularMap, normalScale,
+		// specularScale, gloss, roughness, parallaxDepth, vertexLit and the
+		// rest. Quake3e's parser has never seen any of them, and one unknown
+		// keyword does not skip a line here: it returns qfalse, which makes
+		// ParseShader set defaultShader on the *whole shader*.
+		//
+		// That is why the Vulkan build drew item pads, wall teleporters, the
+		// lightning beam and grenades as tr.defaultImage - a near-black box
+		// with a white border - while ordinary map surfaces, which carry no
+		// material keywords, were fine. It was never a missing texture.
+		//
+		// This renderer has no material pipeline, so the honest handling is
+		// the one a non-material renderer should give: accept the keywords,
+		// consume their arguments, and render the diffuse. The exception is a
+		// stage explicitly declared as a normal or specular map - painting a
+		// normal map onto a surface as if it were colour is worse than not
+		// drawing it, so those stages are dropped.
+		//
+		else if ( !Q_stricmp( token, "stage" ) )
+		{
+			token = COM_ParseExt( text, qfalse );
+			if ( token[0] == 0 ) {
+				ri.Printf( PRINT_WARNING, "WARNING: missing parameters for stage in shader '%s'\n", shader.name );
+				continue;
+			}
+			if ( !Q_stricmp( token, "diffuseMap" ) ) {
+				continue; // the only one this renderer can draw
+			}
+			if ( !Q_stricmp( token, "normalMap" ) || !Q_stricmp( token, "bumpMap" ) ||
+				 !Q_stricmp( token, "normalParallaxMap" ) || !Q_stricmp( token, "bumpParallaxMap" ) ||
+				 !Q_stricmp( token, "specularMap" ) ) {
+				materialStage = qtrue;
+				continue;
+			}
+			ri.Printf( PRINT_WARNING, "WARNING: unknown stage parameter '%s' in shader '%s'\n", token, shader.name );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "diffuseMap" ) )
+		{
+			// "diffuseMap <image>" - the same thing "map <image>" does
+			imgFlags_t flags = IMGFLAG_NONE;
+
+			token = COM_ParseExt( text, qfalse );
+			if ( token[0] == 0 ) {
+				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for diffuseMap in shader '%s'\n", shader.name );
+				return qfalse;
+			}
+
+			if ( !shader.noMipMaps )
+				flags |= IMGFLAG_MIPMAP;
+			if ( !shader.noPicMip )
+				flags |= IMGFLAG_PICMIP;
+			if ( shader.noLightScale )
+				flags |= IMGFLAG_NOLIGHTSCALE;
+
+			stage->bundle[0].image[0] = R_FindImageFile( token, flags );
+			if ( !stage->bundle[0].image[0] ) {
+				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s'\n", token, shader.name );
+				return qfalse;
+			}
+			continue;
+		}
+		else if ( !Q_stricmp( token, "normalMap" ) || !Q_stricmp( token, "bumpMap" ) ||
+				  !Q_stricmp( token, "normalParallaxMap" ) || !Q_stricmp( token, "bumpParallaxMap" ) ||
+				  !Q_stricmp( token, "specularMap" ) )
+		{
+			// "<kind>Map <image>" - the image is one this renderer cannot use
+			materialStage = qtrue;
+			SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "normalScale" ) || !Q_stricmp( token, "specularScale" ) ||
+				  !Q_stricmp( token, "specularExponent" ) || !Q_stricmp( token, "specularReflectance" ) ||
+				  !Q_stricmp( token, "gloss" ) || !Q_stricmp( token, "roughness" ) ||
+				  !Q_stricmp( token, "parallaxDepth" ) )
+		{
+			SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "vertexLit" ) || !Q_stricmp( token, "exactVertexLit" ) )
+		{
+			// renderergl2 shorthand for rgbGen vertex with an identity alpha;
+			// say the same thing in the terms this renderer has.
+			stage->bundle[0].rgbGen = CGEN_VERTEX;
+			stage->bundle[0].alphaGen = AGEN_VERTEX;
+			continue;
+		}
 		else
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: unknown parameter '%s' in shader '%s'\n", token, shader.name );
 			return qfalse;
 		}
+	}
+
+	// [QL] A normal or specular map has no meaning to this renderer, and
+	// drawing one as if it were colour is worse than leaving it out. Leaving
+	// active qfalse drops the stage and keeps the rest of the shader.
+	if ( materialStage ) {
+		return qtrue;
 	}
 
 	//
