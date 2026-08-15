@@ -3569,13 +3569,25 @@ CG_EventHandling
       2 - hud editor
 
 */
+/*
+[QL] Take and release the mouse.
+
+The CGAME_EVENT_SCOREBOARD branch was empty, and nothing anywhere in cgame ever
+set KEYCATCH_CGAME - the only calls were Key_SetCatcher(0). So the cgame never
+asked the engine for mouse or key input at all: no cursor, nothing clickable,
+and the match summary's "Vote for Next Arena" panels unreachable even though
+they were drawn. CG_MouseEvent and CG_KeyEvent were both written and both
+correct; the engine simply never routed anything to them.
+*/
 void CG_EventHandling(int type) {
     cgs.eventHandling = type;
     if (type == CGAME_EVENT_NONE) {
         CG_HideTeamMenu();
+        trap_Key_SetCatcher(trap_Key_GetCatcher() & ~KEYCATCH_CGAME);
     } else if (type == CGAME_EVENT_TEAMMENU) {
         // CG_ShowTeamMenu();
     } else if (type == CGAME_EVENT_SCOREBOARD) {
+        trap_Key_SetCatcher(KEYCATCH_CGAME);
     }
 }
 

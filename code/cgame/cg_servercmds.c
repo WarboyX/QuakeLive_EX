@@ -1089,6 +1089,16 @@ static void CG_ConfigStringModified(void) {
         // [QL] notify UI about intermission state
         if (cg.intermissionStarted == 1) {
             trap_Cvar_Set("ui_intermission", "1");
+            // [QL] and take the mouse, so the match summary can be used. Nothing
+            // called CG_EventHandling at all before this, so the summary drew its
+            // vote panels and had no way to receive a click on them. Centre the
+            // cursor rather than leaving it wherever it was last left.
+            cgs.cursorX = SCREEN_WIDTH / 2;
+            cgs.cursorY = SCREEN_HEIGHT / 2;
+            CG_EventHandling(CGAME_EVENT_SCOREBOARD);
+        } else {
+            trap_Cvar_Set("ui_intermission", "0");
+            CG_EventHandling(CGAME_EVENT_NONE);
         }
     } else if (num >= CS_MODELS && num < CS_MODELS + MAX_MODELS) {
         cgs.gameModels[num - CS_MODELS] = trap_R_RegisterModel(str);

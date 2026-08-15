@@ -111,7 +111,8 @@ for stock clients until proven otherwise.
 | ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
 | ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
 | ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
-| ○ | **C14** | End-of-match summary: winner model and arena shots | OPEN |
+| ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
+| ○ | **C16** | Score tracker does not show negative scores | OPEN |
 | ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
@@ -193,7 +194,8 @@ for stock clients until proven otherwise.
 | ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
 | ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
 | ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
-| ○ | **C14** | End-of-match summary: winner model and arena shots | OPEN |
+| ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
+| ○ | **C16** | Score tracker does not show negative scores | OPEN |
 | ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
@@ -874,15 +876,42 @@ a continuation command (`scores_ffa2 <startIndex> <count> ...`) that our client
 accumulates and a stock Steam client ignores, leaving it showing the first chunk
 rather than garbage. Designed, not built.
 
-### C14. End-of-match summary: winner model and arena shots — OPEN
+### C14. Match summary: no cursor, no voting, no winner, no arena shots — PARTIAL
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
-Two faults on the match summary, neither investigated:
+**Fixed — the mouse.** `CG_EventHandling`'s `CGAME_EVENT_SCOREBOARD` branch was
+empty, and nothing anywhere in cgame ever set `KEYCATCH_CGAME`; the only calls
+were `Key_SetCatcher(0)`. The cgame never asked the engine for mouse or key
+input, so there was no cursor and nothing was clickable — the "Vote for Next
+Arena" panels were drawn and could not be reached. `CG_MouseEvent` and
+`CG_KeyEvent` were both already written and correct; nothing was ever routed to
+them. `CG_EventHandling` now takes and releases the catcher, and entering
+intermission (`CS_INTERMISSION`) calls it with the cursor centred.
 
-- the winner's model draws **legs only** — no torso, no head
-- the three "Vote for Next Arena" panels are solid white
+That is why there was no voting. Whether the vote then works is untested.
 
-The empty scoreboard on that screen is C13 and should clear with it.
+**Still open:**
+
+- the winner's model draws **legs only** — no torso, no head. A player model is
+  three md3s joined on tags; legs-only means the torso lerp or the tag lookup is
+  failing on whatever entity the summary builds, not that the model is missing.
+- the three arena vote panels are solid white. `CG_DrawVoteMapShot` registers
+  `levelshots/<mapname>` and falls back to `levelshots/preview/default`; white
+  rather than blank suggests it is drawing *something*, so the fallback or the
+  panel's own background is what is visible.
+
+The empty scoreboard on that screen was C13.
+
+### C16. Score tracker does not show negative scores — OPEN
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+A player on -2 reads as 0 or 1 on the top-left tracker until they go positive.
+
+`CG_DrawPlayerScore` formats with `%i` and would print a negative fine, and
+`persistant[]` goes over the wire as a `MSG_WriteShort`/`MSG_ReadShort` pair, so
+neither the formatting nor the transmission is an obvious culprit. Not located.
+Worth checking whether the bar's fill fraction is clamped and being read back as
+the number, and whether `MSG_ReadShort` here sign-extends.
 
 ### C15. HUD score tracker shows 1st and 2nd, not 1st and yours — OPEN
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
