@@ -12,11 +12,11 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | Area | Progress | Notes |
 |---|---|---|
 | **Client / UI** (U) | `███████████████░░░░░  12/16` | U18 root-caused: missing commas, not the string pool |
-| **Client / cgame** (C) | `████████████████████  6/6` | C9 confirmed resolved in play |
-| **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan runs; text is the next piece |
+| **Client / cgame** (C) | `████████████████████  7/7` | C10: +zoom was registered nowhere |
+| **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan runs and draws text |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
 | **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  3/10` | 186 cvars registered but unread (E8) |
-| **Overall** | `██████████░░░░░░░░░░  24/45` | by binary: 9 server · 33 client · 3 both |
+| **Overall** | `███████████░░░░░░░░░  25/46` | by binary: 9 server · 34 client · 3 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -104,6 +104,7 @@ for stock clients until proven otherwise.
 | ● | **C4** | Console commands sent as chat in-game | DONE (verify), with a caveat |
 | ● | **C8** | Phantom pickup sound over taken items | DONE (verify) |
 | ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
+| ● | **C10** | `+zoom` does nothing | DONE (verify) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -111,7 +112,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ◐ | **R5** | Vulkan renderer | RUNS, no text yet |
+| ◐ | **R5** | Vulkan renderer | RUNS with text; 4 rendering faults open |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -175,6 +176,7 @@ for stock clients until proven otherwise.
 | ● | **C4** | Console commands sent as chat in-game | DONE (verify), with a caveat |
 | ● | **C8** | Phantom pickup sound over taken items | DONE (verify) |
 | ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
+| ● | **C10** | `+zoom` does nothing | DONE (verify) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -182,7 +184,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ◐ | **R5** | Vulkan renderer | RUNS, no text yet |
+| ◐ | **R5** | Vulkan renderer | RUNS with text; 4 rendering faults open |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -791,6 +793,24 @@ at the top of `Com_Frame`, after the longjmp has completed. Everything else —
 normal shutdown, `VM_Clear`, any `VM_Free` at `callLevel` 0 — still unloads
 immediately, so the change only touches the pathological case.
 
+### C10. `+zoom` does nothing — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Right click on the railgun did not zoom. `CG_ZoomDown_f` and `CG_ZoomUp_f` were
+written, declared in `cg_local.h`, and registered in no command table, so the
+engine looked up `+zoom`, found nothing, and did nothing. Quake Live's
+`default.cfg` binds MOUSE2 to it, which is why this reads as a broken zoom
+rather than as a missing command.
+
+Registered. The same scan - every `CG_*_f` defined in cgame against every one
+in the table - turned up four more: `nextframe` and `prevframe` were registered
+but `testmodel`, `testgun`, `nextskin` and `prevskin` were not, so the two that
+were there had nothing to step. Registered as a set.
+
+This is the same trap as E8's 186 dead cvars, one layer over: a handler that
+exists and is reachable from nothing looks exactly like a working feature until
+someone presses the button.
+
 ### C3. Weapon viewmodel barely visible — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
@@ -1135,12 +1155,40 @@ physical device, swapchain (IMMEDIATE, 3 images, `B8G8R8A8_UNORM`), shaders, 60
 frames of the main menu, clean shutdown, and a screenshot with the menu
 background art in it. Select it with `\cl_renderer vulkan` then `\vid_restart`.
 
-**It cannot draw text.** The console and every menu are blank. `tr_font_gl.c`
-builds the glyph atlas as a `GL_R8` texture and re-emits glyph quads through
-`RE_StretchPic`; the second half is backend-agnostic, the atlas is not. Until a
-`tr_font_vk.c` exists the renderer says so once on startup rather than letting
-it look like a bug. This is the next piece of work, not polish afterwards — the
-console is the debugging surface for a renderer.
+**Text works.** `tr_font_vk.c` is the Vulkan backend for the fontstash atlas.
+Verified: the main menu renders its buttons, both build stamps and the
+copyright line, antialiased and in the right colours. renderergl2 keeps the
+atlas as a single-channel `GL_R8` texture read as coverage through a swizzle
+(1,1,1,R); Vulkan has no swizzle to lean on without a second image view and its
+own descriptor, so this expands each dirty rect to RGBA on the way in — white
+with coverage in alpha, which is what that swizzle produces.
+
+**Four rendering faults are open, and none of them is diagnosed yet.**
+
+| | symptom |
+|---|---|
+| 1 | player models do not draw at all — their weapons do, floating in mid-air |
+| 2 | item spawn pads draw as `tr.defaultImage`: a black box with a white border |
+| 3 | wall teleporters draw as `tr.defaultImage`, tiled |
+| 4 | quad damage lighting is wrong |
+
+2 and 3 are the same failure — that black-box-with-white-border *is*
+`R_CreateDefaultImage`'s output, so those surfaces are resolving to
+`tr.defaultShader`. 1 is a different one: a shader that fell back to the default
+would draw the box texture, not nothing, so the player model is either failing
+to register or being culled.
+
+**These cannot be reproduced here.** Both need a map, and maps live in
+`pak00.pk3`, which is Quake Live's and is not ours to hold. The renderer already
+prints what is needed under `\developer 1`: *"Couldn't find image file for
+shader %s"* answers 2 and 3, and *"no shader for surface %s in skin %s"*
+answers 1.
+
+Two real defects were found looking for these, neither of which is the cause:
+`RE_AddRefEntityToScene` was being called through a one-argument pointer while
+its definition takes two, and `REFENTITYNUM_BITS` was redefined from the tree's
+10 to Quake3e's 12 *after* `tr_types.h` had defined it, leaving the two
+renderers disagreeing on `MAX_REFENTITIES` (1023 vs 4095). Both fixed.
 
 **The windowing question is answered.** The measured gap was 24 imports, of
 which the six windowing ones meant "restructure `sdl_glimp.c` so the engine owns
@@ -1432,6 +1480,22 @@ bots/major_c.c"* — the cache hit was found only after the free-slot search had
 already bailed out. The pool is now `4 * MAX_CLIENTS` and the cache lookup runs
 before the bailout; `BotInterpolateCharacters` returns 0 cleanly on a full pool
 instead of erroring.
+
+**Fixed — the hard crash, and it was not the bots.** `sv_maxclients` had no
+range check on it at all. The server sizes `svs.clients` from the cvar, but the
+game module's client array is a fixed `gclient_t g_clients[MAX_CLIENTS]` (64)
+and every loop in it ran to `g_maxclients.integer`. Setting `sv_maxclients`
+above 64 and then filling with bots walks off the end of that array the moment a
+client lands past slot 63 — which is why it presented as "the server hard
+crashes after a certain number of bots" and looked like a bot-naming problem.
+botlib is the same shape: `botchatstates`, `botgoalstates`, `botmovestates` and
+`botweaponstates` are all `[MAX_CLIENTS + 1]`.
+
+`Cvar_CheckRange(sv_maxclients, 1, MAX_CLIENTS, qtrue)` on the engine side, and
+the game module clamps `level.maxclients` and says so rather than silently, in
+case it is ever loaded by a server that does not. The 30 loops that read
+`g_maxclients.integer` directly now read `level.maxclients`, so the clamp
+actually protects something — the cvar is read once, where it is validated.
 
 **Reverted — the fill rate.** `G_CheckMinimumPlayers` is throttled to once a
 second and added one bot per call, so `bot_minplayers 40` took forty seconds and
