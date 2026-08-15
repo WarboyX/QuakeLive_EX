@@ -342,6 +342,7 @@ vmCvar_t g_spawnItemAmmo;
 // [QL] game state management
 vmCvar_t g_gameState;
 vmCvar_t g_debugWarmup;
+vmCvar_t bot_fillRate;
 vmCvar_t sv_warmupReadyPercentage;
 vmCvar_t g_warmupDelay;
 vmCvar_t g_warmupReadyDelay;
@@ -653,7 +654,11 @@ static cvarTable_t gameCvarTable[] = {
     {&g_doWarmup, "g_doWarmup", "1", CVAR_ARCHIVE, 0, NULL},
     {&g_gameState, "g_gameState", "PRE_GAME", CVAR_ROM | CVAR_SERVERINFO, 0, NULL},
     // [QL] traces the warmup -> countdown -> live state machine (see SetWarmupState)
-    {&g_debugWarmup, "g_debugWarmup", "0", 0, 0, NULL},  // [QL] binary: 0x44
+    {&g_debugWarmup, "g_debugWarmup", "0", 0, 0, NULL},
+    // [QL] bots added per G_CheckMinimumPlayers tick, which runs once a second.
+    // See G_FillBots - 1 is the quiet default, higher reaches a player count
+    // fast when reproducing something that only happens at scale.
+    {&bot_fillRate, "bot_fillRate", "1", CVAR_ARCHIVE, 0, NULL},  // [QL] binary: 0x44
     {&sv_warmupReadyPercentage, "sv_warmupReadyPercentage", "0.51", CVAR_LATCH | CVAR_ARCHIVE, 0, NULL},  // [QL] binary: 0x21
     {&g_warmupDelay, "g_warmupDelay", "15", 0, 0, NULL},
     {&g_warmupReadyDelay, "g_warmupReadyDelay", "0", 0, 0, NULL},
@@ -1211,13 +1216,21 @@ scoreboard is requested every time anyone holds TAB.
 */
 qboolean G_ScoreboardTruncated(int wouldBe, int sent) {
     static int reportedAtLevelTime;
+    static int reportedSent, reportedTotal;
 
     if (wouldBe < MAX_SCOREBOARD_PAYLOAD) {
         return qfalse;
     }
 
-    if (reportedAtLevelTime != level.startTime) {
+    // [QL] Report again whenever the pair changes, not just once per level, so
+    // the log shows the point at which players start being dropped as they
+    // join - "20 of 21", "20 of 22" - rather than one line naming whatever the
+    // count happened to be the first time it overflowed.
+    if (reportedAtLevelTime != level.startTime || reportedSent != sent ||
+        reportedTotal != level.numConnectedClients) {
         reportedAtLevelTime = level.startTime;
+        reportedSent = sent;
+        reportedTotal = level.numConnectedClients;
         G_Printf(S_COLOR_YELLOW "WARNING: the scoreboard does not fit in one reliable command "
                  "(%d of %d players sent, %d byte limit). Players past that point are missing "
                  "from every client's scoreboard.\n",

@@ -98,56 +98,104 @@ Format: numPlayers teamScore0 teamScore1 [client score ping time accuracy impres
 powerups and the parser followed the comment rather than the emitter.
 =================
 */
+/*
+[QL] One player's 18 fields, starting at argument `idx`. Returns the argument
+index just past them, so a caller can walk a list of entries without having to
+know how wide one is - which is how the parser and the emitter drifted apart in
+the first place.
+*/
+static int CG_ParseScoreEntry_Ffa(score_t *sp, int idx) {
+    sp->client = atoi(CG_Argv(idx++));
+    sp->score = atoi(CG_Argv(idx++));
+    sp->ping = atoi(CG_Argv(idx++));
+    sp->time = atoi(CG_Argv(idx++));
+    sp->accuracy = atoi(CG_Argv(idx++));
+    sp->impressiveCount = atoi(CG_Argv(idx++));
+    sp->excellentCount = atoi(CG_Argv(idx++));
+    sp->guantletCount = atoi(CG_Argv(idx++));
+    sp->defendCount = atoi(CG_Argv(idx++));
+    sp->assistCount = atoi(CG_Argv(idx++));
+    sp->perfect = atoi(CG_Argv(idx++));
+    sp->captures = atoi(CG_Argv(idx++));
+    sp->alive = atoi(CG_Argv(idx++));
+    sp->frags = atoi(CG_Argv(idx++));
+    sp->deaths = atoi(CG_Argv(idx++));
+    sp->bestWeapon = atoi(CG_Argv(idx++));
+    // Field 17 is bestWeaponAccuracy, which is what the emitter writes and what
+    // score_t has a field for. It used to be read into powerUps, so the WEAP
+    // column drew 0% for everyone and clientinfo powerups were overwritten.
+    sp->bestWeaponAccuracy = atoi(CG_Argv(idx++));
+    sp->damageDone = atoi(CG_Argv(idx++));
+    sp->net = sp->frags - sp->deaths;
+
+    if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
+        sp->client = 0;
+    }
+    cgs.clientinfo[sp->client].score = sp->score;
+    // powerups are not in this message - they come from the entity state.
+    sp->powerUps = cgs.clientinfo[sp->client].powerups;
+    sp->team = cgs.clientinfo[sp->client].team;
+
+    return idx;
+}
+
 static void CG_ParseScores_Ffa(void) {
     int i, idx;
+    int count = atoi(CG_Argv(1));
 
-    cg.numScores = atoi(CG_Argv(1));
-    if (cg.numScores > MAX_CLIENTS) {
-        cg.numScores = MAX_CLIENTS;
+    if (count > MAX_CLIENTS) {
+        count = MAX_CLIENTS;
     }
+    cg.numScores = count;
     cg.teamScores[0] = atoi(CG_Argv(2));
     cg.teamScores[1] = atoi(CG_Argv(3));
 
     memset(cg.scores, 0, sizeof(cg.scores));
-    for (i = 0; i < cg.numScores; i++) {
-        score_t *sp = &cg.scores[i];
-        idx = i * 18 + 4;
-        sp->client = atoi(CG_Argv(idx++));
-        sp->score = atoi(CG_Argv(idx++));
-        sp->ping = atoi(CG_Argv(idx++));
-        sp->time = atoi(CG_Argv(idx++));
-        sp->accuracy = atoi(CG_Argv(idx++));
-        sp->impressiveCount = atoi(CG_Argv(idx++));
-        sp->excellentCount = atoi(CG_Argv(idx++));
-        sp->guantletCount = atoi(CG_Argv(idx++));
-        sp->defendCount = atoi(CG_Argv(idx++));
-        sp->assistCount = atoi(CG_Argv(idx++));
-        sp->perfect = atoi(CG_Argv(idx++));
-        sp->captures = atoi(CG_Argv(idx++));
-        sp->alive = atoi(CG_Argv(idx++));
-        sp->frags = atoi(CG_Argv(idx++));
-        sp->deaths = atoi(CG_Argv(idx++));
-        sp->bestWeapon = atoi(CG_Argv(idx++));
-        // [QL] Field 17 is bestWeaponAccuracy, which is what the emitter writes
-        // (g_gametype_ffa.c) and what score_t has a field for. It was being read
-        // into powerUps instead - so the WEAP column had nothing to show and
-        // drew 0% for every player including the local one, and
-        // cgs.clientinfo[].powerups below was overwritten with an accuracy
-        // percentage. The doc comment above this function had the wrong field
-        // list too, which is presumably how the two drifted apart.
-        sp->bestWeaponAccuracy = atoi(CG_Argv(idx++));
-        sp->damageDone = atoi(CG_Argv(idx++));
-        sp->net = sp->frags - sp->deaths;
+    idx = 4;
+    for (i = 0; i < count; i++) {
+        idx = CG_ParseScoreEntry_Ffa(&cg.scores[i], idx);
+    }
+    CG_SetScoreSelection(NULL);
+}
 
-        if (sp->client < 0 || sp->client >= MAX_CLIENTS) {
-            sp->client = 0;
-        }
-        cgs.clientinfo[sp->client].score = sp->score;
-        // powerups are not in this message at all - they come from the entity
-        // state. Assigning sp->powerUps here wrote whatever field 17 happened to
-        // hold over the real value.
-        sp->powerUps = cgs.clientinfo[sp->client].powerups;
-        sp->team = cgs.clientinfo[sp->client].team;
+/*
+=================
+CG_ParseScores_FfaCont
+
+[QL] "scores_ffa2 <startIndex> <count> <entries...>" - the rest of a scoreboard
+that did not fit in one reliable command.
+
+A reliable command is capped at MAX_STRING_CHARS, which is about twenty players'
+worth of these 18 fields, so a full server's scoreboard cannot be sent as one
+message. It used to be truncated, and because the entry count was in the header
+the client read past the end of what arrived and filled the tail with garbage.
+
+Splitting it needed a shape that does not break a stock Steam client, which
+knows nothing about continuations. So the first message keeps the original form
+and reports only the entries *it* carries - a stock client renders that and is
+short but correct, exactly as it is today. Continuations arrive under a name it
+does not recognise and are ignored there; here they extend the list.
+=================
+*/
+static void CG_ParseScores_FfaCont(void) {
+    int i, idx;
+    int start = atoi(CG_Argv(1));
+    int count = atoi(CG_Argv(2));
+
+    if (start < 0 || start > MAX_CLIENTS) {
+        return;
+    }
+    if (count < 0 || start + count > MAX_CLIENTS) {
+        count = MAX_CLIENTS - start;
+    }
+
+    idx = 3;
+    for (i = 0; i < count; i++) {
+        idx = CG_ParseScoreEntry_Ffa(&cg.scores[start + i], idx);
+    }
+
+    if (start + count > cg.numScores) {
+        cg.numScores = start + count;
     }
     CG_SetScoreSelection(NULL);
 }
@@ -2122,6 +2170,11 @@ static void CG_ServerCommand(void) {
         CG_ParseScores_Race();
         return;
     }
+    if (!strcmp(cmd, "scores_ffa2")) {
+        CG_ParseScores_FfaCont();
+        return;
+    }
+
     if (!strcmp(cmd, "smscores")) {
         CG_ParseSmScores();
         return;
