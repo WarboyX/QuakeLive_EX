@@ -2318,9 +2318,17 @@ static __attribute__((format(printf, 2, 3))) void QDECL CL_RefPrintf(int print_l
     } else if (print_level == PRINT_ERROR) {
         Com_Printf(S_COLOR_RED "%s", msg);  // red
     } else if (print_level == PRINT_DEVELOPER) {
-#if DEBUG_RENDERER
+        // [QL] This was behind "#if DEBUG_RENDERER", a macro defined nowhere in
+        // the tree, so every PRINT_DEVELOPER line from either renderer was
+        // discarded at compile time and "developer 1" did nothing for renderer
+        // diagnostics. That is not a debug switch, it is a deleted one - and it
+        // silently threw away the two messages that answer most "why is this
+        // surface wrong" questions: "Couldn't find image file for shader %s"
+        // and "no shader for surface %s in skin %s".
+        //
+        // Com_DPrintf is already gated on the developer cvar, which is the
+        // gate this wanted.
         Com_DPrintf(S_COLOR_RED "%s", msg);  // red - developer only
-#endif
     }
 }
 
