@@ -54,6 +54,27 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 // bot states
 bot_state_t* botstates[MAX_CLIENTS];
+
+/*
+[QL] Storage for the above, rather than G_Alloc.
+
+A bot_state_t is 9032 bytes and one is taken per client slot that has ever held
+a bot. The game's pool is a fixed 256KB shared with map entity strings, the
+arena list (167 entries on a full install) and the bot list, so somewhere past
+twenty-five bots the pool ran out and the server died with
+
+    ERROR: G_Alloc: failed on allocation of 9032 bytes
+
+which is the reported "adding more than 20 bots crashes the server". G_Alloc has
+no free, so this also meant bot capacity depended on how many entity strings the
+current map happened to need.
+
+Bots are bounded by MAX_CLIENTS by definition, so the storage may as well be
+too: 64 slots is 578KB of BSS, it is reused across maps and reconnects, and it
+takes the largest and most variable consumer out of the pool entirely. The
+pointer array stays so nothing else changes.
+*/
+static bot_state_t botstateStorage[MAX_CLIENTS];
 // number of bots
 int numbots;
 // floating point time
@@ -1174,8 +1195,13 @@ int BotAISetupClient(int client, struct bot_settings_s* settings, qboolean resta
     bot_state_t* bs;
     int errnum;
 
+    if (client < 0 || client >= MAX_CLIENTS) {
+        BotAI_Print(PRT_FATAL, "BotAISetupClient: client %d out of range\n", client);
+        return qfalse;
+    }
+
     if (!botstates[client])
-        botstates[client] = G_Alloc(sizeof(bot_state_t));
+        botstates[client] = &botstateStorage[client];
     bs = botstates[client];
 
     if (!bs) {

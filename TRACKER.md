@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `████████████████████  8/8` | C11: deferred models never finished loading |
 | **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan runs and draws text |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
-| **Engine / server** (E) | `██████░░░░░░░░░░░░░░  4/12` | E11: no score and no match start are one bug |
-| **Overall** | `███████████░░░░░░░░░  27/49` | by binary: 11 server · 35 client · 3 both |
+| **Engine / server** (E) | `███████░░░░░░░░░░░░░  5/13` | E13: the bot crash was the game's 256KB pool |
+| **Overall** | `███████████░░░░░░░░░  28/50` | by binary: 12 server · 35 client · 3 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -79,6 +79,7 @@ for stock clients until proven otherwise.
 | ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
 | ○ | **E11** | No score for kills — the same bug as the match that never starts | OPEN |
 | ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
+| ● | **E13** | More than ~25 bots crashed the server | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
 
 #### our client (cgame / ui / client engine)
@@ -153,6 +154,7 @@ for stock clients until proven otherwise.
 | ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
 | ○ | **E11** | No score for kills — the same bug as the match that never starts | OPEN |
 | ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
+| ● | **E13** | More than ~25 bots crashed the server | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
 | ○ | **E5** | Steam integration absent | OPEN |
 
@@ -1599,6 +1601,43 @@ loading eight player models in one frame is a visible hitch, which is the whole
 reason it exists. It just never finished. One deferred client is now loaded per
 frame, which spreads the cost the way deferring intended and bounds the wait at
 one frame per client.
+
+### E13. More than ~25 bots crashed the server — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+`qconsole.log` named it on the first capture:
+
+```
+Forcing disconnect on active client: 26
+ERROR: G_Alloc: failed on allocation of 9032 bytes
+```
+
+9032 is `sizeof(bot_state_t)`. `BotAISetupClient` took one per client slot that
+had ever held a bot, out of the game module's `G_Alloc` pool — a fixed **256KB**
+with no free, shared with every entity key and value string on the map
+(`G_NewString`), the arena list (167 entries on a full install), the bot list
+and the unlagged history rings. Twenty-five bots is ~226KB of that pool before
+anything else, so it ran out mid-match.
+
+It also meant bot capacity depended on the *map*: a level with more entity
+strings left less room, and nothing said so.
+
+Two halves:
+
+- Bot states now live in a static `bot_state_t[MAX_CLIENTS]` in `ai_main.c`.
+  Bots are bounded by `MAX_CLIENTS` by definition, so the storage may as well be
+  — 578KB of BSS, reused across maps and reconnects, and the largest and most
+  variable consumer is out of the pool entirely.
+- `POOLSIZE` raised from Quake 3's 256KB to 1MB, because the ceiling was still
+  map-dependent for everything else, and the failure now reports how much was in
+  use rather than naming one allocation.
+
+**Also seen in that log, unexplained:** *"Forcing disconnect on active client:
+N"* is logged for every bot added, on slots that have never held a client.
+`ClientConnect` logs it when `ent->inuse` is already set and then calls
+`ClientDisconnect`, which is a safe no-op on a slot with no `ent->client` — so
+this is noise rather than damage, but something is setting `inuse` on fresh
+client slots and it is worth knowing what.
 
 ### E11. No score for kills, and the match that never starts, are one bug — OPEN
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client

@@ -26,7 +26,26 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "g_local.h"
 
-#define POOLSIZE (256 * 1024)
+/*
+[QL] Raised from Quake 3's 256KB.
+                       
+This pool has no free - G_InitMemory just resets the offset at map load - so it
+has to hold everything the level ever asks for at once: every entity key and
+value string on the map (G_NewString), the arena list, the bot list, and the
+unlagged history rings. 256KB was a 1999 number for 1999 maps and a 32-player
+ceiling.
+
+What made it visible was bots. A bot_state_t is 9032 bytes and used to come from
+here, so past twenty-five bots the pool ran out and the server died mid-match
+with "G_Alloc: failed on allocation of 9032 bytes". Those now live in their own
+static array (ai_main.c), which is the bigger half of the fix; this is the other
+half, because the ceiling was still map-dependent - a level with more entity
+strings left less room for everything else, and nothing said so.
+
+1MB of BSS in the game module. The failure also now reports what was in use, so
+the next time this is reached it says so instead of naming one allocation.
+*/
+#define POOLSIZE (1024 * 1024)
 
 static char memoryPool[POOLSIZE];
 static int allocPoint;
@@ -39,7 +58,7 @@ void* G_Alloc(int size) {
     }
 
     if (allocPoint + size > POOLSIZE) {
-        G_Error("G_Alloc: failed on allocation of %i bytes", size);
+        G_Error("G_Alloc: failed on allocation of %i bytes (%i of %i already in use)", size, allocPoint, POOLSIZE);
         return NULL;
     }
 
