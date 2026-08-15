@@ -1416,7 +1416,7 @@
         itemDef { text "Renderer:"  textscale .22  rect 30 96 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
             name renderer  type ITEM_TYPE_MULTI  text ""  cvar "cl_renderer"
-            cvarStrList { "OpenGL 2" "opengl2" "Vulkan" "vulkan" }
+            cvarStrList { "OpenGL 2", "opengl2", "Vulkan", "vulkan" }
             rect 230 96 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 

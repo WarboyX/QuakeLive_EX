@@ -2204,6 +2204,49 @@ static const char* Item_Multi_PoolString(const char* s) {
     return "";
 }
 
+/*
+===============
+Item_Multi_NoMatch
+
+[QL] The other way a multi row draws blank: the cvar holds a value that is not
+in the row's list, so nothing matches and the loop falls out. From the outside
+that is indistinguishable from a broken menu - the label is there, the value is
+missing, and there is nothing to go on. Name the cvar and the value.
+
+An empty value is the interesting case and is called out separately, because it
+means Cvar_VariableStringBuffer found no such cvar at all: the row is pointing
+at a cvar this build does not register.
+
+Once per item per value - this runs from the paint path, so printing every time
+would be a line per frame.
+===============
+*/
+static void Item_Multi_NoMatch(const itemDef_t* item, const char* value) {
+    static const itemDef_t* lastItem;
+    static char lastValue[256];
+
+    if (item == lastItem && Q_stricmp(value, lastValue) == 0) {
+        return;
+    }
+    lastItem = item;
+    Q_strncpyz(lastValue, value, sizeof(lastValue));
+
+    if (!DC || !DC->Print) {
+        return;
+    }
+
+    if (*value == '\0') {
+        DC->Print("^3WARNING:^7 multi item cvar \"%s\" is empty or unregistered "
+                  "- the row will draw blank\n",
+                  item->cvar ? item->cvar : "(none)");
+    } else {
+        DC->Print("^3WARNING:^7 multi item cvar \"%s\" is \"%s\", which is not one of its "
+                  "%d listed values - the row will draw blank\n",
+                  item->cvar ? item->cvar : "(none)", value,
+                  ((const multiDef_t*)item->typeData)->count);
+    }
+}
+
 const char* Item_Multi_Setting(itemDef_t* item) {
     char buff[1024];
     float value = 0;
@@ -2226,6 +2269,11 @@ const char* Item_Multi_Setting(itemDef_t* item) {
                 }
             }
         }
+
+        if (!multiPtr->strDef) {
+            Com_sprintf(buff, sizeof(buff), "%g", value);
+        }
+        Item_Multi_NoMatch(item, buff);
     }
     return "";
 }
@@ -5652,6 +5700,26 @@ qboolean ItemParse_cvarStrList(itemDef_t* item, int handle) {
         }
 
         if (*token.string == '}') {
+            // [QL] An empty list is always a mistake, and it has exactly one
+            // cause: the entries were written without commas between them.
+            // botlib's PS_ReadString joins adjacent quoted strings the way a C
+            // compiler does, so
+            //     { "OpenGL 2" "opengl2" "Vulkan" "vulkan" }
+            // is one token, "OpenGL 2opengl2Vulkanvulkan", and the list ends up
+            // with nothing in it. Every cvarStrList in Quake Live's own menus
+            // is comma-separated for this reason. Left silent it costs a menu
+            // row that draws blank with no explanation - which it did.
+            if (multiPtr->count == 0) {
+                PC_SourceError(handle,
+                               "cvarStrList for \"%s\" is empty - separate the entries with "
+                               "commas, adjacent quoted strings are joined into one token",
+                               item->cvar ? item->cvar : "(no cvar)");
+            } else if (pass == 1) {
+                PC_SourceError(handle,
+                               "cvarStrList for \"%s\" has an odd number of entries - the last "
+                               "display name has no cvar value after it",
+                               item->cvar ? item->cvar : "(no cvar)");
+            }
             return qtrue;
         }
 
