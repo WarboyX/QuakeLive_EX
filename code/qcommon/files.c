@@ -4203,6 +4203,7 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 	unsigned int srcChecksum, dstChecksum;
 	int dstLen;
 	qboolean needsWrite = qtrue;
+	qboolean wasStale = qfalse;
 
 	// Build expected filename (e.g., "cgamex86.dll", "uix86_64.dll" etc)
 	Com_sprintf(filename, sizeof(filename), "%s" ARCH_STRING DLL_EXT, module);
@@ -4349,10 +4350,12 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 							   filename, fileLen, srcChecksum, pak->pakGamename, pak->pakBasename);
 					needsWrite = qfalse;
 				} else {
-					Com_Printf(S_COLOR_YELLOW "MISMATCH: '%s' on disk is %d bytes / checksum 0x%08x, "
-							   "'%s/%s.pk3' has %d bytes / checksum 0x%08x - replacing it\n",
-							   outOSPath, dstLen, dstChecksum,
-							   pak->pakGamename, pak->pakBasename, fileLen, srcChecksum);
+					Com_Printf(S_COLOR_YELLOW "MISMATCH: '%s'\n", outOSPath);
+					Com_Printf(S_COLOR_YELLOW "    on disk: %d bytes, checksum 0x%08x\n", dstLen, dstChecksum);
+					Com_Printf(S_COLOR_YELLOW "    in %s.pk3: %d bytes, checksum 0x%08x\n",
+							   pak->pakBasename, fileLen, srcChecksum);
+					Com_Printf(S_COLOR_YELLOW "    replacing the copy on disk with the one from the pak\n");
+					wasStale = qtrue;
 				}
 			}
 
@@ -4383,8 +4386,17 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 							  outOSPath, pak->pakBasename, fileLen, srcChecksum, dstLen, dstChecksum);
 				}
 
-				Com_Printf("Extracted '%s' (%d bytes, checksum 0x%08x) from '%s/%s.pk3' to '%s'\n",
-						   filename, fileLen, srcChecksum, pak->pakGamename, pak->pakBasename, outOSPath);
+				// Two different events, worth two different sentences. Repeating
+				// the pak's checksum after a mismatch reads as if the two sides
+				// agreed all along - they do now, and that is the whole point,
+				// but only the second line is saying so.
+				if (wasStale) {
+					Com_Printf("    replaced - '%s' now matches %s.pk3 (checksum 0x%08x)\n",
+							   filename, pak->pakBasename, srcChecksum);
+				} else {
+					Com_Printf("Extracted '%s' (%d bytes, checksum 0x%08x) from '%s/%s.pk3' to '%s'\n",
+							   filename, fileLen, srcChecksum, pak->pakGamename, pak->pakBasename, outOSPath);
+				}
 			}
 
 			Z_Free(buffer);
