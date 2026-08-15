@@ -956,6 +956,21 @@ static consoleCommand_t commands[] = {
     {"-acc", CG_AccUp_f},
     {"+pstats", CG_PStatsDown_f},
     {"-pstats", CG_PStatsUp_f},
+    // [QL] The zoom handlers were written, declared in cg_local.h, and
+    // registered nowhere - so MOUSE2 executed "+zoom", the engine found no
+    // such command, and nothing happened and nothing was reported. Quake
+    // Live's default.cfg binds MOUSE2 to it, which is why this reads as "right
+    // click does not zoom" rather than as a missing feature.
+    {"+zoom", CG_ZoomDown_f},
+    {"-zoom", CG_ZoomUp_f},
+    // [QL] nextframe/prevframe step the test model's animation and were
+    // already here, but the four commands that put a test model on screen in
+    // the first place were not, so both were inert. Same set, registered
+    // together.
+    {"testmodel", CG_TestModel_f},
+    {"testgun", CG_TestGun_f},
+    {"nextskin", CG_TestModelNextSkin_f},
+    {"prevskin", CG_TestModelPrevSkin_f},
     {"nextframe", CG_TestModelNextFrame_f},
     {"prevframe", CG_TestModelPrevFrame_f},
     {"sizeup", CG_SizeUp_f},

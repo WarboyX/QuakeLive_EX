@@ -19,11 +19,8 @@ This tree's are not the same shape, in two directions:
 GetRefAPI calls VK_QL_FillImports and VK_QL_FillExports; that is the whole
 patch to the vendored file, and it is two lines.
 
-The font entries here are stubs and this build cannot draw text. That is a
-statement of the current state, not a design: the console is the debugging
-surface for a renderer, so a Vulkan build that cannot print is a Vulkan build
-that cannot be debugged from inside itself. Porting tr_font_gl.c's atlas to a
-vk image is the next piece of work, not polish afterwards.
+The four text entries are wired to tr_font_vk.c, the Vulkan backend for the
+fontstash atlas.
 ===========================================================================
 */
 
@@ -39,63 +36,21 @@ void *VKimp_GetInstanceProcAddr(void *instance, const char *name);
 // sdl_gamma.c, built into this module as it is into renderergl2
 void GLimp_SetGamma(unsigned char red[256], unsigned char green[256], unsigned char blue[256]);
 
-static void VK_TextNotImplemented(void) {
-    static qboolean reported;
-
-    if (!reported) {
-        reported = qtrue;
-        ri.Printf(PRINT_ALL,
-                  "^3WARNING:^7 the Vulkan renderer cannot draw text yet - the console and "
-                  "every menu will be blank. Use cl_renderer opengl2 to get it back.\n");
-    }
-}
+// tr_font_vk.c
+void RE_Font_DrawString(int x, int y, const char *text, int fontIndex, float scale, int limit, float *maxX, int flags);
+void RE_TextBounds(const char *text, int start, int limit, float scale, int fontIndex, int *outX, int *outY, int *outW, int *outH);
+void RE_GetGlyphInfo(int fontIndex, int charValue, glyphInfo_t *glyph);
+void RE_SetCompositionFont(int fontIndex, float scale);
 
 /*
 ===============
-RE_RegisterFont
+VK_Get_Advertisements
 
-A no-op in Quake Live too: fonts are loaded inside the renderer, and this
-entry point survives only because the UI still calls it. renderergl2's is the
-same stub, so this is not a Vulkan shortcoming.
+In-map advertisement surfaces. renderergl2's RE_Get_Advertisements reports none
+either - the feature needs the ad server this build does not talk to - so this
+is the same answer, not a Vulkan shortcoming.
 ===============
 */
-void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
-    if (font) {
-        Com_Memset(font, 0, sizeof(*font));
-    }
-}
-
-void R_InitFreeType(void) {}
-
-void R_DoneFreeType(void) {}
-
-static void VK_Font_DrawString(int x, int y, const char *text, int fontIndex, float scale, int limit, float *maxX, int flags) {
-    VK_TextNotImplemented();
-
-    if (maxX) {
-        *maxX = (float)x;
-    }
-}
-
-static void VK_TextBounds(const char *text, int start, int limit, float scale, int fontIndex, int *outX, int *outY, int *outW, int *outH) {
-    VK_TextNotImplemented();
-
-    if (outX) *outX = 0;
-    if (outY) *outY = 0;
-    if (outW) *outW = 0;
-    if (outH) *outH = 0;
-}
-
-static void VK_GetGlyphInfo(int fontIndex, int charValue, glyphInfo_t *glyph) {
-    VK_TextNotImplemented();
-
-    if (glyph) {
-        Com_Memset(glyph, 0, sizeof(*glyph));
-    }
-}
-
-static void VK_SetCompositionFont(int fontIndex, float scale) {}
-
 static void VK_Get_Advertisements(int *num, float *verts, char shaders[][MAX_QPATH]) {
     if (num) {
         *num = 0;
@@ -114,9 +69,9 @@ void VK_QL_FillImports(refimport_t *rimp) {
 }
 
 void VK_QL_FillExports(refexport_t *rexp) {
-    rexp->Font_DrawString = VK_Font_DrawString;
-    rexp->TextBounds = VK_TextBounds;
-    rexp->GetGlyphInfo = VK_GetGlyphInfo;
-    rexp->SetCompositionFont = VK_SetCompositionFont;
+    rexp->Font_DrawString = RE_Font_DrawString;
+    rexp->TextBounds = RE_TextBounds;
+    rexp->GetGlyphInfo = RE_GetGlyphInfo;
+    rexp->SetCompositionFont = RE_SetCompositionFont;
     rexp->Get_Advertisements = VK_Get_Advertisements;
 }
