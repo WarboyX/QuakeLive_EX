@@ -892,6 +892,13 @@ intermission (`CS_INTERMISSION`) calls it with the cursor centred.
 
 That is why there was no voting. Whether the vote then works is untested.
 
+**Fixed — the cursor.** With the catcher taken, the mouse moved and hovered
+*audibly* — items play a sound on mouse-enter — but nothing was drawn, because
+the ui module draws its own cursor and cgame never drew one.
+`cgs.media.cursor` was already registered in `CG_RegisterGraphics` and simply
+had no drawer. `CG_DrawIntermission` now draws it while `cgs.eventHandling` is
+active, 32x32 at the same -16 offset the ui uses so the hotspot matches.
+
 **Still open:**
 
 - the winner's model draws **legs only** — no torso, no head. A player model is

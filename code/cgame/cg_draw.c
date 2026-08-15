@@ -1753,6 +1753,23 @@ CG_DrawIntermission
 static void CG_DrawIntermission(void) {
 	cg.scoreFadeTime = cg.time;
 	cg.scoreBoardShowing = CG_DrawScoreboard();
+
+	/*
+	[QL] Draw the cursor while cgame holds the mouse.
+
+	The ui module draws its own (UI_DrawHandlePic with Assets.cursor) but cgame
+	never drew one, so once cgame took the key catcher at intermission the mouse
+	moved and hovered - audibly, since items play a sound on mouse-enter - with
+	nothing on screen to show where it was.
+
+	cgs.media.cursor is already registered in CG_RegisterGraphics; it just had
+	no drawer. Same 32x32 at the same -16 offset the ui uses, so the hotspot
+	lands in the middle of the pointer and matches the menus.
+	*/
+	if (cgs.eventHandling != CGAME_EVENT_NONE && cgs.media.cursor) {
+		CG_SetWidescreen(WIDESCREEN_STRETCH);
+		CG_DrawPic(cgs.cursorX - 16, cgs.cursorY - 16, 32, 32, cgs.media.cursor);
+	}
 }
 
 /*
