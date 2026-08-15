@@ -1976,6 +1976,7 @@ void CG_Trace(trace_t* result, const vec3_t start, const vec3_t mins, const vec3
 void CG_CapsuleTrace(trace_t* result, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int skipNumber, int mask);
 void CG_PredictPlayerState(void);
 void CG_LoadDeferredPlayers(void);
+qboolean CG_LoadOneDeferredPlayer(void);
 void CG_ForceModelChange(void);
 
 //

@@ -1177,6 +1177,48 @@ void CG_NewClientInfo(int clientNum) {
 
 /*
 ======================
+CG_LoadOneDeferredPlayer
+
+[QL] Load at most one deferred client, and report whether it did.
+
+A client that arrives mid-match is deferred: CG_SetDeferredClientInfo copies
+some *other* client's model to stand in, and the real one is loaded later. The
+only things that used to call CG_LoadDeferredPlayers were the scoreboard draw -
+and then only after it had been drawn eleven times - the local player's own info
+changing, and the first snapshot. So a bot joining a match in progress kept
+whatever stand-in it was given until the player happened to die and stare at the
+scoreboard, which is exactly the reported "sometimes the model loads and
+sometimes it doesn't".
+
+Deferring is worth keeping: a snapshot can bring eight clients in at once and
+loading eight player models in one frame is a visible hitch, which is the whole
+reason the mechanism exists. What it needs is to actually finish. One per frame
+spreads the cost the way deferring intended and bounds the wait at one frame per
+client rather than "until the scoreboard comes up".
+======================
+*/
+qboolean CG_LoadOneDeferredPlayer(void) {
+    int i;
+    clientInfo_t* ci;
+
+    for (i = 0, ci = cgs.clientinfo; i < cgs.maxclients; i++, ci++) {
+        if (!ci->infoValid || !ci->deferred) {
+            continue;
+        }
+        if (trap_MemoryRemaining() < 4000000) {
+            // Leave it deferred and say nothing: CG_LoadDeferredPlayers already
+            // prints the low-memory message, and this runs every frame.
+            return qfalse;
+        }
+        CG_LoadClientInfo(i, ci);
+        return qtrue;
+    }
+
+    return qfalse;
+}
+
+/*
+======================
 CG_LoadDeferredPlayers
 
 Called each frame when a player is dead

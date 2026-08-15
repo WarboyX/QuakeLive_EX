@@ -1192,6 +1192,11 @@ void CG_DrawActiveFrame(int serverTime, stereoFrame_t stereoView, qboolean demoP
         return;
     }
 
+    // [QL] Finish one deferred client per frame - see CG_LoadOneDeferredPlayer.
+    // Without this a client that joined mid-match kept a stand-in model until
+    // the scoreboard happened to be drawn eleven times.
+    CG_LoadOneDeferredPlayer();
+
     // any looped sounds will be respecified as entities
     // are added to the render list
     trap_S_ClearLoopingSounds(qfalse);
