@@ -45,8 +45,10 @@ void RE_SetCompositionFont(int fontIndex, float scale);
 // tr_scene.c
 void RE_AddRefEntityToScene(const refEntity_t *ent, qboolean intShaderTime);
 
-// tr_init.c - takes Quake3e's refShutdownCode_t, not this tree's qboolean
-void RE_Shutdown(int code);
+// tr_init.c's RE_Shutdown is static, so it cannot be named here. GetRefAPI
+// assigns it into re.Shutdown before calling VK_QL_FillExports, so the pointer
+// is taken from there and the vendored file still needs no third patch.
+static void (*vendoredShutdown)(int code);
 
 /*
 ===============
@@ -68,7 +70,9 @@ REF_UNLOAD_DLL is the honest translation regardless of what it passes.
 ===============
 */
 static void VK_Shutdown(qboolean destroyWindow) {
-    RE_Shutdown(3 /* REF_UNLOAD_DLL */);
+    if (vendoredShutdown) {
+        vendoredShutdown(3 /* REF_UNLOAD_DLL */);
+    }
 }
 
 /*
@@ -117,6 +121,7 @@ void VK_QL_FillImports(refimport_t *rimp) {
 }
 
 void VK_QL_FillExports(refexport_t *rexp) {
+    vendoredShutdown = (void (*)(int))rexp->Shutdown;
     rexp->Shutdown = VK_Shutdown;
     rexp->AddRefEntityToScene = VK_AddRefEntityToScene;
 
