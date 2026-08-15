@@ -35,6 +35,8 @@ report it.
 #include <SDL_vulkan.h>
 #endif
 
+#include <locale.h>
+
 #include "../qcommon/q_shared.h"
 #include "../renderercommon/tr_public.h"
 #include "../sdl/sdl_icon.h"
@@ -332,6 +334,12 @@ void VKimp_Init(glconfig_t *config) {
         if (SDL_Init(SDL_INIT_VIDEO) != 0) {
             ri.Error(ERR_FATAL, "VKimp_Init: SDL_Init( SDL_INIT_VIDEO ) failed (%s)", SDL_GetError());
         }
+
+        // [QL] SDL calls setlocale(LC_ALL, "") during init on several
+        // platforms, and everything this engine parses assumes a '.' decimal
+        // point - see the note in sys_main.c's main().
+        setlocale(LC_NUMERIC, "C");
+
         ri.Printf(PRINT_ALL, "SDL using driver \"%s\"\n", SDL_GetCurrentVideoDriver());
         ri.Cvar_Set("r_sdlDriver", SDL_GetCurrentVideoDriver());
     }

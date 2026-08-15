@@ -1613,7 +1613,13 @@ static void CG_RegisterSounds(void) {
     // [QL] moved from sound/feedback/voc_youwin to sound/vo/you_win
     cgs.media.winnerSound = trap_S_RegisterSound("sound/vo/you_win.ogg", qfalse);
     cgs.media.loserSound = trap_S_RegisterSound("sound/vo/you_lose.ogg", qfalse);
-    cgs.media.newHighScoreSound = trap_S_RegisterSound("new_high_score.ogg", qfalse);  // [QL] binary path string 0x1006cfa4
+    // [QL] The binary's path string (0x1006cfa4) is the bare filename, with no
+    // directory, which is why the console says "Failed to load sound
+    // new_high_score.ogg!" on every map load - S_RegisterSound takes the name
+    // as given and there is nothing at the root of the pak. Every other voice
+    // line registered here lives under sound/vo, and the ui module already asks
+    // for this one by that path (ui_main.c, uiInfo.newHighScoreSound).
+    cgs.media.newHighScoreSound = trap_S_RegisterSound("sound/vo/new_high_score.ogg", qfalse);
 
     cgs.media.wstbimplSound = trap_S_RegisterSound("sound/weapons/proxmine/wstbimpl.ogg", qfalse);
     cgs.media.wstbimpmSound = trap_S_RegisterSound("sound/weapons/proxmine/wstbimpm.ogg", qfalse);

@@ -45,6 +45,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #endif
 #endif
 
+#include <locale.h>
+
 #include "sys_local.h"
 #include "sys_loadlib.h"
 
@@ -703,6 +705,24 @@ main
 int main(int argc, char** argv) {
     int i;
     char commandLine[MAX_STRING_CHARS] = {0};
+
+    /*
+    [QL] Everything this engine parses and prints assumes a '.' decimal point.
+
+    Cvar values, shader files, configs, and - the one that showed the problem -
+    userinfo strings sent over the wire all go through atof and sprintf("%f").
+    On a machine whose locale uses a decimal comma those come out as "2,00",
+    and the bot userinfo configstrings on such a server literally read
+    "\\skill\\ 2,00". Anything reading that back under a C locale gets 2 and
+    silently drops the fraction; anything writing a config produces one the game
+    cannot read on the next machine.
+
+    The C runtime starts in the "C" locale, but SDL calls setlocale(LC_ALL, "")
+    during init on several platforms, so this is asserted here and again after
+    SDL_Init in GLimp_Init. LC_NUMERIC only - the rest of the locale is nobody's
+    business here.
+    */
+    setlocale(LC_NUMERIC, "C");
 #ifdef PROTOCOL_HANDLER
     char* protocolCommand = NULL;
 #endif
