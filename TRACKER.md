@@ -894,12 +894,22 @@ intermission (`CS_INTERMISSION`) calls it with the cursor centred.
 
 That is why there was no voting. Whether the vote then works is untested.
 
-**Fixed — the cursor.** With the catcher taken, the mouse moved and hovered
-*audibly* — items play a sound on mouse-enter — but nothing was drawn, because
-the ui module draws its own cursor and cgame never drew one.
-`cgs.media.cursor` was already registered in `CG_RegisterGraphics` and simply
-had no drawer. `CG_DrawIntermission` now draws it while `cgs.eventHandling` is
-active, 32x32 at the same -16 offset the ui uses so the hotspot matches.
+**Fixed — the cursor, in two goes.** With the catcher taken, the mouse moved and
+hovered *audibly* — items play a sound on mouse-enter — but nothing was drawn,
+because the ui module draws its own cursor and cgame never drew one.
+`CG_DrawIntermission` now draws it while `cgs.eventHandling` is active.
+
+The first attempt still drew nothing, because it guarded on `cgs.media.cursor`
+and that handle was **0**: `CG_RegisterGraphics` registered
+`"menu/art/3_cursor2"`, which is Quake 3's path and does not exist in Quake
+Live. `RegisterShaderNoMip` returns 0 for a shader that resolved to the default,
+so the guard silently skipped the draw every frame. Quake Live's menus declare
+`ui/assets/3_cursor3` in their assets block, which `CG_ParseMenu` already parses
+into `cgDC.Assets.cursor` — that is now preferred, with `cgs.media.cursor`
+(re-pointed at the QL path, Q3's kept as a fallback) behind it.
+
+Worth noting as a class: a dozen other `menu/art/...` registrations remain in
+cgame. Any of them that Quake Live does not ship are silently 0 in the same way.
 
 **Still open:**
 

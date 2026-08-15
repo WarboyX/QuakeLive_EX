@@ -1961,7 +1961,15 @@ static void CG_RegisterGraphics(void) {
     cgs.media.teamLeaderShader = trap_R_RegisterShaderNoMip("ui/assets/statusbar/team_leader.png");
     cgs.media.retrieveShader = trap_R_RegisterShaderNoMip("ui/assets/statusbar/retrieve.png");
     cgs.media.escortShader = trap_R_RegisterShaderNoMip("ui/assets/statusbar/escort.png");
-    cgs.media.cursor = trap_R_RegisterShaderNoMip("menu/art/3_cursor2");
+    // [QL] "menu/art/3_cursor2" is Quake 3's path and does not exist in Quake
+    // Live; RegisterShaderNoMip returns 0 for a shader that resolved to the
+    // default, so this was 0 and anything guarding on it drew nothing. Quake
+    // Live's menus declare "ui/assets/3_cursor3" in their assets block. The Q3
+    // path stays as a fallback for a pure-Q3 asset set.
+    cgs.media.cursor = trap_R_RegisterShaderNoMip("ui/assets/3_cursor3");
+    if (!cgs.media.cursor) {
+        cgs.media.cursor = trap_R_RegisterShaderNoMip("menu/art/3_cursor2");
+    }
     cgs.media.sizeCursor = trap_R_RegisterShaderNoMip("ui/assets/sizecursor.png");
     cgs.media.selectCursor = trap_R_RegisterShaderNoMip("ui/assets/selectcursor.png");
     cgs.media.flagShaders[0] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_in_base.tga");

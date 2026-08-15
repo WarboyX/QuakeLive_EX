@@ -1766,9 +1766,16 @@ static void CG_DrawIntermission(void) {
 	no drawer. Same 32x32 at the same -16 offset the ui uses, so the hotspot
 	lands in the middle of the pointer and matches the menus.
 	*/
-	if (cgs.eventHandling != CGAME_EVENT_NONE && cgs.media.cursor) {
-		CG_SetWidescreen(WIDESCREEN_STRETCH);
-		CG_DrawPic(cgs.cursorX - 16, cgs.cursorY - 16, 32, 32, cgs.media.cursor);
+	if (cgs.eventHandling != CGAME_EVENT_NONE) {
+		// Prefer whatever the loaded HUD declared in its assets block - that is
+		// the cursor the menus themselves use, and it is parsed into
+		// cgDC.Assets.cursor by CG_ParseMenu. cgs.media.cursor is the fallback.
+		qhandle_t cursor = cgDC.Assets.cursor ? cgDC.Assets.cursor : cgs.media.cursor;
+
+		if (cursor) {
+			CG_SetWidescreen(WIDESCREEN_STRETCH);
+			CG_DrawPic(cgs.cursorX - 16, cgs.cursorY - 16, 32, 32, cursor);
+		}
 	}
 }
 
