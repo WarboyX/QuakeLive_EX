@@ -607,6 +607,11 @@ typedef struct {
     int             rrInfectedCounters[4];  /* [QL] Red Rover infection tracking */
     int             rrInfectedSpreadStart;  /* [QL] */
     int             rrSurvivorScoreTimer;   /* [QL] */
+    /* [QL] rate limit on the HUD score configstrings - see
+       G_ScheduleScoreConfigstrings. Each of those is a reliable command
+       broadcast to every client, and CalculateRanks runs on every frag. */
+    int             nextScoreConfigstringTime;
+    qboolean        scoreConfigstringsPending;
 } level_locals_t;
 
 //
@@ -1069,6 +1074,9 @@ with room to spare.
 #define MAX_SCOREBOARD_PAYLOAD (MAX_STRING_CHARS - 64)
 
 qboolean G_ScoreboardTruncated(int wouldBe, int sent);
+
+void G_ScheduleScoreConfigstrings(void);
+void G_FlushScoreConfigstrings(void);
 
 /*
 [QL] Payload budget for an emitter whose header is not three small numbers.

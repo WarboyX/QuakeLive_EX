@@ -417,28 +417,37 @@ G_CheckMinimumPlayers
 ===============
 G_FillBots
 
-[QL] Adds bots toward a target, at most BOT_FILL_PER_TICK per call.
+[QL] Adds bots toward a target, at most bot_fillRate per call.
 
 G_CheckMinimumPlayers issues this once a second, so the rate here is also the
-fill rate: bot_minplayers 40 takes forty seconds at 1 per tick. That is slow,
-and the reason the 21-bot ceiling looked like a stall for so long, so this was
-raised to 4 - which then crashed dedicated servers while filling. Four adds in
-one frame is four ClientBegin calls plus four botlib character loads plus four
-AAS clients appearing between two server frames, and something in that burst
-does not survive; the throttled one-per-second path has never done it.
+fill rate: bot_minplayers 40 takes forty seconds at one per tick. That is slow,
+and it is the reason the 21-bot ceiling looked like a stall for so long. Raising
+it to 4 was blamed for crashing dedicated servers while filling; the crash was
+G_Alloc pool exhaustion at bot 26 (see g_mem.c), which a faster fill only
+reached sooner.
 
-Back to 1 until the crash is understood. The real fix for slow filling is not a
-bigger burst here - it is not gating the whole thing behind a one-second timer,
-which is a change to G_CheckMinimumPlayers, not to this cap.
+So it is a cvar rather than a number. 1 is the quiet default; higher reaches a
+player count fast when reproducing something that only happens at scale.
+BOT_FILL_RATE_MAX is a sanity clamp - each add is a ClientBegin, a botlib
+character load and an AAS client, and there is no reason to want more than a
+handful of those between two server frames.
 ===============
 */
-#define BOT_FILL_PER_TICK 1
+#define BOT_FILL_RATE_MAX 16
 
 static void G_FillBots(int team, int shortfall) {
-    int i;
+    int i, rate;
 
-    if (shortfall > BOT_FILL_PER_TICK) {
-        shortfall = BOT_FILL_PER_TICK;
+    trap_Cvar_Update(&bot_fillRate);
+    rate = bot_fillRate.integer;
+    if (rate < 1) {
+        rate = 1;
+    } else if (rate > BOT_FILL_RATE_MAX) {
+        rate = BOT_FILL_RATE_MAX;
+    }
+
+    if (shortfall > rate) {
+        shortfall = rate;
     }
     for (i = 0; i < shortfall; i++) {
         G_AddRandomBot(team);

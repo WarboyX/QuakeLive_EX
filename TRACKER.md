@@ -990,6 +990,74 @@ Three parts:
   instagib server. `CG_RefreshScoreboard` re-requests on the same two-second
   throttle the key press already used, so it costs no more than tapping TAB.
 
+### E16. Clients dropped for "Server command overflow" at match start — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+A sixty-player server dropped three clients — including the human — seconds
+after `map_restart`. The pending-command dump is almost entirely the same two
+configstrings, rewritten over and over with different values:
+
+```
+cmd 1388: cs 659 "Klesk"
+cmd 1389: cs 659 "Grunt"
+cmd 1393: cs 659 "Klesk"
+cmd 1396: cs 659 "Phobos"
+```
+
+659 and 660 are `CS_SCORES1PLAYER` / `CS_SCORES2PLAYER`, the leader and
+runner-up names on the HUD. `CalculateRanks` writes them, and it runs on every
+frag; each write is a reliable command **broadcast to every client**, against a
+64-slot ring. A client that stops acknowledging for a moment — loading the map
+after a restart, which is exactly when this fired — overflows and is dropped.
+
+Two causes, both fixed:
+
+- **`SortRanks` returned 0 for tied players.** `qsort` is not stable and the
+  array it sorts changes every time somebody connects, so the order among a
+  field of tied players was arbitrary and different on each call. At match start
+  everyone is tied on zero while sixty bots are still connecting, so the
+  "leader" changed several times a second and each change broadcast two
+  configstrings for a lead that had not moved. Ties now break by client number,
+  which also makes `PERS_RANK` stable.
+
+- **Nothing bounded the broadcast rate.** The score configstrings moved out of
+  `CalculateRanks` into `G_UpdateScoreConfigstrings`, behind
+  `G_ScheduleScoreConfigstrings`, which writes at most once every 250 ms and
+  otherwise sets a pending flag that `G_RunFrame` flushes. Intermission bypasses
+  the limit, since the final figures have to be right and nothing follows them.
+  Four updates a second is more than the eye follows on a HUD, and it caps what
+  `CalculateRanks` can cost no matter how fast frags arrive.
+
+Note the scoreboard chunking (C13) pushed in the same direction — a full FFA
+scoreboard is now three or four reliable commands instead of one. That is per
+request and throttled client-side to one every two seconds, so it is a much
+smaller contributor than the per-frag broadcast was, but it is the reason to
+keep an eye on this queue.
+
+### E17. Returning after a drop mid-match leaves you spectating — OPEN
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+Reported straight after E16: reconnecting during a live match came back as a
+spectator rather than a player.
+
+Not yet reproduced, and the obvious path does not explain it. For FFA,
+`G_InitSessionData` gives `TEAM_FREE` when `g_autoJoin` is set (it is, in
+`common.cfg`) unless `g_maxGameClients` is non-zero and the server is at that
+cap. `g_maxGameClients` ships as `"0"` — but it is **`CVAR_ARCHIVE`**, so a
+value set once on that server is written to the config and wins forever after,
+which is the trap in CLAUDE.md and the first thing to check on the affected
+server (`/g_maxGameClients`).
+
+There is a second, definite defect underneath it either way: **a human sitting
+in spectator never displaces a bot.** `G_CheckMinimumPlayers` counts humans with
+`G_CountHumanPlayers(TEAM_FREE)`, so someone who has been put in spectator is
+not counted, `humanplayers + botplayers` stays equal to `bot_minplayers`, and no
+bot is ever removed to make room. The logs show bots taking the vacated slots
+immediately (`ClientDisconnect: 11` then `ClientBegin: 47`, `ClientBegin: 48`),
+so on a bot-filled server the seat is gone before the player is back. Not
+changed yet — trimming bots for anyone spectating would also trim them for
+people who mean to spectate, and that needs deciding rather than assuming.
+
 ### C14. Match summary: no cursor, no voting, no winner, no arena shots — PARTIAL
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 

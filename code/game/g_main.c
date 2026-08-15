@@ -2158,6 +2158,27 @@ int QDECL SortRanks(const void* a, const void* b) {
     if (ca->ps.persistant[PERS_SCORE] < cb->ps.persistant[PERS_SCORE]) {
         return 1;
     }
+
+    /*
+    [QL] Break ties by client number rather than declaring them equal.
+
+    qsort is not stable and the array it sorts changes every time somebody
+    connects, so with a field of tied players the order among them was arbitrary
+    and different on each call. CalculateRanks runs on every frag, and it writes
+    the leader's and runner-up's names into CS_SCORES1PLAYER / CS_SCORES2PLAYER;
+    each reshuffle therefore broadcast two configstring updates to every client
+    for a lead that had not actually changed.
+
+    On a sixty-player server at match start - everyone tied on zero while the
+    bots are still connecting - that was enough to fill the 64-slot reliable
+    command queue and drop players with "Server command overflow".
+    */
+    if (*(const int*)a < *(const int*)b) {
+        return -1;
+    }
+    if (*(const int*)a > *(const int*)b) {
+        return 1;
+    }
     return 0;
 }
 
@@ -2323,6 +2344,34 @@ void CalculateRanks(void) {
     }
 
     // set the CS_SCORES1/2 configstrings, which will be visible to everyone
+    G_ScheduleScoreConfigstrings();
+
+    // if we are at the intermission, send the new info to everyone
+    if (level.intermissionTime) {
+        for (i = 0; i < level.maxclients; i++) {
+            if (level.clients[i].pers.connected == CON_CONNECTED) {
+                MoveClientToIntermission(g_entities + i);
+            }
+        }
+        SendScoreboardMessageToAllClients();
+    }
+}
+
+/*
+============
+G_UpdateScoreConfigstrings
+
+[QL] Publish the leader and runner-up to the HUD.
+
+Split out of CalculateRanks so that it can be rate limited. Every configstring
+written here is a reliable command broadcast to every connected client, and
+CalculateRanks runs on every frag; on a busy sixty-player server that is a
+steady stream of updates against a 64-slot queue, and a client that stops
+acknowledging for a moment - loading a map after map_restart, most of all - is
+dropped for "Server command overflow".
+============
+*/
+static void G_UpdateScoreConfigstrings(void) {
     if (g_gametype.integer >= GT_TEAM && g_gametype.integer != GT_RR) {
         trap_SetConfigstring(CS_SCORES1, va("%i", level.teamScores[TEAM_RED]));
         trap_SetConfigstring(CS_SCORES2, va("%i", level.teamScores[TEAM_BLUE]));
@@ -2390,16 +2439,47 @@ void CalculateRanks(void) {
             }
         }
     }
+}
 
-    // if we are at the intermission, send the new info to everyone
-    if (level.intermissionTime) {
-        for (i = 0; i < level.maxclients; i++) {
-            if (level.clients[i].pers.connected == CON_CONNECTED) {
-                MoveClientToIntermission(g_entities + i);
-            }
-        }
-        SendScoreboardMessageToAllClients();
+/*
+============
+G_ScheduleScoreConfigstrings
+
+[QL] Write the HUD score configstrings now, or mark them for the next tick that
+is allowed to.
+
+SCORE_CONFIGSTRING_INTERVAL is the shortest gap between broadcasts. The values
+are a leader name and two numbers on the HUD; four updates a second is more
+than the eye can follow, and it bounds what CalculateRanks can cost no matter
+how fast frags are coming in. Intermission bypasses the limit, because the final
+figures have to be right and nothing follows them.
+
+G_RunFrame flushes the pending flag, so a value that arrives during a quiet
+moment is never left unpublished.
+============
+*/
+#define SCORE_CONFIGSTRING_INTERVAL 250
+
+void G_ScheduleScoreConfigstrings(void) {
+    if (!level.intermissionQueued && !level.intermissionTime &&
+        level.time < level.nextScoreConfigstringTime) {
+        level.scoreConfigstringsPending = qtrue;
+        return;
     }
+
+    level.nextScoreConfigstringTime = level.time + SCORE_CONFIGSTRING_INTERVAL;
+    level.scoreConfigstringsPending = qfalse;
+    G_UpdateScoreConfigstrings();
+}
+
+void G_FlushScoreConfigstrings(void) {
+    if (!level.scoreConfigstringsPending) {
+        return;
+    }
+    if (level.time < level.nextScoreConfigstringTime) {
+        return;
+    }
+    G_ScheduleScoreConfigstrings();
 }
 
 /*
@@ -3989,6 +4069,9 @@ void G_RunFrame(int levelTime) {
 
     // get any cvar changes
     G_UpdateCvars();
+
+    // [QL] publish any HUD score change that the rate limit deferred
+    G_FlushScoreConfigstrings();
 
     // [QL] Respawn-delay computation (== QL G_RunFrame @0x100594e0, DAT_105df41c).
     // player_die reads the effective delay from level.forceRespawnDelay whenever
