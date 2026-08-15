@@ -129,6 +129,7 @@ for stock clients until proven otherwise.
 |---|---|---|---|
 | ○ | **E8** | 186 cvars are registered but read by nothing | OPEN, survey done |
 | ● | **E3** | No master server heartbeat / server queries | DONE (verify) |
+| ● | **E14** | Nothing verified that the loaded module matched the shipped one | DONE (verify) |
 | ○ | **E5** | Steam integration absent | OPEN |
 
 ---
@@ -157,6 +158,7 @@ for stock clients until proven otherwise.
 | ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
 | ● | **E13** | More than ~25 bots crashed the server | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
+| ● | **E14** | Nothing verified that the loaded module matched the shipped one | DONE (verify) |
 | ○ | **E5** | Steam integration absent | OPEN |
 
 #### our client only
@@ -1676,6 +1678,41 @@ N"* is logged for every bot added, on slots that have never held a client.
 `ClientDisconnect`, which is a safe no-op on a slot with no `ent->client` — so
 this is noise rather than damage, but something is setting `inuse` on fresh
 client slots and it is worth knowing what.
+
+### E14. Nothing verified that the loaded module matched the shipped one — DONE (verify)
+**Lives in:** **both** of our binaries · **Seen by:** every client
+
+Two rounds of a real bug hunt went into "the fix is in the build and the crash
+says otherwise", and neither the game nor the log could settle it. The extracted
+module in the homepath is what actually gets loaded, and nothing ever compared
+it against the `iobin.pk3` it was supposed to come from — the log said
+*"Extracted ..."* whether or not the bytes were the ones in the pak, so a stale
+module was indistinguishable from a fix that had not worked.
+
+`FS_ExtractGamecode` now checksums both sides on every start and says which case
+it is:
+
+```
+Verified 'uix86_64.so' (364984 bytes, checksum 0xe0de03e9) against 'baseq3/iobin.pk3'
+MISMATCH: '<homepath>/uix86_64.so' on disk is 364984 bytes / checksum 0x4413021b,
+          'baseq3/iobin.pk3' has 364984 bytes / checksum 0xe0de03e9 - replacing it
+```
+
+The replacement is the repair, and it is read back and re-checksummed
+afterwards — a write that reports success and produces different bytes is
+exactly the failure this exists to catch, so it is not taken on trust. If the
+readback disagrees the engine refuses to continue rather than loading a module
+that is not the one that shipped, and a target that cannot be opened for writing
+now says *why* that matters instead of just failing.
+
+Verified by corrupting an extracted module by hand: clean start reports
+`Verified`, corrupted start reports `MISMATCH` with both checksums and replaces
+it, next start reports `Verified` again.
+
+The archives also carry `checksums.txt` — sha256 of every shipped file, so an
+install can be checked against the release it came from without running the
+game (`sha256sum -c checksums.txt`). The engine covers modules against the pak;
+this covers the files on disk against the build.
 
 ### E11. No score for kills, and the match that never starts, are one bug — OPEN
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client

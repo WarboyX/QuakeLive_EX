@@ -84,6 +84,25 @@ cp -p server.cfg.example "$WD/" 2>/dev/null || true
 cp -p content/serverconfigs/*.cfg "$LD/baseq3/"
 cp -p content/serverconfigs/*.cfg "$WD/baseq3/"
 
+# A manifest of everything in the archive, so an install can be checked against
+# what was actually shipped without running the game. The engine verifies the
+# extracted game modules against iobin.pk3 on every start (FS_ExtractGamecode);
+# this covers the other half - the files on disk against the release they came
+# from, which is the question "am I running the build I think I am".
+for D in "$LD" "$WD"; do
+  (
+    cd "$D"
+    {
+      echo "# ioquakelive $REV"
+      echo "# sha256 of every file in this archive"
+      echo "#"
+      echo "# The game verifies the modules it extracts out of iobin.pk3 by itself."
+      echo "# This is for checking the archive: sha256sum -c checksums.txt"
+      find . -type f ! -name checksums.txt -print0 | sort -z | xargs -0 sha256sum
+    } > checksums.txt
+  )
+done
+
 mkdir -p "$OUT/out"
 rm -f "$OUT/out"/*-"$REV".zip
 (cd "$OUT/pkg" && zip -q -r -9 "$OUT/out/quakelive-linux-x86_64-$REV.zip" "quakelive-linux-x86_64-$REV")

@@ -4139,6 +4139,57 @@ OS path is returned via outOSPath. This function ensures that only
 validated gamecode is loaded in pure server environments.
 =====================
 */
+/*
+=====================
+FS_ChecksumOSFile
+
+[QL] Checksum a file by its real path, outside the game filesystem.
+
+Deliberately not FS_ReadFile: the target of an extraction lives in the homepath
+and is also present inside the pk3 we are extracting from, so a search-path read
+can return either one. This has to see what is actually on disk.
+
+Returns qfalse if the file cannot be read at all, which is the "nothing there
+yet" case and not an error.
+=====================
+*/
+static qboolean FS_ChecksumOSFile(const char* ospath, unsigned int* outChecksum, int* outLen) {
+	FILE* f;
+	byte* buf;
+	long len;
+	size_t got;
+
+	f = Sys_FOpen(ospath, "rb");
+	if (!f) {
+		return qfalse;
+	}
+
+	fseek(f, 0, SEEK_END);
+	len = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	if (len <= 0 || len > 64 * 1024 * 1024) {
+		fclose(f);
+		return qfalse;
+	}
+
+	buf = Z_Malloc(len);
+	got = fread(buf, 1, len, f);
+	fclose(f);
+
+	if ((long)got != len) {
+		Z_Free(buf);
+		return qfalse;
+	}
+
+	*outChecksum = Com_BlockChecksum(buf, len);
+	*outLen = (int)len;
+
+	Z_Free(buf);
+
+	return qtrue;
+}
+
 qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 	char filename[MAX_QPATH];
 	searchpath_t* search;
@@ -4149,6 +4200,9 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 	int hash;
 	void* buffer;
 	int fileLen;
+	unsigned int srcChecksum, dstChecksum;
+	int dstLen;
+	qboolean needsWrite = qtrue;
 
 	// Build expected filename (e.g., "cgamex86.dll", "uix86_64.dll" etc)
 	Com_sprintf(filename, sizeof(filename), "%s" ARCH_STRING DLL_EXT, module);
@@ -4259,37 +4313,82 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 			unzOpenCurrentFile(pak->handle);
 			fhdIn->zipFilePos = fileEntry->pos;
 
-			// Remove existing file
-			if (FS_FileExists(filename)) {
-				char* path = FS_BuildOSPath(fs_homepath->string, fs_gamedir, filename);
-				remove(path);
-			}
-
-			// Open output file
-			handleOut = FS_FOpenFileWrite(filename);
-			char* path = FS_BuildOSPath(fs_homepath->string, fs_gamedir, filename);
-			Q_strncpyz(outOSPath, path, MAX_OSPATH);
-
-			if (!handleOut) {
-				Com_Error(ERR_FATAL, "FS_ExtractGamecode: failed to open %s for writing", filename);
-			}
-
-			// Read entire file from zip and write to disk
+			// Read the authoritative copy out of the pk3 first, so it can be
+			// checksummed and compared against whatever is already on disk.
 			fileLen = fileEntry->len;
 			buffer = Z_Malloc(fileLen);
 
 			if (FS_Read(buffer, fileLen, handleIn) != fileLen) {
 				Com_Error(ERR_FATAL, "FS_ExtractGamecode: short read");
 			}
-			if (FS_Write(buffer, fileLen, handleOut) != fileLen) {
-				Com_Error(ERR_FATAL, "FS_ExtractGamecode: short write");
+
+			srcChecksum = Com_BlockChecksum(buffer, fileLen);
+
+			{
+				char* path = FS_BuildOSPath(fs_homepath->string, fs_gamedir, filename);
+				Q_strncpyz(outOSPath, path, MAX_OSPATH);
 			}
 
-			Com_Printf("Extracted '%s' (%d bytes) from '%s/%s.pk3' to '%s'\n", filename, fileLen, pak->pakGamename, pak->pakBasename, path);
+			/*
+			[QL] Verify what is already there before replacing it.
+
+			The extracted module is what actually gets loaded, and until now
+			nothing compared it against the pk3 it was supposed to come from.
+			When the two disagreed there was no way to tell from inside the
+			game: the log said "Extracted ..." either way, and a stale module
+			looked exactly like a fix that had not worked. That cost two rounds
+			of a real bug hunt.
+
+			So: checksum the copy on disk, checksum the copy in the pak, and say
+			which case this is. A mismatch is reported as a mismatch, the file is
+			replaced, and the replacement is verified by reading it back.
+			*/
+			if (FS_ChecksumOSFile(outOSPath, &dstChecksum, &dstLen)) {
+				if (dstChecksum == srcChecksum && dstLen == fileLen) {
+					Com_Printf("Verified '%s' (%d bytes, checksum 0x%08x) against '%s/%s.pk3'\n",
+							   filename, fileLen, srcChecksum, pak->pakGamename, pak->pakBasename);
+					needsWrite = qfalse;
+				} else {
+					Com_Printf(S_COLOR_YELLOW "MISMATCH: '%s' on disk is %d bytes / checksum 0x%08x, "
+							   "'%s/%s.pk3' has %d bytes / checksum 0x%08x - replacing it\n",
+							   outOSPath, dstLen, dstChecksum,
+							   pak->pakGamename, pak->pakBasename, fileLen, srcChecksum);
+				}
+			}
+
+			if (needsWrite) {
+				remove(outOSPath);
+
+				handleOut = FS_FOpenFileWrite(filename);
+				if (!handleOut) {
+					Com_Error(ERR_FATAL, "FS_ExtractGamecode: failed to open %s for writing. If the "
+							  "file is in use or read-only, the module cannot be updated and the "
+							  "old one would be loaded instead", filename);
+				}
+
+				if (FS_Write(buffer, fileLen, handleOut) != fileLen) {
+					Com_Error(ERR_FATAL, "FS_ExtractGamecode: short write");
+				}
+
+				FS_FCloseFile(handleOut);
+
+				// Read it back. A write that reported success and produced
+				// different bytes is exactly the failure this is here to catch,
+				// so it is not taken on trust.
+				if (!FS_ChecksumOSFile(outOSPath, &dstChecksum, &dstLen) ||
+					dstChecksum != srcChecksum || dstLen != fileLen) {
+					Com_Error(ERR_FATAL, "FS_ExtractGamecode: '%s' does not match '%s.pk3' after "
+							  "writing it (wrote %d bytes / checksum 0x%08x, read back %d / 0x%08x). "
+							  "The module on disk is not the one that shipped",
+							  outOSPath, pak->pakBasename, fileLen, srcChecksum, dstLen, dstChecksum);
+				}
+
+				Com_Printf("Extracted '%s' (%d bytes, checksum 0x%08x) from '%s/%s.pk3' to '%s'\n",
+						   filename, fileLen, srcChecksum, pak->pakGamename, pak->pakBasename, outOSPath);
+			}
 
 			Z_Free(buffer);
 			FS_FCloseFile(handleIn);
-			FS_FCloseFile(handleOut);
 
 			// Set module checksum
 			if (Q_stricmp(module, "ui") == 0) {
