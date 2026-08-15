@@ -141,14 +141,51 @@ static int RB_Font_renderCreate(void *uptr, int width, int height) {
     return 1;
 }
 
+/*
+===============
+RB_Font_renderResize
+
+Two things make this different from the GL path, and getting the second one
+wrong is what garbled in-game text while the main menu looked fine.
+
+A VkImage's extent is fixed at creation, so there is no "redefine storage on
+the same texture object" - a bigger atlas means a new image. But
+RE_RegisterShaderFromImage looks the shader up by name first and returns the
+one that already exists, still pointing at the *old* image. fontstash then
+re-uploads every glyph into the new image while the draw path samples the old
+one: the menu, whose glyphs were rasterised before the first resize, keeps
+working, and everything after it comes out as fragments of the wrong glyphs.
+That is exactly the reported "text works at the main menu and console but not
+in-game" - a match needs far more glyphs than a menu, so it is the first thing
+to grow the atlas past 512x512.
+
+So: reuse the image when the size has not changed (fontstash calls this on a
+plain reset too, and re-marks every glyph dirty, so the contents come back),
+and re-point the shader at the new image when it has.
+===============
+*/
 static int RB_Font_renderResize(void *uptr, int width, int height) {
-    // Unlike the GL path there is no "redefine storage on the same texture
-    // object" here - a VkImage's extent is fixed at creation. Creating a new
-    // one leaks the old image_t until vid_restart, which is why the atlas is
-    // capped at 2048x1024 and reset rather than grown past it (see
-    // R_Font_HandleError): the number of resizes over a session is bounded at
-    // three.
-    return RB_Font_renderCreate(uptr, width, height);
+    shader_t *sh;
+
+    if (fontImage == NULL) {
+        return RB_Font_renderCreate(uptr, width, height);
+    }
+
+    if (width == fontAtlasWidth && height == fontAtlasHeight) {
+        return 1;  // same atlas, contents will be re-uploaded as dirty rects
+    }
+
+    if (!RB_Font_renderCreate(uptr, width, height)) {
+        return 0;
+    }
+
+    sh = R_GetShaderByHandle(fontShader);
+    if (sh == NULL || sh->stages[0] == NULL) {
+        return 0;
+    }
+    sh->stages[0]->bundle[0].image[0] = fontImage;
+
+    return 1;
 }
 
 static void RB_Font_renderUpdate(void *uptr, int *rect, const unsigned char *data) {
