@@ -2171,10 +2171,36 @@ int Item_Multi_FindCvarByValue(itemDef_t* item) {
 // multi in ingame_options_advanced.menu, whose 3rd entry's pointer high dword is
 // clobbered), which would make the menu painter strlen a wild pointer and crash.
 // Reject any entry that is not inside the string pool and render nothing instead.
+/*
+===============
+Item_Multi_PoolString
+
+[QL] Transcribed from the binary: a multi item's display string is only
+returned if it lives in the string pool, otherwise the empty string.
+
+The check itself is defensive and fine. Returning "" silently is not - it
+renders as a blank value row with nothing to say why, which is exactly what
+"the renderer option is empty" looks like from the outside. String_Alloc hands
+back a non-pool pointer in two cases: the string was empty, or the pool was
+full and it returned NULL. Say which.
+===============
+*/
 static const char* Item_Multi_PoolString(const char* s) {
     if (s >= strPool && s < strPool + STRING_POOL_SIZE) {
         return s;
     }
+
+    if (DC && DC->Print) {
+        static const char* lastReported;
+
+        if (s != lastReported) {
+            lastReported = s;
+            DC->Print("^3WARNING:^7 multi item value \"%s\" is not in the string pool "
+                      "(%d of %d bytes used) - the row will draw blank\n",
+                      s ? s : "(null)", strPoolIndex, STRING_POOL_SIZE);
+        }
+    }
+
     return "";
 }
 
