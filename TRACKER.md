@@ -938,6 +938,29 @@ only and the client throttles its own `score` request to one every two seconds,
 so nothing in normal play multiplies this — but a client that spams `score` costs
 four times what it used to.
 
+### E21. Joining any team gametype dropped the client — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client, stock included
+
+```
+CG_ParseTeamInfo: bad client number: 85
+CG_ParseTeamInfo: bad client number: 90
+```
+
+`tinfo` in Quake Live is a flat list — a count, then that many client numbers.
+Teammate health, armour, location, weapon and powerups reach the client through
+the snapshot, not through this message. `CG_ParseTeamInfo` (binary `0x100487b0`)
+reads it that way and its own comment in `cg_servercmds.c` says so explicitly.
+
+`TeamplayInfoMessage` was still the **stock Quake 3 emitter**, writing six fields
+per player. So the client read every field as a client number: argv(3) a
+location, argv(4) a health value, argv(5) armour. 85 and 90 are health — which
+is why the numbers in the error looked like nothing in particular.
+
+Fatal, via `CG_Error`, on joining any team gametype. Freeze Tag is where it was
+reported because that is what was being tested; TDM, CA, CTF and the rest were
+equally broken. A stock Steam client would also expect the flat list, so the
+emitter is the side that was wrong, and the parser was right all along.
+
 ### E20. Freeze Tag killed the server on the first frag — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
@@ -1742,6 +1765,35 @@ path fault it will affect this light too.
 ---
 
 ## Renderer
+
+### R9. Quad glow dimmer under Vulkan than OpenGL — DONE (verify)
+**Lives in:** our **client** (renderer) · **Seen by:** our client only, Vulkan only
+
+Reported after switching to Vulkan: the quad glow is less intense, both on the
+powered-up player and on the powerup lying on the floor.
+
+Both are plain dynamic lights — `cg_players.c:1948` for the carrier and
+`cg_ents.c:473` for the item, each `radius 200 + (rand() & 31)`, blue. Quake3e's
+`RE_AddLightToScene` does
+
+```c
+intensity *= r_dlightScale->value;   /* tr_scene.c:272, :323 */
+...
+dl->radius = intensity;
+```
+
+and ships `r_dlightScale` at **0.5**, so every dynamic light in the Vulkan
+renderer had half the radius. `renderergl2` has no such cvar and runs at full
+radius, so the same scene really was dimmer under Vulkan — not a perceptual
+difference. The gate is `r_dlightMode != 0`, and `USE_PMLIGHT` is defined with
+`r_dlightMode` defaulting to 1 on x86_64, so it was always active.
+
+Default is now 1, matching the OpenGL renderer. It is `CVAR_ARCHIVE_ND`, so
+unlike the `CVAR_ARCHIVE` trap in CLAUDE.md the new default does apply — an
+archived copy only exists if somebody set the cvar deliberately.
+
+Note this is a different question from R8, which is about dynamic lights being
+weak in *both* renderers. R8 stays open.
 
 ### R8. Dynamic light glow is weak or absent — OPEN, my earlier diagnosis was wrong
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only

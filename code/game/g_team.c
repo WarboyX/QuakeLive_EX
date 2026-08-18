@@ -1133,7 +1133,6 @@ void TeamOverlayMessage(gentity_t* ent) {
     int i, j;
     gentity_t* player;
     int cnt;
-    int h, a;
     int clients[TEAM_MAXOVERLAY];
     int team;
 
@@ -1171,23 +1170,32 @@ void TeamOverlayMessage(gentity_t* ent) {
     string[0] = 0;
     stringlength = 0;
 
+    /*
+    [QL] One client number per player - NOT Quake 3's six-field overlay row.
+
+    Quake Live's tinfo is a flat list: the count, then that many client numbers.
+    Teammate health, armour, location, weapon and powerups reach the client
+    through the snapshot, not through this message. CG_ParseTeamInfo (binary
+    0x100487b0) reads it that way and says so in its own comment; this emitter
+    was still the stock Quake 3 one, writing six fields per player.
+
+    So the client read every field as a client number. argv(3) is a location,
+    argv(4) a health value, argv(5) armour - and health is what showed up in the
+    error, which is why the numbers looked like nothing in particular:
+
+        CG_ParseTeamInfo: bad client number: 85
+        CG_ParseTeamInfo: bad client number: 90
+
+    It dropped the client on joining any team gametype. The parser is the side
+    matched against the binary, and a stock Quake Live client would expect the
+    same shape, so the emitter is what changes.
+    */
     for (i = 0, cnt = 0; i < level.maxclients && cnt < TEAM_MAXOVERLAY; i++) {
         player = g_entities + i;
         if (player->inuse && player->client->sess.sessionTeam == team) {
-            h = player->client->ps.stats[STAT_HEALTH];
-            a = player->client->ps.stats[STAT_ARMOR];
-            if (h < 0)
-                h = 0;
-            if (a < 0)
-                a = 0;
-
-            Com_sprintf(entry, sizeof(entry),
-                        " %i %i %i %i %i %i",
-                        //				level.sortedClients[i], player->client->pers.teamState.location, h, a,
-                        i, player->client->pers.teamState.location, h, a,
-                        player->client->ps.weapon, player->s.powerups);
+            Com_sprintf(entry, sizeof(entry), " %i", i);
             j = strlen(entry);
-            if (G_ScoreboardTruncated(stringlength + j, i))
+            if (stringlength + j >= MAX_SCOREBOARD_PAYLOAD)
                 break;
             strcpy(string + stringlength, entry);
             stringlength += j;
@@ -1195,7 +1203,7 @@ void TeamOverlayMessage(gentity_t* ent) {
         }
     }
 
-    trap_SendServerCommand(ent - g_entities, va("tinfo %i %s", cnt, string));
+    trap_SendServerCommand(ent - g_entities, va("tinfo %i%s", cnt, string));
 }
 
 void CheckTeamStatus(void) {

@@ -1599,7 +1599,18 @@ static void R_Register( void )
 #endif
 	ri.Cvar_CheckRange( r_dlightMode, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_dlightMode, "Dynamic light mode:\n 0: VQ3 'fake' dynamic lights\n 1: High-quality per-pixel dynamic lights, slightly faster than VQ3's on modern hardware\n 2: Same as 1 but applies to all MD3 models too" );
-	r_dlightScale = ri.Cvar_Get( "r_dlightScale", "0.5", CVAR_ARCHIVE_ND );
+	// [QL] Quake3e ships this at 0.5, which halves every dynamic light's radius
+	// (RE_AddLightToScene: intensity *= r_dlightScale, then dl->radius =
+	// intensity). renderergl2 has no such cvar and so runs at full radius, so
+	// the same scene was visibly dimmer under Vulkan than under OpenGL - the
+	// quad glow on a powered-up player and on the powerup itself are both plain
+	// dlights (cg_players.c and cg_ents.c, radius 200 + rand()&31), and both
+	// came out half size. 1 matches the OpenGL renderer and Quake Live.
+	//
+	// CVAR_ARCHIVE_ND, so this default is not overridden by an archived copy
+	// unless somebody set the cvar deliberately - changing it here does take
+	// effect, unlike a plain CVAR_ARCHIVE default.
+	r_dlightScale = ri.Cvar_Get( "r_dlightScale", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_dlightScale, "0.1", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_dlightScale, "Scales dynamic light radius." );
 	r_dlightIntensity = ri.Cvar_Get( "r_dlightIntensity", "1.0", CVAR_ARCHIVE_ND );
