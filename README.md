@@ -187,6 +187,24 @@ Individual projects: `cgame.vcxproj`, `ui.vcxproj`, `qagame.vcxproj`, `quakelive
 
 **Toolset:** v145 (VS 2022+), **Platform:** Win32/x64
 
+### Getting the source
+
+**Clone with submodules.** SDL2, libogg, libvorbis, curl, opus and opusfile are
+git submodules; a plain `git clone` leaves those directories empty and the build
+stops with `No rule to make target '.../bitwise.o'` (that file lives in
+`code/libogg`). Nothing is missing from the repository when this happens — the
+submodules simply have not been fetched.
+
+```
+git clone --recurse-submodules <url>
+```
+
+Already cloned without them:
+
+```
+git submodule update --init --recursive
+```
+
 ### Linux / macOS
 
 Standard ioquake3 Makefile build:
@@ -195,11 +213,21 @@ Standard ioquake3 Makefile build:
 make release -j$(nproc)
 ```
 
-Builds clean on Linux x86_64 (needs `libsdl2-dev`, plus the `code/libogg` and
-`code/libvorbis` submodules). This produces the engine, the dedicated server,
-the OpenGL2 renderer and `baseq3/iobin.pk3`. Running the game still requires a
-legitimate `pak00.pk3`; the dedicated server binary starts and accepts console
-commands without one, but cannot load a map.
+Builds clean on Linux x86_64 (needs `libsdl2-dev`). This produces the engine,
+the dedicated server, the OpenGL2 renderer and `baseq3/iobin.pk3`.
+
+**The Vulkan renderer is opt-in** — `BUILD_RENDERER_VULKAN` defaults to 0, so an
+ordinary `make` does not build it and you get no `vulkanx86_64.so`:
+
+```
+make BUILD_RENDERER_VULKAN=1 -j$(nproc)
+```
+
+`package-release.sh` always passes it, which is why release archives ship the
+Vulkan renderer even though a default build does not produce one.
+
+Running the game still requires a legitimate `pak00.pk3`; the dedicated server
+binary starts and accepts console commands without one, but cannot load a map.
 
 ## Directory Layout
 

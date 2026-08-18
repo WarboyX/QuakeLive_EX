@@ -45,7 +45,6 @@ profile
 /.vs
 
 /code/freetype-demos
-/code/libs/
 /code/tools/*
 !/code/tools/Make-BinPk3.ps1
 !/code/tools/Make-Pak01Pk3.ps1
@@ -60,6 +59,15 @@ profile
 *.idb
 *.exp
 *.pk3
+
+# Vendored third-party sources. This repository is standalone: everything needed
+# for a build is committed, so the binary-extension rules above must not reach
+# into these trees - code/libs/win64 is SDL2.dll/.lib for the MSVC projects, and
+# the SDL2 tree carries its own prebuilt bits.
+!/code/libs/**
+!/code/SDL2/**
+!/code/libogg/**
+!/code/libvorbis/**
 misc/msvc/.vs/
 misc/msvc/.res
 # build output from package-release.sh
