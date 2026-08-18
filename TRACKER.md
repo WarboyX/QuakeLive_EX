@@ -938,6 +938,54 @@ only and the client throttles its own `score` request to one every two seconds,
 so nothing in normal play multiplies this — but a client that spams `score` costs
 four times what it used to.
 
+### C23. Freeze Tag had no ice at all — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Five `cgs.media` handles were declared in `cg_local.h` and read by the effect
+code but **assigned nowhere**, so all five were zero:
+
+| handle | read by | what was drawn |
+|---|---|---|
+| `freezeModel` | `CG_FreezeEffect` (`cg_effects.c:220`) | `RT_MODEL` with `hModel` 0 |
+| `iceWhiteModel` / `iceBlueModel` | `CG_ThawPlayer` (`cg_effects.c:291`) | seven shards, `hModel` 0 |
+| `freezeShader` | `FE_FREEZE` effect (`cg_players.c:2583`) | billboard with shader 0 |
+| `frozenFlagShader` | nothing yet | — |
+
+A zero handle renders nothing and reports nothing, so Freeze Tag had no ice
+overlay on frozen players and no thaw effect, with no error anywhere.
+
+The mirror image was there too: `iceShardModel` and `iceShardShader1..3` were
+registered and **read by nothing**. The port registered one set of names and
+wrote the effects against another, and the two halves never met. That is the
+same shape as the "registered cvar is not an implemented feature" trap in
+CLAUDE.md, one layer down — a registered *asset* is not a drawn one.
+
+Fixed by assigning all five. `RE_RegisterShader` and `RE_RegisterModel` both
+return 0 for an asset they cannot find, so `CG_RegisterModelOr` /
+`CG_RegisterShaderOr` name the miss on the console and fall back to an asset
+this build is known to have.
+
+**The dedicated Quake Live ice model names are not identified** — `pak00.pk3` is
+not readable from the build environment, so `models/freeze/ice.md3`,
+`ice_white.md3`, `ice_blue.md3` and `sprites/frozenflag` are the names tried
+first, not names that have been confirmed. If the console prints
+
+```
+WARNING: model 'models/freeze/ice.md3' not found, falling back
+```
+
+then that name is wrong and wants correcting — but the effect renders either
+way, which is the point. `sprites/frozen` (the `freezeShader` fallback) is
+already registered elsewhere in the same block and is known good.
+
+### C24. SCR_DrawDemoRecording used sprintf — DONE (verify)
+**Lives in:** our **client** (engine) · **Seen by:** our client only
+
+`sprintf` into a fixed 1024-byte stack buffer. `clc.demoName` is `MAX_QPATH`, so
+it cannot actually overrun today and the reported severity was overstated — but
+an unbounded write into a fixed buffer is not worth leaving in place. Now
+`Com_sprintf` with `sizeof(string)`.
+
 ### C19. The scoreboard could not be scrolled — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 

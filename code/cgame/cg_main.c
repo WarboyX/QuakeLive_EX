@@ -1663,6 +1663,35 @@ CG_RegisterGraphics
 This function may execute for a couple of minutes with a slow disk.
 =================
 */
+/*
+[QL] Register an asset, and say so when the name does not resolve.
+
+RE_RegisterShader and RE_RegisterModel both return 0 for an asset they could not
+find - the registration fails silently and whatever draws with the handle draws
+nothing. These name the miss once and hand back a fallback that this build is
+known to have, so a wrong asset name costs the right artwork rather than the
+whole effect.
+*/
+static qhandle_t CG_RegisterModelOr(const char* name, qhandle_t fallback) {
+    qhandle_t h = trap_R_RegisterModel(name);
+
+    if (!h) {
+        CG_Printf(S_COLOR_YELLOW "WARNING: model '%s' not found, falling back\n", name);
+        return fallback;
+    }
+    return h;
+}
+
+static qhandle_t CG_RegisterShaderOr(const char* name, qhandle_t fallback) {
+    qhandle_t h = trap_R_RegisterShader(name);
+
+    if (!h) {
+        CG_Printf(S_COLOR_YELLOW "WARNING: shader '%s' not found, falling back\n", name);
+        return fallback;
+    }
+    return h;
+}
+
 static void CG_RegisterGraphics(void) {
     int i;
     char items[MAX_ITEMS + 1];
@@ -1902,13 +1931,37 @@ static void CG_RegisterGraphics(void) {
     cgs.media.medalRampage = trap_R_RegisterShaderNoMip("medal_rampage");
     cgs.media.medalRevenge = trap_R_RegisterShaderNoMip("medal_revenge");
 
-    // [QL] freeze tag
+    /*
+    [QL] Freeze Tag.
+
+    Five handles were declared in cg_local.h and read by the effect code but
+    assigned nowhere, so they were all zero: CG_FreezeEffect added an RT_MODEL
+    with hModel 0, CG_ThawPlayer spawned seven shards with hModel 0, and the
+    FE_FREEZE floating effect drew with shader 0. A zero handle renders nothing
+    and reports nothing, so Freeze Tag simply had no ice on screen.
+
+    The reverse of that is also here: iceShardModel and iceShardShader1..3 were
+    registered and read by nothing. The port registered one set of names and
+    wrote the effects against another, and the two halves never met.
+
+    RE_RegisterShader and RE_RegisterModel both return 0 when the asset is not
+    found, so CG_RegisterModelOr / CG_RegisterShaderOr name what did not resolve
+    and fall back to an asset this build is known to have. The dedicated Quake
+    Live ice models have not been identified - if the console names one of these,
+    that is the name to correct, not a reason for the effect to be invisible.
+    */
     cgs.media.iceShardModel = trap_R_RegisterModel("models/gibs/sphere.md3");
     cgs.media.iceShardShader1 = trap_R_RegisterShader("powerups/ice1");
     cgs.media.iceShardShader2 = trap_R_RegisterShader("powerups/ice2");
     cgs.media.iceShardShader3 = trap_R_RegisterShader("powerups/ice3");
     cgs.media.frozenShader = trap_R_RegisterShader("sprites/frozen");
     cgs.media.iceMarkShader = trap_R_RegisterShader("iceMark");
+
+    cgs.media.freezeModel = CG_RegisterModelOr("models/freeze/ice.md3", cgs.media.iceShardModel);
+    cgs.media.iceWhiteModel = CG_RegisterModelOr("models/freeze/ice_white.md3", cgs.media.iceShardModel);
+    cgs.media.iceBlueModel = CG_RegisterModelOr("models/freeze/ice_blue.md3", cgs.media.iceShardModel);
+    cgs.media.freezeShader = CG_RegisterShaderOr("sprites/frozen", cgs.media.frozenShader);
+    cgs.media.frozenFlagShader = CG_RegisterShaderOr("sprites/frozenflag", cgs.media.frozenShader);
 
     memset(cg_items, 0, sizeof(cg_items));
     memset(cg_weapons, 0, sizeof(cg_weapons));
