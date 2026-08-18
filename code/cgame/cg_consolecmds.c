@@ -775,8 +775,18 @@ void CG_AddChat(const char *text, int teamOnly, int extraTime) {
     Q_strncpyz(cg.currentChatLine.text, text,
                len < CHAT_LINE_TEXT ? len + 1 : CHAT_LINE_TEXT);
 
-    // Also print to console
-    CG_Printf("%s", text);
+    /*
+    [QL] Also print to console - on a line of its own.
+
+    The server's chat payload has no trailing newline (G_SayTo sends the text
+    and nothing else), and this printed it with "%s", so every chat line ran
+    straight into whatever printed next: two bots talking and an obituary all
+    landed on one console line.
+
+    Only the console copy gets the newline. cg.currentChatLine.text is what the
+    chat overlay draws and must stay exactly as sent.
+    */
+    CG_Printf("%s\n", text);
 }
 
 // [QL] Draw chat overlay - binary at 0x10006A10

@@ -485,6 +485,8 @@ typedef struct {
     char forcedHeadModel[MAX_QPATH];  // 0x254
     char forcedHeadSkin[MAX_QPATH];   // 0x294
     qboolean deferred;
+    // [QL] one-shot latch for the "no player model loaded" warning in CG_Player
+    qboolean reportedNoModel;
 
     qboolean newAnims;    // true if using the new mission pack animations
     qboolean fixedlegs;   // true if legs yaw is always the same as torso yaw

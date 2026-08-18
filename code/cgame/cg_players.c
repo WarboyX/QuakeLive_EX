@@ -541,6 +541,8 @@ static void CG_LoadClientInfo(int clientNum, clientInfo_t* ci) {
     }
 
     ci->deferred = qfalse;
+    // [QL] real handles now, so let CG_Player warn again if they are ever lost
+    ci->reportedNoModel = qfalse;
 
     // reset any existing players and bodies, because they might be in bad
     // frames for this new model
@@ -2756,6 +2758,30 @@ void CG_Player(centity_t* cent) {
     // it is possible to see corpses from disconnected players that may
     // not have valid clientinfo
     if (!ci->infoValid) {
+        return;
+    }
+
+    /*
+    [QL] Say so when a client has no model to draw with.
+
+    A player whose legsModel handle is 0 is added to the scene and renders
+    nothing - an invisible player, with no error anywhere. Every route to that
+    goes through the deferred loader: a client arriving mid-match is given
+    another client's handles by CG_SetDeferredClientInfo until
+    CG_LoadOneDeferredPlayer gets to it, and if the client it copied from had
+    nothing loaded either, it inherits nothing.
+
+    Reported once per client so a match with sixty of them stays readable, and
+    reset in CG_LoadClientInfo when the client is finally given real handles.
+    */
+    if (!ci->legsModel) {
+        if (!ci->reportedNoModel) {
+            ci->reportedNoModel = qtrue;
+            CG_Printf(S_COLOR_YELLOW "WARNING: client %i (%s) has no player model loaded and is "
+                      "drawing nothing - model '%s', skin '%s', %s\n",
+                      clientNum, ci->name, ci->modelName, ci->skinName,
+                      ci->deferred ? "still deferred" : "not deferred");
+        }
         return;
     }
 

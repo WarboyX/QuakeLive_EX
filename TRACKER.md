@@ -1070,8 +1070,11 @@ share the process — and again after each `SDL_Init(SDL_INIT_VIDEO)`, in both
 `GLimp_Init` and `VKimp_Init`. `LC_NUMERIC` only; the rest of the locale is
 nobody's business here.
 
-Not reproduced in the build container, which has no comma locale installed, so
-this is verified by inspection rather than by running it.
+Not reproducible in the build container, which has no comma locale installed, so
+this was shipped verified by inspection only.
+
+**Confirmed fixed in play.** The same server log that showed
+`\skill\ 2,00` before now reads `\skill\ 3.00` on build `ffedf1d`.
 
 ### E19. Console noise at startup — PARTLY DONE
 **Lives in:** our **client** (cgame / renderer) · **Seen by:** our client only
@@ -1110,10 +1113,15 @@ spectator rather than a player.
 Not yet reproduced, and the obvious path does not explain it. For FFA,
 `G_InitSessionData` gives `TEAM_FREE` when `g_autoJoin` is set (it is, in
 `common.cfg`) unless `g_maxGameClients` is non-zero and the server is at that
-cap. `g_maxGameClients` ships as `"0"` — but it is **`CVAR_ARCHIVE`**, so a
-value set once on that server is written to the config and wins forever after,
-which is the trap in CLAUDE.md and the first thing to check on the affected
-server (`/g_maxGameClients`).
+cap. `g_maxGameClients` ships as `"0"` — but it is **`CVAR_ARCHIVE`**.
+
+**Confirmed from the server's own InitGame line:** `\g_maxGameClients\60\`
+alongside `\bot_minplayers\60\` and `\sv_maxclients\64\`. Sixty bots fill
+all sixty playing slots, so a returning player is at the cap and
+`G_InitSessionData` puts them in spectator. Either lower `bot_minplayers` below
+`g_maxGameClients`, or raise `g_maxGameClients` — and note it is `CVAR_ARCHIVE`,
+so whatever it is set to now was written into the server config and will win
+over the shipped default until it is changed explicitly.
 
 There is a second, definite defect underneath it either way: **a human sitting
 in spectator never displaces a bot.** `G_CheckMinimumPlayers` counts humans with
@@ -1124,6 +1132,72 @@ immediately (`ClientDisconnect: 11` then `ClientBegin: 47`, `ClientBegin: 48`),
 so on a bot-filled server the seat is gone before the player is back. Not
 changed yet — trimming bots for anyone spectating would also trim them for
 people who mean to spectate, and that needs deciding rather than assuming.
+
+### C20. Chat ran into the next console line — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+```
+Hossman: You have to run out of ammo sometime, camper.Demona: Camping AGAIN
+stripe?Phobos was railed by Anarki
+```
+
+`CG_AddChat` printed its console copy with `CG_Printf("%s", text)`. The server's
+chat payload carries no trailing newline — `G_SayTo` sends the text and nothing
+else — so every chat line ran straight into whatever printed next. Only the
+console copy gets the newline; `cg.currentChatLine.text` is what the chat overlay
+draws and has to stay exactly as sent.
+
+(The trailing "commas" in the same screenshot are full stops. The obituary
+strings end in `.` and print with `\n`; at that font size the two are hard to
+tell apart. The decimal commas in E18 were real — those were confirmed in a
+plain-text log, not read off a screenshot.)
+
+### C21. Players invisible on enclosed maps — INSTRUMENTED, cause not yet confirmed
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Reported as bots and players turning invisible, more often on maps with corridors
+than on open ones like Longest Yard.
+
+Not reproduced yet. The suspicion is the deferred loader rather than culling: a
+client arriving mid-match is deferred, and `CG_SetDeferredClientInfo` hands it
+another client's model handles to draw with until `CG_LoadOneDeferredPlayer`
+gets round to it. The final fallback loop takes the first `infoValid` client
+without checking whether that client is itself deferred, so handles can be
+copied from a client that has nothing loaded. A `legsModel` of 0 is then added
+to the scene and renders nothing, with no error anywhere — which is exactly what
+an invisible player looks like. The map-shape correlation fits: on an enclosed
+map players enter the PVS suddenly and at close range, so a client is far more
+likely to be drawn during the window before its models are loaded.
+
+`CG_Player` now says so instead of drawing nothing:
+
+```
+WARNING: client 47 (Bones) has no player model loaded and is drawing nothing -
+model 'bones', skin 'default', still deferred
+```
+
+Once per client, reset in `CG_LoadClientInfo` when real handles arrive. If that
+line appears when a player goes invisible, the deferred chain is the cause and
+the fix is to make the fallback loop skip deferred clients. If it does not
+appear, the models are loaded and it is a culling problem, which is a different
+search.
+
+### C22. Client crashed instead of going to intermission — OPEN
+**Lives in:** our **client** · **Seen by:** unknown
+
+Reported: "client crashed when winning conditions were met, instead of going to
+intermission."
+
+No diagnosis yet, and guessing at it is not worth the round trip when the build
+already writes `crashlog.txt` on Windows (E12) with the faulting module and
+offset. That file is the next step.
+
+Worth noting what changed near that path recently, so it can be ruled in or out
+quickly: `CG_TrackLocalPlayerOnScoreboard` now runs every frame the scoreboard
+is drawn (including the intermission board), `CG_EventHandling` takes the key
+catcher on `CS_INTERMISSION`, and `BeginIntermission` sends every client a
+chunked scoreboard — which at sixty players is three or four reliable commands
+each rather than one.
 
 ### C14. Match summary: no cursor, no voting, no winner, no arena shots — PARTIAL
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
