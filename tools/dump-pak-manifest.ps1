@@ -25,6 +25,20 @@
 .PARAMETER Output
   Where to write the manifest.
 
+.NOTES
+  This script is not digitally signed, so PowerShell's execution policy refuses
+  to run it as a file. Pass -ExecutionPolicy Bypass, which applies to that one
+  invocation only and changes nothing on the machine:
+
+    powershell -ExecutionPolicy Bypass -File .\dump-pak-manifest.ps1 -BaseQ3 "...\baseq3"
+
+  Execution policy applies to script files, not to pasted commands, so the same
+  work pasted into a prompt runs without it.
+
+  Point -BaseQ3 at the folder next to the executable (the basepath), NOT the one
+  in AppData - AppData is fs_homepath, where the engine extracts game modules at
+  runtime, and holds no pak00.
+
 .EXAMPLE
   .\dump-pak-manifest.ps1 -BaseQ3 "C:\Users\Warboy\Downloads\quakelivewindowsx64\baseq3"
 

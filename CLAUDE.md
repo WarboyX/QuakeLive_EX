@@ -92,11 +92,17 @@ registered three Freeze Tag ice models under invented names, and a scan showed
 the pak has no ice meshes at all — the ice is a shader over the generic gib
 sphere.
 
-Regenerate it after a game patch with `tools/dump-pak-manifest.ps1`:
+Regenerate it after a game patch with `tools/dump-pak-manifest.ps1`. **The
+script is unsigned, so PowerShell's execution policy refuses to run it as a
+file** — pass `-ExecutionPolicy Bypass`, which applies to that one invocation
+only:
 
 ```
-.\tools\dump-pak-manifest.ps1 -BaseQ3 "<install>\baseq3" -Output docs\pak-manifest.txt
+powershell -ExecutionPolicy Bypass -File .\tools\dump-pak-manifest.ps1 -BaseQ3 "<install>\baseq3" -Output docs\pak-manifest.txt
 ```
+
+Execution policy applies to script *files*, not to pasted commands, so the same
+work pasted straight into a prompt runs without it.
 
 Point it at the **basepath** `baseq3` (next to the executable), not the one in
 AppData — AppData is `fs_homepath`, where the engine extracts game modules at

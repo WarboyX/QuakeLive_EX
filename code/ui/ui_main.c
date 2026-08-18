@@ -5754,11 +5754,11 @@ static void UI_OnAnnouncerChanged(void) {
     sfxHandle_t s;
 
     if (ui_cg_announcer.integer == 2) {
-        s = trap_S_RegisterSound("sound/misc/vo_evil.wav", 7);
+        s = trap_S_RegisterSound("sound/misc/vo_evil.ogg", 7);
     } else if (ui_cg_announcer.integer == 3) {
-        s = trap_S_RegisterSound("sound/misc/vo_female.wav", 7);
+        s = trap_S_RegisterSound("sound/misc/vo_female.ogg", 7);
     } else {
-        s = trap_S_RegisterSound("sound/misc/vo_default.wav", 7);
+        s = trap_S_RegisterSound("sound/misc/vo_default.ogg", 7);
     }
     trap_S_StartLocalSound(s, CHAN_ANNOUNCER);
     trap_Cvar_Set("ui_announcer", va("%i", ui_cg_announcer.integer));
