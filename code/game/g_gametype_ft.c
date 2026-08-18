@@ -457,6 +457,60 @@ void Freeze_Think(void) {
 // [QL] byte-faithful to the disassembly. Field offsets mapped to named reimpl
 // fields; DAT_105aac6c (InstaKill respawn delay) resolves to g_respawn_delay_min
 // (decl-phase cvar-table mapping; default "2100").
+/*
+============================================================================
+Freeze_DeathFinalize
+
+[QL] Thaw the statue and put the player back in the game.
+
+This is what the binary's death finalizer at 0x10046f60 does, and it is NOT
+Quake 3's Kamikaze_DeathActivate. Both call sites below used to call that one,
+because the port matched the two by name:
+
+    void Kamikaze_DeathActivate(gentity_t *ent) {
+        G_StartKamikaze(ent);
+        G_FreeEntity(ent);
+    }
+
+Quake 3's version is the think function of a temporary "kamikaze timer" entity -
+it detonates and then frees *that* entity. Handed a player instead, G_FreeEntity
+memsets the client's gentity and clears inuse while svs.clients[n].gentity still
+points at it and ent->client is left NULL. neverFree is only set on the body
+queue, so nothing stops it. The next thing to touch that client dereferences
+freed memory.
+
+In instagib Freeze Tag that is the first kill of the match:
+
+    Kill: 3 0 10: Keel killed Daemia by MOD_RAILGUN
+    ----- Server Shutdown (Received signal 11) -----
+
+A frozen player is not a corpse to dispose of - they are a live client whose
+statue is being broken. Clear the freeze state, announce the thaw, and respawn.
+============================================================================
+*/
+static void Freeze_DeathFinalize(gentity_t *ent) {
+    if (!ent || !ent->client) {
+        return;
+    }
+
+    // Only a frozen player is finalized here; the binary gates on PW_FREEZE.
+    if (ent->client->ps.powerups[PW_FREEZE] == 0) {
+        return;
+    }
+
+    ent->client->ps.powerups[PW_FREEZE] = 0;
+    ent->s.powerups &= ~(1 << PW_FREEZE);
+    ent->client->ps.freezetime = 0;
+    ent->client->ps.thawtime = 0;
+    ent->client->ps.thawClientNum_valid = 0;
+    ent->takedamage = qtrue;
+
+    G_TempEntity(ent->r.currentOrigin, EV_THAW_PLAYER);
+
+    ent->client->ps.pm_type = PM_NORMAL;
+    ClientSpawn(ent);
+}
+
 // ============================================================================
 void Freeze_InstaKill(gentity_t *self, int mode) {
     gclient_t *client = self->client;
@@ -495,12 +549,10 @@ void Freeze_InstaKill(gentity_t *self, int mode) {
     tent->r.svFlags |= SVF_BROADCAST;
     tent->s.eventParm = (team != TEAM_BLUE) + 2;            // RED->3, BLUE->2
 
-    // [QL] gib/death-finalizer; respawns iff still frozen (PW_FREEZE != 0).
-    // NOTE: the reimpl Kamikaze_DeathActivate body is the stale Q3 stand-in
-    // (g_combat.c: G_StartKamikaze + G_FreeEntity); it must be rewritten to the
-    // binary 0x10046f60 death-finalizer for thaw-respawn to work (VERIFY #1,
-    // combat scope).
-    Kamikaze_DeathActivate(self);
+    // [QL] death finalizer; respawns iff still frozen (PW_FREEZE != 0).
+    // NOT Kamikaze_DeathActivate - that one frees the entity, and handed a
+    // player it took the server down on the first kill. See Freeze_DeathFinalize.
+    Freeze_DeathFinalize(self);
     client->ps.freezetime = 0;                              // client+0x1f0
 }
 
@@ -712,9 +764,8 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
     }
 
 do_thaw:                                                       // 0x1004d19d
-    // still frozen (PW_FREEZE != 0) -> Kamikaze_DeathActivate fires EV_THAW_PLAYER +
-    // ClientSpawn. See the reimpl-body caveat in Freeze_InstaKill (VERIFY #1).
-    Kamikaze_DeathActivate(ent);
+    // still frozen (PW_FREEZE != 0) -> EV_THAW_PLAYER + ClientSpawn
+    Freeze_DeathFinalize(ent);
 }
 
 // ============================================================================

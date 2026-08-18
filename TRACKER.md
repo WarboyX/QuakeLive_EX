@@ -938,6 +938,49 @@ only and the client throttles its own `score` request to one every two seconds,
 so nothing in normal play multiplies this — but a client that spams `score` costs
 four times what it used to.
 
+### E20. Freeze Tag killed the server on the first frag — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+```
+Kill: 3 0 10: Keel killed Daemia by MOD_RAILGUN
+----- Server Shutdown (Received signal 11) -----
+```
+
+Instagib Freeze Tag on `trinity`, twelve bots, dead on the first kill of the
+match.
+
+Both Freeze Tag thaw paths — `Freeze_InstaKill` and the `do_thaw` tail of the
+thaw-progress function — called **`Kamikaze_DeathActivate(player)`**. The port
+matched that name to Quake 3's function of the same name, which is the *think
+function of a temporary "kamikaze timer" entity*:
+
+```c
+void Kamikaze_DeathActivate(gentity_t *ent) {
+    G_StartKamikaze(ent);
+    G_FreeEntity(ent);
+}
+```
+
+It detonates and then frees **that** entity. Handed a player instead,
+`G_FreeEntity` memsets the client's `gentity` and clears `inuse` while
+`svs.clients[n].gentity` still points at it and `ent->client` is left NULL.
+`neverFree` is set only on the body queue (`InitBodyQue`), so nothing stops it.
+The next thing to touch that client reads freed memory — and in instagib every
+kill goes through `Freeze_InstaKill`, so that is the first frag of the match.
+
+The two are unrelated functions that happen to share a name: the binary's
+finalizer at `0x10046f60` is a *thaw* finalizer, and its own comments in this
+file said so ("respawns iff still frozen (PW_FREEZE != 0)", "fires
+EV_THAW_PLAYER + ClientSpawn"). `Freeze_DeathFinalize` now does that — clear
+`PW_FREEZE` and the freeze timers, restore `takedamage`, fire `EV_THAW_PLAYER`,
+`ClientSpawn` — and never frees a player. `Kamikaze_DeathActivate` stays where it
+belongs, as the kamikaze timer's think in `g_combat.c`.
+
+This is the tracker's own E7/C3 note ("the reimpl body is the stale Q3 stand-in,
+must be rewritten") and the outside review's C3. Both described it as blocking
+thaw-respawn. It was considerably worse than that: the mode could not survive one
+kill.
+
 ### C23. Freeze Tag had no ice at all — DONE (verify)
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
