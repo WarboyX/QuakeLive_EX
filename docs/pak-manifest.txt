@@ -1,0 +1,19 @@
+# Manifest of the shipped Quake Live .pk3 archives - FILE NAMES ONLY.
+#
+# No asset content is included; this is a directory listing, not the pak, and is
+# here so asset names can be checked instead of guessed. See CLAUDE.md "Assets".
+# Regenerate with tools/dump-pak-manifest.ps1 after a game patch.
+#
+# Format: <pak file><TAB><path inside it>
+#
+# STATUS: not yet generated. What is recorded below is the ice/freeze/frozen
+# subset captured by hand while fixing C23 (Freeze Tag had no ice), which is the
+# evidence that pak00 contains no ice meshes. Replace this whole file with real
+# generated output when the script has been run.
+
+pak00.pk3	gfx/damage/ice_spurt.png
+pak00.pk3	gfx/damage/ice_stain.png
+pak00.pk3	gfx/misc/iceball.png
+pak00.pk3	sprites/frozen.png
+pak00.pk3	textures/effects/icemap.jpg
+pak00.pk3	textures/ql/ice.jpg

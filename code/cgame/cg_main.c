@@ -1950,18 +1950,34 @@ static void CG_RegisterGraphics(void) {
     Live ice models have not been identified - if the console names one of these,
     that is the name to correct, not a reason for the effect to be invisible.
     */
-    cgs.media.iceShardModel = trap_R_RegisterModel("models/gibs/sphere.md3");
-    cgs.media.iceShardShader1 = trap_R_RegisterShader("powerups/ice1");
-    cgs.media.iceShardShader2 = trap_R_RegisterShader("powerups/ice2");
-    cgs.media.iceShardShader3 = trap_R_RegisterShader("powerups/ice3");
-    cgs.media.frozenShader = trap_R_RegisterShader("sprites/frozen");
-    cgs.media.iceMarkShader = trap_R_RegisterShader("iceMark");
+    cgs.media.iceShardModel = CG_RegisterModelOr("models/gibs/sphere.md3", 0);
+    // [QL] shader names, not files - these can exist in a .shader script without
+    // a matching image path, so they are reported rather than assumed. If they
+    // do not resolve, the shards fall back to the model's own skin.
+    cgs.media.iceShardShader1 = CG_RegisterShaderOr("powerups/ice1", 0);
+    cgs.media.iceShardShader2 = CG_RegisterShaderOr("powerups/ice2", 0);
+    cgs.media.iceShardShader3 = CG_RegisterShaderOr("powerups/ice3", 0);
+    cgs.media.frozenShader = CG_RegisterShaderOr("sprites/frozen", 0);
+    cgs.media.iceMarkShader = CG_RegisterShaderOr("iceMark", 0);
 
-    cgs.media.freezeModel = CG_RegisterModelOr("models/freeze/ice.md3", cgs.media.iceShardModel);
-    cgs.media.iceWhiteModel = CG_RegisterModelOr("models/freeze/ice_white.md3", cgs.media.iceShardModel);
-    cgs.media.iceBlueModel = CG_RegisterModelOr("models/freeze/ice_blue.md3", cgs.media.iceShardModel);
+    /*
+    [QL] There are no ice models in pak00 - a scan of the whole pak for
+    ice/freeze/frozen returns sprites/frozen.png, gfx/damage/ice_spurt.png,
+    gfx/damage/ice_stain.png, gfx/misc/iceball.png, textures/effects/icemap.jpg
+    and textures/ql/ice.jpg, and no .md3 among them. So the three model handles
+    take the shard model that is already registered here rather than a name
+    invented to look plausible; the ice comes from the shader on it, not from
+    the mesh.
+
+    sprites/frozen is confirmed present, which is what freezeShader wants. There
+    is no frozen-flag sprite in the pak, so frozenFlagShader takes the same one -
+    nothing reads it yet in any case.
+    */
+    cgs.media.freezeModel = cgs.media.iceShardModel;
+    cgs.media.iceWhiteModel = cgs.media.iceShardModel;
+    cgs.media.iceBlueModel = cgs.media.iceShardModel;
     cgs.media.freezeShader = CG_RegisterShaderOr("sprites/frozen", cgs.media.frozenShader);
-    cgs.media.frozenFlagShader = CG_RegisterShaderOr("sprites/frozenflag", cgs.media.frozenShader);
+    cgs.media.frozenFlagShader = cgs.media.frozenShader;
 
     memset(cg_items, 0, sizeof(cg_items));
     memset(cg_weapons, 0, sizeof(cg_weapons));
