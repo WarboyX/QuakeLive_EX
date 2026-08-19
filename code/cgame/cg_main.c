@@ -509,6 +509,18 @@ later would do nothing (see r_dlightMode and con_scale).
 */
 vmCvar_t cg_railColorMode;
 
+/*
+[QL] Which ice shell a frozen player wears - see pak01/scripts/freeze.shader.
+
+  1  glass coat (default) - alpha-blended, specular alpha, the model reads
+     through it the way Quake Live's own frozen player does
+  2  additive sheen - one dimmed additive environment stage, like the quad shell
+  3  flat frozen sprite - Quake Live's sprites/frozen, blended
+
+Not CVAR_ARCHIVE: a default we choose, and archiving one freezes it forever.
+*/
+vmCvar_t cg_freezeShell;
+
 typedef struct {
     vmCvar_t* vmCvar;
     char* cvarName;
@@ -618,6 +630,7 @@ static cvarTable_t cvarTable[] = {
     {&cg_noProjectileTrail, "cg_noProjectileTrail", "0", CVAR_ARCHIVE},
     {&cg_oldRail, "cg_oldRail", "1", CVAR_ARCHIVE},
     {&cg_railColorMode, "cg_railColorMode", "1", 0},
+    {&cg_freezeShell, "cg_freezeShell", "1", 0},
     {&cg_oldRocket, "cg_oldRocket", "1", CVAR_ARCHIVE},
     {&cg_oldPlasma, "cg_oldPlasma", "1", CVAR_ARCHIVE},
     {&cg_trueLightning, "cg_trueLightning", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0.0")
@@ -1989,10 +2002,30 @@ static void CG_RegisterGraphics(void) {
     cgs.media.iceShardShader2 = CG_RegisterShaderOr("powerups/ice2", 0);
     cgs.media.iceShardShader3 = CG_RegisterShaderOr("powerups/ice3", 0);
     cgs.media.frozenShader = CG_RegisterShaderOr("sprites/frozen", 0);
-    // [QL] the ice shell drawn over a frozen player - our own shader, shipped in
-    // pak01/scripts/freeze.shader, built like the quad shell rather than as a
-    // flat sprite wash. Falls back to the old sprite if pak01 is missing.
-    cgs.media.freezeShellShader = CG_RegisterShaderOr("powerups/freezeshell", cgs.media.frozenShader);
+    /*
+    [QL] The ice shell drawn over a frozen player - our own shader, shipped in
+    pak01/scripts/freeze.shader, drawn as a second pass over the model the way
+    the quad shell is.
+
+    Three variants, chosen by cg_freezeShell, because the first attempt got the
+    strength badly wrong - two full additive stages saturated to white and erased
+    the player underneath, where Quake Live's own frozen player stays completely
+    readable - and which of the replacements looks right is a judgement made by
+    looking, not by reasoning. Selecting between shaders already in the pak
+    settles it in game instead of over a rebuild each time.
+
+    Registered eagerly, all three, so switching the cvar mid-game takes effect
+    without a vid_restart and so a missing one is reported at load rather than
+    silently drawing nothing - RE_RegisterShader returns 0 for a name the pak
+    does not have.
+    */
+    {
+        int i;
+        for (i = 0; i < 3; i++) {
+            cgs.media.freezeShellShaders[i] =
+                CG_RegisterShaderOr(va("powerups/freezeshell%i", i + 1), cgs.media.frozenShader);
+        }
+    }
     cgs.media.iceMarkShader = CG_RegisterShaderOr("iceMark", 0);
 
     /*

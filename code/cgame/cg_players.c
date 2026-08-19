@@ -2282,10 +2282,16 @@ void CG_AddRefEntityWithPowerups(refEntity_t* ent, entityState_t* state, int tea
             trap_R_AddRefEntityToScene(ent);
         }
         // [QL] frozen player overlay (freeze tag) - drawn the way the quad shell
-        // is, an additive environment map over a second pass of the model, so a
-        // statue reads as coated in ice instead of repainted pale blue.
+        // is, a second pass of the model with a customShader, so the player stays
+        // fully drawn underneath and the ice is a coat over them rather than a
+        // repaint. cg_freezeShell picks which of the three shells to wear.
         if (state->powerups & (1 << PW_FREEZE)) {
-            ent->customShader = cgs.media.freezeShellShader;
+            int v = cg_freezeShell.integer - 1;
+
+            if (v < 0 || v >= (int)ARRAY_LEN(cgs.media.freezeShellShaders)) {
+                v = 0;
+            }
+            ent->customShader = cgs.media.freezeShellShaders[v];
             trap_R_AddRefEntityToScene(ent);
         }
     }

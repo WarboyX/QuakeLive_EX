@@ -1380,7 +1380,7 @@ typedef struct {
     qhandle_t iceShardShader2;   // powerups/ice2
     qhandle_t iceShardShader3;   // powerups/ice3
     qhandle_t frozenShader;      // sprites/frozen
-    qhandle_t freezeShellShader; // [QL] ice shell, drawn like the quad shell
+    qhandle_t freezeShellShaders[3]; // [QL] ice shell variants, chosen by cg_freezeShell
     qhandle_t iceMarkShader;     // iceMark
 
     // [QL] gametype icons for scoreboard/HUD
@@ -1706,6 +1706,7 @@ extern vmCvar_t cg_noProjectileTrail;
 extern vmCvar_t cg_bubbleTrail;
 extern vmCvar_t cg_oldRail;
 extern vmCvar_t cg_railColorMode;
+extern vmCvar_t cg_freezeShell;
 extern vmCvar_t cg_oldRocket;
 extern vmCvar_t cg_oldPlasma;
 extern vmCvar_t cg_trueLightning;

@@ -1277,93 +1277,47 @@ any entity carrying `PW_FREEZE`. That holds the exact pose the player was hit in
 which is better than a reset to a neutral stance — and stops the interpolation
 dead.
 
-### C33. Matching Quake Live's freeze visuals — findings
+### C33. Matching Quake Live's freeze visuals — IN PROGRESS
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
-What the shipped pak actually contains, from `docs/pak-manifest.txt`:
+Side by side with the Steam client, ours had **erased the player**: a pale
+white-pink silhouette with no team colour and no skin. Quake Live's frozen player
+stays completely readable — you can see the blue armour and the model detail
+through angular, semi-transparent ice.
 
-| name | almost certainly |
-|------|------------------|
-| `sprites/frozen.png` | the flat frozen sprite (our original `frozenShader`) |
-| `textures/effects/icemap.jpg` | the environment map (what our `powerups/freezeshell` uses) |
-| `textures/ql/ice.jpg` | plain ice surface texture |
-| `gfx/damage/ice_spurt.png` | **blood spurt replacement** — hits on a frozen player |
-| `gfx/damage/ice_stain.png` | **blood stain / impact mark replacement** |
-| `gfx/misc/iceball.png` | shatter / gib particle |
-| `icons/thaw.png` | thaw medal / HUD icon |
+The layering was already right: `CG_AddRefEntityWithPowerups` draws the model
+normally and *then* adds a second pass with `customShader`, the same as the quad
+shell. The fault was entirely in the shader — two `GL_ONE GL_ONE` stages of a
+bright environment map add roughly twice the map's brightness on top of the
+model, which saturates to white.
 
-Two things this settles. First, it confirms again that **there are no ice meshes**
-— the effect is entirely shader-and-sprite over the ordinary player model, so
-anything model-shaped is the wrong direction. Second, the pieces we have not
-wired are the *damage* ones: QL swaps blood for ice on a frozen target
-(`ice_spurt`, `ice_stain`) and shatters with `iceball`. That is the visual
-difference still outstanding, and it is three registrations plus a branch in the
-missile-hit path — not a new asset problem.
-
-`icons/thaw.png` also belongs on the assist award, which currently reuses the
-generic medal.
-
-Not yet done — noted with the evidence rather than guessed at.
-
-### E29. Steam Quake Live stopped launching — NOT US (closed)
-**Lives in:** nothing of ours · **Seen by:** stock Steam Quake Live
-
-Reported as Steam Quake Live no longer launching, silently, with `repconfig` /
-`qzconfig` suspected. It was not us. Recorded because the investigation
-established several things worth not rediscovering, and because a round of
-changes was made and then reverted on the strength of it.
-
-**The actual cause**, from the Windows Application event log:
-
-```
-Faulting application: quakelive_steam.exe, version 0.1.0.739
-Faulting module:      C:\WINDOWS\SYSTEM32\DINPUT.DLL, version 10.0.26100.8951
-Exception code:       0xc0000005      Fault offset: 0x0001143c
-```
-
-`DINPUT.DLL` is Windows' legacy DirectInput, a serviced system file on a current
-Windows 11 build. Quake Live (a June 2016 binary) takes an access violation
-inside it while enumerating controllers at startup, before its own error handling
-exists — hence a silent exit with no dialog. Nothing we ship is in that picture:
-our input is SDL (`code/sdl/sdl_input.c`), we never write to `SYSTEM32`, and no
-file of ours is loaded into `quakelive_steam.exe`. Usual triggers are Steam Input's
-virtual device, a controller driver, or software hooking DirectInput.
-
-**Where Quake Live actually keeps user data**, per our own
-`FS_FindSteamUserFolder` (files.c): `<QL install>\<Steam64 ID>\baseq3\`, holding
-its `qzconfig.cfg` and `repconfig.cfg`. **Not** `%APPDATA%\quakelive` — that
-directory is ours alone, despite the shared name, so the config-collision theory
-never had a mechanism behind it.
-
-**Every route our code has into a Steam install is a read:**
+Three variants now ship in `content/pak01/scripts/freeze.shader`, selected by
+**`cg_freezeShell`** (default 1), because which one looks right is a judgement
+made by looking and this settles it in game rather than over a rebuild per guess:
 
 | | |
 |---|---|
-| `FS_CopyFromSteam` | reads `pak00.pk3` and the user's configs; writes only to our basepath/homepath |
-| `FS_AddGameDirectory(fs_steampath, …)` | search path, read-only |
-| `FS_AddWorkshopPaks` | reads the workshop directory |
-| `FS_ExtractGamecode` | `FS_FOpenFileWrite` → `fs_homepath` only, never the install |
+| `1` | **glass coat** — alpha-blended so the shell occludes rather than adds, `alphaGen lightingSpecular` putting opacity where the light is (which is what gives ice facets rather than an even film), plus a quarter-strength additive sheen on a slow `tcMod rotate` |
+| `2` | **additive sheen** — one dimmed additive environment stage, what the first attempt was trying to be |
+| `3` | **flat sprite** — QL's own `sprites/frozen`, blended at 0.65 alpha |
 
-**Reverted on the strength of that** (commits 5358d56 and 3fd54b4): the home
-directory is `quakelive` again, the configs are `qzconfig.cfg` / `repconfig.cfg` /
-`server.cfg` again, `fs_basegame` is empty again, and the release ships into
-`baseq3/` again. Reverting also restores existing users' settings and keeps the
-install layout people expect.
+All three are registered at load, so switching the cvar takes effect without a
+`vid_restart`, and a missing one is reported rather than silently drawing nothing
+(`RE_RegisterShader` returns 0 for a name the pak lacks).
 
-**The one hazard that is real and now deliberately unguarded:** idTech3 loads
-*every* `.pk3` in a game directory, so if this release is ever unpacked *over* a
-Quake Live install, `pak01.pk3` overrides its assets and `iobin.pk3` offers a
-retail client our cgame/qagame/ui. No filename inside `baseq3` avoids this — the
-engine takes them all — which is why the fix was a separate directory. Nothing
-suggests it has ever happened, and the decision was to keep the simpler layout.
-If it does turn up, the fix is `fs_basegame` (the engine's existing "additional
-base game" slot, searched above `com_basegame`) plus a packaging change, and it
-was verified working before the revert.
+**Still not done — the damage layer.** From `docs/pak-manifest.txt`, QL swaps
+blood for ice on a frozen target and shatters with a ball sprite:
 
-**Kept from the reverted work:** `repconfig.cfg` is now on `FS_FOpenFileRead`'s
-"a config never comes out of a pk3" list. The split into two config files left
-the replicated half unguarded, which was wrong independently of where the files
-live.
+| name | almost certainly |
+|------|------------------|
+| `gfx/damage/ice_spurt.png` | blood spurt replacement on a frozen player |
+| `gfx/damage/ice_stain.png` | blood stain / impact mark replacement |
+| `gfx/misc/iceball.png` | shatter / gib particle |
+| `icons/thaw.png` | thaw medal icon (the assist award reuses the generic one) |
+
+Three registrations plus a branch in the missile-hit path. Confirmed again that
+there are **no ice meshes** in the pak — the whole effect is shader and sprite
+over the ordinary player model, so anything model-shaped is the wrong direction.
 
 ### C27. Voice chat verbs are unhandled — OPEN
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
