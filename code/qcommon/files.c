@@ -3129,7 +3129,8 @@ static void FS_Startup(const char* gameName) {
 
 	fs_debug = Cvar_Get("fs_debug", "0", 0);
 	fs_basepath = Cvar_Get("fs_basepath", Sys_DefaultInstallPath(), CVAR_INIT | CVAR_PROTECTED);
-	fs_basegame = Cvar_Get("fs_basegame", "", CVAR_INIT);
+	// [QL] our data lives in baseiql, not baseq3 - see IOQL_BASEGAME_DIR
+	fs_basegame = Cvar_Get("fs_basegame", IOQL_BASEGAME_DIR, CVAR_INIT);
 	homePath = Sys_DefaultHomePath();
 	if (!homePath || !homePath[0]) {
 		homePath = fs_basepath->string;
@@ -4554,6 +4555,63 @@ void FS_InitFilesystem(void) {
 		}
 	}
 #endif // !DEDICATED
+
+	/*
+	[QL] Say so if we have been unpacked over a Quake Live install.
+
+	This release is meant to live in its own folder with a copy of pak00.pk3,
+	not on top of the retail game. Unpacked over one it overwrites whatever it
+	shares a name with - SDL2.dll being the obvious casualty - and before
+	baseiql existed it also dropped pak01.pk3 and iobin.pk3 into baseq3, where
+	the retail client loads every pk3 it finds and would extract our game
+	modules into itself. The result is a Quake Live that no longer launches, for
+	reasons nothing on screen explains and that survive clearing the home
+	directory, because none of the damage is in it.
+
+	The data half is designed out now. The overwritten-binaries half cannot be:
+	a DLL is found by name. So detect the case and name it, which is the
+	difference between a confusing afternoon and a "verify integrity of game
+	files".
+
+	Detected by Quake Live's own executables sitting beside ours - our binaries
+	are quakelive.x86_64(.exe), which never collide with the retail names, so
+	finding one of those here means two installs in one folder.
+	*/
+	{
+		static const char* qlBinaries[] = {
+			"quakelive_steam.exe", "quakelive.exe", "quakelive_steam", "quakelive"
+		};
+		int i;
+
+		for (i = 0; i < (int)ARRAY_LEN(qlBinaries); i++) {
+			char probe[MAX_OSPATH];
+
+			Com_sprintf(probe, sizeof(probe), "%s%c%s",
+			            fs_basepath->string, PATH_SEP, qlBinaries[i]);
+			if (FS_FileInPathExists(probe)) {
+				Com_Printf(
+				    "\n"
+				    "********************************************************\n"
+				    "WARNING: this looks like a Quake Live install.\n"
+				    "\n"
+				    "  %s\n"
+				    "\n"
+				    "This build is meant to run from its own folder with a\n"
+				    "copy of pak00.pk3, not unpacked over the retail game.\n"
+				    "Sharing the folder overwrites files they both use, and\n"
+				    "Quake Live may stop launching as a result.\n"
+				    "\n"
+				    "If that has happened: in Steam, right-click Quake Live ->\n"
+				    "Properties -> Installed Files -> Verify integrity, then\n"
+				    "delete any pak01.pk3 or iobin.pk3 left in baseq3 (verify\n"
+				    "restores changed files but does not remove extra ones).\n"
+				    "********************************************************\n"
+				    "\n",
+				    probe);
+				break;
+			}
+		}
+	}
 
 	// if we can't find default.cfg, assume that the paths are
 	// busted and error out now, rather than getting an unreadable

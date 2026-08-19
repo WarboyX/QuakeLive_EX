@@ -50,7 +50,17 @@ mkdir -p "$OUT/pkg" "$OUT/stage"
 
 LD="$OUT/pkg/quakelive-linux-x86_64-$REV"
 WD="$OUT/pkg/quakelive-windows-x64-$REV"
-mkdir -p "$LD/baseq3" "$WD/baseq3"
+# Our data goes in baseiql, never baseq3.
+#
+# idTech3 loads every .pk3 in a game directory, so anything of ours dropped into
+# baseq3 is picked up by a Quake Live install that shares that folder - pak01
+# overriding its assets, and iobin.pk3 handing a retail client our cgame, qagame
+# and ui. It stops launching, and nothing in the home directory explains why.
+# No filename is safe in there, so the directory has to differ; the engine
+# defaults fs_basegame to baseiql and searches it above baseq3, which keeps
+# pak00.pk3 where it belongs and every override of ours on top. Quake Live sets
+# no fs_basegame, so this folder is invisible to it.
+mkdir -p "$LD/baseiql" "$WD/baseiql"
 
 cp -p $L/quakelive.x86_64 $L/quakelive_dedicated.x86_64 $L/opengl2x86_64.so "$LD/"
 cp -p $W/quakelive.x86_64.exe $W/quakelive_dedicated.x86_64.exe $W/opengl2x86_64.dll $W/SDL2.dll "$WD/"
@@ -67,10 +77,10 @@ if [ -f $W/vulkanx86_64.dll ]; then cp -p $W/vulkanx86_64.dll "$WD/"; fi
 # server and its windows clients and both pass the same sv_pure checksum.
 rm -rf "$OUT/stage"; mkdir -p "$OUT/stage"
 cp $L/baseq3/*.so $W/baseq3/*.dll "$OUT/stage/"
-(cd "$OUT/stage" && zip -q -9 "$LD/baseq3/iobin.pk3" *.so *.dll)
-cp -p "$LD/baseq3/iobin.pk3" "$WD/baseq3/iobin.pk3"
-cp -p $L/baseq3/pak01.pk3 "$LD/baseq3/"
-cp -p $L/baseq3/pak01.pk3 "$WD/baseq3/"
+(cd "$OUT/stage" && zip -q -9 "$LD/baseiql/iobin.pk3" *.so *.dll)
+cp -p "$LD/baseiql/iobin.pk3" "$WD/baseiql/iobin.pk3"
+cp -p $L/baseq3/pak01.pk3 "$LD/baseiql/"
+cp -p $L/baseq3/pak01.pk3 "$WD/baseiql/"
 cp -p TRACKER.md "$LD/" 2>/dev/null || true
 cp -p TRACKER.md "$WD/" 2>/dev/null || true
 
@@ -79,10 +89,10 @@ cp -p TRACKER.md "$WD/" 2>/dev/null || true
 cp -p server.cfg.example "$LD/" 2>/dev/null || true
 cp -p server.cfg.example "$WD/" 2>/dev/null || true
 
-# Ready-to-run server configs land in baseq3/ so "+exec ffa.cfg" works without
-# the admin having to move anything first.
-cp -p content/serverconfigs/*.cfg "$LD/baseq3/"
-cp -p content/serverconfigs/*.cfg "$WD/baseq3/"
+# Ready-to-run server configs land in baseiql/ so "+exec ffa.cfg" works without
+# the admin having to move anything first - the search path covers it.
+cp -p content/serverconfigs/*.cfg "$LD/baseiql/"
+cp -p content/serverconfigs/*.cfg "$WD/baseiql/"
 
 # A manifest of everything in the archive, so an install can be checked against
 # what was actually shipped without running the game. The engine verifies the

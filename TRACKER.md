@@ -1361,6 +1361,54 @@ was actually damaged, and if so which of the two paths did it. The container has
 no Quake Live install and no Windows. What is certain is that the collision was
 real and by construction; both halves of it are now impossible.
 
+### E30. Our data was shipped into baseq3 — DONE (verify)
+**Lives in:** our **client engine** + packaging · **Seen by:** stock Steam Quake Live
+
+Steam Quake Live stopped launching, and deleting `%APPDATA%\quakelive` did not
+fix it — because none of the damage was there.
+
+The release laid its files down in `baseq3/`:
+
+```
+baseq3/pak01.pk3      our assets
+baseq3/iobin.pk3      our cgame, qagame and ui
+baseq3/*.cfg          our server configs
+```
+
+idTech3 loads **every** `.pk3` in a game directory. Unpacked over a Quake Live
+install, `pak01.pk3` sorts after `pak00.pk3` and overrides its assets — our
+`ui/main.menu` included — and `iobin.pk3` hands the retail client our game
+modules to extract and load. That is a client that will not start, for reasons
+nothing on screen explains.
+
+No filename is safe inside `baseq3`, because the engine takes them all. So the
+directory has to differ. `fs_basegame` is the engine's existing "additional base
+game" slot, searched *after* `com_basegame` and therefore winning over it: it now
+defaults to **`baseiql`**, and the packaging puts `pak01.pk3`, `iobin.pk3` and the
+server configs there. `pak00.pk3` stays in `baseq3` where it belongs. Quake Live
+sets no `fs_basegame`, so a `baseiql` folder beside `baseq3` is invisible to it.
+
+Verified on the built package — the search path reads:
+
+```
+<install>/baseiql
+<install>/baseiql/pak01.pk3 (68 files)
+<install>/baseiql/iobin.pk3 (6 files)
+<install>/baseq3
+```
+
+The `iobin.pk3`-only-from-`fs_basepath` restriction still passes: it tests the
+*path* (basepath vs homepath), not the game directory.
+
+**The half that cannot be designed out** is shared binary names at the install
+root — `SDL2.dll` above all, which a DLL loader finds by name. Unpacking over a
+retail install overwrites it. So the engine now detects the case at startup, by
+looking for Quake Live's own executables (`quakelive_steam.exe`, `quakelive.exe`)
+beside ours — ours are `quakelive.x86_64(.exe)` and never collide — and prints
+what happened plus the fix: Steam → Properties → Installed Files → Verify
+integrity, then delete any `pak01.pk3`/`iobin.pk3` left in `baseq3`, since verify
+restores changed files but does not remove extra ones.
+
 ### C27. Voice chat verbs are unhandled — OPEN
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
