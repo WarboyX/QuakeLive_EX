@@ -743,6 +743,45 @@ static void CG_ParseTeamInfo(void) {
 }
 
 /*
+=================
+CG_ParseTeamInfo2
+
+[QL] The per-player detail the team overlay draws, which QL's tinfo does not
+carry. See TeamplayInfoMessage (g_team.c) for why it is a separate command:
+tinfo keeps the exact shape a stock Quake Live client expects, and this is ours.
+
+Six fields per player: client number, location, health, armour, weapon, frozen.
+Anything the server did not send stays at whatever the last update left, which
+is why the count is validated before the loop rather than trusted inside it.
+=================
+*/
+static void CG_ParseTeamInfo2(void) {
+    int i, client, count;
+
+    count = atoi(CG_Argv(1));
+    if (count < 0 || count > TEAM_MAXOVERLAY) {
+        CG_Printf("CG_ParseTeamInfo2: count out of range (%d)\n", count);
+        return;
+    }
+
+    for (i = 0; i < count; i++) {
+        const int base = i * 6 + 2;
+
+        client = atoi(CG_Argv(base));
+        if (client < 0 || client >= MAX_CLIENTS) {
+            CG_Printf("CG_ParseTeamInfo2: bad client number: %d\n", client);
+            return;
+        }
+
+        cgs.clientinfo[client].location = atoi(CG_Argv(base + 1));
+        cgs.clientinfo[client].health = atoi(CG_Argv(base + 2));
+        cgs.clientinfo[client].armor = atoi(CG_Argv(base + 3));
+        cgs.clientinfo[client].curWeapon = atoi(CG_Argv(base + 4));
+        cgs.clientinfo[client].frozen = atoi(CG_Argv(base + 5)) ? qtrue : qfalse;
+    }
+}
+
+/*
 ================
 CG_ParseServerinfo
 
@@ -2309,6 +2348,11 @@ static void CG_ServerCommand(void) {
 
     if (!strcmp(cmd, "tinfo")) {
         CG_ParseTeamInfo();
+        return;
+    }
+
+    if (!strcmp(cmd, "tinfo2")) {
+        CG_ParseTeamInfo2();
         return;
     }
 

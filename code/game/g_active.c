@@ -1002,6 +1002,12 @@ void ClientThink_real(gentity_t* ent) {
     if (g_gametype.integer == GT_FREEZE && client->ps.pm_type == PM_NORMAL &&
         (level.warmupTime > 0 || level.roundState.eCurrent == RS_COUNTDOWN)) {
         client->ps.pm_flags |= PMF_RESPAWNED;
+        // and drop the input outright, so the command never reaches the weapon
+        // code on either side - PMF_RESPAWNED alone stops the shot but the client
+        // still had a held trigger to react to. This is what client->freezePlayer
+        // does above, narrowed to the fire buttons so movement is unaffected.
+        ucmd->buttons &= ~(BUTTON_ATTACK | BUTTON_USE_HOLDABLE);
+        client->ps.eFlags &= ~EF_FIRING;
     }
 
     // [QL] PMF_PAUSED is handled above (early-return right after the intermission

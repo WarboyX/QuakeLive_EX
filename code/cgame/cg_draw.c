@@ -677,7 +677,22 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 	for (i = 0; i < count; i++) {
 		ci = cgs.clientinfo + sortedTeamPlayers[i];
 		if (ci->infoValid && ci->team == cg.snap->ps.persistant[PERS_TEAM]) {
-			hcolor[0] = hcolor[1] = hcolor[2] = hcolor[3] = 1.0;
+			/*
+			[QL] A frozen teammate is the one thing this overlay exists to tell
+			you in Freeze Tag - they are stood still somewhere waiting for
+			someone to walk over, and nothing else on screen says so. The whole
+			row goes ice blue so it reads at a glance without having to find the
+			name, and the health/armour pair below is replaced with FROZEN,
+			since a statue's numbers are 0/0 and mean nothing.
+			*/
+			if (ci->frozen) {
+				hcolor[0] = 0.55f;
+				hcolor[1] = 0.85f;
+				hcolor[2] = 1.0f;
+				hcolor[3] = 1.0f;
+			} else {
+				hcolor[0] = hcolor[1] = hcolor[2] = hcolor[3] = 1.0;
+			}
 
 			xx = x + TINYCHAR_WIDTH;
 
@@ -701,9 +716,14 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 								 TEAM_OVERLAY_MAXLOCATION_WIDTH);
 			}
 
-			CG_GetColorForHealth(ci->health, ci->armor, hcolor);
-
-			Com_sprintf(st, sizeof(st), "%3i %3i", ci->health, ci->armor);
+			if (ci->frozen) {
+				// keep the ice colour: CG_GetColorForHealth would paint a statue
+				// critical-red off its zero health, which says the wrong thing
+				Q_strncpyz(st, "FROZEN", sizeof(st));
+			} else {
+				CG_GetColorForHealth(ci->health, ci->armor, hcolor);
+				Com_sprintf(st, sizeof(st), "%3i %3i", ci->health, ci->armor);
+			}
 
 			xx = x + TINYCHAR_WIDTH * 3 +
 				TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;

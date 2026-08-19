@@ -459,6 +459,7 @@ typedef struct {
     int health;    // you only get this info about your teammates
     int armor;
     int curWeapon;
+    qboolean frozen;  // [QL] Freeze Tag: teammate is a statue (from tinfo2)
 
     int handicap;
     int wins, losses;  // in tourney mode

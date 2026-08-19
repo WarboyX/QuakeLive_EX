@@ -1204,6 +1204,57 @@ void TeamOverlayMessage(gentity_t* ent) {
     }
 
     trap_SendServerCommand(ent - g_entities, va("tinfo %i%s", cnt, string));
+
+    /*
+    [QL] tinfo2 - the detail tinfo no longer carries.
+
+    Matching QL's flat tinfo above fixed the parse errors, but it also took away
+    everything the team overlay draws. Location, health, armour and weapon are
+    Quake 3 tinfo fields; QL's client gets teammate state from the snapshot
+    instead, and ours does not, so the overlay rendered a column of "unknown"
+    and a row of zeroes for every player. That is what "still not wired up"
+    was.
+
+    Rather than break tinfo again, the detail goes in its own command. tinfo
+    stays exactly the shape a stock Quake Live client expects; tinfo2 is ours,
+    and a client that does not know it ignores an unknown command. It also
+    carries the frozen flag, which is the one piece of Freeze Tag state the
+    overlay most needs and which no Quake 3 field ever had - the point of a team
+    overlay in Freeze Tag is seeing at a glance who needs thawing.
+
+    Six ints per player over at most TEAM_MAXOVERLAY (8) players is roughly 200
+    bytes, well inside the 1024-byte reliable command limit, and the same
+    MAX_SCOREBOARD_PAYLOAD guard as above stops it running over.
+    */
+    string[0] = 0;
+    stringlength = 0;
+
+    for (i = 0, cnt = 0; i < level.maxclients && cnt < TEAM_MAXOVERLAY; i++) {
+        player = g_entities + i;
+        if (player->inuse && player->client->sess.sessionTeam == team) {
+            int health = player->client->ps.stats[STAT_HEALTH];
+            int armor = player->client->ps.stats[STAT_ARMOR];
+            int frozen = player->client->ps.powerups[PW_FREEZE] ? 1 : 0;
+
+            // a statue reads health 0; report it as frozen rather than dead so
+            // the overlay can say "thaw me" instead of "gone"
+            if (health < 0) {
+                health = 0;
+            }
+
+            Com_sprintf(entry, sizeof(entry), " %i %i %i %i %i %i", i,
+                        player->client->pers.teamState.location, health, armor,
+                        player->client->ps.weapon, frozen);
+            j = strlen(entry);
+            if (stringlength + j >= MAX_SCOREBOARD_PAYLOAD)
+                break;
+            strcpy(string + stringlength, entry);
+            stringlength += j;
+            cnt++;
+        }
+    }
+
+    trap_SendServerCommand(ent - g_entities, va("tinfo2 %i%s", cnt, string));
 }
 
 void CheckTeamStatus(void) {

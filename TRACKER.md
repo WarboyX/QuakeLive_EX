@@ -1240,6 +1240,71 @@ fall through to. QL's own player-options menu lives in `pak00.pk3`, which we
 cannot ship or edit; `/color1 <n>` and `/color2 <n>` at the console set the same
 values the menu would.
 
+### C31. Team overlay carried no data — DONE (verify)
+**Lives in:** our **client** (cgame) + **server** (qagame) · **Seen by:** our client only
+
+Every overlay row read `name / unknown / 0 / (red no-entry icon) / 0`.
+
+Matching QL's flat `tinfo` fixed the parse errors that were dropping clients on
+join, but it also removed everything the overlay draws. Location, health, armour
+and weapon are Quake 3 `tinfo` fields; QL's client gets teammate state from the
+snapshot instead and ours does not, so `ci->location` was 0 (`CS_LOCATIONS + 0`
+is empty, hence "unknown"), health and armour were 0, and `ci->curWeapon` 0 has
+no icon — which is what the red circle was, `cgs.media.deferShader` standing in
+for a missing weapon icon.
+
+Fixed with a companion command rather than by breaking `tinfo` again. `tinfo`
+keeps the exact shape a stock Quake Live client expects; `tinfo2` is ours, six
+ints per player — client number, location, health, armour, weapon, **frozen** —
+and a client that does not know the verb ignores it. Roughly 200 bytes at
+`TEAM_MAXOVERLAY` 8, well inside the 1024-byte reliable limit, with the same
+`MAX_SCOREBOARD_PAYLOAD` guard.
+
+Frozen teammates now show as an ice-blue row with `FROZEN` where health/armour
+would be — the statue's real numbers are 0/0 and `CG_GetColorForHealth` would
+paint it critical-red, which says the wrong thing.
+
+### C32. Frozen players kept animating — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Parking a frozen player on `LEGS_IDLE`/`TORSO_STAND` server-side stopped the run
+cycle but not the motion — idle is still an animation, so the statue breathed and
+swayed. There is no way to say "one frame" from the server: an animation is a
+range in the model's `animation.cfg` and the client lerps through it.
+
+`CG_PlayerAnimation` now collapses `oldFrame` onto `frame` with zero backlerp for
+any entity carrying `PW_FREEZE`. That holds the exact pose the player was hit in —
+which is better than a reset to a neutral stance — and stops the interpolation
+dead.
+
+### C33. Matching Quake Live's freeze visuals — findings
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+What the shipped pak actually contains, from `docs/pak-manifest.txt`:
+
+| name | almost certainly |
+|------|------------------|
+| `sprites/frozen.png` | the flat frozen sprite (our original `frozenShader`) |
+| `textures/effects/icemap.jpg` | the environment map (what our `powerups/freezeshell` uses) |
+| `textures/ql/ice.jpg` | plain ice surface texture |
+| `gfx/damage/ice_spurt.png` | **blood spurt replacement** — hits on a frozen player |
+| `gfx/damage/ice_stain.png` | **blood stain / impact mark replacement** |
+| `gfx/misc/iceball.png` | shatter / gib particle |
+| `icons/thaw.png` | thaw medal / HUD icon |
+
+Two things this settles. First, it confirms again that **there are no ice meshes**
+— the effect is entirely shader-and-sprite over the ordinary player model, so
+anything model-shaped is the wrong direction. Second, the pieces we have not
+wired are the *damage* ones: QL swaps blood for ice on a frozen target
+(`ice_spurt`, `ice_stain`) and shatters with `iceball`. That is the visual
+difference still outstanding, and it is three registrations plus a branch in the
+missile-hit path — not a new asset problem.
+
+`icons/thaw.png` also belongs on the assist award, which currently reuses the
+generic medal.
+
+Not yet done — noted with the evidence rather than guessed at.
+
 ### C27. Voice chat verbs are unhandled — OPEN
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 

@@ -1422,6 +1422,27 @@ static void CG_PlayerAnimation(centity_t* cent, int* legsOld, int* legs, float* 
     *torsoOld = cent->pe.torso.oldFrame;
     *torso = cent->pe.torso.frame;
     *torsoBackLerp = cent->pe.torso.backlerp;
+
+    /*
+    [QL] A frozen player is a statue, so hold the frame.
+
+    The server parks a frozen player on LEGS_IDLE/TORSO_STAND, which stopped the
+    run cycle but did not stop movement - idle is still an animation, and the
+    model keeps breathing and swaying in place. There is no way to say "one
+    frame" from the server: an animation is a range in the model's animation.cfg
+    and the client lerps through it.
+
+    So it is pinned here instead. Collapsing oldFrame onto frame with zero
+    backlerp holds whatever pose the player was in when they were hit and stops
+    the interpolation dead, which is what a statue looks like. It also means the
+    pose is the one they froze in rather than a reset to a neutral stance.
+    */
+    if (cent->currentState.powerups & (1 << PW_FREEZE)) {
+        *legsOld = *legs;
+        *legsBackLerp = 0.0f;
+        *torsoOld = *torso;
+        *torsoBackLerp = 0.0f;
+    }
 }
 
 /*
