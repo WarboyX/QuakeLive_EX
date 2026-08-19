@@ -1003,6 +1003,71 @@ The rules the mode is meant to run, now that freezing works:
   `maxThaw` follows the same value so the thaw-progress display measures against
   the right number.
 
+### C28. Frozen player presentation — DONE (verify)
+**Lives in:** our **client** (cgame) + `pak01` · **Seen by:** our client only
+
+Three things reported about a frozen player, all fixed:
+
+- **The ice looked wrong.** `sprites/frozen` was painted flat over the model as a
+  `customShader`, which washed the whole character out to a pale blue silhouette.
+  It is now drawn the way the *quad shell* is — the model rendered a second time
+  with an additive `tcGen environment` shader — so it reads as a coating catching
+  the light instead of a repaint, and the team colours underneath stay legible.
+  `powerups/freezeshell` is **our own shader**, shipped in
+  `content/pak01/scripts/freeze.shader`, referencing Quake Live's
+  `textures/effects/icemap.jpg` by name. Only the name — no asset content, same
+  rule as the pak manifest. Falls back to `frozenShader` if pak01 is missing.
+
+- **The statue kept running.** `pm_type` stops a player moving but not their
+  animation, so someone shot mid-sprint stayed frozen in a running stride.
+  `Freeze_PlayerFrozen` now parks both halves on `LEGS_IDLE` / `TORSO_STAND` with
+  `ANIM_TOGGLEBIT` flipped, so the client restarts the animation rather than
+  lerping out of the run.
+
+- **The scoreboard kept popping up.** It shows itself automatically while dead,
+  and a statue sits at zero health for its whole life. `PM_FREEZE` is its own
+  `pm_type`, but for a frame or two around the death `pm_type` is still `PM_DEAD`
+  while `PW_FREEZE` is already set — the "sometimes" in the report. The powerup
+  is the reliable test, so that is what the auto-show now checks.
+
+`g_freezeThawTime` is **3000** — the value asked for after playing it.
+
+### E26. Bot filler exhausts the slots in Freeze Tag — OPEN
+**Lives in:** our **server** (qagame) · **Seen by:** server console
+
+```
+Unable to add bot. All player slots are in use.
+Start server with more 'open' slots (or check setting of sv_maxclients cvar).
+```
+
+Appeared once freezes started persisting (no auto-thaw in a round).
+
+Ruled out so far: `G_CountHumanPlayers` and `G_CountBotPlayersWithQueued` both
+count by `sess.sessionTeam` and ignore health and `pm_type`, so a frozen statue
+still counts as present — the filler is not topping up because statues look
+absent. `GT_FREEZE` takes the `>= GT_TEAM` branch, where `bot_minplayers` is
+per team and capped at `(maxclients / 2) - 1`; at `sv_maxclients 16` that is 6
+per team, 12 bots plus a human, inside 16.
+
+So the slots are going somewhere else — a leak across round restarts is the
+first suspect, given the `Forcing disconnect on active client: N` lines that
+show up before each bot connects. Needs a log with the client list at the point
+it starts failing.
+
+### C29. Thaw fails intermittently — OPEN
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported as thawing working about half the time.
+
+`Freeze_ClientThawCheck` locks the first teammate it finds into
+`ps.thawClientNum` and never clears `thawClientNum_valid` when that teammate
+leaves, dies or is frozen themselves. The re-resolve loop then looks for a
+client number that is no longer in the box. That is the most likely cause, but I
+have not proved it — the countdown only runs while a teammate is in range with
+line of sight, and `g_freezeThawThroughSurface 0` adds a `CONTENTS_SOLID` trace
+between the two origins, so a teammate standing on the wrong side of a step also
+reads as absent. Both want testing before either is changed.
+
 ### C27. Voice chat verbs are unhandled — OPEN
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 

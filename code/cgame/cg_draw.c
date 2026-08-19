@@ -1886,7 +1886,19 @@ static qboolean CG_DrawScoreboardMenu(void) {
 		return qfalse;
 	}
 
-	if (cg.showScores || cg.predictedPlayerState.pm_type == PM_DEAD || cg.predictedPlayerState.pm_type == PM_INTERMISSION) {
+	/*
+	[QL] A frozen player is not a dead one.
+
+	The scoreboard shows itself automatically while dead, and a Freeze Tag
+	statue sits at zero health for its whole life - so it kept popping up
+	mid-round. PM_FREEZE is its own pm_type, but there is a frame or two around
+	the death where pm_type is still PM_DEAD and PW_FREEZE is already set, which
+	is the "sometimes" in the report; the powerup is the reliable test.
+	*/
+	if (cg.showScores ||
+		(cg.predictedPlayerState.pm_type == PM_DEAD &&
+		 !cg.predictedPlayerState.powerups[PW_FREEZE]) ||
+		cg.predictedPlayerState.pm_type == PM_INTERMISSION) {
 	} else {
 		if (!CG_FadeColor(cg.scoreFadeTime, FADE_TIME)) {
 			// next time scoreboard comes up, don't print killer

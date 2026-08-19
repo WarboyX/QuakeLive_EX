@@ -895,6 +895,20 @@ void Freeze_PlayerFrozen(gentity_t *self) {
     self->takedamage = qfalse;
     self->health = -40;
 
+    /*
+    [QL] Stand the statue still.
+
+    pm_type stops the player moving but not the animation: whatever legs cycle
+    was playing when they were hit keeps looping, so someone shot mid-sprint
+    stayed frozen in a running stride. Park both halves on the idle pose and
+    flip ANIM_TOGGLEBIT so the client restarts the animation rather than
+    lerping out of the run.
+    */
+    self->client->ps.legsAnim =
+        ((self->client->ps.legsAnim & ANIM_TOGGLEBIT) ^ ANIM_TOGGLEBIT) | LEGS_IDLE;
+    self->client->ps.torsoAnim =
+        ((self->client->ps.torsoAnim & ANIM_TOGGLEBIT) ^ ANIM_TOGGLEBIT) | TORSO_STAND;
+
     // [QL] real playerState freeze fields (binary player_die FreezeTag fork,
     // 0x100473e0). The rewritten Freeze_ClientThawCheck operates on THESE, not the
     // fabricated freezePlayer frame-counter:

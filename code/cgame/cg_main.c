@@ -1963,6 +1963,10 @@ static void CG_RegisterGraphics(void) {
     cgs.media.iceShardShader2 = CG_RegisterShaderOr("powerups/ice2", 0);
     cgs.media.iceShardShader3 = CG_RegisterShaderOr("powerups/ice3", 0);
     cgs.media.frozenShader = CG_RegisterShaderOr("sprites/frozen", 0);
+    // [QL] the ice shell drawn over a frozen player - our own shader, shipped in
+    // pak01/scripts/freeze.shader, built like the quad shell rather than as a
+    // flat sprite wash. Falls back to the old sprite if pak01 is missing.
+    cgs.media.freezeShellShader = CG_RegisterShaderOr("powerups/freezeshell", cgs.media.frozenShader);
     cgs.media.iceMarkShader = CG_RegisterShaderOr("iceMark", 0);
 
     /*

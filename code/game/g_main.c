@@ -968,10 +968,10 @@ static cvarTable_t gameCvarTable[] = {
     Freeze_ClientThawCheck counts this down only while a teammate is in range
     and with line of sight, and lets it decay back up when they leave, so this
     is a continuous-presence requirement rather than a total. Two seconds made
-    thawing incidental - you got it in passing. Seven asks for a real commitment
-    and leaves the thawer exposed, which is the trade the mode is built on.
+    thawing incidental - you got it in passing. Three is long enough that the thawer
+    is exposed while doing it, without turning a rescue into a chore.
     */
-    {&g_freezeThawTime, "g_freezeThawTime", "7000", CVAR_GAMERULE, 0, NULL},
+    {&g_freezeThawTime, "g_freezeThawTime", "3000", CVAR_GAMERULE, 0, NULL},
     /*
     [QL] 0 - no auto-thaw during a live round.
 
