@@ -660,6 +660,70 @@ qboolean G_BotConnect(int clientNum, qboolean restart) {
 
 /*
 ===============
+G_BotSlotsExhausted
+
+[QL] "Unable to add bot. All player slots are in use." with the evidence.
+
+This has now been chased twice from the code alone and been wrong both times,
+so it prints the slot table instead of the bare complaint. The refusal means the
+*server* found no client_t in CS_FREE, which the game module cannot see; what it
+can see is who it thinks is occupying each index, and that is enough to tell the
+three candidate causes apart:
+
+  - every slot named and connected  -> the fill target is simply too high for
+    sv_maxclients, and the cap arithmetic in G_CheckMinimumPlayers is wrong
+  - slots held by bots stuck at CON_CONNECTING -> a delayed spawn that never
+    ran, so the queue is the leak
+  - slots the game believes are DISCONNECTED   -> the server holds a client_t
+    the game has already let go of, i.e. a genuine leak on the server side
+
+Throttled to once a second, which also collapses the seven-in-a-row spam: at
+bot_fillRate > 1 the whole shortfall is retried inside one tick and each attempt
+printed its own pair of lines.
+===============
+*/
+static void G_BotSlotsExhausted(void) {
+    static int lastComplaint = -99999;
+    int i;
+
+    if (level.time - lastComplaint < 1000) {
+        return;
+    }
+    lastComplaint = level.time;
+
+    G_Printf(S_COLOR_RED "Unable to add bot. All player slots are in use.\n");
+    G_Printf(S_COLOR_RED "Start server with more 'open' slots (or check setting of sv_maxclients cvar).\n");
+    G_Printf(S_COLOR_YELLOW "slot table (sv_maxclients %i, bot_minplayers %i, gametype %i):\n",
+             level.maxclients, bot_minplayers.integer, g_gametype.integer);
+
+    for (i = 0; i < level.maxclients; i++) {
+        gclient_t* cl = level.clients + i;
+        const char* state;
+        int q;
+
+        switch (cl->pers.connected) {
+            case CON_DISCONNECTED: state = "disconnected"; break;
+            case CON_CONNECTING:   state = "connecting";   break;
+            case CON_CONNECTED:    state = "connected";    break;
+            default:               state = "?";            break;
+        }
+
+        G_Printf("  %2i %-12s %-4s team %i inuse %i name \"%s\"", i, state,
+                 (g_entities[i].r.svFlags & SVF_BOT) ? "bot" : "human",
+                 cl->sess.sessionTeam, g_entities[i].inuse, cl->pers.netname);
+
+        for (q = 0; q < BOT_SPAWN_QUEUE_DEPTH; q++) {
+            if (botSpawnQueue[q].spawnTime && botSpawnQueue[q].clientNum == i) {
+                G_Printf(" queued(+%ims)", botSpawnQueue[q].spawnTime - level.time);
+                break;
+            }
+        }
+        G_Printf("\n");
+    }
+}
+
+/*
+===============
 G_AddBot
 ===============
 */
@@ -678,8 +742,7 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     // have the server allocate a client slot
     clientNum = trap_BotAllocateClient();
     if (clientNum == -1) {
-        G_Printf(S_COLOR_RED "Unable to add bot. All player slots are in use.\n");
-        G_Printf(S_COLOR_RED "Start server with more 'open' slots (or check setting of sv_maxclients cvar).\n");
+        G_BotSlotsExhausted();
         return;
     }
 
@@ -813,8 +876,23 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     trap_SetUserinfo(clientNum, userinfo);
 
     // have it connect to the game as a normal client
-    if (ClientConnect(clientNum, qtrue, qtrue)) {
-        return;
+    //
+    // [QL] Give the slot back when the connect is refused. This path used to
+    // return with the slot still allocated: trap_BotAllocateClient has already
+    // put the server's client_t into CS_ACTIVE, and nothing else ever releases
+    // it, so a refused bot burned a slot for the rest of the map. Every other
+    // early return in this function frees it; this one did not, and it is the
+    // one that fires when a connect is rejected (bot AI setup failure, a full
+    // or locked team) rather than when the bot definition is malformed.
+    {
+        char* reason = ClientConnect(clientNum, qtrue, qtrue);
+        if (reason) {
+            G_Printf(S_COLOR_YELLOW "Bot connect refused for slot %i: %s\n", clientNum, reason);
+            g_entities[clientNum].r.svFlags &= ~SVF_BOT;
+            g_entities[clientNum].inuse = qfalse;
+            trap_BotFreeClient(clientNum);
+            return;
+        }
     }
 
     if (delay == 0) {

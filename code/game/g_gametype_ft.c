@@ -898,8 +898,24 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
             te->r.ownerNum = ent->client->ps.clientNum;        // te+0x238 (PVS-limited, not broadcast)
         }
     } else {
-        // no thawer this frame: thaw progress decays (refills toward max)
-        cl->ps.thawtime += msec;
+        /*
+        No thawer this frame, so thaw progress decays back toward the full time.
+
+        [QL] The decay used to run at the same rate as the drain - one msec back
+        for one msec forward - and that is why thawing "still takes a long time"
+        even at g_freezeThawTime 3000. It means any frame that does not find a
+        thawer does not pause the thaw, it *undoes* a frame of it. The scan is
+        not stable enough for that to be fair: it needs the teammate inside a
+        96-unit box AND passing the line-of-sight trace every single frame, so a
+        teammate circling the statue, clipping a pillar, or stepping to the edge
+        of the radius gives up progress as fast as they earn it and three seconds
+        of standing there produces nothing.
+
+        A quarter rate keeps the mechanic - walk away and you lose the thaw, so
+        you cannot chip at a statue from across the map over a whole round - while
+        making a momentary break in contact cost a moment rather than everything.
+        */
+        cl->ps.thawtime += msec / 4;
         cl->ps.thawClientNum_valid = 0;
         if (cl->ps.thawtime > maxThaw) cl->ps.thawtime = maxThaw;
     }

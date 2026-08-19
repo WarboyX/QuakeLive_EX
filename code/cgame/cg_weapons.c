@@ -217,9 +217,84 @@ Ring colour always uses cg_teamRailColor1 (QL quirk).
 Static in the binary; ci passed implicitly (EAX), an explicit parameter here.
 ==========================
 */
+/*
+==========================
+CG_GametypeRailColor
+
+[QL] Rail colour by team, for Freeze Tag (cg_teamRailColors).
+
+Instagib Freeze Tag is a mode where the only thing on screen is rails, and the
+stock rail takes its colour from the shooter's own color1/color2 userinfo - so
+every beam is whatever colour that player picked, and the one piece of
+information you actually want out of a beam, whose side fired it, is the one
+thing it does not carry. QL's cg_forceTeamRailColor1/2 do not cover this: they
+are a viewer-side friend/foe override with two fixed colours, and they return
+early for the viewer's own rail, so your own shots stay unchanged.
+
+This is absolute rather than relative - red team fires red, blue team fires
+blue, for every player including you - and it applies to the core beam, the
+ring sprites and the impact mark, because all three read their colour through
+CG_GetRailColorFloat/Byte.
+
+cg_teamRailColors 2 makes every rail white instead, which was the other half of
+what was asked for; 0 restores the stock per-player colours.
+
+Returns qfalse when the override does not apply, so the caller falls through to
+QL's own rail-forcing logic and then to the shooter's colour.
+==========================
+*/
+static qboolean CG_GametypeRailColor(clientInfo_t* ci, float* color) {
+    if (cg_teamRailColors.integer == 0) {
+        return qfalse;
+    }
+    if (cgs.gametype != GT_FREEZE) {
+        return qfalse;
+    }
+
+    if (cg_teamRailColors.integer == 2) {
+        color[0] = 1.0f;
+        color[1] = 1.0f;
+        color[2] = 1.0f;
+        return qtrue;
+    }
+
+    switch (ci->team) {
+        case TEAM_RED:
+            color[0] = 1.0f;
+            color[1] = 0.15f;
+            color[2] = 0.15f;
+            return qtrue;
+        case TEAM_BLUE:
+            color[0] = 0.25f;
+            color[1] = 0.40f;
+            color[2] = 1.0f;
+            return qtrue;
+        default:
+            // no team yet (connecting, spectating): leave it alone rather than
+            // painting it a team colour that would then change under the player
+            return qfalse;
+    }
+}
+
 static qboolean CG_GetRailColorFloat(clientInfo_t* ci, float* coreColor, byte* ringColor) {
     int viewer, owner;
     qboolean forceTeamSkin;
+    vec3_t gtColor;
+
+    if (CG_GametypeRailColor(ci, gtColor)) {
+        // 0.75 to match the scale every other path here applies to the core beam
+        if (coreColor) {
+            coreColor[0] = gtColor[0] * 0.75f;
+            coreColor[1] = gtColor[1] * 0.75f;
+            coreColor[2] = gtColor[2] * 0.75f;
+        }
+        if (ringColor) {
+            ringColor[0] = (byte)(gtColor[0] * 255.0f);
+            ringColor[1] = (byte)(gtColor[1] * 255.0f);
+            ringColor[2] = (byte)(gtColor[2] * 255.0f);
+        }
+        return qtrue;
+    }
 
     if (cg_forceTeamRailColor1.integer != 1 && cg_forceTeamRailColor2.integer != 1) {
         return qfalse;
@@ -280,6 +355,14 @@ selection logic as CG_GetRailColorFloat; used for the ring sprite shaderRGBA.
 static qboolean CG_GetRailColorByte(clientInfo_t* ci, byte* color) {
     int viewer, owner;
     qboolean forceTeamSkin;
+    vec3_t gtColor;
+
+    if (CG_GametypeRailColor(ci, gtColor)) {
+        color[0] = (byte)(gtColor[0] * 255.0f);
+        color[1] = (byte)(gtColor[1] * 255.0f);
+        color[2] = (byte)(gtColor[2] * 255.0f);
+        return qtrue;
+    }
 
     if (cg_forceTeamRailColor1.integer != 1 && cg_forceTeamRailColor2.integer != 1) {
         return qfalse;

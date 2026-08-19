@@ -1032,7 +1032,7 @@ Three things reported about a frozen player, all fixed:
 
 `g_freezeThawTime` is **3000** — the value asked for after playing it.
 
-### E26. Bot filler exhausts the slots in Freeze Tag — DONE (verify)
+### E26. Bot filler exhausts the slots in Freeze Tag — OPEN (instrumented)
 **Lives in:** our **server** (qagame) · **Seen by:** server console
 
 ```
@@ -1062,8 +1062,34 @@ Fixed by counting `!= CON_DISCONNECTED` in the first loop (what stock
 `G_CountBotPlayers` already does) and reducing the queue loop to a backstop for
 an entry whose client slot has been released, with the team filter added.
 
-Verify: `bot_minplayers 6` on `a2m-instagib-freeze.cfg` should settle at 6 per
-team and stop, with no refusal lines.
+**Still happening after that fix.** The undercount was real and worth fixing, but
+it was not the whole story, and this is the second time the cause has been
+reasoned out of the code and been wrong. So the refusal now prints the evidence
+rather than the complaint: `G_BotSlotsExhausted` dumps the whole slot table -
+per index, the game's `pers.connected`, bot/human, `sess.sessionTeam`,
+`ent->inuse`, the name, and whether a spawn-queue entry points at it - plus
+`sv_maxclients`, `bot_minplayers` and the gametype. The refusal means the
+*server* found no `client_t` in `CS_FREE`, which the game module cannot see;
+the table shows who the game thinks holds each index, and the three candidates
+read differently:
+
+- every slot named and connected → the fill target is too high for
+  `sv_maxclients` and the cap arithmetic in `G_CheckMinimumPlayers` is wrong
+- slots stuck at `CON_CONNECTING` → a delayed spawn that never ran
+- slots the game calls `disconnected` → the server is holding a `client_t` the
+  game has already released, a real server-side leak
+
+Also fixed one definite leak on the way: `G_AddBot` returned on a refused
+`ClientConnect` without calling `trap_BotFreeClient`, so the slot
+`trap_BotAllocateClient` had already moved to `CS_ACTIVE` stayed allocated for
+the rest of the map. Every other early return in that function frees it; that
+one did not. The refusal reason is now printed too.
+
+Output is throttled to once a second, which also collapses the seven-line spam:
+at `bot_fillRate > 1` the whole shortfall is retried inside a single tick and
+every attempt printed its own pair of lines.
+
+Next: a log with the slot table in it.
 
 ### C29. Thaw fails intermittently — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
@@ -1102,7 +1128,54 @@ re-locking onto whoever the scan actually found this frame.
 
 `g_debugFreeze 1` now also prints the rejected-for-line-of-sight case by name.
 
-Verify: thaw a teammate on a staircase and on a ramp — both should count down.
+**Third cause, found after the LOS fix did not settle it** — reported back as
+thawing still taking a long time.
+
+Thaw progress did not pause when contact broke, it *reversed*, at the same rate
+it advanced: `ps.thawtime += msec` on any frame with no valid thawer. The scan
+demands the teammate be inside a 96-unit box *and* pass the line-of-sight trace
+every single frame, which is not a stable enough test to hang that on — a
+teammate circling the statue, clipping a pillar or drifting to the edge of the
+radius gives progress back as fast as they earn it, so three seconds of standing
+there completes nothing. Halved contact means net zero.
+
+The refill now runs at a quarter rate. The mechanic survives — walk away and the
+thaw is lost, so a statue cannot be chipped at from across the map over a whole
+round — but a momentary break costs a moment instead of everything.
+
+Verify: thaw a teammate on a staircase and on a ramp; `g_debugThawTime 1` prints
+the countdown to the thawer every frame if the rate needs measuring.
+
+### C30. Rail colour by team in Freeze Tag — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Instagib Freeze Tag is a mode where the only thing on screen is rails, and the
+stock rail takes its colour from the shooter's own `color1`/`color2` userinfo —
+so every beam is whatever colour that player picked, and the one thing you want
+out of a beam, whose side fired it, is the one thing it does not carry.
+
+QL's own `cg_forceTeamRailColor1`/`2` do not fill the gap: they are a
+viewer-side friend/foe override with two arbitrary colours, and
+`CG_GetRailColorFloat` returns early for `viewer == owner`, so your own rail is
+never touched.
+
+`cg_teamRailColors` (cgame, default 1):
+
+| value | behaviour |
+|-------|-----------|
+| `0` | off — stock per-player `color1`/`color2` |
+| `1` | team colours — red team fires red, blue team fires blue, everyone including you |
+| `2` | white — every rail white |
+
+Applied inside `CG_GametypeRailColor`, called from the top of both
+`CG_GetRailColorFloat` and `CG_GetRailColorByte`, so the core beam, the ring
+sprites and the impact mark all follow it — those are the three things that read
+a rail colour. Scoped to `GT_FREEZE`; a shooter with no team yet falls through
+to the stock colour rather than being painted a team colour that would then
+change under them.
+
+**Not** `CVAR_ARCHIVE`: this is a default we choose, and archiving one writes it
+into a config on first run that wins forever (`r_dlightMode`, `con_scale`).
 
 ### C27. Voice chat verbs are unhandled — OPEN
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
