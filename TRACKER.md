@@ -976,6 +976,33 @@ round state is still not `RS_PLAYING` well after the countdowns should have
 finished. A declined freeze is indistinguishable from a death, and that cost two
 rounds of "still not working" with nothing in the log to work from.
 
+### E25. Freeze Tag timings set to the intended rules — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+The rules the mode is meant to run, now that freezing works:
+
+| | before | now |
+|---|---|---|
+| `g_freezeThawTime` — teammate must stand over you | 2000 | **7000** |
+| `g_freezeAutoThawTime` — melt on your own, in a round | 120000 | **0 (off)** |
+| `g_freezeWarmupThawTime` — warmup self-thaw fuse | *did not exist* | **5000** |
+
+- **A live round has no auto-thaw at all.** The only way out of the ice is a
+  teammate, which is the mode. At 120000 a statue nobody reached melted by
+  itself after two minutes and a round could resolve with no thawing done.
+- **Thawing takes real commitment.** `Freeze_ClientThawCheck` counts down only
+  while a teammate is in range with line of sight, and lets the timer decay back
+  up when they leave, so this is continuous presence rather than a total. Two
+  seconds meant you thawed people in passing; seven leaves the thawer exposed,
+  which is the trade the mode is built on.
+- **Warmup freezes too, on a short fuse.** Warmup is practice, so a shot should
+  still put you in a statue — it just should not park you there.
+  `Freeze_ClientThawCheck` already had a warmup branch that bleeds the timer with
+  no teammate needed, so the fuse is just where that timer starts.
+  `Freeze_PlayerFrozen` no longer requires `RS_PLAYING` during warmup, and
+  `maxThaw` follows the same value so the thaw-progress display measures against
+  the right number.
+
 ### C27. Voice chat verbs are unhandled — OPEN
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 

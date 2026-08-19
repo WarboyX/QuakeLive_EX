@@ -407,6 +407,7 @@ vmCvar_t g_freezeThawTick;
 vmCvar_t g_freezeProtectedSpawnTime;
 vmCvar_t g_freezeThawTime;
 vmCvar_t g_freezeAutoThawTime;
+vmCvar_t g_freezeWarmupThawTime;
 vmCvar_t g_freezeThawRadius;
 vmCvar_t g_freezeThawThroughSurface;
 vmCvar_t g_freezeThawWinningTeam;
@@ -962,8 +963,29 @@ static cvarTable_t gameCvarTable[] = {
     // [QL] freeze tag cvars
     {&g_freezeThawTick, "g_freezeThawTick", "1", CVAR_GAMERULE, 0, NULL},  // [QL] binary: CVAR_GAMERULE only
     {&g_freezeProtectedSpawnTime, "g_freezeProtectedSpawnTime", "0", CVAR_GAMERULE, 0, NULL},  // [QL] binary: CVAR_GAMERULE only
-    {&g_freezeThawTime, "g_freezeThawTime", "2000", CVAR_GAMERULE, 0, NULL},
-    {&g_freezeAutoThawTime, "g_freezeAutoThawTime", "120000", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] How long a teammate has to stand over a frozen player to thaw them.
+    Freeze_ClientThawCheck counts this down only while a teammate is in range
+    and with line of sight, and lets it decay back up when they leave, so this
+    is a continuous-presence requirement rather than a total. Two seconds made
+    thawing incidental - you got it in passing. Seven asks for a real commitment
+    and leaves the thawer exposed, which is the trade the mode is built on.
+    */
+    {&g_freezeThawTime, "g_freezeThawTime", "7000", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] 0 - no auto-thaw during a live round.
+
+    In a round, the only way out of the ice is a teammate standing over you;
+    that is the mode. This shipped at 120000, so a statue nobody reached melted
+    on its own after two minutes and the round could resolve without anyone
+    doing the thawing. Set it non-zero to put that timeout back.
+
+    Warmup is separate and always self-thaws - see g_freezeWarmupThawTime.
+    */
+    {&g_freezeAutoThawTime, "g_freezeAutoThawTime", "0", CVAR_GAMERULE, 0, NULL},
+    // [QL] how long a warmup freeze lasts before it thaws itself. Warmup is
+    // practice, so it should demonstrate freezing without parking anyone.
+    {&g_freezeWarmupThawTime, "g_freezeWarmupThawTime", "5000", CVAR_GAMERULE, 0, NULL},
     {&g_freezeThawRadius, "g_freezeThawRadius", "96", CVAR_GAMERULE, 0, NULL},
     {&g_freezeThawThroughSurface, "g_freezeThawThroughSurface", "0", CVAR_GAMERULE, 0, NULL},
     {&g_freezeThawWinningTeam, "g_freezeThawWinningTeam", "1", CVAR_GAMERULE, 0, NULL},

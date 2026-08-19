@@ -1342,6 +1342,7 @@ extern vmCvar_t g_adCaptureScoreBonus;
 extern vmCvar_t g_freezeThawTick;
 extern vmCvar_t g_freezeProtectedSpawnTime;
 extern vmCvar_t g_freezeThawTime;
+extern vmCvar_t g_freezeWarmupThawTime;
 extern vmCvar_t g_freezeAutoThawTime;
 extern vmCvar_t g_freezeThawRadius;
 extern vmCvar_t g_freezeThawThroughSurface;

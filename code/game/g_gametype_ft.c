@@ -697,7 +697,10 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
     int entityList[MAX_GENTITIES];           // local_1010[1024]
     int numNearby = 0;
     int i;
-    int maxThaw = g_freezeThawTime.integer;  // DAT_105a472c
+    // [QL] warmup starts its fuse at g_freezeWarmupThawTime, so the progress
+    // display and the decay clamp have to measure against the same number
+    int maxThaw = level.warmupTime ? g_freezeWarmupThawTime.integer
+                                   : g_freezeThawTime.integer;  // DAT_105a472c
 
     // --- (A) thaw-progress display bits (runs unconditionally, every frame) ---
     {
@@ -859,7 +862,19 @@ void Freeze_PlayerFrozen(gentity_t *self) {
     instead of leaving it to be guessed at - same approach as g_debugWarmup,
     which is what settled the match-never-starts bug.
     */
-    if (level.roundState.eCurrent != RS_PLAYING) {
+    /*
+    [QL] Warmup freezes too, on a short fuse.
+
+    Warmup is practice, so being shot should still put you in a statue - it just
+    should not park you there. Freeze_ClientThawCheck has a warmup branch that
+    bleeds ps.thawtime down and thaws you when it reaches zero, with no teammate
+    needed, so the warmup fuse is simply how long that timer starts at:
+    g_freezeWarmupThawTime, five seconds.
+
+    In a live round the gate stays as it was - only RS_PLAYING freezes - and the
+    thaw timer is g_freezeThawTime, the length of a teammate's touch.
+    */
+    if (level.warmupTime == 0 && level.roundState.eCurrent != RS_PLAYING) {
         if (g_debugFreeze.integer) {
             G_Printf("freeze declined for %s: roundState.eCurrent is %i, needs RS_PLAYING (%i) "
                      "[warmupTime %i, intermission %i]\n",
@@ -870,8 +885,9 @@ void Freeze_PlayerFrozen(gentity_t *self) {
     }
 
     if (g_debugFreeze.integer) {
-        G_Printf("freeze: %s frozen (thawtime %i)\n",
-                 self->client->pers.netname, g_freezeThawTime.integer);
+        G_Printf("freeze: %s frozen (%s, thawtime %i)\n", self->client->pers.netname,
+                 level.warmupTime ? "warmup" : "round",
+                 level.warmupTime ? g_freezeWarmupThawTime.integer : g_freezeThawTime.integer);
     }
 
     self->client->ps.stats[STAT_HEALTH] = 0;
@@ -889,7 +905,9 @@ void Freeze_PlayerFrozen(gentity_t *self) {
     //     to the full thaw time (binary: ps.thawtime = DAT_105a472c)
     self->client->ps.powerups[PW_FREEZE] = 0x7fffffff;
     self->client->ps.freezetime = level.time;
-    self->client->ps.thawtime = g_freezeThawTime.integer;
+    // [QL] warmup runs the short self-thaw fuse; a live round needs a teammate
+    self->client->ps.thawtime =
+        level.warmupTime ? g_freezeWarmupThawTime.integer : g_freezeThawTime.integer;
 
     // [QL] the networked presentation bit the client reads to draw the statue.
     // g_combat.c's other freeze path sets s.powerups = 0x8000 for this; without
