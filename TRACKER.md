@@ -938,6 +938,47 @@ only and the client throttles its own `score` request to one every two seconds,
 so nothing in normal play multiplies this — but a client that spams `score` costs
 four times what it used to.
 
+### C25. Team scoreboards drew one row and then blanks — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Headers read "3 Players" and "2 Players" with one row rendered, or none.
+
+`scores_ft` writes **17** fields per player. `CG_ParseScoreEntry_Ft` read
+**18**. This was my own regression: an earlier pass correctly added the missing
+`sp->tks` read but left the `i++; // unknown field` that had been standing in
+for it.
+
+One field of drift per entry compounds. From the second player on, `sp->client`
+was reading somebody's damage figure or alive flag; the range clamp turned that
+into client 0, `cgs.clientinfo[0]` is not the player that row belongs to, and
+`CG_FeederItemText` returns "" when `infoValid` is false — so the list drew one
+plausible row and then blanks. The team headers come from a different count,
+which is why they still said three.
+
+**Checked the rest mechanically rather than by eye, and Freeze Tag was the only
+one wrong:**
+
+| verb | emitter | parser |
+|---|---|---|
+| `scores_ffa` | 18 | 18 |
+| `smscores` | 8 | 8 |
+| `scores_tdm` | 15 | 15 |
+| `scores_ca` | 16 | 16 |
+| `scores_ctf` | 17 | 17 |
+| `scores_ft` | 17 | ~~18~~ 17 |
+| `scores_rr` | 19 | 19 |
+| `scores_race` | 4 | 4 |
+| `tinfo` | 1 | 1 |
+
+**`tools/check-score-fields.py`** now does this count on every emitter/parser
+pair and exits non-zero on a mismatch. Run it after touching either side. This
+class of bug has cost four rounds — the FFA WEAP column, the Freeze Tag tail,
+this over-read, and `tinfo`'s six-fields-for-one — and not one of them produced
+an error at runtime. A parser reads whatever is next in the argv list: a drift
+of one shows up as a wrong number, a blank row, or `bad client number: 85`,
+never as "the message is malformed". Counting is mechanical, so it should not be
+done by eye.
+
 ### E23. Serverinfo overflowed 1024 bytes and dropped keys — DONE (verify)
 **Lives in:** our **server** (engine) · **Seen by:** every client
 

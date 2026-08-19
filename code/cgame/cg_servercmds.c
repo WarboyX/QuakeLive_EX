@@ -433,7 +433,17 @@ static int CG_ParseScoreEntry_Ft(score_t *sp, int i) {
     sp->impressiveCount = atoi(CG_Argv(i++));
     sp->excellentCount = atoi(CG_Argv(i++));
     sp->guantletCount = atoi(CG_Argv(i++));
-    // [QL] The emitter (g_gametype_ft.c) writes 17 fields and this read 16:
+    // [QL] 17 fields, matching the emitter exactly - count them if you change
+    // this. An earlier pass added sp->tks but left behind the "i++ // unknown
+    // field" that had been standing in for it, so this read 18 for 17 written.
+    // One field of drift per entry compounds: from the second player on,
+    // sp->client was reading somebody's damage or alive flag, the clamp turned
+    // that into client 0, and cgs.clientinfo[...].infoValid came back false - so
+    // the team lists rendered one plausible row and then blanks, which is what
+    // "the scoreboard is broken on team matches" looked like.
+    //
+    // The original note, still true:
+    // The emitter writes 17 fields and this read 16:
     // PERS_ASSIST_COUNT (which in Freeze Tag *is* the thaw count - thawing a
     // teammate awards an assist), then numTeamKills, numTeamKilled,
     // totalDamageDealt, alive. numTeamKills was missing here, so everything
@@ -443,7 +453,6 @@ static int CG_ParseScoreEntry_Ft(score_t *sp, int i) {
     sp->thaws = atoi(CG_Argv(i++));
     sp->tks = atoi(CG_Argv(i++));
     sp->tkd = atoi(CG_Argv(i++));
-    i++;  // unknown field
     sp->damageDone = atoi(CG_Argv(i++));
     sp->alive = atoi(CG_Argv(i++));
     sp->net = sp->frags - sp->deaths;
