@@ -1904,8 +1904,32 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
         targ->enemy = attacker;
         targ->die(targ, inflictor, attacker, take, mod);
         if (g_gametype.integer == GT_FREEZE && targ->client) {
+            /*
+            [QL] Destroy the frozen body only once the auto-thaw window has
+            *elapsed*. This read
+
+                level.time < targ->client->respawnTime + g_freezeAutoThawTime.integer
+
+            which is the opposite: true for the whole window and false after it.
+            targ->die() has just frozen this player, so respawnTime is around
+            level.time and the test passed on the very frame of the freeze -
+            every single freeze was destroyed immediately:
+
+                Biker was railed by Major
+                Biker was auto-thawed.
+                Wrack was railed by Klesk
+                Wrack was auto-thawed.
+
+            which is why Freeze Tag looked like players were dying normally even
+            once they were being frozen properly.
+
+            Measured from ps.freezetime, the stamp Freeze_PlayerFrozen sets, so
+            this agrees with the per-frame timeout in Freeze_ClientThawCheck
+            rather than inventing a second clock off respawnTime. On the freezing
+            frame the elapsed time is 0, so it no longer fires there.
+            */
             if (g_freezeAutoThawTime.integer &&
-                level.time < targ->client->respawnTime + g_freezeAutoThawTime.integer) {
+                level.time - targ->client->ps.freezetime >= g_freezeAutoThawTime.integer) {
                 Freeze_InstaKill(targ, 1);
                 return;
             }

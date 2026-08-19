@@ -1732,7 +1732,12 @@ int Item_ListBox_OverLB(itemDef_t* item, float x, float y) {
             return WINDOW_LB_PGDN;
         }
     } else {
-        r.x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE;
+        // [QL] mirror the hit test when the bar is drawn on the left edge
+        if (item->window.flags & WINDOW_LB_LEFTSCROLL) {
+            r.x = item->window.rect.x;
+        } else {
+            r.x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE;
+        }
         r.y = item->window.rect.y;
         r.h = r.w = SCROLLBAR_SIZE;
         if (Rect_ContainsPoint(&r, x, y)) {
@@ -4208,8 +4213,13 @@ void Item_ListBox_Paint(itemDef_t* item) {
             //
         }
     } else {
-        // draw scrollbar to right side of the window
-        x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
+        // draw scrollbar to right side of the window - or the left, when the
+        // caller asked for it (WINDOW_LB_LEFTSCROLL; see the note in ui_shared.h)
+        if (item->window.flags & WINDOW_LB_LEFTSCROLL) {
+            x = item->window.rect.x + 1;
+        } else {
+            x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
+        }
         y = item->window.rect.y + 1;
         DC->drawHandlePic(x, y, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarArrowUp);
         y += SCROLLBAR_SIZE - 1;

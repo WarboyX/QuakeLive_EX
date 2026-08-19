@@ -62,6 +62,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define WINDOW_POPUP 0x00200000          // popup
 #define WINDOW_BACKCOLORSET 0x00400000   // backcolor was explicitly set
 #define WINDOW_TIMEDVISIBLE 0x00800000   // visibility timing ( NOT implemented )
+// [QL] draw a vertical list box's scroll bar on the left edge instead of the
+// right. Quake Live's team scoreboards put the left-hand team's bar on the
+// outside, so the two lists mirror each other rather than both crowding the
+// middle. Set from cgame on the red-team feeder; no menu keyword.
+#define WINDOW_LB_LEFTSCROLL 0x01000000
 
 // CGAME cursor type bits
 #define CURSOR_NONE 0x00000001

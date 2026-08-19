@@ -938,7 +938,72 @@ only and the client throttles its own `score` request to one every two seconds,
 so nothing in normal play multiplies this — but a client that spams `score` costs
 four times what it used to.
 
-### C26. Scoreboard player list sat over its column headers — DONE (verify)
+### E24. Every freeze was destroyed on the frame it happened — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+With the round machine finally running, players froze — and were thawed again
+instantly:
+
+```
+Biker was railed by Major
+Biker was auto-thawed.
+Wrack was railed by Klesk
+Wrack was auto-thawed.
+```
+
+`G_Damage`, right after `targ->die()`:
+
+```c
+if (g_freezeAutoThawTime.integer &&
+    level.time < targ->client->respawnTime + g_freezeAutoThawTime.integer) {
+    Freeze_InstaKill(targ, 1);
+```
+
+The comparison is the wrong way round — true for the whole auto-thaw window and
+false once it has passed, when the intent is to destroy the body *after* the
+window elapses. `targ->die()` has just frozen the player, so `respawnTime` is
+around `level.time` and the test passed on the very frame of the freeze. Every
+freeze was destroyed immediately, which is why the mode still looked like
+ordinary deaths.
+
+Now measured from `ps.freezetime` — the stamp `Freeze_PlayerFrozen` sets — so it
+agrees with the per-frame timeout in `Freeze_ClientThawCheck` instead of running
+a second clock off `respawnTime`. On the freezing frame the elapsed time is 0, so
+it no longer fires there.
+
+`Freeze_Think` also warns once per level, without needing `g_debugFreeze`, if the
+round state is still not `RS_PLAYING` well after the countdowns should have
+finished. A declined freeze is indistinguishable from a death, and that cost two
+rounds of "still not working" with nothing in the log to work from.
+
+### C27. Voice chat verbs are unhandled — OPEN
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+```
+Unknown client game command: vtell
+Unknown client game command: vchat
+```
+
+`G_VoiceTo` sends `vchat`, `vtchat` and `vtell`; `CG_ServerCommand` has a
+handler for none of them, so every bot voice taunt prints that line. Quake 3
+answers these with `CG_VoiceChat`, which needs the voice-chat script files to map
+an id to a sound and a line of text. Not implemented — noted rather than
+guessed at.
+
+### C26. Scoreboard player list sat over its column headers — DONE (verify), now tunable
+**Update.** One element height overshot and left a visible gap, and I cannot see
+the result from here to judge it. The shift is `cg_scoreboardListOffset`, default
+8 — raise to push the rows down, lower to bring them up, 0 for the menu's own
+geometry. Not `CVAR_ARCHIVE`: it is our layout value, not the user's, and
+archiving a shipped default stops the default applying (CLAUDE.md).
+
+Also, the left-hand team's scroll bar now draws on the *outside* edge rather than
+between the two lists, so they mirror each other. That needed a new
+`WINDOW_LB_LEFTSCROLL` window flag — there is no menu keyword for it — honoured
+both by `Item_ListBox_Paint` and by the `Item_ListBox_OverLB` hit test, so clicks
+land on the bar where it is drawn. cgame sets it on `FEEDER_REDTEAM_LIST`.
+
+
 **Lives in:** our **client** (cgame / ui) · **Seen by:** our client only
 
 `Item_ListBox_Paint` draws the first row at `rect.y + 1`. Quake Live's scoreboard

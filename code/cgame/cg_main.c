@@ -115,6 +115,7 @@ vmCvar_t cg_swingSpeed;
 vmCvar_t cg_shadows;
 vmCvar_t cg_gibs;
 vmCvar_t cg_drawTimer;
+vmCvar_t cg_scoreboardListOffset;
 vmCvar_t cg_drawFPS;
 vmCvar_t cg_drawSnapshot;
 vmCvar_t cg_draw3dIcons;
@@ -506,6 +507,10 @@ static cvarTable_t cvarTable[] = {
     {&cg_draw2D, "cg_draw2D", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawStatus, "cg_drawStatus", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawTimer, "cg_drawTimer", "0", CVAR_ARCHIVE},
+    // [QL] see CG_OffsetScoreboardList - how far the scoreboard player list is
+    // pushed below its column headers. Not CVAR_ARCHIVE: it is our layout value,
+    // not the user's, and archiving a shipped default stops the default applying.
+    {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "8", 0},
     {&cg_drawFPS, "cg_drawFPS", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawSnapshot, "cg_drawSnapshot", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_draw3dIcons, "cg_draw3dIcons", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},

@@ -1719,10 +1719,27 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 			continue;
 		}
 
-		shift = listPtr->elementHeight;
+		/*
+		[QL] How far down is a matter of taste and of the menu being drawn, and
+		I cannot see the result from here - one element height overshot and left
+		a visible gap. So it is a cvar rather than another guess: raise
+		cg_scoreboardListOffset to push the rows down, lower it to bring them up,
+		0 to leave the menu's own geometry alone.
+		*/
+		shift = cg_scoreboardListOffset.value;
+		if (shift < 0.0f) {
+			shift = 0.0f;
+		}
 		if (shift >= item->window.rect.h) {
 			continue;   // nothing left to show
 		}
+
+		// [QL] the left-hand team's bar belongs on the outside, so the two
+		// lists mirror each other instead of both crowding the middle
+		if (item->special == FEEDER_REDTEAM_LIST) {
+			item->window.flags |= WINDOW_LB_LEFTSCROLL;
+		}
+
 		item->window.rect.y += shift;
 		item->window.rect.h -= shift;
 	}

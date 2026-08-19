@@ -470,6 +470,35 @@ void Freeze_Think(void) {
         Freeze_RoundStateTransition();
     }
 
+    /*
+    [QL] Say so if the round machine is stuck, without needing g_debugFreeze.
+
+    Freeze_PlayerFrozen only freezes at RS_PLAYING, and a declined freeze is
+    indistinguishable from an ordinary death - the player dies and respawns, and
+    nothing anywhere says why. That has now cost two rounds of "freeze tag is
+    still not working" with no evidence in the log to work from.
+
+    This fires once per level, only when the mode is actually broken: the match
+    is live, the longest configured countdown has had time to elapse twice over,
+    and the state still is not RS_PLAYING. A working server never prints it.
+    */
+    {
+        static int reportedAtLevelTime;
+        int settleTime = 2 * (g_roundWarmupDelay.integer + g_freezeRoundDelay.integer) + 5000;
+
+        if (level.roundState.eCurrent != RS_PLAYING &&
+            level.roundState.eCurrent != RS_ROUND_OVER &&
+            reportedAtLevelTime != level.startTime &&
+            level.time - level.startTime > settleTime) {
+            reportedAtLevelTime = level.startTime;
+            G_Printf(S_COLOR_YELLOW "WARNING: Freeze Tag round state is stuck at %i after %i ms "
+                     "live (needs RS_PLAYING %i, next %i, tNext %i). Players will die instead of "
+                     "freezing - set g_debugFreeze 1 for the transition trace.\n",
+                     level.roundState.eCurrent, level.time - level.startTime, RS_PLAYING,
+                     level.roundState.eNext, level.roundState.tNext);
+        }
+    }
+
     // [QL] keep the round clock frozen during a pause/timeout: the binary bumps
     // roundState.startTime by this frame's msec (level.frametime) while paused so
     // elapsed time (level.time - startTime) does not advance.
