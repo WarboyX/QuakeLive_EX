@@ -674,6 +674,82 @@ void Freeze_AutoThaw(int team) {
     }
 }
 
+/*
+============================================================================
+Freeze_ThawVisible
+
+Can `thawer` see `frozen` well enough to thaw them?
+
+[QL] This is why thawing failed about half the time.
+
+The binary traces ps.origin to ps.origin - foot level to foot level - with a
+point trace against CONTENTS_SOLID, and rejects the thawer unless the trace is
+completely clear. On a flat floor that line is fine. It is not fine anywhere
+else, and Quake maps are mostly "anywhere else": a stair tread, a ramp, the lip
+of a jump pad, the edge of the crate you are standing on, or simply the frozen
+player having died half a step further down a slope, all put world geometry
+between two points that are 24 units off the ground and less than 96 apart. The
+two players are in plain sight of each other and the trace still comes back
+blocked, so the thaw silently never starts. Walk one step to the side and it
+works, which is exactly the "works half the time" shape that was reported.
+
+So test at chest height first, where a line between two players standing near
+each other actually is clear, and only fall back to the original foot-level
+trace if that one is blocked (that covers the reverse case: crouched, or under
+a low ceiling). Either one passing is enough.
+
+startsolid is treated as visible rather than blocked. It means the trace began
+inside a brush - a statue that ended up embedded in the floor or a func_ mover -
+and a trace that never left solid says nothing about what is between the two
+players. Blocking on it would strand that player frozen for the rest of the
+round with no way for anyone to reach them.
+============================================================================
+*/
+#define FREEZE_THAW_CHEST_HEIGHT 24.0f
+
+static qboolean Freeze_ThawVisible(gentity_t *frozen, gentity_t *thawer) {
+    trace_t tr;
+    vec3_t start, end;
+
+    VectorCopy(frozen->client->ps.origin, start);
+    VectorCopy(thawer->client->ps.origin, end);
+    start[2] += FREEZE_THAW_CHEST_HEIGHT;
+    end[2] += FREEZE_THAW_CHEST_HEIGHT;
+
+    trap_Trace(&tr, start, NULL, NULL, end, ENTITYNUM_NONE, CONTENTS_SOLID);
+    if (tr.fraction == 1.0f || tr.startsolid || tr.allsolid)
+        return qtrue;
+
+    // fall back to the binary's foot-level line
+    trap_Trace(&tr, frozen->client->ps.origin, NULL, NULL, thawer->client->ps.origin,
+               ENTITYNUM_NONE, CONTENTS_SOLID);
+    return (tr.fraction == 1.0f || tr.startsolid || tr.allsolid) ? qtrue : qfalse;
+}
+
+/*
+============================================================================
+Freeze_ThawerStillEligible
+
+The same per-frame filter the box scan applies, reused when re-resolving the
+thawer this frozen player is locked onto. The scan and the lock have to agree,
+or the lock keeps a teammate who has since been frozen, killed or switched
+teams credited with a thaw they are no longer performing.
+============================================================================
+*/
+static qboolean Freeze_ThawerStillEligible(gentity_t *frozen, gentity_t *cand) {
+    if (!cand->client)
+        return qfalse;
+    if (cand == frozen)
+        return qfalse;
+    if (cand->client->sess.sessionTeam != frozen->client->sess.sessionTeam)
+        return qfalse;
+    if (cand->client->ps.powerups[PW_FREEZE] != 0)
+        return qfalse;
+    if (cand->health <= 0)
+        return qfalse;
+    return qtrue;
+}
+
 // ============================================================================
 // Freeze_ClientThawCheck (binary: 0x1004cdc0, .so Freeze_ClientThawCheck 0x76a40)
 //
@@ -760,11 +836,13 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
             if (other->client->ps.powerups[PW_FREEZE] != 0) continue;          // teammate also frozen
             if (other->health <= 0)                        continue;
             if (g_freezeThawThroughSurface.integer == 0) {                     // DAT_105e1c2c
-                trace_t tr;
-                trap_Trace(&tr, ent->client->ps.origin, NULL, NULL,           // start = self ps.origin
-                           other->client->ps.origin,                          // end   = other ps.origin
-                           ENTITYNUM_NONE, CONTENTS_SOLID);
-                if (tr.fraction != 1.0f) continue;                             // require clear LOS
+                if (!Freeze_ThawVisible(ent, other)) {
+                    if (g_debugFreeze.integer) {
+                        G_Printf("freeze: %s cannot thaw %s - no line of sight\n",
+                                 other->client->pers.netname, ent->client->pers.netname);
+                    }
+                    continue;
+                }
             }
             thawer = other;                               // found a thawer (0x1004d1bb)
             break;
@@ -772,25 +850,41 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
     }
 
     if (thawer != NULL) {
-        // lock in the thawer clientNum the first frame
-        if (cl->ps.thawClientNum_valid == 0) {
-            cl->ps.thawClientNum       = thawer->client->ps.clientNum;   // client+0x1fc
-            cl->ps.thawClientNum_valid = 1;                              // client+0x1f8
-        }
-        // re-resolve the locked thawer inside the current box results.
+        // Re-resolve the locked thawer inside the current box results.
         // [QL] byte-faithful this is Freeze_PlayerFrozen(list, count, clientNum), a
         // LOOKUP helper (.so 0x76940). The reimpl Freeze_PlayerFrozen (g_local.h:932)
         // is still the freeze-on-death stand-in shape, so the lookup is inlined here.
+        //
+        // [QL] The lock is now dropped when it cannot be honoured. It used to be
+        // set once and never cleared while *any* teammate was in range, so if the
+        // locked teammate walked off, got frozen or died, the lookup below found
+        // nothing and left thawClientNum_valid set pointing at them. The thaw then
+        // ran to completion and credited the assist to a player who was not there,
+        // and on the frames where the lookup did find them the eligibility filters
+        // above were never re-applied. Both are fixed by re-checking and, on
+        // failure, re-locking onto whoever the scan actually found this frame.
         if (cl->ps.thawClientNum_valid != 0) {
+            gentity_t *locked = NULL;
             int k;
             for (k = 0; k < numNearby; k++) {
                 gentity_t *cand = &g_entities[entityList[k]];
                 if (cand->client &&
-                    cand->client->ps.clientNum == cl->ps.thawClientNum) {
-                    thawer = cand;
+                    cand->client->ps.clientNum == cl->ps.thawClientNum &&
+                    Freeze_ThawerStillEligible(ent, cand)) {
+                    locked = cand;
                     break;
                 }
             }
+            if (locked != NULL) {
+                thawer = locked;
+            } else {
+                cl->ps.thawClientNum_valid = 0;
+            }
+        }
+        // lock in the thawer clientNum (first frame, or after the old lock lapsed)
+        if (cl->ps.thawClientNum_valid == 0) {
+            cl->ps.thawClientNum       = thawer->client->ps.clientNum;   // client+0x1fc
+            cl->ps.thawClientNum_valid = 1;                              // client+0x1f8
         }
         oldSeconds = (cl->ps.thawtime == 0) ? 0 : cl->ps.thawtime / 1000;
         cl->ps.thawtime -= msec;

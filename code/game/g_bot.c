@@ -376,8 +376,29 @@ int G_CountBotPlayers(int team) {
 ===============
 G_CountBotPlayersWithQueued
 
-[QL] Like G_CountBotPlayers but also counts bots queued to spawn whose spawn
-time is already due. (binary G_CountBotPlayersWithQueued 0x10036ee0)
+[QL] Like G_CountBotPlayers but also counts bots queued to spawn.
+
+This is the "Unable to add bot. All player slots are in use." bug.
+
+G_AddBot takes a client slot up front (trap_BotAllocateClient), runs
+ClientConnect - which leaves the bot at CON_CONNECTING - and only then queues it
+for a delayed ClientBegin. So between the add and the spawn, a bot holds a real
+slot while sitting at CON_CONNECTING.
+
+This function used to miss those twice over. The connected loop tested
+`!= CON_CONNECTED`, which skips CON_CONNECTING, and the queue loop only counted
+entries whose spawnTime had already come due, which skips exactly the ones still
+waiting. A bot in its delay window was therefore counted zero times while
+occupying a slot, so G_CheckMinimumPlayers saw the same shortfall a second later
+and added another, every second, until all sixteen slots were spent on bots that
+had not spawned yet - seven refusals in a row in the reported log. The queue loop
+also had no team filter, so queued red bots counted toward blue and vice versa.
+
+Count connecting bots in the first loop (this is what stock G_CountBotPlayers
+does), and keep the queue loop only as a backstop for a queue entry whose client
+slot has somehow been released - every normal entry is now already counted above,
+so counting it again is what would inflate the number.
+(binary G_CountBotPlayersWithQueued 0x10036ee0)
 ===============
 */
 static int G_CountBotPlayersWithQueued(int team) {
@@ -385,10 +406,10 @@ static int G_CountBotPlayersWithQueued(int team) {
     gclient_t* cl;
 
     num = 0;
-    // connected bots
+    // connected bots, plus bots still connecting - a connecting bot holds a slot
     for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
-        if (cl->pers.connected != CON_CONNECTED) {
+        if (cl->pers.connected == CON_DISCONNECTED) {
             continue;
         }
         if (!(g_entities[i].r.svFlags & SVF_BOT)) {
@@ -399,11 +420,23 @@ static int G_CountBotPlayersWithQueued(int team) {
         }
         num++;
     }
-    // bots queued to spawn that are already due
+    // queued bots whose client slot is no longer occupied (not counted above)
     for (i = 0; i < BOT_SPAWN_QUEUE_DEPTH; i++) {
-        if (botSpawnQueue[i].spawnTime && botSpawnQueue[i].spawnTime <= level.time) {
-            num++;
+        int n = botSpawnQueue[i].clientNum;
+
+        if (!botSpawnQueue[i].spawnTime) {
+            continue;
         }
+        if (n < 0 || n >= level.maxclients) {
+            continue;
+        }
+        if (level.clients[n].pers.connected != CON_DISCONNECTED) {
+            continue;  // already counted by the loop above
+        }
+        if (team >= 0 && level.clients[n].sess.sessionTeam != team) {
+            continue;
+        }
+        num++;
     }
     return num;
 }

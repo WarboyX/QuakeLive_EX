@@ -1032,7 +1032,7 @@ Three things reported about a frozen player, all fixed:
 
 `g_freezeThawTime` is **3000** — the value asked for after playing it.
 
-### E26. Bot filler exhausts the slots in Freeze Tag — OPEN
+### E26. Bot filler exhausts the slots in Freeze Tag — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** server console
 
 ```
@@ -1042,31 +1042,67 @@ Start server with more 'open' slots (or check setting of sv_maxclients cvar).
 
 Appeared once freezes started persisting (no auto-thaw in a round).
 
-Ruled out so far: `G_CountHumanPlayers` and `G_CountBotPlayersWithQueued` both
-count by `sess.sessionTeam` and ignore health and `pm_type`, so a frozen statue
-still counts as present — the filler is not topping up because statues look
-absent. `GT_FREEZE` takes the `>= GT_TEAM` branch, where `bot_minplayers` is
-per team and capped at `(maxclients / 2) - 1`; at `sv_maxclients 16` that is 6
-per team, 12 bots plus a human, inside 16.
+Not a leak across round restarts, and nothing to do with statues — the earlier
+note that `G_CountHumanPlayers` and `G_CountBotPlayersWithQueued` count by
+`sess.sessionTeam` and ignore health was right, and irrelevant. The slots were
+being spent on bots that had been added and had not spawned yet.
 
-So the slots are going somewhere else — a leak across round restarts is the
-first suspect, given the `Forcing disconnect on active client: N` lines that
-show up before each bot connects. Needs a log with the client list at the point
-it starts failing.
+`G_AddBot` takes a slot with `trap_BotAllocateClient` first, calls
+`ClientConnect` — which leaves the bot at `CON_CONNECTING` — and only queues the
+delayed `ClientBegin` after that. A bot in its delay window therefore holds a
+real client slot. `G_CountBotPlayersWithQueued` missed it twice: the connected
+loop tested `!= CON_CONNECTED`, which skips `CON_CONNECTING`, and the queue loop
+counted only entries whose `spawnTime` had already come due, which skips exactly
+the ones still waiting. Counted zero times, slot occupied. `G_CheckMinimumPlayers`
+runs once a second, saw the same shortfall each time, and added another bot every
+second until all sixteen slots were gone — seven refusals in a row in the log.
+The queue loop also had no team filter, so queued red bots counted toward blue.
 
-### C29. Thaw fails intermittently — OPEN
+Fixed by counting `!= CON_DISCONNECTED` in the first loop (what stock
+`G_CountBotPlayers` already does) and reducing the queue loop to a backstop for
+an entry whose client slot has been released, with the team filter added.
+
+Verify: `bot_minplayers 6` on `a2m-instagib-freeze.cfg` should settle at 6 per
+team and stop, with no refusal lines.
+
+### C29. Thaw fails intermittently — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
 Reported as thawing working about half the time.
 
-`Freeze_ClientThawCheck` locks the first teammate it finds into
-`ps.thawClientNum` and never clears `thawClientNum_valid` when that teammate
-leaves, dies or is frozen themselves. The re-resolve loop then looks for a
-client number that is no longer in the box. That is the most likely cause, but I
-have not proved it — the countdown only runs while a teammate is in range with
-line of sight, and `g_freezeThawThroughSurface 0` adds a `CONTENTS_SOLID` trace
-between the two origins, so a teammate standing on the wrong side of a step also
-reads as absent. Both want testing before either is changed.
+Two causes, both in `Freeze_ClientThawCheck`, and the line-of-sight one is the
+one that matches the report.
+
+**The LOS trace was at foot level.** With `g_freezeThawThroughSurface 0` the
+binary traces `ps.origin` → `ps.origin`, a point trace against `CONTENTS_SOLID`,
+and rejects the teammate unless it is completely clear. Those origins sit 24
+units off the floor, and the two players are inside a 96-unit radius, so on flat
+ground the line is clear and thawing works. Everywhere else it does not: a stair
+tread, a ramp, a jump-pad lip, the edge of whatever you are standing on, or the
+statue having died a step further down a slope all put brush between two players
+who are looking straight at each other. The thaw then silently never starts, and
+one step sideways fixes it — which is what "half the time" was.
+
+`Freeze_ThawVisible` now tests at chest height first and falls back to the
+original foot-level line only if that is blocked (crouched, or a low ceiling);
+either passing is enough. `startsolid`/`allsolid` counts as visible — it means
+the trace began inside a brush, which says nothing about what is between the two
+players, and blocking on it would strand a statue for the rest of the round.
+
+**The thawer lock was never released.** `ps.thawClientNum` was set on the first
+frame a teammate was found and `thawClientNum_valid` was only cleared on a frame
+with no teammate at all. If the locked teammate walked off, got frozen or died
+while somebody else was still in range, the re-resolve loop searched for a client
+number that was no longer there, found nothing, and left the stale lock in place
+— so the thaw ran to completion crediting the assist to a player who was not
+performing it, and on frames where the lookup *did* find them the eligibility
+filters were never re-applied. The lookup now re-checks eligibility
+(`Freeze_ThawerStillEligible`) and drops the lock when it cannot be honoured,
+re-locking onto whoever the scan actually found this frame.
+
+`g_debugFreeze 1` now also prints the rejected-for-line-of-sight case by name.
+
+Verify: thaw a teammate on a staircase and on a ramp — both should count down.
 
 ### C27. Voice chat verbs are unhandled — OPEN
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
