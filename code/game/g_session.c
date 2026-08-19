@@ -73,33 +73,73 @@ G_ReadSessionData
 Called on a reconnect
 ================
 */
+#define SESSION_FIELD_COUNT 13
+
 void G_ReadSessionData(gclient_t* client) {
     char s[MAX_STRING_CHARS];
     const char* var;
-    int teamLeader;
-    int spectatorState;
-    int sessionTeam;
+    int f[SESSION_FIELD_COUNT];
+    int parsed;
 
     var = va("session%i", (int)(client - level.clients));
     trap_Cvar_VariableStringBuffer(var, s, sizeof(s));
 
-    // NOTE: every field below is an int; spectatorTime in particular must be
-    // read with %i. Reading it as %ld makes sscanf store 8 bytes into a 4-byte
-    // member on LP64 (Linux/macOS), corrupting the rest of clientSession_t.
-    sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i",
-           &sessionTeam,
-           &client->sess.spectatorTime,
-           &spectatorState,
-           &client->sess.spectatorClient,
-           &client->sess.weaponPrimary,
-           &client->sess.wins,
-           &client->sess.losses,
-           &teamLeader,
-           &client->sess.privileges,
-           &client->sess.specOnly,
-           &client->sess.playQueue,
-           &client->sess.muted,
-           &client->sess.prevScore);
+    /*
+    [QL] Parse into locals and commit nothing unless the whole record parsed.
+
+    This used to sscanf straight into client->sess plus three uninitialised
+    locals - sessionTeam, spectatorState, teamLeader - and then assign all three
+    unconditionally. sscanf only writes the fields it manages to convert and
+    leaves the rest alone, so an empty or short session string left those locals
+    holding whatever was on the stack, and client->sess.sessionTeam was assigned
+    from it regardless.
+
+    A garbage team is bad enough on its own. What made it stick is that
+    G_WriteSessionData writes sess back out on every map change, so the bad value
+    is persisted and re-read next time: a client parked in spectator by a stack
+    value stays there across a round, across a map change, and across
+    reconnecting, because the record it is reading is the one it wrote. Bots are
+    affected identically - they go through the same connect path - which is why
+    two of them were sitting in the spectator list next to the player.
+
+    Reading the fields into an array and requiring all of them keeps a partial
+    record from being half-applied, and a missing record now leaves whatever
+    G_InitSessionData just chose in place rather than overwriting it with noise.
+
+    NOTE: every field is an int; spectatorTime in particular must be read with
+    %i. Reading it as %ld makes sscanf store 8 bytes into a 4-byte member on
+    LP64 (Linux/macOS), corrupting the rest of clientSession_t.
+    */
+    memset(f, 0, sizeof(f));
+    parsed = sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i",
+                    &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6],
+                    &f[7], &f[8], &f[9], &f[10], &f[11], &f[12]);
+
+    if (parsed != SESSION_FIELD_COUNT) {
+        if (parsed > 0 || s[0]) {
+            G_Printf(S_COLOR_YELLOW "G_ReadSessionData: client %i has a bad session record "
+                     "(%i of %i fields), keeping current session\n",
+                     (int)(client - level.clients), parsed, SESSION_FIELD_COUNT);
+        }
+        return;
+    }
+
+    if (f[0] < TEAM_FREE || f[0] >= TEAM_NUM_TEAMS) {
+        G_Printf(S_COLOR_YELLOW "G_ReadSessionData: client %i has an out-of-range team (%i), "
+                 "keeping current session\n", (int)(client - level.clients), f[0]);
+        return;
+    }
+
+    client->sess.spectatorTime   = f[1];
+    client->sess.spectatorClient = f[3];
+    client->sess.weaponPrimary   = f[4];
+    client->sess.wins            = f[5];
+    client->sess.losses          = f[6];
+    client->sess.privileges      = f[8];
+    client->sess.specOnly        = f[9];
+    client->sess.playQueue       = f[10];
+    client->sess.muted           = f[11];
+    client->sess.prevScore       = f[12];
 
     /*
     [QL] force spectator on reconnect only when g_teamSpawnAsSpec is set,
@@ -127,12 +167,12 @@ void G_ReadSessionData(gclient_t* client) {
     */
     if (g_teamSpawnAsSpec.integer && g_gametype.integer >= GT_TEAM && level.warmupTime &&
         !(g_entities[client - level.clients].r.svFlags & SVF_BOT)) {
-        sessionTeam = TEAM_SPECTATOR;
+        f[0] = TEAM_SPECTATOR;
     }
 
-    client->sess.sessionTeam = (team_t)sessionTeam;
-    client->sess.spectatorState = (spectatorState_t)spectatorState;
-    client->sess.teamLeader = (qboolean)teamLeader;
+    client->sess.sessionTeam = (team_t)f[0];
+    client->sess.spectatorState = (spectatorState_t)f[2];
+    client->sess.teamLeader = (qboolean)f[7];
 }
 
 /*

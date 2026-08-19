@@ -606,6 +606,12 @@ void SetTeam(gentity_t* ent, const char* s) {
         team = TEAM_SPECTATOR;
     } else if (g_maxGameClients.integer > 0 &&
                level.numNonSpectatorClients >= g_maxGameClients.integer) {
+        // [QL] say so. This silently turned a join into a spectate, which looks
+        // from the outside exactly like the join being ignored - the same shape
+        // as the mid-round follow demotion, and just as hard to tell apart from
+        // a bug. Every other refusal above prints; this one did not.
+        trap_SendServerCommand(clientNum,
+            va("cp \"Arena is full. g_maxGameClients is %d.\n\"", g_maxGameClients.integer));
         team = TEAM_SPECTATOR;
     }
 
@@ -790,18 +796,37 @@ void Cmd_Follow_f(gentity_t* ent) {
 Cmd_FollowCycle_f
 =================
 */
-void Cmd_FollowCycle_f(gentity_t* ent, int dir) {
+/*
+[QL] G_FollowCycle - Cmd_FollowCycle_f with the team change made optional.
+
+Following normally means giving up: a player who asks to spectate is moved to
+TEAM_SPECTATOR first, which is right for the console command and for the
+follow-the-next-player cleanup when someone disconnects.
+
+It is wrong for a mid-round join. Freeze_ClientBegin puts a player who arrives
+while a round is live into a follow so they watch until the next round, and they
+are still on a team - but routing that through the team change moved them to
+TEAM_SPECTATOR permanently. SetTeam persists the session, so it survived the
+round ending, a map change, and reconnecting, and nothing ever moved them back:
+the round restart only respawns players who still have a team. Bots demoted
+themselves the same way, which is how they ended up in the spectator list.
+
+So the demotion is a parameter. keepTeam callers get the camera without the
+consequence.
+*/
+static void G_FollowCycle(gentity_t* ent, int dir, qboolean keepTeam) {
     int clientnum;
     int original;
 
     // if they are playing a tournement game, count as a loss
     // [QL] Binary (0x100414c0) also gates this on level.warmupTime == 0.
-    if ((level.warmupTime == 0) && (g_gametype.integer == GT_DUEL) && ent->client->sess.sessionTeam == TEAM_FREE) {
+    if (!keepTeam && (level.warmupTime == 0) && (g_gametype.integer == GT_DUEL) &&
+        ent->client->sess.sessionTeam == TEAM_FREE) {
         ent->client->sess.losses++;
     }
     // first set them to spectator
     // [QL] Binary tests sessionTeam != TEAM_SPECTATOR (not spectatorState).
-    if (ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
+    if (!keepTeam && ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
         SetTeam(ent, "spectator");
     }
 
@@ -861,6 +886,15 @@ void Cmd_FollowCycle_f(gentity_t* ent, int dir) {
     } while (clientnum != original);
 
     // leave it where it was
+}
+
+void Cmd_FollowCycle_f(gentity_t* ent, int dir) {
+    G_FollowCycle(ent, dir, qfalse);
+}
+
+// [QL] follow without giving up your team - see G_FollowCycle
+void G_FollowCycleKeepTeam(gentity_t* ent, int dir) {
+    G_FollowCycle(ent, dir, qtrue);
 }
 
 /*

@@ -2346,6 +2346,24 @@ static void CG_ServerCommand(void) {
         return;  // pstats: consumed silently (no cgame handler exists in the binary)
     }
 
+    /*
+    [QL] Voice chat verbs, consumed silently.
+
+    G_VoiceTo sends vchat, vtchat and vtell; there is no cgame handler for any of
+    them, so every bot taunt printed "Unknown client game command" - and bots
+    taunt constantly. In a full Freeze Tag server the console was more of that
+    line than anything else, which is a real cost while diagnosing something
+    else: it pushes the lines you need off the top.
+
+    Playing them properly needs the voice-chat script files that map an id to a
+    sound and a line of text (Quake 3 answers these with CG_VoiceChat). Not
+    implemented - swallowing the command loses nothing that was working, and the
+    server side is unchanged, so an implementation can be dropped in here later.
+    */
+    if (!strcmp(cmd, "vchat") || !strcmp(cmd, "vtchat") || !strcmp(cmd, "vtell")) {
+        return;
+    }
+
     if (!strcmp(cmd, "tinfo")) {
         CG_ParseTeamInfo();
         return;

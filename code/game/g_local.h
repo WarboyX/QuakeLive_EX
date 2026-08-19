@@ -633,6 +633,7 @@ void StopFollowing(gentity_t* ent);
 void BroadcastTeamChange(gclient_t* client, int oldTeam);
 void SetTeam(gentity_t* ent, const char* s);
 void Cmd_FollowCycle_f(gentity_t* ent, int dir);
+void G_FollowCycleKeepTeam(gentity_t* ent, int dir);  // [QL] follow without losing your team
 void ClearVote(void);
 
 //

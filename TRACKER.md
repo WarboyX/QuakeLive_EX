@@ -1348,19 +1348,70 @@ Three registrations plus a branch in the missile-hit path. Confirmed again that
 there are **no ice meshes** in the pak — the whole effect is shader and sprite
 over the ordinary player model, so anything model-shaped is the wrong direction.
 
-### C27. Voice chat verbs are unhandled — OPEN
+### E31. Joining mid-round demoted you to spectator, permanently — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported as: leave and reconnect and you are stuck in spectator, no join-team
+buttons, and it survives the round ending *and* a map change. The scoreboard
+showed two bots stuck there next to the player.
+
+`Freeze_ClientBegin`'s round-active branch puts a player who arrives while a
+round is live into a follow, so they watch until the next round. It did that
+through `Cmd_FollowCycle_f`, whose first act is:
+
+```c
+if (ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
+    SetTeam(ent, "spectator");
+}
+```
+
+That is right for the console command — asking to follow *is* giving up — and
+wrong here: the branch is explicitly guarded on the player still having a team.
+So joining mid-round moved you to `TEAM_SPECTATOR` for good. `SetTeam` writes the
+session, which is why it survived the round ending, a map change and
+reconnecting, and the round restart only respawns players who still have a team,
+so nothing ever brought you back. Bots joining mid-round demoted themselves
+identically — that is where the spectator bots came from, and the earlier
+`g_teamSpawnAsSpec` theory was wrong (that cvar defaults to 0 and never fired).
+
+Split into `G_FollowCycle(ent, dir, keepTeam)`; `Cmd_FollowCycle_f` passes
+`qfalse`, `Freeze_ClientBegin` calls `G_FollowCycleKeepTeam`. Mid-round joiners
+get the camera without the consequence and play the next round.
+
+**Also made a silent refusal audible.** `SetTeam`'s `g_maxGameClients` override
+turned a join into a spectate without a word, which from outside looks exactly
+like the join being ignored — the same shape, and just as hard to tell from a
+bug. Every other refusal in that function prints; this one now does too.
+
+**Hardened the session record while in here.** `G_ReadSessionData` sscanf'd into
+three uninitialised locals and assigned them unconditionally; a short or missing
+record left `sess.sessionTeam` holding whatever was on the stack, and
+`G_WriteSessionData` then persisted it. It now parses into an array, requires all
+13 fields and an in-range team, and otherwise keeps what `G_InitSessionData`
+chose. Not the cause of this bug, but the same failure shape.
+
+**Noted, not changed:** `g_teamAutoJoin` and `g_teamForceBalance` are registered
+`CVAR_ARCHIVE` on defaults we choose, which is the trap in CLAUDE.md — a stale
+server config pins them and changing the shipped default does nothing. Left alone
+so this build carries only the fix under test.
+
+### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
 ```
-Unknown client game command: vtell
 Unknown client game command: vchat
+Unknown client game command: vtell
 ```
 
-`G_VoiceTo` sends `vchat`, `vtchat` and `vtell`; `CG_ServerCommand` has a
-handler for none of them, so every bot voice taunt prints that line. Quake 3
-answers these with `CG_VoiceChat`, which needs the voice-chat script files to map
-an id to a sound and a line of text. Not implemented — noted rather than
-guessed at.
+`G_VoiceTo` sends `vchat`, `vtchat` and `vtell`; there was no cgame handler, and
+bots taunt constantly — a full Freeze Tag console was more of that line than
+anything else, which pushes the lines you actually need off the top while
+diagnosing something else.
+
+Consumed silently now, like `pstats`. Playing them properly needs the voice-chat
+script files that map an id to a sound and a line of text (Quake 3 answers these
+with `CG_VoiceChat`); swallowing them loses nothing that was working, and the
+server side is unchanged, so an implementation drops straight in later.
 
 ### C26. Scoreboard player list sat over its column headers — DONE (verify), now tunable
 **Update.** One element height overshot and left a visible gap, and I cannot see

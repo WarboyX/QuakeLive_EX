@@ -1107,10 +1107,17 @@ void Freeze_ClientBegin(gentity_t* ent) {
         // [QL] binary Freeze_ClientBegin (0x1004bfa0) gates auto-follow on
         // g_teamSpecFreeCam==0 (DAT_104b202c), not level.warmupTime, and requires
         // both teams to have living players (both alive counts > 0).
+        // [QL] keep their team. This branch exists for a player who joined while
+        // a round was live: they watch until the next round and then play. Going
+        // through the ordinary follow moved them to TEAM_SPECTATOR permanently -
+        // SetTeam persists the session, so it survived the round ending, a map
+        // change and reconnecting, and the round restart only respawns players
+        // who still have a team, so nothing ever brought them back. Bots joining
+        // mid-round demoted themselves the same way.
         if (!g_teamSpecFreeCam.integer
             && client->sess.sessionTeam != TEAM_SPECTATOR
             && alive[TEAM_RED] > 0 && alive[TEAM_BLUE] > 0) {
-            Cmd_FollowCycle_f(ent, 1);
+            G_FollowCycleKeepTeam(ent, 1);
         }
     }
 }
