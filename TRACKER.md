@@ -938,6 +938,37 @@ only and the client throttles its own `score` request to one every two seconds,
 so nothing in normal play multiplies this — but a client that spams `score` costs
 four times what it used to.
 
+### E22. Nobody froze in Freeze Tag — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Players shot in Freeze Tag just died and respawned. No statue, no thawing.
+
+`Freeze_PlayerFrozen` — the function that actually freezes somebody — was
+**defined in `g_gametype_ft.c` and called from nowhere in the tree.**
+`player_die`'s Freeze Tag fork did this instead:
+
+```c
+self->client->ps.pm_type = PM_FREEZE;
+self->client->ps.thawtime = g_freezeThawTime.integer;
+```
+
+which is not enough to freeze anyone. What marks a frozen player is
+`ps.powerups[PW_FREEZE]`, and everything downstream gates on it: pmove treats a
+zero-health player as dead without it (`bg_pmove.c:2275`), `ClientThink_real`
+keeps `PM_FREEZE` instead of `PM_DEAD` on it (`g_active.c:962`),
+`Freeze_ClientThawCheck` counts down against it, and `Freeze_DeathFinalize`
+refuses to respawn without it. None of that was ever reached.
+
+Same shape as the unassigned ice handles (C23) and the registered-but-unread
+cvars (E8): written, never wired. The fork now calls `Freeze_PlayerFrozen`, and
+falls back to `PM_DEAD` when it declines — it refuses outside a live round
+(`RS_PLAYING`), so a warmup death is still an ordinary respawn.
+
+`Freeze_PlayerFrozen` also now sets the networked `s.powerups` freeze bit, which
+`g_combat.c`'s other freeze path already set. Without it the playerState says
+frozen but nothing on the wire tells other clients, so the body would draw as an
+ordinary corpse.
+
 ### E21. Joining any team gametype dropped the client — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client, stock included
 
@@ -1766,7 +1797,7 @@ path fault it will affect this light too.
 
 ## Renderer
 
-### R9. Quad glow dimmer under Vulkan than OpenGL — DONE (verify)
+### R9. Quad glow dimmer under Vulkan than OpenGL — DONE (verify, second pass)
 **Lives in:** our **client** (renderer) · **Seen by:** our client only, Vulkan only
 
 Reported after switching to Vulkan: the quad glow is less intense, both on the
@@ -1791,6 +1822,28 @@ difference. The gate is `r_dlightMode != 0`, and `USE_PMLIGHT` is defined with
 Default is now 1, matching the OpenGL renderer. It is `CVAR_ARCHIVE_ND`, so
 unlike the `CVAR_ARCHIVE` trap in CLAUDE.md the new default does apply — an
 archived copy only exists if somebody set the cvar deliberately.
+
+**Second pass — the radius was only half of it.** With `r_dlightScale` corrected
+the glow was still dim, because `r_dlightMode` was the bigger cause:
+
+```c
+/* tr_mesh.c:350 */
+if ( r_dlightMode->integer >= 2 && ( !personalModel || ... ) ) {
+```
+
+Mode 1 applies per-pixel dynamic lights to **world surfaces only**. MD3 models
+are gated on `>= 2`. Every glow a player actually sees — on another player, on a
+powerup lying on the floor — is a light falling on an MD3, so at mode 1 those
+models were lit by the ambient grid alone while the floor around them lit up
+correctly. The OpenGL renderer lights models through the legacy path regardless,
+hence the difference. Default is now 2.
+
+Its flag was plain `CVAR_ARCHIVE`, which is the trap in CLAUDE.md: written to the
+user's config even at its default, so anyone who had already run a build would
+keep the old value forever and a changed default would do nothing for them. Now
+`CVAR_ARCHIVE_ND`, which only writes when the value differs from the default.
+Anyone whose config already contains an explicit `r_dlightMode` line still needs
+to remove it or set `r_dlightMode 2` by hand.
 
 Note this is a different question from R8, which is about dynamic lights being
 weak in *both* renderers. R8 stays open.

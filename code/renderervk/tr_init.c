@@ -1593,9 +1593,28 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_dynamiclight, "Enables dynamic lighting." );
 #ifdef USE_PMLIGHT
 #if arm32 || arm64 // RPi4 Vulkan driver have very poor GLSL shaders performance...
-	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "0", CVAR_ARCHIVE );
+	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "0", CVAR_ARCHIVE_ND );
 #else
-	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "1", CVAR_ARCHIVE );
+	/*
+	[QL] 2, not Quake3e's 1.
+	
+	Mode 1 applies per-pixel dynamic lights to world surfaces only - MD3 models
+	are gated on >= 2 (tr_mesh.c: "r_dlightMode->integer >= 2"). Every glow a
+	player sees on another player or on an item is a light falling on an MD3, so
+	at mode 1 the quad glow on a carrier and on the powerup itself were both
+	lit only by the ambient grid and looked washed out next to the OpenGL
+	renderer, which lights models through the legacy path regardless.
+	
+	Mode 2 costs per-model light culling and extra draws; that is the trade for
+	the glows looking like Quake Live's.
+	
+	Flag changed to CVAR_ARCHIVE_ND as well. Plain CVAR_ARCHIVE is written to the
+	user's config even at its default, so anyone who had already run a build
+	would keep the old 1 forever and this change would do nothing for them - the
+	trap described in CLAUDE.md. _ND only writes the cvar when it differs from
+	the default, so the new default actually reaches existing installs.
+	*/
+	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "2", CVAR_ARCHIVE_ND );
 #endif
 	ri.Cvar_CheckRange( r_dlightMode, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_dlightMode, "Dynamic light mode:\n 0: VQ3 'fake' dynamic lights\n 1: High-quality per-pixel dynamic lights, slightly faster than VQ3's on modern hardware\n 2: Same as 1 but applies to all MD3 models too" );

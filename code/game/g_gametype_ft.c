@@ -794,6 +794,12 @@ void Freeze_PlayerFrozen(gentity_t *self) {
     self->client->ps.freezetime = level.time;
     self->client->ps.thawtime = g_freezeThawTime.integer;
 
+    // [QL] the networked presentation bit the client reads to draw the statue.
+    // g_combat.c's other freeze path sets s.powerups = 0x8000 for this; without
+    // it the playerState says frozen but nothing on the wire tells other
+    // clients, so the body would render as an ordinary corpse.
+    self->s.powerups |= (1 << PW_FREEZE);
+
     // legacy flag still read by ClientThink_real's pm_type block (g_active.c) to
     // keep PM_FREEZE instead of PM_DEAD; ps.thawtime above is now the real counter.
     self->client->freezePlayer = qtrue;

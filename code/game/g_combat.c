@@ -598,12 +598,30 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
         self->activator->nextthink = level.time;
     }
 
-    // 7. set pm_type (Freeze-Tag fork)
+    /*
+    7. set pm_type (Freeze-Tag fork)
+
+    [QL] This used to set pm_type and thawtime by hand and stop there, which is
+    not enough to freeze anybody. What marks a frozen player is
+    ps.powerups[PW_FREEZE]: pmove treats a zero-health player as dead unless it
+    is set (bg_pmove.c), ClientThink_real keeps PM_FREEZE instead of PM_DEAD on
+    it (g_active.c), Freeze_ClientThawCheck counts down against it, and
+    Freeze_DeathFinalize refuses to respawn without it. None of that was ever
+    reached, so players in Freeze Tag simply died.
+
+    Freeze_PlayerFrozen sets all of it - and it was defined in g_gametype_ft.c
+    with no callers anywhere in the tree. Same shape as the unassigned ice
+    handles and the registered-but-unread cvars: written, never wired.
+
+    It declines to freeze outside a live round (RS_PLAYING), so a death during
+    warmup still falls through to PM_DEAD and an ordinary respawn, which is what
+    warmup should do.
+    */
     if (!level.intermissionTime && !level.intermissionQueued &&
         g_gametype.integer == GT_FREEZE && meansOfDeath != MOD_SWITCH_TEAMS) {
-        self->client->ps.pm_type = PM_FREEZE;
-        self->client->ps.thawtime = g_freezeThawTime.integer;
-    } else {
+        Freeze_PlayerFrozen(self);
+    }
+    if (self->client->ps.powerups[PW_FREEZE] == 0) {
         self->client->ps.pm_type = PM_DEAD;
     }
 
