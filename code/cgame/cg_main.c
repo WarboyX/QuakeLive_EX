@@ -512,10 +512,11 @@ vmCvar_t cg_railColorMode;
 /*
 [QL] Which ice shell a frozen player wears - see pak01/scripts/freeze.shader.
 
-  1  glass coat (default) - alpha-blended, specular alpha, the model reads
-     through it the way Quake Live's own frozen player does
-  2  additive sheen - one dimmed additive environment stage, like the quad shell
-  3  flat frozen sprite - Quake Live's sprites/frozen, blended
+  1  glass, close hover (default) - 4 units off the model, alpha-blended with
+     specular alpha so the player reads through it
+  2  glass, wide hover - the same shell 9 units off, if 4 still looks painted on
+  3  glow, wide hover - the quad-shell treatment at 9 units, brighter and more
+     obviously an effect
 
 Not CVAR_ARCHIVE: a default we choose, and archiving one freezes it forever.
 */
@@ -2007,12 +2008,19 @@ static void CG_RegisterGraphics(void) {
     pak01/scripts/freeze.shader, drawn as a second pass over the model the way
     the quad shell is.
 
-    Three variants, chosen by cg_freezeShell, because the first attempt got the
-    strength badly wrong - two full additive stages saturated to white and erased
-    the player underneath, where Quake Live's own frozen player stays completely
-    readable - and which of the replacements looks right is a judgement made by
-    looking, not by reasoning. Selecting between shaders already in the pak
-    settles it in game instead of over a rebuild each time.
+    Two things had to be right and the early attempts missed both. Brightness:
+    two full additive stages saturated to white and erased the player underneath,
+    where Quake Live's stays completely readable. Standoff: Quake Live's ice
+    hovers around the player rather than clinging to the model, which is what
+    makes it read as a block of ice with someone inside - a second pass of the
+    same mesh is skin-tight by definition, so the shell is pushed out along the
+    vertex normals with deformVertexes.
+
+    Three variants, chosen by cg_freezeShell, sampling the axes still open - how
+    far the shell stands off, and whether it reads as glass or as glow. Which one
+    is right is a judgement made by looking, not by reasoning, and selecting
+    between shaders already in the pak settles it in game instead of over a
+    rebuild each time.
 
     Registered eagerly, all three, so switching the cvar mid-game takes effect
     without a vid_restart and so a missing one is reported at load rather than

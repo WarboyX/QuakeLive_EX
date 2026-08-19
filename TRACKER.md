@@ -1291,15 +1291,33 @@ shell. The fault was entirely in the shader — two `GL_ONE GL_ONE` stages of a
 bright environment map add roughly twice the map's brightness on top of the
 model, which saturates to white.
 
-Three variants now ship in `content/pak01/scripts/freeze.shader`, selected by
-**`cg_freezeShell`** (default 1), because which one looks right is a judgement
-made by looking and this settles it in game rather than over a rebuild per guess:
+**Second miss: the shell has to stand off the model.** QL's ice *hovers* around
+the player rather than clinging to the surface, which is what makes it read as a
+block of ice with someone inside instead of a shiny skin. A second pass of the
+same mesh is skin-tight by definition, so the geometry has to be pushed outward,
+and the only way a shader moves geometry in idTech3 is `deformVertexes`:
+
+```
+deformVertexes wave <div> <func> <base> <amplitude> <phase> <freq>
+```
+
+moves each vertex along its own normal. The **base** is the constant push — the
+standoff — with the amplitude a slow breathing on top so a statue is not inert,
+and `div` spreading the phase by vertex position so the surface flexes rather
+than inflating as one rigid ball. Verified reachable on player models:
+`RB_CalcDeformVertexes` offsets along `tess.normal`, and `RB_DeformTessGeometry`
+runs in the generic stage iterator that MD3s use — the VBO fast path that skips
+deforms is world geometry only.
+
+Three variants ship in `content/pak01/scripts/freeze.shader`, selected by
+**`cg_freezeShell`** (default 1), sampling the two axes still open — how far the
+shell stands off, and whether it reads as glass or as glow:
 
 | | |
 |---|---|
-| `1` | **glass coat** — alpha-blended so the shell occludes rather than adds, `alphaGen lightingSpecular` putting opacity where the light is (which is what gives ice facets rather than an even film), plus a quarter-strength additive sheen on a slow `tcMod rotate` |
-| `2` | **additive sheen** — one dimmed additive environment stage, what the first attempt was trying to be |
-| `3` | **flat sprite** — QL's own `sprites/frozen`, blended at 0.65 alpha |
+| `1` | **glass, close hover** — 4 units off, alpha-blended so the shell occludes rather than adds, `alphaGen lightingSpecular` putting opacity where the light falls (what gives ice facets rather than an even film) |
+| `2` | **glass, wide hover** — the same shell 9 units off, for when 4 still reads as painted on |
+| `3` | **glow, wide hover** — the quad-shell treatment at 9 units; brighter, more obviously an effect |
 
 All three are registered at load, so switching the cvar takes effect without a
 `vid_restart`, and a missing one is reported rather than silently drawing nothing
