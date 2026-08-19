@@ -1668,6 +1668,66 @@ static void CG_DrawTeamVote(void) {
 	CG_Text_Paint(4, 324, 0.22f, colorYellow, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED);
 }
 
+/*
+[QL] Drop the scoreboard's player list clear of its column headers.
+
+Item_ListBox_Paint draws the first row at rect.y + 1. Quake Live's scoreboard
+menus put the PLAYER / SCORE / K/D / THAWS labels *inside* the top of the list
+rect - in ingame_scoreboard_ft.menu the labels sit at y 170 and the list box is
+"rect 73 165 284 130" - so row one is painted over the header band.
+
+Quake Live's own list box evidently starts its content below that. Rather than
+change Item_ListBox_Paint, which every list in the game shares (server browser,
+demo list, map list), this nudges only the scoreboard feeders: move the top down
+by one element height and take the same amount off the height, so the bottom
+edge and the scroll bar stay where the menu put them.
+
+Applied once per menu. Menus_FindByName hands back the same menuDef every time,
+so without the guard a gametype change would stack a second offset.
+*/
+static void CG_OffsetScoreboardList(menuDef_t *menu) {
+	static const menuDef_t *adjusted[16];
+	static int numAdjusted;
+	int i;
+
+	if (!menu) {
+		return;
+	}
+	for (i = 0; i < numAdjusted; i++) {
+		if (adjusted[i] == menu) {
+			return;
+		}
+	}
+	if (numAdjusted < (int)ARRAY_LEN(adjusted)) {
+		adjusted[numAdjusted++] = menu;
+	}
+
+	for (i = 0; i < menu->itemCount; i++) {
+		itemDef_t *item = menu->items[i];
+		listBoxDef_t *listPtr;
+		float shift;
+
+		if (item->special != FEEDER_SCOREBOARD &&
+			item->special != FEEDER_ENDSCOREBOARD &&
+			item->special != FEEDER_REDTEAM_LIST &&
+			item->special != FEEDER_BLUETEAM_LIST) {
+			continue;
+		}
+
+		listPtr = (listBoxDef_t *)item->typeData;
+		if (!listPtr || listPtr->elementHeight <= 0) {
+			continue;
+		}
+
+		shift = listPtr->elementHeight;
+		if (shift >= item->window.rect.h) {
+			continue;   // nothing left to show
+		}
+		item->window.rect.y += shift;
+		item->window.rect.h -= shift;
+	}
+}
+
 // [QL] Set both in-game and end-of-game scoreboard menus by gametype
 void CG_SetEndScoreboardMenu(void) {
 	switch (cgs.gametype) {
@@ -1685,6 +1745,9 @@ void CG_SetEndScoreboardMenu(void) {
 	case GT_AD:         menuScoreboard = Menus_FindByName("teamscore_menu_ad");      menuEndScoreboard = Menus_FindByName("endteamscore_menu_ad"); break;
 	default:            menuScoreboard = Menus_FindByName("teamscore_menu");         menuEndScoreboard = Menus_FindByName("endteamscore_menu"); break;
 	}
+
+	CG_OffsetScoreboardList(menuScoreboard);
+	CG_OffsetScoreboardList(menuEndScoreboard);
 }
 
 /*

@@ -938,6 +938,26 @@ only and the client throttles its own `score` request to one every two seconds,
 so nothing in normal play multiplies this — but a client that spams `score` costs
 four times what it used to.
 
+### C26. Scoreboard player list sat over its column headers — DONE (verify)
+**Lives in:** our **client** (cgame / ui) · **Seen by:** our client only
+
+`Item_ListBox_Paint` draws the first row at `rect.y + 1`. Quake Live's scoreboard
+menus put the PLAYER / SCORE / K/D / THAWS labels *inside* the top of the list
+rect — in `ingame_scoreboard_ft.menu` the labels are at `y 170` and the list is
+`rect 73 165 284 130` — so row one was painted across the header band.
+
+Quake Live's own list box evidently starts its content below that. Changing
+`Item_ListBox_Paint` would move every list in the game (server browser, demo
+list, map list), so `CG_OffsetScoreboardList` nudges only the four scoreboard
+feeders: top down by one element height, height down by the same, leaving the
+bottom edge and the scroll bar where the menu put them. Applied once per menu —
+`Menus_FindByName` returns the same `menuDef` each call, so a gametype change
+would otherwise stack a second offset.
+
+One element height is the natural "one row for the header" reading and is tuned
+by eye against a screenshot, not measured against Quake Live. If it is still off,
+the shift is the one number to change.
+
 ### C25. Team scoreboards drew one row and then blanks — DONE (verify)
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
