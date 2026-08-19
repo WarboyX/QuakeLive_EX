@@ -1089,7 +1089,29 @@ Output is throttled to once a second, which also collapses the seven-line spam:
 at `bot_fillRate > 1` the whole shortfall is retried inside a single tick and
 every attempt printed its own pair of lines.
 
-Next: a log with the slot table in it.
+**The reproduction, and a fix that matches it.** Reported as: playing with
+`bot_minplayers 6`, five bots alongside, disconnect, and the filler refuses to
+add the sixth.
+
+`SV_DropClient` does not free a departing human's slot. It parks it in
+`CS_ZOMBIE` so the final reliable message can still be retransmitted, and
+`SV_CheckTimeouts` releases it `sv_zombietime` seconds later. `SV_BotAllocateClient`
+only ever looked for `CS_FREE`, so it walked straight past that slot. On a
+nearly-full server that is the whole failure: a player leaves, the filler notices
+it is a player short within the same second, and every slot is either a bot or
+the zombie the player just became — "all player slots are in use" on a server
+that is about to have a free one.
+
+`SV_BotAllocateClient` now takes a zombie when nothing is free. The client is
+already gone; the cost is a retransmit it will most likely never read. Live
+clients (`CS_CONNECTED` and above) are untouched.
+
+**And the diagnostic now runs on both sides.** The refusal is a server-side
+condition the game module cannot see, so the server prints its own slot table
+too — per index the real `client_t` state (`free`/`zombie`/`connected`/`primed`/
+`active`), bot or net, and the name — alongside the game-side table. If it still
+refuses, the two together say whether the game and the server disagree about who
+holds what.
 
 ### C29. Thaw fails intermittently — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
@@ -1146,36 +1168,49 @@ round — but a momentary break costs a moment instead of everything.
 Verify: thaw a teammate on a staircase and on a ramp; `g_debugThawTime 1` prints
 the countdown to the thawer every frame if the rate needs measuring.
 
-### C30. Rail colour by team in Freeze Tag — DONE (verify)
+### C30. Rail colour by gametype — DONE (verify)
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
-Instagib Freeze Tag is a mode where the only thing on screen is rails, and the
-stock rail takes its colour from the shooter's own `color1`/`color2` userinfo —
-so every beam is whatever colour that player picked, and the one thing you want
-out of a beam, whose side fired it, is the one thing it does not carry.
+The stock rail takes its colour from the shooter's own `color1`/`color2`
+userinfo. In a team mode that is backwards — the one thing a beam could tell
+you, whose side fired it, is replaced by a colour that player picked for
+themselves. In a free-for-all it is fine, and it is the player's own choice, so
+it stays there.
 
-QL's own `cg_forceTeamRailColor1`/`2` do not fill the gap: they are a
+QL's own `cg_forceTeamRailColor1`/`2` do not fill the team gap: they are a
 viewer-side friend/foe override with two arbitrary colours, and
 `CG_GetRailColorFloat` returns early for `viewer == owner`, so your own rail is
-never touched.
+never touched by them.
 
-`cg_teamRailColors` (cgame, default 1):
+`cg_railColorMode` (cgame, default 1):
 
-| value | behaviour |
-|-------|-----------|
-| `0` | off — stock per-player `color1`/`color2` |
-| `1` | team colours — red team fires red, blue team fires blue, everyone including you |
-| `2` | white — every rail white |
+| value | team gametypes | FFA / Duel / Race |
+|-------|----------------|-------------------|
+| `0` | player's own colour | player's own colour |
+| `1` | **team colours** | player's own colour |
+| `2` | **team colours** | **a distinct colour per player** |
+| `3` | white | white |
 
-Applied inside `CG_GametypeRailColor`, called from the top of both
-`CG_GetRailColorFloat` and `CG_GetRailColorByte`, so the core beam, the ring
-sprites and the impact mark all follow it — those are the three things that read
-a rail colour. Scoped to `GT_FREEZE`; a shooter with no team yet falls through
-to the stock colour rather than being painted a team colour that would then
-change under them.
+The per-player colour is a hash of the client slot, not a random draw. Two
+constraints rule a draw out: every client has to agree on what colour a given
+player's rail is, or the same shot is a different colour on each screen and the
+colour stops meaning anything; and it has to hold still for the match, or the
+beam strobes and is worse than the one colour the player chose. `clientNum *
+0.618` and take the fraction as a hue — the golden-ratio trick, so neighbouring
+slots land far apart (orange, blue-green, purple, yellow) instead of walking a
+rainbow ramp.
 
-**Not** `CVAR_ARCHIVE`: this is a default we choose, and archiving one writes it
-into a config on first run that wins forever (`r_dlightMode`, `con_scale`).
+Applied in `CG_GametypeRailColor`, called from the top of `CG_GetRailColorFloat`
+and `CG_GetRailColorByte`, plus the railgun model tint and the muzzle blast — so
+the core beam, the ring sprites, the impact mark, the gun in your hands and its
+flash all agree. `>= GT_TEAM` is the team test; `GT_FFA`, `GT_DUEL` and
+`GT_RACE` sit below it in QL's enum and everything above is a team mode.
+
+Note on "let the player pick their colour": that already exists and always has —
+it is the `color1`/`color2` userinfo, which is what mode 0 and mode 1-in-FFA
+fall through to. QL's own player-options menu lives in `pak00.pk3`, which we
+cannot ship or edit; `/color1 <n>` and `/color2 <n>` at the console set the same
+values the menu would.
 
 ### C27. Voice chat verbs are unhandled — OPEN
 **Lives in:** our **client** (cgame) · **Seen by:** our client only

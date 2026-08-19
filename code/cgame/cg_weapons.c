@@ -219,61 +219,134 @@ Static in the binary; ci passed implicitly (EAX), an explicit parameter here.
 */
 /*
 ==========================
+CG_HueToRGB
+
+Fully saturated hue (0..1) to RGB. Small enough not to want a general HSV
+converter: saturation and value are fixed at the two values that keep a rail
+readable against both a dark map and a bright skybox.
+==========================
+*/
+static void CG_HueToRGB(float hue, float* color) {
+    const float s = 0.85f;   // keep a little white in it so it does not go neon
+    const float v = 1.0f;
+    float h = (hue - floor(hue)) * 6.0f;
+    int sector = (int)h;
+    float f = h - sector;
+    float p = v * (1.0f - s);
+    float q = v * (1.0f - s * f);
+    float t = v * (1.0f - s * (1.0f - f));
+
+    switch (sector) {
+        case 0:  color[0] = v; color[1] = t; color[2] = p; break;
+        case 1:  color[0] = q; color[1] = v; color[2] = p; break;
+        case 2:  color[0] = p; color[1] = v; color[2] = t; break;
+        case 3:  color[0] = p; color[1] = q; color[2] = v; break;
+        case 4:  color[0] = t; color[1] = p; color[2] = v; break;
+        default: color[0] = v; color[1] = p; color[2] = q; break;
+    }
+}
+
+/*
+==========================
+CG_RandomRailColor
+
+A distinct rail colour per player, for the free-for-all modes.
+
+Deliberately *not* random per shot or per client. Two constraints kill that:
+every client has to agree on what colour a given player's rail is, or the same
+shot is a different colour on each screen and the colour stops meaning anything;
+and it has to hold still for the whole match, or a player's beam strobes and is
+worse than the one colour they picked.
+
+So it is a hash of the client slot, spread by the golden ratio. Multiplying the
+slot by 0.618 and taking the fraction is the standard trick for generating hues
+that stay far apart no matter how many you ask for - stepping through slots
+gives orange, blue-green, purple, yellow rather than a rainbow ramp where
+neighbouring slots are nearly the same colour. Same input on every client, so
+everyone sees the same thing.
+==========================
+*/
+static void CG_RandomRailColor(int clientNum, float* color) {
+    CG_HueToRGB((float)clientNum * 0.6180339887f + 0.11f, color);
+}
+
+/*
+==========================
 CG_GametypeRailColor
 
-[QL] Rail colour by team, for Freeze Tag (cg_teamRailColors).
+[QL] Rail colour chosen by gametype (cg_railColorMode).
 
-Instagib Freeze Tag is a mode where the only thing on screen is rails, and the
-stock rail takes its colour from the shooter's own color1/color2 userinfo - so
-every beam is whatever colour that player picked, and the one piece of
-information you actually want out of a beam, whose side fired it, is the one
-thing it does not carry. QL's cg_forceTeamRailColor1/2 do not cover this: they
-are a viewer-side friend/foe override with two fixed colours, and they return
-early for the viewer's own rail, so your own shots stay unchanged.
+The stock rail takes its colour from the shooter's own color1/color2 userinfo.
+In a team mode that is exactly backwards: the one piece of information a beam
+could carry - whose side fired it - is replaced by a colour that player picked
+for themselves. In a free-for-all it is fine, and it is the player's choice, so
+it stays.
+
+QL's own cg_forceTeamRailColor1/2 do not fill the team gap: they are a
+viewer-side friend/foe override with two arbitrary colours, and
+CG_GetRailColorFloat returns early for viewer == owner, so your own rail is
+never touched by them.
+
+  0  off      - stock, every player's own colour1/colour2 everywhere
+  1  auto     - team colours in team gametypes; own colour in FFA/Duel/Race
+  2  varied   - team colours in team gametypes; a distinct colour per player in
+                FFA/Duel/Race (see CG_RandomRailColor)
+  3  white    - every rail white, everywhere
+
+Mode 1 is the default. GT_TEAM is the first team gametype in QL's enum and
+everything above it is a team mode, so >= GT_TEAM is the test; GT_FFA, GT_DUEL
+and GT_RACE sit below it.
 
 This is absolute rather than relative - red team fires red, blue team fires
-blue, for every player including you - and it applies to the core beam, the
-ring sprites and the impact mark, because all three read their colour through
-CG_GetRailColorFloat/Byte.
-
-cg_teamRailColors 2 makes every rail white instead, which was the other half of
-what was asked for; 0 restores the stock per-player colours.
+blue, for every player including you - and it reaches the core beam, the ring
+sprites, the impact mark and the railgun model tint, because all of those read
+their colour through CG_GetRailColorFloat/Byte.
 
 Returns qfalse when the override does not apply, so the caller falls through to
-QL's own rail-forcing logic and then to the shooter's colour.
+QL's own rail-forcing logic and then to the shooter's own colour.
 ==========================
 */
 static qboolean CG_GametypeRailColor(clientInfo_t* ci, float* color) {
-    if (cg_teamRailColors.integer == 0) {
-        return qfalse;
-    }
-    if (cgs.gametype != GT_FREEZE) {
+    int mode = cg_railColorMode.integer;
+
+    if (mode == 0) {
         return qfalse;
     }
 
-    if (cg_teamRailColors.integer == 2) {
+    if (mode == 3) {
         color[0] = 1.0f;
         color[1] = 1.0f;
         color[2] = 1.0f;
         return qtrue;
     }
 
-    switch (ci->team) {
-        case TEAM_RED:
-            color[0] = 1.0f;
-            color[1] = 0.15f;
-            color[2] = 0.15f;
-            return qtrue;
-        case TEAM_BLUE:
-            color[0] = 0.25f;
-            color[1] = 0.40f;
-            color[2] = 1.0f;
-            return qtrue;
-        default:
-            // no team yet (connecting, spectating): leave it alone rather than
-            // painting it a team colour that would then change under the player
-            return qfalse;
+    if (cgs.gametype >= GT_TEAM) {
+        switch (ci->team) {
+            case TEAM_RED:
+                color[0] = 1.0f;
+                color[1] = 0.15f;
+                color[2] = 0.15f;
+                return qtrue;
+            case TEAM_BLUE:
+                color[0] = 0.25f;
+                color[1] = 0.40f;
+                color[2] = 1.0f;
+                return qtrue;
+            default:
+                // no team yet (connecting, spectating): leave it alone rather
+                // than painting a team colour that changes under the player
+                return qfalse;
+        }
     }
+
+    // free-for-all modes
+    if (mode == 2) {
+        CG_RandomRailColor((int)(ci - cgs.clientinfo), color);
+        return qtrue;
+    }
+
+    // mode 1 in a free-for-all: the player's own pick is the right answer
+    return qfalse;
 }
 
 static qboolean CG_GetRailColorFloat(clientInfo_t* ci, float* coreColor, byte* ringColor) {
@@ -1606,17 +1679,25 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     // player's colour as the reload completes.
     if (weaponNum == WP_RAILGUN) {
         clientInfo_t* ci = &cgs.clientinfo[cent->currentState.clientNum];
+        // [QL] the gun tint follows cg_railColorMode too, so the weapon in your
+        // hands matches the beam it fires instead of staying on colour1
+        vec3_t tint;
+        if (!CG_GametypeRailColor(ci, tint)) {
+            VectorCopy(ci->color1, tint);
+        }
         if (!ps) {
             gun.shaderRGBA[0] = 0;
             gun.shaderRGBA[1] = 255;
             gun.shaderRGBA[2] = 0;
         } else if (ps->weaponstate == WEAPON_FIRING) {
             float fscale = (1.0f - (float)ps->weaponTime / (float)cg_railReloadTime.integer) * 255.0f;
-            gun.shaderRGBA[0] = (byte)(ci->color1[0] * fscale);
-            gun.shaderRGBA[1] = (byte)(ci->color1[1] * fscale);
-            gun.shaderRGBA[2] = (byte)(ci->color1[2] * fscale);
+            gun.shaderRGBA[0] = (byte)(tint[0] * fscale);
+            gun.shaderRGBA[1] = (byte)(tint[1] * fscale);
+            gun.shaderRGBA[2] = (byte)(tint[2] * fscale);
         } else {
-            Byte4Copy(ci->c1RGBA, gun.shaderRGBA);
+            gun.shaderRGBA[0] = (byte)(tint[0] * 255.0f);
+            gun.shaderRGBA[1] = (byte)(tint[1] * 255.0f);
+            gun.shaderRGBA[2] = (byte)(tint[2] * 255.0f);
         }
         gun.shaderRGBA[3] = 255;
     }
@@ -1756,11 +1837,16 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     // colorize the railgun blast
     if (weaponNum == WP_RAILGUN) {
         clientInfo_t* ci;
+        vec3_t tint;
 
         ci = &cgs.clientinfo[cent->currentState.clientNum];
-        flash.shaderRGBA[0] = 255 * ci->color1[0];
-        flash.shaderRGBA[1] = 255 * ci->color1[1];
-        flash.shaderRGBA[2] = 255 * ci->color1[2];
+        // [QL] the muzzle blast follows cg_railColorMode with everything else
+        if (!CG_GametypeRailColor(ci, tint)) {
+            VectorCopy(ci->color1, tint);
+        }
+        flash.shaderRGBA[0] = 255 * tint[0];
+        flash.shaderRGBA[1] = 255 * tint[1];
+        flash.shaderRGBA[2] = 255 * tint[2];
     }
 
     CG_PositionRotatedEntityOnTag(&flash, &gun, weapon->weaponModel, "tag_flash");

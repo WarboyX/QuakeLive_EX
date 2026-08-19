@@ -53,7 +53,51 @@ int SV_BotAllocateClient(void) {
         }
     }
 
+    /*
+    [QL] Nothing free - take a zombie before giving up.
+
+    A zombie is a client that has already been dropped. SV_DropClient parks a
+    departing human there rather than freeing it outright so the final reliable
+    message can still be retransmitted, and SV_CheckTimeouts releases it
+    sv_zombietime seconds later. Until then the slot is spoken for, and the loop
+    above walks straight past it.
+
+    That is the reported failure: a player leaves a nearly-full server, the bot
+    filler notices it is a player short within the same second, and every slot is
+    either a bot or the zombie the player just became - so "All player slots are
+    in use" on a server that is about to have a free one. Refusing to reuse a
+    slot whose client is already gone is the wrong trade; the cost is that
+    departing client losing a retransmit it will most likely never read.
+
+    Only zombies are taken. CS_CONNECTED and above are live clients and stay
+    untouched.
+    */
     if (i == sv_maxclients->integer) {
+        for (i = 0, cl = svs.clients; i < sv_maxclients->integer; i++, cl++) {
+            if (cl->state == CS_ZOMBIE) {
+                Com_DPrintf("SV_BotAllocateClient: reclaiming zombie slot %d (%s)\n", i, cl->name);
+                cl->state = CS_FREE;
+                break;
+            }
+        }
+    }
+
+    if (i == sv_maxclients->integer) {
+        Com_Printf("SV_BotAllocateClient: no free slot (sv_maxclients %d). Server-side slot states:\n",
+                   sv_maxclients->integer);
+        for (i = 0, cl = svs.clients; i < sv_maxclients->integer; i++, cl++) {
+            const char* state;
+            switch (cl->state) {
+                case CS_FREE:      state = "free";      break;
+                case CS_ZOMBIE:    state = "zombie";    break;
+                case CS_CONNECTED: state = "connected"; break;
+                case CS_PRIMED:    state = "primed";    break;
+                case CS_ACTIVE:    state = "active";    break;
+                default:           state = "?";         break;
+            }
+            Com_Printf("  %2d %-9s %-5s \"%s\"\n", i, state,
+                       cl->netchan.remoteAddress.type == NA_BOT ? "bot" : "net", cl->name);
+        }
         return -1;
     }
 

@@ -485,23 +485,29 @@ int cg_teamRailColor2[1];
 vmCvar_t cg_announcerLastStanding;
 
 /*
-[QL] Rail colour by team, for Freeze Tag.
+[QL] Rail colour chosen by gametype.
 
-The stock rail takes its colour from the shooter's own color1/color2 userinfo,
-which in an instagib mode means every beam in the level is a different colour
-chosen by whoever fired it, and none of them tell you anything. QL's own
-cg_forceTeamRailColor1/2 do not fill the gap: they are a viewer-side friend/foe
-override with two arbitrary colours, and they deliberately skip your own rail.
+The stock rail takes its colour from the shooter's own color1/color2 userinfo.
+In a team mode that is backwards - the one thing a beam could tell you, whose
+side fired it, is replaced by a colour that player picked for themselves. In a
+free-for-all it is fine, and it is the player's own choice, so it stays there.
 
-  0  off - stock behaviour, the shooter's colour1/colour2
-  1  team colours (default) - red team fires red, blue team fires blue
-  2  white - every rail white, which was the other half of the request
+QL's own cg_forceTeamRailColor1/2 do not fill the team gap: they are a
+viewer-side friend/foe override with two arbitrary colours, and they skip your
+own rail entirely.
+
+  0  off     - stock, every player's own colour1/colour2 everywhere
+  1  auto    - team colours in team gametypes; own colour in FFA/Duel/Race
+  2  varied  - team colours in team gametypes; a distinct colour per player in
+               FFA/Duel/Race, hashed from the client slot so every client agrees
+               and it holds still for the match
+  3  white   - every rail white, everywhere
 
 Not CVAR_ARCHIVE on purpose. This is a default we choose, and archiving one
 writes it into a config on first run that then wins forever, so changing it
 later would do nothing (see r_dlightMode and con_scale).
 */
-vmCvar_t cg_teamRailColors;
+vmCvar_t cg_railColorMode;
 
 typedef struct {
     vmCvar_t* vmCvar;
@@ -611,7 +617,7 @@ static cvarTable_t cvarTable[] = {
 
     {&cg_noProjectileTrail, "cg_noProjectileTrail", "0", CVAR_ARCHIVE},
     {&cg_oldRail, "cg_oldRail", "1", CVAR_ARCHIVE},
-    {&cg_teamRailColors, "cg_teamRailColors", "1", 0},
+    {&cg_railColorMode, "cg_railColorMode", "1", 0},
     {&cg_oldRocket, "cg_oldRocket", "1", CVAR_ARCHIVE},
     {&cg_oldPlasma, "cg_oldPlasma", "1", CVAR_ARCHIVE},
     {&cg_trueLightning, "cg_trueLightning", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0.0")
