@@ -101,10 +101,32 @@ void G_ReadSessionData(gclient_t* client) {
            &client->sess.muted,
            &client->sess.prevScore);
 
-    // [QL] force spectator on reconnect only when g_teamSpawnAsSpec is set,
-    // this is a team game and warmup is running (binary reads the cvar's
-    // integer directly, not level.newSession)
-    if (g_teamSpawnAsSpec.integer && g_gametype.integer >= GT_TEAM && level.warmupTime) {
+    /*
+    [QL] force spectator on reconnect only when g_teamSpawnAsSpec is set,
+    this is a team game and warmup is running (binary reads the cvar's
+    integer directly, not level.newSession)
+
+    Never for bots. This is what filled a 16-slot Freeze Tag server with bots and
+    then refused every human connection.
+
+    G_ReadSessionData runs from ClientConnect immediately after
+    G_InitSessionData, so this line overwrites the team PickTeam has just chosen.
+    For a human that is the point - you come back during warmup and pick your own
+    side. A bot has no menu to pick from, so it simply stays a spectator forever,
+    and G_CheckMinimumPlayers counts per team, so a spectator bot counts toward
+    neither. The shortfall never closes, the filler adds another bot every second,
+    and it keeps going until all sixteen slots are bots - five of them spectators
+    in the reported table - at which point a human trying to connect finds the
+    server full and the refusal spams the console.
+
+    level.warmupTime is -1 while the server idles pre-game, which is nonzero, so
+    this was live the entire time the server sat waiting for players.
+
+    G_AddBot sets SVF_BOT on the entity before calling ClientConnect, so the flag
+    is already there by the time this runs.
+    */
+    if (g_teamSpawnAsSpec.integer && g_gametype.integer >= GT_TEAM && level.warmupTime &&
+        !(g_entities[client - level.clients].r.svFlags & SVF_BOT)) {
         sessionTeam = TEAM_SPECTATOR;
     }
 

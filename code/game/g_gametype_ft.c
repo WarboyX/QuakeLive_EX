@@ -795,9 +795,27 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
         return;
 
     if (level.warmupTime != 0 && g_gametype.integer == GT_FREEZE) {
-        // warmup FT: bleed the timer, no thaw mechanics
+        /*
+        Warmup FT: bleed the timer, no thaw mechanics.
+
+        [QL] Note what this branch does *not* check: teams. Warmup is a self-thaw
+        on a fuse - nobody thaws anybody, the statue just expires - so a frozen
+        enemy standing near you comes back on its own, which is indistinguishable
+        from having thawed them if you happened to walk over at the right moment.
+        That is the reported "I can unfreeze enemy players", and it is warmup
+        behaviour rather than a hole in the team check: the live-round path tests
+        sess.sessionTeam in the box scan and again in the re-resolve, so a thaw
+        across teams cannot start or complete there.
+
+        It stops being reachable during the match-start countdown anyway, now
+        that firing is disabled for it (ClientThink_real).
+        */
         cl->ps.thawtime -= msec;
         if (cl->ps.thawtime >= 1) return;
+        if (g_debugFreeze.integer) {
+            G_Printf("freeze: %s self-thawed (warmup fuse, no teammate needed)\n",
+                     ent->client->pers.netname);
+        }
         goto do_thaw;                        // 0x1004d19d
     }
 

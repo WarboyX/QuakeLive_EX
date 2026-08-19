@@ -975,6 +975,35 @@ void ClientThink_real(gentity_t* ent) {
         client->ps.pm_type = PM_NORMAL;
     }
 
+    /*
+    [QL] No firing while the match is starting.
+
+    Warmup in Freeze Tag comes in two halves and they want opposite things. The
+    open-ended practice period before a match - level.warmupTime == -1, nobody
+    counting down - is practice: shooting should work and a hit should still
+    freeze, on the short g_freezeWarmupThawTime fuse. The countdown that runs
+    once the match has been called, though, is not practice, and being frozen as
+    the round begins is nothing but a handicap carried into a round you had no
+    say in.
+
+    level.warmupTime > 0 is that countdown (g_main.c sets -1 for pre-game and a
+    real timestamp when the countdown starts); RS_COUNTDOWN is the round-based
+    equivalent. This is the same pair g_combat.c already tests to shorten the
+    respawn during a countdown.
+
+    PMF_RESPAWNED is the lockout PM_Weapon already honours - "don't allow attack
+    until all buttons are up" - and it lives in pm_flags, which is networked, so
+    the client predicts the same result and the gun stays quiet on both sides
+    rather than flashing locally for a shot the server discards. Re-set every
+    frame because PmoveSingle clears it as soon as attack is released. Movement
+    is deliberately left alone: GT_AD locks players in place during its countdown
+    and Freeze Tag does not, and that was not what was asked for.
+    */
+    if (g_gametype.integer == GT_FREEZE && client->ps.pm_type == PM_NORMAL &&
+        (level.warmupTime > 0 || level.roundState.eCurrent == RS_COUNTDOWN)) {
+        client->ps.pm_flags |= PMF_RESPAWNED;
+    }
+
     // [QL] PMF_PAUSED is handled above (early-return right after the intermission
     // block, matching binary ClientThink_real 0x10034d40).
 

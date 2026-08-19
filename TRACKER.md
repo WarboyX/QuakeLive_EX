@@ -1032,7 +1032,7 @@ Three things reported about a frozen player, all fixed:
 
 `g_freezeThawTime` is **3000** — the value asked for after playing it.
 
-### E26. Bot filler exhausts the slots in Freeze Tag — OPEN (instrumented)
+### E26. Bot filler exhausts the slots in Freeze Tag — DONE (root cause found)
 **Lives in:** our **server** (qagame) · **Seen by:** server console
 
 ```
@@ -1040,78 +1040,106 @@ Unable to add bot. All player slots are in use.
 Start server with more 'open' slots (or check setting of sv_maxclients cvar).
 ```
 
-Appeared once freezes started persisting (no auto-thaw in a round).
+Chased through three wrong answers before the slot table settled it. Sixteen bots
+on a sixteen-slot server, and five of them on `team 3` — TEAM_SPECTATOR:
 
-Not a leak across round restarts, and nothing to do with statues — the earlier
-note that `G_CountHumanPlayers` and `G_CountBotPlayersWithQueued` count by
-`sess.sessionTeam` and ignore health was right, and irrelevant. The slots were
-being spent on bots that had been added and had not spawned yet.
+```
+   0 connected bot team 3 "Bones"     3 connected bot team 1 "Lucy"
+   1 connected bot team 3 "Visor"     4 connected bot team 2 "Stripe"
+   2 connected bot team 3 "Gorre"    14 connected bot team 3 "Phobos"
+                                     15 connected bot team 3 "Crash"
+```
 
-`G_AddBot` takes a slot with `trap_BotAllocateClient` first, calls
-`ClientConnect` — which leaves the bot at `CON_CONNECTING` — and only queues the
-delayed `ClientBegin` after that. A bot in its delay window therefore holds a
-real client slot. `G_CountBotPlayersWithQueued` missed it twice: the connected
-loop tested `!= CON_CONNECTED`, which skips `CON_CONNECTING`, and the queue loop
-counted only entries whose `spawnTime` had already come due, which skips exactly
-the ones still waiting. Counted zero times, slot occupied. `G_CheckMinimumPlayers`
-runs once a second, saw the same shortfall each time, and added another bot every
-second until all sixteen slots were gone — seven refusals in a row in the log.
-The queue loop also had no team filter, so queued red bots counted toward blue.
+`G_ReadSessionData` (g_session.c) runs from `ClientConnect` immediately after
+`G_InitSessionData`, and this line overwrote the team `PickTeam` had just chosen:
 
-Fixed by counting `!= CON_DISCONNECTED` in the first loop (what stock
-`G_CountBotPlayers` already does) and reducing the queue loop to a backstop for
-an entry whose client slot has been released, with the team filter added.
+```c
+if (g_teamSpawnAsSpec.integer && g_gametype.integer >= GT_TEAM && level.warmupTime) {
+    sessionTeam = TEAM_SPECTATOR;
+}
+```
 
-**Still happening after that fix.** The undercount was real and worth fixing, but
-it was not the whole story, and this is the second time the cause has been
-reasoned out of the code and been wrong. So the refusal now prints the evidence
-rather than the complaint: `G_BotSlotsExhausted` dumps the whole slot table -
-per index, the game's `pers.connected`, bot/human, `sess.sessionTeam`,
-`ent->inuse`, the name, and whether a spawn-queue entry points at it - plus
-`sv_maxclients`, `bot_minplayers` and the gametype. The refusal means the
-*server* found no `client_t` in `CS_FREE`, which the game module cannot see;
-the table shows who the game thinks holds each index, and the three candidates
-read differently:
+For a human that is the whole point — reconnect during warmup and pick your own
+side. A bot has no menu, so it stays a spectator forever.
+`G_CheckMinimumPlayers` counts *per team*, so a spectator bot counts toward
+neither: the shortfall never closes, another bot goes in every second, and it
+runs until all sixteen slots are bots. A human trying to connect then finds the
+server full and the refusal spams the console — exactly as reported.
 
-- every slot named and connected → the fill target is too high for
-  `sv_maxclients` and the cap arithmetic in `G_CheckMinimumPlayers` is wrong
-- slots stuck at `CON_CONNECTING` → a delayed spawn that never ran
-- slots the game calls `disconnected` → the server is holding a `client_t` the
-  game has already released, a real server-side leak
+`level.warmupTime` is `-1` while the server idles pre-game, which is nonzero, so
+this was live the whole time the server sat waiting for players. Fixed by
+exempting bots (`SVF_BOT`, which `G_AddBot` sets before calling `ClientConnect`).
 
-Also fixed one definite leak on the way: `G_AddBot` returned on a refused
-`ClientConnect` without calling `trap_BotFreeClient`, so the slot
-`trap_BotAllocateClient` had already moved to `CS_ACTIVE` stayed allocated for
-the rest of the map. Every other early return in that function frees it; that
-one did not. The refusal reason is now printed too.
+**Guard added on top**, because the *shape* of this failure recurs with any
+counting bug: every number `G_CheckMinimumPlayers` works from is per team, and a
+bot the per-team counts cannot see is a bot the filler tries to replace once a
+second forever. `G_FillBots` now enforces two limits that do not depend on the
+counting being right — leave `BOT_RESERVED_SLOTS` (1) free so a person can always
+get in, and when there is no room, kick a bot sitting in spectator rather than
+asking for a slot that does not exist (only when out of room, so an admin's
+deliberately-spectating bot survives on a server with space). Duel now routes
+through `G_FillBots` too, for the same guard.
 
-Output is throttled to once a second, which also collapses the seven-line spam:
-at `bot_fillRate > 1` the whole shortfall is retried inside a single tick and
-every attempt printed its own pair of lines.
+**Earlier fixes on the way, all real but none of them this:**
 
-**The reproduction, and a fix that matches it.** Reported as: playing with
-`bot_minplayers 6`, five bots alongside, disconnect, and the filler refuses to
-add the sixth.
+- `G_CountBotPlayersWithQueued` skipped `CON_CONNECTING` bots and counted only
+  queued entries already due, so a bot inside its spawn delay was counted zero
+  times while holding a slot. Its queue loop also had no team filter.
+- `G_AddBot` returned on a refused `ClientConnect` without calling
+  `trap_BotFreeClient`, leaking the slot `trap_BotAllocateClient` had already
+  moved to `CS_ACTIVE`.
+- `SV_DropClient` parks a departing human in `CS_ZOMBIE` for `sv_zombietime` so
+  the final reliable message can be retransmitted, and `SV_BotAllocateClient`
+  only looked for `CS_FREE`. On a nearly full server that alone refused the
+  replacement bot. It now takes a zombie when nothing is free; live clients
+  untouched.
 
-`SV_DropClient` does not free a departing human's slot. It parks it in
-`CS_ZOMBIE` so the final reliable message can still be retransmitted, and
-`SV_CheckTimeouts` releases it `sv_zombietime` seconds later. `SV_BotAllocateClient`
-only ever looked for `CS_FREE`, so it walked straight past that slot. On a
-nearly-full server that is the whole failure: a player leaves, the filler notices
-it is a player short within the same second, and every slot is either a bot or
-the zombie the player just became — "all player slots are in use" on a server
-that is about to have a free one.
+**Diagnostics kept** on both sides — the game's slot table and the server's own
+`client_t` states. They are what found this, and together they show whether the
+game and the server disagree about who holds what. Refusals are throttled to one
+a second.
 
-`SV_BotAllocateClient` now takes a zombie when nothing is free. The client is
-already gone; the cost is a retransmit it will most likely never read. Live
-clients (`CS_CONNECTED` and above) are untouched.
+### E27. Warmup countdown allowed firing — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
 
-**And the diagnostic now runs on both sides.** The refusal is a server-side
-condition the game module cannot see, so the server prints its own slot table
-too — per index the real `client_t` state (`free`/`zombie`/`connected`/`primed`/
-`active`), bot or net, and the name — alongside the game-side table. If it still
-refuses, the two together say whether the game and the server disagree about who
-holds what.
+Players could freeze each other during the countdown to match start, carrying a
+freeze into a round they had no say in.
+
+Warmup is two different things and they want opposite rules. The open-ended
+practice period before a match — `level.warmupTime == -1`, nobody counting down —
+is practice: shooting should work and a hit should freeze, on the short
+`g_freezeWarmupThawTime` fuse (an earlier request, unchanged). The countdown once
+the match has been called is not practice.
+
+`level.warmupTime > 0` is that countdown, `RS_COUNTDOWN` the round-based
+equivalent — the same pair `g_combat.c` already tests to shorten the respawn
+during a countdown. `ClientThink_real` now sets `PMF_RESPAWNED` for the duration,
+which is the lockout `PM_Weapon` already honours ("don't allow attack until all
+buttons are up") and lives in `pm_flags`, so it is networked and the client
+predicts the same result — the gun stays quiet on both sides instead of flashing
+locally for a shot the server discards. Re-set each frame because `PmoveSingle`
+clears it on release.
+
+Movement is deliberately untouched: `GT_AD` locks players in place during its
+countdown, Freeze Tag does not, and that was not what was asked for.
+
+### E28. "I can unfreeze enemy players" — explained, not a team-check hole
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+The warmup branch of `Freeze_ClientThawCheck` does not check teams, because in
+warmup nobody thaws anybody — the statue expires on its own fuse. A frozen enemy
+coming back five seconds after you walked over is indistinguishable from having
+thawed them.
+
+The live-round path tests `sess.sessionTeam` in the box scan *and* again in the
+re-resolve (`Freeze_ThawerStillEligible`), so a cross-team thaw cannot start or
+complete there. No third path clears `PW_FREEZE`: frozen players are damage-immune
+(`g_combat.c` step 22 sets `take = 0`), so shooting a statue cannot respawn it
+either.
+
+With firing disabled during the countdown (E27), the warmup branch stops being
+reachable at match start. `g_debugFreeze 1` now names a warmup self-thaw when it
+happens, so this is attributable rather than inferred.
 
 ### C29. Thaw fails intermittently — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client

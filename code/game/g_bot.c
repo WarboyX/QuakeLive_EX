@@ -468,8 +468,53 @@ handful of those between two server frames.
 */
 #define BOT_FILL_RATE_MAX 16
 
+/*
+===============
+G_CountConnectedClients
+
+Everyone holding a client slot, regardless of team - including spectators, and
+including clients still connecting. This is the number that has to stay under
+sv_maxclients, and it is deliberately not any of the per-team counts.
+===============
+*/
+static int G_CountConnectedClients(void) {
+    int i, num = 0;
+
+    for (i = 0; i < level.maxclients; i++) {
+        if (level.clients[i].pers.connected != CON_DISCONNECTED) {
+            num++;
+        }
+    }
+    return num;
+}
+
+/*
+[QL] The filler is not allowed to consume the server.
+
+`bot_minplayers 6` produced sixteen bots on a sixteen-slot Freeze Tag server and
+then refused every human connection. The cause was elsewhere (bots inheriting
+g_teamSpawnAsSpec and parking in spectator, where the per-team counts could not
+see them - see G_ReadSessionData), but the shape of the failure is worth
+guarding against on its own: every count this function works from is per team,
+and any bot the per-team counts cannot see is a bot the filler will try to
+replace, once a second, forever.
+
+So there are two hard limits here that do not depend on the counting being
+right:
+
+  - leave BOT_RESERVED_SLOTS free, so a person can always get in. A server that
+    is full of bots is not serving anybody.
+  - if there is no room and bots are sitting in spectator, kick one of those
+    rather than asking for a slot that does not exist. That is the self-healing
+    case: a spectator bot is doing nothing and counts toward no team, so it is
+    exactly the wrong thing to be holding the last slot. Only when the server is
+    out of room, so an admin's deliberately-spectating bot survives on a server
+    that has space.
+*/
+#define BOT_RESERVED_SLOTS 1
+
 static void G_FillBots(int team, int shortfall) {
-    int i, rate;
+    int i, rate, room;
 
     trap_Cvar_Update(&bot_fillRate);
     rate = bot_fillRate.integer;
@@ -482,6 +527,19 @@ static void G_FillBots(int team, int shortfall) {
     if (shortfall > rate) {
         shortfall = rate;
     }
+
+    room = level.maxclients - BOT_RESERVED_SLOTS - G_CountConnectedClients();
+    if (room <= 0) {
+        // out of room: reclaim a bot that is not playing before giving up
+        if (G_CountBotPlayers(TEAM_SPECTATOR) > 0) {
+            G_RemoveRandomBot(TEAM_SPECTATOR);
+        }
+        return;
+    }
+    if (shortfall > room) {
+        shortfall = room;
+    }
+
     for (i = 0; i < shortfall; i++) {
         G_AddRandomBot(team);
     }
@@ -540,7 +598,9 @@ void G_CheckMinimumPlayers(void) {
         botplayers = G_CountBotPlayersWithQueued(-1);
         //
         if (humanplayers + botplayers < minplayers) {
-            G_AddRandomBot(TEAM_FREE);
+            // [QL] through G_FillBots like every other branch, so duel gets the
+            // same "never consume the last slots" guard
+            G_FillBots(TEAM_FREE, 1);
         } else if (humanplayers + botplayers > minplayers && botplayers) {
             // try to remove spectators first
             if (!G_RemoveRandomBot(TEAM_SPECTATOR)) {
