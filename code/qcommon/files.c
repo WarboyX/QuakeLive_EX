@@ -1307,11 +1307,11 @@ long FS_FOpenFileRead(const char* filename, fileHandle_t* file, qboolean uniqueF
 	if (!fs_searchpaths)
 		Com_Error(ERR_FATAL, "Filesystem call made without initialization");
 
-	// [QL] a config never comes out of a pk3. QL's own names are listed as well
-	// as ours: a pak that ships one is a pak trying to overwrite user settings,
-	// and that is worth refusing whichever client wrote the file.
-	isLocalConfig = !strcmp(filename, "autoexec.cfg") || !strcmp(filename, QZCONFIG_CFG) ||
-	                !strcmp(filename, QL_QZCONFIG_CFG) || !strcmp(filename, QL_REPCONFIG_CFG);
+	// [QL] repconfig.cfg belongs on this list too. A config never comes out of a
+	// pk3 - a pak shipping one is a pak trying to overwrite user settings - and
+	// the split into two files left the replicated half unguarded. Unrelated to
+	// where the files live; it was wrong before that question came up.
+	isLocalConfig = !strcmp(filename, "autoexec.cfg") || !strcmp(filename, QZCONFIG_CFG);
 #ifdef REPCONFIG_CFG
 	isLocalConfig = isLocalConfig || !strcmp(filename, REPCONFIG_CFG);
 #endif
@@ -3129,8 +3129,7 @@ static void FS_Startup(const char* gameName) {
 
 	fs_debug = Cvar_Get("fs_debug", "0", 0);
 	fs_basepath = Cvar_Get("fs_basepath", Sys_DefaultInstallPath(), CVAR_INIT | CVAR_PROTECTED);
-	// [QL] our data lives in baseiql, not baseq3 - see IOQL_BASEGAME_DIR
-	fs_basegame = Cvar_Get("fs_basegame", IOQL_BASEGAME_DIR, CVAR_INIT);
+	fs_basegame = Cvar_Get("fs_basegame", "", CVAR_INIT);
 	homePath = Sys_DefaultHomePath();
 	if (!homePath || !homePath[0]) {
 		homePath = fs_basepath->string;
@@ -3628,7 +3627,6 @@ static void FS_CopyFromSteam(void) {
 	char steamIdPath[MAX_OSPATH];
 	qboolean hasConfigs = qfalse;
 	char configFiles[4][MAX_OSPATH];
-	char configDests[4][MAX_OSPATH];
 	int numConfigs = 0;
 
 	// Only run on Windows, only if pak00.pk3 is missing
@@ -3650,32 +3648,10 @@ static void FS_CopyFromSteam(void) {
 	Com_sprintf(pak00Src, sizeof(pak00Src), "%s\\baseq3\\pak00.pk3", qlPath);
 	Com_Printf("Found Quake Live at: %s\n", qlPath);
 
-	/*
-	Check for user config files.
-
-	[QL] Copied under OUR names, not the ones they have in the Steam folder. The
-	source is read-only either way, but the destination matters: writing
-	qzconfig.cfg into fs_homepath used to mean a file the Steam client would exec
-	if the two ever shared that directory, and this is the one place we go
-	looking at its install, so it is the one place that has to be careful about
-	it. autoexec.cfg keeps its name - it is not a client's generated config, it
-	is the user's own script, and both clients read it by that name.
-
-	This runs once, when our config does not exist yet, so it is a starting point
-	rather than a link: settings changed here afterwards stay here.
-	*/
+	// Check for user config files
 	if (FS_FindSteamUserFolder(qlPath, steamIdPath, sizeof(steamIdPath))) {
-		static const char *cfgSrcNames[] = {
-			QL_QZCONFIG_CFG, QL_REPCONFIG_CFG, "autoexec.cfg"
-		};
-		static const char *cfgDstNames[] = {
-			QZCONFIG_CFG,
-#ifdef REPCONFIG_CFG
-			REPCONFIG_CFG,
-#else
-			QL_REPCONFIG_CFG,
-#endif
-			"autoexec.cfg"
+		static const char *cfgNames[] = {
+			"qzconfig.cfg", "repconfig.cfg", "autoexec.cfg"
 		};
 		int i;
 		char homeDest[MAX_OSPATH];
@@ -3683,14 +3659,13 @@ static void FS_CopyFromSteam(void) {
 		for (i = 0; i < 3; i++) {
 			char cfgSrc[MAX_OSPATH];
 			Com_sprintf(cfgSrc, sizeof(cfgSrc), "%s\\baseq3\\%s",
-			            steamIdPath, cfgSrcNames[i]);
+			            steamIdPath, cfgNames[i]);
 			if (FS_FileExistsOS(cfgSrc)) {
 				// Check if it already exists in homepath
 				Com_sprintf(homeDest, sizeof(homeDest), "%s\\%s\\%s",
-				            fs_homepath->string, BASEGAME_DIR, cfgDstNames[i]);
+				            fs_homepath->string, BASEGAME_DIR, cfgNames[i]);
 				if (!FS_FileExistsOS(homeDest)) {
 					Q_strncpyz(configFiles[numConfigs], cfgSrc, MAX_OSPATH);
-					Q_strncpyz(configDests[numConfigs], cfgDstNames[i], MAX_OSPATH);
 					numConfigs++;
 					hasConfigs = qtrue;
 				}
@@ -3760,10 +3735,9 @@ static void FS_CopyFromSteam(void) {
 			char dest[MAX_OSPATH];
 			const char *filename = strrchr(configFiles[i], '\\');
 			filename = filename ? filename + 1 : configFiles[i];
-			// [QL] destination name is ours, not the Steam client's
-			Com_sprintf(dest, sizeof(dest), "%s\\%s", homeDir, configDests[i]);
+			Com_sprintf(dest, sizeof(dest), "%s\\%s", homeDir, filename);
 			if (FS_CopyFileWithProgress(configFiles[i], dest, filename)) {
-				Com_Printf("  Copied %s -> %s\n", filename, configDests[i]);
+				Com_Printf("  Copied %s\n", filename);
 			} else {
 				Com_Printf("  WARNING: Failed to copy %s\n", filename);
 			}
@@ -4555,63 +4529,6 @@ void FS_InitFilesystem(void) {
 		}
 	}
 #endif // !DEDICATED
-
-	/*
-	[QL] Say so if we have been unpacked over a Quake Live install.
-
-	This release is meant to live in its own folder with a copy of pak00.pk3,
-	not on top of the retail game. Unpacked over one it overwrites whatever it
-	shares a name with - SDL2.dll being the obvious casualty - and before
-	baseiql existed it also dropped pak01.pk3 and iobin.pk3 into baseq3, where
-	the retail client loads every pk3 it finds and would extract our game
-	modules into itself. The result is a Quake Live that no longer launches, for
-	reasons nothing on screen explains and that survive clearing the home
-	directory, because none of the damage is in it.
-
-	The data half is designed out now. The overwritten-binaries half cannot be:
-	a DLL is found by name. So detect the case and name it, which is the
-	difference between a confusing afternoon and a "verify integrity of game
-	files".
-
-	Detected by Quake Live's own executables sitting beside ours - our binaries
-	are quakelive.x86_64(.exe), which never collide with the retail names, so
-	finding one of those here means two installs in one folder.
-	*/
-	{
-		static const char* qlBinaries[] = {
-			"quakelive_steam.exe", "quakelive.exe", "quakelive_steam", "quakelive"
-		};
-		int i;
-
-		for (i = 0; i < (int)ARRAY_LEN(qlBinaries); i++) {
-			char probe[MAX_OSPATH];
-
-			Com_sprintf(probe, sizeof(probe), "%s%c%s",
-			            fs_basepath->string, PATH_SEP, qlBinaries[i]);
-			if (FS_FileInPathExists(probe)) {
-				Com_Printf(
-				    "\n"
-				    "********************************************************\n"
-				    "WARNING: this looks like a Quake Live install.\n"
-				    "\n"
-				    "  %s\n"
-				    "\n"
-				    "This build is meant to run from its own folder with a\n"
-				    "copy of pak00.pk3, not unpacked over the retail game.\n"
-				    "Sharing the folder overwrites files they both use, and\n"
-				    "Quake Live may stop launching as a result.\n"
-				    "\n"
-				    "If that has happened: in Steam, right-click Quake Live ->\n"
-				    "Properties -> Installed Files -> Verify integrity, then\n"
-				    "delete any pak01.pk3 or iobin.pk3 left in baseq3 (verify\n"
-				    "restores changed files but does not remove extra ones).\n"
-				    "********************************************************\n"
-				    "\n",
-				    probe);
-				break;
-			}
-		}
-	}
 
 	// if we can't find default.cfg, assume that the paths are
 	// busted and error out now, rather than getting an unreadable

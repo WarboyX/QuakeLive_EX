@@ -286,7 +286,7 @@ Some of the major features currently implemented are:
   * cl_guid support
   * HTTP/FTP download redirection (using cURL)
   * Multiuser support on Windows systems (user specific game data
-    is stored in "%APPDATA%\ioquakelive", or "~/.ioquakelive" on Linux)
+    is stored in "%APPDATA%\Quake3")
   * PNG support
   * Web support via Emscripten
   * Many, many bug fixes

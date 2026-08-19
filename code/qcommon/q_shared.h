@@ -32,32 +32,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define PRODUCT_NAME            "Quake Live"
 #define BASEGAME                "baseqz"  // [QL] protocol/game name (sent over network)
 #define BASEGAME_DIR            "baseq3"  // filesystem directory for game data
-
-/*
-[QL] Our own data directory, kept out of baseq3.
-
-Everything we ship - pak01.pk3, iobin.pk3, the server configs - used to be laid
-down in baseq3 next to Quake Live's pak00.pk3. That is fine in a folder only we
-use, and it is destructive in a folder the Steam client also reads: idTech3 loads
-*every* .pk3 in the game directory, so a Quake Live install with our files in it
-loads our pak01 over its own assets and, far worse, finds iobin.pk3 and extracts
-our cgame/qagame/ui into a retail client. It stops launching, and deleting the
-home directory does not help because none of the damage is there.
-
-No filename is safe inside baseq3 - the engine takes them all - so the directory
-has to be different. fs_basegame is the engine's existing "additional base game"
-slot: it is searched after (and so wins over) com_basegame, which keeps pak00.pk3
-in baseq3 where it belongs and every override of ours on top. Quake Live has no
-fs_basegame set, so a baseiql folder sitting beside baseq3 is invisible to it.
-*/
-#define IOQL_BASEGAME_DIR       "baseiql"
 #define CLIENT_WINDOW_TITLE     "Quake Live"
-// [QL] Our own home directory, not the Steam client's. The engine extracts the
-// game modules from iobin.pk3 into fs_homepath/baseq3 under the stock names, so
-// sharing this folder would let the Steam client load our cgame/qagame/ui. See
-// QZCONFIG_CFG in qcommon.h for the rest of the reasoning.
-#define HOMEPATH_NAME_UNIX      ".ioquakelive"
-#define HOMEPATH_NAME_WIN       "ioquakelive"
+#define HOMEPATH_NAME_UNIX      ".quakelive"
+#define HOMEPATH_NAME_WIN       "quakelive"
 #define HOMEPATH_NAME_MACOSX    HOMEPATH_NAME_WIN
 #define PROTOCOL_HANDLER        "quakelive"
 #define STEAMPATH_NAME			"Quake Live"
