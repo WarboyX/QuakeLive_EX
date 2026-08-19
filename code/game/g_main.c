@@ -986,7 +986,22 @@ static cvarTable_t gameCvarTable[] = {
     // [QL] how long a warmup freeze lasts before it thaws itself. Warmup is
     // practice, so it should demonstrate freezing without parking anyone.
     {&g_freezeWarmupThawTime, "g_freezeWarmupThawTime", "5000", CVAR_GAMERULE, 0, NULL},
-    {&g_freezeThawRadius, "g_freezeThawRadius", "96", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] Thaw reach, raised from 96.
+
+    This one is a real cvar - Freeze_ClientThawCheck reads it every frame to size
+    the trap_EntitiesInBox scan - so it was always tunable; the default was just
+    mean. 96 units is a box of +/-96 around the statue, and since EntitiesInBox
+    tests bounding boxes rather than origins the effective reach is about 111,
+    roughly a player and a half. That is "standing on top of them" and it does not
+    survive either player drifting, which is the same brittleness that made the
+    line-of-sight test and the progress decay feel broken.
+
+    160 gives about 175 units of reach - close enough to still be a commitment
+    with someone shooting at you, far enough that circling the statue or backing
+    off a step does not drop the thaw.
+    */
+    {&g_freezeThawRadius, "g_freezeThawRadius", "160", CVAR_GAMERULE, 0, NULL},
     {&g_freezeThawThroughSurface, "g_freezeThawThroughSurface", "0", CVAR_GAMERULE, 0, NULL},
     {&g_freezeThawWinningTeam, "g_freezeThawWinningTeam", "1", CVAR_GAMERULE, 0, NULL},
     {&g_freezeRemovePowerupsOnRound, "g_freezeRemovePowerupsOnRound", "1", CVAR_GAMERULE, 0, NULL},

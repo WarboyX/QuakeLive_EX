@@ -1193,6 +1193,17 @@ The refill now runs at a quarter rate. The mechanic survives — walk away and t
 thaw is lost, so a statue cannot be chipped at from across the map over a whole
 round — but a momentary break costs a moment instead of everything.
 
+**Fourth: the reach was too small.** `g_freezeThawRadius` is a real cvar —
+`Freeze_ClientThawCheck` reads it every frame to size the `trap_EntitiesInBox`
+scan, so it was always tunable and is not one of the 186 dead ones. The default
+was just mean: 96 units is a box of ±96 around the statue, and since
+`EntitiesInBox` tests bounding boxes rather than origins the effective reach was
+about 111 — roughly a player and a half. That does not survive either player
+drifting, which is the same brittleness that made the LOS test and the progress
+decay feel broken. Raised to **160** (about 175 effective): still a commitment
+with someone shooting at you, but circling the statue or backing off a step no
+longer drops the thaw.
+
 Verify: thaw a teammate on a staircase and on a ramp; `g_debugThawTime 1` prints
 the countdown to the thawer every frame if the rate needs measuring.
 
