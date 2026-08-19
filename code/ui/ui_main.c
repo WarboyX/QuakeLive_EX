@@ -1390,7 +1390,7 @@ static void UI_DrawServerSettings(rectDef_t *rect, float scale, vec4_t color, in
         "Attack and Defend", // 11
         "Red Rover",         // 12
     };
-    char serverinfo[MAX_INFO_STRING];
+    char serverinfo[BIG_INFO_STRING];  // [QL] BIG_INFO_STRING: the serverinfo exceeds MAX_INFO_STRING (see SV_SpawnServer)
     char pmoveinfo[MAX_INFO_STRING];
     char armorinfo[MAX_INFO_STRING];
     char custombuf[MAX_INFO_STRING];
@@ -1666,7 +1666,7 @@ UI_BuildPlayerList
 static void UI_BuildPlayerList(void) {
     uiClientState_t cs;
     int n, count, team, team2, playerTeamNumber;
-    char info[MAX_INFO_STRING];
+    char info[BIG_INFO_STRING];// [QL] BIG_INFO_STRING: the serverinfo exceeds MAX_INFO_STRING (see SV_SpawnServer)
 
     trap_GetClientState(&cs);
     trap_GetConfigString(CS_PLAYERS + cs.clientNum, info, MAX_INFO_STRING);

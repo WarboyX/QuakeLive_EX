@@ -1097,7 +1097,7 @@ static void SV_Serverinfo_f(void) {
     }
 
     Com_Printf("Server info settings:\n");
-    Info_Print(Cvar_InfoString(CVAR_SERVERINFO));
+    Info_Print(Cvar_InfoString_Big(CVAR_SERVERINFO));
 }
 
 /*

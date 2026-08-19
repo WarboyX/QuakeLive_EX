@@ -342,6 +342,7 @@ vmCvar_t g_spawnItemAmmo;
 // [QL] game state management
 vmCvar_t g_gameState;
 vmCvar_t g_debugWarmup;
+vmCvar_t g_debugFreeze;
 vmCvar_t bot_fillRate;
 vmCvar_t sv_warmupReadyPercentage;
 vmCvar_t g_warmupDelay;
@@ -655,6 +656,8 @@ static cvarTable_t gameCvarTable[] = {
     {&g_gameState, "g_gameState", "PRE_GAME", CVAR_ROM | CVAR_SERVERINFO, 0, NULL},
     // [QL] traces the warmup -> countdown -> live state machine (see SetWarmupState)
     {&g_debugWarmup, "g_debugWarmup", "0", 0, 0, NULL},
+    // [QL] traces the Freeze Tag round state and every declined freeze
+    {&g_debugFreeze, "g_debugFreeze", "0", 0, 0, NULL},
     // [QL] bots added per G_CheckMinimumPlayers tick, which runs once a second.
     // See G_FillBots - 1 is the quiet default, higher reaches a player count
     // fast when reproducing something that only happens at scale.
@@ -1882,6 +1885,11 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
     switch (g_gametype.integer) {
     case GT_RR:
         RR_InitRoundState();
+        break;
+    case GT_FREEZE:
+        // [QL] Freeze Tag is round-based too and had no case here, so its round
+        // state machine was never started and nobody ever froze.
+        Freeze_InitRoundState();
         break;
     default:
         break;

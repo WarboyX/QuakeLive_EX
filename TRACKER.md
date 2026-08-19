@@ -938,7 +938,60 @@ only and the client throttles its own `score` request to one every two seconds,
 so nothing in normal play multiplies this — but a client that spams `score` costs
 four times what it used to.
 
-### E22. Nobody froze in Freeze Tag — DONE (verify)
+### E23. Serverinfo overflowed 1024 bytes and dropped keys — DONE (verify)
+**Lives in:** our **server** (engine) · **Seen by:** every client
+
+The dedicated console, hundreds of lines between kills:
+
+```
+Info string length exceeded
+Info string length exceeded
+```
+
+`Cvar_InfoString` builds into a `MAX_INFO_STRING` (1024) buffer. The game module
+alone flags **45 cvars `CVAR_SERVERINFO`** and the engine adds more, so the
+string overruns; `Info_SetValueForKey` then drops every key that will not fit and
+prints, once per key, on every rebuild — and `SV_Frame` rebuilds whenever a
+serverinfo cvar changes.
+
+The drops are the tail of the list, which is why an earlier `InitGame` line was
+cut mid-key at `g_levelStartTi`. **The client reads about thirty keys out of
+CS_SERVERINFO** — gametype, teamsize, the shotgun and pmove values, the round
+timers — so anything past the cut silently never arrived.
+
+`Info_ValueForKey` already handles `BIG_INFO_STRING`, and `CS_SYSTEMINFO`
+already goes out that way, so the configstring path now uses
+`Cvar_InfoString_Big`. `SVC_Status` deliberately keeps the small builder: that
+reply goes to master servers and the browser in one out-of-band datagram and is
+capped there. The three ui buffers that copy CS_SERVERINFO were `MAX_INFO_STRING`
+and would have truncated it themselves; they are `BIG_INFO_STRING` now.
+
+### E22. Nobody froze in Freeze Tag — DONE (verify), second cause found
+**Update.** Wiring `Freeze_PlayerFrozen` into `player_die` was necessary but not
+sufficient — it still declined every freeze, because **the Freeze Tag round
+state machine was never started.**
+
+`G_InitGame`'s round-based switch had `case GT_RR: RR_InitRoundState()` and a
+bare `default:`. `GT_FREEZE` had no case, so `level.roundState` stayed
+zero-initialised: `eCurrent` RS_WARMUP, `tNext` 0. `Freeze_GetRoundState` only
+promotes `eNext` into `eCurrent` when `tNext` is non-zero, and all five
+`Freeze_RoundStateTransition` call sites are reachable only once the machine is
+already turning. It never turned.
+
+So `eCurrent` sat at RS_WARMUP for the whole match — through warmup, through
+"MATCH IN PROGRESS", through every kill — and `Freeze_PlayerFrozen` refuses
+unless it is RS_PLAYING. A declined freeze is an ordinary death, which is why it
+read as the freeze code being wrong rather than never reached.
+
+`Freeze_InitRoundState` now mirrors RR's: park in RS_WARMUP while warmup runs,
+otherwise drop into the countdown. `Freeze_Think` also kicks RS_WARMUP into
+RS_COUNTDOWN once warmup ends, since it returns early during warmup and nothing
+else would move it.
+
+`g_debugFreeze 1` traces every state transition and names the reason whenever a
+freeze is declined — same approach as `g_debugWarmup`.
+
+### E22-original. Nobody froze in Freeze Tag — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
 Players shot in Freeze Tag just died and respawned. No statue, no thawing.

@@ -937,6 +937,7 @@ int Freeze_GetRoundState(void);
 void Freeze_InstaKill(gentity_t *self, int mode);  // [QL] .so Freeze_InstaKill (0x76fa0); mode 1 = destroy frozen body (gib), mode 0 = auto-thaw respawn
 void Freeze_Think(void);
 void Freeze_ClientThawCheck(gentity_t *ent, int msec);  // [QL] msec = clamped pmove frame delta from ClientThink_real (binary 0x1004cdc0)
+void Freeze_InitRoundState(void);
 void Freeze_PlayerFrozen(gentity_t *self);
 void Freeze_AutoThaw(int team);   // [QL] 0x1004cca0 (twin of CA_PlayerKilled; last-man-standing announce)
 void G_ThrowFlag(gentity_t *self, vec3_t point);        // [QL] 0x10051420 (gauntlet flag toss, g_dropFlag)
@@ -1127,6 +1128,7 @@ extern vmCvar_t g_warmup;
 extern vmCvar_t g_doWarmup;
 extern vmCvar_t g_gameState;
 extern vmCvar_t g_debugWarmup;
+extern vmCvar_t g_debugFreeze;
 extern vmCvar_t bot_fillRate;
 extern vmCvar_t sv_warmupReadyPercentage;
 extern vmCvar_t g_warmupDelay;

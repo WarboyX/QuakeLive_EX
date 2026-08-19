@@ -660,7 +660,29 @@ void SV_SpawnServer(char* server, qboolean killBots) {
     cvar_modifiedFlags &= ~CVAR_SYSTEMINFO;
     SV_SetConfigstring(CS_SYSTEMINFO, systemInfo);
 
-    SV_SetConfigstring(CS_SERVERINFO, Cvar_InfoString(CVAR_SERVERINFO));
+    /*
+    [QL] Big buffer: this game's serverinfo does not fit in MAX_INFO_STRING.
+
+    The game module alone flags 45 cvars CVAR_SERVERINFO and the engine adds
+    more, which overruns the 1024-byte builder. Info_SetValueForKey then drops
+    every key that will not fit and prints "Info string length exceeded" - once
+    per key, on every rebuild, which is every time a serverinfo cvar changes:
+
+        Info string length exceeded          (x hundreds, between kills)
+
+    The dropped keys are the tail of the list, so g_levelStartTime was being cut
+    mid-key and everything after it never reached the client at all. The client
+    reads about thirty keys out of here - gametype, teamsize, the shotgun and
+    pmove values, the round timers - so losing the tail silently changes how the
+    client behaves.
+
+    Info_ValueForKey handles up to BIG_INFO_STRING, and CS_SYSTEMINFO already
+    goes out this way, so the configstring path can simply use the big builder.
+
+    SVC_Status keeps the small one on purpose: that reply goes to master servers
+    and the browser in a single out-of-band datagram, and is capped there.
+    */
+    SV_SetConfigstring(CS_SERVERINFO, Cvar_InfoString_Big(CVAR_SERVERINFO));
     cvar_modifiedFlags &= ~CVAR_SERVERINFO;
 
     // any media configstring setting now should issue a warning

@@ -155,8 +155,44 @@ qboolean Freeze_GameIsOver(int *aliveCounts, int *healthTotals) {
 // Freeze_RoundStateTransition
 //
 // Handle state transitions for Freeze Tag rounds.
+/*
+============================================================================
+Freeze_InitRoundState
+
+[QL] Start the Freeze Tag round machine.
+
+Nothing did. GT_RR gets RR_InitRoundState() from G_InitGame's round-based
+switch and GT_FREEZE had no case at all, so level.roundState stayed at its
+zero-initialised state: eCurrent RS_WARMUP, tNext 0. Freeze_GetRoundState only
+promotes eNext into eCurrent when tNext is non-zero, and every one of the five
+Freeze_RoundStateTransition call sites is reachable only once the machine is
+already turning. So it never turned.
+
+The visible result was that nobody froze. Freeze_PlayerFrozen refuses unless
+roundState.eCurrent is RS_PLAYING, and the state sat at RS_WARMUP for the whole
+match - through warmup, through "MATCH IN PROGRESS", through every kill. A
+declined freeze is an ordinary death, so it looked like the freeze code was
+wrong rather than never reached.
+
+Same shape as RR's: park in RS_WARMUP if warmup is running, otherwise drop
+straight into the countdown, and let the transition do the rest.
+============================================================================
+*/
+void Freeze_InitRoundState(void) {
+    level.roundState.tNext = 0;
+    level.roundState.eCurrent = (level.warmupTime == 0) ? RS_COUNTDOWN : RS_WARMUP;
+    Freeze_RoundStateTransition();
+    level.roundState.round = 0;
+}
+
 // ============================================================================
 void Freeze_RoundStateTransition(void) {
+    if (g_debugFreeze.integer) {
+        G_Printf("freeze round state: current %i, next %i, tNext %i, level.time %i\n",
+                 level.roundState.eCurrent, level.roundState.eNext,
+                 level.roundState.tNext, level.time);
+    }
+
     int i;
 
     if (level.roundState.tNext != 0) {
@@ -422,6 +458,17 @@ void Freeze_Think(void) {
 
     if (level.intermissionQueued || level.intermissionTime || level.warmupTime)
         return;
+
+    /*
+    [QL] Warmup has ended - this function returns above while it is running - but
+    the round machine is still parked in RS_WARMUP with no pending transition,
+    so nothing would ever move it. Kick it into the countdown, which is what
+    schedules RS_PLAYING.
+    */
+    if (level.roundState.eCurrent == RS_WARMUP && level.roundState.tNext == 0) {
+        level.roundState.eCurrent = RS_COUNTDOWN;
+        Freeze_RoundStateTransition();
+    }
 
     // [QL] keep the round clock frozen during a pause/timeout: the binary bumps
     // roundState.startTime by this frame's msec (level.frametime) while paused so
@@ -774,8 +821,29 @@ do_thaw:                                                       // 0x1004d19d
 // Called when a player is "killed" in Freeze Tag. Freezes them instead.
 // ============================================================================
 void Freeze_PlayerFrozen(gentity_t *self) {
-    if (level.roundState.eCurrent != RS_PLAYING)
+    /*
+    [QL] Say why a player did not freeze, when asked.
+
+    This is the one gate on the whole mechanic, and it is invisible from the
+    outside: a declined freeze looks exactly like an ordinary death, which is
+    what "nobody is freezing" reports as. g_debugFreeze 1 names the round state
+    instead of leaving it to be guessed at - same approach as g_debugWarmup,
+    which is what settled the match-never-starts bug.
+    */
+    if (level.roundState.eCurrent != RS_PLAYING) {
+        if (g_debugFreeze.integer) {
+            G_Printf("freeze declined for %s: roundState.eCurrent is %i, needs RS_PLAYING (%i) "
+                     "[warmupTime %i, intermission %i]\n",
+                     self->client->pers.netname, level.roundState.eCurrent, RS_PLAYING,
+                     level.warmupTime, level.intermissionTime);
+        }
         return;
+    }
+
+    if (g_debugFreeze.integer) {
+        G_Printf("freeze: %s frozen (thawtime %i)\n",
+                 self->client->pers.netname, g_freezeThawTime.integer);
+    }
 
     self->client->ps.stats[STAT_HEALTH] = 0;
     self->client->ps.pm_type = PM_FREEZE;
