@@ -33,8 +33,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define BASEGAME                "baseqz"  // [QL] protocol/game name (sent over network)
 #define BASEGAME_DIR            "baseq3"  // filesystem directory for game data
 #define CLIENT_WINDOW_TITLE     "Quake Live"
-#define HOMEPATH_NAME_UNIX      ".quakelive"
-#define HOMEPATH_NAME_WIN       "quakelive"
+// [QL] Our own home directory, not the Steam client's. The engine extracts the
+// game modules from iobin.pk3 into fs_homepath/baseq3 under the stock names, so
+// sharing this folder would let the Steam client load our cgame/qagame/ui. See
+// QZCONFIG_CFG in qcommon.h for the rest of the reasoning.
+#define HOMEPATH_NAME_UNIX      ".ioquakelive"
+#define HOMEPATH_NAME_WIN       "ioquakelive"
 #define HOMEPATH_NAME_MACOSX    HOMEPATH_NAME_WIN
 #define PROTOCOL_HANDLER        "quakelive"
 #define STEAMPATH_NAME			"Quake Live"

@@ -1307,7 +1307,14 @@ long FS_FOpenFileRead(const char* filename, fileHandle_t* file, qboolean uniqueF
 	if (!fs_searchpaths)
 		Com_Error(ERR_FATAL, "Filesystem call made without initialization");
 
-	isLocalConfig = !strcmp(filename, "autoexec.cfg") || !strcmp(filename, QZCONFIG_CFG);
+	// [QL] a config never comes out of a pk3. QL's own names are listed as well
+	// as ours: a pak that ships one is a pak trying to overwrite user settings,
+	// and that is worth refusing whichever client wrote the file.
+	isLocalConfig = !strcmp(filename, "autoexec.cfg") || !strcmp(filename, QZCONFIG_CFG) ||
+	                !strcmp(filename, QL_QZCONFIG_CFG) || !strcmp(filename, QL_REPCONFIG_CFG);
+#ifdef REPCONFIG_CFG
+	isLocalConfig = isLocalConfig || !strcmp(filename, REPCONFIG_CFG);
+#endif
 	for (search = fs_searchpaths; search; search = search->next) {
 		// autoexec.cfg and qzconfig.cfg can only be loaded outside of pk3 files.
 		if (isLocalConfig && search->pack)
@@ -3620,6 +3627,7 @@ static void FS_CopyFromSteam(void) {
 	char steamIdPath[MAX_OSPATH];
 	qboolean hasConfigs = qfalse;
 	char configFiles[4][MAX_OSPATH];
+	char configDests[4][MAX_OSPATH];
 	int numConfigs = 0;
 
 	// Only run on Windows, only if pak00.pk3 is missing
@@ -3641,10 +3649,32 @@ static void FS_CopyFromSteam(void) {
 	Com_sprintf(pak00Src, sizeof(pak00Src), "%s\\baseq3\\pak00.pk3", qlPath);
 	Com_Printf("Found Quake Live at: %s\n", qlPath);
 
-	// Check for user config files
+	/*
+	Check for user config files.
+
+	[QL] Copied under OUR names, not the ones they have in the Steam folder. The
+	source is read-only either way, but the destination matters: writing
+	qzconfig.cfg into fs_homepath used to mean a file the Steam client would exec
+	if the two ever shared that directory, and this is the one place we go
+	looking at its install, so it is the one place that has to be careful about
+	it. autoexec.cfg keeps its name - it is not a client's generated config, it
+	is the user's own script, and both clients read it by that name.
+
+	This runs once, when our config does not exist yet, so it is a starting point
+	rather than a link: settings changed here afterwards stay here.
+	*/
 	if (FS_FindSteamUserFolder(qlPath, steamIdPath, sizeof(steamIdPath))) {
-		static const char *cfgNames[] = {
-			"qzconfig.cfg", "repconfig.cfg", "autoexec.cfg"
+		static const char *cfgSrcNames[] = {
+			QL_QZCONFIG_CFG, QL_REPCONFIG_CFG, "autoexec.cfg"
+		};
+		static const char *cfgDstNames[] = {
+			QZCONFIG_CFG,
+#ifdef REPCONFIG_CFG
+			REPCONFIG_CFG,
+#else
+			QL_REPCONFIG_CFG,
+#endif
+			"autoexec.cfg"
 		};
 		int i;
 		char homeDest[MAX_OSPATH];
@@ -3652,13 +3682,14 @@ static void FS_CopyFromSteam(void) {
 		for (i = 0; i < 3; i++) {
 			char cfgSrc[MAX_OSPATH];
 			Com_sprintf(cfgSrc, sizeof(cfgSrc), "%s\\baseq3\\%s",
-			            steamIdPath, cfgNames[i]);
+			            steamIdPath, cfgSrcNames[i]);
 			if (FS_FileExistsOS(cfgSrc)) {
 				// Check if it already exists in homepath
 				Com_sprintf(homeDest, sizeof(homeDest), "%s\\%s\\%s",
-				            fs_homepath->string, BASEGAME_DIR, cfgNames[i]);
+				            fs_homepath->string, BASEGAME_DIR, cfgDstNames[i]);
 				if (!FS_FileExistsOS(homeDest)) {
 					Q_strncpyz(configFiles[numConfigs], cfgSrc, MAX_OSPATH);
+					Q_strncpyz(configDests[numConfigs], cfgDstNames[i], MAX_OSPATH);
 					numConfigs++;
 					hasConfigs = qtrue;
 				}
@@ -3728,9 +3759,10 @@ static void FS_CopyFromSteam(void) {
 			char dest[MAX_OSPATH];
 			const char *filename = strrchr(configFiles[i], '\\');
 			filename = filename ? filename + 1 : configFiles[i];
-			Com_sprintf(dest, sizeof(dest), "%s\\%s", homeDir, filename);
+			// [QL] destination name is ours, not the Steam client's
+			Com_sprintf(dest, sizeof(dest), "%s\\%s", homeDir, configDests[i]);
 			if (FS_CopyFileWithProgress(configFiles[i], dest, filename)) {
-				Com_Printf("  Copied %s\n", filename);
+				Com_Printf("  Copied %s -> %s\n", filename, configDests[i]);
 			} else {
 				Com_Printf("  WARNING: Failed to copy %s\n", filename);
 			}

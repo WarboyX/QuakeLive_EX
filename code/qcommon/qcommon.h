@@ -563,12 +563,39 @@ issues.
 #define FS_QAGAME_REF 0x08
 #define MAX_FILE_HANDLES 64
 
+/*
+[QL] Our own config names. These used to be QL's own - qzconfig.cfg and
+repconfig.cfg - written with QL's own header text.
+
+Sharing a filename with the Steam client is only safe while the two never share
+a directory, and there is no rule keeping them apart: fs_homepath is a cvar, our
+build is normally unpacked into a copy of a Quake Live install, and running it
+with fs_homepath pointing at that install puts our config exactly where the Steam
+client reads its own. It would then exec a file full of our cvars - the Vulkan
+renderer's r_* set, the cvars we have added that it has never heard of, and our
+values for the ones it shares.
+
+The same argument covers everything else we write into fs_homepath, which is why
+HOMEPATH_NAME_* moved too (q_shared.h): the engine extracts the game modules from
+iobin.pk3 into fs_homepath/baseq3 under the stock names - cgamex86_64.dll and
+friends - so a shared homepath would have the Steam client loading *our* game
+modules. That is the failure worth designing out, not just the config.
+
+Nothing here reads or writes QL's files any more, except FS_CopyFromSteam, which
+copies them in once as a starting point and only ever opens them for reading.
+*/
 #ifdef DEDICATED
-#define QZCONFIG_CFG "server.cfg"
+#define QZCONFIG_CFG "ioquakelive_server.cfg"
 #else
-#define QZCONFIG_CFG "qzconfig.cfg"
-#define REPCONFIG_CFG "repconfig.cfg"
+#define QZCONFIG_CFG "ioquakelive.cfg"
+#define REPCONFIG_CFG "ioquakelive_rep.cfg"
 #endif
+
+// [QL] the Steam client's equivalents, for the one-time import in
+// FS_CopyFromSteam and for the "never load a config out of a pk3" guard. Read
+// only - we never write to these.
+#define QL_QZCONFIG_CFG "qzconfig.cfg"
+#define QL_REPCONFIG_CFG "repconfig.cfg"
 
 qboolean FS_Initialized(void);
 
