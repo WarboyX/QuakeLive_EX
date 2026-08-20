@@ -493,44 +493,63 @@ Pos1 is "at rest", pos2 is "activated"
 SetMoverState
 ===============
 */
+/*
+[QL] One part, not the team. Reverted to the stock shape.
+
+This used to walk ent->teamchain itself, on the reasoning that setting every part
+STATIONARY at once stops G_MoverTeam re-firing reached() on the slaves. That was
+solving a problem that does not exist - G_MoverTeam's success loop already skips
+anything that is not TR_LINEAR_STOP - and it created a real one, which is the
+glitchy castle doors: never fully open or closed, with the travel percentage
+jumping about.
+
+Two callers make it wrong. Reached_BinaryMover calls SetMoverState directly (it
+is the *per part* latch: G_MoverTeam walks the team and calls reached() on each
+part whose own trTime + trDuration has elapsed, so every part latches itself).
+With the chain walk in here, whichever part finished first dragged every part
+after it to POS1/POS2 early - snapping a leaf that was still travelling - and
+then the parts behind it reached in turn and re-latched the whole team again,
+each time with a fresh trTime, re-firing sounds, re-adjusting the area portal and
+resetting the auto-close nextthink. That re-latching is the percentage jumping.
+Reached_Train calls it directly too, right after computing that entity's own
+trDuration, and the chain walk would apply that state to unrelated parts.
+
+Stock Q3 and Quake Live's own qagame both keep the iteration in MatchTeam, which
+is why the vanilla server does not show this and ours does.
+*/
 void SetMoverState(gentity_t* ent, moverState_t moverState, int time) {
     vec3_t delta;
     float f;
 
-    // [QL] SetMoverState walks the team chain itself (in Q3 the callers did this
-    // via MatchTeam).  Iterating here also stops G_MoverTeam from re-firing
-    // reached() on team slaves, since every part is set STATIONARY at once.
-    for (; ent; ent = ent->teamchain) {
-        ent->moverState = moverState;
+    ent->moverState = moverState;
 
-        ent->s.pos.trTime = time;
-        switch (moverState) {
-            case MOVER_POS1:
-                VectorCopy(ent->pos1, ent->s.pos.trBase);
-                ent->s.pos.trType = TR_STATIONARY;
-                break;
-            case MOVER_POS2:
-                VectorCopy(ent->pos2, ent->s.pos.trBase);
-                ent->s.pos.trType = TR_STATIONARY;
-                break;
-            case MOVER_1TO2:
-                VectorCopy(ent->pos1, ent->s.pos.trBase);
-                VectorSubtract(ent->pos2, ent->pos1, delta);
-                f = 1000.0 / ent->s.pos.trDuration;
-                VectorScale(delta, f, ent->s.pos.trDelta);
-                ent->s.pos.trType = TR_LINEAR_STOP;
-                break;
-            case MOVER_2TO1:
-                VectorCopy(ent->pos2, ent->s.pos.trBase);
-                VectorSubtract(ent->pos1, ent->pos2, delta);
-                f = 1000.0 / ent->s.pos.trDuration;
-                VectorScale(delta, f, ent->s.pos.trDelta);
-                ent->s.pos.trType = TR_LINEAR_STOP;
-                break;
-        }
-        BG_EvaluateTrajectory(&ent->s.pos, level.time, ent->r.currentOrigin);
-        trap_LinkEntity(ent);
+    ent->s.pos.trTime = time;
+    switch (moverState) {
+        case MOVER_POS1:
+            VectorCopy(ent->pos1, ent->s.pos.trBase);
+            ent->s.pos.trType = TR_STATIONARY;
+            break;
+        case MOVER_POS2:
+            VectorCopy(ent->pos2, ent->s.pos.trBase);
+            ent->s.pos.trType = TR_STATIONARY;
+            break;
+        case MOVER_1TO2:
+            VectorCopy(ent->pos1, ent->s.pos.trBase);
+            VectorSubtract(ent->pos2, ent->pos1, delta);
+            f = 1000.0 / ent->s.pos.trDuration;
+            VectorScale(delta, f, ent->s.pos.trDelta);
+            ent->s.pos.trType = TR_LINEAR_STOP;
+            break;
+        case MOVER_2TO1:
+            VectorCopy(ent->pos2, ent->s.pos.trBase);
+            VectorSubtract(ent->pos1, ent->pos2, delta);
+            f = 1000.0 / ent->s.pos.trDuration;
+            VectorScale(delta, f, ent->s.pos.trDelta);
+            ent->s.pos.trType = TR_LINEAR_STOP;
+            break;
     }
+    BG_EvaluateTrajectory(&ent->s.pos, level.time, ent->r.currentOrigin);
+    trap_LinkEntity(ent);
 }
 
 /*
@@ -538,12 +557,18 @@ void SetMoverState(gentity_t* ent, moverState_t moverState, int time) {
 MatchTeam
 
 All entities in a mover team will move from pos1 to pos2
-in the same amount of time.  [QL] SetMoverState now iterates the team itself,
-so this is a thin wrapper kept for the existing call sites.
+in the same amount of time.
+
+[QL] The iteration lives here again, which is where stock Q3 and Quake Live's
+qagame both keep it - see the note on SetMoverState for what moving it broke.
 ================
 */
 void MatchTeam(gentity_t* teamLeader, int moverState, int time) {
-    SetMoverState(teamLeader, moverState, time);
+    gentity_t* slave;
+
+    for (slave = teamLeader; slave; slave = slave->teamchain) {
+        SetMoverState(slave, moverState, time);
+    }
 }
 
 /*

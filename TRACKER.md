@@ -1735,6 +1735,53 @@ on**, covering cgame, ui and the game module at once.
 shipping** — that default is the only switch. The `MAX_REFENTITIES` warning is
 back to `PRINT_DEVELOPER` to match.
 
+### E37. Doors never fully open or close, travel percentage jumps — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported on the castle map: doors stuck part-open, rapidly shifting between
+percentages of travel. Two facts from testing narrowed it to one file — it
+happens with the **vanilla Steam client** (so not our rendering or
+interpolation), and it does **not** happen on the **vanilla Steam server**
+binary (so it is our `qagame`, and it is a divergence from QL's own).
+
+`SetMoverState` had been changed to walk `ent->teamchain` itself, with the
+reasoning that setting every part `STATIONARY` at once stops `G_MoverTeam`
+re-firing `reached()` on the slaves. That was solving a problem that does not
+exist — `G_MoverTeam`'s success loop already skips anything that is not
+`TR_LINEAR_STOP` — and it created this one.
+
+Two callers make it wrong:
+
+- **`Reached_BinaryMover`** calls `SetMoverState` directly, and it is the *per
+  part* latch. `G_MoverTeam` walks the team and calls `reached()` on each part
+  whose own `trTime + trDuration` has elapsed, so every part latches itself. With
+  the chain walk inside, whichever part finished first dragged every part after
+  it to `POS1`/`POS2` early — snapping a leaf that was still travelling — and
+  then the parts behind it reached in turn and re-latched the whole team again,
+  each time with a fresh `trTime`, re-firing sounds, re-adjusting the area portal
+  and resetting the auto-close `nextthink`. **That re-latching is the percentage
+  jumping**, and a part snapped early is the "not fully open or closed".
+- **`Reached_Train`** calls it directly too, immediately after computing that
+  entity's own `trDuration`, so the chain walk would apply one entity's state to
+  unrelated parts.
+
+Reverted to the stock shape: `SetMoverState` latches one part, `MatchTeam`
+iterates the team. That is what Quake 3 and Quake Live's `qagame` both do, which
+is exactly why the vanilla server does not show this.
+
+**Checked and cleared while in here**, so they do not get re-suspected:
+
+- `G_MoverTeam`'s blocked branch reads
+  `part->s.pos.trTime += level.time - (level.time - level.frametime)`, which
+  looks like a rewrite of stock's `level.time - level.previousTime`. It is
+  algebraically identical: `G_RunFrame` sets
+  `level.frametime = levelTime - level.time` *before* `level.time = levelTime`.
+- `Use_BinaryMover` matches stock exactly, including the partial-travel reversal
+  arithmetic.
+- `Blocked_Door` reversing on every blocked frame is stock behaviour and is not
+  the cause here; the spurious kamikaze shockwaves that were shoving players into
+  doorways are E32, already fixed.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
