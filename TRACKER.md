@@ -2042,6 +2042,53 @@ deliberately paints nothing. Removed rather than left sitting there: an unused
 static drawer reads like a slot still waiting to be wired up, which is exactly
 what `docs/stub-manifest.txt` exists to stop.
 
+### E42. Upstream review: ioquake3 fixes worth taking — SIX APPLIED
+**Lives in:** our **client and server** both · **Seen by:** varies, see each item
+
+We are standalone, not tracking ioq3. That makes upstream a source to *mine*
+rather than merge: reviewed ~490 commits touching `qcommon` / `server` /
+`client` / `sys`, checked each against this tree, took six.
+
+**Taken:**
+
+| ioq3 | What | Why here |
+|---|---|---|
+| `7d6350b` | `MAX_PATCH_PLANES` 2048 → 4096 | **Candidate fix for the "infinity" map crash (C-series).** Overflow is not graceful: `cm_patch.c:489/543` calls `Com_Error(ERR_DROP, "MAX_PATCH_PLANES")`, which on a server is a failed map change. Quake Live's maps carry far more curved geometry than Quake 3's, so 2048 is a Q3-era number applied to bigger maps. Needs testing on `infinity` to confirm. |
+| `1e30978` | `MSG_WriteBits` overflow flag off by one | `>` should be `>=`. At exactly `maxsize` the write proceeded and the overflow flag stayed clear, so the caller believed a truncated message was intact. Same class as R10. |
+| `a6f949c` | Stricter `Info_Validate` | Old check caught `"` and `;` only; everything below 0x20 passed, newline included, and an infostring is line-structured — a name carrying one can forge a line in anything that re-parses or logs it. |
+| `9c29b25` | `Info_RemoveKey` / `_Big` case-insensitive | They compared with `strcmp` while `Info_ValueForKey` reads with `Q_stricmp`. So `Info_SetValueForKey(s, "Name", …)` failed to remove an existing `\name\`, leaving two keys where readers see one — a userinfo-spoofing primitive. Both call sites now `Q_stricmp`. |
+| `8cc9eb5` | `Com_Filter` character classes after `*` | `*[abc]` silently matched nothing. Reaches `cmdlist`/`cvarlist` filters and `FS_` path filtering. |
+| `693c1f1` | `FS_CreatePath` null/empty guard | The loop starts at `OSPath[1]`, so an empty string was read past its terminator. Callers build the path from `fs_homepath`/`fs_game`, which can be empty. |
+
+The `Info_Validate` one is applied **with the rejection reason printed**, which
+upstream does not do. Its only caller drops the client with a flat "Invalid
+userinfo", and `Q_isprint` is 0x20..0x7E — so a client sending a high-byte name
+that Quake Live itself accepts would now be kicked here and nowhere else. That
+is the "Seen by: stock QL only" shape: invisible from our side, wrong for
+everyone else. The print is what makes it findable; relaxing the range to allow
+`>= 0x80` is the one-line answer if it ever fires in anger.
+
+**Deliberately not taken:**
+
+- `c3a2aa4` "Make con_* variables CVAR_ARCHIVE" — this is precisely the trap
+  CLAUDE.md records as having cost two rounds, `con_scale` among them. Archiving
+  a shipped default writes it into a config on first run and that config then
+  wins forever, so changing the default later does nothing. Upstream walking
+  into it does not make it right here.
+- `8dfedc6` / `d07bf88` "Remove architecture from binary filenames" /
+  `USE_ARCHLESS_FILENAMES` — the engine finds its modules as
+  `cgame{ARCH_STRING}{DLL_EXT}` inside `iobin.pk3`, and that naming is what lets
+  one pak serve every platform at one `sv_pure` checksum (E40). Taking this
+  would break that on purpose.
+- `3e0b279` / `0912659` / `858ccc9` / `2c91b38`, all the VM and JIT work — there
+  is no QVM layer in this tree at all.
+- `170a052` `MIN_COMHUNKMEGS = DEF_COMHUNKMEGS` and `7003c9d` `DEF_COMZONEMEGS`
+  24 → 48 — both already superseded here by R8, which sized these deliberately
+  against player count (`DEF_COMHUNKMEGS` 256, `DEF_COMZONEMEGS` 64).
+- `2d7100d` HTTP download shutdown ordering — no `USE_HTTP` build here.
+- `56f9f94` `SV_RehashBans_f` running with no server — this tree never had the
+  guard, so there is nothing to remove.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 

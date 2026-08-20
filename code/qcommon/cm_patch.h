@@ -60,7 +60,12 @@ properly.
 */
 
 #define MAX_FACETS 1024
-#define MAX_PATCH_PLANES 2048
+/* [QL] 2048 upstream until ioq3 7d6350b raised it to 4096. Quake Live's maps
+   carry far more curved geometry than Quake 3's, and overflowing this is not a
+   graceful degradation - cm_patch.c aborts the map load outright with
+   Com_Error(ERR_DROP, "MAX_PATCH_PLANES"), which on a server is a failed map
+   change rather than a warning. */
+#define MAX_PATCH_PLANES 4096
 
 typedef struct {
     float plane[4];

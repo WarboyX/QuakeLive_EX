@@ -507,6 +507,13 @@ qboolean FS_CreatePath(char* OSPath) {
 	char* ofs;
 	char path[MAX_OSPATH];
 
+	// [QL] ioq3 693c1f1. Several callers build this path out of cvars
+	// (fs_homepath, fs_game) that can be empty, and the loop below starts at
+	// OSPath[1] - so an empty string was read past its own terminator.
+	if (!OSPath || !*OSPath) {
+		return qfalse;
+	}
+
 	// make absolutely sure that it can't back up the path
 	// FIXME: is c: allowed???
 	if (strstr(OSPath, "..") || strstr(OSPath, "::")) {
