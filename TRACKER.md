@@ -2157,6 +2157,58 @@ proportion to framerate" is exactly the shape E39 describes and this is the one
 mechanism in the engine that could produce it. It is disarmed today — and
 lifting the fps ceiling is precisely what would arm it.
 
+### E44. No way to change team from the in-game menu — DONE (verify)
+**Lives in:** our **client** (ui) · **Seen by:** our client only
+
+The in-game menu had no JOIN RED / JOIN BLUE / SPECTATE, so a player who did not
+know to type `cmd team r` into the console was stuck on whatever team they were
+first put on. Quake Live has these on the Current Match page.
+
+**The server side was never the problem.** `Cmd_Team_f` takes `r`/`red`,
+`b`/`blue`, `s`/`spectator` and `free`, and enforces its own rules — the
+five-second switch limit, team lock, the duel loss. These buttons are ordinary
+client commands, not a new code path.
+
+**`ui/io_teamselect.menu`** (new, in pak01) is the panel: red, blue, spectate and
+an auto-join, placed where Quake Live puts the same column. It is ours rather
+than an edit to Quake Live's `ui/ingame_join.menu` because pak00 is not ours to
+ship or modify. `ui/io_ingame.txt` lists it and `UI_LoadExtraMenus` reads that
+after Quake Live's own `ui/ingame.txt`, so our menus sit alongside theirs — a
+replacement `ingame.txt` would drop every menu it lists. The loader is separate
+from `UI_LoadMenus` because that one falls back to `ui/menus.txt` when a file is
+missing, which for an *addition* would silently load the whole main set a second
+time and give two of every menu.
+
+**Two ordering facts that decide whether this works, and are easy to get
+backwards:**
+
+- *Paint* order is load order — `Menu_PaintAll` walks the array. Ours loads after
+  Quake Live's set, so it paints on top however it is activated.
+- *Activation* order decides only `WINDOW_HASFOCUS`, and the focused menu is the
+  one that answers keyboard input including `onESC`. So the panel is activated
+  **first** and the page after it, leaving focus where it was: Escape and the
+  tabs behave exactly as before.
+
+**`Display_CaptureItem` had to be fixed for the panel to be clickable at all**,
+and the bug it had is general. It decides which menu a click goes to, and it
+walked *forwards* and ignored `WINDOW_VISIBLE`:
+
+- a **closed** menu still caught clicks — its rect is whatever it was when last
+  open, so a hidden menu over the cursor swallowed the click and the visible menu
+  underneath never saw it;
+- a panel over a full-screen menu was **unclickable**, because the earlier (lower)
+  menu won, so anything overlaying a full-screen page could be seen and not
+  pressed.
+
+It now walks backwards and skips menus that are not visible, so the pick agrees
+with the paint: last painted is topmost is what you clicked. This changes click
+routing for every menu in the game, which is worth watching for regressions —
+but "topmost visible wins" is strictly more correct than "first loaded wins,
+visible or not".
+
+**Not done:** the rest of the Current Match page — the tabs, server settings,
+starting weapons, RETURN to MATCH. This is the team buttons only.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 

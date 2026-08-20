@@ -807,6 +807,45 @@ void UI_LoadMenus(const char* menuFile, qboolean reset) {
     trap_PC_FreeSource(handle);
 }
 
+/*
+=================
+UI_LoadExtraMenus
+
+[QL] Load one of our own menu files into the current set.
+
+UI_LoadMenus falls back to ui/menus.txt when the file it was asked for is
+missing, which is right for the primary set and wrong for an addition: a
+mistyped or absent extra file would silently load the whole main menu set a
+second time, giving two of every menu and Menus_FindByName resolving to
+whichever came first. This does nothing when the file is not there, and says so.
+=================
+*/
+static void UI_LoadExtraMenus(const char* menuFile) {
+    pc_token_t token;
+    int handle;
+
+    handle = trap_PC_LoadSource(menuFile);
+    if (!handle) {
+        Com_Printf(S_COLOR_YELLOW "extra menu file not found: %s\n", menuFile);
+        return;
+    }
+
+    while (1) {
+        if (!trap_PC_ReadToken(handle, &token))
+            break;
+        if (token.string[0] == 0 || token.string[0] == '}') {
+            break;
+        }
+        if (Q_stricmp(token.string, "loadmenu") == 0) {
+            if (!Load_Menu(handle)) {
+                break;
+            }
+        }
+    }
+
+    trap_PC_FreeSource(handle);
+}
+
 void UI_Load(void) {
     char lastName[1024];
     menuDef_t* menu = Menu_GetFocused();
@@ -4889,6 +4928,8 @@ void _UI_Init(qboolean inGameLoad) {
 
     UI_LoadMenus(menuSet, qtrue);
     UI_LoadMenus("ui/ingame.txt", qfalse);
+    // [QL] ours, after Quake Live's - see ui/io_ingame.txt
+    UI_LoadExtraMenus("ui/io_ingame.txt");
 
     Menus_CloseAll();
 
@@ -5051,6 +5092,26 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 trap_Key_SetCatcher(KEYCATCH_UI);
                 UI_BuildPlayerList();
                 Menus_CloseAll();
+                /*
+                [QL] The team buttons.
+
+                Without these the in-game menu offers no way to change team at
+                all - a player who does not know to type "cmd team r" into the
+                console is stuck wherever they were put. Quake Live has them on
+                this page; ours is a panel of our own (ui/io_teamselect.menu)
+                because pak00 is not ours to edit.
+
+                Activated *first*, not last, and the distinction matters. What it
+                paints on top of is decided by load order - Menu_PaintAll walks
+                the array, ours is loaded after Quake Live's ingame set, so it
+                paints last either way. What activation order decides is which
+                menu ends up with WINDOW_HASFOCUS, and that is the one that
+                answers keyboard input including onESC. Leaving focus on the page
+                itself keeps Escape and the tabs behaving exactly as before;
+                clicks still reach our panel, because Display_CaptureItem picks
+                the topmost visible menu under the cursor.
+                */
+                Menus_ActivateByName("io_teamselect");
                 Menus_ActivateByName("ingame");
                 Menus_ActivateByName("ingame_about");
                 return;

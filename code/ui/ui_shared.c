@@ -7130,9 +7130,30 @@ displayContextDef_t* Display_GetContext(void) {
 void* Display_CaptureItem(int x, int y) {
     int i;
 
-    for (i = 0; i < menuCount; i++) {
-        // turn off focus each item
-        // menu->items[i].window.flags &= ~WINDOW_HASFOCUS;
+    /*
+    [QL] Topmost *visible* menu under the cursor, not the first one loaded.
+
+    This decides which menu a click is delivered to (Display_HandleKey), and it
+    used to walk forwards and ignore WINDOW_VISIBLE entirely. Two consequences,
+    both wrong:
+
+      - A closed menu still caught clicks. Its rect is whatever it was when it
+        was last open, and nothing here asked whether it was on screen, so a
+        hidden menu covering the cursor swallowed the click and the visible menu
+        underneath never saw it.
+
+      - A panel drawn on top of a full-screen menu was unclickable. Menu_PaintAll
+        paints in array order, so a menu loaded later paints on top - but this
+        returned the earlier one, i.e. the one underneath. Anything overlaying a
+        full-screen page could be seen and not pressed.
+
+    Walking backwards makes the pick agree with the paint: last painted is
+    topmost is what you clicked on.
+    */
+    for (i = menuCount - 1; i >= 0; i--) {
+        if (!(Menus[i].window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+            continue;
+        }
         if (Rect_ContainsWidescreenPoint(&Menus[i].window.rect, x, y, Menus[i].widescreen)) {
             return &Menus[i];
         }
