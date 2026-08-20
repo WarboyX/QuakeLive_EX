@@ -2385,6 +2385,38 @@ the alpha byte is copied straight through. scale is 2 when r_colorCorrectActive 
 otherwise 1 (a brighten-only step), matching Color_UnpackScale at 0x10057740.
 ==============
 */
+/*
+[QL] A tint whose alpha byte is zero draws nothing.
+
+These colours are packed 0xRRGGBBAA and they land in shaderRGBA, so alpha 00
+means a fully transparent player - no error, no warning, just an invisible
+opponent. That is reachable by ordinary means: every cg_*Color cvar here is
+CVAR_ARCHIVE, so whatever value a config picked up once wins forever afterwards
+(the trap in CLAUDE.md), and a config written by a build with a different default
+keeps applying it long after the default changed. It also survives every
+reinstall, because it lives in the user's config rather than the game.
+
+So zero alpha is treated as "no value" and the shipped default is used instead,
+with one line saying which cvar it was. Nobody wants an invisible player; if
+somebody genuinely does, alpha 01 is indistinguishable and passes.
+*/
+static int CG_ValidTeamSkinColor(vmCvar_t* cv, const char* name, int fallback) {
+    static int warned;
+
+    if ((cv->integer & 0xff) != 0) {
+        return cv->integer;
+    }
+
+    if (!(warned & 1)) {
+        warned |= 1;
+        CG_Printf(S_COLOR_YELLOW "WARNING: %s is 0x%08x - alpha 0 draws players fully "
+                  "transparent. Using the default 0x%08x instead. It is an archived cvar, so "
+                  "the value came from your config, not from this build.\n",
+                  name, cv->integer, fallback);
+    }
+    return fallback;
+}
+
 static void Color_UnpackScale(refEntity_t* ent, int packed, int scale) {
     int c;
 
@@ -2413,6 +2445,7 @@ static void CG_PlayerTeamSkins(centity_t* cent, refEntity_t* legs, refEntity_t* 
     int playerTeam;
     qboolean useEnemy;
     int scale;
+    int legsDefault, torsoDefault, headDefault;
     vmCvar_t *legsColor, *torsoColor, *headColor;
 
     specTeam = cgs.clientinfo[cg.snap->ps.clientNum].team;
@@ -2448,9 +2481,10 @@ static void CG_PlayerTeamSkins(centity_t* cent, refEntity_t* legs, refEntity_t* 
 
     // dead bodies are darkened with cg_deadBodyColor rather than team-tinted.
     if (cg_deadBodyDarken.integer && (cent->currentState.eFlags & EF_DEAD)) {
-        Color_UnpackScale(legs, cg_deadBodyColor.integer, scale);
-        Color_UnpackScale(torso, cg_deadBodyColor.integer, scale);
-        Color_UnpackScale(head, cg_deadBodyColor.integer, scale);
+        int dead = CG_ValidTeamSkinColor(&cg_deadBodyColor, "cg_deadBodyColor", 0x101010FF);
+        Color_UnpackScale(legs, dead, scale);
+        Color_UnpackScale(torso, dead, scale);
+        Color_UnpackScale(head, dead, scale);
         return;
     }
 
@@ -2458,11 +2492,34 @@ static void CG_PlayerTeamSkins(centity_t* cent, refEntity_t* legs, refEntity_t* 
         legsColor = &cg_enemyLowerColor;
         torsoColor = &cg_enemyUpperColor;
         headColor = &cg_enemyHeadColor;
+        legsDefault = torsoDefault = headDefault = 0x2a8000FF;
     } else {
         legsColor = &cg_teamLowerColor;
         torsoColor = &cg_teamUpperColor;
         headColor = &cg_teamHeadColor;
+        legsDefault = torsoDefault = headDefault = 0x808080FF;
     }
+
+    /*
+    [QL] Catch an alpha-zero tint before it hides the player.
+
+    The existing test below covers a colour that is entirely zero, but not one
+    with real RGB and no alpha - and that is the shape a plausible config value
+    takes. These cvars are packed 0xRRGGBBAA; write the colour the natural way,
+    as six hex digits, and "0x2a8000" parses to 0x002a8000, which is alpha 00.
+    The player then draws fully transparent with nothing said anywhere.
+
+    Because the cvars are CVAR_ARCHIVE, a value like that survives in the user's
+    config indefinitely and follows them across builds. Falling back to the
+    shipped default - and naming the cvar once - turns an invisible-opponent bug
+    into a line in the console.
+    */
+    legsColor->integer = CG_ValidTeamSkinColor(legsColor,
+        useEnemy ? "cg_enemyLowerColor" : "cg_teamLowerColor", legsDefault);
+    torsoColor->integer = CG_ValidTeamSkinColor(torsoColor,
+        useEnemy ? "cg_enemyUpperColor" : "cg_teamUpperColor", torsoDefault);
+    headColor->integer = CG_ValidTeamSkinColor(headColor,
+        useEnemy ? "cg_enemyHeadColor" : "cg_teamHeadColor", headDefault);
 
     // a zero (unparsed/cleared) colour leaves the part untinted white rather than black.
     if (legsColor->integer == 0) {

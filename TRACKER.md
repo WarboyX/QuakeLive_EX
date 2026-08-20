@@ -1612,6 +1612,57 @@ bad stair movement, so retest after the kamikaze fix.
 **Not settled — crash on "infinity".** Needs the server console output or
 `crashlog.txt`. Nothing to go on otherwise.
 
+### E35. Player rendering review — findings
+**Lives in:** our **client** (cgame + renderervk) · **Seen by:** our client only
+
+Requested review of the player render and entity paths before testing. Three
+findings, two acted on, plus one correction to something I said earlier.
+
+**Correction first.** I claimed a floating name proved `ci->legsModel` was
+non-zero, because `CG_Player` returns early when it is 0. That was wrong: the
+name comes from `CG_DrawCrosshairNames`, which reads `cg.crosshairClientNum` from
+a **trace** (cg_draw.c) and looks up `clientinfo[].name`. It never touches the
+model. So a name over an invisible player says nothing either way.
+
+**1. Alpha-zero team tint hides players silently — fixed.**
+`CG_PlayerTeamSkins` runs for every player in every gametype and writes
+`shaderRGBA` from packed `0xRRGGBBAA` cvars. There was a guard for a colour that
+is *entirely* zero (falls back to white) but not for one with real RGB and no
+alpha — and that is the shape a plausible config value takes: write the colour
+the natural way as six hex digits and `0x2a8000` parses to `0x002a8000`, alpha
+`00`, a fully transparent player with nothing said anywhere.
+
+Every one of these cvars is `CVAR_ARCHIVE` — the trap in CLAUDE.md — so such a
+value lives in the user's config and follows them across builds and reinstalls,
+long after the shipped default changed. It also fits "*most* players are
+invisible" exactly: team and enemy colours are separate cvars, so one bad value
+hides one side only.
+
+`CG_ValidTeamSkinColor` now treats alpha 0 as "no value", falls back to the
+shipped default, and names the cvar once.
+
+**2. Dropped scene entities were developer-only — fixed.**
+`RE_AddRefEntityToScene` drops everything past `MAX_REFENTITIES` (1023) with a
+`PRINT_DEVELOPER` line, i.e. invisible unless someone has already guessed the
+cause. The symptom is things missing from the scene with no explanation. Now a
+rate-limited `PRINT_WARNING` with a running count. It matters more than it did: a
+frozen player costs three refEntities per model part rather than one (model, ice
+coat, animated overlay), and every powerup shell is another pass.
+
+**3. Snapshot entity drops are already instrumented — no change.**
+`SV_AddEntToSnapshot` warns every 10 s with a count once `MAX_SNAPSHOT_ENTITIES`
+(256) is hit, which is the server-side version of the same failure. Worth knowing
+the ordering: `SV_AddEntitiesVisibleFromPoint` walks entities in number order and
+clients occupy 0..maxclients-1, so players are added first and are the *last*
+thing to be dropped. That is ordering luck rather than design, but it does mean
+snapshot overflow shows up as missing items before missing players.
+
+**Not a finding, but where to look next if the tint is not it:** `CG_Player`
+gates on `cent->currentState.number == cg.snap->ps.clientNum` for
+`RF_THIRD_PERSON`. That is correct while following (the followed player *should*
+be hidden in first person), but it is the one remaining path that hides a
+specific player rather than all of them.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
