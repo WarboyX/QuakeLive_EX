@@ -185,6 +185,46 @@ int Sys_Milliseconds(void) {
 }
 
 /*
+================
+Sys_Microseconds
+
+[QL] Monotonic microsecond clock, for the frame limiter only - see the
+com_framePacing block in Com_Frame. Deliberately NOT a finer Sys_Milliseconds:
+the engine's whole time base (cls.realtime, cl.serverTime, cg.time, level.time,
+and serverTime on the wire) is integer milliseconds, and this does not change
+that. It exists so the loop can sleep for the right *fraction* of a millisecond
+instead of rounding the interval to a whole one.
+
+CLOCK_MONOTONIC rather than gettimeofday because this is used for intervals, and
+gettimeofday jumps when the system clock is set.
+================
+*/
+int64_t Sys_Microseconds(void) {
+    static int64_t base = 0;
+    int64_t now;
+
+#ifdef CLOCK_MONOTONIC
+    struct timespec ts;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        now = (int64_t)ts.tv_sec * 1000000LL + (int64_t)ts.tv_nsec / 1000LL;
+    } else
+#endif
+    {
+        struct timeval tv;
+
+        gettimeofday(&tv, NULL);
+        now = (int64_t)tv.tv_sec * 1000000LL + (int64_t)tv.tv_usec;
+    }
+
+    if (base == 0) {
+        base = now;
+    }
+
+    return now - base;
+}
+
+/*
 ==================
 Sys_RandomBytes
 ==================

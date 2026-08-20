@@ -1051,6 +1051,11 @@ void Sys_Print(const char* msg);
 // any game related timing information should come from event timestamps
 int Sys_Milliseconds(void);
 
+// [QL] Monotonic microsecond clock. For the frame limiter only - the engine's
+// time base is integer milliseconds everywhere else, on the wire included, and
+// this does not change that. See the com_framePacing block in Com_Frame.
+int64_t Sys_Microseconds(void);
+
 qboolean Sys_RandomBytes(byte* string, int len);
 
 cpuFeatures_t Sys_GetProcessorFeatures(void);

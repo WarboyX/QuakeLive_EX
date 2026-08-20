@@ -209,6 +209,46 @@ int Sys_Milliseconds(void) {
 
 /*
 ================
+Sys_Microseconds
+
+[QL] Monotonic microsecond clock, for the frame limiter only - see the
+com_framePacing block in Com_Frame. Deliberately NOT a finer Sys_Milliseconds:
+the engine's whole time base (cls.realtime, cl.serverTime, cg.time, level.time,
+and serverTime on the wire) is integer milliseconds, and this does not change
+that. It exists so the loop can sleep for the right *fraction* of a millisecond
+instead of rounding the interval to a whole one.
+
+QueryPerformanceCounter rather than timeGetTime, which is what Sys_Milliseconds
+uses: timeGetTime's resolution is the system timer period - 1ms at best, and
+~15.6ms if nothing has called timeBeginPeriod - so it cannot measure the
+interval this needs to measure.
+================
+*/
+int64_t Sys_Microseconds(void) {
+    static LARGE_INTEGER freq;
+    static LARGE_INTEGER base;
+    LARGE_INTEGER now;
+
+    if (freq.QuadPart == 0) {
+        if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0) {
+            // No high-resolution counter. Fall back to the millisecond clock;
+            // the limiter then behaves exactly as it did before com_framePacing.
+            freq.QuadPart = 0;
+            return (int64_t)Sys_Milliseconds() * 1000LL;
+        }
+        QueryPerformanceCounter(&base);
+    }
+
+    QueryPerformanceCounter(&now);
+
+    // Scale before dividing would overflow after ~29 minutes at a 10MHz
+    // counter, so split the difference: whole seconds and remainder.
+    return ((now.QuadPart - base.QuadPart) / freq.QuadPart) * 1000000LL +
+           (((now.QuadPart - base.QuadPart) % freq.QuadPart) * 1000000LL) / freq.QuadPart;
+}
+
+/*
+================
 Sys_RandomBytes
 ================
 */

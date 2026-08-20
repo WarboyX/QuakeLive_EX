@@ -2089,6 +2089,74 @@ everyone else. The print is what makes it findable; relaxing the range to allow
 - `56f9f94` `SV_RehashBans_f` running with no server — this tree never had the
   guard, so there is nothing to remove.
 
+### E43. The 1000 fps ceiling is the clock, not a limiter — EXPLAINED + PACING FIXED
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+Reported as "there seems to be a hard fps cap of 1000". It is real, it is exact,
+and `com_maxfps 0` does not mean unlimited — it means 1000.
+
+**Where it comes from.** `Com_Frame` sleeps until `minMsec` has elapsed, and
+`minMsec` is floored at 1 (`common.c`, the `minMsecFrac` block). `Com_TimeVal`
+measures with `Sys_Milliseconds`, which is integer milliseconds. One frame per
+millisecond is therefore the ceiling, on every path — `com_maxfps 0`,
+`com_maxfps 2000` and `com_timedemo` all land on `minMsec = 1`.
+
+**Why it must stay.** This is the part that matters, because the floor looks
+like an arbitrary limiter and is not. Follow the time base:
+
+```
+Com_ModifyMsec:  if (msec < 1 && com_timescale->value) msec = 1;
+CL_Frame:        cls.frametime = msec;  cls.realtime += cls.frametime;
+CL_SetCGameTime: cl.serverTime = cls.realtime + cl.serverTimeDelta - tn;
+cgame:           cg.time = serverTime  ->  refdef.time  ->  tess.shaderTime
+```
+
+`com_timescale` defaults to 1, so that first line is always live: **a frame that
+took less than a millisecond still reports one.** Let frames through at 2000 fps
+and `cls.realtime` gains two milliseconds per millisecond of wall clock, so
+`cl.serverTime` does, so `cg.time` does — and the entire game runs at double
+speed, shader animation included. The millisecond floor on `minMsec` is the only
+thing preventing that.
+
+Raising the ceiling properly means moving `cls.realtime` / `cl.serverTime` /
+`cg.time` / `level.time` to microseconds. `serverTime` is on the wire in
+snapshots, so that is a protocol change — the same "deliberate protocol fork, not
+a one-line change" verdict as E3, and for the same reason. Not attempted.
+
+**What was wrong underneath it, and is now fixed: pacing.** Because
+`Com_TimeVal` can only measure whole milliseconds, every frame boundary landed
+on a millisecond edge. For a rate dividing 1000 that is exact; for anything else
+the loop alternated between two whole intervals — 240 fps wants 4.167ms and got
+4,4,4,4,5. The `minMsecFrac` carry already fixed the *average* rate (that was the
+`com_maxfps 210` and `240` both reading 250 bug); it could not fix the frame-to-
+frame spacing, because there was no sub-millisecond sleep to give.
+
+`Sys_Microseconds()` is new — `clock_gettime(CLOCK_MONOTONIC)` on unix,
+`QueryPerformanceCounter` on Windows, with a `Sys_Milliseconds` fallback if there
+is no high-resolution counter. Note Windows needed a different clock rather than
+a finer read of the old one: `Sys_Milliseconds` there is `timeGetTime`, whose
+resolution is the system timer period — 1ms at best, ~15.6ms if nothing has
+called `timeBeginPeriod`.
+
+`com_framePacing` (default 1) switches the limiter to it. At 240 fps the interval
+is now 4166us against an ideal 4166.67 — out by 0.16us per frame where the
+millisecond loop was out by up to 833us. `NET_Sleep` still takes whole
+milliseconds, so it covers the millisecond part and the sub-millisecond
+remainder is spun, at most 1ms of spin per frame. Set `com_framePacing 0` to get
+the old loop back if that spin costs more than the smoothness is worth.
+
+**Only the sleep changed.** `msec` is still derived from `Sys_Milliseconds`
+below, so `cls.realtime`, `cl.serverTime`, `cg.time` and `level.time` still
+advance in whole milliseconds exactly as before, and nothing on the wire moves.
+
+**Bearing on E39.** This is not the animated-texture bug, and checking ruled it
+out rather than confirming it: because `minMsec` is floored at 1, `msec` is never
+0 in the current code, so `Com_ModifyMsec`'s floor never fires and `cls.realtime`
+never outruns the wall clock. Worth stating explicitly, since "time runs fast in
+proportion to framerate" is exactly the shape E39 describes and this is the one
+mechanism in the engine that could produce it. It is disarmed today — and
+lifting the fps ceiling is precisely what would arm it.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
@@ -3929,6 +3997,7 @@ compiler warnings in engine code).
 |---|---|---|
 | `cg_debugShotgun 1` | client, in-map | Per blast: fire direction vs view axis, muzzle vs camera, resolved pattern parameters, pellet spread off the crosshair |
 | `r_shaderTimeSource 0/1` | client, in-map | Switches shader animation between scene time (`cg.time`) and the real-time clock. If 1 is steady where 0 is not, uneven animation is `cg.time`, not the renderer (E39) |
+| `com_framePacing 0/1` | client | Frame limiter ruler: 1 sleeps in microseconds (even spacing at any rate), 0 is the old whole-millisecond loop. Does not change the 1000 fps ceiling — see E43 for why that is the clock and not a limiter |
 | `menu_open <name>` | client | Opens any loaded menu by name |
 | `menu_close <name>` | client | Closes it |
 | `ui_report` | client | Dumps menu/item state |

@@ -95,6 +95,7 @@ cvar_t* com_protocol;
 cvar_t* com_basegame;
 cvar_t* com_homepath;
 cvar_t* com_busyWait;
+cvar_t* com_framePacing;
 #ifndef DEDICATED
 cvar_t* con_autochat;
 cvar_t* cl_allowConsoleChat;
@@ -2527,6 +2528,15 @@ void Com_Init(char* commandLine) {
     com_maxfpsMinimized = Cvar_Get("com_maxfpsMinimized", "0", CVAR_ARCHIVE);
     com_abnormalExit = Cvar_Get("com_abnormalExit", "0", CVAR_ROM);
     com_busyWait = Cvar_Get("com_busyWait", "0", CVAR_ARCHIVE);
+
+    /* [QL] Sleep the frame limiter on a microsecond ruler rather than a whole
+       millisecond one - see the block in Com_Frame. On by default because the
+       millisecond loop can only place frame boundaries on millisecond edges, so
+       every rate that does not divide 1000 alternates between two intervals.
+       Set to 0 to get the old loop back if the spin cost matters. Not
+       CVAR_ARCHIVE: this is our default, not the user's setting, and archiving
+       a shipped default stops the default applying (CLAUDE.md). */
+    com_framePacing = Cvar_Get("com_framePacing", "1", 0);
     Cvar_Get("com_errorMessage", "", CVAR_ROM | CVAR_NORESTART);
 
     s = va("%s %s %s", FULL_PRODUCT_VERSION, PLATFORM_STRING, PRODUCT_DATE);
@@ -2862,12 +2872,36 @@ int Com_TimeVal(int minMsec) {
 
 /*
 =================
+Com_TimeValUsec
+
+[QL] Com_TimeVal in microseconds. Same shape, finer ruler - returns how long is
+left before the next frame is due, or 0 if it is due now.
+=================
+*/
+static int64_t com_frameTimeUsec;
+
+static int64_t Com_TimeValUsec(int64_t minUsec) {
+    int64_t timeVal;
+
+    timeVal = Sys_Microseconds() - com_frameTimeUsec;
+
+    if (timeVal >= minUsec)
+        return 0;
+
+    return minUsec - timeVal;
+}
+
+/*
+=================
 Com_Frame
 =================
 */
 void Com_Frame(void) {
     int msec, minMsec;
     int timeVal, timeValSV;
+    // [QL] the requested rate, hoisted out of the branch below so the
+    // microsecond limiter can derive its interval straight from it.
+    int targetFpsUsec = 0;
     static int lastTime = 0, bias = 0;
     static float minMsecFrac = 0.0f;
 
@@ -2918,6 +2952,8 @@ void Com_Frame(void) {
             else
                 targetFps = 0;
 
+            targetFpsUsec = targetFps;
+
             // [QL] Carry the fractional millisecond instead of truncating it.
             //
             // This was minMsec = 1000 / fps in whole milliseconds, so the only
@@ -2964,22 +3000,91 @@ void Com_Frame(void) {
     } else
         minMsec = 1;
 
-    do {
-        if (com_sv_running->integer) {
-            timeValSV = SV_SendQueuedPackets();
+    /*
+    [QL] com_framePacing - sleep on a microsecond ruler instead of a whole
+    millisecond one.
 
-            timeVal = Com_TimeVal(minMsec);
+    Com_TimeVal measures with Sys_Milliseconds, so the shortest interval it can
+    express is 1ms and every frame boundary lands on a millisecond edge. For a
+    rate that divides 1000 that is exact; for anything else the loop alternates
+    between two whole milliseconds. 240 fps wants 4.167ms and gets 4,4,4,4,5 -
+    right on average, uneven frame to frame, and it is the unevenness you see.
+    The minMsecFrac carry above fixes the *average* rate; this fixes the pacing.
 
-            if (timeValSV < timeVal)
-                timeVal = timeValSV;
-        } else
-            timeVal = Com_TimeVal(minMsec);
+    Only the sleep changes. msec is still Sys_Milliseconds-derived below, so
+    cls.realtime, cl.serverTime, cg.time and level.time all still advance in
+    whole milliseconds exactly as before, and nothing on the wire moves.
 
-        if (com_busyWait->integer || timeVal < 1)
-            NET_Sleep(0);
-        else
-            NET_Sleep(timeVal - 1);
-    } while (Com_TimeVal(minMsec));
+    THIS DOES NOT RAISE THE 1000 FPS CEILING, AND MUST NOT.
+
+    That ceiling is the clock, not a policy. Com_ModifyMsec floors msec at 1
+    whenever com_timescale is non-zero (it defaults to 1), so a frame that took
+    less than a millisecond still reports one. cls.realtime is a running sum of
+    those, cl.serverTime is cls.realtime + serverTimeDelta, and cg.time follows -
+    so at 2000 fps the client's sense of time would advance two milliseconds per
+    millisecond of wall clock and the whole game, shader animation included,
+    would run at double speed. The millisecond floor on minMsec is what stops
+    that, which is why it stays even here.
+    */
+    if (!com_dedicated->integer && !com_timedemo->integer && com_framePacing->integer) {
+        int64_t minUsec = (int64_t)minMsec * 1000;
+        int64_t timeValUsec;
+
+        if (targetFpsUsec > 0) {
+            // Whole microseconds straight from the target rate. At 240 fps that
+            // is 4166us against an ideal 4166.67 - a 0.16us error per frame,
+            // where the millisecond loop was out by up to 833us.
+            minUsec = 1000000 / targetFpsUsec;
+
+            // Carry the same overrun correction the millisecond path uses, so a
+            // frame that took too long does not push the average rate down.
+            minUsec -= (int64_t)bias * 1000;
+            if (minUsec < 1000) {
+                minUsec = 1000;  // the 1000 fps ceiling above, in microseconds
+            }
+        }
+
+        do {
+            if (com_sv_running->integer) {
+                timeValSV = SV_SendQueuedPackets();
+                timeValUsec = Com_TimeValUsec(minUsec);
+
+                if ((int64_t)timeValSV * 1000 < timeValUsec)
+                    timeValUsec = (int64_t)timeValSV * 1000;
+            } else
+                timeValUsec = Com_TimeValUsec(minUsec);
+
+            // NET_Sleep takes whole milliseconds, so it can only be used for
+            // the part of the wait that is at least a millisecond long. The
+            // sub-millisecond remainder is spun out, which is what makes the
+            // pacing exact; it is at most one millisecond of spin per frame.
+            if (com_busyWait->integer || timeValUsec < 2000)
+                NET_Sleep(0);
+            else
+                NET_Sleep((int)(timeValUsec / 1000) - 1);
+        } while (Com_TimeValUsec(minUsec));
+
+        com_frameTimeUsec = Sys_Microseconds();
+    } else {
+        do {
+            if (com_sv_running->integer) {
+                timeValSV = SV_SendQueuedPackets();
+
+                timeVal = Com_TimeVal(minMsec);
+
+                if (timeValSV < timeVal)
+                    timeVal = timeValSV;
+            } else
+                timeVal = Com_TimeVal(minMsec);
+
+            if (com_busyWait->integer || timeVal < 1)
+                NET_Sleep(0);
+            else
+                NET_Sleep(timeVal - 1);
+        } while (Com_TimeVal(minMsec));
+
+        com_frameTimeUsec = Sys_Microseconds();
+    }
 
     IN_Frame();
 
