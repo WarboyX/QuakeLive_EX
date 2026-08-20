@@ -1101,6 +1101,41 @@ gentity_t* SelectCTFSpawnPoint(team_t team, int teamstate, vec3_t origin, vec3_t
     spot = SelectRandomTeamSpawnPoint(teamstate, team);
 
     if (!spot) {
+        /*
+        [QL] Say so. This fallback is team-agnostic.
+
+        SelectSpawnPoint picks from info_player_deathmatch without looking at
+        which side the player is on, so once a map sends anyone down this path
+        the teams spawn in each other's bases - which is what "players do not
+        spawn in the correct bases" looks like from inside the game, with no
+        clue as to why.
+
+        It happens when the map has no team_CTF_redspawn / team_CTF_bluespawn
+        for that team (or no team_CTF_redplayer / blueplayer for the initial
+        TEAM_BEGIN spawn, which is a separate set of entities that maps
+        routinely omit). Both are the map's doing rather than ours, but silence
+        makes it indistinguishable from a bug in the spawn code.
+
+        Once per team per level - this runs on every respawn, and a line per
+        death would bury everything else.
+        */
+        static int warned[TEAM_NUM_TEAMS];
+        static int warnedLevel = -1;
+
+        if (warnedLevel != level.startTime) {
+            memset(warned, 0, sizeof(warned));
+            warnedLevel = level.startTime;
+        }
+        if (team >= 0 && team < TEAM_NUM_TEAMS && !warned[team]) {
+            warned[team] = 1;
+            G_Printf(S_COLOR_YELLOW "CTF spawn: no %s for %s - falling back to "
+                     "info_player_deathmatch, which ignores teams, so both sides "
+                     "will spawn across the map\n",
+                     teamstate == TEAM_BEGIN
+                         ? (team == TEAM_RED ? "team_CTF_redplayer" : "team_CTF_blueplayer")
+                         : (team == TEAM_RED ? "team_CTF_redspawn" : "team_CTF_bluespawn"),
+                     team == TEAM_RED ? "red" : "blue");
+        }
         return SelectSpawnPoint(vec3_origin, origin, angles, isbot);
     }
 

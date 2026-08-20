@@ -1543,6 +1543,58 @@ cvars from `ctf.cfg` rather than instagib's `fraglimit`, since CTF has no
 fraglimit and a capture is worth more than a frag. Passes
 `content/serverconfigs/check-configs.py` — 9 mode configs now.
 
+### E34. Japanese-castle CTF map — several symptoms, one fix so far
+**Lives in:** our **server** (qagame) mostly · **Seen by:** every client
+
+Reported together: stuttering, doors misbehaving and crushing, wrong spawn bases,
+invisible players, buggy stairs, and a crash switching to the map "infinity".
+Recording what is settled and what each remaining one needs, rather than
+guessing at six things at once.
+
+**Settled — spurious kamikaze explosions (E32).** Has a direct mechanism for the
+stuttering *and* the doors. Each bogus explosion spawns an entity whose think runs
+`trap_EntitiesInBox` over the map and applies radius damage every frame for the
+kamikaze duration; a door-heavy map frees enough activator-carrying entities to
+have many running at once, which is a server frame-time problem, i.e. stuttering
+for everyone. And `Blocked_Door` calls `G_FreeEntity` on any non-client blocker —
+a gib, a dropped weapon, a missile — so a door crushing debris *was itself* a
+detonation trigger, going off at the doorway. `KamikazeShockWave` then overwrites
+velocity outright (400 out, 100 up) and `KamikazeRadiusDamage` does 400 damage,
+which is being shoved into the door you are standing in and taking damage for it.
+Retest before anything else here.
+
+**Settled — silent CTF spawn fallback.** `SelectCTFSpawnPoint` falls back to
+`SelectSpawnPoint(vec3_origin, ...)` when the map has no
+`team_CTF_redspawn`/`bluespawn` for that team — and that picker is *team-agnostic*,
+choosing any `info_player_deathmatch`. So both sides spawn across the map, which
+is exactly "blue player standing in the red castle". It did that without a word.
+It now warns once per team per level and names the entity the map is missing.
+`TEAM_BEGIN` uses a different set again (`team_CTF_redplayer`/`blueplayer`) that
+maps routinely omit, and the warning distinguishes them.
+
+**Not settled — invisible players.** The screenshot shows shadows and a floating
+name with no model, and that combination is informative: `CG_Player` returns
+early when `ci->legsModel` is 0, so nothing would draw at all. A name means the
+model handle is *not* zero and the models did load. So this is not the
+registration failure it looks like, and the candidates are elsewhere —
+`RF_THIRD_PERSON` being applied to the wrong entity, a forced-model/skin
+resolving to something invisible, or a renderer-side failure.
+
+Discriminator: `CG_Player` already prints
+`WARNING: client N (name) has no player model loaded and is drawing nothing` with
+the model and skin names. If that line is in the console it is a load failure; if
+it is absent, the model loaded and something is hiding it. Worth checking
+`com_hunkMegs` either way — it is `CVAR_ARCHIVE` on a default we choose, the trap
+in CLAUDE.md, so a stale config can pin it low and starve model loading on a big
+map.
+
+**Not settled — stairs.** `STEPSIZE` is 18 units; a castle with taller steps is
+map design rather than a bug. But stutter and a velocity overwrite both look like
+bad stair movement, so retest after the kamikaze fix.
+
+**Not settled — crash on "infinity".** Needs the server console output or
+`crashlog.txt`. Nothing to go on otherwise.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
