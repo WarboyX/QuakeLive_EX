@@ -2433,7 +2433,20 @@ void Com_Init(char* commandLine) {
     Cmd_Init();
 
     // get the developer cvar set as early as possible
-    com_developer = Cvar_Get("developer", "0", CVAR_TEMP);
+    /*
+    [QL] developer defaults to 1 while this branch is under test.
+
+    A lot of what has gone wrong here has been silent - a shader that did not
+    load, a refEntity dropped past MAX_REFENTITIES, a model handle that came back
+    0 - and the diagnosis each time started with "turn on developer and do it
+    again". Defaulting it on means the first run already has the evidence, which
+    is worth the extra console noise while the thing is being built.
+
+    RELEASE: set this back to "0" before shipping a release build. It is
+    CVAR_TEMP, so it is never written to a config and a user can turn it off for
+    the session without it sticking - the default here is the only switch.
+    */
+    com_developer = Cvar_Get("developer", "1", CVAR_TEMP);
 
     // done early so bind command exists
     CL_InitKeyCommands();

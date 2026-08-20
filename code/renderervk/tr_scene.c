@@ -215,32 +215,10 @@ void RE_AddRefEntityToScene( const refEntity_t *ent, qboolean intShaderTime ) {
 		return;
 	}
 	if ( r_numentities >= MAX_REFENTITIES ) {
-		/*
-		[QL] Was PRINT_DEVELOPER, which is invisible unless someone has already
-		guessed the cause and set developer 1. Everything past the limit simply
-		does not draw - players, weapons, powerup shells - so the symptom is
-		things missing from the scene with nothing anywhere to explain it, which
-		is the hardest kind of bug to chase and the second one of this shape in
-		the renderer path.
-
-		It matters more than it used to: a frozen player now costs three
-		refEntities per model part rather than one (model, ice coat, animated
-		overlay), and every powerup shell is another pass, so a busy round adds
-		up faster than the count suggests.
-
-		Rate-limited to once every ten seconds - it is per-frame, and an
-		unthrottled line here would itself cost frames.
-		*/
-		static int nextWarn;
-		static int dropped;
-
-		dropped++;
-		if ( tr.refdef.time >= nextWarn ) {
-			nextWarn = tr.refdef.time + 10000;
-			ri.Printf( PRINT_WARNING, "RE_AddRefEntityToScene: reached MAX_REFENTITIES (%i) - "
-			           "%i entities dropped so far; things will be missing from the scene\n",
-			           MAX_REFENTITIES, dropped );
-		}
+		// [QL] developer-only on purpose; `developer` defaults to 1 in this
+		// build (common.c) so it is visible without asking for it, and the
+		// release switch is that one default rather than this line.
+		ri.Printf( PRINT_DEVELOPER, "RE_AddRefEntityToScene: Dropping refEntity, reached MAX_REFENTITIES\n" );
 		return;
 	}
 	if ( isnan_fp( &ent->origin[0] ) || isnan_fp( &ent->origin[1] ) || isnan_fp( &ent->origin[2] ) ) {

@@ -4215,6 +4215,21 @@ qhandle_t RE_RegisterShader( const char *name ) {
 	// something calls RE_RegisterShader again with
 	// the same name, we don't try looking for it again
 	if ( sh->defaultShader ) {
+	/*
+	[QL] Name what failed.
+
+	Returning 0 here is silent, and every caller in the game treats 0 as "draw
+	nothing" - so a shader that is missing, misspelled or in a pak that did not
+	load produces an invisible thing with no message anywhere. That failure shape
+	has cost several rounds on this branch already (invented Freeze Tag asset
+	names, a menu shader, a weapon icon), and the only place that knows the name
+	is right here.
+
+	Developer-level, and `developer` defaults to 1 on this branch, so it shows
+	without having to guess the cause first.
+	*/
+		ri.Printf( PRINT_DEVELOPER, "RE_RegisterShader: '%s' not found - returning 0, "
+		           "so whatever asked for it will draw nothing\n", name );
 		return 0;
 	}
 
@@ -4245,6 +4260,9 @@ qhandle_t RE_RegisterShaderNoMip( const char *name ) {
 	// something calls RE_RegisterShader again with
 	// the same name, we don't try looking for it again
 	if ( sh->defaultShader ) {
+		// [QL] see RE_RegisterShader - same silent 0, same reason to name it
+		ri.Printf( PRINT_DEVELOPER, "RE_RegisterShaderNoMip: '%s' not found - returning 0, "
+		           "so whatever asked for it will draw nothing\n", name );
 		return 0;
 	}
 
