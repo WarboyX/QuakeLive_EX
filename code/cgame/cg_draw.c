@@ -2365,6 +2365,54 @@ static void CG_DrawWarmup(void) {
 		w = CG_Text_Width(line2, 0.35f, 0);
 		CG_Text_Paint(320 - w / 2, 108, 0.35f, colorWhite, line2, 0, 0, ITEM_TEXTSTYLE_SHADOWEDMORE);
 	}
+
+	/*
+	[QL] Say whether *you* are ready, and which key changes it.
+
+	Everything needed for this was already here and simply never drawn. The
+	server broadcasts the ready set as a bitmask in STAT_CLIENTS_READY - the
+	scoreboard's ready marker and two owner-draws already read it - and readyup
+	is a registered client command on both sides. What was missing was the line
+	that turns "the match will begin when more players are ready" from a
+	statement about other people into something you can act on, because nothing
+	on screen said whether you were one of the players it was waiting for.
+
+	The key is looked up rather than hardcoded: Quake Live prints F3 because F3
+	is what readyup is bound to there, and printing F3 at someone who has bound
+	it elsewhere - or not at all - is worse than saying nothing. trap_Key_
+	KeynumToStringBuf over the actual binding keeps the two in step, and the
+	fallback names the command so the line is still useful with no bind.
+
+	A spectator is not a participant in the ready count, so they get nothing.
+	*/
+	{
+		qboolean ready;
+		int keynum;
+		char key[32];
+		const char* line3;
+
+		if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR) {
+			return;
+		}
+
+		ready = (cg.snap->ps.stats[STAT_CLIENTS_READY] & (1 << cg.snap->ps.clientNum)) != 0;
+
+		keynum = trap_Key_GetKey("readyup");
+		if (keynum > 0) {
+			trap_Key_KeynumToStringBuf(keynum, key, sizeof(key));
+			Q_strupr(key);
+			line3 = va("Press %s to %s", key,
+					   ready ? "unready yourself" : "ready up");
+		} else {
+			line3 = va("Type \\readyup in the console to %s",
+					   ready ? "unready yourself" : "ready up");
+		}
+
+		w = CG_Text_Width(line3, 0.3f, 0);
+		CG_Text_Paint(320 - w / 2, 126, 0.3f,
+					  ready ? colorGreen : colorYellow,
+					  line3, 0, 0, ITEM_TEXTSTYLE_SHADOWEDMORE);
+	}
 }
 
 //==================================================================================

@@ -116,6 +116,8 @@ vmCvar_t cg_shadows;
 vmCvar_t cg_gibs;
 vmCvar_t cg_drawTimer;
 vmCvar_t cg_scoreboardListOffset;
+vmCvar_t cg_scoreboardMouse;
+vmCvar_t cg_scoreboardDebug;
 vmCvar_t cg_drawFPS;
 vmCvar_t cg_drawSnapshot;
 vmCvar_t cg_draw3dIcons;
@@ -569,6 +571,17 @@ static cvarTable_t cvarTable[] = {
     // pushed below its column headers. Not CVAR_ARCHIVE: it is our layout value,
     // not the user's, and archiving a shipped default stops the default applying.
     {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "8", 0},
+    /* [QL] Take the mouse while +scores is held, so the scoreboard's lists can
+       be scrolled and clicked. Costs mouselook for as long as the key is down,
+       which is the trade asked for; set to 0 to keep the view free. Not
+       CVAR_ARCHIVE - our default, not the user's setting (CLAUDE.md). */
+    {&cg_scoreboardMouse, "cg_scoreboardMouse", "1", 0},
+    /* [QL] Print each scoreboard feeder's rect and the scrollbar/content
+       columns derived from it, once per scoreboard open. The two team lists
+       come out of Quake Live's own menus, which are read-only here, so when
+       they look asymmetric this is how to find out whether the rects differ or
+       our arithmetic does. */
+    {&cg_scoreboardDebug, "cg_scoreboardDebug", "0", 0},
     {&cg_drawFPS, "cg_drawFPS", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawSnapshot, "cg_drawSnapshot", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_draw3dIcons, "cg_draw3dIcons", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},

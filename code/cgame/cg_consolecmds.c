@@ -76,7 +76,26 @@ static void CG_Viewpos_f(void) {
               (int)cg.refdefViewAngles[YAW]);
 }
 
-// [QL] Binary-matched: simplified from Q3 version
+/*
+[QL] Hold +scores to get a mouse.
+
+The scoreboard's lists have always been real list boxes - scrollable, clickable,
+with working hit tests - but nothing ever gave cgame the mouse while they were
+on screen, so there was no cursor and nothing to click with. The machinery was
+only ever triggered from CG_ParseServerinfo's intermission branch, which is why
+the match summary took the mouse and the in-game board did not.
+
+Grabbing it for the duration of the hold is what makes that safe. KEYCATCH_CGAME
+costs mouselook, which would be wrong for a scoreboard you toggle and leave up
+and is fine for one you hold. The engine cooperates: CL_KeyEvent runs
+CL_ParseBinding before dispatching, on key *up* as well as key down, so -scores
+still fires while the catcher is set - the scoreboard cannot get stuck holding
+the mouse - and movement binds keep working underneath. Escape also always
+clears KEYCATCH_CGAME as a second way out.
+
+cg_scoreboardMouse 0 restores the old behaviour for anyone who would rather keep
+the view free.
+*/
 static void CG_ScoresDown_f(void) {
     CG_BuildSpectatorString();
     if (cg.scoresRequestTime + 2000 < cg.time) {
@@ -87,12 +106,24 @@ static void CG_ScoresDown_f(void) {
         }
     }
     cg.showScores = qtrue;
+
+    if (cg_scoreboardMouse.integer && cgs.eventHandling == CGAME_EVENT_NONE) {
+        CG_ScoreboardDebugDump();
+        CG_EventHandling(CGAME_EVENT_SCOREBOARD);
+    }
 }
 
 // [QL] Binary-matched: no scoreFadeTime
 static void CG_ScoresUp_f(void) {
     if (cg.showScores) {
         cg.showScores = qfalse;
+    }
+
+    /* Only hand the mouse back if the scoreboard is why we have it. At
+       intermission CG_ParseServerinfo holds the same catcher for the match
+       summary, and releasing the key must not close that. */
+    if (cgs.eventHandling == CGAME_EVENT_SCOREBOARD && !cg.intermissionStarted) {
+        CG_EventHandling(CGAME_EVENT_NONE);
     }
 }
 

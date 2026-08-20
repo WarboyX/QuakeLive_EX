@@ -4151,6 +4151,9 @@ void Item_Image_Paint(itemDef_t* item) {
 
 void Item_ListBox_Paint(itemDef_t* item) {
     float x, y, size, thumb;
+    // [QL] scrollbar column and content column, computed once in the vertical
+    // branch below and used by the bar, the rows and the cursor fill alike.
+    float barX = 0.0f, contentX = 0.0f, contentW = 0.0f;
     int count, i;
     qhandle_t image;
     qhandle_t optionalImage;
@@ -4213,13 +4216,32 @@ void Item_ListBox_Paint(itemDef_t* item) {
             //
         }
     } else {
-        // draw scrollbar to right side of the window - or the left, when the
-        // caller asked for it (WINDOW_LB_LEFTSCROLL; see the note in ui_shared.h)
+        /*
+        [QL] Derive the bar column and the content column together, once.
+
+        These used to be worked out in three separate places - the bar here, the
+        row origin further down, and the cursor fill's width at the bottom - each
+        re-deriving the geometry from item->window.rect with its own arithmetic.
+        That is how the left-hand list ended up drawing its rows over its own
+        scrollbar: two of the three agreed and the third did not. Computing both
+        columns here and using them everywhere below makes the two sides mirror
+        images by construction rather than by three sums happening to match.
+
+        The content column is the same width whichever side the bar is on, so a
+        left-scroll list and a right-scroll list of equal rect.w now have equal
+        row widths. If they still look unequal on screen, the rects themselves
+        differ - cg_scoreboardDebug prints them.
+        */
         if (item->window.flags & WINDOW_LB_LEFTSCROLL) {
-            x = item->window.rect.x + 1;
+            barX = item->window.rect.x + 1;
+            contentX = item->window.rect.x + 1 + SCROLLBAR_SIZE;
         } else {
-            x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
+            barX = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
+            contentX = item->window.rect.x + 1;
         }
+        contentW = item->window.rect.w - SCROLLBAR_SIZE - 2;
+
+        x = barX;
         y = item->window.rect.y + 1;
         DC->drawHandlePic(x, y, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarArrowUp);
         y += SCROLLBAR_SIZE - 1;
@@ -4264,24 +4286,10 @@ void Item_ListBox_Paint(itemDef_t* item) {
                 // fit++;
             }
         } else {
-            x = item->window.rect.x + 1;
-            /*
-            [QL] Leave room for a scrollbar drawn on the left edge.
-
-            The rows and the WINDOW_LB_LEFTSCROLL bar were both starting at
-            rect.x + 1, and the rows are drawn after the bar, so the bar was
-            painted over - which is the left team's scrollbar going missing from
-            the team scoreboard. The default right-hand case never had this
-            problem because the bar sits past the end of the row content, which
-            is also why the cursor fill below already subtracts SCROLLBAR_SIZE
-            from the width.
-
-            Shifting the content right by the same amount mirrors that: the bar
-            gets its column and the rows start after it.
-            */
-            if (item->window.flags & WINDOW_LB_LEFTSCROLL) {
-                x += SCROLLBAR_SIZE;
-            }
+            // [QL] content column computed with the bar column above, so the
+            // rows start after the bar when it is on the left and the bar is
+            // no longer painted over.
+            x = contentX;
             y = item->window.rect.y + 1;
             for (i = listPtr->startPos; i < count; i++) {
                 const char* text;
@@ -4310,7 +4318,12 @@ void Item_ListBox_Paint(itemDef_t* item) {
                 }
 
                 if (i == item->cursorPos) {
-                    DC->fillRect(x + 2, y + 2, item->window.rect.w - SCROLLBAR_SIZE - 4, listPtr->elementHeight, item->window.outlineColor);
+                    // [QL] Width from the content column, not re-derived from
+                    // rect.w. The old expression was correct only when the row
+                    // origin was rect.x + 1 - with the bar on the left the rows
+                    // start SCROLLBAR_SIZE further in, so the same width ran the
+                    // highlight past the end of the list box.
+                    DC->fillRect(x + 2, y + 2, contentW - 4, listPtr->elementHeight, item->window.outlineColor);
                 }
 
                 size -= listPtr->elementHeight;

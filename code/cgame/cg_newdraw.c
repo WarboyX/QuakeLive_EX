@@ -3637,12 +3637,95 @@ void CG_EventHandling(int type) {
     } else if (type == CGAME_EVENT_TEAMMENU) {
         // CG_ShowTeamMenu();
     } else if (type == CGAME_EVENT_SCOREBOARD) {
-        trap_Key_SetCatcher(KEYCATCH_CGAME);
+        // [QL] Add our bit rather than replacing the catcher outright. The
+        // assignment form dropped KEYCATCH_CONSOLE and KEYCATCH_UI on the
+        // floor, so opening the scoreboard with the console down left the
+        // console visible and unable to take a keystroke.
+        trap_Key_SetCatcher(trap_Key_GetCatcher() | KEYCATCH_CGAME);
+    }
+}
+
+/*
+==================
+CG_ScoreboardDebugDump
+
+[QL] Print the geometry the scoreboard's list boxes are actually working from.
+
+The team scoreboards come out of Quake Live's own menu files, which are read
+only here - pak00 is not ours to ship or edit - so when the two lists look
+asymmetric on screen there are two candidates and no way to tell them apart by
+looking: either the menu gives the two lists different rects, or our own
+scrollbar/content arithmetic differs between the left and right cases. This
+prints the rect and both derived columns for each feeder, so the answer is a
+number instead of a guess at a screenshot.
+==================
+*/
+extern menuDef_t* menuScoreboard;  // owned by cg_draw.c
+
+void CG_ScoreboardDebugDump(void) {
+    static const struct {
+        int feeder;
+        const char* name;
+    } feeders[] = {
+        {FEEDER_SCOREBOARD, "SCOREBOARD"},
+        {FEEDER_ENDSCOREBOARD, "ENDSCOREBOARD"},
+        {FEEDER_REDTEAM_LIST, "REDTEAM"},
+        {FEEDER_BLUETEAM_LIST, "BLUETEAM"},
+    };
+    menuDef_t* menu;
+    int i, j;
+
+    if (!cg_scoreboardDebug.integer) {
+        return;
+    }
+
+    menu = (menuDef_t*)menuScoreboard;
+    if (!menu) {
+        CG_Printf("scoreboardDebug: no scoreboard menu loaded\n");
+        return;
+    }
+
+    for (i = 0; i < menu->itemCount; i++) {
+        itemDef_t* item = menu->items[i];
+
+        for (j = 0; j < (int)ARRAY_LEN(feeders); j++) {
+            if (item->special != feeders[j].feeder) {
+                continue;
+            }
+            CG_Printf("scoreboardDebug: %-13s rect %.1f,%.1f %.1fx%.1f  bar %s  barX %.1f  contentX %.1f  contentW %.1f\n",
+                      feeders[j].name,
+                      item->window.rect.x, item->window.rect.y,
+                      item->window.rect.w, item->window.rect.h,
+                      (item->window.flags & WINDOW_LB_LEFTSCROLL) ? "left" : "right",
+                      (item->window.flags & WINDOW_LB_LEFTSCROLL)
+                          ? item->window.rect.x + 1
+                          : item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1,
+                      (item->window.flags & WINDOW_LB_LEFTSCROLL)
+                          ? item->window.rect.x + 1 + SCROLLBAR_SIZE
+                          : item->window.rect.x + 1,
+                      item->window.rect.w - SCROLLBAR_SIZE - 2);
+        }
     }
 }
 
 void CG_KeyEvent(int key, qboolean down) {
     if (!down) {
+        return;
+    }
+
+    /* [QL] ...unless the scoreboard is what is holding the mouse.
+
+       This branch exists to drop the capture as soon as the player is back in
+       normal play, which is right for the team menu and the match summary. It
+       is wrong for a held +scores: the first key pressed while holding it -
+       mouse button included - would hand the mouse straight back, so nothing
+       in the list could ever be clicked. The hold owns the capture until the
+       key comes up (CG_ScoresUp_f). */
+    if (cgs.eventHandling == CGAME_EVENT_SCOREBOARD && cg.showScores) {
+        Display_HandleKey(key, down, cgs.cursorX, cgs.cursorY);
+        if (cgs.capturedItem) {
+            cgs.capturedItem = NULL;
+        }
         return;
     }
 
