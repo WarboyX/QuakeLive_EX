@@ -2293,6 +2293,12 @@ void CG_AddRefEntityWithPowerups(refEntity_t* ent, entityState_t* state, int tea
             }
             ent->customShader = cgs.media.freezeShellShaders[v];
             trap_R_AddRefEntityToScene(ent);
+
+            // and the halo over it, standing further off than the coat
+            if (cgs.media.freezeGlowShader) {
+                ent->customShader = cgs.media.freezeGlowShader;
+                trap_R_AddRefEntityToScene(ent);
+            }
         }
     }
 }

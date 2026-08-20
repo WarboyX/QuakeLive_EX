@@ -1381,6 +1381,7 @@ typedef struct {
     qhandle_t iceShardShader3;   // powerups/ice3
     qhandle_t frozenShader;      // sprites/frozen
     qhandle_t freezeShellShaders[3]; // [QL] ice shell variants, chosen by cg_freezeShell
+    qhandle_t freezeGlowShader;      // [QL] wider faint halo, drawn over the shell
     qhandle_t iceMarkShader;     // iceMark
 
     // [QL] gametype icons for scoreboard/HUD

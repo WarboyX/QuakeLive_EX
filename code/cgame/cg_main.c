@@ -2033,6 +2033,10 @@ static void CG_RegisterGraphics(void) {
             cgs.media.freezeShellShaders[i] =
                 CG_RegisterShaderOr(va("powerups/freezeshell%i", i + 1), cgs.media.frozenShader);
         }
+        // [QL] the halo. One shader gets one deformVertexes, so a glow standing
+        // further off the model than the coat has to be its own shader and its
+        // own pass. 0 if the pak lacks it, and the draw skips it.
+        cgs.media.freezeGlowShader = CG_RegisterShaderOr("powerups/freezeglow", 0);
     }
     cgs.media.iceMarkShader = CG_RegisterShaderOr("iceMark", 0);
 

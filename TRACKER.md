@@ -1275,6 +1275,14 @@ Frozen teammates now show as an ice-blue row with `FROZEN` where health/armour
 would be — the statue's real numbers are 0/0 and `CG_GetColorForHealth` would
 paint it critical-red, which says the wrong thing.
 
+**And no weapon icon on those rows.** The icon sits three characters into a field
+sized for `"%3i %3i"`, which lands it in the gap between health and armour;
+`FROZEN` is six characters with no gap, so the icon was drawn straight over the
+Z. Skipping it beats moving the text because there is nothing to draw either way
+— `PM_Weapon` sets `ps.weapon` to `WP_NONE` while health is <= 0, so a statue's
+`curWeapon` is `WP_NONE` and the icon fell through to `deferShader`, the red
+no-entry circle that was sitting on the word.
+
 ### C32. Frozen players kept animating — DONE (verify)
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
@@ -1324,11 +1332,35 @@ Three variants ship in `content/pak01/scripts/freeze.shader`, selected by
 **`cg_freezeShell`** (default 1), sampling the two axes still open — how far the
 shell stands off, and whether it reads as glass or as glow:
 
-| | |
+**Third: white, and no pulsing.** `textures/effects/icemap.jpg` carries its own
+blue and `rgbGen` only *scales* what a texture already has — there is no way to
+desaturate one in the fixed pipeline. So the coat is built on `$whiteimage`, the
+renderer's built-in 1×1 white, and the shape comes from `alphaGen
+lightingSpecular` instead of from the map: opacity follows the light, which is
+what reads as facets. The blue map is dropped rather than tinted down.
+
+Ice does not breathe, either, which takes some care because the deform is spelled
+as a wave. Amplitude 0 with frequency 0 is the constant case —
+`RB_CalcDeformVertexes` has a `frequency == 0` branch that evaluates the waveform
+once and pushes every vertex by that fixed amount — so the shell holds its shape.
+Same reason the sheen is `rgbGen const` rather than `rgbGen wave`, and there is no
+`tcMod` anywhere.
+
+**Fourth: the glow is a second shell.** One shader gets one `deformVertexes`, so a
+halo standing further off the model than the coat cannot be another stage — it has
+to be its own shader and its own `trap_R_AddRefEntityToScene`.
+`powerups/freezeglow` sits at 14 units with `blendfunc GL_SRC_ALPHA GL_ONE`,
+additive weighted by alpha so `lightingSpecular` concentrates it where light
+catches the hull and lets it fall away elsewhere; a flat additive shell that size
+reads as a pale silhouette rather than a glow. Faint on purpose — it is drawn
+three times per player (legs, torso, head) and accumulates where the parts
+overlap.
+
+| `cg_freezeShell` | |
 |---|---|
-| `1` | **glass, close hover** — 4 units off, alpha-blended so the shell occludes rather than adds, `alphaGen lightingSpecular` putting opacity where the light falls (what gives ice facets rather than an even film) |
-| `2` | **glass, wide hover** — the same shell 9 units off, for when 4 still reads as painted on |
-| `3` | **glow, wide hover** — the quad-shell treatment at 9 units; brighter, more obviously an effect |
+| `1` | **white, close hover** (default) — 4 units off |
+| `2` | **white, wide hover** — 9 units off |
+| `3` | **icemap, close hover** — the blue one, keeping QL's crystal pattern and its colour with it |
 
 All three are registered at load, so switching the cvar takes effect without a
 `vid_restart`, and a missing one is reported rather than silently drawing nothing

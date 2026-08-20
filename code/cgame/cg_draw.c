@@ -735,12 +735,28 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 			// draw weapon icon
 			xx += TINYCHAR_WIDTH * 3;
 
-			if (CG_WeaponInfo(ci->curWeapon)->weaponIcon) {
-				CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
-						   CG_WeaponInfo(ci->curWeapon)->weaponIcon);
-			} else {
-				CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
-						   cgs.media.deferShader);
+			/*
+			[QL] Not for a statue.
+
+			The icon sits three characters into a field sized for "%3i %3i",
+			which lands it in the gap between health and armour. FROZEN is six
+			characters with no gap, so the icon was drawn straight over the Z.
+
+			Skipping it is the right fix rather than moving the text, because
+			there is nothing to draw either way: PM_Weapon sets ps.weapon to
+			WP_NONE while health is <= 0, and a frozen player's health is 0, so
+			curWeapon is WP_NONE and the icon falls through to deferShader - the
+			red no-entry circle that was sitting on the word. What weapon a
+			statue is holding is not information anyone needs.
+			*/
+			if (!ci->frozen) {
+				if (CG_WeaponInfo(ci->curWeapon)->weaponIcon) {
+					CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
+							   CG_WeaponInfo(ci->curWeapon)->weaponIcon);
+				} else {
+					CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
+							   cgs.media.deferShader);
+				}
 			}
 
 			// Draw powerup icons
