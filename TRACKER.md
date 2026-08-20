@@ -1917,6 +1917,67 @@ it at `r_shaderTimeSource 0`, then `r_shaderTimeSource 1`, then cap framerate
 
 Left open until that comparison is run.
 
+### E40. macOS arm64 (Apple Silicon) build — BUILDABLE ON A MAC, NOT FROM HERE
+**Lives in:** build system · **Seen by:** n/a
+
+**Why it cannot be cross-compiled the way Windows is.** `package-release.sh`
+builds Windows from Linux because mingw-w64 is a complete, freely
+redistributable toolchain. macOS has no equivalent: building for Darwin needs
+Apple's SDK, and Apple licenses that SDK for use on Apple hardware, so it cannot
+be installed into a Linux build container. osxcross works and the Makefile
+already expects it (`arm64-apple-darwin20.4-cc`, `$(error Unable to find
+osxcross ...)`), but osxcross is built *from* an SDK extracted out of your own
+Xcode install — the chain still starts on a Mac. This container has no clang
+Darwin target, no SDK, no `xcrun`, no `lipo`.
+
+**The tree itself is arm64-clean.** Audited rather than assumed:
+
+| Risk | Finding |
+|---|---|
+| SSE intrinsics | `q_math_sse.c` is guarded on `__i386__ / __x86_64__` and falls back to `rintf`. Fine. |
+| Inline asm | Only `snd_mix.c`, under `#if !id386`, so arm64 takes the C path. `libvorbis/os.h` carries its own upstream guards. |
+| QVM JIT | There is no QVM layer left — `code/qcommon/` has `vm.c` and no `vm_*.c` backend, and nothing references `VM_Compile`. `HAVE_VM_COMPILED` is inert, so darwin/arm64 setting it true costs nothing. This also sidesteps Apple Silicon's W^X / `MAP_JIT` requirement entirely. |
+| `ARCH_STRING` | `q_platform.h:151` gives `arm64`, `:158` gives `.dylib`. |
+| Objective-C | `sys_osx.m` is wired with an ARC rule and is in both client and dedicated object lists. |
+| Vulkan / MoltenVK | `vk.c:1285/1334` already requests `VK_KHR_portability_enumeration` and sets `VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR`, which MoltenVK requires or `vkCreateInstance` returns `VK_ERROR_INCOMPATIBLE_DRIVER`. `vk_window.c` goes through `SDL_Vulkan_LoadLibrary` / `SDL_Vulkan_GetVkGetInstanceProcAddr`, so it finds MoltenVK if the Vulkan SDK is installed. |
+
+**`build-macos.sh` (new)** runs on the Mac and produces
+`release/out/quakelive-macos-arm64-<sha>.zip`, shaped like the other two, with
+the same `check-configs.py` and `stub-report.py` gates and the same `pak01`
+revision stamp. It detects MoltenVK and drops to OpenGL if it is absent, rather
+than building a renderer that has nothing to load at runtime.
+
+**The trap it exists to make visible: `iobin.pk3` is one pak for every
+platform.** A Mac client looks for `cgamearm64.dylib` / `uiarm64.dylib` /
+`qagamearm64.dylib` *inside that same pak* — `files.c:1205-1209` and `:1372`
+build the name as `cgame{ARCH_STRING}{DLL_EXT}`. Building the Mac separately
+gives it a pak containing dylibs and nothing else, and the failure that follows
+is not "the Mac has no modules", it is that **the pak has a different checksum**,
+so every platform now disagrees and `sv_pure` rejects the odd one out. Same
+silent-failure shape as the rest of this file: nothing reports it until someone
+cannot connect.
+
+So the modules get carried across. `build-macos.sh` leaves its dylibs in
+`release/modules/`; both scripts read `content/modules/` (override with
+`EXTRA_MODULES=`) and fold anything found there into the pak. Round trip:
+
+```
+mac:    ./build-macos.sh                     -> release/modules/*.dylib
+        copy those to the linux box as content/modules/
+linux:  ./package-release.sh                 -> iobin.pk3 with .so + .dll + .dylib
+        copy that iobin.pk3 back into the mac archive's baseq3/
+```
+
+Both scripts now print the pak's contents at the end, and `package-release.sh`
+says so explicitly when there are no macOS modules in it. That listing is the
+only place a cross-platform mismatch is visible before a connection fails.
+
+**Not addressed:** the binaries are unsigned, so Gatekeeper quarantines them out
+of a downloaded zip (`xattr -dr com.apple.quarantine <folder>` clears it), and a
+Homebrew SDL2 build links against `/opt/homebrew/lib`, which is fine on the
+build machine and not portable to another Mac without bundling the dylib. Both
+are release-engineering, not build breakage.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 

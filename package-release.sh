@@ -72,9 +72,30 @@ if [ -f $W/vulkanx86_64.dll ]; then cp -p $W/vulkanx86_64.dll "$WD/"; fi
 
 # iobin.pk3 holds every platform's game modules, so one pak serves a linux
 # server and its windows clients and both pass the same sv_pure checksum.
+#
+# macOS is built separately - Apple's SDK is licensed for Apple hardware, so
+# there is no cross-toolchain here the way there is for Windows, and
+# build-macos.sh has to run on the Mac. That leaves the pak short of the three
+# dylibs a Mac client looks for, and a pak missing them has a *different
+# checksum*, which is the failure that matters: it is not that the Mac client
+# lacks its modules, it is that every platform then disagrees about the pak.
+#
+# So the Mac's modules get carried back and folded in here. Drop the .dylib
+# files build-macos.sh leaves in release/modules/ into content/modules/ and
+# re-run; the pak contents are printed at the end either way, which is the only
+# place a mismatch is visible before someone fails to connect.
 rm -rf "$OUT/stage"; mkdir -p "$OUT/stage"
 cp $L/baseq3/*.so $W/baseq3/*.dll "$OUT/stage/"
-(cd "$OUT/stage" && zip -q -9 "$LD/baseq3/iobin.pk3" *.so *.dll)
+
+EXTRA_MODULES=${EXTRA_MODULES:-content/modules}
+if [ -d "$EXTRA_MODULES" ]; then
+    for f in "$EXTRA_MODULES"/*.dylib "$EXTRA_MODULES"/*.so "$EXTRA_MODULES"/*.dll; do
+        [ -e "$f" ] || continue
+        cp -p "$f" "$OUT/stage/"
+    done
+fi
+
+(cd "$OUT/stage" && zip -q -9 "$LD/baseq3/iobin.pk3" *)
 cp -p "$LD/baseq3/iobin.pk3" "$WD/baseq3/iobin.pk3"
 cp -p $L/baseq3/pak01.pk3 "$LD/baseq3/"
 cp -p $L/baseq3/pak01.pk3 "$WD/baseq3/"
@@ -116,4 +137,17 @@ rm -f "$OUT/out"/*-"$REV".zip
 (cd "$OUT/pkg" && zip -q -r -9 "$OUT/out/quakelive-windows-x64-$REV.zip" "quakelive-windows-x64-$REV")
 
 rm -rf "$OUT/stage"
+
+# What actually went into the shared pak. A Mac client cannot run without a
+# .dylib in here, and - more importantly - a pak built with a different set of
+# modules has a different checksum, so mixing them across platforms fails
+# sv_pure rather than failing to load.
+echo
+echo "iobin.pk3 contains:"
+unzip -l "$LD/baseq3/iobin.pk3" | awk 'NR>3 && NF>3 {print "  " $4}' | grep -v '^  $' || true
+if ! unzip -l "$LD/baseq3/iobin.pk3" | grep -q '\.dylib'; then
+    echo "  (no macOS modules - see build-macos.sh)"
+fi
+
+echo
 ls -lh "$OUT/out"/*-"$REV".zip
