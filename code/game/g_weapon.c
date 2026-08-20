@@ -1289,17 +1289,28 @@ void G_StartKamikaze(gentity_t* ent) {
     gentity_t* te;
     vec3_t snapped;
 
-    // [QL] G_FreeEntity (0x10047100) calls this on EVERY freed entity (temp
-    // entities, missiles, info_null, ...), so it must early-out for anything that
-    // isn't detonating a kamikaze. A client kamikaze carries EF_KAMIKAZE;
-    // a non-client kamikaze corpse carries a valid activator. A plain freed entity
-    // has neither, so return before spawning the explosion (and before the
-    // activator deref below that was crashing on info_null spawn).
+    /*
+    [QL] G_FreeEntity (0x10047100) calls this on EVERY freed entity - temp
+    entities, missiles, info_null, movers, triggers - so it must early-out for
+    anything that is not actually detonating a kamikaze.
+
+    "Has an activator" was far too loose a test. activator is an ordinary field:
+    G_UseTargets stamps it on every entity a trigger fires, movers carry it, and
+    plenty of map logic sets it. So on a map with any real amount of trigger and
+    mover traffic, ordinary entities being freed were detonating kamikaze
+    explosions - which is players dying to MOD_KAMIKAZE with nothing on screen to
+    explain it, and only on the maps busy enough to hit it.
+
+    The real article has a name. player_die spawns the delayed detonator as
+    classname "kamikaze timer" with think = G_FreeEntity, so the free *is* the
+    detonation, and GibEntity finds the same entity by that name. Test for it.
+    */
     if (ent->client) {
         if (!(ent->s.eFlags & EF_KAMIKAZE)) {
             return;
         }
-    } else if (!ent->activator) {
+    } else if (!ent->activator || !ent->classname ||
+               strcmp(ent->classname, "kamikaze timer") != 0) {
         return;
     }
 

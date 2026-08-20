@@ -1488,6 +1488,61 @@ chose. Not the cause of this bug, but the same failure shape.
 server config pins them and changing the shipped default does nothing. Left alone
 so this build carries only the fix under test.
 
+### E32. Spurious kamikaze explosions on busy maps — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported on a CTF castle map: players dying to `MOD_KAMIKAZE` with nothing on
+screen to explain it, and movement feeling broken. One cause for both.
+
+`G_FreeEntity` calls `G_StartKamikaze` on **every** freed entity — temp entities,
+missiles, `info_null`, movers, triggers — so that function is the only thing
+standing between an ordinary entity being freed and a kamikaze going off. Its
+non-client guard was:
+
+```c
+} else if (!ent->activator) {
+    return;
+}
+```
+
+`activator` is an ordinary field. `G_UseTargets` stamps it on every entity a
+trigger fires, movers carry it, and plenty of map logic sets it. So on a map with
+real trigger and mover traffic — a castle, with doors and plats and teleporters —
+routine entity frees were detonating kamikazes. Which is also why it looked
+map-specific: quiet maps never accumulate enough of them to notice.
+
+The real detonator has a name. `player_die` spawns it as classname
+`"kamikaze timer"` with `think = G_FreeEntity`, so the free *is* the detonation,
+and `GibEntity` already finds the same entity by that name. The guard tests for
+it now.
+
+**And that is very likely the movement report too.** `KamikazeShockWave` does not
+add knockback, it *overwrites* velocity:
+
+```c
+ent->client->ps.velocity[0] = dir[0] * push;   // push = 400
+ent->client->ps.velocity[1] = dir[1] * push;
+ent->client->ps.velocity[2] = 100;
+```
+
+Whatever you were doing is discarded and replaced with a 400-unit shove away from
+the blast plus 100 up. With explosions firing off routine entity frees, that is
+players being yanked around at random — and the per-entity `kamikazeShockTime`
+cooldown of 3 s makes it intermittent rather than constant, which is what
+"movement seems broken" describes. Unconfirmed until retested: if movement is
+still wrong once the explosions stop, it is a separate problem and worth its own
+entry.
+
+### E33. a2m-instagib-ctf.cfg — DONE
+**Lives in:** content · **Seen by:** server admins
+
+Instagib CTF, following the same chain as the other A2M modes (`exec
+a2m-common.cfg`, railgun via `g_startingWeapons 64`, everything else locked out
+via `g_disableLoadout 32638`). Takes `capturelimit`/`timelimit` and the team
+cvars from `ctf.cfg` rather than instagib's `fraglimit`, since CTF has no
+fraglimit and a capture is worth more than a frag. Passes
+`content/serverconfigs/check-configs.py` — 9 mode configs now.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
