@@ -778,16 +778,32 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
     int maxThaw = level.warmupTime ? g_freezeWarmupThawTime.integer
                                    : g_freezeThawTime.integer;  // DAT_105a472c
 
-    // --- (A) thaw-progress display bits (runs unconditionally, every frame) ---
+    /*
+    --- (A) thaw-progress display bits (runs unconditionally, every frame) ---
+
+    [QL] Clear both bits before setting the bucket.
+
+    These bits are the only thaw progress the client gets - cgame reads them off
+    the entity state to pick how thick the ice shell is drawn - and they only ever
+    accumulated. bit1 was set once thawtime fell below a third and nothing cleared
+    it until the timer climbed back above two thirds, so a statue whose thawer
+    walked away stayed drawn at its thinnest all the way back up. The progress bar
+    went one way.
+
+    Writing the bucket exactly costs nothing and makes the shell track the timer
+    in both directions.
+    */
     {
         int t = cl->ps.thawtime;             // client+0x1f4
         int one3 = maxThaw / 3;              // signed div
-        if (t > one3) {
-            if (t > one3 * 2) cl->ps.generic1 &= ~3;   // >2/3 left -> bits=0
-            else              cl->ps.generic1 |=  1;   // 1/3..2/3  -> bit0
-        } else {
-            cl->ps.generic1 |= 2;                       // <1/3 left -> bit1
+
+        cl->ps.generic1 &= ~3;
+        if (t <= one3) {
+            cl->ps.generic1 |= 2;            // <1/3 left  -> nearly thawed
+        } else if (t <= one3 * 2) {
+            cl->ps.generic1 |= 1;            // 1/3..2/3   -> halfway
         }
+        // >2/3 left: both bits clear, full thickness
     }
 
     // --- (B) gating ---

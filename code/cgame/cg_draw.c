@@ -718,24 +718,28 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 				*/
 				if (ci->frozen) {
 					p = "FROZEN";
-				} else {
+				} else if (ci->location > 0) {
 					p = CG_ConfigString(CS_LOCATIONS + ci->location);
-					if (!p || !*p) {
-						/*
-						[QL] "ALIVE", not "unknown".
+				} else {
+					p = NULL;
+				}
+				if (!p || !*p) {
+					/*
+					[QL] "ALIVE", not "unknown".
 
-						This column answers a question with two useful states in
-						Freeze Tag: is that teammate a statue, or are they still
-						playing. Where they are is the bonus, and most maps do
-						not offer it - without target_location entities
-						ci->location is 0 and CS_LOCATIONS + 0 is empty, which
-						is what "unknown" was. Quake Live shows "unknown" there
-						too, so it is not wrong, it is just the least useful
-						thing the column could say. On a map that does have
-						locations the real name still wins.
-						*/
-						p = "ALIVE";
-					}
+					Index 0 is the sentinel, not an empty string. G_LinkLocations
+					writes the literal "unknown" into CS_LOCATIONS + 0 and hands
+					that index to every player the map has no target_location for,
+					so testing the returned string for empty never fired - it came
+					back with six characters in it every time. The test that works
+					is on the index.
+
+					And the column is better spent: it answers a question with two
+					useful states in Freeze Tag - is that teammate a statue, or
+					still playing - where they are being the bonus. On a map that
+					does carry locations the real name still wins.
+					*/
+					p = "ALIVE";
 				}
 				//				len = CG_DrawStrlen(p);
 				//				if (len > lwidth)

@@ -1278,11 +1278,14 @@ fetching.
 
 That column now reads **FROZEN → real location → ALIVE**. It answers a question
 with two useful states in Freeze Tag: is that teammate a statue, or still
-playing. Where they are is the bonus, and most maps do not offer it — without
-`target_location` entities `ci->location` is 0 and `CS_LOCATIONS + 0` is empty,
-which is what "unknown" was. QL shows "unknown" there too, so it was not wrong,
-just the least useful thing the column could say. On a map that does have
-locations the real name still wins.
+playing. Where they are is the bonus, and most maps do not offer it.
+
+The first attempt at this did not work, and for an instructive reason: index 0 is
+the sentinel, not an empty string. `G_LinkLocations` writes the literal
+`"unknown"` into `CS_LOCATIONS + 0` (g_target.c) and hands that index to every
+player the map has no `target_location` for, so testing the *returned string* for
+empty never fired — it came back with six characters in it every time. The test
+that works is `ci->location > 0`.
 
 Health and armour keep their real numbers (0 0 for a statue) rather than being
 replaced by the word. The row stays ice blue rather than going through
@@ -1369,28 +1372,45 @@ three times per player (legs, torso, head) and accumulates where the parts
 overlap.
 
 **Fifth: too big, and the halo blew out.** All standoffs halved, and the halo
-dropped from `rgbGen const 0.55` to `0.12` — it is drawn once per model part
-(legs, torso, head), so it accumulates wherever those overlap and a value that
-looks mild on one surface saturates a whole player.
+dropped from `rgbGen const 0.55` to a twelfth of that — it is drawn once per model
+part (legs, torso, head), so it accumulates wherever those overlap and a value
+that looks mild on one surface saturates a whole player.
 
-Split into two cvars, since the coat and the halo are independent and the right
-pairing is a judgement made by looking:
+**Sixth: the halo was the wrong idea entirely.** A glow around the silhouette
+reads as a powerup, not as ice — style 1 or 2 with the effect *off* looked best.
+Replaced with animated overlays: a stage just outside the coat that moves the
+texture while the shell itself stays still.
+
+**Seventh: the shell shrinks as the thaw progresses.** A shader cannot read game
+state, but the server already publishes it — `Freeze_ClientThawCheck` buckets
+`ps.thawtime` into thirds and writes the bucket into the low bits of `generic1`,
+`BG_PlayerStateToEntityState` copies it into the entity state and `msg.c` networks
+it. Each style ships three coats at decreasing standoff and cgame picks by
+`generic1 & 3`, so the ice closes in while a teammate works on the statue instead
+of holding one size until it pops.
+
+That needed a server fix too: the bits only ever *accumulated*. `bit1` was set
+once `thawtime` fell below a third and nothing cleared it until the timer climbed
+back above two thirds, so a statue whose thawer walked away stayed drawn at its
+thinnest all the way back up — the progress went one way. Both bits are now
+cleared before the bucket is written.
 
 | `cg_freezeShellStyle` (the coat) | |
 |---|---|
-| `1` | **blue, close** (default) — QL's ice environment map, 2 units off |
-| `2` | **white, close** — flat white, 2 units off |
-| `3` | **blue, wide** — as 1 at 5 units |
-| `4` | **white, wide** — as 2 at 5 units |
+| `1` | **blue, close** (default) — QL's ice environment map, 2 → 0.5 units |
+| `2` | **white, close** — flat white, 2 → 0.5 units |
+| `3` | **blue, wide** — as 1, 5 → 1.2 units |
+| `4` | **white, wide** — as 2, 5 → 1.2 units |
 
-| `cg_freezeShellEffect` (the halo) | |
+| `cg_freezeShellEffect` (animated overlay) | |
 |---|---|
-| `0` | off |
-| `1` | **white, subtle** (default) — 7 units off |
-| `2` | **white, stronger** — same hull, about twice as bright |
-| `3` | **cold blue, subtle** |
+| `0` | **off** (default) — static coat only |
+| `1` | slow swirl — the environment map rotating in place |
+| `2` | turbulent shimmer — `tcMod turb`, so the reflection ripples |
+| `3` | animated frames — a two-frame `animMap` over QL's `envmapblue`/`envmapblue2` pair |
+| `4` | crawling frost — `tcGen base` + scroll, fixed to the body rather than the view |
 
-Sixteen combinations; every shader registers at load so neither cvar needs a
+Twenty combinations; every shader registers at load so neither cvar needs a
 `vid_restart`.
 
 All three are registered at load, so switching the cvar takes effect without a

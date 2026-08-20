@@ -2288,11 +2288,34 @@ void CG_AddRefEntityWithPowerups(refEntity_t* ent, entityState_t* state, int tea
         if (state->powerups & (1 << PW_FREEZE)) {
             int style = cg_freezeShellStyle.integer - 1;
             int effect = cg_freezeShellEffect.integer - 1;
+            int tier = 0;
 
+            /*
+            [QL] Thinner ice the closer they are to coming free.
+
+            A shader cannot read game state, so the size is picked here from a
+            signal the server already publishes: Freeze_ClientThawCheck buckets
+            ps.thawtime into thirds and writes the bucket into the low bits of
+            generic1, BG_PlayerStateToEntityState copies it into the entity state
+            and msg.c networks it. Three buckets, three coats per style, thickest
+            first - so the shell visibly closes in while a teammate works on the
+            statue instead of holding one size until it pops.
+
+            The server writes the bucket exactly - both bits cleared first - so
+            the shell tracks the timer in both directions. It did not before: the
+            bits only accumulated, and a statue whose thawer walked away stayed
+            drawn at its thinnest all the way back up.
+            */
             if (style < 0 || style >= (int)ARRAY_LEN(cgs.media.freezeCoatShaders)) {
                 style = 0;
             }
-            ent->customShader = cgs.media.freezeCoatShaders[style];
+            if (state->generic1 & 2) {
+                tier = 2;
+            } else if (state->generic1 & 1) {
+                tier = 1;
+            }
+
+            ent->customShader = cgs.media.freezeCoatShaders[style][tier];
             trap_R_AddRefEntityToScene(ent);
 
             // the halo, standing further off than the coat. Its own pass because

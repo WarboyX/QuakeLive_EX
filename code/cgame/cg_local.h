@@ -1380,8 +1380,8 @@ typedef struct {
     qhandle_t iceShardShader2;   // powerups/ice2
     qhandle_t iceShardShader3;   // powerups/ice3
     qhandle_t frozenShader;      // sprites/frozen
-    qhandle_t freezeCoatShaders[4];  // [QL] ice coat variants, chosen by cg_freezeShellStyle
-    qhandle_t freezeGlowShaders[3];  // [QL] halo variants, chosen by cg_freezeShellEffect
+    qhandle_t freezeCoatShaders[4][3];  // [QL] [cg_freezeShellStyle][thaw tier from generic1]
+    qhandle_t freezeGlowShaders[4];  // [QL] animated overlays, chosen by cg_freezeShellEffect
     qhandle_t iceMarkShader;     // iceMark
 
     // [QL] gametype icons for scoreboard/HUD
