@@ -1755,48 +1755,67 @@ back to `PRINT_DEVELOPER` to match.
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
 Reported on the castle map: doors stuck part-open, rapidly shifting between
-percentages of travel. Two facts from testing narrowed it to one file — it
-happens with the **vanilla Steam client** (so not our rendering or
-interpolation), and it does **not** happen on the **vanilla Steam server**
-binary (so it is our `qagame`, and it is a divergence from QL's own).
+percentages of travel. Testing narrowed it precisely — it happens with the
+**vanilla Steam client** (so not our rendering or interpolation) and **not** on
+the **vanilla Steam server** binary (so it is our `qagame` diverging from QL's).
 
-`SetMoverState` had been changed to walk `ent->teamchain` itself, with the
-reasoning that setting every part `STATIONARY` at once stops `G_MoverTeam`
-re-firing `reached()` on the slaves. That was solving a problem that does not
-exist — `G_MoverTeam`'s success loop already skips anything that is not
-`TR_LINEAR_STOP` — and it created this one.
+**The cause, found once the report narrowed to "closing works, opening does
+not".** Ordinary doors are triggered by `Touch_PlatCenterTrigger`, and its guard
+was:
 
-Two callers make it wrong:
+```c
+if (ent->parent->moverState != MOVER_POS2) {     // "not fully open"
+    Use_BinaryMover(ent->parent, ent, other);
+}
+```
 
-- **`Reached_BinaryMover`** calls `SetMoverState` directly, and it is the *per
-  part* latch. `G_MoverTeam` walks the team and calls `reached()` on each part
-  whose own `trTime + trDuration` has elapsed, so every part latches itself. With
-  the chain walk inside, whichever part finished first dragged every part after
-  it to `POS1`/`POS2` early — snapping a leaf that was still travelling — and
-  then the parts behind it reached in turn and re-latched the whole team again,
-  each time with a fresh `trTime`, re-firing sounds, re-adjusting the area portal
-  and resetting the auto-close `nextthink`. **That re-latching is the percentage
-  jumping**, and a part snapped early is the "not fully open or closed".
-- **`Reached_Train`** calls it directly too, immediately after computing that
-  entity's own `trDuration`, so the chain walk would apply one entity's state to
-  unrelated parts.
+Stock Quake 3 guards on `!= MOVER_1TO2` — *not currently opening*. The touch
+fires **every frame** a player stands in the trigger, and `Use_BinaryMover` is a
+toggle: called while the mover is `MOVER_1TO2` it takes the "only partway up
+before reversing" branch and turns the door around. So walking up to a closed
+door opened it, and then every subsequent frame in the trigger reversed it —
+`1TO2` to `2TO1`, then back to `1TO2` the next frame, flipping at server frame
+rate. **That is the percentage jumping**, and it stops the moment you leave the
+trigger, which is why the close afterwards looked clean.
 
-Reverted to the stock shape: `SetMoverState` latches one part, `MatchTeam`
-iterates the team. That is what Quake 3 and Quake Live's `qagame` both do, which
-is exactly why the vanilla server does not show this.
+With the stock guard the four states behave correctly:
 
-**Checked and cleared while in here**, so they do not get re-suspected:
+| state | | |
+|---|---|---|
+| `MOVER_POS1` | closed | open it |
+| `MOVER_1TO2` | already opening | **leave it alone** — the fix |
+| `MOVER_POS2` | fully open | `Use_BinaryMover` refreshes the auto-close wait, so standing in a doorway holds it open |
+| `MOVER_2TO1` | closing | reverse to opening, which is what walking into a closing door should do |
+
+The old guard also broke the `POS2` case: skipping the call there meant the wait
+timer was never refreshed, so a door would close on a player standing in the
+doorway.
+
+**Also fixed on the way (first attempt at this, correct but not the cause):**
+`SetMoverState` had been changed to walk `ent->teamchain` itself, reasoning that
+setting every part `STATIONARY` at once stops `G_MoverTeam` re-firing `reached()`
+on the slaves. That problem does not exist — `G_MoverTeam`'s success loop already
+skips anything that is not `TR_LINEAR_STOP` — and it made `Reached_BinaryMover`
+(the *per part* latch, called by `G_MoverTeam` for each part whose own
+`trTime + trDuration` has elapsed) drag every part after it to `POS1`/`POS2`
+early, then re-latch the whole team as the others reached in turn. Reverted to
+the stock split: `SetMoverState` latches one part, `MatchTeam` iterates.
+
+**Checked and cleared**, so they do not get re-suspected:
 
 - `G_MoverTeam`'s blocked branch reads
   `part->s.pos.trTime += level.time - (level.time - level.frametime)`, which
-  looks like a rewrite of stock's `level.time - level.previousTime`. It is
-  algebraically identical: `G_RunFrame` sets
+  looks like a botched rewrite of stock's `level.time - level.previousTime`. It
+  is algebraically identical: `G_RunFrame` assigns
   `level.frametime = levelTime - level.time` *before* `level.time = levelTime`.
 - `Use_BinaryMover` matches stock exactly, including the partial-travel reversal
-  arithmetic.
-- `Blocked_Door` reversing on every blocked frame is stock behaviour and is not
-  the cause here; the spurious kamikaze shockwaves that were shoving players into
-  doorways are E32, already fixed.
+  arithmetic and the `+50` ms offset on the open.
+- `BG_EvaluateTrajectory`'s `TR_LINEAR_STOP` case does clamp negative
+  `deltaTime` to 0, so the `+50` open offset holds the door at `pos1` for the
+  first 50 ms rather than running it backwards.
+- `Touch_DoorTrigger` (the key-door variant) already had the right shape.
+- `Blocked_Door` reversing on every blocked frame is stock behaviour; the
+  spurious kamikaze shockwaves that were shoving players into doorways are E32.
 
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only

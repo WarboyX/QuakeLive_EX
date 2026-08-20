@@ -1147,10 +1147,37 @@ If the plat is at the bottom position, start it going up
 ===============
 */
 void Touch_PlatCenterTrigger(gentity_t* ent, gentity_t* other, trace_t* trace) {
-    // [QL] non-clients and non-spectators activate the mover unless it is
-    // already fully up
+    /*
+    [QL] The guard is "not currently opening", not "not fully open".
+
+    This is the door glitch on the castle map, and the reason it was opening that
+    broke while closing looked fine.
+
+    The touch fires every frame a player stands in the trigger. Use_BinaryMover
+    is a toggle: called while the mover is MOVER_1TO2 it takes the "only partway
+    up before reversing" branch and turns the door around. So with the guard at
+    != MOVER_POS2, walking up to a closed door opened it, and then every
+    subsequent frame in the trigger reversed it - 1TO2 to 2TO1, then 2TO1 back to
+    1TO2 the next frame, flipping at server frame rate. That is the percentage
+    jumping about, and it stops the moment you leave the trigger, which is why the
+    close afterwards looked clean.
+
+    Stock Quake 3 guards on != MOVER_1TO2 for exactly this. The four states then
+    behave the way they should:
+
+      MOVER_POS1  closed          -> open it
+      MOVER_1TO2  already opening -> leave it alone (this is the fix)
+      MOVER_POS2  fully open      -> Use_BinaryMover just refreshes the auto-close
+                                     wait, so standing in a doorway holds it open
+      MOVER_2TO1  closing         -> reverse to opening, which is what should
+                                     happen when you walk into a closing door
+
+    Note the old guard also broke the POS2 case: skipping the call there meant the
+    wait timer was never refreshed, so the door would close on a player standing
+    in the doorway.
+    */
     if (!other->client || other->client->sess.sessionTeam != TEAM_SPECTATOR) {
-        if (ent->parent->moverState != MOVER_POS2) {
+        if (ent->parent->moverState != MOVER_1TO2) {
             Use_BinaryMover(ent->parent, ent, other);
         }
         return;
