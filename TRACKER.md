@@ -1818,6 +1818,39 @@ the stock split: `SetMoverState` latches one part, `MatchTeam` iterates.
 - `Blocked_Door` reversing on every blocked frame is stock behaviour; the
   spurious kamikaze shockwaves that were shoving players into doorways are E32.
 
+### E38. Left team's scrollbar invisible; scoreboard scrolling and mouse — PART DONE
+**Lives in:** our **client** (cgame + ui) · **Seen by:** our client only
+
+**Fixed: the left team's scrollbar was being painted over.** `Item_ListBox_Paint`
+draws the vertical scrollbar first and the rows afterwards, and both were starting
+at `item->window.rect.x + 1` — so with `WINDOW_LB_LEFTSCROLL` on the red team's
+list, every row drew straight over the bar. The default right-hand case never had
+the problem because the bar sits past the end of the row content, which is also
+why the cursor fill below it already subtracts `SCROLLBAR_SIZE` from its width.
+The rows now shift right by `SCROLLBAR_SIZE` when the flag is set, mirroring the
+default case: the bar gets its own column.
+
+**Not a bug: scrolling has no default bind.** It is six console commands —
+`scrollScoresUp` / `scrollScoresDown`, `pageScoresUp` / `pageScoresDown`,
+`scrollScoresTop` / `scrollScoresBottom` — and `CG_ScrollScoreboard` already
+drives all four feeders (`FEEDER_SCOREBOARD`, `FEEDER_ENDSCOREBOARD`,
+`FEEDER_REDTEAM_LIST`, `FEEDER_BLUETEAM_LIST`), so the team lists are wired. With
+nothing bound there is simply no key to press. Deliberately not auto-bound:
+silently taking someone's keys is worse than the commands being undiscoverable,
+and the obvious candidates (mouse wheel) are weapon switching.
+
+**Open: mouse on the in-game scoreboard.** The machinery all exists —
+`CG_EventHandling(CGAME_EVENT_SCOREBOARD)` sets `KEYCATCH_CGAME`, and
+`CG_MouseEvent` / `CG_KeyEvent` are implemented and correct. It is currently
+triggered from one place only: `CG_ParseServerinfo`'s intermission branch, so the
+**match summary** takes the mouse and the in-game scoreboard does not.
+
+Extending it to the in-game board is a design decision rather than a fix, because
+`KEYCATCH_CGAME` takes mouselook and movement with it. That is fine for the
+intermission summary and wrong for a hold-to-view `+scores`. It needs either a
+toggled scoreboard mode (press to open, mouse works, press to close) or a
+modifier, and which one is a preference. Not guessed at.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 

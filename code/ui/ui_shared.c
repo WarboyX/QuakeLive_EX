@@ -4265,6 +4265,23 @@ void Item_ListBox_Paint(itemDef_t* item) {
             }
         } else {
             x = item->window.rect.x + 1;
+            /*
+            [QL] Leave room for a scrollbar drawn on the left edge.
+
+            The rows and the WINDOW_LB_LEFTSCROLL bar were both starting at
+            rect.x + 1, and the rows are drawn after the bar, so the bar was
+            painted over - which is the left team's scrollbar going missing from
+            the team scoreboard. The default right-hand case never had this
+            problem because the bar sits past the end of the row content, which
+            is also why the cursor fill below already subtracts SCROLLBAR_SIZE
+            from the width.
+
+            Shifting the content right by the same amount mirrors that: the bar
+            gets its column and the rows start after it.
+            */
+            if (item->window.flags & WINDOW_LB_LEFTSCROLL) {
+                x += SCROLLBAR_SIZE;
+            }
             y = item->window.rect.y + 1;
             for (i = listPtr->startPos; i < count; i++) {
                 const char* text;
