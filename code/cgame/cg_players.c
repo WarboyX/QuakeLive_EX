@@ -2286,17 +2286,20 @@ void CG_AddRefEntityWithPowerups(refEntity_t* ent, entityState_t* state, int tea
         // fully drawn underneath and the ice is a coat over them rather than a
         // repaint. cg_freezeShell picks which of the three shells to wear.
         if (state->powerups & (1 << PW_FREEZE)) {
-            int v = cg_freezeShell.integer - 1;
+            int style = cg_freezeShellStyle.integer - 1;
+            int effect = cg_freezeShellEffect.integer - 1;
 
-            if (v < 0 || v >= (int)ARRAY_LEN(cgs.media.freezeShellShaders)) {
-                v = 0;
+            if (style < 0 || style >= (int)ARRAY_LEN(cgs.media.freezeCoatShaders)) {
+                style = 0;
             }
-            ent->customShader = cgs.media.freezeShellShaders[v];
+            ent->customShader = cgs.media.freezeCoatShaders[style];
             trap_R_AddRefEntityToScene(ent);
 
-            // and the halo over it, standing further off than the coat
-            if (cgs.media.freezeGlowShader) {
-                ent->customShader = cgs.media.freezeGlowShader;
+            // the halo, standing further off than the coat. Its own pass because
+            // one shader gets one deformVertexes. cg_freezeShellEffect 0 is off.
+            if (effect >= 0 && effect < (int)ARRAY_LEN(cgs.media.freezeGlowShaders) &&
+                cgs.media.freezeGlowShaders[effect]) {
+                ent->customShader = cgs.media.freezeGlowShaders[effect];
                 trap_R_AddRefEntityToScene(ent);
             }
         }

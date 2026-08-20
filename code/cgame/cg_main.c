@@ -510,17 +510,29 @@ later would do nothing (see r_dlightMode and con_scale).
 vmCvar_t cg_railColorMode;
 
 /*
-[QL] Which ice shell a frozen player wears - see pak01/scripts/freeze.shader.
+[QL] How a frozen player looks - see pak01/scripts/freeze.shader.
 
-  1  glass, close hover (default) - 4 units off the model, alpha-blended with
-     specular alpha so the player reads through it
-  2  glass, wide hover - the same shell 9 units off, if 4 still looks painted on
-  3  glow, wide hover - the quad-shell treatment at 9 units, brighter and more
-     obviously an effect
+Two axes, because the coat and the halo are independent and the right pairing is
+a judgement made by looking. Neither is CVAR_ARCHIVE: both are defaults we
+choose, and archiving one writes it into a config that then wins forever.
 
-Not CVAR_ARCHIVE: a default we choose, and archiving one freezes it forever.
+cg_freezeShellStyle - the coat, hugging the model:
+  1  blue, close  (default)  Quake Live's ice environment map, 2 units off
+  2  white, close             flat white, 2 units off
+  3  blue, wide               as 1 at 5 units
+  4  white, wide              as 2 at 5 units
+
+cg_freezeShellEffect - the halo, standing further off:
+  0  off
+  1  white, subtle (default)  7 units off
+  2  white, stronger          same hull, about twice as bright
+  3  cold blue, subtle
+
+Sixteen combinations. Both take effect immediately - every shader is registered
+at load, so there is no vid_restart between tries.
 */
-vmCvar_t cg_freezeShell;
+vmCvar_t cg_freezeShellStyle;
+vmCvar_t cg_freezeShellEffect;
 
 typedef struct {
     vmCvar_t* vmCvar;
@@ -631,7 +643,8 @@ static cvarTable_t cvarTable[] = {
     {&cg_noProjectileTrail, "cg_noProjectileTrail", "0", CVAR_ARCHIVE},
     {&cg_oldRail, "cg_oldRail", "1", CVAR_ARCHIVE},
     {&cg_railColorMode, "cg_railColorMode", "1", 0},
-    {&cg_freezeShell, "cg_freezeShell", "1", 0},
+    {&cg_freezeShellStyle, "cg_freezeShellStyle", "1", 0},
+    {&cg_freezeShellEffect, "cg_freezeShellEffect", "1", 0},
     {&cg_oldRocket, "cg_oldRocket", "1", CVAR_ARCHIVE},
     {&cg_oldPlasma, "cg_oldPlasma", "1", CVAR_ARCHIVE},
     {&cg_trueLightning, "cg_trueLightning", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0.0")
@@ -2029,14 +2042,17 @@ static void CG_RegisterGraphics(void) {
     */
     {
         int i;
-        for (i = 0; i < 3; i++) {
-            cgs.media.freezeShellShaders[i] =
-                CG_RegisterShaderOr(va("powerups/freezeshell%i", i + 1), cgs.media.frozenShader);
+        // every variant registers up front so switching either cvar takes effect
+        // without a vid_restart, and so a name the pak lacks is reported at load
+        // rather than silently drawing nothing - RE_RegisterShader returns 0.
+        for (i = 0; i < 4; i++) {
+            cgs.media.freezeCoatShaders[i] =
+                CG_RegisterShaderOr(va("powerups/freezecoat%i", i + 1), cgs.media.frozenShader);
         }
-        // [QL] the halo. One shader gets one deformVertexes, so a glow standing
-        // further off the model than the coat has to be its own shader and its
-        // own pass. 0 if the pak lacks it, and the draw skips it.
-        cgs.media.freezeGlowShader = CG_RegisterShaderOr("powerups/freezeglow", 0);
+        for (i = 0; i < 3; i++) {
+            cgs.media.freezeGlowShaders[i] =
+                CG_RegisterShaderOr(va("powerups/freezeglow%i", i + 1), 0);
+        }
     }
     cgs.media.iceMarkShader = CG_RegisterShaderOr("iceMark", 0);
 

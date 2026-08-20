@@ -1274,10 +1274,15 @@ and a client that does not know the verb ignores it. Roughly 200 bytes at
 Frozen teammates show as an ice-blue row with **`FROZEN` in the location
 column** — the only text field on the row, so it is where a word belongs, and
 where a frozen player is matters far less than that they are frozen and need
-fetching. That column otherwise read "unknown", because most maps carry no
-`target_location` entities so `ci->location` is 0 and `CS_LOCATIONS + 0` is
-empty; QL's own overlay reads "unknown" on those maps too, so the fallback is not
-ours to fix, it just is not worth a column here.
+fetching.
+
+That column now reads **FROZEN → real location → ALIVE**. It answers a question
+with two useful states in Freeze Tag: is that teammate a statue, or still
+playing. Where they are is the bonus, and most maps do not offer it — without
+`target_location` entities `ci->location` is 0 and `CS_LOCATIONS + 0` is empty,
+which is what "unknown" was. QL shows "unknown" there too, so it was not wrong,
+just the least useful thing the column could say. On a map that does have
+locations the real name still wins.
 
 Health and armour keep their real numbers (0 0 for a statue) rather than being
 replaced by the word. The row stays ice blue rather than going through
@@ -1363,11 +1368,30 @@ reads as a pale silhouette rather than a glow. Faint on purpose — it is drawn
 three times per player (legs, torso, head) and accumulates where the parts
 overlap.
 
-| `cg_freezeShell` | |
+**Fifth: too big, and the halo blew out.** All standoffs halved, and the halo
+dropped from `rgbGen const 0.55` to `0.12` — it is drawn once per model part
+(legs, torso, head), so it accumulates wherever those overlap and a value that
+looks mild on one surface saturates a whole player.
+
+Split into two cvars, since the coat and the halo are independent and the right
+pairing is a judgement made by looking:
+
+| `cg_freezeShellStyle` (the coat) | |
 |---|---|
-| `1` | **white, close hover** (default) — 4 units off |
-| `2` | **white, wide hover** — 9 units off |
-| `3` | **icemap, close hover** — the blue one, keeping QL's crystal pattern and its colour with it |
+| `1` | **blue, close** (default) — QL's ice environment map, 2 units off |
+| `2` | **white, close** — flat white, 2 units off |
+| `3` | **blue, wide** — as 1 at 5 units |
+| `4` | **white, wide** — as 2 at 5 units |
+
+| `cg_freezeShellEffect` (the halo) | |
+|---|---|
+| `0` | off |
+| `1` | **white, subtle** (default) — 7 units off |
+| `2` | **white, stronger** — same hull, about twice as bright |
+| `3` | **cold blue, subtle** |
+
+Sixteen combinations; every shader registers at load so neither cvar needs a
+`vid_restart`.
 
 All three are registered at load, so switching the cvar takes effect without a
 `vid_restart`, and a missing one is reported rather than silently drawing nothing

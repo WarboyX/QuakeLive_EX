@@ -720,8 +720,22 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 					p = "FROZEN";
 				} else {
 					p = CG_ConfigString(CS_LOCATIONS + ci->location);
-					if (!p || !*p)
-						p = "unknown";
+					if (!p || !*p) {
+						/*
+						[QL] "ALIVE", not "unknown".
+
+						This column answers a question with two useful states in
+						Freeze Tag: is that teammate a statue, or are they still
+						playing. Where they are is the bonus, and most maps do
+						not offer it - without target_location entities
+						ci->location is 0 and CS_LOCATIONS + 0 is empty, which
+						is what "unknown" was. Quake Live shows "unknown" there
+						too, so it is not wrong, it is just the least useful
+						thing the column could say. On a map that does have
+						locations the real name still wins.
+						*/
+						p = "ALIVE";
+					}
 				}
 				//				len = CG_DrawStrlen(p);
 				//				if (len > lwidth)

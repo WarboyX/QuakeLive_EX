@@ -1,88 +1,45 @@
 // [QL] Freeze Tag ice shell.
 //
-// The model is drawn normally first and then again with a customShader, the way
-// the quad shell works (CG_AddRefEntityWithPowerups). So these are coats over a
-// player who is still fully drawn underneath.
+// A frozen player is drawn three times: the model normally, then a coat, then a
+// halo (CG_AddRefEntityWithPowerups). The coat and halo are separate shaders
+// because one shader gets one deformVertexes, and the halo has to stand further
+// off the model than the coat does.
 //
-// Four things had to be right and each attempt found one of them.
+// What each part is for, and what went wrong getting there:
 //
-// Brightness: two GL_ONE GL_ONE stages of a bright environment map add roughly
-// twice the map's brightness on top of the model, which saturates to white and
-// erases the player. Quake Live's stays completely readable, so the shell has to
-// occlude rather than add - alpha blending, not additive.
+// The coat occludes rather than adds. Two GL_ONE GL_ONE stages of a bright
+// environment map add roughly twice the map's brightness on top of the model,
+// which saturates to white and erases the player - Quake Live's stays completely
+// readable. So it is alpha blended, and alphaGen lightingSpecular puts the
+// opacity where the light falls, which is what reads as facets.
 //
-// Standoff: Quake Live's ice hovers around the player rather than clinging to
-// the model, which is what makes it read as a block of ice with someone inside.
-// A second pass of the same mesh is skin-tight by definition, so the geometry is
-// pushed out along the vertex normals - deformVertexes is the only thing in
-// idTech3 that moves geometry from a shader:
+// It stands off the model. Quake Live's ice hovers rather than clinging, which
+// is what makes it a block of ice with someone inside instead of a shiny skin. A
+// second pass of the same mesh is skin-tight by definition, so the geometry is
+// pushed along the vertex normals - deformVertexes is the only thing in idTech3
+// that moves geometry from a shader.
 //
-//   deformVertexes wave <div> <func> <base> <amplitude> <phase> <freq>
+// Nothing animates. Ice does not breathe, which takes care when the deform is
+// spelled as a wave: amplitude 0 with frequency 0 is the constant case, and
+// RB_CalcDeformVertexes has a frequency == 0 branch that evaluates the waveform
+// once and pushes every vertex by that fixed amount. Same reason every rgbGen
+// here is const, and there is no tcMod anywhere.
 //
-// Colour: white, not blue. textures/effects/icemap.jpg carries its own blue, and
-// rgbGen only scales what the texture already has - there is no way to desaturate
-// a texture in the fixed pipeline. So the coat is built on $whiteimage, the
-// renderer's built-in 1x1 white, and the shape comes from alphaGen
-// lightingSpecular instead of from the map: opacity follows the light, which is
-// what reads as facets. The blue map is dropped rather than tinted down.
+// The halo is faint on purpose. It is drawn once per model part - legs, torso
+// and head - so it accumulates wherever those overlap, and a value that looks
+// mild on a single surface blows out across a whole player.
 //
-// Still: ice does not breathe. Everything here is static, which takes some care
-// because the deform is spelled as a wave. Amplitude 0 and frequency 0 is the
-// constant case - RB_CalcDeformVertexes has a branch for frequency == 0 that
-// evaluates the waveform once and pushes every vertex by that fixed amount - so
-// the shell holds its shape. Same reason the sheen is rgbGen const rather than
-// rgbGen wave, and there is no tcMod anywhere.
-//
-// The glow is a second, wider shell drawn as its own pass (see
-// CG_AddRefEntityWithPowerups) - one shader gets one deformVertexes, so a halo
-// standing further off the model than the coat has to be a separate shader.
+// Two cvars pick the combination: cg_freezeShellStyle chooses the coat,
+// cg_freezeShellEffect chooses the halo (0 turns it off).
 
-// ---------------------------------------------------------------------------
-// The coat. cg_freezeShell picks the standoff.
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Coats - cg_freezeShellStyle
+// ===========================================================================
 
-// cg_freezeShell 1 - close hover (default), 4 units
-powerups/freezeshell1
+// 1: blue, close (default). Quake Live's own ice environment map, 2 units off.
+powerups/freezecoat1
 {
-	deformVertexes wave 100 sin 4 0 0 0
-	{
-		map $whiteimage
-		blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
-		rgbGen identity
-		alphaGen lightingSpecular
-	}
-	{
-		map $whiteimage
-		blendfunc GL_ONE GL_ONE
-		rgbGen const ( 0.10 0.10 0.10 )
-	}
-}
-
-// cg_freezeShell 2 - wide hover, 9 units
-powerups/freezeshell2
-{
-	deformVertexes wave 100 sin 9 0 0 0
-	{
-		map $whiteimage
-		blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
-		rgbGen identity
-		alphaGen lightingSpecular
-	}
-	{
-		map $whiteimage
-		blendfunc GL_ONE GL_ONE
-		rgbGen const ( 0.10 0.10 0.10 )
-	}
-}
-
-// cg_freezeShell 3 - close hover with the ice environment map kept
-//
-// The blue one, for comparison: same 4-unit coat but textured with Quake Live's
-// icemap rather than flat white. Keeps the map's crystal pattern, and its colour
-// along with it.
-powerups/freezeshell3
-{
-	deformVertexes wave 100 sin 4 0 0 0
+	deformVertexes wave 100 sin 2 0 0 0
 	{
 		map textures/effects/icemap.jpg
 		blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
@@ -93,29 +50,110 @@ powerups/freezeshell3
 	{
 		map textures/effects/icemap.jpg
 		blendfunc GL_ONE GL_ONE
-		rgbGen const ( 0.18 0.26 0.38 )
+		rgbGen const ( 0.14 0.20 0.30 )
 		tcGen environment
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The glow - a wider, fainter white shell over the coat.
-// ---------------------------------------------------------------------------
+// 2: white, close. $whiteimage is the renderer's built-in 1x1 white - the only
+// way to get a white coat, since rgbGen scales what a texture already has and
+// icemap's blue cannot be desaturated out of it in the fixed pipeline.
+powerups/freezecoat2
+{
+	deformVertexes wave 100 sin 2 0 0 0
+	{
+		map $whiteimage
+		blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
+		rgbGen identity
+		alphaGen lightingSpecular
+	}
+	{
+		map $whiteimage
+		blendfunc GL_ONE GL_ONE
+		rgbGen const ( 0.08 0.08 0.08 )
+	}
+}
+
+// 3: blue, wide. Same as 1 at 5 units.
+powerups/freezecoat3
+{
+	deformVertexes wave 100 sin 5 0 0 0
+	{
+		map textures/effects/icemap.jpg
+		blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
+		rgbGen identity
+		alphaGen lightingSpecular
+		tcGen environment
+	}
+	{
+		map textures/effects/icemap.jpg
+		blendfunc GL_ONE GL_ONE
+		rgbGen const ( 0.14 0.20 0.30 )
+		tcGen environment
+	}
+}
+
+// 4: white, wide. Same as 2 at 5 units.
+powerups/freezecoat4
+{
+	deformVertexes wave 100 sin 5 0 0 0
+	{
+		map $whiteimage
+		blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
+		rgbGen identity
+		alphaGen lightingSpecular
+	}
+	{
+		map $whiteimage
+		blendfunc GL_ONE GL_ONE
+		rgbGen const ( 0.08 0.08 0.08 )
+	}
+}
+
+// ===========================================================================
+// Halos - cg_freezeShellEffect
+// ===========================================================================
 //
 // GL_SRC_ALPHA GL_ONE is additive weighted by alpha, so lightingSpecular
-// concentrates it where light catches the hull and lets it fall away elsewhere.
-// A flat additive shell this size would read as a pale silhouette rather than a
-// glow. Deliberately faint: the request was a minor glow, and this is drawn
-// three times per player (legs, torso, head), so it accumulates where the parts
-// overlap.
-powerups/freezeglow
+// concentrates the halo where light catches the hull and lets it fall away
+// elsewhere. A flat additive shell at this size reads as a pale silhouette
+// rather than a glow.
+
+// 1: white, subtle (default). 7 units off.
+powerups/freezeglow1
 {
-	deformVertexes wave 100 sin 14 0 0 0
+	deformVertexes wave 100 sin 7 0 0 0
 	cull none
 	{
 		map $whiteimage
 		blendfunc GL_SRC_ALPHA GL_ONE
-		rgbGen const ( 0.55 0.55 0.55 )
+		rgbGen const ( 0.12 0.12 0.12 )
+		alphaGen lightingSpecular
+	}
+}
+
+// 2: white, stronger. Same hull, roughly twice as bright.
+powerups/freezeglow2
+{
+	deformVertexes wave 100 sin 7 0 0 0
+	cull none
+	{
+		map $whiteimage
+		blendfunc GL_SRC_ALPHA GL_ONE
+		rgbGen const ( 0.26 0.26 0.26 )
+		alphaGen lightingSpecular
+	}
+}
+
+// 3: cold blue rather than white, subtle.
+powerups/freezeglow3
+{
+	deformVertexes wave 100 sin 7 0 0 0
+	cull none
+	{
+		map $whiteimage
+		blendfunc GL_SRC_ALPHA GL_ONE
+		rgbGen const ( 0.08 0.13 0.22 )
 		alphaGen lightingSpecular
 	}
 }
