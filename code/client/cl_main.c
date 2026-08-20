@@ -1426,25 +1426,34 @@ void CL_PostProcessRestart_f(void) {
     typing it was silently ignored, which is worse than not having the command,
     because the name promises something.
 
-    There turns out to be nothing distinct for it to do on either renderer, and
-    for different reasons:
+    Checked properly rather than assumed, because "do we need this at all" is a
+    fair question: a post-process pipeline's only inputs are the renderer cvars,
+    the image set and the framebuffer geometry, and every way any of those can
+    change already rebuilds them. vk_update_post_process_pipelines() has exactly
+    three call sites:
 
-      Vulkan   vk_update_post_process_pipelines() is called from the
-               renderer-cvar-modified block in tr_cmds.c, so bloom, HDR and the
-               capture pipelines are rebuilt the moment anything in CVG_RENDERER
-               changes. There is no window in which a manual restart would help.
+      tr_image.c   end of R_InitImages - renderer init and vid_restart
+      vk.c         inside the attachment/framebuffer rebuild - window resize,
+                   display change, alt-tab, swapchain lost
+      tr_cmds.c    gated on Cvar_CheckGroup( CVG_RENDERER ) - any video setting
 
-      OpenGL2  the post-process cvars split two ways. r_toneMap, r_cameraExposure
-               and the r_forceToneMap* cheats are read per frame in the backend
-               (tr_backend.c), so they apply on the next frame with no restart at
-               all. r_hdr is CVAR_LATCH, which means the engine already has a
-               mechanism for applying it - vid_restart - and that is the whole
-               point of latching. A half-measure between the two would be a
-               third path to maintain for no gain.
+    If none of those happened, the pipelines are still valid and there is nothing
+    to rebuild. There is no fourth way for an input to change, so there is no gap
+    for a manual command to cover.
 
-    So the command reports rather than pretending. Keeping it costs nothing and
-    leaves any existing bind working; removing it would turn a silent no-op into
-    "unknown command", which is not an improvement for someone who has it bound.
+    OpenGL2 does not raise the question: it has no bloom or post-process pipeline
+    object at all, and tone mapping is a per-frame shader selection in the
+    backend. Its one latched post cvar, r_hdr, is applied by vid_restart, which
+    is what CVAR_LATCH means.
+
+    Nothing invokes the command either - not the ui module, not cgame, not any
+    shipped menu - so it is not part of an apply-settings path.
+
+    So it reports rather than pretending. Keeping it leaves any existing bind
+    working; removing it would turn a silent no-op into "unknown command", which
+    is not an improvement for someone who has it bound. If a post-process stage
+    is ever added whose inputs are not cvars, images or framebuffer geometry,
+    this is where to wire it.
     */
     Com_Printf("postprocess_restart: nothing to do.\n"
                "  Post-processing cvars that can change live (r_toneMap, r_cameraExposure,\n"
