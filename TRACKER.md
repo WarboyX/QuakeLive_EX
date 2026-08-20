@@ -1695,11 +1695,22 @@ Current state, 76 empty bodies outside vendored trees:
 **The one GAP it found, now fixed.** `CL_PostProcessRestart_f` was registered as
 the `postprocess_restart` console command and did nothing — typing it was
 silently ignored, which is worse than not having the command, because the name
-promises something. There turned out to be nothing left for it to do:
-`vk_update_post_process_pipelines()` runs from the renderer-cvar-modified block
-in `tr_cmds.c`, so bloom, HDR and capture already rebuild the moment their cvars
-change. It now says that instead of ignoring you, which keeps any existing bind
-working rather than turning it into "unknown command".
+promises something.
+
+There turns out to be nothing distinct for it to do on **either** renderer, and
+for different reasons. On Vulkan, `vk_update_post_process_pipelines()` runs from
+the renderer-cvar-modified block in `tr_cmds.c`, so bloom, HDR and capture rebuild
+the moment anything in `CVG_RENDERER` changes — no window in which a manual
+restart would help. On OpenGL2 the post cvars split two ways: `r_toneMap`,
+`r_cameraExposure` and the `r_forceToneMap*` cheats are read per frame in the
+backend so they apply on the next frame, and `r_hdr` is `CVAR_LATCH` — the engine
+already has a mechanism for applying it, `vid_restart`, and that is what latching
+means. A half-measure between the two would be a third path to maintain for no
+gain.
+
+So it reports rather than pretending. Keeping the command leaves any existing
+bind working; removing it would turn a silent no-op into "unknown command", which
+is not an improvement for someone who has it bound.
 
 **A note on the tool itself.** The first cut reported `UI_AdjustFrom640` as empty:
 it treated any line starting with `*` as a block-comment continuation, which is

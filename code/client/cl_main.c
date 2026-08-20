@@ -1426,20 +1426,31 @@ void CL_PostProcessRestart_f(void) {
     typing it was silently ignored, which is worse than not having the command,
     because the name promises something.
 
-    There is nothing left for it to do on the Vulkan path.
-    vk_update_post_process_pipelines() is called from the renderer-cvar-modified
-    block in tr_cmds.c every time anything in CVG_RENDERER changes, so bloom,
-    HDR and the capture pipelines are already rebuilt the moment the cvar that
-    governs them is touched. A manual restart command is a leftover from a
-    renderer that needed one.
+    There turns out to be nothing distinct for it to do on either renderer, and
+    for different reasons:
 
-    So it answers instead. Keeping the command and having it explain itself
-    costs nothing and leaves any existing bind working; removing it would just
-    turn a silent no-op into "unknown command".
+      Vulkan   vk_update_post_process_pipelines() is called from the
+               renderer-cvar-modified block in tr_cmds.c, so bloom, HDR and the
+               capture pipelines are rebuilt the moment anything in CVG_RENDERER
+               changes. There is no window in which a manual restart would help.
+
+      OpenGL2  the post-process cvars split two ways. r_toneMap, r_cameraExposure
+               and the r_forceToneMap* cheats are read per frame in the backend
+               (tr_backend.c), so they apply on the next frame with no restart at
+               all. r_hdr is CVAR_LATCH, which means the engine already has a
+               mechanism for applying it - vid_restart - and that is the whole
+               point of latching. A half-measure between the two would be a
+               third path to maintain for no gain.
+
+    So the command reports rather than pretending. Keeping it costs nothing and
+    leaves any existing bind working; removing it would turn a silent no-op into
+    "unknown command", which is not an improvement for someone who has it bound.
     */
-    Com_Printf("postprocess_restart: nothing to do - post-processing pipelines\n"
-               "  (bloom, HDR, capture) rebuild automatically whenever a renderer\n"
-               "  cvar changes. Use vid_restart to force a full renderer restart.\n");
+    Com_Printf("postprocess_restart: nothing to do.\n"
+               "  Post-processing cvars that can change live (r_toneMap, r_cameraExposure,\n"
+               "  bloom) apply on the next frame. Latched ones (r_hdr) need vid_restart,\n"
+               "  which is what CVAR_LATCH means. The Vulkan renderer rebuilds its\n"
+               "  pipelines automatically whenever a renderer cvar changes.\n");
 }
 
 /*

@@ -69,7 +69,7 @@ BY-DESIGN	code/null/null_snddma.c:S_StartLocalSound	Headless no-op driver for th
 # ---------------------------------------------------------------------------
 UPSTREAM	code/cgame/cg_newdraw.c:CG_RunMenuScript	Empty in Quake 3 too - menu scripts are the ui module's job; cgame only has to satisfy the shared display context.
 UPSTREAM	code/cgame/cg_particles.c:CG_AddParticleShrapnel	Empty in Quake 3's cg_particles.c. The shrapnel particle type was never finished upstream.
-WIRED-ELSEWHERE	code/client/cl_main.c:CL_PostProcessRestart_f	Resolved: the work is automatic. vk_update_post_process_pipelines() runs from the renderer-cvar-modified block in tr_cmds.c, so bloom/HDR/capture rebuild when their cvars change. The command now says so instead of silently ignoring you; it is no longer empty, and this line stays as the record of why.
+WIRED-ELSEWHERE	code/client/cl_main.c:CL_PostProcessRestart_f	Resolved: nothing distinct to do on either renderer. Vulkan rebuilds post-process pipelines from the cvar-modified block in tr_cmds.c; OpenGL2's live post cvars (r_toneMap, r_cameraExposure) are read per frame and its latched one (r_hdr) is applied by vid_restart, which is what CVAR_LATCH is for. The command reports that instead of silently ignoring you.
 UPSTREAM	code/client/qal.c:QAL_Shutdown	Empty in ioquake3. The dynamic OpenAL handle is left loaded for process lifetime; unloading it mid-run has caused driver crashes upstream.
 UPSTREAM	code/client/snd_openal.c:S_AL_ClearSoundBuffer	Empty in ioquake3 - OpenAL has no DMA buffer to clear, the entry point exists only to satisfy the sound interface.
 UPSTREAM	code/client/snd_openal.c:S_AL_SoundList	Empty in ioquake3 - the 'soundlist' command is implemented for the DMA backend only.
