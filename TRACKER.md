@@ -1271,17 +1271,24 @@ and a client that does not know the verb ignores it. Roughly 200 bytes at
 `TEAM_MAXOVERLAY` 8, well inside the 1024-byte reliable limit, with the same
 `MAX_SCOREBOARD_PAYLOAD` guard.
 
-Frozen teammates now show as an ice-blue row with `FROZEN` where health/armour
-would be — the statue's real numbers are 0/0 and `CG_GetColorForHealth` would
-paint it critical-red, which says the wrong thing.
+Frozen teammates show as an ice-blue row with **`FROZEN` in the location
+column** — the only text field on the row, so it is where a word belongs, and
+where a frozen player is matters far less than that they are frozen and need
+fetching. That column otherwise read "unknown", because most maps carry no
+`target_location` entities so `ci->location` is 0 and `CS_LOCATIONS + 0` is
+empty; QL's own overlay reads "unknown" on those maps too, so the fallback is not
+ours to fix, it just is not worth a column here.
 
-**And no weapon icon on those rows.** The icon sits three characters into a field
-sized for `"%3i %3i"`, which lands it in the gap between health and armour;
-`FROZEN` is six characters with no gap, so the icon was drawn straight over the
-Z. Skipping it beats moving the text because there is nothing to draw either way
-— `PM_Weapon` sets `ps.weapon` to `WP_NONE` while health is <= 0, so a statue's
-`curWeapon` is `WP_NONE` and the icon fell through to `deferShader`, the red
-no-entry circle that was sitting on the word.
+Health and armour keep their real numbers (0 0 for a statue) rather than being
+replaced by the word. The row stays ice blue rather than going through
+`CG_GetColorForHealth`, which would paint a statue critical-red off its zero
+health — and red is already what a *dying* teammate looks like.
+
+**No weapon icon on those rows.** There is nothing to draw: `PM_Weapon` sets
+`ps.weapon` to `WP_NONE` while health is <= 0, so a statue's `curWeapon` is
+`WP_NONE` and the icon fell through to `deferShader` — the red no-entry circle.
+It also sat badly: the icon is placed three characters into a field sized for
+`"%3i %3i"`, landing in the gap between the two numbers.
 
 ### C32. Frozen players kept animating — DONE (verify)
 **Lives in:** our **client** (cgame) · **Seen by:** our client only

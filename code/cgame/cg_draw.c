@@ -701,9 +701,28 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 							 TINYCHAR_WIDTH, TINYCHAR_HEIGHT, TEAM_OVERLAY_MAXNAME_WIDTH);
 
 			if (lwidth) {
-				p = CG_ConfigString(CS_LOCATIONS + ci->location);
-				if (!p || !*p)
-					p = "unknown";
+				/*
+				[QL] A statue's location is FROZEN.
+
+				This column is the only text field on the row, so it is where a
+				word belongs - and where a frozen player is matters far less than
+				that they are frozen and need someone to come and get them.
+				"unknown" is what it read otherwise: most maps carry no
+				target_location entities, so ci->location is 0 and
+				CS_LOCATIONS + 0 is empty. Quake Live's own overlay shows
+				"unknown" on those maps too, so that fallback is not ours to
+				fix - it is just not worth a column here.
+
+				Health and armour keep their real numbers, which for a statue is
+				0 0, rather than being replaced by the word.
+				*/
+				if (ci->frozen) {
+					p = "FROZEN";
+				} else {
+					p = CG_ConfigString(CS_LOCATIONS + ci->location);
+					if (!p || !*p)
+						p = "unknown";
+				}
 				//				len = CG_DrawStrlen(p);
 				//				if (len > lwidth)
 				//					len = lwidth;
@@ -716,14 +735,13 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 								 TEAM_OVERLAY_MAXLOCATION_WIDTH);
 			}
 
-			if (ci->frozen) {
-				// keep the ice colour: CG_GetColorForHealth would paint a statue
-				// critical-red off its zero health, which says the wrong thing
-				Q_strncpyz(st, "FROZEN", sizeof(st));
-			} else {
+			// [QL] the ice colour stays on a frozen row: CG_GetColorForHealth
+			// would paint a statue critical-red off its zero health, and red is
+			// already what a dying teammate looks like
+			if (!ci->frozen) {
 				CG_GetColorForHealth(ci->health, ci->armor, hcolor);
-				Com_sprintf(st, sizeof(st), "%3i %3i", ci->health, ci->armor);
 			}
+			Com_sprintf(st, sizeof(st), "%3i %3i", ci->health, ci->armor);
 
 			xx = x + TINYCHAR_WIDTH * 3 +
 				TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
