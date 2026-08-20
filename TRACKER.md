@@ -1236,9 +1236,16 @@ never touched by them.
 | value | team gametypes | FFA / Duel / Race |
 |-------|----------------|-------------------|
 | `0` | player's own colour | player's own colour |
-| `1` | **team colours** | player's own colour |
+| `1` | **team colours** | player's own colour, or **yellow** if they never picked one |
 | `2` | **team colours** | **a distinct colour per player** |
 | `3` | white | white |
+
+**Yellow for an unset colour.** `CG_ColorFromString` gives white for anything
+outside 1..7, which is where an unset or missing `color1` lands — and 7 is white
+too, so a real choice of white and the no-choice default are indistinguishable.
+Yellow is the better thing to do with it either way: a white rail is the hardest
+to pick out against a bright skybox, and it is what a player gets by doing
+nothing, so it is what most rails on a public server end up being.
 
 The per-player colour is a hash of the client slot, not a random draw. Two
 constraints rule a draw out: every client has to agree on what colour a given
@@ -1587,6 +1594,16 @@ it is absent, the model loaded and something is hiding it. Worth checking
 `com_hunkMegs` either way — it is `CVAR_ARCHIVE` on a default we choose, the trap
 in CLAUDE.md, so a stale config can pin it low and starve model loading on a big
 map.
+
+**Update — the stutter is on every CTF map, not just this one.** That makes it
+gametype-wide, and CTF is the mode with the most entity churn: flags dropped,
+returned and respawned constantly, and flag stands that fire targets (which is
+`G_UseTargets`, which is what stamps `activator`). Every one of those frees was a
+kamikaze candidate before E32, so "various degrees across CTF maps" fits how much
+churn each map generates. Retest before looking further. If it survives the fix,
+the next suspects are `CheckTeamStatus` — `Team_GetLocation` is O(clients ×
+locations) with a `trap_InPVS` per candidate, once a second — and the reliable
+command traffic from `tinfo`/`tinfo2`, which is two per client per second now.
 
 **Not settled — stairs.** `STEPSIZE` is 18 units; a castle with taller steps is
 map design rather than a bug. But stutter and a velocity overwrite both look like

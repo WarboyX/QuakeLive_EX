@@ -497,7 +497,10 @@ viewer-side friend/foe override with two arbitrary colours, and they skip your
 own rail entirely.
 
   0  off     - stock, every player's own colour1/colour2 everywhere
-  1  auto    - team colours in team gametypes; own colour in FFA/Duel/Race
+  1  auto    - team colours in team gametypes; own colour in FFA/Duel/Race,
+               falling back to yellow for a player who never picked one (an
+               unset colour1 reads as white, which is also the hardest rail to
+               see)
   2  varied  - team colours in team gametypes; a distinct colour per player in
                FFA/Duel/Race, hashed from the client slot so every client agrees
                and it holds still for the match

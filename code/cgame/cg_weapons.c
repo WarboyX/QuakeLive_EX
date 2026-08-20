@@ -345,7 +345,28 @@ static qboolean CG_GametypeRailColor(clientInfo_t* ci, float* color) {
         return qtrue;
     }
 
-    // mode 1 in a free-for-all: the player's own pick is the right answer
+    /*
+    Mode 1 in a free-for-all: the player's own pick is the right answer - unless
+    they have not made one.
+
+    [QL] CG_ColorFromString gives white for anything outside 1..7, which is what
+    an unset or missing color1 lands on, and 7 is white as well. So "white" is
+    both a real choice and the no-choice default, and there is no telling them
+    apart. Yellow is the better thing to do with it either way: a white rail is
+    the hardest one to pick out against a bright skybox or a lit corridor, and it
+    is the colour a player gets by doing nothing, so it is the one most rails on
+    a public server end up being.
+
+    Anyone who actually wants white sets color1 to something else and back, or
+    turns this off with cg_railColorMode 0.
+    */
+    if (ci->color1[0] > 0.95f && ci->color1[1] > 0.95f && ci->color1[2] > 0.95f) {
+        color[0] = 1.0f;
+        color[1] = 0.85f;
+        color[2] = 0.1f;
+        return qtrue;
+    }
+
     return qfalse;
 }
 
