@@ -1751,11 +1751,12 @@ on**, covering cgame, ui and the game module at once.
 shipping** — that default is the only switch. The `MAX_REFENTITIES` warning is
 back to `PRINT_DEVELOPER` to match.
 
-### E37. Doors never fully open or close, travel percentage jumps — DONE (verify)
+### E37. Doors never fully open or close, travel percentage jumps — DONE (confirmed)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
 Reported on the castle map: doors stuck part-open, rapidly shifting between
-percentages of travel. Testing narrowed it precisely — it happens with the
+percentages of travel. **Confirmed fixed in c80e8bf.** Testing narrowed it
+precisely — it happens with the
 **vanilla Steam client** (so not our rendering or interpolation) and **not** on
 the **vanilla Steam server** binary (so it is our `qagame` diverging from QL's).
 
