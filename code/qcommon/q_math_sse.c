@@ -34,12 +34,24 @@ long Q_ftol(float f) {
 }
 
 void Q_SnapVector(vec3_t vec) {
-    __m128 v = _mm_loadu_ps(vec);
-    __m128i vi = _mm_cvtps_epi32(v);
-    __m128 rounded = _mm_cvtepi32_ps(vi);
-    vec[0] = _mm_cvtss_f32(rounded);
-    vec[1] = _mm_cvtss_f32(_mm_shuffle_ps(rounded, rounded, _MM_SHUFFLE(1,1,1,1)));
-    vec[2] = _mm_cvtss_f32(_mm_shuffle_ps(rounded, rounded, _MM_SHUFFLE(2,2,2,2)));
+    /*
+    Three scalar converts rather than one packed load.
+
+    The obvious version is _mm_loadu_ps(vec), round all four lanes at once, and
+    shuffle the results out. It reads 16 bytes. A vec3_t is 12. That fourth lane
+    is off the end of the array every single time, which gcc reports as
+    "array subscript '__m128_u[0]' is partly outside array bounds", and it is
+    right: most vec3_t live inside a larger struct so the read lands on a
+    neighbouring field and nothing is noticed, but one at the end of a mapping
+    faults, and the compiler is entitled to assume it never happens.
+
+    _mm_cvtss_si32 rounds by the current mode - round-to-nearest-even - which is
+    what _mm_cvtps_epi32 did, so the results are unchanged. This is also why the
+    warning is x86-only: the ARM fallback below uses rintf and never had it.
+    */
+    vec[0] = (float)_mm_cvtss_si32(_mm_set_ss(vec[0]));
+    vec[1] = (float)_mm_cvtss_si32(_mm_set_ss(vec[1]));
+    vec[2] = (float)_mm_cvtss_si32(_mm_set_ss(vec[2]));
 }
 
 #else

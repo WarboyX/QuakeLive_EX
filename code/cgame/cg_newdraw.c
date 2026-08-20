@@ -3022,18 +3022,13 @@ static void CG_DrawTeamScore(int which, rectDef_t *rect, float scale, vec4_t col
     CG_OwnerDrawText(x, rect->y, scale, color, s, 0, 0, textStyle);
 }
 
-// [QL] CG_DrawWeaponIcon (0x225). Draws a weapon icon shader, gated by the
-// owner-draw visibility flags.
-static void CG_DrawWeaponIcon(rectDef_t *rect, vec4_t color, qhandle_t iconShader, int ownerDrawFlags) {
-    if (ownerDrawFlags && !CG_OwnerDrawVisible(ownerDrawFlags, 0)) {
-        return;
-    }
-    trap_R_SetColor(color);
-    if (iconShader) {
-        CG_DrawPic(rect->x, rect->y, rect->w, rect->h, iconShader);
-    }
-    trap_R_SetColor(NULL);
-}
+/* [QL] CG_DrawWeaponIcon was here. Its only caller was owner-draw 0x225, which
+   turned out to be the advertisement slot rather than a weapon icon - see the
+   UI_ADVERT case in CG_OwnerDraw below for why that now paints nothing and lets
+   the menu's defaultContent show instead. With the caller gone the function was
+   dead, and the compiler said so ("defined but not used"). Removed rather than
+   left in place: an unused static drawer reads like a slot still waiting to be
+   wired up, which is the thing this tree keeps a stub manifest to avoid. */
 
 //
 void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, float scale, vec4_t color, qhandle_t shader, int textStyle, int fontIndex) {

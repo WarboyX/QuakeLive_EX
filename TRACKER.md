@@ -1930,7 +1930,15 @@ osxcross ...)`), but osxcross is built *from* an SDK extracted out of your own
 Xcode install — the chain still starts on a Mac. This container has no clang
 Darwin target, no SDK, no `xcrun`, no `lipo`.
 
-**The tree itself is arm64-clean.** Audited rather than assumed:
+**The tree itself is arm64-clean — verified by building it, not by reading it.**
+Installed `gcc-aarch64-linux-gnu` and cross-compiled the dedicated server and all
+three game modules for aarch64. They link and produce real ARM binaries
+(`ELF 64-bit LSB, ARM aarch64`), with **no warnings that x86_64 does not also
+produce**. macOS arm64 is a different ABI and a different libc, so this is not
+proof the Mac client links — the client is the part that needs SDL, Cocoa and
+the Apple SDK, and none of that is testable here. But it does settle the
+portability question for everything above the platform layer, which is where
+arch bugs actually live. Supporting detail:
 
 | Risk | Finding |
 |---|---|
@@ -1942,10 +1950,26 @@ Darwin target, no SDK, no `xcrun`, no `lipo`.
 | Vulkan / MoltenVK | `vk.c:1285/1334` already requests `VK_KHR_portability_enumeration` and sets `VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR`, which MoltenVK requires or `vkCreateInstance` returns `VK_ERROR_INCOMPATIBLE_DRIVER`. `vk_window.c` goes through `SDL_Vulkan_LoadLibrary` / `SDL_Vulkan_GetVkGetInstanceProcAddr`, so it finds MoltenVK if the Vulkan SDK is installed. |
 
 **`build-macos.sh` (new)** runs on the Mac and produces
-`release/out/quakelive-macos-arm64-<sha>.zip`, shaped like the other two, with
-the same `check-configs.py` and `stub-report.py` gates and the same `pak01`
-revision stamp. It detects MoltenVK and drops to OpenGL if it is absent, rather
-than building a renderer that has nothing to load at runtime.
+`release/out/quakelive-macos-<sha>.zip`, shaped like the other two, with the same
+`check-configs.py` and `stub-report.py` gates and the same `pak01` revision
+stamp. It detects MoltenVK and drops to OpenGL if it is absent, rather than
+building a renderer that has nothing to load at runtime.
+
+**It builds arm64 and x86_64 together** (`ARCHES=` to narrow), both in one
+archive, so the same download runs on an M-series and on an Intel Mac. The
+modules are separate files rather than fat binaries because the engine resolves
+them by its own architecture — `cgamearm64.dylib` and `cgamex86_64.dylib` both
+live in the pak and each engine picks its own, so no `lipo` step is needed.
+
+The one asymmetry worth knowing: **only the client links SDL.** The dedicated
+server and the three game modules do not, so those build for both architectures
+unconditionally; the client is a second pass that is allowed to fail. A Homebrew
+SDL2 is built for whichever architecture that Homebrew is (arm64 under
+`/opt/homebrew`, x86_64 under `/usr/local`), so on an M-series Mac with a plain
+`brew install sdl2` the x86_64 *client* has nothing to link against. That is a
+missing dependency rather than a broken tree, so the script keeps everything else
+and names what it skipped instead of throwing the build away. The universal
+`SDL2.framework` from libsdl.org builds both.
 
 **The trap it exists to make visible: `iobin.pk3` is one pak for every
 platform.** A Mac client looks for `cgamearm64.dylib` / `uiarm64.dylib` /
@@ -1977,6 +2001,46 @@ of a downloaded zip (`xattr -dr com.apple.quarantine <folder>` clears it), and a
 Homebrew SDL2 build links against `/opt/homebrew/lib`, which is fine on the
 build machine and not portable to another Mac without bundling the dylib. Both
 are release-engineering, not build breakage.
+
+### E41. Four compiler warnings, one of them a real out-of-bounds read — DONE
+**Lives in:** our **client and server** both · **Seen by:** our client only
+
+R7 cleared every warning in project code (90 → 0). Four had crept back. They are
+recorded here rather than just fixed because one of them was an actual memory
+bug that had been sitting in the build output being scrolled past.
+
+**`Q_SnapVector` read four bytes off the end of every vector it was given.**
+`q_math_sse.c` did `_mm_loadu_ps(vec)` — a 16-byte load — on a `vec3_t`, which is
+12. gcc says so plainly: *"array subscript `__m128_u[0]` is partly outside array
+bounds of `vec_t[3]`"*. It survives in practice because most `vec3_t` sit inside
+a larger struct, so the stray lane lands on a neighbouring field and nothing is
+noticed; a `vec3_t` at the end of a mapping faults, and the compiler is entitled
+to optimise on the assumption that this never happens. Now three scalar
+`_mm_cvtss_si32` converts — same round-to-nearest-even, same results, no read
+past the end. This is also why the warning was x86-only: the ARM fallback uses
+`rintf` and never had it.
+
+**`cgs.eventHandling` was declared `qboolean` and holds a four-value enum.**
+`CGAME_EVENT_NONE / TEAMMENU / SCOREBOARD / EDITHUD` is 0-3; `qboolean` is
+`{qfalse, qtrue}`. It works on x86_64 and arm64 because both give enums int
+width, but a toolchain that packs enums to the smallest type that fits — which
+`-fshort-enums` does, and which is the default on some bare ARM targets — would
+truncate 2 and 3 to 1 and make the scoreboard and the HUD editor
+indistinguishable. Now `int`. Directly relevant to E40: this is the class of bug
+that only appears when you actually build for another architecture.
+
+**`Cvar_VariableString` returned `char *` into cvar-owned storage.** The
+renderer import (`tr_public.h:213`) declares it `const char *`, so wiring the two
+together warned about incompatible pointer types. The function's result must not
+be written through, so the declaration was the wrong one: it now returns
+`const char *`, and the three locals that caught it (`sv_main.c` `gamedir`,
+`cmd.c` `v`, `cvar.c` `curval`) are const too.
+
+**`CG_DrawWeaponIcon` was dead.** Its only caller was owner-draw `0x225`, which
+turned out to be the advertisement slot rather than a weapon icon and now
+deliberately paints nothing. Removed rather than left sitting there: an unused
+static drawer reads like a slot still waiting to be wired up, which is exactly
+what `docs/stub-manifest.txt` exists to stop.
 
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only

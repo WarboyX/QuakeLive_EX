@@ -1534,7 +1534,16 @@ typedef struct {
 
     int cursorX;
     int cursorY;
-    qboolean eventHandling;
+    /* [QL] One of the CGAME_EVENT_* values (cg_public.h), not a flag. It was
+       declared qboolean, which holds {qfalse, qtrue} - so CGAME_EVENT_SCOREBOARD
+       (2) and CGAME_EVENT_EDITHUD (3) were being stored in a type whose declared
+       range does not contain them. gcc reports it as "comparison between
+       'qboolean' and 'enum <anonymous>'". It survives on x86_64 and arm64
+       because both give an enum int width, but a toolchain that packs enums to
+       the smallest type that fits - which -fshort-enums does, and which is the
+       default on some bare ARM targets - would truncate both values to 1 and
+       make the scoreboard and the HUD editor indistinguishable. */
+    int eventHandling;
     qboolean mouseCaptured;
     qboolean sizingHud;
     void* capturedItem;
