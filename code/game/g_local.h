@@ -417,6 +417,12 @@ struct gclient_s {
     // timers
     int respawnTime;             // can respawn when time > this
     int rewardTime;              // clear the EF_AWARD_IMPRESSIVE, etc when time > this
+    // [QL] Freeze Tag: level.time of the last frame a valid thawer was in range.
+    // Server-side only - the thaw runs entirely in Freeze_ClientThawCheck - and
+    // the grace period it feeds is what separates a momentary break in contact
+    // from the thawer actually leaving. Not networked: the client sees the
+    // result through the generic1 progress bits.
+    int lastThawContactTime;
     int airOutTime;
 
     qboolean fireHeld;  // used for hook
@@ -1345,6 +1351,7 @@ extern vmCvar_t g_freezeProtectedSpawnTime;
 extern vmCvar_t g_freezeThawTime;
 extern vmCvar_t g_freezeWarmupThawTime;
 extern vmCvar_t g_freezeAutoThawTime;
+extern vmCvar_t g_freezeThawGrace;
 extern vmCvar_t g_freezeThawRadius;
 extern vmCvar_t g_freezeThawThroughSurface;
 extern vmCvar_t g_freezeThawWinningTeam;

@@ -404,6 +404,7 @@ vmCvar_t g_adCaptureScoreBonus;  // [QL] consumed by cgame from serverinfo
 
 // [QL] freeze tag cvars
 vmCvar_t g_freezeThawTick;
+vmCvar_t g_freezeThawGrace;
 vmCvar_t g_freezeProtectedSpawnTime;
 vmCvar_t g_freezeThawTime;
 vmCvar_t g_freezeAutoThawTime;
@@ -962,6 +963,21 @@ static cvarTable_t gameCvarTable[] = {
 
     // [QL] freeze tag cvars
     {&g_freezeThawTick, "g_freezeThawTick", "1", CVAR_GAMERULE, 0, NULL},  // [QL] binary: CVAR_GAMERULE only
+    /*
+    [QL] How long the thaw survives losing contact, before it resets to full.
+
+    There are two different things that look identical for one frame: a thawer
+    who has stepped behind a pillar or drifted to the edge of the radius, and a
+    thawer who has given up and left. Treating them the same is what made this
+    mechanic feel broken in both directions - a full reset every frame meant no
+    thaw ever finished on uneven ground, and the quarter-rate decay that replaced
+    it meant walking away barely cost anything.
+
+    So contact is remembered for this long. Inside the window the progress simply
+    holds; past it, it snaps back to full. Half a second is long enough to cover
+    a corner or a bad line-of-sight trace and far too short to walk anywhere.
+    */
+    {&g_freezeThawGrace, "g_freezeThawGrace", "500", CVAR_GAMERULE, 0, NULL},
     {&g_freezeProtectedSpawnTime, "g_freezeProtectedSpawnTime", "0", CVAR_GAMERULE, 0, NULL},  // [QL] binary: CVAR_GAMERULE only
     /*
     [QL] How long a teammate has to stand over a frozen player to thaw them.

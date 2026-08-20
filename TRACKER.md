@@ -1189,9 +1189,19 @@ teammate circling the statue, clipping a pillar or drifting to the edge of the
 radius gives progress back as fast as they earn it, so three seconds of standing
 there completes nothing. Halved contact means net zero.
 
-The refill now runs at a quarter rate. The mechanic survives — walk away and the
-thaw is lost, so a statue cannot be chipped at from across the map over a whole
-round — but a momentary break costs a moment instead of everything.
+**Settled with a grace window rather than a rate.** Two different things look
+identical for one frame: a thawer who has stepped behind a pillar or drifted to
+the edge of the radius, and one who has given up and walked off. Both earlier
+attempts treated them the same and were wrong in opposite directions — undoing a
+frame of progress per frame meant no thaw ever finished on uneven ground, and
+refilling at a quarter rate fixed that but made leaving almost free, so a statue
+could be chipped at across a whole round.
+
+The distinction is *time*, so time is what is measured. `lastThawContactTime` is
+stamped on every frame with a valid thawer; inside `g_freezeThawGrace` (default
+500 ms) the progress simply holds, and past it it snaps back to full. A real
+reset when someone walks away, and a corner or a bad trace costs nothing.
+`g_debugFreeze 1` names the reset and how long contact had been lost.
 
 **Fourth: the reach was too small.** `g_freezeThawRadius` is a real cvar —
 `Freeze_ClientThawCheck` reads it every frame to size the `trap_EntitiesInBox`

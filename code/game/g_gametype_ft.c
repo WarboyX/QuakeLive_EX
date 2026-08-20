@@ -920,6 +920,7 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
             cl->ps.thawClientNum       = thawer->client->ps.clientNum;   // client+0x1fc
             cl->ps.thawClientNum_valid = 1;                              // client+0x1f8
         }
+        cl->lastThawContactTime = level.time;
         oldSeconds = (cl->ps.thawtime == 0) ? 0 : cl->ps.thawtime / 1000;
         cl->ps.thawtime -= msec;
         if (g_debugThawTime.integer != 0) {                    // DAT_10595aec
@@ -933,25 +934,32 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
         }
     } else {
         /*
-        No thawer this frame, so thaw progress decays back toward the full time.
+        No thawer this frame. Hold briefly, then reset to full.
 
-        [QL] The decay used to run at the same rate as the drain - one msec back
-        for one msec forward - and that is why thawing "still takes a long time"
-        even at g_freezeThawTime 3000. It means any frame that does not find a
-        thawer does not pause the thaw, it *undoes* a frame of it. The scan is
-        not stable enough for that to be fair: it needs the teammate inside a
-        96-unit box AND passing the line-of-sight trace every single frame, so a
-        teammate circling the statue, clipping a pillar, or stepping to the edge
-        of the radius gives up progress as fast as they earn it and three seconds
-        of standing there produces nothing.
+        [QL] Two different things look identical for one frame: a thawer who has
+        stepped behind a pillar or drifted to the edge of the radius, and a
+        thawer who has given up and walked off. Both previous attempts treated
+        them the same and were wrong in opposite directions. Undoing a frame of
+        progress per frame - the original - meant no thaw ever finished on uneven
+        ground, because the scan needs the teammate inside the radius AND passing
+        a line-of-sight trace every single frame. Refilling at a quarter rate
+        fixed that but made leaving almost free, so a statue could be chipped at
+        across a whole round.
 
-        A quarter rate keeps the mechanic - walk away and you lose the thaw, so
-        you cannot chip at a statue from across the map over a whole round - while
-        making a momentary break in contact cost a moment rather than everything.
+        The distinction is time, so time is what is measured.
+        lastThawContactTime is stamped on every frame with a valid thawer; inside
+        g_freezeThawGrace of that the progress simply holds, and past it it snaps
+        back to full. That is a real reset when someone walks away, and a corner
+        or a bad trace costs nothing.
         */
-        cl->ps.thawtime += msec / 4;
-        cl->ps.thawClientNum_valid = 0;
-        if (cl->ps.thawtime > maxThaw) cl->ps.thawtime = maxThaw;
+        if (level.time - cl->lastThawContactTime > g_freezeThawGrace.integer) {
+            if (cl->ps.thawtime < maxThaw && g_debugFreeze.integer) {
+                G_Printf("freeze: thaw on %s reset - no teammate for %ims\n",
+                         ent->client->pers.netname, level.time - cl->lastThawContactTime);
+            }
+            cl->ps.thawtime = maxThaw;
+            cl->ps.thawClientNum_valid = 0;
+        }
     }
 
     // check_complete (0x1004d080)
@@ -1066,6 +1074,10 @@ void Freeze_PlayerFrozen(gentity_t *self) {
     // [QL] warmup runs the short self-thaw fuse; a live round needs a teammate
     self->client->ps.thawtime =
         level.warmupTime ? g_freezeWarmupThawTime.integer : g_freezeThawTime.integer;
+    // [QL] a fresh statue has never had a thawer; stamping now keeps the grace
+    // window from being measured against a contact time left over from the last
+    // time this client was frozen
+    self->client->lastThawContactTime = level.time;
 
     // [QL] the networked presentation bit the client reads to draw the statue.
     // g_combat.c's other freeze path sets s.powerups = 0x8000 for this; without
