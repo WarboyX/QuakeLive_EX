@@ -1851,6 +1851,72 @@ intermission summary and wrong for a hold-to-view `+scores`. It needs either a
 toggled scoreboard mode (press to open, mouse works, press to close) or a
 modifier, and which one is a preference. Not guessed at.
 
+### E39. Animated textures run at a speed that varies with framerate — NEEDS TEST
+**Lives in:** our **client** (client engine / renderer) · **Seen by:** our client only
+
+Reported with two examples — a liquid pool and a set of jump pads — both visibly
+animating faster than they should at high framerates.
+
+**What the code says.** Every time-driven path in the renderer reads a clock, not
+a frame counter, and I traced all of them:
+
+| Path | Reads |
+|---|---|
+| `R_BindAnimatedImage` (`animMap` frame pick) | `tess.shaderTime * imageAnimationSpeed` |
+| every `tcMod` — scroll, rotate, turb, stretch | `tess.shaderTime` |
+| `rgbGen wave` / `alphaGen wave` | `tess.shaderTime` |
+| `deformVertexes` | `tess.shaderTime` |
+
+and `tess.shaderTime` is `backEnd.refdef.floatTime - shader->timeOffset`
+(`tr_shade.c:299`, `tr_backend.c:719`), `floatTime` is `refdef.time * 0.001`
+(`tr_scene.c`), `refdef.time` is `fd->time` which cgame sets to `cg.time`
+(`cg_view.c:1176`), and `cg.time` is the engine's `cl.serverTime`. Upstream of
+that, `cl.serverTime = cls.realtime + cl.serverTimeDelta - tn`, `cls.realtime`
+accumulates integer milliseconds from `Sys_Milliseconds()`, and
+`CL_AdjustTimeDelta` runs per *snapshot*, not per frame.
+
+So there is no multiply-by-frames anywhere on the path. Nothing in the chain is
+average-wrong either: drawing more frames samples the same clock more often, it
+does not advance it faster.
+
+**Which means the inspection is missing something, because the behaviour was
+measured and the inspection was not.** Rather than assert the code again, the
+build now carries the discriminator.
+
+**`r_shaderTimeSource`** (renderervk, default 0, not archived):
+
+- `0` — scene time. `refdef.time`, i.e. `cg.time`. What it has always done:
+  correct by construction, follows demo playback and `timescale`, and shader
+  animation stays in step with game events — but it inherits any unevenness in
+  how `cg.time` advances.
+- `1` — real time. The engine millisecond clock, sampled directly in
+  `RE_RenderScene`, independent of snapshots and of anything cgame does. This is
+  the "run off client ticks" behaviour asked for. Cost: ignores `com_timescale`
+  and does not pause or rewind with a demo, so it is not a candidate for the
+  default.
+
+The 2D pass already does exactly this — `RB_SetGL2D` sets
+`backEnd.refdef.time = ri.Milliseconds()` for menu and HUD shaders — so mode 1 is
+the same clock the UI has always animated on, not a new one.
+
+**The test that settles it:** stand in front of the pool at high framerate, watch
+it at `r_shaderTimeSource 0`, then `r_shaderTimeSource 1`, then cap framerate
+(`com_maxfps 60`) and watch both again.
+
+- 1 is steady and 0 is not → the problem is `cg.time`, and the fix belongs in
+  `CL_SetCGameTime`, not the renderer. Prime suspect there is our own
+  `cl_autoTimeNudge` block: `tn` shifts `cl.serverTime` by up to 20 ms against a
+  clamp that forbids time going backwards, so a change in `tn` either jumps time
+  forward or stalls it. (It also latches — `prevTimeNudge` holds the first
+  non-zero value permanently — which is a separate bug, and one that happens to
+  make it *stable* once set. On a local server ping is ~0 and `tn` is 0, so this
+  is not the whole story.)
+- both track framerate identically → the coupling is below `floatTime`
+  altogether, and the next place to look is the shader definitions themselves
+  rather than the clock.
+
+Left open until that comparison is run.
+
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only
 
@@ -3690,6 +3756,7 @@ compiler warnings in engine code).
 | Command | Scope | What it reports |
 |---|---|---|
 | `cg_debugShotgun 1` | client, in-map | Per blast: fire direction vs view axis, muzzle vs camera, resolved pattern parameters, pellet spread off the crosshair |
+| `r_shaderTimeSource 0/1` | client, in-map | Switches shader animation between scene time (`cg.time`) and the real-time clock. If 1 is steady where 0 is not, uneven animation is `cg.time`, not the renderer (E39) |
 | `menu_open <name>` | client | Opens any loaded menu by name |
 | `menu_close <name>` | client | Closes it |
 | `ui_report` | client | Dumps menu/item state |

@@ -444,7 +444,40 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	// derived info
 
-	tr.refdef.floatTime = (double)tr.refdef.time * 0.001; // -EC-: cast to double
+	/*
+	[QL] Where shader animation gets its clock - r_shaderTimeSource.
+
+	Everything time-driven in a shader hangs off this one value: animMap frame
+	selection, every tcMod (scroll, rotate, turb, stretch), rgbGen/alphaGen wave
+	and deformVertexes all evaluate against tess.shaderTime, which is
+	refdef.floatTime minus the shader's own offset.
+
+	  0  scene time (default)  refdef.time, which cgame sets to cg.time. Correct
+	                           by construction: it follows demo playback and
+	                           timescale, and shader animation stays in step with
+	                           game events. But cg.time is snapshot-interpolated,
+	                           so if it advances unevenly - which it does when the
+	                           server is hitching, and is more visible the more
+	                           frames you draw between snapshots - the animation
+	                           inherits that unevenness.
+
+	  1  real time             the engine millisecond clock, independent of
+	                           snapshots entirely. World animation stays smooth
+	                           regardless of what the server is doing. The cost is
+	                           that it ignores timescale and does not pause or
+	                           rewind with a demo.
+
+	This exists because animation speed was reported as varying with framerate and
+	every path in the renderer reads from a clock rather than a frame counter - so
+	the coupling, if it is real, is in what feeds refdef.time rather than in how it
+	is used. Switching the source settles that: if 1 is smooth and 0 is not, the
+	problem is cg.time, not the shaders.
+	*/
+	if ( r_shaderTimeSource->integer ) {
+		tr.refdef.floatTime = (double)ri.Milliseconds() * 0.001;
+	} else {
+		tr.refdef.floatTime = (double)tr.refdef.time * 0.001; // -EC-: cast to double
+	}
 
 	tr.refdef.numDrawSurfs = r_firstSceneDrawSurf;
 	tr.refdef.drawSurfs = backEndData->drawSurfs;
