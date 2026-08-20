@@ -1664,55 +1664,65 @@ be hidden in first person), but it is the one remaining path that hides a
 specific player rather than all of them.
 
 ### E36. Codebase audit: incomplete calls, stubs, silent failures — DONE
-**Lives in:** **both** binaries + renderervk · **Seen by:** our client only
+**Lives in:** **both** binaries + renderervk + tooling · **Seen by:** our client only
 
-Swept the tree for empty bodies, stub markers and calls whose failure goes
-unreported. 310 C files, excluding vendored SDL2 / libjpeg / zlib / botlib /
-opus / freetype.
+**The system, not the sweep.** A one-off audit goes stale the day after it is
+written, so the deliverable is `tools/stub-report.py` plus
+`docs/stub-manifest.txt`, the same shape as `tools/dead-cvars.py` for the cvar
+version of this problem. `package-release.sh` runs it and **fails the build on an
+unclassified stub**.
 
-**Empty function bodies: 77, none of them a gap.** They fall into three groups
-and every one checks out:
+The point is not that every empty function is a bug — most are correct. The point
+is that each one should have been *looked at once* and the answer written down,
+so a genuinely missing implementation is on a list instead of in the game, and a
+new empty function added next month shows up as UNCLASSIFIED rather than blending
+into the seventy-odd that were already there.
 
-- `null/` drivers (`null_client.c`, `null_glimp.c`, `null_input.c`, …) — the
-  do-nothing implementations the dedicated build links instead of the real
-  client. Empty by design.
-- Stock Quake 3 / ioquake3 stubs that are empty upstream too: `Weapon_Gauntlet`
-  (damage is done in `CheckGauntletAttack`), `RB_SurfaceSkip`,
-  `CG_AddParticleShrapnel`, `BotObeliskRetreatGoals`, `Item_StopCapture`,
-  `UI_GetTeamColor`, `CG_RunMenuScript`.
-- Ours, and deliberately empty with the reasoning already in place:
-  `DuelScoreboardMessage_impl` (duel goes out as `scores_duel` via
-  `DuelScoreboardMessage`; the binary's version is a fallback duel never
-  reaches), `SP_team_CTF_redspawn`/`bluespawn`/`redplayer`/`blueplayer` and
-  `SP_misc_teleporter_dest` (spawn markers — the entity existing *is* the
-  behaviour).
+Four verdicts: **BY-DESIGN** (empty is correct), **UPSTREAM** (empty in Quake 3 /
+ioquake3 / Quake3e too, and filling it would diverge from the base for nothing),
+**WIRED-ELSEWHERE** (behaviour exists, in the function the reason names), **GAP**
+(genuinely missing — the list to work from).
 
-**Markers: 185 FIXME, 54 HACK, 39 TODO, 15 STUB, 6 STUBBED, 5 XXX, 3 NOT
-IMPLEMENTED** — the bulk in vendored and botlib code. The ones in our game
-modules are byte-faithfulness notes against the binary (a missing speed-scale
-cvar on `fire_plasma`, the unresolved gate global at `0x105a03ac`, an omitted bot
-taunt), not missing features. Left as documentation.
+Current state, 76 empty bodies outside vendored trees:
 
-**The real gap, and it is the one this project keeps paying for: unchecked asset
-registration.** 276 raw `trap_R_RegisterShader` / `trap_R_RegisterModel` calls
-across cgame against 12 that go through the checked `CG_RegisterShaderOr` /
-`CG_RegisterModelOr` helpers. `RE_RegisterShader` and `RE_RegisterModel` return
-**0** for anything they cannot load and every caller treats 0 as "draw nothing",
-so a missing, misspelled or unloaded-pak asset is an invisible object with no
-message anywhere. That is the shape behind the invented Freeze Tag asset names, a
-missing menu shader, and a weapon icon, each of which cost a round.
+| verdict | count | |
+|---|---|---|
+| BY-DESIGN | 56 | 44 of them are `code/null/` — the headless drivers the dedicated server links instead of a client, renderer, sound and input layer. Implementing any would be *wrong*. The rest are marker entities (`SP_team_CTF_*`, `SP_misc_teleporter_dest`, `SP_info_player_intermission`), dispatch-table no-ops (`RB_SurfaceSkip`) and the passive console. |
+| UPSTREAM | 18 | `CG_RunMenuScript`, `CG_AddParticleShrapnel`, `Weapon_Gauntlet`'s siblings, `QAL_Shutdown`, `S_AL_SoundList`, the `Sys_GLimp*` hooks, `UI_Shutdown`, `Item_StopCapture`. |
+| WIRED-ELSEWHERE | 2 | `Weapon_Gauntlet` (damage is in `CheckGauntletAttack`), `DuelScoreboardMessage_impl` (duel goes out as `scores_duel`). |
+| GAP | 0 | |
 
-Auditing 276 call sites is the wrong move; the only place that knows the name is
-the registration function. Both now print the name they failed on
-(`PRINT_DEVELOPER`), which covers every caller in cgame, ui and the game module
-at once.
+**The one GAP it found, now fixed.** `CL_PostProcessRestart_f` was registered as
+the `postprocess_restart` console command and did nothing — typing it was
+silently ignored, which is worse than not having the command, because the name
+promises something. There turned out to be nothing left for it to do:
+`vk_update_post_process_pipelines()` runs from the renderer-cvar-modified block
+in `tr_cmds.c`, so bloom, HDR and capture already rebuild the moment their cvars
+change. It now says that instead of ignoring you, which keeps any existing bind
+working rather than turning it into "unknown command".
 
-**`developer` now defaults to 1 on this branch** (`common.c`), so those lines and
-the `MAX_REFENTITIES` drop show up without having to guess the cause first and
-re-run. It is `CVAR_TEMP`, so it never reaches a config and a user can turn it off
-for a session. **RELEASE: set it back to "0" before shipping a release build** —
-that default is the only switch. The `MAX_REFENTITIES` warning added in E35 has
-been put back to `PRINT_DEVELOPER` accordingly.
+**A note on the tool itself.** The first cut reported `UI_AdjustFrom640` as empty:
+it treated any line starting with `*` as a block-comment continuation, which is
+also what a pointer dereference looks like (`*x = *x * scale;`). Fixed with real
+comment stripping. A scanner with false positives is worse than no scanner,
+because it trains you to skim the output.
+
+**Separately — unchecked asset registration.** 276 raw `trap_R_RegisterShader` /
+`trap_R_RegisterModel` calls in cgame against 12 that use the checked
+`CG_RegisterShaderOr` / `CG_RegisterModelOr` helpers. Both return **0** for
+anything they cannot load and every caller treats 0 as "draw nothing", so a
+missing, misspelled or unloaded-pak asset is an invisible object with no message
+anywhere — the shape behind the invented Freeze Tag asset names, a missing menu
+shader and a weapon icon. Auditing 276 call sites is the wrong move; the only
+place that knows the name is the registration function, so **`RE_RegisterShader`,
+`RE_RegisterShaderNoMip` and `RE_RegisterModel` now print the name they failed
+on**, covering cgame, ui and the game module at once.
+
+**`developer` defaults to 1 on this branch** (`common.c`) so those lines and the
+`MAX_REFENTITIES` drop are visible without having to guess the cause and re-run.
+`CVAR_TEMP`, so it never reaches a config. **RELEASE: set it back to `"0"` before
+shipping** — that default is the only switch. The `MAX_REFENTITIES` warning is
+back to `PRINT_DEVELOPER` to match.
 
 ### C27. Voice chat verbs are unhandled — DONE
 **Lives in:** our **client** (cgame) · **Seen by:** our client only

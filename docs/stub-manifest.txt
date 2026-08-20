@@ -1,0 +1,101 @@
+# stub-manifest.txt - the reviewed verdict for every empty function body.
+#
+# Checked by tools/stub-report.py. An empty function is indistinguishable from
+# a finished one at the call site, so each one is looked at once and the answer
+# written down here. A new empty function that is not in this file shows up as
+# UNCLASSIFIED and the tool exits non-zero.
+#
+# Format:  VERDICT<tab>path/to/file.c:FunctionName<tab>reason
+#
+#   BY-DESIGN        empty is the correct implementation
+#   UPSTREAM         empty in Quake 3 / ioquake3 / Quake3e too
+#   WIRED-ELSEWHERE  the behaviour exists, in the function named in the reason
+#   GAP              genuinely missing - these are the ones to fix
+
+# ---------------------------------------------------------------------------
+# code/null/ - the do-nothing drivers the dedicated server links instead of a
+# real client, renderer, sound and input layer. Implementing any of these would
+# be wrong: the whole point is that a headless build satisfies the same symbols
+# without dragging in a window, a GPU or an audio device.
+# ---------------------------------------------------------------------------
+BY-DESIGN	code/null/mac_net.c:Sys_SendPacket	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_CharEvent	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_ConsolePrint	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_Disconnect	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_FlushMemory	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_ForwardCommandToServer	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_Frame	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_InitKeyCommands	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_InitRef	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_JoystickEvent	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_KeyEvent	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_MapLoading	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_MouseEvent	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_PacketEvent	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_RunAlias	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_Shutdown	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_ShutdownAll	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_Snd_Shutdown	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:CL_StartHunkUsers	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:Cmd_WriteAliases	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_client.c:Key_WriteBindings	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_glimp.c:GLimp_EnableLogging	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_glimp.c:GLimp_EndFrame	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_glimp.c:GLimp_Init	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_glimp.c:GLimp_LogComment	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_glimp.c:GLimp_Minimize	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_glimp.c:GLimp_SetGamma	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_glimp.c:GLimp_Shutdown	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_glimp.c:QGL_Shutdown	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_input.c:IN_Frame	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_input.c:IN_Init	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_input.c:IN_Restart	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_input.c:IN_Shutdown	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_main.c:Sys_Init	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_main.c:Sys_Mkdir	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_net.c:Sys_SendPacket	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:SNDDMA_BeginPainting	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:SNDDMA_Capture	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:SNDDMA_MasterGain	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:SNDDMA_Shutdown	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:SNDDMA_StartCapture	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:SNDDMA_StopCapture	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:SNDDMA_Submit	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:S_ClearSoundBuffer	Headless no-op driver for the dedicated build.
+BY-DESIGN	code/null/null_snddma.c:S_StartLocalSound	Headless no-op driver for the dedicated build.
+
+# ---------------------------------------------------------------------------
+# Everything else, reviewed individually.
+# ---------------------------------------------------------------------------
+UPSTREAM	code/cgame/cg_newdraw.c:CG_RunMenuScript	Empty in Quake 3 too - menu scripts are the ui module's job; cgame only has to satisfy the shared display context.
+UPSTREAM	code/cgame/cg_particles.c:CG_AddParticleShrapnel	Empty in Quake 3's cg_particles.c. The shrapnel particle type was never finished upstream.
+WIRED-ELSEWHERE	code/client/cl_main.c:CL_PostProcessRestart_f	Resolved: the work is automatic. vk_update_post_process_pipelines() runs from the renderer-cvar-modified block in tr_cmds.c, so bloom/HDR/capture rebuild when their cvars change. The command now says so instead of silently ignoring you; it is no longer empty, and this line stays as the record of why.
+UPSTREAM	code/client/qal.c:QAL_Shutdown	Empty in ioquake3. The dynamic OpenAL handle is left loaded for process lifetime; unloading it mid-run has caused driver crashes upstream.
+UPSTREAM	code/client/snd_openal.c:S_AL_ClearSoundBuffer	Empty in ioquake3 - OpenAL has no DMA buffer to clear, the entry point exists only to satisfy the sound interface.
+UPSTREAM	code/client/snd_openal.c:S_AL_SoundList	Empty in ioquake3 - the 'soundlist' command is implemented for the DMA backend only.
+UPSTREAM	code/game/ai_dmq3.c:BotObeliskRetreatGoals	Empty in Quake 3 Team Arena's bot code as shipped.
+BY-DESIGN	code/game/ai_vcmd.c:BotVoiceChat_Dummy	A dummy by name and by purpose - it fills a slot in the voice-command dispatch table for verbs the bots do not act on.
+BY-DESIGN	code/game/g_client.c:SP_info_player_intermission	Marker entity. The spawn function exists so the entity survives into the level; FindIntermissionPoint reads its origin.
+WIRED-ELSEWHERE	code/game/g_gametype_duel.c:DuelScoreboardMessage_impl	Duel scoreboards go out as 'scores_duel' from DuelScoreboardMessage. In the binary this is the default-gametype fallback that duel never reaches; emitting a bare 'scores' here was a stray send and was removed.
+BY-DESIGN	code/game/g_misc.c:SP_misc_teleporter_dest	Marker entity - the teleporter reads its origin and angles. Existing is the whole behaviour.
+BY-DESIGN	code/game/g_team.c:SP_team_CTF_blueplayer	CTF spawn marker. SelectRandomTeamSpawnPoint finds it by classname; it needs no behaviour of its own.
+BY-DESIGN	code/game/g_team.c:SP_team_CTF_bluespawn	CTF spawn marker - see SP_team_CTF_blueplayer.
+BY-DESIGN	code/game/g_team.c:SP_team_CTF_redplayer	CTF spawn marker - see SP_team_CTF_blueplayer.
+BY-DESIGN	code/game/g_team.c:SP_team_CTF_redspawn	CTF spawn marker - see SP_team_CTF_blueplayer.
+WIRED-ELSEWHERE	code/game/g_weapon.c:Weapon_Gauntlet	The gauntlet does its damage in CheckGauntletAttack, called from FireWeapon before the per-weapon dispatch. Empty here in Quake 3 for the same reason.
+UPSTREAM	code/renderercommon/tr_image_jpg.c:term_destination	libjpeg destination-manager callback. Nothing to flush because the whole image is written from one buffer.
+UPSTREAM	code/renderergl2/tr_shade.c:DrawNormals	Debug visualiser, disabled in renderergl2 upstream.
+BY-DESIGN	code/renderergl2/tr_surface.c:RB_SurfaceSkip	The entry in the surface dispatch table for surface types that are deliberately not drawn. Doing nothing is the implementation.
+BY-DESIGN	code/renderervk/tr_surface.c:RB_SurfaceSkip	See renderergl2 - same dispatch-table no-op.
+UPSTREAM	code/sdl/sdl_glimp.c:GLimp_LogComment	Empty in ioquake3 - GL call logging was removed and the entry point kept for the interface.
+BY-DESIGN	code/sys/con_passive.c:CON_Init	The passive console backend, used when there is no tty. Having no setup is the point.
+BY-DESIGN	code/sys/con_passive.c:CON_Shutdown	See CON_Init - nothing was set up, so nothing is torn down.
+UPSTREAM	code/sys/sys_unix.c:Sys_GLimpInit	Empty in ioquake3 on unix; the hook exists for platforms that need pre-GL setup.
+UPSTREAM	code/sys/sys_unix.c:Sys_GLimpSafeInit	See Sys_GLimpInit.
+UPSTREAM	code/sys/sys_unix.c:Sys_PlatformExit	Empty in ioquake3 on unix - no platform teardown needed.
+UPSTREAM	code/sys/sys_win32.c:Sys_GLimpInit	Empty in ioquake3 on win32.
+UPSTREAM	code/sys/sys_win32.c:Sys_GLimpSafeInit	Empty in ioquake3 on win32.
+UPSTREAM	code/ui/ui_atoms.c:UI_Shutdown	Empty in Quake 3 - the ui module is unloaded wholesale, so there is nothing to release.
+UPSTREAM	code/ui/ui_main.c:UI_GetTeamColor	Empty in Quake 3's ui_main.c; the display context keeps the entry so cgame and ui share one vtable.
+UPSTREAM	code/ui/ui_main.c:_UI_Shutdown	Empty in Quake 3 - see UI_Shutdown.
+UPSTREAM	code/ui/ui_shared.c:Item_StopCapture	Empty in Quake 3's ui_shared.c. The capture mechanism it belonged to was never completed upstream.

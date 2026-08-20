@@ -1421,6 +1421,25 @@ No-op in ioquakelive since we don't have a separate post-process pipeline.
 ==============
 */
 void CL_PostProcessRestart_f(void) {
+    /*
+    [QL] This was registered as "postprocess_restart" and did nothing at all -
+    typing it was silently ignored, which is worse than not having the command,
+    because the name promises something.
+
+    There is nothing left for it to do on the Vulkan path.
+    vk_update_post_process_pipelines() is called from the renderer-cvar-modified
+    block in tr_cmds.c every time anything in CVG_RENDERER changes, so bloom,
+    HDR and the capture pipelines are already rebuilt the moment the cvar that
+    governs them is touched. A manual restart command is a leftover from a
+    renderer that needed one.
+
+    So it answers instead. Keeping the command and having it explain itself
+    costs nothing and leaves any existing bind working; removing it would just
+    turn a silent no-op into "unknown command".
+    */
+    Com_Printf("postprocess_restart: nothing to do - post-processing pipelines\n"
+               "  (bloom, HDR, capture) rebuild automatically whenever a renderer\n"
+               "  cvar changes. Use vid_restart to force a full renderer restart.\n");
 }
 
 /*

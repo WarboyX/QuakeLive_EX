@@ -30,6 +30,13 @@ W=build/release-mingw32-x86_64
 # build if a config sets something that reset block does not cover.
 python3 content/serverconfigs/check-configs.py
 
+# Every empty function body has to carry a reviewed verdict (tools/stub-report.py
+# and docs/stub-manifest.txt). This fails the build on an unclassified one, which
+# is the point: an empty function is indistinguishable from a finished one at the
+# call site, so a new one has to be looked at deliberately rather than joining the
+# seventy-odd that were already there.
+python3 tools/stub-report.py
+
 echo "building $REV"
 
 # Stamp the loaded pak01 with the revision. Menu fixes live in pak01.pk3 and
