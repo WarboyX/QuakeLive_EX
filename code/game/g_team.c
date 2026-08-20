@@ -1261,6 +1261,23 @@ void TeamOverlayMessage(gentity_t* ent) {
     bytes, well inside the 1024-byte reliable command limit, and the same
     MAX_SCOREBOARD_PAYLOAD guard as above stops it running over.
     */
+    /*
+    [QL] Only to a client that can parse it.
+
+    "A client that does not know the verb ignores it" was wrong: stock Quake Live
+    prints "Unknown client game command: tinfo2" for every one it receives, and
+    this goes out twice a second per player, so a vanilla client on our server
+    gets a console full of nothing else. ClientUserinfoChanged sets
+    pers.extendedClient from the "iqlclient" userinfo key our engine registers.
+
+    Skipping it costs that client only the overlay detail - tinfo above is the
+    QL-shaped message and still goes to everyone - which is exactly the trade a
+    stock client should get.
+    */
+    if (!ent->client->pers.extendedClient) {
+        return;
+    }
+
     string[0] = 0;
     stringlength = 0;
 

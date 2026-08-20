@@ -267,6 +267,14 @@ typedef struct {
     clientConnected_t connected;       // 0x00 (0x250)
     usercmd_t cmd;                     // 0x04 (0x254) - 28 bytes
     qboolean localClient;              // 0x20 (0x270)
+    /*
+    [QL] Set when the client's userinfo carries "iqlclient" - i.e. it is one of
+    ours and can parse the commands stock Quake Live has no handler for. Read in
+    ClientUserinfoChanged. Gate any extension command on this: sending one to a
+    stock client is not ignored, it prints "Unknown client game command" for
+    every single one.
+    */
+    qboolean extendedClient;
     qboolean initialSpawn;             // 0x24 (0x274)
     qboolean predictItemPickup;        // 0x28 (0x278)
     char netname[40];                  // 0x2C (0x27C) - [QL] was 36, now 40

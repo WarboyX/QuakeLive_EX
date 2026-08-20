@@ -3081,6 +3081,26 @@ void CL_Init(void) {
 
     // userinfo
     Cvar_Get("name", "UnnamedPlayer", CVAR_USERINFO | CVAR_ARCHIVE);
+
+    /*
+    [QL] Tell the server this is an ioquakelive client.
+
+    The server has extra per-client commands that stock Quake Live has no handler
+    for - tinfo2, which carries the team overlay detail QL's flat tinfo dropped -
+    and sending one to a client that cannot parse it is not harmless: the stock
+    client prints "Unknown client game command" for every one, and tinfo2 goes out
+    twice a second per player. That is a console full of it on a vanilla client
+    connected to our server.
+
+    So the server needs to know who can parse what, and userinfo is the channel
+    that already exists and already arrives with the connect packet. Registered
+    here in the engine rather than in cgame so it is in the very first userinfo,
+    before any team overlay is sent.
+
+    CVAR_ROM: it identifies the binary, so a user setting it by hand would only be
+    lying to the server about what their client can parse.
+    */
+    Cvar_Get("iqlclient", "1", CVAR_USERINFO | CVAR_ROM);
     cl_rate = Cvar_Get("rate", "25000", CVAR_USERINFO | CVAR_ARCHIVE);
     Cvar_CheckRange(cl_rate, 8000, 25000, qtrue);
     Cvar_Get("model", "sarge", CVAR_USERINFO | CVAR_ARCHIVE);

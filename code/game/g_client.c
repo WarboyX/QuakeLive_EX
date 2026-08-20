@@ -716,6 +716,17 @@ void ClientUserinfoChanged(int clientNum) {
         client->pers.predictItemPickup = qtrue;
     }
 
+    /*
+    [QL] Does this client speak our extensions?
+
+    Our engine registers "iqlclient" as a CVAR_ROM userinfo cvar, so it arrives
+    with the connect packet. Anything the server sends that stock Quake Live has
+    no handler for has to be gated on this: an unknown command is not ignored by
+    the stock client, it prints "Unknown client game command" for every one, and
+    tinfo2 goes out twice a second per player.
+    */
+    client->pers.extendedClient = (qboolean)(atoi(Info_ValueForKey(userinfo, "iqlclient")) > 0);
+
     // set name
     Q_strncpyz(oldname, client->pers.netname, sizeof(oldname));
     s = Info_ValueForKey(userinfo, "name");

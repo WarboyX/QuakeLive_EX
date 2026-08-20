@@ -1283,8 +1283,24 @@ for a missing weapon icon.
 
 Fixed with a companion command rather than by breaking `tinfo` again. `tinfo`
 keeps the exact shape a stock Quake Live client expects; `tinfo2` is ours, six
-ints per player — client number, location, health, armour, weapon, **frozen** —
-and a client that does not know the verb ignores it. Roughly 200 bytes at
+ints per player — client number, location, health, armour, weapon, **frozen**.
+
+**Correction: "a client that does not know the verb ignores it" was wrong.** A
+stock Quake Live client prints `Unknown client game command: tinfo2` for every
+one it receives, and this goes out twice a second per player — a vanilla client
+on our server gets a console full of nothing else. Any command stock QL has no
+handler for has to be *gated*, not just assumed harmless.
+
+So the server now knows who can parse what. Our engine registers `iqlclient` as a
+`CVAR_ROM` userinfo cvar (`cl_main.c`), which arrives with the connect packet;
+`ClientUserinfoChanged` reads it into `pers.extendedClient`, and
+`TeamplayInfoMessage` returns before the `tinfo2` block for anyone without it.
+`CVAR_ROM` because it identifies the binary — a user setting it by hand would
+only be lying to the server about what their client can parse.
+
+A stock client loses the overlay detail and nothing else: `tinfo` is the
+QL-shaped message and still goes to everyone. That is the right trade, and
+`pers.extendedClient` is the gate for any future extension command. Roughly 200 bytes at
 `TEAM_MAXOVERLAY` 8, well inside the 1024-byte reliable limit, with the same
 `MAX_SCOREBOARD_PAYLOAD` guard.
 
