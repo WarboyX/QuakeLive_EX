@@ -603,8 +603,32 @@ qboolean trap_VerifySteamAuth(int clientNum) {
 // ============================================================
 
 int trap_Milliseconds(void) { return 0; }
-qboolean trap_InPVS(const vec3_t p1, const vec3_t p2) { (void)p1; (void)p2; return qfalse; }
-qboolean trap_InPVSIgnorePortals(const vec3_t p1, const vec3_t p2) { (void)p1; (void)p2; return qfalse; }
+/*
+[QL] Real PVS, and fail *open* if an engine ever turns up without it.
+
+These were stubbed to qfalse because Quake Live's import table has no PVS entry.
+Returning qfalse is the worst possible stub value here: every caller reads it as
+"cannot see", so Team_GetLocation rejected every candidate and returned NULL,
+which is why every player's location was 0 and the team overlay read ALIVE for
+the whole team. The engine has always had SV_inPVS; it simply was not reachable.
+
+The NULL guard returns qtrue rather than qfalse for the same reason. Without a
+PVS test Team_GetLocation falls back to plain nearest-by-distance, which is a
+slightly worse location; with the old value it reported no location at all.
+*/
+qboolean trap_InPVS(const vec3_t p1, const vec3_t p2) {
+    if (!imports->trap_InPVS) {
+        return qtrue;
+    }
+    return imports->trap_InPVS(p1, p2);
+}
+
+qboolean trap_InPVSIgnorePortals(const vec3_t p1, const vec3_t p2) {
+    if (!imports->trap_InPVSIgnorePortals) {
+        return qtrue;
+    }
+    return imports->trap_InPVSIgnorePortals(p1, p2);
+}
 qboolean trap_AreasConnected(int area1, int area2) { (void)area1; (void)area2; return qfalse; }
 qboolean trap_GetEntityToken(char* buffer, int bufferSize) {
     return imports->trap_GetEntityToken(buffer, bufferSize);

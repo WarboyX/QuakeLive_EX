@@ -314,7 +314,26 @@ typedef struct {
     int     (*trap_PC_SourceFileAndLine)(int handle, char *filename, int *line);
 
     /* --- Reserved --- */
-    void    *_reserved[7];
+    /*
+    [QL] Two reserved slots now carry InPVS.
+
+    Quake Live's import table has no PVS entry, so g_syscalls.c stubbed
+    trap_InPVS to return qfalse - and that is not a harmless stub. Every caller
+    reads a false as "not visible":
+
+      Team_GetLocation      PVS-tests each candidate, so it always returned NULL
+                            and every player's location came out 0. That is the
+                            team overlay permanently reading ALIVE and tinfo2
+                            sending location 0 for everyone.
+      g_team.c              the CTF defend/assist awards never fired.
+      g_gametype_dom.c      domination point contests never saw a victim.
+
+    Filling reserved space rather than appending keeps every existing offset and
+    the total table size unchanged, so nothing else in the layout moves.
+    */
+    qboolean(*trap_InPVS)(const vec3_t p1, const vec3_t p2);
+    qboolean(*trap_InPVSIgnorePortals)(const vec3_t p1, const vec3_t p2);
+    void    *_reserved[5];
 
     /* --- Quake Live Extensions --- */
     /* 0x640 */ uint64_t(*trap_GetSteamID)(int clientNum);

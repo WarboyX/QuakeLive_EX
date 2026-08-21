@@ -1112,6 +1112,10 @@ static void SV_PopulateGameImports(void) {
     sv_gameImports.trap_IncrementSteamStat     = SV_GI_IncrementSteamStat;
     sv_gameImports.trap_GetSteamStat           = SV_GI_GetSteamStat;
     sv_gameImports.trap_VerifySteamAuth        = SV_GI_VerifySteamAuth;
+    /* [QL] see the note in gameImport_t: without these Team_GetLocation can
+       never resolve a location, so the team overlay reads ALIVE for everyone. */
+    sv_gameImports.trap_InPVS                  = SV_inPVS;
+    sv_gameImports.trap_InPVSIgnorePortals     = SV_inPVSIgnorePortals;
 }
 
 //==============================================
