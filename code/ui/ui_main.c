@@ -4862,6 +4862,20 @@ static itemDef_t* UI_FindItemByText(const char* text) {
         if (!m || !m->window.name || !Q_stricmp(m->window.name, "io_teamselect")) {
             continue;   // never anchor to ourselves
         }
+        /*
+        [QL] Only menus that are actually on screen.
+
+        "SPECTATE" is not unique across the loaded set - Quake Live's
+        ui/ingame_join.menu carries one too, and it is loaded but never
+        activated in this build. Matching it took that menu's rect, which is
+        laid out against its own origin, and placed the panel against geometry
+        nobody can see: the join squares landed on top of the visible SPECTATE
+        and AUTO JOIN sat off to the right of the column. Anchoring to what is
+        being painted is the whole point of measuring at run time.
+        */
+        if (!(m->window.flags & WINDOW_VISIBLE)) {
+            continue;
+        }
         for (j = 0; j < m->itemCount; j++) {
             itemDef_t* it = m->items[j];
             if (it && it->text && !Q_stricmp(it->text, text)) {

@@ -1342,6 +1342,7 @@ extern cvar_t	*r_vbo;
 extern cvar_t	*r_fbo;
 extern cvar_t	*r_hdr;
 extern cvar_t	*r_shaderTimeSource;
+extern cvar_t	*r_verboseImageFallback;
 extern cvar_t	*r_bloom;
 extern cvar_t	*r_bloom_threshold;
 extern cvar_t	*r_bloom_intensity;

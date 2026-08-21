@@ -106,6 +106,7 @@ cvar_t* r_cameraExposure;
 
 cvar_t* r_externalGLSL;
 
+cvar_t* r_verboseImageFallback;
 cvar_t* r_hdr;
 cvar_t* r_floatLightmap;
 cvar_t* r_postProcess;
@@ -1231,6 +1232,10 @@ void R_Register(void) {
 
     r_externalGLSL = ri.Cvar_Get("r_externalGLSL", "0", CVAR_LATCH);
 
+    /* [QL] see the note at the use site in tr_image.c - off by default because
+       Quake Live asks for .tga throughout while its paks ship .png, so this
+       fires for nearly every image and buries the rest of developer output. */
+    r_verboseImageFallback = ri.Cvar_Get("r_verboseImageFallback", "0", CVAR_ARCHIVE);
     r_hdr = ri.Cvar_Get("r_hdr", "1", CVAR_ARCHIVE | CVAR_LATCH);
     r_floatLightmap = ri.Cvar_Get("r_floatLightmap", "0", CVAR_ARCHIVE | CVAR_LATCH);
     r_postProcess = ri.Cvar_Get("r_postProcess", "1", CVAR_ARCHIVE);

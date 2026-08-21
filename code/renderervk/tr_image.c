@@ -1233,6 +1233,14 @@ static const char *R_LoadImage( const char *name, byte **pic, int *width, int *h
 #if 0
 			if ( orgNameFailed )
 			{
+				/* [QL] Behind its own cvar rather than plain developer output.
+				   Quake Live's menus and shaders ask for .tga throughout while
+				   its paks ship .png, so this fires for essentially every image
+				   in the game - hundreds of lines at load, which buries whatever
+				   else developer 1 was turned on to see. The fallback is correct
+				   and universal; it is not news. r_verboseImageFallback 1 to get
+				   it back. */
+				if ( r_verboseImageFallback->integer )
 				ri.Printf( PRINT_DEVELOPER, S_COLOR_YELLOW "WARNING: %s not present, using %s instead\n",
 						name, altName );
 			}

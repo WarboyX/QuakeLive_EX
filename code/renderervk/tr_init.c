@@ -86,6 +86,7 @@ cvar_t	*r_vbo;
 cvar_t	*r_fbo;
 cvar_t	*r_hdr;
 cvar_t	*r_shaderTimeSource;
+cvar_t	*r_verboseImageFallback;
 cvar_t	*r_bloom;
 cvar_t	*r_bloom_threshold;
 cvar_t	*r_bloom_intensity;
@@ -1821,6 +1822,8 @@ static void R_Register( void )
 
 	r_fbo = ri.Cvar_Get( "r_fbo", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_fbo, "Use framebuffer objects, enables gamma correction in windowed mode and allows arbitrary video size and screenshot/video capture.\n Required for bloom, HDR rendering, anti-aliasing and greyscale effects." );
+	r_verboseImageFallback = ri.Cvar_Get( "r_verboseImageFallback", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_verboseImageFallback, "Print a warning each time an image is found under a different extension than the one asked for.\n Off by default: Quake Live's menus ask for .tga while its paks ship .png, so this fires for nearly every image and buries the rest of developer output." );
 	r_shaderTimeSource = ri.Cvar_Get( "r_shaderTimeSource", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_shaderTimeSource, "Clock used for shader animation (animMap, tcMod, waveforms, deforms).\n  0: scene time - follows cg.time, so it matches demos and timescale but inherits any unevenness in snapshot interpolation\n  1: real time - independent of snapshots, smooth regardless of the server, but ignores timescale and demo scrubbing\n" );
 

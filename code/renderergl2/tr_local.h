@@ -1731,6 +1731,7 @@ extern cvar_t* r_anaglyphMode;
 
 extern cvar_t* r_externalGLSL;
 
+extern cvar_t* r_verboseImageFallback;
 extern cvar_t* r_hdr;
 extern cvar_t* r_floatLightmap;
 extern cvar_t* r_postProcess;
