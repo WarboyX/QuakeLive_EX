@@ -3661,6 +3661,7 @@ number instead of a guess at a screenshot.
 ==================
 */
 extern menuDef_t* menuScoreboard;  // owned by cg_draw.c
+void CG_SetEndScoreboardMenu(void);
 
 void CG_ScoreboardDebugDump(void) {
     static const struct {
@@ -3684,11 +3685,26 @@ void CG_ScoreboardDebugDump(void) {
               cg.showScores, cgs.eventHandling, trap_Key_GetCatcher(),
               cgs.gametype, cgs.scoreboardHoldingMouse);
 
+    /*
+    menuScoreboard is resolved lazily by CG_DrawScoreboard, not at load, so it is
+    legitimately NULL here on the first +scores of a map even when everything
+    works - reporting that on its own would be a false lead. Run the same resolve
+    the draw path runs, then report what it produced. If it is still NULL after
+    that, Menus_FindByName has no menu of the expected name for this gametype,
+    which means the cgame menu set did not parse rather than that the scoreboard
+    is mispositioned.
+    */
+    if (!menuScoreboard) {
+        CG_SetEndScoreboardMenu();
+    }
+
     menu = (menuDef_t*)menuScoreboard;
     if (!menu) {
-        CG_Printf("scoreboardDebug: menuScoreboard is NULL - CG_SetEndScoreboardMenu "
-                  "has not resolved a menu for this gametype, so there is nothing "
-                  "to paint\n");
+        CG_Printf("scoreboardDebug: menuScoreboard still NULL after resolve - "
+                  "Menus_FindByName has no scoreboard menu for gametype %i, and "
+                  "%i menus are loaded. The cgame menu set did not parse; this is "
+                  "not a positioning problem.\n",
+                  cgs.gametype, Menu_Count());
         return;
     }
     CG_Printf("scoreboardDebug: menu '%s' visible %i\n",

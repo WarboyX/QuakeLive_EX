@@ -2495,10 +2495,28 @@ void CG_ParseMenu(const char* menuFile) {
     int handle;
 
     handle = trap_PC_LoadSource(menuFile);
-    if (!handle)
+    if (!handle) {
+        /*
+        [QL] Say when a menu file is missing.
+
+        This fell back to ui/testhud.menu and, failing that, returned - both
+        without a word. Every menu cgame looks up later goes through here, so a
+        missing file surfaces much later and somewhere else entirely: the
+        scoreboard, for instance, is Menus_FindByName("teamscore_menu_ctf")
+        coming back NULL at draw time, with nothing anywhere connecting that to
+        a file that never loaded. Same silent-failure shape as a shader that
+        never registered.
+        */
+        Com_Printf(S_COLOR_YELLOW "CG_ParseMenu: %s not found, trying ui/testhud.menu\n",
+                   menuFile);
         handle = trap_PC_LoadSource("ui/testhud.menu");
-    if (!handle)
-        return;
+        if (!handle) {
+            Com_Printf(S_COLOR_RED "CG_ParseMenu: ui/testhud.menu not found either - "
+                       "%s is simply not loaded, and anything that looks up a menu "
+                       "defined in it will find nothing\n", menuFile);
+            return;
+        }
+    }
 
     while (1) {
         if (!trap_PC_ReadToken(handle, &token)) {
@@ -3167,6 +3185,11 @@ void CG_LoadHudMenu(void) {
     CG_ParseMenu("ui/end_scoreboard_ffa.menu");
     CG_ParseMenu("ui/end_scoreboard_duel.menu");
     CG_ParseMenu("ui/end_scoreboard_race.menu");
+
+    // [QL] One line saying how many menus cgame ended up with. menuScoreboard
+    // resolving to NULL later is otherwise indistinguishable from the whole set
+    // having failed to parse.
+    Com_Printf("cgame: %i menus loaded\n", Menu_Count());
     CG_ParseMenu("ui/end_scoreboard_tdm.menu");
     CG_ParseMenu("ui/end_scoreboard_ca.menu");
     CG_ParseMenu("ui/end_scoreboard_ctf.menu");
