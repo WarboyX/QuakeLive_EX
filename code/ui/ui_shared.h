@@ -440,6 +440,8 @@ qboolean PC_Rect_Parse(int handle, rectDef_t* r);
 qboolean PC_String_Parse(int handle, const char** out);
 qboolean PC_Script_Parse(int handle, const char** out);
 int Menu_Count(void);
+menuDef_t* Menu_GetByIndex(int index);
+void Menu_UpdatePosition(menuDef_t* menu);
 void Menu_New(int handle);
 void Menu_PaintAll(void);
 menuDef_t* Menus_ActivateByName(const char* p);

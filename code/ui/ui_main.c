@@ -4823,6 +4823,147 @@ static void UI_BuildQ3Model_List(void) {
 UI_Init
 =================
 */
+
+/*
+=================
+UI_PlaceTeamSelect
+
+[QL] Lay the team panel out from Quake Live's own menu, at run time.
+
+The panel used to carry hardcoded coordinates, and they were wrong twice - too
+narrow, too far left, and on top of Quake Live's SPECTATE button - because the
+only way to arrive at them from here was to measure a screenshot. pak00 is not
+readable in this tree, so the numbers could not be taken from the menu that
+actually defines them.
+
+They can be read back at run time though. Quake Live's SPECTATE button is a
+loaded itemDef like any other, so this finds it by its label and derives
+everything from its rect: the column keeps its x and width, AUTO JOIN takes the
+next row down, and the two join buttons are squares stacked to the left of that
+column, spanning both rows.
+
+A note on coordinates, since "absolute pixels" is the obvious worry: menu rects
+are not pixels. They are a virtual 640x480 space that Item_SetScreenCoords and
+CG_AdjustFrom640 scale to whatever the display actually is, so a fixed rect does
+not move when the resolution changes. What it does not survive is Quake Live
+laying its own menu out differently from the build the numbers were measured
+against - which is the fragility this removes.
+
+If the anchor is not found the panel keeps the rects from the .menu file, which
+are the measured ones, so this degrades to the previous behaviour rather than to
+a pile of buttons at the origin.
+=================
+*/
+static itemDef_t* UI_FindItemByText(const char* text) {
+    int i, j;
+
+    for (i = 0; i < Menu_Count(); i++) {
+        menuDef_t* m = Menu_GetByIndex(i);
+        if (!m || !m->window.name || !Q_stricmp(m->window.name, "io_teamselect")) {
+            continue;   // never anchor to ourselves
+        }
+        for (j = 0; j < m->itemCount; j++) {
+            itemDef_t* it = m->items[j];
+            if (it && it->text && !Q_stricmp(it->text, text)) {
+                return it;
+            }
+        }
+    }
+    return NULL;
+}
+
+static itemDef_t* UI_TeamSelectItem(menuDef_t* menu, const char* name) {
+    int i;
+
+    for (i = 0; i < menu->itemCount; i++) {
+        if (menu->items[i] && menu->items[i]->window.name &&
+            !Q_stricmp(menu->items[i]->window.name, name)) {
+            return menu->items[i];
+        }
+    }
+    return NULL;
+}
+
+static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const char* textName,
+                                 float x, float y, float w, float h) {
+    itemDef_t* bar = UI_TeamSelectItem(menu, barName);
+    itemDef_t* txt = UI_TeamSelectItem(menu, textName);
+    int k;
+    itemDef_t* both[2];
+
+    both[0] = bar;
+    both[1] = txt;
+    for (k = 0; k < 2; k++) {
+        if (!both[k]) {
+            continue;
+        }
+        both[k]->window.rectClient.x = x;
+        both[k]->window.rectClient.y = y;
+        both[k]->window.rectClient.w = w;
+        both[k]->window.rectClient.h = h;
+    }
+    if (txt) {
+        /* ITEM_ALIGN_CENTER subtracts half the string width from textalignx
+           (Item_SetTextExtents), so the centre of the button is the alignment
+           point. textRect is cached on first paint - clearing w forces it to be
+           measured again against the new size. */
+        txt->textalignx = w / 2.0f;
+        txt->textaligny = h / 2.0f + 4.0f;
+        txt->textRect.w = 0;
+        txt->textRect.h = 0;
+    }
+}
+
+static void UI_PlaceTeamSelect(void) {
+    menuDef_t* menu = Menus_FindByName("io_teamselect");
+    itemDef_t* anchor;
+    float colX, colY, colW, rowH, gap, sq, autoY, redX, blueX;
+    float minX, minY, maxX, maxY;
+
+    if (!menu) {
+        return;
+    }
+
+    anchor = UI_FindItemByText("SPECTATE");
+    if (!anchor || anchor->window.rect.w <= 0.0f || anchor->window.rect.h <= 0.0f) {
+        return;     // keep the .menu file's own layout
+    }
+
+    colX = anchor->window.rect.x;
+    colY = anchor->window.rect.y;
+    colW = anchor->window.rect.w;
+    rowH = anchor->window.rect.h;
+    gap = 3.0f;
+
+    autoY = colY + rowH + gap;
+
+    /* The join buttons are squares as tall as the two rows they sit beside, so
+       they read as a pair rather than as two more entries in the column. */
+    sq = rowH * 2.0f + gap;
+    blueX = colX - gap - sq;
+    redX = blueX - gap - sq;
+
+    minX = redX;
+    minY = colY;
+    maxX = colX + colW;
+    maxY = autoY + rowH;
+
+    menu->window.rect.x = minX;
+    menu->window.rect.y = minY;
+    menu->window.rect.w = maxX - minX;
+    menu->window.rect.h = maxY - minY;
+    menu->window.rectClient = menu->window.rect;
+
+    UI_SetTeamSelectRect(menu, "teamselect_redbar", "teamselect_red",
+                         redX - minX, 0.0f, sq, sq);
+    UI_SetTeamSelectRect(menu, "teamselect_bluebar", "teamselect_blue",
+                         blueX - minX, 0.0f, sq, sq);
+    UI_SetTeamSelectRect(menu, "teamselect_autobar", "teamselect_auto",
+                         colX - minX, autoY - minY, colW, rowH);
+
+    Menu_UpdatePosition(menu);
+}
+
 void _UI_Init(qboolean inGameLoad) {
     const char* menuSet;
 
@@ -5114,6 +5255,9 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 Menus_ActivateByName("io_teamselect");
                 Menus_ActivateByName("ingame");
                 Menus_ActivateByName("ingame_about");
+                /* after the pages are up, so their item rects are resolved and
+                   Quake Live's SPECTATE can be measured - see UI_PlaceTeamSelect */
+                UI_PlaceTeamSelect();
                 return;
         }
     }

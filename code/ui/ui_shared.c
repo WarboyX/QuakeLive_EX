@@ -7099,6 +7099,17 @@ void Menu_New(int handle) {
     }
 }
 
+/*
+[QL] Index accessor for the menu array, so callers outside this file can walk
+every loaded menu rather than only look one up by name.
+*/
+menuDef_t* Menu_GetByIndex(int index) {
+    if (index < 0 || index >= menuCount) {
+        return NULL;
+    }
+    return &Menus[index];
+}
+
 int Menu_Count(void) {
     return menuCount;
 }
