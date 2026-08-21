@@ -4931,66 +4931,55 @@ static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const cha
 static void UI_PlaceTeamSelect(void) {
     menuDef_t* menu = Menus_FindByName("io_teamselect");
     itemDef_t* spectate;
-    itemDef_t* ret;
-    float colX, colW, rowH, gap;
-    float autoY, colTop, colBottom, blockW, blockH, blockX, halfH;
-    float minX, minY;
+    float colX, colY, colW, rowH, gap, halfW;
 
     if (!menu) {
         return;
     }
 
+    /*
+    Quake Live's SPECTATE is both the anchor and the thing being replaced.
+
+    Anchor, because it is the one control in that column whose rect can be read
+    from here - pak00 is not in this tree, so the alternative is hardcoding a
+    measurement of a screenshot, which is how this landed wrong twice.
+
+    Replaced, because leaving it there means two controls doing the same job in
+    the same column with only one of them positioned by us, and that is what kept
+    ending up overlapped. Hiding it hands the whole stack below RETURN to MATCH
+    over to this menu, so the spacing is ours to get right rather than something
+    to dodge. The item's rect is untouched, so the next open measures the same
+    geometry and the hide is idempotent.
+    */
     spectate = UI_FindItemByText("SPECTATE");
     if (!spectate || spectate->window.rect.w <= 0.0f || spectate->window.rect.h <= 0.0f) {
         return;     // keep the .menu file's own layout
     }
 
     colX = spectate->window.rect.x;
+    colY = spectate->window.rect.y;
     colW = spectate->window.rect.w;
     rowH = spectate->window.rect.h;
     gap = 3.0f;
 
-    /* AUTO JOIN continues Quake Live's column: same x, same width, next row. */
-    autoY = spectate->window.rect.y + rowH + gap;
+    spectate->window.flags &= ~WINDOW_VISIBLE;
 
-    /*
-    The red/blue block is one control split in half, standing to the left of the
-    whole column and matching its height - RETURN to MATCH at the top down to
-    AUTO JOIN at the bottom. Sizing it from the column rather than from a fixed
-    number is what keeps it square with the buttons it sits beside whatever
-    Quake Live's own menu does.
+    /* Quake Live's arrangement: the two join buttons share a row at half width,
+       SPECTATE full width beneath them. */
+    halfW = (colW - gap) * 0.5f;
 
-    RETURN to MATCH gives the top of the column. Without it the block starts at
-    SPECTATE instead, which is shorter but still aligned - a worse look rather
-    than a broken one.
-    */
-    ret = UI_FindItemByText("RETURN to MATCH");
-    colTop = (ret && ret->window.rect.h > 0.0f) ? ret->window.rect.y : spectate->window.rect.y;
-    colBottom = autoY + rowH;
-
-    blockH = colBottom - colTop;
-    if (blockH < rowH) {
-        blockH = rowH;
-    }
-    blockW = colW * 0.5f;
-    blockX = colX - gap - blockW;
-    halfH = blockH * 0.5f;
-
-    minX = blockX;
-    minY = colTop;
-
-    menu->window.rect.x = minX;
-    menu->window.rect.y = minY;
-    menu->window.rect.w = (colX + colW) - minX;
-    menu->window.rect.h = colBottom - minY;
+    menu->window.rect.x = colX;
+    menu->window.rect.y = colY;
+    menu->window.rect.w = colW;
+    menu->window.rect.h = rowH * 2.0f + gap;
     menu->window.rectClient = menu->window.rect;
 
     UI_SetTeamSelectRect(menu, "teamselect_redbar", "teamselect_red",
-                         blockX - minX, colTop - minY, blockW, halfH);
+                         0.0f, 0.0f, halfW, rowH);
     UI_SetTeamSelectRect(menu, "teamselect_bluebar", "teamselect_blue",
-                         blockX - minX, colTop - minY + halfH, blockW, blockH - halfH);
-    UI_SetTeamSelectRect(menu, "teamselect_autobar", "teamselect_auto",
-                         colX - minX, autoY - minY, colW, rowH);
+                         halfW + gap, 0.0f, colW - halfW - gap, rowH);
+    UI_SetTeamSelectRect(menu, "teamselect_specbar", "teamselect_spec",
+                         0.0f, rowH + gap, colW, rowH);
 
     Menu_UpdatePosition(menu);
 }
