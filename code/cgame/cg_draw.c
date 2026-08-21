@@ -1988,7 +1988,25 @@ static void CG_ScoreboardBlocked(const char *why) {
 		return;
 	}
 	lastTime = cg.time;
-	CG_Printf("scoreboardDebug: not drawn - %s\n", why);
+	CG_Printf("scoreboardDebug: not drawn - %s [showScores %i, warmup %i, paused %i]\n",
+			  why, cg.showScores, cg.warmup, cg_paused.integer);
+}
+
+/* The other half of the trace: say when it *is* painted, so a press-and-hold
+   produces a positive line rather than only the absence of a negative one. */
+static void CG_ScoreboardPainted(const menuDef_t *menu) {
+	static int lastTime;
+
+	if (!cg_scoreboardDebug.integer) {
+		return;
+	}
+	if (cg.time - lastTime < 1000) {
+		return;
+	}
+	lastTime = cg.time;
+	CG_Printf("scoreboardDebug: PAINTING '%s' (%i items) [showScores %i, warmup %i]\n",
+			  menu->window.name ? menu->window.name : "(unnamed)", menu->itemCount,
+			  cg.showScores, cg.warmup);
 }
 
 static qboolean CG_DrawScoreboardMenu(void) {
@@ -2072,6 +2090,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 			CG_RefreshScoreboard();
 			CG_SetScoreSelection(NULL);
 			CG_TrackLocalPlayerOnScoreboard(activeMenu);
+			CG_ScoreboardPainted(activeMenu);
 			Menu_Paint(activeMenu, qtrue);
 		}
 	}
