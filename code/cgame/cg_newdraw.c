@@ -3681,9 +3681,9 @@ void CG_ScoreboardDebugDump(void) {
     }
 
     CG_Printf("scoreboardDebug: showScores %i, eventHandling %i, catcher 0x%x, "
-              "gametype %i, holdingMouse %i\n",
+              "gametype %i, holdingMouse %i, cl_paused %i, warmup %i\n",
               cg.showScores, cgs.eventHandling, trap_Key_GetCatcher(),
-              cgs.gametype, cgs.scoreboardHoldingMouse);
+              cgs.gametype, cgs.scoreboardHoldingMouse, cg_paused.integer, cg.warmup);
 
     /*
     menuScoreboard is resolved lazily by CG_DrawScoreboard, not at load, so it is

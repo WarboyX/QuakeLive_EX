@@ -1970,13 +1970,49 @@ static void CG_RefreshScoreboard(void) {
 	trap_SendClientCommand("score");
 }
 
+/*
+[QL] Say which gate stopped the scoreboard, once per second.
+
+Every return below is a silent qfalse, and from the outside they are
+indistinguishable from each other and from "the menu did not load" - which is
+what turned this into three rounds of guessing. Throttled because this runs
+every frame; reported only under cg_scoreboardDebug.
+*/
+static void CG_ScoreboardBlocked(const char *why) {
+	static int lastTime;
+
+	if (!cg_scoreboardDebug.integer) {
+		return;
+	}
+	if (cg.time - lastTime < 1000) {
+		return;
+	}
+	lastTime = cg.time;
+	CG_Printf("scoreboardDebug: not drawn - %s\n", why);
+}
+
 static qboolean CG_DrawScoreboardMenu(void) {
 	static qboolean firstTime = qtrue;
 
 	if (menuScoreboard) {
 		menuScoreboard->window.flags &= ~WINDOW_FORCED;
 	}
-	if (cg_paused.integer) {
+	if (cg_paused.integer && !cg.showScores) {
+		/*
+		[QL] Honour an explicit request even while paused.
+
+		cg_paused is cl_paused, which the in-game menu sets to 1 on the way in
+		and clears on the way out. Left set for any reason, this gate silently
+		killed the scoreboard for the rest of the session: the menu resolves,
+		the geometry is right, and nothing is ever painted, with no way from
+		outside to tell that apart from a menu that failed to load.
+
+		The gate's point is to stop the board *auto*-showing over a paused game
+		- while dead, or fading after a death. Someone holding +scores has asked
+		for it, and a pause is not a reason to refuse. Adding the showScores test
+		keeps the original behaviour and removes the trap.
+		*/
+		CG_ScoreboardBlocked("cl_paused is 1 and showScores is 0");
 		cg.deferredPlayerLoading = 0;
 		firstTime = qtrue;
 		return qfalse;
@@ -1984,6 +2020,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 
 	// don't draw scoreboard during death while warmup up
 	if (cg.warmup && !cg.showScores) {
+		CG_ScoreboardBlocked("warmup and showScores is 0");
 		return qfalse;
 	}
 
@@ -2003,6 +2040,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 	} else {
 		if (!CG_FadeColor(cg.scoreFadeTime, FADE_TIME)) {
 			// next time scoreboard comes up, don't print killer
+			CG_ScoreboardBlocked("showScores is 0, not dead, not intermission, fade expired");
 			cg.deferredPlayerLoading = 0;
 			cg.killerName[0] = 0;
 			firstTime = qtrue;
@@ -2023,6 +2061,9 @@ static qboolean CG_DrawScoreboardMenu(void) {
 			activeMenu = menuScoreboard;
 		}
 
+		if (!activeMenu) {
+			CG_ScoreboardBlocked("no menu resolved for this gametype");
+		}
 		if (activeMenu) {
 			if (firstTime) {
 				cg.scoreboardScrolled = qfalse;
