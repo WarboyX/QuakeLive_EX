@@ -1835,10 +1835,31 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 			continue;   // nothing left to show
 		}
 
-		// [QL] the left-hand team's bar belongs on the outside, so the two
-		// lists mirror each other instead of both crowding the middle
+		/*
+		[QL] The left-hand team's bar belongs on the outside, so the two lists
+		mirror each other instead of both crowding the middle - and the box has
+		to move left by the width of the bar for that to line up.
+
+		Without the shift the bar takes its column out of the *inside* of the
+		list, so the rows start SCROLLBAR_SIZE further in than the menu put them
+		while the column headers above - PLAYER, SCORE, K/D, separate items in
+		the menu - stay where they were. The numbers say it plainly:
+		cg_scoreboardDebug reported the red list at rect x 49 with contentX 66,
+		against blue at 326 with contentX 327. Blue's rows begin one unit inside
+		its box and red's begin seventeen, so red's whole row was out of step
+		with its own headers by sixteen.
+
+		Moving the rect left by exactly SCROLLBAR_SIZE puts the bar in the margin
+		and leaves contentX where it started - 50 rather than 66, one unit inside
+		the original box, the same relationship blue has. rect.w is deliberately
+		not widened to match: contentW is rect.w - SCROLLBAR_SIZE - 2 either way,
+		so leaving the width alone keeps both teams' rows exactly the same width
+		as each other, which is what the highlight follows.
+		*/
 		if (item->special == FEEDER_REDTEAM_LIST) {
 			item->window.flags |= WINDOW_LB_LEFTSCROLL;
+			item->window.rect.x -= SCROLLBAR_SIZE;
+			item->window.rectClient.x -= SCROLLBAR_SIZE;
 		}
 
 		item->window.rect.y += shift;
