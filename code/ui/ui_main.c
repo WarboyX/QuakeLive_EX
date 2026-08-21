@@ -4930,48 +4930,65 @@ static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const cha
 
 static void UI_PlaceTeamSelect(void) {
     menuDef_t* menu = Menus_FindByName("io_teamselect");
-    itemDef_t* anchor;
-    float colX, colY, colW, rowH, gap, sq, autoY, redX, blueX;
-    float minX, minY, maxX, maxY;
+    itemDef_t* spectate;
+    itemDef_t* ret;
+    float colX, colW, rowH, gap;
+    float autoY, colTop, colBottom, blockW, blockH, blockX, halfH;
+    float minX, minY;
 
     if (!menu) {
         return;
     }
 
-    anchor = UI_FindItemByText("SPECTATE");
-    if (!anchor || anchor->window.rect.w <= 0.0f || anchor->window.rect.h <= 0.0f) {
+    spectate = UI_FindItemByText("SPECTATE");
+    if (!spectate || spectate->window.rect.w <= 0.0f || spectate->window.rect.h <= 0.0f) {
         return;     // keep the .menu file's own layout
     }
 
-    colX = anchor->window.rect.x;
-    colY = anchor->window.rect.y;
-    colW = anchor->window.rect.w;
-    rowH = anchor->window.rect.h;
+    colX = spectate->window.rect.x;
+    colW = spectate->window.rect.w;
+    rowH = spectate->window.rect.h;
     gap = 3.0f;
 
-    autoY = colY + rowH + gap;
+    /* AUTO JOIN continues Quake Live's column: same x, same width, next row. */
+    autoY = spectate->window.rect.y + rowH + gap;
 
-    /* The join buttons are squares as tall as the two rows they sit beside, so
-       they read as a pair rather than as two more entries in the column. */
-    sq = rowH * 2.0f + gap;
-    blueX = colX - gap - sq;
-    redX = blueX - gap - sq;
+    /*
+    The red/blue block is one control split in half, standing to the left of the
+    whole column and matching its height - RETURN to MATCH at the top down to
+    AUTO JOIN at the bottom. Sizing it from the column rather than from a fixed
+    number is what keeps it square with the buttons it sits beside whatever
+    Quake Live's own menu does.
 
-    minX = redX;
-    minY = colY;
-    maxX = colX + colW;
-    maxY = autoY + rowH;
+    RETURN to MATCH gives the top of the column. Without it the block starts at
+    SPECTATE instead, which is shorter but still aligned - a worse look rather
+    than a broken one.
+    */
+    ret = UI_FindItemByText("RETURN to MATCH");
+    colTop = (ret && ret->window.rect.h > 0.0f) ? ret->window.rect.y : spectate->window.rect.y;
+    colBottom = autoY + rowH;
+
+    blockH = colBottom - colTop;
+    if (blockH < rowH) {
+        blockH = rowH;
+    }
+    blockW = colW * 0.5f;
+    blockX = colX - gap - blockW;
+    halfH = blockH * 0.5f;
+
+    minX = blockX;
+    minY = colTop;
 
     menu->window.rect.x = minX;
     menu->window.rect.y = minY;
-    menu->window.rect.w = maxX - minX;
-    menu->window.rect.h = maxY - minY;
+    menu->window.rect.w = (colX + colW) - minX;
+    menu->window.rect.h = colBottom - minY;
     menu->window.rectClient = menu->window.rect;
 
     UI_SetTeamSelectRect(menu, "teamselect_redbar", "teamselect_red",
-                         redX - minX, 0.0f, sq, sq);
+                         blockX - minX, colTop - minY, blockW, halfH);
     UI_SetTeamSelectRect(menu, "teamselect_bluebar", "teamselect_blue",
-                         blueX - minX, 0.0f, sq, sq);
+                         blockX - minX, colTop - minY + halfH, blockW, blockH - halfH);
     UI_SetTeamSelectRect(menu, "teamselect_autobar", "teamselect_auto",
                          colX - minX, autoY - minY, colW, rowH);
 

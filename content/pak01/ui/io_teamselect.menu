@@ -25,18 +25,20 @@
 //
 // Geometry
 // --------
-// Two mistakes worth writing down, because both looked like the menu was broken
-// rather than misplaced.
+// The rects below are only a fallback. UI_PlaceTeamSelect (ui_main.c) measures
+// Quake Live's own RETURN to MATCH and SPECTATE buttons when the menu opens and
+// rewrites all three items from them: AUTO JOIN continues the column at the same
+// x and width, and RED / BLUE become one block split in half, standing to the
+// left of the column and matching its full height.
 //
-// itemDef rects are relative to the menuDef origin - Item_SetScreenCoords adds
-// the menu's x/y to each item's. Written absolute, with the menu at x 396, every
-// button landed at 792 and the panel sat off the right of the screen entirely.
+// It is done that way because the numbers cannot be read from here - pak00 is
+// not in this tree - so anything hardcoded is a measurement of one screenshot,
+// which is how this landed wrong twice: too narrow and too far left, then
+// painted straight over Quake Live's SPECTATE.
 //
-// Then the column itself. Quake Live's RETURN to MATCH and SPECTATE occupy
-// x 425..581 - width 156, not 120 - and SPECTATE runs from y 198 to 219. A panel
-// at 396,194 was therefore too narrow, too far left, and painted straight over
-// SPECTATE. This starts below it and matches its width, so the four buttons read
-// as one column.
+// Note the values are not pixels either way. Menu rects are a virtual 640x480
+// space that Item_SetScreenCoords scales to the real display, so they do not
+// move with resolution.
 //
 // No SPECTATE of ours: Quake Live's works and is right there. Duplicating it is
 // what put two buttons on top of each other.
@@ -57,13 +59,13 @@
             name teamselect_redbar
             style WINDOW_STYLE_FILLED
             rect 0 0 156 21
-            backcolor 0.45 0.10 0.10 0.85
+            backcolor 0.80 0.10 0.10 0.90
             visible 1
             decoration
         }
         itemDef {
             name teamselect_red
-            text "JOIN RED"
+            text "RED"
             type 1
             textstyle 6
             rect 0 0 156 21
@@ -78,21 +80,21 @@
             // clears key states and unpauses, so the menu does not stay up over
             // a player who has just spawned.
             action { exec "cmd team r" ; uiScript closeingame }
-            mouseEnter { setitemcolor teamselect_redbar backcolor .75 .15 .15 .9 }
-            mouseExit  { setitemcolor teamselect_redbar backcolor 0.45 0.10 0.10 0.85 }
+            mouseEnter { setitemcolor teamselect_redbar backcolor 1.0 .25 .25 1.0 }
+            mouseExit  { setitemcolor teamselect_redbar backcolor 0.80 0.10 0.10 0.90 }
         }
 
         itemDef {
             name teamselect_bluebar
             style WINDOW_STYLE_FILLED
             rect 0 24 156 21
-            backcolor 0.12 0.16 0.50 0.85
+            backcolor 0.15 0.20 0.80 0.90
             visible 1
             decoration
         }
         itemDef {
             name teamselect_blue
-            text "JOIN BLUE"
+            text "BLUE"
             type 1
             textstyle 6
             rect 0 24 156 21
@@ -103,8 +105,8 @@
             forecolor 1 1 1 1
             visible 1
             action { exec "cmd team b" ; uiScript closeingame }
-            mouseEnter { setitemcolor teamselect_bluebar backcolor .2 .28 .8 .9 }
-            mouseExit  { setitemcolor teamselect_bluebar backcolor 0.12 0.16 0.50 0.85 }
+            mouseEnter { setitemcolor teamselect_bluebar backcolor .30 .38 1.0 1.0 }
+            mouseExit  { setitemcolor teamselect_bluebar backcolor 0.15 0.20 0.80 0.90 }
         }
 
         // AUTO JOIN. Cmd_Team_f takes "free" as "put me somewhere", which in a
