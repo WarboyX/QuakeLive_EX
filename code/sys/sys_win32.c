@@ -249,6 +249,44 @@ int64_t Sys_Microseconds(void) {
 
 /*
 ================
+Sys_LibraryErrorWin32
+
+[QL] Report why LoadLibrary refused a module.
+
+sys_loadlib.h defined Sys_LibraryError() as the string "unknown" on Windows, so
+a dedicated server that could not load qagame printed exactly that and nothing
+else - while Windows itself had a specific reason waiting in GetLastError. A
+structurally valid DLL that the loader rejects is almost always a policy
+decision rather than a bad file, and the distinction is invisible without this.
+================
+*/
+const char* Sys_LibraryErrorWin32(void) {
+    static char buf[1024];
+    DWORD err = GetLastError();
+    DWORD len;
+
+    if (err == 0) {
+        return "no error reported by the OS";
+    }
+
+    len = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                         NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                         buf, sizeof(buf) - 32, NULL);
+    if (len == 0) {
+        Com_sprintf(buf, sizeof(buf), "error 0x%08lx (no description available)",
+                    (unsigned long)err);
+        return buf;
+    }
+
+    while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r' || buf[len - 1] == ' ')) {
+        buf[--len] = '\0';
+    }
+    Q_strcat(buf, sizeof(buf), va(" [0x%08lx]", (unsigned long)err));
+    return buf;
+}
+
+/*
+================
 Sys_RandomBytes
 ================
 */

@@ -564,6 +564,24 @@ void* Sys_LoadGameDll(const char* name,
 
     if (!libHandle) {
         Com_Printf("Sys_LoadGameDll(%s) failed:\n\"%s\"\n", name, Sys_LibraryError());
+#ifdef _WIN32
+        /*
+        [QL] The file having just been checksum-verified against the pak makes
+        this worth spelling out: if the bytes matched and the loader still says
+        no, the file is not the problem and reinstalling will not help. Windows
+        refuses to map an unsigned DLL out of a user-writable directory under
+        several policies, and %APPDATA% - where the engine extracts game modules
+        - is exactly such a directory.
+        */
+        Com_Printf(S_COLOR_YELLOW
+                   "If the module was verified against iobin.pk3 just above, the file is\n"
+                   "intact and Windows is declining to load it rather than failing to read\n"
+                   "it. That is usually a code-integrity policy - Smart App Control, an\n"
+                   "endpoint-protection product, or an AppLocker/WDAC rule - refusing an\n"
+                   "unsigned DLL from a user-writable folder. Check Windows Security >\n"
+                   "App & browser control, and Event Viewer > Applications and Services >\n"
+                   "Microsoft > Windows > CodeIntegrity for the matching block.\n");
+#endif
         return NULL;
     }
 
