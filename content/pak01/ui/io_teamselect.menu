@@ -20,9 +20,12 @@
 // the first match, so an unprefixed name could collide with one of Quake Live's
 // and leave "open" and "close" acting on different menus.
 //
-// Geometry is placed to match where Quake Live puts the same panel - the right
-// hand column of the Current Match page, under RETURN to MATCH - in 640x480
-// virtual coordinates.
+// Geometry: the menuDef rect is absolute 640x480 and places the panel in the
+// right hand column of the Current Match page, under RETURN to MATCH. The
+// itemDef rects are relative to that origin, NOT absolute - Item_SetScreenCoords
+// adds the menu's x/y to each item's. Writing them absolute put every button at
+// 396+396 and pushed the whole panel off the right of the screen, which looks
+// exactly like the menu having failed to load.
 
 {
     menuDef {
@@ -39,7 +42,7 @@
         itemDef {
             name teamselect_redbar
             style WINDOW_STYLE_FILLED
-            rect 396 194 59 22
+            rect 0 0 59 22
             backcolor 0.45 0.10 0.10 0.85
             border 1
             bordercolor 0.6 0.6 0.6 1
@@ -52,7 +55,7 @@
             text "JOIN RED"
             type 1
             textstyle 6
-            rect 396 194 59 22
+            rect 0 0 59 22
             textalign ITEM_ALIGN_CENTER
             textalignx 30
             textaligny 16
@@ -71,7 +74,7 @@
         itemDef {
             name teamselect_bluebar
             style WINDOW_STYLE_FILLED
-            rect 457 194 59 22
+            rect 61 0 59 22
             backcolor 0.12 0.16 0.50 0.85
             border 1
             bordercolor 0.6 0.6 0.6 1
@@ -84,7 +87,7 @@
             text "JOIN BLUE"
             type 1
             textstyle 6
-            rect 457 194 59 22
+            rect 61 0 59 22
             textalign ITEM_ALIGN_CENTER
             textalignx 30
             textaligny 16
@@ -99,7 +102,7 @@
         itemDef {
             name teamselect_specbar
             style WINDOW_STYLE_FILLED
-            rect 396 218 120 22
+            rect 0 24 120 22
             backcolor 0.20 0.20 0.20 0.85
             border 1
             bordercolor 0.6 0.6 0.6 1
@@ -112,7 +115,7 @@
             text "SPECTATE"
             type 1
             textstyle 6
-            rect 396 218 120 22
+            rect 0 24 120 22
             textalign ITEM_ALIGN_CENTER
             textalignx 60
             textaligny 16
@@ -130,7 +133,7 @@
         itemDef {
             name teamselect_autobar
             style WINDOW_STYLE_FILLED
-            rect 396 242 120 22
+            rect 0 48 120 22
             backcolor 0.20 0.20 0.20 0.85
             border 1
             bordercolor 0.6 0.6 0.6 1
@@ -143,7 +146,7 @@
             text "AUTO JOIN"
             type 1
             textstyle 6
-            rect 396 242 120 22
+            rect 0 48 120 22
             textalign ITEM_ALIGN_CENTER
             textalignx 60
             textaligny 16

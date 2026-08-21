@@ -82,6 +82,35 @@ static int CG_IndexForFontPtr(const fontInfo_t* font) {
 	return 0;
 }
 
+
+/*
+[QL] Does a cgame-owned *full screen* UI have the input?
+
+The widescreen-bias tests below need to know that, and they were asking
+trap_Key_GetCatcher() & KEYCATCH_CGAME, which is not the same question. Until
+now the only thing that ever set KEYCATCH_CGAME was the intermission match
+summary - a full-screen menu - so the two coincided and the shortcut held.
+
+Holding +scores for the mouse (cg_scoreboardMouse) breaks that. The in-game
+scoreboard is drawn in the same 640x480 space as the rest of the HUD, so
+applying the menu bias to it shifted it sideways by cgs.widescreenBias and put
+it off the edge of a widescreen display - which reads as the scoreboard having
+stopped opening altogether.
+
+So the held case is excluded explicitly, by a flag set where the hold is taken
+rather than by inferring it, and everything else that takes KEYCATCH_CGAME keeps
+the old behaviour.
+*/
+qboolean CG_CgameUIOwnsScreen(void) {
+	if (!(trap_Key_GetCatcher() & KEYCATCH_CGAME)) {
+		return qfalse;
+	}
+	if (cgs.scoreboardHoldingMouse) {
+		return qfalse;
+	}
+	return qtrue;
+}
+
 // Pixel font size for a text scale (QL: screenFontScale = (vidHeight/768)*96).
 static float CG_FontPixelSize(float scale) {
 	return (((float)cgs.glconfig.vidHeight / 768.0f) * 96.0f) * scale;
@@ -90,7 +119,7 @@ static float CG_FontPixelSize(float scale) {
 // Horizontal scale mapping 640-space x to screen pixels, honouring widescreen.
 static float CG_TextXScale(void) {
 	int ws = cg_currentWidescreen;
-	if (cgs.widescreenBias > 0.0f && (ws != 0 || (trap_Key_GetCatcher() & KEYCATCH_CGAME)))
+	if (cgs.widescreenBias > 0.0f && (ws != 0 || CG_CgameUIOwnsScreen()))
 		return (cgs.glconfig.vidHeight * 4.0f / 3.0f) / 640.0f;
 	return cgs.screenXScale;
 }
@@ -101,8 +130,8 @@ static void CG_TextToScreen(float* x, float* y) {
 	float xscale = CG_TextXScale();
 	float xbias = 0.0f;
 	int ws = cg_currentWidescreen;
-	if (cgs.widescreenBias > 0.0f && (ws != 0 || (trap_Key_GetCatcher() & KEYCATCH_CGAME))) {
-		if (ws == 2 || (trap_Key_GetCatcher() & KEYCATCH_CGAME))
+	if (cgs.widescreenBias > 0.0f && (ws != 0 || CG_CgameUIOwnsScreen())) {
+		if (ws == 2 || CG_CgameUIOwnsScreen())
 			xbias = cgs.widescreenBias;
 		else if (ws == 3)
 			xbias = cgs.widescreenBias * 2.0f;

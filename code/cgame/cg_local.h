@@ -1544,6 +1544,8 @@ typedef struct {
        default on some bare ARM targets - would truncate both values to 1 and
        make the scoreboard and the HUD editor indistinguishable. */
     int eventHandling;
+    /* [QL] set only while +scores holds the mouse - see CG_CgameUIOwnsScreen */
+    qboolean scoreboardHoldingMouse;
     qboolean mouseCaptured;
     qboolean sizingHud;
     void* capturedItem;
@@ -1641,6 +1643,7 @@ extern vmCvar_t cg_gibs;
 extern vmCvar_t cg_drawTimer;
 extern vmCvar_t cg_scoreboardListOffset;
 extern vmCvar_t cg_scoreboardMouse;
+extern vmCvar_t cg_debugPlayerModels;
 extern vmCvar_t cg_scoreboardDebug;
 extern vmCvar_t cg_drawFPS;
 extern vmCvar_t cg_drawSnapshot;
@@ -1845,6 +1848,7 @@ void CG_KeyEvent(int key, qboolean down);
 void CG_MouseEvent(int x, int y);
 void CG_EventHandling(int type);
 void CG_ScoreboardDebugDump(void);
+qboolean CG_CgameUIOwnsScreen(void);
 void CG_RankRunFrame(void);
 void CG_SetScoreSelection(void* menu);
 score_t* CG_GetSelectedScore(void);

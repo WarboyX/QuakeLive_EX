@@ -415,12 +415,48 @@ static qboolean CG_RegisterClientModelname(clientInfo_t* ci, const char* modelNa
         return qfalse;
     }
 
-    // [QL] icon - direct path, .tga only
-    Com_sprintf(filename, sizeof(filename), "models/players/%s/icon_%s.tga", ci->headModelName, ci->headSkinName);
-    ci->modelIcon = trap_R_RegisterShaderNoMip(filename);
-    if (!ci->modelIcon) {
-        Com_Printf("Failed to load icon file: %s\n", filename);
-        return qfalse;
+    /*
+    [QL] The icon, and why it must not fail the registration.
+
+    Two bugs in four lines, both of the silent-failure shape CLAUDE.md warns
+    about, and together they were enough to stop every player in the game from
+    getting their own model.
+
+    First the name. This asked for icon_%s.tga. The shipped pak contains 186
+    icon_*.png and thirteen icon_*.tga, and not one of the thirteen is a
+    icon_default / icon_red / icon_blue - so `grep -c icon_default.tga
+    docs/pak-manifest.txt` is 0. RE_RegisterShader returns 0 for a name the pak
+    does not have and reports nothing, so the lookup failed for every model and
+    every skin.
+
+    Then the consequence. Failing here returns qfalse for the whole function,
+    and CG_LoadClientInfo reads that as "this model did not load" and walks its
+    fallback chain - preferred skin, then team skin, then sarge - every one of
+    which got as far as this same line and failed the same way. So the chain ran
+    to the end for every client in every match: modelloaded came out false,
+    custom player sounds were never loaded for anyone, and the model actually
+    left registered was whatever the last attempt set rather than the one the
+    player chose.
+
+    An icon is a scoreboard decoration. It is not a reason to have no player
+    model. So it is looked up across the extensions the pak actually uses and,
+    if it is still not found, noted once and stepped over - the models, skins
+    and animations that did load are kept.
+    */
+    {
+        static const char* iconExt[] = {".png", ".tga", ".jpg"};
+        int e;
+
+        ci->modelIcon = 0;
+        for (e = 0; e < (int)ARRAY_LEN(iconExt) && !ci->modelIcon; e++) {
+            Com_sprintf(filename, sizeof(filename), "models/players/%s/icon_%s%s",
+                        ci->headModelName, ci->headSkinName, iconExt[e]);
+            ci->modelIcon = trap_R_RegisterShaderNoMip(filename);
+        }
+        if (!ci->modelIcon && cg_debugPlayerModels.integer) {
+            Com_Printf(S_COLOR_YELLOW "no icon for %s/%s (tried png, tga, jpg) - "
+                       "model still loaded\n", ci->headModelName, ci->headSkinName);
+        }
     }
 
     // [QL] compute bounding-box model scale. "orbb" (the floating eyeball) is not a

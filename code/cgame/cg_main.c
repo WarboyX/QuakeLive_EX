@@ -117,6 +117,7 @@ vmCvar_t cg_gibs;
 vmCvar_t cg_drawTimer;
 vmCvar_t cg_scoreboardListOffset;
 vmCvar_t cg_scoreboardMouse;
+vmCvar_t cg_debugPlayerModels;
 vmCvar_t cg_scoreboardDebug;
 vmCvar_t cg_drawFPS;
 vmCvar_t cg_drawSnapshot;
@@ -576,6 +577,11 @@ static cvarTable_t cvarTable[] = {
        which is the trade asked for; set to 0 to keep the view free. Not
        CVAR_ARCHIVE - our default, not the user's setting (CLAUDE.md). */
     {&cg_scoreboardMouse, "cg_scoreboardMouse", "1", 0},
+    /* [QL] Report player-model registration problems that are otherwise silent -
+       a missing icon, a skin that would not load. RE_RegisterModel and
+       RE_RegisterShader both return 0 for a name the pak does not contain and
+       say nothing, so without this an invisible player has no evidence at all. */
+    {&cg_debugPlayerModels, "cg_debugPlayerModels", "0", 0},
     /* [QL] Print each scoreboard feeder's rect and the scrollbar/content
        columns derived from it, once per scoreboard open. The two team lists
        come out of Quake Live's own menus, which are read-only here, so when

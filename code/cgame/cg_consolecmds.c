@@ -109,6 +109,7 @@ static void CG_ScoresDown_f(void) {
 
     if (cg_scoreboardMouse.integer && cgs.eventHandling == CGAME_EVENT_NONE) {
         CG_ScoreboardDebugDump();
+        cgs.scoreboardHoldingMouse = qtrue;
         CG_EventHandling(CGAME_EVENT_SCOREBOARD);
     }
 }
@@ -122,7 +123,8 @@ static void CG_ScoresUp_f(void) {
     /* Only hand the mouse back if the scoreboard is why we have it. At
        intermission CG_ParseServerinfo holds the same catcher for the match
        summary, and releasing the key must not close that. */
-    if (cgs.eventHandling == CGAME_EVENT_SCOREBOARD && !cg.intermissionStarted) {
+    if (cgs.scoreboardHoldingMouse && !cg.intermissionStarted) {
+        cgs.scoreboardHoldingMouse = qfalse;
         CG_EventHandling(CGAME_EVENT_NONE);
     }
 }
