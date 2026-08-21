@@ -1,36 +1,50 @@
 #include "ui/menudef.h"
 
-// io_teamselect - JOIN RED / JOIN BLUE / SPECTATE for the in-game menu.
+// io_teamselect - JOIN RED / JOIN BLUE for the in-game menu.
 //
 // Why this file exists
 // --------------------
-// Quake Live's in-game menu has these buttons; ours did not, which left players
-// with no way at all to change team without knowing to type "cmd team r" into
-// the console. The buttons themselves are the whole of the gap - the server side
-// has always worked: Cmd_Team_f accepts r/red, b/blue and s/spectator, and
-// enforces its own rules (the five-second switch limit, team lock, duel loss),
-// so these are ordinary client commands and not a new code path.
+// Quake Live's in-game menu draws RETURN to MATCH and SPECTATE but not the two
+// join buttons - they are in its own menu behind a visibility condition this
+// build does not satisfy - which left players with no way to change team at all
+// without knowing to type "cmd team r" into the console.
 //
-// It is a separate menu of ours rather than an edit to Quake Live's
-// ui/ingame_join.menu because pak00 is not ours to ship or modify. Loaded by
-// ui/io_ingame.txt, which UI_LoadMenus reads alongside Quake Live's own
-// ui/ingame.txt, and activated with the in-game menu in _UI_SetActiveMenu.
+// The buttons are the whole of the gap. The server side has always worked:
+// Cmd_Team_f accepts r/red, b/blue, s/spectator and free, and enforces its own
+// rules (the five-second switch limit, team lock, the duel loss), so these are
+// ordinary client commands and not a new code path.
 //
-// The io_ prefix is the same rule main.menu documents: Menus_FindByName returns
-// the first match, so an unprefixed name could collide with one of Quake Live's
-// and leave "open" and "close" acting on different menus.
+// It is a menu of ours rather than an edit to Quake Live's ui/ingame_join.menu
+// because pak00 is not ours to ship or modify. Loaded by ui/io_ingame.txt, which
+// UI_LoadExtraMenus reads after Quake Live's own ui/ingame.txt, and activated
+// with the in-game menu in _UI_SetActiveMenu.
 //
-// Geometry: the menuDef rect is absolute 640x480 and places the panel in the
-// right hand column of the Current Match page, under RETURN to MATCH. The
-// itemDef rects are relative to that origin, NOT absolute - Item_SetScreenCoords
-// adds the menu's x/y to each item's. Writing them absolute put every button at
-// 396+396 and pushed the whole panel off the right of the screen, which looks
-// exactly like the menu having failed to load.
+// The io_ prefix is the rule main.menu documents: Menus_FindByName returns the
+// first match, so an unprefixed name could collide with one of Quake Live's and
+// leave "open" and "close" acting on different menus.
+//
+// Geometry
+// --------
+// Two mistakes worth writing down, because both looked like the menu was broken
+// rather than misplaced.
+//
+// itemDef rects are relative to the menuDef origin - Item_SetScreenCoords adds
+// the menu's x/y to each item's. Written absolute, with the menu at x 396, every
+// button landed at 792 and the panel sat off the right of the screen entirely.
+//
+// Then the column itself. Quake Live's RETURN to MATCH and SPECTATE occupy
+// x 425..581 - width 156, not 120 - and SPECTATE runs from y 198 to 219. A panel
+// at 396,194 was therefore too narrow, too far left, and painted straight over
+// SPECTATE. This starts below it and matches its width, so the four buttons read
+// as one column.
+//
+// No SPECTATE of ours: Quake Live's works and is right there. Duplicating it is
+// what put two buttons on top of each other.
 
 {
     menuDef {
         name "io_teamselect"
-        rect 396 194 120 74
+        rect 425 224 156 69
         visible MENU_TRUE
         focusColor 1 .75 0 1
 
@@ -42,11 +56,8 @@
         itemDef {
             name teamselect_redbar
             style WINDOW_STYLE_FILLED
-            rect 0 0 59 22
+            rect 0 0 156 21
             backcolor 0.45 0.10 0.10 0.85
-            border 1
-            bordercolor 0.6 0.6 0.6 1
-            bordersize 1
             visible 1
             decoration
         }
@@ -55,10 +66,10 @@
             text "JOIN RED"
             type 1
             textstyle 6
-            rect 0 0 59 22
+            rect 0 0 156 21
             textalign ITEM_ALIGN_CENTER
-            textalignx 30
-            textaligny 16
+            textalignx 78
+            textaligny 15
             textscale .3
             forecolor 1 1 1 1
             visible 1
@@ -74,11 +85,8 @@
         itemDef {
             name teamselect_bluebar
             style WINDOW_STYLE_FILLED
-            rect 61 0 59 22
+            rect 0 24 156 21
             backcolor 0.12 0.16 0.50 0.85
-            border 1
-            bordercolor 0.6 0.6 0.6 1
-            bordersize 1
             visible 1
             decoration
         }
@@ -87,10 +95,10 @@
             text "JOIN BLUE"
             type 1
             textstyle 6
-            rect 61 0 59 22
+            rect 0 24 156 21
             textalign ITEM_ALIGN_CENTER
-            textalignx 30
-            textaligny 16
+            textalignx 78
+            textaligny 15
             textscale .3
             forecolor 1 1 1 1
             visible 1
@@ -99,45 +107,14 @@
             mouseExit  { setitemcolor teamselect_bluebar backcolor 0.12 0.16 0.50 0.85 }
         }
 
-        itemDef {
-            name teamselect_specbar
-            style WINDOW_STYLE_FILLED
-            rect 0 24 120 22
-            backcolor 0.20 0.20 0.20 0.85
-            border 1
-            bordercolor 0.6 0.6 0.6 1
-            bordersize 1
-            visible 1
-            decoration
-        }
-        itemDef {
-            name teamselect_spec
-            text "SPECTATE"
-            type 1
-            textstyle 6
-            rect 0 24 120 22
-            textalign ITEM_ALIGN_CENTER
-            textalignx 60
-            textaligny 16
-            textscale .3
-            forecolor 1 1 1 1
-            visible 1
-            action { exec "cmd team s" ; uiScript closeingame }
-            mouseEnter { setitemcolor teamselect_specbar backcolor .4 .4 .4 .9 }
-            mouseExit  { setitemcolor teamselect_specbar backcolor 0.20 0.20 0.20 0.85 }
-        }
-
         // AUTO JOIN. Cmd_Team_f takes "free" as "put me somewhere", which in a
         // team game is the balanced side. Worth a button because it is the right
         // answer most of the time and the one a new player cannot guess.
         itemDef {
             name teamselect_autobar
             style WINDOW_STYLE_FILLED
-            rect 0 48 120 22
+            rect 0 48 156 21
             backcolor 0.20 0.20 0.20 0.85
-            border 1
-            bordercolor 0.6 0.6 0.6 1
-            bordersize 1
             visible 1
             decoration
         }
@@ -146,10 +123,10 @@
             text "AUTO JOIN"
             type 1
             textstyle 6
-            rect 0 48 120 22
+            rect 0 48 156 21
             textalign ITEM_ALIGN_CENTER
-            textalignx 60
-            textaligny 16
+            textalignx 78
+            textaligny 15
             textscale .3
             forecolor 1 1 1 1
             visible 1
