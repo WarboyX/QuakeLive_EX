@@ -520,12 +520,28 @@ static void target_location_linkup(gentity_t* ent) {
                 ent->health = n;  // use for location marking
                 trap_SetConfigstring(CS_LOCATIONS + n, ent->message);
                 n++;
+                ent->nextTrain = level.locationHead;
+                level.locationHead = ent;
             } else {
-                ent->health = 0;  // resolves to the "unknown" entry
+                /*
+                [QL] Left out of the list entirely, not linked with index 0.
+
+                Linking them with the "unknown" index made Team_GetLocation able
+                to *win* with one: it picks the nearest entity in PVS, so a
+                player standing beside an over-limit location got location 0 and
+                the overlay read ALIVE - while a few steps away, next to a
+                location that did make the cut, it read properly. That is the
+                reported "blue base locations are less defined than red base":
+                the map's locations are numbered in spawn order, so the 22 that
+                overflow are not spread evenly around the map, they are whichever
+                end of it got built last.
+
+                Dropping them from the list makes the nearest *named* location
+                win instead, which is a slightly wrong name rather than no name.
+                */
+                ent->health = 0;
                 overflow++;
             }
-            ent->nextTrain = level.locationHead;
-            level.locationHead = ent;
         }
     }
 

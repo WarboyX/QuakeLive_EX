@@ -693,6 +693,31 @@ void Cmd_RemoveCommandSafe(const char* cmd_name) {
 Cmd_CommandCompletion
 ============
 */
+/*
+============
+Cmd_Exists
+
+[QL] Is there a registered command by this name?
+
+Added for the console: it has to know whether a typed line is a command before
+deciding to send it as chat instead. Q3 exposed only Cmd_CommandCompletion,
+which walks the list to offer completions but cannot answer a yes/no.
+============
+*/
+qboolean Cmd_Exists(const char* cmd_name) {
+    const cmd_function_t* cmd;
+
+    if (!cmd_name || !cmd_name[0]) {
+        return qfalse;
+    }
+    for (cmd = cmd_functions; cmd; cmd = cmd->next) {
+        if (!Q_stricmp(cmd_name, cmd->name)) {
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
 void Cmd_CommandCompletion(void (*callback)(const char* s)) {
     cmd_function_t* cmd;
 

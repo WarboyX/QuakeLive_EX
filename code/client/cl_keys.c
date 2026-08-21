@@ -598,6 +598,41 @@ Console_Key
 Handles history and console scrollback
 ====================
 */
+/*
+[QL] Would this console line run as a command?
+
+The console sends anything without a leading slash to chat while con_autochat is
+on and you are in a game. That is Quake 3 behaviour and it is wrong for a Quake
+Live client: typing "logfile 2" at the console said nothing and silently became
+a chat message, and the only clue was that "\logfile 2" worked. A console that
+quietly does something else with a valid command is worse than one that refuses
+it.
+
+So the chat path now only takes lines that are not commands. The first token is
+tested against the registered commands and the cvars; anything that matches runs,
+anything that does not is chat, which is what con_autochat is actually for.
+*/
+static qboolean CL_ConsoleLineIsCommand(const char* text) {
+    char token[MAX_TOKEN_CHARS];
+    int i;
+
+    while (*text == ' ') {
+        text++;
+    }
+    for (i = 0; i < (int)sizeof(token) - 1 && text[i] && text[i] != ' ' && text[i] != ';'; i++) {
+        token[i] = text[i];
+    }
+    token[i] = '\0';
+
+    if (!token[0]) {
+        return qfalse;
+    }
+    if (Cmd_Exists(token)) {
+        return qtrue;
+    }
+    return (Cvar_Flags(token) != CVAR_NONEXISTENT);
+}
+
 void Console_Key(int key) {
     // ctrl-L clears screen
     if (key == 'l' && keys[K_CTRL].down) {
@@ -630,7 +665,8 @@ void Console_Key(int key) {
             if (!g_consoleField.buffer[0]) {
                 return;  // empty lines just scroll the console without adding to history
             } else {
-                if ((con_autochat->integer && cl_allowConsoleChat->integer)) {
+                if ((con_autochat->integer && cl_allowConsoleChat->integer) &&
+                    !CL_ConsoleLineIsCommand(g_consoleField.buffer)) {
                     Cbuf_AddText("cmd say ");
                 }
 

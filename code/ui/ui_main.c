@@ -4899,7 +4899,7 @@ static itemDef_t* UI_TeamSelectItem(menuDef_t* menu, const char* name) {
 }
 
 static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const char* textName,
-                                 float x, float y, float w, float h) {
+                                 float x, float y, float w, float h, const itemDef_t* anchor) {
     itemDef_t* bar = UI_TeamSelectItem(menu, barName);
     itemDef_t* txt = UI_TeamSelectItem(menu, textName);
     int k;
@@ -4915,6 +4915,19 @@ static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const cha
         both[k]->window.rectClient.y = y;
         both[k]->window.rectClient.w = w;
         both[k]->window.rectClient.h = h;
+        /*
+        [QL] Match the anchor's widescreen mode.
+
+        Menu rects are a virtual 640x480 space, but how that maps to the screen
+        depends on each item's widescreen mode - stretch, or 4:3 with a bias
+        pushing it left or right. Two items with identical rects and different
+        modes land in different places on a wide display, which is why these
+        buttons were beside Quake Live's column on a 16:9 laptop after being
+        given its exact x and width. Copying the mode from the item measured is
+        what makes "the same rect" mean the same place.
+        */
+        both[k]->widescreen = anchor->widescreen;
+        both[k]->widescreenFlag = anchor->widescreenFlag;
     }
     if (txt) {
         /* ITEM_ALIGN_CENTER subtracts half the string width from textalignx
@@ -5012,13 +5025,16 @@ static void UI_PlaceTeamSelect(void) {
     menu->window.rect.w = colW;
     menu->window.rect.h = rowH * 2.0f + gap;
     menu->window.rectClient = menu->window.rect;
+    if (spectate->parent) {
+        menu->widescreen = ((menuDef_t*)spectate->parent)->widescreen;
+    }
 
     UI_SetTeamSelectRect(menu, "teamselect_redbar", "teamselect_red",
-                         0.0f, 0.0f, halfW, rowH);
+                         0.0f, 0.0f, halfW, rowH, spectate);
     UI_SetTeamSelectRect(menu, "teamselect_bluebar", "teamselect_blue",
-                         halfW + gap, 0.0f, colW - halfW - gap, rowH);
+                         halfW + gap, 0.0f, colW - halfW - gap, rowH, spectate);
     UI_SetTeamSelectRect(menu, "teamselect_specbar", "teamselect_spec",
-                         0.0f, rowH + gap, colW, rowH);
+                         0.0f, rowH + gap, colW, rowH, spectate);
 
     Menu_UpdatePosition(menu);
 }

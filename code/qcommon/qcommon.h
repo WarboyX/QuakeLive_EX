@@ -410,6 +410,7 @@ typedef void (*completionFunc_t)(char* args, int argNum);
 void Cmd_RemoveCommandSafe(const char* cmd_name);
 
 void Cmd_CommandCompletion(void (*callback)(const char* s));
+qboolean Cmd_Exists(const char* cmd_name);
 // callback with each valid string
 void Cmd_SetCommandCompletionFunc(const char* command,
                                   completionFunc_t complete);
