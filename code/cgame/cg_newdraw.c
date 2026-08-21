@@ -3679,11 +3679,21 @@ void CG_ScoreboardDebugDump(void) {
         return;
     }
 
+    CG_Printf("scoreboardDebug: showScores %i, eventHandling %i, catcher 0x%x, "
+              "gametype %i, holdingMouse %i\n",
+              cg.showScores, cgs.eventHandling, trap_Key_GetCatcher(),
+              cgs.gametype, cgs.scoreboardHoldingMouse);
+
     menu = (menuDef_t*)menuScoreboard;
     if (!menu) {
-        CG_Printf("scoreboardDebug: no scoreboard menu loaded\n");
+        CG_Printf("scoreboardDebug: menuScoreboard is NULL - CG_SetEndScoreboardMenu "
+                  "has not resolved a menu for this gametype, so there is nothing "
+                  "to paint\n");
         return;
     }
+    CG_Printf("scoreboardDebug: menu '%s' visible %i\n",
+              menu->window.name ? menu->window.name : "(unnamed)",
+              (menu->window.flags & WINDOW_VISIBLE) ? 1 : 0);
 
     for (i = 0; i < menu->itemCount; i++) {
         itemDef_t* item = menu->items[i];

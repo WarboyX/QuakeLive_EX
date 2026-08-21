@@ -4930,39 +4930,78 @@ static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const cha
 
 static void UI_PlaceTeamSelect(void) {
     menuDef_t* menu = Menus_FindByName("io_teamselect");
-    itemDef_t* spectate;
-    float colX, colY, colW, rowH, gap, halfW;
+    itemDef_t* ret;
+    itemDef_t* spectate = NULL;
+    float colX, colY, colW, rowH, gap, halfW, bestDist;
+    int i, j;
 
     if (!menu) {
         return;
     }
 
     /*
-    Quake Live's SPECTATE is both the anchor and the thing being replaced.
+    [QL] Anchor to RETURN to MATCH, and hide *every* SPECTATE.
 
-    Anchor, because it is the one control in that column whose rect can be read
-    from here - pak00 is not in this tree, so the alternative is hardcoding a
-    measurement of a screenshot, which is how this landed wrong twice.
+    Two earlier goes at this failed the same way, and the reason is worth
+    recording: "SPECTATE" is not a unique label. More than one loaded menu
+    defines a button with that text, restricting the search to visible menus was
+    not enough to disambiguate them, and matching the wrong one both measured a
+    column nobody could see and left the drawn button untouched - visible and
+    still working, next to a panel laid out somewhere else.
 
-    Replaced, because leaving it there means two controls doing the same job in
-    the same column with only one of them positioned by us, and that is what kept
-    ending up overlapped. Hiding it hands the whole stack below RETURN to MATCH
-    over to this menu, so the spacing is ours to get right rather than something
-    to dodge. The item's rect is untouched, so the next open measures the same
-    geometry and the hide is idempotent.
+    So neither half guesses now. RETURN to MATCH is unique, and it is directly
+    above the buttons being replaced, so it gives the column's x and width.
+    Every SPECTATE in a visible menu is hidden rather than just the first, and
+    the one nearest RETURN's x - the one actually in this column - supplies the
+    row height and where the stack starts.
     */
-    spectate = UI_FindItemByText("SPECTATE");
-    if (!spectate || spectate->window.rect.w <= 0.0f || spectate->window.rect.h <= 0.0f) {
+    ret = UI_FindItemByText("RETURN to MATCH");
+    if (!ret || ret->window.rect.w <= 0.0f) {
         return;     // keep the .menu file's own layout
     }
 
-    colX = spectate->window.rect.x;
+    bestDist = -1.0f;
+    for (i = 0; i < Menu_Count(); i++) {
+        menuDef_t* m = Menu_GetByIndex(i);
+
+        if (!m || !m->window.name || !Q_stricmp(m->window.name, "io_teamselect")) {
+            continue;
+        }
+        if (!(m->window.flags & WINDOW_VISIBLE)) {
+            continue;
+        }
+        for (j = 0; j < m->itemCount; j++) {
+            itemDef_t* it = m->items[j];
+            float dist;
+
+            if (!it || !it->text || Q_stricmp(it->text, "SPECTATE")) {
+                continue;
+            }
+            it->window.flags &= ~WINDOW_VISIBLE;
+
+            if (it->window.rect.h <= 0.0f) {
+                continue;
+            }
+            dist = it->window.rect.x - ret->window.rect.x;
+            if (dist < 0.0f) {
+                dist = -dist;
+            }
+            if (bestDist < 0.0f || dist < bestDist) {
+                bestDist = dist;
+                spectate = it;
+            }
+        }
+    }
+
+    if (!spectate) {
+        return;
+    }
+
+    colX = ret->window.rect.x;
+    colW = ret->window.rect.w;
     colY = spectate->window.rect.y;
-    colW = spectate->window.rect.w;
     rowH = spectate->window.rect.h;
     gap = 3.0f;
-
-    spectate->window.flags &= ~WINDOW_VISIBLE;
 
     /* Quake Live's arrangement: the two join buttons share a row at half width,
        SPECTATE full width beneath them. */

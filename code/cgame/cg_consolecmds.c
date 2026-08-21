@@ -97,6 +97,13 @@ cg_scoreboardMouse 0 restores the old behaviour for anyone who would rather keep
 the view free.
 */
 static void CG_ScoresDown_f(void) {
+    /* Unconditionally, and before anything else: this is the probe for "did
+       +scores reach cgame at all". It was inside the mouse-grab branch below,
+       which made it useless for the one question it exists to answer, because
+       turning the mouse grab off to test also turned the reporting off. It
+       gates on cg_scoreboardDebug internally. */
+    CG_ScoreboardDebugDump();
+
     CG_BuildSpectatorString();
     if (cg.scoresRequestTime + 2000 < cg.time) {
         cg.scoresRequestTime = cg.time;
@@ -108,7 +115,6 @@ static void CG_ScoresDown_f(void) {
     cg.showScores = qtrue;
 
     if (cg_scoreboardMouse.integer && cgs.eventHandling == CGAME_EVENT_NONE) {
-        CG_ScoreboardDebugDump();
         cgs.scoreboardHoldingMouse = qtrue;
         CG_EventHandling(CGAME_EVENT_SCOREBOARD);
     }
