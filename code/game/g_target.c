@@ -467,6 +467,7 @@ void SP_target_position(gentity_t* self) {
 static void target_location_linkup(gentity_t* ent) {
     int i;
     int n;
+    int overflow = 0;
 
     if (level.locationLinked)
         return;
@@ -477,17 +478,64 @@ static void target_location_linkup(gentity_t* ent) {
 
     trap_SetConfigstring(CS_LOCATIONS, "unknown");
 
+    /*
+    [QL] Stop at MAX_LOCATIONS.
+
+    This loop had no bound on n, and wrote trap_SetConfigstring(CS_LOCATIONS + n)
+    for every target_location in the map. The block is only MAX_LOCATIONS (64)
+    entries - CS_LOCATIONS 593 through 656 - and everything the protocol needs
+    sits immediately after it:
+
+        657 CS_LAST_GENERIC      658 CS_FLAGSTATUS      659 CS_SCORES1PLAYER
+        661 CS_ROUND_WARMUP      662 CS_ROUND_START_TIME
+        663 CS_TEAMCOUNT_RED     664 CS_TEAMCOUNT_BLUE  665 CS_SHADERSTATE
+        666 CS_NEXTMAP           669 CS_PAUSE_START_TIME
+        671 CS_TIMEOUTS_RED      692 CS_REDTEAMBASE     693 CS_BLUETEAMBASE
+
+    So a map with more than 64 of them overwrote flag status, round state, team
+    counts, the next map, the pause and timeout clocks and the award slots with
+    location names - silently, because SetConfigstring does not care what it is
+    given. That is what put "Main Entrance" and "Blue Courtyard" on the CTF
+    scoreboard's team headers: those are CS 692 and 693, which is
+    CS_LOCATIONS + 99 and + 100, so they are simply the map's hundredth and
+    hundred-and-first locations landing where the base names belong.
+
+    Raising MAX_LOCATIONS is not the fix. The configstring layout is the wire
+    protocol, and moving CS_LAST_GENERIC would put every index after it at a
+    different number than a stock Quake Live client expects - the "Seen by:
+    stock QL only" trap from CLAUDE.md. The block is the size it is; what has to
+    change is writing past the end of it.
+
+    Locations past the limit keep index 0, which is the "unknown" entry set
+    above, so they degrade to an unnamed location instead of corrupting the
+    match. The warning names the map's count because a map quietly losing its
+    location names is worth knowing about.
+    */
     for (i = 0, ent = g_entities, n = 1;
          i < level.num_entities;
          i++, ent++) {
         if (ent->classname && !Q_stricmp(ent->classname, "target_location")) {
-            // lets overload some variables!
-            ent->health = n;  // use for location marking
-            trap_SetConfigstring(CS_LOCATIONS + n, ent->message);
-            n++;
+            if (n < MAX_LOCATIONS) {
+                // lets overload some variables!
+                ent->health = n;  // use for location marking
+                trap_SetConfigstring(CS_LOCATIONS + n, ent->message);
+                n++;
+            } else {
+                ent->health = 0;  // resolves to the "unknown" entry
+                overflow++;
+            }
             ent->nextTrain = level.locationHead;
             level.locationHead = ent;
         }
+    }
+
+    if (overflow > 0) {
+        G_Printf("^3WARNING: this map has %i target_location entities, %i more than "
+                 "the %i the protocol has room for. The extra ones report "
+                 "\"unknown\" rather than being written past the end of the "
+                 "configstring block, which would overwrite flag status, round "
+                 "state, team counts and the next map.\n",
+                 n - 1 + overflow, overflow, MAX_LOCATIONS - 1);
     }
 
     // All linked together now
