@@ -573,10 +573,19 @@ static cvarTable_t cvarTable[] = {
     // not the user's, and archiving a shipped default stops the default applying.
     {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "8", 0},
     /* [QL] Take the mouse while +scores is held, so the scoreboard's lists can
-       be scrolled and clicked. Costs mouselook for as long as the key is down,
-       which is the trade asked for; set to 0 to keep the view free. Not
-       CVAR_ARCHIVE - our default, not the user's setting (CLAUDE.md). */
-    {&cg_scoreboardMouse, "cg_scoreboardMouse", "1", 0},
+       be scrolled and clicked.
+
+       DEFAULT 0. It shipped on, and the scoreboard stopped appearing in the
+       same build - traced by the reporter to that change. Taking KEYCATCH_CGAME
+       on +scores reaches further than it looks: the widescreen-bias tests read
+       the key catcher, CG_KeyEvent's capture-release path keys off it, and the
+       engine routes key and mouse events differently once it is set. One of
+       those is still wrong, and a half-finished convenience is not worth a
+       scoreboard, so it is off until it is understood rather than left on with
+       a workaround stacked on top.
+
+       Set to 1 to get the cursor back on the held scoreboard. */
+    {&cg_scoreboardMouse, "cg_scoreboardMouse", "0", 0},
     /* [QL] Report player-model registration problems that are otherwise silent -
        a missing icon, a skin that would not load. RE_RegisterModel and
        RE_RegisterShader both return 0 for a name the pak does not contain and

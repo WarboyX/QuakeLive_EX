@@ -7139,28 +7139,58 @@ displayContextDef_t* Display_GetContext(void) {
 }
 
 void* Display_CaptureItem(int x, int y) {
-    int i;
+    int i, j;
 
     /*
-    [QL] Topmost *visible* menu under the cursor, not the first one loaded.
+    [QL] The topmost menu that actually has something under the cursor.
 
-    This decides which menu a click is delivered to (Display_HandleKey), and it
-    used to walk forwards and ignore WINDOW_VISIBLE entirely. Two consequences,
-    both wrong:
+    This decides which menu a click is delivered to (Display_HandleKey). It has
+    now been wrong in two different ways, and both were visible as buttons that
+    simply did nothing.
 
-      - A closed menu still caught clicks. Its rect is whatever it was when it
-        was last open, and nothing here asked whether it was on screen, so a
-        hidden menu covering the cursor swallowed the click and the visible menu
-        underneath never saw it.
+    Originally it walked forwards and ignored WINDOW_VISIBLE, so the *first
+    loaded* menu whose rect contained the point won whether it was on screen or
+    not. A closed menu still caught clicks, and a panel drawn on top of a
+    full-screen menu was unclickable because the menu underneath was found
+    first.
 
-      - A panel drawn on top of a full-screen menu was unclickable. Menu_PaintAll
-        paints in array order, so a menu loaded later paints on top - but this
-        returned the earlier one, i.e. the one underneath. Anything overlaying a
-        full-screen page could be seen and not pressed.
+    Walking backwards instead - topmost paints last, so topmost should win -
+    fixed the panel and broke the page under it. Quake Live's in-game menu is
+    two overlapping full-screen menus: the tabs and the lower navigation live in
+    "ingame", which loads first, and "ingame_about" loads after and covers the
+    same area with the page content. Backwards handed every click in that region
+    to ingame_about, which has no item there, so Main Menu, Settings and the
+    Back buttons all stopped responding.
 
-    Walking backwards makes the pick agree with the paint: last painted is
-    topmost is what you clicked on.
+    Neither order is the question. What a click wants is the menu that has an
+    item under the cursor, and only when no menu does should the bare rect
+    decide. So: walk from topmost down looking for a visible item containing the
+    point; failing that, fall back to the topmost visible menu whose rect
+    contains it, which preserves out-of-bounds click handling
+    (Menus_HandleOOBClick) for menus that are all background.
     */
+    for (i = menuCount - 1; i >= 0; i--) {
+        if (!(Menus[i].window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+            continue;
+        }
+        if (!Rect_ContainsWidescreenPoint(&Menus[i].window.rect, x, y, Menus[i].widescreen)) {
+            continue;
+        }
+        for (j = 0; j < Menus[i].itemCount; j++) {
+            itemDef_t* item = Menus[i].items[j];
+
+            if (!item || !(item->window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+                continue;
+            }
+            if (item->window.flags & WINDOW_DECORATION) {
+                continue;   // decorations are painted, not pressed
+            }
+            if (Rect_ContainsWidescreenPoint(&item->window.rect, x, y, item->widescreen)) {
+                return &Menus[i];
+            }
+        }
+    }
+
     for (i = menuCount - 1; i >= 0; i--) {
         if (!(Menus[i].window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
             continue;
@@ -7169,6 +7199,7 @@ void* Display_CaptureItem(int x, int y) {
             return &Menus[i];
         }
     }
+
     return NULL;
 }
 
