@@ -3570,6 +3570,12 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
 void CG_MouseEvent(int x, int y) {
     int n;
 
+    /* [QL] see UI_SetInputTrace - the menu input path names each step it takes
+       so a crash inside it leaves the offending item as the last line in the
+       log. Tied to cg_scoreboardDebug because that is the flag already used
+       for "tell me what the scoreboard is doing". */
+    UI_SetInputTrace(cg_scoreboardDebug.integer);
+
     if ((cg.predictedPlayerState.pm_type == PM_NORMAL || cg.predictedPlayerState.pm_type == PM_SPECTATOR) && cg.showScores == qfalse) {
         trap_Key_SetCatcher(0);
         return;
@@ -3748,6 +3754,8 @@ void CG_ScoreboardDebugDump(void) {
 }
 
 void CG_KeyEvent(int key, qboolean down) {
+    UI_SetInputTrace(cg_scoreboardDebug.integer);
+
     if (!down) {
         return;
     }

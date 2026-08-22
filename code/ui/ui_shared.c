@@ -798,6 +798,50 @@ itemDef_t* Menu_ClearFocus(menuDef_t* menu) {
     return ret;
 }
 
+/*
+[QL] Name every step the menu input path takes, for one specific reason.
+
+A crash inside this file gives nothing back: the engine catches the signal,
+runs CL_Shutdown and the log ends. There is no stack and no faulting address.
+The scoreboards only started receiving mouse and key events at all recently,
+so when the client began dying a few seconds into the match summary the
+suspects were an entire code path that had never run before, with no way to
+narrow it by reading.
+
+So the path says where it is. The last line before the log stops is the item
+that killed it. Off by default and set from the owning module - cgame ties it
+to cg_scoreboardDebug.
+*/
+int uiInputTrace = 0;
+
+void UI_SetInputTrace(int on) {
+    uiInputTrace = on;
+}
+
+static const char *UI_ItemName(const itemDef_t *item) {
+    if (!item) {
+        return "(null)";
+    }
+    if (item->window.name && item->window.name[0]) {
+        return item->window.name;
+    }
+    return "(unnamed)";
+}
+
+static void UI_Trace(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void UI_Trace(const char *fmt, ...) {
+    va_list ap;
+    char buf[1024];
+
+    if (!uiInputTrace || !DC || !DC->Print) {
+        return;
+    }
+    va_start(ap, fmt);
+    Q_vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    DC->Print("uiTrace: %s", buf);
+}
+
 qboolean IsVisible(int flags) {
     return (flags & WINDOW_VISIBLE && !(flags & WINDOW_FADINGOUT));
 }
@@ -1418,6 +1462,8 @@ void Item_RunScript(itemDef_t* item, const char* s) {
                 continue;
             }
 
+            UI_Trace("script '%s' on item '%s'\n", command, UI_ItemName(item));
+
             bRan = qfalse;
             for (i = 0; i < scriptCommandCount; i++) {
                 if (Q_stricmp(command, commandList[i].name) == 0) {
@@ -1526,6 +1572,7 @@ qboolean Item_EnableShowViaCvar4(itemDef_t* item, int flag) {
 qboolean Item_SetFocus(itemDef_t* item, float x, float y) {
     int i;
     itemDef_t* oldFocus;
+    UI_Trace("setFocus item '%s' type %i\n", UI_ItemName(item), item ? item->type : -1);
     sfxHandle_t* sfx = &DC->Assets.itemFocusSound;
     qboolean playSound = qfalse;
     menuDef_t* parent;
@@ -1599,10 +1646,17 @@ qboolean Item_SetFocus(itemDef_t* item, float x, float y) {
         DC->startLocalSound(*sfx, CHAN_LOCAL_SOUND);
     }
 
-    for (i = 0; i < parent->itemCount; i++) {
-        if (parent->items[i] == item) {
-            parent->cursorItem = i;
-            break;
+    /* [QL] "this can be NULL" is written above where parent is taken, and then
+       it is dereferenced here without a test. Menus_Activate and the two
+       Item_EnableShowViaCvar helpers all build an itemDef_t on the stack and
+       set only .parent, so an item reaching this line with no menu behind it
+       is not hypothetical. */
+    if (parent) {
+        for (i = 0; i < parent->itemCount; i++) {
+            if (parent->items[i] == item) {
+                parent->cursorItem = i;
+                break;
+            }
         }
     }
 
@@ -1885,6 +1939,7 @@ void Item_ListBox_MouseEnter(itemDef_t* item, float x, float y) {
 void Item_MouseEnter(itemDef_t* item, float x, float y) {
     rectDef_t r;
     if (item) {
+        UI_Trace("mouseEnter item '%s' type %i\n", UI_ItemName(item), item->type);
         r = item->textRect;
         r.y -= r.h;
         // in the text rect?
@@ -2979,6 +3034,8 @@ int Display_VisibleMenuCount(void) {
 }
 
 void Menus_HandleOOBClick(menuDef_t* menu, int key, qboolean down) {
+    UI_Trace("OOB click on menu '%s'\n",
+             menu && menu->window.name ? menu->window.name : "(unnamed)");
     if (menu) {
         int i;
         // basically the behaviour we are looking for is if there are windows in the stack.. see if
@@ -3090,8 +3147,12 @@ void Menu_HandleKey(menuDef_t* menu, int key, qboolean down) {
         }
     }
 
+    UI_Trace("handleKey menu '%s' key %i down %i focused '%s'\n",
+             menu->window.name ? menu->window.name : "(unnamed)", key, down, UI_ItemName(item));
+
     if (item != NULL) {
         if (Item_HandleKey(item, key, down)) {
+            UI_Trace("  -> Item_Action '%s'\n", UI_ItemName(item));
             Item_Action(item);
             return;
         }
@@ -3147,6 +3208,7 @@ void Menu_HandleKey(menuDef_t* menu, int key, qboolean down) {
                     }
                 } else {
                     if (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item))) {
+                        UI_Trace("  -> default Item_Action '%s'\n", UI_ItemName(item));
                         Item_Action(item);
                     }
                 }
@@ -4954,6 +5016,9 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
     if (!(menu->window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
         return;
     }
+
+    UI_Trace("mouseMove menu '%s' (%i items) at %.0f,%.0f\n",
+             menu->window.name ? menu->window.name : "(unnamed)", menu->itemCount, x, y);
 
     if (itemCapture) {
         // Item_MouseMove(itemCapture, x, y);

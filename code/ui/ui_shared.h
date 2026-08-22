@@ -422,6 +422,7 @@ void Item_Init(itemDef_t* item);
 void Menu_PostParse(menuDef_t* menu);
 menuDef_t* Menu_GetFocused(void);
 void Menu_HandleKey(menuDef_t* menu, int key, qboolean down);
+void UI_SetInputTrace(int on);  // [QL] name each step the menu input path takes
 void Menu_HandleMouseMove(menuDef_t* menu, float x, float y);
 void Menu_ScrollFeeder(menuDef_t* menu, int feeder, qboolean down);
 void Menu_ScrollFeederKey(menuDef_t* menu, int feeder, int key);
