@@ -355,7 +355,40 @@ static void CG_CalcModelScale(clientInfo_t* ci) {
     // [QL] factor is the server's g_playerModelScale (DAT_10a5fd98, from CS_PLAYERINFO),
     // NOT the cg_scalePlayerModelsToBB client toggle (that only gates whether the scale is
     // applied in CG_Player). Default 1.1 when the server did not send CS_PLAYERINFO.
+    /*
+    [QL] Guard the divisor, and say what came out.
+
+    This is the one place a player can end up added to the scene and not drawn.
+    CG_Player scales all three axes of legs, torso and head by ci->modelScale
+    under a "!= 1.0f" test, so 0 passes straight through it and collapses every
+    part to a point - while CG_PlayerShadow traces from cent->lerpOrigin with a
+    fixed +-15 box and knows nothing about the scale, so the shadow stays on the
+    floor under a player who is not there. That is the reported symptom exactly,
+    and it is renderer-independent, which the report also says.
+
+    totalHeight comes from two trap_R_LerpTag calls plus a model bound. LerpTag
+    returns an identity orientation when the tag is missing or the frame index
+    is out of range, so a model whose animation.cfg disagrees with its meshes
+    can drive this to zero or negative and take the scale to infinity or a
+    negative - all three are invisible. Clamp, and report rather than guess.
+    */
+    if (totalHeight < 1.0f) {
+        if (cg_debugPlayerModels.integer) {
+            CG_Printf(S_COLOR_YELLOW "modelScale: %s/%s measured %.2f units tall - "
+                      "tag_torso/tag_head missing or animation.cfg frames out of range. "
+                      "Using scale 1.0.\n", ci->modelName, ci->skinName, totalHeight);
+        }
+        ci->modelScale = 1.0f;
+        return;
+    }
+
     ci->modelScale = (56.0f / totalHeight) * cgs.playerModelScale;
+
+    if (cg_debugPlayerModels.integer) {
+        CG_Printf("modelScale: %s/%s height %.2f, g_playerModelScale %.2f -> scale %.3f%s\n",
+                  ci->modelName, ci->skinName, totalHeight, cgs.playerModelScale, ci->modelScale,
+                  (ci->modelScale < 0.05f) ? S_COLOR_YELLOW "  <- this player will not be visible" : "");
+    }
 }
 
 /*

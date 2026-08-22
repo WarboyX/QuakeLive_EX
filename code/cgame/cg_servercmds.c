@@ -994,6 +994,19 @@ void CG_ParseConfigParams(void) {
     val = Info_ValueForKey(info, "g_playerheadScale");       cgs.playerheadScale = *val ? atof(val) : 1.0f;
     val = Info_ValueForKey(info, "g_playerheadScaleOffset");  cgs.playerheadScaleOffset = *val ? atof(val) : 1.0f;
     val = Info_ValueForKey(info, "g_playerModelScale");       cgs.playerModelScale = *val ? atof(val) : 1.1f;
+    /* [QL] This multiplies every player's model scale, and CG_Player applies the
+       result to all three axes of legs, torso and head. Zero or negative
+       collapses every player to a point - invisible, but still casting a shadow,
+       because CG_PlayerShadow traces from the entity origin and never sees the
+       scale. A server sending 0 is nonsense either way; do not let it hide
+       everybody. */
+    if (cgs.playerModelScale < 0.01f) {
+        if (*val) {
+            CG_Printf(S_COLOR_YELLOW "WARNING: server sent g_playerModelScale \"%s\" - "
+                      "that scales every player model to nothing. Using 1.1.\n", val);
+        }
+        cgs.playerModelScale = 1.1f;
+    }
 
     CG_UpdateAllModelScales();
 }
