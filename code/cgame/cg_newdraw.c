@@ -815,13 +815,13 @@ qboolean CG_OwnerDrawVisible(int flags, int flags2) {
     }
 
     if (flags & CG_SHOW_IF_NOT_WARMUP) {
-        if (!cg.warmup) {
+        if (!CG_InWarmup()) {
             return qtrue;
         }
     }
 
     if (flags & CG_SHOW_IF_WARMUP) {
-        if (cg.warmup) {
+        if (CG_InWarmup()) {
             return qtrue;
         }
     }
@@ -976,7 +976,7 @@ const char* CG_GetMatchStatusText(void) {
 
     if (cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION) {
         prefix = "MATCH SUMMARY";
-    } else if (cg.warmup) {
+    } else if (CG_InWarmup()) {
         prefix = "MATCH WARMUP";
     } else {
         prefix = "MATCH IN PROGRESS";
@@ -1372,7 +1372,7 @@ static void CG_DrawGameLimit(rectDef_t *rect, float scale, vec4_t color, int tex
 // [QL] Match details: "Game State - Gametype - Map"
 static void CG_DrawMatchDetails(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     const char *state;
-    if (cg.warmup) {
+    if (CG_InWarmup()) {
         state = "Warmup";
     } else if (cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION) {
         state = "Match Complete";
@@ -1391,7 +1391,7 @@ static void CG_DrawMatchStatus(rectDef_t *rect, float scale, vec4_t color, int t
 // [QL] Round number display for CA/FT
 static void CG_DrawRound(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE || cgs.gametype == GT_RR) {
-        if (cg.warmup) {
+        if (CG_InWarmup()) {
             CG_OwnerDrawText(rect->x, rect->y, scale, color, "Warmup", 0, 0, textStyle);
         } else {
             CG_OwnerDrawText(rect->x, rect->y, scale, color,
@@ -1417,7 +1417,7 @@ static void CG_DrawRoundTimer(rectDef_t *rect, float scale, vec4_t color, int te
 
 // [QL] Overtime display
 static void CG_DrawOvertime(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    if (!cg.warmup && cgs.timelimit && cgs.timelimit_overtime) {
+    if (!CG_InWarmup() && cgs.timelimit && cgs.timelimit_overtime) {
         int elapsed = (cg.time - cgs.levelStartTime) / 1000;
         int regulationTime = cgs.timelimit * 60;
         if (elapsed > regulationTime) {
@@ -1452,7 +1452,7 @@ static void CG_DrawLocalTime(rectDef_t *rect, float scale, vec4_t color, int tex
 // [QL] Match state: WARMUP / IN PROGRESS / SUMMARY
 static void CG_DrawMatchState(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     const char *s;
-    if (cg.warmup) {
+    if (CG_InWarmup()) {
         s = "MATCH WARMUP";
     } else if (cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION) {
         s = "MATCH SUMMARY";
@@ -1797,7 +1797,7 @@ static qboolean CG_DuelStatShown(const duelScore_t *ds) {
     if (!cg.duelScoresValid) {
         return qfalse;
     }
-    if (cg.warmup) {
+    if (CG_InWarmup()) {
         return qtrue;
     }
     if (ds->clientNum < 0 || ds->clientNum >= MAX_CLIENTS) {
@@ -1881,7 +1881,7 @@ static void CG_DrawDuelPlayerName(int ownerDraw, rectDef_t *rect, float scale, v
         return;
     }
     name = cgs.clientinfo[ds->clientNum].name;
-    if (cg.warmup && !name[0]) {
+    if (CG_InWarmup() && !name[0]) {
         return;
     }
     x = CG_OwnerDrawAlignX(rect, name, scale, align);
@@ -2734,7 +2734,7 @@ static void CG_DrawDuelStatusPlate(rectDef_t *rect, int selfIdx, qboolean rightS
     self  = &cg.duelScores[selfIdx];
     other = &cg.duelScores[selfIdx ^ 1];
 
-    if (cg.warmup) {
+    if (CG_InWarmup()) {
         text  = "READY";
         plate = rightSide ? cgs.media.duelStatusReady_right : cgs.media.duelStatusReady;
     } else if (other->score < self->score) {

@@ -2094,8 +2094,24 @@ static qboolean CG_DrawScoreboardMenu(void) {
 		return qfalse;
 	}
 
-	// don't draw scoreboard during death while warmup up
-	if (cg.warmup && !cg.showScores) {
+	/*
+	[QL] Don't auto-show the scoreboard during a death in warmup.
+
+	The test was "cg.warmup && !cg.showScores", inherited from Quake 3 where
+	cg.warmup is the warmup end time and plain 0 when the match is live. Quake
+	Live does not use 0 for that - it uses -1, which is what CS_WARMUP carries
+	between matches and what ui_warmup's own UI_SHOW_IF_WARMUP / _NOT_WARMUP
+	pair tests as ">= 0" and "< 0". So a live match sits at warmup -1, which is
+	truthy, and this gate fired on every frame of every match:
+
+	  scoreboardDebug: not drawn - warmup and showScores is 0
+	                   [showScores 0, warmup -1, paused 0]
+
+	The board still came up while +scores was held, because that sets
+	showScores, which is why this survived - what it actually killed was the
+	automatic show on death, for the entire life of the build.
+	*/
+	if (cg.warmup > 0 && !cg.showScores) {
 		CG_ScoreboardBlocked("warmup and showScores is 0");
 		CG_ScoreboardHidden();
 		return qfalse;

@@ -883,6 +883,33 @@ void CG_ParseServerinfo(void) {
 
 /*
 ==================
+CG_InWarmup
+
+[QL] Is the match in warmup? Not the same question as "is cg.warmup nonzero".
+
+cg.warmup is the warmup end time out of CS_WARMUP's "time" key. Quake 3 used
+plain 0 for "not warming up" and every test in the cgame was written as a bare
+"if (cg.warmup)". Quake Live uses -1, and -1 is truthy, so every one of those
+tests answered "yes, warmup" for the whole of every live match. cg_scoreboardDebug
+prints it plainly - "warmup -1" on a running game.
+
+The damage was spread thin enough to go unnoticed one symptom at a time: the
+match status read MATCH WARMUP until intermission, the round counter for CA and
+Freeze Tag showed "Warmup" instead of a round number, overtime never displayed,
+the ready arrows drew on the scoreboard during play, CG_SHOW_IF_WARMUP HUD items
+were permanently on and CG_SHOW_IF_NOT_WARMUP ones permanently off, and the
+scoreboard stopped auto-showing on death.
+
+CG_ParseWarmup itself already had it right ("warmup > 0 && cg.warmup <= 0"),
+which is where the correct reading came from.
+==================
+*/
+qboolean CG_InWarmup(void) {
+    return cg.warmup > 0;
+}
+
+/*
+==================
 CG_ParseWarmup
 ==================
 */

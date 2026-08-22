@@ -1609,10 +1609,34 @@ qboolean Item_SetFocus(itemDef_t* item, float x, float y) {
     return qtrue;
 }
 
+/*
+[QL] An element size of zero is a divide, not a layout problem.
+
+listPtr comes straight from item->typeData and its element sizes straight from
+the menu file, so an ITEM_TYPE_LISTBOX that never declared elementwidth or
+elementheight arrives here as a plain integer division by zero - a hard fault,
+not a misdrawn list. Nothing reached these two functions while cgame's menus
+were invisible to the input path; now that the scoreboards take a mouse, every
+list on them does.
+*/
+static qboolean Item_ListBox_Usable(const itemDef_t* item, const listBoxDef_t* listPtr) {
+    if (!listPtr) {
+        return qfalse;
+    }
+    if (item->window.flags & WINDOW_HORIZONTAL) {
+        return listPtr->elementWidth > 0;
+    }
+    return listPtr->elementHeight > 0;
+}
+
 int Item_ListBox_MaxScroll(itemDef_t* item) {
     listBoxDef_t* listPtr = (listBoxDef_t*)item->typeData;
     int count = DC->feederCount(item->special);
     int max;
+
+    if (!Item_ListBox_Usable(item, listPtr)) {
+        return 0;
+    }
 
     if (item->window.flags & WINDOW_HORIZONTAL) {
         max = count - (item->window.rect.w / listPtr->elementWidth) + 1;
@@ -1819,6 +1843,10 @@ void Item_ListBox_MouseEnter(itemDef_t* item, float x, float y) {
     rectDef_t r;
     listBoxDef_t* listPtr = (listBoxDef_t*)item->typeData;
 
+    if (!Item_ListBox_Usable(item, listPtr)) {
+        return;
+    }
+
     item->window.flags &= ~(WINDOW_LB_LEFTARROW | WINDOW_LB_RIGHTARROW | WINDOW_LB_THUMB | WINDOW_LB_PGUP | WINDOW_LB_PGDN);
     item->window.flags |= Item_ListBox_OverLB(item, x, y);
 
@@ -1959,6 +1987,10 @@ qboolean Item_ListBox_HandleKey(itemDef_t* item, int key, qboolean down, qboolea
     listBoxDef_t* listPtr = (listBoxDef_t*)item->typeData;
     int count = DC->feederCount(item->special);
     int max, viewmax;
+
+    if (!Item_ListBox_Usable(item, listPtr)) {
+        return qfalse;
+    }
 
     if (force || (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) && item->window.flags & WINDOW_HASFOCUS)) {
         max = Item_ListBox_MaxScroll(item);

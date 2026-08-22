@@ -2668,7 +2668,21 @@ static void G_BuildNextMapsFromInstalledMaps(char *out, int outSize) {
         return;
     }
 
-    // FS_GetFileList packs the names back to back, each NUL terminated.
+    /*
+    FS_GetFileList packs the names back to back, each NUL terminated.
+
+    Only maps the server's own arena data knows about are eligible. Offering
+    anything with a .bsp next to it is how this went wrong: 149 maps ship, and
+    plenty of them are not playable in an arbitrary gametype - race courses,
+    practice ranges, duel-only layouts with no team spawns. Winning the vote
+    then hands ExitLevel a map the next G_InitGame cannot spawn anybody into,
+    which fails during the load, after the vote, and looks exactly like voting
+    having crashed the game.
+
+    G_GetArenaInfoByMap reads scripts/arenas.txt, which is the list the server
+    is actually configured to rotate through. A map with no entry there is not
+    a map this server is meant to be sending people to.
+    */
     p = list;
     for (i = 0; i < count && n < (int)ARRAY_LEN(names); i++) {
         int len = strlen(p);
@@ -2676,12 +2690,18 @@ static void G_BuildNextMapsFromInstalledMaps(char *out, int outSize) {
         if (len > 4 && !Q_stricmp(p + len - 4, ".bsp")) {
             p[len - 4] = '\0';
         }
-        if (p[0] && Q_stricmp(p, current) != 0) {
+        if (p[0] && Q_stricmp(p, current) != 0 && G_GetArenaInfoByMap(p) != NULL) {
             names[n++] = p;
         }
         p += len + 1;
     }
-    if (n <= 0) {
+    if (n < 2) {
+        /* One choice is not a vote. Leave the panel off rather than show a
+           ballot with a single option on it. */
+        G_Printf("map vote: %i of %i installed maps are in the arena list - "
+                 "not enough to vote on. Set \"nextmaps\" to choose the three "
+                 "arenas explicitly.\n", n, count);
+        out[0] = '\0';
         return;
     }
 
@@ -2702,6 +2722,13 @@ static void G_BuildNextMapsFromInstalledMaps(char *out, int outSize) {
         Info_SetValueForKey(out, key, names[i]);
         picked++;
     }
+
+    /* Say which three, so a failure on the next map load names the map that
+       caused it instead of leaving the vote to be blamed for it. */
+    G_Printf("map vote: offering %i of %i eligible arenas -%s%s%s\n", picked, n,
+             picked > 0 ? va(" %s", Info_ValueForKey(out, "map_0")) : "",
+             picked > 1 ? va(", %s", Info_ValueForKey(out, "map_1")) : "",
+             picked > 2 ? va(", %s", Info_ValueForKey(out, "map_2")) : "");
     (void)outSize;
 }
 

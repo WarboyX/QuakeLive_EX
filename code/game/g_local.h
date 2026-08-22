@@ -783,7 +783,8 @@ gentity_t* SelectSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qbo
 void CopyToBodyQue(gentity_t* ent);
 void ClientRespawn(gentity_t* ent);
 void BeginIntermission(void);
-void G_SendMapVoteTallies(void);  // [QL] CS_ROTATIONVOTES, as the infostring the client parses
+void G_SendMapVoteTallies(void);
+const char* G_GetArenaInfoByMap(const char* map);  // [QL] scripts/arenas.txt lookup (g_bot.c)  // [QL] CS_ROTATIONVOTES, as the infostring the client parses
 void InitBodyQue(void);
 void ClientSpawn(gentity_t* ent);
 void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int damage, int mod);

@@ -2884,7 +2884,7 @@ static const char* CG_FeederItemTextRace(clientInfo_t* info, score_t* sp, int co
         case 1:
             return "";
         case 2:
-            if (cg.warmup) {
+            if (CG_InWarmup()) {
                 *handle = (cg.snap->ps.stats[STAT_CLIENTS_READY] & (1 << sp->client))
                     ? trap_R_RegisterShader("ui/assets/score/arrowg")
                     : trap_R_RegisterShader("ui/assets/score/arrowr");
@@ -3006,7 +3006,7 @@ static const char* CG_FeederItemText(float feederID, int index, int column, qhan
         case 2:
             return "";
         case 3:
-            if (cg.warmup) {
+            if (CG_InWarmup()) {
                 *handle = (cg.snap->ps.stats[STAT_CLIENTS_READY] & (1 << sp->client))
                     ? trap_R_RegisterShader("ui/assets/score/arrowg")
                     : trap_R_RegisterShader("ui/assets/score/arrowr");
