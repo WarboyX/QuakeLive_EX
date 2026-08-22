@@ -1293,6 +1293,9 @@ CL_KeyDownEvent
 Called by CL_KeyEvent to handle a keypress
 ===================
 */
+/* [QL] the key CL_KeyEvent is currently dispatching, or -1. See Key_ClearStates. */
+static int key_beingDispatched = -1;
+
 void CL_KeyDownEvent(int key, unsigned time) {
     keys[key].down = qtrue;
     keys[key].repeats++;
@@ -1425,10 +1428,14 @@ Called by the system for both key up and key down events
 ===================
 */
 void CL_KeyEvent(int key, qboolean down, unsigned time) {
+    int saved = key_beingDispatched;
+
+    key_beingDispatched = key;
     if (down)
         CL_KeyDownEvent(key, time);
     else
         CL_KeyUpEvent(key, time);
+    key_beingDispatched = saved;
 }
 
 /*
@@ -1462,12 +1469,49 @@ void CL_CharEvent(int key) {
 Key_ClearStates
 ===================
 */
+/*
+===================
+Key_ClearStates
+
+[QL] Release every held key - except the one whose own press we are inside.
+
+Key_SetCatcher calls this whenever the catcher changes, so that movement keys
+cannot stick on when input is handed to a menu. That is right for a change made
+*by* a menu, and wrong for a change made by the key currently being processed,
+because the synthetic release below runs that key's own '-' binding while the
+player still has it physically held.
+
++scores with cg_scoreboardMouse is exactly that shape and it was fatal:
+
+  +scores -> cg.showScores = qtrue
+          -> CG_EventHandling(CGAME_EVENT_SCOREBOARD)
+          -> Key_SetCatcher(... | KEYCATCH_CGAME)
+          -> catcher changed, Key_ClearStates
+          -> the scores key is down, so CL_KeyEvent(key, qfalse)
+          -> -scores -> cg.showScores = qfalse, hold released
+
+all inside the original keypress. The board was switched off in the same frame
+it was switched on, the key was marked up so continuing to hold did nothing,
+and the result on screen was no scoreboard at all - only with the mouse
+enabled, because nothing else changed the catcher. It is also why the debug
+gates only ever reported "showScores 0" and never painted a frame.
+
+The key being dispatched is left down and its binding is not run. Its real
+release arrives as a normal event and fires '-scores' then, as it should.
+===================
+*/
 void Key_ClearStates(void) {
     int i;
 
     anykeydown = 0;
 
     for (i = 0; i < MAX_KEYS; i++) {
+        if (i == key_beingDispatched) {
+            if (keys[i].down) {
+                anykeydown++;
+            }
+            continue;
+        }
         if (keys[i].down) {
             CL_KeyEvent(i, qfalse, 0);
         }
