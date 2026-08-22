@@ -4828,64 +4828,31 @@ UI_Init
 =================
 UI_PlaceTeamSelect
 
-[QL] Lay the team panel out from Quake Live's own menu, at run time.
+[QL] Static layout, tunable at run time.
 
-The panel used to carry hardcoded coordinates, and they were wrong twice - too
-narrow, too far left, and on top of Quake Live's SPECTATE button - because the
-only way to arrive at them from here was to measure a screenshot. pak00 is not
-readable in this tree, so the numbers could not be taken from the menu that
-actually defines them.
+This panel has been placed wrongly four times, each attempt measuring a
+different item of Quake Live's own menu and each looking correct in the source.
+The reason none of them could be checked here is structural: those menus live in
+pak00, which is not in this tree and not ours to ship, so there is nothing to
+verify a theory against short of a screenshot - and a screenshot encodes the
+aspect ratio and widescreen bias of one display.
 
-They can be read back at run time though. Quake Live's SPECTATE button is a
-loaded itemDef like any other, so this finds it by its label and derives
-everything from its rect: the column keeps its x and width, AUTO JOIN takes the
-next row down, and the two join buttons are squares stacked to the left of that
-column, spanning both rows.
+The version that landed closest was the first one, which did none of this: fixed
+rects in the .menu file, Quake Live's own SPECTATE left alone above them. So the
+measuring is gone. What replaces it is not another guess but a set of numbers
+that can be moved without a rebuild, because the person who can see the result
+should not have to wait on one to adjust it.
 
-A note on coordinates, since "absolute pixels" is the obvious worry: menu rects
-are not pixels. They are a virtual 640x480 space that Item_SetScreenCoords and
-CG_AdjustFrom640 scale to whatever the display actually is, so a fixed rect does
-not move when the resolution changes. What it does not survive is Quake Live
-laying its own menu out differently from the build the numbers were measured
-against - which is the fragility this removes.
+  ui_teamSelectX / Y     top-left of the column, 640x480 virtual
+  ui_teamSelectW         column width
+  ui_teamSelectRowH      height of one button
+  ui_teamSelectGap       space between buttons
+  ui_teamSelectHideSpectate  hide Quake Live's SPECTATE (ours replaces it)
 
-If the anchor is not found the panel keeps the rects from the .menu file, which
-are the measured ones, so this degrades to the previous behaviour rather than to
-a pile of buttons at the origin.
+ui_teamSelectHideSpectate 0 with ui_teamSelectY 224 reproduces b1fe1af exactly,
+which is the arrangement reported as closest.
 =================
 */
-static itemDef_t* UI_FindItemByText(const char* text) {
-    int i, j;
-
-    for (i = 0; i < Menu_Count(); i++) {
-        menuDef_t* m = Menu_GetByIndex(i);
-        if (!m || !m->window.name || !Q_stricmp(m->window.name, "io_teamselect")) {
-            continue;   // never anchor to ourselves
-        }
-        /*
-        [QL] Only menus that are actually on screen.
-
-        "SPECTATE" is not unique across the loaded set - Quake Live's
-        ui/ingame_join.menu carries one too, and it is loaded but never
-        activated in this build. Matching it took that menu's rect, which is
-        laid out against its own origin, and placed the panel against geometry
-        nobody can see: the join squares landed on top of the visible SPECTATE
-        and AUTO JOIN sat off to the right of the column. Anchoring to what is
-        being painted is the whole point of measuring at run time.
-        */
-        if (!(m->window.flags & WINDOW_VISIBLE)) {
-            continue;
-        }
-        for (j = 0; j < m->itemCount; j++) {
-            itemDef_t* it = m->items[j];
-            if (it && it->text && !Q_stricmp(it->text, text)) {
-                return it;
-            }
-        }
-    }
-    return NULL;
-}
-
 static itemDef_t* UI_TeamSelectItem(menuDef_t* menu, const char* name) {
     int i;
 
@@ -4899,14 +4866,13 @@ static itemDef_t* UI_TeamSelectItem(menuDef_t* menu, const char* name) {
 }
 
 static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const char* textName,
-                                 float x, float y, float w, float h, const itemDef_t* anchor) {
-    itemDef_t* bar = UI_TeamSelectItem(menu, barName);
-    itemDef_t* txt = UI_TeamSelectItem(menu, textName);
-    int k;
+                                 float x, float y, float w, float h) {
     itemDef_t* both[2];
+    int k;
 
-    both[0] = bar;
-    both[1] = txt;
+    both[0] = UI_TeamSelectItem(menu, barName);
+    both[1] = UI_TeamSelectItem(menu, textName);
+
     for (k = 0; k < 2; k++) {
         if (!both[k]) {
             continue;
@@ -4915,191 +4881,81 @@ static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const cha
         both[k]->window.rectClient.y = y;
         both[k]->window.rectClient.w = w;
         both[k]->window.rectClient.h = h;
-        /*
-        [QL] Match the anchor's widescreen mode.
-
-        Menu rects are a virtual 640x480 space, but how that maps to the screen
-        depends on each item's widescreen mode - stretch, or 4:3 with a bias
-        pushing it left or right. Two items with identical rects and different
-        modes land in different places on a wide display, which is why these
-        buttons were beside Quake Live's column on a 16:9 laptop after being
-        given its exact x and width. Copying the mode from the item measured is
-        what makes "the same rect" mean the same place.
-        */
-        both[k]->widescreen = anchor->widescreen;
-        both[k]->widescreenFlag = anchor->widescreenFlag;
     }
-    if (txt) {
-        /* ITEM_ALIGN_CENTER subtracts half the string width from textalignx
-           (Item_SetTextExtents), so the centre of the button is the alignment
-           point. textRect is cached on first paint - clearing w forces it to be
-           measured again against the new size. */
-        txt->textalignx = w / 2.0f;
-        txt->textaligny = h / 2.0f + 4.0f;
-        txt->textRect.w = 0;
-        txt->textRect.h = 0;
+    if (both[1]) {
+        /* ITEM_ALIGN_CENTER subtracts half the string width from textalignx, so
+           the centre of the button is the alignment point. textRect caches the
+           measurement on first paint; clearing w forces a re-measure. */
+        both[1]->textalignx = w / 2.0f;
+        both[1]->textaligny = h / 2.0f + 4.0f;
+        both[1]->textRect.w = 0;
+        both[1]->textRect.h = 0;
     }
 }
 
 static void UI_PlaceTeamSelect(void) {
     menuDef_t* menu = Menus_FindByName("io_teamselect");
-    itemDef_t* ret;
-    itemDef_t* spectate = NULL;
-    float colX, colY, colW, rowH, gap, halfW, bestDist;
-    int i, j;
+    float x, y, w, rowH, gap;
+    int i;
 
     if (!menu) {
         return;
     }
 
-    /*
-    [QL] Anchor to RETURN to MATCH, and hide *every* SPECTATE.
+    x = ui_teamSelectX.value;
+    y = ui_teamSelectY.value;
+    w = ui_teamSelectW.value;
+    rowH = ui_teamSelectRowH.value;
+    gap = ui_teamSelectGap.value;
 
-    Two earlier goes at this failed the same way, and the reason is worth
-    recording: "SPECTATE" is not a unique label. More than one loaded menu
-    defines a button with that text, restricting the search to visible menus was
-    not enough to disambiguate them, and matching the wrong one both measured a
-    column nobody could see and left the drawn button untouched - visible and
-    still working, next to a panel laid out somewhere else.
+    if (w <= 0.0f || rowH <= 0.0f) {
+        return;     // leave the .menu file's own rects alone
+    }
 
-    So neither half guesses now. RETURN to MATCH is unique, and it is directly
-    above the buttons being replaced, so it gives the column's x and width.
-    Every SPECTATE in a visible menu is hidden rather than just the first, and
-    the one nearest RETURN's x - the one actually in this column - supplies the
-    row height and where the stack starts.
-    */
-    /*
-    [QL] Dump what is actually on screen before placing anything.
+    if (ui_teamSelectHideSpectate.integer) {
+        for (i = 0; i < Menu_Count(); i++) {
+            menuDef_t* m = Menu_GetByIndex(i);
+            int j;
 
-    This panel has been placed wrongly several times over, each time from a
-    different theory about which item to measure, and each theory looked right
-    in the source. The menus come out of pak00 and cannot be read here, so the
-    only way to stop guessing is to print what the loaded ones actually contain.
-    ui_teamSelectDebug 1 lists every visible menu and every item in them whose
-    label matches one of the anchors, with the rect and widescreen mode of each,
-    so a mismatch between two anchors in different menus - which would make
-    their rects incomparable - is visible rather than inferred.
-    */
-    if (ui_teamSelectDebug.integer) {
-        int mi, ii;
-
-        Com_Printf("teamSelectDebug: %i menus loaded\n", Menu_Count());
-        for (mi = 0; mi < Menu_Count(); mi++) {
-            menuDef_t* m = Menu_GetByIndex(mi);
-
-            if (!m || !(m->window.flags & WINDOW_VISIBLE)) {
+            if (!m || !m->window.name || !Q_stricmp(m->window.name, "io_teamselect")) {
                 continue;
             }
-            Com_Printf("teamSelectDebug: menu '%s' rect %.1f,%.1f %.1fx%.1f ws %i\n",
-                       m->window.name ? m->window.name : "(unnamed)",
-                       m->window.rect.x, m->window.rect.y, m->window.rect.w, m->window.rect.h,
-                       m->widescreen);
-            for (ii = 0; ii < m->itemCount; ii++) {
-                itemDef_t* it = m->items[ii];
+            if (!(m->window.flags & WINDOW_VISIBLE)) {
+                continue;
+            }
+            for (j = 0; j < m->itemCount; j++) {
+                itemDef_t* it = m->items[j];
 
-                if (!it || !it->text) {
-                    continue;
+                if (it && it->text && !Q_stricmp(it->text, "SPECTATE")) {
+                    it->window.flags &= ~WINDOW_VISIBLE;
                 }
-                if (Q_stricmp(it->text, "SPECTATE") && Q_stricmp(it->text, "RETURN to MATCH") &&
-                    Q_stricmp(it->text, "JOIN RED") && Q_stricmp(it->text, "JOIN BLUE")) {
-                    continue;
-                }
-                Com_Printf("teamSelectDebug:   item '%s' text '%s' rect %.1f,%.1f %.1fx%.1f "
-                           "ws %i wsFlag %i vis %i\n",
-                           it->window.name ? it->window.name : "(unnamed)", it->text,
-                           it->window.rect.x, it->window.rect.y,
-                           it->window.rect.w, it->window.rect.h,
-                           it->widescreen, it->widescreenFlag,
-                           (it->window.flags & WINDOW_VISIBLE) ? 1 : 0);
             }
         }
     }
 
-    ret = UI_FindItemByText("RETURN to MATCH");
-    if (!ret || ret->window.rect.w <= 0.0f) {
-        if (ui_teamSelectDebug.integer) {
-            Com_Printf("teamSelectDebug: no 'RETURN to MATCH' anchor found - keeping the "
-                       ".menu file's own rects\n");
-        }
-        return;     // keep the .menu file's own layout
-    }
-
-    bestDist = -1.0f;
-    for (i = 0; i < Menu_Count(); i++) {
-        menuDef_t* m = Menu_GetByIndex(i);
-
-        if (!m || !m->window.name || !Q_stricmp(m->window.name, "io_teamselect")) {
-            continue;
-        }
-        if (!(m->window.flags & WINDOW_VISIBLE)) {
-            continue;
-        }
-        for (j = 0; j < m->itemCount; j++) {
-            itemDef_t* it = m->items[j];
-            float dist;
-
-            if (!it || !it->text || Q_stricmp(it->text, "SPECTATE")) {
-                continue;
-            }
-            it->window.flags &= ~WINDOW_VISIBLE;
-
-            if (it->window.rect.h <= 0.0f) {
-                continue;
-            }
-            dist = it->window.rect.x - ret->window.rect.x;
-            if (dist < 0.0f) {
-                dist = -dist;
-            }
-            if (bestDist < 0.0f || dist < bestDist) {
-                bestDist = dist;
-                spectate = it;
-            }
-        }
-    }
-
-    if (!spectate) {
-        return;
-    }
-
-    colX = ret->window.rect.x;
-    colW = ret->window.rect.w;
-    colY = spectate->window.rect.y;
-    rowH = spectate->window.rect.h;
-    gap = 3.0f;
-
-    /* Quake Live's arrangement: the two join buttons share a row at half width,
-       SPECTATE full width beneath them. */
-    halfW = (colW - gap) * 0.5f;
-
-    menu->window.rect.x = colX;
-    menu->window.rect.y = colY;
-    menu->window.rect.w = colW;
-    menu->window.rect.h = rowH * 2.0f + gap;
+    menu->window.rect.x = x;
+    menu->window.rect.y = y;
+    menu->window.rect.w = w;
+    menu->window.rect.h = rowH * 3.0f + gap * 2.0f;
     menu->window.rectClient = menu->window.rect;
-    if (spectate->parent) {
-        menu->widescreen = ((menuDef_t*)spectate->parent)->widescreen;
-    }
 
     UI_SetTeamSelectRect(menu, "teamselect_redbar", "teamselect_red",
-                         0.0f, 0.0f, halfW, rowH, spectate);
+                         0.0f, 0.0f, w, rowH);
     UI_SetTeamSelectRect(menu, "teamselect_bluebar", "teamselect_blue",
-                         halfW + gap, 0.0f, colW - halfW - gap, rowH, spectate);
+                         0.0f, rowH + gap, w, rowH);
     UI_SetTeamSelectRect(menu, "teamselect_specbar", "teamselect_spec",
-                         0.0f, rowH + gap, colW, rowH, spectate);
+                         0.0f, (rowH + gap) * 2.0f, w, rowH);
 
     Menu_UpdatePosition(menu);
 
     if (ui_teamSelectDebug.integer) {
-        Com_Printf("teamSelectDebug: anchored col x %.1f w %.1f (from RETURN to MATCH), "
-                   "row y %.1f h %.1f (from SPECTATE in menu '%s')\n",
-                   colX, colW, colY, rowH,
-                   (spectate->parent && ((menuDef_t*)spectate->parent)->window.name)
-                       ? ((menuDef_t*)spectate->parent)->window.name : "(unnamed)");
-        Com_Printf("teamSelectDebug: RETURN in menu '%s'; panel rect %.1f,%.1f %.1fx%.1f ws %i\n",
-                   (ret->parent && ((menuDef_t*)ret->parent)->window.name)
-                       ? ((menuDef_t*)ret->parent)->window.name : "(unnamed)",
+        Com_Printf("teamSelectDebug: panel %.1f,%.1f %.1fx%.1f  rowH %.1f gap %.1f "
+                   "hideSpectate %i\n",
                    menu->window.rect.x, menu->window.rect.y,
-                   menu->window.rect.w, menu->window.rect.h, menu->widescreen);
+                   menu->window.rect.w, menu->window.rect.h,
+                   rowH, gap, ui_teamSelectHideSpectate.integer);
+        Com_Printf("teamSelectDebug: adjust with ui_teamSelectX / Y / W / RowH / Gap, "
+                   "then tell me the values that look right\n");
     }
 }
 
@@ -5754,6 +5610,12 @@ vmCvar_t ui_serverFilterType;
 vmCvar_t ui_opponentName;
 vmCvar_t ui_menuFiles;
 vmCvar_t ui_teamSelectDebug;
+vmCvar_t ui_teamSelectX;
+vmCvar_t ui_teamSelectY;
+vmCvar_t ui_teamSelectW;
+vmCvar_t ui_teamSelectRowH;
+vmCvar_t ui_teamSelectGap;
+vmCvar_t ui_teamSelectHideSpectate;
 vmCvar_t ui_currentMap;
 vmCvar_t ui_currentNetMap;
 vmCvar_t ui_mapIndex;
@@ -5900,6 +5762,18 @@ static cvarTable_t cvarTable[] = {
        are in pak00 and unreadable from the source tree, so this is the only way
        to stop guessing which item to measure against. */
     {&ui_teamSelectDebug, "ui_teamSelectDebug", "0", 0},
+    /* [QL] The team panel's geometry, in 640x480 virtual units. Live so the
+       person who can see the result can adjust it without a rebuild - four
+       attempts at measuring Quake Live's own menu for these numbers all landed
+       wrong, and the menus are in pak00 where nothing here can check them.
+       Not CVAR_ARCHIVE: these are our defaults, not the user's settings, and an
+       archived default stops the default applying (CLAUDE.md). */
+    {&ui_teamSelectX, "ui_teamSelectX", "425", 0},
+    {&ui_teamSelectY, "ui_teamSelectY", "198", 0},
+    {&ui_teamSelectW, "ui_teamSelectW", "156", 0},
+    {&ui_teamSelectRowH, "ui_teamSelectRowH", "21", 0},
+    {&ui_teamSelectGap, "ui_teamSelectGap", "3", 0},
+    {&ui_teamSelectHideSpectate, "ui_teamSelectHideSpectate", "1", 0},
     {&ui_currentMap, "ui_currentMap", "0", CVAR_ARCHIVE},
     {&ui_currentNetMap, "ui_currentNetMap", "0", CVAR_ARCHIVE},
     {&ui_mapIndex, "ui_mapIndex", "0", CVAR_ARCHIVE},

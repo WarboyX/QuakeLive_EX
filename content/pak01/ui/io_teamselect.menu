@@ -26,29 +26,21 @@
 //
 // Layout
 // ------
-// Quake Live's own arrangement: the two join buttons share one row, half the
-// column's width each, with SPECTATE full width beneath them - all continuing
-// the column under RETURN to MATCH.
+// Three buttons stacked full width, continuing Quake Live's column under RETURN
+// to MATCH. Quake Live's own SPECTATE is hidden and the one here takes its place,
+// so there is one of each control rather than two overlapping.
 //
-// The rects below are a fallback only. UI_PlaceTeamSelect (ui_main.c) measures
-// Quake Live's SPECTATE button when the menu opens, hides it, and lays these
-// three out in its place at the same x, width and row height.
-//
-// Hiding Quake Live's button is what makes the alignment tractable. Two controls
-// doing the same job in one column, one positioned by us and one not, is what
-// kept ending up overlapped; owning the whole stack means the spacing is ours to
-// get right rather than something to dodge.
-//
-// It is measured rather than hardcoded because the numbers cannot be read from
-// here - pak00 is not in this tree - so anything fixed is a measurement of one
-// screenshot, which is how this landed wrong twice. Note they are not pixels
-// either way: menu rects are a virtual 640x480 space that Item_SetScreenCoords
-// scales to the real display, so they do not move with resolution.
+// The rects here are a fallback: UI_PlaceTeamSelect (ui_main.c) rewrites them
+// from ui_teamSelectX / Y / W / RowH / Gap when the menu opens. Those are cvars
+// rather than measurements of Quake Live's menu because four attempts at
+// measuring it landed wrong - pak00 is not in this tree, so nothing here can
+// check such a theory, and a screenshot only pins the numbers for one display.
+// Whoever can see the result can move them without a rebuild.
 
 {
     menuDef {
         name "io_teamselect"
-        rect 425 198 156 45
+        rect 425 198 156 69
         visible MENU_TRUE
         focusColor 1 .75 0 1
 
@@ -60,7 +52,7 @@
         itemDef {
             name teamselect_redbar
             style WINDOW_STYLE_FILLED
-            rect 0 0 76 21
+            rect 0 0 156 21
             backcolor 0.55 0.11 0.11 0.90
             visible 1
             decoration
@@ -70,11 +62,11 @@
             text "JOIN RED"
             type 1
             textstyle 6
-            rect 0 0 76 21
+            rect 0 0 156 21
             textalign ITEM_ALIGN_CENTER
-            textalignx 38
+            textalignx 78
             textaligny 15
-            textscale .25
+            textscale .3
             forecolor 1 1 1 1
             visible 1
             // "cmd" forwards to the server, which is where the team rules live.
@@ -89,7 +81,7 @@
         itemDef {
             name teamselect_bluebar
             style WINDOW_STYLE_FILLED
-            rect 80 0 76 21
+            rect 0 24 156 21
             backcolor 0.13 0.18 0.60 0.90
             visible 1
             decoration
@@ -99,11 +91,11 @@
             text "JOIN BLUE"
             type 1
             textstyle 6
-            rect 80 0 76 21
+            rect 0 24 156 21
             textalign ITEM_ALIGN_CENTER
-            textalignx 38
+            textalignx 78
             textaligny 15
-            textscale .25
+            textscale .3
             forecolor 1 1 1 1
             visible 1
             action { exec "cmd team b" ; uiScript closeingame }
@@ -115,7 +107,7 @@
         itemDef {
             name teamselect_specbar
             style WINDOW_STYLE_FILLED
-            rect 0 24 156 21
+            rect 0 48 156 21
             backcolor 0.20 0.20 0.20 0.85
             visible 1
             decoration
@@ -125,7 +117,7 @@
             text "SPECTATE"
             type 1
             textstyle 6
-            rect 0 24 156 21
+            rect 0 48 156 21
             textalign ITEM_ALIGN_CENTER
             textalignx 78
             textaligny 15
