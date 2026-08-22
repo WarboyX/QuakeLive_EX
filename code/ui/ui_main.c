@@ -4912,7 +4912,33 @@ static void UI_PlaceTeamSelect(void) {
         return;     // leave the .menu file's own rects alone
     }
 
+    /*
+    [QL] Hide by geometry, not by label.
+
+    Quake Live's own SPECTATE sits where this panel goes, and matching it by
+    its text has now failed repeatedly - it stays visible and collides with
+    JOIN RED. Whatever its label actually is (a colour code, a different
+    string, or text that does not come from item->text at all), it cannot be
+    read from here: the menu is in pak00, which is not in this tree.
+
+    So the test is the one that actually matters. Anything interactive that
+    overlaps the rectangle this panel occupies is hidden, whatever it is
+    called. That is the requirement stated plainly - nothing else draws or
+    takes clicks in our column - and it does not depend on guessing a string.
+
+    Decorations are left alone: the column's background and frame overlap by
+    design and should still paint. Only controls are hidden, which is what can
+    collide.
+    */
     if (ui_teamSelectHideSpectate.integer) {
+        rectDef_t panel;
+        int hidden = 0;
+
+        panel.x = x;
+        panel.y = y;
+        panel.w = w;
+        panel.h = rowH * 3.0f + gap * 2.0f;
+
         for (i = 0; i < Menu_Count(); i++) {
             menuDef_t* m = Menu_GetByIndex(i);
             int j;
@@ -4926,10 +4952,37 @@ static void UI_PlaceTeamSelect(void) {
             for (j = 0; j < m->itemCount; j++) {
                 itemDef_t* it = m->items[j];
 
-                if (it && it->text && !Q_stricmp(it->text, "SPECTATE")) {
-                    it->window.flags &= ~WINDOW_VISIBLE;
+                if (!it || !(it->window.flags & WINDOW_VISIBLE)) {
+                    continue;
+                }
+                if (it->window.flags & WINDOW_DECORATION) {
+                    continue;   // backgrounds and frames belong there
+                }
+                if (it->window.rect.w <= 0.0f || it->window.rect.h <= 0.0f) {
+                    continue;
+                }
+                /* plain rectangle overlap */
+                if (it->window.rect.x >= panel.x + panel.w ||
+                    it->window.rect.x + it->window.rect.w <= panel.x ||
+                    it->window.rect.y >= panel.y + panel.h ||
+                    it->window.rect.y + it->window.rect.h <= panel.y) {
+                    continue;
+                }
+                it->window.flags &= ~WINDOW_VISIBLE;
+                hidden++;
+                if (ui_teamSelectDebug.integer) {
+                    Com_Printf("teamSelectDebug: hid '%s' text '%s' rect %.1f,%.1f %.1fx%.1f "
+                               "in menu '%s'\n",
+                               it->window.name ? it->window.name : "(unnamed)",
+                               it->text ? it->text : "(none)",
+                               it->window.rect.x, it->window.rect.y,
+                               it->window.rect.w, it->window.rect.h,
+                               m->window.name);
                 }
             }
+        }
+        if (ui_teamSelectDebug.integer) {
+            Com_Printf("teamSelectDebug: %i control(s) hidden under the panel\n", hidden);
         }
     }
 
