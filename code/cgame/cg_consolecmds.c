@@ -116,7 +116,20 @@ static void CG_ScoresDown_f(void) {
 
     if (cg_scoreboardMouse.integer && cgs.eventHandling == CGAME_EVENT_NONE) {
         cgs.scoreboardHoldingMouse = qtrue;
+        cgs.cursorX = SCREEN_WIDTH / 2;
+        cgs.cursorY = SCREEN_HEIGHT / 2;
         CG_EventHandling(CGAME_EVENT_SCOREBOARD);
+    }
+
+    /* [QL] Unthrottled, unlike the per-frame gates: a press and its release are
+       two events, not a state, and the throttle hid whichever of them mattered.
+       The pair of these lines says how long the hold actually lasted and what
+       the catcher did across it. */
+    if (cg_scoreboardDebug.integer) {
+        CG_Printf("scoreboardDebug: +scores at %i - showScores %i, mouse %i, "
+                  "holding %i, eventHandling %i, catcher 0x%x\n",
+                  cg.time, cg.showScores, cg_scoreboardMouse.integer,
+                  cgs.scoreboardHoldingMouse, cgs.eventHandling, trap_Key_GetCatcher());
     }
 }
 
@@ -132,6 +145,13 @@ static void CG_ScoresUp_f(void) {
     if (cgs.scoreboardHoldingMouse && !cg.intermissionStarted) {
         cgs.scoreboardHoldingMouse = qfalse;
         CG_EventHandling(CGAME_EVENT_NONE);
+    }
+
+    if (cg_scoreboardDebug.integer) {
+        CG_Printf("scoreboardDebug: -scores at %i - showScores %i, holding %i, "
+                  "eventHandling %i, catcher 0x%x\n",
+                  cg.time, cg.showScores, cgs.scoreboardHoldingMouse,
+                  cgs.eventHandling, trap_Key_GetCatcher());
     }
 }
 

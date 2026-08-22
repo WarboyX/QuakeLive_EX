@@ -2201,6 +2201,43 @@ static qboolean CG_DrawScoreboard(void) {
 
 /*
 =================
+CG_DrawCgameCursor
+
+[QL] Draw a pointer whenever cgame is holding the mouse.
+
+This lived inside CG_DrawIntermission, so the match summary got a cursor and
+the in-game scoreboard did not - and the in-game scoreboard is the other thing
+that takes the mouse. Holding +scores with cg_scoreboardMouse on therefore cost
+mouselook and gave nothing back to aim with: the pointer was moving, items were
+lighting up under it and playing their mouse-over sounds, and there was nothing
+on screen saying where it was. Which is a fair description of "broken with the
+mouse enabled".
+
+cgs.eventHandling is the condition either way - it is set exactly while cgame
+owns the input, by the intermission and by the +scores hold alike.
+=================
+*/
+static void CG_DrawCgameCursor(void) {
+	qhandle_t cursor;
+
+	if (cgs.eventHandling == CGAME_EVENT_NONE) {
+		return;
+	}
+
+	// Prefer whatever the loaded HUD declared in its assets block - that is
+	// the cursor the menus themselves use, and it is parsed into
+	// cgDC.Assets.cursor by CG_ParseMenu. cgs.media.cursor is the fallback.
+	cursor = cgDC.Assets.cursor ? cgDC.Assets.cursor : cgs.media.cursor;
+	if (!cursor) {
+		return;
+	}
+
+	CG_SetWidescreen(WIDESCREEN_STRETCH);
+	CG_DrawPic(cgs.cursorX - 16, cgs.cursorY - 16, 32, 32, cursor);
+}
+
+/*
+=================
 CG_DrawIntermission
 =================
 */
@@ -2220,17 +2257,7 @@ static void CG_DrawIntermission(void) {
 	no drawer. Same 32x32 at the same -16 offset the ui uses, so the hotspot
 	lands in the middle of the pointer and matches the menus.
 	*/
-	if (cgs.eventHandling != CGAME_EVENT_NONE) {
-		// Prefer whatever the loaded HUD declared in its assets block - that is
-		// the cursor the menus themselves use, and it is parsed into
-		// cgDC.Assets.cursor by CG_ParseMenu. cgs.media.cursor is the fallback.
-		qhandle_t cursor = cgDC.Assets.cursor ? cgDC.Assets.cursor : cgs.media.cursor;
-
-		if (cursor) {
-			CG_SetWidescreen(WIDESCREEN_STRETCH);
-			CG_DrawPic(cgs.cursorX - 16, cgs.cursorY - 16, 32, 32, cursor);
-		}
-	}
+	CG_DrawCgameCursor();
 }
 
 /*
@@ -2774,6 +2801,9 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 		CG_DrawCenterString();
 		CG_SetWidescreen(WIDESCREEN_STRETCH);
 	}
+
+	// last, so it is on top of the board it belongs to
+	CG_DrawCgameCursor();
 }
 
 /*
