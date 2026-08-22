@@ -1012,9 +1012,9 @@ typedef struct {
     qhandle_t redFlagModel;
     qhandle_t blueFlagModel;
     qhandle_t neutralFlagModel;
-    qhandle_t redFlagShader[3];
-    qhandle_t blueFlagShader[3];
-    qhandle_t flagShader[4];
+    /* [QL] redFlagShader/blueFlagShader/flagShader removed: they were filled
+       from icons/iconf_* names the pak does not contain and no code read them.
+       The flag art in use is flagShaders[] and flagStatusHandles[] below. */
 
     qhandle_t flagPoleModel;
     qhandle_t flagFlapModel;
@@ -1417,7 +1417,7 @@ typedef struct {
 
     // [QL] CTF flag-status HUD media (CG_DrawFlagStatus / CG_DrawFlagStatusBar).
     // flagStatusHandles indexed as [iconIndex + team*4] (icon 0=atbase,1=taken,2=dropped,3=neutral;
-    // team 0=neutral,1=red,2=blue). Distinct from the 4-entry flagShader[] above; base DAT_10a5fc2c.
+    // team 0=neutral,1=red,2=blue). base DAT_10a5fc2c.
     qhandle_t flagStatusHandles[12];
     qhandle_t flagStatusBarLeft;   // background left half-shader (DAT_10076354)
     qhandle_t flagStatusBarRight;  // background right half-shader (DAT_10076374)

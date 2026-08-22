@@ -340,11 +340,11 @@ typedef struct {
     It was stubbed to return 0, and the two callers both read that as "the
     directory is empty":
 
-      G_LoadArenas   scripts/*.arena - so level.arenas stayed empty and every
-                     map's longname, its per-map bot list and its gametype bits
-                     were unknown to the server.
-      G_LoadBots     scripts/*.bot   - so "addbot <name>" could not resolve a
-                     single bot by name.
+      G_LoadArenas   the .arena scripts - so level.arenas stayed empty and
+                     every map's longname, its per-map bot list and its
+                     gametype bits were unknown to the server.
+      G_LoadBots     the .bot scripts   - so "addbot <name>" could not resolve
+                     a single bot by name.
 
     The engine has always had FS_GetFileList; qagame simply had no way to call
     it. Also what the end-of-match arena vote needs to offer real maps.

@@ -1940,12 +1940,14 @@ static void CG_RegisterGraphics(void) {
     if (cgs.gametype == GT_CTF || cgs.gametype == GT_1FCTF || cgs.gametype == GT_HARVESTER) {
         cgs.media.redFlagModel = trap_R_RegisterModel("models/flags/r_flag.md3");
         cgs.media.blueFlagModel = trap_R_RegisterModel("models/flags/b_flag.md3");
-        cgs.media.redFlagShader[0] = trap_R_RegisterShaderNoMip("icons/iconf_red1");
-        cgs.media.redFlagShader[1] = trap_R_RegisterShaderNoMip("icons/iconf_red2");
-        cgs.media.redFlagShader[2] = trap_R_RegisterShaderNoMip("icons/iconf_red3");
-        cgs.media.blueFlagShader[0] = trap_R_RegisterShaderNoMip("icons/iconf_blu1");
-        cgs.media.blueFlagShader[1] = trap_R_RegisterShaderNoMip("icons/iconf_blu2");
-        cgs.media.blueFlagShader[2] = trap_R_RegisterShaderNoMip("icons/iconf_blu3");
+        /* [QL] The eight icons/iconf_* registrations that used to be here asked
+           for names the pak does not contain - a check against
+           docs/pak-manifest.txt turns up only menu/icons/iconf_red.png,
+           iconf_blue.png and iconf_ntrl.png, and no numbered variants at all.
+           RegisterShaderNoMip returns 0 for a name it cannot find and reports
+           nothing, so redFlagShader/blueFlagShader/flagShader were arrays of
+           zeros - and nothing anywhere read them either way. The flag status
+           art the HUD actually draws is flagStatusHandles, below. */
 
         cgs.media.flagPoleModel = trap_R_RegisterModel("models/flag2/flagpole.md3");
         cgs.media.flagFlapModel = trap_R_RegisterModel("models/flag2/flagflap3.md3");
@@ -1961,10 +1963,6 @@ static void CG_RegisterGraphics(void) {
 
     if (cgs.gametype == GT_1FCTF) {
         cgs.media.neutralFlagModel = trap_R_RegisterModel("models/flags/n_flag.md3");
-        cgs.media.flagShader[0] = trap_R_RegisterShaderNoMip("icons/iconf_neutral1");
-        cgs.media.flagShader[1] = trap_R_RegisterShaderNoMip("icons/iconf_red2");
-        cgs.media.flagShader[2] = trap_R_RegisterShaderNoMip("icons/iconf_blu2");
-        cgs.media.flagShader[3] = trap_R_RegisterShaderNoMip("icons/iconf_neutral3");
     }
 
     if (cgs.gametype == GT_OBELISK) {
@@ -2210,9 +2208,14 @@ static void CG_RegisterGraphics(void) {
     }
     cgs.media.sizeCursor = trap_R_RegisterShaderNoMip("ui/assets/sizecursor.png");
     cgs.media.selectCursor = trap_R_RegisterShaderNoMip("ui/assets/selectcursor.png");
-    cgs.media.flagShaders[0] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_in_base.tga");
-    cgs.media.flagShaders[1] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_capture.tga");
-    cgs.media.flagShaders[2] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_missing.tga");
+    /* [QL] CG_OneFlagStatus draws these for the neutral flag in 1FCTF. They were
+       registered from ui/assets/statusbar/, a directory the pak does not have -
+       there is no statusbar/ under ui/assets at all - so all three handles were
+       0 and the one-flag HUD indicator drew nothing. The art is the neutral set
+       of gfx/2d/flag_status, the same files flagStatusHandles[0..3] uses. */
+    cgs.media.flagShaders[0] = trap_R_RegisterShaderNoMip("gfx/2d/flag_status/flag_at_base");
+    cgs.media.flagShaders[1] = trap_R_RegisterShaderNoMip("gfx/2d/flag_status/flag_taken");
+    cgs.media.flagShaders[2] = trap_R_RegisterShaderNoMip("gfx/2d/flag_status/flag_dropped");
 
     // [QL] flag-status HUD icon set for CG_DrawFlagStatus / CG_DrawOneFlagStatus.
     // Indexed [icon + team*4]: team 0 neutral, 1 red, 2 blue; icon 0 at-base, 1 taken,

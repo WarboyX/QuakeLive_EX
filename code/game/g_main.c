@@ -2644,7 +2644,8 @@ was complete, correct and permanently switched off. Setting "nextmaps" by hand
 in a server config is still the way to choose the three arenas deliberately;
 this is what happens when nobody has.
 
-Picks up to three maps at random from maps/*.bsp, never the one just played.
+Picks up to three maps at random from the installed .bsp files, never the
+one just played.
 Written into the same infostring "nextmaps" holds, so there is one format and
 one parser rather than a second path through the same code.
 ==================

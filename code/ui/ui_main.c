@@ -1365,6 +1365,87 @@ static void UI_DrawEnemyPlayerModel(rectDef_t *rect) {
     UI_DrawPlayer(rect->x, rect->y, rect->w, rect->h, &enemyInfo, uiInfo.uiDC.realTime / 2);
 }
 
+/*
+[QL] Weapon icon shaders, indexed by weapon_t.
+
+Checked against docs/pak-manifest.txt, which is what that file is for:
+RE_RegisterShader returns 0 for a name the pak does not hold and says nothing
+about it, so a wrong name here is a blank space and no error anywhere.
+
+Three of them were wrong. The team-arena weapons do not follow the iconw_
+naming at all - the pak has icons/nailgun128, icons/proxmine and
+icons/chaingun128, and holds no iconw_nailgun, iconw_proxlauncher or
+iconw_chaingun - so the MODIFIED WEAPONS grid below asked for all three of
+those and drew nothing where they should have been. The HMG had no entry at
+any name; it is icons/weap_hmg.
+
+No extension: RE_RegisterShader resolves the shader script first and falls
+back through the image extensions, which is how the rest of the game names
+these.
+*/
+static const char *ui_weaponIconNames[WP_NUM_WEAPONS] = {
+    NULL,                      /* WP_NONE            */
+    "icons/iconw_gauntlet",    /* WP_GAUNTLET        */
+    "icons/iconw_machinegun",  /* WP_MACHINEGUN      */
+    "icons/iconw_shotgun",     /* WP_SHOTGUN         */
+    "icons/iconw_grenade",     /* WP_GRENADE_LAUNCHER*/
+    "icons/iconw_rocket",      /* WP_ROCKET_LAUNCHER */
+    "icons/iconw_lightning",   /* WP_LIGHTNING       */
+    "icons/iconw_railgun",     /* WP_RAILGUN         */
+    "icons/iconw_plasma",      /* WP_PLASMAGUN       */
+    "icons/iconw_bfg",         /* WP_BFG             */
+    "icons/iconw_grapple",     /* WP_GRAPPLING_HOOK  */
+    "icons/nailgun128",        /* WP_NAILGUN         */
+    "icons/proxmine",          /* WP_PROX_LAUNCHER   */
+    "icons/chaingun128",       /* WP_CHAINGUN        */
+    "icons/weap_hmg",          /* WP_HMG             */
+};
+
+/*
+[QL] Owner-draw UI_STARTING_WEAPONS (558) - the loadout row on the in-game
+match page.
+
+ingame_about.menu draws a "Starting Weapons" heading, a rule under it and then
+an item at "rect 35 163 16 16" carrying this owner-draw. Nothing in the switch
+handled it, so the heading and the rule were drawn over an empty row.
+
+A note here previously read that QL has no id-558 owner-draw and that
+UI_SERVER_SETTINGS draws the weapon grid instead. UI_SERVER_SETTINGS does draw
+a grid, but it is the MODIFIED WEAPONS one, in a different panel higher up the
+same page; the menu file asks for both, and the menu file is the evidence.
+
+The bit convention is the server's: bit (w - 1) for weapon w, which is what
+g_client.c tests when it grants them.
+*/
+static void UI_DrawStartingWeapons(rectDef_t *rect, vec4_t color) {
+    char buf[32];
+    int bits, w;
+    float x, size, step;
+
+    trap_GetConfigString(CS_STARTING_WEAPONS, buf, sizeof(buf));
+    bits = atoi(buf);
+    if (bits == 0) {
+        return;
+    }
+
+    size = (rect->h > 0.0f) ? rect->h : 16.0f;
+    step = size + 2.0f;
+    x = rect->x;
+
+    trap_R_SetColor(color);
+    for (w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++) {
+        if (!(bits & (1 << (w - 1)))) {
+            continue;
+        }
+        if (!ui_weaponIconNames[w]) {
+            continue;
+        }
+        UI_DrawHandlePic(x, rect->y, size, size, trap_R_RegisterShaderNoMip(ui_weaponIconNames[w]));
+        x += step;
+    }
+    trap_R_SetColor(NULL);
+}
+
 // [QL] Server settings / rules panel (owner-draw UI_SERVER_SETTINGS 557).
 // Ported byte-for-byte from uix86.dll UI_DrawServerStatus @0x10007030. QL draws the whole
 // rules panel from this single owner-draw: the gametype name, the active limit lines, the
@@ -1554,7 +1635,7 @@ static void UI_DrawServerSettings(rectDef_t *rect, float scale, vec4_t color, in
     if (col > 7) { col = 0; x += 110.0f; y -= 84.0f; }
 
     // "MODIFIED WEAPONS:" starting-weapon icon grid (bits 0..12 of CS_CUSTOM_SETTINGS). @0x10007c6a
-    // Each present weapon draws its 8x8 icon plus an "icons/modified.tga" overlay (4x4 at +6,+4);
+    // Each present weapon draws its 8x8 icon plus an "icons/modified" overlay (4x4 at +6,+4);
     // icons advance x by +12, and within the grid the shared counter wraps every 8 icons
     // (col=0, x-=96, y+=12). Shotgun/grenade/rocket/railgun/plasma are hidden when the g_gravity
     // value == 2 (the binary gates these on gravity, not gametype; reproduced verbatim).
@@ -1566,85 +1647,85 @@ static void UI_DrawServerSettings(rectDef_t *rect, float scale, vec4_t color, in
         y += 6.0f;                                              // @0x10007cd1
         trap_R_SetColor(color);
         if (custom & 1) {                                       // gauntlet @0x10007cdb; resets col to 1
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_gauntlet.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_GAUNTLET]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col = 1;
         }
         if (custom & 2) {                                       // machinegun @0x10007d8a
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_machinegun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_MACHINEGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 4) && gravity != 2) {                     // shotgun @0x10007e32
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_shotgun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_SHOTGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 8) && gravity != 2) {                     // grenade @0x10007ee6
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_grenade.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_GRENADE_LAUNCHER]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 0x10) && gravity != 2) {                  // rocket @0x10007f99
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_rocket.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_ROCKET_LAUNCHER]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if (custom & 0x20) {                                    // lightning @0x1000804c (no gravity gate)
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_lightning.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_LIGHTNING]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 0x40) && gravity != 2) {                  // railgun @0x100080f5
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_railgun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_RAILGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 0x80) && gravity != 2) {                  // plasma @0x100081a8; first icon with inner wrap
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_plasma.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_PLASMAGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x100) {                                   // bfg @0x1000827f
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_bfg.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_BFG]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x200) {                                   // grapple @0x10008350
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_grapple.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_GRAPPLING_HOOK]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x400) {                                   // nailgun @0x10008420
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_nailgun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_NAILGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x800) {                                   // proxlauncher @0x100084f0
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_proxlauncher.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_PROX_LAUNCHER]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x1000) {                                  // chaingun @0x100085c1 (no col reset on wrap)
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_chaingun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_CHAINGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
             if (col > 7) { y += 12.0f; x -= 96.0f; }
@@ -2098,6 +2179,9 @@ static void UI_OwnerDraw(float x, float y, float w, float h, float text_x, float
             break;
         case UI_CROSSHAIR_COLOR:
             UI_DrawCrosshairColor(&rect, color);
+            break;
+        case UI_STARTING_WEAPONS:
+            UI_DrawStartingWeapons(&rect, color);
             break;
         case UI_ADVERT:
             // [QL] Advertisement display - no-op in standalone build
