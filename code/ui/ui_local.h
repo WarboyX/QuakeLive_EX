@@ -66,6 +66,7 @@ extern vmCvar_t ui_dedicated;
 extern vmCvar_t ui_opponentName;
 extern vmCvar_t ui_debugMenus;
 extern vmCvar_t ui_menuFiles;
+extern vmCvar_t ui_teamSelectDebug;
 extern vmCvar_t ui_currentMap;
 extern vmCvar_t ui_currentNetMap;
 extern vmCvar_t ui_mapIndex;

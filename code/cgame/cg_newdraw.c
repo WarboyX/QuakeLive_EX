@@ -1488,15 +1488,28 @@ static void CG_DrawFollowPlayerName(rectDef_t *rect, float scale, vec4_t color, 
     }
 }
 
-// [QL] Team name display
-static void CG_DrawRedName(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    CG_OwnerDrawText(rect->x, rect->y, scale, color,
-        cgs.redTeam[0] ? cgs.redTeam : "RED", 0, 0, textStyle);
+static float CG_OwnerDrawAlignX(rectDef_t *rect, const char *text, float scale, int align);
+
+/*
+[QL] Team name display, honouring the item's alignment.
+
+These drew at rect->x unconditionally and ignored the align argument the
+owner-draw was given, which is why RED overlapped the left edge of its own score
+box while BLUE, on the other side of the centre, looked correct: the two labels
+are mirrored in the menu, so the one aligned to the right of its rect was the
+only one that showed the bug. CG_DrawTeamScore beside them already resolves this
+through CG_OwnerDrawAlignX; these now do the same.
+*/
+static void CG_DrawRedName(rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
+    const char *s = cgs.redTeam[0] ? cgs.redTeam : "RED";
+    CG_OwnerDrawText(CG_OwnerDrawAlignX(rect, s, scale, align), rect->y, scale, color,
+        s, 0, 0, textStyle);
 }
 
-static void CG_DrawBlueName(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    CG_OwnerDrawText(rect->x, rect->y, scale, color,
-        cgs.blueTeam[0] ? cgs.blueTeam : "BLUE", 0, 0, textStyle);
+static void CG_DrawBlueName(rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
+    const char *s = cgs.blueTeam[0] ? cgs.blueTeam : "BLUE";
+    CG_OwnerDrawText(CG_OwnerDrawAlignX(rect, s, scale, align), rect->y, scale, color,
+        s, 0, 0, textStyle);
 }
 
 // [QL] Team average ping
@@ -3443,10 +3456,10 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
             CG_DrawTeamScore(ownerDraw, &rect, scale, color, textStyle, align);
             break;
         case CG_RED_NAME:                   // 0x11d/0x137  CG_DrawTeamName
-            CG_DrawRedName(&rect, scale, color, textStyle);
+            CG_DrawRedName(&rect, scale, color, textStyle, align);
             break;
         case CG_BLUE_NAME:
-            CG_DrawBlueName(&rect, scale, color, textStyle);
+            CG_DrawBlueName(&rect, scale, color, textStyle, align);
             break;
         case CG_RED_OWNED_FLAGS:            // 0x11e  CG_DrawTeamAliveCount (DOM/AD)
             if (cgs.gametype == GT_DOMINATION || cgs.gametype == GT_AD) {

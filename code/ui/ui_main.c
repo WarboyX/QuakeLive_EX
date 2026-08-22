@@ -4968,8 +4968,59 @@ static void UI_PlaceTeamSelect(void) {
     the one nearest RETURN's x - the one actually in this column - supplies the
     row height and where the stack starts.
     */
+    /*
+    [QL] Dump what is actually on screen before placing anything.
+
+    This panel has been placed wrongly several times over, each time from a
+    different theory about which item to measure, and each theory looked right
+    in the source. The menus come out of pak00 and cannot be read here, so the
+    only way to stop guessing is to print what the loaded ones actually contain.
+    ui_teamSelectDebug 1 lists every visible menu and every item in them whose
+    label matches one of the anchors, with the rect and widescreen mode of each,
+    so a mismatch between two anchors in different menus - which would make
+    their rects incomparable - is visible rather than inferred.
+    */
+    if (ui_teamSelectDebug.integer) {
+        int mi, ii;
+
+        Com_Printf("teamSelectDebug: %i menus loaded\n", Menu_Count());
+        for (mi = 0; mi < Menu_Count(); mi++) {
+            menuDef_t* m = Menu_GetByIndex(mi);
+
+            if (!m || !(m->window.flags & WINDOW_VISIBLE)) {
+                continue;
+            }
+            Com_Printf("teamSelectDebug: menu '%s' rect %.1f,%.1f %.1fx%.1f ws %i\n",
+                       m->window.name ? m->window.name : "(unnamed)",
+                       m->window.rect.x, m->window.rect.y, m->window.rect.w, m->window.rect.h,
+                       m->widescreen);
+            for (ii = 0; ii < m->itemCount; ii++) {
+                itemDef_t* it = m->items[ii];
+
+                if (!it || !it->text) {
+                    continue;
+                }
+                if (Q_stricmp(it->text, "SPECTATE") && Q_stricmp(it->text, "RETURN to MATCH") &&
+                    Q_stricmp(it->text, "JOIN RED") && Q_stricmp(it->text, "JOIN BLUE")) {
+                    continue;
+                }
+                Com_Printf("teamSelectDebug:   item '%s' text '%s' rect %.1f,%.1f %.1fx%.1f "
+                           "ws %i wsFlag %i vis %i\n",
+                           it->window.name ? it->window.name : "(unnamed)", it->text,
+                           it->window.rect.x, it->window.rect.y,
+                           it->window.rect.w, it->window.rect.h,
+                           it->widescreen, it->widescreenFlag,
+                           (it->window.flags & WINDOW_VISIBLE) ? 1 : 0);
+            }
+        }
+    }
+
     ret = UI_FindItemByText("RETURN to MATCH");
     if (!ret || ret->window.rect.w <= 0.0f) {
+        if (ui_teamSelectDebug.integer) {
+            Com_Printf("teamSelectDebug: no 'RETURN to MATCH' anchor found - keeping the "
+                       ".menu file's own rects\n");
+        }
         return;     // keep the .menu file's own layout
     }
 
@@ -5037,6 +5088,19 @@ static void UI_PlaceTeamSelect(void) {
                          0.0f, rowH + gap, colW, rowH, spectate);
 
     Menu_UpdatePosition(menu);
+
+    if (ui_teamSelectDebug.integer) {
+        Com_Printf("teamSelectDebug: anchored col x %.1f w %.1f (from RETURN to MATCH), "
+                   "row y %.1f h %.1f (from SPECTATE in menu '%s')\n",
+                   colX, colW, colY, rowH,
+                   (spectate->parent && ((menuDef_t*)spectate->parent)->window.name)
+                       ? ((menuDef_t*)spectate->parent)->window.name : "(unnamed)");
+        Com_Printf("teamSelectDebug: RETURN in menu '%s'; panel rect %.1f,%.1f %.1fx%.1f ws %i\n",
+                   (ret->parent && ((menuDef_t*)ret->parent)->window.name)
+                       ? ((menuDef_t*)ret->parent)->window.name : "(unnamed)",
+                   menu->window.rect.x, menu->window.rect.y,
+                   menu->window.rect.w, menu->window.rect.h, menu->widescreen);
+    }
 }
 
 void _UI_Init(qboolean inGameLoad) {
@@ -5689,6 +5753,7 @@ vmCvar_t ui_netSource;
 vmCvar_t ui_serverFilterType;
 vmCvar_t ui_opponentName;
 vmCvar_t ui_menuFiles;
+vmCvar_t ui_teamSelectDebug;
 vmCvar_t ui_currentMap;
 vmCvar_t ui_currentNetMap;
 vmCvar_t ui_mapIndex;
@@ -5830,6 +5895,11 @@ static cvarTable_t cvarTable[] = {
     {&ui_redteam, "ui_redteam", "Pagans", CVAR_ARCHIVE},
     {&ui_netSource, "ui_netSource", "0", CVAR_ARCHIVE},
     {&ui_menuFiles, "ui_menuFiles", "ui/menus.txt", CVAR_ARCHIVE},
+    /* [QL] Print what UI_PlaceTeamSelect can actually see - every visible menu
+       and the anchor items in them, with rects and widescreen modes. The menus
+       are in pak00 and unreadable from the source tree, so this is the only way
+       to stop guessing which item to measure against. */
+    {&ui_teamSelectDebug, "ui_teamSelectDebug", "0", 0},
     {&ui_currentMap, "ui_currentMap", "0", CVAR_ARCHIVE},
     {&ui_currentNetMap, "ui_currentNetMap", "0", CVAR_ARCHIVE},
     {&ui_mapIndex, "ui_mapIndex", "0", CVAR_ARCHIVE},
