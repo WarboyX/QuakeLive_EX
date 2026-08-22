@@ -533,6 +533,8 @@ typedef struct {
     int             intermissionTime;
     qboolean        readyToExit;
     qboolean        votingEnded;            /* [QL] */
+    int      mapVoteWinner;   // [QL] resolved once when voting closes, -1 until then
+    int      mapVoteEndTime;  // [QL] server time the arena vote shuts; published to clients
     int             exitTime;
     vec3_t          intermission_origin;
     vec3_t          intermission_angle;
@@ -784,6 +786,10 @@ void CopyToBodyQue(gentity_t* ent);
 void ClientRespawn(gentity_t* ent);
 void BeginIntermission(void);
 void G_SendMapVoteTallies(void);
+void G_PublishMapVoteInfo(void);   // [QL] CS_ROTATIONMAPS: arenas + the close time
+void G_CheckMapVoteAllIn(void);    // [QL] shorten the window once every human has voted
+int  G_MapVoteWindowMsec(void);
+int  G_ResolveMapVote(void);
 const char* G_GetArenaInfoByMap(const char* map);  // [QL] scripts/arenas.txt lookup (g_bot.c)  // [QL] CS_ROTATIONVOTES, as the infostring the client parses
 void InitBodyQue(void);
 void ClientSpawn(gentity_t* ent);
@@ -1159,6 +1165,7 @@ extern vmCvar_t g_allowVote;
 extern vmCvar_t g_allowVoteMidGame;
 extern vmCvar_t g_allowSpecVote;
 extern vmCvar_t g_voteFlags;
+extern vmCvar_t g_endMapVoteTime;
 extern vmCvar_t g_voteDelay;
 extern vmCvar_t g_voteLimit;
 extern vmCvar_t g_teamAutoJoin;

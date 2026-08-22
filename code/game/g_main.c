@@ -75,6 +75,7 @@ vmCvar_t g_allowVote;
 vmCvar_t g_allowVoteMidGame;
 vmCvar_t g_allowSpecVote;
 vmCvar_t g_voteFlags;
+vmCvar_t g_endMapVoteTime;  // [QL] arena-vote window, seconds
 vmCvar_t g_voteDelay;
 vmCvar_t g_voteLimit;
 vmCvar_t g_teamAutoJoin;
@@ -705,6 +706,10 @@ static cvarTable_t gameCvarTable[] = {
     {&g_allowVoteMidGame, "g_allowVoteMidGame", "0", 0, 0, NULL},
     {&g_allowSpecVote, "g_allowSpecVote", "0", 0, 0, NULL},
     {&g_voteFlags, "g_voteFlags", "0", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, NULL},  // [QL] binary: 0x5
+    // [QL] how long the end-of-match arena vote stays open, in seconds. Clamped
+    // 10..120 by G_MapVoteWindowMsec and published to clients so the countdown
+    // on the match summary is the same clock the server exits on.
+    {&g_endMapVoteTime, "g_endMapVoteTime", "30", CVAR_ARCHIVE, 0, NULL},
     {&g_voteDelay, "g_voteDelay", "0", 0, 0, NULL},
     {&g_voteLimit, "g_voteLimit", "0", 0, 0, NULL},
 
@@ -2763,6 +2768,181 @@ void G_SendMapVoteTallies(void) {
 
 /*
 ==================
+G_MapVoteWindowMsec
+
+[QL] How long the arena vote is open, and the one number the client counts to.
+
+g_endMapVoteTime is the length of the voting window in seconds. It is published
+into CS_ROTATIONMAPS as "secs" so CG_DrawVoteTimer counts the same clock rather
+than assuming a value: a client and a server disagreeing about when voting shuts
+is the difference between "my vote did not count" and a bug.
+==================
+*/
+int G_MapVoteWindowMsec(void) {
+    int secs = g_endMapVoteTime.integer;
+
+    if (secs < 10) {
+        secs = 10;
+    } else if (secs > 120) {
+        secs = 120;
+    }
+    return secs * 1000;
+}
+
+/*
+==================
+G_ResolveMapVote
+
+[QL] Which arena won, with the tie broken once.
+
+Called when the voting window closes, not when the level exits - the tie-break
+is random, so resolving it twice can give two different answers, and the server
+would then announce one arena and load another.
+==================
+*/
+int G_ResolveMapVote(void) {
+    int tiedMaps[3];
+    int numTied = 0;
+    int bestVotes = 0;
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        if (level.intermissionMapNames[i][0]) {
+            if (level.intermissionMapVotes[i] > bestVotes) {
+                bestVotes = level.intermissionMapVotes[i];
+                numTied = 0;
+            }
+            if (level.intermissionMapVotes[i] == bestVotes) {
+                tiedMaps[numTied++] = i;
+            }
+        }
+    }
+    if (numTied > 0) {
+        return tiedMaps[rand() % numTied];
+    }
+    return 0;
+}
+
+/*
+==================
+G_PublishMapVoteInfo
+
+[QL] CS_ROTATIONMAPS: the three arenas and the moment voting shuts.
+
+"end" is an absolute server time, not a duration, so the client counts down to
+the same instant the server will act on - and stays right when the window is
+shortened underneath it because everybody has already voted. CG_DrawVoteTimer
+reads it and falls back to the old fixed 20 seconds if it is missing.
+==================
+*/
+void G_PublishMapVoteInfo(void) {
+    char info[MAX_INFO_STRING];
+    int i;
+
+    info[0] = '\0';
+    for (i = 0; i < 3; i++) {
+        if (level.intermissionMapNames[i][0]) {
+            char k[16];
+
+            Com_sprintf(k, sizeof(k), "map_%d", i);
+            Info_SetValueForKey(info, k, level.intermissionMapNames[i]);
+            Com_sprintf(k, sizeof(k), "title_%d", i);
+            Info_SetValueForKey(info, k,
+                level.intermissionMapTitles[i][0] ? level.intermissionMapTitles[i] : level.intermissionMapNames[i]);
+        }
+    }
+    Info_SetValueForKey(info, "end", va("%i", level.mapVoteEndTime));
+
+    trap_SetConfigstring(CS_ROTATIONMAPS, info);
+}
+
+/*
+==================
+G_CheckMapVoteAllIn
+
+[QL] Everybody has voted - stop making them wait out the clock.
+
+Called after each vote is recorded. Bots do not vote and are not counted;
+neither are clients who have not finished connecting. When every human on the
+server has picked something and there is more than MAP_VOTE_ALLIN_MSEC left,
+the window is pulled in to that, re-published so the countdown on every client
+follows it, and said out loud. Anyone who changes their mind still has those
+seconds to do it - which is why this shortens the window rather than closing it.
+==================
+*/
+#define MAP_VOTE_ALLIN_MSEC 10000
+
+void G_CheckMapVoteAllIn(void) {
+    int i, humans = 0, voted = 0;
+
+    if (level.mapVoteEndTime <= 0 || !level.intermissionMapNames[0][0]) {
+        return;
+    }
+
+    for (i = 0; i < level.maxclients; i++) {
+        if (level.clients[i].pers.connected != CON_CONNECTED) {
+            continue;
+        }
+        if (g_entities[i].r.svFlags & SVF_BOT) {
+            continue;
+        }
+        humans++;
+        if (level.clients[i].pers.lastMapVoteIndex > 0) {
+            voted++;
+        }
+    }
+
+    if (humans == 0 || voted < humans) {
+        return;
+    }
+    if (level.mapVoteEndTime - level.time <= MAP_VOTE_ALLIN_MSEC) {
+        return;  // already inside the window, nothing to shorten
+    }
+
+    level.mapVoteEndTime = level.time + MAP_VOTE_ALLIN_MSEC;
+    G_PublishMapVoteInfo();
+    trap_SendServerCommand(-1, va("print \"Everyone has voted - %i seconds left to change your mind.\n\"",
+                                  MAP_VOTE_ALLIN_MSEC / 1000));
+}
+
+/*
+==================
+G_AnnounceMapVoteResult
+
+[QL] Say what won before loading it.
+
+The vote used to close silently and the map simply changed, which from the
+outside is indistinguishable from the vote having been ignored. Announced on
+the centre print as well as the console, because the match summary is on screen
+and the console is not.
+==================
+*/
+static void G_AnnounceMapVoteResult(void) {
+    const char *name;
+    int i, total = 0;
+
+    level.mapVoteWinner = G_ResolveMapVote();
+
+    for (i = 0; i < 3; i++) {
+        total += level.intermissionMapVotes[i];
+    }
+
+    name = level.intermissionMapTitles[level.mapVoteWinner][0]
+           ? level.intermissionMapTitles[level.mapVoteWinner]
+           : level.intermissionMapNames[level.mapVoteWinner];
+
+    if (total > 0) {
+        trap_SendServerCommand(-1, va("print \"Voting closed - %s wins with %i of %i vote%s.\n\"",
+                                      name, level.intermissionMapVotes[level.mapVoteWinner],
+                                      total, total == 1 ? "" : "s"));
+    } else {
+        trap_SendServerCommand(-1, va("print \"Voting closed - nobody voted, %s chosen at random.\n\"", name));
+    }
+    trap_SendServerCommand(-1, va("cp \"Next arena: %s\n\"", name));
+}
+
+/*
+==================
 BeginIntermission
 ==================
 */
@@ -2804,7 +2984,6 @@ void BeginIntermission(void) {
         G_BuildNextMapsFromInstalledMaps(nextmaps, sizeof(nextmaps));
     }
     if (nextmaps[0]) {
-        char mapInfo[MAX_INFO_STRING];
 
         for (i = 0; i < 3; i++) {
             char key[16];
@@ -2825,20 +3004,10 @@ void BeginIntermission(void) {
             level.intermissionMapVotes[i] = 0;
         }
 
-        // Build map info configstring for clients
-        mapInfo[0] = '\0';
-        for (i = 0; i < 3; i++) {
-            if (level.intermissionMapNames[i][0]) {
-                char k[16];
-                Com_sprintf(k, sizeof(k), "map_%d", i);
-                Info_SetValueForKey(mapInfo, k, level.intermissionMapNames[i]);
-                Com_sprintf(k, sizeof(k), "title_%d", i);
-                Info_SetValueForKey(mapInfo, k,
-                    level.intermissionMapTitles[i][0] ? level.intermissionMapTitles[i] : level.intermissionMapNames[i]);
-            }
-        }
+        level.mapVoteWinner = -1;
+        level.mapVoteEndTime = level.time + G_MapVoteWindowMsec();
 
-        trap_SetConfigstring(CS_ROTATIONMAPS, mapInfo);
+        G_PublishMapVoteInfo();
         G_SendMapVoteTallies();
         level.voteTime = level.time;
         trap_SetConfigstring(CS_VOTE_TIME, va("%i", level.voteTime));
@@ -2913,27 +3082,11 @@ void ExitLevel(void) {
        the cvar, and only intermissionMapNames is filled when the three arenas
        were drawn from the installed maps instead. */
     if (level.intermissionMapNames[0][0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
-        // [QL] Random tie-breaking for map votes
-        {
-            int tiedMaps[3];
-            int numTied = 0;
-            int bestVotes = 0;
-
-            for ( i = 0; i < 3; i++ ) {
-                if ( level.intermissionMapNames[i][0] ) {
-                    if ( level.intermissionMapVotes[i] > bestVotes ) {
-                        bestVotes = level.intermissionMapVotes[i];
-                        numTied = 0;
-                    }
-                    if ( level.intermissionMapVotes[i] == bestVotes ) {
-                        tiedMaps[numTied++] = i;
-                    }
-                }
-            }
-            if ( numTied > 0 ) {
-                bestMap = tiedMaps[rand() % numTied];
-            }
-        }
+        /* [QL] The winner is whatever G_ResolveMapVote settled on when the
+           voting window closed, not a fresh count taken now. The tie-break is
+           random, so re-rolling it here would sometimes load a different arena
+           from the one the server just announced. */
+        bestMap = (level.mapVoteWinner >= 0) ? level.mapVoteWinner : G_ResolveMapVote();
 
         // Get current map name
         trap_GetServerinfo(serverinfo, sizeof(serverinfo));
@@ -3133,9 +3286,17 @@ void CheckIntermissionExit(void) {
     int readyMask;
     int timeout;
 
-    // [QL] Determine timeout: 20s if map voting active, 10s otherwise
+    /* [QL] When the summary ends.
+
+       With an arena vote running that is level.mapVoteEndTime - the deadline
+       published to every client in CS_ROTATIONMAPS, so the countdown on screen
+       and the moment the server acts are the same instant, including after
+       G_CheckMapVoteAllIn pulls it in. Without one, the old flat ten seconds. */
     if (level.intermissionMapNames[0][0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
-        timeout = 20000;
+        timeout = level.mapVoteEndTime - level.intermissionTime;
+        if (timeout < 1000) {
+            timeout = 1000;
+        }
     } else {
         timeout = 10000;
     }
@@ -3166,10 +3327,13 @@ void CheckIntermissionExit(void) {
         cl->ps.stats[STAT_CLIENTS_READY] = readyMask;
     }
 
-    // [QL] Mark voting ended after timeout expires
+    // [QL] Mark voting ended after timeout expires, and say what won.
     if (!level.votingEnded &&
         level.time >= level.intermissionTime + timeout) {
         level.votingEnded = qtrue;
+        if (level.intermissionMapNames[0][0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
+            G_AnnounceMapVoteResult();
+        }
     }
 
     // [QL] Hard exit after timeout + 3s minimum

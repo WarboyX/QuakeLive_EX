@@ -1759,16 +1759,40 @@ static void CG_DrawVoteGameType(rectDef_t *rect, float scale, vec4_t color, int 
 }
 
 
+/*
+[QL] Count down to the deadline the server published, not to a local guess.
+
+This used to assume a flat 20 seconds from cgs.voteTime. The server picks the
+window from g_endMapVoteTime and can pull it in once every human has voted, so
+a hardcoded 20 meant the number on screen and the moment voting actually shut
+were two different things - which is the difference between "my vote did not
+count" and a bug. CS_ROTATIONMAPS carries "end" as an absolute server time;
+20 seconds from the start is the fallback for a server that does not send it.
+
+Nothing to count for if there are no arenas on offer, either.
+*/
 static void CG_DrawVoteTimer(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    if (cgs.voteTime) {
-        int sec = (cgs.voteTime + 20000 - cg.time) / 1000;
-        if (sec > 0) {
-            CG_OwnerDrawText(rect->x, rect->y, scale, color,
-                va("Voting ends in %d seconds.", sec), 0, 0, textStyle);
-        } else {
-            CG_OwnerDrawText(rect->x, rect->y, scale, color,
-                "Voting has ended.", 0, 0, textStyle);
-        }
+    const char *info = CG_ConfigString(CS_ROTATIONMAPS);
+    const char *val;
+    int end, sec;
+
+    if (!cgs.voteTime) {
+        return;
+    }
+    if (!Info_ValueForKey(info, "map_0")[0]) {
+        return;
+    }
+
+    val = Info_ValueForKey(info, "end");
+    end = val[0] ? atoi(val) : (cgs.voteTime + 20000);
+
+    sec = (end - cg.time + 999) / 1000;
+    if (sec > 0) {
+        CG_OwnerDrawText(rect->x, rect->y, scale, color,
+            va("Voting ends in %d second%s.", sec, sec == 1 ? "" : "s"), 0, 0, textStyle);
+    } else {
+        CG_OwnerDrawText(rect->x, rect->y, scale, color,
+            "Voting has ended.", 0, 0, textStyle);
     }
 }
 

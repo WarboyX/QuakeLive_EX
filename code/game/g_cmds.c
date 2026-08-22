@@ -1827,8 +1827,11 @@ static void Cmd_IntermissionVote_f(gentity_t *ent) {
     trap_Argv(1, msg, sizeof(msg));
     choice = atoi(msg);
 
-    // 20-second voting window
-    if (level.time - level.voteTime >= 20000) {
+    /* [QL] The window the server published, not a second copy of the number.
+       level.mapVoteEndTime is what CS_ROTATIONMAPS carries to every client and
+       what CheckIntermissionExit acts on, so a vote accepted here is a vote the
+       countdown on screen still had time left for. */
+    if (level.time >= level.mapVoteEndTime) {
         trap_SendServerCommand(clientNum, "print \"Voting time has expired.\n\"");
         return;
     }
@@ -1876,6 +1879,9 @@ static void Cmd_IntermissionVote_f(gentity_t *ent) {
 
     // Update map vote counts configstring
     G_SendMapVoteTallies();
+
+    // [QL] everyone in? then stop making them wait out the clock
+    G_CheckMapVoteAllIn();
 }
 
 /*
