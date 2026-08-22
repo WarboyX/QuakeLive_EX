@@ -54,7 +54,7 @@ static void (*vendoredShutdown)(int code);
 ===============
 VK_Shutdown
 
-The second arity mismatch, and this one had a visible symptom. This tree's
+The second arity mismatch, and both halves of it have now bitten. This tree's
 refexport_t entry is Shutdown(qboolean destroyWindow); Quake3e's takes a
 refShutdownCode_t, where 0 is REF_KEEP_CONTEXT, 1 REF_KEEP_WINDOW, 2
 REF_DESTROY_WINDOW and 3 REF_UNLOAD_DLL.
@@ -65,13 +65,43 @@ engine unloaded the module out from under it, and the next renderer opened a
 second window beside the orphaned first. That is the reported "cl_renderer
 vulkan + vid_restart opens a new window and fails to close the original".
 
-CL_ShutdownRef unloads the library immediately afterwards, unconditionally, so
-REF_UNLOAD_DLL is the honest translation regardless of what it passes.
+The fix for that forced REF_UNLOAD_DLL unconditionally, reasoning that
+"CL_ShutdownRef unloads the library immediately afterwards". True of
+CL_ShutdownRef - and there is a second caller it did not account for.
+
+  CL_ShutdownAll(shutdownRef = qfalse)  ->  re.Shutdown(qfalse)
+
+with the comment "don't destroy window or context", and it does NOT unload the
+library. That is the path CL_FlushMemory takes, which is CL_MapLoading,
+CL_Connect_f, CL_PlayDemo_f and CL_ParseGamestate - in other words, every map
+change. Escalated to REF_UNLOAD_DLL it destroyed the Vulkan device and
+instance, destroyed SDL_window, called SDL_Vulkan_UnloadLibrary and
+SDL_QuitSubSystem(SDL_INIT_VIDEO) - and then the engine, believing it still
+had a live renderer in a still-loaded module, went straight into
+CL_StartHunkUsers -> R_Init on top of it. Signal 11, immediately after
+VKimp_Init's IN_Init and before vk_initialize printed anything:
+
+    ----- R_Init -----
+    ^1VKimp_Init()
+    ...
+    ------- Input Initialization -------
+    ----- Client Shutdown (Received signal 11) -----
+
+renderergl2 takes the qboolean directly and keeps its window on qfalse, which
+is why the same map change is survivable there and this only ever showed up
+under cl_renderer vulkan.
+
+So: honour the argument. qtrue is CL_ShutdownRef, which unloads the library
+next, and REF_UNLOAD_DLL is right. qfalse means what it says, and
+REF_KEEP_CONTEXT is the code for it - RE_Shutdown then drops the textures and
+the world resources, leaves the device, instance and window standing, and
+leaves glConfig.vidWidth set so InitOpenGL takes its keep-context path instead
+of building a second Vulkan out from under the first.
 ===============
 */
 static void VK_Shutdown(qboolean destroyWindow) {
     if (vendoredShutdown) {
-        vendoredShutdown(3 /* REF_UNLOAD_DLL */);
+        vendoredShutdown(destroyWindow ? 3 /* REF_UNLOAD_DLL */ : 0 /* REF_KEEP_CONTEXT */);
     }
 }
 
