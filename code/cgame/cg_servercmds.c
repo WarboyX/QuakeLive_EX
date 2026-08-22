@@ -855,7 +855,18 @@ void CG_ParseServerinfo(void) {
     } else {
         trap_Cvar_Set("ui_mapVotingDisabled", "0");
     }
-    if ((cgs.voteFlags & VF_ENDMAP_VOTING) || cgs.localServer) {
+    /*
+    [QL] A listen server is not a reason to hide the arena vote.
+
+    ui_endMapVotingDisabled hides every item in endgamevote.menu - the frame,
+    the three level shots, the names, the tallies, the timer - so with
+    cgs.localServer in this test the whole match-summary vote panel was blank
+    for anyone hosting their own game, which is how most people run this build.
+    g_voteFlags is the switch that is supposed to decide this, and qagame
+    already honours it on its side; the server being local has nothing to do
+    with it.
+    */
+    if (cgs.voteFlags & VF_ENDMAP_VOTING) {
         trap_Cvar_Set("ui_endMapVotingDisabled", "1");
     } else {
         trap_Cvar_Set("ui_endMapVotingDisabled", "0");
@@ -1258,8 +1269,14 @@ static void CG_ConfigStringModified(void) {
     } else if (num == CS_VOTE_TIME) {
         cgs.voteTime = atoi(str);
         cgs.voteModified = qtrue;
-        // [QL] set ui_voteactive cvar for menu visibility
-        if (cgs.voteTime && !cgs.localServer) {
+        /* [QL] set ui_voteactive cvar for menu visibility.
+
+           Same fault as ui_endMapVotingDisabled above: ui_voteactive is what
+           shows the three "Vote" buttons (hideCvar { "0" }), and forcing it to
+           0 on a listen server left the panel drawn and unvotable. The server
+           tells us a vote is open by setting CS_VOTE_TIME; that is the whole
+           condition. */
+        if (cgs.voteTime) {
             trap_Cvar_Set("ui_voteactive", "1");
         } else {
             trap_Cvar_Set("ui_voteactive", "0");

@@ -2030,6 +2030,42 @@ static void CG_ScoreboardPainted(const menuDef_t *menu) {
 			  cg.showScores, cg.warmup);
 }
 
+/*
+[QL] Hand the scoreboard to the input path, or take it back.
+
+cgame paints its scoreboard with a bare Menu_Paint, which draws a menuDef
+without putting it on the menu stack. Everything on the input side asks the
+opposite question: Display_CaptureItem, Display_MouseMove and
+Menu_HandleMouseMove all skip any menu without WINDOW_VISIBLE, and
+Display_HandleKey falls back to Menu_GetFocused, which is looking at the same
+flag. Nothing in cgame ever set it.
+
+So the board was painted and inert. That is one cause under both of the
+symptoms here: the team lists could not be scrolled - no wheel, no scrollbar,
+no drag, because Item_ListBox_HandleKey needs the item to have focus and focus
+is only ever granted through Menu_HandleMouseMove - and at intermission the
+match summary's "Vote for Next Arena" panels could not be clicked, for exactly
+the same reason.
+
+Set on the menu being painted, cleared on the other one and on every path that
+declines to paint, so a board that is not on screen cannot swallow a click.
+*/
+static void CG_ScoreboardSetVisible(menuDef_t *menu, qboolean visible) {
+	if (!menu) {
+		return;
+	}
+	if (visible) {
+		menu->window.flags |= WINDOW_VISIBLE;
+	} else {
+		menu->window.flags &= ~(WINDOW_VISIBLE | WINDOW_HASFOCUS | WINDOW_MOUSEOVER);
+	}
+}
+
+static void CG_ScoreboardHidden(void) {
+	CG_ScoreboardSetVisible(menuScoreboard, qfalse);
+	CG_ScoreboardSetVisible(menuEndScoreboard, qfalse);
+}
+
 static qboolean CG_DrawScoreboardMenu(void) {
 	static qboolean firstTime = qtrue;
 
@@ -2052,6 +2088,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 		keeps the original behaviour and removes the trap.
 		*/
 		CG_ScoreboardBlocked("cl_paused is 1 and showScores is 0");
+		CG_ScoreboardHidden();
 		cg.deferredPlayerLoading = 0;
 		firstTime = qtrue;
 		return qfalse;
@@ -2060,6 +2097,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 	// don't draw scoreboard during death while warmup up
 	if (cg.warmup && !cg.showScores) {
 		CG_ScoreboardBlocked("warmup and showScores is 0");
+		CG_ScoreboardHidden();
 		return qfalse;
 	}
 
@@ -2080,6 +2118,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 		if (!CG_FadeColor(cg.scoreFadeTime, FADE_TIME)) {
 			// next time scoreboard comes up, don't print killer
 			CG_ScoreboardBlocked("showScores is 0, not dead, not intermission, fade expired");
+			CG_ScoreboardHidden();
 			cg.deferredPlayerLoading = 0;
 			cg.killerName[0] = 0;
 			firstTime = qtrue;
@@ -2108,6 +2147,19 @@ static qboolean CG_DrawScoreboardMenu(void) {
 				cg.scoreboardScrolled = qfalse;
 				firstTime = qfalse;
 			}
+			/*
+			The board being painted is the one the mouse and the keyboard are
+			allowed to reach; the other one must not catch a click.
+
+			Only while cgame actually holds the mouse, though. WINDOW_VISIBLE is
+			also what Menu_PaintAll goes by, and that runs for the HUD a few
+			lines further down - a board left flagged visible after the fade
+			following a respawn would be painted a second time over the HUD.
+			With no mouse there is no input to route, so the flag has no work to
+			do then anyway.
+			*/
+			CG_ScoreboardSetVisible(activeMenu == menuEndScoreboard ? menuScoreboard : menuEndScoreboard, qfalse);
+			CG_ScoreboardSetVisible(activeMenu, cgs.eventHandling != CGAME_EVENT_NONE);
 			CG_RefreshScoreboard();
 			CG_SetScoreSelection(NULL);
 			CG_TrackLocalPlayerOnScoreboard(activeMenu);

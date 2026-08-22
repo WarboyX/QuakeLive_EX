@@ -811,8 +811,27 @@ qboolean Rect_ContainsPoint(rectDef_t* rect, float x, float y) {
     return qfalse;
 }
 
-// [QL] Widescreen-aware hit-testing: adjusts rect to match where it was
-// actually rendered (shifted/scaled into 4:3 box) before testing the point.
+/*
+[QL] Widescreen-aware hit-testing: adjusts rect to match where it was
+actually rendered (shifted/scaled into 4:3 box) before testing the point.
+
+Everything in this file that tests the cursor against an item now goes through
+here. It used to be split: Menu_HandleMouseMove and Display_CaptureItem used
+this, while the handlers they hand the item to - Menu_HandleKey's K_MOUSE1
+branch, Item_ListBox_HandleKey, Item_ListBox_OverLB, the slider, the yes/no
+and multi handlers, Item_MouseEnter, Item_SetFocus - all tested the raw rect.
+
+On a 4:3 display the two agree and nothing shows. On anything wider they do
+not, and the result is an item that lights up under the cursor and then does
+nothing when clicked, because the code that decided it had focus and the code
+that decided whether the click landed on it were working in different
+coordinate spaces. That is the same fault that made the in-game team buttons
+dead, still present in every other menu: the scoreboard list boxes could not
+be scrolled and the match summary's vote buttons could not be pressed.
+
+widescreen == WIDESCREEN_STRETCH, or a 4:3 mode, is the identity mapping, so
+this changes nothing for those cases.
+*/
 static qboolean Rect_ContainsWidescreenPoint(const rectDef_t *rectIn, float x, float y, int widescreen) {
     rectDef_t rect;
     float aspect, width43, diff, diff640, newXScale;
@@ -845,6 +864,36 @@ static qboolean Rect_ContainsWidescreenPoint(const rectDef_t *rectIn, float x, f
     }
 
     return Rect_ContainsPoint(&rect, x, y);
+}
+
+/*
+[QL] The widescreen mode an item is actually painted in.
+
+item->widescreen means nothing on its own: Item_Paint only reads it when
+item->widescreenFlag says the item declared one, and otherwise leaves the
+parent menu's mode in force. Every hit test in this file passed the bare
+item->widescreen, which is 0 - WIDESCREEN_STRETCH - for the great majority of
+items, because almost nothing declares its own.
+
+So on a widescreen display an item inside a "widescreen WIDESCREEN_CENTER"
+menu - which is what Quake Live's scoreboards, the match summary and the
+in-game menu all are - was drawn in the centred, letterboxed space and
+hit-tested in the stretched one. The two disagree by half the extra width. Wide
+enough items still caught a click near their middle, narrow ones never did, and
+which was which changed with the display's aspect ratio: exactly the "works at
+1920x1080, dead at 3840x2160" shape this kept coming back as.
+*/
+static int Item_Widescreen(const itemDef_t* item) {
+    const menuDef_t* parent;
+
+    if (!item) {
+        return WIDESCREEN_STRETCH;
+    }
+    if (item->widescreenFlag) {
+        return item->widescreen;
+    }
+    parent = (const menuDef_t*)item->parent;
+    return parent ? parent->widescreen : WIDESCREEN_STRETCH;
 }
 
 int Menu_ItemsMatchingGroup(menuDef_t* menu, const char* name) {
@@ -1521,7 +1570,7 @@ qboolean Item_SetFocus(itemDef_t* item, float x, float y) {
         rectDef_t r;
         r = item->textRect;
         r.y -= r.h;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             item->window.flags |= WINDOW_HASFOCUS;
             if (item->focusSound) {
                 sfx = &item->focusSound;
@@ -1692,7 +1741,7 @@ int Item_Slider_OverSlider(itemDef_t* item, float x, float y) {
     r.w = SLIDER_THUMB_WIDTH;
     r.h = SLIDER_THUMB_HEIGHT;
 
-    if (Rect_ContainsPoint(&r, x, y)) {
+    if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
         return WINDOW_LB_THUMB;
     }
     return 0;
@@ -1707,28 +1756,28 @@ int Item_ListBox_OverLB(itemDef_t* item, float x, float y) {
         r.x = item->window.rect.x;
         r.y = item->window.rect.y + item->window.rect.h - SCROLLBAR_SIZE;
         r.h = r.w = SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_LEFTARROW;
         }
         // check if on right arrow
         r.x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_RIGHTARROW;
         }
         // check if on thumb
         thumbstart = Item_ListBox_ThumbPosition(item);
         r.x = thumbstart;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_THUMB;
         }
         r.x = item->window.rect.x + SCROLLBAR_SIZE;
         r.w = thumbstart - r.x;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_PGUP;
         }
         r.x = thumbstart + SCROLLBAR_SIZE;
         r.w = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_PGDN;
         }
     } else {
@@ -1740,26 +1789,26 @@ int Item_ListBox_OverLB(itemDef_t* item, float x, float y) {
         }
         r.y = item->window.rect.y;
         r.h = r.w = SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_LEFTARROW;
         }
         r.y = item->window.rect.y + item->window.rect.h - SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_RIGHTARROW;
         }
         thumbstart = Item_ListBox_ThumbPosition(item);
         r.y = thumbstart;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_THUMB;
         }
         r.y = item->window.rect.y + SCROLLBAR_SIZE;
         r.h = thumbstart - r.y;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_PGUP;
         }
         r.y = thumbstart + SCROLLBAR_SIZE;
         r.h = item->window.rect.y + item->window.rect.h - SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_PGDN;
         }
     }
@@ -1781,7 +1830,7 @@ void Item_ListBox_MouseEnter(itemDef_t* item, float x, float y) {
                 r.y = item->window.rect.y;
                 r.h = item->window.rect.h - SCROLLBAR_SIZE;
                 r.w = item->window.rect.w - listPtr->drawPadding;
-                if (Rect_ContainsPoint(&r, x, y)) {
+                if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
                     listPtr->cursorPos = (int)((x - r.x) / listPtr->elementWidth) + listPtr->startPos;
                     if (listPtr->cursorPos >= listPtr->endPos) {
                         listPtr->cursorPos = listPtr->endPos;
@@ -1796,7 +1845,7 @@ void Item_ListBox_MouseEnter(itemDef_t* item, float x, float y) {
         r.y = item->window.rect.y;
         r.w = item->window.rect.w - SCROLLBAR_SIZE;
         r.h = item->window.rect.h - listPtr->drawPadding;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             listPtr->cursorPos = (int)((y - 2 - r.y) / listPtr->elementHeight) + listPtr->startPos;
             if (listPtr->cursorPos > listPtr->endPos) {
                 listPtr->cursorPos = listPtr->endPos;
@@ -1839,7 +1888,7 @@ void Item_MouseEnter(itemDef_t* item, float x, float y) {
             return;
         }
 
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             if (!(item->window.flags & WINDOW_MOUSEOVERTEXT)) {
                 Item_RunScript(item, item->mouseEnterText);
                 item->window.flags |= WINDOW_MOUSEOVERTEXT;
@@ -1882,7 +1931,7 @@ void Item_MouseLeave(itemDef_t* item) {
 itemDef_t* Menu_HitTest(menuDef_t* menu, float x, float y) {
     int i;
     for (i = 0; i < menu->itemCount; i++) {
-        if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, menu->items[i]->widescreen)) {
+        if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, Item_Widescreen(menu->items[i]))) {
             return menu->items[i];
         }
     }
@@ -1911,7 +1960,7 @@ qboolean Item_ListBox_HandleKey(itemDef_t* item, int key, qboolean down, qboolea
     int count = DC->feederCount(item->special);
     int max, viewmax;
 
-    if (force || (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) && item->window.flags & WINDOW_HASFOCUS)) {
+    if (force || (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) && item->window.flags & WINDOW_HASFOCUS)) {
         max = Item_ListBox_MaxScroll(item);
         if (item->window.flags & WINDOW_HORIZONTAL) {
             viewmax = (item->window.rect.w / listPtr->elementWidth);
@@ -2127,7 +2176,7 @@ qboolean Item_YesNo_HandleKey(itemDef_t* item, int key) {
     // [QL] Item_YesNo_HandleKey 0x100180a0: single gated condition over the mouse
     // buttons and ENTER only; no UI_SelectForKey arrow branch.
     if (item->cvar &&
-        Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+        Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) &&
         (item->window.flags & WINDOW_HASFOCUS) &&
         (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3)) {
         DC->setCVar(item->cvar, va("%i", !DC->getCVarValue(item->cvar)));
@@ -2289,7 +2338,7 @@ qboolean Item_Multi_HandleKey(itemDef_t* item, int key) {
     // stepping, no videoMode/r_mode special case).
     multiDef_t* multiPtr = (multiDef_t*)item->typeData;
     if (multiPtr && item->cvar &&
-        Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+        Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) &&
         (item->window.flags & WINDOW_HASFOCUS) &&
         (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3)) {
         int current = Item_Multi_FindCvarByValue(item) + 1;
@@ -2621,7 +2670,7 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
     if (item->cvar) {
         if (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3) {
             editFieldDef_t* editDef = item->typeData;
-            if (editDef && Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) && item->window.flags & WINDOW_HASFOCUS) {
+            if (editDef && Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) && item->window.flags & WINDOW_HASFOCUS) {
                 rectDef_t testRect;
                 width = SLIDER_WIDTH;
                 if (item->text) {
@@ -2637,7 +2686,7 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
                 // DC->Print("slider x: %f\n", testRect.x);
                 testRect.w = (SLIDER_WIDTH + (float)SLIDER_THUMB_WIDTH / 2);
                 // DC->Print("slider w: %f\n", testRect.w);
-                if (Rect_ContainsPoint(&testRect, DC->cursorx, DC->cursory)) {
+                if (Rect_ContainsWidescreenPoint(&testRect, DC->cursorx, DC->cursory, Item_Widescreen(item))) {
                     work = DC->cursorx - x;
                     value = work / width;
                     value *= (editDef->maxVal - editDef->minVal);
@@ -2682,7 +2731,7 @@ int Item_Combo_GetIndex(itemDef_t* item) {
 qboolean Item_Combo_HandleKey(itemDef_t* item, int key) {
     multiDef_t* multiPtr = (multiDef_t*)item->typeData;
     if (multiPtr && item->cvar) {
-        if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+        if (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) &&
             (item->window.flags & WINDOW_HASFOCUS) &&
             (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3 || key == K_ENTER)) {
             int index = Item_Combo_GetIndex(item) + 1;
@@ -3055,17 +3104,17 @@ void Menu_HandleKey(menuDef_t* menu, int key, qboolean down) {
         case K_MOUSE2:
             if (item) {
                 if (item->type == ITEM_TYPE_TEXT) {
-                    if (Rect_ContainsPoint(Item_CorrectedTextRect(item), DC->cursorx, DC->cursory)) {
+                    if (Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(item), DC->cursorx, DC->cursory, Item_Widescreen(item))) {
                         Item_Action(item);
                     }
                 } else if (item->type == ITEM_TYPE_EDITFIELD || item->type == ITEM_TYPE_NUMERICFIELD) {
-                    if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory)) {
+                    if (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item))) {
                         item->cursorPos = 0;
                         g_editingField = qtrue;
                         g_editItem = item;
                     }
                 } else {
-                    if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory)) {
+                    if (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item))) {
                         Item_Action(item);
                     }
                 }
@@ -3945,7 +3994,7 @@ qboolean Item_Bind_HandleKey(itemDef_t* item, int key, qboolean down) {
     int i;
 
     if (!g_waitingForKey) {
-        if (down && ((key == K_MOUSE1 && Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory)) || key == K_ENTER || key == K_KP_ENTER || key == K_JOY1 || key == K_JOY2 || key == K_JOY3 || key == K_JOY4)) {
+        if (down && ((key == K_MOUSE1 && Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item))) || key == K_ENTER || key == K_KP_ENTER || key == K_JOY1 || key == K_JOY2 || key == K_JOY3 || key == K_JOY4)) {
             g_waitingForKey = qtrue;
             g_bindItem = item;
         }
@@ -4921,11 +4970,11 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
                 continue;
             }
 
-            if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, menu->items[i]->widescreen)) {
+            if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, Item_Widescreen(menu->items[i]))) {
                 if (pass == 1) {
                     overItem = menu->items[i];
                     if (overItem->type == ITEM_TYPE_TEXT && overItem->text) {
-                        if (!Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(overItem), x, y, overItem->widescreen)) {
+                        if (!Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(overItem), x, y, Item_Widescreen(overItem))) {
                             continue;
                         }
                     }
@@ -6181,7 +6230,7 @@ qboolean ItemParse_widescreen(itemDef_t* item, int handle) {
     }
 
     if (item->widescreen < WIDESCREEN_STRETCH || item->widescreen > WIDESCREEN_RIGHT) {
-        PC_SourceError(handle, "Invalid widescreen value %d", item->widescreen);
+        PC_SourceError(handle, "Invalid widescreen value %d", Item_Widescreen(item));
         item->widescreen = WIDESCREEN_STRETCH;
     }
 
@@ -7185,7 +7234,7 @@ void* Display_CaptureItem(int x, int y) {
             if (item->window.flags & WINDOW_DECORATION) {
                 continue;   // decorations are painted, not pressed
             }
-            if (Rect_ContainsWidescreenPoint(&item->window.rect, x, y, item->widescreen)) {
+            if (Rect_ContainsWidescreenPoint(&item->window.rect, x, y, Item_Widescreen(item))) {
                 return &Menus[i];
             }
         }
@@ -7303,10 +7352,10 @@ static qboolean Menu_OverActiveItem(menuDef_t* menu, float x, float y) {
                     continue;
                 }
 
-                if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, menu->items[i]->widescreen)) {
+                if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, Item_Widescreen(menu->items[i]))) {
                     itemDef_t* overItem = menu->items[i];
                     if (overItem->type == ITEM_TYPE_TEXT && overItem->text) {
-                        if (Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(overItem), x, y, overItem->widescreen)) {
+                        if (Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(overItem), x, y, Item_Widescreen(overItem))) {
                             return qtrue;
                         } else {
                             continue;

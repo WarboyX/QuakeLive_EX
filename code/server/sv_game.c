@@ -1116,6 +1116,9 @@ static void SV_PopulateGameImports(void) {
        never resolve a location, so the team overlay reads ALIVE for everyone. */
     sv_gameImports.trap_InPVS                  = SV_inPVS;
     sv_gameImports.trap_InPVSIgnorePortals     = SV_inPVSIgnorePortals;
+    /* [QL] and the same for the file lister - see gameImport_t. Stubbed to 0 it
+       left G_LoadArenas and G_LoadBots believing scripts/ was empty. */
+    sv_gameImports.trap_FS_GetFileList         = FS_GetFileList;
 }
 
 //==============================================

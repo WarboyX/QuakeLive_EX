@@ -1812,14 +1812,15 @@ static void Cmd_IntermissionVote_f(gentity_t *ent) {
     int clientNum = ent - g_entities;
     char msg[64];
     int choice;
-    char nextmaps[MAX_STRING_CHARS];
 
     if (g_voteFlags.integer & VF_ENDMAP_VOTING) {
         return;
     }
 
-    trap_Cvar_VariableStringBuffer("nextmaps", nextmaps, sizeof(nextmaps));
-    if (!nextmaps[0]) {
+    /* [QL] The three arenas BeginIntermission published, not the "nextmaps"
+       cvar - they agree when an admin set it, and only these are filled when
+       the candidates were drawn from the installed maps instead. */
+    if (!level.intermissionMapNames[0][0]) {
         return;
     }
 
@@ -1874,11 +1875,7 @@ static void Cmd_IntermissionVote_f(gentity_t *ent) {
                : level.intermissionMapNames[choice - 1]));
 
     // Update map vote counts configstring
-    trap_SetConfigstring(CS_ROTATIONVOTES,
-        va("%d %d %d",
-           level.intermissionMapVotes[0],
-           level.intermissionMapVotes[1],
-           level.intermissionMapVotes[2]));
+    G_SendMapVoteTallies();
 }
 
 /*

@@ -2632,6 +2632,109 @@ void FindIntermissionPoint(void) {
 
 /*
 ==================
+G_BuildNextMapsFromInstalledMaps
+
+[QL] Give the end-of-match arena vote something to vote on.
+
+The whole map-vote path - Cmd_IntermissionVote_f, the tally configstring, the
+tie-break in ExitLevel, the three panels the match summary draws - is gated on
+a "nextmaps" cvar that nothing in this repository has ever set. Quake Live's
+own servers filled it from their rotation; ours has no rotation, so the feature
+was complete, correct and permanently switched off. Setting "nextmaps" by hand
+in a server config is still the way to choose the three arenas deliberately;
+this is what happens when nobody has.
+
+Picks up to three maps at random from maps/*.bsp, never the one just played.
+Written into the same infostring "nextmaps" holds, so there is one format and
+one parser rather than a second path through the same code.
+==================
+*/
+static void G_BuildNextMapsFromInstalledMaps(char *out, int outSize) {
+    char list[8192];
+    char current[MAX_QPATH];
+    char serverinfo[MAX_INFO_STRING];
+    const char *names[256];
+    int count, i, n = 0, picked = 0;
+    char *p;
+
+    out[0] = '\0';
+
+    trap_GetServerinfo(serverinfo, sizeof(serverinfo));
+    Q_strncpyz(current, Info_ValueForKey(serverinfo, "mapname"), sizeof(current));
+
+    count = trap_FS_GetFileList("maps", ".bsp", list, sizeof(list));
+    if (count <= 0) {
+        return;
+    }
+
+    // FS_GetFileList packs the names back to back, each NUL terminated.
+    p = list;
+    for (i = 0; i < count && n < (int)ARRAY_LEN(names); i++) {
+        int len = strlen(p);
+
+        if (len > 4 && !Q_stricmp(p + len - 4, ".bsp")) {
+            p[len - 4] = '\0';
+        }
+        if (p[0] && Q_stricmp(p, current) != 0) {
+            names[n++] = p;
+        }
+        p += len + 1;
+    }
+    if (n <= 0) {
+        return;
+    }
+
+    // Fisher-Yates over the candidates, then take the first three. Shuffling
+    // rather than drawing three times is what keeps the same map off two of
+    // the three panels on a server with only a handful of maps installed.
+    for (i = n - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        const char *t = names[i];
+        names[i] = names[j];
+        names[j] = t;
+    }
+
+    for (i = 0; i < n && picked < 3; i++) {
+        char key[16];
+
+        Com_sprintf(key, sizeof(key), "map_%d", picked);
+        Info_SetValueForKey(out, key, names[i]);
+        picked++;
+    }
+    (void)outSize;
+}
+
+/*
+==================
+G_SendMapVoteTallies
+
+[QL] CS_ROTATIONVOTES is an infostring, not three numbers.
+
+The server wrote it as "%d %d %d" and the client reads it with
+Info_ValueForKey(info, "0" / "1" / "2") - see CG_DrawVotes. Those never agree,
+so Info_ValueForKey returned nothing and CG_VOTECOUNT1..3 drew nothing at all:
+the vote panels showed no tally however many people had voted, including your
+own vote, which makes a working vote look like a broken one.
+
+One function so the two places that publish it cannot drift apart again.
+==================
+*/
+void G_SendMapVoteTallies(void) {
+    char info[MAX_INFO_STRING];
+    int i;
+
+    info[0] = '\0';
+    for (i = 0; i < 3; i++) {
+        char key[4];
+
+        Com_sprintf(key, sizeof(key), "%d", i);
+        Info_SetValueForKey(info, key, va("%d", level.intermissionMapVotes[i]));
+    }
+    trap_SetConfigstring(CS_ROTATIONVOTES, info);
+}
+
+/*
+==================
 BeginIntermission
 ==================
 */
@@ -2669,6 +2772,9 @@ void BeginIntermission(void) {
 
     // [QL] Parse "nextmaps" info string for end-of-match map voting
     trap_Cvar_VariableStringBuffer("nextmaps", nextmaps, sizeof(nextmaps));
+    if (!nextmaps[0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
+        G_BuildNextMapsFromInstalledMaps(nextmaps, sizeof(nextmaps));
+    }
     if (nextmaps[0]) {
         char mapInfo[MAX_INFO_STRING];
 
@@ -2705,7 +2811,7 @@ void BeginIntermission(void) {
         }
 
         trap_SetConfigstring(CS_ROTATIONMAPS, mapInfo);
-        trap_SetConfigstring(CS_ROTATIONVOTES, "0 0 0");
+        G_SendMapVoteTallies();
         level.voteTime = level.time;
         trap_SetConfigstring(CS_VOTE_TIME, va("%i", level.voteTime));
     }
@@ -2741,7 +2847,6 @@ void ExitLevel(void) {
     gclient_t* cl;
     char mapname[MAX_STRING_CHARS];
     char serverinfo[MAX_INFO_STRING];
-    char nextmaps[MAX_STRING_CHARS];
     int bestMap = 0;
 
     // [QL] Bot-only server: kill on exit
@@ -2773,9 +2878,13 @@ void ExitLevel(void) {
         return;
     }
 
-    // [QL] resolve map voting if active
-    trap_Cvar_VariableStringBuffer("nextmaps", nextmaps, sizeof(nextmaps));
-    if (nextmaps[0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
+    /* [QL] resolve map voting if active.
+
+       Tested against the candidates BeginIntermission actually published, not
+       against the "nextmaps" cvar. They are the same thing when an admin set
+       the cvar, and only intermissionMapNames is filled when the three arenas
+       were drawn from the installed maps instead. */
+    if (level.intermissionMapNames[0][0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
         // [QL] Random tie-breaking for map votes
         {
             int tiedMaps[3];
@@ -2995,11 +3104,9 @@ void CheckIntermissionExit(void) {
     gclient_t* cl;
     int readyMask;
     int timeout;
-    char nextmaps[MAX_STRING_CHARS];
 
     // [QL] Determine timeout: 20s if map voting active, 10s otherwise
-    trap_Cvar_VariableStringBuffer("nextmaps", nextmaps, sizeof(nextmaps));
-    if (nextmaps[0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
+    if (level.intermissionMapNames[0][0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
         timeout = 20000;
     } else {
         timeout = 10000;

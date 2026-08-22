@@ -3784,11 +3784,18 @@ void CG_KeyEvent(int key, qboolean down) {
 
     if (cgs.capturedItem) {
         cgs.capturedItem = NULL;
-    } else {
-        if (key == K_MOUSE2 && down) {
-            cgs.capturedItem = Display_CaptureItem(cgs.cursorX, cgs.cursorY);
-        }
     }
+    /*
+    [QL] No right-button menu dragging.
+
+    This used to capture the menu under the cursor on K_MOUSE2 and hand it to
+    Display_MouseMove, which adds the mouse delta straight to menu->window.rect
+    - Quake 3's menu-editor drag. It was harmless only for as long as cgame
+    painted menus that the input path could not see. Now that the scoreboard is
+    reachable, a right-click at the match summary would pick the whole board up
+    and carry it off the screen, with no way to put it back short of a map
+    change. The ui module does not do this either.
+    */
 }
 
 int CG_ClientNumFromName(const char* p) {

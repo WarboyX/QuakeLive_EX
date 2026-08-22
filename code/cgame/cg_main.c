@@ -568,24 +568,33 @@ static cvarTable_t cvarTable[] = {
     {&cg_draw2D, "cg_draw2D", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawStatus, "cg_drawStatus", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawTimer, "cg_drawTimer", "0", CVAR_ARCHIVE},
-    // [QL] see CG_OffsetScoreboardList - how far the scoreboard player list is
-    // pushed below its column headers. Not CVAR_ARCHIVE: it is our layout value,
-    // not the user's, and archiving a shipped default stops the default applying.
-    {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "8", 0},
+    /* [QL] see CG_OffsetScoreboardList - how far the scoreboard player list is
+       pushed below its column headers. Not CVAR_ARCHIVE: it is our layout value,
+       not the user's, and archiving a shipped default stops the default applying.
+
+       DEFAULT 0. This shipped at 8 to keep row one off the header band, on the
+       reading that Item_ListBox_Paint puts the first row at rect.y + 1. It does
+       not: the row's text baseline is rect.y + 1 + elementHeight * 4/5. Against
+       Quake Live's own numbers - list "rect 73 165 284 130", elementheight 16,
+       header text at y 170 - that is a baseline of 178 against a header at 170.
+       The rows already clear the headers, and the offset was spending a row of
+       an eight-row list to solve a collision that was not happening.
+
+       Raise it if rows do sit on the headers on some other scoreboard. */
+    {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "0", 0},
     /* [QL] Take the mouse while +scores is held, so the scoreboard's lists can
        be scrolled and clicked.
 
-       DEFAULT 0. It shipped on, and the scoreboard stopped appearing in the
-       same build - traced by the reporter to that change. Taking KEYCATCH_CGAME
-       on +scores reaches further than it looks: the widescreen-bias tests read
-       the key catcher, CG_KeyEvent's capture-release path keys off it, and the
-       engine routes key and mouse events differently once it is set. One of
-       those is still wrong, and a half-finished convenience is not worth a
-       scoreboard, so it is off until it is understood rather than left on with
-       a workaround stacked on top.
+       DEFAULT 1 again. It was turned off after it shipped on and the scoreboard
+       stopped appearing in the same build: taking KEYCATCH_CGAME on +scores fed
+       the widescreen-bias tests, which shifted the board off a widescreen
+       display. That is CG_CgameUIOwnsScreen now, and the two reasons the lists
+       still would not have scrolled are fixed with it - the menu cgame paints
+       never carried WINDOW_VISIBLE, so no part of the input path would look at
+       it, and every hit test past Menu_HandleMouseMove used the un-biased rect.
 
-       Set to 1 to get the cursor back on the held scoreboard. */
-    {&cg_scoreboardMouse, "cg_scoreboardMouse", "0", 0},
+       Set to 0 to keep the view free while the scoreboard is held. */
+    {&cg_scoreboardMouse, "cg_scoreboardMouse", "1", 0},
     /* [QL] Report player-model registration problems that are otherwise silent -
        a missing icon, a skin that would not load. RE_RegisterModel and
        RE_RegisterShader both return 0 for a name the pak does not contain and
@@ -1013,6 +1022,24 @@ void CG_RegisterCvars(void) {
     // see if we are also running the server on this machine
     trap_Cvar_VariableStringBuffer("sv_running", var, sizeof(var));
     cgs.localServer = atoi(var);
+
+    /*
+    [QL] Publish it as ui_singleplayeractive - the in-game menu's "Add Bot" tab.
+
+    Same shape as ui_warmup and the missing team buttons. ingame.menu gates the
+    Add Bot button and its highlight on
+
+        cvarTest "ui_singleplayeractive" / showCvar { "1" }
+
+    and nothing anywhere set that cvar, so the button was never shown. The
+    *label* next to it is hideCvar { "0" }, which an unset cvar does not match,
+    so the word "Add Bot" was drawn over a tab that did not exist and could not
+    be clicked - which reads as a broken menu rather than a missing cvar.
+
+    Running the server is exactly what the name means: you can add bots to your
+    own game and not to somebody else's.
+    */
+    trap_Cvar_Set("ui_singleplayeractive", cgs.localServer ? "1" : "0");
 
     (void)CG_ForceModelCvarsChanged();  // seed the force-model modcount cache
 

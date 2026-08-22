@@ -333,7 +333,24 @@ typedef struct {
     */
     qboolean(*trap_InPVS)(const vec3_t p1, const vec3_t p2);
     qboolean(*trap_InPVSIgnorePortals)(const vec3_t p1, const vec3_t p2);
-    void    *_reserved[5];
+
+    /*
+    [QL] A third slot for FS_GetFileList, the same shape of fault.
+
+    It was stubbed to return 0, and the two callers both read that as "the
+    directory is empty":
+
+      G_LoadArenas   scripts/*.arena - so level.arenas stayed empty and every
+                     map's longname, its per-map bot list and its gametype bits
+                     were unknown to the server.
+      G_LoadBots     scripts/*.bot   - so "addbot <name>" could not resolve a
+                     single bot by name.
+
+    The engine has always had FS_GetFileList; qagame simply had no way to call
+    it. Also what the end-of-match arena vote needs to offer real maps.
+    */
+    int     (*trap_FS_GetFileList)(const char *path, const char *extension, char *listbuf, int bufsize);
+    void    *_reserved[4];
 
     /* --- Quake Live Extensions --- */
     /* 0x640 */ uint64_t(*trap_GetSteamID)(int clientNum);
