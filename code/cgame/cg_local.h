@@ -1543,6 +1543,9 @@ typedef struct {
        the smallest type that fits - which -fshort-enums does, and which is the
        default on some bare ARM targets - would truncate both values to 1 and
        make the scoreboard and the HUD editor indistinguishable. */
+    /* [QL] last value pushed to the ui_warmup cvar, so it is only written when
+       it changes rather than on every configstring update */
+    int lastPublishedWarmup;
     int eventHandling;
     /* [QL] set only while +scores holds the mouse - see CG_CgameUIOwnsScreen */
     qboolean scoreboardHoldingMouse;

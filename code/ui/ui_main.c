@@ -807,45 +807,6 @@ void UI_LoadMenus(const char* menuFile, qboolean reset) {
     trap_PC_FreeSource(handle);
 }
 
-/*
-=================
-UI_LoadExtraMenus
-
-[QL] Load one of our own menu files into the current set.
-
-UI_LoadMenus falls back to ui/menus.txt when the file it was asked for is
-missing, which is right for the primary set and wrong for an addition: a
-mistyped or absent extra file would silently load the whole main menu set a
-second time, giving two of every menu and Menus_FindByName resolving to
-whichever came first. This does nothing when the file is not there, and says so.
-=================
-*/
-static void UI_LoadExtraMenus(const char* menuFile) {
-    pc_token_t token;
-    int handle;
-
-    handle = trap_PC_LoadSource(menuFile);
-    if (!handle) {
-        Com_Printf(S_COLOR_YELLOW "extra menu file not found: %s\n", menuFile);
-        return;
-    }
-
-    while (1) {
-        if (!trap_PC_ReadToken(handle, &token))
-            break;
-        if (token.string[0] == 0 || token.string[0] == '}') {
-            break;
-        }
-        if (Q_stricmp(token.string, "loadmenu") == 0) {
-            if (!Load_Menu(handle)) {
-                break;
-            }
-        }
-    }
-
-    trap_PC_FreeSource(handle);
-}
-
 void UI_Load(void) {
     char lastName[1024];
     menuDef_t* menu = Menu_GetFocused();
@@ -4824,221 +4785,6 @@ UI_Init
 =================
 */
 
-/*
-=================
-UI_PlaceTeamSelect
-
-[QL] Static layout, tunable at run time.
-
-This panel has been placed wrongly four times, each attempt measuring a
-different item of Quake Live's own menu and each looking correct in the source.
-The reason none of them could be checked here is structural: those menus live in
-pak00, which is not in this tree and not ours to ship, so there is nothing to
-verify a theory against short of a screenshot - and a screenshot encodes the
-aspect ratio and widescreen bias of one display.
-
-The version that landed closest was the first one, which did none of this: fixed
-rects in the .menu file, Quake Live's own SPECTATE left alone above them. So the
-measuring is gone. What replaces it is not another guess but a set of numbers
-that can be moved without a rebuild, because the person who can see the result
-should not have to wait on one to adjust it.
-
-  ui_teamSelectX / Y     top-left of the column, 640x480 virtual
-  ui_teamSelectW         column width
-  ui_teamSelectRowH      height of one button
-  ui_teamSelectGap       space between buttons
-  ui_teamSelectHideSpectate  hide Quake Live's SPECTATE (ours replaces it)
-
-ui_teamSelectHideSpectate 0 with ui_teamSelectY 224 reproduces b1fe1af exactly,
-which is the arrangement reported as closest.
-=================
-*/
-static itemDef_t* UI_TeamSelectItem(menuDef_t* menu, const char* name) {
-    int i;
-
-    for (i = 0; i < menu->itemCount; i++) {
-        if (menu->items[i] && menu->items[i]->window.name &&
-            !Q_stricmp(menu->items[i]->window.name, name)) {
-            return menu->items[i];
-        }
-    }
-    return NULL;
-}
-
-static int teamSelectWidescreen = -1;   /* mode of the page we overlay, -1 = leave alone */
-
-static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const char* textName,
-                                 float x, float y, float w, float h) {
-    itemDef_t* both[2];
-    int k;
-
-    both[0] = UI_TeamSelectItem(menu, barName);
-    both[1] = UI_TeamSelectItem(menu, textName);
-
-    for (k = 0; k < 2; k++) {
-        if (!both[k]) {
-            continue;
-        }
-        both[k]->window.rectClient.x = x;
-        both[k]->window.rectClient.y = y;
-        both[k]->window.rectClient.w = w;
-        both[k]->window.rectClient.h = h;
-        /*
-        [QL] Match the widescreen mode of the page underneath.
-
-        This is not only about where the button is drawn. Item_Paint and the hit
-        test both go through Rect_ContainsWidescreenPoint with item->widescreen,
-        so an item drawn under one mapping and tested under another is visible
-        exactly where the mouse cannot reach it - which is a button that appears
-        normal and does nothing. Taking the mode from the menu being overlaid
-        keeps drawing and clicking in the same space.
-        */
-        if (teamSelectWidescreen >= 0) {
-            both[k]->widescreen = teamSelectWidescreen;
-            both[k]->widescreenFlag = 1;
-        }
-    }
-    if (both[1]) {
-        /* ITEM_ALIGN_CENTER subtracts half the string width from textalignx, so
-           the centre of the button is the alignment point. textRect caches the
-           measurement on first paint; clearing w forces a re-measure. */
-        both[1]->textalignx = w / 2.0f;
-        both[1]->textaligny = h / 2.0f + 4.0f;
-        both[1]->textRect.w = 0;
-        both[1]->textRect.h = 0;
-    }
-}
-
-static void UI_PlaceTeamSelect(void) {
-    menuDef_t* menu = Menus_FindByName("io_teamselect");
-    float x, y, w, rowH, gap;
-    int i;
-
-    if (!menu) {
-        return;
-    }
-
-    x = ui_teamSelectX.value;
-    y = ui_teamSelectY.value;
-    w = ui_teamSelectW.value;
-    rowH = ui_teamSelectRowH.value;
-    gap = ui_teamSelectGap.value;
-
-    if (w <= 0.0f || rowH <= 0.0f) {
-        return;     // leave the .menu file's own rects alone
-    }
-
-    /*
-    [QL] Hide by geometry, not by label.
-
-    Quake Live's own SPECTATE sits where this panel goes, and matching it by
-    its text has now failed repeatedly - it stays visible and collides with
-    JOIN RED. Whatever its label actually is (a colour code, a different
-    string, or text that does not come from item->text at all), it cannot be
-    read from here: the menu is in pak00, which is not in this tree.
-
-    So the test is the one that actually matters. Anything interactive that
-    overlaps the rectangle this panel occupies is hidden, whatever it is
-    called. That is the requirement stated plainly - nothing else draws or
-    takes clicks in our column - and it does not depend on guessing a string.
-
-    Decorations are left alone: the column's background and frame overlap by
-    design and should still paint. Only controls are hidden, which is what can
-    collide.
-    */
-    teamSelectWidescreen = -1;
-
-    if (ui_teamSelectHideSpectate.integer) {
-        rectDef_t panel;
-        int hidden = 0;
-
-        panel.x = x;
-        panel.y = y;
-        panel.w = w;
-        panel.h = rowH * 3.0f + gap * 2.0f;
-
-        for (i = 0; i < Menu_Count(); i++) {
-            menuDef_t* m = Menu_GetByIndex(i);
-            int j;
-
-            if (!m || !m->window.name || !Q_stricmp(m->window.name, "io_teamselect")) {
-                continue;
-            }
-            if (!(m->window.flags & WINDOW_VISIBLE)) {
-                continue;
-            }
-            for (j = 0; j < m->itemCount; j++) {
-                itemDef_t* it = m->items[j];
-
-                if (!it || !(it->window.flags & WINDOW_VISIBLE)) {
-                    continue;
-                }
-                if (it->window.flags & WINDOW_DECORATION) {
-                    continue;   // backgrounds and frames belong there
-                }
-                if (it->window.rect.w <= 0.0f || it->window.rect.h <= 0.0f) {
-                    continue;
-                }
-                /* plain rectangle overlap */
-                if (it->window.rect.x >= panel.x + panel.w ||
-                    it->window.rect.x + it->window.rect.w <= panel.x ||
-                    it->window.rect.y >= panel.y + panel.h ||
-                    it->window.rect.y + it->window.rect.h <= panel.y) {
-                    continue;
-                }
-                it->window.flags &= ~WINDOW_VISIBLE;
-                hidden++;
-                /* the page we are standing in front of decides our coordinate
-                   mapping - see UI_SetTeamSelectRect */
-                if (teamSelectWidescreen < 0) {
-                    teamSelectWidescreen = it->widescreenFlag ? it->widescreen : m->widescreen;
-                    menu->widescreen = teamSelectWidescreen;
-                }
-                if (ui_teamSelectDebug.integer) {
-                    Com_Printf("teamSelectDebug: hid '%s' text '%s' rect %.1f,%.1f %.1fx%.1f "
-                               "in menu '%s'\n",
-                               it->window.name ? it->window.name : "(unnamed)",
-                               it->text ? it->text : "(none)",
-                               it->window.rect.x, it->window.rect.y,
-                               it->window.rect.w, it->window.rect.h,
-                               m->window.name);
-                }
-            }
-        }
-        if (ui_teamSelectDebug.integer) {
-            Com_Printf("teamSelectDebug: %i control(s) hidden under the panel\n", hidden);
-        }
-    }
-
-    menu->window.rect.x = x;
-    menu->window.rect.y = y;
-    menu->window.rect.w = w;
-    menu->window.rect.h = rowH * 3.0f + gap * 2.0f;
-    menu->window.rectClient = menu->window.rect;
-
-    UI_SetTeamSelectRect(menu, "teamselect_redbar", "teamselect_red",
-                         0.0f, 0.0f, w, rowH);
-    UI_SetTeamSelectRect(menu, "teamselect_bluebar", "teamselect_blue",
-                         0.0f, rowH + gap, w, rowH);
-    UI_SetTeamSelectRect(menu, "teamselect_specbar", "teamselect_spec",
-                         0.0f, (rowH + gap) * 2.0f, w, rowH);
-
-    Menu_UpdatePosition(menu);
-
-    if (ui_teamSelectDebug.integer) {
-        Com_Printf("teamSelectDebug: panel %.1f,%.1f %.1fx%.1f  rowH %.1f gap %.1f "
-                   "hideSpectate %i\n",
-                   menu->window.rect.x, menu->window.rect.y,
-                   menu->window.rect.w, menu->window.rect.h,
-                   rowH, gap, ui_teamSelectHideSpectate.integer);
-        Com_Printf("teamSelectDebug: widescreen mode %i (from the page underneath; "
-                   "-1 means nothing was hidden so ours was left alone)\n",
-                   teamSelectWidescreen);
-        Com_Printf("teamSelectDebug: adjust with ui_teamSelectX / Y / W / RowH / Gap, "
-                   "then tell me the values that look right\n");
-    }
-}
-
 void _UI_Init(qboolean inGameLoad) {
     const char* menuSet;
 
@@ -5144,8 +4890,6 @@ void _UI_Init(qboolean inGameLoad) {
 
     UI_LoadMenus(menuSet, qtrue);
     UI_LoadMenus("ui/ingame.txt", qfalse);
-    // [QL] ours, after Quake Live's - see ui/io_ingame.txt
-    UI_LoadExtraMenus("ui/io_ingame.txt");
 
     Menus_CloseAll();
 
@@ -5308,31 +5052,8 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 trap_Key_SetCatcher(KEYCATCH_UI);
                 UI_BuildPlayerList();
                 Menus_CloseAll();
-                /*
-                [QL] The team buttons.
-
-                Without these the in-game menu offers no way to change team at
-                all - a player who does not know to type "cmd team r" into the
-                console is stuck wherever they were put. Quake Live has them on
-                this page; ours is a panel of our own (ui/io_teamselect.menu)
-                because pak00 is not ours to edit.
-
-                Activated *first*, not last, and the distinction matters. What it
-                paints on top of is decided by load order - Menu_PaintAll walks
-                the array, ours is loaded after Quake Live's ingame set, so it
-                paints last either way. What activation order decides is which
-                menu ends up with WINDOW_HASFOCUS, and that is the one that
-                answers keyboard input including onESC. Leaving focus on the page
-                itself keeps Escape and the tabs behaving exactly as before;
-                clicks still reach our panel, because Display_CaptureItem picks
-                the topmost visible menu under the cursor.
-                */
-                Menus_ActivateByName("io_teamselect");
                 Menus_ActivateByName("ingame");
                 Menus_ActivateByName("ingame_about");
-                /* after the pages are up, so their item rects are resolved and
-                   Quake Live's SPECTATE can be measured - see UI_PlaceTeamSelect */
-                UI_PlaceTeamSelect();
                 return;
         }
     }
@@ -5689,13 +5410,6 @@ vmCvar_t ui_netSource;
 vmCvar_t ui_serverFilterType;
 vmCvar_t ui_opponentName;
 vmCvar_t ui_menuFiles;
-vmCvar_t ui_teamSelectDebug;
-vmCvar_t ui_teamSelectX;
-vmCvar_t ui_teamSelectY;
-vmCvar_t ui_teamSelectW;
-vmCvar_t ui_teamSelectRowH;
-vmCvar_t ui_teamSelectGap;
-vmCvar_t ui_teamSelectHideSpectate;
 vmCvar_t ui_currentMap;
 vmCvar_t ui_currentNetMap;
 vmCvar_t ui_mapIndex;
@@ -5837,23 +5551,6 @@ static cvarTable_t cvarTable[] = {
     {&ui_redteam, "ui_redteam", "Pagans", CVAR_ARCHIVE},
     {&ui_netSource, "ui_netSource", "0", CVAR_ARCHIVE},
     {&ui_menuFiles, "ui_menuFiles", "ui/menus.txt", CVAR_ARCHIVE},
-    /* [QL] Print what UI_PlaceTeamSelect can actually see - every visible menu
-       and the anchor items in them, with rects and widescreen modes. The menus
-       are in pak00 and unreadable from the source tree, so this is the only way
-       to stop guessing which item to measure against. */
-    {&ui_teamSelectDebug, "ui_teamSelectDebug", "0", 0},
-    /* [QL] The team panel's geometry, in 640x480 virtual units. Live so the
-       person who can see the result can adjust it without a rebuild - four
-       attempts at measuring Quake Live's own menu for these numbers all landed
-       wrong, and the menus are in pak00 where nothing here can check them.
-       Not CVAR_ARCHIVE: these are our defaults, not the user's settings, and an
-       archived default stops the default applying (CLAUDE.md). */
-    {&ui_teamSelectX, "ui_teamSelectX", "425", 0},
-    {&ui_teamSelectY, "ui_teamSelectY", "198", 0},
-    {&ui_teamSelectW, "ui_teamSelectW", "156", 0},
-    {&ui_teamSelectRowH, "ui_teamSelectRowH", "21", 0},
-    {&ui_teamSelectGap, "ui_teamSelectGap", "3", 0},
-    {&ui_teamSelectHideSpectate, "ui_teamSelectHideSpectate", "1", 0},
     {&ui_currentMap, "ui_currentMap", "0", CVAR_ARCHIVE},
     {&ui_currentNetMap, "ui_currentNetMap", "0", CVAR_ARCHIVE},
     {&ui_mapIndex, "ui_mapIndex", "0", CVAR_ARCHIVE},
@@ -5921,7 +5618,11 @@ static cvarTable_t cvarTable[] = {
 
     // [QL additions] - game settings
     {&ui_doWarmup, "ui_doWarmup", "0", CVAR_ARCHIVE},
-    {&ui_warmup, "ui_warmup", "0", CVAR_ARCHIVE},
+    /* [QL] Not CVAR_ARCHIVE. This is live match state published by cgame every
+       time CS_WARMUP changes; archiving it writes a stale value into the config
+       that then loads before any server does, which is the archived-default trap
+       from CLAUDE.md wearing a different hat. */
+    {&ui_warmup, "ui_warmup", "0", 0},
     {&ui_pure, "ui_pure", "1", CVAR_ARCHIVE},
     {&ui_friendlyFire, "ui_friendlyFire", "1", CVAR_ARCHIVE},
     {&ui_cvGameType, "ui_cvGameType", "-1", 0},

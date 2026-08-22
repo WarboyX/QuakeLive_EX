@@ -1,8 +1,0 @@
-// Our additions to the in-game menu set.
-//
-// UI_LoadMenus reads Quake Live's ui/ingame.txt and then this, so our menus sit
-// alongside theirs instead of replacing them - pak00 is not ours to modify, and
-// a replacement ui/ingame.txt would drop every menu it lists.
-{
-    loadMenu { "ui/io_teamselect.menu" }
-}

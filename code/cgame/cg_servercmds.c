@@ -1155,6 +1155,30 @@ void CG_SetConfigValues(void) {
         cgs.flagStatus = s[0] - '0';
     }
     cg.warmup = atoi(Info_ValueForKey(CG_ConfigString(CS_WARMUP), "time"));
+
+    /*
+    [QL] Publish the warmup state to the ui module.
+
+    UI_OwnerDrawVisible decides UI_SHOW_IF_WARMUP and UI_SHOW_IF_NOT_WARMUP from
+    the ui_warmup cvar - the first hides when it is >= 0, the second when it is
+    < 0 - and nothing was ever setting it. Registered at "0", that made every
+    SHOW_IF_WARMUP item permanently invisible and every SHOW_IF_NOT_WARMUP item
+    permanently visible.
+
+    Which is exactly the in-game menu's missing team buttons. Quake Live's
+    ingame_about.menu carries JOIN RED and JOIN BLUE under
+    ownerdrawflag UI_SHOW_IF_WARMUP, and its team-game SPECTATE under
+    UI_SHOW_IF_NOT_WARMUP, so the join buttons could never appear and SPECTATE
+    always did - and the same stuck cvar silently governs every other item in
+    Quake Live's menus that keys off warmup.
+
+    cg.warmup is already the value those tests expect: negative while waiting in
+    warmup, otherwise the countdown timestamp or zero.
+    */
+    if (cg.warmup != cgs.lastPublishedWarmup) {
+        cgs.lastPublishedWarmup = cg.warmup;
+        trap_Cvar_Set("ui_warmup", va("%i", cg.warmup));
+    }
     // [QL] seed cg_disableLoadout_* cvars from CS_DISABLE_LOADOUT bitmask
     CG_ParseDisableLoadout(CG_ConfigString(CS_DISABLE_LOADOUT));
 }
