@@ -585,16 +585,18 @@ static cvarTable_t cvarTable[] = {
     /* [QL] Take the mouse while +scores is held, so the scoreboard's lists can
        be scrolled and clicked.
 
-       DEFAULT 1 again. It was turned off after it shipped on and the scoreboard
-       stopped appearing in the same build: taking KEYCATCH_CGAME on +scores fed
-       the widescreen-bias tests, which shifted the board off a widescreen
-       display. That is CG_CgameUIOwnsScreen now, and the two reasons the lists
-       still would not have scrolled are fixed with it - the menu cgame paints
-       never carried WINDOW_VISIBLE, so no part of the input path would look at
-       it, and every hit test past Menu_HandleMouseMove used the un-biased rect.
+       DEFAULT 0, again, and it stays there until it is proven rather than
+       assumed. Turning this on has now cost the scoreboard three times: the
+       widescreen bias shifting the board off screen (CG_CgameUIOwnsScreen), the
+       menu never carrying WINDOW_VISIBLE so nothing in the input path would
+       look at it, and Key_SetCatcher's Key_ClearStates releasing the very
+       +scores key that took the catcher - which switched the board off in the
+       same frame it went on and left the screen with no scoreboard at all.
 
-       Set to 0 to keep the view free while the scoreboard is held. */
-    {&cg_scoreboardMouse, "cg_scoreboardMouse", "1", 0},
+       Each of those is fixed. That is not the same as this being safe to ship
+       on by default, and a held scoreboard is a convenience while a scoreboard
+       that does not appear is not a game. Set it to 1 to try the mouse. */
+    {&cg_scoreboardMouse, "cg_scoreboardMouse", "0", 0},
     /* [QL] Report player-model registration problems that are otherwise silent -
        a missing icon, a skin that would not load. RE_RegisterModel and
        RE_RegisterShader both return 0 for a name the pak does not contain and
