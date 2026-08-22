@@ -4865,6 +4865,8 @@ static itemDef_t* UI_TeamSelectItem(menuDef_t* menu, const char* name) {
     return NULL;
 }
 
+static int teamSelectWidescreen = -1;   /* mode of the page we overlay, -1 = leave alone */
+
 static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const char* textName,
                                  float x, float y, float w, float h) {
     itemDef_t* both[2];
@@ -4881,6 +4883,20 @@ static void UI_SetTeamSelectRect(menuDef_t* menu, const char* barName, const cha
         both[k]->window.rectClient.y = y;
         both[k]->window.rectClient.w = w;
         both[k]->window.rectClient.h = h;
+        /*
+        [QL] Match the widescreen mode of the page underneath.
+
+        This is not only about where the button is drawn. Item_Paint and the hit
+        test both go through Rect_ContainsWidescreenPoint with item->widescreen,
+        so an item drawn under one mapping and tested under another is visible
+        exactly where the mouse cannot reach it - which is a button that appears
+        normal and does nothing. Taking the mode from the menu being overlaid
+        keeps drawing and clicking in the same space.
+        */
+        if (teamSelectWidescreen >= 0) {
+            both[k]->widescreen = teamSelectWidescreen;
+            both[k]->widescreenFlag = 1;
+        }
     }
     if (both[1]) {
         /* ITEM_ALIGN_CENTER subtracts half the string width from textalignx, so
@@ -4930,6 +4946,8 @@ static void UI_PlaceTeamSelect(void) {
     design and should still paint. Only controls are hidden, which is what can
     collide.
     */
+    teamSelectWidescreen = -1;
+
     if (ui_teamSelectHideSpectate.integer) {
         rectDef_t panel;
         int hidden = 0;
@@ -4970,6 +4988,12 @@ static void UI_PlaceTeamSelect(void) {
                 }
                 it->window.flags &= ~WINDOW_VISIBLE;
                 hidden++;
+                /* the page we are standing in front of decides our coordinate
+                   mapping - see UI_SetTeamSelectRect */
+                if (teamSelectWidescreen < 0) {
+                    teamSelectWidescreen = it->widescreenFlag ? it->widescreen : m->widescreen;
+                    menu->widescreen = teamSelectWidescreen;
+                }
                 if (ui_teamSelectDebug.integer) {
                     Com_Printf("teamSelectDebug: hid '%s' text '%s' rect %.1f,%.1f %.1fx%.1f "
                                "in menu '%s'\n",
@@ -5007,6 +5031,9 @@ static void UI_PlaceTeamSelect(void) {
                    menu->window.rect.x, menu->window.rect.y,
                    menu->window.rect.w, menu->window.rect.h,
                    rowH, gap, ui_teamSelectHideSpectate.integer);
+        Com_Printf("teamSelectDebug: widescreen mode %i (from the page underneath; "
+                   "-1 means nothing was hidden so ours was left alone)\n",
+                   teamSelectWidescreen);
         Com_Printf("teamSelectDebug: adjust with ui_teamSelectX / Y / W / RowH / Gap, "
                    "then tell me the values that look right\n");
     }
