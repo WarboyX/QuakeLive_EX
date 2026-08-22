@@ -2853,6 +2853,14 @@ void G_PublishMapVoteInfo(void) {
     }
     Info_SetValueForKey(info, "end", va("%i", level.mapVoteEndTime));
 
+    /* [QL] Once voting has closed the decision itself goes on the wire. The
+       client is not asked to work out that the clock ran out and it is not
+       asked to guess what won - it renders what the server decided, the same
+       way it renders the tallies. */
+    if (level.mapVoteWinner >= 0) {
+        Info_SetValueForKey(info, "winner", va("%i", level.mapVoteWinner));
+    }
+
     trap_SetConfigstring(CS_ROTATIONMAPS, info);
 }
 
@@ -2939,6 +2947,10 @@ static void G_AnnounceMapVoteResult(void) {
         trap_SendServerCommand(-1, va("print \"Voting closed - nobody voted, %s chosen at random.\n\"", name));
     }
     trap_SendServerCommand(-1, va("cp \"Next arena: %s\n\"", name));
+
+    // and put the decision in the configstring, so the summary panel shows it
+    // rather than deciding for itself that the clock has run out.
+    G_PublishMapVoteInfo();
 }
 
 /*

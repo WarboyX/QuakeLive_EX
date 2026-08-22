@@ -1760,39 +1760,56 @@ static void CG_DrawVoteGameType(rectDef_t *rect, float scale, vec4_t color, int 
 
 
 /*
-[QL] Count down to the deadline the server published, not to a local guess.
+[QL] Show the vote's state as the server reports it, and decide nothing.
 
-This used to assume a flat 20 seconds from cgs.voteTime. The server picks the
-window from g_endMapVoteTime and can pull it in once every human has voted, so
-a hardcoded 20 meant the number on screen and the moment voting actually shut
-were two different things - which is the difference between "my vote did not
-count" and a bug. CS_ROTATIONMAPS carries "end" as an absolute server time;
-20 seconds from the start is the fallback for a server that does not send it.
+Two client-side guesses used to live here. It counted down from a hardcoded 20
+seconds regardless of the window the server had actually chosen, and when its
+own count reached zero it declared "Voting has ended." on its own authority -
+so the panel could say voting was over while the server was still accepting
+votes, or the reverse.
 
-Nothing to count for if there are no arenas on offer, either.
+Everything comes off CS_ROTATIONMAPS now. "end" is an absolute server time, so
+the countdown is a rendering of the server's deadline rather than a second copy
+of it; "winner" appears only once the server has closed voting and settled the
+result, and while it is there that is what the panel says. No key, no line -
+a server that publishes neither gets an empty panel instead of an invented one.
 */
 static void CG_DrawVoteTimer(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     const char *info = CG_ConfigString(CS_ROTATIONMAPS);
     const char *val;
-    int end, sec;
+    int sec;
 
-    if (!cgs.voteTime) {
-        return;
-    }
     if (!Info_ValueForKey(info, "map_0")[0]) {
         return;
     }
 
-    val = Info_ValueForKey(info, "end");
-    end = val[0] ? atoi(val) : (cgs.voteTime + 20000);
+    val = Info_ValueForKey(info, "winner");
+    if (val[0]) {
+        char key[16];
+        const char *name;
 
-    sec = (end - cg.time + 999) / 1000;
+        Com_sprintf(key, sizeof(key), "title_%d", atoi(val));
+        name = Info_ValueForKey(info, key);
+        if (!name[0]) {
+            Com_sprintf(key, sizeof(key), "map_%d", atoi(val));
+            name = Info_ValueForKey(info, key);
+        }
+        if (name[0]) {
+            CG_OwnerDrawText(rect->x, rect->y, scale, color,
+                va("Voting has ended - next arena: %s", name), 0, 0, textStyle);
+        }
+        return;
+    }
+
+    val = Info_ValueForKey(info, "end");
+    if (!val[0]) {
+        return;
+    }
+
+    sec = (atoi(val) - cg.time + 999) / 1000;
     if (sec > 0) {
         CG_OwnerDrawText(rect->x, rect->y, scale, color,
             va("Voting ends in %d second%s.", sec, sec == 1 ? "" : "s"), 0, 0, textStyle);
-    } else {
-        CG_OwnerDrawText(rect->x, rect->y, scale, color,
-            "Voting has ended.", 0, 0, textStyle);
     }
 }
 
