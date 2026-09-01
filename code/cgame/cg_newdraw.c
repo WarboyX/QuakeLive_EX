@@ -3810,9 +3810,34 @@ void CG_KeyEvent(int key, qboolean down) {
        in the list could ever be clicked. The hold owns the capture until the
        key comes up (CG_ScoresUp_f). */
     if (cgs.eventHandling == CGAME_EVENT_SCOREBOARD && cg.showScores) {
-        Display_HandleKey(key, down, cgs.cursorX, cgs.cursorY);
-        if (cgs.capturedItem) {
-            cgs.capturedItem = NULL;
+        /*
+        [QL] Only the mouse drives a held scoreboard.
+
+        The key holding the board open repeats. Every repeat arrived here, went
+        through Display_HandleKey into Menu_HandleKey, found nothing that wanted
+        it, and fell into the default handler - where K_TAB is "next item".
+        Menu_SetNextCursorItem then walked the focus round the menu's three
+        focusable items, playing the focus sound on each hop:
+
+          handleKey menu 'teamscore_menu_ctf' key 9 down 1 focused 'playerlistRED'
+          FOCUS SOUND on 'playerlistBLUE' (took it from 'playerlistRED')
+
+        88 of those in three and a half seconds of holding TAB, and the mouse
+        kept dragging the focus back to whichever list it was over, so the two
+        fought and the sound repeated for as long as the board was up. It was
+        never a mouse-over sound; it was TAB cycling the focus underneath it.
+
+        Keyboard navigation has no meaning on a board held open by a key - there
+        is no focus rectangle to see and the other keys are the player's
+        movement binds - so the mouse buttons are all that is forwarded. Escape
+        still works: CL_KeyDownEvent drops KEYCATCH_CGAME before dispatching it.
+        */
+        if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3 ||
+            key == K_MWHEELUP || key == K_MWHEELDOWN) {
+            Display_HandleKey(key, down, cgs.cursorX, cgs.cursorY);
+            if (cgs.capturedItem) {
+                cgs.capturedItem = NULL;
+            }
         }
         return;
     }
