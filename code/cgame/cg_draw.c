@@ -1836,31 +1836,19 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 		}
 
 		/*
-		[QL] The left-hand team's bar belongs on the outside, so the two lists
-		mirror each other instead of both crowding the middle - and the box has
-		to move left by the width of the bar for that to line up.
+		[QL] The red list's scroll bar used to be mirrored to the outside edge -
+		WINDOW_LB_LEFTSCROLL plus a rect shifted left by SCROLLBAR_SIZE - on the
+		theory that two bars facing each other read as symmetric. Quake Live does
+		not do that: neither playerlistRED nor playerlistBLUE sets a left scroll,
+		both bars sit inside their own box on the right, and the box art is drawn
+		to match. Shifting the rect put the bar and the row highlight sixteen
+		units outside the red panel, which is the overhang in the screenshot.
 
-		Without the shift the bar takes its column out of the *inside* of the
-		list, so the rows start SCROLLBAR_SIZE further in than the menu put them
-		while the column headers above - PLAYER, SCORE, K/D, separate items in
-		the menu - stay where they were. The numbers say it plainly:
-		cg_scoreboardDebug reported the red list at rect x 49 with contentX 66,
-		against blue at 326 with contentX 327. Blue's rows begin one unit inside
-		its box and red's begin seventeen, so red's whole row was out of step
-		with its own headers by sixteen.
-
-		Moving the rect left by exactly SCROLLBAR_SIZE puts the bar in the margin
-		and leaves contentX where it started - 50 rather than 66, one unit inside
-		the original box, the same relationship blue has. rect.w is deliberately
-		not widened to match: contentW is rect.w - SCROLLBAR_SIZE - 2 either way,
-		so leaving the width alone keeps both teams' rows exactly the same width
-		as each other, which is what the highlight follows.
+		The original complaint the mirroring answered - "scroll bars are not
+		symmetrical" - was the content-column arithmetic disagreeing between the
+		left and right cases, and that is fixed in Item_ListBox_Paint. With equal
+		rects and equal contentW the two lists are already mirror images.
 		*/
-		if (item->special == FEEDER_REDTEAM_LIST) {
-			item->window.flags |= WINDOW_LB_LEFTSCROLL;
-			item->window.rect.x -= SCROLLBAR_SIZE;
-			item->window.rectClient.x -= SCROLLBAR_SIZE;
-		}
 
 		item->window.rect.y += shift;
 		item->window.rect.h -= shift;
@@ -1937,6 +1925,23 @@ static void CG_TrackLocalPlayerOnScoreboard(menuDef_t *menu) {
 	} else {
 		feeder = FEEDER_SCOREBOARD;
 		teamIndex = index;
+	}
+
+	/*
+	[QL] Only the list the local player is actually in gets a highlight.
+
+	Item_ListBox_Paint fills the row where i == item->cursorPos, and cursorPos
+	starts at 0 - so the other team's list always drew a highlight on whoever
+	happened to be top of it, as though that player were selected. Two
+	highlights on a team board, one of them meaningless. -1 matches no row.
+	*/
+	if (feeder == FEEDER_REDTEAM_LIST) {
+		Menu_SetFeederCursor(menu, FEEDER_BLUETEAM_LIST, -1);
+	} else if (feeder == FEEDER_BLUETEAM_LIST) {
+		Menu_SetFeederCursor(menu, FEEDER_REDTEAM_LIST, -1);
+	} else {
+		Menu_SetFeederCursor(menu, FEEDER_REDTEAM_LIST, -1);
+		Menu_SetFeederCursor(menu, FEEDER_BLUETEAM_LIST, -1);
 	}
 
 	Menu_SetFeederCursor(menu, feeder, teamIndex);

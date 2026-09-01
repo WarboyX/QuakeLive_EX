@@ -1643,6 +1643,12 @@ qboolean Item_SetFocus(itemDef_t* item, float x, float y) {
     }
 
     if (playSound && sfx) {
+        /* [QL] The focus sound is the one the scoreboard repeats. It should
+           fire once when the cursor arrives on an item; if the log shows it
+           over and over, the name here and the name it took focus from say
+           which two items are trading it. */
+        UI_Trace("FOCUS SOUND on '%s' (took it from '%s')\n",
+                 UI_ItemName(item), UI_ItemName(oldFocus));
         DC->startLocalSound(*sfx, CHAN_LOCAL_SOUND);
     }
 
@@ -4908,10 +4914,15 @@ as scores change, so a highlight recorded once at open drifts onto whoever
 happens to be standing at that row later - which is how the local player's
 highlight ended up on somebody else's line.
 */
+/*
+[QL] index -1 means "no row selected", and is how the other team's list is told
+not to draw a highlight on its first entry. It sets cursorPos without calling
+feederSelection, which expects a real row.
+*/
 void Menu_SetFeederCursor(menuDef_t* menu, int feeder, int index) {
     int i;
 
-    if (menu == NULL || index < 0) {
+    if (menu == NULL) {
         return;
     }
 
@@ -4919,7 +4930,9 @@ void Menu_SetFeederCursor(menuDef_t* menu, int feeder, int index) {
         if (menu->items[i]->special == feeder) {
             if (menu->items[i]->cursorPos != index) {
                 menu->items[i]->cursorPos = index;
-                DC->feederSelection(menu->items[i]->special, index);
+                if (index >= 0) {
+                    DC->feederSelection(menu->items[i]->special, index);
+                }
             }
             return;
         }
