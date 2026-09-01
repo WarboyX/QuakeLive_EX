@@ -1039,6 +1039,52 @@ qboolean Team_GetLocationMsg(gentity_t* ent, char* loc, int loclen) {
 /*---------------------------------------------------------------------------*/
 
 /*
+[QL] Is this spawn point a bad place to arrive right now?
+
+Used by the team spawn picker to keep players off a pad that somebody has just
+taken, and off one an enemy is standing over. Never used to reject a point in
+favour of the other team's base - a contested point of your own is still a
+better answer than the wrong end of the map.
+==================
+*/
+#define SPAWN_REUSE_COOLDOWN 1500    /* ms a point stays "just used" */
+#define SPAWN_ENEMY_RADIUS   700.0f  /* an enemy this close, with line of sight */
+
+static qboolean SpawnPointIsContested(gentity_t* spot, team_t team) {
+    int i;
+
+    if (level.time - spot->lastSpawnTime < SPAWN_REUSE_COOLDOWN) {
+        return qtrue;
+    }
+
+    for (i = 0; i < level.maxclients; i++) {
+        gentity_t* other = &g_entities[i];
+
+        if (!other->inuse || !other->client) {
+            continue;
+        }
+        if (other->client->pers.connected != CON_CONNECTED) {
+            continue;
+        }
+        if (other->client->sess.sessionTeam == team ||
+            other->client->sess.sessionTeam == TEAM_SPECTATOR) {
+            continue;
+        }
+        if (other->health <= 0) {
+            continue;
+        }
+        if (Distance(spot->s.origin, other->r.currentOrigin) > SPAWN_ENEMY_RADIUS) {
+            continue;
+        }
+        if (trap_InPVS(spot->s.origin, other->r.currentOrigin)) {
+            return qtrue;
+        }
+    }
+
+    return qfalse;
+}
+
+/*
 ================
 SelectRandomTeamSpawnPoint
 
@@ -1049,7 +1095,6 @@ go to a random point that doesn't telefrag
 gentity_t* SelectRandomTeamSpawnPoint(int teamstate, team_t team) {
     gentity_t* spot;
     int count;
-    int selection;
     gentity_t* spots[MAX_TEAM_SPAWN_POINTS];
     char* classname;
 
@@ -1072,21 +1117,52 @@ gentity_t* SelectRandomTeamSpawnPoint(int teamstate, team_t team) {
 
     spot = NULL;
 
-    while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
-        if (SpotWouldTelefrag(spot)) {
-            continue;
+    /*
+    [QL] Prefer a spawn point nobody has just used and nobody is watching.
+
+    Two passes over the same team's points, never anyone else's. "spots" holds
+    the ones that are clear on both counts; "warm" holds the ones that only fail
+    the contested test, so a base under pressure still spawns its own team in
+    its own base rather than falling through to somewhere neutral.
+
+    A point is contested when it was used inside SPAWN_REUSE_COOLDOWN - two
+    players arriving on the same pad a moment apart is how a spawn turns into a
+    telefrag or a free frag - or when a live enemy is within
+    SPAWN_ENEMY_RADIUS and can actually see it. The PVS test is what stops the
+    radius rejecting points that are close in a straight line but on the other
+    side of a wall; it is only useful now that trap_InPVS is wired through.
+    */
+    {
+        gentity_t* warm[MAX_TEAM_SPAWN_POINTS];
+        int numWarm = 0;
+
+        while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
+            if (SpotWouldTelefrag(spot)) {
+                continue;
+            }
+            if (SpawnPointIsContested(spot, team)) {
+                if (numWarm < MAX_TEAM_SPAWN_POINTS) {
+                    warm[numWarm++] = spot;
+                }
+                continue;
+            }
+            spots[count] = spot;
+            if (++count == MAX_TEAM_SPAWN_POINTS)
+                break;
         }
-        spots[count] = spot;
-        if (++count == MAX_TEAM_SPAWN_POINTS)
-            break;
+
+        if (count) {
+            return spots[rand() % count];
+        }
+        if (numWarm) {
+            return warm[rand() % numWarm];
+        }
     }
 
-    if (!count) {  // no spots that won't telefrag
-        return G_Find(NULL, FOFS(classname), classname);
-    }
-
-    selection = rand() % count;
-    return spots[selection];
+    // every point of this team's would telefrag; still this team's, never the
+    // other side's - arriving on top of somebody is better than arriving in
+    // their base.
+    return G_Find(NULL, FOFS(classname), classname);
 }
 
 /*
@@ -1153,6 +1229,8 @@ gentity_t* SelectCTFSpawnPoint(team_t team, int teamstate, vec3_t origin, vec3_t
         }
         return SelectSpawnPoint(vec3_origin, origin, angles, isbot);
     }
+
+    spot->lastSpawnTime = level.time;
 
     VectorCopy(spot->s.origin, origin);
     origin[2] += 9;

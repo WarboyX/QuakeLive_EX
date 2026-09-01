@@ -94,6 +94,7 @@ struct gentity_s {
     qboolean inuse;
 
     char* classname;  // set in QuakeEd
+    int lastSpawnTime;  // [QL] spawn points: level.time this one was last used, for the reuse cooldown
     int spawnflags;   // set in QuakeEd
 
     qboolean neverFree;  // if true, FreeEntity will only unlink
@@ -782,6 +783,7 @@ int TeamLeader(int team);
 team_t PickTeam(int ignoreClientNum);
 void SetClientViewAngle(gentity_t* ent, vec3_t angle);
 gentity_t* SelectSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qboolean isbot);
+gentity_t* SelectCTFSpawnPoint(team_t team, int teamstate, vec3_t origin, vec3_t angles, qboolean isbot);
 void CopyToBodyQue(gentity_t* ent);
 void ClientRespawn(gentity_t* ent);
 void BeginIntermission(void);

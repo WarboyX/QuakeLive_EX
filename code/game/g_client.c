@@ -1090,6 +1090,32 @@ void ClientSpawn(gentity_t* ent) {
         // [QL] Race: use initial spawn point (near race start) rather than furthest
         spawnPoint = SelectInitialSpawnPoint(
             spawn_origin, spawn_angles, !!(ent->r.svFlags & SVF_BOT));
+    } else if (g_gametype.integer >= GT_CTF && (client->sess.sessionTeam == TEAM_RED ||
+                                               client->sess.sessionTeam == TEAM_BLUE)) {
+        /*
+        [QL] Team gametypes spawn in their own base.
+
+        This branch had been folded into the unified SelectSpawnPoint call
+        below - "unified SelectSpawnPoint for all gametypes" - and
+        SelectCTFSpawnPoint was left with no callers at all. SelectSpawnPoint
+        picks from info_player_deathmatch and knows nothing about teams, so in
+        CTF it scattered both sides across the map: a red player starting in the
+        blue base is that, exactly.
+
+        SelectCTFSpawnPoint only ever looks at this team's own points - the
+        TEAM_BEGIN set first, then this team's respawn points - and only drops
+        to the neutral info_player_deathmatch spots if the map has neither.
+        The other team's base is never a candidate at any stage.
+        */
+        spawnPoint = SelectCTFSpawnPoint(
+            client->sess.sessionTeam, client->pers.teamState.state,
+            spawn_origin, spawn_angles, !!(ent->r.svFlags & SVF_BOT));
+        if (!spawnPoint) {
+            client->respawnTime = level.time + 600;
+            client->ps.pm_type = PM_SPECTATOR;
+            client->pers.teamState.state = TEAM_ACTIVE;
+            return;
+        }
     } else {
         spawnPoint = SelectSpawnPoint(
             client->ps.origin,
