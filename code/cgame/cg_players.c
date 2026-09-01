@@ -627,6 +627,33 @@ static void CG_LoadClientInfo(int clientNum, clientInfo_t* ci) {
 CG_CopyClientInfoModel
 ======================
 */
+/*
+[QL] Borrow another client's model - including the scale it is drawn at.
+
+modelScale was the one thing this did not copy, and it is not optional.
+CG_CalcModelScale only runs inside CG_RegisterClientModelname, which is the
+path this function exists to skip, so a client set up by copy kept the zero it
+was memset to in CG_NewClientInfo. CG_Player then does
+
+    if (cg_scalePlayerModelsToBB.integer && ci->modelScale != 1.0f)
+        VectorScale(legs.axis[k], ci->modelScale, legs.axis[k]);   // and torso, head
+
+and zero is not 1.0, so all three axes collapse to a point. The player is added
+to the scene and draws nothing. CG_PlayerShadow traces from cent->lerpOrigin
+with a fixed +-15 box and never looks at the scale, which is why the shadow
+stayed on the floor under a player who was not there.
+
+Both callers reach it: CG_ScanForExistingClientInfo when an identical
+model/skin is already loaded - a second bot of the same character - and
+CG_SetDeferredClientInfo when a client arrives while cg_deferPlayers is on and
+there is no reason to stall for them. That is exactly "players who connect, or
+who are not near me on a map change, are invisible": near or not is what
+decides whether the load is deferred.
+
+Nothing in the registration path is wrong, which is why the logs never showed a
+failure and the pak manifest came back clean - the model was loaded, by
+somebody else, and then drawn at zero size.
+*/
 static void CG_CopyClientInfoModel(clientInfo_t* from, clientInfo_t* to) {
     VectorCopy(from->headOffset, to->headOffset);
     to->footsteps = from->footsteps;
@@ -639,6 +666,7 @@ static void CG_CopyClientInfoModel(clientInfo_t* from, clientInfo_t* to) {
     to->headModel = from->headModel;
     to->headSkin = from->headSkin;
     to->modelIcon = from->modelIcon;
+    to->modelScale = from->modelScale;
 
     to->newAnims = from->newAnims;
 
@@ -3015,6 +3043,19 @@ void CG_Player(centity_t* cent) {
     if (cgs.gametype == GT_HARVESTER) {
         CG_PlayerTokens(cent, renderfx);
     }
+    /* [QL] A scale of zero is not a scale, it is a player nobody can see.
+
+       ci->modelScale reaches CG_Player from three places and only one of them
+       computes it; anything that sets up a client by copying another's model
+       has to carry it across too. It does now, but the test below is
+       "!= 1.0f", which lets 0 through and collapses all three axes to a point,
+       so the failure is silent and total. Treat a non-positive scale as
+       unscaled - a player drawn at the wrong size is a bug worth seeing, a
+       player drawn at no size is a bug that hides itself. */
+    if (ci->modelScale <= 0.0f) {
+        ci->modelScale = 1.0f;
+    }
+
     // QL binary: cg_scalePlayerModelsToBB.integer enables bounding box scaling (vmCvar 0x10A6DB60)
     if (cg_scalePlayerModelsToBB.integer && ci->modelScale != 1.0f) {
         int k;

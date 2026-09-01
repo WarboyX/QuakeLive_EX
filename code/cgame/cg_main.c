@@ -593,9 +593,11 @@ static cvarTable_t cvarTable[] = {
        that took the catcher and switched the board off in the frame it went on.
 
        The last of those is the one your trace caught, and it is fixed in
-       Key_SetCatcher rather than here. Set cg_scoreboardMouse 1 to exercise it;
-       the default follows once a held board is seen to stay up. */
-    {&cg_scoreboardMouse, "cg_scoreboardMouse", "0", 0},
+       Key_SetCatcher rather than here: KEYCATCH_CGAME does not take input away,
+       so a change to it must not clear held keys. Confirmed working, so the
+       default is back on. Set it to 0 to keep the view free while the
+       scoreboard is held. */
+    {&cg_scoreboardMouse, "cg_scoreboardMouse", "1", 0},
     /* [QL] Report player-model registration problems that are otherwise silent -
        a missing icon, a skin that would not load. RE_RegisterModel and
        RE_RegisterShader both return 0 for a name the pak does not contain and

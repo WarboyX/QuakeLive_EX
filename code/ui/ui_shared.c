@@ -5081,9 +5081,31 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
                         Item_MouseEnter(overItem, x, y);
                         // Item_SetMouseOver(overItem, qtrue);
 
-                        // if item is not a decoration see if it can take focus
+                        /*
+                        [QL] An item that already has the focus keeps it.
+
+                        Item_SetFocus returns qfalse for two unrelated reasons:
+                        "this item cannot take focus" and "this item already has
+                        it". Treating both as "focus not set yet" let the search
+                        carry on past the focused item to whatever else is under
+                        the cursor - and the scoreboard has plenty of overlap,
+                        a list box with header items and backing panels across
+                        it.
+
+                        The result was a two-item loop running at frame rate:
+                        A holds focus, so Item_SetFocus(A) returns qfalse,
+                        focusSet stays false, B takes focus and plays the focus
+                        sound; next frame B holds it, so A takes it back and
+                        plays the sound again. That is the mouse-over sound
+                        repeating for as long as the cursor sits on a player
+                        name, and it is a focus fight, not a sound bug.
+                        */
                         if (!focusSet) {
-                            focusSet = Item_SetFocus(overItem, x, y);
+                            if (overItem->window.flags & WINDOW_HASFOCUS) {
+                                focusSet = qtrue;
+                            } else {
+                                focusSet = Item_SetFocus(overItem, x, y);
+                            }
                         }
                     }
                 }
