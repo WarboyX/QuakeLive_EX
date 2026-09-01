@@ -1100,6 +1100,23 @@ gentity_t* SelectCTFSpawnPoint(team_t team, int teamstate, vec3_t origin, vec3_t
 
     spot = SelectRandomTeamSpawnPoint(teamstate, team);
 
+    /*
+    [QL] A map without the initial-spawn entities still has the respawn ones.
+
+    TEAM_BEGIN looks for team_CTF_redplayer / team_CTF_blueplayer, a separate
+    set from the team_CTF_redspawn / bluespawn used for every later respawn, and
+    plenty of maps ship only the latter. Missing them used to drop straight to
+    the team-agnostic info_player_deathmatch fallback, which is how a red player
+    ends up starting the match in the blue base.
+
+    The respawn points for that team are in the right base by definition, so
+    they are a far better answer than "anywhere on the map". Only the
+    team-agnostic fallback is left for a map that has neither.
+    */
+    if (!spot && teamstate == TEAM_BEGIN) {
+        spot = SelectRandomTeamSpawnPoint(TEAM_ACTIVE, team);
+    }
+
     if (!spot) {
         /*
         [QL] Say so. This fallback is team-agnostic.
@@ -1128,13 +1145,11 @@ gentity_t* SelectCTFSpawnPoint(team_t team, int teamstate, vec3_t origin, vec3_t
         }
         if (team >= 0 && team < TEAM_NUM_TEAMS && !warned[team]) {
             warned[team] = 1;
-            G_Printf(S_COLOR_YELLOW "CTF spawn: no %s for %s - falling back to "
-                     "info_player_deathmatch, which ignores teams, so both sides "
-                     "will spawn across the map\n",
-                     teamstate == TEAM_BEGIN
-                         ? (team == TEAM_RED ? "team_CTF_redplayer" : "team_CTF_blueplayer")
-                         : (team == TEAM_RED ? "team_CTF_redspawn" : "team_CTF_bluespawn"),
-                     team == TEAM_RED ? "red" : "blue");
+            G_Printf(S_COLOR_YELLOW "CTF spawn: this map has no %s and no %s - "
+                     "falling back to info_player_deathmatch, which ignores teams, "
+                     "so both sides will spawn across the map\n",
+                     team == TEAM_RED ? "team_CTF_redplayer" : "team_CTF_blueplayer",
+                     team == TEAM_RED ? "team_CTF_redspawn" : "team_CTF_bluespawn");
         }
         return SelectSpawnPoint(vec3_origin, origin, angles, isbot);
     }

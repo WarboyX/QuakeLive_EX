@@ -68,6 +68,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // middle. Set from cgame on the red-team feeder; no menu keyword.
 #define WINDOW_LB_LEFTSCROLL 0x01000000
 
+/* [QL] Draw a vertical list box's scroll bar as a position indicator rather
+   than a widget: a thin track with a proportional bar, no arrows and no
+   draggable thumb. The scoreboard's lists are scrolled with the wheel over the
+   list you want, so the arrows were three clickable regions that ate row
+   clicks and took a scroll bar's width away from every row for no gain. Set
+   from cgame on the scoreboard feeders; no menu keyword. */
+#define WINDOW_LB_SLIMSCROLL 0x02000000
+#define SLIMSCROLL_WIDTH 4
+
 // CGAME cursor type bits
 #define CURSOR_NONE 0x00000001
 #define CURSOR_ARROW 0x00000002
@@ -423,6 +432,7 @@ void Menu_PostParse(menuDef_t* menu);
 menuDef_t* Menu_GetFocused(void);
 void Menu_HandleKey(menuDef_t* menu, int key, qboolean down);
 void UI_SetInputTrace(int on);  // [QL] name each step the menu input path takes
+int  Menu_FeederAtPoint(menuDef_t* menu, float x, float y);  // [QL] feeder id under a point, or -1
 void Menu_HandleMouseMove(menuDef_t* menu, float x, float y);
 void Menu_ScrollFeeder(menuDef_t* menu, int feeder, qboolean down);
 void Menu_ScrollFeederKey(menuDef_t* menu, int feeder, int key);

@@ -929,12 +929,24 @@ const char* CG_GetKillerText(void) {
     return s;
 }
 
-static void CG_DrawKiller(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
-    // fragged by ... line
-    if (cg.killerName[0]) {
-        int x = rect->x + rect->w / 2;
-        CG_OwnerDrawText(x - (CG_OwnerDrawTextWidth(CG_GetKillerText(), scale, 0) / 2), rect->y, scale, color, CG_GetKillerText(), 0, 0, textStyle);
+static float CG_OwnerDrawAlignX(rectDef_t *rect, const char *text, float scale, int align);
+
+/*
+[QL] "Fragged by X", where the menu puts it.
+
+This centred the text inside its own rect and ignored the align argument. Quake
+Live's scoreboard declares the item as "rect 75 100 330 10" with "align 0" -
+left - so a 330-wide rect centred a short line about a hundred and fifty units
+to the right of where the menu asked for it, straight across the top of the
+board. The same fault CG_DrawRedName had; the same fix.
+*/
+static void CG_DrawKiller(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle, int align) {
+    const char* s = CG_GetKillerText();
+
+    if (!s[0]) {
+        return;
     }
+    CG_OwnerDrawText(CG_OwnerDrawAlignX(rect, s, scale, align), rect->y, scale, color, s, 0, 0, textStyle);
 }
 
 static void CG_DrawCapFragLimit(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
@@ -3283,7 +3295,7 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
             CG_DrawTeamColor(&rect, color);
             break;
         case CG_KILLER:                     // 0x3f
-            CG_DrawKiller(&rect, scale, color, shader, textStyle);
+            CG_DrawKiller(&rect, scale, color, shader, textStyle, align);
             break;
         case CG_ACCURACY:                   // 0x40-0x42,0x44-0x47,0x4a  medals
         case CG_ASSISTS:
@@ -3834,6 +3846,23 @@ void CG_KeyEvent(int key, qboolean down) {
         */
         if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3 ||
             key == K_MWHEELUP || key == K_MWHEELDOWN) {
+            /*
+            [QL] A click on a player list is a choice, and it has to stick.
+
+            CG_TrackLocalPlayerOnScoreboard re-points the highlight at the local
+            player every frame, which is right when the board opens and wrong the
+            moment somebody picks a row: the selection was overwritten before it
+            could be seen. Same shape as cg.scoreboardScrolled - once the player
+            has said what they want to look at, stop moving it for them.
+            */
+            if (key == K_MOUSE1 && down) {
+                extern menuDef_t* menuScoreboard;
+
+                if (Menu_FeederAtPoint(menuScoreboard, cgs.cursorX, cgs.cursorY) >= 0) {
+                    cg.scoreboardSelected = qtrue;
+                }
+            }
+
             Display_HandleKey(key, down, cgs.cursorX, cgs.cursorY);
             if (cgs.capturedItem) {
                 cgs.capturedItem = NULL;

@@ -710,6 +710,7 @@ typedef struct {
     // CG_TrackLocalPlayerOnScoreboard stops dragging the view back to their own
     // row. Cleared each time the scoreboard is opened.
     qboolean scoreboardScrolled;
+    qboolean scoreboardSelected;  // [QL] a row was clicked; stop re-highlighting the local player
     qboolean scoreBoardShowing;
 
     // [QL] team-kill complaint prompt (server "complaint" verb). complaintClient is the

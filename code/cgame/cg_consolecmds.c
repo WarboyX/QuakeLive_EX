@@ -252,6 +252,25 @@ static void CG_ScrollScoreboard(int key) {
 
     cg.scoreboardScrolled = qtrue;
 
+    /*
+    [QL] Scroll the list the cursor is over, not both of them.
+
+    A team board has two lists side by side and this drove all four feeders with
+    the same key, so the wheel moved red and blue in lockstep and there was no
+    way to look down one team without dragging the other along. With the mouse
+    held there is a cursor to ask, so ask it. Without one - cg_scoreboardMouse 0,
+    or the wheel used before the board takes the mouse - there is nothing to
+    disambiguate with and moving both is still the best answer.
+    */
+    if (cgs.eventHandling != CGAME_EVENT_NONE) {
+        int feeder = Menu_FeederAtPoint(menu, cgs.cursorX, cgs.cursorY);
+
+        if (feeder >= 0) {
+            Menu_ScrollFeederKey(menu, feeder, key);
+            return;
+        }
+    }
+
     Menu_ScrollFeederKey(menu, FEEDER_SCOREBOARD, key);
     Menu_ScrollFeederKey(menu, FEEDER_ENDSCOREBOARD, key);
     Menu_ScrollFeederKey(menu, FEEDER_REDTEAM_LIST, key);

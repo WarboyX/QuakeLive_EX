@@ -940,6 +940,35 @@ static int Item_Widescreen(const itemDef_t* item) {
     return parent ? parent->widescreen : WIDESCREEN_STRETCH;
 }
 
+/*
+[QL] Which list box, if any, is under a point - by feeder id.
+
+The scoreboard has two lists side by side and the wheel used to scroll both,
+because CG_ScrollScoreboard had no way to ask which one the cursor was over.
+Returns the item's "special" (its FEEDER_* id) or -1.
+*/
+int Menu_FeederAtPoint(menuDef_t* menu, float x, float y) {
+    int i;
+
+    if (menu == NULL) {
+        return -1;
+    }
+    for (i = 0; i < menu->itemCount; i++) {
+        itemDef_t* item = menu->items[i];
+
+        if (item->type != ITEM_TYPE_LISTBOX) {
+            continue;
+        }
+        if (!(item->window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+            continue;
+        }
+        if (Rect_ContainsWidescreenPoint(&item->window.rect, x, y, Item_Widescreen(item))) {
+            return item->special;
+        }
+    }
+    return -1;
+}
+
 int Menu_ItemsMatchingGroup(menuDef_t* menu, const char* name) {
     int i;
     int count = 0;
@@ -1834,6 +1863,14 @@ int Item_Slider_OverSlider(itemDef_t* item, float x, float y) {
 int Item_ListBox_OverLB(itemDef_t* item, float x, float y) {
     rectDef_t r;
     int thumbstart;
+
+    /* [QL] A slim-scroll list draws a position indicator, not arrows and a
+       thumb, so there is nothing along its edge to be "over". Reporting a hit
+       here would make Item_ListBox_HandleKey treat a click near the right edge
+       as a page or arrow press instead of a click on the row under it. */
+    if (item->window.flags & WINDOW_LB_SLIMSCROLL) {
+        return 0;
+    }
 
     if (item->window.flags & WINDOW_HORIZONTAL) {
         // check if on left arrow
@@ -4381,6 +4418,60 @@ void Item_ListBox_Paint(itemDef_t* item) {
         row widths. If they still look unequal on screen, the rects themselves
         differ - cg_scoreboardDebug prints them.
         */
+        if (item->window.flags & WINDOW_LB_SLIMSCROLL) {
+            /*
+            [QL] A position indicator, not a control.
+
+            The arrows and the thumb are three clickable regions along the edge
+            of the list, and Item_ListBox_OverLB claims a click anywhere in them
+            - so on the scoreboard they swallowed row clicks and cost every row
+            a scroll bar's width. The wheel scrolls the list under the cursor,
+            which is what people reach for anyway, so all this has to do is say
+            how far down the list you are.
+            */
+            barX = item->window.rect.x + item->window.rect.w - SLIMSCROLL_WIDTH - 1;
+            contentX = item->window.rect.x + 1;
+            contentW = item->window.rect.w - SLIMSCROLL_WIDTH - 2;
+
+            listPtr->endPos = listPtr->startPos;
+            size = item->window.rect.h - 2;
+
+            {
+                int viewmax = (listPtr->elementHeight > 0)
+                                  ? (int)(item->window.rect.h / listPtr->elementHeight)
+                                  : 0;
+                vec4_t track, bar;
+                int i;
+
+                for (i = 0; i < 3; i++) {
+                    track[i] = item->window.foreColor[i];
+                    bar[i] = item->window.foreColor[i];
+                }
+                track[3] = item->window.foreColor[3] * 0.20f;
+                bar[3] = item->window.foreColor[3] * 0.70f;
+
+                DC->fillRect(barX, item->window.rect.y + 1, SLIMSCROLL_WIDTH, size, track);
+
+                if (viewmax > 0 && count > viewmax) {
+                    float frac = (float)viewmax / (float)count;
+                    float barH = size * frac;
+                    float maxScroll = (float)(count - viewmax);
+                    float pos;
+
+                    if (barH < 4.0f) {
+                        barH = 4.0f;
+                    }
+                    pos = (maxScroll > 0.0f) ? (listPtr->startPos / maxScroll) : 0.0f;
+                    if (pos < 0.0f) {
+                        pos = 0.0f;
+                    } else if (pos > 1.0f) {
+                        pos = 1.0f;
+                    }
+                    DC->fillRect(barX, item->window.rect.y + 1 + (size - barH) * pos,
+                                 SLIMSCROLL_WIDTH, barH, bar);
+                }
+            }
+        } else {
         if (item->window.flags & WINDOW_LB_LEFTSCROLL) {
             barX = item->window.rect.x + 1;
             contentX = item->window.rect.x + 1 + SCROLLBAR_SIZE;
@@ -4409,6 +4500,8 @@ void Item_ListBox_Paint(itemDef_t* item) {
 
         // adjust size for item painting
         size = item->window.rect.h - 2;
+        }
+
         if (listPtr->elementStyle == LISTBOX_IMAGE) {
             // fit = 0;
             x = item->window.rect.x + 1;

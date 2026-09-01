@@ -1820,6 +1820,14 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 			continue;
 		}
 
+		/* [QL] The scoreboard's lists get a scroll *position* bar rather than a
+		   scroll bar: a thin track with a proportional indicator, no arrows and
+		   no thumb. The arrows were three clickable regions down the edge of
+		   each list that swallowed clicks meant for the row underneath, and they
+		   cost every row a scroll bar's width. The wheel over the list you want
+		   is what actually scrolls these. */
+		item->window.flags |= WINDOW_LB_SLIMSCROLL;
+
 		/*
 		[QL] How far down is a matter of taste and of the menu being drawn, and
 		I cannot see the result from here - one element height overshot and left
@@ -1942,6 +1950,12 @@ static void CG_TrackLocalPlayerOnScoreboard(menuDef_t *menu) {
 	} else {
 		Menu_SetFeederCursor(menu, FEEDER_REDTEAM_LIST, -1);
 		Menu_SetFeederCursor(menu, FEEDER_BLUETEAM_LIST, -1);
+	}
+
+	/* [QL] Once a row has been clicked the highlight belongs to the player,
+	   not to us. Cleared when the board is next opened. */
+	if (cg.scoreboardSelected) {
+		return;
 	}
 
 	Menu_SetFeederCursor(menu, feeder, teamIndex);
@@ -2166,6 +2180,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 		if (activeMenu) {
 			if (firstTime) {
 				cg.scoreboardScrolled = qfalse;
+				cg.scoreboardSelected = qfalse;
 				firstTime = qfalse;
 			}
 			/*
