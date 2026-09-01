@@ -1536,10 +1536,45 @@ int Key_GetCatcher(void) {
 Key_SetCatcher
 ====================
 */
+/*
+===================
+Key_SetCatcher
+
+[QL] Clear held keys when input is taken away - but KEYCATCH_CGAME does not
+take it away.
+
+Key_ClearStates exists so movement keys cannot stick on when a menu or the
+console starts eating input: the player pressed forward, the menu opened, the
+key-up went to the menu, and the character kept walking. KEYCATCH_CGAME is not
+that. The cgame takes it while gameplay carries on underneath - CL_ParseBinding
+deliberately still runs '-' commands with a catcher set, precisely so nothing
+gets stuck - and clearing every held key for it releases keys the player is
+still holding.
+
+That is what killed the held scoreboard, and the first attempt at fixing it
+missed because of where the release actually happens. CL_ParseBinding does not
+run a binding, it queues one:
+
+    Cbuf_AddText("+scores <key> <time>")
+
+so +scores executes during a later Cbuf_Execute, outside the key event that
+produced it. Guarding CL_KeyEvent therefore guarded nothing by the time
+CG_ScoresDown_f called Key_SetCatcher; the key was no longer "being
+dispatched", so Key_ClearStates released it and fired '-scores' in the same
+millisecond as the press. Your trace showed exactly that - one press, a
+release sharing its timestamp, and the real release ~300ms later.
+
+Only a change to a catcher other than KEYCATCH_CGAME clears now. Taking or
+dropping the cgame catcher on its own leaves held keys alone, which is what the
+comment in CG_ScoresDown_f always claimed the engine did.
+===================
+*/
 void Key_SetCatcher(int catcher) {
-    // If the catcher state is changing, clear all key states
-    if (catcher != keyCatchers)
+    int changed = catcher ^ keyCatchers;
+
+    if (changed & ~KEYCATCH_CGAME) {
         Key_ClearStates();
+    }
 
     keyCatchers = catcher;
 }

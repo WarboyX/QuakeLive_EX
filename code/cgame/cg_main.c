@@ -585,17 +585,16 @@ static cvarTable_t cvarTable[] = {
     /* [QL] Take the mouse while +scores is held, so the scoreboard's lists can
        be scrolled and clicked.
 
-       DEFAULT 0, again, and it stays there until it is proven rather than
-       assumed. Turning this on has now cost the scoreboard three times: the
-       widescreen bias shifting the board off screen (CG_CgameUIOwnsScreen), the
-       menu never carrying WINDOW_VISIBLE so nothing in the input path would
-       look at it, and Key_SetCatcher's Key_ClearStates releasing the very
-       +scores key that took the catcher - which switched the board off in the
-       same frame it went on and left the screen with no scoreboard at all.
+       DEFAULT 0 until you confirm it. Turning this on has cost the scoreboard
+       three times: the widescreen bias shifting the board off screen
+       (CG_CgameUIOwnsScreen), the menu never carrying WINDOW_VISIBLE so nothing
+       in the input path would look at it, and Key_SetCatcher clearing every
+       held key when the cgame catcher changed - which released the +scores key
+       that took the catcher and switched the board off in the frame it went on.
 
-       Each of those is fixed. That is not the same as this being safe to ship
-       on by default, and a held scoreboard is a convenience while a scoreboard
-       that does not appear is not a game. Set it to 1 to try the mouse. */
+       The last of those is the one your trace caught, and it is fixed in
+       Key_SetCatcher rather than here. Set cg_scoreboardMouse 1 to exercise it;
+       the default follows once a held board is seen to stay up. */
     {&cg_scoreboardMouse, "cg_scoreboardMouse", "0", 0},
     /* [QL] Report player-model registration problems that are otherwise silent -
        a missing icon, a skin that would not load. RE_RegisterModel and
