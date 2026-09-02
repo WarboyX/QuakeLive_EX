@@ -3986,6 +3986,30 @@ void CG_ShowResponseHead(void) {
 void CG_RunMenuScript(char** args) {
 }
 
+/*
+[QL] The display context's console-command hook, for cgame.
+
+This was commented out with `// cgDC.executeText = &trap_Cmd_ExecuteText;` -
+cgame has no trap by that name, so the line could not be uncommented as it
+stood and the slot was left NULL. That is not a dormant stub: Script_Exec is
+
+    DC->executeText(EXEC_APPEND, va("%s ; ", val));
+
+as the last statement of the function, which gcc at -O3 turns into a tail call
+- `jmp *%rax` - so `exec` in any cgame menu script jumped straight to address
+zero. No return address is pushed by a tail call, which is why the crash report
+named Item_RunScript as the caller rather than Script_Exec.
+
+That is the map-vote crash. The intermission vote buttons are cgame menu items
+whose actions are `exec` lines, so voting called a null pointer every time.
+
+trap_SendConsoleCommand is cgame's equivalent and appends, which is the only
+exec_when Script_Exec ever asks for.
+*/
+void CG_ExecuteText(int exec_when, const char* text) {
+    trap_SendConsoleCommand(text);
+}
+
 void CG_GetTeamColor(vec4_t* color) {
     if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED) {
         (*color)[0] = 1.0f;

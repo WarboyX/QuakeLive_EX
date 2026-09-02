@@ -818,6 +818,30 @@ void UI_SetInputTrace(int on) {
     uiInputTrace = on;
 }
 
+/*
+[QL] Not every display context fills in every callback.
+
+ui_shared.c is compiled into both cgame and ui, and cgame leaves several of the
+context's function pointers NULL because it has no trap behind them - overstrike
+mode is one. An unguarded call through one of those is not a no-op, it is a jump
+to address zero: that is exactly how `exec` in a cgame menu script crashed the
+client, via Script_Exec's tail call to a NULL executeText. Reading the mode
+through here means a missing callback reports insert mode rather than taking the
+process down.
+*/
+static void UI_SetBinding(int keynum, const char *binding) {
+    if (DC && DC->setBinding) {
+        DC->setBinding(keynum, binding);
+    }
+}
+
+static qboolean UI_OverstrikeMode(void) {
+    if (DC && DC->getOverstrikeMode) {
+        return DC->getOverstrikeMode();
+    }
+    return qfalse;
+}
+
 static const char *UI_ItemName(const itemDef_t *item) {
     if (!item) {
         return "(null)";
@@ -2545,7 +2569,7 @@ qboolean Item_TextField_HandleKey(itemDef_t* item, int key) {
                 }
             }
 
-            if (!DC->getOverstrikeMode()) {
+            if (!UI_OverstrikeMode()) {
                 if ((len == MAX_EDITFIELD - 1) || (editPtr->maxChars && len >= editPtr->maxChars)) {
                     return qtrue;
                 }
@@ -2613,7 +2637,9 @@ qboolean Item_TextField_HandleKey(itemDef_t* item, int key) {
             }
 
             if (key == K_INS || key == K_KP_INS) {
-                DC->setOverstrikeMode(!DC->getOverstrikeMode());
+                if (DC->setOverstrikeMode) {
+                    DC->setOverstrikeMode(!UI_OverstrikeMode());
+                }
                 return qtrue;
             }
         }
@@ -3620,7 +3646,7 @@ void Item_TextField_Paint(itemDef_t* item) {
 
     offset = (item->text && *item->text) ? 8 : 0;
     if (item->window.flags & WINDOW_HASFOCUS && g_editingField) {
-        char cursor = DC->getOverstrikeMode() ? '_' : '|';
+        char cursor = UI_OverstrikeMode() ? '_' : '|';
         DC->drawTextWithCursor(item->textRect.x + item->textRect.w + offset, item->textRect.y, item->textscale, newColor, buff + editPtr->paintOffset, item->cursorPos - editPtr->paintOffset, cursor, editPtr->maxPaintChars, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x + item->textRect.w + offset, item->textRect.y, item->textscale, newColor, buff + editPtr->paintOffset, 0, editPtr->maxPaintChars, item->textStyle, item->fontIndex);
@@ -3926,10 +3952,10 @@ void Controls_SetConfig(qboolean restart) {
     // iterate each command, get its numeric binding
     for (i = 0; i < g_bindCount; i++) {
         if (g_bindings[i].bind1 != -1) {
-            DC->setBinding(g_bindings[i].bind1, g_bindings[i].command);
+            UI_SetBinding(g_bindings[i].bind1, g_bindings[i].command);
 
             if (g_bindings[i].bind2 != -1)
-                DC->setBinding(g_bindings[i].bind2, g_bindings[i].command);
+                UI_SetBinding(g_bindings[i].bind2, g_bindings[i].command);
         }
     }
 
@@ -4168,11 +4194,11 @@ qboolean Item_Bind_HandleKey(itemDef_t* item, int key, qboolean down) {
                 id = BindingIDFromName(item->cvar);
                 if (id != -1) {
                     if (g_bindings[id].bind1 != -1) {
-                        DC->setBinding(g_bindings[id].bind1, "");
+                        UI_SetBinding(g_bindings[id].bind1, "");
                         g_bindings[id].bind1 = -1;
                     }
                     if (g_bindings[id].bind2 != -1) {
-                        DC->setBinding(g_bindings[id].bind2, "");
+                        UI_SetBinding(g_bindings[id].bind2, "");
                         g_bindings[id].bind2 = -1;
                     }
                 }
@@ -4204,11 +4230,11 @@ qboolean Item_Bind_HandleKey(itemDef_t* item, int key, qboolean down) {
     if (id != -1) {
         if (key == -1) {
             if (g_bindings[id].bind1 != -1) {
-                DC->setBinding(g_bindings[id].bind1, "");
+                UI_SetBinding(g_bindings[id].bind1, "");
                 g_bindings[id].bind1 = -1;
             }
             if (g_bindings[id].bind2 != -1) {
-                DC->setBinding(g_bindings[id].bind2, "");
+                UI_SetBinding(g_bindings[id].bind2, "");
                 g_bindings[id].bind2 = -1;
             }
         } else if (g_bindings[id].bind1 == -1) {
@@ -4216,8 +4242,8 @@ qboolean Item_Bind_HandleKey(itemDef_t* item, int key, qboolean down) {
         } else if (g_bindings[id].bind1 != key && g_bindings[id].bind2 == -1) {
             g_bindings[id].bind2 = key;
         } else {
-            DC->setBinding(g_bindings[id].bind1, "");
-            DC->setBinding(g_bindings[id].bind2, "");
+            UI_SetBinding(g_bindings[id].bind1, "");
+            UI_SetBinding(g_bindings[id].bind2, "");
             g_bindings[id].bind1 = key;
             g_bindings[id].bind2 = -1;
         }
