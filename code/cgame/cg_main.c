@@ -582,7 +582,12 @@ static cvarTable_t cvarTable[] = {
        an eight-row list to solve a collision that was not happening.
 
        Raise it if rows do sit on the headers on some other scoreboard. */
-    {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "0", 0},
+    // [QL] Half an element height. The lists sit hard against their column
+    // header with a whole element of slack left under the last row; this
+    // splits that slack so the block of names sits in the panel rather than
+    // at the top of it. Raise to push the rows further down, 0 for the menu's
+    // own geometry.
+    {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "8", 0},
     /* [QL] Take the mouse while +scores is held, so the scoreboard's lists can
        be scrolled and clicked.
 

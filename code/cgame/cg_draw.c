@@ -1874,8 +1874,19 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 		rects and equal contentW the two lists are already mirror images.
 		*/
 
+		/*
+		[QL] Move the rows down; do not take the height back off.
+
+		Item_ListBox_Paint fits floor((h - 2) / elementHeight) rows and leaves
+		the remainder as slack at the bottom, which on these lists is most of an
+		element - that is the empty strip under the last name inside the panel
+		art. Shrinking h by the same amount we shift by spends that slack a
+		second time and can cross the boundary that drops a whole row, which is
+		what "one element height overshot and left a visible gap" was. Leaving h
+		alone moves the block of rows into the slack instead, so the row count
+		never changes.
+		*/
 		item->window.rect.y += shift;
-		item->window.rect.h -= shift;
 	}
 }
 

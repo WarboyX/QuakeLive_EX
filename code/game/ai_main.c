@@ -1005,6 +1005,52 @@ void RemoveColorEscapeSequences(char* text) {
 BotAI
 ==============
 */
+/*
+==============
+BotStripChatClientNum
+
+[QL] Quake Live's chat relay is not Quake 3's.
+
+G_SayTo emits
+
+    chat  "%02d <name>^7: <text>"
+    tchat "%02d <name>^7: <text>"
+
+where the leading two-digit field is the speaker's clientNum, added so the
+cgame can tie the line and its voice sound to a client (see g_cmds.c). Quake 3
+sent the payload starting at the name.
+
+Everything the bots understand of what is said to them is matched by
+be_ai_chat against the templates in botfiles/match.c, and those templates start
+at the speaker's name - MTCONTEXT_REPLYCHAT pulls NETNAME and MESSAGE out of
+the line, and BotMatchMessage then resolves the speaker with ClientFromName.
+With "39 " glued to the front, NETNAME comes out as "39 Bones", no template
+matches, and every order, request and reply is silently dropped.
+
+That is not only a chat problem. In team games the leader hands out roles - go
+for the flag, defend the base, escort the carrier - as tell messages, and a bot
+that never matches one never takes a task, so it falls through to
+AINode_Seek_LTG and roams. Whole teams roaming is what "they don't path to the
+objective" looks like, and it is also why they pile into each other.
+
+So take the field off before queueing. Only a run of digits followed by a
+single space is removed, so a message that happens to begin with a number is
+left alone if the format ever changes back.
+==============
+*/
+static void BotStripChatClientNum(char *msg) {
+    char *p = msg;
+
+    while (*p >= '0' && *p <= '9') {
+        p++;
+    }
+    if (p == msg || *p != ' ') {
+        return;   // not the clientNum field
+    }
+    p++;
+    memmove(msg, p, strlen(p) + 1);
+}
+
 int BotAI(int client, float thinktime) {
     bot_state_t* bs;
     char buf[1024], *args;
@@ -1045,11 +1091,13 @@ int BotAI(int client, float thinktime) {
             // remove first and last quote from the chat message
             memmove(args, args + 1, strlen(args));
             args[strlen(args) - 1] = '\0';
+            BotStripChatClientNum(args);
             trap_BotQueueConsoleMessage(bs->cs, CMS_CHAT, args);
         } else if (!Q_stricmp(buf, "tchat")) {
             // remove first and last quote from the chat message
             memmove(args, args + 1, strlen(args));
             args[strlen(args) - 1] = '\0';
+            BotStripChatClientNum(args);
             trap_BotQueueConsoleMessage(bs->cs, CMS_CHAT, args);
         } else if (!Q_stricmp(buf, "vchat")) {
             BotVoiceChatCommand(bs, SAY_ALL, args);

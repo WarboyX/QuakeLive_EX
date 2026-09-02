@@ -4556,15 +4556,42 @@ void BotAIBlocked(bot_state_t* bs, bot_moveresult_t* moveresult, int activate) {
     // if (bsptrace.fraction >= 1) movetype = MOVE_CROUCH;
     // get the sideward vector
     CrossProduct(hordir, up, sideward);
-    //
+    /*
+    [QL] Pick a side and keep it for a moment, and start on opposite sides.
+
+    Two bots meeting head on run this code against each other, and stock Q3
+    both starts them on the same side and flips the side on every frame the
+    sidestep fails. Mirrored and re-rolled ten times a second, that is the
+    dance: neither commits long enough to get past, and in a doorway with a
+    team's worth of bots behind them the whole queue stalls.
+
+    An odd client number starts on the other side, so a pair meeting head on
+    steps apart rather than into each other, and a side that has been chosen is
+    held for AVOIDSIDE_HOLD before it can flip again - long enough to actually
+    clear a body, short enough to still find the way out when the first side is
+    a wall.
+    */
+#define AVOIDSIDE_HOLD 0.7f
+    if (bs->notblocked_time > FloatTime() - 0.2f) {
+        // freshly blocked: start on this bot's own side
+        if (bs->client & 1) {
+            bs->flags |= BFL_AVOIDRIGHT;
+        } else {
+            bs->flags &= ~BFL_AVOIDRIGHT;
+        }
+        bs->avoidside_time = FloatTime();
+    }
     if (bs->flags & BFL_AVOIDRIGHT)
         VectorNegate(sideward, sideward);
     // try to crouch straight forward?
     if (movetype != MOVE_CROUCH || !trap_BotMoveInDirection(bs->ms, hordir, 400, movetype)) {
         // perform the movement
         if (!trap_BotMoveInDirection(bs->ms, sideward, 400, movetype)) {
-            // flip the avoid direction flag
-            bs->flags ^= BFL_AVOIDRIGHT;
+            // flip the avoid direction flag, but not more often than the hold
+            if (bs->avoidside_time < FloatTime() - AVOIDSIDE_HOLD) {
+                bs->flags ^= BFL_AVOIDRIGHT;
+                bs->avoidside_time = FloatTime();
+            }
             // flip the direction
             // VectorNegate(sideward, sideward);
             VectorMA(sideward, -1, hordir, sideward);
