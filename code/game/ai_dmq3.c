@@ -5315,12 +5315,23 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
         // do team AI
         BotTeamAI(bs);
     }
-    // [QL] InstaGib: when g_instaGib is set and the bot has no enemy, drop into
-    // the InstaGib hunting node. (binary BotDeathmatchAI dispatch 0x1001f359)
-    // NOTE: the binary also gates this on a "busy" field (bs+0x1bd4) shared by the
-    // unported team-AI nodes; that gate is omitted here.
+    /*
+    [QL] InstaGib: when g_instaGib is set and the bot has no enemy, drop into
+    the InstaGib hunting node. (binary BotDeathmatchAI dispatch 0x1001f359)
+
+    The binary gates this on a "busy" field (bs+0x1bd4) shared by the unported
+    team-AI nodes. That gate used to be omitted, and omitting it is what stopped
+    instagib team games having any objective play at all: the hunt sets
+    ltg_time to FloatTime() + 99999 and takes ltgtype for itself, so every bot
+    with no enemy in sight abandoned whatever the team leader had given it and
+    went looking for a body instead. Flags sat on their stands for whole
+    matches.
+
+    A bot with no long term goal is the "not busy" case, so that is the gate:
+    the hunt fills idle time, it does not outrank a task.
+    */
     if (!BotIntermission(bs) && !BotIsObserver(bs) && !BotIsDead(bs)) {
-        if (g_instaGib.integer && bs->ltgtype != 21 && bs->enemy == -1) {
+        if (g_instaGib.integer && bs->ltgtype == 0 && bs->enemy == -1) {
             AIEnter_InstaGib(bs, "insta gib");
         }
     }

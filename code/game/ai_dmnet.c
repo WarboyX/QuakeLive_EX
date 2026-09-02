@@ -2643,6 +2643,13 @@ FindInstaGibTarget
 [QL] Pick the nearest visible, reachable, live player for the InstaGib
 hunting node. Returns the target entity number or -1.
 (binary FindInstaGibTarget 0x10020200)
+
+Teammates are skipped. Without that this walks a bot at whoever is nearest,
+team or not, and at under 50 units it stops moving and just aims - so on a team
+server bots close to touching distance with their own side and their own human
+players and stay there, shuffling. That is the "they dance around each other
+and run into me, like they want to gauntlet each other" behaviour: they were
+hunting their own team.
 ==================
 */
 int FindInstaGibTarget(bot_state_t* bs) {
@@ -2674,6 +2681,9 @@ int FindInstaGibTarget(bot_state_t* bs) {
         if (i == bs->entitynum) {
             continue;
         }
+        if (BotSameTeam(bs, i)) {
+            continue;   // [QL] see BotSameTeam note below
+        }
         BotEntityInfo(i, &entinfo);
         if (!entinfo.valid) {
             continue;
@@ -2701,6 +2711,9 @@ int FindInstaGibTarget(bot_state_t* bs) {
     if (besttarget == -1) {
         for (i = 0; i < MAX_CLIENTS; i++) {
             if (i == bs->entitynum) {
+                continue;
+            }
+            if (BotSameTeam(bs, i)) {
                 continue;
             }
             BotEntityInfo(i, &entinfo);
