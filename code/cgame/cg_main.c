@@ -172,6 +172,7 @@ vmCvar_t cg_predictItems;
 vmCvar_t cg_deferPlayers;
 vmCvar_t cg_drawTeamOverlay;
 vmCvar_t cg_teamOverlayUserinfo;
+vmCvar_t cg_teamOverlayMaxPlayers;
 vmCvar_t cg_teamChatsOnly;
 
 vmCvar_t cg_hudFiles;
@@ -659,6 +660,11 @@ static cvarTable_t cvarTable[] = {
     {&cg_deferPlayers, "cg_deferPlayers", "1", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0")
     {&cg_drawTeamOverlay, "cg_drawTeamOverlay", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0")
     {&cg_teamOverlayUserinfo, "teamoverlay", "0", CVAR_ROM | CVAR_USERINFO},
+    /* [QL] rows in the team status overlay, including yourself. Was hardcoded
+       to 8 - a full team in most gametypes, half of one on a large CTF server,
+       and the rest were dropped without a word. CVAR_ARCHIVE because this is a
+       value the player picks, not one we ship. */
+    {&cg_teamOverlayMaxPlayers, "cg_teamOverlayMaxPlayers", "8", CVAR_ARCHIVE},
     {&cg_stats, "cg_stats", "0", CVAR_CHEAT},  // [QL] binary: CVAR_CHEAT
     {&cg_teamChatsOnly, "cg_teamChatsOnly", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     // the following variables are created in other parts of the system,

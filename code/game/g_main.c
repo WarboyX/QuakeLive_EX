@@ -76,6 +76,7 @@ vmCvar_t g_allowVoteMidGame;
 vmCvar_t g_allowSpecVote;
 vmCvar_t g_voteFlags;
 vmCvar_t g_endMapVoteTime;  // [QL] arena-vote window, seconds
+vmCvar_t g_matchStartGrace;  // [QL] seconds after level start where deaths do not score
 vmCvar_t g_voteDelay;
 vmCvar_t g_voteLimit;
 vmCvar_t g_teamAutoJoin;
@@ -710,6 +711,10 @@ static cvarTable_t gameCvarTable[] = {
     // 10..120 by G_MapVoteWindowMsec and published to clients so the countdown
     // on the match summary is the same clock the server exits on.
     {&g_endMapVoteTime, "g_endMapVoteTime", "30", CVAR_ARCHIVE, 0, NULL},
+    // [QL] seconds from level start during which a suicide or a world death
+    // costs neither a point nor a death on the record - the opening scramble is
+    // nobody's fault. 0 disables. See G_InMatchStartGrace.
+    {&g_matchStartGrace, "g_matchStartGrace", "10", CVAR_ARCHIVE, 0, NULL},
     {&g_voteDelay, "g_voteDelay", "0", 0, 0, NULL},
     {&g_voteLimit, "g_voteLimit", "0", 0, 0, NULL},
 

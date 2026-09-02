@@ -1168,6 +1168,7 @@ extern vmCvar_t g_allowVoteMidGame;
 extern vmCvar_t g_allowSpecVote;
 extern vmCvar_t g_voteFlags;
 extern vmCvar_t g_endMapVoteTime;
+extern vmCvar_t g_matchStartGrace;
 extern vmCvar_t g_voteDelay;
 extern vmCvar_t g_voteLimit;
 extern vmCvar_t g_teamAutoJoin;

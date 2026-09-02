@@ -538,6 +538,30 @@ void PlayerAwardEF(gentity_t* self, int persIdx, int efBit) {
 }
 
 /*
+[QL] Is the match young enough that a death should not be held against you?
+
+The first seconds of a round are the ones nobody controls: everybody arrives at
+once, spawn points are crowded, and a telefrag or a fall taken before you have a
+weapon in hand is not a mistake anyone made. Scoring those costs a player a
+frag and a death for being unlucky about where the game put them.
+
+g_matchStartGrace is that window in seconds, measured from the level start, 0 to
+turn it off. It suppresses the -1 for a suicide or a world death and the death
+that goes on the player's own record; the killer of a genuine frag still scores
+normally, because that is a real kill and not an artefact of the start.
+==================
+*/
+static qboolean G_InMatchStartGrace(void) {
+    if (g_matchStartGrace.integer <= 0) {
+        return qfalse;
+    }
+    if (level.warmupTime) {
+        return qfalse;   // warmup does not score anyway
+    }
+    return (level.time - level.startTime) < (g_matchStartGrace.integer * 1000);
+}
+
+/*
 ==================
 player_die
 ==================
@@ -673,7 +697,9 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
     //     killStreak/per-weapon internally (when !scoringDisabled), so player_die must NOT
     //     increment numKills/numDeaths itself.
     self->enemy = attacker;
-    self->client->ps.persistant[PERS_KILLED]++;
+    if (!G_InMatchStartGrace()) {
+        self->client->ps.persistant[PERS_KILLED]++;
+    }
     STAT_AddPlayerDeathStat(self, attacker, meansOfDeath);
 
     // 14. scoring + award engine
@@ -683,7 +709,9 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
 
         if (attacker == self) {
             // 14b. self kill
-            AddScore(attacker, self->r.currentOrigin, -1);
+            if (!G_InMatchStartGrace()) {
+                AddScore(attacker, self->r.currentOrigin, -1);
+            }
             if (meansOfDeath == MOD_SUICIDE) {   // [QL] binary increments unconditionally
                 self->client->expandedStats.numSuicides++;
             }
@@ -847,7 +875,9 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
         }
     } else {
         // 14a. world / non-client attacker
-        AddScore(self, self->r.currentOrigin, -1);
+        if (!G_InMatchStartGrace()) {
+            AddScore(self, self->r.currentOrigin, -1);
+        }
         if (meansOfDeath == MOD_WATER || meansOfDeath == MOD_SLIME || meansOfDeath == MOD_LAVA ||
             meansOfDeath == MOD_CRUSH || meansOfDeath == MOD_TELEFRAG || meansOfDeath == MOD_FALLING ||
             meansOfDeath == MOD_TARGET_LASER || meansOfDeath == MOD_TRIGGER_HURT) {

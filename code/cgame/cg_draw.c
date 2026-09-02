@@ -641,7 +641,23 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 
 	// max player name width
 	pwidth = 0;
-	count = (numSortedTeamPlayers > 8) ? 8 : numSortedTeamPlayers;
+	/*
+	[QL] How many team-mates the overlay lists.
+
+	Hardcoded to 8, including yourself, which is a full team in most gametypes
+	and half of one on a large CTF server - and the rows are simply dropped, so
+	the people missing from it are missing silently. cg_teamOverlayMaxPlayers
+	is the number of rows, clamped to something the screen can hold.
+	*/
+	count = cg_teamOverlayMaxPlayers.integer;
+	if (count < 1) {
+		count = 1;
+	} else if (count > MAX_CLIENTS) {
+		count = MAX_CLIENTS;
+	}
+	if (count > numSortedTeamPlayers) {
+		count = numSortedTeamPlayers;
+	}
 	for (i = 0; i < count; i++) {
 		ci = cgs.clientinfo + sortedTeamPlayers[i];
 		if (ci->infoValid && ci->team == cg.snap->ps.persistant[PERS_TEAM]) {
