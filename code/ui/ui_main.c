@@ -454,6 +454,44 @@ int frameCount = 0;
 int startTime;
 
 #define UI_FPS_FRAMES 125
+/*
+[QL] main_options is a tab bar with nothing behind it until a tab is clicked.
+
+The Settings panel in Quake Live is two tabs - Controls and Game Settings - over
+a page that the client fills with its embedded web view; that is what
+`exec "web_changeHash /settings"` in the nav button is for. We have no web view,
+and main_options carries no onOpen of its own, so opening it in a match drew the
+tabs over an empty panel. Clicking either tab ran `open ingame_controls` or
+`open ingame_options` and the page appeared - which is why it looked like the
+Controls list was broken and then healed itself, when in fact nothing had opened
+the page the first time. (The uiTrace of a first open shows no ingame_controls
+onOpen at all; the tab click shows the whole hide/show/loadControls run.)
+
+Checked once a frame rather than at any one call site, because main_options is
+reached both from _UI_SetActiveMenu and from a menu script's `open`, and this
+has to hold for both. It fires only while the tab bar is up with neither page
+visible, so a deliberate switch between the two tabs is untouched, and closing
+the panel does not bring it back.
+*/
+static void UI_DefaultOptionsPage(void) {
+    static const char *pages[] = {"ingame_controls", "ingame_options"};
+    menuDef_t *options;
+    int i;
+
+    options = Menus_FindByName("main_options");
+    if (!options || !(options->window.flags & WINDOW_VISIBLE)) {
+        return;
+    }
+    for (i = 0; i < (int)ARRAY_LEN(pages); i++) {
+        menuDef_t *page = Menus_FindByName(pages[i]);
+
+        if (page && (page->window.flags & WINDOW_VISIBLE)) {
+            return;   // a page is already up
+        }
+    }
+    Menus_OpenByName(pages[0]);
+}
+
 void _UI_Refresh(int realtime) {
     static int index;
     static int previousTimes[UI_FPS_FRAMES];
@@ -471,6 +509,8 @@ void _UI_Refresh(int realtime) {
     */
     trap_Cvar_Update(&ui_inputDebug);
     UI_SetInputTrace(ui_inputDebug.integer);
+
+    UI_DefaultOptionsPage();
 
     uiInfo.uiDC.frameTime = realtime - uiInfo.uiDC.realTime;
     uiInfo.uiDC.realTime = realtime;

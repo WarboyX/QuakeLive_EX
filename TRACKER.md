@@ -122,7 +122,7 @@ for stock clients until proven otherwise.
 | ● | **U9** | Server browser painted over createserver | DONE, root cause found and verified |
 | ● | **U16** | Options BACK button disappears after joining a game | DONE (verify) |
 | ● | **U17** | iobin.pk3 has no visible build stamp | DONE (verify) |
-| ○ | **U10** | Controls menu is empty | NEEDS INFO |
+| ● | **U10** | Controls menu is empty | DONE (verify) |
 | ○ | **U11** | Cosmetic layout faults | PARTIAL (value offset fixed) |
 | ● | **U12** | Render options have no home in Quake Live's menus | DONE (verify) |
 | ● | **U18** | Renderer row in Render Options draws blank | DONE (verify) |
@@ -207,7 +207,7 @@ for stock clients until proven otherwise.
 | ● | **U9** | Server browser painted over createserver | DONE, root cause found and verified |
 | ● | **U16** | Options BACK button disappears after joining a game | DONE (verify) |
 | ● | **U17** | iobin.pk3 has no visible build stamp | DONE (verify) |
-| ○ | **U10** | Controls menu is empty | NEEDS INFO |
+| ● | **U10** | Controls menu is empty | DONE (verify) |
 | ○ | **U11** | Cosmetic layout faults | PARTIAL (value offset fixed) |
 | ● | **U12** | Render options have no home in Quake Live's menus | DONE (verify) |
 | ● | **U18** | Renderer row in Render Options draws blank | DONE (verify) |
@@ -272,7 +272,6 @@ loud in the console.)*
 
 **P2 — correctness unknowns, need evidence**
 4. **W1 / W2** shotgun pattern shape and the 30-radians-or-degrees constant.
-5. **U10** empty Controls panel — four causes eliminated, needs a menu-list dump.
 6. **U11** cosmetic overlaps on QL's Advanced pages; **U13** widescreen bias.
 
 **P3 — absent subsystems, none started, none blocking**
@@ -586,7 +585,7 @@ rather than a baked string that could disagree with it.
 
 `cgame`/`qagame` also print their build to the console at init.
 
-### U10. Controls menu is empty — NEEDS INFO
+### U10. Controls menu is empty — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
 Not `???` rows: **no rows at all**. The tabs draw, so the menu loaded and it is
@@ -646,11 +645,37 @@ activation only. Reading has not settled which:
   are the same observation. The tabs drawing proves only that the menu is
   visible, not that its script ran.
 
-**Next step:** `ui_inputDebug 1`, then open Settings and read the trace.
-ui_shared's breadcrumb trail is reachable from the UI module now (see
-`_UI_Refresh`), and it prints every script statement with the item it ran
-against - so it answers "did `show move` execute on the first open" directly
-rather than by elimination.
+**Answered by the trace.** `ui_inputDebug 1` over a first open and a tab click:
+
+```
+handleKey menu 'ingame' key 178 down 1 focused 'navbtn6'      <- Settings
+  -> default Item_Action 'navbtn6'
+script 'open' on item 'navbtn6'
+...
+handleKey menu 'main_options' key 178 down 1 focused 'navbtn2' <- Controls tab
+  -> default Item_Action 'navbtn2'
+script 'open' on item 'navbtn2'
+script 'hide' on item '(unnamed)'      <- ingame_controls onOpen at last
+script 'show' on item '(unnamed)'
+script 'show' on item '(unnamed)'
+script 'uiScript' on item '(unnamed)'
+```
+
+The first open runs **no `ingame_controls` onOpen at all**; the tab click runs
+the whole hide/show/show/loadControls sequence. So the panel was never opened,
+rather than opened and left empty - every suspect above was aimed at the wrong
+half of the problem.
+
+`main_options` is a tab bar - Controls and Game Settings - over a page Quake
+Live fills with its embedded web view, which is what
+`exec "web_changeHash /settings"` in the nav button drives. We have no web view
+and main_options carries no `onOpen`, so the page stayed empty until a tab was
+clicked.
+
+**Fixed** by `UI_DefaultOptionsPage` in `_UI_Refresh`: while main_options is
+visible with neither page up, open `ingame_controls`. Once a frame rather than
+at a call site, because main_options is reached both from `_UI_SetActiveMenu`
+and from a menu script's `open`.
 
 ### U11. Cosmetic layout faults — PARTIAL (value offset fixed)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only

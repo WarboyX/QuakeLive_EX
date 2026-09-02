@@ -856,7 +856,7 @@ static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
     static volatile LONG entered;
 
     char path[MAX_OSPATH * 2];
-    char text[4096];
+    char text[8192];
     char where[MAX_OSPATH + 32];
     const char *homepath;
     void *address;
@@ -880,6 +880,84 @@ static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
                       "faulted in: %s\r\n",
                       (unsigned long)ep->ExceptionRecord->ExceptionCode, address, where);
 
+    /*
+    [QL] The faulting thread's own registers, and what it was about to return to.
+
+    RtlCaptureStackBackTrace below runs inside this filter, so on x64 it reports
+    the filter's frames and ntdll's dispatch machinery and stops - which is what
+    the first crash report from the field came back with, eight frames and not
+    one of them ours.
+
+    The ContextRecord is the faulting thread, so use it. Two things matter:
+
+      Rip 0 means the fault was not a null *data* dereference at all - it means
+      execution jumped to address zero, i.e. a call through a null function
+      pointer. And on x64 a CALL pushes its return address before transferring
+      control, so when the target is null the word at Rsp is the instruction
+      immediately after the offending call site: the caller, named exactly.
+
+    Below that, the first stack words are scanned and any that land inside a
+    loaded module's code are printed. That is a guess, not an unwind - saved
+    registers and stale slots produce false entries - but it puts the module
+    names of the frames underneath in front of a human, which is what turns
+    "somewhere in cgame" into a place to look.
+    */
+    {
+        CONTEXT *ctx = ep->ContextRecord;
+
+        if (ctx) {
+#ifdef _WIN64
+            DWORD_PTR ip = (DWORD_PTR)ctx->Rip;
+            DWORD_PTR sp = (DWORD_PTR)ctx->Rsp;
+#else
+            DWORD_PTR ip = (DWORD_PTR)ctx->Eip;
+            DWORD_PTR sp = (DWORD_PTR)ctx->Esp;
+#endif
+            len += Com_sprintf(text + len, sizeof(text) - len,
+                               "ip        : 0x%llx\r\n"
+                               "sp        : 0x%llx\r\n",
+                               (unsigned long long)ip, (unsigned long long)sp);
+
+            if (ip == 0) {
+                len += Com_sprintf(text + len, sizeof(text) - len,
+                                   "\r\nExecution jumped to address 0 - a call through a null function\r\n"
+                                   "pointer, not a null dereference. The return address below names the\r\n"
+                                   "call site.\r\n");
+            }
+
+            if (sp && !IsBadReadPtr((void *)sp, sizeof(void *))) {
+                Sys_Win32AddressName(*(void **)sp, where, sizeof(where));
+                len += Com_sprintf(text + len, sizeof(text) - len,
+                                   "called from: %s\r\n", where);
+            }
+
+            // plausible return addresses further down the same stack
+            if (sp && !IsBadReadPtr((void *)sp, 256 * sizeof(void *))) {
+                void **slot = (void **)sp;
+                int i, shown = 0;
+
+                len += Com_sprintf(text + len, sizeof(text) - len,
+                                   "\r\ncode addresses on the stack (unverified - not an unwind):\r\n");
+                for (i = 0; i < 256 && shown < 24 && len < (int)sizeof(text) - 160; i++) {
+                    HMODULE mod = NULL;
+
+                    if (!slot[i]) {
+                        continue;
+                    }
+                    if (!GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                           (LPCSTR)slot[i], &mod) ||
+                        mod == NULL) {
+                        continue;
+                    }
+                    Sys_Win32AddressName(slot[i], where, sizeof(where));
+                    len += Com_sprintf(text + len, sizeof(text) - len, "  %s\r\n", where);
+                    shown++;
+                }
+            }
+        }
+    }
+
     capture = (captureStackBackTrace_t)(void *)GetProcAddress(GetModuleHandleA("kernel32.dll"),
                                                               "RtlCaptureStackBackTrace");
     if (capture) {
@@ -888,7 +966,8 @@ static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
         USHORT i;
 
         if (count > 0) {
-            len += Com_sprintf(text + len, sizeof(text) - len, "\r\nstack:\r\n");
+            len += Com_sprintf(text + len, sizeof(text) - len,
+                               "\r\nhandler stack (this filter, not the fault):\r\n");
             for (i = 0; i < count && len < (int)sizeof(text) - 128; i++) {
                 Sys_Win32AddressName(frames[i], where, sizeof(where));
                 len += Com_sprintf(text + len, sizeof(text) - len, "  %2u  %s\r\n", (unsigned)i, where);
