@@ -4450,7 +4450,7 @@ void Item_ListBox_Paint(itemDef_t* item) {
                hard against rect.x + rect.w hangs off the panel. contentW keeps
                the same reservation, so the rows are exactly as wide as they
                were. */
-            barX = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 3;
+            barX = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 2;
             contentX = item->window.rect.x + 1;
             contentW = item->window.rect.w - SCROLLBAR_SIZE - 2;
 
