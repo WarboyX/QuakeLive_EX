@@ -458,6 +458,20 @@ void _UI_Refresh(int realtime) {
     static int index;
     static int previousTimes[UI_FPS_FRAMES];
 
+    /*
+    [QL] ui_inputDebug turns on ui_shared's breadcrumb trail for this module.
+
+    ui_shared.c is compiled into both cgame and ui, and the trace it carries has
+    only ever been reachable from the cgame side (cg_scoreboardDebug), so a
+    question about what the *menu* system did on a given click had no answer
+    beyond reading the menu file and guessing. It prints which menu took a key,
+    which item took focus, and every script statement as it runs, with the item
+    it ran against - enough to tell an onOpen that did not fire from one that
+    fired and was undone.
+    */
+    trap_Cvar_Update(&ui_inputDebug);
+    UI_SetInputTrace(ui_inputDebug.integer);
+
     uiInfo.uiDC.frameTime = realtime - uiInfo.uiDC.realTime;
     uiInfo.uiDC.realTime = realtime;
 
@@ -5494,6 +5508,7 @@ vmCvar_t ui_netSource;
 vmCvar_t ui_serverFilterType;
 vmCvar_t ui_opponentName;
 vmCvar_t ui_menuFiles;
+vmCvar_t ui_inputDebug;
 vmCvar_t ui_currentMap;
 vmCvar_t ui_currentNetMap;
 vmCvar_t ui_mapIndex;
@@ -5635,6 +5650,9 @@ static cvarTable_t cvarTable[] = {
     {&ui_redteam, "ui_redteam", "Pagans", CVAR_ARCHIVE},
     {&ui_netSource, "ui_netSource", "0", CVAR_ARCHIVE},
     {&ui_menuFiles, "ui_menuFiles", "ui/menus.txt", CVAR_ARCHIVE},
+    // [QL] menu input/script trace - see _UI_Refresh. Not archived: it is a
+    // diagnostic, and one left on in a config is a console full of noise.
+    {&ui_inputDebug, "ui_inputDebug", "0", 0},
     {&ui_currentMap, "ui_currentMap", "0", CVAR_ARCHIVE},
     {&ui_currentNetMap, "ui_currentNetMap", "0", CVAR_ARCHIVE},
     {&ui_mapIndex, "ui_mapIndex", "0", CVAR_ARCHIVE},

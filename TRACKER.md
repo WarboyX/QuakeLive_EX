@@ -145,7 +145,7 @@ for stock clients until proven otherwise.
 | ● | **C16** | Score tracker never shows the player's score | DONE (verify) |
 | ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
 | ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
-| ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
+| ● | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | DONE (confirmed) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -230,7 +230,7 @@ for stock clients until proven otherwise.
 | ● | **C16** | Score tracker never shows the player's score | DONE (verify) |
 | ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
 | ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
-| ○ | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | OPEN |
+| ● | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | DONE (confirmed) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -626,10 +626,31 @@ further along.
    on a missing name fails silently.
 3. The six `grpControlbutton` tab buttons that switch groups.
 
-**Next step:** print the menu list at the moment OPTIONS is pressed and confirm
-`ingame_controls` is present. Suspect 2 is cheap to test and fits the evidence:
-the tab bar drew because that is `main_options`, and the panel below was empty
-because the menu meant to fill it was never loaded.
+**Narrowed by the repro.** It happens on the **first** open of Settings in a
+match only. Click any other tab (Game) and come back to Controls and the rows
+are there, for the rest of the session.
+
+That kills suspect 2 outright: a menu that was never loaded could not fill in
+later. It also rules out the show/hide machinery and the group matching, since
+the tab buttons run the same `hide grpControls ; show move` pair the `onOpen`
+does, against the same items, and theirs works.
+
+What is left is that `onOpen` does not run, or runs and is undone, on that first
+activation only. Reading has not settled which:
+
+- `Menus_ActivateByName` -> `Menus_Activate` -> `Item_RunScript(menu->onOpen)`
+  is stock and unconditional, so nothing there skips a first open.
+- `Controls_GetConfig`, which `uiScript loadControls` calls at the end of the
+  same script, only reads bindings - it touches no window flags.
+- The rows' parsed default is `visible 0`, so "no rows" and "`onOpen` never ran"
+  are the same observation. The tabs drawing proves only that the menu is
+  visible, not that its script ran.
+
+**Next step:** `ui_inputDebug 1`, then open Settings and read the trace.
+ui_shared's breadcrumb trail is reachable from the UI module now (see
+`_UI_Refresh`), and it prints every script statement with the item it ran
+against - so it answers "did `show move` execute on the first open" directly
+rather than by elimination.
 
 ### U11. Cosmetic layout faults — PARTIAL (value offset fixed)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -879,7 +900,7 @@ system paint the item's own `defaultContent` — the same thing Quake Live shows
 without a live ad, and this build has no ad server (`RE_Get_Advertisements`
 reports none in both renderers).
 
-### C13. Scoreboard is empty with a full server — PARTIAL
+### C13. Scoreboard is empty with a full server — DONE (confirmed)
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
 
 With 40 players the in-game scoreboard and the end-of-match summary both draw
@@ -2956,7 +2977,7 @@ differently. If the loaded HUD asks for `CG_1STPLACE` and `CG_2NDPLACE`
 unconditionally then the rendering is faithful and the layout is the thing to
 change. That is the next thing to check and it has not been checked.
 
-### C15. HUD score tracker shows 1st and 2nd, not 1st and yours — OPEN
+### C15. HUD score tracker shows 1st and 2nd, not 1st and yours — DONE (confirmed)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
 The two-bar tracker top-left read 39 / 38 while the player was 40th with 1. It
@@ -3654,7 +3675,7 @@ with a real map, so that part is yours to confirm.
 **Still absent:** the Valve/Steam server query protocol (A2S). Only the Quake
 master protocol is implemented.
 
-### E7. Instagib is split across two cvars, and one branch is dead — PARTIAL
+### E7. Instagib is split across two cvars, and one branch is dead — DONE (confirmed)
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client, vanilla included
 
 `g_instaGib` and the `DF_INSTAGIB` dmflag were two halves of one feature keyed
@@ -3746,7 +3767,7 @@ stays at 1 ms and the remainder is dropped rather than accumulated as a debt
 that can never be paid. Sub-millisecond timing throughout is the other fix and a
 much larger one — it means replacing `Com_TimeVal` and `Sys_Milliseconds`.
 
-### E10. Bots: pool ceiling, fill rate, and matches that never start — PARTIAL
+### E10. Bots: pool ceiling, fill rate, and matches that never start — DONE (confirmed)
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
 
 Three separate faults reported together.
