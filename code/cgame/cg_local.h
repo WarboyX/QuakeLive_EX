@@ -1794,6 +1794,7 @@ extern vmCvar_t s_killBeepVolume;
 
 // QL cvars (binary-verified from cgamex86.dll)
 extern vmCvar_t cg_chatbeep;
+extern vmCvar_t cg_chatHistoryLength;
 extern vmCvar_t cg_deadBodyColor;
 extern vmCvar_t cg_deadBodyDarken;
 extern vmCvar_t g_training;  // [QL] server training flag; gates model forcing (CG_ResolveModelForClient)

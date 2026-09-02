@@ -867,21 +867,37 @@ void CG_AddChat(const char *text, int teamOnly, int extraTime) {
     CG_Printf("%s\n", text);
 }
 
-// [QL] Draw chat overlay - binary at 0x10006A10
-// chatRect defaults to bottom-left area (x=1, y=350, h=120 from bottom)
+/*
+[QL] Draw chat overlay - binary at 0x10006A10
+chatRect defaults to bottom-left area (x=1, y=350, h=120 from bottom)
+
+Recent lines are on screen without being asked for. Before, the ring buffer was
+filled by CG_AddChat and only ever drawn while +chat was held or the scoreboard
+was up, so ordinary play showed one line for the two seconds of its endTime and
+then nothing - the buffer was written every time anyone spoke and read almost
+never. Anything said while you were looking elsewhere was gone.
+
+So the history is drawn either way, and what changes is how much and for how
+long: normally the last cg_chatHistoryLength lines that are still inside
+CHAT_HUD_TIME, and while +chat is held or the scoreboard is up, that many lines
+regardless of age. The newest line keeps its own slot at the bottom until its
+endTime passes and CG_AddChat rolls it into the buffer, which is the binary's
+arrangement and is left alone.
+*/
+#define CHAT_HUD_TIME 10000   // how long a line stays up unasked, in msec
+
 void CG_DrawChat(void) {
     int maxLines;
     float y;
     float x;
     float scale;
-    int i;
+    int i, drawn;
+    qboolean showAll;
 
     // Default chat area: bottom-left
     x = 1.0f;
     y = 478.0f;     // near bottom of 480-high screen
     scale = 0.18f;   // default chat text scale
-
-    maxLines = 8;    // default visible history lines
 
     // Draw the current (newest) chat line if active
     if (cg.currentChatLine.startTime != 0) {
@@ -899,30 +915,37 @@ void CG_DrawChat(void) {
         }
     }
 
-    // Determine how many history lines to show
-    if (cg.snap->ps.pm_type == PM_INTERMISSION) {
+    showAll = (cg.chatHistoryShowing || cg.showScores);
+
+    maxLines = cg_chatHistoryLength.integer;
+    if (maxLines > MAX_CHAT_LINES) {
+        maxLines = MAX_CHAT_LINES;
+    }
+    // asked for, and mid-round, the board and the intermission want less room taken
+    if (showAll && cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION && maxLines > 4) {
         maxLines = 4;
-    } else if (cg.showScores) {
-        maxLines = 2;
+    }
+    if (maxLines <= 0) {
+        return;
     }
 
-    // Draw chat history lines (when +chat held or scoreboard up)
-    if ((cg.chatHistoryShowing || cg.showScores) && maxLines > 0) {
-        i = cg.chatIndex;
-        do {
+    i = cg.chatIndex;
+    for (drawn = 0; drawn < maxLines; drawn++) {
+        const char *text = cg.chatLines[i].text;
+
+        if (text[0]) {
+            if (!showAll && cg.chatLines[i].startTime + CHAT_HUD_TIME < cg.time) {
+                break;   // older than this are older still
+            }
             y -= 13.0f;
-            if (cg.chatLines[i].text[0]) {
-                CG_SetWidescreen(WIDESCREEN_LEFT);
-                CG_DrawText(x, y, 1, scale, colorWhite,
-                            cg.chatLines[i].text, 0, 256, 3);
-                CG_SetWidescreen(WIDESCREEN_STRETCH);
-            }
-            i--;
-            if (i < 0) {
-                i = MAX_CHAT_LINES - 1;
-            }
-            maxLines--;
-        } while (maxLines != 0);
+            CG_SetWidescreen(WIDESCREEN_LEFT);
+            CG_DrawText(x, y, 1, scale, colorWhite, text, 0, 256, 3);
+            CG_SetWidescreen(WIDESCREEN_STRETCH);
+        }
+        i--;
+        if (i < 0) {
+            i = MAX_CHAT_LINES - 1;
+        }
     }
 }
 

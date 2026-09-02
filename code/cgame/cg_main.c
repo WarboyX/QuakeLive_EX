@@ -669,7 +669,12 @@ static cvarTable_t cvarTable[] = {
        to 8 - a full team in most gametypes, half of one on a large CTF server,
        and the rest were dropped without a word. CVAR_ARCHIVE because this is a
        value the player picks, not one we ship. */
-    {&cg_teamOverlayMaxPlayers, "cg_teamOverlayMaxPlayers", "8", CVAR_ARCHIVE},
+    // [QL] Rows in the team status overlay. Was "8" with CVAR_ARCHIVE, which is
+    // the trap: the shipped default is written into the config on first run and
+    // that config wins forever, so raising it here would do nothing for anyone
+    // who had already launched the game. CVAR_USERSAVE writes it only once a
+    // user sets one, so this default applies - see the note in CLAUDE.md.
+    {&cg_teamOverlayMaxPlayers, "cg_teamOverlayMaxPlayers", "32", CVAR_USERSAVE},
     {&cg_stats, "cg_stats", "0", CVAR_CHEAT},  // [QL] binary: CVAR_CHEAT
     {&cg_teamChatsOnly, "cg_teamChatsOnly", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     // the following variables are created in other parts of the system,
@@ -850,7 +855,13 @@ static cvarTable_t cvarTable[] = {
     {&cg_specTeamVitalsY, "cg_specTeamVitalsY", "85", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
 
     // [QL] HUD/UI cvars
-    {&cg_chatHistoryLength, "cg_chatHistoryLength", "6", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    // [QL] How many chat lines the overlay shows. Registered but read by nothing
+    // until CG_DrawChat started drawing the history unasked, so no config can
+    // meaningfully carry an old value for it. Not CVAR_ARCHIVE: that writes the
+    // shipped default into a config on first run and the config wins from then
+    // on, so the default could never be changed again. CVAR_USERSAVE only writes
+    // it once a user actually sets one.
+    {&cg_chatHistoryLength, "cg_chatHistoryLength", "10", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE},
     {&cg_complaintWarning, "cg_complaintWarning", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawCrosshairTeamHealthSize, "cg_drawCrosshairTeamHealthSize", "0.12", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawInputCmdsSize, "cg_drawInputCmdsSize", "24", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},

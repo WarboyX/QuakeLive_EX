@@ -783,18 +783,27 @@ void Con_DrawNotify(void) {
         return;
     }
 
-    // draw the chat line
+    /*
+    [QL] The chat line is drawn in the notify font, not the big one.
+
+    Quake 3 drew "say:" and the field with SCR_DrawBigString / Field_BigDraw -
+    BIGCHAR_WIDTH is 16 in 640x480 space, so on a 1080p-and-up screen the prompt
+    came out around fifty pixels tall with the big font's wide fixed advance,
+    towering over the notify lines it sits under. Quake Live's is the size of
+    the rest of the notify area, which is what these small-font calls give, and
+    it lets a long message stay on one line instead of running off the screen.
+    */
     if (Key_GetCatcher() & KEYCATCH_MESSAGE) {
         if (chat_team) {
-            SCR_DrawBigString(8, v, "say_team:", 1.0f, qfalse);
+            SCR_DrawSmallStringExt(8, v, "say_team:", g_color_table[7], qtrue, qfalse);
             skip = 10;
         } else {
-            SCR_DrawBigString(8, v, "say:", 1.0f, qfalse);
+            SCR_DrawSmallStringExt(8, v, "say:", g_color_table[7], qtrue, qfalse);
             skip = 5;
         }
 
-        Field_BigDraw(&chatField, skip * BIGCHAR_WIDTH, v,
-                      SCREEN_WIDTH - (skip + 1) * BIGCHAR_WIDTH, qtrue, qtrue);
+        Field_Draw(&chatField, 8 + skip * SMALLCHAR_WIDTH, v,
+                   SCREEN_WIDTH - (skip + 1) * SMALLCHAR_WIDTH, qtrue, qtrue);
     }
 }
 
