@@ -1020,6 +1020,7 @@ void ClearClientReadyToExit(void);            // [QL] reset at intermission star
 //
 qboolean OnSameTeam(gentity_t* ent1, gentity_t* ent2);
 void Team_CheckDroppedItem(gentity_t* dropped);
+flagStatus_t Team_GetFlagStatus(int team);
 qboolean CheckObeliskAttack(gentity_t* obelisk, gentity_t* attacker);
 
 //

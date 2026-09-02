@@ -37,6 +37,25 @@ typedef struct teamgame_s {
 
 teamgame_t teamgame;
 
+/*
+[QL] Read a team's flag state.
+
+teamgame is private to this file, and the bot AI needs to tell a flag that has
+been dropped on the floor from one an enemy is carrying - "at base" is not
+enough. Team_SetFlagStatus already keeps this exactly, so expose it rather than
+have the AI re-derive it from CS_FLAGSTATUS.
+*/
+flagStatus_t Team_GetFlagStatus(int team) {
+    switch (team) {
+        case TEAM_RED:
+            return teamgame.redStatus;
+        case TEAM_BLUE:
+            return teamgame.blueStatus;
+        default:
+            return teamgame.flagStatus;
+    }
+}
+
 gentity_t* neutralObelisk;
 
 extern qboolean itemRegistered[];

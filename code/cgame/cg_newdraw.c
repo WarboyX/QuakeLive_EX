@@ -3912,9 +3912,11 @@ void CG_KeyEvent(int key, qboolean down) {
             */
             if (key == K_MOUSE1 && down) {
                 extern menuDef_t* menuScoreboard;
+                int feeder = Menu_FeederAtPoint(menuScoreboard, cgs.cursorX, cgs.cursorY);
 
-                if (Menu_FeederAtPoint(menuScoreboard, cgs.cursorX, cgs.cursorY) >= 0) {
+                if (feeder >= 0) {
                     cg.scoreboardSelected = qtrue;
+                    cg.scoreboardSelectedFeeder = feeder;
                 }
             }
 

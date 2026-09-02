@@ -1963,6 +1963,26 @@ static void CG_TrackLocalPlayerOnScoreboard(menuDef_t *menu) {
 	}
 
 	/*
+	[QL] Once a row has been clicked the highlight belongs to the player.
+
+	This test used to sit below the block that blanks the other team's list,
+	which meant a click on the enemy team was wiped again on the very next
+	frame: the local player is blue, so every frame set the red list's cursor to
+	-1, and only the blue list could hold a selection. Now the clearing is
+	skipped entirely once a row has been picked - except on the list that was
+	not picked, which still gets blanked so a board never shows two highlights.
+	*/
+	if (cg.scoreboardSelected) {
+		if (cg.scoreboardSelectedFeeder != FEEDER_REDTEAM_LIST) {
+			Menu_SetFeederCursor(menu, FEEDER_REDTEAM_LIST, -1);
+		}
+		if (cg.scoreboardSelectedFeeder != FEEDER_BLUETEAM_LIST) {
+			Menu_SetFeederCursor(menu, FEEDER_BLUETEAM_LIST, -1);
+		}
+		return;
+	}
+
+	/*
 	[QL] Only the list the local player is actually in gets a highlight.
 
 	Item_ListBox_Paint fills the row where i == item->cursorPos, and cursorPos
@@ -1977,12 +1997,6 @@ static void CG_TrackLocalPlayerOnScoreboard(menuDef_t *menu) {
 	} else {
 		Menu_SetFeederCursor(menu, FEEDER_REDTEAM_LIST, -1);
 		Menu_SetFeederCursor(menu, FEEDER_BLUETEAM_LIST, -1);
-	}
-
-	/* [QL] Once a row has been clicked the highlight belongs to the player,
-	   not to us. Cleared when the board is next opened. */
-	if (cg.scoreboardSelected) {
-		return;
 	}
 
 	Menu_SetFeederCursor(menu, feeder, teamIndex);
@@ -2208,6 +2222,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 			if (firstTime) {
 				cg.scoreboardScrolled = qfalse;
 				cg.scoreboardSelected = qfalse;
+				cg.scoreboardSelectedFeeder = -1;
 				firstTime = qfalse;
 			}
 			/*

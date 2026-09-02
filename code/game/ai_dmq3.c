@@ -1324,6 +1324,75 @@ void BotHarvesterRetreatGoals(bot_state_t* bs) {
 BotTeamGoals
 ==================
 */
+/*
+==================
+BotCTFEnforceOffense
+
+[QL] In CTF a bot goes for the enemy flag, and nothing else pulls it to its own.
+
+Quake 3's CTF bots split themselves between attack and defence, and the team
+leader hands out both roles: BotCTFSeekGoals gives roughly a third of the
+undecided bots LTG_DEFENDKEYAREA with their own flag as the goal, the
+"our team has the enemy flag" branch does the same, and BotCTFOrders assigns a
+share of the team as defenders. All of those send a bot to stand on its own
+flag, which is what "the bots touch their own flag first" was.
+
+Two goals still legitimately point at the bot's own base and are left alone:
+
+  - carrying the enemy flag. LTG_RUSHBASE is how a capture happens.
+  - the bot's own flag lying on the floor. Team_GetFlagStatus tells a dropped
+    flag from one an enemy is carrying, which the AI's own flagstatus fields
+    cannot - they only record at-base or not - so the exception is exactly
+    "dropped" and not "gone".
+
+Everything else that was aimed at the bot's own flag is cleared and replaced
+with LTG_GETFLAG. Goals that are neither offence nor own-base - following the
+flag carrier, camping, fetching an item - are left as they are.
+
+Applied after the seek/retreat logic rather than inside it, because those
+functions return early down several paths and orders arrive from ai_cmd.c as
+well.
+==================
+*/
+static void BotCTFEnforceOffense(bot_state_t* bs) {
+    int team = BotTeam(bs);
+    bot_goal_t* ownflag;
+
+    if (team != TEAM_RED && team != TEAM_BLUE) {
+        return;
+    }
+    if (BotCTFCarryingFlag(bs)) {
+        return;   // running it home
+    }
+    ownflag = (team == TEAM_RED) ? &ctf_redflag : &ctf_blueflag;
+
+    if (Team_GetFlagStatus(team) == FLAG_DROPPED) {
+        if (bs->ltgtype == LTG_RETURNFLAG) {
+            return;   // ours is on the floor - go and get it back
+        }
+    } else if (bs->ltgtype == LTG_RETURNFLAG) {
+        bs->ltgtype = 0;   // nothing to fetch
+    }
+
+    if (bs->ltgtype == LTG_RUSHBASE ||
+        (bs->ltgtype == LTG_DEFENDKEYAREA && bs->teamgoal.number == ownflag->number)) {
+        bs->ltgtype = 0;
+    }
+    if (bs->ltgtype != 0) {
+        return;
+    }
+    if (!ctf_redflag.areanum || !ctf_blueflag.areanum) {
+        return;
+    }
+
+    bs->decisionmaker = bs->client;
+    bs->ordered = qfalse;
+    bs->ltgtype = LTG_GETFLAG;
+    bs->teamgoal_time = FloatTime() + CTF_GETFLAG_TIME;
+    BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+    BotSetTeamStatus(bs);
+}
+
 void BotTeamGoals(bot_state_t* bs, int retreat) {
     if (retreat) {
         if (gametype == GT_CTF) {
@@ -1346,6 +1415,9 @@ void BotTeamGoals(bot_state_t* bs, int retreat) {
         } else if (gametype == GT_HARVESTER) {
             BotHarvesterSeekGoals(bs);
         }
+    }
+    if (gametype == GT_CTF) {
+        BotCTFEnforceOffense(bs);
     }
     // reset the order time which is used to see if
     // we decided to refuse an order
