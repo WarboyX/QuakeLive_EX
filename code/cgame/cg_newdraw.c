@@ -931,6 +931,10 @@ const char* CG_GetKillerText(void) {
 
 static float CG_OwnerDrawAlignX(rectDef_t *rect, const char *text, float scale, int align);
 
+/* [QL] x of the last character of the game-status line, in 640-space, recorded
+   by CG_DrawGameStatus as it draws. See the note there. */
+static float cg_gameStatusEndX;
+
 /*
 [QL] "Fragged by X", where the menu puts it.
 
@@ -942,11 +946,32 @@ board. The same fault CG_DrawRedName had; the same fix.
 */
 static void CG_DrawKiller(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle, int align) {
     const char* s = CG_GetKillerText();
+    float x;
 
     if (!s[0]) {
         return;
     }
-    CG_OwnerDrawText(CG_OwnerDrawAlignX(rect, s, scale, align), rect->y, scale, color, s, 0, 0, textStyle);
+
+    x = CG_OwnerDrawAlignX(rect, s, scale, align);
+
+    /*
+    [QL] Start the F under the last character of the status line above it.
+
+    Left-aligned in its own rect - which is where Quake Live's menu puts it,
+    "rect 75 100 330 10" with "align 0" - it sits five units left of "Teams are
+    tied at 0" and reads as almost-but-not-quite lined up with it. Indenting to
+    the status line's trailing character is a deliberate stagger instead of a
+    near miss, and it keeps the obituary clear of the frame on its left.
+
+    cg_gameStatusEndX is measured from the string actually drawn, so it follows
+    the status text as the score changes rather than assuming a width. Falls
+    back to the menu's own position on a board that has no status line.
+    */
+    if (cg_gameStatusEndX > x) {
+        x = cg_gameStatusEndX;
+    }
+
+    CG_OwnerDrawText(x, rect->y, scale, color, s, 0, 0, textStyle);
 }
 
 static void CG_DrawCapFragLimit(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
@@ -1020,8 +1045,27 @@ const char* CG_GetMatchStatusText(void) {
     }
 }
 
+/*
+[QL] Where the status line ("Teams are tied at 0") ends, in 640-space.
+
+Recorded as it is drawn rather than derived from the menu, because it is the
+only honest source: the string changes with the score, both items come out of
+Quake Live's pak rather than anything we can edit, and hardcoding either the
+rect or the text scale is what has already gone wrong twice on this board.
+Zero until the status line has been drawn at least once.
+*/
 static void CG_DrawGameStatus(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
-    CG_OwnerDrawText(rect->x, rect->y + rect->h, scale, color, CG_GetGameStatusText(), 0, 0, textStyle);
+    const char* s = CG_GetGameStatusText();
+    int len = (int)strlen(s);
+
+    /* the x of the LAST character, not of the end of the string - the killer
+       line below lines its first letter up with the trailing "0". */
+    cg_gameStatusEndX = rect->x + CG_OwnerDrawTextWidth(s, scale, 0);
+    if (len > 0) {
+        cg_gameStatusEndX -= CG_OwnerDrawTextWidth(s + len - 1, scale, 0);
+    }
+
+    CG_OwnerDrawText(rect->x, rect->y + rect->h, scale, color, s, 0, 0, textStyle);
 }
 
 const char* CG_GameTypeString(void) {
