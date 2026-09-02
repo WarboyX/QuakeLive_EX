@@ -468,6 +468,7 @@ qboolean Display_MouseMove(void* p, int x, int y);
 int Display_CursorType(int x, int y);
 qboolean Display_KeyBindPending(void);
 void Menus_OpenByName(const char* p);
+void Item_RunScript(itemDef_t* item, const char* s);
 menuDef_t* Menus_FindByName(const char* p);
 void Menus_ShowByName(const char* p);
 void Menus_CloseByName(const char* p);

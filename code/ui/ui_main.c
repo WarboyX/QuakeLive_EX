@@ -489,6 +489,24 @@ static void UI_DefaultOptionsPage(void) {
             return;   // a page is already up
         }
     }
+
+    /*
+    Run the Controls tab's own action rather than opening the page directly.
+    Its script is `open ingame_controls` followed by the setitemcolor run that
+    lights the tab and dims the other - so opening the page by hand left the
+    page correct and the tab bar showing neither tab selected. Doing what the
+    click does keeps the two in step, and keeps the colours Quake Live's rather
+    than a second copy of them here.
+    */
+    for (i = 0; i < options->itemCount; i++) {
+        itemDef_t *item = options->items[i];
+
+        if (item && item->window.name && !Q_stricmp(item->window.name, "navbtn2") && item->action) {
+            Item_RunScript(item, item->action);
+            return;
+        }
+    }
+
     Menus_OpenByName(pages[0]);
 }
 
@@ -4745,11 +4763,70 @@ static qboolean MapList_Parse(char** p) {
     return qfalse;
 }
 
+/*
+[QL] The gametype lists have to exist even though gameinfo.txt does not.
+
+uiInfo.gameTypes[] is the map from a menu selection to a g_gametype value, and
+the only thing that has ever filled it is UI_ParseGameInfo reading
+"gameinfo.txt" - a Quake 3 file that Quake Live does not ship. Grep the pak
+manifest: there is no gameinfo.txt in pak00, and we do not ship one either. So
+numGameTypes stayed 0 and every entry stayed zeroed, and
+
+    trap_Cvar_SetValue("g_gametype",
+        Com_Clamp(0, GT_MAX_GAME_TYPE, uiInfo.gameTypes[ui_netGameType.integer].gtEnum));
+
+read gtEnum out of a zeroed struct and started every created server as
+GT_FFA - whatever the menu said. That is "Create Game does not set the game
+type": the selector worked, the table behind it was empty.
+
+Seeded so that **index equals gtEnum**. The table is consulted both ways round
+in this file - as an index by the owner-draw picker and its key handler, and for
+its gtEnum by StartServer and the callvote scripts - and our own create-game
+menu writes the enum straight into ui_netGameType through a cvarFloatList. With
+a contiguous 0..12 table both readings agree, which is what makes the fix one
+table rather than an audit of every call site.
+
+joinGameTypes keeps its "All" sentinel at index 0 with gtEnum -1, which is what
+UI_BuildServerDisplayList tests for.
+
+A real gameinfo.txt still wins: GameType_Parse resets the counts before it
+fills them, so anything that parses replaces this wholesale.
+*/
+static void UI_SeedDefaultGameTypes(void) {
+    // Names as Quake Live's own server-settings panel spells them
+    // (see UI_DrawServerSettings), indexed by gametype.
+    static const char *names[] = {
+        "Free For All", "Duel", "Race", "Team Deathmatch", "Clan Arena",
+        "Capture the Flag", "One Flag CTF", "Overload", "Harvester",
+        "Freeze Tag", "Domination", "Attack and Defend", "Red Rover"
+    };
+    int i;
+
+    uiInfo.numGameTypes = 0;
+    for (i = 0; i < (int)ARRAY_LEN(names) && i < MAX_GAMETYPES; i++) {
+        uiInfo.gameTypes[uiInfo.numGameTypes].gameType = names[i];
+        uiInfo.gameTypes[uiInfo.numGameTypes].gtEnum = i;
+        uiInfo.numGameTypes++;
+    }
+
+    uiInfo.numJoinGameTypes = 0;
+    uiInfo.joinGameTypes[uiInfo.numJoinGameTypes].gameType = "All";
+    uiInfo.joinGameTypes[uiInfo.numJoinGameTypes].gtEnum = -1;
+    uiInfo.numJoinGameTypes++;
+    for (i = 0; i < (int)ARRAY_LEN(names) && uiInfo.numJoinGameTypes < MAX_GAMETYPES; i++) {
+        uiInfo.joinGameTypes[uiInfo.numJoinGameTypes].gameType = names[i];
+        uiInfo.joinGameTypes[uiInfo.numJoinGameTypes].gtEnum = i;
+        uiInfo.numJoinGameTypes++;
+    }
+}
+
 static void UI_ParseGameInfo(const char* teamFile) {
     char* token;
     char* p;
     char* buff = NULL;
     // int mode = 0; TTimo: unused
+
+    UI_SeedDefaultGameTypes();
 
     buff = GetMenuBuffer(teamFile);
     if (!buff) {
