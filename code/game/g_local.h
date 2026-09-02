@@ -501,6 +501,7 @@ typedef struct {
     int             time;
     int             frametime;              /* [QL] */
     int             startTime;
+    int             graceEndTime;           /* [QL] deaths do not score before this; see G_InMatchStartGrace */
     int             teamScores[4];
     int             nextTeamInfoTime;       /* [QL] */
     qboolean        newSession;

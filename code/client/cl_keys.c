@@ -1498,6 +1498,17 @@ gates only ever reported "showScores 0" and never painted a frame.
 
 The key being dispatched is left down and its binding is not run. Its real
 release arrives as a normal event and fires '-scores' then, as it should.
+
+The release of every other held key runs its '-' binding directly rather than
+going through CL_KeyEvent. CL_KeyEvent also delivers the key-up to whichever
+VM currently holds the catcher, and the usual caller of this function is
+Key_SetCatcher, which is usually reached from inside that same VM - a menu
+script such as "uiScript closeingame" drops KEYCATCH_UI while the click that
+ran it is still on the stack inside the UI module. Re-entering a VM's key
+handler from within one of its own script commands is not something the menu
+code is written to survive, and there is nothing to gain from it: a menu never
+saw these keys go down, so a synthetic release means nothing to it. Only the
+'-' binding matters here, and that is what stops movement keys sticking on.
 ===================
 */
 void Key_ClearStates(void) {
@@ -1513,7 +1524,9 @@ void Key_ClearStates(void) {
             continue;
         }
         if (keys[i].down) {
-            CL_KeyEvent(i, qfalse, 0);
+            keys[i].down = qfalse;
+            keys[i].repeats = 0;
+            CL_ParseBinding(i, qfalse, 0);
         }
         keys[i].down = 0;
         keys[i].repeats = 0;

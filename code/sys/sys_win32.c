@@ -819,21 +819,51 @@ a map file or a disassembly later.
 Written with the Win32 file API rather than FS_FOpenFileWrite: one of the ways
 to get here is exhausting the file handles, and recursing into the filesystem
 while unwinding a crash is how a crash handler becomes a second crash.
+
+A single address names the function that faulted but not the path that got
+there, which for a crash reached through a menu script - Item_Action ->
+Item_RunScript -> UI_RunMenuScript -> back into the engine - is the only part
+worth knowing. So the report also walks the return addresses on the stack and
+resolves each to module+offset. RtlCaptureStackBackTrace is resolved from
+kernel32 at call time rather than linked, so this adds no build dependency and
+degrades to the single address if it is not there.
 ==============
 */
+typedef USHORT(WINAPI *captureStackBackTrace_t)(ULONG, ULONG, PVOID *, PULONG);
+
+// Module + offset for a code address. buf is written in every case.
+static void Sys_Win32AddressName(void *address, char *buf, int bufSize) {
+    HMODULE module = NULL;
+    char full[MAX_OSPATH];
+    const char *name = "unknown";
+
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          (LPCSTR)address, &module) &&
+        module != NULL) {
+        if (GetModuleFileNameA(module, full, sizeof(full))) {
+            const char *slash = strrchr(full, '\\');
+            name = slash ? slash + 1 : full;
+        }
+        Com_sprintf(buf, bufSize, "%s+0x%llx", name,
+                    (unsigned long long)((DWORD_PTR)address - (DWORD_PTR)module));
+        return;
+    }
+
+    Com_sprintf(buf, bufSize, "unknown (0x%p)", address);
+}
+
 static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
     static volatile LONG entered;
 
     char path[MAX_OSPATH * 2];
-    char text[2048];
-    char moduleName[MAX_OSPATH];
-    HMODULE module = NULL;
-    DWORD_PTR offset = 0;
+    char text[4096];
+    char where[MAX_OSPATH + 32];
     const char *homepath;
     void *address;
     HANDLE f;
     DWORD written;
     int len;
+    captureStackBackTrace_t capture;
 
     // A fault inside this handler would otherwise loop forever.
     if (InterlockedExchange(&entered, 1) != 0) {
@@ -841,35 +871,39 @@ static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
     }
 
     address = (void *)ep->ExceptionRecord->ExceptionAddress;
-
-    Q_strncpyz(moduleName, "unknown", sizeof(moduleName));
-    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                          (LPCSTR)address, &module) &&
-        module != NULL) {
-        char full[MAX_OSPATH];
-
-        if (GetModuleFileNameA(module, full, sizeof(full))) {
-            const char *slash = strrchr(full, '\\');
-            Q_strncpyz(moduleName, slash ? slash + 1 : full, sizeof(moduleName));
-        }
-        offset = (DWORD_PTR)address - (DWORD_PTR)module;
-    }
+    Sys_Win32AddressName(address, where, sizeof(where));
 
     len = Com_sprintf(text, sizeof(text),
                       "Quake Live crashed.\r\n\r\n"
                       "exception : 0x%08lx\r\n"
                       "address   : 0x%p\r\n"
-                      "module    : %s\r\n"
-                      "offset    : 0x%llx\r\n"
-                      "\r\n"
-                      "The offset is relative to the module's load address, so it stays valid\r\n"
-                      "across runs and can be matched against a build of the same revision.\r\n"
-                      "\r\n"
-                      "For the console output leading up to this, set \"logfile 2\" before\r\n"
-                      "reproducing - qconsole.log is written next to this file and flushed\r\n"
-                      "after every line, so it survives a crash.\r\n",
-                      (unsigned long)ep->ExceptionRecord->ExceptionCode, address, moduleName,
-                      (unsigned long long)offset);
+                      "faulted in: %s\r\n",
+                      (unsigned long)ep->ExceptionRecord->ExceptionCode, address, where);
+
+    capture = (captureStackBackTrace_t)(void *)GetProcAddress(GetModuleHandleA("kernel32.dll"),
+                                                              "RtlCaptureStackBackTrace");
+    if (capture) {
+        void *frames[32];
+        USHORT count = capture(0, ARRAY_LEN(frames), frames, NULL);
+        USHORT i;
+
+        if (count > 0) {
+            len += Com_sprintf(text + len, sizeof(text) - len, "\r\nstack:\r\n");
+            for (i = 0; i < count && len < (int)sizeof(text) - 128; i++) {
+                Sys_Win32AddressName(frames[i], where, sizeof(where));
+                len += Com_sprintf(text + len, sizeof(text) - len, "  %2u  %s\r\n", (unsigned)i, where);
+            }
+        }
+    }
+
+    len += Com_sprintf(text + len, sizeof(text) - len,
+                       "\r\n"
+                       "Offsets are relative to each module's load address, so they stay valid\r\n"
+                       "across runs and can be matched against a build of the same revision.\r\n"
+                       "\r\n"
+                       "For the console output leading up to this, set \"logfile 2\" before\r\n"
+                       "reproducing - qconsole.log is written next to this file and flushed\r\n"
+                       "after every line, so it survives a crash.\r\n");
 
     homepath = Cvar_VariableString("fs_homepath");
     if (*homepath) {

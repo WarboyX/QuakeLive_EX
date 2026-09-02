@@ -981,7 +981,7 @@ static void CG_DrawKiller(rectDef_t* rect, float scale, vec4_t color, qhandle_t 
     height is measured rather than assumed, so it scales with the font instead
     of being a pixel value that only looks right on one display.
     */
-    CG_OwnerDrawText(x, rect->y + CG_Text_Height(s, scale, 0) * 0.5f,
+    CG_OwnerDrawText(x, rect->y + CG_Text_Height(s, scale, 0) * 0.6f,
                      scale, color, s, 0, 0, textStyle);
 }
 

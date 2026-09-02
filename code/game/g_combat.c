@@ -545,20 +545,25 @@ once, spawn points are crowded, and a telefrag or a fall taken before you have a
 weapon in hand is not a mistake anyone made. Scoring those costs a player a
 frag and a death for being unlucky about where the game put them.
 
-g_matchStartGrace is that window in seconds, measured from the level start, 0 to
-turn it off. It suppresses the -1 for a suicide or a world death and the death
-that goes on the player's own record; the killer of a genuine frag still scores
-normally, because that is a real kill and not an artefact of the start.
+g_matchStartGrace is that window in seconds; 0 turns it off. It suppresses the
+-1 for a suicide or a world death and the death that goes on the player's own
+record; the killer of a genuine frag still scores normally, because that is a
+real kill and not an artefact of the start.
+
+The window runs from level.graceEndTime, which G_InitGame sets on load and
+SetWarmupState sets again the moment the game state becomes IN_PROGRESS.
+Measuring it off level.startTime alone did not work: a server that sits in
+PRE_GAME while people warm up and frag each other - which is most of them - had
+spent the ten seconds long before the match began. Both moments arm it now,
+and warmup is no longer excluded, because a server whose scores are ticking
+over in PRE_GAME is scoring whatever the state machine calls it.
 ==================
 */
 static qboolean G_InMatchStartGrace(void) {
     if (g_matchStartGrace.integer <= 0) {
         return qfalse;
     }
-    if (level.warmupTime) {
-        return qfalse;   // warmup does not score anyway
-    }
-    return (level.time - level.startTime) < (g_matchStartGrace.integer * 1000);
+    return level.time < level.graceEndTime;
 }
 
 /*

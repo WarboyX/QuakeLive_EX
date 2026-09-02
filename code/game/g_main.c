@@ -1842,6 +1842,9 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
     memset(&level, 0, sizeof(level));
     level.time = levelTime;
     level.startTime = levelTime;
+    /* [QL] deaths do not score for the first g_matchStartGrace seconds after a
+       load; SetWarmupState arms it again when the match actually begins. */
+    level.graceEndTime = levelTime + g_matchStartGrace.integer * 1000;
     level.warmupTime = -1;  // PRE_GAME until warmup state machine transitions
 
     level.snd_fry = G_SoundIndex("sound/player/fry.wav");  // FIXME standing in lava / slime
@@ -3572,6 +3575,10 @@ void SetWarmupState(int warmupTime) {
         gameState = "PRE_GAME";
     } else if (warmupTime == 0) {
         gameState = "IN_PROGRESS";
+        /* [QL] the match is starting now - re-arm the scoring grace, so it
+           covers the opening scramble rather than having expired during a
+           warmup that may have lasted minutes. */
+        level.graceEndTime = level.time + g_matchStartGrace.integer * 1000;
     } else {
         gameState = "COUNT_DOWN";
     }

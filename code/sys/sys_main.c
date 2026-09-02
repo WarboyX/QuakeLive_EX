@@ -833,9 +833,32 @@ int main(int argc, char** argv) {
     Com_Init(commandLine);
     NET_Init();
 
+    /*
+    [QL] On Windows the fault signals are deliberately left alone.
+
+    Sys_PlatformInit installs Sys_Win32ExceptionFilter, which writes
+    crashlog.txt with the faulting module, the offset within it and a stack of
+    return addresses. Registering SIGSEGV/SIGILL/SIGFPE here defeats it: the
+    CRT's own __except wrapper around main claims the access violation first
+    and raises the C signal from inside it, so the exception never reaches the
+    unhandled-exception filter and no crashlog is written.
+
+    What the user sees then is not a crash at all. Sys_SigHandler runs
+    CL_Shutdown and SV_Shutdown and exits cleanly, so the window closes with
+    "----- Client Shutdown (Received signal 11) -----" in qconsole.log and
+    nothing else - which is exactly how a segfault clicking "Return to match"
+    came in as "the client quits". A tidy shutdown is the worst possible
+    response to memory corruption anyway: it runs a great deal of code, and
+    every line of it is running on state we already know is bad.
+
+    SIGTERM and SIGINT are real signals rather than translated faults, and are
+    still ours to handle.
+    */
+#ifndef _WIN32
     signal(SIGILL, Sys_SigHandler);
     signal(SIGFPE, Sys_SigHandler);
     signal(SIGSEGV, Sys_SigHandler);
+#endif
     signal(SIGTERM, Sys_SigHandler);
     signal(SIGINT, Sys_SigHandler);
 

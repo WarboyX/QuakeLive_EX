@@ -1218,7 +1218,19 @@ void Menus_OpenByName(const char* p) {
 
 static void Menu_RunCloseScript(menuDef_t* menu) {
     if (menu && menu->window.flags & WINDOW_VISIBLE && menu->onClose) {
+        /*
+        [QL] Zeroed, not just given a parent.
+
+        A menu-level script has no item of its own, so one is faked on the
+        stack for the handlers to hang off. Stock code sets only .parent and
+        leaves the other ~90 fields holding whatever was on the stack, which is
+        fine only for as long as every reachable handler touches nothing else.
+        setitemcolor and the show/hide pair do not, but the same fake item is
+        handed to every command in commandList, several of which read
+        window.name, window.flags or the cvar fields.
+        */
         itemDef_t item;
+        memset(&item, 0, sizeof(item));
         item.parent = menu;
         Item_RunScript(&item, menu->onClose);
     }
@@ -3052,7 +3064,8 @@ static void Display_CloseCinematics(void) {
 void Menus_Activate(menuDef_t* menu) {
     menu->window.flags |= (WINDOW_HASFOCUS | WINDOW_VISIBLE);
     if (menu->onOpen) {
-        itemDef_t item;
+        itemDef_t item;  // [QL] see Menu_RunCloseScript - zero the fake item
+        memset(&item, 0, sizeof(item));
         item.parent = menu;
         Item_RunScript(&item, menu->onOpen);
     }
@@ -3225,7 +3238,8 @@ void Menu_HandleKey(menuDef_t* menu, int key, qboolean down) {
 
         case K_ESCAPE:
             if (!g_waitingForKey && menu->onESC) {
-                itemDef_t it;
+                itemDef_t it;  // [QL] see Menu_RunCloseScript - zero the fake item
+                memset(&it, 0, sizeof(it));
                 it.parent = menu;
                 Item_RunScript(&it, menu->onESC);
             }
@@ -4436,7 +4450,7 @@ void Item_ListBox_Paint(itemDef_t* item) {
                hard against rect.x + rect.w hangs off the panel. contentW keeps
                the same reservation, so the rows are exactly as wide as they
                were. */
-            barX = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
+            barX = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 3;
             contentX = item->window.rect.x + 1;
             contentW = item->window.rect.w - SCROLLBAR_SIZE - 2;
 
