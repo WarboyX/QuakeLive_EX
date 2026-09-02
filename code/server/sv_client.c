@@ -349,33 +349,57 @@ void SV_DirectConnect(netadr_t from) {
         }
     }
 
+    /*
+    [QL] A person outranks a bot for the last slot.
+
+    Stock code made room only for a connection from the local address, and only
+    when every slot in range was a bot - so the moment one person was on a
+    bot-filled server nobody else could get in, and the local host hit
+    Com_Error(ERR_FATAL, "server is full on local connect"), taking the whole
+    game down over a full server. Remote connections were simply told the server
+    was full, which on a server whose population is bot_minplayers is not a
+    meaningful answer: the slots are filled by the server itself and it can give
+    one back.
+
+    So any real connection that finds no free slot drops a bot instead. The
+    highest-numbered one goes: SV_BotAllocateClient fills from the bottom, so
+    that is the most recently added and the least invested in the match. The
+    game re-fills it once someone leaves, because G_CheckMinimumPlayers is
+    running the whole time and G_FillBots will not take the room back while a
+    person is holding it.
+
+    Bots do not take this path - SV_BotAllocateClient finds its own slot - but
+    the address type is checked anyway so a bot connection can never evict
+    another bot here.
+    */
     if (!newcl) {
-        if (NET_IsLocalAddress(from)) {
-            count = 0;
-            for (i = startIndex; i < sv_maxclients->integer; i++) {
+        client_t* victim = NULL;
+
+        if (from.type != NA_BOT) {
+            for (i = sv_maxclients->integer - 1; i >= startIndex; i--) {
                 cl = &svs.clients[i];
-                if (cl->netchan.remoteAddress.type == NA_BOT) {
-                    count++;
+                if (cl->state != CS_FREE && cl->netchan.remoteAddress.type == NA_BOT) {
+                    victim = cl;
+                    break;
                 }
             }
-            // if they're all bots
-            if (count >= sv_maxclients->integer - startIndex) {
-                SV_DropClient(&svs.clients[sv_maxclients->integer - 1], "only bots on server");
-                newcl = &svs.clients[sv_maxclients->integer - 1];
-            } else {
-                Com_Error(ERR_FATAL, "server is full on local connect");
-                return;
-            }
-        } else {
+        }
+
+        if (!victim) {
             NET_OutOfBandPrint(NS_SERVER, from, "print\nServer is full.\n");
             Com_DPrintf("Rejected a connection.\n");
             return;
         }
+
+        Com_Printf("Server full: dropping bot %s to make room for %s\n",
+                   victim->name, NET_AdrToString(from));
+        SV_DropClient(victim, "making room for a player");
+        newcl = victim;
     }
 
     // we got a newcl, so reset the reliableSequence and reliableAcknowledge
-    cl->reliableAcknowledge = 0;
-    cl->reliableSequence = 0;
+    newcl->reliableAcknowledge = 0;
+    newcl->reliableSequence = 0;
 
 gotnewcl:
     // build a new connection
