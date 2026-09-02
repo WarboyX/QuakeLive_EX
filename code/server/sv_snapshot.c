@@ -639,6 +639,13 @@ void SV_SendClientMessages(void) {
             }
         }
 
+        // [QL] Drain any configstring backlog SV_UpdateConfigstrings had to
+        // leave behind rather than overflow the reliable buffer with. A no-op
+        // for a client that has none, which is nearly always.
+        if (c->state == CS_ACTIVE) {
+            SV_UpdateConfigstrings(c);
+        }
+
         // generate and send a new message
         SV_SendClientSnapshot(c);
         c->nextSnapshotTime = svs.time;

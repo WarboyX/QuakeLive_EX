@@ -77,13 +77,32 @@ Configstring indexes that have changed while the client was in CS_PRIMED
 void SV_UpdateConfigstrings(client_t* client) {
     int index;
 
-    // [QL] Only resend configstrings that actually changed while the client
-    // was in CS_PRIMED state. The gamestate already contained all configstrings
-    // at the time it was sent, so resending everything would overflow the
-    // 64-slot reliable command buffer.
+    /*
+    [QL] Only resend configstrings that actually changed while the client was in
+    CS_PRIMED. The gamestate already contained all of them at the time it was
+    sent, so resending everything would overflow the 64-slot reliable buffer.
+
+    Changed ones alone can overflow it too. A client loading into a server that
+    is filling with bots is in CS_PRIMED for several seconds, and every bot that
+    arrives in that window dirties CS_PLAYERS + n - so on a 64-slot server the
+    backlog can be larger than the whole ring, and firing it all at the moment
+    the client goes active cycles commands out from under it before cgame has
+    run a frame. That is the client-side half of "CL_GetServerCommand: a
+    reliable command was cycled out", and on a listen server it takes the server
+    down with it.
+
+    So the backlog is drained rather than flushed. Send until the unacknowledged
+    window is half full, leave the rest flagged, and SV_SendClientMessages calls
+    back once a frame until it is empty. Configstrings hold absolute values, not
+    deltas, so arriving over a few frames costs nothing but the ordering between
+    two indices - which nothing depends on.
+    */
     for (index = 0; index < MAX_CONFIGSTRINGS; index++) {
         if (!client->csUpdated[index]) {
             continue;
+        }
+        if (client->reliableSequence - client->reliableAcknowledge >= MAX_RELIABLE_COMMANDS / 2) {
+            return;   // resume next frame
         }
         client->csUpdated[index] = qfalse;
 

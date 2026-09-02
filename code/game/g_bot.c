@@ -937,9 +937,35 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     Info_SetValueForKey(userinfo, "skill", va("%5.2f", skill));
     Info_SetValueForKey(userinfo, "team", team);
 
-    // [QL] mark entity as bot before ClientConnect
+    /*
+    [QL] Mark the entity as a bot before ClientConnect, but do not mark it in
+    use.
+
+    SVF_BOT has to be set here: G_InitSessionData reads it off the entity to
+    decide whether the bot inherits g_teamSpawnAsSpec, and it runs inside
+    ClientConnect before the isBot branch that would otherwise set the flag.
+
+    inuse was set here too, and that was doing real damage. ClientConnect opens
+    with
+
+        if (ent->inuse) {
+            G_LogPrintf("Forcing disconnect on active client: %i\n", clientNum);
+            ClientDisconnect(clientNum);
+        }
+
+    which is there to catch a player reconnecting so fast that their disconnect
+    never arrived. Setting inuse two lines before the call made every single bot
+    add trip it against itself - 878 times in one match log, once per bot. On a
+    recycled slot ClientDisconnect then ran in full: it blanks
+    CS_PLAYERS + clientNum, broadcasts a "disconnected" print to everyone and
+    calls CalculateRanks, so each bot arriving cost a burst of reliable commands
+    that nothing needed. That is the pressure behind "CL_GetServerCommand: a
+    reliable command was cycled out" while a server fills with bots.
+
+    ClientConnect sets both flags itself for a bot (g_client.c, the isBot
+    branch), so nothing is lost by leaving inuse to it.
+    */
     g_entities[clientNum].r.svFlags |= SVF_BOT;
-    g_entities[clientNum].inuse = qtrue;
 
     // register the userinfo
     trap_SetUserinfo(clientNum, userinfo);
