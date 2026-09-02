@@ -144,6 +144,7 @@ for stock clients until proven otherwise.
 | ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
 | ● | **C16** | Score tracker never shows the player's score | DONE (verify) |
 | ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
+| ○ | **C34** | Our own menus, so layout stops being someone else's | MILESTONE |
 | ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
 | ● | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | DONE (confirmed) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
@@ -229,6 +230,7 @@ for stock clients until proven otherwise.
 | ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
 | ● | **C16** | Score tracker never shows the player's score | DONE (verify) |
 | ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
+| ○ | **C34** | Our own menus, so layout stops being someone else's | MILESTONE |
 | ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
 | ● | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | DONE (confirmed) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
@@ -266,12 +268,15 @@ in U9 after touching any `.menu` file; parse errors are silent on screen and
 loud in the console.)*
 
 **P1 — in flight**
-3. **R5** Vulkan renderer, milestone 1. Text is *not* optional here — the console
+3. **C34** our own menus. Four faults this cycle were the same fault - the menu
+   we needed to change belongs to Quake Live. Start with the headless parse
+   check, then the scoreboards.
+4. **R5** Vulkan renderer, milestone 1. Text is *not* optional here — the console
    is the debugging surface, so a text-less Vulkan build cannot debug itself.
    Stub only long enough to prove the link, then do fonts immediately.
 
 **P2 — correctness unknowns, need evidence**
-4. **W1 / W2** shotgun pattern shape and the 30-radians-or-degrees constant.
+5. **W1 / W2** shotgun pattern shape and the 30-radians-or-degrees constant.
 6. **U11** cosmetic overlaps on QL's Advanced pages; **U13** widescreen bias.
 
 **P3 — absent subsystems, none started, none blocking**
@@ -1509,6 +1514,75 @@ blood for ice on a frozen target and shatters with a ball sprite:
 Three registrations plus a branch in the missile-hit path. Confirmed again that
 there are **no ice meshes** in the pak — the whole effect is shader and sprite
 over the ordinary player model, so anything model-shaped is the wrong direction.
+
+### C34. Our own menus, so layout stops being someone else's — MILESTONE, not started
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Four separate faults this cycle were all the same fault: the menu we needed to
+change belongs to Quake Live.
+
+- FFA scoreboard columns do not line up with their headers.
+- Controls has no Back, Apply or Reset.
+- The Settings tab bar had no page behind it (U10) because QL fills that panel
+  with a web view we do not have.
+- The map-vote crash was reached through `exec "vote 1"` in QL's
+  `endgamevote.menu`, a script shape we cannot alter.
+
+Each got a code-side workaround - offsets nudged from C, a default page opened
+once a frame, a null callback wired. Those were the right immediate fixes and
+they are all still needed, but the pattern says the layout itself has to become
+ours before the next four arrive.
+
+`pak00.pk3` is not redistributable, so nothing in it can be copied or edited.
+Authoring replacements from scratch is a different thing and is allowed: pak01
+precedes pak00 in the search path, so a menu we write under the same name wins.
+`content/pak01/ui/main.menu` already proves the mechanism for a ui menu.
+
+**Two tracks, and they are not the same module.** The tracker's "lives in"
+split matters here more than usual:
+
+| Menu | Loaded by | What it blocks |
+|---|---|---|
+| `hud.menu` | cgame | HUD layout |
+| `ingame_scoreboard_*` (13) | cgame | column alignment, row height, position bars, click-to-select |
+| `end_scoreboard_*` (13) | cgame | the same, at intermission |
+| `endgamevote`, `endscore*` | cgame | vote panel layout, and the `exec` shapes |
+| `main_options`, `ingame_controls`, `ingame_options` | **ui** | Back / Apply / Reset, tab behaviour |
+
+So "our own cgame menus" covers the scoreboards and the vote; the Controls
+buttons are a ui-side job. Worth doing together, not worth confusing.
+
+**Phases, cheapest first:**
+
+1. **A headless menu parse check** (`tools/check-menus.py`), before writing any
+   of it. U9 is the reason: `ItemParse_cvarFloatList` ate a closing brace, two
+   menus merged into one, and nothing said so on screen - parse errors are
+   silent where you are looking and loud in a console you are not. We are about
+   to write a lot of menu files; a check that runs over them is the difference
+   between a typo and an afternoon.
+2. **Prove the override for a cgame menu.** pak01-over-pak00 is established for
+   `main.menu`, which the ui module loads. Confirm the same holds for a menu
+   cgame loads before building anything on it.
+3. **Scoreboards.** Highest value: it is where the open cosmetic faults are, and
+   the feeder plumbing behind them is already ours.
+4. **Vote and end-of-game.** Removes the dependency on QL's `exec "vote N"`.
+5. **Controls page (ui).** Back, Apply, Reset - the outstanding ask.
+
+**Traps already known, do not rediscover:**
+
+- `RE_RegisterShader` and `RE_RegisterModel` return **0** for a name the pak does
+  not contain, silently. Check `docs/pak-manifest.txt` before naming any asset.
+- cgame's display context has NULL callbacks where the ui's does not:
+  `getOverstrikeMode`, `setOverstrikeMode`, `getBindingBuf`, `setBinding`. They
+  are guarded now, and nothing QL ships for cgame reaches them - but an
+  `ITEM_TYPE_EDITFIELD` or `ITEM_TYPE_BIND` in a cgame menu of ours would, and
+  the guard would degrade silently rather than work. Wiring them means adding
+  syscalls to `cg_public.h`, **appended, never inserted**: the numbers are
+  shared with stock Quake Live's cgame under protocol 91.
+- Item rects are relative to the menu rect and are offset at parse time by
+  `Menu_UpdatePosition`. Comparing authored rects across two menus without
+  applying that is how the "Return to match" overlap was misdiagnosed.
+
 
 ### E31. Joining mid-round demoted you to spectator, permanently — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client

@@ -66,6 +66,14 @@ and read by nothing — setting them produces no error and no effect. This has
 caused real bugs twice (`g_spawnItemWeapons`, `g_instaGib`). Run
 `tools/dead-cvars.py <path-to-ql-ui>` after adding one.
 
+**A menu that fails to parse does not look like one.** The parser keeps going,
+so a stray brace merges the next menu into the current one and what you see is a
+menu with the wrong items in it, or a button that opens nothing. Nothing says so
+on screen; it is loud in the console and silent where you are looking. Run
+`tools/check-menus.py <path-to-ql-ui>` after touching any `.menu` file — pass
+Quake Live's `ui/` so open/close targets that live in pak00 resolve. It checks
+our files only; theirs are read for the names they define.
+
 **`CVAR_ARCHIVE` on a shipped default means the default stops applying.** The
 value is written into a config on first run and that config then wins forever,
 so changing the default later does nothing. Cost two rounds already
