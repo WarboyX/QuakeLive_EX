@@ -971,7 +971,18 @@ static void CG_DrawKiller(rectDef_t* rect, float scale, vec4_t color, qhandle_t 
         x = cg_gameStatusEndX;
     }
 
-    CG_OwnerDrawText(x, rect->y, scale, color, s, 0, 0, textStyle);
+    /*
+    And drop it half a line, so the two do not share one.
+
+    The menu has the status line at y 77 and this at y 100 - 23 apart, with
+    this drawn at textscale .35 against the status line's .22. At the
+    resolutions people actually run, the taller line's ascenders reach into the
+    row above and the pair read as one crowded block. Half this line's own
+    height is measured rather than assumed, so it scales with the font instead
+    of being a pixel value that only looks right on one display.
+    */
+    CG_OwnerDrawText(x, rect->y + CG_Text_Height(s, scale, 0) * 0.5f,
+                     scale, color, s, 0, 0, textStyle);
 }
 
 static void CG_DrawCapFragLimit(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
