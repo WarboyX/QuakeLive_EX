@@ -881,6 +881,28 @@ static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
                       (unsigned long)ep->ExceptionRecord->ExceptionCode, address, where);
 
     /*
+    [QL] For an access violation, what was touched and how.
+
+    "faulted in" names the instruction; this names the memory. The two answer
+    different questions and the second is usually the one that identifies the
+    bug: an address a little above zero is a null pointer with a field offset
+    on it, one in the tens of megabytes past a known buffer is an index run
+    wild, and read-versus-write halves the candidates on its own. The record
+    has carried it all along - ExceptionInformation[0] is the access type and
+    [1] the address - and the first two reports from the field went without it.
+    */
+    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+        ep->ExceptionRecord->NumberParameters >= 2) {
+        ULONG_PTR kind = ep->ExceptionRecord->ExceptionInformation[0];
+        const char *what = (kind == 0) ? "reading" : (kind == 1) ? "writing"
+                                                                : (kind == 8) ? "executing" : "accessing";
+
+        len += Com_sprintf(text + len, sizeof(text) - len,
+                           "bad access: %s 0x%llx\r\n", what,
+                           (unsigned long long)ep->ExceptionRecord->ExceptionInformation[1]);
+    }
+
+    /*
     [QL] The faulting thread's own registers, and what it was about to return to.
 
     RtlCaptureStackBackTrace below runs inside this filter, so on x64 it reports
