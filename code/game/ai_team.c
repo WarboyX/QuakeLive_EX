@@ -1902,8 +1902,25 @@ int FindHumanTeamLeader(bot_state_t* bs) {
                     // if this player is on the same team
                     if (BotSameTeam(bs, i)) {
                         ClientName(i, bs->teamleader, sizeof(bs->teamleader));
-                        // if not yet ordered to do anything
-                        if (!BotSetLastOrderedTask(bs)) {
+                        /*
+                        [QL] The default defend order does not apply in CTF.
+
+                        This is where a team with a human on it behaves
+                        completely differently from one without. A human is made
+                        leader on sight and issues no orders of their own, so
+                        every bot on that team is put on defence here and stays
+                        there, while the other team elects a bot leader whose
+                        BotCTFOrders sends most of its side out to attack. One
+                        team parked on its own flag, the other on offence - and
+                        which team it is depends only on which one the player
+                        joined.
+
+                        BotCTFEnforceOffense would rewrite the goal a moment
+                        later anyway; not issuing it is cleaner than issuing it
+                        and undoing it, and it stops the bot announcing a task
+                        it is not going to do.
+                        */
+                        if (gametype != GT_CTF && !BotSetLastOrderedTask(bs)) {
                             // go on defense by default
                             BotVoiceChat_Defend(bs, i, SAY_TELL);
                         }
