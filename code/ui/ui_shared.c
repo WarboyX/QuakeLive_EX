@@ -4429,9 +4429,16 @@ void Item_ListBox_Paint(itemDef_t* item) {
             which is what people reach for anyway, so all this has to do is say
             how far down the list you are.
             */
-            barX = item->window.rect.x + item->window.rect.w - SLIMSCROLL_WIDTH - 1;
+            /* Sit in the column the full-width bar used, centred in it, rather
+               than flush against the edge of the rect. The list rect is wider
+               than the panel art behind it - Quake Live's own bar was inset by
+               a whole SCROLLBAR_SIZE and landed inside the artwork - so a bar
+               hard against rect.x + rect.w hangs off the panel. contentW keeps
+               the same reservation, so the rows are exactly as wide as they
+               were. */
+            barX = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
             contentX = item->window.rect.x + 1;
-            contentW = item->window.rect.w - SLIMSCROLL_WIDTH - 2;
+            contentW = item->window.rect.w - SCROLLBAR_SIZE - 2;
 
             listPtr->endPos = listPtr->startPos;
             size = item->window.rect.h - 2;
