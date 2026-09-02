@@ -563,14 +563,23 @@ void G_CheckMinimumPlayers(void) {
         return;
 
     if (g_gametype.integer >= GT_TEAM) {
-        // Team modes apply minplayers *per team*, so the ceiling is half the slots.
-        if (minplayers >= level.maxclients / 2) {
-            if (bot_minplayers.integer >= level.maxclients / 2) {
-                G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d per team: sv_maxclients "
-                         "is %d (latched - a full 'map' command is needed after changing it)\n",
-                         bot_minplayers.integer, (level.maxclients / 2) - 1, level.maxclients);
-            }
-            minplayers = (level.maxclients / 2) - 1;
+        /*
+        Team modes apply minplayers *per team*, so the ceiling is half the slots.
+
+        It used to be half the slots minus one, which reserved a slot on each
+        team and so cost two of them: bot_minplayers 32 on a 64-slot server
+        stopped at 62 and printed nothing, because the cap was only announced
+        when it was hit at or above half. Keeping a slot free for a person is
+        already G_FillBots' job and it does that once for the whole server, not
+        once per team, so the per-team subtraction was the same reservation
+        counted twice. 32 per team now means 32 per team, and BOT_RESERVED_SLOTS
+        is what stops the last slot going to a bot.
+        */
+        if (minplayers > level.maxclients / 2) {
+            G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d per team: sv_maxclients "
+                     "is %d (latched - a full 'map' command is needed after changing it)\n",
+                     bot_minplayers.integer, level.maxclients / 2, level.maxclients);
+            minplayers = level.maxclients / 2;
         }
 
         humanplayers = G_CountHumanPlayers(TEAM_RED);

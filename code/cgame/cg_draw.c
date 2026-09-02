@@ -617,6 +617,21 @@ CG_DrawTeamOverlay
 =================
 */
 
+/*
+[QL] Vertical space the overlay is allowed, in 480-space, and the smallest
+character cell it will shrink to in order to stay inside it.
+
+A row is TINYCHAR_HEIGHT tall, so the stock overlay's eight rows cost 64 units.
+Thirty-two rows at that size is 256 - over half the screen height, down the side
+of the view, which is what raising cg_teamOverlayMaxPlayers bought. Sizing the
+cell from the row count keeps a big team inside a third of the screen and
+narrows the panel by the same ratio, since every column is measured in
+characters. The floor is where it stops being readable rather than where it
+stops fitting.
+*/
+#define TEAM_OVERLAY_MAXHEIGHT 160
+#define TEAM_OVERLAY_MINCHAR   5
+
 static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 	int x, w, h, xx;
 	int i, j, len;
@@ -628,6 +643,7 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 	clientInfo_t* ci;
 	gitem_t* item;
 	int ret_y, count;
+	int cw, ch;
 
 	if (!cg_drawTeamOverlay.integer) {
 		return y;
@@ -688,14 +704,24 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 	if (lwidth > TEAM_OVERLAY_MAXLOCATION_WIDTH)
 		lwidth = TEAM_OVERLAY_MAXLOCATION_WIDTH;
 
-	w = (pwidth + lwidth + 4 + 7) * TINYCHAR_WIDTH;
+	// size the character cell to the number of rows actually being drawn
+	ch = TINYCHAR_HEIGHT;
+	if (plyrs * ch > TEAM_OVERLAY_MAXHEIGHT) {
+		ch = TEAM_OVERLAY_MAXHEIGHT / plyrs;
+		if (ch < TEAM_OVERLAY_MINCHAR) {
+			ch = TEAM_OVERLAY_MINCHAR;
+		}
+	}
+	cw = TINYCHAR_WIDTH * ch / TINYCHAR_HEIGHT;
+
+	w = (pwidth + lwidth + 4 + 7) * cw;
 
 	if (right)
 		x = 640 - w;
 	else
 		x = 0;
 
-	h = plyrs * TINYCHAR_HEIGHT;
+	h = plyrs * ch;
 
 	if (upper) {
 		ret_y = y + h;
@@ -739,11 +765,11 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 				hcolor[0] = hcolor[1] = hcolor[2] = hcolor[3] = 1.0;
 			}
 
-			xx = x + TINYCHAR_WIDTH;
+			xx = x + cw;
 
 			CG_DrawStringExt(xx, y,
 							 ci->name, hcolor, qfalse, qfalse,
-							 TINYCHAR_WIDTH, TINYCHAR_HEIGHT, TEAM_OVERLAY_MAXNAME_WIDTH);
+							 cw, ch, TEAM_OVERLAY_MAXNAME_WIDTH);
 
 			if (lwidth) {
 				/*
@@ -790,11 +816,11 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 				//				if (len > lwidth)
 				//					len = lwidth;
 
-				//				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth +
-				//					((lwidth/2 - len/2) * TINYCHAR_WIDTH);
-				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth;
+				//				xx = x + cw * 2 + cw * pwidth +
+				//					((lwidth/2 - len/2) * cw);
+				xx = x + cw * 2 + cw * pwidth;
 				CG_DrawStringExt(xx, y,
-								 p, hcolor, qfalse, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
+								 p, hcolor, qfalse, qfalse, cw, ch,
 								 TEAM_OVERLAY_MAXLOCATION_WIDTH);
 			}
 
@@ -806,15 +832,15 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 			}
 			Com_sprintf(st, sizeof(st), "%3i %3i", ci->health, ci->armor);
 
-			xx = x + TINYCHAR_WIDTH * 3 +
-				TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
+			xx = x + cw * 3 +
+				cw * pwidth + cw * lwidth;
 
 			CG_DrawStringExt(xx, y,
 							 st, hcolor, qfalse, qfalse,
-							 TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0);
+							 cw, ch, 0);
 
 			// draw weapon icon
-			xx += TINYCHAR_WIDTH * 3;
+			xx += cw * 3;
 
 			/*
 			[QL] Not for a statue.
@@ -832,10 +858,10 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 			*/
 			if (!ci->frozen) {
 				if (CG_WeaponInfo(ci->curWeapon)->weaponIcon) {
-					CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
+					CG_DrawPic(xx, y, cw, ch,
 							   CG_WeaponInfo(ci->curWeapon)->weaponIcon);
 				} else {
-					CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
+					CG_DrawPic(xx, y, cw, ch,
 							   cgs.media.deferShader);
 				}
 			}
@@ -844,25 +870,25 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 			if (right) {
 				xx = x;
 			} else {
-				xx = x + w - TINYCHAR_WIDTH;
+				xx = x + w - cw;
 			}
 			for (j = 0; j <= PW_NUM_POWERUPS; j++) {
 				if (ci->powerups & (1 << j)) {
 					item = BG_FindItemForPowerup(j);
 
 					if (item) {
-						CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
+						CG_DrawPic(xx, y, cw, ch,
 								   trap_R_RegisterShader(item->icon));
 						if (right) {
-							xx -= TINYCHAR_WIDTH;
+							xx -= cw;
 						} else {
-							xx += TINYCHAR_WIDTH;
+							xx += cw;
 						}
 					}
 				}
 			}
 
-			y += TINYCHAR_HEIGHT;
+			y += ch;
 		}
 	}
 

@@ -1511,38 +1511,43 @@ void Com_InitHunkMemory(void) {
     if (com_dedicated && com_dedicated->integer) {
         nMinAlloc = MIN_DEDICATED_COMHUNKMEGS;
         pMsg = "Minimum com_hunkMegs for a dedicated server is %i, allocating %i megs.\n";
-
-        // [QL] A dedicated server's largest single allocation is the snapshot
-        // entity ring in SV_Startup, which scales linearly with sv_maxclients
-        // and is far and away the dominant hunk consumer on a big server. The
-        // stock floor of 1 MB is meaningless for it, so derive a real floor.
-        //
-        // Command-line "+set sv_maxclients" is already applied at this point
-        // (Com_StartupVariable runs before us); a value set later in a config
-        // is not, which is what the SV_Startup check exists to catch.
-        {
-            int maxClients = Cvar_VariableIntegerValue("sv_maxclients");
-
-            if (maxClients > 0) {
-                int poolMegs;
-
-                if (maxClients > MAX_CLIENTS) {
-                    maxClients = MAX_CLIENTS;
-                }
-
-                poolMegs = (int)(((int64_t)maxClients * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES *
-                                  sizeof(entityState_t)) /
-                                 (1024 * 1024));
-
-                if (poolMegs + SV_HUNK_HEADROOM_MEGS > nMinAlloc) {
-                    nMinAlloc = poolMegs + SV_HUNK_HEADROOM_MEGS;
-                    pMsg = "Minimum com_hunkMegs for this sv_maxclients is %i, allocating %i megs.\n";
-                }
-            }
-        }
     } else {
         nMinAlloc = MIN_COMHUNKMEGS;
         pMsg = "Minimum com_hunkMegs is %i, allocating %i megs.\n";
+    }
+
+    // [QL] A server's largest single allocation is the snapshot entity ring in
+    // SV_Startup, which scales linearly with sv_maxclients and is far and away
+    // the dominant hunk consumer on a big server. The stock floors mean nothing
+    // next to it, so derive a real one.
+    //
+    // This is not only a dedicated-server concern. SV_SnapshotBackup sizes the
+    // ring from the client count rather than from whether the server is
+    // dedicated, because a listen server full of bots feeds as many clients as
+    // a dedicated one - so a listen server needs the same room.
+    //
+    // Command-line "+set sv_maxclients" is already applied at this point
+    // (Com_StartupVariable runs before us); a value set later in a config is
+    // not, which is what the SV_Startup check exists to catch.
+    {
+        int maxClients = Cvar_VariableIntegerValue("sv_maxclients");
+
+        if (maxClients > 0) {
+            int poolMegs;
+
+            if (maxClients > MAX_CLIENTS) {
+                maxClients = MAX_CLIENTS;
+            }
+
+            poolMegs = (int)(((int64_t)maxClients * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES *
+                              sizeof(entityState_t)) /
+                             (1024 * 1024));
+
+            if (poolMegs + SV_HUNK_HEADROOM_MEGS > nMinAlloc) {
+                nMinAlloc = poolMegs + SV_HUNK_HEADROOM_MEGS;
+                pMsg = "Minimum com_hunkMegs for this sv_maxclients is %i, allocating %i megs.\n";
+            }
+        }
     }
 
     if (cv->integer < nMinAlloc) {

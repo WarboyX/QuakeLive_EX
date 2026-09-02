@@ -261,6 +261,41 @@ NOT cause this to be called, unless the game is exited to
 the menu system first.
 ===============
 */
+/*
+===============
+SV_SnapshotBackup
+
+[QL] How many frames of snapshot entities the ring has to hold per client.
+
+Stock code asked whether the server was dedicated and used PACKET_BACKUP if it
+was, or 4 if it was not, on the reasoning that "we don't need nearly as many
+when playing locally". That reasoning is about how many clients the server is
+feeding, not about where it is running, and a listen server full of bots feeds
+just as many as a dedicated one: the ring is shared, and every client's frame
+advances first_entity by the entities in it.
+
+At 64 slots the short ring covered only a handful of frames of traffic, so any
+hitch - a scoreboard request rebuilds and sends three ~1500-byte reliable
+commands for 63 players - let it wrap past a frame a client was still deltaing
+against. SV_WriteSnapshotToClient then logs "Delta request from out of date
+entities" and sends a full uncompressed snapshot instead, which is a bandwidth
+spike and a visible stutter. 94 of those in one match, 45 of them immediately
+after a score request.
+
+So the question is the client count. A small local game keeps the small ring
+and the memory that goes with it; anything big enough to be a server gets the
+full PACKET_BACKUP, and Com_InitHunkMemory raises the hunk floor to match.
+===============
+*/
+#define SV_SMALL_GAME_CLIENTS 8
+
+int SV_SnapshotBackup(void) {
+    if (sv_maxclients->integer > SV_SMALL_GAME_CLIENTS) {
+        return PACKET_BACKUP;
+    }
+    return 4;
+}
+
 static void SV_Startup(void) {
     if (svs.initialized) {
         Com_Error(ERR_FATAL, "SV_Startup: svs.initialized");
@@ -268,12 +303,7 @@ static void SV_Startup(void) {
     SV_BoundMaxClients(1);
 
     svs.clients = Z_Malloc(sizeof(client_t) * sv_maxclients->integer);
-    if (com_dedicated->integer) {
-        svs.numSnapshotEntities = sv_maxclients->integer * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
-    } else {
-        // we don't need nearly as many when playing locally
-        svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
-    }
+    svs.numSnapshotEntities = sv_maxclients->integer * SV_SnapshotBackup() * MAX_SNAPSHOT_ENTITIES;
 
     // [QL] The snapshot entity ring below is the biggest thing a server ever
     // puts on the hunk and it scales with sv_maxclients, so on a large server
@@ -372,12 +402,7 @@ void SV_ChangeMaxClients(void) {
     Hunk_FreeTempMemory(oldClients);
 
     // allocate new snapshot entities
-    if (com_dedicated->integer) {
-        svs.numSnapshotEntities = sv_maxclients->integer * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
-    } else {
-        // we don't need nearly as many when playing locally
-        svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
-    }
+    svs.numSnapshotEntities = sv_maxclients->integer * SV_SnapshotBackup() * MAX_SNAPSHOT_ENTITIES;
 }
 
 /*
