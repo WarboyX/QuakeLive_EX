@@ -2016,14 +2016,35 @@ were 24 telefrags. That is the model confirmed rather than just the outcome
 improving - every telefrag on that map was a genuinely full map, and nothing
 else.
 
-`events 169 → 30` is worth noting because it was not the target. Nothing was
-done to events; the drop is what happens when players stop dying constantly.
-The event flood was downstream of the spawn chain after all - which is the
-opposite of the correction in E45, where the *map-level* correlation said
-otherwise. Both readings were right about different things: across maps, drops
-track combat rather than telefrags; within one map, removing a telefrag storm
-removes the events it was generating. `EVENT_VALID_MSEC` no longer needs
-touching.
+**Correction to the table above: the events row is not a like-for-like.** `169`
+is thunderstruck mid-telefrag-storm; `30` is trinity playing normally. Different
+maps, different PVS. It was written as a before/after and it is not one.
+
+**On whether telefrags drove the events - they did, and the earlier correction
+in E45 went too far.** The evidence, stated properly:
+
+| map (build f5e60ac run) | telefrags | weapon deaths | overflowed? |
+|---|---|---|---|
+| trinity | 51 | 1771 | no |
+| **thunderstruck** | **877** | **67** | **yes** |
+| citycrossings | 3306 | 117 | no |
+| arkinholm | 552 | 4348 | no |
+
+The one map that overflowed is the one whose snapshot was two-thirds events, and
+it had 877 telefrags against 67 weapon deaths - the deaths were spawn collisions
+and the events were those deaths. That half of the original account is right.
+
+What does not follow is that telefrags predict overflow: citycrossings had a
+*worse* storm and never overflowed once. Overflow needs a high death rate **and**
+a map that shows you a lot at once; citycrossings has the deaths without the
+geometry. E45's cross-map correlation argued the opposite and was itself flawed -
+it compared telefrag counts against drop counts while implicitly treating map
+geometry as constant, which is the one thing that varies most between these four.
+
+**The clean test has not been run.** thunderstruck is the map that showed the
+problem, has five spawn points, and has not been played since the team-pad
+fallback went in. Its telefrag count and `snapstats` peak are what would settle
+this rather than the trinity numbers above.
 
 **The snapshot ceiling is no longer a live problem** - peak 103 of 256, zero
 drops - so E46's per-client cap stays shelved.
