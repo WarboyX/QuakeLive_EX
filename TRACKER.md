@@ -1741,31 +1741,51 @@ does not say anywhere that it has twelve points, and that number is the
 difference between "the spawn code is broken" and "there is nowhere to put the
 sixty-fourth player."
 
-**How this connects to the snapshot ceiling.** Every death is entity traffic: an
-`EV_OBITUARY` temp entity (`SVF_BROADCAST`, so it is in *every* client's
-snapshot regardless of PVS), gib and death events, `EV_AWARD` broadcasts. And
-`EVENT_VALID_MSEC` is 300 ms, so at `sv_fps 40` **each event entity holds a
-snapshot slot for twelve consecutive snapshots**. A death rate driven by a
-runaway telefrag chain is therefore an entity-count problem, not just a
-scoreboard one.
+**It does NOT connect to the snapshot ceiling, and claiming it did was wrong.**
+Recorded because the correction is the useful part. The two do not correlate -
+they are close to anti-correlated:
 
-Ordering matters here and is worth knowing: `SV_AddEntitiesVisibleFromPoint`
-walks entities in number order, clients are 0..maxclients-1 and map entities sit
-just above them, while temp entities come from `G_Spawn`'s free list above all
-of that. So the entities dropped on overflow are, in practice, **the events** —
-players and items are the last to go. Which means the overflow was mostly
-missing effects, and the effects were mostly deaths that should not have been
-happening.
+| map | telefrags | weapon deaths | snapshot entities dropped |
+|---|---|---|---|
+| castledeathstalker | 0 | 516 | 83,675 |
+| citycrossings | **859** | 28 | **1** |
+| trinity | 159 | 492 | **1,350,347** |
+| arkinholm | 192 | 290 | 0 |
 
-**The overflow warning now says what it dropped.** "256 was not enough" is not
-actionable; "180 of them were events" is. `SV_AddEntToSnapshot` tallies by
-`entityType_t` and the warning prints the composition of the snapshot that
-filled up alongside the running per-type drop count. That is what settles
-whether anything further is needed.
+The map with the telefrag catastrophe had essentially **no** snapshot drops, and
+the two maps that overflowed had few telefrags. The reason is obvious in
+hindsight: a telefrag chain means nobody stays alive, so there is no combat and
+therefore no rail trails, no missiles, no impacts, no gibs - the drops follow
+*weapon* deaths, which is to say actual fighting, weighted heavily by how open
+the map is. Fixing the spawn chain will if anything make citycrossings' snapshot
+pressure **worse**, because players will now live long enough to fight.
 
-**To verify:** a full server on citycrossings. Telefrags should fall from ~98%
-of deaths to a background rate, and the overflow warning - if it appears at all
-- should name what it is dropping.
+Two other things that reading deflates:
+
+- 83,675 on castledeathstalker over eight ten-second windows is ~0.4 entities
+  per client per snapshot. That is nothing. Only trinity had a real problem -
+  ~50 per client-snapshot - and only for one ten-second window in a whole map.
+- The counter is server-wide over 64 clients, 63 of which were bots.
+
+Worth knowing for whatever the cause turns out to be: temp entities come from
+`G_Spawn`'s free list, above the clients (0..maxclients-1) and above the map
+entities, and `SV_AddEntitiesVisibleFromPoint` walks in number order. So events
+are dropped **first** and players last. A snapshot that overflows has therefore
+already been filled by players plus map entities before a single effect got in -
+which points at map entity count in one PVS, not at event churn.
+
+**So the overflow warning now says what it dropped.** "256 was not enough" is
+not actionable; "180 of them were events" or "210 of them were items" is, and
+those two are different problems with different fixes. `SV_AddEntToSnapshot`
+tallies by `entityType_t` and the warning prints the composition of the snapshot
+that filled up alongside the running per-type drop count. That is the only
+honest next step; everything above this line is why guessing instead was a
+mistake.
+
+**To verify:** a full server on citycrossings for the telefrag half - it should
+fall from ~98% of deaths to a background rate. Then **trinity** for the snapshot
+half, which is a separate question: that is the map that overflowed, and the
+breakdown lines under the warning are the answer to what to cull.
 
 ### E46. 256 snapshot entities is not a protocol limit — FINDING, reverted
 **Lives in:** **both** · **Seen by:** n/a
