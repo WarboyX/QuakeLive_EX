@@ -1661,41 +1661,49 @@
             text "Maintainers"  textscale .2
             rect 34 138 200 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
         }
+        // Handles are shown only where they are corroborated rather than
+        // recalled: zturtleman and icculus match the addresses in the ioquake3
+        // README itself (zturtleman@gmail.com, icculus@icculus.org), and
+        // SmileTheory, lnussel and timangus are each that person's long-standing
+        // account on the work credited here. Thilo Schulz, Tony J. White and
+        // Jack Slater are listed by name alone because a handle guessed wrong
+        // credits a stranger, which is worse than crediting no one. The
+        // contributors link below is the authority for all of them.
         itemDef {
-            text "James Canete"  textscale .2
-            rect 46 154 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            text "James Canete - SmileTheory"  textscale .2
+            rect 46 154 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
-            text "Ludwig Nussel"  textscale .2
-            rect 46 170 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            text "Ludwig Nussel - lnussel"  textscale .2
+            rect 46 170 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "Tim Angus - timangus"  textscale .2
+            rect 46 186 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Thilo Schulz"  textscale .2
-            rect 46 186 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 46 202 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
-            text "Tim Angus"  textscale .2
-            rect 46 202 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            text "Zack Middleton - zturtleman"  textscale .2
+            rect 282 154 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Tony J. White"  textscale .2
-            rect 270 154 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 282 170 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Jack Slater"  textscale .2
-            rect 270 170 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 282 186 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
-            text "Zack Middleton"  textscale .2
-            rect 270 186 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
-        }
-        itemDef {
-            text "and everyone credited in the ioquake3 README"  textscale .2
-            rect 270 202 250 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+            text "Ryan C. Gordon - icculus, and many more"  textscale .2
+            rect 282 202 240 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
         }
 
         itemDef {
-            text "github.com/ioquake/ioq3  -  ioquake3.org"  textscale .2
+            text "github.com/ioquake/ioq3/graphs/contributors"  textscale .2
             rect 34 220 470 16  textaligny 12  forecolor .5 .65 .8 1  visible 1  decoration
         }
 

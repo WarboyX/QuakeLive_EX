@@ -332,17 +332,21 @@ on. <https://github.com/tjone270/ioquakelive>
 
 Maintainers
 
-  * James Canete <use.less01@gmail.com>
-  * Ludwig Nussel <ludwig.nussel@suse.de>
+  * James Canete <use.less01@gmail.com> — [@SmileTheory](https://github.com/SmileTheory)
+  * Ludwig Nussel <ludwig.nussel@suse.de> — [@lnussel](https://github.com/lnussel)
   * Thilo Schulz <arny@ats.s.bawue.de>
-  * Tim Angus <tim@ngus.net>
+  * Tim Angus <tim@ngus.net> — [@timangus](https://github.com/timangus)
   * Tony J. White <tjw@tjw.org>
   * Jack Slater <jack@ioquake.org>
-  * Zack Middleton <zturtleman@gmail.com>
+  * Zack Middleton <zturtleman@gmail.com> — [@zturtleman](https://github.com/zturtleman)
+
+Handles are given only where corroborated rather than recalled; the
+[contributors graph](https://github.com/ioquake/ioq3/graphs/contributors) is the
+authority, and the names above without one are not omissions.
 
 Significant contributions from
 
-  * Ryan C. Gordon <icculus@icculus.org>
+  * Ryan C. Gordon <icculus@icculus.org> — [@icculus](https://github.com/icculus)
   * Andreas Kohn <andreas@syndrom23.de>
   * Joerg Dietrich <Dietrich_Joerg@t-online.de>
   * Stuart Dalton <badcdev@gmail.com>
