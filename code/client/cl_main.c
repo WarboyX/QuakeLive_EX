@@ -3037,7 +3037,14 @@ void CL_Init(void) {
 
     // init autoswitch so the ui will have it correctly even
     // if the cgame hasn't been started
-    Cvar_Get("cg_autoswitch", "1", CVAR_ARCHIVE);
+    //
+    // [QL] "0", not id's "1", because this registration is the one that decides.
+    // cgame asks for "0" (Quake Live's default, not Quake 3's) but it runs
+    // second, and Cvar_Get keeps the first reset string it was given - it only
+    // logs "cvar cg_autoswitch given initial values: 1 and 0" and moves on. So
+    // the cgame default was never reaching anyone, and CVAR_ARCHIVE then wrote
+    // the 1 into the config where it wins for good. Both sides now say 0.
+    Cvar_Get("cg_autoswitch", "0", CVAR_ARCHIVE);
 
     m_pitch = Cvar_Get("m_pitch", "0.022", CVAR_ARCHIVE);
     m_yaw = Cvar_Get("m_yaw", "0.022", CVAR_ARCHIVE);

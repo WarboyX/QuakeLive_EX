@@ -211,7 +211,23 @@ void SP_target_speaker(gentity_t* ent) {
         ent->spawnflags |= 8;
     }
 
-    if (!strstr(s, ".wav")) {
+    /*
+    [QL] Add an extension only when there is not one already.
+
+    id's test was `!strstr(s, ".wav")`, written when .wav was the only sound
+    format there was. Quake Live's maps point their speakers at .ogg files, so
+    "sound/nctsdm1/waves.ogg" fails that test and is turned into
+    "sound/nctsdm1/waves.ogg.wav", which does not exist.
+
+    That is not a silent failure. S_RegisterSound returns 0 for a sound it could
+    not load, and handle 0 is not silence: S_BeginRegistration registers
+    sound/feedback/hit.wav first precisely so that slot is occupied. So every
+    ambient speaker on such a map ends up looping the hit beep at its own
+    position, attenuated by distance - a repeating sound that gets louder as you
+    walk towards nothing in particular. arkinholm has five of them (waves,
+    gulls, cave_drips, fire1, frogs) and the console names all five.
+    */
+    if (!COM_GetExtension(s)[0]) {
         Com_sprintf(buffer, sizeof(buffer), "%s.wav", s);
     } else {
         Q_strncpyz(buffer, s, sizeof(buffer));

@@ -1682,6 +1682,65 @@ corner with the same shape of rect and already does it that way.
 Both strings go through it; "Voting has ended - next arena: <map>" is longer and
 was running off further.
 
+### E39. A map's ambient speakers looped the hit beep — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** **every client**
+
+*"there was a map that had a repeating sound (the last map played), and I
+couldn't figure where it was being caused by but it was proximity based so it
+changed on how close i was to it."*
+
+The last map was arkinholm, and the console named the cause five times:
+
+```
+Can't read sound file sound/nctsdm1/waves.ogg.ogg
+WARNING: Failed to load sound sound/nctsdm1/waves.ogg.wav!
+WARNING: could not find sound/nctsdm1/waves.ogg.wav - using default
+```
+
+`SP_target_speaker` decides whether to add an extension with
+`if (!strstr(s, ".wav"))`, which id wrote when .wav was the only sound format
+there was. Quake Live's maps point their speakers at .ogg files, so
+`sound/nctsdm1/waves.ogg` fails that test and becomes `...waves.ogg.wav`. (The
+double extension in the first line is the codec fallback working backwards from
+that name, not a second bug.)
+
+**Why it makes a noise instead of silence.** `S_RegisterSound` returns 0 for a
+sound it could not load — and handle 0 is not silence. `S_BeginRegistration`
+registers `sound/feedback/hit.wav` first, so slot 0 is the hit beep. A
+`target_speaker` is `ET_SPEAKER` and repeats client-side at its own origin with
+distance attenuation, so each broken ambient became the hit beep looping at a
+point in the map, louder as you walked towards it. Five on arkinholm: waves,
+gulls, cave_drips, fire1, frogs.
+
+Extension added only when there is not one already. Vorbis is compiled in
+(`USE_CODEC_VORBIS=1`, libVorbis 1.3.7 is in the shipped exe), so the corrected
+names load.
+
+This one is **seen by every client** — it is the server that indexes the sound,
+and a stock Steam client registering configstring `sound/x.ogg.wav` fails
+identically. Any map with .ogg ambients is affected, not just arkinholm.
+
+### E40. `cg_autoswitch` shipped at 1 although cgame asks for 0 — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+The console says it every map load:
+
+```
+Warning: cvar "cg_autoswitch" given initial values: "1" and "0"
+```
+
+`CL_InitCvars` registers it at "1" (id's default) so the ui has it before cgame
+starts; `cg_main.c` registers it at "0" marked "[QL] default 0 (was Q3 1)".
+`Cvar_Get` on an existing cvar keeps the first reset string and only logs the
+disagreement, so the cgame value never applied — and `CVAR_ARCHIVE` then wrote
+the 1 into the config, where it wins permanently. Both the registered-cvar trap
+and the archive trap in one line. The engine now registers "0" as well.
+
+Note for anyone testing: a config written by an earlier build already contains
+`cg_autoswitch 1` and will keep it. `cg_stereoSeparation` produces the same
+warning and is *not* the same thing — upstream deprecated it deliberately,
+registering it `CVAR_ROM` at 0 to keep cgame's 0.4 from taking effect.
+
 ### E31. Joining mid-round demoted you to spectator, permanently — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
