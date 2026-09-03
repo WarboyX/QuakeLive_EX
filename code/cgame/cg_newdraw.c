@@ -1412,6 +1412,25 @@ static void CG_DrawBestWeaponName(rectDef_t *rect, float scale, vec4_t color, in
     }
 }
 
+/*
+[QL] The "Accuracy:" figure on the scoreboard's player-stats bar.
+
+This owner draw was sharing a case label with CG_FOLLOW_PLAYER_NAME - a note
+against it said "CG_DrawFollowPlayerName (binary offset)", so it looks to have
+been mapped from a disassembly that put the two next to each other. The result
+was that the field beside the Accuracy label drew a follow-target name, which is
+empty unless you are spectating someone, so the label sat there with nothing
+after it while Best Weapon beside it worked.
+
+Same selection as Best Weapon, so the two always describe the same row.
+*/
+static void CG_DrawSelectedPlayerAccuracy(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
+    if (cg.selectedScore >= 0 && cg.selectedScore < cg.numScores) {
+        CG_OwnerDrawText(rect->x, rect->y, scale, color,
+                         va("%d%%", cg.scores[cg.selectedScore].accuracy), 0, 0, textStyle);
+    }
+}
+
 // [QL] Game limit display (frag/cap/round/score limit based on gametype)
 static void CG_DrawGameLimit(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     const char *s;
@@ -3399,7 +3418,9 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
         case CG_SELECTED_PLYR_TEAM_COLOR:   // 0x5c
             CG_DrawSelectedPlayerTeamColor(&rect);
             break;
-        case CG_SELECTED_PLYR_ACCURACY:     // 0x5d  CG_DrawFollowPlayerName (binary offset)
+        case CG_SELECTED_PLYR_ACCURACY:     // 0x5d
+            CG_DrawSelectedPlayerAccuracy(&rect, scale, color, textStyle);
+            break;
         case CG_FOLLOW_PLAYER_NAME:         // 0x5e/0x5f  CG_DrawFollow
         case CG_FOLLOW_PLAYER_NAME_EX:
             CG_DrawFollowPlayerName(&rect, scale, color, textStyle);
