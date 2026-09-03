@@ -29,10 +29,28 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // BEGIN Thomas changes
 // END Thomas changes
 
+/*
+[QL] Two names, and only one of them is ours to change.
+
+PRODUCT_NAME is **cosmetic identity**: the window title, the version stamps in
+the console and the main menu, the pid filename. Rename the project here and
+nothing on the wire moves.
+
+GAMENAME_NETWORK is **protocol identity**. com_gamename is CVAR_SERVERINFO, so it
+goes out in the serverinfo string and is what server browsers and stock Quake
+Live clients filter on, alongside com_protocol 91 and BASEGAME. Change it and a
+stock client stops seeing our servers - which throws away the compatibility that
+most of the "seen by: every client" work in TRACKER.md exists to preserve. It
+stays "Quake Live" whatever the product ends up being called.
+
+(GAMENAME_FOR_MASTER in qcommon.h is a third one, spelled without the space
+because a dpmaster filters on a single token.)
+*/
 #define PRODUCT_NAME            "Quake Live"
+#define GAMENAME_NETWORK        "Quake Live"  // do not change - see above
 #define BASEGAME                "baseqz"  // [QL] protocol/game name (sent over network)
 #define BASEGAME_DIR            "baseq3"  // filesystem directory for game data
-#define CLIENT_WINDOW_TITLE     "Quake Live"
+#define CLIENT_WINDOW_TITLE     PRODUCT_NAME
 #define HOMEPATH_NAME_UNIX      ".quakelive"
 #define HOMEPATH_NAME_WIN       "quakelive"
 #define HOMEPATH_NAME_MACOSX    HOMEPATH_NAME_WIN

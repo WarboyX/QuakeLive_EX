@@ -2035,6 +2035,34 @@ gametype", which is the number that was actually wanted.
 classname `G_IsSpawnPointClassname` does not list, and that list is where to
 look.
 
+### E57. Product name split from protocol name — DONE (ready for a rename)
+**Lives in:** our **client** and **server** (qcommon) · **Seen by:** every client if got wrong
+
+Groundwork for renaming the project at beta. `PRODUCT_NAME` was feeding both the
+cosmetic identity *and* `com_gamename`, and those must not move together:
+
+- **`PRODUCT_NAME`** — window title, the version stamps in the console and main
+  menu, the pid filename. Cosmetic. Rename here and nothing on the wire changes.
+- **`GAMENAME_NETWORK`** (new) — what `com_gamename` is registered with.
+  `CVAR_SERVERINFO`, so it goes out in the serverinfo string and is what server
+  browsers and **stock Quake Live clients** filter on, alongside
+  `com_protocol 91` and `BASEGAME "baseqz"`. Change it and a stock client stops
+  seeing our servers, which throws away the compatibility most of the
+  "seen by: every client" work exists to preserve. Stays "Quake Live" whatever
+  the product is called.
+- `GAMENAME_FOR_MASTER` in qcommon.h is a third, spelled `"QuakeLive"` without
+  the space because a dpmaster filters on a single token. Already separate.
+
+`CLIENT_WINDOW_TITLE` now derives from `PRODUCT_NAME` rather than repeating the
+string, so a rename is one line.
+
+**Also worth recording for the same plan:** a Steam listing that requires
+ownership of the base game is a real mechanism, and the engine already reads
+`pak00.pk3` out of the Steam install (`STEAMPATH_NAME "Quake Live"`, and the
+search path in any recent log shows
+`steam\SteamApps\common\Quake Live\baseq3\pak00.pk3` resolving). So the asset
+side of that plan works today and needs nothing from us.
+
 ### R16. Console text rendering — the target was wrong, and the charset is the ceiling
 **Lives in:** our **client** (client engine) · **Seen by:** our client only
 
