@@ -245,6 +245,37 @@
             mouseExit { setitemcolor playerbar backcolor 0.5 0.1 0 .25 }
         }
 
+        // CREDITS
+        itemDef {
+            name creditsbar
+            group mainnav
+            style WINDOW_STYLE_GRADIENT
+            rect 485 360 310 30
+            backcolor 0.5 0.1 0 .25
+            border 4
+            bordercolor 0.5 0.5 0.5 1
+            bordersize 1
+            visible 1
+            decoration
+        }
+        itemDef {
+            name creditsbtn
+            group mainnav
+            text "CREDITS"
+            type 1
+            textstyle 6
+            rect 485 360 320 30
+            textalignx 95
+            textaligny 24
+            textscale .416
+            textalign ITEM_ALIGN_LEFT
+            forecolor 1 1 1 1
+            visible 1
+            action { open io_credits }
+            mouseEnter { setitemcolor creditsbar backcolor .75 0 0 .25 }
+            mouseExit { setitemcolor creditsbar backcolor 0.5 0.1 0 .25 }
+        }
+
         // QUIT
         itemDef {
             name quitbar
@@ -1568,6 +1599,134 @@
             name close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
             rect 400 440 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_renderoptions }
+            mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor close forecolor 1 1 1 1 }
+        }
+    }
+
+    // =============================================
+    // CREDITS
+    //
+    // Four categories, in the order the work happened: the game, the engine
+    // fork it runs on, the Quake Live fork of that, and this. Names are taken
+    // from each project's own credits file rather than from memory - README.md
+    // carries the same list, and the ioquake3 maintainers below are verbatim
+    // from it. Where a full roster is longer than a screen the project is
+    // credited and pointed at, which is more honest than an abridged list that
+    // looks complete.
+    // =============================================
+    menuDef {
+        name "io_credits"
+        rect 60 8 520 468
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.05 0.05 0.08 1
+        border 1
+        bordersize 1
+        bordercolor .5 .5 .5 1
+
+        onESC { close io_credits }
+
+        itemDef {
+            name title  text "CREDITS"  textscale .3
+            rect 0 8 520 24  textalign ITEM_ALIGN_CENTER  textalignx 260  textaligny 18
+            forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        // ---- the game --------------------------------------------------------
+        itemDef {
+            text "QUAKE III ARENA and QUAKE LIVE"  textscale .24
+            rect 20 44 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+        itemDef {
+            text "id Software - the game, its engine and its assets."  textscale .2
+            rect 34 64 470 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "Released as GPL source; the assets are not, and are never shipped here."  textscale .2
+            rect 34 80 470 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+        }
+
+        // ---- the engine ------------------------------------------------------
+        itemDef {
+            text "IOQUAKE3"  textscale .24
+            rect 20 110 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+        itemDef {
+            text "Maintainers"  textscale .2
+            rect 34 130 200 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+        }
+        itemDef {
+            text "James Canete"  textscale .2
+            rect 46 148 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "Ludwig Nussel"  textscale .2
+            rect 46 164 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "Thilo Schulz"  textscale .2
+            rect 46 180 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "Tim Angus"  textscale .2
+            rect 46 196 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "Tony J. White"  textscale .2
+            rect 270 148 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "Jack Slater"  textscale .2
+            rect 270 164 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "Zack Middleton"  textscale .2
+            rect 270 180 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "and everyone credited in the ioquake3 README"  textscale .2
+            rect 270 196 250 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+        }
+
+        // ---- the Quake Live fork ---------------------------------------------
+        itemDef {
+            text "IOQUAKELIVE"  textscale .24
+            rect 20 228 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+        itemDef {
+            text "tjone270 - the Quake Live protocol, game, cgame and ui work"  textscale .2
+            rect 34 248 470 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+        itemDef {
+            text "github.com/tjone270/ioquakelive"  textscale .2
+            rect 34 264 470 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+        }
+
+        // ---- this ------------------------------------------------------------
+        itemDef {
+            text "QUAKE LIVE EX"  textscale .24
+            rect 20 296 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+        itemDef {
+            text "WarboyX"  textscale .2
+            rect 34 316 470 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+        }
+
+        itemDef {
+            text "Quake Live (tm) and Quake III Arena (tm) are trademarks of id Software LLC,"  textscale .18
+            rect 20 370 480 16  textaligny 12  forecolor .5 .5 .5 1  visible 1  decoration
+        }
+        itemDef {
+            text "a ZeniMax Media company. This project is not affiliated with or endorsed by them."  textscale .18
+            rect 20 386 480 16  textaligny 12  forecolor .5 .5 .5 1  visible 1  decoration
+        }
+
+        itemDef {
+            name close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 210 430 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_credits }
             mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor close forecolor 1 1 1 1 }
         }

@@ -307,6 +307,25 @@ https://discourse.ioquake.org
 
 # Credits
 
+### Quake III Arena and Quake Live
+
+**id Software** — the game, its engine and its assets. Quake III Arena's engine
+was released under the GPL (see `COPYING.txt`); the assets were not, and are
+never redistributed by this project. Quake Live and Quake III Arena are
+trademarks of id Software LLC, a ZeniMax Media company. This project is not
+affiliated with or endorsed by them.
+
+### ioquakelive
+
+**tjone270** — the Quake Live protocol, game, cgame and ui work this is built
+on. <https://github.com/tjone270/ioquakelive>
+
+### Quake Live Ex
+
+**WarboyX**
+
+### ioquake3
+
 Maintainers
 
   * James Canete <use.less01@gmail.com>
