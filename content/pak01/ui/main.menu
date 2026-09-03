@@ -1470,21 +1470,76 @@
             rect 230 304 200 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
-        itemDef { text "Cubemap Reflections:"  textscale .22  rect 30 324 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name cubemap  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"  rect 230 324 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        // ---- OpenGL 2 only ----------------------------------------------------
+        // r_cubeMapping, r_cubemapSize, r_specularMapping and r_normalMapping are
+        // registered by renderergl2 and by nothing in renderervk, so under Vulkan
+        // they were four controls that did nothing - the registered-cvar trap, on
+        // screen. Hidden when cl_renderer is vulkan; the Vulkan block below takes
+        // the same rows.
+        itemDef { text "Cubemap Reflections:"  textscale .22  rect 30 324 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name cubemap  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"  rect 230 324 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+                  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
 
-        itemDef { text "Cubemap Size:"  textscale .22  rect 30 344 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { text "Cubemap Size:"  textscale .22  rect 30 344 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef {
             name cubesize  type ITEM_TYPE_MULTI  text ""  cvar "r_cubemapSize"
             cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }
             rect 230 344 120 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+            cvarTest "cl_renderer"  hideCvar { "vulkan" }
         }
 
-        itemDef { text "Specular Mapping:"  textscale .22  rect 30 364 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name specular  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"  rect 230 364 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Specular Mapping:"  textscale .22  rect 30 364 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name specular  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"  rect 230 364 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+                  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
 
-        itemDef { text "Normal Mapping:"  textscale .22  rect 30 384 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name normalmap  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"  rect 230 384 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Normal Mapping:"  textscale .22  rect 30 384 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name normalmap  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"  rect 230 384 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+                  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+
+        // ---- Vulkan only ------------------------------------------------------
+        // The other half of the same problem: r_bloom and r_renderScale exist only
+        // in renderervk and had no control at all, and anisotropy had none in
+        // either. Every one of these is CVAR_LATCH, which is what APPLY is for.
+        itemDef { text "Anisotropic Filter:"  textscale .22  rect 30 324 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef {
+            name aniso  type ITEM_TYPE_MULTI  text ""  cvar "r_ext_max_anisotropy"
+            cvarFloatList { "Off" 1 "2x" 2 "4x" 4 "8x" 8 "16x" 16 }
+            rect 230 324 120 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+            cvarTest "cl_renderer"  showCvar { "vulkan" }
+        }
+
+        itemDef { text "Antialiasing:"  textscale .22  rect 30 344 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef {
+            name msaa  type ITEM_TYPE_MULTI  text ""  cvar "r_ext_multisample"
+            cvarFloatList { "Off" 0 "2x MSAA" 2 "4x MSAA" 4 "8x MSAA" 8 }
+            rect 230 344 140 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+            cvarTest "cl_renderer"  showCvar { "vulkan" }
+        }
+
+        itemDef { text "Texture Filter:"  textscale .22  rect 30 364 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef {
+            name texmode  type ITEM_TYPE_MULTI  text ""  cvar "r_textureMode"
+            cvarStrList { "Trilinear", "GL_LINEAR_MIPMAP_LINEAR", "Bilinear", "GL_LINEAR_MIPMAP_NEAREST", "Nearest", "GL_NEAREST" }
+            rect 230 364 190 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+            cvarTest "cl_renderer"  showCvar { "vulkan" }
+        }
+
+        itemDef { text "Bloom:"  textscale .22  rect 30 384 100 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name bloom  type ITEM_TYPE_YESNO  text ""  cvar "r_bloom"  rect 130 384 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+                  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+
+        itemDef { text "Lens Flares:"  textscale .22  rect 230 384 110 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration
+                  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name flares  type ITEM_TYPE_YESNO  text ""  cvar "r_flares"  rect 340 384 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+                  cvarTest "cl_renderer"  showCvar { "vulkan" } }
 
         itemDef { text "Ambient Light Scale:"  textscale .22  rect 30 404 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {

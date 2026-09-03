@@ -1794,6 +1794,95 @@ The report now prints the entity's model *name* alongside the surface name. If
 they name different models it is the pairing; if both are gibs it is the frame.
 That is one line of the next log away.
 
+### R12. The render menu was showing the wrong renderer's options — DONE (verify)
+**Lives in:** our **client** (pak01 menu) · **Seen by:** our client only
+
+Asked for as "AF settings should be added or refined in the render menu", and
+the menu turned out to have a worse problem than a missing control.
+
+`io_renderoptions` in `content/pak01/ui/main.menu` is ours - it is reached from
+the RENDER button on the main menu and it already existed. But five of its
+controls are `renderergl2` cvars that **renderervk does not register at all**:
+
+| control | in renderervk | in renderergl2 |
+|---|---|---|
+| `r_cubeMapping`, `r_cubemapSize` | no | yes |
+| `r_specularMapping`, `r_normalMapping` | no | yes |
+| `r_toneMap`, `r_postProcess` | no | yes |
+| `r_bloom` | **yes** | no |
+| `r_renderScale` | **yes** | no |
+| `r_ext_max_anisotropy` | yes | yes |
+
+So on Vulkan the menu offered four or five switches that did nothing - the
+registered-cvar trap, on screen, in a menu of our own - while the two options
+that only Vulkan has had no control anywhere, and anisotropy had none in either.
+
+Both halves are now gated on `cl_renderer` with `cvarTest` + `showCvar` /
+`hideCvar`, sharing the same rows so only the applicable set is drawn:
+
+- **Vulkan:** Anisotropic Filter (Off/2x/4x/8x/16x), Antialiasing
+  (Off/2x/4x/8x MSAA), Texture Filter, Bloom, Lens Flares.
+- **OpenGL 2:** the cubemap/specular/normal block, unchanged.
+
+Every one of the new controls is `CVAR_LATCH`, which is what the existing
+APPLY (restart video) button is for. `tools/check-menus.py` clean.
+
+Still owed here: `r_toneMap` and `r_postProcess` in the POST PROCESSING section
+are GL-only too and want the same gate, and the Vulkan side has no
+supersampling control because `r_renderScale` needs `r_renderWidth`/`Height`
+alongside it rather than being a single switch.
+
+### R13. RT reflections and ambient occlusion — SCOPED, not started
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The hybrid from R10 - keep the baked lightmaps and lightgrid as the light field,
+ray trace only reflections and AO on top. Recording the design and the real
+costs before writing any of it, because two things about this tree change the
+plan.
+
+**The tractable design is ray queries, not a ray-tracing pipeline.**
+`VK_KHR_ray_query` allows tracing from inside an ordinary fragment or compute
+shader, so AO and reflections can be added to the existing rasteriser as extra
+passes rather than as a second renderer with its own pipeline layout, shader
+binding table and payload plumbing. That is the difference between "large" and
+"a rewrite".
+
+**What it needs, in build order:**
+
+1. **Device plumbing.** `VK_KHR_acceleration_structure`, `VK_KHR_ray_query`,
+   `VK_KHR_buffer_device_address`, `VK_KHR_deferred_host_operations`, SPIR-V 1.4.
+   `create_instance` currently asks for `VK_API_VERSION_1_1` at most and device
+   selection must keep working on hardware that has none of these - so this is a
+   capability flag and a fallback, touching `vk_create_device` and device
+   scoring.
+2. **A bottom-level acceleration structure for the world.** Static, built once
+   from the BSP surfaces at load. This is the bulk of the geometry and the
+   cheapest win.
+3. **A top-level structure per frame** with instances for models. Animated MD3s
+   need their BLAS rebuilt or refitted each frame, which is the expensive part
+   and can be deferred: world-only RT AO is already a visible improvement.
+4. **Shaders.** And here is the practical catch specific to this tree: shaders
+   are compiled **offline** by `code/renderervk/shaders/compile.bat` using the
+   Vulkan SDK's `glslangValidator`, converted to a C array by `bin2hex` and
+   vendored in as `shaders/spirv/shader_data.c`. The Makefile does not compile
+   shaders at all. Adding a ray-query shader means either a build-time glslang
+   dependency or regenerating that file by hand. `glslangValidator` is
+   installable in this environment (`apt-get install glslang-tools`), so it is
+   not a blocker, but it is a change to how the renderer is built and should be
+   a deliberate one.
+5. **Denoise.** AO tolerates a cheap spatial blur plus temporal reprojection.
+   Reflections do not, and want something closer to A-SVGF - which is why AO
+   should ship first and alone.
+
+**Order of work, smallest useful increment first:** device plumbing and
+capability reporting → world BLAS → `r_rtao` as a ray-query AO pass with a
+spatial denoise → temporal accumulation → dynamic BLAS for models →
+`r_rtreflections`. Each of the first three is testable on its own and the menu
+gate from R12 is already the right place to expose them.
+
+**What it is not:** path tracing. The lighting stays baked, which is exactly
+what makes it possible without the emitter classification described in R10.
+
 ### R10. Anisotropic filtering to x16 — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
