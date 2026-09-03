@@ -824,6 +824,55 @@ static void LerpMeshVertexes(md3Surface_t *surf, float backlerp)
 RB_SurfaceMesh
 =============
 */
+/*
+[QL] Refuse a frame index the surface does not have, and say so.
+
+LerpMeshVertexes turns e.frame into a byte offset -
+
+    newXyz = (short *)((byte *)surf + surf->ofsXyzNormals)
+           + (backEnd.currentEntity->e.frame * surf->numVerts * 4);
+
+- so a frame outside the surface reads somewhere else entirely. That is what
+the field reports show: an access violation inside RB_SurfaceMesh, reached
+through RB_LightingPass, reading a plausible-looking heap address rather than
+anything near null. It takes a long busy match to happen, which is why it has
+survived several builds.
+
+R_AddMD3Surfaces validates frame and oldframe when a surface is added, so this
+should be unreachable - but the crash says otherwise, and the interesting part
+is which of the two is wrong when it happens: an entity whose frames were never
+clamped, or a surface that does not belong to the entity currently set. Both
+are printed. Skipping the surface loses one model for one frame, which is
+nothing next to taking the client down, and the line names the model so the
+next report is a diagnosis rather than another address.
+*/
+static qboolean RB_ValidMeshFrames(const md3Surface_t *surface) {
+	const trRefEntity_t *ent = backEnd.currentEntity;
+	static int reported;
+
+	if ( !ent ) {
+		return qfalse;
+	}
+	if ( surface->numFrames <= 0 || surface->numVerts <= 0 ) {
+		return qfalse;
+	}
+	if ( (unsigned)ent->e.frame < (unsigned)surface->numFrames &&
+		 (unsigned)ent->e.oldframe < (unsigned)surface->numFrames ) {
+		return qtrue;
+	}
+
+	if ( reported < 8 ) {
+		reported++;
+		ri.Printf( PRINT_WARNING, "RB_SurfaceMesh: frame %d/%d of %d on surface '%s'"
+				   " (%d verts), entity %d, model %d%s\n",
+				   ent->e.frame, ent->e.oldframe, surface->numFrames,
+				   surface->name, surface->numVerts,
+				   (int)(ent - backEnd.refdef.entities), ent->e.hModel,
+				   tess.dlightPass ? ", during the lighting pass" : "" );
+	}
+	return qfalse;
+}
+
 static void RB_SurfaceMesh(md3Surface_t *surface) {
 	int				j;
 	float			backlerp;
@@ -832,6 +881,10 @@ static void RB_SurfaceMesh(md3Surface_t *surface) {
 	int				indexes;
 	int				Bob, Doug;
 	int				numVerts;
+
+	if ( !RB_ValidMeshFrames( surface ) ) {
+		return;
+	}
 
 #ifdef USE_VBO
 	VBO_Flush();
