@@ -1010,6 +1010,26 @@ void ClientThink_real(gentity_t* ent) {
         client->ps.eFlags &= ~EF_FIRING;
     }
 
+    /*
+    [QL] Spawn protection ends the moment you ask to shoot.
+
+    Same shape as the Freeze Tag countdown lockout above - PMF_RESPAWNED stops
+    the shot on both sides, and the buttons are dropped outright so the weapon
+    code never sees a held trigger. The difference is that this is not a wait:
+    pressing attack gives the protection up there and then, so the player is
+    never stuck behind a shield, they just cannot be invulnerable and firing at
+    once. Movement is untouched, which is the point - the protection exists to
+    let them get off the pad.
+    */
+    if (client->spawnProtectTime > level.time && client->ps.pm_type == PM_NORMAL) {
+        if (ucmd->buttons & (BUTTON_ATTACK | BUTTON_USE_HOLDABLE)) {
+            client->spawnProtectTime = 0;   // given up on purpose
+        }
+        client->ps.pm_flags |= PMF_RESPAWNED;
+        ucmd->buttons &= ~(BUTTON_ATTACK | BUTTON_USE_HOLDABLE);
+        client->ps.eFlags &= ~EF_FIRING;
+    }
+
     // [QL] PMF_PAUSED is handled above (early-return right after the intermission
     // block, matching binary ClientThink_real 0x10034d40).
 

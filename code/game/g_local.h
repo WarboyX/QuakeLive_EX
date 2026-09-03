@@ -421,6 +421,9 @@ struct gclient_s {
     // caused. See G_NudgeSpawnClear.
     qboolean spawnKillBox;
     qboolean spawnTelefragged;
+    // [QL] spawn protection: no damage taken and no shot fired until this
+    // expires, or until the player presses attack and gives it up.
+    int spawnProtectTime;
     int lasthurt_client[2];     // [QL] expanded to 2-element array
     int lasthurt_mod[2];        // [QL] expanded to 2-element array
     int lasthurt_time[2];       // [QL]
@@ -1151,6 +1154,7 @@ extern vmCvar_t g_gravity;
 extern vmCvar_t g_speed;
 extern vmCvar_t g_knockback;
 extern vmCvar_t g_forcerespawn;
+extern vmCvar_t g_spawnProtectionTime;
 extern vmCvar_t g_inactivity;
 extern vmCvar_t g_inactivityWarning;  // [QL]
 extern vmCvar_t g_dropInactive;       // [QL]

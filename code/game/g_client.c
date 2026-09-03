@@ -1776,6 +1776,28 @@ void ClientSpawn(gentity_t* ent) {
             G_KillBox(ent);
             ent->client->spawnKillBox = qfalse;
             trap_LinkEntity(ent);
+
+            /*
+            [QL] A moment of protection, and no shooting during it.
+
+            The nudge above stops most telefrags, but it cannot stop somebody
+            standing next to the pad shooting whoever appears on it - which on a
+            full server is most of what happens after a spawn. Protection covers
+            that, and it matters more now than it used to: before the nudge, a
+            player camping a spawn pad got telefragged for it, and now they do
+            not.
+
+            The firing lockout is the half that keeps it honest. Invulnerability
+            without it is just a licence to walk out and kill people for a second
+            and a half. Pressing attack ends the protection immediately rather
+            than being ignored, so nobody is held in a shield they do not want -
+            they simply cannot be invulnerable and shooting at the same time.
+            */
+            if (g_spawnProtectionTime.integer > 0) {
+                ent->client->spawnProtectTime = level.time + g_spawnProtectionTime.integer;
+            } else {
+                ent->client->spawnProtectTime = 0;
+            }
         }
     } else {
         // move players to intermission

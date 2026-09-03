@@ -1527,6 +1527,18 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
             }
             return;
         }
+        /*
+        [QL] Spawn protection. Deliberately *not* reusing invulnerabilityTime:
+        that is the holdable powerup, it has its own bubble effect, and it blocks
+        MOD_TELEFRAG - which would leave two players standing in one spot when
+        G_KillBox failed to clear the pad. DAMAGE_NO_PROTECTION still gets
+        through here for exactly that reason, so telefrags, lava and trigger_hurt
+        behave normally.
+        */
+        if (client->spawnProtectTime > level.time && !(dflags & DAMAGE_NO_PROTECTION) &&
+            targ != attacker) {
+            return;
+        }
         if (client->ps.pm_type == PM_SPECTATOR) {  // VERIFY #1: pm_type==2 == PM_SPECTATOR
             return;
         }

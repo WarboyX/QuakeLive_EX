@@ -55,6 +55,7 @@ vmCvar_t g_gravity;
 vmCvar_t g_cheats;
 vmCvar_t g_knockback;
 vmCvar_t g_forcerespawn;
+vmCvar_t g_spawnProtectionTime;
 vmCvar_t g_inactivity;
 vmCvar_t g_inactivityWarning;  // [QL] seconds before kick to start warning
 vmCvar_t g_dropInactive;       // [QL] 1=kick, 0=move-to-spectator
@@ -691,6 +692,9 @@ static cvarTable_t gameCvarTable[] = {
     {&g_knockback, "g_knockback", "1000", CVAR_GAMERULE, 0, NULL},
     {&g_weaponRespawn, "g_weaponRespawn", "5", CVAR_GAMERULE | CVAR_SERVERINFO, 0, NULL},  // [QL] note capital R; binary: 0x100004
     {&g_forcerespawn, "g_forcerespawn", "20", 0, 0, NULL},
+    // [QL] ms of spawn protection. 0 disables it. Not archived: a shipped default
+    // written into a config is a default that stops applying.
+    {&g_spawnProtectionTime, "g_spawnProtectionTime", "1500", 0, 0, NULL},
     {&g_inactivity, "g_inactivity", "0", 0, 0, NULL},
     {&g_inactivityWarning, "g_inactivityWarning", "10", 0, 0, NULL},  // [QL]
     {&g_dropInactive, "g_dropInactive", "1", 0, 0, NULL},              // [QL] binary default "1"

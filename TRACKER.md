@@ -2040,6 +2040,53 @@ new one, so the obituary stays `MOD_TELEFRAG` and looks normal to everyone.
 fall again beyond what the spawn tiering already achieved, and the ones that
 remain should not appear as deaths on the scoreboard.
 
+### E59. Spawn protection, with the firing lockout that makes it honest — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"a safe guard so the player can't fire during that moment of invincible ... we
+don't want spawn fragging"* - right, and the lockout is the half that makes the
+whole thing defensible. Invulnerability on its own is a licence to walk out and
+kill people for a second and a half.
+
+`g_spawnProtectionTime` (ms, default **1500**, 0 disables). While it is running
+the player takes no damage and fires nothing. **Pressing attack ends it
+immediately** rather than being ignored, so nobody is held behind a shield they
+do not want - they simply cannot be invulnerable and shooting at the same time.
+Movement is untouched, which is the point: the protection exists to let them get
+off the pad.
+
+Two implementation choices worth recording, because the obvious versions of both
+are wrong:
+
+- **Not `invulnerabilityTime`.** That is the holdable powerup, it has its own
+  bubble effect, and its check in `G_Damage` returns early for *everything* -
+  including `MOD_TELEFRAG`. Reusing it would mean `G_KillBox` could not clear an
+  occupied pad, leaving two players standing in one spot. The new check lets
+  `DAMAGE_NO_PROTECTION` through for exactly that reason, so telefrags, lava and
+  `trigger_hurt` still behave.
+- **The lockout copies the Freeze Tag countdown pattern** already in
+  `ClientThink_real`: `PMF_RESPAWNED` stops the shot on both sides, the buttons
+  are dropped so the weapon code never sees a held trigger, and `EF_FIRING` is
+  cleared. Doing only the first leaves the client with a trigger it still reacts
+  to.
+
+**This matters more since E58 than it would have before.** A player camping a
+spawn pad used to get telefragged for it; now the arriving player steps aside
+instead, so the camper is rewarded rather than punished. Protection is what
+covers that gap - the arriving player can no longer be shot on the pad, and has
+a moment to leave it.
+
+**On pushing the existing player instead of the arriving one** (the other half of
+the suggestion): `G_NudgeSpawnClear` moves the *arriving* player deliberately.
+Moving the player already there yanks someone out of a fight to an offset they
+did not choose, which reads as a bug from the inside; moving the one who is
+materialising anyway is invisible. Both avoid the telefrag equally, so the
+quieter one wins.
+
+**To verify:** spawn next to someone and try to shoot immediately - the first
+click should cost the shield and not fire, the second should fire normally. And
+`g_spawnProtectionTime 0` should restore exactly the old behaviour.
+
 ### E56. thunderstruck's team spawns were deleted at load — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
