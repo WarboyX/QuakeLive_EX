@@ -94,20 +94,19 @@ console aims for that many characters across at any resolution, which is 2.0 at
 1080p, 2.67 at 1440/1600p and 4.0 at 2160p. Clamped at 1.0 below so a small
 window never gets *smaller* than Quake 3's glyph.
 
-con_scale 0 means auto. Any positive value is an explicit override and is used
-as-is, so an existing config that already has "1" in it keeps exactly what it had
-- which matters, because con_scale is CVAR_ARCHIVE and every machine that has run
-this before has a value written into it.
+con_scale is a **multiplier on that**, not an absolute size, and that is the
+second thing this got wrong. Treating it as absolute meant the fix only reached a
+fresh install: con_scale is CVAR_ARCHIVE, so every machine that has run this
+before has a value already written into its config, that value wins over any new
+default forever, and the auto path was unreachable without knowing to type
+"con_scale 0". As a multiplier, an existing "1" *is* the auto size and a config
+that predates this gets the fix without being told. 2 is twice as big, 0.5 half.
 ================
 */
 #define CON_TARGET_COLUMNS 120
 
 static float Con_Scale(void) {
     float scale;
-
-    if (con_scale && con_scale->value > 0.0f) {
-        return con_scale->value;
-    }
 
     if (cls.glconfig.vidWidth <= 0) {
         return 1.0f;   // before video init
@@ -116,8 +115,16 @@ static float Con_Scale(void) {
     scale = (float)cls.glconfig.vidWidth / (CON_TARGET_COLUMNS * SMALLCHAR_WIDTH);
     if (scale < 1.0f) {
         scale = 1.0f;
-    } else if (scale > 4.0f) {
-        scale = 4.0f;
+    }
+
+    if (con_scale && con_scale->value > 0.0f) {
+        scale *= con_scale->value;
+    }
+
+    if (scale < 0.25f) {
+        scale = 0.25f;
+    } else if (scale > 8.0f) {
+        scale = 8.0f;
     }
     return scale;
 }
@@ -742,6 +749,62 @@ Con_DrawInput
 Draw the editline after a ] prompt
 ================
 */
+/*
+================
+Con_DrawInputField
+
+[QL] Field_VariableSizeDraw at the console's glyph size. Same behaviour - the
+same visible window into the buffer, the same blinking cursor character and the
+same overstrike glyph - drawn through Con_DrawCharScaled so it matches the rest
+of the console.
+================
+*/
+static void Con_DrawInputField(int x, int y, int charW, int charH) {
+    field_t* edit = &g_consoleField;
+    int len, drawLen, prestep, i;
+    char str[MAX_STRING_CHARS];
+
+    drawLen = edit->widthInChars - 1;  // -1 so there is always room for the cursor
+    len = strlen(edit->buffer);
+
+    if (len <= drawLen) {
+        prestep = 0;
+    } else {
+        if (edit->scroll + drawLen > len) {
+            edit->scroll = len - drawLen;
+            if (edit->scroll < 0) {
+                edit->scroll = 0;
+            }
+        }
+        prestep = edit->scroll;
+    }
+
+    if (prestep + drawLen > len) {
+        drawLen = len - prestep;
+    }
+    if (drawLen >= MAX_STRING_CHARS) {
+        drawLen = MAX_STRING_CHARS - 1;
+    }
+    if (drawLen < 0) {
+        drawLen = 0;
+    }
+
+    Com_Memcpy(str, edit->buffer + prestep, drawLen);
+    str[drawLen] = 0;
+
+    for (i = 0; str[i]; i++) {
+        Con_DrawCharScaled(x + i * charW, y, charW, charH, str[i]);
+    }
+
+    // cursor, on the same blink as Field_VariableSizeDraw
+    if ((int)(cls.realtime >> 8) & 1) {
+        return;  // off blink
+    }
+    i = drawLen - (int)strlen(str);
+    Con_DrawCharScaled(x + (edit->cursor - prestep - i) * charW, y, charW, charH,
+                       key_overstrikeMode ? 11 : 10);
+}
+
 void Con_DrawInput(void) {
     int y;
 
@@ -758,8 +821,14 @@ void Con_DrawInput(void) {
 
     Con_DrawCharScaled(con.xadjust + 1 * charW, y, charW, charH, ']');
 
-    Field_Draw(&g_consoleField, con.xadjust + 2 * charW, y,
-               SCREEN_WIDTH - 3 * charW, qtrue, qtrue);
+    /*
+    [QL] This used to be Field_Draw, and Field_Draw is hardcoded to
+    SMALLCHAR_WIDTH - Field_VariableSizeDraw only knows two sizes and picks the
+    big font for anything that is not exactly 8. So the prompt scaled and the
+    text you typed next to it did not, at any resolution where the scale is not
+    1. Draw the field with the console's own glyph size instead.
+    */
+    Con_DrawInputField(con.xadjust + 2 * charW, y, charW, charH);
 }
 
 /*
@@ -776,6 +845,8 @@ void Con_DrawNotify(void) {
     int time;
     int skip;
     int currentColor;
+    int notifyW = Con_CharW();
+    int notifyH = Con_CharH();
 
     currentColor = 7;
     re.SetColor(g_color_table[currentColor]);
@@ -804,10 +875,14 @@ void Con_DrawNotify(void) {
                 currentColor = ColorIndexForNumber(text[x] >> 8);
                 re.SetColor(g_color_table[currentColor]);
             }
-            SCR_DrawSmallChar(cl_conXOffset->integer + con.xadjust + (x + 1) * SMALLCHAR_WIDTH, v, text[x] & 0xff);
+            /* [QL] scaled like the rest of the console - SCR_DrawSmallChar is a
+               fixed 8x16 pixels, so the notify lines stayed tiny while the
+               console body scaled. */
+            Con_DrawCharScaled(cl_conXOffset->integer + con.xadjust + (x + 1) * notifyW, v,
+                               notifyW, notifyH, text[x] & 0xff);
         }
 
-        v += SMALLCHAR_HEIGHT;
+        v += notifyH;
     }
 
     re.SetColor(NULL);

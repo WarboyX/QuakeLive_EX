@@ -1996,6 +1996,72 @@ Out of scope but adjacent: `SCR_DrawSmallChar` has the same fixed-pixel problem
 for everything else that uses it - loading screens, the lagometer text - and
 those were not touched.
 
+### E55. thunderstruck, the clean test — CONFIRMED, and the telefrag account was right
+**Lives in:** n/a (results) · **Seen by:** n/a
+
+E53 said the events comparison was not like-for-like and named thunderstruck as
+the map that would settle it. Here it is, same map, before and after:
+
+| thunderstruck | before (e4f240ff) | after (7f6022c) |
+|---|---|---|
+| telefrags | **877** | **259** |
+| weapon deaths | 67 | **825** |
+| telefrags as a share of deaths | **93%** | 24% |
+| snapshot peak | 256, overflowing | **119** |
+| `events` in that snapshot | **169** | **74** |
+| entities dropped | 20,417 | **0** |
+
+Same map, same geometry, same PVS. Telefrags down 3.4x, events down 2.3x with
+nothing done to events. **That is the original account confirmed** - the telefrag
+storm was generating the events, and removing it removed them. The correction in
+E45 was wrong to reject that, and the qualification in E53 that the comparison
+was not like-for-like no longer applies: this one is.
+
+The share is the striking number. 93% of deaths on that map were players landing
+on each other; a match in which almost nobody died to a weapon.
+
+**What has not changed, and cannot be fixed in code:** thunderstruck has **five**
+`info_player_deathmatch` and **zero team pads** for the fallback to find, so the
+saturation report still fires - 177 spawns with no free point. Five points cannot
+hold this many players, and 259 telefrags is what that costs once the selector is
+doing everything it can. The remaining fix for that map is a player cap or a map
+change, not code.
+
+Also worth noting from the same run: **beyondreality reports 9 deathmatch points
+plus 24 team pads**, which is the fallback finding real geometry on a map that
+would otherwise have been in citycrossings' position.
+
+### R15. Console scaling, second attempt — the archived value and the input line
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+R14 was right about the cause and wrong about the delivery: reported still
+broken on the same 2560x1600 panel. Two reasons, and the first is a repeat
+offence.
+
+**1. `con_scale` was treated as an absolute, so the fix could not reach anyone.**
+It is `CVAR_ARCHIVE`, so every machine that has run this before has a value
+written into its config which wins over the shipped default permanently - the
+trap named in CLAUDE.md, hit again. Making the *default* 0 (auto) meant the auto
+path was unreachable without knowing to type `con_scale 0`, and telling the user
+to type it is not a fix.
+
+`con_scale` is now a **multiplier on the resolution-derived base**, not an
+absolute. An existing `1` *is* the auto size, so a config that predates this gets
+the fix without being told; 2 is twice as big, 0.5 half. This is the shape any
+archived setting with a computed default wants, and it is worth generalising: a
+default that a config can override is only ever a fresh-install default.
+
+**2. The input line drew its text at a fixed 8 pixels while its prompt scaled.**
+`Con_DrawInput` drew `]` with the console's own glyph size and then called
+`Field_Draw` for the text - and `Field_Draw` is hardcoded to `SMALLCHAR_WIDTH`,
+because `Field_VariableSizeDraw` knows exactly two sizes and picks the *big* font
+for anything that is not 8. So the two halves of the same line disagreed at any
+scale but 1. `Con_DrawInputField` now renders the field through
+`Con_DrawCharScaled` with the same visible window, blink and overstrike glyph.
+
+**3.** `Con_DrawNotify` had the same fixed-8px problem for the messages that
+appear over the game, so those scale now too.
+
 ### E53. Measured: the spawn and snapshot work landed — CONFIRMED
 **Lives in:** n/a (results) · **Seen by:** n/a
 
