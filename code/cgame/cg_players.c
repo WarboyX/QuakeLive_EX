@@ -2888,6 +2888,28 @@ void CG_Draw3DPlayerModel(float x, float y, float w, float h, int clientNum, int
     VectorCopy(origin, legs.lightingOrigin);
     trap_R_AddRefEntityToScene(&legs);
 
+    /*
+    [QL] The axis has to be an identity before the tag is applied.
+
+    CG_PositionRotatedEntityOnTag does not set entity->axis, it multiplies
+    *into* it:
+
+        MatrixMultiply(entity->axis, lerped.axis, tempAxis);
+        MatrixMultiply(tempAxis, parent->axis, entity->axis);
+
+    - which is why it carries a commented-out AxisClear at the top and Quake 3
+    relies on CG_PlayerAngles having filled legs, torso and head axes before
+    any of this is called. There is no CG_PlayerAngles here: the three
+    refEntities are memset to zero and only the legs got an axis, so the torso
+    was a zero matrix multiplied by a tag, which is still a zero matrix. A
+    model scaled to nothing draws nothing, and the head hanging off the torso
+    inherited the same.
+
+    That is the match summary showing a pair of legs and no body.
+    */
+    AxisClear(torso.axis);
+    AxisClear(head.axis);
+
     // torso on the legs' tag_torso
     torso.hModel = ci->torsoModel;
     torso.customSkin = ci->torsoSkin;
@@ -2909,6 +2931,7 @@ void CG_Draw3DPlayerModel(float x, float y, float w, float h, int clientNum, int
     if (weapon > 0 && weapon < MAX_WEAPONS && cg_weapons[weapon].weaponModel) {
         refEntity_t gun;
         memset(&gun, 0, sizeof(gun));
+        AxisClear(gun.axis);   // see the note above
         gun.hModel = cg_weapons[weapon].weaponModel;
         gun.renderfx = RF_NOSHADOW;
         VectorCopy(origin, gun.lightingOrigin);
@@ -2918,6 +2941,7 @@ void CG_Draw3DPlayerModel(float x, float y, float w, float h, int clientNum, int
         if (cg_weapons[weapon].barrelModel) {
             refEntity_t barrel;
             memset(&barrel, 0, sizeof(barrel));
+            AxisClear(barrel.axis);
             barrel.hModel = cg_weapons[weapon].barrelModel;
             barrel.renderfx = RF_NOSHADOW;
             VectorCopy(origin, barrel.lightingOrigin);

@@ -931,9 +931,9 @@ const char* CG_GetKillerText(void) {
 
 static float CG_OwnerDrawAlignX(rectDef_t *rect, const char *text, float scale, int align);
 
-/* [QL] x of the last character of the game-status line, in 640-space, recorded
-   by CG_DrawGameStatus as it draws. See the note there. */
-static float cg_gameStatusEndX;
+/* [QL] Where the game-status line starts, in 640-space, recorded by
+   CG_DrawGameStatus as it draws. See the note in CG_DrawKiller. */
+static float cg_gameStatusX;
 
 /*
 [QL] "Fragged by X", where the menu puts it.
@@ -955,33 +955,32 @@ static void CG_DrawKiller(rectDef_t* rect, float scale, vec4_t color, qhandle_t 
     x = CG_OwnerDrawAlignX(rect, s, scale, align);
 
     /*
-    [QL] Start the F under the last character of the status line above it.
+    [QL] Aligned with the status line above it, and it does not move.
 
-    Left-aligned in its own rect - which is where Quake Live's menu puts it,
-    "rect 75 100 330 10" with "align 0" - it sits five units left of "Teams are
-    tied at 0" and reads as almost-but-not-quite lined up with it. Indenting to
-    the status line's trailing character is a deliberate stagger instead of a
-    near miss, and it keeps the obituary clear of the frame on its left.
+    Both of this line's anchors used to be measured from text that changes.
+    Horizontally it started under the *trailing* character of the status line,
+    which is a different x for "63rd place with 20" than for "Tied for 51st
+    place with 3". Vertically it was offset by the height of the killer's own
+    name, so a name with a descender sat lower than one without. The label
+    therefore shifted on both axes every time somebody fragged you, which is
+    not something a label should do.
 
-    cg_gameStatusEndX is measured from the string actually drawn, so it follows
-    the status text as the score changes rather than assuming a width. Falls
-    back to the menu's own position on a board that has no status line.
+    So both anchors are fixed now. Horizontally it lines up with where the
+    status line *starts* - the status item's own rect x, which does not depend
+    on what the status says - rather than where it happens to end. That reads
+    as deliberately aligned instead of the near miss that plain left-alignment
+    in its own rect gave (five units to the left of the status text, close
+    enough to look like a mistake).
+
+    Vertically it drops by the height of a fixed reference string rather than
+    of the name, which keeps the half-line gap that stops the two crowding
+    into one block while scaling with the font rather than with the obituary.
     */
-    if (cg_gameStatusEndX > x) {
-        x = cg_gameStatusEndX;
+    if (cg_gameStatusX > 0.0f) {
+        x = cg_gameStatusX;
     }
 
-    /*
-    And drop it half a line, so the two do not share one.
-
-    The menu has the status line at y 77 and this at y 100 - 23 apart, with
-    this drawn at textscale .35 against the status line's .22. At the
-    resolutions people actually run, the taller line's ascenders reach into the
-    row above and the pair read as one crowded block. Half this line's own
-    height is measured rather than assumed, so it scales with the font instead
-    of being a pixel value that only looks right on one display.
-    */
-    CG_OwnerDrawText(x, rect->y + CG_Text_Height(s, scale, 0) * 0.6f,
+    CG_OwnerDrawText(x, rect->y + CG_Text_Height("Ay", scale, 0) * 0.6f,
                      scale, color, s, 0, 0, textStyle);
 }
 
@@ -1067,14 +1066,10 @@ Zero until the status line has been drawn at least once.
 */
 static void CG_DrawGameStatus(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
     const char* s = CG_GetGameStatusText();
-    int len = (int)strlen(s);
 
-    /* the x of the LAST character, not of the end of the string - the killer
-       line below lines its first letter up with the trailing "0". */
-    cg_gameStatusEndX = rect->x + CG_OwnerDrawTextWidth(s, scale, 0);
-    if (len > 0) {
-        cg_gameStatusEndX -= CG_OwnerDrawTextWidth(s + len - 1, scale, 0);
-    }
+    /* Where this line starts - the killer line below aligns to it. The rect,
+       not the text, so it is the same x whatever the status says. */
+    cg_gameStatusX = rect->x;
 
     CG_OwnerDrawText(rect->x, rect->y + rect->h, scale, color, s, 0, 0, textStyle);
 }
