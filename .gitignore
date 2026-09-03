@@ -72,3 +72,7 @@ misc/msvc/.vs/
 misc/msvc/.res
 # build output from package-release.sh
 release/
+
+# Python bytecode from the tools/
+__pycache__/
+*.pyc
