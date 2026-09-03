@@ -1648,6 +1648,40 @@ over their columns, position bar on the frame edge and inside the panel top to
 bottom, row highlight reaching it. The team boards must look exactly as they do
 now.
 
+### C36. "Accuracy:" on the player-stats bar was always blank — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+`CG_SELECTED_PLYR_ACCURACY` (93) shared a case label with
+`CG_FOLLOW_PLAYER_NAME`, under a note reading "CG_DrawFollowPlayerName (binary
+offset)" — mapped from a disassembly that had the two adjacent. So the field
+beside the Accuracy label drew a follow target, which is empty unless you are
+spectating: the label sat there with nothing after it while Best Weapon beside
+it worked, which is what made it look like a data problem rather than a
+dispatch one.
+
+Nothing was missing. `FreeForAllScoreboardMessage` computes
+`accuracy_hits * 100 / accuracy_shots` and sends it as field 5 of every scores
+entry; `CG_ParseScoreEntry_Ffa` reads it into `score_t.accuracy`. It now draws
+from `cg.selectedScore`, the same row Best Weapon uses, so the two always
+describe the same player.
+
+**To verify:** click a row on any scoreboard — Accuracy and Best Weapon must
+change together and describe the row you clicked.
+
+### C37. The end-of-game vote countdown ran off the screen — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+`endgamevote.menu` gives the timer `rect 610 370 150 10` and `align 2`
+(`ITEM_ALIGN_RIGHT`). `CG_DrawVoteTimer` ignored the alignment and drew from
+`rect->x`, so "Voting ends in 5 seconds." started at 610 in a 640-wide virtual
+screen and ran ~130 units past the edge of the display. The rect is 150 wide and
+ends at 760, well outside the screen, which is the tell that x is meant as the
+right-hand reference rather than the left: `CG_DrawLocalTime` sits in the same
+corner with the same shape of rect and already does it that way.
+
+Both strings go through it; "Voting has ended - next arena: <map>" is longer and
+was running off further.
+
 ### E31. Joining mid-round demoted you to spectator, permanently — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
