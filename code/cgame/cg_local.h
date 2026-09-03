@@ -1119,6 +1119,7 @@ typedef struct {
     qhandle_t redQuadShader;
     qhandle_t quadWeaponShader;
     qhandle_t invisShader;
+    qhandle_t spawnProtectShader;   // [QL] translucent spawn-protection overlay
     qhandle_t regenShader;
     qhandle_t battleSuitShader;
     qhandle_t battleWeaponShader;
@@ -1646,6 +1647,7 @@ extern vmCvar_t cg_swingSpeed;
 extern vmCvar_t cg_shadows;
 extern vmCvar_t cg_gibs;
 extern vmCvar_t cg_drawTimer;
+extern vmCvar_t cg_spawnProtectAlpha;
 extern vmCvar_t cg_scoreboardListOffset;
 extern vmCvar_t cg_scoreboardMouse;
 extern vmCvar_t cg_debugPlayerModels;

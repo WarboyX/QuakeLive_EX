@@ -1029,6 +1029,10 @@ void ClientThink_real(gentity_t* ent) {
         ucmd->buttons &= ~(BUTTON_ATTACK | BUTTON_USE_HOLDABLE);
         client->ps.eFlags &= ~EF_FIRING;
     }
+    // lower the flag the moment the protection is gone, however it went
+    if (client->spawnProtectTime <= level.time) {
+        client->ps.eFlags &= ~EF_SPAWNPROTECT;
+    }
 
     // [QL] PMF_PAUSED is handled above (early-return right after the intermission
     // block, matching binary ClientThink_real 0x10034d40).

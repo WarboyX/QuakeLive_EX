@@ -2087,6 +2087,47 @@ quieter one wins.
 click should cost the shield and not fire, the second should fire normally. And
 `g_spawnProtectionTime 0` should restore exactly the old behaviour.
 
+### C38. A spawn-protected player is visibly protected — DONE (verify)
+**Lives in:** our **client** (cgame + pak01) and **server** (qagame) · **Seen by:** our client only
+
+Asked for as Counter-Strike's casual-mode translucency, and the interesting part
+was finding anywhere to say it on the wire.
+
+**Protocol 91 had no free bit.** All three obvious routes are full:
+
+| field | width | state |
+|---|---|---|
+| `entityState_t.eFlags` | 19 bits | `EF_AWARD_DENIED` is bit 18 - full |
+| `entityState_t.powerups` | 16 bits | all 16 `PW_` slots defined, up to `PW_FREEZE` |
+| `entityState_t.generic1` | 8 bits | harvester cubes in 0-5, damage tier in 6-7 |
+
+So `EF_SPAWNPROTECT` reuses **`EF_BOUNCE_HALF` (0x20), which is missile-only** -
+the same context-dependent reuse the engine already does with 0x10
+(`EF_PLAYER_EVENT` for players, `EF_BOUNCE` for missiles). A stock client reads
+that bit inside missile handling, which a player entity never reaches, so the
+worst it can do there is nothing. It is the one compromise in this change and it
+is deliberate; widening the protocol would have cost stock-client compatibility
+for a cosmetic.
+
+**The look is a translucent silhouette, not a translucent skin**, and that is a
+renderer limit rather than a choice. `refEntity_t.customShader` replaces the
+model's shader for the whole draw, so keeping the player's own texture while
+making it transparent would need either per-model translucent variants of every
+skin or renderer support for forcing alpha onto an opaque shader -
+`RF_FORCE_ENT_ALPHA` in upstream Quake3e, which this tree does not have and which
+is awkward in the Vulkan backend because pipeline state is baked. The silhouette
+is what Counter-Strike's version looks like anyway.
+
+`content/pak01/scripts/spawnprotect.shader` is ours: `$whiteimage`,
+`blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA`, `rgbGen lightingDiffuse` so it
+still takes the room's light, and `alphaGen entity` so the strength lives in
+`cg_spawnProtectAlpha` (default 90, range 16-255) rather than being baked into
+the shader.
+
+It is checked *before* the powerup shells, because "shooting this achieves
+nothing" is the more urgent thing to communicate and it only lasts a second and
+a half.
+
 ### E56. thunderstruck's team spawns were deleted at load — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

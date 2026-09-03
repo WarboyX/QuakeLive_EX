@@ -2345,6 +2345,27 @@ Also called by CG_Missile for quad rockets, but nobody can tell...
 ===============
 */
 void CG_AddRefEntityWithPowerups(refEntity_t* ent, entityState_t* state, int team) {
+    /*
+    [QL] Spawn protection reads before the powerups because it is the more urgent
+    thing to communicate: it says "shooting this player achieves nothing", and it
+    lasts a second and a half. cg_spawnProtectAlpha is the strength, and the
+    shader takes it through alphaGen entity rather than baking a value in.
+    */
+    if ((state->eFlags & EF_SPAWNPROTECT) && cgs.media.spawnProtectShader) {
+        int alpha = cg_spawnProtectAlpha.integer;
+
+        if (alpha < 16) {
+            alpha = 16;
+        } else if (alpha > 255) {
+            alpha = 255;
+        }
+        ent->customShader = cgs.media.spawnProtectShader;
+        ent->shaderRGBA[0] = ent->shaderRGBA[1] = ent->shaderRGBA[2] = 255;
+        ent->shaderRGBA[3] = (byte)alpha;
+        trap_R_AddRefEntityToScene(ent);
+        return;
+    }
+
     if (state->powerups & (1 << PW_INVIS)) {
         ent->customShader = cgs.media.invisShader;
         trap_R_AddRefEntityToScene(ent);

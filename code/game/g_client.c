@@ -1795,8 +1795,10 @@ void ClientSpawn(gentity_t* ent) {
             */
             if (g_spawnProtectionTime.integer > 0) {
                 ent->client->spawnProtectTime = level.time + g_spawnProtectionTime.integer;
+                ent->client->ps.eFlags |= EF_SPAWNPROTECT;
             } else {
                 ent->client->spawnProtectTime = 0;
+                ent->client->ps.eFlags &= ~EF_SPAWNPROTECT;
             }
         }
     } else {

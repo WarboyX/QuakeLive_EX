@@ -115,6 +115,7 @@ vmCvar_t cg_swingSpeed;
 vmCvar_t cg_shadows;
 vmCvar_t cg_gibs;
 vmCvar_t cg_drawTimer;
+vmCvar_t cg_spawnProtectAlpha;
 vmCvar_t cg_scoreboardListOffset;
 vmCvar_t cg_scoreboardMouse;
 vmCvar_t cg_debugPlayerModels;
@@ -587,6 +588,9 @@ static cvarTable_t cvarTable[] = {
     // splits that slack so the block of names sits in the panel rather than
     // at the top of it. Raise to push the rows further down, 0 for the menu's
     // own geometry.
+    // [QL] how solid a spawn-protected player looks, 16-255. Not archived: a
+    // shipped default written into a config is a default that stops applying.
+    {&cg_spawnProtectAlpha, "cg_spawnProtectAlpha", "90", 0},
     {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "8", 0},
     /* [QL] Take the mouse while +scores is held, so the scoreboard's lists can
        be scrolled and clicked.
@@ -1937,6 +1941,8 @@ static void CG_RegisterGraphics(void) {
     cgs.media.battleSuitShader = trap_R_RegisterShader("powerups/battleSuit");
     cgs.media.battleWeaponShader = trap_R_RegisterShader("powerups/battleWeapon");
     cgs.media.invisShader = trap_R_RegisterShader("powerups/invisibility");
+    // [QL] ours, from content/pak01/scripts/spawnprotect.shader
+    cgs.media.spawnProtectShader = trap_R_RegisterShader("models/players/spawnprotect");
     cgs.media.regenShader = trap_R_RegisterShader("powerups/regen");
     cgs.media.hastePuffShader = trap_R_RegisterShader("hasteSmokePuff");
 
