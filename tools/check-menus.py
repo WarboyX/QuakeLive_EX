@@ -27,8 +27,13 @@ in pak00 resolve instead of being reported as missing. Theirs are not checked:
 they are not ours to fix, and they reuse names deliberately across alternative
 hud sets, which for us would be a mistake.
 
-    tools/check-menus.py                     # our pak01 menus
-    tools/check-menus.py /path/to/ql/ui      # ...and QL's, for open/close targets
+    tools/check-menus.py                     # the normal case - nothing else needed
+    tools/check-menus.py /path/to/ql/ui      # check against the real files instead
+    tools/check-menus.py --dump-names /path/to/ql/ui > docs/ql-menu-names.txt
+
+The names Quake Live's menus define are checked in as docs/ql-menu-names.txt
+and read by default, so the plain form resolves everything and the extracted
+ui/ directory is only needed to regenerate that list after a game patch.
 
 Exit status is 1 if anything was reported, so it can gate a build.
 """
@@ -39,6 +44,10 @@ import re
 import sys
 
 OURS = "content/pak01/**/*.menu"
+
+# Menu names Quake Live's own menus define. Names only - see the header of that
+# file. Read by default so the check needs nothing but the repo.
+QL_NAMES = "docs/ql-menu-names.txt"
 
 # Script commands whose argument is a menu name.
 MENU_REFS = ("open", "close", "conditionalopen", "toggle")
@@ -236,22 +245,45 @@ def main(argv):
         print("no menus found under %s" % OURS)
         return 0
 
+    args = [a for a in argv[1:] if a != "--dump-names"]
+    dump = "--dump-names" in argv[1:]
+
     extra = []
-    for d in argv[1:]:
+    for d in args:
         extra += sorted(glob.glob(os.path.join(d, "**", "*.menu"), recursive=True))
 
     problems = []
     defined = {}
     referenced = {}
 
+    # Quake Live's names, unless real files were supplied to check against.
+    known = 0
+    if not extra and os.path.exists(QL_NAMES):
+        for raw in open(QL_NAMES):
+            raw = raw.strip()
+            if not raw or raw.startswith("#"):
+                continue
+            name = raw.split("\t")[0]
+            defined.setdefault(name, (QL_NAMES, False))
+            known += 1
+
     # Shape is checked on our files only. Quake Live's are read for the menu
     # names they define, so open/close targets resolve - they are not ours to
     # fix, they legitimately reuse names across alternative hud sets, and their
     # itemDefs follow conventions of their own.
-    for path in paths:
+    # In dump mode our own menus are left out entirely, so a name we also define
+    # (main) is not attributed to us and dropped from the list - the dump has to
+    # round-trip.
+    for path in ([] if dump else paths):
         check_file(path, problems, defined, referenced, True)
     for path in extra:
         check_file(path, problems, defined, referenced, False)
+
+    if dump:
+        for name, (where, ours) in sorted(defined.items()):
+            if not ours:
+                print("%s\t%s" % (name, os.path.basename(where.rsplit(":", 1)[0])))
+        return 0
 
     ours = set(paths)
     unresolved = []
@@ -269,16 +301,15 @@ def main(argv):
     for line in unresolved:
         print(line)
 
-    print("\n%d menu file(s) checked (%d ours, %d reference), %d menu(s) defined, "
-          "%d problem(s), %d unresolved reference(s)"
+    print("\n%d menu file(s) checked (%d ours, %d reference), %d menu(s) defined "
+          "(%d of them names from %s), %d problem(s), %d unresolved reference(s)"
           % (len(paths) + len(extra), len(paths), len(extra), len(defined),
-             len(problems), len(unresolved)))
-    if unresolved and not extra:
-        print("note: Quake Live's own menus were not included, so a target that lives "
-              "in pak00 shows up here. Pass its ui/ directory to resolve those.")
-    # Unresolved references are only conclusive when the whole set was supplied,
-    # so on their own they do not fail the run.
-    return 1 if problems or (unresolved and extra) else 0
+             known, QL_NAMES if known else "-", len(problems), len(unresolved)))
+    if unresolved and not extra and not known:
+        print("note: Quake Live's menu names were not available, so a target that "
+              "lives in pak00 shows up here. Pass its ui/ directory, or regenerate "
+              "%s." % QL_NAMES)
+    return 1 if problems or unresolved else 0
 
 
 if __name__ == "__main__":

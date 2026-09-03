@@ -1,0 +1,116 @@
+# Menu names defined by Quake Live's own ui/*.menu files, and the file each
+# comes from. Names only: no menu content, no layout, no scripts.
+#
+# Same standing as docs/pak-manifest.txt. pak00.pk3 is not redistributable and
+# nothing from it is committed - but a list of the names inside it is not the
+# pak, and it is checked in for the same reason: so a reference can be verified
+# instead of guessed.
+#
+# tools/check-menus.py reads this to resolve open/close targets that live in
+# pak00, so the check works with nothing but the repo. Pass a directory of the
+# real ui/ files as an argument to check against those instead.
+#
+# Regenerate after a game patch:
+#   tools/check-menus.py --dump-names <path-to-ql-ui> > docs/ql-menu-names.txt
+#
+Ammo	hud.menu
+AmmoMenu	comp_hud.menu
+Armor	hud.menu
+ArmorFrame	hud.menu
+ArmorMenu	comp_hud.menu
+BlueCAFrame	comp_hud.menu
+BlueDOMFrame	comp_hud.menu
+BlueFrameTeam	hud.menu
+ChatAreaMenu	comp_hud.menu
+Connect	connect.menu
+FlagStatusMenu	comp_hud.menu
+FlagStatusMenu2	comp_hud.menu
+HealthFrame	hud.menu
+HealthMenu	comp_hud.menu
+Neutral Flag Status	hud.menu
+NonTeamScoreBoardBorders	comp_hud.menu
+NonTeamScoreboxes	comp_hud.menu
+Obituaries	comp_hud.menu
+OtherPlayerFrame	hud3.menu
+PickupsMenu	comp_hud.menu
+Player	hud.menu
+PlayerHasFlagMenu	comp_hud.menu
+PowerupMenu	comp_hud.menu
+RRFrame	comp_hud.menu
+RaceHUD	comp_hud.menu
+RedCAFrame	comp_hud.menu
+RedDOMFrame	comp_hud.menu
+RedFrameTeam	hud.menu
+ScoreFrame	hud.menu
+ScoresFrame	comp_hud.menu
+SelfFrame	hud3.menu
+SelfFrameHighlights	hud.menu
+TeamScoreBoardBorders	comp_hud.menu
+TeamScoreboxes	comp_hud.menu
+TeamScoreboxes2	comp_hud.menu
+Temp	hud3.menu
+TimerMenu	comp_hud.menu
+WeapBottom	hud3.menu
+WeapLeft	hud3.menu
+WeapRight	hud3.menu
+chat area	hud.menu
+comp_specfollowhud_menu	comp_spectator_follow.menu
+comp_spechud_menu	comp_spectator.menu
+default_menu	default.menu
+demo	demo.menu
+endscore_menu	endscorenoteam.menu
+endscore_menu_duel	end_scoreboard_duel.menu
+endscore_menu_ffa	end_scoreboard_ffa.menu
+endscore_menu_race	end_scoreboard_race.menu
+endscore_menu_rr	end_scoreboard_rr.menu
+endteamscore_menu	endscoreteam.menu
+endteamscore_menu_1fctf	end_scoreboard_1fctf.menu
+endteamscore_menu_ad	end_scoreboard_ad.menu
+endteamscore_menu_ca	end_scoreboard_ca.menu
+endteamscore_menu_ctf	end_scoreboard_ctf.menu
+endteamscore_menu_dom	end_scoreboard_dom.menu
+endteamscore_menu_ft	end_scoreboard_ft.menu
+endteamscore_menu_har	end_scoreboard_har.menu
+endteamscore_menu_tdm	end_scoreboard_tdm.menu
+error_popmenu	error.menu
+ingame	ingame.menu
+ingame_about	ingame_about.menu
+ingame_addbot	ingame_addbot.menu
+ingame_admin	ingame_admin.menu
+ingame_callvote	ingame_callvote.menu
+ingame_controls	ingame_controls.menu
+ingame_join	ingame_join.menu
+ingame_options	ingame_options.menu
+ingame_vote	ingame_vote.menu
+joingame_menu	intro.menu
+main	main.menu
+main_options	main_options.menu
+msgsArea	hud.menu
+obit area	hud.menu
+pickups	hud.menu
+playerFrame	min_hud.menu
+playerHasFlag	hud.menu
+powerup	hud.menu
+quit_popmenu	quit.menu
+score_menu	ingamescorenoteam.menu
+score_menu_duel	ingame_scoreboard_duel.menu
+score_menu_ffa	ingame_scoreboard_ffa.menu
+score_menu_race	ingame_scoreboard_race.menu
+score_menu_rr	ingame_scoreboard_rr.menu
+scores	hud.menu
+specblue_bottom	spectator.menu
+specblue_top	spectator.menu
+specfollowhud_menu	spectator_follow.menu
+spechud_menu	spectator.menu
+specred_bottom	spectator.menu
+specred_top	spectator.menu
+stats_menu	ingamestats.menu
+teamscore_menu	ingamescoreteam.menu
+teamscore_menu_1fctf	ingame_scoreboard_1fctf.menu
+teamscore_menu_ad	ingame_scoreboard_ad.menu
+teamscore_menu_ca	ingame_scoreboard_ca.menu
+teamscore_menu_ctf	ingame_scoreboard_ctf.menu
+teamscore_menu_dom	ingame_scoreboard_dom.menu
+teamscore_menu_ft	ingame_scoreboard_ft.menu
+teamscore_menu_har	ingame_scoreboard_har.menu
+teamscore_menu_tdm	ingame_scoreboard_tdm.menu

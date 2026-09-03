@@ -70,9 +70,11 @@ caused real bugs twice (`g_spawnItemWeapons`, `g_instaGib`). Run
 so a stray brace merges the next menu into the current one and what you see is a
 menu with the wrong items in it, or a button that opens nothing. Nothing says so
 on screen; it is loud in the console and silent where you are looking. Run
-`tools/check-menus.py <path-to-ql-ui>` after touching any `.menu` file — pass
-Quake Live's `ui/` so open/close targets that live in pak00 resolve. It checks
-our files only; theirs are read for the names they define.
+`tools/check-menus.py` after touching any `.menu` file. It needs nothing else:
+`docs/ql-menu-names.txt` is checked in, so open/close targets that live in
+pak00 resolve. It checks our files only. Pass a directory of Quake Live's `ui/`
+to check against the real files, and `--dump-names <dir>` to regenerate that
+list after a game patch.
 
 **`CVAR_ARCHIVE` on a shipped default means the default stops applying.** The
 value is written into a config on first run and that config then wins forever,
@@ -99,6 +101,10 @@ as a registered cvar that nothing reads. That has already cost a round: cgame
 registered three Freeze Tag ice models under invented names, and a scan showed
 the pak has no ice meshes at all — the ice is a shader over the generic gib
 sphere.
+
+`docs/ql-menu-names.txt` is the same idea for menu names — what
+`tools/check-menus.py` resolves `open`/`close` targets against, so the check
+needs nothing but the repo. Names only, same reasoning.
 
 Regenerate it after a game patch with `tools/dump-pak-manifest.ps1`. **The
 script is unsigned, so PowerShell's execution policy refuses to run it as a
