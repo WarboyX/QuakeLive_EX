@@ -73,23 +73,53 @@ Returns scaled console character dimensions based on con_scale
 ================
 Con_Scale
 
-Console text is drawn through re.DrawStretchPic, and the renderer's 2D pass runs
-in a 640x480 ortho projection, so console glyphs already scale with the display -
-1.0 is the same apparent size at 720p and at 2160p. No resolution-derived factor
-is wanted here, and an earlier attempt to add one (vidHeight / 480, giving 4.0 at
-2160p) made the text four times too large.
+The comment that used to live here said the renderer's 2D pass runs in a 640x480
+ortho projection, so console glyphs scale with the display on their own and no
+resolution-derived factor was wanted. **That is not true**, and it is why this
+kept being got wrong. Both backends set up the 2D pass in *native pixels*:
+RB_SetGL2D does `GL_Ortho(0, glConfig.vidWidth, glConfig.vidHeight, 0, ...)` and
+the Vulkan path's get_mvp_transform uses `2.0f / glConfig.vidWidth` and
+`2.0f / glConfig.vidHeight`.
 
-The actual fault was the default: 0.5, clamped to [0.5, 1.0]. Half-size glyphs
-are hard to read on any display, and the ceiling of 1.0 meant they could not be
-made bigger. Default is now 1.0 - full size - with the range opened up so it can
-be tuned in both directions.
+So `con_scale 1` is an 8x16 glyph in *pixels*. That is correct on a 640x480
+display, which is what Quake 3 shipped on, and it is 8 pixels tall on a 2560x1600
+laptop panel - which is the report this fixes. The earlier attempt at
+`vidHeight / 480` was the right *shape* and was rejected for looking too large;
+by Quake 3's own standard it was right, since 480/16 is 80 columns, but 80
+columns is not what anyone wants from a console on a modern display.
+
+So scale to a **column count** instead of to an apparent size. CON_TARGET_COLUMNS
+is the one judgement call in here and it is stated rather than hidden: the
+console aims for that many characters across at any resolution, which is 2.0 at
+1080p, 2.67 at 1440/1600p and 4.0 at 2160p. Clamped at 1.0 below so a small
+window never gets *smaller* than Quake 3's glyph.
+
+con_scale 0 means auto. Any positive value is an explicit override and is used
+as-is, so an existing config that already has "1" in it keeps exactly what it had
+- which matters, because con_scale is CVAR_ARCHIVE and every machine that has run
+this before has a value written into it.
 ================
 */
+#define CON_TARGET_COLUMNS 120
+
 static float Con_Scale(void) {
+    float scale;
+
     if (con_scale && con_scale->value > 0.0f) {
         return con_scale->value;
     }
-    return 1.0f;
+
+    if (cls.glconfig.vidWidth <= 0) {
+        return 1.0f;   // before video init
+    }
+
+    scale = (float)cls.glconfig.vidWidth / (CON_TARGET_COLUMNS * SMALLCHAR_WIDTH);
+    if (scale < 1.0f) {
+        scale = 1.0f;
+    } else if (scale > 4.0f) {
+        scale = 4.0f;
+    }
+    return scale;
 }
 
 static int Con_CharW(void) {
@@ -513,8 +543,11 @@ void Con_Init(void) {
     // 1.0, so they could not be made any bigger. Range opened both ways for
     // tuning; 2D drawing is already resolution independent, so this is a taste
     // setting rather than a per-display one.
-    con_scale = Cvar_Get("con_scale", "1", CVAR_ARCHIVE);
-    Cvar_CheckRange(con_scale, 0.25f, 4.0f, qfalse);
+    // [QL] 0 is auto - see Con_Scale. The range has to start at 0 for that to be
+    // reachable; it used to start at 0.25, which quietly clamped 0 up to a quarter
+    // size and made "auto" impossible to ask for.
+    con_scale = Cvar_Get("con_scale", "0", CVAR_ARCHIVE);
+    Cvar_CheckRange(con_scale, 0.0f, 4.0f, qfalse);
 
     con_speed = Cvar_Get("con_speed", "3", CVAR_ARCHIVE);
     Cvar_CheckRange(con_speed, 0.1f, 1000.0f, qfalse);

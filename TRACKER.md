@@ -1954,6 +1954,48 @@ changed yet: it is a network governor and changing it mid-test would muddle the
 spawn and snapshot measurements. `sv_maxRate` already exists to cap the other
 direction.
 
+### R14. Console text is 8 pixels tall on a 1600p panel — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+*"the console text isn't scaling correctly on a 2560x1600"*. It is not, and the
+comment in `Con_Scale` explaining why no scaling was needed is the reason this
+kept being got wrong:
+
+> Console text is drawn through re.DrawStretchPic, and the renderer's 2D pass
+> runs in a 640x480 ortho projection, so console glyphs already scale with the
+> display.
+
+**Both backends say otherwise.** `RB_SetGL2D` does
+`GL_Ortho(0, glConfig.vidWidth, glConfig.vidHeight, 0, ...)`, and the Vulkan
+path's `get_mvp_transform` uses `2.0f / glConfig.vidWidth` and
+`2.0f / glConfig.vidHeight`. The 2D pass is in **native pixels**. `con_scale 1`
+is therefore an 8x16 glyph in pixels - correct on the 640x480 display Quake 3
+shipped for, and eight pixels tall on a 1600p laptop panel.
+
+The rest of the console is already consistent with native pixels
+(`con.linewidth = vidWidth / (scale * SMALLCHAR_WIDTH)`, `lines = vidHeight *
+frac`), so only the glyph size was wrong. The earlier `vidHeight / 480` attempt
+was the right *shape* and was rejected for looking too large - and by Quake 3's
+own standard it was right, since 480/16 is 80 columns. 80 columns is just not
+what anyone wants from a console now.
+
+**Scale to a column count instead of to an apparent size.** `con_scale 0` is now
+auto and means "aim for `CON_TARGET_COLUMNS` characters across", which works out
+at 2.0 on 1080p, 2.67 on 1440p and 1600p, 4.0 on 2160p, clamped at 1.0 so a
+small window never gets glyphs *smaller* than Quake 3's. The target is one
+judgement call and it is a named constant rather than a magic number.
+
+Any positive `con_scale` is still an explicit override used as-is - which
+matters, because `con_scale` is `CVAR_ARCHIVE` and every machine that has run
+this before has a value already written into its config. **`con_scale 0` by hand
+to get the auto behaviour**; the shipped default only reaches a fresh install.
+The range had to start at 0 for that to be askable at all: it was `[0.25, 4.0]`,
+which silently clamped 0 up to a quarter size.
+
+Out of scope but adjacent: `SCR_DrawSmallChar` has the same fixed-pixel problem
+for everything else that uses it - loading screens, the lagometer text - and
+those were not touched.
+
 ### E53. Measured: the spawn and snapshot work landed — CONFIRMED
 **Lives in:** n/a (results) · **Seen by:** n/a
 
