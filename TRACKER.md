@@ -1682,74 +1682,115 @@ corner with the same shape of rect and already does it that way.
 Both strings go through it; "Voting has ended - next arena: <map>" is longer and
 was running off further.
 
-### E41. Snapshot entity cap raised per client, stock clients untouched — DONE (verify)
-**Lives in:** **both** (server engine + client engine + cgame) · **Seen by:** our client only (stock clients get exactly what they got before)
+### E45. The spawn telefrag chain, and the entity spam behind it — DONE (verify)
+**Lives in:** our **server** (qagame + server engine) · **Seen by:** **every client**
 
-*"is there a way to fix snapshot entity without tossing the stock client?"* Yes,
-and the reason is that **256 was never a protocol number**. `SV_EmitPacketEntities`
-writes a delta list and terminates it with `MAX_GENTITIES-1`; the client reads
-until it sees that. There is no count field, so two clients on the same server
-can be given different numbers of entities and neither can tell.
+*"part of the issue came from the limit of spawn points, and cramming 64 players
+... the game just tries to spam the spawn and they explode and die with every
+spawn since their spawn is overlapping. Causing entity spam"* — right, and the
+log is unambiguous about it.
 
-So the cap is now per client:
+**The evidence.** Obituaries from the four-map session:
 
-| client | cap | why |
+| map | telefrags | all other deaths |
 |---|---|---|
-| ours (`iqlclient` in userinfo) | 512 | engine and cgame ship together in `iobin.pk3` |
-| bots | 512 | read back by `SV_BotGetSnapshotEntity`, never near a cgame |
-| stock Steam client | 256 | its `snapshot_t` holds 256 and its engine truncates to that |
+| castledeathstalker | 0 | 414 |
+| **citycrossings** | **859** | **17** |
+| trinity | 159 | ~90 |
+| arkinholm | 192 | ~60 |
 
-A stock client is not merely unbroken, it is **unchanged** — same entities, same
-bytes, same delta window. Sending it more would be bandwidth it discards.
-`iqlclient` is the same `CVAR_ROM` userinfo key qagame already reads for
-`pers.extendedClient`, so the identification was in place.
+On citycrossings **98% of the match was players landing on each other**. Almost
+nobody died to a weapon. 1210 telefrags across the session, roughly half of all
+deaths.
 
-**The ABI hazard, which is the part that needed care.** `MAX_ENTITIES_IN_SNAPSHOT`
-is not a protocol number either — it is the size of an array inside a
-`snapshot_t` that *cgame* owns and the engine writes into. Our engine loading
-Quake Live's cgame is reachable (modules are extracted from the first matching
-pak in the search path), and writing 512 entities into its 256-entry array would
-corrupt its memory rather than fail. So the engine no longer assumes: it holds
-itself to 256 until the loaded cgame calls `CG_SET_SNAPSHOT_CAPACITY` from
-`CG_Init`. Appended to the syscall list, never inserted — the numbers below it
-are shared with stock cgame under protocol 91 — and a module that never calls it
-keeps the old behaviour exactly.
+**The mechanism, and it is not just "too few spawn points."**
+`SelectRandomFurthestSpawnPoint` collected every point that would not telefrag,
+sorted by distance from where you died, and picked out of the furthest half. If
+none was free it did this:
 
-**What the log actually showed**, because the headline number is misleading.
-1,350,347 sounds catastrophic and mostly is not:
+```c
+spot = G_Find(NULL, FOFS(classname), "info_player_deathmatch");
+```
 
-- Four maps, all at 64 slots (63 bots + one player). **citycrossings and
-  arkinholm never hit the cap at all**; castledeathstalker hit it lightly
-  (83,675 across eight ten-second windows, ~0.4 entities per client-snapshot);
-  trinity produced 1.27M inside a *single* ten-second window and was otherwise
-  quiet. It is not a function of player count — it is how much of the server can
-  see itself at once, which is a map property.
-- The counter is server-wide, and 63 of the 64 clients were bots. Bots do use
-  these snapshots (that is their vision), so the drops were real, but they were
-  mostly bots failing to see each other rather than the player failing to see
-  the game.
-- The peak: 1.27M over ten seconds, `sv_fps` 40, 64 clients = 2560
-  client-snapshots per second, so about **50 entities dropped per client per
-  snapshot** — a client being shown 256 of roughly 306 in its PVS. Treat 50 as
-  an upper bound: the warning is gated to one per ten seconds, so the window is
-  *at least* that long.
+The **first spawn entity in the map, deterministically, every single time.**
+Fine when it almost never happens. On a 64-slot server on a map with a dozen
+points it happens on most respawns — and then every player who dies is sent to
+the same point, telefrags whoever it sent there a moment ago, and *that* player
+respawns into the same point in turn. It is self-sustaining, which is why one
+map shows 98% and another shows 0%: it depends on whether the map's point count
+ever loses the race, and once it does the chain does not stop.
 
-**On the player limit, if this had not been fixable.** Peak demand measured
-~306, so the honest answer would have been **around 40** on an open map — cut
-enough players to shed ~50 entities, at roughly one to two entities per player.
-But that is one burst on one map, and three of four maps were fine at a full 64,
-so a flat player cap would have been paying everywhere for a problem that
-appears in one place. 512 covers the worst thing observed with about 40% spare.
+`SelectRandomTeamSpawnPoint` ended in exactly the same line and had exactly the
+same bug.
 
-**Cost.** The server's snapshot ring doubles: at `sv_maxclients 64` it is 236 MB
-and the derived `com_hunkMegs` floor goes from ~214 to ~332. `Com_InitHunkMemory`
-already computes that floor from `MAX_SNAPSHOT_ENTITIES` and prints it, so this
-raises itself. Client-side `cl.parseEntities` goes 1.8 MB → 3.7 MB and cgame's
-two `snapshot_t` 119 KB → 237 KB.
+**Fixed with three tiers instead of one fallback:**
 
-**To verify:** a full server on trinity. `WARNING: snapshot entity limit` should
-be gone or rare, and the number it prints is now the cap of whichever client hit
-it — 512 for us and bots, 256 if a stock client is what ran out.
+1. **clear** — would not telefrag, not used within `SPAWN_REUSE_COOLDOWN_DM`
+   (1500 ms). id's furthest-half pick, unchanged.
+2. **warm** — would not telefrag but was just used. Same pick.
+3. **taken** — all of them would telefrag. The **least recently used**, random
+   among ties. Somebody still gets telefragged; the difference is that the next
+   player goes somewhere else, so the chain cannot form.
+
+The cooldown and `lastSpawnTime` are the mechanism `SelectRandomTeamSpawnPoint`
+already used for CTF. The deathmatch path simply never got it.
+
+`G_ReportSpawnPointCount` now prints the map's point count once per level, with
+a warning when `sv_maxclients` is more than twice it. A map built for sixteen
+does not say anywhere that it has twelve points, and that number is the
+difference between "the spawn code is broken" and "there is nowhere to put the
+sixty-fourth player."
+
+**How this connects to the snapshot ceiling.** Every death is entity traffic: an
+`EV_OBITUARY` temp entity (`SVF_BROADCAST`, so it is in *every* client's
+snapshot regardless of PVS), gib and death events, `EV_AWARD` broadcasts. And
+`EVENT_VALID_MSEC` is 300 ms, so at `sv_fps 40` **each event entity holds a
+snapshot slot for twelve consecutive snapshots**. A death rate driven by a
+runaway telefrag chain is therefore an entity-count problem, not just a
+scoreboard one.
+
+Ordering matters here and is worth knowing: `SV_AddEntitiesVisibleFromPoint`
+walks entities in number order, clients are 0..maxclients-1 and map entities sit
+just above them, while temp entities come from `G_Spawn`'s free list above all
+of that. So the entities dropped on overflow are, in practice, **the events** —
+players and items are the last to go. Which means the overflow was mostly
+missing effects, and the effects were mostly deaths that should not have been
+happening.
+
+**The overflow warning now says what it dropped.** "256 was not enough" is not
+actionable; "180 of them were events" is. `SV_AddEntToSnapshot` tallies by
+`entityType_t` and the warning prints the composition of the snapshot that
+filled up alongside the running per-type drop count. That is what settles
+whether anything further is needed.
+
+**To verify:** a full server on citycrossings. Telefrags should fall from ~98%
+of deaths to a background rate, and the overflow warning - if it appears at all
+- should name what it is dropping.
+
+### E46. 256 snapshot entities is not a protocol limit — FINDING, reverted
+**Lives in:** **both** · **Seen by:** n/a
+
+Recorded because the reasoning is worth keeping, not because it shipped.
+
+`SV_EmitPacketEntities` writes a delta list terminated by `MAX_GENTITIES-1` and
+the client reads until it sees that. **There is no entity count on the wire**, so
+two clients on the same server can be given different numbers of entities and
+neither can tell. A per-client cap keyed off the `iqlclient` userinfo key - the
+same one qagame reads for `pers.extendedClient` - would give our clients and
+bots more while leaving a stock Steam client byte-for-byte unchanged.
+
+`MAX_ENTITIES_IN_SNAPSHOT` is a different kind of number and the trap in that
+plan: it is the size of an array inside a `snapshot_t` that *cgame* owns and the
+engine writes into. Our engine loading Quake Live's cgame is reachable - modules
+come from the first matching pak in the search path - and writing 512 entities
+into its 256-entry array corrupts it rather than failing. Any such change needs
+the engine to hold itself to 256 until the loaded cgame declares its capacity
+through an appended syscall.
+
+Built as 56a9ce7 and reverted in 9d73794. It raises the roof rather than asking
+why the room is full, and costs 236 MB of server hunk at `sv_maxclients 64`.
+E45 is the cause. Come back to this only if the per-type breakdown shows the
+count is legitimate.
 
 ### E39. A map's ambient speakers looped the hit beep — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** **every client**

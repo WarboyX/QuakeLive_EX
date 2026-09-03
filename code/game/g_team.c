@@ -1153,10 +1153,15 @@ gentity_t* SelectRandomTeamSpawnPoint(int teamstate, team_t team) {
     */
     {
         gentity_t* warm[MAX_TEAM_SPAWN_POINTS];
+        gentity_t* taken[MAX_TEAM_SPAWN_POINTS];
         int numWarm = 0;
+        int numTaken = 0;
 
         while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
             if (SpotWouldTelefrag(spot)) {
+                if (numTaken < MAX_TEAM_SPAWN_POINTS) {
+                    taken[numTaken++] = spot;
+                }
                 continue;
             }
             if (SpawnPointIsContested(spot, team)) {
@@ -1176,11 +1181,39 @@ gentity_t* SelectRandomTeamSpawnPoint(int teamstate, team_t team) {
         if (numWarm) {
             return warm[rand() % numWarm];
         }
+
+        /*
+        [QL] Every point of this team's would telefrag. Still this team's, never
+        the other side's - arriving on top of somebody is better than arriving
+        in their base - but the *least recently used* of them rather than
+        whichever the entity list happens to hold first.
+
+        `G_Find(NULL, ...)` is the same point every time, so once a base is
+        saturated every respawn is sent to it, telefrags the player it sent
+        there a moment ago, and that player respawns into it in turn. The
+        deathmatch path had the identical bug and it accounted for 98% of the
+        deaths on one map in the log; see SelectRandomFurthestSpawnPoint.
+        */
+        if (numTaken) {
+            int oldest = 0x7FFFFFFF;
+            int numTied = 0;
+            int i;
+            gentity_t* tied[MAX_TEAM_SPAWN_POINTS];
+
+            for (i = 0; i < numTaken; i++) {
+                if (taken[i]->lastSpawnTime < oldest) {
+                    oldest = taken[i]->lastSpawnTime;
+                }
+            }
+            for (i = 0; i < numTaken; i++) {
+                if (taken[i]->lastSpawnTime == oldest) {
+                    tied[numTied++] = taken[i];
+                }
+            }
+            return tied[rand() % numTied];
+        }
     }
 
-    // every point of this team's would telefrag; still this team's, never the
-    // other side's - arriving on top of somebody is better than arriving in
-    // their base.
     return G_Find(NULL, FOFS(classname), classname);
 }
 

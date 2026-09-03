@@ -33,6 +33,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define MAX_ENT_CLUSTERS 16
 
+// [QL] entityType_t buckets for the snapshot overflow breakdown. ET_EVENTS is
+// open-ended (ET_EVENTS + eventNum), so everything at or above it shares the
+// last bucket.
+#define SNAPTYPE_BUCKETS (ET_EVENTS + 1)
+
 typedef struct svEntity_s {
     struct worldSector_s* worldSector;
     struct svEntity_s* nextEntityInWorldSector;
@@ -83,6 +88,9 @@ typedef struct {
     // routinely on a well-populated server and otherwise fails silently.
     int snapshotEntitiesDropped;
     int nextSnapshotOverflowWarn;
+    // [QL] running tally of what was dropped, by entity type - "256 was not
+    // enough" is not actionable, "180 of them were events" is.
+    int snapshotDroppedByType[SNAPTYPE_BUCKETS];
 } server_t;
 
 typedef struct {

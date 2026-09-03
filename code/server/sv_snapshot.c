@@ -232,8 +232,56 @@ Build a client snapshot structure
 
 typedef struct {
     int numSnapshotEntities;
+    // [QL] what is in this snapshot, by entity type - the composition at the
+    // moment it filled up, which is the only interesting moment.
+    int typeCount[SNAPTYPE_BUCKETS];
     int snapshotEntities[MAX_SNAPSHOT_ENTITIES];
 } snapshotEntityNumbers_t;
+
+// [QL] entityType_t names for the overflow breakdown, indexed by bucket.
+static const char* const sv_snapTypeNames[SNAPTYPE_BUCKETS] = {
+    "general", "players", "items", "missiles", "movers", "beams",
+    "portals", "speakers", "pushtrig", "teletrig", "invisible",
+    "grapple", "team", "events"
+};
+
+static int SV_SnapshotTypeBucket(int eType) {
+    if (eType < 0) {
+        return 0;
+    }
+    if (eType >= ET_EVENTS) {
+        return ET_EVENTS;   // ET_EVENTS + eventNum all land here
+    }
+    return eType;
+}
+
+/*
+[QL] "n dropped" says a limit was hit; it does not say what to do about it.
+
+Print the composition instead: what the full snapshot was made of when it
+overflowed, and what has been getting dropped since the map started. A snapshot
+that is mostly events is a different problem from one that is mostly items, and
+guessing between them is how you end up raising a ceiling that did not need
+raising.
+*/
+static void SV_PrintSnapshotBreakdown(const snapshotEntityNumbers_t* eNums) {
+    char kept[256];
+    char lost[256];
+    int i;
+
+    kept[0] = lost[0] = '\0';
+    for (i = 0; i < SNAPTYPE_BUCKETS; i++) {
+        if (eNums->typeCount[i]) {
+            Q_strcat(kept, sizeof(kept), va("%s %i  ", sv_snapTypeNames[i], eNums->typeCount[i]));
+        }
+        if (sv.snapshotDroppedByType[i]) {
+            Q_strcat(lost, sizeof(lost), va("%s %i  ", sv_snapTypeNames[i], sv.snapshotDroppedByType[i]));
+        }
+    }
+
+    Com_Printf("         in the snapshot: %s\n", kept[0] ? kept : "(none)");
+    Com_Printf("         dropped so far:  %s\n", lost[0] ? lost : "(none)");
+}
 
 /*
 =======================
@@ -278,18 +326,21 @@ static void SV_AddEntToSnapshot(svEntity_t* svEnt, sharedEntity_t* gEnt, snapsho
         // explain it. On a 32-48 player server this is reached routinely.
         // Count it, and say so occasionally so the cause is at least visible.
         sv.snapshotEntitiesDropped++;
+        sv.snapshotDroppedByType[SV_SnapshotTypeBucket(gEnt->s.eType)]++;
 
         if (svs.time >= sv.nextSnapshotOverflowWarn) {
             sv.nextSnapshotOverflowWarn = svs.time + 10000;
             Com_Printf("WARNING: snapshot entity limit (%i) reached - %i entities dropped so far.\n"
                        "         Players and items may be invisible to some clients this frame.\n",
                        MAX_SNAPSHOT_ENTITIES, sv.snapshotEntitiesDropped);
+            SV_PrintSnapshotBreakdown(eNums);
         }
         return;
     }
 
     eNums->snapshotEntities[eNums->numSnapshotEntities] = gEnt->s.number;
     eNums->numSnapshotEntities++;
+    eNums->typeCount[SV_SnapshotTypeBucket(gEnt->s.eType)]++;
 }
 
 /*
@@ -465,6 +516,7 @@ static void SV_BuildClientSnapshot(client_t* client) {
 
     // clear everything in this snapshot
     entityNumbers.numSnapshotEntities = 0;
+    Com_Memset(entityNumbers.typeCount, 0, sizeof(entityNumbers.typeCount));
     Com_Memset(frame->areabits, 0, sizeof(frame->areabits));
 
     // https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=62

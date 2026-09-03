@@ -174,75 +174,210 @@ SelectRandomFurthestSpawnPoint
 Chooses a player start, deathmatch start, etc
 ============
 */
-gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qboolean isbot) {
-    gentity_t* spot;
-    vec3_t delta;
-    float dist;
+/* [QL] ms a deathmatch point stays "just used" - the same window the team
+   spawns use, see SPAWN_REUSE_COOLDOWN in g_team.c. */
+#define SPAWN_REUSE_COOLDOWN_DM 1500
+
+/* [QL] id's choice: sort the candidates by distance from the point to avoid
+   (where you died) and take a random one out of the furthest half. Unchanged
+   except that it now runs over a list somebody else built, so the caller can
+   decide which candidates are worth sorting. */
+static gentity_t* G_PickFurthestSpawnPoint(gentity_t** list, int numSpots, vec3_t avoidPoint) {
     float list_dist[MAX_SPAWN_POINTS];
     gentity_t* list_spot[MAX_SPAWN_POINTS];
-    int numSpots, rnd, i, j;
+    int sorted = 0;
+    int n, i, j, rnd;
 
-    numSpots = 0;
-    spot = NULL;
+    for (n = 0; n < numSpots; n++) {
+        vec3_t delta;
+        float dist;
+
+        VectorSubtract(list[n]->s.origin, avoidPoint, delta);
+        dist = VectorLength(delta);
+
+        for (i = 0; i < sorted; i++) {
+            if (dist > list_dist[i]) {
+                if (sorted >= MAX_SPAWN_POINTS)
+                    sorted = MAX_SPAWN_POINTS - 1;
+
+                for (j = sorted; j > i; j--) {
+                    list_dist[j] = list_dist[j - 1];
+                    list_spot[j] = list_spot[j - 1];
+                }
+
+                list_dist[i] = dist;
+                list_spot[i] = list[n];
+                sorted++;
+                break;
+            }
+        }
+
+        if (i >= sorted && sorted < MAX_SPAWN_POINTS) {
+            list_dist[sorted] = dist;
+            list_spot[sorted] = list[n];
+            sorted++;
+        }
+    }
+
+    if (!sorted) {
+        return NULL;
+    }
+
+    rnd = (int)(random() * (sorted / 2));
+    if (rnd >= sorted) {
+        rnd = sorted - 1;   // random() can return exactly 1.0
+    }
+    return list_spot[rnd];
+}
+
+/*
+[QL] The least recently used point, for when every one of them is occupied.
+
+This is the case id did not really handle, and at high player counts it is not
+an edge case at all - it is most respawns. See the note in
+SelectRandomFurthestSpawnPoint.
+*/
+static gentity_t* G_PickLeastRecentSpawnPoint(gentity_t** list, int numSpots) {
+    int oldest = 0x7FFFFFFF;
+    int numTied = 0;
+    int i;
+    gentity_t* tied[MAX_SPAWN_POINTS];
+
+    for (i = 0; i < numSpots; i++) {
+        if (list[i]->lastSpawnTime < oldest) {
+            oldest = list[i]->lastSpawnTime;
+        }
+    }
+    for (i = 0; i < numSpots; i++) {
+        if (list[i]->lastSpawnTime == oldest && numTied < MAX_SPAWN_POINTS) {
+            tied[numTied++] = list[i];
+        }
+    }
+    if (!numTied) {
+        return NULL;
+    }
+    return tied[rand() % numTied];
+}
+
+/*
+[QL] Report how many points a map actually has, once per level.
+
+A map built for sixteen players does not say anywhere that it has twelve spawn
+points, and the difference between "the spawn code is broken" and "there is
+nowhere to put the sixty-fourth player" is exactly this number.
+*/
+static void G_ReportSpawnPointCount(void) {
+    static int reportedLevel = -1;
+    gentity_t* spot = NULL;
+    int count = 0;
+
+    if (reportedLevel == level.startTime) {
+        return;
+    }
+    reportedLevel = level.startTime;
 
     while ((spot = G_Find(spot, FOFS(classname), "info_player_deathmatch")) != NULL) {
-        if (SpotWouldTelefrag(spot))
-            continue;
+        count++;
+    }
 
+    G_Printf("Spawn points: %i info_player_deathmatch for up to %i players%s\n",
+             count, level.maxclients,
+             (count > 0 && level.maxclients > count * 2)
+                 ? " - expect contested spawns and telefrags" : "");
+}
+
+/*
+[QL] Three tiers, because "no free point" is the normal case on a full server.
+
+id's version collected every point that would not telefrag, sorted them by
+distance from where you died, and picked out of the furthest half. If *none* of
+them was free it did this:
+
+    spot = G_Find(NULL, FOFS(classname), "info_player_deathmatch");
+
+- the first spawn entity in the map, deterministically, every single time. That
+is fine when it almost never happens. On a 64-slot server on a map with a dozen
+points it happens on most respawns, and then every player who dies is sent to
+the same spot, telefrags whoever it sent there a moment ago, and that player
+respawns into the same spot in turn. It is self-sustaining: on citycrossings
+859 of roughly 876 deaths in the log were telefrags - 98% of the match was
+players landing on each other, and almost nobody died to a weapon.
+
+So the fallback is no longer a single fixed point:
+
+  1. **clear** - would not telefrag and has not been used inside
+     SPAWN_REUSE_COOLDOWN_DM. id's furthest-half pick, unchanged.
+  2. **warm** - would not telefrag but was just used. Same pick. Two players
+     arriving on one pad a moment apart is how a spawn becomes a telefrag, so
+     this is worth avoiding, but it is much better than tier 3.
+  3. **taken** - all of them would telefrag. Take the *least recently used* one,
+     random among ties. Somebody still gets telefragged, but the next player
+     goes somewhere else, so the chain does not form. At level start every
+     lastSpawnTime is 0, so this is a plain random pick.
+
+The cooldown and lastSpawnTime are the same mechanism SelectRandomTeamSpawnPoint
+already used for CTF; the deathmatch path simply never got it.
+*/
+gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qboolean isbot) {
+    gentity_t* spot;
+    gentity_t* clear[MAX_SPAWN_POINTS];
+    gentity_t* warm[MAX_SPAWN_POINTS];
+    gentity_t* taken[MAX_SPAWN_POINTS];
+    int numClear = 0, numWarm = 0, numTaken = 0;
+    gentity_t* chosen = NULL;
+
+    G_ReportSpawnPointCount();
+
+    spot = NULL;
+    while ((spot = G_Find(spot, FOFS(classname), "info_player_deathmatch")) != NULL) {
         if (((spot->flags & FL_NO_BOTS) && isbot) ||
             ((spot->flags & FL_NO_HUMANS) && !isbot)) {
             // spot is not for this human/bot player
             continue;
         }
 
-        VectorSubtract(spot->s.origin, avoidPoint, delta);
-        dist = VectorLength(delta);
-
-        for (i = 0; i < numSpots; i++) {
-            if (dist > list_dist[i]) {
-                if (numSpots >= MAX_SPAWN_POINTS)
-                    numSpots = MAX_SPAWN_POINTS - 1;
-
-                for (j = numSpots; j > i; j--) {
-                    list_dist[j] = list_dist[j - 1];
-                    list_spot[j] = list_spot[j - 1];
-                }
-
-                list_dist[i] = dist;
-                list_spot[i] = spot;
-
-                numSpots++;
-                break;
+        if (SpotWouldTelefrag(spot)) {
+            if (numTaken < MAX_SPAWN_POINTS) {
+                taken[numTaken++] = spot;
             }
+            continue;
         }
 
-        if (i >= numSpots && numSpots < MAX_SPAWN_POINTS) {
-            list_dist[numSpots] = dist;
-            list_spot[numSpots] = spot;
-            numSpots++;
+        if (level.time - spot->lastSpawnTime < SPAWN_REUSE_COOLDOWN_DM) {
+            if (numWarm < MAX_SPAWN_POINTS) {
+                warm[numWarm++] = spot;
+            }
+            continue;
+        }
+
+        if (numClear < MAX_SPAWN_POINTS) {
+            clear[numClear++] = spot;
         }
     }
 
-    if (!numSpots) {
-        spot = G_Find(NULL, FOFS(classname), "info_player_deathmatch");
+    if (numClear) {
+        chosen = G_PickFurthestSpawnPoint(clear, numClear, avoidPoint);
+    } else if (numWarm) {
+        chosen = G_PickFurthestSpawnPoint(warm, numWarm, avoidPoint);
+    } else if (numTaken) {
+        chosen = G_PickLeastRecentSpawnPoint(taken, numTaken);
+    }
 
-        if (!spot)
+    if (!chosen) {
+        // no info_player_deathmatch this player is allowed to use at all
+        chosen = G_Find(NULL, FOFS(classname), "info_player_deathmatch");
+        if (!chosen) {
             G_Error("Couldn't find a spawn point");
-
-        VectorCopy(spot->s.origin, origin);
-        origin[2] += 9;
-        VectorCopy(spot->s.angles, angles);
-        return spot;
+        }
     }
 
-    // select a random spot from the spawn points furthest away
-    rnd = random() * (numSpots / 2);
+    chosen->lastSpawnTime = level.time;
 
-    VectorCopy(list_spot[rnd]->s.origin, origin);
+    VectorCopy(chosen->s.origin, origin);
     origin[2] += 9;
-    VectorCopy(list_spot[rnd]->s.angles, angles);
+    VectorCopy(chosen->s.angles, angles);
 
-    return list_spot[rnd];
+    return chosen;
 }
 
 /*
