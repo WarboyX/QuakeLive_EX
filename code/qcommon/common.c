@@ -197,8 +197,23 @@ void QDECL Com_Printf(const char* fmt, ...) {
     // echo to dedicated console and early console
     Sys_Print(msg);
 
-    // logfile
-    if (com_logfile && com_logfile->integer) {
+    /*
+    [QL] Either cvar starts the log.
+
+    logfile says how to write it, logfile_keep says what to do with the
+    previous one, and gating on logfile alone made the second useless on its
+    own: "logfile_keep 2" by itself produced no log at all, silently, which is
+    exactly the shape of mistake somebody makes once and then cannot explain.
+
+    Asking for a log to be kept is asking for a log. Setting either is enough,
+    and the flush decision below treats logfile_keep the same way - a log you
+    asked to keep is a log you want to survive whatever you are about to
+    reproduce, so it is not buffered.
+
+    Both are CVAR_TEMP, so neither can be left on in a config by accident.
+    */
+    if ((com_logfile && com_logfile->integer) ||
+        (com_logfileKeep && com_logfileKeep->integer)) {
         // TTimo: only open the qconsole.log if the filesystem is in an initialized state
         //   also, avoid recursing in the qconsole.log opening (i.e. if fs_debug is on)
         if (!logfile && FS_Initialized() && !opening_qconsole) {
@@ -259,7 +274,8 @@ void QDECL Com_Printf(const char* fmt, ...) {
             }
 
             if (logfile) {
-                if (com_logfile->integer > 1) {
+                // Flush per line unless logfile 1 was asked for specifically.
+                if (com_logfile->integer != 1) {
                     // force it to not buffer so we get valid
                     // data even if we are crashing
                     FS_ForceFlush(logfile);
@@ -2571,8 +2587,9 @@ void Com_Init(char* commandLine) {
     // something, and neither should survive into a config and quietly stay on.
     com_logfileKeep = Cvar_Get("logfile_keep", "0", CVAR_TEMP);
     Cvar_SetDescription(com_logfileKeep,
-        "what happens to the previous run's log: 0 replace qconsole.log, 1 append to "
-        "it, 2 write a new qconsole-YYYYMMDD-HHMMSS.log per run");
+        "what happens to the previous run's log, and starts one on its own: 0 replace "
+        "qconsole.log, 1 append to it, 2 write a new qconsole-YYYYMMDD-HHMMSS.log per "
+        "run. Setting this is enough - logfile does not also have to be set");
 
     com_timescale = Cvar_Get("timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO);
     com_fixedtime = Cvar_Get("fixedtime", "0", CVAR_CHEAT);

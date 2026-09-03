@@ -1002,10 +1002,12 @@ static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
                        "Offsets are relative to each module's load address, so they stay valid\r\n"
                        "across runs and can be matched against a build of the same revision.\r\n"
                        "\r\n"
-                       "For the console output leading up to this, set \"logfile 2\" before\r\n"
-                       "reproducing - %s is written next to this file and flushed\r\n"
-                       "after every line, so it survives a crash. \"logfile_keep 1\" adds to\r\n"
-                       "it instead of replacing it; \"logfile_keep 2\" writes one file per run.\r\n",
+                       "For the console output leading up to this, set \"logfile_keep 2\"\r\n"
+                       "before reproducing. That writes a qconsole-<date>-<time>.log per run\r\n"
+                       "next to this file, flushed after every line so it survives a crash,\r\n"
+                       "and keeps the log of the run that just crashed instead of replacing\r\n"
+                       "it on the relaunch. \"logfile 2\" is the same but reuses one file;\r\n"
+                       "\"logfile_keep 1\" appends to one file. This run wrote %s.\r\n",
                        Com_LogFileName());
 
     homepath = Cvar_VariableString("fs_homepath");
