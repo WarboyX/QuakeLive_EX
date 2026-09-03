@@ -94,6 +94,14 @@ console aims for that many characters across at any resolution, which is 2.0 at
 1080p, 2.67 at 1440/1600p and 4.0 at 2160p. Clamped at 1.0 below so a small
 window never gets *smaller* than Quake 3's glyph.
 
+The reference is 1080p, not a column count. An earlier version of this aimed for
+120 columns, which works out at scale 4.0 on a 3840x2160 display - 32x64 pixel
+glyphs, and reported as still far too large. Anchoring to a resolution instead of
+a column count is both more defensible and easier to reason about: scale 1.0 is
+the classic 8x16 glyph, which is what a 1080p display has always shown, and
+everything above that keeps the same apparent size. 2160p gets 2.0 (16x32,
+240 columns), 1600p gets 1.48, 1080p and below get 1.0.
+
 con_scale is a **multiplier on that**, not an absolute size, and that is the
 second thing this got wrong. Treating it as absolute meant the fix only reached a
 fresh install: con_scale is CVAR_ARCHIVE, so every machine that has run this
@@ -103,18 +111,19 @@ default forever, and the auto path was unreachable without knowing to type
 that predates this gets the fix without being told. 2 is twice as big, 0.5 half.
 ================
 */
-#define CON_TARGET_COLUMNS 120
+// The display the 8x16 glyph was drawn for the last time it looked right.
+#define CON_REFERENCE_HEIGHT 1080
 
 static float Con_Scale(void) {
     float scale;
 
-    if (cls.glconfig.vidWidth <= 0) {
+    if (cls.glconfig.vidHeight <= 0) {
         return 1.0f;   // before video init
     }
 
-    scale = (float)cls.glconfig.vidWidth / (CON_TARGET_COLUMNS * SMALLCHAR_WIDTH);
+    scale = (float)cls.glconfig.vidHeight / CON_REFERENCE_HEIGHT;
     if (scale < 1.0f) {
-        scale = 1.0f;
+        scale = 1.0f;   // never smaller than Quake 3's own glyph
     }
 
     if (con_scale && con_scale->value > 0.0f) {
@@ -403,11 +412,10 @@ void Con_CheckResize(void) {
         (cls.glconfig.vidWidth != reportedWidth || cls.glconfig.vidHeight != reportedHeight)) {
         reportedWidth = cls.glconfig.vidWidth;
         reportedHeight = cls.glconfig.vidHeight;
-        Com_Printf("console: %ix%i, scale %.2f (%i columns, %ix%i px glyphs)%s\n",
+        Com_Printf("console: %ix%i, scale %.2f (%i columns, %ix%i px glyphs) - con_scale %g multiplies this\n",
                    cls.glconfig.vidWidth, cls.glconfig.vidHeight, Con_Scale(),
                    width, Con_CharW(), Con_CharH(),
-                   (con_scale && con_scale->value != 1.0f)
-                       ? va(", con_scale %g", con_scale->value) : "");
+                   con_scale ? con_scale->value : 1.0f);
     }
 
     if (width == con.linewidth)

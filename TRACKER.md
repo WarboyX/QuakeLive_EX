@@ -2035,50 +2035,61 @@ gametype", which is the number that was actually wanted.
 classname `G_IsSpawnPointClassname` does not list, and that list is where to
 look.
 
-### R16. Console text rendering — the bitmap charset is the ceiling
+### R16. Console text rendering — the target was wrong, and the charset is the ceiling
 **Lives in:** our **client** (client engine) · **Seen by:** our client only
 
-*"We might need to figure out the best way to render text going forward. I don't
-think the current method scales correctly across different DPI / Resolutions."*
-Correct, and there is an objective reason rather than a matter of taste.
+The diagnostic line did its job on the first run:
 
-**The console draws through `cls.charSetShader`** - Quake 3's 16x16 bitmap
-atlas, one 8x16 pixel cell per glyph, blitted with `re.DrawStretchPic`. R14/R15
-made the *size* right by scaling that blit, and the size is now right: at
-3840x2160 it computes 4.0, giving 118 columns of 32x64 px glyphs, which is what
-the screenshot shows. But scaling a bitmap is magnification. A 4x stretch of an
-8x16 source is a 4x bilinear blur, and it gets *softer as the display gets
-better* - the opposite of what scaling for DPI is supposed to do. There is no
-value of `con_scale` that fixes that, because the pixels are not there.
+```
+console: 3840x2160, scale 4.00 (118 columns, 32x64 px glyphs)
+```
+
+Reported as still far too large, which is the *target* being wrong rather than
+the mechanism. The auto scale aimed for 120 columns, and a column count is a bad
+thing to anchor to - it says nothing about how big the text ends up.
+
+**Anchored to a resolution instead.** `scale = vidHeight / 1080`, floored at 1.0:
+scale 1.0 is Quake 3's own 8x16 glyph, which is what a 1080p display has always
+shown, and everything above keeps that apparent size rather than growing past it.
+
+| display | scale | glyph | columns |
+|---|---|---|---|
+| 3840x2160 | 2.00 | 16x32 | 238 |
+| 2560x1600 | 1.48 | 11x23 | 214 |
+| 2560x1440 | 1.33 | 10x21 | 238 |
+| 1920x1080 | 1.00 | 8x16 | 238 |
+| 1280x720 | 1.00 | 8x16 | 158 |
+
+Half the previous size at 2160p. `con_scale` multiplies it, and the printed line
+now says so - the attempt that prompted this was `con_font 0.5`, a cvar that does
+not exist, which is what happens when the knob is not named anywhere the user
+is looking.
+
+**The remaining ceiling is the charset, and it is not fixable by scaling.** The
+console draws `cls.charSetShader` - Quake 3's 16x16 bitmap atlas, one 8x16 pixel
+cell per glyph, blitted with `re.DrawStretchPic`. Making it bigger is
+magnification: a 2x stretch of an 8x16 source is a 2x bilinear blur, and it gets
+*softer as the display gets better*, which is the opposite of what scaling for
+DPI should do. No value of `con_scale` fixes that, because the pixels are not
+there.
 
 **The renderer already has the answer and the console is the only thing not
-using it.** `refexport_t` exposes `Font_DrawString`, `TextBounds`,
+using it.** `refexport_t` exposes `Font_DrawString`, `TextBounds` and
 `GetGlyphInfo` - fontstash/stb_truetype, added for the HUD and scoreboard, and
-reachable from the client engine as `re.` without any new syscall. It rasterises
-glyphs at the requested size, so they are crisp at 1080p and crisp at 2160p.
+reachable from the client engine as `re.` with no new syscall. It rasterises
+glyphs at the requested size, so they are crisp at any resolution. And the right
+font is already loaded: `tr_font_vk.c` maps `FONT_DEFAULT=0, FONT_SANS=1,
+FONT_MONO=2`, and a console wants monospace because the column grid is the whole
+point of `con.text` being a fixed-width buffer.
 
-**And the font that fits is already loaded.** `tr_font_vk.c` maps
-`FONT_DEFAULT=0, FONT_SANS=1, FONT_MONO=2`. A console wants monospace - the
-column grid is the whole point of `con.text` being a fixed-width buffer - so
-`FONT_MONO` keeps the existing wrapping and alignment logic intact rather than
-forcing a proportional font into a character grid.
+**What that change involves:** cell metrics from the font rather than
+`SMALLCHAR_WIDTH/HEIGHT`, feeding `Con_CharW`/`Con_CharH` and `con.linewidth`
+unchanged; `Con_DrawSolidConsole` batching runs of same-coloured characters into
+`Font_DrawString` calls, which the colour-run loop already has the shape for;
+the same for `Con_DrawInputField` and `Con_DrawNotify`; and a `con_font` cvar
+(default on, 0 for the bitmap charset) so it is revertible without a build.
 
-**What the change involves**, so the cost is visible before it is started:
-
-1. Cell metrics from the font instead of `SMALLCHAR_WIDTH/HEIGHT` - one
-   `GetGlyphInfo` or `TextBounds` call to get the mono advance at the chosen
-   scale, feeding `Con_CharW`/`Con_CharH` and therefore `con.linewidth`
-   unchanged.
-2. `Con_DrawSolidConsole` batches runs of same-coloured characters into
-   `Font_DrawString` calls rather than one `DrawStretchPic` per glyph. The
-   console already tracks colour runs for `re.SetColor`, so the loop shape is
-   there.
-3. `Con_DrawInputField` and `Con_DrawNotify` follow the same path.
-4. Behind `con_font` (default on, 0 for the bitmap charset) so it is revertible
-   without a build, given how many rounds this has already taken.
-
-Not started - this is a design change to something that has churned three times
-already and the call is the user's.
+Not started - the call is the user's.
 
 **Meanwhile `Con_CheckResize` now prints what it computed**, once per size
 change: resolution, scale, columns, glyph pixels, and `con_scale` when it is not
