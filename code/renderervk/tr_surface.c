@@ -863,11 +863,18 @@ static qboolean RB_ValidMeshFrames(const md3Surface_t *surface) {
 
 	if ( reported < 8 ) {
 		reported++;
+		/* [QL] Name the entity's model as well as the surface. If they turn out
+		   to be different models the fault is the entity/surface pairing rather
+		   than the frame index, and those need different fixes - the pairing
+		   would point at the lit-surf sort, the index at whoever set the frame. */
+		const model_t *m = R_GetModelByHandle( ent->e.hModel );
+
 		ri.Printf( PRINT_WARNING, "RB_SurfaceMesh: frame %d/%d of %d on surface '%s'"
-				   " (%d verts), entity %d, model %d%s\n",
+				   " (%d verts), entity %d, model %d '%s'%s\n",
 				   ent->e.frame, ent->e.oldframe, surface->numFrames,
 				   surface->name, surface->numVerts,
 				   (int)(ent - backEnd.refdef.entities), ent->e.hModel,
+				   ( m && m->name[0] ) ? m->name : "?",
 				   tess.dlightPass ? ", during the lighting pass" : "" );
 	}
 	return qfalse;

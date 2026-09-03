@@ -1682,6 +1682,118 @@ corner with the same shape of rect and already does it that way.
 Both strings go through it; "Voting has ended - next arena: <map>" is longer and
 was running off further.
 
+### E49. What is actually in the snapshot: 66% events, 23% invisible corpses — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** **every client**
+
+The per-type breakdown answered it on the first run, and neither answer was what
+I had been guessing at:
+
+```
+in the snapshot: general 1  players 10  movers 7  speakers 8  pushtrig 1  invisible 60  events 169
+dropped so far:  events 20417
+```
+
+- **events 169 of 256** — two thirds of the snapshot.
+- **invisible 60** — a quarter of it.
+- **players 5-10. items 0.**
+- **Every single dropped entity was an event.** 20,417 of them, no exceptions.
+
+That last line settles the thing that mattered: players and items were never
+being dropped. The overflow degrades *effects*, not the game. It is a cosmetic
+ceiling, not an integrity one, and the earlier framing of "players and items
+wink in and out" was wrong for this server.
+
+**`invisible 60` is pure waste, and it is fixed.** `ET_INVISIBLE` is what
+`BG_PlayerStateToEntityState` produces for a player below `GIB_HEALTH`, and
+`GibEntity` sets it too. Instagib gibs on every death, so on a full server that
+is most players most of the time. `cg_ents.c`'s entity switch is
+`case ET_INVISIBLE: break;` — the client receives these and throws them away.
+`GibEntity` makes the body non-solid and invisible but leaves it **linked**, so
+it sits in every snapshot until the player respawns.
+
+`self->unlinkAfterEvent = qtrue` is the fix: the existing mechanism, the one
+items use to disappear after their pickup event, firing from `G_RunFrame` once
+the event expires so `EV_GIB_PLAYER` still reaches everyone. `ClientSpawn`
+re-links.
+
+**It also frees spawn points, which is the part worth noticing.**
+`trap_EntitiesInBox` only returns *linked* entities, so `SpotWouldTelefrag` was
+counting gibbed corpses as occupying a pad. Dead players were reserving points
+they were never going to stand on — which on a map with few points makes the
+selector see a full map when it is not. One change, three effects: 23% of the
+snapshot back, spawn points that reflect reality, and less entity traffic.
+
+**Events are the remaining 66% and are not yet cut.** Worth recording what is
+known before touching it: `EVENT_VALID_MSEC` is 300 ms, and at `sv_fps 40` that
+is **twelve consecutive snapshots** holding a slot per event. id chose 300 ms
+when `sv_fps` was 20, i.e. six snapshots of redundancy for a client with packet
+loss. Scaling the constant so the redundancy stays six *snapshots* rather than
+300 *milliseconds* would halve event occupancy and preserve id's actual intent -
+but it is a client-visible timing change and wants its own measurement, so it is
+deliberately not in this round.
+
+### E50. citycrossings has two spawn points — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported as the spawn work having made citycrossings *worse*. The point count
+line, which is why it was added, says what is actually going on:
+
+```
+Spawn points: 12 info_player_deathmatch ... (trinity)
+Spawn points: 5  info_player_deathmatch ... (thunderstruck)
+Spawn points: 2  info_player_deathmatch ... (citycrossings)
+```
+
+**Two.** For sixty-four players. Every other pad on that map is under
+`team_CTF_redspawn` / `team_CTF_bluespawn`, and `SelectSpawnPoint` only ever
+looked at `info_player_deathmatch`. No selection strategy fixes two points, and
+the tiering could not have helped there.
+
+On the numbers the tiering is working where there is anything to work with -
+trinity went from 159 telefrags against 492 weapon deaths to **51 against
+1771**, and arkinholm from 192/290 to 552/4348, both large improvements in ratio.
+citycrossings went 859/28 to 3306/117, which is the same ratio over a map that
+ran three times longer: not worse per death, but not better either, because two
+points is two points.
+
+**Fixed by widening the search.** When the map's own `info_player_deathmatch`
+points are all occupied or in cooldown, the team pads are gathered as well —
+`SP_team_CTF_redspawn` and its blue twin are empty stubs, so those entities
+persist in every gametype with their classnames intact, and in a free-for-all
+there are no teams to be wrong about. Gated on there being nothing clear *or*
+warm, so a real deathmatch map whose points are merely in cooldown still uses
+its own. The point-count line now reports both pools.
+
+### E51. The score-cap crash, named — CAUSE IDENTIFIED
+**Lives in:** our **client** (renderervk / cgame) · **Seen by:** our client only
+
+`RB_ValidMeshFrames` fired, which E47 predicted it would:
+
+```
+RB_SurfaceMesh: frame 151/151 of 30 on surface 'dlc_gibs/gibs' (124 verts),
+                entity 181, model 74, during the lighting pass
+```
+
+A gib surface with **30 frames** being asked for **frame 151** — an
+out-of-range mesh frame, during the lighting pass, exactly the shape the
+symbolised call chain implied. The guard skipped the surface instead of reading
+past the frame array, so this is now a warning where it used to be
+`0xc0000005`.
+
+Two readings, and they need different fixes:
+
+- **The frame index is wrong.** 151 is a plausible *player* animation frame,
+  and `CG_LaunchGib` zeroes its `refEntity` through `CG_AllocLocalEntity`'s
+  memset and never sets `frame`, so a gib should be on frame 0. Something is
+  handing a gib model a frame it got from somewhere else.
+- **The entity and the surface are not the same model.** `RB_RenderLitSurfList`
+  re-derives `backEnd.currentEntity` from the lit-surf sort, which is a way for
+  an entity to be paired with a surface it does not own.
+
+The report now prints the entity's model *name* alongside the surface name. If
+they name different models it is the pairing; if both are gibs it is the frame.
+That is one line of the next log away.
+
 ### R10. Anisotropic filtering to x16 — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

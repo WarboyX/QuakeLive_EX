@@ -178,15 +178,29 @@ Chooses a player start, deathmatch start, etc
    spawns use, see SPAWN_REUSE_COOLDOWN in g_team.c. */
 #define SPAWN_REUSE_COOLDOWN_DM 1500
 
-/* [QL] id's choice: sort the candidates by distance from the point to avoid
-   (where you died) and take a random one out of the furthest half. Unchanged
-   except that it now runs over a list somebody else built, so the caller can
-   decide which candidates are worth sorting. */
+/*
+[QL] id's choice: sort by distance from the point to avoid (where you died) and
+take a random one out of the furthest half. The reuse cooldown is applied *here*,
+inside that half, rather than by the caller removing candidates before the sort.
+
+That distinction is the whole of a regression. Filtering cooldown points out
+first looks equivalent and is not: on a busy map it leaves one or two points
+standing, and "a random one out of the furthest half" of a two-entry list is not
+random at all - it is always the same point. So preferring the uncontested
+points funnelled everybody onto whichever one or two happened to be off cooldown
+and made citycrossings worse than it was before any of this. The pool has to stay
+the size id had it; the cooldown may only choose *within* the half, and is
+ignored when every candidate there is warm.
+
+The pick is also `rand() % n` now. id's `random() * (numSpots / 2)` yields
+exactly 0 for any pool of three or fewer, so small pools had no randomness even
+before the cooldown got involved.
+*/
 static gentity_t* G_PickFurthestSpawnPoint(gentity_t** list, int numSpots, vec3_t avoidPoint) {
     float list_dist[MAX_SPAWN_POINTS];
     gentity_t* list_spot[MAX_SPAWN_POINTS];
     int sorted = 0;
-    int n, i, j, rnd;
+    int n, i, j;
 
     for (n = 0; n < numSpots; n++) {
         vec3_t delta;
@@ -223,11 +237,25 @@ static gentity_t* G_PickFurthestSpawnPoint(gentity_t** list, int numSpots, vec3_
         return NULL;
     }
 
-    rnd = (int)(random() * (sorted / 2));
-    if (rnd >= sorted) {
-        rnd = sorted - 1;   // random() can return exactly 1.0
+    {
+        gentity_t* fresh[MAX_SPAWN_POINTS];
+        int numFresh = 0;
+        int half = sorted / 2;
+
+        if (half < 1) {
+            half = 1;
+        }
+
+        for (i = 0; i < half; i++) {
+            if (level.time - list_spot[i]->lastSpawnTime >= SPAWN_REUSE_COOLDOWN_DM) {
+                fresh[numFresh++] = list_spot[i];
+            }
+        }
+        if (numFresh) {
+            return fresh[rand() % numFresh];
+        }
+        return list_spot[rand() % half];
     }
-    return list_spot[rnd];
 }
 
 /*
@@ -260,76 +288,109 @@ static gentity_t* G_PickLeastRecentSpawnPoint(gentity_t** list, int numSpots) {
 }
 
 /*
-[QL] Report how many points a map actually has, once per level.
+[QL] Every classname a non-team gametype can legitimately spawn somebody on.
+
+info_player_deathmatch first, because on a map built for deathmatch that is the
+author's answer and the rest should never be reached. The others are the
+fallback, and they are real spawn pads: SP_team_CTF_redspawn and its blue twin
+are empty stubs, so those entities sit in the world with their classnames intact
+in every gametype and are never freed. In a free-for-all there are no teams, so
+a team pad is simply a place to appear.
+
+info_player_start is absent deliberately - SP_info_player_start renames itself to
+info_player_deathmatch, so it is already in the first list.
+*/
+static const char* const dmSpawnPrimary = "info_player_deathmatch";
+static const char* const dmSpawnFallback[] = {
+    "team_CTF_redspawn",
+    "team_CTF_bluespawn",
+    "team_CTF_redplayer",
+    "team_CTF_blueplayer",
+};
+
+static int G_CountSpawnPoints(const char* classname) {
+    gentity_t* spot = NULL;
+    int count = 0;
+
+    while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
+        count++;
+    }
+    return count;
+}
+
+/*
+[QL] Report what the map actually offers, once per level.
 
 A map built for sixteen players does not say anywhere that it has twelve spawn
 points, and the difference between "the spawn code is broken" and "there is
-nowhere to put the sixty-fourth player" is exactly this number.
+nowhere to put the sixty-fourth player" is exactly this number. The fallback
+classnames are counted too, because the interesting case turned out to be a map
+with *two* info_player_deathmatch and all its real pads under another name.
 */
 static void G_ReportSpawnPointCount(void) {
     static int reportedLevel = -1;
-    gentity_t* spot = NULL;
-    int count = 0;
+    int primary, fallback, i;
 
     if (reportedLevel == level.startTime) {
         return;
     }
     reportedLevel = level.startTime;
 
-    while ((spot = G_Find(spot, FOFS(classname), "info_player_deathmatch")) != NULL) {
-        count++;
+    primary = G_CountSpawnPoints(dmSpawnPrimary);
+    fallback = 0;
+    for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback); i++) {
+        fallback += G_CountSpawnPoints(dmSpawnFallback[i]);
     }
 
-    G_Printf("Spawn points: %i info_player_deathmatch for up to %i players%s\n",
-             count, level.maxclients,
-             (count > 0 && level.maxclients > count * 2)
-                 ? " - expect contested spawns and telefrags" : "");
+    G_Printf("Spawn points: %i %s + %i team pads usable as a fallback, for up to %i players%s\n",
+             primary, dmSpawnPrimary, fallback, level.maxclients,
+             (primary + fallback > 0 && level.maxclients > (primary + fallback) * 2)
+                 ? " - expect contested spawns" : "");
 }
 
 /*
-[QL] Three tiers, because "no free point" is the normal case on a full server.
+[QL] Two pools plus a widened search, because "no free point" is normal on a
+full server and on some maps it is the only state there is.
 
 id's version collected every point that would not telefrag, sorted them by
-distance from where you died, and picked out of the furthest half. If *none* of
-them was free it did this:
+distance from where you died, and picked out of the furthest half. If none was
+free it fell back to G_Find(NULL, ...) - the first spawn entity in the map,
+deterministically, every time - which is what turned a saturated map into a
+self-sustaining telefrag chain. That part is fixed by the tiers below.
 
-    spot = G_Find(NULL, FOFS(classname), "info_player_deathmatch");
+The tiers were not enough on their own, and the point count printed above is why:
+**citycrossings has two info_player_deathmatch entities.** Two, for sixty-four
+players, with every other pad in the map under team_CTF_redspawn /
+team_CTF_bluespawn. No selection strategy fixes two points, which is why that map
+read as 3306 telefrags against 117 weapon deaths whichever way the picking was
+done. So when the map's own deathmatch points are exhausted the search widens to
+the team pads, which in a free-for-all are perfectly good places to appear.
 
-- the first spawn entity in the map, deterministically, every single time. That
-is fine when it almost never happens. On a 64-slot server on a map with a dozen
-points it happens on most respawns, and then every player who dies is sent to
-the same spot, telefrags whoever it sent there a moment ago, and that player
-respawns into the same spot in turn. It is self-sustaining: on citycrossings
-859 of roughly 876 deaths in the log were telefrags - 98% of the match was
-players landing on each other, and almost nobody died to a weapon.
+  1. clear - would not telefrag, not used inside SPAWN_REUSE_COOLDOWN_DM.
+     id's furthest-half pick, unchanged.
+  2. warm  - would not telefrag but was just used. Same pick.
+  3. widen - nothing clear or warm among the deathmatch points: gather the team
+     pads as well and re-run 1 and 2 over the larger set. Gated on there being
+     nothing clear *or* warm, so a real deathmatch map whose points are merely
+     all in cooldown still uses its own.
+  4. taken - everything, everywhere, would telefrag. Least recently used, random
+     among ties. Somebody is still telefragged; the next player goes elsewhere,
+     so the chain cannot form.
 
-So the fallback is no longer a single fixed point:
-
-  1. **clear** - would not telefrag and has not been used inside
-     SPAWN_REUSE_COOLDOWN_DM. id's furthest-half pick, unchanged.
-  2. **warm** - would not telefrag but was just used. Same pick. Two players
-     arriving on one pad a moment apart is how a spawn becomes a telefrag, so
-     this is worth avoiding, but it is much better than tier 3.
-  3. **taken** - all of them would telefrag. Take the *least recently used* one,
-     random among ties. Somebody still gets telefragged, but the next player
-     goes somewhere else, so the chain does not form. At level start every
-     lastSpawnTime is 0, so this is a plain random pick.
-
-The cooldown and lastSpawnTime are the same mechanism SelectRandomTeamSpawnPoint
-already used for CTF; the deathmatch path simply never got it.
+The cooldown and lastSpawnTime are the mechanism SelectRandomTeamSpawnPoint
+already used for CTF. The deathmatch path never got it.
 */
-gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qboolean isbot) {
-    gentity_t* spot;
+typedef struct {
     gentity_t* clear[MAX_SPAWN_POINTS];
     gentity_t* warm[MAX_SPAWN_POINTS];
     gentity_t* taken[MAX_SPAWN_POINTS];
-    int numClear = 0, numWarm = 0, numTaken = 0;
-    gentity_t* chosen = NULL;
+    int numClear, numWarm, numTaken;
+} spawnCandidates_t;
 
-    G_ReportSpawnPointCount();
+static void G_GatherSpawnPoints(spawnCandidates_t* c, const char* classname, qboolean isbot) {
+    gentity_t* spot = NULL;
 
-    spot = NULL;
-    while ((spot = G_Find(spot, FOFS(classname), "info_player_deathmatch")) != NULL) {
+    while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
         if (((spot->flags & FL_NO_BOTS) && isbot) ||
             ((spot->flags & FL_NO_HUMANS) && !isbot)) {
             // spot is not for this human/bot player
@@ -337,39 +398,49 @@ gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3
         }
 
         if (SpotWouldTelefrag(spot)) {
-            if (numTaken < MAX_SPAWN_POINTS) {
-                taken[numTaken++] = spot;
+            if (c->numTaken < MAX_SPAWN_POINTS) {
+                c->taken[c->numTaken++] = spot;
             }
             continue;
         }
 
         if (level.time - spot->lastSpawnTime < SPAWN_REUSE_COOLDOWN_DM) {
-            if (numWarm < MAX_SPAWN_POINTS) {
-                warm[numWarm++] = spot;
+            if (c->numWarm < MAX_SPAWN_POINTS) {
+                c->warm[c->numWarm++] = spot;
             }
             continue;
         }
 
-        if (numClear < MAX_SPAWN_POINTS) {
-            clear[numClear++] = spot;
+        if (c->numClear < MAX_SPAWN_POINTS) {
+            c->clear[c->numClear++] = spot;
+        }
+    }
+}
+
+gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qboolean isbot) {
+    spawnCandidates_t c;
+    gentity_t* chosen = NULL;
+    int i;
+
+    G_ReportSpawnPointCount();
+
+    memset(&c, 0, sizeof(c));
+    G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot);
+
+    if (!c.numClear && !c.numWarm) {
+        for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback); i++) {
+            G_GatherSpawnPoints(&c, dmSpawnFallback[i], isbot);
         }
     }
 
-    if (numClear) {
-        chosen = G_PickFurthestSpawnPoint(clear, numClear, avoidPoint);
-    } else if (numWarm) {
-        chosen = G_PickFurthestSpawnPoint(warm, numWarm, avoidPoint);
-    } else if (numTaken) {
-        chosen = G_PickLeastRecentSpawnPoint(taken, numTaken);
+    if (c.numClear) {
+        chosen = G_PickFurthestSpawnPoint(c.clear, c.numClear, avoidPoint);
+    } else if (c.numWarm) {
+        chosen = G_PickFurthestSpawnPoint(c.warm, c.numWarm, avoidPoint);
+    } else if (c.numTaken) {
+        chosen = G_PickLeastRecentSpawnPoint(c.taken, c.numTaken);
 
-        /*
-        [QL] Tier 3 means the map ran out of room, and that is worth saying.
-
-        Landing here is what used to start the telefrag chain, so it is the
-        measurement that says whether the tiering was enough or whether this map
-        genuinely cannot hold this many players. Rate limited, because when it
-        happens it happens on most respawns.
-        */
+        /* Rate limited: when this happens it happens on most respawns. */
         {
             static int saturated;
             static int nextReport;
@@ -383,17 +454,20 @@ gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3
             saturated++;
             if (level.time >= nextReport) {
                 nextReport = level.time + 30000;
-                G_Printf("Spawns: no free point for %i spawns so far - every one of "
-                         "this map's %i points was occupied. Telefrags are unavoidable "
-                         "at this player count on this map.\n",
-                         saturated, numTaken);
+                G_Printf("Spawns: %i so far found no free point - all %i usable points "
+                         "(deathmatch and team pads) were occupied. This map cannot hold "
+                         "%i players without telefrags.\n",
+                         saturated, c.numTaken, level.maxclients);
             }
         }
     }
 
     if (!chosen) {
-        // no info_player_deathmatch this player is allowed to use at all
-        chosen = G_Find(NULL, FOFS(classname), "info_player_deathmatch");
+        // nothing this player is allowed to use at all
+        chosen = G_Find(NULL, FOFS(classname), dmSpawnPrimary);
+        for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback) && !chosen; i++) {
+            chosen = G_Find(NULL, FOFS(classname), dmSpawnFallback[i]);
+        }
         if (!chosen) {
             G_Error("Couldn't find a spawn point");
         }

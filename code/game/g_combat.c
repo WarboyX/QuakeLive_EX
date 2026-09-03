@@ -322,6 +322,31 @@ void GibEntity(gentity_t* self, int killer) {
     self->takedamage = qfalse;
     self->s.eType = ET_INVISIBLE;
     self->r.contents = 0;
+
+    /*
+    [QL] Let go of the entity once EV_GIB_PLAYER has been delivered.
+
+    id makes the gibbed body non-solid and invisible but leaves it *linked*, so
+    it stays in the world until the player respawns. Two costs, both measured:
+
+    - It occupies a snapshot slot in every client that can see it, for nothing.
+      cg_ents.c's entity switch is `case ET_INVISIBLE: break;` - the client
+      receives it and throws it away. The overflow breakdown from a full
+      instagib server read "invisible 60" out of 256: sixty of the slots were
+      corpses nobody could see, which is 23% of the snapshot and all of it
+      waste. Instagib gibs on every death, so on that server it is nearly
+      everyone, nearly always.
+    - trap_EntitiesInBox only returns linked entities, so SpotWouldTelefrag
+      counted these as occupying a spawn point. A dead player was reserving a
+      pad it was never going to stand on, which on a map with few points means
+      the spawn selector sees the map as full when it is not.
+
+    unlinkAfterEvent is the existing mechanism for exactly this shape - items
+    use it to disappear after their pickup event - and it fires from G_RunFrame
+    when the event expires, so EV_GIB_PLAYER still reaches everyone first.
+    ClientSpawn re-links on respawn.
+    */
+    self->unlinkAfterEvent = qtrue;
 }
 
 /*
