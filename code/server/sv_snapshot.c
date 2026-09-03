@@ -264,23 +264,29 @@ that is mostly events is a different problem from one that is mostly items, and
 guessing between them is how you end up raising a ceiling that did not need
 raising.
 */
-static void SV_PrintSnapshotBreakdown(const snapshotEntityNumbers_t* eNums) {
-    char kept[256];
-    char lost[256];
+void SV_FormatSnapshotTypes(char* out, int outSize, const int* counts) {
     int i;
 
-    kept[0] = lost[0] = '\0';
+    out[0] = '\0';
     for (i = 0; i < SNAPTYPE_BUCKETS; i++) {
-        if (eNums->typeCount[i]) {
-            Q_strcat(kept, sizeof(kept), va("%s %i  ", sv_snapTypeNames[i], eNums->typeCount[i]));
-        }
-        if (sv.snapshotDroppedByType[i]) {
-            Q_strcat(lost, sizeof(lost), va("%s %i  ", sv_snapTypeNames[i], sv.snapshotDroppedByType[i]));
+        if (counts[i]) {
+            Q_strcat(out, outSize, va("%s %i  ", sv_snapTypeNames[i], counts[i]));
         }
     }
+    if (!out[0]) {
+        Q_strncpyz(out, "(none)", outSize);
+    }
+}
 
-    Com_Printf("         in the snapshot: %s\n", kept[0] ? kept : "(none)");
-    Com_Printf("         dropped so far:  %s\n", lost[0] ? lost : "(none)");
+static void SV_PrintSnapshotBreakdown(const snapshotEntityNumbers_t* eNums) {
+    char kept[512];
+    char lost[512];
+
+    SV_FormatSnapshotTypes(kept, sizeof(kept), eNums->typeCount);
+    SV_FormatSnapshotTypes(lost, sizeof(lost), sv.snapshotDroppedByType);
+
+    Com_Printf("         in the snapshot: %s\n", kept);
+    Com_Printf("         dropped so far:  %s\n", lost);
 }
 
 /*
@@ -553,6 +559,17 @@ static void SV_BuildClientSnapshot(client_t* client) {
     // in the list which will need to be resorted for the delta compression
     // to work correctly.  This also catches the error condition
     // of an entity being included twice.
+    /* [QL] Remember the fullest snapshot this map has produced. The overflow
+       warning only fires once the cap is *hit*, so on a map that comes close and
+       never crosses it there is nothing in the log at all - and "how much
+       headroom is there at 64 players" is exactly the question that needs
+       answering on those maps. "snapstats" prints this. */
+    if (entityNumbers.numSnapshotEntities > sv.snapshotEntitiesPeak) {
+        sv.snapshotEntitiesPeak = entityNumbers.numSnapshotEntities;
+        sv.snapshotPeakClient = (int)(client - svs.clients);
+        Com_Memcpy(sv.snapshotPeakByType, entityNumbers.typeCount, sizeof(sv.snapshotPeakByType));
+    }
+
     qsort(entityNumbers.snapshotEntities, entityNumbers.numSnapshotEntities,
           sizeof(entityNumbers.snapshotEntities[0]), SV_QsortEntityNumbers);
 

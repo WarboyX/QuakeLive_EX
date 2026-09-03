@@ -1220,6 +1220,47 @@ static void SV_ReloadFactories_f(void) {
 
 /*
 ==================
+SV_SnapStats_f
+
+[QL] What the snapshots on this map actually contain.
+
+The overflow warning only speaks once the 256 cap is hit, so a map that runs at
+240 entities all match says nothing at all - and that is precisely the map where
+you want to know how much headroom is left. This reports the fullest snapshot
+built since the map loaded, what it was made of, and anything that has been
+dropped, at any moment, on any map.
+
+Read it as: if the peak is well under the cap, the ceiling is not the problem.
+If it is at the cap, the type breakdown says what to cull - events and items and
+map geometry are three different fixes.
+==================
+*/
+static void SV_SnapStats_f(void) {
+    char buf[512];
+
+    if (!com_sv_running->integer) {
+        Com_Printf("Server is not running.\n");
+        return;
+    }
+
+    Com_Printf("Snapshot entities, this map (cap %i):\n", MAX_SNAPSHOT_ENTITIES);
+    Com_Printf("  peak in one snapshot: %i (client %i)\n",
+               sv.snapshotEntitiesPeak, sv.snapshotPeakClient);
+
+    SV_FormatSnapshotTypes(buf, sizeof(buf), sv.snapshotPeakByType);
+    Com_Printf("  that snapshot held:   %s\n", buf);
+
+    if (sv.snapshotEntitiesDropped) {
+        SV_FormatSnapshotTypes(buf, sizeof(buf), sv.snapshotDroppedByType);
+        Com_Printf("  dropped over the cap: %i total\n", sv.snapshotEntitiesDropped);
+        Com_Printf("  dropped, by type:     %s\n", buf);
+    } else {
+        Com_Printf("  dropped over the cap: none\n");
+    }
+}
+
+/*
+==================
 SV_AddOperatorCommands
 ==================
 */
@@ -1267,6 +1308,8 @@ void SV_AddOperatorCommands(void) {
     Cmd_AddCommand("reload_mappool", SV_ReloadMapPool_f);
     Cmd_AddCommand("reload_arenas", SV_ReloadArenas_f);
     Cmd_AddCommand("reload_factories", SV_ReloadFactories_f);
+
+    Cmd_AddCommand("snapstats", SV_SnapStats_f);
 }
 
 /*

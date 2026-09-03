@@ -361,6 +361,34 @@ gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3
         chosen = G_PickFurthestSpawnPoint(warm, numWarm, avoidPoint);
     } else if (numTaken) {
         chosen = G_PickLeastRecentSpawnPoint(taken, numTaken);
+
+        /*
+        [QL] Tier 3 means the map ran out of room, and that is worth saying.
+
+        Landing here is what used to start the telefrag chain, so it is the
+        measurement that says whether the tiering was enough or whether this map
+        genuinely cannot hold this many players. Rate limited, because when it
+        happens it happens on most respawns.
+        */
+        {
+            static int saturated;
+            static int nextReport;
+            static int reportLevel = -1;
+
+            if (reportLevel != level.startTime) {
+                reportLevel = level.startTime;
+                saturated = 0;
+                nextReport = 0;
+            }
+            saturated++;
+            if (level.time >= nextReport) {
+                nextReport = level.time + 30000;
+                G_Printf("Spawns: no free point for %i spawns so far - every one of "
+                         "this map's %i points was occupied. Telefrags are unavoidable "
+                         "at this player count on this map.\n",
+                         saturated, numTaken);
+            }
+        }
     }
 
     if (!chosen) {

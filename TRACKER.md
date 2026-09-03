@@ -1682,6 +1682,32 @@ corner with the same shape of rect and already does it that way.
 Both strings go through it; "Voting has ended - next arena: <map>" is longer and
 was running off further.
 
+### E48. `snapstats`, and a spawn-saturation report — TOOLING
+**Lives in:** our **server** (server engine + qagame) · **Seen by:** n/a
+
+Two measurements added because the existing ones only speak when something has
+already gone wrong, which is the wrong half of the data.
+
+**`snapstats`** (console, server). The overflow warning fires only once the 256
+cap is *hit*, so a map that runs at 240 entities all match produces nothing at
+all - and that is exactly the map where "how much headroom is there at 64
+players" needs answering. `snapstats` prints, at any moment on any map:
+
+- the fullest snapshot built since the map loaded, and which client it was for
+- what that snapshot was made of, by `entityType_t`
+- anything dropped over the cap, and its type breakdown
+
+Read it as: peak well under the cap means the ceiling is not the problem; peak
+at the cap means the type breakdown says what to cull, and events, items and map
+geometry are three different fixes.
+
+**Spawn saturation.** `SelectRandomFurthestSpawnPoint`'s third tier - every point
+on the map occupied - is what used to start the telefrag chain (E45). It now
+reports how often it is reached, rate limited to every 30 s, with the map's
+point count. That is the measurement that separates "the tiering was enough"
+from "this map cannot hold this many players", and those need different answers.
+`G_ReportSpawnPointCount` prints the point count once per level besides.
+
 ### E47. The FFA score-cap crash, symbolised — WATCHING (guard shipped, cause unproven)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

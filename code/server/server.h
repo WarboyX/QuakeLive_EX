@@ -91,6 +91,13 @@ typedef struct {
     // [QL] running tally of what was dropped, by entity type - "256 was not
     // enough" is not actionable, "180 of them were events" is.
     int snapshotDroppedByType[SNAPTYPE_BUCKETS];
+    // [QL] the fullest snapshot this map has produced, and what was in it. The
+    // overflow warning only fires once the cap is *hit*, which tells you nothing
+    // about the maps that come close and do not - which is most of the useful
+    // measurement. "snapstats" prints these at any time.
+    int snapshotEntitiesPeak;
+    int snapshotPeakByType[SNAPTYPE_BUCKETS];
+    int snapshotPeakClient;
 } server_t;
 
 typedef struct {
@@ -356,6 +363,8 @@ int SV_SendQueuedMessages(void);
 //
 void SV_AddServerCommand(client_t* client, const char* cmd);
 void SV_UpdateServerCommandsToClient(client_t* client, msg_t* msg);
+// [QL] format an entityType_t tally for the snapshot diagnostics
+void SV_FormatSnapshotTypes(char* out, int outSize, const int* counts);
 void SV_WriteFrameToClient(client_t* client, msg_t* msg);
 void SV_SendMessageToClient(msg_t* msg, client_t* client);
 void SV_SendClientMessages(void);
