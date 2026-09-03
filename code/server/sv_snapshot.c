@@ -704,6 +704,7 @@ void SV_SendClientMessages(void) {
             if (SV_RateMsec(c) > 0) {
                 // Not enough time since last packet passed through the line
                 c->rateDelayed = qtrue;
+                sv.snapshotsRateDelayed++;
                 continue;
             }
         }
@@ -717,6 +718,10 @@ void SV_SendClientMessages(void) {
 
         // generate and send a new message
         SV_SendClientSnapshot(c);
+        sv.snapshotsSent++;
+        if (c->netchan.lastSentSize > sv.snapshotBytesPeak) {
+            sv.snapshotBytesPeak = c->netchan.lastSentSize;
+        }
         c->nextSnapshotTime = svs.time;
         c->rateDelayed = qfalse;
     }

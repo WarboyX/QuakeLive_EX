@@ -98,6 +98,14 @@ typedef struct {
     int snapshotEntitiesPeak;
     int snapshotPeakByType[SNAPTYPE_BUCKETS];
     int snapshotPeakClient;
+    // [QL] Is the tick rate or the rate limit the thing actually delivering
+    // fewer snapshots than sv_fps? SV_RateMsec allows a client
+    // rate/(bytes+28) snapshots a second, so on a busy board the wire can be
+    // the binding constraint long before the tick is - and there was no way to
+    // tell which. Peak message size and the rate-delay count say which.
+    int snapshotBytesPeak;
+    int snapshotsSent;
+    int snapshotsRateDelayed;
 } server_t;
 
 typedef struct {

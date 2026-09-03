@@ -1250,6 +1250,19 @@ static void SV_SnapStats_f(void) {
     SV_FormatSnapshotTypes(buf, sizeof(buf), sv.snapshotPeakByType);
     Com_Printf("  that snapshot held:   %s\n", buf);
 
+    /* [QL] Which limit is actually biting: the tick or the wire. SV_RateMsec
+       lets a client through rate/(bytes+28) times a second, so a big snapshot
+       can hold the delivered rate well under sv_fps no matter what sv_fps is. */
+    Com_Printf("Delivery (sv_fps %i, %i ms per tick):\n",
+               sv_fps->integer, sv_fps->integer ? 1000 / sv_fps->integer : 0);
+    Com_Printf("  largest snapshot sent: %i bytes\n", sv.snapshotBytesPeak);
+    if (sv.snapshotBytesPeak > 0) {
+        Com_Printf("  a 25000-rate client sustains %i/s at that size, a 50000-rate client %i/s\n",
+                   25000 / (sv.snapshotBytesPeak + 28), 50000 / (sv.snapshotBytesPeak + 28));
+    }
+    Com_Printf("  snapshots sent %i, held back by rate %i\n",
+               sv.snapshotsSent, sv.snapshotsRateDelayed);
+
     if (sv.snapshotEntitiesDropped) {
         SV_FormatSnapshotTypes(buf, sizeof(buf), sv.snapshotDroppedByType);
         Com_Printf("  dropped over the cap: %i total\n", sv.snapshotEntitiesDropped);

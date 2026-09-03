@@ -1883,6 +1883,77 @@ gate from R12 is already the right place to expose them.
 **What it is not:** path tracing. The lighting stays baked, which is exactly
 what makes it possible without the emitter classification described in R10.
 
+### E52. How high can `sv_fps` go — the tick is not what is limiting it
+**Lives in:** our **server** (server engine) · **Seen by:** n/a
+
+Asked as "what's the fastest we could run the server fps wise without
+drawbacks", with 30/60/100 offered as the standards. Working it out from this
+tree rather than from convention, because two of the constraints are not where
+you would expect.
+
+**1. Only values that divide 1000 land where you asked.**
+`SV_UserinfoChanged` sets `cl->snapshotMsec = 1000 / sv_fps->integer` in integer
+milliseconds. So:
+
+| `sv_fps` | interval | actual |
+|---|---|---|
+| 30 | 33 ms | 30.3 |
+| 40 | 25 ms | **40** |
+| 50 | 20 ms | **50** |
+| **60** | **16 ms** | **62.5** |
+| 100 | 10 ms | **100** |
+| 125 | 8 ms | **125** |
+
+60 is the trap: it becomes 62.5. Same class of bug as E9, where `com_maxfps`
+could only ever produce rates dividing 1000 — fixed there by carrying the
+fractional millisecond, and not fixed here. Clean values are 40, 50, 100, 125.
+
+**2. The rate limit, not the tick, is what decides how many snapshots arrive.**
+`SV_RateMsec` gates each client to `rate / (bytes + 28)` messages a second, and
+`SV_UserinfoChanged` clamps `rate` to **4000-50000** (Quake 3 allowed 90000; the
+client default is 25000). So the per-snapshot byte budget is:
+
+| tick | at rate 25000 | at rate 50000 |
+|---|---|---|
+| 40 | 625 B | 1250 B |
+| 50 | 500 B | 1000 B |
+| 100 | 250 B | 500 B |
+
+A 256-entity snapshot is far past any of those. **On a full 64-player board the
+wire is already the binding constraint at `sv_fps 40`** — clients are being
+rate-delayed and `SNAPFLAG_RATE_DELAYED` set, and raising the tick cannot
+deliver more, only widen the gap. On a small server with small snapshots, 100 is
+comfortably deliverable.
+
+`snapstats` now measures this instead of estimating it: largest snapshot
+actually sent, the sustainable rate at that size for a 25000- and a 50000-rate
+client, and how many snapshots were held back by rate versus sent.
+
+**3. Raising the tick shrinks the packet-loss tolerance, because
+`PACKET_BACKUP` is a count.** `SV_WriteSnapshotToClient` gives up on delta
+compression and sends a full snapshot once `outgoingSequence - deltaMessage >=
+PACKET_BACKUP - 3` — 29 snapshots. As a *time* window that is 725 ms at 40,
+580 ms at 50, 290 ms at 100, 232 ms at 125. Full snapshots are the expensive
+ones, so a lossy client gets more expensive the higher the tick.
+
+**4. It multiplies the event problem from E49.** `EVENT_VALID_MSEC` is 300 ms
+against a tick, so each event holds a snapshot slot for 12 snapshots at 40 and
+**30 at 100** - directly worsening the thing that is already two thirds of the
+snapshot.
+
+**5. Bots are not a reason against it.** `bot_thinktime` gives each bot its own
+residual timer capped at 200 ms, so botlib does not run 2.5x more often at 2.5x
+the tick. This was the drawback I expected and it is not one.
+
+**So: 40 is the right answer today, and the lever worth pulling is `rate`, not
+`sv_fps`.** 50000 bytes/sec is 400 kbit — a 2026 connection is not the
+constraint, our own clamp is, and it is *our* clamp rather than stock Quake
+Live's. Raising the ceiling would let a full board's snapshot actually arrive at
+40 Hz, which is a real improvement where a higher tick is not. Deliberately not
+changed yet: it is a network governor and changing it mid-test would muddle the
+spawn and snapshot measurements. `sv_maxRate` already exists to cap the other
+direction.
+
 ### R10. Anisotropic filtering to x16 — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
