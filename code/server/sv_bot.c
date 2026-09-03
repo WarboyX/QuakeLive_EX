@@ -107,13 +107,6 @@ int SV_BotAllocateClient(void) {
     cl->lastPacketTime = svs.time;
     cl->netchan.remoteAddress.type = NA_BOT;
     cl->rate = 16384;
-    // [QL] Bots never reach SV_UserinfoChanged, so set the snapshot cap here.
-    // Their frames are read back by SV_BotGetSnapshotEntity rather than sent to
-    // any cgame, so there is nothing to be compatible with and every reason to
-    // give them the full count: on a bot-filled server they are most of the
-    // clients, and an entity dropped from a bot's snapshot is an enemy that bot
-    // cannot see.
-    cl->maxSnapshotEntities = MAX_SNAPSHOT_ENTITIES;
 
     return i;
 }

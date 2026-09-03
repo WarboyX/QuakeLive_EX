@@ -164,11 +164,6 @@ typedef struct client_s {
     int ping;
     int rate;          // bytes / second
     int snapshotMsec;  // requests a snapshot every snapshotMsec unless rate choked
-    // [QL] how many entities this client's snapshots may carry. Bots and clients
-    // running our engine get MAX_SNAPSHOT_ENTITIES; anything else is held to
-    // MAX_SNAPSHOT_ENTITIES_COMPAT, which is all a stock cgame can receive.
-    // Set in SV_UserinfoChanged.
-    int maxSnapshotEntities;
     int pureAuthentic;
     qboolean gotCP;  // TTimo - additional flag to distinguish between a bad pure checksum, and no cp command at all
     qboolean csUpdated[MAX_CONFIGSTRINGS];  // [QL] track configstrings modified while client is CS_PRIMED

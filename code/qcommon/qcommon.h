@@ -127,32 +127,7 @@ NET
 
 #define MAX_PACKET_USERCMDS 32  // max number of usercmd_t in a packet
 
-/*
-[QL] How many entities one snapshot may carry.
-
-There is no entity count on the wire: SV_EmitPacketEntities writes a delta list
-and terminates it with MAX_GENTITIES-1, and the client reads until it sees that.
-So this is not a protocol constant and two clients on the same server can be
-given different numbers of entities without either of them knowing.
-
-That matters because 256 is not enough at high player counts. On a 64-slot
-instagib server the console reported 1,350,347 entities discarded in one map,
-peaking near 50 per client per snapshot - a client seeing 256 of about 306
-entities actually in its PVS, with the surplus silently absent. It is not a
-straight function of player count, either: of four maps at the same 64 slots,
-two never hit the cap at all and trinity blew through it in bursts. It is how
-much of the server can see each other at once.
-
-MAX_SNAPSHOT_ENTITIES is now the ceiling, used to size the server's ring and the
-client's parse buffer. MAX_SNAPSHOT_ENTITIES_COMPAT is what a client that is not
-ours is held to - stock Steam Quake Live's cgame has a 256-entity snapshot_t and
-its engine truncates to that, so sending it more would only cost bandwidth it
-throws away. SV_UserinfoChanged picks per client off the "iqlclient" userinfo key
-our engine registers, which qagame already uses the same way for
-pers.extendedClient.
-*/
-#define MAX_SNAPSHOT_ENTITIES 512
-#define MAX_SNAPSHOT_ENTITIES_COMPAT 256
+#define MAX_SNAPSHOT_ENTITIES 256
 
 #define PORT_ANY -1
 

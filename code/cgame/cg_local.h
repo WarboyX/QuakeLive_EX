@@ -2392,7 +2392,6 @@ void trap_R_Font_DrawString(int x, int y, const char* text, int fontIndex, float
 void trap_R_Font_TextExtents(const char* text, int start, int limit, float scale, int fontIndex, int* outX, int* outY, int* outW, int* outH);
 void trap_R_GetGlyphInfo(int fontIndex, int charValue, glyphInfo_t* glyph);
 void trap_IME_SetCompositionFont(int fontIndex, float scale);
-void trap_SetSnapshotCapacity(int maxEntities);
 qboolean trap_Key_IsDown(int keynum);
 int trap_Key_GetCatcher(void);
 void trap_Key_SetCatcher(int catcher);

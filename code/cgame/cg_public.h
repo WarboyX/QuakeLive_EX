@@ -27,24 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // multiple commands may be combined into a single packet, so this
 // needs to be larger than PACKET_BACKUP
 
-/*
-[QL] How many entities a snapshot_t can hold, raised from 256 with
-MAX_SNAPSHOT_ENTITIES - see the note there for why 256 was not enough.
-
-This is an ABI number, not a protocol one: it is the size of an array in a
-struct cgame allocates and the client engine fills. Engine and cgame therefore
-have to agree, and they only do when both come out of the same iobin.pk3. Our
-engine loading Quake Live's cgame is not impossible - game modules are extracted
-from the first matching pak in the search path - and writing 512 entities into
-its 256-entry array would corrupt its memory rather than fail.
-
-So the engine does not assume. It holds itself to 256 until the loaded cgame
-calls trap_SetSnapshotCapacity to say what it can take (CG_SET_SNAPSHOT_CAPACITY
-below, appended to the syscall list, so a cgame that never calls it - which is
-every cgame but ours - keeps the old behaviour exactly).
-*/
-#define MAX_ENTITIES_IN_SNAPSHOT 512
-#define MAX_ENTITIES_IN_SNAPSHOT_COMPAT 256
+#define MAX_ENTITIES_IN_SNAPSHOT 256
 
 // snapshots are a view of the server at a given time
 
@@ -204,11 +187,7 @@ typedef enum {
     CG_R_FONT_DRAWSTRING,         // [QL] fontstash/stb_truetype text rendering
     CG_R_FONT_TEXTEXTENTS,
     CG_R_GETGLYPHINFO,
-    CG_IME_SETCOMPOSITIONFONT,
-
-    // [QL] appended, never inserted - the numbers below IME_SETCOMPOSITIONFONT
-    // are shared with stock Quake Live's cgame under protocol 91.
-    CG_SET_SNAPSHOT_CAPACITY      // [QL] how many entities this cgame's snapshot_t holds
+    CG_IME_SETCOMPOSITIONFONT
 } cgameImport_t;
 
 /*

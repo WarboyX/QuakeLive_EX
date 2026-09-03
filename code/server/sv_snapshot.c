@@ -232,9 +232,6 @@ Build a client snapshot structure
 
 typedef struct {
     int numSnapshotEntities;
-    // [QL] this client's cap, from client_t.maxSnapshotEntities - never above
-    // MAX_SNAPSHOT_ENTITIES, which is what the array below is sized for.
-    int maxEntities;
     int snapshotEntities[MAX_SNAPSHOT_ENTITIES];
 } snapshotEntityNumbers_t;
 
@@ -273,7 +270,7 @@ static void SV_AddEntToSnapshot(svEntity_t* svEnt, sharedEntity_t* gEnt, snapsho
     svEnt->snapshotCounter = sv.snapshotCounter;
 
     // if we are full, silently discard entities
-    if (eNums->numSnapshotEntities >= eNums->maxEntities) {
+    if (eNums->numSnapshotEntities == MAX_SNAPSHOT_ENTITIES) {
         // [QL] "Silently" is the problem on a busy server: past
         // MAX_SNAPSHOT_ENTITIES visible entities the surplus simply never
         // reaches that client, so players and items wink in and out and shots
@@ -286,7 +283,7 @@ static void SV_AddEntToSnapshot(svEntity_t* svEnt, sharedEntity_t* gEnt, snapsho
             sv.nextSnapshotOverflowWarn = svs.time + 10000;
             Com_Printf("WARNING: snapshot entity limit (%i) reached - %i entities dropped so far.\n"
                        "         Players and items may be invisible to some clients this frame.\n",
-                       eNums->maxEntities, sv.snapshotEntitiesDropped);
+                       MAX_SNAPSHOT_ENTITIES, sv.snapshotEntitiesDropped);
         }
         return;
     }
@@ -468,14 +465,6 @@ static void SV_BuildClientSnapshot(client_t* client) {
 
     // clear everything in this snapshot
     entityNumbers.numSnapshotEntities = 0;
-    // [QL] per-client cap; SV_UserinfoChanged sets it, but a client that has not
-    // sent userinfo yet would arrive here with 0 and get an empty snapshot.
-    entityNumbers.maxEntities = client->maxSnapshotEntities;
-    if (entityNumbers.maxEntities <= 0) {
-        entityNumbers.maxEntities = MAX_SNAPSHOT_ENTITIES_COMPAT;
-    } else if (entityNumbers.maxEntities > MAX_SNAPSHOT_ENTITIES) {
-        entityNumbers.maxEntities = MAX_SNAPSHOT_ENTITIES;
-    }
     Com_Memset(frame->areabits, 0, sizeof(frame->areabits));
 
     // https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=62
