@@ -1996,6 +1996,45 @@ Out of scope but adjacent: `SCR_DrawSmallChar` has the same fixed-pixel problem
 for everything else that uses it - loading screens, the lagometer text - and
 those were not touched.
 
+### E56. thunderstruck's team spawns were deleted at load — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"thunderstruck should have team spawn points because it's normally a team map"*
+— it does, and free-for-all was throwing them away before the spawn selector
+ever saw them.
+
+`G_SpawnGEntityFromSpawnVars` filters entities by gametype, and in a non-team
+gametype anything carrying `notfree 1`, or a `gametype` key that does not list
+ffa, is freed at load. Team spawn pads carry exactly those keys. So the count
+line's "5 info_player_deathmatch + 0 team pads" was accurate about what existed
+*by the time anything asked* — and completely misleading about what the map
+contains. Nothing was logged, because being filtered out is the normal, intended
+path for an entity that does not belong in this mode. (Confirmed it was the
+filter and not a missing spawn function: the log has no
+"doesn't have a spawn function" line at all.)
+
+For most entities that filter is right — a flag stand has no meaning in FFA. For
+a **spawn point** it is right only while the map has enough of its own, and when
+it does not, the alternative is not "a slightly wrong spawn" but a guaranteed
+telefrag. A pad the mapper placed for players to appear on is still a place a
+player can appear.
+
+So a filtered spawn point is now **kept in reserve rather than deleted**: it
+spawns with `FL_SPAWN_RESERVE`, `SelectRandomFurthestSpawnPoint` skips it while
+its own points have anything clear or warm, and reaches for it only in the
+widened pass. Spawn points are not linked, so holding them costs nothing on the
+wire, and every other classname is filtered exactly as before.
+`G_IsSpawnPointClassname` is the single list both the filter and the selector
+read, so the two cannot drift.
+
+The count line now reads "N info_player_deathmatch + M held in reserve for this
+gametype", which is the number that was actually wanted.
+
+**To verify:** thunderstruck in FFA should now report a non-zero reserve, and its
+259 telefrags should fall. If the reserve is still 0 the pads are under a
+classname `G_IsSpawnPointClassname` does not list, and that list is where to
+look.
+
 ### E55. thunderstruck, the clean test — CONFIRMED, and the telefrag account was right
 **Lives in:** n/a (results) · **Seen by:** n/a
 

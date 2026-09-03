@@ -308,11 +308,14 @@ static const char* const dmSpawnFallback[] = {
     "team_CTF_blueplayer",
 };
 
-static int G_CountSpawnPoints(const char* classname) {
+static int G_CountSpawnPoints(const char* classname, qboolean includeReserve) {
     gentity_t* spot = NULL;
     int count = 0;
 
     while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
+        if ((spot->flags & FL_SPAWN_RESERVE) && !includeReserve) {
+            continue;
+        }
         count++;
     }
     return count;
@@ -336,13 +339,14 @@ static void G_ReportSpawnPointCount(void) {
     }
     reportedLevel = level.startTime;
 
-    primary = G_CountSpawnPoints(dmSpawnPrimary);
+    primary = G_CountSpawnPoints(dmSpawnPrimary, qfalse);
     fallback = 0;
     for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback); i++) {
-        fallback += G_CountSpawnPoints(dmSpawnFallback[i]);
+        fallback += G_CountSpawnPoints(dmSpawnFallback[i], qtrue);
     }
+    fallback += G_CountSpawnPoints(dmSpawnPrimary, qtrue) - primary;
 
-    G_Printf("Spawn points: %i %s + %i team pads usable as a fallback, for up to %i players%s\n",
+    G_Printf("Spawn points: %i %s + %i held in reserve for this gametype, for up to %i players%s\n",
              primary, dmSpawnPrimary, fallback, level.maxclients,
              (primary + fallback > 0 && level.maxclients > (primary + fallback) * 2)
                  ? " - expect contested spawns" : "");
@@ -387,13 +391,21 @@ typedef struct {
     int numClear, numWarm, numTaken;
 } spawnCandidates_t;
 
-static void G_GatherSpawnPoints(spawnCandidates_t* c, const char* classname, qboolean isbot) {
+static void G_GatherSpawnPoints(spawnCandidates_t* c, const char* classname, qboolean isbot,
+                                qboolean allowReserve) {
     gentity_t* spot = NULL;
 
     while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
         if (((spot->flags & FL_NO_BOTS) && isbot) ||
             ((spot->flags & FL_NO_HUMANS) && !isbot)) {
             // spot is not for this human/bot player
+            continue;
+        }
+
+        /* [QL] A point this gametype's filters rejected. G_SpawnGEntityFromSpawnVars
+           keeps rather than deletes those now; they are for when the map's own
+           points have run out, not before. */
+        if ((spot->flags & FL_SPAWN_RESERVE) && !allowReserve) {
             continue;
         }
 
@@ -425,12 +437,14 @@ gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3
     G_ReportSpawnPointCount();
 
     memset(&c, 0, sizeof(c));
-    G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot);
+    G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot, qfalse);
 
     if (!c.numClear && !c.numWarm) {
         for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback); i++) {
-            G_GatherSpawnPoints(&c, dmSpawnFallback[i], isbot);
+            G_GatherSpawnPoints(&c, dmSpawnFallback[i], isbot, qtrue);
         }
+        /* and this gametype's own points that a filter had set aside */
+        G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot, qtrue);
     }
 
     if (c.numClear) {

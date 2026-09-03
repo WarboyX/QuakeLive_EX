@@ -470,6 +470,38 @@ static qboolean G_ItemValidForGametype(const char* classname) {
 
 /*
 ====================
+G_IsSpawnPointClassname
+
+[QL] Is this classname a place a player can appear? Kept in one function because
+SelectRandomFurthestSpawnPoint's fallback list has to agree with it - a spawn
+point held in reserve that the selector never queries is worse than one deleted,
+because it looks like it is there.
+====================
+*/
+qboolean G_IsSpawnPointClassname(const char* classname) {
+    static const char* const names[] = {
+        "info_player_deathmatch",
+        "info_player_start",
+        "team_CTF_redspawn",
+        "team_CTF_bluespawn",
+        "team_CTF_redplayer",
+        "team_CTF_blueplayer",
+    };
+    int i;
+
+    if (!classname) {
+        return qfalse;
+    }
+    for (i = 0; i < (int)ARRAY_LEN(names); i++) {
+        if (!Q_stricmp(classname, names[i])) {
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+/*
+====================
 G_GametypeInList
 
 [QL] Returns qtrue if the current gametype's short name is a whitespace
@@ -516,6 +548,7 @@ void G_SpawnGEntityFromSpawnVars(void) {
     gentity_t* ent;
     char* value;
     qboolean itemValid;
+    qboolean keepAsReserve;
 
     // get the next free entity
     ent = G_Spawn();
@@ -533,31 +566,67 @@ void G_SpawnGEntityFromSpawnVars(void) {
     // 3. "not_gametype" negative filter - suppress if current gametype is listed
     // The item-valid override skips all of these. No notsingle/notta in QL, and
     // the binary does NOT touch areaportals on a filtered-out entity.
+    /*
+    [QL] A spawn point these filters reject is kept in reserve, not deleted.
+
+    thunderstruck is a team map. In free-for-all it reported "5
+    info_player_deathmatch + 0 team pads", which is five places to put sixty-four
+    players and 259 telefrags - and the reason for the zero is right here: its
+    team pads carry notfree / a gametype list, and every one of them was freed at
+    load before the spawn selector ever saw it. Nothing said so, because being
+    filtered out is the normal, intended path for an entity that does not belong
+    in this mode.
+
+    For most entities that is exactly right - a flag stand has no meaning in FFA.
+    For a *spawn point* it is right only while the map has enough of its own, and
+    when it does not the alternative is not "a slightly wrong spawn", it is a
+    guaranteed telefrag. A pad the mapper placed for players to appear on is
+    still a place a player can appear.
+
+    So they spawn, flagged FL_SPAWN_RESERVE, and SelectRandomFurthestSpawnPoint
+    ignores them until its own points are exhausted. Spawn points are not linked,
+    so keeping them costs nothing on the wire. Every other classname is filtered
+    exactly as before.
+    */
+    keepAsReserve = G_IsSpawnPointClassname(ent->classname);
+
     if (g_gametype.integer >= GT_TEAM) {
         G_SpawnInt("notteam", "0", &i);
         if (i && !itemValid) {
-            G_FreeEntity(ent);
-            return;
+            if (!keepAsReserve) {
+                G_FreeEntity(ent);
+                return;
+            }
+            ent->flags |= FL_SPAWN_RESERVE;
         }
     } else {
         G_SpawnInt("notfree", "0", &i);
         if (i && !itemValid) {
-            G_FreeEntity(ent);
-            return;
+            if (!keepAsReserve) {
+                G_FreeEntity(ent);
+                return;
+            }
+            ent->flags |= FL_SPAWN_RESERVE;
         }
     }
 
     if (G_SpawnString("gametype", "", &value)) {
         if (!G_GametypeInList(value) && !itemValid) {
-            G_FreeEntity(ent);
-            return;
+            if (!keepAsReserve) {
+                G_FreeEntity(ent);
+                return;
+            }
+            ent->flags |= FL_SPAWN_RESERVE;
         }
     }
 
     if (G_SpawnString("not_gametype", "", &value)) {
         if (G_GametypeInList(value) && !itemValid) {
-            G_FreeEntity(ent);
-            return;
+            if (!keepAsReserve) {
+                G_FreeEntity(ent);
+                return;
+            }
+            ent->flags |= FL_SPAWN_RESERVE;
         }
     }
 

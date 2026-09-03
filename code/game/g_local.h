@@ -64,6 +64,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define FL_NOPOWERUP 0x00040000           // [QL] player can't pick up IT_POWERUP
 #define FL_DROPPED_ITEM_TIMED 0x00080000  // [QL] dropped powerup: ground age reduces duration
 #define FL_ITEM_TIMER 0x00100000          // [QL] item has an armed respawn timer
+#define FL_SPAWN_RESERVE 0x00200000       // [QL] spawn point a gametype filter would have deleted; kept as a last resort
 
 // movers are things like doors, plats, buttons, etc
 typedef enum {
@@ -802,6 +803,7 @@ qboolean FreezeTagInGame(void);      // [QL] 0x10067e00
 qboolean FreezeTagInWarmup(void);    // [QL] 0x10067e30
 void CalculateRanks(void);
 qboolean SpotWouldTelefrag(gentity_t* spot);
+qboolean G_IsSpawnPointClassname(const char* classname);
 
 //
 // g_svcmds.c
