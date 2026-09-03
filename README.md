@@ -309,9 +309,11 @@ https://discourse.ioquake.org
 
 ### Quake III Arena and Quake Live
 
-**id Software** — the game, its engine and its assets. Quake III Arena's engine
-was released under the GPL (see `COPYING.txt`); the assets were not, and are
-never redistributed by this project. Quake Live and Quake III Arena are
+**id Software** — the game, its engine and its assets.
+<https://github.com/id-Software/Quake-III-Arena>
+
+Quake III Arena's engine was released under the GPL (see `COPYING.txt`); the
+assets were not, and are never redistributed by this project. Quake Live and Quake III Arena are
 trademarks of id Software LLC, a ZeniMax Media company. This project is not
 affiliated with or endorsed by them.
 
@@ -322,9 +324,11 @@ on. <https://github.com/tjone270/ioquakelive>
 
 ### Quake Live Ex
 
-**WarboyX**
+**Jonathan "Warboy" Imler**
 
 ### ioquake3
+
+<https://github.com/ioquake/ioq3> · <https://ioquake3.org/>
 
 Maintainers
 

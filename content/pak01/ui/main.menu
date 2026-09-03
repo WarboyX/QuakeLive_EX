@@ -1647,71 +1647,80 @@
             text "Released as GPL source; the assets are not, and are never shipped here."  textscale .2
             rect 34 80 470 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
         }
+        itemDef {
+            text "github.com/id-Software/Quake-III-Arena"  textscale .2
+            rect 34 94 470 16  textaligny 12  forecolor .5 .65 .8 1  visible 1  decoration
+        }
 
         // ---- the engine ------------------------------------------------------
         itemDef {
             text "IOQUAKE3"  textscale .24
-            rect 20 110 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+            rect 20 118 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
         }
         itemDef {
             text "Maintainers"  textscale .2
-            rect 34 130 200 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+            rect 34 138 200 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
         }
         itemDef {
             text "James Canete"  textscale .2
-            rect 46 148 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 46 154 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Ludwig Nussel"  textscale .2
-            rect 46 164 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 46 170 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Thilo Schulz"  textscale .2
-            rect 46 180 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 46 186 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Tim Angus"  textscale .2
-            rect 46 196 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 46 202 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Tony J. White"  textscale .2
-            rect 270 148 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 270 154 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Jack Slater"  textscale .2
-            rect 270 164 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 270 170 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "Zack Middleton"  textscale .2
-            rect 270 180 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 270 186 220 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "and everyone credited in the ioquake3 README"  textscale .2
-            rect 270 196 250 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+            rect 270 202 250 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+        }
+
+        itemDef {
+            text "github.com/ioquake/ioq3  -  ioquake3.org"  textscale .2
+            rect 34 220 470 16  textaligny 12  forecolor .5 .65 .8 1  visible 1  decoration
         }
 
         // ---- the Quake Live fork ---------------------------------------------
         itemDef {
             text "IOQUAKELIVE"  textscale .24
-            rect 20 228 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+            rect 20 244 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
         }
         itemDef {
             text "tjone270 - the Quake Live protocol, game, cgame and ui work"  textscale .2
-            rect 34 248 470 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            rect 34 264 470 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
             text "github.com/tjone270/ioquakelive"  textscale .2
-            rect 34 264 470 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+            rect 34 280 470 16  textaligny 12  forecolor .5 .65 .8 1  visible 1  decoration
         }
 
         // ---- this ------------------------------------------------------------
         itemDef {
             text "QUAKE LIVE EX"  textscale .24
-            rect 20 296 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+            rect 20 312 480 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
         }
         itemDef {
-            text "WarboyX"  textscale .2
-            rect 34 316 470 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
+            text "Jonathan \"Warboy\" Imler"  textscale .2
+            rect 34 332 470 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
 
         itemDef {
