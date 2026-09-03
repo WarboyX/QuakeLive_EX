@@ -2056,6 +2056,16 @@ cosmetic identity *and* `com_gamename`, and those must not move together:
 `CLIENT_WINDOW_TITLE` now derives from `PRODUCT_NAME` rather than repeating the
 string, so a rename is one line.
 
+**Named.** `PRODUCT_NAME` is now `"Quake Live Ex"` - Ex for extended, on the
+Doom 64 EX pattern, which is a source port that has carried that shape of name
+for close to twenty years. What moved: the window title, the version stamps in
+the console and main menu, and the pid filename. What deliberately did **not**:
+`GAMENAME_NETWORK` and `com_gamename` (stock clients filter on it),
+`GAMENAME_FOR_MASTER`, `BASEGAME`, `STEAMPATH_NAME` (how we find the Steam
+install), `PROTOCOL_HANDLER`, and `HOMEPATH_NAME_*` - that last one is where
+configs and the extracted game modules live, so changing it would orphan every
+existing config for no gain.
+
 **Also worth recording for the same plan:** a Steam listing that requires
 ownership of the base game is a real mechanism, and the engine already reads
 `pak00.pk3` out of the Steam install (`STEAMPATH_NAME "Quake Live"`, and the

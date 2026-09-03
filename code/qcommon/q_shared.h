@@ -46,7 +46,7 @@ stays "Quake Live" whatever the product ends up being called.
 (GAMENAME_FOR_MASTER in qcommon.h is a third one, spelled without the space
 because a dpmaster filters on a single token.)
 */
-#define PRODUCT_NAME            "Quake Live"
+#define PRODUCT_NAME            "Quake Live Ex"
 #define GAMENAME_NETWORK        "Quake Live"  // do not change - see above
 #define BASEGAME                "baseqz"  // [QL] protocol/game name (sent over network)
 #define BASEGAME_DIR            "baseq3"  // filesystem directory for game data
