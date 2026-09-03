@@ -1682,7 +1682,7 @@ corner with the same shape of rect and already does it that way.
 Both strings go through it; "Voting has ended - next arena: <map>" is longer and
 was running off further.
 
-### R10. Anisotropic filtering to x16 — DONE (verify); path tracing — NOT VIABLE HERE
+### R10. Anisotropic filtering to x16 — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
 **AF was already implemented and already reaching the hardware.**
@@ -1706,33 +1706,74 @@ Range now 1..16 with the useful values named, instead of unbounded.
 **A menu control needs C34.** The video settings menu belongs to `pak00` and
 cannot be edited; the dropdown has to arrive with menus of our own.
 
-**Path tracing is not a feature that can be added to this renderer**, and the
-blocker is not effort. Recording why, so it does not get re-proposed:
+**Path tracing: corrected assessment.** An earlier version of this entry said
+the assets made it impossible. That was too absolute and the legal half of it was
+wrong, so it is restated properly.
 
-1. **No ray tracing anything.** `VK_KHR_acceleration_structure` and
-   `VK_KHR_ray_tracing_pipeline` are not requested and the backend is built
-   around fixed graphics pipelines. BLAS per model, TLAS per frame rebuilt for
-   animated MD3s, plus a denoiser (A-SVGF or equivalent) is a second renderer,
-   not a mode of this one.
-2. **The assets are the real blocker, and they are not ours.** Path tracing needs
-   PBR materials — roughness, metalness, normals — and physical light sources.
-   Quake 3 textures are diffuse-only and Quake 3 lighting is *baked into
-   lightmaps*: there are no lights to sample. Q2RTX solved both by hand-authoring
-   a material classification for every texture in the game and shipping new
-   texture sets. The equivalent here is 9,285 files in `pak00.pk3` — which is not
-   redistributable, so we could neither ship the derived data nor the textures it
-   describes. Without it a path tracer looks *worse* than the rasteriser, not
-   better.
-3. Q3's shader system — multi-stage, scrolling, animated, alpha-tested, sky
-   portals — has no path-traced equivalent; each would need a material
-   translation, which is the same content problem again.
+*Where the objection does not hold.* Deriving material data - normal, roughness,
+height from diffuse - is a real technique, not a fantasy: NVIDIA's RTX Remix
+ships a texture pipeline that does exactly this. And the redistribution problem
+is soluble the same way `docs/pak-manifest.txt` already solves its own: **ship the
+generator, not the output.** A tool that runs on the user's own legally-owned
+`pak00.pk3` and writes derived maps into their install redistributes nothing. That
+is a normal remaster-project pattern and it was wrong to present it as a wall.
 
-**What is actually reachable for high-end users**, in descending order of visible
-effect, all in this renderer: **R8** (dynamic lights are weak or absent — the
-biggest single upgrade available and already open), **R4** (the metallic look),
-then the post chain that already exists and mostly needs exposing and tuning —
-MSAA (`r_ext_multisample`), supersampling (`r_renderScale` with `r_fbo 1`), HDR
-and bloom, flares, dither.
+*Where it does hold, in order of severity.*
+
+1. **Lights, not materials, are the hard half - and extrapolation does not solve
+   them.** Quake 3 lighting is baked: `q3map2` strips `light` entities from the
+   BSP entity lump, so shipped maps generally contain no light sources at all,
+   only lightmaps and a lightgrid. A path tracer needs emitters. They would have
+   to come from shader keys (`q3map_surfacelight`, `qer_lightimage`) or be
+   hand-classified per texture, which is what Q2RTX actually did. "Which surfaces
+   glow" is far less inferable from a diffuse texture than "how rough is this".
+2. **The renderer is a second renderer.** No `VK_KHR_acceleration_structure` or
+   `VK_KHR_ray_tracing_pipeline` are requested and the backend is built around
+   fixed graphics pipelines. BLAS per model, TLAS rebuilt per frame for animated
+   MD3s, RT pipelines and a temporal denoiser is the person-years part, and it is
+   the dominant cost whatever happens with the assets.
+3. **Source resolution caps the quality.** Extrapolation gives you what is in the
+   diffuse texture; Quake 3-era art has little to extrapolate from, so the result
+   is mediocre without artist passes. Remix's good-looking titles all have
+   community remasters doing that work by hand.
+
+*The version of this that is actually reachable* is the hybrid: keep the baked
+lightmaps and lightgrid as the light field and ray trace only reflections and
+ambient occlusion on top. That is a real, well-trodden design, it needs no
+emitter classification, and it would look like a genuine upgrade - but it is
+"RT reflections", not path tracing, and it still needs (2).
+
+*Not applicable, worth knowing:* **RTX Remix only hooks D3D8/D3D9 fixed-function
+titles.** Quake Live is OpenGL/Vulkan, so Remix cannot attach. Projects that want
+Remix write a D3D9 backend specifically so it can - which is, again, a whole
+renderer backend.
+
+### R11. ReShade on Vulkan — works already; layers now named at startup
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Nothing to "bake in". ReShade's Vulkan support is an **implicit layer** inserted
+by the Vulkan loader, not a per-application hook, and this renderer goes through
+the loader: `SDL_Vulkan_LoadLibrary` opens `vulkan-1` and
+`SDL_Vulkan_GetVkGetInstanceProcAddr` returns the loader's entry point rather
+than a driver's. So it attaches to our swapchain like any other Vulkan title,
+with no code from us.
+
+`vk_initialize` now lists the instance layers the loader found, implicit ones
+included, so "is ReShade actually attached?" has an answer in the console instead
+of being inferred from whether the picture changed.
+
+**What to expect, and the one setting that matters.** ReShade wraps
+`vkQueuePresentKHR`, so its effects run *after* our own post chain (`r_fbo`,
+bloom, dither, greyscale) - they compose, ours first. Its depth-buffer effects -
+SSAO, DoF, and the screen-space "RTGI" shader, which is not ray tracing - need a
+depth image it can read, and **a multisampled depth attachment is not one**: run
+`r_ext_multisample 0` if those are wanted. Colour-only effects (tonemapping,
+sharpening, LUTs) are unaffected.
+
+Worth being clear about what it can and cannot do, given the question it came
+from: ReShade sees the final image and the depth buffer. It has no scene, no
+geometry and no materials, so it cannot ray trace anything, and its RTGI shader
+approximates bounce lighting from screen contents only.
 
 ### E48. `snapstats`, and a spawn-saturation report — TOOLING
 **Lives in:** our **server** (server engine + qagame) · **Seen by:** n/a

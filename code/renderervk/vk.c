@@ -23,6 +23,7 @@ VkDebugReportCallbackEXT vk_debug_callback = VK_NULL_HANDLE;
 //
 static PFN_vkCreateInstance								qvkCreateInstance;
 static PFN_vkEnumerateInstanceExtensionProperties		qvkEnumerateInstanceExtensionProperties;
+static PFN_vkEnumerateInstanceLayerProperties			qvkEnumerateInstanceLayerProperties;
 
 static PFN_vkCreateDevice								qvkCreateDevice;
 static PFN_vkDestroyInstance							qvkDestroyInstance;
@@ -1289,6 +1290,46 @@ static qboolean used_instance_extension( const char *ext )
 }
 
 
+/*
+[QL] Name the Vulkan layers sitting between us and the driver.
+
+Implicit layers - ReShade's Vulkan support, overlays, capture tools, driver
+injections - are inserted by the loader without the application asking for them
+or being able to see them in its own create call. When one of them changes what
+the game looks like, or breaks it, there is otherwise nothing anywhere saying it
+is there. vkEnumerateInstanceLayerProperties lists them because it reports what
+the loader found, implicit ones included.
+
+We go through the loader (SDL_Vulkan_LoadLibrary opens vulkan-1, and
+SDL_Vulkan_GetVkGetInstanceProcAddr hands back the loader's entry point rather
+than a driver's), which is what makes those layers able to attach in the first
+place - so this is also the confirmation that they can.
+*/
+static void report_instance_layers( void )
+{
+	VkLayerProperties *layers;
+	uint32_t count = 0;
+	uint32_t i;
+
+	if ( !qvkEnumerateInstanceLayerProperties ) {
+		return;
+	}
+	if ( qvkEnumerateInstanceLayerProperties( &count, NULL ) != VK_SUCCESS || count == 0 ) {
+		ri.Printf( PRINT_ALL, "...no Vulkan layers present\n" );
+		return;
+	}
+
+	layers = (VkLayerProperties *)ri.Malloc( sizeof( VkLayerProperties ) * count );
+	if ( qvkEnumerateInstanceLayerProperties( &count, layers ) == VK_SUCCESS ) {
+		ri.Printf( PRINT_ALL, "...Vulkan layers present (%i):\n", (int)count );
+		for ( i = 0; i < count; i++ ) {
+			ri.Printf( PRINT_ALL, "     %s\n", layers[i].layerName );
+		}
+	}
+	ri.Free( layers );
+}
+
+
 static void create_instance( void )
 {
 #ifdef USE_VK_VALIDATION
@@ -1927,6 +1968,9 @@ static void init_vulkan_library( void )
 		// Get functions that do not depend on VkInstance (vk_instance == nullptr at this point).
 		INIT_INSTANCE_FUNCTION( vkCreateInstance )
 		INIT_INSTANCE_FUNCTION( vkEnumerateInstanceExtensionProperties )
+		INIT_INSTANCE_FUNCTION_EXT( vkEnumerateInstanceLayerProperties )
+
+		report_instance_layers();
 
 		// Get instance level functions.
 		create_instance();
@@ -2125,6 +2169,7 @@ static void deinit_instance_functions( void )
 {
 	qvkCreateInstance = NULL;
 	qvkEnumerateInstanceExtensionProperties = NULL;
+	qvkEnumerateInstanceLayerProperties = NULL;
 
 	// instance functions:
 	qvkCreateDevice = NULL;
