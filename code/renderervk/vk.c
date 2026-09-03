@@ -4066,10 +4066,13 @@ void vk_initialize( void )
 		}
 		ri.Printf( PRINT_ALL, "...using %ix anisotropic filtering (device max %ix)\n",
 				   used, (int)vk.maxAnisotropy );
+	} else if ( !r_ext_texture_filter_anisotropic->integer ) {
+		/* Name the cvar. "disabled" on its own sent someone looking at the level
+		   control, which was set correctly - the gate was the other cvar, and
+		   classic.cfg sets it to 0 on purpose. */
+		ri.Printf( PRINT_ALL, "...anisotropic filtering off (r_ext_texture_filter_anisotropic 0)\n" );
 	} else {
-		ri.Printf( PRINT_ALL, "...anisotropic filtering %s\n",
-				   r_ext_texture_filter_anisotropic->integer
-					   ? "not supported by this device" : "disabled" );
+		ri.Printf( PRINT_ALL, "...anisotropic filtering not supported by this device\n" );
 	}
 
 	vk.screenMapSamples = MIN( vkMaxSamples, VK_SAMPLE_COUNT_4_BIT );

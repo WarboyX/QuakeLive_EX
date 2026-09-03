@@ -1954,6 +1954,82 @@ changed yet: it is a network governor and changing it mid-test would muddle the
 spawn and snapshot measurements. `sv_maxRate` already exists to cap the other
 direction.
 
+### E53. Measured: the spawn and snapshot work landed — CONFIRMED
+**Lives in:** n/a (results) · **Seen by:** n/a
+
+trinity, full 64-slot server, build f5e60ac.
+
+| | before | after |
+|---|---|---|
+| telefrags | 159 (of 651 deaths) | **24** (of 1866) |
+| weapon deaths | 492 | **1842** |
+| snapshot peak | 256 (overflowing) | **103** |
+| `invisible` in snapshot | 60 | **23** |
+| `events` in snapshot | 169 | **30** |
+| entities dropped | 1,350,347 | **0** |
+
+Telefrags are **1.3% of deaths**, from roughly half. And the two counters agree
+exactly: the saturation report says 24 spawns found no free point, and there
+were 24 telefrags. That is the model confirmed rather than just the outcome
+improving - every telefrag on that map was a genuinely full map, and nothing
+else.
+
+`events 169 → 30` is worth noting because it was not the target. Nothing was
+done to events; the drop is what happens when players stop dying constantly.
+The event flood was downstream of the spawn chain after all - which is the
+opposite of the correction in E45, where the *map-level* correlation said
+otherwise. Both readings were right about different things: across maps, drops
+track combat rather than telefrags; within one map, removing a telefrag storm
+removes the events it was generating. `EVENT_VALID_MSEC` no longer needs
+touching.
+
+**The snapshot ceiling is no longer a live problem** - peak 103 of 256, zero
+drops - so E46's per-client cap stays shelved.
+
+**Delivery, measured.** Largest snapshot actually sent: **1308 bytes**. At that
+size `SV_RateMsec` allows a default-`rate` client (25000) **18 snapshots a
+second** and a maximum-`rate` client (50000) **37** - both under `sv_fps 40`.
+So the earlier reasoning holds with a real number: for a remote player the rate
+clamp, not the tick, is what decides how many snapshots arrive, and raising
+`sv_fps` would change nothing for them.
+
+`held back by rate 0` in the same report is an artifact and not a contradiction:
+`SV_SendClientMessages` skips rate control for `NA_LOOPBACK`, and bots never
+reach the wire, so on a listen server with 63 bots there is nobody for the
+limiter to act on. The 1308 bytes is the real measurement; the delay count needs
+a remote client to mean anything.
+
+### E54. `classic.cfg` turned anisotropic filtering off permanently — DONE (verify)
+**Lives in:** our **client** (pak01 presets + menu + renderervk) · **Seen by:** our client only
+
+The startup line added in R10 earned itself immediately:
+
+```
+...anisotropic filtering disabled
+```
+
+On an RTX 5080. The cause is ours: **`content/pak01/classic.cfg` sets
+`r_ext_texture_filter_anisotropic 0`** — deliberately, "Quake 3 had no
+anisotropic filter" — and none of the other three presets set it back. That cvar
+is `CVAR_ARCHIVE`, so one press of CLASSIC writes 0 into the config and nothing
+ever undoes it. A preset that leaves a setting behind is a one-way door.
+
+Worse in combination with R12: the new render menu offers an Anisotropic Filter
+control bound to `r_ext_max_anisotropy`, which is gated on that *other* cvar. So
+the control could be set to 16x and do nothing at all - a working-looking widget
+over a silent no-op, which is the exact shape this codebase keeps producing.
+
+Three fixes, because each one is a separate hole:
+
+- **The presets are complete sets now.** `gloss.cfg` and `modern.cfg` set
+  anisotropy on at 16x, `voodoo.cfg` at 4x; `classic.cfg` keeps it off on
+  purpose and now also sets `r_ext_max_anisotropy 1` so the two agree.
+- **The menu control turns the gate on.** `action { exec
+  "r_ext_texture_filter_anisotropic 1" }` on the level widget, so picking a
+  level cannot be a no-op. "Off" is level 1, which is no filtering either way.
+- **The startup line names the cvar** rather than saying "disabled", which is
+  what sent me looking at the level control first.
+
 ### R10. Anisotropic filtering to x16 — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
