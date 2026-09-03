@@ -381,6 +381,12 @@ If the line width has changed, reformat the buffer.
 void Con_CheckResize(void) {
     int i, j, width, oldwidth, oldtotallines, numlines, numchars;
     short tbuf[CON_TEXTSIZE];
+    /* [QL] Say what the console worked out, once per size change. Three rounds
+       have now gone into console scaling and every one of them was reported as
+       "wrong" without a way to tell wrong-too-small from wrong-too-large, or
+       which build was running. This line settles all three at a glance. */
+    static int reportedWidth = -1;
+    static int reportedHeight = -1;
 
     // [QL] calculate linewidth from vidWidth and con_scale
     con.xadjust = 0;
@@ -391,6 +397,17 @@ void Con_CheckResize(void) {
     }
     if (width < 1) {
         width = 78;  // fallback before video init
+    }
+
+    if (cls.glconfig.vidWidth > 0 &&
+        (cls.glconfig.vidWidth != reportedWidth || cls.glconfig.vidHeight != reportedHeight)) {
+        reportedWidth = cls.glconfig.vidWidth;
+        reportedHeight = cls.glconfig.vidHeight;
+        Com_Printf("console: %ix%i, scale %.2f (%i columns, %ix%i px glyphs)%s\n",
+                   cls.glconfig.vidWidth, cls.glconfig.vidHeight, Con_Scale(),
+                   width, Con_CharW(), Con_CharH(),
+                   (con_scale && con_scale->value != 1.0f)
+                       ? va(", con_scale %g", con_scale->value) : "");
     }
 
     if (width == con.linewidth)

@@ -2035,6 +2035,56 @@ gametype", which is the number that was actually wanted.
 classname `G_IsSpawnPointClassname` does not list, and that list is where to
 look.
 
+### R16. Console text rendering — the bitmap charset is the ceiling
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+*"We might need to figure out the best way to render text going forward. I don't
+think the current method scales correctly across different DPI / Resolutions."*
+Correct, and there is an objective reason rather than a matter of taste.
+
+**The console draws through `cls.charSetShader`** - Quake 3's 16x16 bitmap
+atlas, one 8x16 pixel cell per glyph, blitted with `re.DrawStretchPic`. R14/R15
+made the *size* right by scaling that blit, and the size is now right: at
+3840x2160 it computes 4.0, giving 118 columns of 32x64 px glyphs, which is what
+the screenshot shows. But scaling a bitmap is magnification. A 4x stretch of an
+8x16 source is a 4x bilinear blur, and it gets *softer as the display gets
+better* - the opposite of what scaling for DPI is supposed to do. There is no
+value of `con_scale` that fixes that, because the pixels are not there.
+
+**The renderer already has the answer and the console is the only thing not
+using it.** `refexport_t` exposes `Font_DrawString`, `TextBounds`,
+`GetGlyphInfo` - fontstash/stb_truetype, added for the HUD and scoreboard, and
+reachable from the client engine as `re.` without any new syscall. It rasterises
+glyphs at the requested size, so they are crisp at 1080p and crisp at 2160p.
+
+**And the font that fits is already loaded.** `tr_font_vk.c` maps
+`FONT_DEFAULT=0, FONT_SANS=1, FONT_MONO=2`. A console wants monospace - the
+column grid is the whole point of `con.text` being a fixed-width buffer - so
+`FONT_MONO` keeps the existing wrapping and alignment logic intact rather than
+forcing a proportional font into a character grid.
+
+**What the change involves**, so the cost is visible before it is started:
+
+1. Cell metrics from the font instead of `SMALLCHAR_WIDTH/HEIGHT` - one
+   `GetGlyphInfo` or `TextBounds` call to get the mono advance at the chosen
+   scale, feeding `Con_CharW`/`Con_CharH` and therefore `con.linewidth`
+   unchanged.
+2. `Con_DrawSolidConsole` batches runs of same-coloured characters into
+   `Font_DrawString` calls rather than one `DrawStretchPic` per glyph. The
+   console already tracks colour runs for `re.SetColor`, so the loop shape is
+   there.
+3. `Con_DrawInputField` and `Con_DrawNotify` follow the same path.
+4. Behind `con_font` (default on, 0 for the bitmap charset) so it is revertible
+   without a build, given how many rounds this has already taken.
+
+Not started - this is a design change to something that has churned three times
+already and the call is the user's.
+
+**Meanwhile `Con_CheckResize` now prints what it computed**, once per size
+change: resolution, scale, columns, glyph pixels, and `con_scale` when it is not
+1. Every previous report of "the console is wrong" arrived without a way to tell
+too-small from too-large, or which build was running. That is now one line.
+
 ### E55. thunderstruck, the clean test — CONFIRMED, and the telefrag account was right
 **Lives in:** n/a (results) · **Seen by:** n/a
 
