@@ -1273,6 +1273,28 @@ void SV_UserinfoChanged(client_t* cl) {
     if (Sys_IsLANAddress(cl->netchan.remoteAddress) && sv_lanForceRate->integer == 1) {
         cl->rate = 99999;
     }
+    /*
+    [QL] How many entities this client's snapshots may carry.
+
+    Not a protocol negotiation - there is no entity count on the wire, so this is
+    purely how many the server chooses to put in. A stock Steam client's cgame
+    has a 256-entity snapshot_t and its engine truncates to that before handing
+    the snapshot over, so anything past 256 would be bandwidth it pays for and
+    discards; it stays exactly where it is today. Ours says so in its userinfo,
+    the same "iqlclient" key qagame reads for pers.extendedClient, and gets the
+    full ring.
+
+    Bots are read out of the server's own frames by SV_BotGetSnapshotEntity and
+    never go near a cgame, so they get the full count too - and they are most of
+    the clients on a bot-filled server, which is where the cap was being hit.
+    */
+    if (cl->netchan.remoteAddress.type == NA_BOT ||
+        atoi(Info_ValueForKey(cl->userinfo, "iqlclient")) > 0) {
+        cl->maxSnapshotEntities = MAX_SNAPSHOT_ENTITIES;
+    } else {
+        cl->maxSnapshotEntities = MAX_SNAPSHOT_ENTITIES_COMPAT;
+    }
+
     // [QL] snapshot rate is always locked to sv_fps - no client "snaps" negotiation
     i = 1000 / sv_fps->integer;
     if (i != cl->snapshotMsec) {

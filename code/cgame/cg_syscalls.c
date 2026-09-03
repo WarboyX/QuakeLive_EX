@@ -436,3 +436,15 @@ void trap_Key_KeynumToStringBuf(int keynum, char* buf, int buflen) {
 void trap_S_MuteClient(int clientNum, qboolean mute) {
     syscall(CG_S_MUTECLIENT, clientNum, mute);
 }
+
+/*
+[QL] Tell the engine how many entities our snapshot_t holds.
+
+The engine fills that array directly, so it has to know the size rather than
+assume one. Everything before this call - and every cgame that never makes it -
+is held to MAX_ENTITIES_IN_SNAPSHOT_COMPAT, which is what a snapshot_t used to
+be. See the note in cg_public.h.
+*/
+void trap_SetSnapshotCapacity(int maxEntities) {
+    syscall(CG_SET_SNAPSHOT_CAPACITY, maxEntities);
+}

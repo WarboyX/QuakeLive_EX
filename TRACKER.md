@@ -1682,6 +1682,75 @@ corner with the same shape of rect and already does it that way.
 Both strings go through it; "Voting has ended - next arena: <map>" is longer and
 was running off further.
 
+### E41. Snapshot entity cap raised per client, stock clients untouched — DONE (verify)
+**Lives in:** **both** (server engine + client engine + cgame) · **Seen by:** our client only (stock clients get exactly what they got before)
+
+*"is there a way to fix snapshot entity without tossing the stock client?"* Yes,
+and the reason is that **256 was never a protocol number**. `SV_EmitPacketEntities`
+writes a delta list and terminates it with `MAX_GENTITIES-1`; the client reads
+until it sees that. There is no count field, so two clients on the same server
+can be given different numbers of entities and neither can tell.
+
+So the cap is now per client:
+
+| client | cap | why |
+|---|---|---|
+| ours (`iqlclient` in userinfo) | 512 | engine and cgame ship together in `iobin.pk3` |
+| bots | 512 | read back by `SV_BotGetSnapshotEntity`, never near a cgame |
+| stock Steam client | 256 | its `snapshot_t` holds 256 and its engine truncates to that |
+
+A stock client is not merely unbroken, it is **unchanged** — same entities, same
+bytes, same delta window. Sending it more would be bandwidth it discards.
+`iqlclient` is the same `CVAR_ROM` userinfo key qagame already reads for
+`pers.extendedClient`, so the identification was in place.
+
+**The ABI hazard, which is the part that needed care.** `MAX_ENTITIES_IN_SNAPSHOT`
+is not a protocol number either — it is the size of an array inside a
+`snapshot_t` that *cgame* owns and the engine writes into. Our engine loading
+Quake Live's cgame is reachable (modules are extracted from the first matching
+pak in the search path), and writing 512 entities into its 256-entry array would
+corrupt its memory rather than fail. So the engine no longer assumes: it holds
+itself to 256 until the loaded cgame calls `CG_SET_SNAPSHOT_CAPACITY` from
+`CG_Init`. Appended to the syscall list, never inserted — the numbers below it
+are shared with stock cgame under protocol 91 — and a module that never calls it
+keeps the old behaviour exactly.
+
+**What the log actually showed**, because the headline number is misleading.
+1,350,347 sounds catastrophic and mostly is not:
+
+- Four maps, all at 64 slots (63 bots + one player). **citycrossings and
+  arkinholm never hit the cap at all**; castledeathstalker hit it lightly
+  (83,675 across eight ten-second windows, ~0.4 entities per client-snapshot);
+  trinity produced 1.27M inside a *single* ten-second window and was otherwise
+  quiet. It is not a function of player count — it is how much of the server can
+  see itself at once, which is a map property.
+- The counter is server-wide, and 63 of the 64 clients were bots. Bots do use
+  these snapshots (that is their vision), so the drops were real, but they were
+  mostly bots failing to see each other rather than the player failing to see
+  the game.
+- The peak: 1.27M over ten seconds, `sv_fps` 40, 64 clients = 2560
+  client-snapshots per second, so about **50 entities dropped per client per
+  snapshot** — a client being shown 256 of roughly 306 in its PVS. Treat 50 as
+  an upper bound: the warning is gated to one per ten seconds, so the window is
+  *at least* that long.
+
+**On the player limit, if this had not been fixable.** Peak demand measured
+~306, so the honest answer would have been **around 40** on an open map — cut
+enough players to shed ~50 entities, at roughly one to two entities per player.
+But that is one burst on one map, and three of four maps were fine at a full 64,
+so a flat player cap would have been paying everywhere for a problem that
+appears in one place. 512 covers the worst thing observed with about 40% spare.
+
+**Cost.** The server's snapshot ring doubles: at `sv_maxclients 64` it is 236 MB
+and the derived `com_hunkMegs` floor goes from ~214 to ~332. `Com_InitHunkMemory`
+already computes that floor from `MAX_SNAPSHOT_ENTITIES` and prints it, so this
+raises itself. Client-side `cl.parseEntities` goes 1.8 MB → 3.7 MB and cgame's
+two `snapshot_t` 119 KB → 237 KB.
+
+**To verify:** a full server on trinity. `WARNING: snapshot entity limit` should
+be gone or rare, and the number it prints is now the cap of whichever client hit
+it — 512 for us and bots, 256 if a stock client is what ran out.
+
 ### E39. A map's ambient speakers looped the hit beep — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** **every client**
 

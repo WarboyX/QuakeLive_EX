@@ -32,6 +32,16 @@ extern void startCamera(int time);
 extern qboolean getCameraInfo(int time, vec3_t* origin, vec3_t* angles);
 
 /*
+[QL] Entities the loaded cgame's snapshot_t can hold.
+
+CL_GetSnapshot writes straight into a buffer cgame owns, so this is the size of
+someone else's array and guessing it wrong corrupts their memory. Set to the
+compat value when a cgame is loaded and only raised if that cgame calls
+CG_SET_SNAPSHOT_CAPACITY, which ours does from CG_Init and no other does.
+*/
+static int cl_snapshotCapacity = MAX_ENTITIES_IN_SNAPSHOT_COMPAT;
+
+/*
 ====================
 CL_GetGameState
 ====================
@@ -146,9 +156,9 @@ qboolean CL_GetSnapshot(int snapshotNumber, snapshot_t* snapshot) {
     Com_Memcpy(snapshot->areamask, clSnap->areamask, sizeof(snapshot->areamask));
     snapshot->ps = clSnap->ps;
     count = clSnap->numEntities;
-    if (count > MAX_ENTITIES_IN_SNAPSHOT) {
-        Com_DPrintf("CL_GetSnapshot: truncated %i entities to %i\n", count, MAX_ENTITIES_IN_SNAPSHOT);
-        count = MAX_ENTITIES_IN_SNAPSHOT;
+    if (count > cl_snapshotCapacity) {
+        Com_DPrintf("CL_GetSnapshot: truncated %i entities to %i\n", count, cl_snapshotCapacity);
+        count = cl_snapshotCapacity;
     }
     snapshot->numEntities = count;
     for (i = 0; i < count; i++) {
@@ -541,6 +551,18 @@ intptr_t CL_CgameSystemCalls(intptr_t* args) {
         case CG_IME_SETCOMPOSITIONFONT:
             re.SetCompositionFont(args[1], VMF(2));
             return 0;
+        case CG_SET_SNAPSHOT_CAPACITY:
+            // [QL] cgame declaring how many entities its snapshot_t holds. Clamp
+            // to what this engine can supply and never below the compat size, so
+            // a wrong value from a module cannot make the engine overrun it or
+            // starve it.
+            cl_snapshotCapacity = args[1];
+            if (cl_snapshotCapacity < MAX_ENTITIES_IN_SNAPSHOT_COMPAT) {
+                cl_snapshotCapacity = MAX_ENTITIES_IN_SNAPSHOT_COMPAT;
+            } else if (cl_snapshotCapacity > MAX_ENTITIES_IN_SNAPSHOT) {
+                cl_snapshotCapacity = MAX_ENTITIES_IN_SNAPSHOT;
+            }
+            return 0;
         case CG_R_CLEARSCENE:
             re.ClearScene();
             return 0;
@@ -737,6 +759,11 @@ void CL_InitCGame(void) {
         Com_Error(ERR_DROP, "VM_Create on cgame failed");
     }
     clc.state = CA_LOADING;
+
+    // [QL] Assume the smallest snapshot_t until this cgame says otherwise. A
+    // module that never calls CG_SET_SNAPSHOT_CAPACITY - anyone's but ours -
+    // must keep getting exactly what it got before.
+    cl_snapshotCapacity = MAX_ENTITIES_IN_SNAPSHOT_COMPAT;
 
     // [QL] register cgame cvars before init
     VM_Call(cgvm, CG_REGISTER_CVARS);

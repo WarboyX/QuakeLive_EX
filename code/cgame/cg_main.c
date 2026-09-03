@@ -3302,6 +3302,10 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum) {
     // stamps the game modules, so the console settles the other half.
     CG_Printf("^3cgame^7 built %s %s\n", __DATE__, __TIME__);
 
+    // [QL] Before anything asks for a snapshot: the engine holds itself to the
+    // old 256 until a cgame says what its snapshot_t can actually take.
+    trap_SetSnapshotCapacity(MAX_ENTITIES_IN_SNAPSHOT);
+
     // clear everything
     memset(&cgs, 0, sizeof(cgs));
     memset(&cg, 0, sizeof(cg));
