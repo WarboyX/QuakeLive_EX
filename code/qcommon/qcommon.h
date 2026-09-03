@@ -787,6 +787,8 @@ void Info_Print(const char* s);
 void Com_BeginRedirect(char* buffer, int buffersize, void (*flush)(char*));
 void Com_EndRedirect(void);
 void QDECL Com_Printf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+// [QL] The log file currently being written - see logfile_keep.
+const char* Com_LogFileName(void);
 void QDECL Com_DPrintf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void QDECL Com_Error(int code, const char* fmt, ...) __attribute__((noreturn, format(printf, 2, 3)));
 void Com_Quit_f(void) __attribute__((noreturn));

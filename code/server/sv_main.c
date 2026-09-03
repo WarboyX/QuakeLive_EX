@@ -163,7 +163,23 @@ A NULL client will broadcast to all clients
 */
 void QDECL SV_SendServerCommand(client_t* cl, const char* fmt, ...) {
     va_list argptr;
-    byte message[MAX_MSGLEN];
+    /*
+    [QL] 1 KB, not MAX_MSGLEN.
+
+    A server command longer than 1022 characters is thrown away a few lines
+    down, so sixteen kilobytes of stack per call was buying nothing - and this
+    function can recurse. SV_DropClient broadcasts the reason it dropped
+    somebody, that broadcast can overflow another client's reliable buffer,
+    SV_AddServerCommand drops that client too, and round it goes. At 16 KB a
+    level a 64-slot server exhausts a megabyte of stack before it runs out of
+    clients: exception 0xc00000fd, with SV_DropClient and SV_SendServerCommand
+    alternating all the way down the crash report.
+
+    The recursion itself is stopped in SV_DropClient. This makes the frame
+    cheap enough that the depth would not matter even if something else found a
+    way to nest: any message that survives the length test fits here exactly.
+    */
+    byte message[1024];
     client_t* client;
     int j;
 

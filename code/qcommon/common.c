@@ -75,6 +75,18 @@ cvar_t* com_timedemo;
 cvar_t* com_sv_running;
 cvar_t* com_cl_running;
 cvar_t* com_logfile;  // 1 = buffer log, 2 = flush after each print
+cvar_t* com_logfileKeep;  // [QL] 0 = replace, 1 = append, 2 = one file per run
+static char com_logfileName[MAX_QPATH] = "qconsole.log";
+
+/*
+[QL] The log file actually being written, for anything that needs to tell
+someone where to look - the crash handler says "read this" and would otherwise
+name qconsole.log whatever logfile_keep chose.
+*/
+const char* Com_LogFileName(void) {
+    return com_logfileName;
+}
+
 cvar_t* com_pipefile;
 cvar_t* com_showtrace;
 cvar_t* com_version;
@@ -198,11 +210,55 @@ void QDECL Com_Printf(const char* fmt, ...) {
             time(&aclock);
             newtime = localtime(&aclock);
 
-            logfile = FS_FOpenFileWrite("qconsole.log");
+            /*
+            [QL] What happens to the log of the previous run - replace, keep,
+            or file it separately.
+
+            It was always truncated, which is the wrong default for the job the
+            log is mostly used for here. Chasing a crash means setting
+            logfile 2, reproducing, and reading what led up to it - and the
+            reproduce step is a relaunch, which threw away the log of the run
+            that had just crashed. The evidence was being deleted by the act of
+            going to collect it.
+
+            logfile_keep says what to do instead:
+
+              0  replace qconsole.log, the old behaviour and still the right
+                 one when the log means "what happened just now"
+              1  append to qconsole.log, with a separator so one run can be
+                 told from the next
+              2  a file per run, qconsole-YYYYMMDD-HHMMSS.log, which keeps runs
+                 apart without any one file growing forever
+
+            Two costs the header should state rather than let anyone discover:
+            appending means the file grows until it is deleted by hand, and a
+            file per run means one file per launch in fs_homepath.
+            */
+            {
+                int keep = com_logfileKeep ? com_logfileKeep->integer : 0;
+
+                if (keep >= 2) {
+                    Com_sprintf(com_logfileName, sizeof(com_logfileName),
+                                "qconsole-%04d%02d%02d-%02d%02d%02d.log",
+                                newtime->tm_year + 1900, newtime->tm_mon + 1, newtime->tm_mday,
+                                newtime->tm_hour, newtime->tm_min, newtime->tm_sec);
+                    logfile = FS_FOpenFileWrite(com_logfileName);
+                } else {
+                    Q_strncpyz(com_logfileName, "qconsole.log", sizeof(com_logfileName));
+                    logfile = (keep == 1) ? FS_FOpenFileAppend(com_logfileName)
+                                          : FS_FOpenFileWrite(com_logfileName);
+                }
+
+                if (logfile) {
+                    if (keep == 1) {
+                        Com_Printf("\n===== %s continued on %s", com_logfileName, asctime(newtime));
+                    } else {
+                        Com_Printf("%s opened on %s\n", com_logfileName, asctime(newtime));
+                    }
+                }
+            }
 
             if (logfile) {
-                Com_Printf("logfile opened on %s\n", asctime(newtime));
-
                 if (com_logfile->integer > 1) {
                     // force it to not buffer so we get valid
                     // data even if we are crashing
@@ -2511,6 +2567,12 @@ void Com_Init(char* commandLine) {
     com_blood = Cvar_Get("com_blood", "1", CVAR_ARCHIVE);
 
     com_logfile = Cvar_Get("logfile", "0", CVAR_TEMP);
+    // [QL] CVAR_TEMP like logfile itself: both are things you turn on to chase
+    // something, and neither should survive into a config and quietly stay on.
+    com_logfileKeep = Cvar_Get("logfile_keep", "0", CVAR_TEMP);
+    Cvar_SetDescription(com_logfileKeep,
+        "what happens to the previous run's log: 0 replace qconsole.log, 1 append to "
+        "it, 2 write a new qconsole-YYYYMMDD-HHMMSS.log per run");
 
     com_timescale = Cvar_Get("timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO);
     com_fixedtime = Cvar_Get("fixedtime", "0", CVAR_CHEAT);

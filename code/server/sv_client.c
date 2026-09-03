@@ -488,6 +488,9 @@ or unwillingly.  This is NOT called if the entire server is quiting
 or crashing -- SV_FinalMessage() will handle that
 =====================
 */
+// [QL] Set while a drop is being announced - see the broadcast below.
+static qboolean sv_droppingClient = qfalse;
+
 void SV_DropClient(client_t* drop, const char* reason) {
     int i;
     challenge_t* challenge;
@@ -525,8 +528,38 @@ void SV_DropClient(client_t* drop, const char* reason) {
     // will receive many server commands during the drop
     drop->gamestateMessageNum = -1;
 
-    // tell everyone why they got dropped
-    SV_SendServerCommand(NULL, "print \"%s" S_COLOR_WHITE " %s\n\"", drop->name, reason);
+    /*
+    [QL] Announce the drop to everyone else - unless we are already inside one.
+
+    This broadcast is what makes a single overflow take the server down. A
+    client whose reliable buffer is full gets dropped by SV_AddServerCommand;
+    dropping it broadcasts the reason to every client; that broadcast is one
+    more reliable command, so it overflows the next client that was also near
+    the ceiling, which drops that one, which broadcasts again. Each level is a
+    nested SV_SendServerCommand, and on a full server the recursion runs about
+    as deep as there are clients - exception 0xc00000fd, a stack overflow, with
+    SV_DropClient and SV_SendServerCommand alternating down the whole report.
+
+    The log tail from the field shows it exactly:
+
+        cmd 139: print "Lucy^7 Server command overflow"
+        SV_DropClient: dropping client 61 (Klesk), reason='Server command overflow'
+
+    gamestateMessageNum = -1 above already stops the client being dropped from
+    recursing on itself. It does nothing about the broadcast landing on someone
+    else, which is the case that actually happens - clients go over the ceiling
+    together, because what fills the buffer is broadcast traffic they all
+    receive.
+
+    So a drop that happens during a drop is silent. Everyone still gets told
+    about the first one, the dropped clients still get their own disconnect
+    command, and the console still records each one.
+    */
+    if (!sv_droppingClient) {
+        sv_droppingClient = qtrue;
+        SV_SendServerCommand(NULL, "print \"%s" S_COLOR_WHITE " %s\n\"", drop->name, reason);
+        sv_droppingClient = qfalse;
+    }
 
     // call the prog function for removing a client
     // this will remove the body, among other things

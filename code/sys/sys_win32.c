@@ -1003,8 +1003,10 @@ static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
                        "across runs and can be matched against a build of the same revision.\r\n"
                        "\r\n"
                        "For the console output leading up to this, set \"logfile 2\" before\r\n"
-                       "reproducing - qconsole.log is written next to this file and flushed\r\n"
-                       "after every line, so it survives a crash.\r\n");
+                       "reproducing - %s is written next to this file and flushed\r\n"
+                       "after every line, so it survives a crash. \"logfile_keep 1\" adds to\r\n"
+                       "it instead of replacing it; \"logfile_keep 2\" writes one file per run.\r\n",
+                       Com_LogFileName());
 
     homepath = Cvar_VariableString("fs_homepath");
     if (*homepath) {
