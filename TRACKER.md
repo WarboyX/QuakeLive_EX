@@ -1521,7 +1521,9 @@ over the ordinary player model, so anything model-shaped is the wrong direction.
 Four separate faults this cycle were all the same fault: the menu we needed to
 change belongs to Quake Live.
 
-- FFA scoreboard columns do not line up with their headers.
+- FFA scoreboard columns do not line up with their headers. *(Worked around in
+  C35 - the headings are now drawn from C at the list's own column positions.
+  The menu is still QL's.)*
 - Controls has no Back, Apply or Reset.
 - The Settings tab bar had no page behind it (U10) because QL fills that panel
   with a web view we do not have.
@@ -1583,6 +1585,68 @@ buttons are a ui-side job. Worth doing together, not worth confusing.
   `Menu_UpdatePosition`. Comparing authored rects across two menus without
   applying that is how the "Return to match" overlap was misdiagnosed.
 
+
+### C35. The FFA scoreboard, where the team boards look right — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+*"we made the scrollbars, we got the team scoreboard ones looking good, whats
+wrong with FFA?"* — and before that, "elements are misaligned", "the scroll bar
+... not aligned".
+
+Nothing in the scrollbar code. All three faults are the same shape: a correction
+that is right for the team boards was applied to menus whose geometry is not the
+team boards'.
+
+**1. The vertical nudge.** `CG_OffsetScoreboardList` pushes the rows down by
+`cg_scoreboardListOffset` (8) because the team menus put their headings *inside*
+the list rect — `ingame_scoreboard_ctf` has PLAYER/SCORE/K/D at y 170 with the
+list at `rect 73 165 284 130`, so row one lands on the header band. The non-team
+menus do not: `ingame_scoreboard_ffa` has its headings at y 156 and the list at
+`rect 77 161 486 180`, above the rows and clear of them. Shifting it anyway put
+the rows and the position bar 8 units below the panel: list bottom 311 against a
+panel body that ends at 306, so the bar ran out across the bottom frame art and
+into the stats bar. The shift now applies to `FEEDER_REDTEAM_LIST` /
+`FEEDER_BLUETEAM_LIST` only.
+
+**2. The bar column.** `Item_ListBox_Paint` hangs the bar off the right end of
+the list rect, and where that lands relative to the panel behind it is the
+menu's business. The team lists overhang their panel (rect right 332, panel
+outer right 318) so the bar sits on the frame — which is the look that was
+called good. The non-team lists stop short of theirs (rect right 563, panel
+outer right 569), so the same arithmetic left the bar floating 14 units inside
+the panel with the row highlight ending short of it. Both non-team layouts are
+inset from their panel identically — in game, list x 77 against a body of
+81..559; at the end, list x 122 against 126..604; each 486 wide against a 478+10
+panel — so one correction covers both: `rect.w += 20` for the non-team feeders.
+
+**3. The headings.** Not drift in our text code. Quake Live heads the number
+columns of the FFA / duel / race / RR boards with **one** item,
+
+```
+text "SCORE     K/D         DMG        WEAP        TIME     PING"
+```
+
+space-padded so the words land over the columns — counted against *their* font.
+We draw through a different one, so each label inherits the error of the ones
+before it and the gap grows across the row: SCORE about right, PING furthest
+out, exactly the progressive drift in the screenshot. The team boards escape it
+because they give every heading its own itemDef with its own rect.
+
+So the padded item is hidden and the six words are painted after `Menu_Paint` at
+`contentX + columnInfo[c].pos` — the list's own column positions, the same ones
+`Item_ListBox_Paint` puts the row text at, so a heading cannot drift from its
+column whatever the font does. Columns from `CG_FeederColumnsFfa`: 7 score,
+8 frags/deaths, 9 damage, 10 weapon icon, 12 time, 13 ping. Absolute x works out
+as 305 345 387 428 475 509, and QL's combined item starts at 305 — the first
+label was in the right place, which is why only the later ones looked wrong.
+
+Worth noting what this is not: none of it is a rendering bug, and none of it
+would be needed if the menus were ours. It is the third entry on C34's list.
+
+**To verify:** FFA, duel, race and RR, in game and at intermission — headings
+over their columns, position bar on the frame edge and inside the panel top to
+bottom, row highlight reaching it. The team boards must look exactly as they do
+now.
 
 ### E31. Joining mid-round demoted you to spectator, permanently — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client

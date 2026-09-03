@@ -1812,6 +1812,111 @@ static void CG_DrawTeamVote(void) {
 }
 
 /*
+[QL] The non-team scoreboards' column headings.
+
+Quake Live heads the number columns of its FFA / duel / race / RR boards with a
+single text item:
+
+    text "SCORE     K/D         DMG        WEAP        TIME     PING"
+
+and space-pads it so the words land over the columns. Those runs of spaces were
+counted against Quake Live's own font. We draw through a different one, so every
+label picks up the error of the ones before it and the drift grows across the
+row - SCORE lands about right, PING ends up furthest out. The team boards are
+not affected because they give each heading its own itemDef with its own rect;
+nothing in our code was ever wrong here, the heading is simply data that assumes
+a font we do not have.
+
+So the padded item is hidden and the six words are drawn at the list's own
+column positions. Item_ListBox_Paint puts row text at contentX +
+columnInfo[c].pos, so a heading placed the same way is nailed to its column and
+cannot drift whatever the font does. The columns are the ones
+CG_FeederColumnsFfa fills: 7 score, 8 frags/deaths, 9 damage, 10 the weapon
+icon, 12 time, 13 ping. (Column 11, the best-weapon percentage, shares the WEAP
+heading with the icon, and 6 is unused.)
+*/
+typedef struct {
+	int column;
+	const char *label;
+} scoreboardHeading_t;
+
+static const scoreboardHeading_t cg_scoreboardHeadings[] = {
+	{ 7,  "SCORE" },
+	{ 8,  "K/D"   },
+	{ 9,  "DMG"   },
+	{ 10, "WEAP"  },
+	{ 12, "TIME"  },
+	{ 13, "PING"  },
+};
+
+/* Matched on its text rather than its name: every heading in these menus is
+   called "teamheadings", and the PLAYER one - which has its own rect and is
+   correct as it stands - would match a name test too. */
+static itemDef_t *CG_FindPaddedHeading(menuDef_t *menu) {
+	int i;
+
+	if (!menu) {
+		return NULL;
+	}
+	for (i = 0; i < menu->itemCount; i++) {
+		itemDef_t *item = menu->items[i];
+
+		if (item->type == ITEM_TYPE_LISTBOX || !item->text) {
+			continue;
+		}
+		if (strstr(item->text, "K/D") && strstr(item->text, "PING")) {
+			return item;
+		}
+	}
+	return NULL;
+}
+
+static void CG_HidePaddedHeading(menuDef_t *menu) {
+	itemDef_t *heading = CG_FindPaddedHeading(menu);
+
+	if (heading) {
+		heading->window.flags &= ~WINDOW_VISIBLE;
+	}
+}
+
+/* Runs after Menu_Paint, so the labels land over the finished board. */
+static void CG_DrawScoreboardHeadings(menuDef_t *menu) {
+	itemDef_t *heading, *list = NULL;
+	listBoxDef_t *listPtr;
+	float contentX;
+	int i;
+
+	heading = CG_FindPaddedHeading(menu);
+	if (!heading) {
+		return;     // a team board: its headings are positioned already
+	}
+
+	for (i = 0; i < menu->itemCount; i++) {
+		if (menu->items[i]->special == FEEDER_SCOREBOARD ||
+			menu->items[i]->special == FEEDER_ENDSCOREBOARD) {
+			list = menu->items[i];
+			break;
+		}
+	}
+	if (!list) {
+		return;
+	}
+	listPtr = (listBoxDef_t *)list->typeData;
+	if (!listPtr || listPtr->numColumns <= 13) {
+		return;     // not the layout these labels belong to
+	}
+
+	contentX = list->window.rect.x + 1.0f;
+
+	for (i = 0; i < (int)ARRAY_LEN(cg_scoreboardHeadings); i++) {
+		CG_Text_Paint(contentX + listPtr->columnInfo[cg_scoreboardHeadings[i].column].pos,
+					  heading->window.rect.y, heading->textscale,
+					  heading->window.foreColor, cg_scoreboardHeadings[i].label,
+					  0, 0, heading->textStyle);
+	}
+}
+
+/*
 [QL] Drop the scoreboard's player list clear of its column headers.
 
 Item_ListBox_Paint draws the first row at rect.y + 1. Quake Live's scoreboard
@@ -1824,6 +1929,25 @@ change Item_ListBox_Paint, which every list in the game shares (server browser,
 demo list, map list), this nudges only the scoreboard feeders: move the top down
 by one element height and take the same amount off the height, so the bottom
 edge and the scroll bar stay where the menu put them.
+
+That is true of the *team* boards only, and applying it everywhere is what is
+wrong with FFA. The non-team menus put their headings above the list, not in it:
+ingame_scoreboard_ffa has PLAYER at y 156 and the list at "rect 77 161 486 180",
+so row one already clears them. Shifting it down anyway pushes the rows and the
+scroll bar 8 units past the bottom of the panel art (list bottom 311, panel body
+ends 306) and out across the frame into the stats bar. So the shift now applies
+to the team feeders that need it and to nothing else.
+
+The non-team lists need the other correction instead. Item_ListBox_Paint puts
+the bar at the right-hand end of the list rect, and where that lands relative to
+the panel behind it is the menu's business: the team lists overhang their panel,
+so the bar sits on the frame; the non-team lists stop short of theirs, so the
+same arithmetic leaves the bar floating 14 units inside the panel with the row
+highlight ending short of it. Both non-team layouts are inset from their panel
+identically - list x 77 against body 81..559 in game, list x 122 against body
+126..604 at the end, each 486 wide against a 478+10 panel - so one correction
+covers both: give the rect the 20 units it is missing on the right and the bar
+lands on the frame edge the way the team boards' does.
 
 Applied once per menu. Menus_FindByName hands back the same menuDef every time,
 so without the guard a gametype change would stack a second offset.
@@ -1845,9 +1969,12 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 		adjusted[numAdjusted++] = menu;
 	}
 
+	CG_HidePaddedHeading(menu);
+
 	for (i = 0; i < menu->itemCount; i++) {
 		itemDef_t *item = menu->items[i];
 		listBoxDef_t *listPtr;
+		qboolean teamList;
 		float shift;
 
 		if (item->special != FEEDER_SCOREBOARD &&
@@ -1856,6 +1983,8 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 			item->special != FEEDER_BLUETEAM_LIST) {
 			continue;
 		}
+		teamList = (item->special == FEEDER_REDTEAM_LIST ||
+					item->special == FEEDER_BLUETEAM_LIST);
 
 		listPtr = (listBoxDef_t *)item->typeData;
 		if (!listPtr || listPtr->elementHeight <= 0) {
@@ -1869,6 +1998,16 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 		   cost every row a scroll bar's width. The wheel over the list you want
 		   is what actually scrolls these. */
 		item->window.flags |= WINDOW_LB_SLIMSCROLL;
+
+		if (!teamList) {
+			/* [QL] The 20 units the non-team list rects are short of their
+			   panel on the right - see the header comment. This moves the bar
+			   onto the frame edge and lets the row highlight reach it, and it
+			   is the whole of the correction these lists need: their headings
+			   are already above the rows, so they get no vertical shift. */
+			item->window.rect.w += 20.0f;
+			continue;
+		}
 
 		/*
 		[QL] How far down is a matter of taste and of the menu being drawn, and
@@ -2269,6 +2408,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 			CG_TrackLocalPlayerOnScoreboard(activeMenu);
 			CG_ScoreboardPainted(activeMenu);
 			Menu_Paint(activeMenu, qtrue);
+			CG_DrawScoreboardHeadings(activeMenu);
 		}
 	}
 
