@@ -1996,6 +1996,50 @@ Out of scope but adjacent: `SCR_DrawSmallChar` has the same fixed-pixel problem
 for everything else that uses it - loading screens, the lagometer text - and
 those were not touched.
 
+### E58. Step aside instead of telefragging, and stop charging the victim — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Two suggestions, and one of them cannot work — worth writing down which and why,
+because the reason is not obvious.
+
+**Spawn invulnerability does not prevent telefrags.** `G_KillBox` passes
+`DAMAGE_NO_PROTECTION`, and it has to: a telefrag is not about damage, it is
+about two players trying to occupy the same space. A brief invulnerability stops
+the arriving player being *shot* the moment they appear - a real problem on a
+full server, and worth having for its own sake - but the player already standing
+on the pad still dies. It addresses the wrong half.
+
+**What does work is not arriving on top of them.** `G_NudgeSpawnClear` runs
+before the kill box: when somebody is already in the spawn box it tries a ring
+of offsets (8 directions at 40, 72 and 108 units) and takes the first that is
+
+- clear of world geometry (`startsolid` / `allsolid`),
+- reachable from the pad rather than through a wall (a box trace from the pad),
+- floored within 128 units - never trade a telefrag for a pit,
+- empty of other players.
+
+On a map with any room this turns a telefrag into a spawn a few units to one
+side, which nobody notices. When every candidate fails - and on thunderstruck's
+five points with sixty-four players it will - the kill box still runs, because
+somebody has to lose.
+
+**And when it does run, the victim is no longer charged for it.** A telefrag
+through a teleporter is a decision somebody made and still scores exactly as
+before. A telefrag because the map had nowhere to put the arriving player is the
+server failing, and taking a death off the victim - and handing the arriving
+player a frag they did not earn - is charging them for our problem. The
+spawn-caused ones are marked as they happen (`spawnKillBox` on the arriving
+player, `spawnTelefragged` on whoever it kills) and `player_die` skips
+`PERS_KILLED`, the death stat and the attacker's score for those only.
+
+The mark is a server-side flag rather than a new means-of-death on purpose:
+`MOD_` values go out on the wire and a stock Quake Live client would not know a
+new one, so the obituary stays `MOD_TELEFRAG` and looks normal to everyone.
+
+**To verify:** thunderstruck, which is where this is worst - telefrags should
+fall again beyond what the spawn tiering already achieved, and the ones that
+remain should not appear as deaths on the scoreboard.
+
 ### E56. thunderstruck's team spawns were deleted at load — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

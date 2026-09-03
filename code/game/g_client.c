@@ -1758,8 +1758,23 @@ void ClientSpawn(gentity_t* ent) {
             // positively link the client, even if the command times are weird
             VectorCopy(ent->client->ps.origin, ent->r.currentOrigin);
 
+            /*
+            [QL] Step aside before resorting to the kill box.
+
+            G_NudgeSpawnClear looks for a clear, reachable, floored position
+            near the pad when somebody is already standing on it. On a map with
+            any room this turns a telefrag into a spawn a few units to one side,
+            which nobody notices. When it fails - and on a five-point map with
+            sixty-four players it will - the kill box still runs, but the
+            telefrag it causes is marked as ours rather than the victim's.
+            */
+            G_NudgeSpawnClear(ent);
+            VectorCopy(ent->client->ps.origin, ent->r.currentOrigin);
+
             // [QL] G_KillBox after SetClientViewAngle (binary order)
+            ent->client->spawnKillBox = qtrue;
             G_KillBox(ent);
+            ent->client->spawnKillBox = qfalse;
             trap_LinkEntity(ent);
         }
     } else {

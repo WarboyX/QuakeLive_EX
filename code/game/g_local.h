@@ -415,6 +415,12 @@ struct gclient_s {
 
     int lastClientKilled;       // [QL]
     int lastkilled_client;      // last client that this client killed
+    // [QL] spawn-caused telefrags. spawnKillBox is set on the arriving player
+    // for the duration of ClientSpawn's kill box; spawnTelefragged is set on
+    // whoever it kills, so player_die can decline to score a death the server
+    // caused. See G_NudgeSpawnClear.
+    qboolean spawnKillBox;
+    qboolean spawnTelefragged;
     int lasthurt_client[2];     // [QL] expanded to 2-element array
     int lasthurt_mod[2];        // [QL] expanded to 2-element array
     int lasthurt_time[2];       // [QL]
@@ -688,6 +694,7 @@ int G_ModelIndex(char* name);
 int G_SoundIndex(char* name);
 void G_TeamCommand(team_t team, char* cmd);
 void G_KillBox(gentity_t* ent);
+qboolean G_NudgeSpawnClear(gentity_t* ent);
 gentity_t* G_Find(gentity_t* from, int fieldofs, const char* match);
 gentity_t* G_PickTarget(char* targetname);
 void G_UseTargets(gentity_t* ent, gentity_t* activator);

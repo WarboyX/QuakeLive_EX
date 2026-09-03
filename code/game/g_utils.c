@@ -487,10 +487,128 @@ void G_KillBox(gentity_t* ent) {
             continue;
         }
 
+        /*
+        [QL] Mark a telefrag that a *spawn* caused, so player_die can decline to
+        score it. A telefrag through a teleporter is a tactic somebody chose; a
+        telefrag because the map had nowhere else to put a player is the server
+        failing, and charging the victim a death for it is charging them for our
+        problem. The distinction is here rather than in a new means-of-death
+        because MOD_ values go out on the wire and a stock client would not know
+        a new one.
+        */
+        if (ent->client && ent->client->spawnKillBox) {
+            hit->client->spawnTelefragged = qtrue;
+        }
+
         // nail it
         G_Damage(hit, ent, ent, NULL, NULL,
                  100000, DAMAGE_NO_PROTECTION, MOD_TELEFRAG);
     }
+}
+
+/*
+================
+G_NudgeSpawnClear
+
+[QL] Step aside rather than telefrag, when there is anywhere to step to.
+
+Invulnerability cannot solve this and it is worth being clear why: G_KillBox
+passes DAMAGE_NO_PROTECTION, and it has to, because a telefrag is not about
+damage - two players cannot occupy the same space. Spawn protection stops you
+being *shot* the instant you appear; it does nothing about the player already
+standing where you arrived.
+
+What does solve it is not arriving on top of them. Before the kill box, try a
+ring of offsets around the spawn point and take the first that is clear of
+players, clear of world geometry, and has floor under it. Only when every
+candidate fails does anyone get telefragged, which on a map with room is now
+almost never.
+
+Returns qtrue if the origin was moved.
+================
+*/
+qboolean G_NudgeSpawnClear(gentity_t* ent) {
+    static const float dirs[8][2] = {
+        { 1, 0 }, { 0, 1 }, { -1, 0 }, { 0, -1 },
+        { 0.707f, 0.707f }, { -0.707f, 0.707f }, { 0.707f, -0.707f }, { -0.707f, -0.707f }
+    };
+    static const float radii[3] = { 40.0f, 72.0f, 108.0f };
+    vec3_t base, test, mins, maxs, down;
+    trace_t tr;
+    int touch[MAX_GENTITIES];
+    int r, d, i, num;
+    qboolean blocked;
+
+    if (!ent->client) {
+        return qfalse;
+    }
+
+    VectorCopy(ent->client->ps.origin, base);
+
+    // nothing in the way: leave it exactly where the selector put it
+    VectorAdd(base, ent->r.mins, mins);
+    VectorAdd(base, ent->r.maxs, maxs);
+    num = trap_EntitiesInBox(mins, maxs, touch, MAX_GENTITIES);
+    blocked = qfalse;
+    for (i = 0; i < num; i++) {
+        if (g_entities[touch[i]].client && &g_entities[touch[i]] != ent) {
+            blocked = qtrue;
+            break;
+        }
+    }
+    if (!blocked) {
+        return qfalse;
+    }
+
+    for (r = 0; r < (int)ARRAY_LEN(radii); r++) {
+        for (d = 0; d < (int)ARRAY_LEN(dirs); d++) {
+            test[0] = base[0] + dirs[d][0] * radii[r];
+            test[1] = base[1] + dirs[d][1] * radii[r];
+            test[2] = base[2];
+
+            // must not be inside the world
+            trap_Trace(&tr, test, ent->r.mins, ent->r.maxs, test, ent->s.number, MASK_PLAYERSOLID);
+            if (tr.startsolid || tr.allsolid) {
+                continue;
+            }
+
+            // must be reachable from the pad rather than through a wall
+            trap_Trace(&tr, base, ent->r.mins, ent->r.maxs, test, ent->s.number, MASK_PLAYERSOLID);
+            if (tr.fraction < 1.0f) {
+                continue;
+            }
+
+            // must have floor under it - never trade a telefrag for a pit
+            VectorSet(down, test[0], test[1], test[2] - 128.0f);
+            trap_Trace(&tr, test, ent->r.mins, ent->r.maxs, down, ent->s.number, MASK_PLAYERSOLID);
+            if (tr.fraction == 1.0f) {
+                continue;
+            }
+
+            // must be empty of other players
+            VectorAdd(test, ent->r.mins, mins);
+            VectorAdd(test, ent->r.maxs, maxs);
+            num = trap_EntitiesInBox(mins, maxs, touch, MAX_GENTITIES);
+            blocked = qfalse;
+            for (i = 0; i < num; i++) {
+                if (g_entities[touch[i]].client && &g_entities[touch[i]] != ent) {
+                    blocked = qtrue;
+                    break;
+                }
+            }
+            if (blocked) {
+                continue;
+            }
+
+            VectorCopy(test, ent->client->ps.origin);
+            VectorCopy(test, ent->s.origin);
+            VectorCopy(test, ent->s.pos.trBase);
+            VectorCopy(test, ent->r.currentOrigin);
+            return qtrue;
+        }
+    }
+
+    return qfalse;
 }
 
 //==============================================================================

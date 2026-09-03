@@ -597,6 +597,7 @@ player_die
 ==================
 */
 void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int damage, int meansOfDeath) {
+    qboolean spawnTelefrag;   // [QL] see the note below
     gentity_t* ent;
     gentity_t* te;
     int anim;
@@ -727,10 +728,24 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
     //     killStreak/per-weapon internally (when !scoringDisabled), so player_die must NOT
     //     increment numKills/numDeaths itself.
     self->enemy = attacker;
-    if (!G_InMatchStartGrace()) {
+
+    /*
+    [QL] A telefrag the server caused by spawning somebody on top of this player
+    is not their death to wear. G_NudgeSpawnClear tries to avoid it first; when
+    the map has nowhere to put the arriving player it happens anyway, and
+    charging the victim a death - and the arriving player a frag they did not
+    earn - is charging them for our problem. A telefrag through a teleporter is
+    somebody's decision and still scores; only the spawn-caused ones are marked.
+    */
+    spawnTelefrag = (self->client->spawnTelefragged && meansOfDeath == MOD_TELEFRAG);
+    self->client->spawnTelefragged = qfalse;
+
+    if (!G_InMatchStartGrace() && !spawnTelefrag) {
         self->client->ps.persistant[PERS_KILLED]++;
     }
-    STAT_AddPlayerDeathStat(self, attacker, meansOfDeath);
+    if (!spawnTelefrag) {
+        STAT_AddPlayerDeathStat(self, attacker, meansOfDeath);
+    }
 
     // 14. scoring + award engine
     if (attacker && attacker->client) {
@@ -772,6 +787,9 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
                 if (g_gametype.integer == GT_RR && g_rrInfected.integer &&
                     self->client->sess.sessionTeam == TEAM_RED) {  // VERIFY C4: victim's team
                     score = g_rrInfectedZombieFragBonus.integer;
+                }
+                if (spawnTelefrag) {
+                    score = 0;   // [QL] the server put them there, not the player
                 }
                 AddScore(attacker, self->r.currentOrigin, score);
                 if (g_gametype.integer == GT_RR && g_rrDamageScoreBonus.integer) {
