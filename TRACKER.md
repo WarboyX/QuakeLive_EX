@@ -1682,6 +1682,64 @@ corner with the same shape of rect and already does it that way.
 Both strings go through it; "Voting has ended - next arena: <map>" is longer and
 was running off further.
 
+### E47. The FFA score-cap crash, symbolised — WATCHING (guard shipped, cause unproven)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+*"Trinity was where we were getting client crashes near score cap the most"* -
+and trinity is also the map that overflowed its snapshots. Different faults, but
+worth having the first one nailed down, so the two crash logs were symbolised
+against a rebuild of the revision that produced them (ef15e19, in a worktree,
+same toolchain and flags).
+
+`vulkanx86_64.dll` is **our** renderervk module, so the offsets resolve:
+
+```
+RE_EndFrame                + 0x238
+  RB_ExecuteRenderCommands + 0xae4
+    RB_LightingPass        + 0x22f     (RB_RenderLitSurfList, inlined)
+      RB_SurfaceMesh       + 0xb17     <- 0xc0000005 reading 0x1f878a5804a
+```
+
+Both logs - "crashlog in FFA when rapidly getting kills" and "close to 50 points
+in FFA" - fault at `+0x3b700` and `+0x3b717`, 23 bytes apart in the same
+function. Same crash twice.
+
+**What that rules in and out.** `RB_SurfaceMesh` is only reached through
+`rb_surfaceTable[*surface]`, and `R_LoadMD3` overwrites each surface's ident with
+`SF_MD3` precisely to make that dispatch work - so `*surface` was read
+successfully before the call and the surface pointer itself is sound. The fault
+is on something derived inside the function, 0xb17 in, which is where
+`LerpMeshVertexes` inlines. That indexes `surface->xyzNormals + numVerts * frame`,
+so an out-of-range frame index produces exactly this: an arbitrary far address
+read, not a small overrun.
+
+`RB_LightingPass` in the chain means it happened during the dynamic light pass,
+which is a second pass over the surfaces with `backEnd.currentEntity` re-derived
+from the lit-surf sort - a plausible way for an entity and a surface to be paired
+that were never paired in the main pass.
+
+**Already guarded, after the fact.** `RB_ValidMeshFrames` (2869f0d) checks
+`e.frame` and `e.oldframe` against `surface->numFrames` before the lerp, skips
+the surface rather than faulting, and names the surface, the entity, the model
+handle and whether `tess.dlightPass` was set. It went in *after* the revision
+that crashed, so it has never been exercised. If this recurs the console will
+name the model instead of the console being silent and a crash log being the
+only artifact.
+
+**Not reproducing at present**, on builds from 6a3ba64 onward. Worth noting
+without leaning on it: 6a3ba64 is also the `AxisClear` fix for the match-summary
+model rendering as legs only - same screen, same moment in the match, and the
+same `frame`/`oldframe` plumbing. That may be coincidence.
+
+**If it comes back:** the console line from `RB_ValidMeshFrames` is the whole
+answer. Failing that, the symbolisation recipe is `git worktree add --detach
+<rev>`, `make PLATFORM=mingw32 ARCH=x86_64 BUILD_RENDERER_VULKAN=1`, take the
+image base from `objdump -h` (`.text` VMA minus 0x1000) and map `module+RVA`
+against `nm --defined-only`. Note the crash log's "code addresses on the stack"
+scan is mostly noise - several of those offsets are past the end of the module
+entirely; the reliable chain is the four frames under the fault in the handler
+stack.
+
 ### E45. The spawn telefrag chain, and the entity spam behind it — DONE (verify)
 **Lives in:** our **server** (qagame + server engine) · **Seen by:** **every client**
 
