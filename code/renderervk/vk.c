@@ -4000,6 +4000,33 @@ void vk_initialize( void )
 		vkSamples = VK_SAMPLE_COUNT_1_BIT;
 	}
 
+	/*
+	[QL] Say what anisotropic filtering actually ended up at.
+
+	The GL path prints this and the Vulkan path never did, so setting
+	r_ext_max_anisotropy 16 and getting 8 - or getting none at all, because the
+	device does not advertise samplerAnisotropy or the extension cvar is off -
+	looked identical to it working. Three things can each silently lower it:
+	the feature not being enabled on the device, the device's own
+	maxSamplerAnisotropy limit, and vk_create_sampler's noAnisotropy branch for
+	nearest-filtered and unmipped samplers, which is correct and always applies.
+
+	Note it is CVAR_LATCH: changing it needs a vid_restart, and this line is how
+	you confirm the restart took.
+	*/
+	if ( r_ext_texture_filter_anisotropic->integer && vk.samplerAnisotropy ) {
+		int used = MIN( r_ext_max_anisotropy->integer, (int)vk.maxAnisotropy );
+		if ( used < 1 ) {
+			used = 1;
+		}
+		ri.Printf( PRINT_ALL, "...using %ix anisotropic filtering (device max %ix)\n",
+				   used, (int)vk.maxAnisotropy );
+	} else {
+		ri.Printf( PRINT_ALL, "...anisotropic filtering %s\n",
+				   r_ext_texture_filter_anisotropic->integer
+					   ? "not supported by this device" : "disabled" );
+	}
+
 	vk.screenMapSamples = MIN( vkMaxSamples, VK_SAMPLE_COUNT_4_BIT );
 
 	vk.screenMapWidth = (float) glConfig.vidWidth / 16.0;

@@ -1800,9 +1800,22 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_ext_texture_filter_anisotropic, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_ext_texture_filter_anisotropic, "Allow anisotropic filtering." );
 
-	r_ext_max_anisotropy = ri.Cvar_Get( "r_ext_max_anisotropy", "8", CVAR_ARCHIVE_ND | CVAR_LATCH );
-	ri.Cvar_CheckRange( r_ext_max_anisotropy, "1", NULL, CV_INTEGER );
-	ri.Cvar_SetDescription( r_ext_max_anisotropy, "Sets maximum anisotropic level for your graphics driver. Requires \\r_ext_texture_filter_anisotropic." );
+	/*
+	[QL] 16, not Quake3e's 8. Every desktop GPU of the last fifteen years
+	advertises maxSamplerAnisotropy 16 and the sampler clamps to the device
+	limit anyway, so the old default was leaving quality on the table for no
+	saving worth measuring.
+
+	Two things to know before assuming a change took. It is CVAR_LATCH, so it
+	needs a vid_restart - and this tree aliases CVAR_ARCHIVE_ND to plain
+	CVAR_ARCHIVE, so on any machine that has run an earlier build the old 8 is
+	already written into the config and wins over this default forever. Set it
+	by hand there. vk_init reports the value actually in use at startup, which
+	is how you tell which of those you are looking at.
+	*/
+	r_ext_max_anisotropy = ri.Cvar_Get( "r_ext_max_anisotropy", "16", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_ext_max_anisotropy, "1", "16", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ext_max_anisotropy, "Maximum anisotropic filtering level: 1 (off), 2, 4, 8 or 16. Clamped to what the device supports. Requires \\r_ext_texture_filter_anisotropic 1 and a \\vid_restart." );
 
 	//r_stencilbits = ri.Cvar_Get( "r_stencilbits", "8", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );

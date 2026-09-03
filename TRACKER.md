@@ -1682,6 +1682,58 @@ corner with the same shape of rect and already does it that way.
 Both strings go through it; "Voting has ended - next arena: <map>" is longer and
 was running off further.
 
+### R10. Anisotropic filtering to x16 — DONE (verify); path tracing — NOT VIABLE HERE
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**AF was already implemented and already reaching the hardware.**
+`vk_create_sampler` sets `anisotropyEnable` and `maxAnisotropy` from
+`r_ext_texture_filter_anisotropic` and `r_ext_max_anisotropy`, clamped to the
+device's `maxSamplerAnisotropy`. x16 has worked all along; what was missing was
+any way to know it. Three things can each quietly lower it — the device not
+advertising `samplerAnisotropy`, its own limit, and `vk_create_sampler`'s
+`noAnisotropy` branch for nearest-filtered and unmipped samplers (correct, and
+always applies) — and the Vulkan path printed none of them, while the GL path
+prints its equivalent. Startup now reports the level in use and the device max.
+
+Default raised 8 → 16. **Two caveats on that.** It is `CVAR_LATCH`, so it needs
+a `vid_restart`; and this tree aliases `CVAR_ARCHIVE_ND` to plain `CVAR_ARCHIVE`,
+so any machine that has run an earlier build already has `r_ext_max_anisotropy 8`
+written into its config, where it wins over the shipped default permanently —
+the archive trap, again. Set it by hand there and check the startup line.
+
+Range now 1..16 with the useful values named, instead of unbounded.
+
+**A menu control needs C34.** The video settings menu belongs to `pak00` and
+cannot be edited; the dropdown has to arrive with menus of our own.
+
+**Path tracing is not a feature that can be added to this renderer**, and the
+blocker is not effort. Recording why, so it does not get re-proposed:
+
+1. **No ray tracing anything.** `VK_KHR_acceleration_structure` and
+   `VK_KHR_ray_tracing_pipeline` are not requested and the backend is built
+   around fixed graphics pipelines. BLAS per model, TLAS per frame rebuilt for
+   animated MD3s, plus a denoiser (A-SVGF or equivalent) is a second renderer,
+   not a mode of this one.
+2. **The assets are the real blocker, and they are not ours.** Path tracing needs
+   PBR materials — roughness, metalness, normals — and physical light sources.
+   Quake 3 textures are diffuse-only and Quake 3 lighting is *baked into
+   lightmaps*: there are no lights to sample. Q2RTX solved both by hand-authoring
+   a material classification for every texture in the game and shipping new
+   texture sets. The equivalent here is 9,285 files in `pak00.pk3` — which is not
+   redistributable, so we could neither ship the derived data nor the textures it
+   describes. Without it a path tracer looks *worse* than the rasteriser, not
+   better.
+3. Q3's shader system — multi-stage, scrolling, animated, alpha-tested, sky
+   portals — has no path-traced equivalent; each would need a material
+   translation, which is the same content problem again.
+
+**What is actually reachable for high-end users**, in descending order of visible
+effect, all in this renderer: **R8** (dynamic lights are weak or absent — the
+biggest single upgrade available and already open), **R4** (the metallic look),
+then the post chain that already exists and mostly needs exposing and tuning —
+MSAA (`r_ext_multisample`), supersampling (`r_renderScale` with `r_fbo 1`), HDR
+and bloom, flares, dither.
+
 ### E48. `snapstats`, and a spawn-saturation report — TOOLING
 **Lives in:** our **server** (server engine + qagame) · **Seen by:** n/a
 
