@@ -1855,7 +1855,30 @@ of it; "winner" appears only once the server has closed voting and settled the
 result, and while it is there that is what the panel says. No key, no line -
 a server that publishes neither gets an empty panel instead of an invented one.
 */
-static void CG_DrawVoteTimer(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
+/*
+[QL] The countdown is right-aligned, and it was being drawn from the left.
+
+endgamevote.menu gives the item "rect 610 370 150 10" and "align 2"
+(ITEM_ALIGN_RIGHT). Drawn from rect->x the line starts at 610 in a 640-wide
+virtual screen and runs off the edge - "Voting ends in 5 seconds." is about 130
+units wide, so most of it was past the right of the display. Aligning it the way
+the rest of this file does - rect->x is the right-hand reference, see
+CG_DrawLocalTime, which sits in the same corner of the scoreboard and is correct
+- ends the line at 610 and puts it back over the vote panel, which runs to 600.
+*/
+static void CG_DrawVoteTimerText(rectDef_t *rect, float scale, vec4_t color,
+                                 int textStyle, int align, const char *s) {
+    float x = rect->x;
+
+    if (align == ITEM_ALIGN_CENTER) {
+        x -= CG_OwnerDrawTextWidth(s, scale, 0) * 0.5f;
+    } else if (align == ITEM_ALIGN_RIGHT) {
+        x -= CG_OwnerDrawTextWidth(s, scale, 0);
+    }
+    CG_OwnerDrawText(x, rect->y, scale, color, s, 0, 0, textStyle);
+}
+
+static void CG_DrawVoteTimer(rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
     const char *info = CG_ConfigString(CS_ROTATIONMAPS);
     const char *val;
     int sec;
@@ -1876,8 +1899,8 @@ static void CG_DrawVoteTimer(rectDef_t *rect, float scale, vec4_t color, int tex
             name = Info_ValueForKey(info, key);
         }
         if (name[0]) {
-            CG_OwnerDrawText(rect->x, rect->y, scale, color,
-                va("Voting has ended - next arena: %s", name), 0, 0, textStyle);
+            CG_DrawVoteTimerText(rect, scale, color, textStyle, align,
+                va("Voting has ended - next arena: %s", name));
         }
         return;
     }
@@ -1889,8 +1912,8 @@ static void CG_DrawVoteTimer(rectDef_t *rect, float scale, vec4_t color, int tex
 
     sec = (atoi(val) - cg.time + 999) / 1000;
     if (sec > 0) {
-        CG_OwnerDrawText(rect->x, rect->y, scale, color,
-            va("Voting ends in %d second%s.", sec, sec == 1 ? "" : "s"), 0, 0, textStyle);
+        CG_DrawVoteTimerText(rect, scale, color, textStyle, align,
+            va("Voting ends in %d second%s.", sec, sec == 1 ? "" : "s"));
     }
 }
 
@@ -3284,7 +3307,7 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
             break;
         case CG_VOTETIMER:                  // 0x22
             // binary falls through to the respawn message here; kept separate.
-            CG_DrawVoteTimer(&rect, scale, color, textStyle);
+            CG_DrawVoteTimer(&rect, scale, color, textStyle, align);
             break;
         case CG_SPEC_MESSAGES:              // 0x23  CG_DrawSpectator (no data source)
             break;
