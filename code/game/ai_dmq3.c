@@ -427,7 +427,95 @@ void BotSetTeamStatus(bot_state_t* bs) {
             teamtask = TEAMTASK_PATROL;
             break;
     }
-    BotSetUserInfo(bs, "teamtask", va("%d", teamtask));
+    BotQueueTeamTask(bs, teamtask);
+}
+
+/*
+==================
+BotQueueTeamTask
+
+[QL] Ask for a teamtask. Does not write anything.
+
+A teamtask write goes through ClientUserinfoChanged, which rewrites the client's
+configstring, which is a reliable command broadcast to *every* client on the
+server. There are thirty-odd call sites, all of them inside per-think goal
+selection, so the cost of one bot changing its mind is one command times the
+player count - and the reliable command buffer is 64 deep per client.
+
+At sixty-three bots in CTF that overflowed the buffer and the server dropped
+every client for "Server command overflow" the moment the match left warmup:
+map_restart clears every bot's long-term goal at the same instant, all of them
+re-decide in the same think window, and the queue dump is a hundred and
+twenty-six configstring writes deep - each bot's own line twice over, tt flipping
+2 then 1.
+
+Deduplicating the write was not enough, because the value genuinely does flip:
+BotCTFSeekGoals hands out defend, and the goal is superseded before the bot has
+walked anywhere. So the value is queued instead, and BotFlushTeamTasks publishes
+it only once it has held still.
+
+Note this is a cosmetic field - it is the icon next to a name in the team
+overlay and nothing reads it for gameplay - so a second of lag costs nothing and
+never publishing a value the bot held for a fifth of a second costs less.
+==================
+*/
+void BotQueueTeamTask(bot_state_t* bs, int teamtask) {
+    if (bs->teamtask_want == teamtask) {
+        return;
+    }
+    bs->teamtask_want = teamtask;
+    bs->teamtask_settle = FloatTime();
+}
+
+/*
+==================
+BotFlushTeamTasks
+
+[QL] Publish settled teamtask values, a couple per server frame.
+
+Two limits, and they do different jobs.
+
+SETTLE is what kills the oscillation: a value that flips back before it has held
+for a second never reaches the wire at all, because teamtask_want returns to
+teamtask_sent and the two compare equal again.
+
+PER_FRAME is what survives the synchronised burst. Sixty-three bots re-deciding
+in the same think window is a legitimate thing to happen - it is exactly what
+map_restart causes - and sixty-three commands at once overflows a 64-deep buffer
+on its own, settled or not. Spreading them costs under a second of overlay lag
+and is the difference between a match starting and every client being dropped.
+
+Round-robin rather than from zero each frame, or the low client numbers would
+take the whole budget every time and the back half of the server would never
+publish anything.
+==================
+*/
+#define BOT_TEAMTASK_SETTLE 1.0f
+#define BOT_TEAMTASK_PER_FRAME 2
+
+void BotFlushTeamTasks(void) {
+    static int next;
+    bot_state_t* bs;
+    int n, i, budget;
+
+    budget = BOT_TEAMTASK_PER_FRAME;
+    for (n = 0; n < MAX_CLIENTS && budget > 0; n++) {
+        i = (next + n) % MAX_CLIENTS;
+        bs = botstates[i];
+        if (!bs || !bs->inuse) {
+            continue;
+        }
+        if (bs->teamtask_want == bs->teamtask_sent) {
+            continue;
+        }
+        if (FloatTime() - bs->teamtask_settle < BOT_TEAMTASK_SETTLE) {
+            continue;
+        }
+        bs->teamtask_sent = bs->teamtask_want;
+        BotSetUserInfo(bs, "teamtask", va("%d", bs->teamtask_want));
+        budget--;
+    }
+    next = (next + n) % MAX_CLIENTS;
 }
 
 /*
@@ -538,7 +626,7 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 // don't use any alt route goal, just get the hell out of the base
                 bs->altroutegoal.areanum = 0;
             }
-            BotSetUserInfo(bs, "teamtask", va("%d", TEAMTASK_OFFENSE));
+            BotQueueTeamTask(bs, TEAMTASK_OFFENSE);
             BotVoiceChat(bs, -1, VOICECHAT_IHAVEFLAG);
         } else if (bs->rushbaseaway_time > FloatTime()) {
             if (BotTeam(bs) == TEAM_RED)

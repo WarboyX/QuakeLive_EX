@@ -575,10 +575,25 @@ void G_CheckMinimumPlayers(void) {
         counted twice. 32 per team now means 32 per team, and BOT_RESERVED_SLOTS
         is what stops the last slot going to a bot.
         */
+        /*
+        [QL] Announced once per value, not once per second.
+
+        This check runs on a one-second throttle and the cap does not go away by
+        itself, so the old unconditional print produced a line a second for the
+        whole match - two and a half thousand of them in one field log, which is
+        a fifth of the file and buries everything a log is read for.
+        */
         if (minplayers > level.maxclients / 2) {
-            G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d per team: sv_maxclients "
-                     "is %d (latched - a full 'map' command is needed after changing it)\n",
-                     bot_minplayers.integer, level.maxclients / 2, level.maxclients);
+            static int announced = -1;
+
+            if (announced != bot_minplayers.integer) {
+                announced = bot_minplayers.integer;
+                G_Printf(S_COLOR_YELLOW "bot_minplayers %d is per team in this gametype, so it "
+                         "asks for %d players; capped to %d per team by sv_maxclients %d "
+                         "(latched - a full 'map' command is needed after changing it)\n",
+                         bot_minplayers.integer, bot_minplayers.integer * 2,
+                         level.maxclients / 2, level.maxclients);
+            }
             minplayers = level.maxclients / 2;
         }
 

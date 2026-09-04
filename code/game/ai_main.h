@@ -274,6 +274,15 @@ typedef struct bot_state_s {
     float teamgoal_time;             // time to stop helping team mate
     float teammatevisible_time;      // last time the team mate was NOT visible
     int teamtaskpreference;          // team task preference
+    /*
+    [QL] teamtask is decided at bot think rate and published as a configstring,
+    which is a reliable command broadcast to every client. It is queued here and
+    flushed by BotFlushTeamTasks rather than written where it is decided. See
+    BotQueueTeamTask.
+    */
+    int teamtask_want;      // what the AI last asked for
+    int teamtask_sent;      // what was last actually published
+    float teamtask_settle;  // when teamtask_want last changed
     // last ordered team goal
     int lastgoal_decisionmaker;
     int lastgoal_ltgtype;

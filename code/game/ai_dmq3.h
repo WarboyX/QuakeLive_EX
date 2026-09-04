@@ -68,6 +68,9 @@ qboolean EntityHasKamikaze(aas_entityinfo_t* entinfo);
 void BotSetUserInfo(bot_state_t* bs, char* key, char* value);
 // set the team status (offense, defense etc.)
 void BotSetTeamStatus(bot_state_t* bs);
+// [QL] queue a teamtask; BotFlushTeamTasks publishes it once it has settled
+void BotQueueTeamTask(bot_state_t* bs, int teamtask);
+void BotFlushTeamTasks(void);
 // returns the name of the client
 char* ClientName(int client, char* name, int size);
 // returns a simplified client name

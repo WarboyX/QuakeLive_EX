@@ -284,6 +284,20 @@ static void SV_MapRestart_f(void) {
     // reset all the vm data in place without changing memory allocation
     // note that we do NOT set sv.state = SS_LOADING, so configstrings that
     // had been changed from their default values will generate broadcast updates
+    /* [QL] Report before the game module is restarted, for the same reason
+       SV_SpawnServer does: SV_RestartGameProgs calls G_ShutdownGame, which
+       prints the game half, and the two halves should land together.
+
+       Hooking this only to SV_SpawnServer was not enough. A map_restart is what
+       ends warmup, so it happens at the start of every match and takes this
+       path, not that one - and the warmup window is exactly the one worth
+       reading, because it is where sixty bots connect and decide what to do at
+       the same moment. Field logs from that transition carried the bot table
+       and no snapshot numbers at all. */
+    if (sv_mapEndReport && sv_mapEndReport->integer) {
+        SV_SnapStats_f();
+    }
+
     sv.state = SS_LOADING;
     sv.restarting = qtrue;
 

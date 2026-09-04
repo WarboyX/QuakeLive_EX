@@ -5193,6 +5193,90 @@ is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
 
+### E64. The same eviction, a second writer: bot teamtask — DONE (verify)
+**Lives in:** our **server** (qagame + server engine) · **Seen by:** every client
+
+*"japanese castles failed to start the match"* — 60 bots, `a2m-instagib-ctf`.
+The gameState reaches `IN_PROGRESS`, and then all 64 clients are dropped for
+**`Server command overflow`**, one after another, ending the listen server.
+
+This is E62's failure shape exactly, with a different configstring behind it, and
+it went unnoticed because every high-bot-count test until now was FFA. The
+writer here is only reachable in team gametypes.
+
+#### The count, from the field
+
+Every pending-queue dump is the same thing: each bot's own player configstring,
+twice, back to back, differing in one field.
+
+```
+cmd   767: cs 547 "n\Angel\t\2\model\lucy/angel\...\tt\2\tl\0"
+cmd   768: cs 547 "n\Angel\t\2\model\lucy/angel\...\tt\1\tl\0"
+cmd   769: cs 548 "n\Stripe\t\1\model\grunt/stripe\...\tt\2\tl\0"
+cmd   770: cs 548 "n\Stripe\t\1\model\grunt/stripe\...\tt\1\tl\0"
+```
+
+`tt` is `teamtask` — `TEAMTASK_DEFENSE` then `TEAMTASK_OFFENSE`. 63 bots × 2 =
+126 reliable commands against a 64-deep buffer. `map_restart` is what ends
+warmup, so it clears every bot's long-term goal at the same instant and every
+bot re-decides in the same think window. The queue cannot survive that.
+
+64 `SV_DropClient ... 'Server command overflow'` lines in one log, which is every
+slot on the server.
+
+#### Why the E62 fix did not cover it
+
+`BotSetUserInfo` already skipped a write when the value was unchanged (E62). That
+is not enough here, because the value genuinely does change: `BotCTFSeekGoals`
+hands a bot defence, something supersedes it before the bot has walked anywhere,
+and both transitions are real. Deduplication cannot help with an honest
+oscillation.
+
+There are about thirty `BotSetTeamStatus` call sites and they are all inside
+per-think goal selection. Finding which one oscillates is the wrong question:
+**any** of them can broadcast to every client at think rate, and the cost is one
+reliable command times the player count.
+
+#### The fix
+
+`teamtask` is queued, not written. `BotQueueTeamTask` records the wanted value
+and when it changed; `BotFlushTeamTasks` publishes it from `BotAIStartFrame`,
+once per server frame, under two limits that do different jobs:
+
+- **settle, 1.0s** — a value that flips back before it has held for a second
+  never reaches the wire at all, because `teamtask_want` returns to
+  `teamtask_sent` and they compare equal again. This is what kills the
+  oscillation.
+- **2 per server frame**, round-robin — 63 bots re-deciding at once is a
+  legitimate thing to happen, and 63 commands in one frame overflows a 64-deep
+  buffer whether they are settled or not. This spreads the `map_restart` burst
+  over about 0.8s. Round-robin because starting from client 0 each frame would
+  give the whole budget to the low slots forever.
+
+Steady state is nowhere near the ceiling: `owndecision_time` already gates a
+bot's own decisions to one per five seconds, so 63 bots is about 13 writes a
+second against a budget of 80.
+
+Safe to lag, and safe to drop: `teamtask` is the icon beside a name in the team
+overlay. Nothing reads it for gameplay.
+
+#### Two things found alongside
+
+**The map report was losing half of itself on the transition that matters.**
+The engine half (`SV_SnapStats_f`) was hooked only to `SV_SpawnServer`. A
+`map_restart` restarts the game module without going through it, so warmup
+ending — the exact window where sixty bots connect and decide at once — printed
+the bot table and no snapshot numbers at all. Now reported from
+`SV_MapRestart_f` as well, before `SV_RestartGameProgs`, so the halves land
+together.
+
+**`bot_minplayers` announced its cap once a second, forever.** The check runs on
+a one-second throttle and the cap does not clear itself, so `bot_minplayers 60`
+on a 64-slot CTF server wrote ~2,600 identical lines — a fifth of the log file.
+Announced once per value now, and the message says what the number means: in a
+team gametype `bot_minplayers` is *per team*, so 60 asks for 120 players and is
+capped to 32 a side.
+
 ### E63. Bots were rebuilt eleven times per tick — DONE (verify)
 **Lives in:** our **server** (server engine) · **Seen by:** every client
 

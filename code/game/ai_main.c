@@ -1662,6 +1662,12 @@ int BotAIStartFrame(int time) {
 
     G_CheckBotSpawn();
 
+    /*
+    [QL] Every server frame, not every bot think: the point is to spread
+    configstring writes across frames, so it has to run on the frame clock.
+    */
+    BotFlushTeamTasks();
+
     trap_Cvar_Update(&bot_rocketjump);
     trap_Cvar_Update(&bot_grapple);
     trap_Cvar_Update(&bot_fastchat);
