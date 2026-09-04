@@ -66,3 +66,5 @@ float BotItemSearchRange(struct bot_state_s* bs, float range);
 int BotRegroupGoal(struct bot_state_s* bs, bot_goal_t* goal);
 // take a defensive posting when the team has nobody holding the base
 int BotAutoDefendGoal(struct bot_state_s* bs);
+// the "bots" console command: every bot, every gametype, with its posture
+void BotTacticsReport(void);

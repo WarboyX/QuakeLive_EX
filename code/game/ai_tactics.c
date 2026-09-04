@@ -39,6 +39,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "ai_main.h"
 #include "ai_dmq3.h"
+#include "ai_dmnet.h"
 #include "ai_tactics.h"
 //
 #include "chars.h"  // characteristics
@@ -781,4 +782,126 @@ int BotAutoDefendGoal(bot_state_t* bs) {
                     g_entities[bs->entitynum].client->pers.netname, defenders, teammates);
     }
     return qtrue;
+}
+
+/*
+==================
+BotNodeName
+
+Which AI node a bot is sitting in, by pointer. There is no name stored anywhere -
+BotRecordNodeSwitch takes one as a string argument and throws it away after
+printing - so this is the only way to ask a running bot what it is doing.
+==================
+*/
+static const char* BotNodeName(bot_state_t* bs) {
+    if (bs->ainode == AINode_Battle_Fight) {
+        return (bs->flags & BFL_FIGHTSUICIDAL) ? "fight (suicidal)" : "fight";
+    }
+    if (bs->ainode == AINode_Battle_Chase) {
+        return "chase";
+    }
+    if (bs->ainode == AINode_Battle_Retreat) {
+        return "retreat";
+    }
+    if (bs->ainode == AINode_Battle_NBG) {
+        return "grab (in fight)";
+    }
+    if (bs->ainode == AINode_Seek_NBG) {
+        return "grab";
+    }
+    if (bs->ainode == AINode_Seek_LTG) {
+        return "seek";
+    }
+    if (bs->ainode == AINode_Seek_ActivateEntity) {
+        return "activate";
+    }
+    if (bs->ainode == AINode_Stand) {
+        return "stand";
+    }
+    if (bs->ainode == AINode_Respawn) {
+        return "respawn";
+    }
+    if (bs->ainode == AINode_Observer) {
+        return "observer";
+    }
+    if (bs->ainode == AINode_Intermission) {
+        return "intermission";
+    }
+    if (bs->ainode == AINode_InstaGib) {
+        return "instagib hunt";
+    }
+    return "?";
+}
+
+/*
+==================
+BotTacticsReport
+
+The "bots" console command.
+
+BotTeamplayReport already existed and prints one line per bot - but it walks the
+red team and then the blue team, so in a free-for-all it prints two headings and
+nothing else, which is exactly the gametype the tactical layer was first tested
+in. This reports every bot in every gametype, and says what the layer decided
+rather than only what the long term goal is.
+==================
+*/
+void BotTacticsReport(void) {
+    int i, bots, posture[3], dodging, fighting;
+    bot_state_t* bs;
+    char netname[MAX_NETNAME];
+    gclient_t* cl;
+
+    if (!bot_tactics.integer) {
+        G_Printf("bot_tactics is 0 - stock Quake 3 behaviour, nothing below is in use\n");
+    }
+    G_Printf("squad range %g, dodge %s\n", bot_squadRange.value,
+             bot_dodge.integer ? "on" : "off");
+    G_Printf("%-20s %7s %-10s %-9s %5s %-16s %s\n",
+             "name", "hp/ar", "posture", "near", "enemy", "node", "goal");
+
+    bots = 0;
+    dodging = 0;
+    fighting = 0;
+    posture[0] = posture[1] = posture[2] = 0;
+
+    for (i = 0; i < level.maxclients; i++) {
+        bs = botstates[i];
+        if (!bs || !bs->inuse) {
+            continue;
+        }
+        if (!g_entities[i].inuse || !g_entities[i].client) {
+            continue;
+        }
+        cl = g_entities[i].client;
+        if (cl->sess.sessionTeam == TEAM_SPECTATOR) {
+            continue;
+        }
+        bots++;
+        if (bs->tac.posture >= 0 && bs->tac.posture <= 2) {
+            posture[bs->tac.posture]++;
+        }
+        if (bs->tac.threat_time > FloatTime()) {
+            dodging++;
+        }
+        if (bs->enemy >= 0) {
+            fighting++;
+        }
+        ClientName(bs->client, netname, sizeof(netname));
+        G_Printf("%-20s %3i/%-3i %-10s %d v %-5d %5s %-16s %s\n",
+                 netname,
+                 cl->ps.stats[STAT_HEALTH], cl->ps.stats[STAT_ARMOR],
+                 bs->tac.posture == TACTIC_PUSH       ? "push"
+                 : bs->tac.posture == TACTIC_FALLBACK ? "fall back"
+                                                      : "even",
+                 bs->tac.allies, bs->tac.foes,
+                 bs->enemy >= 0 ? "yes" : "-",
+                 BotNodeName(bs),
+                 bs->ltgtype == LTG_DEFENDKEYAREA ? "defending"
+                 : bs->ltgtype                    ? "team goal"
+                                                  : "roaming");
+    }
+    G_Printf("%i bots: %i pushing, %i even, %i falling back; %i with an enemy, %i dodging\n",
+             bots, posture[TACTIC_PUSH], posture[TACTIC_EVEN], posture[TACTIC_FALLBACK],
+             fighting, dodging);
 }

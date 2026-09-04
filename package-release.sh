@@ -22,6 +22,16 @@ if ! git diff-index --quiet HEAD -- 2>/dev/null; then
     REV="$REV-dirty"
 fi
 
+# The revision the engine reports in FULL_PRODUCT_VERSION and in serverinfo.
+# Computed here, before the pak01 stamp below edits a tracked file: without this
+# the header generator sees its own packager's edit as an uncommitted change and
+# every packaged build called itself "-dirty".
+PRODUCT_GIT_HASH=$(git rev-parse --short=10 HEAD)
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    PRODUCT_GIT_HASH="$PRODUCT_GIT_HASH-dirty"
+fi
+export PRODUCT_GIT_HASH
+
 L=build/release-linux-x86_64
 W=build/release-mingw32-x86_64
 

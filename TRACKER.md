@@ -2207,6 +2207,38 @@ gametype", which is the number that was actually wanted.
 classname `G_IsSpawnPointClassname` does not list, and that list is where to
 look.
 
+#### Verified, and the headline of this entry is wrong
+
+The 2026-09-03 20:05 log, thunderstruck, 64 players, free-for-all:
+
+```
+Spawn points: 5 info_player_deathmatch + 0 held in reserve for this gametype,
+              for up to 64 players - expect contested spawns
+```
+
+**Zero.** Not "the pads are under a classname the list is missing" — thunderstruck
+has no team pads at all. The reserve mechanism is fine and does what this entry
+describes; it just has nothing to hold on this map, and *"it does, and
+free-for-all was throwing them away"* was me asserting a cause without ever
+counting the entities. The map has five spawn points and that is the whole story
+of its 965 saturated spawns.
+
+What made the wrong claim survive is the second line in the same log:
+
+```
+Spawns: 965 so far found no free point - all 10 usable points
+        (deathmatch and team pads) were occupied.
+```
+
+Ten. Five points reported as ten, which reads exactly like "the five pads came
+back". They did not — `SelectRandomFurthestSpawnPoint` was **counting each point
+twice**. The widened pass re-walks `info_player_deathmatch` to pick up points a
+filter set aside, and the gather had no way to say "only the set-aside ones", so
+it re-collected everything the first pass already had. See E61.
+
+So: the reserve work stands, the diagnosis attached to it did not, and the number
+that would have caught it was itself wrong.
+
 ### E57. Product name split from protocol name — DONE (ready for a rename)
 **Lives in:** our **client** and **server** (qcommon) · **Seen by:** every client if got wrong
 
@@ -5161,6 +5193,36 @@ is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
 
+### E61. The spawn search counted every point twice — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+From the thunderstruck log: a map with **five** spawn points reporting *"all 10
+usable points were occupied"*.
+
+`SelectRandomFurthestSpawnPoint` gathers the deathmatch points, and when none of
+them is clear or warm it widens - the team pad classnames, and then
+`info_player_deathmatch` again for anything a gametype filter set aside (E56).
+That second pass took a `qboolean allowReserve`, which *permits* reserved points
+rather than *restricting* to them, so it re-collected every ordinary point the
+first pass already had.
+
+Two consequences, and the second is the one that matters:
+
+- **The capacity number was wrong**, in the diagnostic whose only job is to be
+  right about capacity. It is the number an operator reads to decide a player cap.
+- **The least-recently-used pick was skewed.** `G_PickLeastRecentSpawnPoint`
+  breaks ties among equal timestamps at random, and a point present twice wins
+  twice as often. That tie-break is the mechanism that stops the telefrag chain
+  re-forming (E45), so a duplicate list weakens the exact property the tier
+  exists for.
+
+The gather now takes a mode - `SPAWNGATHER_KEPT`, `SPAWNGATHER_RESERVE`,
+`SPAWNGATHER_ANY` - and the widened re-walk asks for reserves only. The fallback
+classnames still use ANY, which is safe because a different classname cannot
+return an entity an earlier pass already saw.
+
+**To verify:** thunderstruck should report 5 usable points, not 10.
+
 ### E60. Bots fight one at a time, at one distance, in a straight line — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
@@ -5298,12 +5360,28 @@ is already holding the base.
 | `bot_squadRange` | 800 | radius for counting the room |
 | `bot_debugTactics` | 0 | prints each posture change and defence claim |
 
-#### Not verified
+#### Not verified, and there was no way to verify it
 
-None of this has been watched in a live match. It compiles clean and the
-reasoning is written out above, but "the bots feel better" is not something that
-can be established by reading the code — every claim here is about what the code
-now does, not about how a match plays.
+The 2026-09-03 20:05 log is a 64-bot instagib free-for-all on this build. It
+contains no crash, no `switched more than N AI nodes` error — which is the first
+thing a broken node flow produces — and no bot telemetry whatsoever, because
+`bot_debugTactics` was 0 and nothing else reports a bot decision.
+
+That is a gap in the work rather than in the testing. `BotTeamplayReport` exists
+and prints one line per bot, but it walks the red team and then the blue team, so
+in a free-for-all it prints two headings and nothing at all — the gametype the
+layer was first tested in. Shipping a bot change with no way to see what the bots
+chose is most of the reason this entry cannot be closed.
+
+There is a **`bots`** console command now: every bot in every gametype, with its
+posture, the ally/foe counts behind that posture, whether it has an enemy, which
+AI node it is in and what its long term goal is, plus totals. The node name comes
+from comparing `bs->ainode` against the `AINode_*` pointers, because
+`BotRecordNodeSwitch` takes the name as an argument and throws it away.
+
+"The bots feel better" still is not something reading the code can establish. But
+"twelve pushing, thirty-one even, seventeen falling back, three dodging" is, and
+that is now one command away.
 
 ### C11. Mid-match arrivals keep a stand-in model — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only

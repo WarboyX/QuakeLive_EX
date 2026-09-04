@@ -1086,6 +1086,10 @@ int BotAILoadMap(int restart);
 int BotAISetupClient(int client, struct bot_settings_s* settings, qboolean restart);
 int BotAIShutdownClient(int client, qboolean restart);
 int BotAIStartFrame(int time);
+// [QL] the "bots" console command; defined in ai_tactics.c. Declared here rather
+// than in ai_tactics.h so g_svcmds.c does not have to pull in the whole botlib
+// include chain to dispatch one command.
+void BotTacticsReport(void);
 void BotTestAAS(vec3_t origin);
 
 #include "g_team.h"  // teamplay specific stuff

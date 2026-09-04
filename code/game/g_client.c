@@ -391,11 +391,30 @@ typedef struct {
     int numClear, numWarm, numTaken;
 } spawnCandidates_t;
 
+/*
+[QL] Which points a gather pass is allowed to take.
+
+RESERVE_ONLY exists because the widened search re-walks the deathmatch classname
+to pick up points a gametype filter set aside, and without it that pass also
+re-collects every point the first pass already had. On thunderstruck - five
+points, no team pads at all - that reported "all 10 usable points were occupied"
+for a map with five, and fed G_PickLeastRecentSpawnPoint a list where every point
+appeared twice, which skews a random tie-break among equal timestamps. Both are
+failures of the anti-chain work rather than of the search.
+*/
+typedef enum {
+    SPAWNGATHER_KEPT,      // the points this gametype kept
+    SPAWNGATHER_RESERVE,   // only the ones a filter set aside
+    SPAWNGATHER_ANY        // both; safe for a classname not gathered before
+} spawnGather_t;
+
 static void G_GatherSpawnPoints(spawnCandidates_t* c, const char* classname, qboolean isbot,
-                                qboolean allowReserve) {
+                                spawnGather_t which) {
     gentity_t* spot = NULL;
 
     while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
+        qboolean reserve;
+
         if (((spot->flags & FL_NO_BOTS) && isbot) ||
             ((spot->flags & FL_NO_HUMANS) && !isbot)) {
             // spot is not for this human/bot player
@@ -405,7 +424,11 @@ static void G_GatherSpawnPoints(spawnCandidates_t* c, const char* classname, qbo
         /* [QL] A point this gametype's filters rejected. G_SpawnGEntityFromSpawnVars
            keeps rather than deletes those now; they are for when the map's own
            points have run out, not before. */
-        if ((spot->flags & FL_SPAWN_RESERVE) && !allowReserve) {
+        reserve = (spot->flags & FL_SPAWN_RESERVE) ? qtrue : qfalse;
+        if (reserve && which == SPAWNGATHER_KEPT) {
+            continue;
+        }
+        if (!reserve && which == SPAWNGATHER_RESERVE) {
             continue;
         }
 
@@ -437,14 +460,15 @@ gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3
     G_ReportSpawnPointCount();
 
     memset(&c, 0, sizeof(c));
-    G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot, qfalse);
+    G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot, SPAWNGATHER_KEPT);
 
     if (!c.numClear && !c.numWarm) {
         for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback); i++) {
-            G_GatherSpawnPoints(&c, dmSpawnFallback[i], isbot, qtrue);
+            G_GatherSpawnPoints(&c, dmSpawnFallback[i], isbot, SPAWNGATHER_ANY);
         }
-        /* and this gametype's own points that a filter had set aside */
-        G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot, qtrue);
+        /* and this gametype's own points that a filter had set aside - only
+           those, or the pass above gets collected a second time */
+        G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot, SPAWNGATHER_RESERVE);
     }
 
     if (c.numClear) {

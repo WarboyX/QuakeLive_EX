@@ -537,11 +537,14 @@ void G_InitAccessList(void) {
     char* line;
 
     len = trap_FS_FOpenFile(g_accessFile.string, &f, FS_READ);
-    G_Printf("initializing access list...\n");
     if (!f) {
-        G_Printf("^1file not found: %s\n", g_accessFile.string);
+        /* [QL] A server that has never granted anyone access has no access file,
+           which is the normal state and not a fault. It used to announce itself
+           in red at every single map load, which is how a log teaches you to skip
+           over red. */
         return;
     }
+    G_Printf("initializing access list...\n");
 
     if (len >= (int)sizeof(buf)) {
         len = sizeof(buf) - 1;  // [QL] binary malloc()s exactly; we cap to a fixed buffer
@@ -704,6 +707,14 @@ qboolean ConsoleCommand(void) {
     }
     if (Q_stricmp(cmd, "botlist") == 0) {
         Svcmd_BotList_f();
+        return qtrue;
+    }
+    /* [QL] What the bots are actually doing right now. botlist prints the bot
+       files that loaded; this prints the running state, in every gametype -
+       BotTeamplayReport walks the red team then the blue team, so in a
+       free-for-all it prints two headings and nothing at all. */
+    if (Q_stricmp(cmd, "bots") == 0) {
+        BotTacticsReport();
         return qtrue;
     }
     // [QL] game_crash - developer-only intentional crash (writes 0x12345678 to NULL)
