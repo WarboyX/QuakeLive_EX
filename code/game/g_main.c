@@ -117,7 +117,11 @@ vmCvar_t bot_showAreas;
 vmCvar_t bot_showAvoidSpots;
 vmCvar_t bot_showPath;
 vmCvar_t bot_showTourPoints;
+vmCvar_t bot_debugTactics;
+vmCvar_t bot_dodge;
+vmCvar_t bot_squadRange;
 vmCvar_t bot_startingSkill;
+vmCvar_t bot_tactics;
 vmCvar_t bot_teamkill;
 vmCvar_t bot_training;
 vmCvar_t g_accessFile;
@@ -1092,7 +1096,16 @@ static cvarTable_t gameCvarTable[] = {
     {&bot_showAvoidSpots, "bot_showAvoidSpots", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_showPath, "bot_showPath", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_showTourPoints, "bot_showTourPoints", "0", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] The tactical layer in ai_tactics.c. bot_tactics 0 restores the stock
+    Quake 3 behaviour exactly, which is what makes the whole thing testable
+    against itself on a live server without a restart.
+    */
+    {&bot_debugTactics, "bot_debugTactics", "0", 0, 0, NULL},
+    {&bot_dodge, "bot_dodge", "1", CVAR_GAMERULE, 0, NULL},
+    {&bot_squadRange, "bot_squadRange", "800", CVAR_GAMERULE, 0, NULL},
     {&bot_startingSkill, "bot_startingSkill", "1", CVAR_GAMERULE, 0, NULL},
+    {&bot_tactics, "bot_tactics", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_teamkill, "bot_teamkill", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_training, "bot_training", "0", CVAR_GAMERULE, 0, NULL},
     {&g_accessFile, "g_accessFile", "access.txt", 0, 0, NULL},

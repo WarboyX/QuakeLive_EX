@@ -42,6 +42,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "ai_main.h"
 #include "ai_dmq3.h"
+#include "ai_tactics.h"
 #include "ai_chat.h"
 #include "ai_cmd.h"
 #include "ai_dmnet.h"
@@ -1411,6 +1412,9 @@ void BotResetState(bot_state_t* bs) {
     bs->entitynum = entitynum;
     bs->character = character;
     bs->entergame_time = entergame_time;
+    // [QL] the tactical picture zeroes to "ally 0 at distance 0", which is a
+    // team mate standing on top of the bot; it needs its own reset
+    BotTacticsReset(bs);
     // reset several states
     if (bs->ms)
         trap_BotResetMoveState(bs->ms);

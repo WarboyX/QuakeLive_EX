@@ -5161,6 +5161,150 @@ is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
 
+### E60. Bots fight one at a time, at one distance, in a straight line — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Asked for as attack, defence, pushing as a small group, retreating, item
+awareness and side-stepping. They are six symptoms of the same thing: the Quake 3
+bot decides everything from its own inventory and knows nothing about the room it
+is standing in.
+
+The whole layer is `code/game/ai_tactics.c`, and **`bot_tactics 0` restores the
+stock behaviour exactly** — every entry point returns the old answer. That is not
+politeness, it is how this gets tested: two matches on the same map, one cvar
+apart, no restart.
+
+#### What was actually wrong
+
+| behaviour | the stock code |
+|---|---|
+| engagement range | `IDEAL_ATTACKDIST` **140 for every weapon** — a railgun bot walks to shotgun range, a lightning gun bot backs out of the gun's own 768-unit reach |
+| side-stepping | strafe direction flips only when a timer expires **and** `random() > 0.935`, so one direction is held for seconds at a time |
+| dodging | none. A rocket in the air is not an input to anything |
+| group play | none. `BotAggression` is identical whether the bot is alone against three or standing in a group of four |
+| retreating | `BotAggression(bs) < 50`, asked every think, with nothing holding the answer |
+| items | goal weights are excellent and have no idea anyone is shooting |
+| defence | only ever from a team leader's order |
+
+#### The engagement-range fix
+
+`BotIdealAttackRange` gives each weapon the band it is good in — gauntlet 0,
+shotgun 220±130, lightning 380±200 (inside its 768-unit cutoff), rocket 400±220,
+rail 900±450. Below 0.5 `CHARACTERISTIC_ATTACK_SKILL` the old single distance
+stays: knowing where your weapon works is a skill, and the bottom of the ladder is
+supposed to not have it.
+
+#### Side-stepping, which is two different things
+
+**Reactive.** `BotScanForMissiles` finds missiles that are moving (>100 ups),
+heading at the bot (`dot > 0.85`), passing within 140 units, arriving in
+0.08–1.2 s, and **in line of sight** — that last test is the one that matters,
+because without it a bot dodges a rocket fired through a wall two rooms away,
+which reads as a bot that knows things it should not. The bot steps across the
+missile's path and *commits the strafe flag to that side*, so the next think does
+not walk back into it.
+
+**Anticipatory.** `BotEnemyTrackingMe` — the enemy is holding a hitscan weapon
+with the bot inside `dot > 0.97` of their view. Nothing has been fired yet; this
+is what breaks the strafe rhythm before the shot rather than after it.
+
+Cost mattered here. Scanning every entity per bot per think is 2.5 M entity tests
+a second at 64 bots and 40 Hz, so the missile list is built **once per server
+frame** and every bot reads it.
+
+#### Pushing as a group, and falling back as one
+
+`BotCountNearby` counts each side within `bot_squadRange` (800) and weighs them:
+a bot at 25 health is standing in the room but is not a whole body, and counting
+it as one is how two nearly dead bots talk each other into a push they lose. A
+quad or battle suit counts as 1.5.
+
+That yields `TACTIC_PUSH` / `TACTIC_EVEN` / `TACTIC_FALLBACK`, which feeds
+`BotAggression` (+20 / −30). Because aggression is what four separate gametype
+paths already test, a group of bots becomes aggressive *at the same time* without
+any of them being told to — the group push is emergent, not scripted.
+
+Three details that took thought:
+
+- **Hysteresis in one direction only.** Deciding to push is held 0.6 s before it
+  takes effect, because the counts flicker as people move behind each other.
+  Deciding to fall back is immediate: by the time a bot is outnumbered, waiting to
+  be sure is how it dies mid-deliberation.
+- **Free-for-all needs a different margin.** `BotSameTeam` returns false for
+  everyone in FFA, so every visible player is a foe and "outnumbered" is the
+  normal state of a busy map. Falling back there requires roughly two healthy
+  opponents to one healthy bot; in a team game being down one body is already
+  enough.
+- **Team mates are not traced.** A team knows roughly where its own people are.
+  Skipping the visibility trace for them halves the cost of a loop every bot runs
+  several times a second against every other player on the server.
+
+#### Retreating
+
+Two additions. Being outnumbered *here* is now a reason to give ground, which the
+stock code had no way to express. And the answer is **held for 1.5 s**:
+`BotAggression` sits either side of 50 as health and ammo tick, and
+`AINode_Battle_Fight` asks every single think, so a bot on the boundary entered
+and left the retreat node several times a second. That oscillation is what the
+"bots dancing around each other" complaint partly was.
+
+Carrying a flag or cubes bypasses the hold — those answers belong to the gametype,
+not to a judgement call, and delaying them by a second loses a real objective.
+
+`AINode_Battle_Retreat` now falls back **towards the nearest team mate** when
+there is one. Retreating along the map's item route takes a losing bot away from
+the only help it has.
+
+A bot taking hits with nothing visible also falls back now, which is the shape of
+being sniped and which the stock AI answers by standing still. Guarded on a 5+
+point drop and not being in lava, because a bad landing is not incoming fire.
+
+#### Item awareness
+
+The stock weights are good and stay in charge. Two things sit on top:
+
+- **Search range scales with need.** The `range` the callers pass is an AAS
+  *travel time*, not a distance — 100 is a second of walking — and it is a
+  constant. A bot on 30 health now looks twice as far for a medkit.
+- **With an enemy about, junk is refused.** Full armour and a five-point shard
+  across a room under fire is a real thing the stock code does. `BotWantsItemGoal`
+  reads `g_entities[goal->entitynum].item` rather than matching pickup names, so
+  it is exact: powerups and mega health always yes, armour by what the bot has,
+  a weapon it already carries only for the ammo, ammo for a weapon it does not
+  carry never. The goal is already on botlib's stack by then, so declining means
+  popping it.
+
+#### Defence
+
+`BotAutoDefendGoal` takes a defensive posting when a bot has nothing to do at all
+and nobody on the team is holding the base. It is capped hard and deliberately: at
+most a quarter of the team, only bots with no order and no long-term goal, only in
+gametypes that have a place to lose (CTF, 1FCTF, obelisk, harvester), and for 60
+seconds rather than `TEAM_DEFENDKEYAREA_TIME`'s ten minutes — that is right for an
+order from a leader and wrong for a job a bot gave itself because the base
+happened to be empty when it looked. **A default voice order once put an entire
+team on defence for a whole match (E31); this must not undo that fix.**
+
+Known limitation: it counts bot defenders only, because `botstates[]` is the only
+place that answer exists. On a mixed team, bots may over-defend behind a human who
+is already holding the base.
+
+#### Cvars
+
+| cvar | default | what it does |
+|---|---|---|
+| `bot_tactics` | 1 | the whole layer; 0 is stock Quake 3 |
+| `bot_dodge` | 1 | missile sidestep and hitscan juke |
+| `bot_squadRange` | 800 | radius for counting the room |
+| `bot_debugTactics` | 0 | prints each posture change and defence claim |
+
+#### Not verified
+
+None of this has been watched in a live match. It compiles clean and the
+reasoning is written out above, but "the bots feel better" is not something that
+can be established by reading the code — every claim here is about what the code
+now does, not about how a match plays.
+
 ### C11. Mid-match arrivals keep a stand-in model — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 

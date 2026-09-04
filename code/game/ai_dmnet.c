@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "ai_main.h"
 #include "ai_dmq3.h"
+#include "ai_tactics.h"
 #include "ai_chat.h"
 #include "ai_cmd.h"
 #include "ai_dmnet.h"
@@ -200,8 +201,30 @@ int BotNearbyGoal(bot_state_t* bs, int tfl, bot_goal_t* ltg, float range) {
             range = 50;
         }
     }
+    /*
+    [QL] range is an AAS travel time, not a distance - a hundred is a second of
+    walking - and the callers pass a constant. Scale it by what the bot is
+    actually short of, so a bot on thirty health hunts a medkit two rooms away
+    and the same bot at full health does not.
+    */
+    range = BotItemSearchRange(bs, range);
     //
     ret = trap_BotChooseNBGItem(bs->gs, bs->origin, bs->inventory, tfl, ltg, range);
+    /*
+    [QL] And with an enemy about, refuse the ones that are not worth it. The
+    stock weights will send a bot with full armour across a room under fire for a
+    five point shard; there is nothing wrong with the weight, it just has no idea
+    anyone is shooting. The goal is already on the stack by now, so declining it
+    means popping it.
+    */
+    if (ret && bs->enemy >= 0) {
+        bot_goal_t nbg;
+
+        if (trap_BotGetTopGoal(bs->gs, &nbg) && !BotWantsItemGoal(bs, &nbg)) {
+            trap_BotPopGoal(bs->gs);
+            return qfalse;
+        }
+    }
     /*
     if (ret)
     {
@@ -1072,6 +1095,16 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
         }
     }
     // normal goal stuff
+    /*
+    [QL] Nothing to do at all. In a gametype with a place to lose, take a
+    defensive posting rather than wander off after items - but see
+    BotAutoDefendGoal for how hard that is capped, because putting a whole team
+    on defence is a bug this project has already had once.
+    */
+    if (!retreat && BotAutoDefendGoal(bs)) {
+        memcpy(goal, &bs->teamgoal, sizeof(bot_goal_t));
+        return qtrue;
+    }
     return BotGetItemLongTermGoal(bs, tfl, goal);
 }
 
@@ -2419,10 +2452,19 @@ int AINode_Battle_Retreat(bot_state_t* bs) {
     BotTeamGoals(bs, qtrue);
     // use holdable items
     BotBattleUseItems(bs);
-    // get the current long term goal while retreating
-    if (!BotLongTermGoal(bs, bs->tfl, qtrue, &goal)) {
-        AIEnter_Battle_SuicidalFight(bs, "battle retreat: no way out");
-        return qfalse;
+    /*
+    [QL] Fall back towards the nearest team mate when there is one, rather than
+    towards whatever the long term goal happens to be. Retreating along the map's
+    item route takes a losing bot away from the only help it has; retreating onto
+    the person already fighting the same enemy is what makes two bots read as a
+    pair rather than as two bots who happen to be nearby.
+    */
+    if (BotPosture(bs) != TACTIC_FALLBACK || !BotRegroupGoal(bs, &goal)) {
+        // get the current long term goal while retreating
+        if (!BotLongTermGoal(bs, bs->tfl, qtrue, &goal)) {
+            AIEnter_Battle_SuicidalFight(bs, "battle retreat: no way out");
+            return qfalse;
+        }
     }
     // check for nearby goals periodicly
     if (bs->check_time < FloatTime()) {

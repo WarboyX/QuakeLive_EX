@@ -117,6 +117,30 @@ typedef struct bot_activategoal_s {
 } bot_activategoal_t;
 
 // bot state
+/*
+[QL] The tactical picture, recomputed a few times a second rather than per frame:
+counting visible players costs a trace each, and every bot pays it. Filled in by
+ai_tactics.c; TACTIC_* and the functions that read this are in ai_tactics.h.
+
+qagame-only memory - nothing here crosses the wire or reaches a client.
+*/
+typedef struct bot_tactics_s {
+    float update_time;  // next refresh of the counts below
+    int allies;         // visible team mates within bot_squadRange
+    int foes;           // visible enemies within bot_squadRange
+    int nearestally;    // client number of the closest one, -1 when alone
+    float nearestallydist;
+    vec3_t nearestallyorigin;
+    int posture;         // TACTIC_*
+    float posture_time;  // posture may not change again before this
+    int retreating;      // the held answer to "should I be retreating"
+    float retreat_time;  // and when that answer may next change
+    float threat_time;   // threatdir is worth acting on until this time
+    vec3_t threatdir;    // horizontal direction to step, away from a missile
+    float hurt_time;     // last time the bot lost health
+    int lasthealth;      // to notice that it did
+} bot_tactics_t;
+
 typedef struct bot_state_s {
     int inuse;                           // true if this state is used by a bot client
     int botthink_residual;               // residual for the bot thinks
@@ -269,7 +293,12 @@ typedef struct bot_state_s {
     bot_waypoint_t* patrolpoints;    // patrol points
     bot_waypoint_t* curpatrolpoint;  // current patrol point the bot is going for
     int patrolflags;                 // patrol flags
+
+    bot_tactics_t tac;  // [QL] see ai_tactics.c
 } bot_state_t;
+
+// the bot states, indexed by client number; NULL for a client that is not a bot
+extern bot_state_t* botstates[MAX_CLIENTS];
 
 // resets the whole bot state
 void BotResetState(bot_state_t* bs);

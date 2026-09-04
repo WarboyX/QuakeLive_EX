@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "ai_main.h"
 #include "ai_dmq3.h"
+#include "ai_tactics.h"
 #include "ai_chat.h"
 #include "ai_cmd.h"
 #include "ai_dmnet.h"
@@ -2267,7 +2268,7 @@ int TeamPlayIsOn(void) {
 BotAggression
 ==================
 */
-float BotAggression(bot_state_t* bs) {
+static float BotWeaponAggression(bot_state_t* bs) {
     // if the bot has quad
     if (bs->inventory[INVENTORY_QUAD]) {
         // if the bot is not holding the gauntlet or the enemy is really nearby
@@ -2322,6 +2323,42 @@ float BotAggression(bot_state_t* bs) {
 
 /*
 ==================
+BotAggression
+
+[QL] The weapon-and-health answer above, moved by how many people are in the
+room. The stock number is entirely self-regarding: a bot with a railgun and full
+health is at 95 whether it is alone against three or standing in a group of four,
+and the four never push together because nothing tells any of them that the other
+three are there.
+==================
+*/
+float BotAggression(bot_state_t* bs) {
+    float aggression;
+
+    aggression = BotWeaponAggression(bs);
+    if (!bot_tactics.integer) {
+        return aggression;
+    }
+    switch (BotPosture(bs)) {
+        case TACTIC_PUSH:
+            aggression += 20;
+            break;
+        case TACTIC_FALLBACK:
+            aggression -= 30;
+            break;
+        default:
+            break;
+    }
+    if (aggression < 0) {
+        aggression = 0;
+    } else if (aggression > 100) {
+        aggression = 100;
+    }
+    return aggression;
+}
+
+/*
+==================
 BotFeelingBad
 ==================
 */
@@ -2346,7 +2383,7 @@ float BotFeelingBad(bot_state_t* bs) {
 BotWantsToRetreat
 ==================
 */
-int BotWantsToRetreat(bot_state_t* bs) {
+static int BotWantsToRetreatRaw(bot_state_t* bs) {
     aas_entityinfo_t entinfo;
 
     if (gametype == GT_CTF) {
@@ -2395,6 +2432,52 @@ int BotWantsToRetreat(bot_state_t* bs) {
 
 /*
 ==================
+BotWantsToRetreat
+
+[QL] Two things on top of the answer above.
+
+The first is the room: being outnumbered where the bot is standing is a reason to
+back off that the stock code has no way to express.
+
+The second is that the answer is *held*. BotAggression sits either side of 50 as
+health and ammo tick, and AINode_Battle_Fight asks this every single think, so a
+bot on the boundary enters and leaves the retreat node several times a second -
+which is what the two-bots-circling-each-other complaint actually was. Once a bot
+decides, it lives with the decision for a second and a half.
+
+Carrying a flag or cubes is exempt: those answers are the gametype's, not a
+judgement call, and delaying them by a second would be a real loss of a real
+objective.
+==================
+*/
+int BotWantsToRetreat(bot_state_t* bs) {
+    int wants;
+
+    wants = BotWantsToRetreatRaw(bs);
+    if (!bot_tactics.integer) {
+        return wants;
+    }
+    if (BotCTFCarryingFlag(bs) || Bot1FCTFCarryingFlag(bs) || BotHarvesterCarryingCubes(bs)) {
+        return wants;
+    }
+    if (!wants && BotPosture(bs) == TACTIC_FALLBACK) {
+        if (bs->tac.foes >= bs->tac.allies + 2 ||
+            bs->inventory[INVENTORY_HEALTH] + bs->inventory[INVENTORY_ARMOR] < 100) {
+            wants = qtrue;
+        }
+    }
+    if (wants != bs->tac.retreating) {
+        if (bs->tac.retreat_time > FloatTime()) {
+            return bs->tac.retreating;
+        }
+        bs->tac.retreating = wants;
+        bs->tac.retreat_time = FloatTime() + 1.0f + random() * 0.5f;
+    }
+    return bs->tac.retreating;
+}
+
+/*
+==================
 BotWantsToChase
 ==================
 */
@@ -2438,6 +2521,11 @@ int BotWantsToChase(bot_state_t* bs) {
     // if the bot is getting the flag
     if (bs->ltgtype == LTG_GETFLAG)
         return qfalse;
+    // [QL] chasing one enemy into the two standing behind it is how a bot dies
+    // for nothing; hold the ground it has instead
+    if (bot_tactics.integer && BotPosture(bs) == TACTIC_FALLBACK) {
+        return qfalse;
+    }
     //
     if (BotAggression(bs) > 50)
         return qtrue;
@@ -2736,7 +2824,7 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
     int movetype, i, attackentity;
     float attack_skill, jumper, croucher, dist, strafechange_time;
     float attack_dist, attack_range;
-    vec3_t forward, backward, sideward, hordir, up = {0, 0, 1};
+    vec3_t forward, backward, sideward, hordir, dodgedir, up = {0, 0, 1};
     aas_entityinfo_t entinfo;
     bot_moveresult_t moveresult;
     bot_goal_t goal;
@@ -2797,9 +2885,22 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
             bs->attackjump_time = FloatTime() + 1;
         }
     }
+    /*
+    [QL] How far away to fight from, by the weapon in hand.
+
+    The stock code uses IDEAL_ATTACKDIST for everything, so a bot holding a
+    railgun closes to 140 units to use it and a bot holding a lightning gun backs
+    away past the 768 units the gun actually reaches. See BotIdealAttackRange.
+
+    Below half attack skill the old single distance stays: knowing the range your
+    weapon works at is a skill, and the bottom of the ladder is supposed to not
+    have it.
+    */
     if (bs->cur_ps.weapon == WP_GAUNTLET) {
         attack_dist = 0;
         attack_range = 0;
+    } else if (bot_tactics.integer && attack_skill > 0.5) {
+        BotIdealAttackRange(bs, &attack_dist, &attack_range);
     } else {
         attack_dist = IDEAL_ATTACKDIST;
         attack_range = 40;
@@ -2828,6 +2929,37 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
         // some magic number :)
         if (random() > 0.935) {
             // flip the strafe direction
+            bs->flags ^= BFL_STRAFERIGHT;
+            bs->attackstrafe_time = 0;
+        }
+    }
+    /*
+    [QL] Two reasons to break that rhythm, which is otherwise a coin flip on a
+    timer and holds one direction for seconds at a stretch - long enough to be a
+    stationary target to anything hitscan.
+    */
+    if (bot_tactics.integer && attack_skill > 0.4) {
+        hordir[0] = forward[0];
+        hordir[1] = forward[1];
+        hordir[2] = 0;
+        VectorNormalize(hordir);
+        CrossProduct(hordir, up, sideward);
+        // something is in the air and about to arrive: step across its path,
+        // and commit the strafe to that side so the next think does not walk
+        // back into it
+        if (BotDodgeDirection(bs, dodgedir)) {
+            if (DotProduct(dodgedir, sideward) >= 0) {
+                bs->flags &= ~BFL_STRAFERIGHT;
+            } else {
+                bs->flags |= BFL_STRAFERIGHT;
+            }
+            bs->attackstrafe_time = 0;
+            if (trap_BotMoveInDirection(bs->ms, dodgedir, 400, movetype)) {
+                return moveresult;
+            }
+        }
+        // the enemy has been holding a hitscan weapon on the bot: juke
+        else if (bs->attackstrafe_time > 0.3 && BotEnemyTrackingMe(bs)) {
             bs->flags ^= BFL_STRAFERIGHT;
             bs->attackstrafe_time = 0;
         }
@@ -5379,6 +5511,8 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
         BotCheckSnapshot(bs);
         // check for air
         BotCheckAir(bs);
+        // [QL] refresh the tactical picture the nodes below read
+        BotTacticsUpdate(bs);
     }
     // check the console messages
     BotCheckConsoleMessages(bs);
