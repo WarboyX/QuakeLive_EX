@@ -2845,7 +2845,8 @@ BotAttackMove
 ==================
 */
 bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
-    int movetype, i, attackentity;
+    int movetype, i, attackentity, attempts;
+    qboolean backoff;
     float attack_skill, jumper, croucher, dist, strafechange_time;
     float attack_dist, attack_range;
     vec3_t forward, backward, sideward, hordir, dodgedir, up = {0, 0, 1};
@@ -2942,6 +2943,8 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
         }
         return moveresult;
     }
+    // [QL] two attempts is stock; the extra two are the strafe-only retries
+    attempts = bot_tactics.integer ? 4 : 2;
     // increase the strafe time
     bs->attackstrafe_time += bs->thinktime;
     // get the strafe change time
@@ -2988,8 +2991,35 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
             bs->attackstrafe_time = 0;
         }
     }
-    //
-    for (i = 0; i < 2; i++) {
+    /*
+    [QL] Is there anywhere behind the bot to back into.
+
+    A bot backing away has its back to where it is going and the stock AI never
+    looks. That barely mattered at IDEAL_ATTACKDIST 140, where backing off only
+    happened inside 100 units; with the weapon bands it happens constantly - a
+    railgun bot gives ground below 450 - so "walks backwards into a wall" went
+    from rare to the normal case. Checked once, used by both branches below.
+    */
+    backoff = qtrue;
+    if (bot_tactics.integer) {
+        backoff = BotRoomToMove(bs, backward, 96);
+    }
+
+    /*
+    [QL] Four attempts, not two.
+
+    The stock loop tries the composed direction, flips the strafe, and tries the
+    same composed direction again - so if the *forward or backward* part is what
+    is blocked, both attempts fail on the same axis and the bot returns having
+    moved nowhere. moveresult is still zeroed at that point, so moveresult.blocked
+    is false and the BotAIBlocked call in the caller does nothing either. The bot
+    stands there, and does it again next frame.
+
+    So the last two attempts drop the forward/backward component entirely and
+    strafe alone, which is a genuinely different direction rather than the same
+    blocked one twice.
+    */
+    for (i = 0; i < attempts; i++) {
         hordir[0] = forward[0];
         hordir[1] = forward[1];
         hordir[2] = 0;
@@ -2999,15 +3029,19 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
         // reverse the vector depending on the strafe direction
         if (bs->flags & BFL_STRAFERIGHT)
             VectorNegate(sideward, sideward);
-        // randomly go back a little
-        if (random() > 0.9) {
-            VectorAdd(sideward, backward, sideward);
-        } else {
-            // walk forward or backward to get at the ideal attack distance
-            if (dist > attack_dist + attack_range) {
-                VectorAdd(sideward, forward, sideward);
-            } else if (dist < attack_dist - attack_range) {
-                VectorAdd(sideward, backward, sideward);
+        if (i < 2) {
+            // randomly go back a little
+            if (random() > 0.9) {
+                if (backoff) {
+                    VectorAdd(sideward, backward, sideward);
+                }
+            } else {
+                // walk forward or backward to get at the ideal attack distance
+                if (dist > attack_dist + attack_range) {
+                    VectorAdd(sideward, forward, sideward);
+                } else if (dist < attack_dist - attack_range && backoff) {
+                    VectorAdd(sideward, backward, sideward);
+                }
             }
         }
         // perform the movement
@@ -3016,6 +3050,22 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
         // movement failed, flip the strafe direction
         bs->flags ^= BFL_STRAFERIGHT;
         bs->attackstrafe_time = 0;
+    }
+    /*
+    [QL] Cornered. Move towards the enemy rather than stand in it - that is where
+    the bot came from, so it is the one direction known to have been walkable a
+    moment ago, and closing is a better answer to being trapped than presenting a
+    stationary target.
+    */
+    if (bot_tactics.integer) {
+        if (trap_BotMoveInDirection(bs->ms, forward, 400, movetype)) {
+            return moveresult;
+        }
+        /* Nothing worked. Say so, so BotAIBlocked in the caller gets a chance
+           rather than being handed a zeroed result that looks like success. */
+        moveresult.blocked = qtrue;
+        moveresult.blockentity = ENTITYNUM_WORLD;
+        VectorCopy(sideward, moveresult.movedir);
     }
     // bot couldn't do any useful movement
     //	bs->attackchase_time = AAS_Time() + 6;

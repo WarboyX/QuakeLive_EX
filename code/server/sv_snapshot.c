@@ -682,8 +682,36 @@ SV_SendClientMessages
 =======================
 */
 void SV_SendClientMessages(void) {
-    int i;
+    int i, snapshotMsec;
     client_t* c;
+
+    /*
+    [QL] The snapshot interval, derived here rather than cached at connect time.
+
+    It used to be written only by SV_UserinfoChanged, which had two consequences,
+    both found in the field.
+
+    **Bots never got one.** SV_BotAllocateClient sets state and netchan type and
+    returns; it does not call SV_UserinfoChanged, so a bot's snapshotMsec stayed
+    at whatever the slot held - zero for a fresh one. The gate below then reads
+    "svs.time - nextSnapshotTime < 0", which is never true, so every bot was sent
+    a snapshot on every pass of this function. This function runs once per
+    Com_Frame, not once per server tick, so on a listen server that is the
+    client's render rate: a 60-second window in the field reported 1,745,142
+    snapshots where 64 clients at 40 tick can produce at most 153,600. Eleven
+    times the work, and SV_BuildClientSnapshot - the PVS walk and entity cull, the
+    most expensive thing the server does - runs *before* the bot early-out, so
+    all of it was real work thrown away.
+
+    **And sv_fps could not take effect on a running match.** A client already
+    connected kept the old interval until something made it resend userinfo, so
+    changing the tick mid-match silently did nothing for everyone already playing.
+
+    Deriving it per frame fixes both and costs a divide. There is no per-client
+    component to negotiate - see SV_UserinfoChanged, snapshot rate is locked to
+    sv_fps on this build.
+    */
+    snapshotMsec = 1000 / (sv_fps->integer > 0 ? sv_fps->integer : 10);
 
     // send a message to each connected client
     for (i = 0; i < sv_maxclients->integer; i++) {
@@ -691,6 +719,8 @@ void SV_SendClientMessages(void) {
 
         if (!c->state)
             continue;  // not connected
+
+        c->snapshotMsec = snapshotMsec;
 
         if (svs.time - c->nextSnapshotTime < c->snapshotMsec * com_timescale->value)
             continue;  // It's not time yet

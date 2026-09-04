@@ -934,3 +934,50 @@ void BotTacticsReport(void) {
         G_Printf("^3%i of them have not moved in over three seconds\n", stuck);
     }
 }
+
+/*
+==================
+BotRoomToMove
+
+Is there somewhere to go in this direction - not blocked, and not off an edge.
+
+The edge half is the point. A bot backing away from an enemy has its back to
+wherever it is going, and the stock AI never looks: it composes a direction,
+hands it to trap_BotMoveInDirection, and if the move is refused it flips the
+strafe and tries once more with the same blocked component still in the vector.
+Both attempts fail the same way and the bot stands still, which is what "they
+back up into the edge and stop" looks like from the outside.
+==================
+*/
+int BotRoomToMove(bot_state_t* bs, vec3_t dir, float dist) {
+    gentity_t* ent;
+    vec3_t start, end, below;
+    bsp_trace_t trace;
+
+    if (bs->entitynum < 0 || bs->entitynum >= level.num_entities) {
+        return qtrue;
+    }
+    ent = &g_entities[bs->entitynum];
+
+    VectorCopy(bs->origin, start);
+    VectorMA(start, dist, dir, end);
+
+    // something solid in the way
+    BotAI_Trace(&trace, start, ent->r.mins, ent->r.maxs, end, bs->entitynum, MASK_PLAYERSOLID);
+    if (trace.fraction < 0.9f) {
+        return qfalse;
+    }
+
+    /*
+    And a floor to land on. 128 units is about where a drop stops being a step
+    and starts being a decision - far enough to allow the ledges bots drop off
+    all the time, close enough to catch the ones that are really a hole.
+    */
+    VectorCopy(trace.endpos, below);
+    below[2] -= 128;
+    BotAI_Trace(&trace, trace.endpos, ent->r.mins, ent->r.maxs, below, bs->entitynum, MASK_PLAYERSOLID);
+    if (trace.fraction >= 1.0f) {
+        return qfalse;
+    }
+    return qtrue;
+}

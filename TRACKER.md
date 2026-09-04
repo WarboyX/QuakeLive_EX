@@ -5193,6 +5193,75 @@ is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
 
+### E63. Bots were rebuilt eleven times per tick — DONE (verify)
+**Lives in:** our **server** (server engine) · **Seen by:** every client
+
+Found by not believing a number in our own diagnostic. The rolling snapshot line
+from the 2026-09-04 02:43 log:
+
+```
+snap 60s: peak 138/256 (...) 1308 bytes max, 1745142 sent, 0 rate-delayed, 0 dropped
+```
+
+**1,745,142 snapshots in sixty seconds.** Sixty-four clients at 40 tick can
+produce 153,600. Eleven times too many, so either the counter was wrong or the
+server was doing something it should not.
+
+It was the second one.
+
+`SV_SendClientMessages` skips a client with
+
+```c
+if (svs.time - c->nextSnapshotTime < c->snapshotMsec * com_timescale->value)
+    continue;   // it's not time yet
+```
+
+and `snapshotMsec` was written in exactly one place: `SV_UserinfoChanged`.
+**`SV_BotAllocateClient` does not call it.** It sets `cl->state = CS_ACTIVE`, sets
+the netchan type to `NA_BOT`, and returns - so a bot's `snapshotMsec` stayed at
+whatever the slot held, which is zero for a fresh one. The test then reads
+`svs.time - nextSnapshotTime < 0`, which is never true, so the skip never fired.
+
+And `SV_SendClientMessages` runs **once per `Com_Frame`, not once per server
+tick**. On a listen server that is the client's render rate. Fifty-nine bots at
+roughly 450 fps is about 26,000 snapshot builds a second against the 2,560 the
+tick calls for - which is the ratio in the log.
+
+The cost is not the counter. `SV_SendClientSnapshot` calls
+`SV_BuildClientSnapshot` - the PVS walk and entity cull, the most expensive thing
+the server does - **before** the `SVF_BOT` early-out:
+
+```c
+    // build the snapshot
+    SV_BuildClientSnapshot(client);
+
+    // bots need to have their snapshots build, but
+    // the query them directly without needing to be sent
+    if (client->gentity && client->gentity->r.svFlags & SVF_BOT) {
+        return;
+    }
+```
+
+So all of it was real work, ten times in eleven thrown away, and it scaled with
+the *client's* framerate - a faster machine made the server work harder.
+
+**Fixed by deriving the interval per frame** in `SV_SendClientMessages` rather
+than caching it at connect. That closes the bot hole at every path rather than
+just `SV_BotAllocateClient`, and it fixes a second thing for free: `sv_fps` now
+takes effect on a running match. It previously reached only clients that resent
+userinfo, so changing the tick mid-match silently did nothing for everyone
+already playing - and a test without a `map_restart` measured the old tick and
+looked like the change had done nothing. `net_test.cfg` no longer asks for one.
+
+**What this does not change:** bots still get a snapshot every tick, which is
+what the AI reads through `BotAI_GetSnapshotEntity`. They were getting eleven
+identical ones per tick and using the last.
+
+**To verify:** the rolling line should report roughly `clients x sv_fps x 60`
+sent per window - about 150,000 at 64 players and 40 tick, not 1.7 million. Any
+CPU headroom estimate for raising the tick was made against the wrong baseline
+and is now worth remeasuring.
+
 ### E62. Filling the server and starting a match evicted everyone — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
