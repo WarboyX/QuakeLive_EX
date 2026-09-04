@@ -1,20 +1,15 @@
 ## Quake Live Ex
 
-273 commits on top of **tjone270/ioquakelive**. Requires a legitimate `pak00.pk3` — nothing from Quake Live is redistributed.
+An open-source client and server for **Quake Live**, built on ioquake3 — 273 commits on top of **tjone270/ioquakelive**.
 
-**Spawning turned out to be the largest fault in the game.** Every selector fell back to the same map entity forever, so everyone who died appeared on one spot and telefragged whoever was standing there — **93% of deaths on thunderstruck, 98% on citycrossings**. It now sorts points into clear, recently used and occupied with a least-recently-used fallback, uses team pads when a map is short on deathmatch spawns, steps aside instead of telefragging, and gives 1.5s of spawn protection with a firing lockout so it cannot be used to camp. Telefrags no longer count as a death.
-Trinity, same map before and after: **159 → 24** telefrags against **492 → 1842** weapon deaths.
+**The goal** is a build functionally equivalent to Quake Live 1069 that then goes past it, without splitting the playerbase to do it. `com_gamename`, protocol 91 and `baseqz` are untouched, so **stock Quake Live clients still see these servers and still join them**. "Ex" is for extended.
 
-**A Vulkan renderer**, vendored from Quake3e and made to run against this tree — SDL windowing written from scratch, and a fallback to OpenGL that works. Anisotropic filtering to 16x, dither, look presets, and dynamic lights that reach world surfaces for the first time.
+**You need to own the game.** `pak00.pk3` from a Steam install has to be present. It is not redistributed here and never will be — the engine is GPL, the assets are id's, and that line does not get blurred.
 
-**Snapshots.** 1,350,347 entities were being discarded silently in a single map. Peak is now **128 of 256 with zero drops at 64 players**, and `snapstats` reports composition, drops, and whether the tick or the client `rate` clamp is the real limit.
+**The real enemy is silence.** A cvar registered and read by nothing. A shader name the pak does not contain. A menu that fails to parse and leaves you looking at the wrong items. All of them produce no error and nothing on screen — so much of the work is making failures say something, then fixing what they said.
 
-**Bots** got a tactical layer — weapon-aware engagement range (everything was fought at 140 units), missile dodging, group pushes, retreating that stops oscillating, item awareness. `bot_tactics 0` restores stock behaviour.
+**The approach.** Treat the cause, not the symptom: the snapshot fix was not a bigger buffer, it was finding out why the buffer filled. Measure before and after on the same map instead of asserting an improvement. Put anything new behind a cvar that restores stock behaviour, so it can be tested against itself live. And never ship a change that is right here and wrong on a stock client — the improved shotgun is written, tested, and off by default for that reason.
 
-**Freeze Tag** shipped as a supported gametype and never froze anyone. Fixed, ice shell and all.
+**Where that got us.** 93% of deaths on thunderstruck were telefrags rather than kills; trinity went **159 → 24** telefrags against **492 → 1842** weapon deaths. 1,350,347 snapshot entities were being dropped silently in one map; peak is now 128 of 256 with zero drops at 64 players. Plus a Vulkan renderer, smarter bots, a Freeze Tag that actually freezes people, and menus that do what they say.
 
-Plus persistent bans, five overflow fixes, Windows crash reporting, a server browser, a scrollable scoreboard, text fields you can type into, and console text that scales.
-
-*The honest part:* the spawn and snapshot numbers are measured. The ban system, spawn protection and bot layer are read-correct but not proven in a live match.
-
-Detail in `IMPROVED.md`, tracked issues in `TRACKER.md`.
+*Honest part:* those numbers are measured. Plenty else is read-correct and unproven in a live match; `TRACKER.md` says which is which.
