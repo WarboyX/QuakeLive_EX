@@ -3331,6 +3331,31 @@ int BotFindEnemy(bot_state_t* bs, int curenemy) {
             // if this enemy is further away than the current one
             if (curenemy >= 0 && squaredist > cursquaredist)
                 continue;
+            /*
+            [QL] And having a current enemy means something.
+
+            Stock switches to anything at all closer, and this runs every think.
+            In a sixty-four player room there is almost always somebody a little
+            closer than whoever the bot is shooting at, so it re-targets ten
+            times a second and never finishes an engagement - which from a
+            spectator is the "inhumanly switching between targets" part.
+
+            A person leaves a fight for a better one, not a marginally nearer
+            one. bot_targetCommit milliseconds since the last switch, and the new
+            enemy has to be meaningfully closer - 70% of the distance, which is
+            half the area - before it is worth turning around for. Neither
+            applies when the bot has no enemy, so first acquisition is as quick
+            as it ever was.
+            */
+            if (curenemy >= 0 && bot_targetCommit.integer > 0) {
+                if (bs->tac.enemyswitch_time >
+                    FloatTime() - (float)bot_targetCommit.integer * 0.001f) {
+                    continue;
+                }
+                if (squaredist > cursquaredist * 0.49f) {
+                    continue;
+                }
+            }
         }  // end if
         // if the bot has no
         if (squaredist > Square(900.0 + alertness * 4000.0))
@@ -3362,6 +3387,9 @@ int BotFindEnemy(bot_state_t* bs, int curenemy) {
             }
         }
         // found an enemy
+        if (bs->enemy != entinfo.number) {
+            bs->tac.enemyswitch_time = FloatTime();
+        }
         bs->enemy = entinfo.number;
         if (curenemy >= 0)
             bs->enemysight_time = FloatTime() - 2;
@@ -3859,10 +3887,31 @@ void BotAimAtEnemy(bot_state_t* bs) {
     }
     // set the ideal view angles
     vectoangles(dir, bs->ideal_viewangles);
-    // take the weapon spread into account for lower skilled bots
-    bs->ideal_viewangles[PITCH] += 6 * wi.vspread * crandom() * (1 - aim_accuracy);
+    /*
+    [QL] The aim error wanders instead of being redrawn from scratch.
+
+    Stock takes a fresh crandom() for pitch and yaw on every think - ten times a
+    second, each one unrelated to the last - so the crosshair teleports around
+    the target rather than sliding. A person's aim is wrong continuously and in
+    one direction at a time; this was wrong discontinuously, and it is most of
+    what "spasm" looks like from a spectator.
+
+    Same magnitude, same distribution over time, same dependence on
+    CHARACTERISTIC_AIM_ACCURACY - a bad bot still misses by just as much. Only
+    the step-to-step correlation changes: each think moves 30% of the way to a
+    new random target, which is a low-pass filter on the same noise.
+    */
+    if (bot_aimDrift.integer) {
+        bs->tac.aimdrift[0] = bs->tac.aimdrift[0] * 0.7f + crandom() * 0.3f;
+        bs->tac.aimdrift[1] = bs->tac.aimdrift[1] * 0.7f + crandom() * 0.3f;
+        bs->ideal_viewangles[PITCH] += 6 * wi.vspread * bs->tac.aimdrift[0] * (1 - aim_accuracy);
+        bs->ideal_viewangles[YAW] += 6 * wi.hspread * bs->tac.aimdrift[1] * (1 - aim_accuracy);
+    } else {
+        // take the weapon spread into account for lower skilled bots
+        bs->ideal_viewangles[PITCH] += 6 * wi.vspread * crandom() * (1 - aim_accuracy);
+        bs->ideal_viewangles[YAW] += 6 * wi.hspread * crandom() * (1 - aim_accuracy);
+    }
     bs->ideal_viewangles[PITCH] = AngleMod(bs->ideal_viewangles[PITCH]);
-    bs->ideal_viewangles[YAW] += 6 * wi.hspread * crandom() * (1 - aim_accuracy);
     bs->ideal_viewangles[YAW] = AngleMod(bs->ideal_viewangles[YAW]);
     // if the bots should be really challenging
     if (bot_challenge.integer) {

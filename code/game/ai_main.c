@@ -783,7 +783,33 @@ void BotChangeViewAngles(bot_state_t* bs, float thinktime) {
     maxchange *= thinktime;
     for (i = 0; i < 2; i++) {
         //
-        if (bot_challenge.integer) {
+        /*
+        [QL] bot_viewSmooth picks the first branch, and defaults to on.
+
+        The second one is id's "over reaction view model" and it is a divergent
+        recurrence:
+
+            viewanglespeed += (viewanglespeed - disired_speed);
+
+        which is v = 2v - d - the speed is pushed *away* from the speed it wants,
+        then clamped, then damped by 0.45 * (1 - factor) afterwards. The damping
+        is what keeps it from running away, and what is left is a second-order
+        system that overshoots and rings. That is the crosshair drifting past a
+        target and swinging back, reported from spectating as "floating around
+        targets".
+
+        The first branch is a plain exponential approach - speed proportional to
+        the angle still to cover, clamped - which settles without overshoot. It
+        was reachable only through bot_challenge, which also makes accurate bots
+        snap their view straight onto the target in BotAimAtEnemy; that is the
+        opposite of what is wanted here, so this gets its own cvar rather than
+        borrowing that one.
+
+        Aim *error* is unaffected either way. It comes from the spread offset in
+        BotAimAtEnemy, not from the view model, so a bad bot is still a bad shot -
+        it just stops shaking.
+        */
+        if (bot_challenge.integer || bot_viewSmooth.integer) {
             // smooth slowdown view model
             diff = fabs(AngleDifference(bs->viewangles[i], bs->ideal_viewangles[i]));
             anglespeed = diff * factor;

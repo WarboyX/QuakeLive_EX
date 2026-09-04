@@ -866,7 +866,7 @@ rather than only what the long term goal is.
 ==================
 */
 void BotTacticsReport(void) {
-    int i, bots, posture[3], dodging, fighting, stuck;
+    int i, bots, posture[3], dodging, fighting, stuck, idle;
     float still;
     bot_state_t* bs;
     char netname[MAX_NETNAME];
@@ -908,12 +908,22 @@ void BotTacticsReport(void) {
         if (bs->enemy >= 0) {
             fighting++;
         }
+        /*
+        [QL] Standing still is correct at intermission, and BotTacticsUpdate is
+        not called there - BotDeathmatchAI gates it on !BotIntermission - so
+        moved_time simply stops advancing and every bot reads as stuck. The map
+        report runs at ShutdownGame, which is usually *after* an intermission, so
+        the first version of this reported "59 of them have not moved in over
+        three seconds" for a server that was working perfectly.
+        */
+        idle = (bs->ainode == AINode_Intermission || bs->ainode == AINode_Observer ||
+                bs->ainode == AINode_Respawn || BotIsDead(bs));
         still = FloatTime() - bs->tac.moved_time;
-        if (still > 3.0f) {
+        if (!idle && still > 3.0f) {
             stuck++;
         }
         ClientName(bs->client, netname, sizeof(netname));
-        G_Printf("%-20s %3i/%-3i %-10s %d v %-5d %5s %-16s %-10s %.1fs\n",
+        G_Printf("%-20s %3i/%-3i %-10s %d v %-5d %5s %-16s %-10s %s%.1fs\n",
                  netname,
                  cl->ps.stats[STAT_HEALTH], cl->ps.stats[STAT_ARMOR],
                  bs->tac.posture == TACTIC_PUSH       ? "push"
@@ -925,7 +935,7 @@ void BotTacticsReport(void) {
                  bs->ltgtype == LTG_DEFENDKEYAREA ? "defending"
                  : bs->ltgtype                    ? "team goal"
                                                   : "roaming",
-                 still);
+                 idle ? "idle, " : "", still);
     }
     G_Printf("%i bots: %i pushing, %i even, %i falling back; %i with an enemy, %i dodging\n",
              bots, posture[TACTIC_PUSH], posture[TACTIC_EVEN], posture[TACTIC_FALLBACK],

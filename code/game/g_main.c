@@ -117,7 +117,10 @@ vmCvar_t bot_showAreas;
 vmCvar_t bot_showAvoidSpots;
 vmCvar_t bot_showPath;
 vmCvar_t bot_showTourPoints;
+vmCvar_t bot_aimDrift;
 vmCvar_t bot_debugTactics;
+vmCvar_t bot_targetCommit;
+vmCvar_t bot_viewSmooth;
 vmCvar_t bot_dodge;
 vmCvar_t bot_squadRange;
 vmCvar_t bot_startingSkill;
@@ -1115,7 +1118,15 @@ static cvarTable_t gameCvarTable[] = {
     Quake 3 behaviour exactly, which is what makes the whole thing testable
     against itself on a live server without a restart.
     */
+    /*
+    [QL] The three that decide whether a bot reads as a person or as a machine
+    having a fit. Each restores the stock behaviour at 0. See ai_main.c
+    BotChangeViewAngles, BotAimAtEnemy and BotFindEnemy.
+    */
+    {&bot_aimDrift, "bot_aimDrift", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_debugTactics, "bot_debugTactics", "0", 0, 0, NULL},
+    {&bot_targetCommit, "bot_targetCommit", "700", CVAR_GAMERULE, 0, NULL},
+    {&bot_viewSmooth, "bot_viewSmooth", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_dodge, "bot_dodge", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_squadRange, "bot_squadRange", "800", CVAR_GAMERULE, 0, NULL},
     {&bot_startingSkill, "bot_startingSkill", "1", CVAR_GAMERULE, 0, NULL},
