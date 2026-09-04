@@ -242,13 +242,45 @@ overlay's location column, and colours rails by team.
 
 ## Bots
 
-Stopped hunting their own team in instagib and stopped the hunt outranking team
-orders; stopped dancing around each other; stopped touching their own flag before
-attacking in CTF; and stopped putting a whole human team on defence because of a
-default voice order. `bot_minplayers` fills to the real slot count, bots
-understand Quake Live's chat format, a bot no longer inherits `g_teamSpawnAsSpec`
-and fills the server with spectators, and pending bots no longer eat every slot.
-→ `E10`, `E26`
+**The behaviour fixes.** Stopped hunting their own team in instagib and stopped
+the hunt outranking team orders; stopped dancing around each other; stopped
+touching their own flag before attacking in CTF; and stopped putting a whole
+human team on defence because of a default voice order. `bot_minplayers` fills to
+the real slot count, bots understand Quake Live's chat format, a bot no longer
+inherits `g_teamSpawnAsSpec` and fills the server with spectators, and pending
+bots no longer eat every slot. → `E10`, `E26`
+
+**A tactical layer** (`code/game/ai_tactics.c`), because the Quake 3 bot decides
+everything from its own inventory and knows nothing about the room it is standing
+in. `bot_tactics 0` returns the stock answer from every entry point, which is how
+it gets tested — two matches on one map, one cvar apart, no restart.
+
+- **Engagement range by weapon.** `IDEAL_ATTACKDIST` is **140 for everything**, so
+  a railgun bot walks to shotgun range and a lightning gun bot backs out of the
+  gun's own 768-unit reach. Below 0.5 attack skill the old single distance stays.
+- **Side-stepping, two mechanisms.** Reactive: missiles that are moving, heading
+  at the bot, arriving within a second *and in line of sight* — without that last
+  test a bot dodges a rocket fired through a wall. Anticipatory: an enemy holding
+  a hitscan weapon on the bot breaks its strafe rhythm before the shot. The stock
+  rhythm flips only on a timer **and** `random() > 0.935`, holding one direction
+  for seconds at a time.
+- **Group pushes**, from counting and weighing the room — a bot at 25 health is
+  not a whole body. The posture feeds `BotAggression`, which four gametype paths
+  already test, so a group turns aggressive together with nothing coordinating it.
+- **Retreating** now considers being outnumbered, and is **held for 1.5 s**;
+  `BotAggression` sits either side of 50 as health ticks while the fight node asks
+  every think, so a bot on the boundary oscillated several times a second. Retreat
+  heads towards the nearest team mate.
+- **Item awareness.** The search range — an AAS travel time, not a distance —
+  scales with what the bot is short of, and with an enemy about the goals that are
+  not worth it are refused, read from `g_entities[].item` rather than by name.
+- **Auto-defence**, capped at a quarter of the team, gametypes with a place to
+  lose, 60 seconds.
+- **`bots`** console command: posture, ally/foe counts, AI node, goal and totals,
+  in every gametype.
+
+Cvars: `bot_tactics` 1, `bot_dodge` 1, `bot_squadRange` 800, `bot_debugTactics` 0.
+→ `E60`
 
 ---
 
