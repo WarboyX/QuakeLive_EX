@@ -748,8 +748,45 @@ void BotCTFSeekGoals(bot_state_t* bs) {
         l1 = 0.4f;
         l2 = 0.7f;
     }
+    /*
+    [QL] Which job, decided against what the team is already doing rather than by
+    a die roll. See BotCTFPickRole - the mix moves with the flags, so a team that
+    has just lost its own flag stops sending people to the far end of the map.
+
+    Falls through to the stock roll when the layer is off or the role system has
+    nothing to say.
+    */
+    {
+        int role = BotCTFPickRole(bs);
+
+        if (role == CTFROLE_ESCORT) {
+            int carrier = BotTeamFlagCarrier(bs);
+
+            if (carrier >= 0) {
+                bs->decisionmaker = bs->client;
+                bs->ordered = qfalse;
+                bs->ltgtype = LTG_TEAMACCOMPANY;
+                bs->teammate = carrier;
+                bs->teamgoal_time = FloatTime() + TEAM_ACCOMPANY_TIME;
+                bs->formation_dist = 96;
+                bs->arrive_time = 0;
+                BotSetTeamStatus(bs);
+                bs->owndecision_time = FloatTime() + 5;
+                return;
+            }
+            role = CTFROLE_DEFEND;
+        }
+        if (role == CTFROLE_ATTACK) {
+            rnd = 0.0f;
+        } else if (role == CTFROLE_DEFEND) {
+            rnd = (l1 + l2) * 0.5f;
+        } else if (role == CTFROLE_ROAM) {
+            rnd = 1.0f;
+        } else {
+            rnd = random();
+        }
+    }
     // get the flag or defend the base
-    rnd = random();
     if (rnd < l1 && ctf_redflag.areanum && ctf_blueflag.areanum) {
         bs->decisionmaker = bs->client;
         bs->ordered = qfalse;

@@ -1021,3 +1021,160 @@ int BotRoomToMove(bot_state_t* bs, vec3_t dir, float dist) {
     }
     return qtrue;
 }
+
+/*
+==================
+BotCTFRoleMix
+
+[QL] What fraction of the team should be doing each job right now.
+
+The stock split is a die roll per bot - 40% chance of going for the flag, 30% of
+defending, 30% of roaming - which is not a plan, it is a distribution. Four bots
+can all roll "attack" and leave the base empty, and nothing about the roll
+changes when the flags move.
+
+These are targets for the *team*, and BotCTFPickRole below fills the biggest gap
+rather than rolling dice, so twelve bots reliably end up near the mix rather than
+somewhere in a binomial spread around it.
+
+The mix moves with the game:
+
+  nothing taken     the standing posture: press, but keep the door shut
+  ours is out       the flag is walking away and getting it back beats anything
+                    that could be won at the far end of the map
+  theirs is out     we have a carrier, and a carrier alone is a carrier who dies
+                    on the way home - escort becomes the biggest single job
+  both are out      the messy one. Hold what we have, walk ours home, and do not
+                    send anybody on a third errand
+==================
+*/
+static void BotCTFRoleMix(bot_state_t* bs, float* mix) {
+    qboolean ourflagout, theirflagout;
+    float jitter;
+    int i;
+
+    if (BotTeam(bs) == TEAM_RED) {
+        ourflagout = bs->redflagstatus != 0;
+        theirflagout = bs->blueflagstatus != 0;
+    } else {
+        ourflagout = bs->blueflagstatus != 0;
+        theirflagout = bs->redflagstatus != 0;
+    }
+
+    if (ourflagout && theirflagout) {
+        mix[CTFROLE_ATTACK] = 0.15f;
+        mix[CTFROLE_DEFEND] = 0.45f;
+        mix[CTFROLE_ESCORT] = 0.30f;
+        mix[CTFROLE_ROAM] = 0.10f;
+    } else if (ourflagout) {
+        mix[CTFROLE_ATTACK] = 0.25f;
+        mix[CTFROLE_DEFEND] = 0.60f;
+        mix[CTFROLE_ESCORT] = 0.00f;
+        mix[CTFROLE_ROAM] = 0.15f;
+    } else if (theirflagout) {
+        mix[CTFROLE_ATTACK] = 0.25f;
+        mix[CTFROLE_DEFEND] = 0.30f;
+        mix[CTFROLE_ESCORT] = 0.35f;
+        mix[CTFROLE_ROAM] = 0.10f;
+    } else {
+        mix[CTFROLE_ATTACK] = 0.45f;
+        mix[CTFROLE_DEFEND] = 0.35f;
+        mix[CTFROLE_ESCORT] = 0.00f;
+        mix[CTFROLE_ROAM] = 0.20f;
+    }
+
+    /*
+    And it is never exactly those numbers. A fixed mix is a team that plays the
+    same match twice; this wanders by up to a tenth on a slow clock shared by the
+    whole team - the same value for every bot at a given moment, so the team
+    leans one way together rather than each bot wobbling on its own.
+    */
+    jitter = sin((double)level.time * 0.00013) * 0.10f;
+    mix[CTFROLE_ATTACK] += jitter;
+    mix[CTFROLE_DEFEND] -= jitter;
+    for (i = 0; i < CTFROLE_COUNT; i++) {
+        if (mix[i] < 0.0f) {
+            mix[i] = 0.0f;
+        }
+    }
+}
+
+/*
+==================
+BotCTFPickRole
+
+The job with the biggest shortfall against the mix above, counting what the rest
+of the team is already doing. Bots only - botstates[] is the only place a role is
+legible, so a human holding the base is not counted and the bots will over-defend
+behind one. That is the safe direction to be wrong in.
+==================
+*/
+int BotCTFPickRole(bot_state_t* bs) {
+    float mix[CTFROLE_COUNT];
+    int have[CTFROLE_COUNT];
+    int i, team, teamsize, best;
+    float bestdeficit, deficit;
+
+    if (!BotTacticsEnabled() || gametype != GT_CTF) {
+        return -1;
+    }
+    BotCTFRoleMix(bs, mix);
+
+    for (i = 0; i < CTFROLE_COUNT; i++) {
+        have[i] = 0;
+    }
+    teamsize = 0;
+    team = g_entities[bs->client].client->sess.sessionTeam;
+
+    for (i = 0; i < level.maxclients; i++) {
+        if (!g_entities[i].inuse || !g_entities[i].client) {
+            continue;
+        }
+        if (g_entities[i].client->sess.sessionTeam != team) {
+            continue;
+        }
+        teamsize++;
+        if (i == bs->client || !botstates[i] || !botstates[i]->inuse) {
+            continue;
+        }
+        switch (botstates[i]->ltgtype) {
+            case LTG_GETFLAG:
+            case LTG_ATTACKENEMYBASE:
+                have[CTFROLE_ATTACK]++;
+                break;
+            case LTG_DEFENDKEYAREA:
+                have[CTFROLE_DEFEND]++;
+                break;
+            case LTG_TEAMACCOMPANY:
+                have[CTFROLE_ESCORT]++;
+                break;
+            default:
+                have[CTFROLE_ROAM]++;
+                break;
+        }
+    }
+    if (teamsize < 1) {
+        teamsize = 1;
+    }
+
+    best = CTFROLE_ROAM;
+    bestdeficit = -999;
+    for (i = 0; i < CTFROLE_COUNT; i++) {
+        // escort is only a job when there is somebody to escort
+        if (i == CTFROLE_ESCORT && BotTeamFlagCarrier(bs) < 0) {
+            continue;
+        }
+        deficit = mix[i] * (float)teamsize - (float)have[i];
+        if (deficit > bestdeficit) {
+            bestdeficit = deficit;
+            best = i;
+        }
+    }
+    if (bot_debugTactics.integer) {
+        G_Printf("%s: ctf role %i (want %.1f/%.1f/%.1f/%.1f of %i, have %i/%i/%i/%i)\n",
+                 g_entities[bs->entitynum].client->pers.netname, best,
+                 mix[0], mix[1], mix[2], mix[3], teamsize,
+                 have[0], have[1], have[2], have[3]);
+    }
+    return best;
+}

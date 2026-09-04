@@ -34,6 +34,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
 
+/* [QL] CTF roles - see BotCTFPickRole. Ordered so the array in that function can
+   be indexed by them directly. */
+#define CTFROLE_ATTACK 0  // go for the enemy flag
+#define CTFROLE_DEFEND 1  // hold our own
+#define CTFROLE_ESCORT 2  // stay with whoever is carrying theirs
+#define CTFROLE_ROAM 3    // fight for the middle, pick things up
+#define CTFROLE_COUNT 4
+
 #define TACTIC_FALLBACK 0  // outnumbered here and now
 #define TACTIC_EVEN 1      // no reason to think either way
 #define TACTIC_PUSH 2      // enough friends nearby to press
@@ -64,6 +72,8 @@ int BotWantsItemGoal(struct bot_state_s* bs, bot_goal_t* goal);
 float BotItemSearchRange(struct bot_state_s* bs, float range);
 // a goal on the nearest ally, to fall back towards rather than away
 int BotRegroupGoal(struct bot_state_s* bs, bot_goal_t* goal);
+// which job this bot should take in CTF, given what the rest of the team is doing
+int BotCTFPickRole(struct bot_state_s* bs);
 // take a defensive posting when the team has nobody holding the base
 int BotAutoDefendGoal(struct bot_state_s* bs);
 // qtrue when there is somewhere to go that way - not blocked, not off an edge
