@@ -403,6 +403,12 @@ So it reuses EF_BOUNCE_HALF, which is missile-only - the same context-dependent
 reuse the engine already does with 0x10 (EF_PLAYER_EVENT for players,
 EF_BOUNCE for missiles). A stock client reads this bit inside missile handling,
 which a player entity never reaches; the worst it can do there is nothing.
+
+The cost of the sharing is that our own cgame has to be as careful as a stock one
+is by accident: anything reading this bit must first know it is looking at a
+player. CG_AddRefEntityWithPowerups is the one place that does not get that for
+free, because CG_Missile calls it too - it tests eType == ET_PLAYER for exactly
+this reason, and a grenade renders as a ghost if that test is ever dropped.
 */
 #define EF_SPAWNPROTECT 0x00000020    // players only - see above
 #define EF_AWARD_GAUNTLET 0x00000040  // draw a gauntlet sprite

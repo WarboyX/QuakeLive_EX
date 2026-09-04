@@ -1941,8 +1941,14 @@ static void CG_RegisterGraphics(void) {
     cgs.media.battleSuitShader = trap_R_RegisterShader("powerups/battleSuit");
     cgs.media.battleWeaponShader = trap_R_RegisterShader("powerups/battleWeapon");
     cgs.media.invisShader = trap_R_RegisterShader("powerups/invisibility");
-    // [QL] ours, from content/pak01/scripts/spawnprotect.shader
+    // [QL] ours, from content/pak01/scripts/spawnprotect.shader. Say so if it did
+    // not load: RE_RegisterShader's own message is developer-only, and the
+    // fallthrough in CG_AddRefEntityWithPowerups is deliberately quiet.
     cgs.media.spawnProtectShader = trap_R_RegisterShader("models/players/spawnprotect");
+    if (!cgs.media.spawnProtectShader) {
+        CG_Printf("^3models/players/spawnprotect did not load - spawn-protected players "
+                  "will render normally (is pak01.pk3 current?)\n");
+    }
     cgs.media.regenShader = trap_R_RegisterShader("powerups/regen");
     cgs.media.hastePuffShader = trap_R_RegisterShader("hasteSmokePuff");
 

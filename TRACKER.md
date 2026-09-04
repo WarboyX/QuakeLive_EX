@@ -2114,9 +2114,49 @@ renderer limit rather than a choice. `refEntity_t.customShader` replaces the
 model's shader for the whole draw, so keeping the player's own texture while
 making it transparent would need either per-model translucent variants of every
 skin or renderer support for forcing alpha onto an opaque shader -
-`RF_FORCE_ENT_ALPHA` in upstream Quake3e, which this tree does not have and which
-is awkward in the Vulkan backend because pipeline state is baked. The silhouette
-is what Counter-Strike's version looks like anyway.
+`RF_FORCE_ENT_ALPHA` in upstream Quake3e, which this tree does not have. The
+silhouette is what Counter-Strike's version looks like anyway.
+
+**Correction to what this entry first said.** It claimed porting
+`RF_FORCE_ENT_ALPHA` would be "awkward in the Vulkan backend because pipeline
+state is baked". That is wrong. `vk_find_pipeline_ext()` searches
+`vk.pipelines[]` for a matching `Vk_Pipeline_Def` and calls `vk_alloc_pipeline()`
+when there is no match, so a blend-state variant produced by overriding a stage's
+`stateBits` is created on demand like any other. The port is tractable; it is not
+being done because the silhouette is what was asked for and it costs nothing to
+get wrong, whereas renderer state overrides on the player draw path do.
+
+#### The bit-sharing had one real cost, and it was paid the wrong way first
+
+`EF_SPAWNPROTECT` is `EF_BOUNCE_HALF`, and `CG_AddRefEntityWithPowerups` is
+called from **`CG_Missile` as well as `CG_Player`** - a fact its own header
+comment states ("Also called by CG_Missile for quad rockets"). The first version
+tested the flag with no idea what it was looking at, so every grenade
+(`g_missile.c` sets `bolt->s.eFlags = EF_BOUNCE_HALF`) drew as a white
+translucent ghost instead of a grenade.
+
+Fixed by gating on `state->eType == ET_PLAYER`. The general rule, now written
+into the `EF_SPAWNPROTECT` comment in `bg_public.h`: a stock client is careful
+about this bit by accident, because it only ever reads it inside missile code;
+ours has to be careful on purpose. Dropped items also carry `EF_BOUNCE_HALF`
+(`g_items.c`) but are drawn by `CG_Item`, which does not call this function.
+
+Corpses were already safe - `CopyToBodyQue` does `body->s.eFlags = EF_DEAD`,
+which clears everything.
+
+**Asset-failure behaviour was checked as well**, since a missing shader is the
+same silent-zero shape as a missing model name. `RE_RegisterShader` returns 0 for
+a name the paks do not contain, `cgs.media.spawnProtectShader` is tested
+alongside the flag, and the fallthrough draws the player normally - a missing
+`spawnprotect.shader` costs the effect and nothing else, and can never turn a
+player into a hole in the world. `CG_RegisterGraphics` now prints when the handle
+comes back 0, because `RE_RegisterShader`'s own message is developer-only. The
+shader itself depends on no pak00 asset (`$whiteimage`) and ships in
+`pak01.pk3` under `scripts/`.
+
+`cull none` was dropped: player meshes are closed, and drawing both sides blends
+the far side of the model through the near side, which reads as a muddier shape
+rather than a cleaner one.
 
 `content/pak01/scripts/spawnprotect.shader` is ours: `$whiteimage`,
 `blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA`, `rgbGen lightingDiffuse` so it

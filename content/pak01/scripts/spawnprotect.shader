@@ -11,9 +11,11 @@
 //
 // alphaGen entity, so cgame sets the strength through refEntity_t.shaderRGBA[3]
 // and the value lives in one place rather than being baked in here.
+// Default culling (back faces removed) on purpose: player meshes are closed, and
+// "cull none" blends the far side of the model through the near side, which reads
+// as a denser, muddier shape rather than a cleaner one.
 models/players/spawnprotect
 {
-	cull none
 	{
 		map $whiteimage
 		blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA

@@ -2350,8 +2350,19 @@ void CG_AddRefEntityWithPowerups(refEntity_t* ent, entityState_t* state, int tea
     thing to communicate: it says "shooting this player achieves nothing", and it
     lasts a second and a half. cg_spawnProtectAlpha is the strength, and the
     shader takes it through alphaGen entity rather than baking a value in.
+
+    The eType test is not a nicety. EF_SPAWNPROTECT is EF_BOUNCE_HALF reused, and
+    this function is called from CG_Missile as well as from CG_Player - so without
+    it every grenade (g_missile.c sets EF_BOUNCE_HALF on the bolt) draws as a
+    white translucent ghost instead of a grenade. The bit only means spawn
+    protection on a player entity; anywhere else it still means bouncing.
+
+    The shader handle is checked too: RE_RegisterShader returns 0 for a name the
+    paks do not contain, and the point of the fallthrough is that a missing
+    spawnprotect.shader costs the effect and nothing else. It must never be able
+    to turn a player into a hole in the world.
     */
-    if ((state->eFlags & EF_SPAWNPROTECT) && cgs.media.spawnProtectShader) {
+    if (state->eType == ET_PLAYER && (state->eFlags & EF_SPAWNPROTECT) && cgs.media.spawnProtectShader) {
         int alpha = cg_spawnProtectAlpha.integer;
 
         if (alpha < 16) {
