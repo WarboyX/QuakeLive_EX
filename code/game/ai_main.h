@@ -153,6 +153,8 @@ typedef struct bot_tactics_s {
     float aimsweep_len;
     float aimoffsetgoal[2];  // where the aim error is heading, set on the think
     float aimoffset[2];      // where it is now, walked there every frame
+    int reportedposture;     // last posture bot_debugTactics printed, so it can
+                             // print changes rather than every refresh
 } bot_tactics_t;
 
 typedef struct bot_state_s {

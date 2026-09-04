@@ -420,7 +420,17 @@ void BotTacticsUpdate(bot_state_t* bs) {
     }
     BotCountNearby(bs, range);
 
-    if (bot_debugTactics.integer && bs->tac.foes) {
+    /*
+    [QL] On change, not on refresh.
+
+    This used to print whenever a bot could see anybody, and the picture is
+    refreshed four or five times a second - so at sixty bots it was upwards of
+    two hundred lines a second, which is not a diagnostic, it is a denial of
+    service against the log it is written to. The cvar's own description said
+    "every posture change" and the code did not.
+    */
+    if (bot_debugTactics.integer && bs->tac.posture != bs->tac.reportedposture) {
+        bs->tac.reportedposture = bs->tac.posture;
         BotAI_Print(PRT_MESSAGE, "%s: %d allies, %d foes, posture %s\n",
                     g_entities[bs->entitynum].client->pers.netname,
                     bs->tac.allies, bs->tac.foes,
