@@ -5193,6 +5193,85 @@ is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
 
+### E62. Filling the server and starting a match evicted everyone — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"we would fill up the server then start a match, the server would crash just as
+the match was coming out of warm up"* — and the workaround was to start with six
+per team and add bots after the match was live.
+
+It is not a crash. Every client is dropped, one after another, for **`Server
+command overflow`** — including client 0, which ends the listen server and
+presents exactly as the server dying at the end of warmup:
+
+```
+SV_DropClient: dropping client 11 (Demona), state=4, reason='Server command overflow'
+SV_DropClient: dropping client 45 (Gorre),  state=4, reason='Server command overflow'
+SV_DropClient: dropping client 1  (TankJr), state=4, reason='Server command overflow'
+...
+```
+
+`MAX_RELIABLE_COMMANDS` is 64 and a client whose queue fills is dropped. The
+warning added earlier fired first and named the moment — `reliable command buffer
+48/64 full` — and the queue dump that goes with it says what filled it.
+
+#### The count, from the field
+
+First pending-queue dump, 40 commands:
+
+| command | count |
+|---|---|
+| `cs 663` (CS_TEAMCOUNT_RED) | 14 |
+| `cs 664` (CS_TEAMCOUNT_BLUE) | 14 |
+| player configstrings (`cs 548`–`cs 586`) | 8 |
+| everything else | 4 |
+
+**Twenty-eight of thirty-nine were two configstrings.**
+
+#### Why those two
+
+`Team_LivingTeamCounts` writes `CS_TEAMCOUNT_RED` and `CS_TEAMCOUNT_BLUE`, and is
+called **on every spawn and on every death** (`g_client.c` ×3, `g_combat.c`). A
+configstring write is a reliable command **broadcast to every client**, and the
+engine only skips it when the value is unchanged — which an alive count never is.
+
+At 64 players in instagib that is two broadcasts to 64 clients on every single
+death, into a 64-deep queue. Filling a server makes it worse in a burst: 60 bots
+joining is 60 spawns, each changing a count, each a broadcast, on top of the
+player configstring and score traffic the join itself generates. Hence the
+workaround working — six per team is a burst the queue can drain.
+
+**Fixed: round-based gametypes only.** The number means "how many are still alive
+this round", which is a real thing in Clan Arena, Freeze Tag, Attack & Defend and
+Red Rover and nothing at all in CTF, TDM or free-for-all, where it only tracks
+how many people happen to be respawning. Those modes have all the deaths, so they
+were paying the entire cost for a number with no meaning in them.
+
+Worth recording: `cgs.teamCountRed` and `cgs.teamCountBlue` are assigned by our
+own cgame and then **read by nothing**. On this client the flood was feeding two
+dead variables — the same silent shape as a registered cvar nothing reads.
+
+#### The second contributor
+
+Player configstrings for the same bot, three and four times over, with only `tt`
+flipping 2, 1, 2. `BotSetUserInfo` called `ClientUserinfoChanged` unconditionally,
+and its only caller is `BotSetTeamStatus` writing `teamtask` every time a bot
+reconsiders its goal. Writing an unchanged value was always a no-op at the
+receiving end; it was never a no-op on the wire. It now returns early when the
+key already holds that value.
+
+#### What was already right
+
+The recursion guard from the earlier fix held — there is no stack overflow in
+these logs, which is what this used to be. `sv_droppingClient` stops a drop that
+happens *inside* a drop's broadcast from broadcasting again. What it cannot stop
+is the next client going over on the following frame, because by then everyone's
+queue is full for the same reason. The flood had to be fixed at the source.
+
+**To verify:** fill to 64 with `bot_minplayers` and start a match in CTF or FFA.
+No `reliable command buffer` warnings, no drops. In Clan Arena the counts still
+update, because there they mean something.
+
 ### E61. The spawn search counted every point twice — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

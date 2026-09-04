@@ -2092,6 +2092,7 @@ Sets configstring for each team's alive count.
 ============
 */
 void Team_LivingTeamCounts(int *outRed, int *outBlue) {
+    static int lastRed = -1, lastBlue = -1, lastLevel = -1;
     int i;
     int aliveRed = 0, aliveBlue = 0;
 
@@ -2105,8 +2106,55 @@ void Team_LivingTeamCounts(int *outRed, int *outBlue) {
         else if (cl->sess.sessionTeam == TEAM_BLUE) aliveBlue++;
     }
 
-    trap_SetConfigstring(CS_TEAMCOUNT_RED, va("%i", aliveRed));
-    trap_SetConfigstring(CS_TEAMCOUNT_BLUE, va("%i", aliveBlue));
+    /*
+    [QL] These two configstrings are what took the server down on a full server.
+
+    A configstring write is a reliable server command broadcast to every client,
+    and the engine only skips it when the value is unchanged - which an alive
+    count never is. This function is called on every spawn and every death, so at
+    64 players in instagib each of the two counts was broadcast to all 64 clients
+    hundreds of times a minute. MAX_RELIABLE_COMMANDS is 64 deep and a client
+    whose queue fills is dropped, so filling a server and starting a match
+    evicted everybody, one after another, with "Server command overflow" - which
+    presents as the server crashing at the end of warmup.
+
+    A pending-queue dump from the field: 28 of the 39 queued commands were these
+    two indices, fourteen each.
+
+    Two limits now.
+
+    Round-based only. The number means "how many are still alive this round",
+    which is a thing in Clan Arena, Freeze Tag, Attack & Defend and Red Rover and
+    nothing at all in CTF, TDM or free-for-all, where it just tracks how many
+    people happen to be respawning. Those modes also have the deaths, so they
+    were paying the whole cost for a number with no meaning in them. Worth
+    knowing: cgs.teamCountRed and teamCountBlue are assigned by our own cgame and
+    then read by nothing, so on this client the flood was feeding two dead
+    variables.
+
+    And only on a change. The engine already skips an identical configstring, so
+    this saves nothing on the wire - it is here because several paths call this
+    function within one frame and the cached values make that free rather than
+    three trap calls deep into the engine's string compare.
+
+    The cache is keyed on level.startTime because these are function statics and
+    a map change would otherwise leave the first count of the new map looking
+    unchanged and never sent.
+    */
+    if (BG_IsRoundBasedGameType(g_gametype.integer)) {
+        if (lastLevel != level.startTime) {
+            lastLevel = level.startTime;
+            lastRed = lastBlue = -1;
+        }
+        if (aliveRed != lastRed) {
+            lastRed = aliveRed;
+            trap_SetConfigstring(CS_TEAMCOUNT_RED, va("%i", aliveRed));
+        }
+        if (aliveBlue != lastBlue) {
+            lastBlue = aliveBlue;
+            trap_SetConfigstring(CS_TEAMCOUNT_BLUE, va("%i", aliveBlue));
+        }
+    }
 
     if (outRed) *outRed = aliveRed;
     if (outBlue) *outBlue = aliveBlue;

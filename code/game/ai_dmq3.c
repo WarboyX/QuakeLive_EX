@@ -111,6 +111,22 @@ void BotSetUserInfo(bot_state_t* bs, char* key, char* value) {
     char userinfo[MAX_INFO_STRING];
 
     trap_GetUserinfo(bs->client, userinfo, sizeof(userinfo));
+    /*
+    [QL] Only if it actually changed.
+
+    ClientUserinfoChanged rewrites the client's configstring, and a configstring
+    write is a reliable command broadcast to every client on the server. The only
+    caller of this is BotSetTeamStatus setting "teamtask", which runs every time a
+    bot reconsiders its goal - so sixty bots re-deciding produced a stream of
+    identical broadcasts. Queue dumps from the field show the same bot's
+    configstring three and four times over with only tt flipping 2, 1, 2.
+
+    Writing the same value was always a no-op on the receiving end. It was never
+    a no-op on the wire.
+    */
+    if (!strcmp(Info_ValueForKey(userinfo, key), value)) {
+        return;
+    }
     Info_SetValueForKey(userinfo, key, value);
     trap_SetUserinfo(bs->client, userinfo);
     ClientUserinfoChanged(bs->client);
