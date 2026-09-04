@@ -2092,7 +2092,6 @@ Sets configstring for each team's alive count.
 ============
 */
 void Team_LivingTeamCounts(int *outRed, int *outBlue) {
-    static int lastRed = -1, lastBlue = -1, lastLevel = -1;
     int i;
     int aliveRed = 0, aliveBlue = 0;
 
@@ -2132,32 +2131,55 @@ void Team_LivingTeamCounts(int *outRed, int *outBlue) {
     then read by nothing, so on this client the flood was feeding two dead
     variables.
 
-    And only on a change. The engine already skips an identical configstring, so
-    this saves nothing on the wire - it is here because several paths call this
-    function within one frame and the cached values make that free rather than
-    three trap calls deep into the engine's string compare.
+    Gametype gating alone is not enough for the modes that keep the counts.
+    map_restart respawns every client in the same frame, so on a full server the
+    count walked 1, 2, 3 ... 30 within that one frame and every step was its own
+    broadcast - and Clan Arena, Freeze Tag and Attack & Defend do that at the
+    start of every round, not just once a map.
 
-    The cache is keyed on level.startTime because these are function statics and
-    a map change would otherwise leave the first count of the new map looking
-    unchanged and never sent.
+    So the write is queued and flushed once per frame, the same treatment
+    G_ScheduleScoreConfigstrings already gives the HUD scores for the same
+    reason. Sixty writes in a frame become one.
     */
     if (BG_IsRoundBasedGameType(g_gametype.integer)) {
-        if (lastLevel != level.startTime) {
-            lastLevel = level.startTime;
-            lastRed = lastBlue = -1;
-        }
-        if (aliveRed != lastRed) {
-            lastRed = aliveRed;
-            trap_SetConfigstring(CS_TEAMCOUNT_RED, va("%i", aliveRed));
-        }
-        if (aliveBlue != lastBlue) {
-            lastBlue = aliveBlue;
-            trap_SetConfigstring(CS_TEAMCOUNT_BLUE, va("%i", aliveBlue));
-        }
+        level.pendingTeamCountRed = aliveRed;
+        level.pendingTeamCountBlue = aliveBlue;
+        level.teamCountsPending = qtrue;
     }
 
     if (outRed) *outRed = aliveRed;
     if (outBlue) *outBlue = aliveBlue;
+}
+
+/*
+============
+G_FlushTeamCountConfigstrings
+
+[QL] The queued alive counts, written at most once per frame. Keyed on
+level.startTime because the cache is static and a map change would otherwise
+leave the first count of the new map looking unchanged and never sent.
+============
+*/
+void G_FlushTeamCountConfigstrings(void) {
+    static int lastRed = -1, lastBlue = -1, lastLevel = -1;
+
+    if (!level.teamCountsPending) {
+        return;
+    }
+    level.teamCountsPending = qfalse;
+
+    if (lastLevel != level.startTime) {
+        lastLevel = level.startTime;
+        lastRed = lastBlue = -1;
+    }
+    if (level.pendingTeamCountRed != lastRed) {
+        lastRed = level.pendingTeamCountRed;
+        trap_SetConfigstring(CS_TEAMCOUNT_RED, va("%i", lastRed));
+    }
+    if (level.pendingTeamCountBlue != lastBlue) {
+        lastBlue = level.pendingTeamCountBlue;
+        trap_SetConfigstring(CS_TEAMCOUNT_BLUE, va("%i", lastBlue));
+    }
 }
 
 // G_GetAccessLevel used to sit here: an IP-keyed stub that always returned 0,

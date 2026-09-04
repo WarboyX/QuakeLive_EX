@@ -640,6 +640,13 @@ typedef struct {
        broadcast to every client, and CalculateRanks runs on every frag. */
     int             nextScoreConfigstringTime;
     qboolean        scoreConfigstringsPending;
+    /* [QL] Same treatment for the alive counts - see Team_LivingTeamCounts.
+       map_restart respawns every client in one frame, so on a full server the
+       count changed sixty times in that frame and each change was a reliable
+       command broadcast to all sixty-four. Collapse to one write per frame. */
+    int             pendingTeamCountRed;
+    int             pendingTeamCountBlue;
+    qboolean        teamCountsPending;
 } level_locals_t;
 
 //
@@ -1089,6 +1096,7 @@ int BotAIStartFrame(int time);
 // [QL] the "bots" console command; defined in ai_tactics.c. Declared here rather
 // than in ai_tactics.h so g_svcmds.c does not have to pull in the whole botlib
 // include chain to dispatch one command.
+void G_FlushTeamCountConfigstrings(void);
 void BotTacticsReport(void);
 // [QL] spawns that had to take an occupied point; for the end of map report
 int G_SpawnSaturationCount(void);

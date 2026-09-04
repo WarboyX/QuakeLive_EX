@@ -4685,6 +4685,9 @@ void G_RunFrame(int levelTime) {
     // update to team status?
     CheckTeamStatus();
 
+    // [QL] one write per frame for the alive counts, not one per respawn
+    G_FlushTeamCountConfigstrings();
+
     // cancel vote if timed out
     CheckVote();
 

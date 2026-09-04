@@ -5268,9 +5268,36 @@ happens *inside* a drop's broadcast from broadcasting again. What it cannot stop
 is the next client going over on the following frame, because by then everyone's
 queue is full for the same reason. The flood had to be fixed at the source.
 
+#### Gametype gating was not enough on its own
+
+Raised in review, and correct: *"we could tell the bots to be passive and wait
+for warmup to complete, that way they're not flipping during warmup."*
+
+The instinct - stop sixty bots doing the same thing in the same instant - is the
+right one. The place to apply it is not the bots.
+
+`map_restart` respawns **every client in one frame**. Each respawn calls
+`Team_LivingTeamCounts`, so on a full server the count walked 1, 2, 3 ... 30
+inside that single frame and every step was its own broadcast. Gating on
+round-based gametypes fixed CTF, TDM and free-for-all, and left the burst
+untouched in Clan Arena, Freeze Tag, Attack & Defend and Red Rover - which do it
+at the start of **every round**, not once a map. Those are the modes the
+instagib configs use.
+
+So the write is queued and flushed once per frame, which is the treatment
+`G_ScheduleScoreConfigstrings` already gives the HUD scores for exactly the same
+reason. Sixty writes in a frame become one, whatever caused them.
+
+Making bots passive during warmup would not have reached this: the burst is
+`map_restart`, not bot decisions, and it happens whether the bots are thinking or
+standing still. The teamtask churn it *would* have covered is already fixed at
+the source, where an unchanged value no longer writes at all. And bots that stop
+playing during warmup take away the thing warmup is for.
+
 **To verify:** fill to 64 with `bot_minplayers` and start a match in CTF or FFA.
-No `reliable command buffer` warnings, no drops. In Clan Arena the counts still
-update, because there they mean something.
+No `reliable command buffer` warnings, no drops. Then the same in Clan Arena,
+which is the case the per-frame flush is for - the counts should still update
+between rounds, once each, rather than thirty times in a frame.
 
 ### E61. The spawn search counted every point twice — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
