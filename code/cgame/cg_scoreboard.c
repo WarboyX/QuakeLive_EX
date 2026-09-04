@@ -324,10 +324,10 @@ qboolean CG_DrawOldScoreboard(void) {
     // scoreboard
     y = SB_HEADER;
 
-    CG_DrawPic(SB_SCORE_X + (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardScore);
-    CG_DrawPic(SB_PING_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardPing);
-    CG_DrawPic(SB_TIME_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardTime);
-    CG_DrawPic(SB_NAME_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardName);
+    /* [QL] The four column-heading images came from a menu/tab/ directory, which
+       is a Quake 3 path Quake Live does not have. This whole function is
+       unreachable - the menu-driven scoreboard replaced it - so they were four
+       failed shader registrations per start feeding a drawer nobody calls. */
 
     y = SB_TOP;
 

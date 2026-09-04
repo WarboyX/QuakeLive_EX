@@ -1163,10 +1163,6 @@ typedef struct {
     qhandle_t invulnerabilityPowerupModel;
 
     // scoreboard headers
-    qhandle_t scoreboardName;
-    qhandle_t scoreboardPing;
-    qhandle_t scoreboardScore;
-    qhandle_t scoreboardTime;
 
     // [QL] medals/awards shown during gameplay (16 types)
     qhandle_t medalAccuracy;

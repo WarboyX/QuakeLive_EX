@@ -932,7 +932,13 @@ static cvarTable_t cvarTable[] = {
     {&cg_cameraSmartMode, "cg_cameraSmartMode", "0", CVAR_CHEAT},  // [QL] binary: CVAR_CHEAT
     {&cg_cameraThirdPersonSmartMode, "cg_cameraThirdPersonSmartMode", "1", CVAR_CHEAT},  // [QL] binary: CVAR_CHEAT
     {&cg_filter_angles, "cg_filter_angles", "0", 0},
-    {&cg_stereoSeparation, "cg_stereoSeparation", "0.4", CVAR_ARCHIVE},
+    /* [QL] 0, not the Quake Live binary's 0.4. ioquake3 deliberately deprecated
+       this cvar and pins it with Cvar_Get(..., CVAR_ROM) in CL_InitCvars before
+       cgame ever loads, so the 0.4 could never apply and the two defaults just
+       printed a disagreement on every start. Nothing in cgame reads it either
+       way (tools/dead-cvars.py), so parity on the default string was buying
+       nothing. */
+    {&cg_stereoSeparation, "cg_stereoSeparation", "0", CVAR_ARCHIVE},
 
     // [QL] loadout disable cvars - CVAR_ROM (set by server via CS_DISABLE_LOADOUT, must not persist)
     {&cg_disableLoadout_bfg, "cg_disableLoadout_bfg", "0", CVAR_ROM},
@@ -1884,28 +1890,28 @@ static void CG_RegisterGraphics(void) {
 
     cgs.media.deferShader = trap_R_RegisterShaderNoMip("gfx/2d/defer.png");
 
-    cgs.media.scoreboardName = trap_R_RegisterShaderNoMip("menu/tab/name.tga");
-    cgs.media.scoreboardPing = trap_R_RegisterShaderNoMip("menu/tab/ping.tga");
-    cgs.media.scoreboardScore = trap_R_RegisterShaderNoMip("menu/tab/score.tga");
-    cgs.media.scoreboardTime = trap_R_RegisterShaderNoMip("menu/tab/time.tga");
+    /* [QL] menu/tab/{name,ping,score,time}.tga were the Quake 3 scoreboard's
+       column headings. Quake Live has no menu/tab/ at all, and the only code
+       that drew them is CG_DrawOldScoreboard, which nothing has called since the
+       menu-driven scoreboard replaced it. Four guaranteed failures per start for
+       a picture nothing was going to draw. */
 
     cgs.media.smokePuffShader = trap_R_RegisterShader("smokePuff");
     cgs.media.smokePuffRageProShader = trap_R_RegisterShader("smokePuffRagePro");
     cgs.media.shotgunSmokePuffShader = trap_R_RegisterShader("shotgunSmokePuff");
 
-    // [QL] impact spark burst and wallbang debris. Both handles were declared
-    // and referenced by the impact paths but never registered, so they resolved
-    // to 0 and nothing would have drawn even once the spawner existed. Fall
-    // back to the smoke puff sprite, which is always present, if the QL-named
-    // shaders are missing from the loaded paks.
-    cgs.media.sparkParticleShader = trap_R_RegisterShader("sparkParticle");
-    if (!cgs.media.sparkParticleShader) {
-        cgs.media.sparkParticleShader = cgs.media.smokePuffShader;
-    }
-    cgs.media.debrisPuffShader = trap_R_RegisterShader("debrisPuff");
-    if (!cgs.media.debrisPuffShader) {
-        cgs.media.debrisPuffShader = cgs.media.smokePuffShader;
-    }
+    /* [QL] Impact spark burst and wallbang debris. Both handles were declared and
+       referenced by the impact paths but never registered, so they resolved to 0
+       and nothing would have drawn even once the spawner existed.
+
+       "sparkParticle" and "debrisPuff" are Quake 3 names and Quake Live has
+       neither - the only spark in docs/pak-manifest.txt is one map's wall
+       texture. Registering them anyway resolved to the default shader, returned
+       0, and printed two failure lines on every single start, which is how a
+       diagnostic stops being read. The smoke puff is the fallback either way, so
+       it is now just assigned. */
+    cgs.media.sparkParticleShader = cgs.media.smokePuffShader;
+    cgs.media.debrisPuffShader = cgs.media.smokePuffShader;
 
     cgs.media.nailPuffShader = trap_R_RegisterShader("nailtrail");
     cgs.media.blueProxMine = trap_R_RegisterModel("models/weaphits/proxmineb.md3");
@@ -1960,7 +1966,10 @@ static void CG_RegisterGraphics(void) {
     cgs.media.gametypeIcon[GT_CA]         = trap_R_RegisterShaderNoMip("ui/assets/hud/ca");
     cgs.media.gametypeIcon[GT_CTF]        = trap_R_RegisterShaderNoMip("ui/assets/hud/ctf");
     cgs.media.gametypeIcon[GT_1FCTF]      = trap_R_RegisterShaderNoMip("ui/assets/hud/1f");
-    cgs.media.gametypeIcon[GT_OBELISK]    = trap_R_RegisterShaderNoMip("ui/assets/hud/ob");
+    /* [QL] No GT_OBELISK entry: ui/assets/hud/ holds twelve gametype icons and
+       Overload is not one of them (docs/pak-manifest.txt). The handle stays 0,
+       which every drawer already treats as "no icon" - registering a name the
+       pak cannot contain only produced a failure line per start. */
     cgs.media.gametypeIcon[GT_HARVESTER]  = trap_R_RegisterShaderNoMip("ui/assets/hud/har");
     cgs.media.gametypeIcon[GT_FREEZE]     = trap_R_RegisterShaderNoMip("ui/assets/hud/ft");
     cgs.media.gametypeIcon[GT_DOMINATION] = trap_R_RegisterShaderNoMip("ui/assets/hud/dom");
@@ -2244,7 +2253,14 @@ static void CG_RegisterGraphics(void) {
         cgs.media.cursor = trap_R_RegisterShaderNoMip("menu/art/3_cursor2");
     }
     cgs.media.sizeCursor = trap_R_RegisterShaderNoMip("ui/assets/sizecursor.png");
+    /* [QL] "ui/assets/selectcursor.png" is Quake 3's, and Quake Live ships
+       sizecursor.png next to it but not this one - so CURSOR_ARROW, which is
+       every ordinary cursor in a cgame menu, was drawing nothing. Same fault the
+       main cursor had. The arrow is 3_cursor3, already registered above. */
     cgs.media.selectCursor = trap_R_RegisterShaderNoMip("ui/assets/selectcursor.png");
+    if (!cgs.media.selectCursor) {
+        cgs.media.selectCursor = cgs.media.cursor;
+    }
     /* [QL] CG_OneFlagStatus draws these for the neutral flag in 1FCTF. They were
        registered from ui/assets/statusbar/, a directory the pak does not have -
        there is no statusbar/ under ui/assets at all - so all three handles were
