@@ -752,6 +752,33 @@ void SV_SpawnServer(char* server, qboolean killBots) {
     }
 #endif
 
+    /*
+    [QL] What the network settings actually ended up as, said out loud at every
+    map load.
+
+    net_test.cfg sets sv_fps and sv_minRate and every mode config resets them -
+    which is deliberate, it is what makes the experiment switchable - so
+    exec'ing them in the wrong order silently loses the whole thing. It happened
+    on the first run: "exec net_test" then "exec a2m-instagib", and a2m-instagib
+    execs common.cfg, which put 40 and 0 straight back. Nothing said so, and a
+    whole match was played and logged at the wrong tick before anyone noticed.
+
+    So it is printed rather than left to be inferred, next to the tick that
+    1000/sv_fps actually produces - which is not always the number asked for,
+    since that division is integer.
+    */
+    {
+        int fps = sv_fps ? sv_fps->integer : 0;
+        int msec = (fps > 0) ? 1000 / fps : 0;
+
+        Com_Printf("Network: sv_fps %i", fps);
+        if (msec > 0) {
+            Com_Printf(" (%i ms per tick, %.1f Hz)", msec, 1000.0f / msec);
+        }
+        Com_Printf(", sv_minRate %i, sv_maxRate %i\n",
+                   sv_minRate ? sv_minRate->integer : 0,
+                   sv_maxRate ? sv_maxRate->integer : 0);
+    }
     Com_Printf("-----------------------------------\n");
 }
 

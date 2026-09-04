@@ -144,6 +144,13 @@ typedef struct bot_tactics_s {
     float aimdrift[2];     // pitch/yaw aim error, wandering rather than resampled
     float enemyswitch_time;  // last time the bot changed who it was shooting at
     float suicidal_time;     // a retreat with no way out; stop asking until this
+    /* [QL] The aim sweep - see BotAimSweep in ai_main.c. A is where the view was
+       when the bot decided to look somewhere, B is where it is going, and the
+       clock between them is what makes it a movement rather than a jump. */
+    float aimfrom[2];
+    float aimto[2];
+    float aimsweep_start;
+    float aimsweep_len;
 } bot_tactics_t;
 
 typedef struct bot_state_s {

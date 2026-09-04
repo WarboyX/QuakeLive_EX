@@ -118,6 +118,7 @@ vmCvar_t bot_showAvoidSpots;
 vmCvar_t bot_showPath;
 vmCvar_t bot_showTourPoints;
 vmCvar_t bot_aimDrift;
+vmCvar_t bot_aimSweep;
 vmCvar_t bot_debugTactics;
 vmCvar_t bot_targetCommit;
 vmCvar_t bot_viewSmooth;
@@ -1124,6 +1125,7 @@ static cvarTable_t gameCvarTable[] = {
     BotChangeViewAngles, BotAimAtEnemy and BotFindEnemy.
     */
     {&bot_aimDrift, "bot_aimDrift", "1", CVAR_GAMERULE, 0, NULL},
+    {&bot_aimSweep, "bot_aimSweep", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_debugTactics, "bot_debugTactics", "0", 0, 0, NULL},
     {&bot_targetCommit, "bot_targetCommit", "2500", CVAR_GAMERULE, 0, NULL},
     {&bot_viewSmooth, "bot_viewSmooth", "1", CVAR_GAMERULE, 0, NULL},

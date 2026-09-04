@@ -1473,6 +1473,7 @@ extern vmCvar_t bot_showTourPoints;
 extern vmCvar_t g_scoreUpdateInterval;
 extern vmCvar_t g_teamOverlayInterval;
 extern vmCvar_t bot_aimDrift;
+extern vmCvar_t bot_aimSweep;
 extern vmCvar_t bot_debugTactics;
 extern vmCvar_t bot_targetCommit;
 extern vmCvar_t bot_viewSmooth;

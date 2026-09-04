@@ -764,12 +764,151 @@ float BotChangeViewAngle(float angle, float ideal_angle, float speed) {
 BotChangeViewAngles
 ==============
 */
+
+/*
+==============
+BotAimSweep
+
+[QL] Move the view from where it is to where it wants to be as a *movement*, with
+a start, a duration and an end, instead of chasing a target that moves under it.
+
+Both of the models below are servos: they read the angle still to cover and pick
+a speed from it, every frame, forever. That is why neither ever looks settled -
+there is no such thing as "arrived" in a servo, only a smaller and smaller error,
+and any change in the target restarts the correction from wherever the view
+happens to be.
+
+A person does not aim like that. They make one committed movement towards where
+the target is, which takes longer the further it has to go, and then they track.
+So:
+
+  A   bs->tac.aimfrom  - the view angles at the moment the bot decided to look
+                         somewhere else
+  B   bs->tac.aimto    - where it decided to look, updated as the target moves so
+                         a moving enemy is still arrived at rather than chased
+  t   how far through the movement it is, eased so it accelerates out of A and
+      decelerates into B rather than starting and stopping at full speed
+
+The duration is Fitts-ish - a constant plus a term proportional to the angle -
+scaled by CHARACTERISTIC_AIM_SKILL, so a good bot flicks 90 degrees in about a
+fifth of a second and a poor one takes half. Once t reaches 1 the sweep is over
+and the view simply follows B, which is the tracking phase; bot_aimDrift is what
+makes B wander while that happens, so a settled bot still is not a turret.
+
+A change in B of more than eight degrees is a new decision, not a correction, and
+starts a fresh sweep from wherever the view currently is.
+==============
+*/
+#define AIM_RESWEEP_DEGREES 8.0f
+
+static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
+	float dist, t, skill;
+	int i;
+
+	if (!bot_tactics.integer || !bot_aimSweep.integer) {
+		return qfalse;
+	}
+	if (bs->enemy < 0) {
+		// no target to sweep towards; the servo below is fine for looking around
+		bs->tac.aimsweep_len = 0;
+		return qfalse;
+	}
+
+	// how far the destination has moved since the sweep was planned
+	dist = 0;
+	for (i = 0; i < 2; i++) {
+		float d = fabs(AngleDifference(bs->ideal_viewangles[i], bs->tac.aimto[i]));
+
+		if (d > dist) {
+			dist = d;
+		}
+	}
+
+	if (bs->tac.aimsweep_len <= 0 || dist > AIM_RESWEEP_DEGREES) {
+		// a new decision: start again from where the view actually is
+		for (i = 0; i < 2; i++) {
+			bs->tac.aimfrom[i] = bs->viewangles[i];
+			bs->tac.aimto[i] = bs->ideal_viewangles[i];
+		}
+		dist = 0;
+		for (i = 0; i < 2; i++) {
+			float d = fabs(AngleDifference(bs->tac.aimto[i], bs->tac.aimfrom[i]));
+
+			if (d > dist) {
+				dist = d;
+			}
+		}
+		skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_SKILL, 0, 1);
+		bs->tac.aimsweep_len = (0.05f + dist * 0.004f) * (1.5f - skill);
+		if (bs->tac.aimsweep_len < 0.05f) {
+			bs->tac.aimsweep_len = 0.05f;
+		} else if (bs->tac.aimsweep_len > 1.0f) {
+			bs->tac.aimsweep_len = 1.0f;
+		}
+		bs->tac.aimsweep_start = FloatTime();
+	} else {
+		// the same decision, target has drifted: arrive at the new place, on the
+		// original clock
+		for (i = 0; i < 2; i++) {
+			bs->tac.aimto[i] = bs->ideal_viewangles[i];
+		}
+	}
+
+	t = (FloatTime() - bs->tac.aimsweep_start) / bs->tac.aimsweep_len;
+	if (t < 0.0f) {
+		t = 0.0f;
+	}
+
+	if (t >= 1.0f) {
+		/*
+		Arrived, so this is the tracking phase - and it must not be a hard set to
+		aimto. ideal_viewangles is only recomputed when the bot thinks, ten times
+		a second, so assigning it directly would hold the view still for 100ms and
+		then step, which is the same staircase the sweep exists to remove. A short
+		lag instead: a fixed fraction of the remaining angle per frame, which at
+		40 tick closes most of a small correction inside three frames and reads as
+		a hand following something.
+		*/
+		float rate = frametime * 12.0f;
+
+		if (rate > 1.0f) {
+			rate = 1.0f;
+		} else if (rate < 0.05f) {
+			rate = 0.05f;
+		}
+		for (i = 0; i < 2; i++) {
+			float d = AngleDifference(bs->tac.aimto[i], bs->viewangles[i]);
+
+			bs->viewangles[i] = AngleMod(bs->viewangles[i] + d * rate);
+		}
+	} else {
+		// ease in and out: accelerate away from A, decelerate into B
+		t = t * t * (3.0f - 2.0f * t);
+		for (i = 0; i < 2; i++) {
+			float diff = AngleDifference(bs->tac.aimto[i], bs->tac.aimfrom[i]);
+
+			bs->viewangles[i] = AngleMod(bs->tac.aimfrom[i] + diff * t);
+		}
+	}
+
+	if (bs->viewangles[PITCH] > 180) {
+		bs->viewangles[PITCH] -= 360;
+	}
+	trap_EA_View(bs->client, bs->viewangles);
+	return qtrue;
+}
+
 void BotChangeViewAngles(bot_state_t* bs, float thinktime) {
     float diff, factor, maxchange, anglespeed, disired_speed;
     int i;
 
     if (bs->ideal_viewangles[PITCH] > 180)
         bs->ideal_viewangles[PITCH] -= 360;
+    // [QL] the aim movement model; falls through to id's servos when off or when
+    // there is no enemy to sweep towards
+    if (BotAimSweep(bs, thinktime)) {
+        return;
+    }
     //
     if (bs->enemy >= 0) {
         factor = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_VIEW_FACTOR, 0.01f, 1);
