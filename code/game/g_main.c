@@ -2007,6 +2007,28 @@ G_ShutdownGame
 void G_ShutdownGame(int restart) {
     G_Printf("==== ShutdownGame ====\n");
 
+    /*
+    [QL] Everything worth knowing about the map that just ended, written to the
+    log without anyone having to be at the console to type it.
+
+    The reason this exists: every diagnostic on this branch has to be asked for
+    at the moment it matters, and the moment it matters is usually while
+    something else is going wrong. A log handed over after the fact then turns
+    out not to contain the one number that would have answered the question.
+    */
+    if (trap_Cvar_VariableIntegerValue("sv_mapEndReport")) {
+        int saturated = G_SpawnSaturationCount();
+
+        G_Printf("---- map report ----\n");
+        if (saturated > 0) {
+            G_Printf("spawns that had to take an occupied point: %i\n", saturated);
+        } else {
+            G_Printf("spawns: every player got a free point\n");
+        }
+        BotTacticsReport();
+        G_Printf("--------------------\n");
+    }
+
     if (level.logFile) {
         G_LogPrintf("ShutdownGame:\n");
         G_LogPrintf("------------------------------------------------------------\n");

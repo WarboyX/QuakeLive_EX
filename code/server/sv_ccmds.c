@@ -1235,7 +1235,7 @@ If it is at the cap, the type breakdown says what to cull - events and items and
 map geometry are three different fixes.
 ==================
 */
-static void SV_SnapStats_f(void) {
+void SV_SnapStats_f(void) {
     char buf[512];
 
     if (!com_sv_running->integer) {

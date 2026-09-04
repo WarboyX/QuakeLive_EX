@@ -284,6 +284,7 @@ extern cvar_t* sv_floodProtect;
 extern cvar_t* sv_lanForceRate;
 extern cvar_t* sv_banFile;
 extern cvar_t* sv_altEntDir;
+extern cvar_t* sv_mapEndReport;  // [QL] snapstats + map report at every map change
 
 // [QL] sv_altEntDir entity override (sv_init.c)
 void SV_LoadAltEntityString(const char* mapname);
@@ -325,6 +326,7 @@ void QDECL SV_SendServerCommand(client_t* cl, const char* fmt, ...) __attribute_
 void SV_MasterHeartbeat(const char* message);
 void SV_MasterShutdown(void);
 
+void SV_SnapStats_f(void);  // [QL] also called at map end from SV_SpawnServer
 void SV_AddOperatorCommands(void);
 void SV_RemoveOperatorCommands(void);
 

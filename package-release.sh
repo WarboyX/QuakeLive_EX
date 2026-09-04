@@ -122,6 +122,12 @@ cp -p server.cfg.example "$WD/" 2>/dev/null || true
 cp -p content/serverconfigs/*.cfg "$LD/baseq3/"
 cp -p content/serverconfigs/*.cfg "$WD/baseq3/"
 
+# autoexec.cfg runs on every start and is what makes a test run produce a usable
+# log without anyone having to remember what to type first. A loose file rather
+# than pak01 content so it can be read, edited or deleted on the spot.
+cp -p content/autoexec.cfg "$LD/baseq3/"
+cp -p content/autoexec.cfg "$WD/baseq3/"
+
 # A manifest of everything in the archive, so an install can be checked against
 # what was actually shipped without running the game. The engine verifies the
 # extracted game modules against iobin.pk3 on every start (FS_ExtractGamecode);

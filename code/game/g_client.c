@@ -178,6 +178,16 @@ Chooses a player start, deathmatch start, etc
    spawns use, see SPAWN_REUSE_COOLDOWN in g_team.c. */
 #define SPAWN_REUSE_COOLDOWN_DM 1500
 
+/* [QL] How many spawns this map has had to place someone on an occupied point.
+   File scope rather than a function static so the end of map report can read it
+   - the number is the answer to "can this map hold this many players", and it
+   was previously only visible in a line printed every thirty seconds. */
+static int spawnSaturated;
+
+int G_SpawnSaturationCount(void) {
+    return spawnSaturated;
+}
+
 /*
 [QL] id's choice: sort by distance from the point to avoid (where you died) and
 take a random one out of the furthest half. The reuse cooldown is applied *here*,
@@ -480,22 +490,21 @@ gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3
 
         /* Rate limited: when this happens it happens on most respawns. */
         {
-            static int saturated;
             static int nextReport;
             static int reportLevel = -1;
 
             if (reportLevel != level.startTime) {
                 reportLevel = level.startTime;
-                saturated = 0;
+                spawnSaturated = 0;
                 nextReport = 0;
             }
-            saturated++;
+            spawnSaturated++;
             if (level.time >= nextReport) {
                 nextReport = level.time + 30000;
                 G_Printf("Spawns: %i so far found no free point - all %i usable points "
                          "(deathmatch and team pads) were occupied. This map cannot hold "
                          "%i players without telefrags.\n",
-                         saturated, c.numTaken, level.maxclients);
+                         spawnSaturated, c.numTaken, level.maxclients);
             }
         }
     }

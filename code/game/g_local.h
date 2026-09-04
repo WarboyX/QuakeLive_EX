@@ -1090,6 +1090,8 @@ int BotAIStartFrame(int time);
 // than in ai_tactics.h so g_svcmds.c does not have to pull in the whole botlib
 // include chain to dispatch one command.
 void BotTacticsReport(void);
+// [QL] spawns that had to take an occupied point; for the end of map report
+int G_SpawnSaturationCount(void);
 void BotTestAAS(vec3_t origin);
 
 #include "g_team.h"  // teamplay specific stuff

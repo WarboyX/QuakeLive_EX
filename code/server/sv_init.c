@@ -521,6 +521,14 @@ void SV_SpawnServer(char* server, qboolean killBots) {
     char systemInfo[16384];
     const char* p;
 
+    /* [QL] The map that is ending still has its counters; report before the
+       game module goes away and sv is wiped below. The game module writes its
+       own half from G_ShutdownGame, which SV_ShutdownGameProgs is about to
+       call, so the two halves land together in the log. */
+    if (sv_mapEndReport && sv_mapEndReport->integer && sv.state == SS_GAME) {
+        SV_SnapStats_f();
+    }
+
     // shut down the existing game if it is running
     SV_ShutdownGameProgs();
 
@@ -825,6 +833,15 @@ void SV_Init(void) {
     sv_lanForceRate = Cvar_Get("sv_lanForceRate", "1", CVAR_ARCHIVE);
     sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
     sv_altEntDir = Cvar_Get("sv_altEntDir", "", CVAR_ARCHIVE);
+    /* [QL] Write the snapshot and spawn numbers into the log at every map
+       change, so a log handed over after the fact contains them without anyone
+       having had to type snapstats while the match was still running.
+
+       Not CVAR_ARCHIVE: this is a value we choose, and an archived default is
+       written into a config on first run and then that config wins forever, so
+       changing the default later would do nothing. That trap has cost this
+       branch two rounds already (r_dlightMode, con_scale). */
+    sv_mapEndReport = Cvar_Get("sv_mapEndReport", "1", 0);
 
     // Load the bans the operator saved in a previous session so they are in
     // force before the first client can connect. Queued rather than called
