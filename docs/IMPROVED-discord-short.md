@@ -1,15 +1,23 @@
 ## Quake Live Ex
 
-An open-source client and server for **Quake Live**, built on ioquake3 — 273 commits on top of **tjone270/ioquakelive**.
+An open-source client and server for **Quake Live**, built on ioquake3. It plays on the same servers as the stock client — protocol 91, `com_gamename` and `baseqz` are untouched, so **stock clients still see and join servers running this**, and you can switch back any time.
 
-**The goal** is a build functionally equivalent to Quake Live 1069 that then goes past it, without splitting the playerbase to do it. `com_gamename`, protocol 91 and `baseqz` are untouched, so **stock Quake Live clients still see these servers and still join them**. "Ex" is for extended.
+**Why run it instead of the stock client**
 
-**You need to own the game.** `pak00.pk3` from a Steam install has to be present. It is not redistributed here and never will be — the engine is GPL, the assets are id's, and that line does not get blurred.
+**A Vulkan renderer.** Better frame times and far more consistent pacing than the OpenGL path, and `com_maxfps` finally lands on rates that do not divide 1000 instead of snapping to the nearest one that does.
 
-**The real enemy is silence.** A cvar registered and read by nothing. A shader name the pak does not contain. A menu that fails to parse and leaves you looking at the wrong items. All of them produce no error and nothing on screen — so much of the work is making failures say something, then fixing what they said.
+**The Quake 3 look, back.** Classic, voodoo, gloss and modern presets, output dither, anisotropic filtering to 16x, and a render menu that exposes all of it instead of hiding switches that do nothing.
 
-**The approach.** Treat the cause, not the symptom: the snapshot fix was not a bigger buffer, it was finding out why the buffer filled. Measure before and after on the same map instead of asserting an improvement. Put anything new behind a cvar that restores stock behaviour, so it can be tested against itself live. And never ship a change that is right here and wrong on a stock client — the improved shotgun is written, tested, and off by default for that reason.
+**Servers built for 64 players.** Spawn selection, memory sizing and snapshot delivery were all rebuilt for full servers, and `snapstats` tells you exactly what yours is spending its bandwidth on.
 
-**Where that got us.** 93% of deaths on thunderstruck were telefrags rather than kills; trinity went **159 → 24** telefrags against **492 → 1842** weapon deaths. 1,350,347 snapshot entities were being dropped silently in one map; peak is now 128 of 256 with zero drops at 64 players. Plus a Vulkan renderer, smarter bots, a Freeze Tag that actually freezes people, and menus that do what they say.
+**It stays up, and says why when it doesn't.** Map votes, mid-round drops, map restarts, high bot counts and score caps have all been chased down and fixed, and a Windows crash writes a log naming the address it touched instead of just vanishing — which is more than a closed binary can ever give you.
 
-*Honest part:* those numbers are measured. Plenty else is read-correct and unproven in a live match; `TRACKER.md` says which is which.
+**Bots that fight properly.** They engage at the range their weapon works at, dodge rockets, push as a group and fall back when outnumbered.
+
+**It runs where you want.** Linux, Windows and macOS including Apple Silicon, with dedicated servers, ready-made configs and a real ban system.
+
+**And it is open source**, so a bug can be fixed rather than lived with.
+
+**You need to own the game.** `pak00.pk3` from a Steam install has to be present — it is not redistributed here and never will be.
+
+*Honest part:* this is a work in progress, and the bots in particular are new and barely tested. `TRACKER.md` has every known issue.
