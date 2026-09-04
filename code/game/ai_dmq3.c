@@ -2545,10 +2545,31 @@ int BotWantsToChase(bot_state_t* bs) {
     // if the bot is getting the flag
     if (bs->ltgtype == LTG_GETFLAG)
         return qfalse;
-    // [QL] chasing one enemy into the two standing behind it is how a bot dies
-    // for nothing; hold the ground it has instead
-    if (bot_tactics.integer && BotPosture(bs) == TACTIC_FALLBACK) {
-        return qfalse;
+    /*
+    [QL] Whether chasing is worth it, rather than only whether the bot feels like
+    it. Three reasons not to follow someone who has broken line of sight:
+    */
+    if (bot_tactics.integer) {
+        vec3_t dir;
+
+        // the two standing behind the one that ran is how a bot dies for nothing
+        if (BotPosture(bs) == TACTIC_FALLBACK) {
+            return qfalse;
+        }
+        // hurt enough that the next fight should be on the bot's terms
+        if (bs->inventory[INVENTORY_HEALTH] + bs->inventory[INVENTORY_ARMOR] < 80) {
+            return qfalse;
+        }
+        // and the way there has to be walkable. Chasing across a gap is where a
+        // bot walks off a ledge with its eyes on somebody else - the pursuit is
+        // the reason it stopped looking where it was going
+        if (bs->lastenemyareanum) {
+            VectorSubtract(bs->lastenemyorigin, bs->origin, dir);
+            dir[2] = 0;
+            if (VectorNormalize(dir) > 64 && !BotRoomToMove(bs, dir, 96)) {
+                return qfalse;
+            }
+        }
     }
     //
     if (BotAggression(bs) > 50)
@@ -3020,6 +3041,8 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
     blocked one twice.
     */
     for (i = 0; i < attempts; i++) {
+        int trymove = movetype;
+
         hordir[0] = forward[0];
         hordir[1] = forward[1];
         hordir[2] = 0;
@@ -3029,6 +3052,20 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
         // reverse the vector depending on the strafe direction
         if (bs->flags & BFL_STRAFERIGHT)
             VectorNegate(sideward, sideward);
+        /*
+        [QL] The extra attempts walk, they do not jump.
+
+        BotWalkInDirection predicts two frames ahead for a walk and
+        PREDICTIONTIME_JUMP for a jump, and a jump is allowed to clear a gap that
+        a walk would refuse. That is fine as the *first* answer - bots are
+        supposed to jump - but as a retry it turns "the sensible move was
+        blocked" into "jump somewhere the sensible move would not go", which on
+        an open map is off it. Reported as bots jumping off and falling off the
+        map, and it arrived with these retries.
+        */
+        if (i >= 2) {
+            trymove &= ~MOVE_JUMP;
+        }
         if (i < 2) {
             // randomly go back a little
             if (random() > 0.9) {
@@ -3045,7 +3082,7 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
             }
         }
         // perform the movement
-        if (trap_BotMoveInDirection(bs->ms, sideward, 400, movetype))
+        if (trap_BotMoveInDirection(bs->ms, sideward, 400, trymove))
             return moveresult;
         // movement failed, flip the strafe direction
         bs->flags ^= BFL_STRAFERIGHT;
@@ -3058,7 +3095,9 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
     stationary target.
     */
     if (bot_tactics.integer) {
-        if (trap_BotMoveInDirection(bs->ms, forward, 400, movetype)) {
+        // and look before stepping into it - the enemy may be across a gap
+        if (BotRoomToMove(bs, forward, 96) &&
+            trap_BotMoveInDirection(bs->ms, forward, 400, movetype & ~MOVE_JUMP)) {
             return moveresult;
         }
         /* Nothing worked. Say so, so BotAIBlocked in the caller gets a chance
@@ -3347,7 +3386,7 @@ int BotFindEnemy(bot_state_t* bs, int curenemy) {
             applies when the bot has no enemy, so first acquisition is as quick
             as it ever was.
             */
-            if (curenemy >= 0 && bot_targetCommit.integer > 0) {
+            if (curenemy >= 0 && bot_tactics.integer && bot_targetCommit.integer > 0) {
                 if (bs->tac.enemyswitch_time >
                     FloatTime() - (float)bot_targetCommit.integer * 0.001f) {
                     continue;
@@ -3901,7 +3940,7 @@ void BotAimAtEnemy(bot_state_t* bs) {
     the step-to-step correlation changes: each think moves 30% of the way to a
     new random target, which is a low-pass filter on the same noise.
     */
-    if (bot_aimDrift.integer) {
+    if (bot_tactics.integer && bot_aimDrift.integer) {
         bs->tac.aimdrift[0] = bs->tac.aimdrift[0] * 0.7f + crandom() * 0.3f;
         bs->tac.aimdrift[1] = bs->tac.aimdrift[1] * 0.7f + crandom() * 0.3f;
         bs->ideal_viewangles[PITCH] += 6 * wi.vspread * bs->tac.aimdrift[0] * (1 - aim_accuracy);

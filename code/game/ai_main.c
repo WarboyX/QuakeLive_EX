@@ -809,7 +809,7 @@ void BotChangeViewAngles(bot_state_t* bs, float thinktime) {
         BotAimAtEnemy, not from the view model, so a bad bot is still a bad shot -
         it just stops shaking.
         */
-        if (bot_challenge.integer || bot_viewSmooth.integer) {
+        if (bot_challenge.integer || (bot_tactics.integer && bot_viewSmooth.integer)) {
             // smooth slowdown view model
             diff = fabs(AngleDifference(bs->viewangles[i], bs->ideal_viewangles[i]));
             anglespeed = diff * factor;

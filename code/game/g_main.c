@@ -1125,7 +1125,7 @@ static cvarTable_t gameCvarTable[] = {
     */
     {&bot_aimDrift, "bot_aimDrift", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_debugTactics, "bot_debugTactics", "0", 0, 0, NULL},
-    {&bot_targetCommit, "bot_targetCommit", "700", CVAR_GAMERULE, 0, NULL},
+    {&bot_targetCommit, "bot_targetCommit", "2500", CVAR_GAMERULE, 0, NULL},
     {&bot_viewSmooth, "bot_viewSmooth", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_dodge, "bot_dodge", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_squadRange, "bot_squadRange", "800", CVAR_GAMERULE, 0, NULL},
