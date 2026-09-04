@@ -989,8 +989,19 @@ int BotRoomToMove(bot_state_t* bs, vec3_t dir, float dist) {
     VectorCopy(bs->origin, start);
     VectorMA(start, dist, dir, end);
 
-    // something solid in the way
-    BotAI_Trace(&trace, start, ent->r.mins, ent->r.maxs, end, bs->entitynum, MASK_PLAYERSOLID);
+    /*
+    MASK_SOLID, not MASK_PLAYERSOLID. The difference is CONTENTS_BODY - other
+    players - and including them was a real bug the moment this check was applied
+    to every direction rather than just backward: on a full server a bot has
+    somebody within 72 units most of the time, so every direction reported "no
+    room" and the bot stopped moving. Reported as bots getting stuck on each
+    other in CTF on japanesecastles, which is a map where a whole team funnels
+    through one corridor.
+
+    A player is not a wall. Bots are supposed to push through each other and the
+    engine slides them past; what this function is for is geometry and edges.
+    */
+    BotAI_Trace(&trace, start, ent->r.mins, ent->r.maxs, end, bs->entitynum, MASK_SOLID);
     if (trace.fraction < 0.9f) {
         return qfalse;
     }
@@ -1002,7 +1013,9 @@ int BotRoomToMove(bot_state_t* bs, vec3_t dir, float dist) {
     */
     VectorCopy(trace.endpos, below);
     below[2] -= 128;
-    BotAI_Trace(&trace, trace.endpos, ent->r.mins, ent->r.maxs, below, bs->entitynum, MASK_PLAYERSOLID);
+    // MASK_SOLID here too: another player standing in the drop is not a floor,
+    // and treating one as a floor is how a bot decides a hole is safe
+    BotAI_Trace(&trace, trace.endpos, ent->r.mins, ent->r.maxs, below, bs->entitynum, MASK_SOLID);
     if (trace.fraction >= 1.0f) {
         return qfalse;
     }
