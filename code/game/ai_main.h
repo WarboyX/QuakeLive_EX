@@ -155,6 +155,7 @@ typedef struct bot_tactics_s {
     float aimoffset[2];      // where it is now, walked there every frame
     int reportedposture;     // last posture bot_debugTactics printed, so it can
                              // print changes rather than every refresh
+    int reportedstuck;       // this stuck episode has already been reported
 } bot_tactics_t;
 
 typedef struct bot_state_s {

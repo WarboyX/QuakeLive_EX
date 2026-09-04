@@ -400,10 +400,41 @@ void BotTacticsUpdate(bot_state_t* bs) {
     if (VectorLengthSquared(bs->cur_ps.velocity) > Square(40) &&
         DistanceSquared(bs->origin, bs->tac.lastorigin) > Square(48)) {
         bs->tac.moved_time = FloatTime();
+        bs->tac.reportedstuck = qfalse;
         VectorCopy(bs->origin, bs->tac.lastorigin);
     } else if (bs->tac.moved_time <= 0.0f) {
         bs->tac.moved_time = FloatTime();
         VectorCopy(bs->origin, bs->tac.lastorigin);
+    }
+
+    /*
+    [QL] Say it when it happens, not at the end of the map.
+
+    The map report catches a bot that is stuck when the map ends, which has
+    turned out to be the wrong moment twice - once because everything reads as
+    stuck at intermission, and once because the report someone actually needed
+    was of a pile-up on the first spawn, twenty minutes earlier. This fires on
+    the way *into* a stuck episode, once, with the two things that separate the
+    causes:
+
+      node and goal   - what it was trying to do
+      area            - and whether the AAS covers where it is standing at all.
+                        A bot in an area with no reachability is not blocked by
+                        anything, it is somewhere the router cannot plan from,
+                        and no amount of sidestepping will help it
+    */
+    if (bot_debugTactics.integer && !bs->tac.reportedstuck &&
+        FloatTime() - bs->tac.moved_time > 3.0f) {
+        int area = bs->areanum;
+
+        bs->tac.reportedstuck = qtrue;
+        BotAI_Print(PRT_MESSAGE,
+                    "%s: stuck %.1fs, area %i%s, ltg %i, %d allies %d foes, enemy %s\n",
+                    g_entities[bs->entitynum].client->pers.netname,
+                    FloatTime() - bs->tac.moved_time, area,
+                    (area && trap_AAS_AreaReachability(area)) ? "" : " (NO REACHABILITY)",
+                    bs->ltgtype, bs->tac.allies, bs->tac.foes,
+                    bs->enemy >= 0 ? "yes" : "no");
     }
     //
     BotScanForMissiles(bs);
