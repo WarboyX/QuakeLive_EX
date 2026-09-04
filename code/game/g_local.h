@@ -1470,6 +1470,8 @@ extern vmCvar_t bot_showAreas;
 extern vmCvar_t bot_showAvoidSpots;
 extern vmCvar_t bot_showPath;
 extern vmCvar_t bot_showTourPoints;
+extern vmCvar_t g_scoreUpdateInterval;
+extern vmCvar_t g_teamOverlayInterval;
 extern vmCvar_t bot_debugTactics;
 extern vmCvar_t bot_dodge;
 extern vmCvar_t bot_squadRange;

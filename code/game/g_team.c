@@ -1458,8 +1458,30 @@ void CheckTeamStatus(void) {
     int i;
     gentity_t *loc, *ent;
 
+    /*
+    [QL] g_teamOverlayInterval, default 250ms, replacing a hardcoded 1000.
+
+    **The cheap one.** tinfo and tinfo2 go to one client each - see the
+    trap_SendServerCommand calls in TeamOverlayMessage, which pass a client
+    number rather than -1 - so this is two reliable commands per client per
+    second at the old rate, into a queue 64 deep that drains every snapshot.
+    Four times that is still nothing.
+
+    A second was too slow for what it carries. tinfo2 is teammate health, armour
+    and weapon: in instagib a teammate's health from a second ago is not stale
+    information, it is wrong information - they have been alive and dead twice
+    since. The cost of fixing that is a few hundred bytes a second per client
+    against the half megabit the snapshots already use.
+    */
     if (level.time >= level.nextTeamInfoTime) {
-        level.nextTeamInfoTime = level.time + TEAM_LOCATION_UPDATE_TIME;
+        int interval = g_teamOverlayInterval.integer;
+
+        if (interval < 50) {
+            interval = 50;
+        } else if (interval > TEAM_LOCATION_UPDATE_TIME) {
+            interval = TEAM_LOCATION_UPDATE_TIME;
+        }
+        level.nextTeamInfoTime = level.time + interval;
 
         for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;

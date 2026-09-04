@@ -426,6 +426,8 @@ vmCvar_t g_freezeResetWeaponsOnRound;
 vmCvar_t g_freezeAllowRespawn;
 
 // [QL] lag compensation
+vmCvar_t g_scoreUpdateInterval;
+vmCvar_t g_teamOverlayInterval;
 vmCvar_t g_lagHaxHistory;
 vmCvar_t g_lagHaxMs;
 
@@ -1045,6 +1047,18 @@ static cvarTable_t gameCvarTable[] = {
     {&g_freezeAllowRespawn, "g_freezeAllowRespawn", "0", 0, 0, NULL},
 
     // [QL] lag compensation / weapon modifiers
+    /*
+    [QL] The two broadcast throttles, as cvars rather than #defines so they can
+    be moved without a rebuild - and because the right value depends on the
+    gametype. A quarter second of stale teammate health is nothing in CTF and
+    useless in instagib, where they have been alive and dead twice.
+
+    They are not the same animal and should not be tuned as if they were. See
+    the comments at each use site: the team overlay is sent per client, the score
+    configstrings are broadcast to every client and multiply by the player count.
+    */
+    {&g_scoreUpdateInterval, "g_scoreUpdateInterval", "250", 0, 0, NULL},
+    {&g_teamOverlayInterval, "g_teamOverlayInterval", "250", 0, 0, NULL},
     {&g_lagHaxHistory, "g_lagHaxHistory", "4", CVAR_LATCH, 0, NULL},
     {&g_lagHaxMs, "g_lagHaxMs", "80", CVAR_LATCH, 0, NULL},  // [QL] CVAR_LATCH per QLDS qagamex86.dll cvar table (0x1008e800)
     {&g_ironsights_mg, "g_ironsights_mg", "1.0", CVAR_GAMERULE | CVAR_GAMERULE_REPL | CVAR_TEMP, 0, NULL},  // [QL] binary: 0x140100
@@ -2571,7 +2585,32 @@ G_RunFrame flushes the pending flag, so a value that arrives during a quiet
 moment is never left unpublished.
 ============
 */
-#define SCORE_CONFIGSTRING_INTERVAL 250
+/*
+[QL] How often the HUD score configstrings may go out.
+
+**The expensive one.** These are configstrings, so each write is a reliable
+command broadcast to *every* client - four of them, times the player count. At 64
+players one update is 256 reliable commands into 64-deep queues, which is the
+same shape as the flood that used to evict the whole server (TRACKER E62).
+
+The engine skips an identical configstring, so the real rate is bounded by how
+often the top two scores and names actually change - but in a 64 player instagib
+that is often. Lower this carefully and watch for "reliable command buffer" in
+the log; it is not free the way the team overlay is.
+
+250ms is four updates a second, which is already faster than anyone reads a
+number off a HUD.
+*/
+static int G_ScoreUpdateInterval(void) {
+    int i = g_scoreUpdateInterval.integer;
+
+    if (i < 50) {
+        i = 50;
+    } else if (i > 2000) {
+        i = 2000;
+    }
+    return i;
+}
 
 void G_ScheduleScoreConfigstrings(void) {
     if (!level.intermissionQueued && !level.intermissionTime &&
@@ -2580,7 +2619,7 @@ void G_ScheduleScoreConfigstrings(void) {
         return;
     }
 
-    level.nextScoreConfigstringTime = level.time + SCORE_CONFIGSTRING_INTERVAL;
+    level.nextScoreConfigstringTime = level.time + G_ScoreUpdateInterval();
     level.scoreConfigstringsPending = qfalse;
     G_UpdateScoreConfigstrings();
 }
