@@ -151,6 +151,8 @@ typedef struct bot_tactics_s {
     float aimto[2];
     float aimsweep_start;
     float aimsweep_len;
+    float aimoffsetgoal[2];  // where the aim error is heading, set on the think
+    float aimoffset[2];      // where it is now, walked there every frame
 } bot_tactics_t;
 
 typedef struct bot_state_s {

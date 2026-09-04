@@ -3085,6 +3085,25 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
                 }
             }
         }
+        /*
+        [QL] And check the ground under every direction, not just backward.
+
+        BotWalkInDirection only gap-checks when its two-frame prediction actually
+        stops on ground, so on a wide drop - the void on a space map - the
+        prediction never lands, no gap check runs, and the move is allowed. The
+        bot walks off on the frame after. 695 of roughly 2,250 deaths in one
+        longestyard match were MOD_TRIGGER_HURT: bots stepping into the void,
+        nearly a third of everything that happened.
+
+        72 units is about two thinks of lookahead at combat speed. A bot on a
+        narrow walkway will now refuse to strafe off it, which is the intended
+        answer even though it costs some of the dodging.
+        */
+        if (bot_tactics.integer && !BotRoomToMove(bs, sideward, 72)) {
+            bs->flags ^= BFL_STRAFERIGHT;
+            bs->attackstrafe_time = 0;
+            continue;
+        }
         // perform the movement
         if (trap_BotMoveInDirection(bs->ms, sideward, 400, trymove))
             return moveresult;
@@ -3945,11 +3964,21 @@ void BotAimAtEnemy(bot_state_t* bs) {
     new random target, which is a low-pass filter on the same noise.
     */
     if (bot_tactics.integer && bot_aimDrift.integer) {
+        /*
+        The offset is handed to BotAimSweep as a destination in degrees rather
+        than added here, because this function runs on the think - ten times a
+        second - and anything applied here is a staircase at that rate no matter
+        how well it is smoothed between samples. The sweep runs every frame and
+        walks the applied offset towards this one, so what comes out is a
+        continuous wander at the tick rate instead of ten steps a second.
+        */
         bs->tac.aimdrift[0] = bs->tac.aimdrift[0] * 0.7f + crandom() * 0.3f;
         bs->tac.aimdrift[1] = bs->tac.aimdrift[1] * 0.7f + crandom() * 0.3f;
-        bs->ideal_viewangles[PITCH] += 6 * wi.vspread * bs->tac.aimdrift[0] * (1 - aim_accuracy);
-        bs->ideal_viewangles[YAW] += 6 * wi.hspread * bs->tac.aimdrift[1] * (1 - aim_accuracy);
+        bs->tac.aimoffsetgoal[0] = 6 * wi.vspread * bs->tac.aimdrift[0] * (1 - aim_accuracy);
+        bs->tac.aimoffsetgoal[1] = 6 * wi.hspread * bs->tac.aimdrift[1] * (1 - aim_accuracy);
     } else {
+        bs->tac.aimoffsetgoal[0] = bs->tac.aimoffsetgoal[1] = 0;
+        bs->tac.aimoffset[0] = bs->tac.aimoffset[1] = 0;
         // take the weapon spread into account for lower skilled bots
         bs->ideal_viewangles[PITCH] += 6 * wi.vspread * crandom() * (1 - aim_accuracy);
         bs->ideal_viewangles[YAW] += 6 * wi.hspread * crandom() * (1 - aim_accuracy);

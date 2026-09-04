@@ -802,7 +802,7 @@ starts a fresh sweep from wherever the view currently is.
 #define AIM_RESWEEP_DEGREES 8.0f
 
 static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
-	float dist, t, skill;
+	float dist, t, skill, targetangles[2];
 	int i;
 
 	if (!bot_tactics.integer || !bot_aimSweep.integer) {
@@ -814,10 +814,35 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 		return qfalse;
 	}
 
+	/*
+	The destination, which is where the bot means to look plus how wrong its aim
+	currently is.
+
+	The error is folded in here rather than added to the output, because the
+	sweep and the settle tracker both work from this destination - post-adding an
+	offset to viewangles would have the tracker spend every frame removing it
+	again. BotAimAtEnemy sets aimoffsetgoal on the think, ten times a second; the
+	applied offset walks towards it every frame, so the destination wanders
+	continuously rather than being placed somewhere new ten times a second, which
+	is what the remaining jitter was.
+
+	Deliberately slower than the settle tracker: this is a hand not being
+	perfectly steady, and a hand does not shake at ten hertz.
+	*/
+	for (i = 0; i < 2; i++) {
+		float rate = frametime * 4.0f;
+
+		if (rate > 1.0f) {
+			rate = 1.0f;
+		}
+		bs->tac.aimoffset[i] += (bs->tac.aimoffsetgoal[i] - bs->tac.aimoffset[i]) * rate;
+		targetangles[i] = AngleMod(bs->ideal_viewangles[i] + bs->tac.aimoffset[i]);
+	}
+
 	// how far the destination has moved since the sweep was planned
 	dist = 0;
 	for (i = 0; i < 2; i++) {
-		float d = fabs(AngleDifference(bs->ideal_viewangles[i], bs->tac.aimto[i]));
+		float d = fabs(AngleDifference(targetangles[i], bs->tac.aimto[i]));
 
 		if (d > dist) {
 			dist = d;
@@ -828,7 +853,7 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 		// a new decision: start again from where the view actually is
 		for (i = 0; i < 2; i++) {
 			bs->tac.aimfrom[i] = bs->viewangles[i];
-			bs->tac.aimto[i] = bs->ideal_viewangles[i];
+			bs->tac.aimto[i] = targetangles[i];
 		}
 		dist = 0;
 		for (i = 0; i < 2; i++) {
@@ -850,7 +875,7 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 		// the same decision, target has drifted: arrive at the new place, on the
 		// original clock
 		for (i = 0; i < 2; i++) {
-			bs->tac.aimto[i] = bs->ideal_viewangles[i];
+			bs->tac.aimto[i] = targetangles[i];
 		}
 	}
 
