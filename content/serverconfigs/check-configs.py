@@ -11,6 +11,11 @@ A cvar is safe if either:
     first, so the reset always runs), or
   - every mode config sets it, so whichever one you switch to overwrites it.
 
+Overlays (net_test.cfg and friends) are exec'd on top of a mode rather than
+instead of one, so they are exempt from the second rule but not the first: a
+cvar an overlay touches has to be in common.cfg's reset block, which is what
+makes exec'ing any mode config undo it.
+
 Anything else leaks across a mode switch. Run from anywhere; exits non-zero
 with the offending cvars listed.
 """
@@ -20,7 +25,14 @@ import os
 import re
 import sys
 
+# Fragments a mode config execs, rather than modes in their own right.
 INCLUDES = {"common.cfg", "a2m-common.cfg"}
+
+# Overlays: deliberately partial configs, exec'd *on top of* a mode rather than
+# instead of one, so they are not required to set what every mode sets. They are
+# still checked for leaks - everything they touch has to be in common.cfg's reset
+# block, which is what makes "exec any mode config" undo them.
+OVERLAYS = {"net_test.cfg", "net_stock.cfg"}
 
 
 def cvars_set(path):
@@ -40,7 +52,7 @@ def main():
         return 1
 
     reset = cvars_set("common.cfg")
-    modes = [c for c in configs if c not in INCLUDES]
+    modes = [c for c in configs if c not in INCLUDES and c not in OVERLAYS]
     if not modes:
         print("check-configs: no mode configs found", file=sys.stderr)
         return 1
@@ -69,8 +81,9 @@ def main():
         return 1
 
     print(
-        "check-configs: ok - %d mode configs, %d cvars reset in common.cfg, "
-        "%d set by every mode" % (len(modes), len(reset), len(set_by_every_mode))
+        "check-configs: ok - %d mode configs, %d overlays, %d cvars reset in "
+        "common.cfg, %d set by every mode"
+        % (len(modes), len(OVERLAYS & set(configs)), len(reset), len(set_by_every_mode))
     )
     return 0
 
