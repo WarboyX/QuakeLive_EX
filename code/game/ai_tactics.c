@@ -369,6 +369,25 @@ void BotTacticsUpdate(bot_state_t* bs) {
         bs->tac.hurt_time = FloatTime();
     }
     bs->tac.lasthealth = bs->inventory[INVENTORY_HEALTH];
+
+    /*
+    How long the bot has been going nowhere, which is the one question the AI
+    could not previously be asked. A bot standing still is normal for a second -
+    it is camping, or waiting on a lift, or dead - and pathological for thirty,
+    and there was no way to tell those apart short of watching it.
+
+    Speed rather than distance, because a bot walking into a wall has velocity
+    and gets nowhere; 48 units is a little over a second of walking, and the
+    origin test is what catches the wall.
+    */
+    if (VectorLengthSquared(bs->cur_ps.velocity) > Square(40) &&
+        DistanceSquared(bs->origin, bs->tac.lastorigin) > Square(48)) {
+        bs->tac.moved_time = FloatTime();
+        VectorCopy(bs->origin, bs->tac.lastorigin);
+    } else if (bs->tac.moved_time <= 0.0f) {
+        bs->tac.moved_time = FloatTime();
+        VectorCopy(bs->origin, bs->tac.lastorigin);
+    }
     //
     BotScanForMissiles(bs);
     //
@@ -847,7 +866,8 @@ rather than only what the long term goal is.
 ==================
 */
 void BotTacticsReport(void) {
-    int i, bots, posture[3], dodging, fighting;
+    int i, bots, posture[3], dodging, fighting, stuck;
+    float still;
     bot_state_t* bs;
     char netname[MAX_NETNAME];
     gclient_t* cl;
@@ -857,12 +877,13 @@ void BotTacticsReport(void) {
     }
     G_Printf("squad range %g, dodge %s\n", bot_squadRange.value,
              bot_dodge.integer ? "on" : "off");
-    G_Printf("%-20s %7s %-10s %-9s %5s %-16s %s\n",
-             "name", "hp/ar", "posture", "near", "enemy", "node", "goal");
+    G_Printf("%-20s %7s %-10s %-9s %5s %-16s %-10s %s\n",
+             "name", "hp/ar", "posture", "near", "enemy", "node", "goal", "still for");
 
     bots = 0;
     dodging = 0;
     fighting = 0;
+    stuck = 0;
     posture[0] = posture[1] = posture[2] = 0;
 
     for (i = 0; i < level.maxclients; i++) {
@@ -887,8 +908,12 @@ void BotTacticsReport(void) {
         if (bs->enemy >= 0) {
             fighting++;
         }
+        still = FloatTime() - bs->tac.moved_time;
+        if (still > 3.0f) {
+            stuck++;
+        }
         ClientName(bs->client, netname, sizeof(netname));
-        G_Printf("%-20s %3i/%-3i %-10s %d v %-5d %5s %-16s %s\n",
+        G_Printf("%-20s %3i/%-3i %-10s %d v %-5d %5s %-16s %-10s %.1fs\n",
                  netname,
                  cl->ps.stats[STAT_HEALTH], cl->ps.stats[STAT_ARMOR],
                  bs->tac.posture == TACTIC_PUSH       ? "push"
@@ -899,9 +924,13 @@ void BotTacticsReport(void) {
                  BotNodeName(bs),
                  bs->ltgtype == LTG_DEFENDKEYAREA ? "defending"
                  : bs->ltgtype                    ? "team goal"
-                                                  : "roaming");
+                                                  : "roaming",
+                 still);
     }
     G_Printf("%i bots: %i pushing, %i even, %i falling back; %i with an enemy, %i dodging\n",
              bots, posture[TACTIC_PUSH], posture[TACTIC_EVEN], posture[TACTIC_FALLBACK],
              fighting, dodging);
+    if (stuck) {
+        G_Printf("^3%i of them have not moved in over three seconds\n", stuck);
+    }
 }

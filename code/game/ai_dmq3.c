@@ -716,7 +716,7 @@ void BotCTFSeekGoals(bot_state_t* bs) {
     if (bs->ctfroam_time > FloatTime())
         return;
     // if the bot has enough aggression to decide what to do
-    if (BotAggression(bs) < 50)
+    if (BotObjectiveAggression(bs) < 50)
         return;
     // set the time to send a message to the team mates
     bs->teammessage_time = FloatTime() + 2 * random();
@@ -965,7 +965,7 @@ void Bot1FCTFSeekGoals(bot_state_t* bs) {
     if (bs->ctfroam_time > FloatTime())
         return;
     // if the bot has enough aggression to decide what to do
-    if (BotAggression(bs) < 50)
+    if (BotObjectiveAggression(bs) < 50)
         return;
     // set the time to send a message to the team mates
     bs->teammessage_time = FloatTime() + 2 * random();
@@ -1077,7 +1077,7 @@ void BotObeliskSeekGoals(bot_state_t* bs) {
     if (bs->ctfroam_time > FloatTime())
         return;
     // if the bot has enough aggression to decide what to do
-    if (BotAggression(bs) < 50)
+    if (BotObjectiveAggression(bs) < 50)
         return;
     // set the time to send a message to the team mates
     bs->teammessage_time = FloatTime() + 2 * random();
@@ -1224,7 +1224,7 @@ void BotHarvesterSeekGoals(bot_state_t* bs) {
     if (bs->ctfroam_time > FloatTime())
         return;
     // if the bot has enough aggression to decide what to do
-    if (BotAggression(bs) < 50)
+    if (BotObjectiveAggression(bs) < 50)
         return;
     // set the time to send a message to the team mates
     bs->teammessage_time = FloatTime() + 2 * random();
@@ -2268,7 +2268,7 @@ int TeamPlayIsOn(void) {
 BotAggression
 ==================
 */
-static float BotWeaponAggression(bot_state_t* bs) {
+float BotObjectiveAggression(bot_state_t* bs) {
     // if the bot has quad
     if (bs->inventory[INVENTORY_QUAD]) {
         // if the bot is not holding the gauntlet or the enemy is really nearby
@@ -2326,7 +2326,15 @@ static float BotWeaponAggression(bot_state_t* bs) {
 BotAggression
 
 [QL] The weapon-and-health answer above, moved by how many people are in the
-room. The stock number is entirely self-regarding: a bot with a railgun and full
+room.
+
+Deliberately *not* used by the four "do I pick a team objective" gates in
+BotCTFSeekGoals and its 1FCTF, Overload and Harvester equivalents. Those read
+BotObjectiveAggression, the unmodified number, because each of them is a bare
+`return` on failure: a bot that does not clear 50 there picks no long term goal
+at all and spends the next stretch roaming. Deciding whether to go for the flag
+is not a moment-to-moment reading of who is standing nearby, and letting a
+transient two-on-one suppress it is how a team stops playing the objective. The stock number is entirely self-regarding: a bot with a railgun and full
 health is at 95 whether it is alone against three or standing in a group of four,
 and the four never push together because nothing tells any of them that the other
 three are there.
@@ -2335,7 +2343,7 @@ three are there.
 float BotAggression(bot_state_t* bs) {
     float aggression;
 
-    aggression = BotWeaponAggression(bs);
+    aggression = BotObjectiveAggression(bs);
     if (!bot_tactics.integer) {
         return aggression;
     }

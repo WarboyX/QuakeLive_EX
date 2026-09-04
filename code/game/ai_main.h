@@ -139,6 +139,8 @@ typedef struct bot_tactics_s {
     vec3_t threatdir;    // horizontal direction to step, away from a missile
     float hurt_time;     // last time the bot lost health
     int lasthealth;      // to notice that it did
+    float moved_time;    // last time the bot was going anywhere
+    vec3_t lastorigin;   // and where it was when it last did
 } bot_tactics_t;
 
 typedef struct bot_state_s {
