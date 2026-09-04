@@ -2484,6 +2484,10 @@ int BotWantsToRetreat(bot_state_t* bs) {
     if (BotCTFCarryingFlag(bs) || Bot1FCTFCarryingFlag(bs) || BotHarvesterCarryingCubes(bs)) {
         return wants;
     }
+    // a retreat that already found no way out; see AIEnter_Battle_SuicidalFight
+    if (bs->tac.suicidal_time > FloatTime()) {
+        return qfalse;
+    }
     if (!wants && BotPosture(bs) == TACTIC_FALLBACK) {
         if (bs->tac.foes >= bs->tac.allies + 2 ||
             bs->inventory[INVENTORY_HEALTH] + bs->inventory[INVENTORY_ARMOR] < 100) {

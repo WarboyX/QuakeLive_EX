@@ -2045,6 +2045,27 @@ void AIEnter_Battle_SuicidalFight(bot_state_t* bs, char* s) {
     trap_BotResetLastAvoidReach(bs->ms);
     bs->ainode = AINode_Battle_Fight;
     bs->flags |= BFL_FIGHTSUICIDAL;
+    /*
+    [QL] And stop asking to retreat for a moment.
+
+    This node is where "I want to retreat" goes when there is nowhere to retreat
+    to, and the loop it makes is the twitching reported from spectating:
+
+      BotWantsToRetreat -> Battle_Retreat -> BotLongTermGoal finds no way out
+        -> SuicidalFight -> AIEnter_Battle_Fight clears BFL_FIGHTSUICIDAL
+        -> BotWantsToRetreat is asked again and says yes -> round again
+
+    several times a second, with AIEnter_Battle_Fight calling
+    trap_BotResetLastAvoidReach on every pass, so the movement state is thrown
+    away as fast as it is built. A map report from the field had 43 of 60 bots
+    sitting in "fight (suicidal)".
+
+    The hysteresis in BotWantsToRetreat cannot catch this because
+    BFL_FIGHTSUICIDAL bypasses the question entirely and then gets cleared on the
+    way back in. So the commitment lives here instead: having established there
+    is no way out, do not go looking for one again for a couple of seconds.
+    */
+    bs->tac.suicidal_time = FloatTime() + 2.0f;
 }
 
 /*

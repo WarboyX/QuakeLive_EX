@@ -143,6 +143,7 @@ typedef struct bot_tactics_s {
     vec3_t lastorigin;     // and where it was when it last did
     float aimdrift[2];     // pitch/yaw aim error, wandering rather than resampled
     float enemyswitch_time;  // last time the bot changed who it was shooting at
+    float suicidal_time;     // a retreat with no way out; stop asking until this
 } bot_tactics_t;
 
 typedef struct bot_state_s {

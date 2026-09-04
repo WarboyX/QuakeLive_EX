@@ -211,6 +211,23 @@ static void BotCountNearby(bot_state_t* bs, float range) {
     one body is already the moment to give ground.
     */
     if (other > own + fallbackmargin) {
+        /*
+        And in free-for-all, being outnumbered has to come with being in trouble.
+
+        A margin of 1.5 was not enough: a sixty player match on longestyard put
+        four to seven visible enemies in front of every bot at all times, so
+        every bot was permanently in FALLBACK - a field report showed 42 of 60 -
+        which took 30 off their aggression, sent them into Battle_Retreat, and
+        from there into the suicidal-fight loop. "Outnumbered" carries no
+        information in a gametype where everyone always is.
+
+        A healthy bot in a crowd is just playing free-for-all. One at half health
+        in the same crowd is genuinely losing, and that is worth acting on.
+        */
+        if (!TeamPlayIsOn() && own >= 1.0f) {
+            bs->tac.posture = TACTIC_EVEN;
+            return;
+        }
         bs->tac.posture = TACTIC_FALLBACK;
         bs->tac.posture_time = FloatTime() + 1.0f;
         return;
