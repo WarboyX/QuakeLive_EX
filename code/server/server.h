@@ -106,6 +106,18 @@ typedef struct {
     int snapshotBytesPeak;
     int snapshotsSent;
     int snapshotsRateDelayed;
+    /* [QL] The same figures over a moving window. A since-map-load peak says
+       what the worst moment was and nothing about when it happened or whether
+       things are getting worse - and the log has no timestamps, so a periodic
+       line is also the only way to place a spike next to whatever else was
+       being printed at the time. sv_snapStatsInterval seconds, 0 for off. */
+    int snapWindowStart;
+    int snapWindowPeak;
+    int snapWindowPeakByType[SNAPTYPE_BUCKETS];
+    int snapWindowBytesPeak;
+    int snapWindowDropped;
+    int snapWindowSent;
+    int snapWindowRateDelayed;
 } server_t;
 
 typedef struct {
@@ -285,6 +297,7 @@ extern cvar_t* sv_lanForceRate;
 extern cvar_t* sv_banFile;
 extern cvar_t* sv_altEntDir;
 extern cvar_t* sv_mapEndReport;  // [QL] snapstats + map report at every map change
+extern cvar_t* sv_snapStatsInterval;  // [QL] seconds between rolling snapshot lines, 0 = off
 
 // [QL] sv_altEntDir entity override (sv_init.c)
 void SV_LoadAltEntityString(const char* mapname);
@@ -327,6 +340,7 @@ void SV_MasterHeartbeat(const char* message);
 void SV_MasterShutdown(void);
 
 void SV_SnapStats_f(void);  // [QL] also called at map end from SV_SpawnServer
+void SV_CheckSnapStatsInterval(void);  // [QL] the rolling line, called per frame
 void SV_AddOperatorCommands(void);
 void SV_RemoveOperatorCommands(void);
 

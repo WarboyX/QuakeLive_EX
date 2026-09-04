@@ -842,6 +842,9 @@ void SV_Init(void) {
        changing the default later would do nothing. That trap has cost this
        branch two rounds already (r_dlightMode, con_scale). */
     sv_mapEndReport = Cvar_Get("sv_mapEndReport", "1", 0);
+    /* [QL] Off by default: a line a minute is right while testing and wrong on
+       a server nobody is watching. autoexec.cfg turns it on. */
+    sv_snapStatsInterval = Cvar_Get("sv_snapStatsInterval", "0", 0);
 
     // Load the bans the operator saved in a previous session so they are in
     // force before the first client can connect. Queued rather than called

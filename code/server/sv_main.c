@@ -56,6 +56,7 @@ cvar_t* sv_lanForceRate;  // dedicated 1 (LAN) server forces local client rates 
 cvar_t* sv_banFile;
 cvar_t* sv_altEntDir;
 cvar_t* sv_mapEndReport;
+cvar_t* sv_snapStatsInterval;
 
 serverBan_t serverBans[SERVER_MAXBANS];
 int serverBansCount = 0;
@@ -1108,6 +1109,9 @@ void SV_Frame(int msec) {
 
     // send messages back to the clients
     SV_SendClientMessages();
+
+    // [QL] the rolling snapshot line, after the frame's snapshots are counted
+    SV_CheckSnapStatsInterval();
 
     // [QL] send a heartbeat to the masters so this server appears in the
     // browser's Internet list

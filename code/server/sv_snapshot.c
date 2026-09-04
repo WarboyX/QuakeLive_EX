@@ -332,6 +332,7 @@ static void SV_AddEntToSnapshot(svEntity_t* svEnt, sharedEntity_t* gEnt, snapsho
         // explain it. On a 32-48 player server this is reached routinely.
         // Count it, and say so occasionally so the cause is at least visible.
         sv.snapshotEntitiesDropped++;
+        sv.snapWindowDropped++;
         sv.snapshotDroppedByType[SV_SnapshotTypeBucket(gEnt->s.eType)]++;
 
         if (svs.time >= sv.nextSnapshotOverflowWarn) {
@@ -569,6 +570,10 @@ static void SV_BuildClientSnapshot(client_t* client) {
         sv.snapshotPeakClient = (int)(client - svs.clients);
         Com_Memcpy(sv.snapshotPeakByType, entityNumbers.typeCount, sizeof(sv.snapshotPeakByType));
     }
+    if (entityNumbers.numSnapshotEntities > sv.snapWindowPeak) {
+        sv.snapWindowPeak = entityNumbers.numSnapshotEntities;
+        Com_Memcpy(sv.snapWindowPeakByType, entityNumbers.typeCount, sizeof(sv.snapWindowPeakByType));
+    }
 
     qsort(entityNumbers.snapshotEntities, entityNumbers.numSnapshotEntities,
           sizeof(entityNumbers.snapshotEntities[0]), SV_QsortEntityNumbers);
@@ -705,6 +710,7 @@ void SV_SendClientMessages(void) {
                 // Not enough time since last packet passed through the line
                 c->rateDelayed = qtrue;
                 sv.snapshotsRateDelayed++;
+                sv.snapWindowRateDelayed++;
                 continue;
             }
         }
@@ -719,10 +725,61 @@ void SV_SendClientMessages(void) {
         // generate and send a new message
         SV_SendClientSnapshot(c);
         sv.snapshotsSent++;
+        sv.snapWindowSent++;
         if (c->netchan.lastSentSize > sv.snapshotBytesPeak) {
             sv.snapshotBytesPeak = c->netchan.lastSentSize;
+        }
+        if (c->netchan.lastSentSize > sv.snapWindowBytesPeak) {
+            sv.snapWindowBytesPeak = c->netchan.lastSentSize;
         }
         c->nextSnapshotTime = svs.time;
         c->rateDelayed = qfalse;
     }
+}
+
+/*
+==================
+SV_CheckSnapStatsInterval
+
+[QL] One line every sv_snapStatsInterval seconds, and then the window resets.
+
+snapstats answers "how bad did it ever get on this map". This answers "how bad
+is it right now, and is that changing" - which is a different question, and the
+one that matters while a match is in progress. It is also the only way to place
+a spike in time: the log carries no timestamps, so a periodic line is what lets
+a jump in the peak be read next to whatever else was being printed around it.
+==================
+*/
+void SV_CheckSnapStatsInterval(void) {
+	char types[512];
+	int interval;
+
+	if (!sv_snapStatsInterval || sv_snapStatsInterval->integer <= 0) {
+		return;
+	}
+	if (sv.state != SS_GAME) {
+		return;
+	}
+	interval = sv_snapStatsInterval->integer * 1000;
+	if (sv.snapWindowStart == 0) {
+		sv.snapWindowStart = svs.time;
+		return;
+	}
+	if (svs.time - sv.snapWindowStart < interval) {
+		return;
+	}
+
+	SV_FormatSnapshotTypes(types, sizeof(types), sv.snapWindowPeakByType);
+	Com_Printf("snap %is: peak %i/%i (%s) %i bytes max, %i sent, %i rate-delayed, %i dropped\n",
+	           sv_snapStatsInterval->integer, sv.snapWindowPeak, MAX_SNAPSHOT_ENTITIES,
+	           types[0] ? types : "empty", sv.snapWindowBytesPeak,
+	           sv.snapWindowSent, sv.snapWindowRateDelayed, sv.snapWindowDropped);
+
+	sv.snapWindowStart = svs.time;
+	sv.snapWindowPeak = 0;
+	sv.snapWindowBytesPeak = 0;
+	sv.snapWindowDropped = 0;
+	sv.snapWindowSent = 0;
+	sv.snapWindowRateDelayed = 0;
+	Com_Memset(sv.snapWindowPeakByType, 0, sizeof(sv.snapWindowPeakByType));
 }
