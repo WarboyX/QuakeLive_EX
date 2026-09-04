@@ -5398,6 +5398,89 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### R17. Other open-source FPS bot AI, and what we can legally take — SURVEY
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Asked for: find open-source bot AI for FPS games, check the licences, and take
+what we can. Surveyed 2026-09-04.
+
+#### Where we stand licence-wise, first, because it decides everything
+
+Our headers say *"either version 2 of the License, or (at your option) any later
+version"* and `COPYING.txt` is GPLv2. That is **GPLv2-or-later**, which is more
+permissive to build on than it looks:
+
+| their licence | can we merge it | what it costs |
+|---|---|---|
+| GPLv2 | yes | nothing |
+| zlib / MIT / BSD | yes | an attribution line |
+| GPLv3 | yes | the combined work becomes GPLv3 - we lose "or later" |
+| Apache-2.0 | yes, via GPLv3 | same as above |
+| GPLv3 + undisclosed extra terms | **no, not without reading them** | unknown |
+
+#### The candidates
+
+**[RecastNavigation](https://github.com/recastnavigation/recastnavigation) —
+zlib. The one to actually use.**
+Recast builds navmeshes, Detour queries them at runtime, and **DetourCrowd does
+agent movement with local avoidance** - which is precisely the thing AAS has no
+concept of and precisely the bug reported twice this week as bots getting stuck
+on each other. C++98, no dependencies, and the licence has no strings beyond
+attribution. It is what Unity, Unreal and Godot use.
+
+Two ways in, and the cheap one is worth doing first: port the *idea* of
+DetourCrowd's separation and local steering into `BotAIBlocked`, which currently
+handles two bots meeting head-on and has nothing for a crowd. Replacing AAS
+outright is the expensive one and is not a prerequisite.
+
+**[Warsow / qfusion](https://github.com/Warsow/qfusion) `source/server/game/ai`
+— GPLv2. The architecture to steal.**
+Six subsystems - awareness, combat, movement, navigation, planning, teamplay -
+plus trajectory prediction and a weight-config system. Same licence as us, and
+the most developed bot AI in the Quake family by a distance. It is C++ against
+their own engine so nothing lifts across directly, but the shape is the answer to
+a problem this branch has been working around all week: I have been bolting a
+tactical layer onto Q3's node machine, and they replaced the node machine with a
+planner. Worth reading before any further work on `ai_tactics.c`.
+
+Note the older [Qfusion/qfusion](https://github.com/Qfusion/qfusion)
+`source/game/ai` is a different, simpler thing - ACEBOT-derived, A* over
+nodes and links. Historical interest only.
+
+**[Xonotic](https://gitlab.com/xonotic/xonotic-data.pk3dir) havocbot — GPLv2
+QuakeC. Read it against what we just built.**
+Its CTF roles are **carrier, defense, escort, middle, offense, retriever**, and
+it has role sets for Domination, Freeze Tag and Keep Away as well. That is the
+same problem E64 solves here, solved by people who have shipped it for years, so
+their thresholds and switching timers are worth comparing against ours. QuakeC to
+C is a rewrite rather than a port, so this is a design reference.
+
+**[RTCW-SP](https://github.com/id-Software/RTCW-SP) / iortcw `ai_cast_*` — GPLv3
+**plus additional id terms**. Read-only.**
+Technically the closest fit in the survey: C, id Tech 3 idioms, and a genuinely
+richer AI than Q3's - cover, alertness, scripted behaviour. And the worst licence
+of the set. GPLv3 alone would relicense our combined work; worse, the README says
+the release *"is also subject to certain additional terms"* which are **not in the
+repository** and have to be obtained from id. Until somebody has read those, this
+is a thing to learn from and not a thing to copy a line out of.
+
+**OpenArena** — GPLv2 and the same Q3 bot code we already have. Nothing to take.
+
+#### What this survey concludes
+
+"Use some or all of the code" mostly does not survive contact with the engines:
+navigation systems are not interchangeable, and two of the three best candidates
+are C++ or QuakeC against a game module that is C. The value is architecture and
+specific algorithms rather than files.
+
+In order of what it would actually buy us:
+
+1. **DetourCrowd's local avoidance**, for the crowd-blocking that AAS cannot
+   express. zlib, so no licence question at all.
+2. **Xonotic's role thresholds**, as a check on E64's mix.
+3. **Warsow's separation of concerns**, if the tactical layer keeps growing -
+   which on the evidence of this week it will.
+
 ### E60. Bots fight one at a time, at one distance, in a straight line — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
