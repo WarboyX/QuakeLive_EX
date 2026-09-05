@@ -5729,6 +5729,118 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E69. Xonotic's aim model: lead the target, and settle by distance — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Asked to examine their engagement, aiming and pathing. Read
+`qcsrc/server/bot/default/aim.qc`, `havocbot/havocbot.qc` and `navigation.qc`
+(GPLv2). Two things taken into the aim model; the engagement and pathing
+findings are recorded below and mostly **not** taken, with reasons.
+
+#### Aiming: what they do that we did not
+
+`bot_aimdir` is three stages, and the middle one is the one we were missing.
+
+1. **Error** — `bot_badaimoffset`, resampled every `0.2 + 0.3 * random()`
+   seconds, vertical scaled to 0.7, multiplied by 5 with an enemy and 2 without,
+   and folded into the *desired angle*. We already do this; we arrived at the
+   same "fold it into the destination, do not post-add it" conclusion the hard
+   way a few builds ago.
+
+2. **Anticipation** — a cascade of exponential filters on the **rate of change**
+   of the desired angle, blended back into it by skill:
+
+   ```c
+   this.bot_1st_order_aimfilter += (diffang * (1 / delta_t) - this.bot_1st_order_aimfilter)
+                                   * autocvar_bot_ai_aimskill_order_filter_1st;
+   ...
+   desiredang += blend * (this.bot_1st_order_aimfilter * mix_1st + ...);
+   ```
+
+   **We had nothing for this**, and it is the likeliest source of the residual
+   jitter. Against a strafing target the destination moves every think; a view
+   that only chases where the target *was* trails it by a fixed lag, the error
+   grows until it crosses `AIM_RESWEEP_DEGREES`, the sweep restarts from wherever
+   the view had reached, and it repeats. A sawtooth, which from outside is
+   exactly "still some jitter while aiming, getting smoother but not there".
+
+   Taken, with two orders instead of five: their defaults mix the 1st at 0.01 and
+   the 2nd at 0.075, and the 3rd through 5th at 0.01 to 0.0375, so the top of the
+   cascade buys very little for three more filters' worth of state. Filter
+   constants are theirs (0.2 / 0.2).
+
+   The lead is small by design. At a hundred degrees a second and full skill it
+   is under a degree — anticipation, not aimbotting.
+
+3. **Turn rate scaled by distance** — `r = max(fixedrate / dist, blendrate)`,
+   their `bot_ai_aimskill_fixedrate 15`, `blendrate 2`, then
+   `r * delta_t * (2 + skill^3 * 0.005)`.
+
+   Ours was a flat `frametime * 12`. A fixed fraction crawls asymptotically at
+   the end of every correction, which is the part that reads as the aim never
+   quite settling. Theirs closes a small residual almost at once and travels a
+   large one at a steady speed. Taken, skill term included — dropping it would
+   have left the blendrate floor alone, which is far slower than the fixed
+   twelfth it replaced, and a sluggish tracker reads as *worse* jitter.
+
+   At 40 tick, skill 0.75, the per-frame fraction is now:
+
+   | residual | new | old |
+   |---|---|---|
+   | 0.5° | 100% | 30% |
+   | 2° | 77% | 30% |
+   | 5° | 31% | 30% |
+   | 30° | 20% | 30% |
+
+#### Engagement: read, not taken
+
+- **`findtrajectorywithleading`** solves for a firing arc by trace-tossing a
+  fake projectile up to **ten times**, raising `test_dir.z` by 0.1 each attempt
+  until one hits. That is a real firing solution for arcing weapons. We do
+  nothing of the kind — worth having for grenades, and irrelevant to the
+  instagib testing in front of us, so not now.
+- **The fire decision is separate from the aim.** A `maxfiredeviation` cone
+  gate, then a probabilistic hold: fire only if the trace lands within
+  `500 + 500 * skill` units, *or* `random() * random() > skill * 0.05`. Low-skill
+  bots therefore do not spray at range, which is a characterisation we get for
+  free from `CHARACTERISTIC_FIRETHROTTLE` and do not need.
+- **Random jinking in combat** — at top skill, a new random direction every 0.35
+  seconds held for 0.3, with a 15% chance of not generating one so the bot still
+  drifts toward its goal. Our `BotAttackMove` dodge block covers the same ground
+  differently.
+
+#### Pathing: one clear gap, one architectural difference
+
+**`ignoregoal` / `ignoregoaltime`** (`bot_ai_ignoregoal_timeout 3`). When a goal
+is not working the bot **blacklists that specific goal for three seconds** and
+picks another. Their stuck-on-a-jumppad recovery also picks the *farthest
+visible* waypoint with `random() < 0.8` mixed in, so different bots take
+different ways out.
+
+We have nothing equivalent. E67's alt-route re-roll on a stuck bot is a weaker
+cousin: it changes the route, but the bot can pick the same failing goal again
+immediately. **This is the next pathing item worth doing**, and it is small.
+
+**The architectural difference, which is not a port.** Their movement is a sum
+of normalised steering vectors —
+
+```c
+dir = normalize(dir + dodge + do_break + evadedanger);
+CS(this).movement_x = dir * v_forward * maxspeed;
+```
+
+— followed by `havocbot_keyboard_movement`, which quantises that continuous
+vector into discrete key states on a timer and blends it in by distance to the
+goal (`bot_ai_keyboard_distance 250`, full 360-degree movement when close). The
+continuous vector is what makes their steering composable; the quantiser is what
+makes it look like hands on keys rather than an analog stick.
+
+Ours is Q3's: choose one of a handful of discrete `MOVE_*` directions and retry
+in sequence. That is the reason side-stepping reads as flip-flop — it is a
+discrete choice re-made every think, not a blended vector. Converting is a
+rewrite of `BotAttackMove` and `BotAIBlocked` against `bot_input_t`, not a
+port, and it should not be started in the middle of a run of CTF fixes.
+
 ### E68. Taken from Xonotic's havocbot: count bodies, not intentions — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

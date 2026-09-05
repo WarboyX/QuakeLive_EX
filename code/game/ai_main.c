@@ -801,6 +801,27 @@ starts a fresh sweep from wherever the view currently is.
 */
 #define AIM_RESWEEP_DEGREES 8.0f
 
+/*
+[QL] Aim anticipation filters, from Xonotic's havocbot defaults
+(bot_ai_aimskill_order_filter_1st/2nd 0.2, order_mix_1st 0.01, mix_2nd 0.075).
+The filters smooth the measured angular rate; the mixes say how much of it to
+lead by.
+*/
+#define AIM_FILTER_1ST 0.2f
+#define AIM_FILTER_2ND 0.2f
+#define AIM_MIX_1ST 0.01f
+#define AIM_MIX_2ND 0.075f
+
+/*
+[QL] Tracking rate, also Xonotic's shape: r = max(fixedrate / dist, blendrate),
+their bot_ai_aimskill_fixedrate 15 and blendrate 2. The turn rate is inversely
+proportional to how far there is to go, so a small residual is closed almost at
+once and a large one travels at a steady speed - which is how a hand moves, and
+the opposite of a plain lerp that crawls at the end of every correction.
+*/
+#define AIM_TRACK_FIXEDRATE 15.0f
+#define AIM_TRACK_BLENDRATE 2.0f
+
 static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 	float dist, t, skill, targetangles[2];
 	int i;
@@ -829,6 +850,7 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 	Deliberately slower than the settle tracker: this is a hand not being
 	perfectly steady, and a hand does not shake at ten hertz.
 	*/
+	skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_SKILL, 0, 1);
 	for (i = 0; i < 2; i++) {
 		float rate = frametime * 4.0f;
 
@@ -837,6 +859,56 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 		}
 		bs->tac.aimoffset[i] += (bs->tac.aimoffsetgoal[i] - bs->tac.aimoffset[i]) * rate;
 		targetangles[i] = AngleMod(bs->ideal_viewangles[i] + bs->tac.aimoffset[i]);
+	}
+
+	/*
+	[QL] Anticipate where the destination is going, not just where it is.
+
+	Taken from Xonotic's havocbot (bot_aimdir, GPLv2): it keeps a cascade of
+	exponential filters on the *rate of change* of the desired angle and blends
+	their output back into it, scaled by skill. Two orders here rather than five -
+	theirs mixes the 1st at 0.01 and the 2nd at 0.075, and the 3rd to 5th at 0.01
+	to 0.0375, so the top of the cascade buys very little for three more filters'
+	worth of state.
+
+	Why this rather than more smoothing: against a strafing target the destination
+	moves every think, and a view that only ever chases where the target *was*
+	trails it by a fixed lag. The error grows until it crosses AIM_RESWEEP_DEGREES,
+	the sweep restarts from wherever the view had got to, and it repeats - a
+	sawtooth, which is what "still some jitter while aiming" looks like from the
+	outside. Leading by the filtered angular velocity keeps the error small enough
+	that the resweep stops firing.
+
+	The lead is deliberately small. At a hundred degrees a second and full skill it
+	is under a degree, so this is anticipation, not aimbotting.
+	*/
+	{
+		float delta = FloatTime() - bs->tac.aimfilter_time;
+
+		if (delta > 0.001f && delta < 0.5f) {
+			for (i = 0; i < 2; i++) {
+				float raw = AngleDifference(targetangles[i], bs->tac.aimprev[i]) / delta;
+
+				bs->tac.aim1st[i] += (raw - bs->tac.aim1st[i]) * AIM_FILTER_1ST;
+				bs->tac.aim2nd[i] += (bs->tac.aim1st[i] - bs->tac.aim2nd[i]) * AIM_FILTER_2ND;
+			}
+		} else {
+			// first frame, or a gap long enough that the old rate means nothing
+			for (i = 0; i < 2; i++) {
+				bs->tac.aim1st[i] = 0;
+				bs->tac.aim2nd[i] = 0;
+			}
+		}
+		for (i = 0; i < 2; i++) {
+			bs->tac.aimprev[i] = targetangles[i];
+		}
+		bs->tac.aimfilter_time = FloatTime();
+
+		for (i = 0; i < 2; i++) {
+			targetangles[i] = AngleMod(targetangles[i] +
+			                           skill * (bs->tac.aim1st[i] * AIM_MIX_1ST +
+			                                    bs->tac.aim2nd[i] * AIM_MIX_2ND));
+		}
 	}
 
 	// how far the destination has moved since the sweep was planned
@@ -863,7 +935,6 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 				dist = d;
 			}
 		}
-		skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_SKILL, 0, 1);
 		bs->tac.aimsweep_len = (0.05f + dist * 0.004f) * (1.5f - skill);
 		if (bs->tac.aimsweep_len < 0.05f) {
 			bs->tac.aimsweep_len = 0.05f;
@@ -893,9 +964,38 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 		lag instead: a fixed fraction of the remaining angle per frame, which at
 		40 tick closes most of a small correction inside three frames and reads as
 		a hand following something.
-		*/
-		float rate = frametime * 12.0f;
 
+		The fraction is not fixed any more. Xonotic's havocbot scales it by how
+		far there is left to go - r = max(fixedrate / dist, blendrate) - so a
+		small residual is closed almost at once and a large one travels at a
+		steady speed. A plain fixed fraction does the opposite: it crawls
+		asymptotically at the end of every correction, which is the part that
+		reads as the aim never quite settling.
+		*/
+		float remaining = 0;
+		float rate;
+
+		for (i = 0; i < 2; i++) {
+			float d = fabs(AngleDifference(bs->tac.aimto[i], bs->viewangles[i]));
+
+			if (d > remaining) {
+				remaining = d;
+			}
+		}
+		if (remaining < 1.0f) {
+			remaining = 1.0f;
+		}
+		rate = AIM_TRACK_FIXEDRATE / remaining;
+		if (rate < AIM_TRACK_BLENDRATE) {
+			rate = AIM_TRACK_BLENDRATE;
+		}
+		/*
+		Their skill term, kept: r * delta_t * (2 + skill^3 * 0.005) on a 0-10
+		skill, so 2 at the bottom and 7 at the top. Without it the blendrate
+		floor of 2 alone is far slower than the fixed twelfth this replaced,
+		and a sluggish tracker would read as worse jitter, not better.
+		*/
+		rate *= frametime * (2.0f + skill * skill * skill * 5.0f);
 		if (rate > 1.0f) {
 			rate = 1.0f;
 		} else if (rate < 0.05f) {
