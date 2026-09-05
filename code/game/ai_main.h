@@ -157,6 +157,7 @@ typedef struct bot_tactics_s {
                              // print changes rather than every refresh
     int reportedstuck;       // this stuck episode has already been reported
     float roleredecide_time;  // [QL] CTF role may not be reconsidered before this
+    float reroute_time;       // [QL] and the route may not be reconsidered before this
     /* [QL] Aim anticipation - see BotAimSweep. How fast the place the bot wants
        to look is itself moving, filtered, so the view can lead a strafing target
        instead of trailing it. Xonotic's havocbot calls these the 1st and 2nd

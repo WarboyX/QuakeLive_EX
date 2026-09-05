@@ -5855,9 +5855,47 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     }
     if (!numaltroutegoals)
         return qfalse;
-    rnd = (float)random() * numaltroutegoals;
-    if (rnd >= numaltroutegoals)
-        rnd = numaltroutegoals - 1;
+    /*
+    [QL] The emptiest way round, not a random one.
+
+    Stock rolls a die here. A die gives every bot the same distribution and no
+    knowledge of each other, so on a map with two ways through, sixty bots split
+    thirty-thirty by luck and both corridors jam - and the ones that roll the
+    same number as the bot in front of them queue behind it.
+
+    BotRoomCrowding counts the team already in the room a candidate sits in
+    *and* the team already walking towards it, so the second bot to ask gets a
+    different answer from the first. That is the whole mechanism: it is not that
+    any one bot is clever, it is that the count moves as they commit.
+
+    The random pick is kept as the tie-break, so identical candidates still
+    scatter and a map where every route is equally busy behaves as it used to.
+    */
+    {
+        int best = -1, bestcrowd = 0, ties = 0, i;
+
+        for (i = 0; i < numaltroutegoals; i++) {
+            int crowd = BotRoomCrowding(bs, altroutegoals[i].origin);
+
+            if (best < 0 || crowd < bestcrowd) {
+                best = i;
+                bestcrowd = crowd;
+                ties = 1;
+            } else if (crowd == bestcrowd) {
+                ties++;
+                // reservoir sample, so ties are picked from evenly
+                if (random() * ties < 1.0f) {
+                    best = i;
+                }
+            }
+        }
+        rnd = best;
+    }
+    if (rnd < 0 || rnd >= numaltroutegoals) {
+        rnd = (float)random() * numaltroutegoals;
+        if (rnd >= numaltroutegoals)
+            rnd = numaltroutegoals - 1;
+    }
     goal = &bs->altroutegoal;
     goal->areanum = altroutegoals[rnd].areanum;
     VectorCopy(altroutegoals[rnd].origin, goal->origin);
@@ -6281,6 +6319,8 @@ BotSetupDeathmatchAI
 ==================
 */
 void BotSetupDeathmatchAI(void) {
+    // [QL] the room table holds pointers into the level's entities
+    BotRoomsReset();
     int ent, modelnum;
     char model[128];
 

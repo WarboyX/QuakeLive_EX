@@ -5729,6 +5729,74 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E73. Bots know which room is full, and go the other way — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"theyre shuffling up the stairs and are still taking the same path, maybe they
+should be aware of what room theyre in. So they can be like 'Theres a lot already
+in that room or heading to that room, maybe I should go a different way.'"*
+
+The scoreboard in that report is the measurement E72 said to wait for:
+
+```
+Main Stairway   13
+Flagroom         5
+Main Entrance    4
+Blue Courtyard   2
+Blue Garden Hall 1
+```
+
+Thirteen bots in one stairwell, single file. AAS hands every one of them the same
+cheapest reachability chain and nothing in the AI has ever been able to say *that
+way is full*.
+
+#### The census
+
+`target_location` entities are the map's own names for its rooms, already used
+for the HUD, and japanesecastles has 85. They are a linked list through
+`nextTrain` with no index of their own, so the list is walked once per map into
+`roomEnt[]` and everything after that is an ordinal.
+
+Recounted twice a second — up to 85 rooms against 64 players is a few thousand
+distance tests, nothing at that interval and noticeable every frame for every
+bot. Two numbers per room per team:
+
+- **here** — bodies in it now
+- **bound** — bots whose current goal is in it, who are not there yet
+
+Counting only the first is how a queue re-forms one corner further on: a room
+that is empty *because eleven bots are walking into it* is not a way round.
+
+`BotRoomAt` deliberately does not do the `trap_InPVS` test `Team_GetLocation`
+does. That test is right for labelling a player on the scoreboard and wrong
+here, because this is asked about goal positions the bot cannot see yet — which
+is the entire point of asking.
+
+#### What it changes
+
+**`BotGetAlternateRouteGoal` picks the emptiest way round, not a random one.**
+Stock rolls a die, which gives every bot the same distribution and no knowledge
+of the others: on a map with two ways through, sixty bots split thirty-thirty by
+luck and jam both. Now each candidate is scored by the crowding of the room it
+sits in, and *the counts move as team mates commit* — so the tenth bot to ask
+gets a different answer from the second. It is not that any one bot is clever.
+The random pick survives as the tie-break, so equal candidates still scatter.
+
+**And they ask before they are stuck, not after.** The E67 re-roll fires at three
+seconds of not moving, which is the right response once a bot is in the queue and
+the wrong moment to notice one. A bot on a flag goal standing in a room holding
+more than six of its own team now re-picks its route, at most once every four
+seconds — re-picking more often than it takes to walk any of it is how a bot
+oscillates between two corridors and arrives on neither.
+
+#### Why this only works now
+
+Both of the above choose among `red_altroutegoals` / `blue_altroutegoals`, which
+were **empty on every ordinary CTF map** until E70 (the neutral-flag gate) and
+E72 (maps with no cluster portals). Occupancy-aware selection over an empty list
+is nothing at all; that is why this is the third entry in the chain rather than
+the first.
+
 ### E72. Alternative routing needed a second fix, and the bots can name the room — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

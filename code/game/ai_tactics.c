@@ -423,6 +423,30 @@ void BotTacticsUpdate(bot_state_t* bs) {
                         anything, it is somewhere the router cannot plan from,
                         and no amount of sidestepping will help it
     */
+    /*
+    [QL] Go round before being stuck in it, not after.
+
+    The re-roll below fires at three seconds of not moving, which is the right
+    answer once a bot is already in the queue and the wrong moment to notice
+    one. A bot standing in a room that holds a sixth of its own team, on its way
+    somewhere, has enough to decide with: BotGetAlternateRouteGoal now picks the
+    emptiest way round, and the counts move as team mates commit, so the tenth
+    bot to ask gets a different answer from the second.
+
+    Every four seconds at most. Re-picking a route more often than it takes to
+    walk any of it is how a bot oscillates between two corridors and arrives on
+    neither.
+    */
+    if (BotTacticsEnabled() && gametype == GT_CTF &&
+        bs->tac.reroute_time < FloatTime() &&
+        (bs->ltgtype == LTG_GETFLAG || bs->ltgtype == LTG_RUSHBASE ||
+         bs->ltgtype == LTG_RETURNFLAG || bs->ltgtype == LTG_ATTACKENEMYBASE)) {
+        bs->tac.reroute_time = FloatTime() + 4.0f;
+        if (BotRoomCrowding(bs, bs->origin) > 6) {
+            BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+        }
+    }
+
     if (!bs->tac.reportedstuck && FloatTime() - bs->tac.moved_time > 3.0f) {
         int area = bs->areanum;
 
@@ -1116,6 +1140,183 @@ void BotTacticsReport(void) {
             }
         }
     }
+}
+
+/*
+==================
+The room census
+
+[QL] How many of a team are in each of the map's named rooms, and how many are
+on their way to one.
+
+Asked for as: "maybe they should be aware of what room theyre in. So they can be
+like 'Theres a lot already in that room or heading to that room, maybe I should
+go a different way.'" The scoreboard in the report that came with it reads
+Main Stairway 13, Flagroom 5, Main Entrance 4 - thirteen bots in one stairwell,
+single file, because AAS hands every one of them the same cheapest chain and
+nothing in the AI has ever been able to say "that way is full".
+
+target_location entities are the map's own names for its rooms and are already
+what the HUD prints beside a player's name, so the vocabulary exists; it just was
+not wired to anything the bots could read. They are a linked list through
+nextTrain with no index of their own, so the list is walked once per map into
+roomEnt[] and everything after that is an ordinal.
+
+Two counts, because they answer different halves of the question:
+
+  here   - bodies in the room now
+  bound  - bots whose current goal is in that room, who are not there yet
+
+A room that is empty but has eleven bots walking into it is not a way round, and
+counting only the first number is how a queue re-forms one corner further on.
+==================
+*/
+#define MAX_ROOMS 128
+#define ROOM_CENSUS_INTERVAL 0.5f
+
+static gentity_t* roomEnt[MAX_ROOMS];
+static int numRooms;
+static int roomHere[MAX_ROOMS][TEAM_NUM_TEAMS];
+static int roomBound[MAX_ROOMS][TEAM_NUM_TEAMS];
+static float roomCensus_time;
+
+/*
+==================
+BotRoomsReset
+
+[QL] Forget the room list; the next census rebuilds it. Called when the game
+module starts a map, because these are file statics and a map change otherwise
+leaves pointers into the previous level's entities.
+==================
+*/
+void BotRoomsReset(void) {
+    numRooms = 0;
+    roomCensus_time = 0;
+    memset(roomEnt, 0, sizeof(roomEnt));
+    memset(roomHere, 0, sizeof(roomHere));
+    memset(roomBound, 0, sizeof(roomBound));
+}
+
+/*
+==================
+BotRoomAt
+
+[QL] Which room a point is in - nearest by distance, no visibility test.
+
+Team_GetLocation does the same walk with a trap_InPVS check, which is right for
+labelling a player on the scoreboard and wrong here: this is asked about goal
+positions the bot cannot see yet, which is the entire point of asking.
+==================
+*/
+static int BotRoomAt(vec3_t origin) {
+    float best, len;
+    vec3_t dir;
+    int i, bestroom;
+
+    bestroom = -1;
+    best = 8192.0f * 8192.0f;
+    for (i = 0; i < numRooms; i++) {
+        VectorSubtract(origin, roomEnt[i]->r.currentOrigin, dir);
+        len = VectorLengthSquared(dir);
+        if (len < best) {
+            best = len;
+            bestroom = i;
+        }
+    }
+    return bestroom;
+}
+
+/*
+==================
+BotRoomCensus
+
+[QL] Recount, twice a second. Up to 85 rooms against 64 players is a few
+thousand distance tests, which is nothing at that interval and would be
+noticeable every frame for every bot.
+==================
+*/
+static void BotRoomCensus(void) {
+    gentity_t* eloc;
+    bot_state_t* other;
+    int i, room, team;
+
+    if (roomCensus_time > FloatTime() - ROOM_CENSUS_INTERVAL) {
+        return;
+    }
+    roomCensus_time = FloatTime();
+
+    if (!numRooms) {
+        for (eloc = level.locationHead; eloc && numRooms < MAX_ROOMS; eloc = eloc->nextTrain) {
+            roomEnt[numRooms++] = eloc;
+        }
+    }
+    if (!numRooms) {
+        return;
+    }
+    memset(roomHere, 0, sizeof(roomHere));
+    memset(roomBound, 0, sizeof(roomBound));
+
+    for (i = 0; i < level.maxclients; i++) {
+        if (!g_entities[i].inuse || !g_entities[i].client) {
+            continue;
+        }
+        team = g_entities[i].client->sess.sessionTeam;
+        if (team < 0 || team >= TEAM_NUM_TEAMS) {
+            continue;
+        }
+        if (g_entities[i].client->ps.stats[STAT_HEALTH] <= 0) {
+            continue;
+        }
+        room = BotRoomAt(g_entities[i].r.currentOrigin);
+        if (room >= 0) {
+            roomHere[room][team]++;
+        }
+        // and where it is trying to get to
+        other = botstates[i];
+        if (!other || !other->inuse) {
+            continue;
+        }
+        if (other->altroutegoal.areanum) {
+            room = BotRoomAt(other->altroutegoal.origin);
+        } else if (other->ltgtype && other->teamgoal.areanum) {
+            room = BotRoomAt(other->teamgoal.origin);
+        } else {
+            continue;
+        }
+        if (room >= 0) {
+            roomBound[room][team]++;
+        }
+    }
+}
+
+/*
+==================
+BotRoomCrowding
+
+[QL] How many of this bot's team are in, or heading for, the room containing a
+point. The bot itself is not discounted - it is one body either way, and the
+comparison between candidates is what matters.
+==================
+*/
+int BotRoomCrowding(bot_state_t* bs, vec3_t origin) {
+    int room, team;
+
+    if (!BotTacticsEnabled()) {
+        return 0;
+    }
+    BotRoomCensus();
+    if (!numRooms) {
+        return 0;
+    }
+    team = g_entities[bs->client].client->sess.sessionTeam;
+    if (team < 0 || team >= TEAM_NUM_TEAMS) {
+        return 0;
+    }
+    room = BotRoomAt(origin);
+    if (room < 0) {
+        return 0;
+    }
+    return roomHere[room][team] + roomBound[room][team];
 }
 
 /*
