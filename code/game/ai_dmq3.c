@@ -1057,7 +1057,20 @@ void BotCTFSeekGoals(bot_state_t* bs) {
     } else {
         bs->ltgtype = 0;
         // set the time the bot will stop roaming
-        bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
+        /*
+        [QL] Fifteen seconds, not sixty.
+
+        CTF_ROAM_TIME locks a bot out of re-deciding for a full minute, and the
+        gate above returns on sight of it - so a bot that rolls "roam" has no
+        long term goal at all for that minute and cannot be given one. In a
+        field log 34 of 59 stuck episodes were ltg 0, which is this: with roam
+        at a fifth of the mix, six bots a side are goalless in rotation, and on
+        an instagib map there are not even items to wander between.
+
+        A minute is a sensible dedication time for a job. Roaming is the absence
+        of one.
+        */
+        bs->ctfroam_time = FloatTime() + (bot_tactics.integer ? 15 : CTF_ROAM_TIME);
         BotSetTeamStatus(bs);
     }
     bs->owndecision_time = FloatTime() + 5;
@@ -1304,7 +1317,20 @@ void Bot1FCTFSeekGoals(bot_state_t* bs) {
     } else {
         bs->ltgtype = 0;
         // set the time the bot will stop roaming
-        bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
+        /*
+        [QL] Fifteen seconds, not sixty.
+
+        CTF_ROAM_TIME locks a bot out of re-deciding for a full minute, and the
+        gate above returns on sight of it - so a bot that rolls "roam" has no
+        long term goal at all for that minute and cannot be given one. In a
+        field log 34 of 59 stuck episodes were ltg 0, which is this: with roam
+        at a fifth of the mix, six bots a side are goalless in rotation, and on
+        an instagib map there are not even items to wander between.
+
+        A minute is a sensible dedication time for a job. Roaming is the absence
+        of one.
+        */
+        bs->ctfroam_time = FloatTime() + (bot_tactics.integer ? 15 : CTF_ROAM_TIME);
         BotSetTeamStatus(bs);
     }
     bs->owndecision_time = FloatTime() + 5;
@@ -1424,7 +1450,20 @@ void BotObeliskSeekGoals(bot_state_t* bs) {
     } else {
         bs->ltgtype = 0;
         // set the time the bot will stop roaming
-        bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
+        /*
+        [QL] Fifteen seconds, not sixty.
+
+        CTF_ROAM_TIME locks a bot out of re-deciding for a full minute, and the
+        gate above returns on sight of it - so a bot that rolls "roam" has no
+        long term goal at all for that minute and cannot be given one. In a
+        field log 34 of 59 stuck episodes were ltg 0, which is this: with roam
+        at a fifth of the mix, six bots a side are goalless in rotation, and on
+        an instagib map there are not even items to wander between.
+
+        A minute is a sensible dedication time for a job. Roaming is the absence
+        of one.
+        */
+        bs->ctfroam_time = FloatTime() + (bot_tactics.integer ? 15 : CTF_ROAM_TIME);
         BotSetTeamStatus(bs);
     }
 }
@@ -1590,7 +1629,20 @@ void BotHarvesterSeekGoals(bot_state_t* bs) {
     } else {
         bs->ltgtype = 0;
         // set the time the bot will stop roaming
-        bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
+        /*
+        [QL] Fifteen seconds, not sixty.
+
+        CTF_ROAM_TIME locks a bot out of re-deciding for a full minute, and the
+        gate above returns on sight of it - so a bot that rolls "roam" has no
+        long term goal at all for that minute and cannot be given one. In a
+        field log 34 of 59 stuck episodes were ltg 0, which is this: with roam
+        at a fifth of the mix, six bots a side are goalless in rotation, and on
+        an instagib map there are not even items to wander between.
+
+        A minute is a sensible dedication time for a job. Roaming is the absence
+        of one.
+        */
+        bs->ctfroam_time = FloatTime() + (bot_tactics.integer ? 15 : CTF_ROAM_TIME);
         BotSetTeamStatus(bs);
     }
 }
@@ -5944,6 +5996,14 @@ static int BotAltRoutes(vec3_t start, int startarea, vec3_t goal, int goalarea,
     int n;
 
     if (!startarea || !goalarea) {
+        /*
+        [QL] Say so. This returned 0 quietly, and a field log on the build that
+        added the counter had no route line at all - not "0 routes", nothing -
+        which cost a round of guessing at why. A diagnostic that can decline to
+        speak is worse than no diagnostic, because its silence reads as success.
+        */
+        G_Printf("alternate routes %s: skipped, areas not resolved (start %i, goal %i)\n",
+                 what, startarea, goalarea);
         return 0;
     }
     n = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
@@ -5992,19 +6052,27 @@ void BotSetupAlternativeRouteGoals(void) {
             // not a warning: an ordinary CTF map is not supposed to have one
             ctf_neutralflag.areanum = 0;
         }
+        /*
+        [QL] Re-resolve the flags here rather than trusting that
+        BotSetupDeathmatchAI got them. This runs from a bot's setup countdown,
+        which is a different moment, and an unresolved area silently produced no
+        routes for the whole match with nothing in the log to say so.
+        */
+        if (!ctf_redflag.areanum) {
+            trap_BotGetLevelItemGoal(-1, "Red Flag", &ctf_redflag);
+        }
+        if (!ctf_blueflag.areanum) {
+            trap_BotGetLevelItemGoal(-1, "Blue Flag", &ctf_blueflag);
+        }
         if (ctf_neutralflag.areanum) {
-            red_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
+            red_numaltroutegoals = BotAltRoutes(
                 ctf_neutralflag.origin, ctf_neutralflag.areanum,
-                ctf_redflag.origin, ctf_redflag.areanum, TFL_DEFAULT,
-                red_altroutegoals, MAX_ALTROUTEGOALS,
-                ALTROUTEGOAL_CLUSTERPORTALS |
-                    ALTROUTEGOAL_VIEWPORTALS);
-            blue_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
+                ctf_redflag.origin, ctf_redflag.areanum,
+                red_altroutegoals, "toward the red base");
+            blue_numaltroutegoals = BotAltRoutes(
                 ctf_neutralflag.origin, ctf_neutralflag.areanum,
-                ctf_blueflag.origin, ctf_blueflag.areanum, TFL_DEFAULT,
-                blue_altroutegoals, MAX_ALTROUTEGOALS,
-                ALTROUTEGOAL_CLUSTERPORTALS |
-                    ALTROUTEGOAL_VIEWPORTALS);
+                ctf_blueflag.origin, ctf_blueflag.areanum,
+                blue_altroutegoals, "toward the blue base");
         } else {
             red_numaltroutegoals = BotAltRoutes(
                 ctf_blueflag.origin, ctf_blueflag.areanum,
@@ -6014,6 +6082,15 @@ void BotSetupAlternativeRouteGoals(void) {
                 ctf_redflag.origin, ctf_redflag.areanum,
                 ctf_blueflag.origin, ctf_blueflag.areanum,
                 blue_altroutegoals, "toward the blue base");
+        }
+        /*
+        [QL] And do not latch a failure. If the flag areas were not resolved
+        there is nothing to remember, and the next bot to finish setting up
+        should try again rather than the map running for twenty minutes with an
+        empty route table.
+        */
+        if (!ctf_redflag.areanum || !ctf_blueflag.areanum) {
+            return;
         }
     } else if (gametype == GT_1FCTF) {
         if (trap_BotGetLevelItemGoal(-1, "Neutral Obelisk", &neutralobelisk) < 0)

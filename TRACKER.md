@@ -5729,6 +5729,69 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E74. A diagnostic that declined to speak, and a minute of doing nothing — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Field log of the E72 build. The room census works and the spread is visibly
+better — 16 rooms occupied, the fullest holding 11, against the 5 rooms and 13
+in one stairwell that prompted it. Two things it turned up.
+
+#### The route line was not in the log at all
+
+Not "0 routes". **Nothing** — no occurrence of "route" or "portal" anywhere in
+18,368 lines, on a build whose binary demonstrably contains the format strings.
+
+`BotAltRoutes` opens with
+
+```c
+if (!startarea || !goalarea) {
+    return 0;
+}
+```
+
+before either of its prints. So the one path that most needed announcing itself
+was the one that said nothing, and its silence read as "this code did not run",
+which cost a round of guessing at call sites, `#ifdef CTF`, `altroutegoals_setup`
+and the commit contents before the early return was the answer.
+
+**A diagnostic that can decline to speak is worse than no diagnostic**, because
+absence looks like success. It reports now, with the area numbers.
+
+Two more fixes behind it, since the failure is real and not only unlogged:
+
+- The flag goals are **re-resolved here** rather than trusted from
+  `BotSetupDeathmatchAI`. This runs from a bot's setup countdown, which is a
+  different moment.
+- **A failure is no longer latched.** `altroutegoals_setup` was set at the end
+  unconditionally, so an unresolved area meant an empty route table for the rest
+  of the map with no retry. Now it returns without latching and the next bot to
+  finish setting up tries again.
+
+#### Thirty-four of fifty-nine stuck bots had no goal at all
+
+`ltg 0` is the dominant stuck category now, where it used to be `LTG_TEAMACCOMPANY`
+— the escort pile-up is gone and this was underneath it.
+
+```c
+bs->ltgtype = 0;
+bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;   // 60 seconds
+```
+
+and, at the top of the same function,
+
+```c
+if (bs->ctfroam_time > FloatTime())
+    return;
+```
+
+A bot that rolls "roam" therefore has **no long term goal for a full minute and
+cannot be given one**. With roam at a fifth of the mix that is six bots a side
+goalless in rotation, and on an instagib map there are not even items for them to
+wander between — so they wander into each other.
+
+Fifteen seconds under `bot_tactics`. A minute is a sensible dedication time for a
+job; roaming is the absence of one.
+
 ### E73. Bots know which room is full, and go the other way — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
