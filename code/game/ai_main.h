@@ -156,6 +156,7 @@ typedef struct bot_tactics_s {
     int reportedposture;     // last posture bot_debugTactics printed, so it can
                              // print changes rather than every refresh
     int reportedstuck;       // this stuck episode has already been reported
+    float roleredecide_time;  // [QL] CTF role may not be reconsidered before this
 } bot_tactics_t;
 
 typedef struct bot_state_s {

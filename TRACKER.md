@@ -5193,6 +5193,100 @@ is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
 
+### E66. The CTF role system was running about twice a minute — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"theyre still grouping up and getting stuck. Maybe massing around a flag
+carrier or getting conflicting orders. Also look at how long they were trying to
+get a single capture. They werent trying to find alternative tactics."* — and
+the match went to a **third overtime**.
+
+All three complaints are one fault, and the log measures it.
+
+#### What the match looked like
+
+| | count |
+|---|---|
+| flag grabs | 540 |
+| carriers fragged | 534 |
+| flag returns | 291 |
+| stuck episodes | 842 |
+| **of those, bots in `LTG_TEAMACCOMPANY`** | **562 (67%)** |
+| `BotCTFPickRole` decisions, whole match | **103** |
+| role lines where the team had *any* defender | **0 of 103** |
+
+Ninety-nine percent of carriers died before scoring, two thirds of everything
+that got stuck was escorting, and the role picker ran a hundred times in
+forty-five thousand lines with sixty-two bots on the server.
+
+#### Why the role system almost never ran
+
+`BotCTFSeekGoals` handles the flag states first and **every branch returned
+unconditionally**:
+
+```c
+if (flagstatus == 1) { ...escort the carrier... return; }
+else if (flagstatus == 2) { ...chase or go for theirs... return; }
+else if (flagstatus == 3) { ...escort or return ours... return; }
+...
+/* the role picker lives down here */
+```
+
+Those three cover every state except both flags at home. With 540 grabs in a
+match, both flags are at home almost never — so the role code, `BotCTFRoleMix`,
+the whole of E60's CTF work, was unreachable for most of the match. A bot with
+nothing to do reached this, was offered exactly one option — escort, if it could
+see the carrier — and took the early return when it could not.
+
+That is also the "conflicting orders": a bot with a job kept it, and a bot
+without one could not be given a different one.
+
+**Fixed:** each branch returns only if the bot now has a goal (`if (bs->ltgtype)
+return;`). A bot the branch declined to give a job falls through to the role
+picker, which is what it is for. A bot that took one returns exactly as before.
+
+#### Why they massed on the carrier
+
+The stock escort branch has **no cap**. Any bot that can see its own flag
+carrier and is not already defending switches to `LTG_TEAMACCOMPANY` for
+`TEAM_ACCOMPANY_TIME` — ten minutes — and every one of them sets
+`formation_dist = 3.5 * 32`, so they all path to the same point three metres
+from one player. At four a side that is a plan. At thirty-two a side the carrier
+is inside a crowd it cannot walk out of, and in instagib a crowd is a rail
+magnet. Hence 534 dead carriers.
+
+**Fixed** in three parts:
+
+- `BotCTFRoleCrowded` — the escort branches (`flagstatus` 1 and 3) now decline
+  when the team already holds the mix's share of escorts, and fall through to
+  the role picker instead. Half a bot of slack so a team exactly on quota does
+  not flicker.
+- `formation_dist` is `112 + (client % 4) * 56` — 112 to 280 — so escorts form a
+  loose shell rather than a point. Stable per bot, no extra computation.
+- Both remain no-ops with `bot_tactics 0`; `BotCTFRoleCrowded` returns qfalse
+  when the layer is off, which restores the stock behaviour exactly.
+
+#### Why there were no alternative tactics
+
+`TEAM_ACCOMPANY_TIME` and `TEAM_DEFENDKEYAREA_TIME` are both **600 seconds**, and
+the "already a CTF or team goal" gate returns for the whole of it. A bot decided
+once and held that decision for longer than most matches last. Sixty bots that
+all chose escort in the first seconds of a flag being out were still escorting
+three overtimes later.
+
+**Fixed:** a bot reconsiders when its job is over-subscribed — its own decision
+only, and at most every 20 seconds. Long enough that a bot walking to the far
+side of the map arrives before being asked to think again; short enough that the
+team reshapes within one flag run.
+
+#### The report could not have told us this
+
+Every one of the 62 rows in the map report read `team goal` in the goal column,
+because the column only distinguished defence from everything else — and
+everything else is every CTF job there is. The one question the report exists to
+answer, *are they all escorting one carrier*, was the one it could not say.
+`BotLongTermGoalName` now names all fifteen.
+
 ### E65. Dropping a client re-entered the game module mid-think — DONE (verify)
 **Lives in:** our **server** (server engine + qagame) · **Seen by:** every client
 

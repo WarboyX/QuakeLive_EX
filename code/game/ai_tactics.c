@@ -863,6 +863,38 @@ int BotAutoDefendGoal(bot_state_t* bs) {
 
 /*
 ==================
+BotLongTermGoalName
+
+[QL] Which long-term goal a bot is on, by name.
+
+This column used to read "team goal" for anything that was not defence, which
+is every CTF job there is. A 62-bot report printed it 62 times and answered
+nothing: the question the report exists to answer - are they all escorting one
+carrier - was the one thing it could not say. The counts are in ai_main.h.
+==================
+*/
+static const char* BotLongTermGoalName(bot_state_t* bs) {
+    switch (bs->ltgtype) {
+        case 0: return "roaming";
+        case LTG_TEAMHELP: return "helping";
+        case LTG_TEAMACCOMPANY: return "escorting";
+        case LTG_DEFENDKEYAREA: return "defending";
+        case LTG_GETFLAG: return "get flag";
+        case LTG_RUSHBASE: return "carrying";
+        case LTG_RETURNFLAG: return "return flag";
+        case LTG_CAMP:
+        case LTG_CAMPORDER: return "camping";
+        case LTG_PATROL: return "patrol";
+        case LTG_GETITEM: return "get item";
+        case LTG_KILL: return "kill";
+        case LTG_HARVEST: return "harvest";
+        case LTG_ATTACKENEMYBASE: return "attack base";
+        default: return "other";
+    }
+}
+
+/*
+==================
 BotNodeName
 
 Which AI node a bot is sitting in, by pointer. There is no name stored anywhere -
@@ -990,9 +1022,7 @@ void BotTacticsReport(void) {
                  bs->tac.allies, bs->tac.foes,
                  bs->enemy >= 0 ? "yes" : "-",
                  BotNodeName(bs),
-                 bs->ltgtype == LTG_DEFENDKEYAREA ? "defending"
-                 : bs->ltgtype                    ? "team goal"
-                                                  : "roaming",
+                 BotLongTermGoalName(bs),
                  idle ? "idle, " : "", still);
     }
     G_Printf("%i bots: %i pushing, %i even, %i falling back; %i with an enemy, %i dodging\n",
@@ -1150,21 +1180,24 @@ legible, so a human holding the base is not counted and the bots will over-defen
 behind one. That is the safe direction to be wrong in.
 ==================
 */
-int BotCTFPickRole(bot_state_t* bs) {
-    float mix[CTFROLE_COUNT];
-    int have[CTFROLE_COUNT];
-    int i, team, teamsize, best;
-    float bestdeficit, deficit;
+/*
+==================
+BotCTFRoleCounts
 
-    if (!BotTacticsEnabled() || gametype != GT_CTF) {
-        return -1;
-    }
-    BotCTFRoleMix(bs, mix);
+[QL] What the rest of this bot's team is doing, by role, and how big the team is.
+
+Split out of BotCTFPickRole so the escort cap can ask the same question without
+picking a role. Bots only - botstates[] is the only place a role is legible, so
+a human holding the base is not counted.
+==================
+*/
+static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize) {
+    int i, team;
 
     for (i = 0; i < CTFROLE_COUNT; i++) {
         have[i] = 0;
     }
-    teamsize = 0;
+    *teamsize = 0;
     team = g_entities[bs->client].client->sess.sessionTeam;
 
     for (i = 0; i < level.maxclients; i++) {
@@ -1174,7 +1207,7 @@ int BotCTFPickRole(bot_state_t* bs) {
         if (g_entities[i].client->sess.sessionTeam != team) {
             continue;
         }
-        teamsize++;
+        (*teamsize)++;
         if (i == bs->client || !botstates[i] || !botstates[i]->inuse) {
             continue;
         }
@@ -1194,9 +1227,57 @@ int BotCTFPickRole(bot_state_t* bs) {
                 break;
         }
     }
-    if (teamsize < 1) {
-        teamsize = 1;
+    if (*teamsize < 1) {
+        *teamsize = 1;
     }
+}
+
+/*
+==================
+BotCTFRoleCrowded
+
+[QL] qtrue when the team already has as many of this job as the mix wants.
+
+This is what stops the stock "follow the flag carrier" branch from turning into
+a mob. That branch has no cap at all: any bot that can see its own carrier and
+is not already defending switches to LTG_TEAMACCOMPANY for TEAM_ACCOMPANY_TIME,
+which is ten minutes. At four a side that is a plan. At thirty-two a side a
+field log shows 562 of 842 stuck episodes were bots in LTG_TEAMACCOMPANY -
+twenty-odd of them pathing to the same point three metres from one player, who
+consequently cannot move, and in instagib is a rail magnet. 540 flag grabs in
+that match, 534 carriers fragged, and the game went to a third overtime.
+
+Half a bot of slack, so a team that is exactly on quota does not flicker.
+==================
+*/
+int BotCTFRoleCrowded(bot_state_t* bs, int role) {
+    float mix[CTFROLE_COUNT];
+    int have[CTFROLE_COUNT];
+    int teamsize;
+
+    if (!BotTacticsEnabled() || gametype != GT_CTF) {
+        return qfalse;  // no opinion; stock behaviour stands
+    }
+    if (role < 0 || role >= CTFROLE_COUNT) {
+        return qfalse;
+    }
+    BotCTFRoleMix(bs, mix);
+    BotCTFRoleCounts(bs, have, &teamsize);
+
+    return (float)have[role] >= mix[role] * (float)teamsize + 0.5f;
+}
+
+int BotCTFPickRole(bot_state_t* bs) {
+    float mix[CTFROLE_COUNT];
+    int have[CTFROLE_COUNT];
+    int i, teamsize, best;
+    float bestdeficit, deficit;
+
+    if (!BotTacticsEnabled() || gametype != GT_CTF) {
+        return -1;
+    }
+    BotCTFRoleMix(bs, mix);
+    BotCTFRoleCounts(bs, have, &teamsize);
 
     best = CTFROLE_ROAM;
     bestdeficit = -999;

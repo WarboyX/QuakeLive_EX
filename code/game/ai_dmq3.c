@@ -663,6 +663,18 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                    bs->teamgoal.number == ctf_blueflag.number))) {
                 // if there is a visible team mate flag carrier
                 c = BotTeamFlagCarrierVisible(bs);
+                /*
+                [QL] ...and only if the team is not already full of escorts.
+
+                Without the cap every bot that can see the carrier takes this
+                branch, for ten minutes each. See BotCTFRoleCrowded for what
+                that looked like in the field. When the escort quota is full
+                this falls through to the role picker below instead, which is
+                where the bot finds out the team would rather it defended.
+                */
+                if (c >= 0 && BotCTFRoleCrowded(bs, CTFROLE_ESCORT)) {
+                    c = -1;
+                }
                 if (c >= 0 &&
                     // and not already following the team mate flag carrier
                     (bs->ltgtype != LTG_TEAMACCOMPANY || bs->teammate != c)) {
@@ -684,13 +696,28 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                     // get the team goal time
                     bs->teamgoal_time = FloatTime() + TEAM_ACCOMPANY_TIME;
                     bs->ltgtype = LTG_TEAMACCOMPANY;
-                    bs->formation_dist = 3.5 * 32;  // 3.5 meter
+                    /* [QL] Not all at 3.5 metres. Every escort pathing to the
+                       same point around one carrier is what wedges them
+                       together and stops the carrier moving; a stable per-bot
+                       spread makes it a loose shell instead. */
+                    bs->formation_dist = 112 + (bs->client % 4) * 56;
                     BotSetTeamStatus(bs);
                     bs->owndecision_time = FloatTime() + 5;
                 }
             }
         }
-        return;
+        /*
+        [QL] Return only if this bot now has a job. It used to return either
+        way, and that is why the role system below almost never ran: these three
+        branches cover every state except both flags at home, and a field log
+        with 540 flag grabs in one match reached the role picker 103 times in
+        45,000 lines. A bot with nothing to do sat in here being offered one
+        option - escort, if it could see the carrier - and took the early return
+        when it could not.
+        */
+        if (bs->ltgtype) {
+            return;
+        }
     }
     // if the enemy has our flag
     else if (flagstatus == 2) {
@@ -730,7 +757,18 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 bs->owndecision_time = FloatTime() + 5;
             }
         }
-        return;
+        /*
+        [QL] Return only if this bot now has a job. It used to return either
+        way, and that is why the role system below almost never ran: these three
+        branches cover every state except both flags at home, and a field log
+        with 540 flag grabs in one match reached the role picker 103 times in
+        45,000 lines. A bot with nothing to do sat in here being offered one
+        option - escort, if it could see the carrier - and took the early return
+        when it could not.
+        */
+        if (bs->ltgtype) {
+            return;
+        }
     }
     // if both flags Not at their bases
     else if (flagstatus == 3) {
@@ -740,6 +778,11 @@ void BotCTFSeekGoals(bot_state_t* bs) {
             if (bs->ltgtype != LTG_RETURNFLAG && bs->ltgtype != LTG_TEAMACCOMPANY) {
                 //
                 c = BotTeamFlagCarrierVisible(bs);
+                // [QL] same escort cap as the flagstatus 1 branch above; with
+                // both flags out this is the branch that fills up
+                if (c >= 0 && BotCTFRoleCrowded(bs, CTFROLE_ESCORT)) {
+                    c = -1;
+                }
                 // if there is a visible team mate flag carrier
                 if (c >= 0) {
                     BotRefuseOrder(bs);
@@ -759,7 +802,11 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                     // get the team goal time
                     bs->teamgoal_time = FloatTime() + TEAM_ACCOMPANY_TIME;
                     bs->ltgtype = LTG_TEAMACCOMPANY;
-                    bs->formation_dist = 3.5 * 32;  // 3.5 meter
+                    /* [QL] Not all at 3.5 metres. Every escort pathing to the
+                       same point around one carrier is what wedges them
+                       together and stops the carrier moving; a stable per-bot
+                       spread makes it a loose shell instead. */
+                    bs->formation_dist = 112 + (bs->client % 4) * 56;
                     //
                     BotSetTeamStatus(bs);
                     bs->owndecision_time = FloatTime() + 5;
@@ -781,7 +828,18 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 }
             }
         }
-        return;
+        /*
+        [QL] Return only if this bot now has a job. It used to return either
+        way, and that is why the role system below almost never ran: these three
+        branches cover every state except both flags at home, and a field log
+        with 540 flag grabs in one match reached the role picker 103 times in
+        45,000 lines. A bot with nothing to do sat in here being offered one
+        option - escort, if it could see the carrier - and took the early return
+        when it could not.
+        */
+        if (bs->ltgtype) {
+            return;
+        }
     }
     // don't just do something wait for the bot team leader to give orders
     if (BotTeamLeader(bs)) {
@@ -794,6 +852,48 @@ void BotCTFSeekGoals(bot_state_t* bs) {
     // if the bot decided to do something on its own and has a last ordered goal
     if (!bs->ordered && bs->lastgoal_ltgtype) {
         bs->ltgtype = 0;
+    }
+    /*
+    [QL] Reconsider a job the team no longer needs.
+
+    TEAM_ACCOMPANY_TIME and TEAM_DEFENDKEYAREA_TIME are both ten minutes and the
+    gate below returns for the whole of it, so a bot decided once and then held
+    that decision for longer than most matches last. Sixty bots that all chose
+    "escort" in the first seconds of a flag being out stayed escorts through
+    three overtimes.
+
+    Only when the job is over-subscribed, only for a decision the bot made
+    itself, and only every 20 seconds - long enough that a bot walking to the
+    far side of the map arrives before being asked to reconsider, short enough
+    that the team reshapes within one flag run.
+    */
+    if (bot_tactics.integer && gametype == GT_CTF && !bs->ordered &&
+        bs->tac.roleredecide_time < FloatTime()) {
+        int role = -1;
+
+        switch (bs->ltgtype) {
+            case LTG_GETFLAG:
+            case LTG_ATTACKENEMYBASE:
+                role = CTFROLE_ATTACK;
+                break;
+            case LTG_DEFENDKEYAREA:
+                role = CTFROLE_DEFEND;
+                break;
+            case LTG_TEAMACCOMPANY:
+                role = CTFROLE_ESCORT;
+                break;
+            default:
+                break;
+        }
+        bs->tac.roleredecide_time = FloatTime() + 20;
+        if (role >= 0 && BotCTFRoleCrowded(bs, role)) {
+            if (bot_debugTactics.integer) {
+                BotAI_Print(PRT_MESSAGE, "%s: role %i over-subscribed, re-deciding\n",
+                            g_entities[bs->entitynum].client->pers.netname, role);
+            }
+            bs->ltgtype = 0;
+            bs->owndecision_time = 0;
+        }
     }
     // if already a CTF or team goal
     if (bs->ltgtype == LTG_TEAMHELP ||

@@ -74,6 +74,8 @@ float BotItemSearchRange(struct bot_state_s* bs, float range);
 int BotRegroupGoal(struct bot_state_s* bs, bot_goal_t* goal);
 // which job this bot should take in CTF, given what the rest of the team is doing
 int BotCTFPickRole(struct bot_state_s* bs);
+// qtrue when the team already has as many of this CTF role as the mix wants
+int BotCTFRoleCrowded(struct bot_state_s* bs, int role);
 // take a defensive posting when the team has nobody holding the base
 int BotAutoDefendGoal(struct bot_state_s* bs);
 // qtrue when there is somewhere to go that way - not blocked, not off an edge
