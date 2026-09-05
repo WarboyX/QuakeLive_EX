@@ -813,14 +813,32 @@ lead by.
 #define AIM_MIX_2ND 0.075f
 
 /*
-[QL] Tracking rate, also Xonotic's shape: r = max(fixedrate / dist, blendrate),
-their bot_ai_aimskill_fixedrate 15 and blendrate 2. The turn rate is inversely
-proportional to how far there is to go, so a small residual is closed almost at
-once and a large one travels at a steady speed - which is how a hand moves, and
-the opposite of a plain lerp that crawls at the end of every correction.
+[QL] Tracking rate, and deliberately NOT Xonotic's r = max(fixedrate / dist,
+blendrate).
+
+Their form makes the turn rate inversely proportional to the angle remaining, so
+a small residual is closed almost instantly. That is right in their engine and
+wrong in ours, because of a stage of theirs we do not have: bot_aimdir tracks a
+separate bot_mouseaim that only moves on bot_aimthinktime, every
+0.5 - 0.05 * skill seconds, and the angle it finally turns towards has been
+pulled most of the way to that. By the time their turn calculation runs, the
+thing being chased is already slow and stepped, so chasing it hard is safe.
+
+Ours has no such intermediary. aimto is the live destination, rebuilt from
+ideal_viewangles, which is recomputed when the bot thinks - ten times a second.
+Closing the last fraction of a degree every frame glues the view to a
+ten-hertz staircase and reproduces it exactly. That is the jitter, and making
+the tracker faster feeds it.
+
+So the shape here is the other way round, which is also how a hand behaves: a
+correction gets slower as it gets smaller, and below a threshold it is not made
+at all. Real aim sits near the target with residual error; it does not drive the
+error to zero and hold it there. The deadzone is what stops the view chasing
+ten-hertz updates it cannot see the point of.
 */
-#define AIM_TRACK_FIXEDRATE 15.0f
-#define AIM_TRACK_BLENDRATE 2.0f
+#define AIM_TRACK_BASE 3.0f     // per-second fraction at zero residual
+#define AIM_TRACK_GAIN 1.0f     // added per degree still to go
+#define AIM_DEADZONE 0.35f      // below this, leave it alone
 
 static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 	float dist, t, skill, targetangles[2];
@@ -965,12 +983,10 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 		40 tick closes most of a small correction inside three frames and reads as
 		a hand following something.
 
-		The fraction is not fixed any more. Xonotic's havocbot scales it by how
-		far there is left to go - r = max(fixedrate / dist, blendrate) - so a
-		small residual is closed almost at once and a large one travels at a
-		steady speed. A plain fixed fraction does the opposite: it crawls
-		asymptotically at the end of every correction, which is the part that
-		reads as the aim never quite settling.
+		The fraction is not fixed any more, and it tapers *down* as the residual
+		shrinks rather than up - see AIM_TRACK_BASE for why that is the
+		opposite of Xonotic's form and why copying theirs here would be wrong.
+		Below AIM_DEADZONE the correction is not made at all.
 		*/
 		float remaining = 0;
 		float rate;
@@ -982,24 +998,13 @@ static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
 				remaining = d;
 			}
 		}
-		if (remaining < 1.0f) {
-			remaining = 1.0f;
+		if (remaining < AIM_DEADZONE) {
+			// near enough. Holding still here is the whole point.
+			return qtrue;
 		}
-		rate = AIM_TRACK_FIXEDRATE / remaining;
-		if (rate < AIM_TRACK_BLENDRATE) {
-			rate = AIM_TRACK_BLENDRATE;
-		}
-		/*
-		Their skill term, kept: r * delta_t * (2 + skill^3 * 0.005) on a 0-10
-		skill, so 2 at the bottom and 7 at the top. Without it the blendrate
-		floor of 2 alone is far slower than the fixed twelfth this replaced,
-		and a sluggish tracker would read as worse jitter, not better.
-		*/
-		rate *= frametime * (2.0f + skill * skill * skill * 5.0f);
+		rate = frametime * (AIM_TRACK_BASE + remaining * AIM_TRACK_GAIN);
 		if (rate > 1.0f) {
 			rate = 1.0f;
-		} else if (rate < 0.05f) {
-			rate = 0.05f;
 		}
 		for (i = 0; i < 2; i++) {
 			float d = AngleDifference(bs->tac.aimto[i], bs->viewangles[i]);

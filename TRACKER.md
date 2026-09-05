@@ -5772,25 +5772,60 @@ findings are recorded below and mostly **not** taken, with reasons.
    The lead is small by design. At a hundred degrees a second and full skill it
    is under a degree — anticipation, not aimbotting.
 
-3. **Turn rate scaled by distance** — `r = max(fixedrate / dist, blendrate)`,
-   their `bot_ai_aimskill_fixedrate 15`, `blendrate 2`, then
-   `r * delta_t * (2 + skill^3 * 0.005)`.
+3. **Turn rate scaled by distance — read, and deliberately inverted.**
 
-   Ours was a flat `frametime * 12`. A fixed fraction crawls asymptotically at
-   the end of every correction, which is the part that reads as the aim never
-   quite settling. Theirs closes a small residual almost at once and travels a
-   large one at a steady speed. Taken, skill term included — dropping it would
-   have left the blendrate floor alone, which is far slower than the fixed
-   twelfth it replaced, and a sluggish tracker reads as *worse* jitter.
+   Their form is `r = max(fixedrate / dist, blendrate)` (`fixedrate 15`,
+   `blendrate 2`), so the rate is *inversely* proportional to the angle
+   remaining and a small residual is closed almost instantly.
 
-   At 40 tick, skill 0.75, the per-frame fraction is now:
+   **Ported as-is that made things worse, and it was corrected before shipping.**
+   The jitter is caused by tracking that is too fast, not too slow, and a fast
+   tracker is also the inhuman one.
 
-   | residual | new | old |
-   |---|---|---|
-   | 0.5° | 100% | 30% |
-   | 2° | 77% | 30% |
-   | 5° | 31% | 30% |
-   | 30° | 20% | 30% |
+   The reason their form is safe in their engine and not in ours is a stage of
+   theirs we do not have. `bot_aimdir` maintains a separate `bot_mouseaim` that
+   only moves on `bot_aimthinktime`, every `0.5 - 0.05 * skill` seconds, and the
+   angle it finally turns toward has been pulled most of the way to that:
+
+   ```c
+   if (time >= this.bot_aimthinktime) {
+       this.bot_aimthinktime = max(this.bot_aimthinktime + 0.5 - 0.05 * (skill + ...), time);
+       this.bot_mouseaim += diffang * (1 - random() * 0.1 * bound(1, 10 - (skill + ...), 10));
+   }
+   ...
+   desiredang += diffang * bound(0, autocvar_bot_ai_aimskill_think, 1);
+   ```
+
+   By the time their turn calculation runs, the thing being chased is **already
+   slow and stepped**, so chasing it hard is safe. Ours has no intermediary:
+   `aimto` is the live destination, rebuilt from `ideal_viewangles`, which is
+   recomputed when the bot thinks — ten times a second. Closing the last
+   fraction of a degree every frame glues the view to a ten-hertz staircase and
+   reproduces it exactly.
+
+   So the curve here runs the other way, which is also how a hand behaves — a
+   correction gets slower as it gets smaller, and below a threshold is not made
+   at all. Real aim sits *near* the target with residual error; it does not
+   drive the error to zero and hold it there.
+
+   ```
+   rate = frametime * (AIM_TRACK_BASE + remaining * AIM_TRACK_GAIN)   // 3.0, 1.0
+   if (remaining < AIM_DEADZONE) leave it alone                       // 0.35 deg
+   ```
+
+   Per-frame correction at 40 tick, with the discarded port for contrast:
+
+   | residual | now | Xonotic's form ported | before any of this |
+   |---|---|---|---|
+   | 0.2° | none | 100% | 30% |
+   | 0.5° | 8.8% | 100% | 30% |
+   | 2° | 12.5% | 77% | 30% |
+   | 5° | 20% | 31% | 30% |
+   | 30° | 82.5% | 20% | 30% |
+
+   The deadzone is the part that matters most: it is what stops the view chasing
+   ten-hertz updates at all. Their `bot_mouseaim` stage is the principled fix and
+   is worth porting later; the deadzone gets most of it for a line.
 
 #### Engagement: read, not taken
 
