@@ -729,13 +729,34 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 // FIXME: fight enemy flag carrier
             }
             // if not already doing something important
+            /*
+            [QL] LTG_DEFENDKEYAREA belongs in this list and is not in it.
+
+            Without it, the moment the enemy takes our flag every defender on
+            the team is converted to get-flag or return-flag on a coin toss.
+            With 591 grabs in one match that is constant, and the field logs say
+            what it costs: the role picker chose "defend" 199 times, and
+            "have 17/0/2/11" - nought defenders - in every single role line of
+            every log so far. Both bases stood open for the whole match, through
+            six overtimes.
+
+            This is also what looked like bots switching task too often. They
+            were: told to defend, walking to the base, converted to attack on
+            the next steal, told to defend again.
+
+            Our flag being out is the state that wants defenders *most* - the
+            mix asks for 60% of the team - because the stand is where the flag
+            comes back to. Gated on the tactical layer so bot_tactics 0 keeps
+            the stock behaviour exactly.
+            */
             if (bs->ltgtype != LTG_GETFLAG &&
                 bs->ltgtype != LTG_RETURNFLAG &&
                 bs->ltgtype != LTG_TEAMHELP &&
                 bs->ltgtype != LTG_TEAMACCOMPANY &&
                 bs->ltgtype != LTG_CAMPORDER &&
                 bs->ltgtype != LTG_PATROL &&
-                bs->ltgtype != LTG_GETITEM) {
+                bs->ltgtype != LTG_GETITEM &&
+                !(bot_tactics.integer && bs->ltgtype == LTG_DEFENDKEYAREA)) {
                 BotRefuseOrder(bs);
                 bs->decisionmaker = bs->client;
                 bs->ordered = qfalse;

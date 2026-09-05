@@ -5193,6 +5193,92 @@ is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
 
+### E67. Nobody ever defended, in any match, in any log — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"I think theyre switching tasks too often, they are getting stuck in hallways
+together... As well as there still seems to be pathing issues, alterative routes
+and tactics issues"* — and it went to a **sixth** overtime.
+
+E66 got the role picker running; this is what it found when it did. Every role
+line in every log, across three builds:
+
+```
+ctf role 1 (want 0.4/0.4/0.0/0.2 of 31, have 17/0/2/11)
+                                              ^ defenders
+```
+
+`have[DEFEND]` is **0**. Not low - zero, in all 199 role lines of the last log,
+and the final map report has 24 bots on "get flag", 13 escorting, 2 roaming and
+**not one defending**, on either team. Both bases stood open for the whole match.
+`BotAutoDefendGoal`, the safety net for exactly this, fired **0 times**, because
+it requires `!bs->ltgtype` and every bot always had a goal.
+
+#### The one missing line
+
+`BotCTFSeekGoals`, the branch for "the enemy has our flag":
+
+```c
+if (bs->ltgtype != LTG_GETFLAG &&
+    bs->ltgtype != LTG_RETURNFLAG &&
+    bs->ltgtype != LTG_TEAMHELP &&
+    bs->ltgtype != LTG_TEAMACCOMPANY &&
+    bs->ltgtype != LTG_CAMPORDER &&
+    bs->ltgtype != LTG_PATROL &&
+    bs->ltgtype != LTG_GETITEM) {          // LTG_DEFENDKEYAREA is not here
+    bs->ltgtype = random() < 0.5 ? LTG_GETFLAG : LTG_RETURNFLAG;
+```
+
+**Every defender on the team is converted to attack on a coin toss the moment
+the enemy takes our flag.** With 591 grabs in one match that is continuous, and
+it is self-reinforcing: the role picker sees nought defenders, tells the next bot
+to defend, and that bot is converted at the next steal. 199 picks of "defend",
+none of which survived.
+
+That is also what looked like task switching. They were switching - told to
+defend, walking to the base, converted to attack, told to defend again.
+
+Our flag being out is the state that wants defenders *most*: the mix asks for
+60% of the team, because the stand is where the flag comes back to. Now excluded
+like the others, gated on `bot_tactics` so the stock behaviour is unchanged with
+the layer off.
+
+#### Escort is a job for four, not for a third of the team
+
+E66 capped escorts to the mix's share. At 32 a side, 30-35% is still nine to
+eleven bots converging on one player, and **575 of 1094 stuck episodes were
+still `LTG_TEAMACCOMPANY`**.
+
+Escorting does not scale. The useful part is two or three bodies between the
+carrier and whatever is chasing; past that each extra escort is one more body in
+the same corridor. `BotCTFRoleWanted` turns the mix into head counts and caps
+escort at **4 in absolute terms**. At four a side the cap never binds and the
+mix is untouched; at thirty-two a side it is the whole difference between a
+screen and a scrum.
+
+#### They never tried a second route because they never re-asked
+
+`BotGetAlternateRouteGoal` is called once, when a flag goal is set, and never
+again. Thirty bots heading for the same flag pick the same route and queue in
+the same corridor, and nothing in the stock AI reconsiders. Sidestepping cannot
+help: the route is not blocked by one body, it is blocked by the twenty ahead of
+it going the same way.
+
+The stuck detector already knows when a bot has been standing still for three
+seconds. It now re-rolls the alternate route there for a bot on a flag goal -
+the cheapest thing that answers it, and because bots reach three seconds at
+different moments they spread across the map's alt route goals rather than all
+switching to the same second route.
+
+#### Checked and not the cause
+
+- **The 20-second role re-decide from E66.** 205 role decisions across the whole
+  match with 62 bots is about a tenth of one per bot per minute. Not the churn.
+- **The instagib hunt node.** `AIEnter_InstaGib` takes `ltgtype` for itself with
+  sentinel 21, which would fight the CTF goals - but the `bs->ltgtype == 0` gate
+  added earlier holds. 8 bots in the node at the end, all showing goal "other",
+  which is the sentinel behaving.
+
 ### E66. The CTF role system was running about twice a minute — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

@@ -423,18 +423,39 @@ void BotTacticsUpdate(bot_state_t* bs) {
                         anything, it is somewhere the router cannot plan from,
                         and no amount of sidestepping will help it
     */
-    if (bot_debugTactics.integer && !bs->tac.reportedstuck &&
-        FloatTime() - bs->tac.moved_time > 3.0f) {
+    if (!bs->tac.reportedstuck && FloatTime() - bs->tac.moved_time > 3.0f) {
         int area = bs->areanum;
 
         bs->tac.reportedstuck = qtrue;
-        BotAI_Print(PRT_MESSAGE,
-                    "%s: stuck %.1fs, area %i%s, ltg %i, %d allies %d foes, enemy %s\n",
-                    g_entities[bs->entitynum].client->pers.netname,
-                    FloatTime() - bs->tac.moved_time, area,
-                    (area && trap_AAS_AreaReachability(area)) ? "" : " (NO REACHABILITY)",
-                    bs->ltgtype, bs->tac.allies, bs->tac.foes,
-                    bs->enemy >= 0 ? "yes" : "no");
+        /*
+        [QL] Stuck on the way to a flag: try the other way round.
+
+        The alternate route is picked once, when the goal is set, and never
+        again - so thirty bots heading for the same flag pick the same route,
+        queue in the same corridor, and nothing in the stock AI ever
+        reconsiders. Sidestepping cannot help: the route is not blocked by one
+        body, it is blocked by the twenty ahead all going the same way.
+
+        Re-rolling here is the cheapest thing that answers it. The bot has
+        already stood still for three seconds, so whatever it was doing is not
+        working, and BotGetAlternateRouteGoal picks among the map's alt route
+        goals - bots that re-roll at different moments spread across them
+        instead of all switching to the same second route.
+        */
+        if (bot_tactics.integer && gametype == GT_CTF &&
+            (bs->ltgtype == LTG_GETFLAG || bs->ltgtype == LTG_RUSHBASE ||
+             bs->ltgtype == LTG_RETURNFLAG || bs->ltgtype == LTG_ATTACKENEMYBASE)) {
+            BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+        }
+        if (bot_debugTactics.integer) {
+            BotAI_Print(PRT_MESSAGE,
+                        "%s: stuck %.1fs, area %i%s, ltg %i, %d allies %d foes, enemy %s\n",
+                        g_entities[bs->entitynum].client->pers.netname,
+                        FloatTime() - bs->tac.moved_time, area,
+                        (area && trap_AAS_AreaReachability(area)) ? "" : " (NO REACHABILITY)",
+                        bs->ltgtype, bs->tac.allies, bs->tac.foes,
+                        bs->enemy >= 0 ? "yes" : "no");
+        }
     }
     //
     BotScanForMissiles(bs);
@@ -1182,6 +1203,39 @@ behind one. That is the safe direction to be wrong in.
 */
 /*
 ==================
+BotCTFRoleWanted
+
+[QL] The mix turned into head counts, with escort capped in absolute terms.
+
+Escorting is a job for a handful of bodies whatever the team size. It does not
+scale: the useful part is two or three players between the carrier and whatever
+is chasing, and past that every extra escort is one more body in the same
+corridor. A third of a 32-man team is eleven of them converging on one player -
+which is what 575 of 1094 stuck episodes were, and why the carrier could not
+walk out of its own escort.
+
+So the fraction sets the shape and this sets the ceiling. At four a side the cap
+never binds and the mix is untouched; at thirty-two a side it is the whole
+difference between a screen and a scrum.
+==================
+*/
+#define CTF_MAX_ESCORTS 4
+
+static void BotCTFRoleWanted(bot_state_t* bs, int teamsize, float* want) {
+    float mix[CTFROLE_COUNT];
+    int i;
+
+    BotCTFRoleMix(bs, mix);
+    for (i = 0; i < CTFROLE_COUNT; i++) {
+        want[i] = mix[i] * (float)teamsize;
+    }
+    if (want[CTFROLE_ESCORT] > (float)CTF_MAX_ESCORTS) {
+        want[CTFROLE_ESCORT] = (float)CTF_MAX_ESCORTS;
+    }
+}
+
+/*
+==================
 BotCTFRoleCounts
 
 [QL] What the rest of this bot's team is doing, by role, and how big the team is.
@@ -1251,7 +1305,7 @@ Half a bot of slack, so a team that is exactly on quota does not flicker.
 ==================
 */
 int BotCTFRoleCrowded(bot_state_t* bs, int role) {
-    float mix[CTFROLE_COUNT];
+    float want[CTFROLE_COUNT];
     int have[CTFROLE_COUNT];
     int teamsize;
 
@@ -1261,14 +1315,14 @@ int BotCTFRoleCrowded(bot_state_t* bs, int role) {
     if (role < 0 || role >= CTFROLE_COUNT) {
         return qfalse;
     }
-    BotCTFRoleMix(bs, mix);
     BotCTFRoleCounts(bs, have, &teamsize);
+    BotCTFRoleWanted(bs, teamsize, want);
 
-    return (float)have[role] >= mix[role] * (float)teamsize + 0.5f;
+    return (float)have[role] >= want[role] + 0.5f;
 }
 
 int BotCTFPickRole(bot_state_t* bs) {
-    float mix[CTFROLE_COUNT];
+    float want[CTFROLE_COUNT];
     int have[CTFROLE_COUNT];
     int i, teamsize, best;
     float bestdeficit, deficit;
@@ -1276,8 +1330,8 @@ int BotCTFPickRole(bot_state_t* bs) {
     if (!BotTacticsEnabled() || gametype != GT_CTF) {
         return -1;
     }
-    BotCTFRoleMix(bs, mix);
     BotCTFRoleCounts(bs, have, &teamsize);
+    BotCTFRoleWanted(bs, teamsize, want);
 
     best = CTFROLE_ROAM;
     bestdeficit = -999;
@@ -1286,16 +1340,16 @@ int BotCTFPickRole(bot_state_t* bs) {
         if (i == CTFROLE_ESCORT && BotTeamFlagCarrier(bs) < 0) {
             continue;
         }
-        deficit = mix[i] * (float)teamsize - (float)have[i];
+        deficit = want[i] - (float)have[i];
         if (deficit > bestdeficit) {
             bestdeficit = deficit;
             best = i;
         }
     }
     if (bot_debugTactics.integer) {
-        G_Printf("%s: ctf role %i (want %.1f/%.1f/%.1f/%.1f of %i, have %i/%i/%i/%i)\n",
-                 g_entities[bs->entitynum].client->pers.netname, best,
-                 mix[0], mix[1], mix[2], mix[3], teamsize,
+        G_Printf("%s: ctf role %i (team %i, want %.1f/%.1f/%.1f/%.1f, have %i/%i/%i/%i)\n",
+                 g_entities[bs->entitynum].client->pers.netname, best, teamsize,
+                 want[0], want[1], want[2], want[3],
                  have[0], have[1], have[2], have[3]);
     }
     return best;
