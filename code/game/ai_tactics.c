@@ -1247,12 +1247,27 @@ a human holding the base is not counted.
 */
 static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize) {
     int i, team;
+    float zone, ownd, enemyd;
+    vec3_t dir;
 
     for (i = 0; i < CTFROLE_COUNT; i++) {
         have[i] = 0;
     }
     *teamsize = 0;
     team = g_entities[bs->client].client->sess.sessionTeam;
+
+    /*
+    [QL] The zone radius scales with the map, as Xonotic's does: their
+    havocbot_middlepoint_radius is half the distance between the flag stands and
+    the defence census uses half of that again. A quarter of the base separation
+    is a flag room and its approach on a small map and still a flag room on a
+    big one, which a fixed number in units is not.
+    */
+    VectorSubtract(ctf_redflag.origin, ctf_blueflag.origin, dir);
+    zone = VectorLength(dir) * 0.25f;
+    if (zone < 256.0f) {
+        zone = 256.0f;
+    }
 
     for (i = 0; i < level.maxclients; i++) {
         if (!g_entities[i].inuse || !g_entities[i].client) {
@@ -1262,7 +1277,52 @@ static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize) {
             continue;
         }
         (*teamsize)++;
-        if (i == bs->client || !botstates[i] || !botstates[i]->inuse) {
+        if (i == bs->client) {
+            continue;
+        }
+        if (g_entities[i].client->ps.stats[STAT_HEALTH] <= 0) {
+            continue;  // a corpse is not holding anything
+        }
+        /*
+        [QL] Where they are, before what they say they are doing.
+
+        This is the one idea worth taking wholesale from Xonotic's havocbot: its
+        havocbot_ctf_teamcount counts live team mates within a radius of a
+        point, and roles are decided by comparing bodies near the defence point,
+        the middle and the offence point. It never asks another bot what its
+        goal is.
+
+        Counting ltgtype is what hid E67 for three builds. Every defender was
+        being converted to attack the moment our flag was taken, the census read
+        "nought defenders" because it was reading intentions, and the role
+        picker kept issuing an order that was destroyed before anyone acted on
+        it. A census of bodies cannot be lied to that way: a bot standing in the
+        flag room is defending it whatever ltgtype says, and one that gets
+        converted and walks away stops counting when it leaves.
+
+        Position first, then ltgtype for the ones in neither zone - which is
+        where escorting and roaming actually differ, and position cannot tell
+        them apart.
+        */
+        VectorSubtract(g_entities[i].r.currentOrigin, ctf_redflag.origin, dir);
+        ownd = VectorLength(dir);
+        VectorSubtract(g_entities[i].r.currentOrigin, ctf_blueflag.origin, dir);
+        enemyd = VectorLength(dir);
+        if (team != TEAM_RED) {
+            float swap = ownd;
+            ownd = enemyd;
+            enemyd = swap;
+        }
+        if (ownd < zone) {
+            have[CTFROLE_DEFEND]++;
+            continue;
+        }
+        if (enemyd < zone) {
+            have[CTFROLE_ATTACK]++;
+            continue;
+        }
+        if (!botstates[i] || !botstates[i]->inuse) {
+            have[CTFROLE_ROAM]++;
             continue;
         }
         switch (botstates[i]->ltgtype) {

@@ -5729,6 +5729,79 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E68. Taken from Xonotic's havocbot: count bodies, not intentions — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Acting on R17. Read Xonotic's `qcsrc/common/gametypes/gametype/ctf/sv_ctf.qc`
+(GPLv2, same licence as us). Two ideas taken, one design noted, nothing copied
+verbatim — it is QuakeC against a different engine, so this is a rewrite from
+the idea, not a port.
+
+#### 1. The role census counts positions, not goals
+
+```c
+// havocbot_ctf_reset_role
+cmiddle  = havocbot_ctf_teamcount(this, havocbot_middlepoint, radius * 0.5);
+cdefense = havocbot_ctf_teamcount(this, mf.dropped_origin,    radius * 0.5);
+coffense = havocbot_ctf_teamcount(this, ef.dropped_origin,    radius);
+
+if (cdefense <= coffense)     havocbot_role_ctf_setrole(this, DEFENSE);
+else if (coffense <= cmiddle) havocbot_role_ctf_setrole(this, OFFENSE);
+else                          havocbot_role_ctf_setrole(this, MIDDLE);
+```
+
+`havocbot_ctf_teamcount` counts **live team mates within a radius of a point**.
+It never asks another bot what its goal is.
+
+That is the direct antidote to E67, which hid for three builds. Every defender
+was being converted to attack the moment our flag was taken; our census read
+`have[DEFEND] = 0` because it was reading `ltgtype`; and the role picker kept
+issuing an order that was destroyed before anyone acted on it. **A census of
+bodies cannot be lied to that way.** A bot standing in the flag room is
+defending it whatever `ltgtype` says, and one that is converted and walks away
+stops counting when it leaves.
+
+`BotCTFRoleCounts` now classifies by position first — inside our flag zone is
+defence, inside theirs is attack — and falls back to `ltgtype` only for bots in
+neither zone, which is exactly where escorting and roaming differ and position
+cannot tell them apart. Corpses are skipped.
+
+The zone radius scales with the map, as theirs does: a quarter of the distance
+between the flag stands, floor 256. That is a flag room and its approach on a
+small map and still a flag room on a big one, which a constant in units is not.
+
+#### 2. Role timeouts belong to the role
+
+Theirs: offense 120s, defense 30s, escort `60 + random() * 30`, retriever 20s,
+middle 10s. Ours was a flat 20 seconds for everything.
+
+The reasoning is legible in the numbers. Attacking means walking the length of
+the map, so asking again on the way is how a bot never arrives; holding the
+middle is transient by definition. Adopted as-is.
+
+#### 3. Noted, not taken: `havocbot_previous_role`
+
+Escort there is a **temporary** role entered from offense when the carrier is
+more than 700 units from home, and when the enemy flag returns to base the bot
+goes back to *what it was doing before* rather than re-deciding from scratch:
+
+```c
+this.havocbot_role = this.havocbot_previous_role;
+this.havocbot_role_timeout = 0;
+```
+
+Worth having, and a bigger change than it looks in a system where the role is
+implied by `ltgtype` rather than stored. Our escort quota cap (E67) plus the
+per-role timeouts cover most of what it buys. Left for when the tactical layer
+gets an explicit role field.
+
+#### What is still outstanding from R17
+
+**DetourCrowd's local avoidance** (RecastNavigation, zlib) for the crowd
+blocking AAS cannot express. Untouched — the position census and the escort cap
+attack the *cause* of the crowds, and it is worth measuring that before adding a
+steering system to move bodies out of a crowd that should not have formed.
+
 ### R17. Other open-source FPS bot AI, and what we can legally take — SURVEY
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

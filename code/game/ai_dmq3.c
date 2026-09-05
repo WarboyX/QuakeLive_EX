@@ -906,7 +906,28 @@ void BotCTFSeekGoals(bot_state_t* bs) {
             default:
                 break;
         }
-        bs->tac.roleredecide_time = FloatTime() + 20;
+        /*
+        [QL] How long a job is worth holding depends on the job, which is
+        Xonotic's shape rather than our flat twenty seconds. Their havocbot uses
+        offense 120s, defense 30s, escort 60 + random 30, middle 10, and the
+        reasoning is legible in the numbers: attacking means walking the length
+        of the map, so asking again on the way is how a bot never arrives, while
+        holding the middle is transient by definition.
+        */
+        switch (role) {
+            case CTFROLE_ATTACK:
+                bs->tac.roleredecide_time = FloatTime() + 120;
+                break;
+            case CTFROLE_DEFEND:
+                bs->tac.roleredecide_time = FloatTime() + 30;
+                break;
+            case CTFROLE_ESCORT:
+                bs->tac.roleredecide_time = FloatTime() + 60 + random() * 30;
+                break;
+            default:
+                bs->tac.roleredecide_time = FloatTime() + 10;
+                break;
+        }
         if (role >= 0 && BotCTFRoleCrowded(bs, role)) {
             if (bot_debugTactics.integer) {
                 BotAI_Print(PRT_MESSAGE, "%s: role %i over-subscribed, re-deciding\n",
