@@ -1934,15 +1934,51 @@ int BotAIStartFrame(int time) {
         }
         //
         botstates[i]->botthink_residual += elapsed_time;
-        //
-        if (botstates[i]->botthink_residual >= thinktime) {
-            botstates[i]->botthink_residual -= thinktime;
+        /*
+        [QL] How often a bot thinks now scales with its skill.
 
-            if (!trap_AAS_Initialized())
-                return qfalse;
+        Everything else in this AI scales - aim, accuracy, reaction time,
+        alertness, attack skill - and the one thing that did not was *how often
+        the bot decides anything*. A skill 5 bot re-examined the world exactly as
+        rarely as a skill 1 bot: ten times a second, both of them. That is a
+        ceiling on tactics rather than on marksmanship, and no amount of
+        characteristic tuning gets past it, because a bot cannot respond to
+        something it has not looked at yet.
 
-            if (g_entities[i].client->pers.connected == CON_CONNECTED) {
-                BotAI(i, (float)thinktime / 1000);
+        Skill 1 keeps the stock interval. Skill 5 thinks at about 15 Hz. The
+        scaling is on the interval rather than on a separate timer so everything
+        expressed as "random() < bs->thinktime * x" - and there is a lot of it -
+        rescales with it automatically and keeps the same per-second rate.
+
+        Cost is real and bounded: at the top of the range this is half again as
+        much AI for the bots that have it, and BotScheduleBotThink already
+        staggers the residuals so the load stays spread across frames rather
+        than landing on one.
+        */
+        {
+            int botthinktime = thinktime;
+
+            if (bot_tactics.integer) {
+                float sk = trap_Characteristic_BFloat(botstates[i]->character,
+                                                      CHARACTERISTIC_AIM_SKILL, 0, 1);
+
+                botthinktime = (int)(thinktime * (1.0f - 0.35f * sk));
+                if (botthinktime < 40) {
+                    botthinktime = 40;
+                }
+                if (botthinktime > thinktime) {
+                    botthinktime = thinktime;
+                }
+            }
+            if (botstates[i]->botthink_residual >= botthinktime) {
+                botstates[i]->botthink_residual -= botthinktime;
+
+                if (!trap_AAS_Initialized())
+                    return qfalse;
+
+                if (g_entities[i].client->pers.connected == CON_CONNECTED) {
+                    BotAI(i, (float)botthinktime / 1000);
+                }
             }
         }
     }
@@ -2056,7 +2092,10 @@ BotAISetup
 int BotAISetup(int restart) {
     int errnum;
 
-    trap_Cvar_Register(&bot_thinktime, "bot_thinktime", "100", CVAR_CHEAT);
+    /* [QL] not CVAR_CHEAT. This is the single biggest lever on how responsive the
+   bots are and it was unsettable on a pure server, which is every server that
+   matters. It is a server-side tuning value, not a client advantage. */
+    trap_Cvar_Register(&bot_thinktime, "bot_thinktime", "100", 0);
     trap_Cvar_Register(&bot_memorydump, "bot_memorydump", "0", CVAR_CHEAT);
     trap_Cvar_Register(&bot_saveroutingcache, "bot_saveroutingcache", "0", CVAR_CHEAT);
     trap_Cvar_Register(&bot_pause, "bot_pause", "0", CVAR_CHEAT);

@@ -5729,6 +5729,87 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E75. Refuse the crowded door at the router, and let skill drive think rate — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"Theres still too many bots occupying the same room and pathing the same way.
+Just like the flag room, most still exit the left path."*
+
+#### Why alternative route goals could not have fixed this
+
+Worth stating plainly, because three entries have now been spent on them. An
+alternative route goal changes the **middle** of a journey. The leg from the flag
+room to that goal is still the cheapest reachability chain, and out of one room
+towards anywhere on the far side of the map, that is the same door for every bot
+on the team. Route diversity has to be injected where the *door* is chosen.
+
+That is `BotGetReachabilityToGoal`, and it already has the hook. It walks the
+reachabilities leading out of the current area, takes the cheapest that survives
+its filters, and one of those filters is `BotAvoidSpots` — a **per-movestate**
+list of places this bot will not route through, which is what the prox mine code
+uses.
+
+**A spot on the crowd queued in a doorway makes that doorway's reachability fail
+the filter, and the bot takes the next cheapest way out.** Per bot, so the team
+does not move as one.
+
+`BotCheckSnapshot` clears the avoid list every think and `BotTacticsUpdate` runs
+immediately after it, so the decision is remade from scratch several times a
+second and can never go stale.
+
+Three guards, because refusing every exit leaves a bot with no reachability at
+all, which is worse than a queue:
+
+- the crowd must be **ahead** — a centroid behind or on top of the bot would
+  reject the reachabilities leading away from it as readily as those leading in
+- not while fighting; `BotAttackMove` owns the movement then
+- and **if the bot has not moved for two seconds, stop avoiding**. If going round
+  were working it would be moving. Standing still politely is not better than
+  taking the crowded door.
+
+#### Skill scaled everything except how often a bot thinks
+
+*"are we missing any skill scaling that we could change?"* — yes, one, and it is
+the one that caps tactics rather than marksmanship.
+
+Aim, accuracy, reaction time, alertness, attack skill, camper, jumper, walker:
+all scale. `bot_thinktime` is **100 ms flat for every bot at every skill**. A
+skill 5 bot re-examined the world exactly as rarely as a skill 1 bot — ten times
+a second, both of them — and no amount of characteristic tuning gets past that,
+because a bot cannot respond to something it has not looked at yet.
+
+Now scaled by `CHARACTERISTIC_AIM_SKILL`: skill 1 keeps the stock interval, the
+top of the range thinks at about 15 Hz. The scaling is on the interval rather
+than a separate timer, so the many expressions of the form
+`random() < bs->thinktime * x` rescale with it and keep the same per-second rate.
+
+`BotScheduleBotThink` already staggers the residuals, so the extra load spreads
+across frames rather than landing on one.
+
+**And `bot_thinktime` is no longer `CVAR_CHEAT`.** It is the single biggest lever
+on bot responsiveness and it was unsettable on a pure server, which is every
+server that matters. It is a server-side tuning value, not a client advantage.
+
+#### Two knobs that need no code
+
+- **`g_spSkill` is 3** in `content/serverconfigs/common.cfg`, out of 5. That is
+  what every `bot_minplayers` bot is added at, via `G_AddRandomBot`. Raising it
+  is the cheapest experiment available and now moves think rate with it.
+- **`bot_thinktime`** can be lowered directly for all bots at once.
+
+#### What the last two logs showed
+
+The room work is measurably doing its job even before this:
+
+| build | rooms occupied | fullest | stuck episodes |
+|---|---|---|---|
+| before | 5 | 13 | 228 |
+| E72 | 16 | 11 | 59 |
+| E73 | **18** | 12 | **10** |
+
+Of the ten that remain, eight are `ltg 0` — which is E74's roam lock, fixed in
+the same build as this.
+
 ### E74. A diagnostic that declined to speak, and a minute of doing nothing — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
