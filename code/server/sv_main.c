@@ -147,7 +147,29 @@ void SV_AddServerCommand(client_t* client, const char* cmd) {
             Com_Printf("cmd %5d: %s\n", i, client->reliableCommands[i & (MAX_RELIABLE_COMMANDS - 1)]);
         }
         Com_Printf("cmd %5d: %s\n", i, cmd);
-        SV_DropClient(client, "Server command overflow");
+        /*
+        [QL] Flag it; SV_ProcessDeferredDrops does the drop between frames.
+
+        Dropping here re-enters the game module. Nearly every caller that can
+        overflow a buffer is *already inside* it - trap_SetConfigstring from a
+        bot changing its mind, an obituary, a chat line - so SV_DropClient's
+        VM_Call(GAME_CLIENT_DISCONNECT) lands in ClientDisconnect while the game
+        is part way through its own frame. For a bot that means
+        BotAIShutdownClient memsets a bot_state_t that is currently being
+        thought about, three stack frames down, and the think carries on with a
+        zeroed one:
+
+            SV_DropClient: dropping client 2 (Hossman) 'Server command overflow'
+            Fatal: character handle 0 out of range
+            Fatal: goal state handle 0 out of range      (x3)
+            Fatal: move state handle 0 out of range      (x3)
+
+        botlib refuses handle 0, so those are survivable - but the same think
+        goes on to use bs->client, which is now 0, for a client that is not this
+        one. Deferring costs the doomed client one more frame of writes into a
+        ring it was never going to have delivered.
+        */
+        client->deferredDrop = qtrue;
         return;
     }
     index = client->reliableSequence & (MAX_RELIABLE_COMMANDS - 1);
@@ -786,6 +808,49 @@ static void SV_CalcPings(void) {
 
 /*
 ==================
+SV_ProcessDeferredDrops
+
+[QL] Drop the clients SV_AddServerCommand flagged instead of dropping itself.
+
+Called from SV_Frame after the game module has returned, so ClientDisconnect
+runs with nothing of the game's own frame on the stack.
+
+The loop repeats because dropping is contagious: SV_DropClient broadcasts the
+reason to everybody, and on a server already at the ceiling that broadcast is
+what tips the next client over. Those flag themselves during the pass, so a
+single sweep would leave them for the next frame. Bounded by the slot count
+because each pass drops at least one client, and a client can only be dropped
+once - state goes to CS_ZOMBIE and the flag is cleared before SV_DropClient is
+called, so a re-flag during the same sweep is a fresh, real overflow.
+==================
+*/
+void SV_ProcessDeferredDrops(void) {
+    client_t* cl;
+    int i, pass;
+    qboolean dropped;
+
+    for (pass = 0; pass <= sv_maxclients->integer; pass++) {
+        dropped = qfalse;
+        for (i = 0; i < sv_maxclients->integer; i++) {
+            cl = &svs.clients[i];
+            if (!cl->deferredDrop) {
+                continue;
+            }
+            cl->deferredDrop = qfalse;
+            if (cl->state == CS_FREE || cl->state == CS_ZOMBIE) {
+                continue;  // already gone
+            }
+            SV_DropClient(cl, "Server command overflow");
+            dropped = qtrue;
+        }
+        if (!dropped) {
+            return;
+        }
+    }
+}
+
+/*
+==================
 SV_CheckTimeouts
 
 If a packet has not been received from a client for timeout->integer
@@ -1103,6 +1168,10 @@ void SV_Frame(int msec) {
     if (com_speeds->integer) {
         time_game = Sys_Milliseconds() - startTime;
     }
+
+    // [QL] overflow drops that SV_AddServerCommand held back, now that the game
+    // module is off the stack
+    SV_ProcessDeferredDrops();
 
     // check timeouts
     SV_CheckTimeouts();

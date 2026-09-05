@@ -1317,6 +1317,16 @@ int BotAI(int client, float thinktime) {
     bs->areanum = BotPointAreaNum(bs->origin);
     // the real AI
     BotDeathmatchAI(bs, thinktime);
+    /*
+    [QL] The think can end with the bot gone - it can remove itself, and until
+    the engine deferred overflow drops out of the game module it could also be
+    dropped from underneath itself by a configstring write several frames down.
+    BotAIShutdownClient memsets the state, so bs->client is 0 by now and the
+    calls below would aim at whoever holds slot 0.
+    */
+    if (!bs->inuse) {
+        return qtrue;
+    }
     // set the weapon selection every AI frame
     trap_EA_SelectWeapon(bs->client, bs->weaponnum);
     // subtract the delta angles

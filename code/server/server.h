@@ -159,6 +159,7 @@ typedef struct client_s {
     int reliableAcknowledge;  // last acknowledged reliable message
     int reliableSent;         // last sent reliable message, not necessarily acknowledged yet
     int nextReliablePressureWarn;  // [QL] rate limit for the near-overflow warning
+    qboolean deferredDrop;         // [QL] overflowed; drop at the top of the next frame, not here
     int messageAcknowledge;
 
     int gamestateMessageNum;  // netchan->outgoingSequence of gamestate
@@ -374,6 +375,8 @@ void SV_UserinfoChanged(client_t* cl);
 void SV_ClientEnterWorld(client_t* client, usercmd_t* cmd);
 void SV_FreeClient(client_t* client);
 void SV_DropClient(client_t* drop, const char* reason);
+// [QL] perform the drops SV_AddServerCommand deferred, with the game VM off the stack
+void SV_ProcessDeferredDrops(void);
 
 void SV_ExecuteClientCommand(client_t* cl, const char* s, qboolean clientOK);
 void SV_ClientThink(client_t* cl, usercmd_t* cmd);

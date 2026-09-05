@@ -5879,6 +5879,18 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
     for (i = 0; i < MAX_NODESWITCHES; i++) {
         if (bs->ainode(bs))
             break;
+        /*
+        [QL] ...and check between every node, not only after the loop.
+
+        The stock check below anticipates a bot removing itself, but a node can
+        do it part way through and the next iteration then calls bs->ainode
+        through a pointer BotAIShutdownClient has just memset to NULL. The drop
+        does not have to be the bot's own doing either: anything that writes a
+        configstring can overflow a reliable buffer, and until the engine
+        deferred that drop it re-entered the game module from inside this loop.
+        */
+        if (!bs->inuse)
+            return;
     }
     // if the bot removed itself :)
     if (!bs->inuse)

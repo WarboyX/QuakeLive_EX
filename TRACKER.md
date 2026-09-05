@@ -5193,6 +5193,73 @@ is shipped and traces every `SetWarmupState` transition, names the gate in
 `WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
 back yet, so this is still unlocated.
 
+### E65. Dropping a client re-entered the game module mid-think — DONE (verify)
+**Lives in:** our **server** (server engine + qagame) · **Seen by:** every client
+
+The tail of the same log as E64, seven lines after the last drop:
+
+```
+SV_DropClient: dropping client 2 (Hossman), state=4, reason='Server command overflow'
+WarboyX: no one defending (0 of 0), taking it
+Fatal: character handle 0 out of range
+Fatal: goal state handle 0 out of range     (x3)
+Fatal: move state handle 0 out of range     (x3)
+```
+
+Three things are wrong in that. `BotAutoDefendGoal` is bot code and it names the
+human. It reports a team of nought out of nought on a server that had 64 people
+in it a moment ago. And botlib is being handed handle 0, which is not a handle.
+
+They are one fault. **`bs` had been memset while its own think was on the
+stack**, so `entitynum` read 0 and printed slot 0's name, the loop over
+`g_entities` found nobody because everyone had just been dropped, and every
+botlib handle in the struct was zero.
+
+#### How the state got freed underneath itself
+
+`SV_AddServerCommand` called `SV_DropClient` directly. `SV_DropClient` does
+`VM_Call(gvm, GAME_CLIENT_DISCONNECT)`. Nearly everything that can overflow a
+reliable buffer is *already inside* the game module when it does it — a
+`trap_SetConfigstring` from a bot changing its mind, an obituary, a chat line —
+so the call stack was:
+
+```
+BotAIStartFrame -> BotAI -> BotDeathmatchAI -> ainode -> ... -> trap_SetConfigstring
+  -> SV_SetConfigstring -> SV_AddServerCommand -> SV_DropClient
+    -> VM_Call(GAME_CLIENT_DISCONNECT) -> ClientDisconnect -> BotAIShutdownClient
+      -> memset(bs, 0, sizeof(bot_state_t))
+```
+
+and then control returned *up* into the think, which carried on with a zeroed
+state.
+
+botlib refuses handle 0, so those seven lines are survivable in themselves. What
+follows is not: the rest of the think uses `bs->client`, which is now 0, so it
+drives whoever holds slot 0.
+
+#### The fix, in two places
+
+**Engine, the root.** `SV_AddServerCommand` sets `client->deferredDrop` instead
+of dropping. `SV_ProcessDeferredDrops` runs from `SV_Frame` after
+`SV_GameRunFrame` has returned, with nothing of the game's own frame on the
+stack. It sweeps repeatedly because dropping is contagious — `SV_DropClient`
+broadcasts its reason to everybody, and on a server already at the ceiling that
+broadcast is what tips the next client over — bounded by the slot count, since
+each pass drops at least one and a dropped client goes to `CS_ZOMBIE`.
+
+The doomed client gets one more frame of writes into a ring it was never going
+to have delivered. That is the whole cost.
+
+**Game, so the other paths are safe too.** `BotDeathmatchAI` now checks
+`bs->inuse` between AI nodes rather than only after the loop — a node can remove
+the bot part way through, and the next iteration would call `bs->ainode` through
+a pointer that has just been memset to NULL. `BotAI` checks again after
+`BotDeathmatchAI` returns, before `trap_EA_SelectWeapon(bs->client, ...)` aims
+at slot 0.
+
+That guard matters beyond this bug: `trap_DropClient` re-enters the same way, and
+`G_RemoveRandomBot` calls it every time `bot_minplayers` comes down.
+
 ### E64. The same eviction, a second writer: bot teamtask — DONE (verify)
 **Lives in:** our **server** (qagame + server engine) · **Seen by:** every client
 
