@@ -98,6 +98,9 @@ typedef struct bot_movestate_s {
 #define MODELTYPE_FUNC_STATIC 4
 
 libvar_t* sv_maxstep;
+/* [QL] how far out of its way a bot will go for the sake of not using the same
+   door as everybody else - see BotRouteJitter */
+libvar_t* bot_routespread;
 libvar_t* sv_maxbarrier;
 libvar_t* sv_gravity;
 libvar_t* weapindex_rocketlauncher;
@@ -734,7 +737,42 @@ void BotAddAvoidSpot(int movestate, vec3_t origin, float radius, int type) {
 // Returns:				-
 // Changes Globals:		-
 //===========================================================================
-int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, int lastareanum, int* avoidreach, float* avoidreachtimes, int* avoidreachtries, bot_goal_t* goal, int travelflags, struct bot_avoidspot_s* avoidspots, int numavoidspots, int* flags) {
+//===========================================================================
+// [QL] A small, fixed, per-bot preference between routes of similar cost.
+//
+// This is the only thing that can answer "most still exit the left path".
+// Routing is deterministic: every bot in a room, given the same goal, gets the
+// same cheapest reachability chain, so a team leaves by one door and no amount
+// of intermediate goals changes that - the leg to an intermediate goal is
+// itself a cheapest chain. Alternative route goals cannot help either; on
+// japanesecastles AAS_AlternativeRouteGoals returns zero even with the portal
+// filter dropped, so that whole mechanism is inert on this map.
+//
+// So the tie is broken here, where the door is actually chosen. Each bot gets a
+// stable pseudo-random offset per reachability, worth up to bot_routespread in
+// AAS travel time - sixty is 0.6 seconds. Two doors within that of each other
+// are chosen between by preference rather than by a shared rounding, and a
+// route that is genuinely much longer still loses.
+//
+// Stable is the important word. Hashing the client and the reachability, rather
+// than calling random(), means a bot picks the same door every time it stands in
+// that spot, so it commits instead of dithering in the doorway.
+//===========================================================================
+static int BotRouteJitter(int routeseed, int reachnum) {
+    unsigned int h;
+
+    if (!routeseed) {
+        return 0;
+    }
+    h = (unsigned int)routeseed * 2654435761u;
+    h ^= (unsigned int)reachnum * 2246822519u;
+    h ^= h >> 13;
+    h *= 3266489917u;
+    h ^= h >> 16;
+    return (int)((h & 0xffff) * (unsigned int)bot_routespread->value / 0xffff);
+}
+
+int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, int lastareanum, int* avoidreach, float* avoidreachtimes, int* avoidreachtries, bot_goal_t* goal, int travelflags, struct bot_avoidspot_s* avoidspots, int numavoidspots, int* flags, int routeseed) {
     int i, t, besttime, bestreachnum, reachnum;
     aas_reachability_t reach;
 
@@ -790,6 +828,8 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         }
         // add the travel time towards the area
         t += reach.traveltime;  // + AAS_AreaTravelTime(areanum, origin, reach.start);
+        // [QL] and this bot's own preference between near-equal ways round
+        t += BotRouteJitter(routeseed, reachnum);
         // if the travel time is better than the ones already found
         if (!besttime || t < besttime) {
             besttime = t;
@@ -863,7 +903,7 @@ int BotMovementViewTarget(int movestate, bot_goal_t* goal, int travelflags, floa
         reachnum = BotGetReachabilityToGoal(reach.end, reach.areanum,
                                             ms->lastgoalareanum, lastareanum,
                                             ms->avoidreach, ms->avoidreachtimes, ms->avoidreachtries,
-                                            goal, travelflags, NULL, 0, NULL);
+                                            goal, travelflags, NULL, 0, NULL, ms->client + 1);
         VectorCopy(reach.end, end);
         lastareanum = reach.areanum;
         if (lastareanum == goal->areanum) {
@@ -922,7 +962,7 @@ int BotPredictVisiblePosition(vec3_t origin, int areanum, bot_goal_t* goal, int 
         reachnum = BotGetReachabilityToGoal(end, areanum,
                                             lastgoalareanum, lastareanum,
                                             avoidreach, avoidreachtimes, avoidreachtries,
-                                            goal, travelflags, NULL, 0, NULL);
+                                            goal, travelflags, NULL, 0, NULL, 0);
         if (!reachnum)
             return qfalse;
         AAS_ReachabilityFromNum(reachnum, &reach);
@@ -3159,7 +3199,8 @@ void BotMoveToGoal(bot_moveresult_t* result, int movestate, bot_goal_t* goal, in
                                                 ms->lastgoalareanum, ms->lastareanum,
                                                 ms->avoidreach, ms->avoidreachtimes, ms->avoidreachtries,
                                                 goal, travelflags,
-                                                ms->avoidspots, ms->numavoidspots, &resultflags);
+                                                ms->avoidspots, ms->numavoidspots, &resultflags,
+                                                ms->client + 1);
             // the area number the reachability starts in
             ms->reachareanum = ms->areanum;
             // reset some state variables
@@ -3297,7 +3338,8 @@ void BotMoveToGoal(bot_moveresult_t* result, int movestate, bot_goal_t* goal, in
                 lastreachnum = BotGetReachabilityToGoal(end, areas[i],
                                                         ms->lastgoalareanum, ms->lastareanum,
                                                         ms->avoidreach, ms->avoidreachtimes, ms->avoidreachtries,
-                                                        goal, TFL_JUMPPAD, ms->avoidspots, ms->numavoidspots, NULL);
+                                                        goal, TFL_JUMPPAD, ms->avoidspots, ms->numavoidspots, NULL,
+                                                        ms->client + 1);
                 if (lastreachnum) {
                     ms->lastreachnum = lastreachnum;
                     ms->lastareanum = areas[i];
@@ -3468,6 +3510,7 @@ void BotResetMoveState(int movestate) {
 //===========================================================================
 int BotSetupMoveAI(void) {
     BotSetBrushModelTypes();
+    bot_routespread = LibVar("bot_routespread", "60");
     sv_maxstep = LibVar("sv_step", "18");
     sv_maxbarrier = LibVar("sv_maxbarrier", "32");
     sv_gravity = LibVar("sv_gravity", "800");

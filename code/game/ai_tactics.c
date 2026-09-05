@@ -1368,17 +1368,37 @@ reachability at all, which is worse than a queue:
 
 static void BotAvoidCrowdedRoute(bot_state_t* bs) {
     vec3_t fwd, dir, centre;
-    float dist, speed;
-    int i, count, team;
+    float dist, speed, weight, total;
+    int i, count, team, carrier, radius;
 
     if (!BotTacticsEnabled() || !bs->ltgtype) {
         return;
     }
-    if (bs->enemy >= 0) {
+    /*
+    [QL] A carrier keeps avoiding with an enemy in sight; everyone else stops.
+
+    "the bots still exit on the left side, even after they get the enemy flag.
+    instead of going through the right side and pathing to avoid combat heavy
+    areas." Both halves of that were structural here: this counted only team
+    mates, and it switched itself off the moment an enemy appeared - so the one
+    bot that most needs to route away from a fight was the one guaranteed not
+    to. A carrier should not be trading at all; going round *is* its job.
+    */
+    carrier = BotCTFCarryingFlag(bs) || Bot1FCTFCarryingFlag(bs) ||
+              BotHarvesterCarryingCubes(bs);
+    if (bs->enemy >= 0 && !carrier) {
         return;
     }
-    if (FloatTime() - bs->tac.moved_time > 2.0f) {
-        return;  // going round is not working; take the queue
+    /*
+    Five seconds, not two. Two was shorter than it takes a bot to get out of a
+    queue even when it has somewhere better to go: a field log has 18 stuck
+    episodes in one area with 11 to 13 allies around, and the reports fire at
+    three seconds - by which point avoidance had been off for a second and the
+    bot was back in the same doorway. Long enough to actually try the other way,
+    and it still gives up rather than standing still forever.
+    */
+    if (FloatTime() - bs->tac.moved_time > 5.0f) {
+        return;
     }
     // which way is the bot actually going
     VectorCopy(bs->cur_ps.velocity, fwd);
@@ -1394,17 +1414,27 @@ static void BotAvoidCrowdedRoute(bot_state_t* bs) {
 
     VectorClear(centre);
     count = 0;
+    total = 0.0f;
     team = g_entities[bs->client].client->sess.sessionTeam;
     for (i = 0; i < level.maxclients; i++) {
         if (i == bs->client || !g_entities[i].inuse || !g_entities[i].client) {
             continue;
         }
-        if (g_entities[i].client->sess.sessionTeam != team) {
+        if (g_entities[i].client->sess.sessionTeam == TEAM_SPECTATOR) {
             continue;
         }
         if (g_entities[i].client->ps.stats[STAT_HEALTH] <= 0) {
             continue;
         }
+        /*
+        [QL] Enemies count, and count for more.
+
+        A team mate in the way is a queue. An enemy in the way is a fight, and
+        for a bot carrying the objective a fight is the thing it is trying not
+        to have. Three to one, so two enemies ahead are worth going round for on
+        their own where it takes four team mates.
+        */
+        weight = (g_entities[i].client->sess.sessionTeam == team) ? 1.0f : 3.0f;
         VectorSubtract(g_entities[i].r.currentOrigin, bs->origin, dir);
         dir[2] = 0;
         dist = VectorLength(dir);
@@ -1415,20 +1445,23 @@ static void BotAvoidCrowdedRoute(bot_state_t* bs) {
         if (DotProduct(dir, fwd) < 0.5f) {
             continue;  // not in the way
         }
-        VectorAdd(centre, g_entities[i].r.currentOrigin, centre);
+        VectorMA(centre, weight, g_entities[i].r.currentOrigin, centre);
+        total += weight;
         count++;
     }
-    if (count < CROWD_AVOID_MIN) {
+    if (total < (float)CROWD_AVOID_MIN) {
         return;
     }
-    VectorScale(centre, 1.0f / count, centre);
+    VectorScale(centre, 1.0f / total, centre);
     // and it has to still be ahead once averaged
     VectorSubtract(centre, bs->origin, dir);
     dir[2] = 0;
     if (VectorNormalize(dir) < CROWD_AVOID_NEAR || DotProduct(dir, fwd) < 0.5f) {
         return;
     }
-    trap_BotAddAvoidSpot(bs->ms, centre, CROWD_AVOID_RADIUS, AVOID_ALWAYS);
+    // a carrier gives it a wider berth - it cannot afford the fight at all
+    radius = carrier ? (int)(CROWD_AVOID_RADIUS * 1.6f) : (int)CROWD_AVOID_RADIUS;
+    trap_BotAddAvoidSpot(bs->ms, centre, (float)radius, AVOID_ALWAYS);
 }
 
 /*

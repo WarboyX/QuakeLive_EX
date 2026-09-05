@@ -114,6 +114,25 @@ int AAS_AlternativeRouteGoals(vec3_t start, int startareanum, vec3_t goal, int g
         return 0;
     // travel time towards the goal area
     goaltraveltime = AAS_AreaTravelTimeToGoalArea(startareanum, start, goalareanum, travelflags);
+    /*
+    [QL] Nothing can be found without this, and it is quietly allowed to be zero.
+
+    Every filter below is a fraction of goaltraveltime, so a zero makes
+    "starttime > 1.1 * goaltraveltime" true for every reachable area and the
+    function returns 0 having rejected the whole map. Zero means the router has
+    no route between the two points *yet* - the routing caches are built lazily -
+    which is entirely possible when this is called from the first bot's setup, a
+    fraction of a second into the map.
+
+    Saying so is the difference between "this map has no alternative routes" and
+    "you asked too early", which are the same silence and opposite problems.
+    */
+    if (!goaltraveltime) {
+        botimport.Print(PRT_MESSAGE,
+                        "alt routes: no route from area %d to area %d yet\n",
+                        startareanum, goalareanum);
+        return 0;
+    }
     // clear the midrange areas
     Com_Memset(midrangeareas, 0, aasworld.numareas * sizeof(midrangearea_t));
     numaltroutegoals = 0;
@@ -199,6 +218,12 @@ int AAS_AlternativeRouteGoals(vec3_t start, int startareanum, vec3_t goal, int g
 #ifdef ALTROUTE_DEBUG
     botimport.Print(PRT_MESSAGE, "alternative route goals in %d msec\n", Sys_MilliSeconds() - startmillisecs);
 #endif
+    if (!numaltroutegoals) {
+        // [QL] which half of the filter emptied it
+        botimport.Print(PRT_MESSAGE,
+                        "alt routes: none between areas %d and %d (direct %d, %d midrange areas)\n",
+                        startareanum, goalareanum, goaltraveltime, nummidrangeareas);
+    }
     return numaltroutegoals;
 #endif
 }  // end of the function AAS_AlternativeRouteGoals

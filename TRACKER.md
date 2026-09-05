@@ -5729,6 +5729,98 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E76. Per-bot route preference, and why a navmesh would not have fixed this — DONE (verify)
+**Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
+
+*"the bots still exit on the left side, even after they get the enemy flag.
+instead of going through the right side and pathing to avoid combat heavy
+areas."* And: *"maybe we need to figure out navmesh from the other AIs to get alt
+routes working."*
+
+#### The log settled the alt route question
+
+```
+alternate routes toward the red base: 0 (no portals on this map, using open areas)
+alternate routes toward the blue base: 0 (no portals on this map, using open areas)
+```
+
+Zero even with the portal filter dropped. **Everything built in E70, E72 and E73
+that depends on alternative route goals is inert on japanesecastles**, which is
+worth saying plainly after three entries spent on it.
+
+The room diagnostics were more useful:
+
+| | |
+|---|---|
+| stuck episodes | 73 |
+| of those in one room, **Garden** | **40** |
+| of those in one AAS area, **1572** | **18** |
+| `NO REACHABILITY` in the whole log | 6 |
+| Red Courtyard, at map end | **20 players** |
+
+So it is not an AAS hole — 6 unreachable areas in 19,000 lines. It is eleven to
+thirteen team mates standing in one spot, which is exactly the case E75's crowd
+avoidance was built for and did not fire on. Three reasons, all mine:
+
+- `if (bs->enemy >= 0) return;` — several of those lines read `enemy yes`
+- `if (FloatTime() - bs->tac.moved_time > 2.0f) return;` — the stuck report
+  fires at three seconds, so avoidance had already been off for a second by the
+  time we could see it
+- it counted **team mates only**, so the thing a flag carrier needs to route
+  around was the one thing it never looked at
+
+#### On the navmesh
+
+Worth being direct: **a navmesh would not fix this.** Recast builds the mesh and
+Detour queries it, and `dtNavMeshQuery::findPath` is as deterministic as AAS —
+same start, same goal, same corridor, for every agent. Swapping the graph does
+not make sixty bots choose different doors; it makes each door prettier.
+
+What Recast genuinely buys is DetourCrowd's local avoidance and smoother paths.
+The team spacing in E71 already approximates the first, and the measurements say
+it worked: stuck episodes 228 → 10 across those builds.
+
+What actually produces route diversity is **cost perturbation**, and that is
+thirty lines against the router we already have.
+
+#### BotRouteJitter
+
+`BotGetReachabilityToGoal` takes the cheapest reachability out of the current
+area. Every bot in a room, given the same goal, gets the same answer — that *is*
+"most still exit the left path", and no amount of intermediate goals changes it,
+because the leg to an intermediate goal is itself a cheapest chain.
+
+Each bot now carries a stable per-reachability offset worth up to
+`bot_routespread` in AAS travel time (default 60, so 0.6 seconds). Two doors
+within that of each other are chosen between by preference rather than by a
+shared rounding; a route that is genuinely much longer still loses.
+
+Stable is the load-bearing word. The offset is a hash of the client and the
+reachability, not a `random()`, so a bot picks the same door every time it stands
+in that spot and commits instead of dithering in the doorway.
+
+#### And the carrier
+
+- Counts **enemies as well as team mates**, at three to one. A team mate in the
+  way is a queue; an enemy in the way is a fight, and a carrier is trying not to
+  have one.
+- **Keeps avoiding with an enemy in sight** when it is carrying. Everyone else
+  still hands movement to `BotAttackMove`.
+- **1.6x the avoid radius** while carrying.
+- The give-up is five seconds rather than two.
+
+#### One more reason alt routes may have been empty
+
+`AAS_AlternativeRouteGoals` derives every filter from `goaltraveltime`, and
+silently tolerates it being zero — at which point `starttime > 1.1 * 0` is true
+for every reachable area and the whole map is rejected. Zero means the router has
+no route between the two points *yet*; AAS builds its caches lazily and this is
+called from the first bot's setup, a fraction of a second into the map.
+
+It says so now, and `BotSetupAlternativeRouteGoals` **no longer latches an empty
+result** — it retries until something is found or the match is a minute old, by
+which point the caches are warm and zero means zero.
+
 ### E75. Refuse the crowded door at the router, and let skill drive think rate — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

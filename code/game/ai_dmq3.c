@@ -6092,6 +6092,19 @@ void BotSetupAlternativeRouteGoals(void) {
         if (!ctf_redflag.areanum || !ctf_blueflag.areanum) {
             return;
         }
+        /*
+        [QL] And do not latch an empty result either.
+
+        This runs from the first bot's setup countdown, a fraction of a second
+        into the map, and AAS builds its routing caches lazily - so a zero here
+        can simply mean the router had no route between the two bases *yet*.
+        Latching that was giving the map an empty route table for the whole
+        match. Retry until something is found or the match is a minute old, by
+        which point the caches are certainly warm and zero means zero.
+        */
+        if (!red_numaltroutegoals && !blue_numaltroutegoals && level.time < 60000) {
+            return;
+        }
     } else if (gametype == GT_1FCTF) {
         if (trap_BotGetLevelItemGoal(-1, "Neutral Obelisk", &neutralobelisk) < 0)
             BotAI_Print(PRT_WARNING, "One Flag CTF without Neutral Obelisk\n");
