@@ -836,8 +836,8 @@ at all. Real aim sits near the target with residual error; it does not drive the
 error to zero and hold it there. The deadzone is what stops the view chasing
 ten-hertz updates it cannot see the point of.
 */
-#define AIM_TRACK_BASE 3.0f     // per-second fraction at zero residual
-#define AIM_TRACK_GAIN 1.0f     // added per degree still to go
+#define AIM_TRACK_BASE 3.45f    // per-second fraction at zero residual
+#define AIM_TRACK_GAIN 1.15f    // added per degree still to go
 #define AIM_DEADZONE 0.35f      // below this, leave it alone
 
 static qboolean BotAimSweep(bot_state_t* bs, float frametime) {

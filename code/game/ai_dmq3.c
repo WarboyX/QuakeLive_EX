@@ -5855,10 +5855,36 @@ void BotSetupAlternativeRouteGoals(void) {
     if (altroutegoals_setup)
         return;
     if (gametype == GT_CTF) {
-        if (trap_BotGetLevelItemGoal(-1, "Neutral Flag", &ctf_neutralflag) < 0)
-            BotAI_Print(PRT_WARNING, "No alt routes without Neutral Flag\n");
+        /*
+        [QL] Two-flag CTF has no neutral flag, so this built nothing at all.
+
+        The stock code keys the whole thing on "Neutral Flag", which is a One
+        Flag CTF entity. An ordinary CTF map does not have one, so
+        ctf_neutralflag.areanum is 0, both counts stay 0, and
+        BotGetAlternateRouteGoal returns qfalse on its first line - **every
+        time, at all eleven call sites**. The only mechanism the bots have for
+        not all taking the same route was silently absent on every normal CTF
+        map, including the stuck-triggered re-roll added for E67.
+
+        Reported as: "the bots will leave out the left side only, only enemy
+        bots will path through the right side sometimes." That is what
+        deterministic routing looks like. AAS returns the cheapest reachability
+        chain, it is the same chain for every bot with the same goal from the
+        same area, so a whole team files out of one door - and the other team,
+        approaching from the opposite base, has a different cheapest door.
+
+        The neutral flag was only ever a waypoint in the middle to route
+        *through*. Between two bases the other base serves as well, and better:
+        alternative route goals from their flag to ours are by definition the
+        different ways between the two, which is exactly the set an attacker
+        wants to pick an approach from. No midpoint to synthesise, no risk of
+        landing it inside a wall.
+        */
+        if (trap_BotGetLevelItemGoal(-1, "Neutral Flag", &ctf_neutralflag) < 0) {
+            // not a warning: an ordinary CTF map is not supposed to have one
+            ctf_neutralflag.areanum = 0;
+        }
         if (ctf_neutralflag.areanum) {
-            //
             red_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
                 ctf_neutralflag.origin, ctf_neutralflag.areanum,
                 ctf_redflag.origin, ctf_redflag.areanum, TFL_DEFAULT,
@@ -5871,7 +5897,27 @@ void BotSetupAlternativeRouteGoals(void) {
                 blue_altroutegoals, MAX_ALTROUTEGOALS,
                 ALTROUTEGOAL_CLUSTERPORTALS |
                     ALTROUTEGOAL_VIEWPORTALS);
+        } else if (ctf_redflag.areanum && ctf_blueflag.areanum) {
+            red_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
+                ctf_blueflag.origin, ctf_blueflag.areanum,
+                ctf_redflag.origin, ctf_redflag.areanum, TFL_DEFAULT,
+                red_altroutegoals, MAX_ALTROUTEGOALS,
+                ALTROUTEGOAL_CLUSTERPORTALS |
+                    ALTROUTEGOAL_VIEWPORTALS);
+            blue_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
+                ctf_redflag.origin, ctf_redflag.areanum,
+                ctf_blueflag.origin, ctf_blueflag.areanum, TFL_DEFAULT,
+                blue_altroutegoals, MAX_ALTROUTEGOALS,
+                ALTROUTEGOAL_CLUSTERPORTALS |
+                    ALTROUTEGOAL_VIEWPORTALS);
         }
+        /*
+        Say the number. A count of zero here means every bot on that side takes
+        the identical route for the whole match, which is invisible from inside
+        the game and was invisible in the log for as long as this was broken.
+        */
+        G_Printf("CTF alternate routes: %i toward the red base, %i toward the blue\n",
+                 red_numaltroutegoals, blue_numaltroutegoals);
     } else if (gametype == GT_1FCTF) {
         if (trap_BotGetLevelItemGoal(-1, "Neutral Obelisk", &neutralobelisk) < 0)
             BotAI_Print(PRT_WARNING, "One Flag CTF without Neutral Obelisk\n");
@@ -6037,6 +6083,12 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
     // if the bot removed itself :)
     if (!bs->inuse)
         return;
+    /*
+    [QL] After the node has decided where to go, not instead of it. This
+    re-issues the frame's movement with a sideways component, so it has to be the
+    last thing to touch it.
+    */
+    BotTeamSpacing(bs);
     // if the bot executed too many AI nodes
     if (i >= MAX_NODESWITCHES) {
         trap_BotDumpGoalStack(bs->gs);

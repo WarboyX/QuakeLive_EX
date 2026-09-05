@@ -1056,6 +1056,129 @@ void BotTacticsReport(void) {
 
 /*
 ==================
+BotTeamSpacing
+
+[QL] Keep a body's width between team mates, so a squad is a line rather than a
+pile.
+
+The problem, from the field: twenty-one allies and no enemies in one flag room,
+several of them reporting stuck for over three seconds, the whole team occupying
+about two players' worth of floor. AAS has no concept of another player being in
+the way - it routes over static geometry and every bot with the same goal from
+the same area gets the identical chain - so a team converging on one point
+converges on one *point*.
+
+This is RecastNavigation's DetourCrowd separation idea (zlib, R17) written for
+our movement rather than ported: sum a push away from each neighbour, weighted
+by how close it is, and blend it into the direction the bot is already going.
+There is no crowd simulation and no navmesh here; the useful part of DetourCrowd
+at this scale is just that one force.
+
+Deliberately narrow, because movement is the part of this AI that has broken
+most often:
+
+  - carrying an objective overrides it entirely. A flag carrier being shoved
+    sideways by its own escort is worse than the escort standing too close, and
+    the carrier is the one player whose exact path matters.
+  - only with both feet on the ground, so a jump pad, a lift or a ledge hop is
+    never redirected mid-air.
+  - only with no enemy. In a fight BotAttackMove is already choosing where to
+    stand and the two would argue; the pile-ups are in transit.
+  - and never into a wall or off an edge - BotRoomToMove is the same check the
+    dodge and the sidestep use.
+==================
+*/
+#define BOT_TEAMSPACE 72.0f      // how much room a bot wants beside it
+#define BOT_TEAMSPACE_HEIGHT 48.0f  // ignore team mates on another floor
+#define BOT_TEAMSPACE_BLEND 0.5f    // vs. the direction it was already going
+
+void BotTeamSpacing(bot_state_t* bs) {
+    vec3_t sep, dir, vel, move;
+    float dist, weight, speed;
+    int i, near;
+
+    if (!BotTacticsEnabled() || !TeamPlayIsOn()) {
+        return;
+    }
+    if (BotIsDead(bs) || BotIntermission(bs) || BotIsObserver(bs)) {
+        return;
+    }
+    // the override: whoever is carrying the objective goes where it means to
+    if (BotCTFCarryingFlag(bs) || Bot1FCTFCarryingFlag(bs) || BotHarvesterCarryingCubes(bs)) {
+        return;
+    }
+    if (bs->enemy >= 0) {
+        return;  // BotAttackMove owns the movement while there is something to shoot
+    }
+    if (bs->cur_ps.groundEntityNum == ENTITYNUM_NONE) {
+        return;  // airborne: jump pad, lift, or a gap - leave it alone
+    }
+
+    VectorClear(sep);
+    near = 0;
+    for (i = 0; i < level.maxclients; i++) {
+        if (i == bs->client || !g_entities[i].inuse || !g_entities[i].client) {
+            continue;
+        }
+        if (g_entities[i].client->sess.sessionTeam !=
+            g_entities[bs->client].client->sess.sessionTeam) {
+            continue;
+        }
+        if (g_entities[i].client->ps.stats[STAT_HEALTH] <= 0) {
+            continue;
+        }
+        VectorSubtract(bs->origin, g_entities[i].r.currentOrigin, dir);
+        if (fabs(dir[2]) > BOT_TEAMSPACE_HEIGHT) {
+            continue;
+        }
+        dir[2] = 0;
+        dist = VectorLength(dir);
+        if (dist >= BOT_TEAMSPACE) {
+            continue;
+        }
+        near++;
+        if (dist < 1.0f) {
+            // exactly on top of each other: push somewhere deterministic per
+            // pair rather than nowhere, or both bots stay put forever
+            dir[0] = (bs->client < i) ? 1.0f : -1.0f;
+            dir[1] = 0;
+            dist = 1.0f;
+        }
+        VectorScale(dir, 1.0f / dist, dir);
+        weight = 1.0f - (dist / BOT_TEAMSPACE);
+        VectorMA(sep, weight, dir, sep);
+    }
+    if (!near) {
+        return;
+    }
+    if (VectorNormalize(sep) < 0.1f) {
+        return;  // evenly surrounded; any direction is as blocked as the rest
+    }
+    if (!BotRoomToMove(bs, sep, 64)) {
+        return;
+    }
+
+    /*
+    Blend with what the bot was already doing. Standing still and stacked is the
+    case that needs the whole push; moving is a nudge, so the goal still wins and
+    a corridor is walked down rather than bounced along.
+    */
+    VectorCopy(bs->cur_ps.velocity, vel);
+    vel[2] = 0;
+    speed = VectorNormalize(vel);
+    if (speed > 100.0f) {
+        VectorMA(vel, BOT_TEAMSPACE_BLEND, sep, move);
+        if (VectorNormalize(move) < 0.1f) {
+            return;
+        }
+    } else {
+        VectorCopy(sep, move);
+    }
+    trap_EA_Move(bs->client, move, 400);
+}
+
+/*
+==================
 BotRoomToMove
 
 Is there somewhere to go in this direction - not blocked, and not off an edge.
@@ -1304,6 +1427,23 @@ static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize) {
         where escorting and roaming actually differ, and position cannot tell
         them apart.
         */
+        /*
+        [QL] Escort is asked of ltgtype first, before position.
+
+        Position is the right signal for attack and defence, which are about
+        holding ground. Escort is not: it is about *who* the bot is following,
+        and an escort standing in the enemy flag room is doing its job, not
+        attacking. Classifying it by position hid every escort behind a zone -
+        a field log on the first build of this census read "have 26/5/0/0" with
+        148 of 228 stuck episodes in LTG_TEAMACCOMPANY, which meant
+        BotCTFRoleCrowded saw nought escorts and the E67 cap silently stopped
+        capping.
+        */
+        if (botstates[i] && botstates[i]->inuse &&
+            botstates[i]->ltgtype == LTG_TEAMACCOMPANY) {
+            have[CTFROLE_ESCORT]++;
+            continue;
+        }
         VectorSubtract(g_entities[i].r.currentOrigin, ctf_redflag.origin, dir);
         ownd = VectorLength(dir);
         VectorSubtract(g_entities[i].r.currentOrigin, ctf_blueflag.origin, dir);

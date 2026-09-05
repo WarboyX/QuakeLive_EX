@@ -78,6 +78,8 @@ int BotCTFPickRole(struct bot_state_s* bs);
 int BotCTFRoleCrowded(struct bot_state_s* bs, int role);
 // take a defensive posting when the team has nobody holding the base
 int BotAutoDefendGoal(struct bot_state_s* bs);
+// keep a body's width between team mates; objective carriers are exempt
+void BotTeamSpacing(struct bot_state_s* bs);
 // qtrue when there is somewhere to go that way - not blocked, not off an edge
 int BotRoomToMove(struct bot_state_s* bs, vec3_t dir, float dist);
 // the "bots" console command: every bot, every gametype, with its posture

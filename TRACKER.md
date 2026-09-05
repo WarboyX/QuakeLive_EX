@@ -5729,6 +5729,95 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E70. Every bot took the same route out of the base, forever — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"the bots will leave out the left side only, only enemy bots will path through
+the right side sometimes"* — with a screenshot of twenty-one blue bots stacked in
+one flag room, `21 allies 0 foes`, several reporting `stuck 3.1s`.
+
+Three separate faults, and the first is the one that made the other two visible.
+
+#### 1. Alternate routes were never built on any normal CTF map
+
+`BotSetupAlternativeRouteGoals`, `GT_CTF` branch:
+
+```c
+if (trap_BotGetLevelItemGoal(-1, "Neutral Flag", &ctf_neutralflag) < 0)
+    BotAI_Print(PRT_WARNING, "No alt routes without Neutral Flag\n");
+if (ctf_neutralflag.areanum) {
+    red_numaltroutegoals  = trap_AAS_AlternativeRouteGoals(...);
+    blue_numaltroutegoals = trap_AAS_AlternativeRouteGoals(...);
+}
+```
+
+**A two-flag CTF map has no neutral flag.** `team_CTF_neutralflag` is a One Flag
+CTF entity. So `ctf_neutralflag.areanum` is 0, both counts stay 0, and
+`BotGetAlternateRouteGoal` returns qfalse on its first line — **every time, at
+all eleven call sites**, including the stuck-triggered re-roll added in E67.
+
+The only mechanism the bots have for not all taking the same route has been
+absent on every ordinary CTF map since the fork. AAS returns the cheapest
+reachability chain; it is the same chain for every bot with the same goal from
+the same area; so a whole team files out of one door. The other team, coming
+from the opposite base, has a different cheapest door — which is exactly the
+"only enemy bots use the right side" half of the report.
+
+Classic instance of this project's own trap: a mechanism that silently does
+nothing.
+
+**Fixed** by routing between the two bases instead. The neutral flag was only
+ever a waypoint in the middle to route *through*; between two bases the other
+base serves better, because alternative route goals from their flag to ours are
+by definition the different ways between the two — the exact set an attacker
+wants to pick an approach from. No midpoint to synthesise and no risk of landing
+one inside a wall. The count is printed at map load, because zero here is
+invisible from inside the game and was invisible in the log for as long as it
+was broken.
+
+#### 2. Team spacing — DetourCrowd's one useful force, written for our movement
+
+AAS has no concept of another player being in the way, so a team converging on
+one point converges on one *point*.
+
+`BotTeamSpacing` sums a push away from each team mate within 72 units, weighted
+by closeness, and blends it into the direction the bot is already going —
+RecastNavigation's DetourCrowd separation idea (zlib, R17), not a port: there is
+no crowd simulation and no navmesh here, and at this scale the useful part is
+that one force.
+
+Deliberately narrow, because movement is the part of this AI that has broken
+most often:
+
+- **carrying an objective overrides it entirely**, as asked. A flag carrier
+  shoved sideways by its own escort is worse than an escort standing too close,
+  and the carrier is the one player whose exact path matters.
+- both feet on the ground only, so a jump pad, lift or ledge hop is never
+  redirected mid-air.
+- no enemy only — in a fight `BotAttackMove` already chooses where to stand and
+  the two would argue. The pile-ups are in transit.
+- never into a wall or off an edge: `BotRoomToMove`, the same check the dodge
+  and the sidestep use.
+- standing still and stacked gets the whole push; moving gets a nudge, so a
+  corridor is walked down rather than bounced along.
+
+#### 3. The position census was hiding escorts
+
+E68's census classifies by position first. That is right for attack and defence,
+which are about holding ground, and **wrong for escort**, which is about who the
+bot is following — an escort standing in the enemy flag room is doing its job,
+not attacking.
+
+The first field log of that census reads `have 26/5/0/0` while **148 of 228
+stuck episodes were in `LTG_TEAMACCOMPANY`**. Nought escorts counted, so
+`BotCTFRoleCrowded` saw nought, so E67's escort cap silently stopped capping.
+Escort is now taken from `ltgtype` before position is consulted.
+
+#### What that log did confirm
+
+`have[DEFEND]` is **5 and 6**, not zero. E67 and E68 worked: bots defend now.
+Still short of the 13 the mix wants, which is what 1 and 2 above are for.
+
 ### E69. Xonotic's aim model: lead the target, and settle by distance — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
