@@ -796,7 +796,15 @@ void BotCTFSeekGoals(bot_state_t* bs) {
         //
         if (bs->owndecision_time < FloatTime()) {
             // if not trying to return the flag and not following the team flag carrier
-            if (bs->ltgtype != LTG_RETURNFLAG && bs->ltgtype != LTG_TEAMACCOMPANY) {
+            /*
+            [QL] Defenders stay defenders here too, for the same reason as the
+            branch above - and with one extra: when both flags are out our own
+            carrier is waiting on our stand for the flag to come home, and the
+            bots holding the base are the only thing guarding it. Everyone else
+            converts to recovery, which is what peels a search party off.
+            */
+            if (bs->ltgtype != LTG_RETURNFLAG && bs->ltgtype != LTG_TEAMACCOMPANY &&
+                !(bot_tactics.integer && bs->ltgtype == LTG_DEFENDKEYAREA)) {
                 //
                 c = BotTeamFlagCarrierVisible(bs);
                 // [QL] same escort cap as the flagstatus 1 branch above; with
@@ -1017,7 +1025,13 @@ void BotCTFSeekGoals(bot_state_t* bs) {
         }
     }
     // get the flag or defend the base
-    if (rnd < l1 && ctf_redflag.areanum && ctf_blueflag.areanum) {
+    /*
+    [QL] ...and only if there is a flag there to get. Without this the goal is
+    handed straight back the moment BotGetLongTermGoal drops it for the same
+    reason, and the bot oscillates instead of doing something useful.
+    */
+    if (rnd < l1 && ctf_redflag.areanum && ctf_blueflag.areanum &&
+        (!bot_tactics.integer || BotEnemyFlagAtBase(bs))) {
         bs->decisionmaker = bs->client;
         bs->ordered = qfalse;
         bs->ltgtype = LTG_GETFLAG;
@@ -1957,7 +1971,19 @@ void BotSetupForMovement(bot_state_t* bs) {
     else
         initmove.presencetype = PRESENCE_NORMAL;
     //
-    if (bs->walker > 0.5)
+    /*
+    [QL] The walker characteristic, but not while there is a job to do.
+
+    CHARACTERISTIC_WALKER makes a bot walk for the whole match - reported as
+    "some of the bots seem to walk instead of use default run". It is a
+    personality trait that makes sense in a four player deathmatch and is a
+    liability in a thirty-two a side objective mode: a walking bot is a free
+    kill, and in a corridor it is a cork.
+
+    Kept for a bot with nothing in particular to do, which is where the flavour
+    was worth having, and dropped the moment it has a long term goal.
+    */
+    if (bs->walker > 0.5 && (!bot_tactics.integer || !bs->ltgtype))
         initmove.or_moveflags |= MFL_WALK;
     //
     VectorCopy(bs->viewangles, initmove.viewangles);

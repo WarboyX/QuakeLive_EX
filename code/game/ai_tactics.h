@@ -78,6 +78,8 @@ int BotCTFPickRole(struct bot_state_s* bs);
 int BotCTFRoleCrowded(struct bot_state_s* bs, int role);
 // take a defensive posting when the team has nobody holding the base
 int BotAutoDefendGoal(struct bot_state_s* bs);
+// qtrue when the flag this bot wants to capture is still on its stand
+int BotEnemyFlagAtBase(struct bot_state_s* bs);
 // keep a body's width between team mates; objective carriers are exempt
 void BotTeamSpacing(struct bot_state_s* bs);
 // qtrue when there is somewhere to go that way - not blocked, not off an edge

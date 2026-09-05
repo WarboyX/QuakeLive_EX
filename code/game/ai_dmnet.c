@@ -496,6 +496,12 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
                 else if (random() < bs->thinktime * 0.8) {
                     BotRoamGoal(bs, target);
                     VectorSubtract(target, bs->origin, dir);
+                    /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+                       96 units in z on purpose - it is a navigation goal and the drop below
+                       finds the floor - but used raw as a view target that is up to forty
+                       degrees of pitch at the hundred-unit minimum offset, which is bots
+                       looking at the sky and the floor in a room with one storey. */
+                    dir[2] = 0;
                     vectoangles(dir, bs->ideal_viewangles);
                     bs->ideal_viewangles[2] *= 0.5;
                 }
@@ -672,6 +678,12 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
             if (random() < bs->thinktime * 0.8) {
                 BotRoamGoal(bs, target);
                 VectorSubtract(target, bs->origin, dir);
+                /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+                   96 units in z on purpose - it is a navigation goal and the drop below
+                   finds the floor - but used raw as a view target that is up to forty
+                   degrees of pitch at the hundred-unit minimum offset, which is bots
+                   looking at the sky and the floor in a room with one storey. */
+                dir[2] = 0;
                 vectoangles(dir, bs->ideal_viewangles);
                 bs->ideal_viewangles[2] *= 0.5;
             }
@@ -766,6 +778,28 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
     if (gametype == GT_CTF) {
         // if going for enemy flag
         if (bs->ltgtype == LTG_GETFLAG) {
+            /*
+            [QL] The flag is already gone. Do not walk over there to find out.
+
+            The only thing that ever ended this goal was touching the stand -
+            "make sure the bot knows the flag isn't there anymore", a few lines
+            down. So every attacker walked the length of the map to an empty
+            pedestal, touched it, and only then gave up, even when a team mate
+            had been carrying that flag for a minute. At twenty-six attackers on
+            a thirty-two player team that is a pilgrimage, and it is most of the
+            pile-up in the enemy flag room.
+
+            Reported as: "bots seem to try to path to the enemy flag spawn, even
+            though the enemy flag is already taken... like they have to
+            physically check the flag isn't there."
+
+            The status is already tracked and already trusted by
+            BotCTFSeekGoals; this handler simply never asked.
+            */
+            if (bot_tactics.integer && !BotEnemyFlagAtBase(bs)) {
+                bs->ltgtype = 0;
+                return qfalse;
+            }
             // check for bot typing status message
             if (bs->teammessage_time && bs->teammessage_time < FloatTime()) {
                 BotAI_BotInitialChat(bs, "captureflag_start", NULL);
@@ -829,9 +863,31 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
                 // if the bot is still carrying the enemy flag then the
                 // base flag is gone, now just walk near the base a bit
                 if (BotCTFCarryingFlag(bs)) {
-                    trap_BotResetAvoidReach(bs->ms);
-                    bs->rushbaseaway_time = FloatTime() + 5 + 10 * random();
-                    // FIXME: add chat to tell the others to get back the flag
+                    /*
+                    [QL] Hold the stand, do not wander off it.
+
+                    Stock sets rushbaseaway_time and the carrier walks the base
+                    for five to fifteen seconds looking for a fight - carrying
+                    the flag that wins the match, away from the one square metre
+                    where it can be scored the instant our own flag comes home.
+
+                    Standing on the goal it is already touching means
+                    BotMoveToGoal has nothing to do, so the bot simply waits
+                    there, which is what a person does. The defence quota in
+                    BotCTFRoleMix is at its highest while our flag is out, so
+                    the bots holding the base are the guard.
+
+                    And the FIXME the stock code left here: ask for it back.
+                    */
+                    if (bot_tactics.integer) {
+                        if (bs->teammessage_time < FloatTime() - 10) {
+                            BotVoiceChat(bs, -1, VOICECHAT_RETURNFLAG);
+                            bs->teammessage_time = FloatTime();
+                        }
+                    } else {
+                        trap_BotResetAvoidReach(bs->ms);
+                        bs->rushbaseaway_time = FloatTime() + 5 + 10 * random();
+                    }
                 } else {
                     bs->ltgtype = 0;
                 }
@@ -1671,6 +1727,12 @@ int AINode_Seek_ActivateEntity(bot_state_t* bs) {
         if (random() < bs->thinktime * 0.8) {
             BotRoamGoal(bs, target);
             VectorSubtract(target, bs->origin, dir);
+            /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+               96 units in z on purpose - it is a navigation goal and the drop below
+               finds the floor - but used raw as a view target that is up to forty
+               degrees of pitch at the hundred-unit minimum offset, which is bots
+               looking at the sky and the floor in a room with one storey. */
+            dir[2] = 0;
             vectoangles(dir, bs->ideal_viewangles);
             bs->ideal_viewangles[2] *= 0.5;
         }
@@ -1805,6 +1867,12 @@ int AINode_Seek_NBG(bot_state_t* bs) {
         if (random() < bs->thinktime * 0.8) {
             BotRoamGoal(bs, target);
             VectorSubtract(target, bs->origin, dir);
+            /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+               96 units in z on purpose - it is a navigation goal and the drop below
+               finds the floor - but used raw as a view target that is up to forty
+               degrees of pitch at the hundred-unit minimum offset, which is bots
+               looking at the sky and the floor in a room with one storey. */
+            dir[2] = 0;
             vectoangles(dir, bs->ideal_viewangles);
             bs->ideal_viewangles[2] *= 0.5;
         }
@@ -1997,6 +2065,12 @@ int AINode_Seek_LTG(bot_state_t* bs) {
         if (random() < bs->thinktime * 0.8) {
             BotRoamGoal(bs, target);
             VectorSubtract(target, bs->origin, dir);
+            /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+               96 units in z on purpose - it is a navigation goal and the drop below
+               finds the floor - but used raw as a view target that is up to forty
+               degrees of pitch at the hundred-unit minimum offset, which is bots
+               looking at the sky and the floor in a room with one storey. */
+            dir[2] = 0;
             vectoangles(dir, bs->ideal_viewangles);
             bs->ideal_viewangles[2] *= 0.5;
         }
@@ -2011,6 +2085,12 @@ int AINode_Seek_LTG(bot_state_t* bs) {
         } else if (random() < bs->thinktime * 0.8) {
             BotRoamGoal(bs, target);
             VectorSubtract(target, bs->origin, dir);
+            /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+               96 units in z on purpose - it is a navigation goal and the drop below
+               finds the floor - but used raw as a view target that is up to forty
+               degrees of pitch at the hundred-unit minimum offset, which is bots
+               looking at the sky and the floor in a room with one storey. */
+            dir[2] = 0;
             vectoangles(dir, bs->ideal_viewangles);
             bs->ideal_viewangles[2] *= 0.5;
         }

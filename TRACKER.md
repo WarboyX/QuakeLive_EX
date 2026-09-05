@@ -5729,6 +5729,113 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E71. Four movement faults, all stock, all visible in one match — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Four separate reports from one session, four separate causes, none of them ours.
+
+#### 1. The pilgrimage to an empty flag stand
+
+*"bots seem to try to path to the enemy flag spawn, even though the enemy flag is
+already taken... Like they have to physically check the flag isn't there."*
+
+Exactly that, and the stock comment says so:
+
+```c
+// if touching the flag
+if (trap_BotTouchingGoal(bs->origin, goal)) {
+    // make sure the bot knows the flag isn't there anymore
+    ...
+    bs->ltgtype = 0;
+}
+```
+
+**Touching the stand is the only thing that ever ended `LTG_GETFLAG`.** The
+handler never looks at `bs->redflagstatus` / `blueflagstatus`, which are tracked
+from the team sound events and which `BotCTFSeekGoals` has always trusted. So
+every attacker walked the length of the map to an empty pedestal, touched it,
+and only then gave up — while a team mate had been carrying that flag for a
+minute.
+
+The last log had **26 of 32 bots in the enemy flag zone**. That is the pile-up,
+and this is why.
+
+Fixed at both ends: the handler drops the goal when the flag is not on its
+stand, and `BotCTFSeekGoals` will not assign it in the first place — without the
+second the goal is handed straight back and the bot oscillates.
+
+#### 2. Bots looking up and down at nothing
+
+*"sometimes bots look up or down, without having a reason to. Its not like theres
+multiple floors in the outdoor area of japanesecastles."*
+
+`BotRoamGoal` deliberately jitters its target in z:
+
+```c
+// add a random value to the z-coordinate (NOTE: 48 = maxjump?)
+bestorg[2] += 2 * 48 * crandom();
+```
+
+That is right for a *navigation* goal — it is looking for somewhere to walk and
+the trace below it finds the floor. It is wrong for a **view** target, and six
+call sites use it as one, `vectoangles` and all. The horizontal offset has a
+minimum of 100 units, so ±96 in z is up to **forty degrees of pitch** at a point
+the bot has no reason to look at.
+
+The waiting branch is the one that shows: a bot queued behind a crowd hits
+`MOVERESULT_WAITING`, picks a roam point, and stares at the sky. Fixed by
+zeroing `dir[2]` before `vectoangles` at all six sites — look *along* it, not
+*at* it.
+
+#### 3. Bots that walk
+
+*"Some of the bots seem to walk instead of use default run."*
+
+```c
+if (bs->walker > 0.5)
+    initmove.or_moveflags |= MFL_WALK;
+```
+
+`CHARACTERISTIC_WALKER` is a personality trait read once from the bot's
+character file, and a bot that has it **walks for the entire match**. Fine in a
+four player deathmatch; in a thirty-two a side objective mode a walking bot is a
+free kill and, in a corridor, a cork.
+
+Kept for a bot with no long term goal — which is where the flavour was worth
+having — and dropped the moment it has one.
+
+#### 4. The carrier that wanders off its own stand
+
+*"the flag holder should wait at friendly flag spawn for the flag to respawn
+while being guarded... more friendlies should peel off to go search and recover
+the friendly flag."*
+
+Stock, when the carrier reaches its own base and finds its own flag gone:
+
+```c
+if (BotCTFCarryingFlag(bs)) {
+    trap_BotResetAvoidReach(bs->ms);
+    bs->rushbaseaway_time = FloatTime() + 5 + 10 * random();
+    // FIXME: add chat to tell the others to get back the flag
+}
+```
+
+It walks the base for five to fifteen seconds looking for a fight, carrying the
+flag that wins the match, away from the one square metre where it can be scored
+the instant our own flag comes home.
+
+Now it holds. Standing on the goal it is already touching means `BotMoveToGoal`
+has nothing to do, so the bot simply waits there — which is what a person does.
+It is guarded for free: `BotCTFRoleMix` puts defence at its highest while our own
+flag is out, so the bots holding the base *are* the guard.
+
+And the search party, which is the FIXME the stock code left: defenders are now
+protected from conversion in the both-flags-out branch as well as the
+ours-is-out one, so everyone who is **not** defending and **not** escorting
+converts to `LTG_RETURNFLAG`. Defence holds the waiting carrier, escort is
+capped at four, and the remainder peel off to recover. The carrier also asks,
+once every ten seconds — `VOICECHAT_RETURNFLAG`.
+
 ### E70. Every bot took the same route out of the base, forever — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

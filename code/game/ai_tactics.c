@@ -1056,6 +1056,27 @@ void BotTacticsReport(void) {
 
 /*
 ==================
+BotEnemyFlagAtBase
+
+[QL] qtrue when the flag this bot is trying to capture is still on its stand.
+
+bs->redflagstatus / blueflagstatus are the bot's own mirror of the flag state,
+kept from the team sound events in BotCheckEvents, and BotCTFSeekGoals has always
+trusted them. The long term goal handler never asked.
+==================
+*/
+int BotEnemyFlagAtBase(bot_state_t* bs) {
+    if (gametype != GT_CTF) {
+        return qtrue;  // no opinion
+    }
+    if (BotTeam(bs) == TEAM_RED) {
+        return bs->blueflagstatus == 0;
+    }
+    return bs->redflagstatus == 0;
+}
+
+/*
+==================
 BotTeamSpacing
 
 [QL] Keep a body's width between team mates, so a squad is a line rather than a
