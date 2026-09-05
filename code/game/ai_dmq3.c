@@ -5877,6 +5877,50 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
 BotSetupAlternateRouteGoals
 ==================
 */
+/*
+==================
+BotAltRoutes
+
+[QL] Alternative route goals between two points, with a fallback that actually
+returns something.
+
+AAS_AlternativeRouteGoals normally only considers areas the map marked as
+cluster portals or view portals. Those come from brushes a mapper places, and
+plenty of maps have none at all - japanesecastles has none, which is why the
+first fix for E70 still printed "0 toward the red base, 0 toward the blue".
+
+ALTROUTEGOAL_ALL drops that filter and lets the travel-time window do the work
+instead: an area qualifies when it is no more than 1.1x the direct travel time
+from the start and no more than 0.8x from the goal, so what survives is
+genuinely a detour that still gets there. The function then floods each
+surviving region into a cluster and returns one area per cluster, so the results
+are separated ways round rather than a hundred points along the same corridor.
+
+It is O(areas) with two route queries each, which is why it is not the default -
+but this runs once, at map load, and a map with no portals otherwise gets no
+alternative routes at all for the whole match.
+==================
+*/
+static int BotAltRoutes(vec3_t start, int startarea, vec3_t goal, int goalarea,
+                        aas_altroutegoal_t* out, const char* what) {
+    int n;
+
+    if (!startarea || !goalarea) {
+        return 0;
+    }
+    n = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
+                                       out, MAX_ALTROUTEGOALS,
+                                       ALTROUTEGOAL_CLUSTERPORTALS | ALTROUTEGOAL_VIEWPORTALS);
+    if (n > 0) {
+        G_Printf("alternate routes %s: %i (from the map's portals)\n", what, n);
+        return n;
+    }
+    n = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
+                                       out, MAX_ALTROUTEGOALS, ALTROUTEGOAL_ALL);
+    G_Printf("alternate routes %s: %i (no portals on this map, using open areas)\n", what, n);
+    return n;
+}
+
 void BotSetupAlternativeRouteGoals(void) {
     if (altroutegoals_setup)
         return;
@@ -5923,27 +5967,16 @@ void BotSetupAlternativeRouteGoals(void) {
                 blue_altroutegoals, MAX_ALTROUTEGOALS,
                 ALTROUTEGOAL_CLUSTERPORTALS |
                     ALTROUTEGOAL_VIEWPORTALS);
-        } else if (ctf_redflag.areanum && ctf_blueflag.areanum) {
-            red_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
+        } else {
+            red_numaltroutegoals = BotAltRoutes(
                 ctf_blueflag.origin, ctf_blueflag.areanum,
-                ctf_redflag.origin, ctf_redflag.areanum, TFL_DEFAULT,
-                red_altroutegoals, MAX_ALTROUTEGOALS,
-                ALTROUTEGOAL_CLUSTERPORTALS |
-                    ALTROUTEGOAL_VIEWPORTALS);
-            blue_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
                 ctf_redflag.origin, ctf_redflag.areanum,
-                ctf_blueflag.origin, ctf_blueflag.areanum, TFL_DEFAULT,
-                blue_altroutegoals, MAX_ALTROUTEGOALS,
-                ALTROUTEGOAL_CLUSTERPORTALS |
-                    ALTROUTEGOAL_VIEWPORTALS);
+                red_altroutegoals, "toward the red base");
+            blue_numaltroutegoals = BotAltRoutes(
+                ctf_redflag.origin, ctf_redflag.areanum,
+                ctf_blueflag.origin, ctf_blueflag.areanum,
+                blue_altroutegoals, "toward the blue base");
         }
-        /*
-        Say the number. A count of zero here means every bot on that side takes
-        the identical route for the whole match, which is invisible from inside
-        the game and was invisible in the log for as long as this was broken.
-        */
-        G_Printf("CTF alternate routes: %i toward the red base, %i toward the blue\n",
-                 red_numaltroutegoals, blue_numaltroutegoals);
     } else if (gametype == GT_1FCTF) {
         if (trap_BotGetLevelItemGoal(-1, "Neutral Obelisk", &neutralobelisk) < 0)
             BotAI_Print(PRT_WARNING, "One Flag CTF without Neutral Obelisk\n");

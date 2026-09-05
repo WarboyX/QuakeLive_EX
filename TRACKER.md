@@ -5729,6 +5729,66 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E72. Alternative routing needed a second fix, and the bots can name the room — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+E70 fixed the neutral-flag gate and added a count at map load. The count said:
+
+```
+CTF alternate routes: 0 toward the red base, 0 toward the blue
+```
+
+Which is precisely why that line exists. The gate was one of two reasons the
+subsystem produced nothing.
+
+#### Why it was still zero
+
+`AAS_AlternativeRouteGoals` only considers areas the map marked
+`AREACONTENTS_CLUSTERPORTAL` or `AREACONTENTS_VIEWPORTAL`. Those come from
+brushes a mapper places, and **japanesecastles has none**, so no area ever
+passed the first filter no matter what start and goal it was given.
+
+`ALTROUTEGOAL_ALL` drops that filter and leaves the travel-time window to do the
+work: an area qualifies at no more than 1.1x the direct travel time from the
+start and no more than 0.8x from the goal, so what survives is genuinely a
+detour that still arrives. The function then floods each surviving region into a
+cluster and returns one area per cluster, so the results are separate ways round
+rather than a hundred points strung along the same corridor.
+
+It is O(areas) with two route queries each, which is why it is not the default —
+but this runs **once, at map load**, and the alternative is a map with no
+alternative routes for the entire match. Portals first, open areas as the
+fallback, and the log says which was used.
+
+#### The bots can name the room they are in
+
+*"maybe have the bots asses what room theyre in"* — the map already knows.
+`target_location` entities are what the HUD prints beside a player's name, and
+japanesecastles has 85 of them: Flagroom, Main Entrance, Red Courtyard, Blue
+Garden Hall, Main Stairway, Balcony.
+
+Wired into both diagnostics, because an AAS area number tells a reader nothing
+and a room name tells them where to look:
+
+```
+Grunt: stuck 3.4s in Main Entrance, area 1163, ltg 2, 21 allies 0 foes, enemy no
+rooms: Main Entrance 19, Red Courtyard 11, Flagroom 6, Balcony 3, ...
+```
+
+The room census is one line at map end and answers the question the sixty-line
+bot table cannot: *are they all in the same place*.
+
+**Not yet behavioural.** Using room occupancy to steer — declining a goal in a
+room the team already fills, or searching named rooms for an enemy carrier — is
+the obvious next step and is deliberately not in this build. Two rounds of
+speculative movement changes have needed correcting already; this measures first.
+
+#### What the same log confirmed
+
+Team spacing works. Stuck episodes went from **228 to 25** on a log half again as
+long — and 15 of the 25 are still `LTG_TEAMACCOMPANY`, which is the escort cap
+being re-enabled in the same build rather than spacing failing.
+
 ### E71. Four movement faults, all stock, all visible in one match — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

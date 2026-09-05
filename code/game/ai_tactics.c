@@ -448,10 +448,24 @@ void BotTacticsUpdate(bot_state_t* bs) {
             BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
         }
         if (bot_debugTactics.integer) {
+            char where[64];
+
+            /*
+            [QL] Name the room, not just the AAS area number.
+
+            "assess what room theyre in" - the map already has the answer.
+            target_location entities are what the HUD prints beside a name, and
+            japanesecastles has 85 of them: Flagroom, Main Entrance, Red
+            Courtyard, Balcony. An area number says nothing to anyone reading a
+            log; "twelve bots stuck in Main Entrance" says where to look.
+            */
+            if (!Team_GetLocationMsg(&g_entities[bs->entitynum], where, sizeof(where))) {
+                Q_strncpyz(where, "nowhere named", sizeof(where));
+            }
             BotAI_Print(PRT_MESSAGE,
-                        "%s: stuck %.1fs, area %i%s, ltg %i, %d allies %d foes, enemy %s\n",
+                        "%s: stuck %.1fs in %s, area %i%s, ltg %i, %d allies %d foes, enemy %s\n",
                         g_entities[bs->entitynum].client->pers.netname,
-                        FloatTime() - bs->tac.moved_time, area,
+                        FloatTime() - bs->tac.moved_time, where, area,
                         (area && trap_AAS_AreaReachability(area)) ? "" : " (NO REACHABILITY)",
                         bs->ltgtype, bs->tac.allies, bs->tac.foes,
                         bs->enemy >= 0 ? "yes" : "no");
@@ -1051,6 +1065,56 @@ void BotTacticsReport(void) {
              fighting, dodging);
     if (stuck) {
         G_Printf("^3%i of them have not moved in over three seconds\n", stuck);
+    }
+
+    /*
+    [QL] Where everybody is, by room name.
+
+    The per-bot table says what each one is doing and is sixty lines long; this
+    is the one line that answers "are they all in the same place". target_location
+    entities are the map's own names for its rooms - the ones the HUD prints
+    beside a player's name - so this reads the way somebody watching the match
+    would describe it.
+    */
+    {
+        char where[64];
+        const char* names[MAX_CLIENTS];
+        int counts[MAX_CLIENTS];
+        int numrooms = 0;
+        int j;
+
+        for (i = 0; i < level.maxclients; i++) {
+            if (!g_entities[i].inuse || !g_entities[i].client || !botstates[i] ||
+                !botstates[i]->inuse) {
+                continue;
+            }
+            if (g_entities[i].client->sess.sessionTeam == TEAM_SPECTATOR) {
+                continue;
+            }
+            if (!Team_GetLocationMsg(&g_entities[i], where, sizeof(where))) {
+                continue;
+            }
+            for (j = 0; j < numrooms; j++) {
+                if (!Q_stricmp(names[j], where)) {
+                    counts[j]++;
+                    break;
+                }
+            }
+            if (j == numrooms && numrooms < MAX_CLIENTS) {
+                /* the configstring the message came from is static for the map,
+                   so keeping the pointer is safe until the map ends - and this
+                   only runs when the map ends */
+                names[numrooms] = G_NewString(where);
+                counts[numrooms] = 1;
+                numrooms++;
+            }
+        }
+        if (numrooms) {
+            G_Printf("rooms:");
+            for (j = 0; j < numrooms; j++) {
+                G_Printf(" %s %i%s", names[j], counts[j], (j < numrooms - 1) ? "," : "\n");
+            }
+        }
     }
 }
 
