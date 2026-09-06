@@ -5729,6 +5729,55 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E78. Alt routes were asking about the wrong areas, and E76 was a regression — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+The diagnostic added in E76 answered on its first run, and the answer was not
+"this map has no alternative routes":
+
+```
+alt routes: no route from area 1109 to area 1169 yet
+```
+
+**244 times. Never once otherwise.** The router reporting no route between the
+two bases, on a map whose bots walk between them all match.
+
+So it was never the routing. It is the areas being asked about. A level item's
+goal area comes from the item entity, and a flag sits on a pedestal — the area
+that lands in can be one with no reachability of its own, which routes to nothing
+and from nothing. Every `AAS_AlternativeRouteGoals` call since the fork has been
+asking about a point players cannot stand on.
+
+`BotAltRoutes` now takes the area under the flag's **origin** — the floor a
+player actually stands on — falling back to the item area if that lookup fails.
+
+Also rate-limited: this runs from every bot's setup countdown, so sixty bots
+produced **122 retries inside the first minute**, each two route queries over
+every area in the map, and 488 lines of log. One second between attempts.
+
+#### And E76 made the match worse, which the same log says plainly
+
+| | E75 build | E76 build |
+|---|---|---|
+| flag grabs | 93 | **15** |
+| stuck on `LTG_GETFLAG` | 6 | **30** |
+| stuck total | 73 | 67 |
+
+A six-fold collapse in objective play, and the stuck bots moved from "no goal" to
+"trying to get the flag". E76 weighted enemies at three to one in the crowd
+avoidance while it was still `AVOID_ALWAYS` — so two enemies ahead were enough to
+make a bot refuse its route, and enemies are ahead constantly. Bots spent the
+match declining to move.
+
+E77 is the fix, and it was written before this log arrived from the same
+symptom described from the other side: *"they watch as the hallway from the left
+side gets full, hangback at flagroom till the bots in left stairway empty out."*
+`AVOID_COST` keeps the route and prices it, so refusing is no longer something a
+bot can do to itself.
+
+The lesson is the one this branch keeps relearning: **a movement change that can
+remove a bot's only option needs the option kept, not the refusal tuned.**
+
 ### E77. The hang-back was mine, and teleporters never learned to step aside — DONE (verify)
 **Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
 

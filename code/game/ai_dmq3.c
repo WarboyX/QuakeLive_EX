@@ -97,6 +97,7 @@ bot_goal_t neutralobelisk;
 #define MAX_ALTROUTEGOALS 32
 
 int altroutegoals_setup;
+int altroutegoals_retry;  // [QL] next time it is worth trying again
 aas_altroutegoal_t red_altroutegoals[MAX_ALTROUTEGOALS];
 int red_numaltroutegoals;
 aas_altroutegoal_t blue_altroutegoals[MAX_ALTROUTEGOALS];
@@ -5993,7 +5994,33 @@ alternative routes at all for the whole match.
 */
 static int BotAltRoutes(vec3_t start, int startarea, vec3_t goal, int goalarea,
                         aas_altroutegoal_t* out, const char* what) {
-    int n;
+    int n, pointarea;
+
+    /*
+    [QL] Route from the floor the flag stands on, not from the flag's item area.
+
+    The field diagnostic said the same thing 244 times and never once otherwise:
+
+        alt routes: no route from area 1109 to area 1169 yet
+
+    The router reporting no route between the two bases, on a map whose bots walk
+    between them all match. So it is not the routing - it is the areas being
+    asked about. A level item's goal area is derived from the item entity, and a
+    flag sits on a pedestal; the area that lands in can be one with no
+    reachability of its own, which routes to nothing and from nothing.
+
+    The area under the flag's origin is the floor a player actually stands on.
+    Fall back to the item area if the point lookup fails, which is no worse than
+    what this did before.
+    */
+    pointarea = BotPointAreaNum(start);
+    if (pointarea) {
+        startarea = pointarea;
+    }
+    pointarea = BotPointAreaNum(goal);
+    if (pointarea) {
+        goalarea = pointarea;
+    }
 
     if (!startarea || !goalarea) {
         /*
@@ -6021,6 +6048,8 @@ static int BotAltRoutes(vec3_t start, int startarea, vec3_t goal, int goalarea,
 
 void BotSetupAlternativeRouteGoals(void) {
     if (altroutegoals_setup)
+        return;
+    if (altroutegoals_retry > level.time)
         return;
     if (gametype == GT_CTF) {
         /*
@@ -6103,6 +6132,16 @@ void BotSetupAlternativeRouteGoals(void) {
         which point the caches are certainly warm and zero means zero.
         */
         if (!red_numaltroutegoals && !blue_numaltroutegoals && level.time < 60000) {
+            /*
+            [QL] Once a second, not once per bot setting up.
+
+            This is called from every bot's setup countdown, so sixty bots meant
+            122 retries inside the first minute - and each one is two route
+            queries over every area in the map. The log is 488 lines of it. A
+            second between attempts is plenty for a cache that is only waiting on
+            the router to warm up.
+            */
+            altroutegoals_retry = level.time + 1000;
             return;
         }
     } else if (gametype == GT_1FCTF) {
@@ -6477,4 +6516,5 @@ BotShutdownDeathmatchAI
 */
 void BotShutdownDeathmatchAI(void) {
     altroutegoals_setup = qfalse;
+    altroutegoals_retry = 0;
 }
