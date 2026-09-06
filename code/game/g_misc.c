@@ -102,6 +102,22 @@ void TeleportPlayer(gentity_t* player, vec3_t origin, vec3_t angles) {
     player->client->ps.eFlags ^= EF_TELEPORT_BIT;
     // kill anything at the destination
     if (player->client->sess.sessionTeam != TEAM_SPECTATOR) {
+        /*
+        [QL] Step aside here too.
+
+        E58 put G_NudgeSpawnClear in front of the kill box in ClientSpawn and
+        stopped there, so a teleporter has been telefragging at full strength
+        ever since - and a teleporter is used far more often than a spawn point.
+        A field log has spawn saturation at zero and "every player got a free
+        point", with telefrags still being reported, which is the shape of them
+        all coming from here.
+
+        Same function, same reasoning: if there is anywhere clear, reachable and
+        floored within a hundred units, take it and nobody dies. When there is
+        not, the kill box still runs.
+        */
+        G_NudgeSpawnClear(player);
+        VectorCopy(player->client->ps.origin, player->r.currentOrigin);
         G_KillBox(player);
     }
 

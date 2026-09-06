@@ -65,6 +65,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define AVOID_CLEAR 0      // clear all avoid spots
 #define AVOID_ALWAYS 1     // avoid always
 #define AVOID_DONTBLOCK 2  // never totally block
+/* [QL] make a route expensive rather than forbidden - see BotGetReachabilityToGoal.
+   AVOID_ALWAYS refuses a reachability outright, and when every way out of a room
+   is refused the bot has no route and simply stands there. A cost still leaves it
+   a route; it just prefers another one if another is within bot_routecrowdcost. */
+#define AVOID_COST 3
 // restult types
 #define RESULTTYPE_ELEVATORUP 1          // elevator is up
 #define RESULTTYPE_WAITFORFUNCBOBBING 2  // waiting for func bobbing to arrive

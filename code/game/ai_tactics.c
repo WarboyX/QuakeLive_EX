@@ -1461,7 +1461,11 @@ static void BotAvoidCrowdedRoute(bot_state_t* bs) {
     }
     // a carrier gives it a wider berth - it cannot afford the fight at all
     radius = carrier ? (int)(CROWD_AVOID_RADIUS * 1.6f) : (int)CROWD_AVOID_RADIUS;
-    trap_BotAddAvoidSpot(bs->ms, centre, (float)radius, AVOID_ALWAYS);
+    /* [QL] AVOID_COST, not AVOID_ALWAYS - see BotGetReachabilityToGoal. A refusal
+       leaves a bot with no route when every exit passes the same crowd, and it
+       waits in the doorway instead; a cost leaves it a route it would simply
+       rather not take. */
+    trap_BotAddAvoidSpot(bs->ms, centre, (float)radius, AVOID_COST);
 }
 
 /*

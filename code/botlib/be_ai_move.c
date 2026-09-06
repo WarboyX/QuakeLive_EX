@@ -101,6 +101,8 @@ libvar_t* sv_maxstep;
 /* [QL] how far out of its way a bot will go for the sake of not using the same
    door as everybody else - see BotRouteJitter */
 libvar_t* bot_routespread;
+/* [QL] what a crowded route is worth going round, in AAS travel time */
+libvar_t* bot_routecrowdcost;
 libvar_t* sv_maxbarrier;
 libvar_t* sv_gravity;
 libvar_t* weapindex_rocketlauncher;
@@ -773,7 +775,7 @@ static int BotRouteJitter(int routeseed, int reachnum) {
 }
 
 int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, int lastareanum, int* avoidreach, float* avoidreachtimes, int* avoidreachtries, bot_goal_t* goal, int travelflags, struct bot_avoidspot_s* avoidspots, int numavoidspots, int* flags, int routeseed) {
-    int i, t, besttime, bestreachnum, reachnum;
+    int i, t, besttime, bestreachnum, reachnum, avoidtype;
     aas_reachability_t reach;
 
     // if not in a valid area
@@ -820,7 +822,8 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         if (!t)
             continue;
         // if the bot should not use this reachability to avoid bad spots
-        if (BotAvoidSpots(origin, &reach, avoidspots, numavoidspots)) {
+        avoidtype = BotAvoidSpots(origin, &reach, avoidspots, numavoidspots);
+        if (avoidtype && avoidtype != AVOID_COST) {
             if (flags) {
                 *flags |= MOVERESULT_BLOCKEDBYAVOIDSPOT;
             }
@@ -830,6 +833,24 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         t += reach.traveltime;  // + AAS_AreaTravelTime(areanum, origin, reach.start);
         // [QL] and this bot's own preference between near-equal ways round
         t += BotRouteJitter(routeseed, reachnum);
+        /*
+        [QL] A crowded way out is expensive, not forbidden.
+
+        Refusing it outright is what AVOID_ALWAYS does, and on a map where every
+        exit from a room passes the same crowd that leaves the bot with no
+        reachability at all - so it stands in the doorway until the crowd
+        disperses and then follows it. Reported exactly that way: "they watch as
+        the hallway from the left side gets full, hangback at flagroom till the
+        bots in left stairway empty out."
+
+        A cost keeps the route available and lets the router weigh it. Four
+        seconds by default, which is far more than BotRouteJitter's tie-break and
+        enough to prefer a genuinely longer way round, while a route that is
+        worse than that still wins.
+        */
+        if (avoidtype == AVOID_COST) {
+            t += (int)bot_routecrowdcost->value;
+        }
         // if the travel time is better than the ones already found
         if (!besttime || t < besttime) {
             besttime = t;
@@ -3511,6 +3532,7 @@ void BotResetMoveState(int movestate) {
 int BotSetupMoveAI(void) {
     BotSetBrushModelTypes();
     bot_routespread = LibVar("bot_routespread", "60");
+    bot_routecrowdcost = LibVar("bot_routecrowdcost", "400");
     sv_maxstep = LibVar("sv_step", "18");
     sv_maxbarrier = LibVar("sv_maxbarrier", "32");
     sv_gravity = LibVar("sv_gravity", "800");

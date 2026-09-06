@@ -5729,6 +5729,61 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E77. The hang-back was mine, and teleporters never learned to step aside — DONE (verify)
+**Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
+
+*"they watch as the hallway from the left side gets full, hangback at flagroom
+till the bots in left stairway empty out."*
+
+That is not bots failing to find the right-hand path. That is **E75's avoid spot
+working exactly as written**, and it is a description precise enough to name the
+bug from.
+
+`AVOID_ALWAYS` makes `BotGetReachabilityToGoal` *skip* a reachability. When the
+crowd sits where every exit from the room passes it, every reachability is
+skipped, `bestreachnum` comes back 0, and the bot has no route — so it stands
+still. Then `bs->tac.moved_time` stops advancing (it only updates when the bot
+moves), the five-second give-up eventually fires, avoidance switches off, and the
+bot follows the crowd down the left stairway.
+
+Wait in the flag room, then go left. Which is what was reported, in that order.
+
+**Fixed by making the crowd expensive rather than forbidden.** New `AVOID_COST`
+type: `BotGetReachabilityToGoal` adds `bot_routecrowdcost` (default 400, four
+seconds of AAS travel time) to that route instead of discarding it. The route
+stays available and the router weighs it — four seconds is far more than
+`BotRouteJitter`'s tie-break and enough to prefer a genuinely longer way round,
+while a route worse than that still wins. A bot always has somewhere to go.
+
+`AVOID_ALWAYS` is left alone for what it was for: prox mines, which really are
+worth standing still to avoid.
+
+#### Telefrags: E58 fixed one of the two places
+
+The same log:
+
+```
+spawns: every player got a free point
+```
+
+Spawn saturation **zero**, and only four nudges in 19,000 lines — so the
+telefrags being reported are not spawn telefrags at all.
+
+`G_NudgeSpawnClear` was put in front of the kill box in `ClientSpawn` and nowhere
+else. `TeleportPlayer` calls `G_KillBox` bare:
+
+```c
+// kill anything at the destination
+if (player->client->sess.sessionTeam != TEAM_SPECTATOR) {
+    G_KillBox(player);
+}
+```
+
+A teleporter is used far more often than a spawn point, and on a full server the
+far pad is rarely empty. Same function in front of it now, same reasoning: if
+there is anywhere clear, reachable and floored within a hundred units, take it
+and nobody dies; when there is not, the kill box still runs.
+
 ### E76. Per-bot route preference, and why a navmesh would not have fixed this — DONE (verify)
 **Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
 
