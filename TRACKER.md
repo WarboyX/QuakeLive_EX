@@ -1866,10 +1866,8 @@ binding table and payload plumbing. That is the difference between "large" and
    Vulkan SDK's `glslangValidator`, converted to a C array by `bin2hex` and
    vendored in as `shaders/spirv/shader_data.c`. The Makefile does not compile
    shaders at all. Adding a ray-query shader means either a build-time glslang
-   dependency or regenerating that file by hand. `glslangValidator` is
-   installable in this environment (`apt-get install glslang-tools`), so it is
-   not a blocker, but it is a change to how the renderer is built and should be
-   a deliberate one.
+   dependency or regenerating that file by hand. **Done in E80** — `compile.sh` plus a
+   Makefile rule, so adding a ray-query shader is now a file edit.
 5. **Denoise.** AO tolerates a cheap spatial blur plus temporal reprojection.
    Reflections do not, and want something closer to A-SVGF - which is why AO
    should ship first and alone.
@@ -5728,6 +5726,69 @@ classnames still use ANY, which is safe because a different classname cannot
 return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
+
+### E80. The shader build could not run on the machine that builds the releases — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** nobody — build only
+
+Raised as *"nobody is gonna know to execute compile.bat"*, which is right about
+there being a problem and one layer off about where it is.
+
+`vk.c:2803` is `#include "shaders/spirv/shader_data.c"` — a 1.4 MB C array of
+SPIR-V, tracked in git and compiled into the binary. **Players never touch a
+shader compiler**; what ships is already inside the executable. So the manual
+step was never in anyone's way but ours.
+
+Ours, though, it was very much in. `compile.bat` is a Windows batch file wanting
+`%VULKAN_SDK%\Bin\glslangValidator.exe`, and both platforms are built from
+Linux here — so changing a shader was not merely undocumented, it was **not
+possible**. That is a blocker sitting directly in front of R13, which needs a
+new ray-query shader before it can do anything at all.
+
+**`compile.sh`** is a port of it, and the port is verified the only way worth
+trusting: regenerating from the GLSL produces a file **byte-identical** to the
+one that has been shipping. Same 74 arrays, same order, same contents. So
+turning the rule on changes nothing about what a player runs.
+
+**The Makefile rule** runs it when a `.vert`, `.frag` or `.tmpl` is newer than
+`shader_data.c` — which, on a checkout nobody has touched, is never. Three paths,
+all tested:
+
+| | |
+|---|---|
+| sources unchanged | silent, no glslang needed |
+| shader touched, glslang present | `GLSL code/renderervk/shaders` → 74 shaders |
+| shader touched, glslang absent | names the problem, builds with the committed blob, does not fail |
+
+The third one deliberately **does not `touch` the target**. Marking it up to date
+would make a stale blob look current, and a build that quietly ships the wrong
+shaders is the exact silent-failure shape this tree keeps getting bitten by — a
+dead cvar, a menu that fails to parse, `RE_RegisterShader` returning 0. It warns
+on every build instead, because it really is stale.
+
+One wart: a fresh clone gives every file the same checkout time, so the rule may
+fire once on the first build. Harmless — it regenerates byte-identically, or
+prints the notice.
+
+`compile.bat` is kept for anyone working from a Windows checkout. **The two must
+stay in step**: a shader added to one and not the other is a shader that
+silently does not exist in half the builds.
+
+#### Why not compile shaders in the client at menu load
+
+Asked, and worth recording the reasoning rather than re-deriving it later.
+
+It means linking glslang or shaderc into the client — several MB of C++, against
+a Makefile with no C++ rule at all (the same wall the Recast survey in R17 hit).
+It trades a build-time dependency for a **runtime** one shipped as a DLL, adds a
+compile hitch at menu load, and moves shader failures from our build to the
+player's machine.
+
+And it buys nothing here. The thing it would be *for* — picking shader
+permutations from capabilities discovered at runtime — is not needed when the
+permutation count is small: precompile both variants and gate pipeline creation
+on `VK_KHR_ray_query` at device selection, which R13 needs anyway. The one real
+case for runtime compilation is user-authored shaders, and R11 records that
+ReShade already works on Vulkan.
 
 ### E79. Bot names from a file — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client

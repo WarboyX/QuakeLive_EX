@@ -244,6 +244,22 @@ SDIR=$(MOUNT_DIR)/server
 RCOMMONDIR=$(MOUNT_DIR)/renderercommon
 RGL2DIR=$(MOUNT_DIR)/renderergl2
 RVKDIR=$(MOUNT_DIR)/renderervk
+
+# [QL] The Vulkan renderer's shaders are GLSL here and a 1.4 MB C array of
+# SPIR-V in shaders/spirv/shader_data.c, which vk.c #includes - so what ships is
+# baked into the binary and a player never needs a shader compiler.
+#
+# Regenerating that array was a manual step, and a Windows-only one:
+# compile.bat wants %VULKAN_SDK%, and both platforms are built from Linux here,
+# so changing a shader was not actually possible. compile.sh is a byte-identical
+# port of it and this rule runs it when a shader source is newer than the
+# generated file - which for a checkout that has not touched one is never.
+GLSLANG ?= glslangValidator
+RVKSHADERDIR=$(RVKDIR)/shaders
+RVKSHADERDATA=$(RVKSHADERDIR)/spirv/shader_data.c
+RVKSHADERSRC=$(wildcard $(RVKSHADERDIR)/*.vert) \
+             $(wildcard $(RVKSHADERDIR)/*.frag) \
+             $(wildcard $(RVKSHADERDIR)/*.tmpl)
 CMDIR=$(MOUNT_DIR)/qcommon
 SDLDIR=$(MOUNT_DIR)/sdl
 SYSDIR=$(MOUNT_DIR)/sys
@@ -2430,6 +2446,23 @@ $(B)/renderervk/%.o: $(JPDIR)/%.c
 
 $(B)/renderervk/%.o: $(RCOMMONDIR)/%.c
 	$(DO_REF_CC)
+
+# [QL] Regenerate the SPIR-V blob from GLSL. Deliberately does NOT touch the
+# target when glslang is missing: marking it up to date would make a stale blob
+# look current, and a build that quietly ships the wrong shaders is the exact
+# silent-failure shape this tree keeps getting bitten by. It warns every build
+# instead, because it really is stale.
+$(RVKSHADERDATA): $(RVKSHADERSRC)
+	@if command -v $(GLSLANG) >/dev/null 2>&1; then \
+		echo "GLSL $(RVKSHADERDIR)"; \
+		GLSLANG=$(GLSLANG) $(RVKSHADERDIR)/compile.sh; \
+	else \
+		echo "$(RVKSHADERDIR): shader source is newer than spirv/shader_data.c, but"; \
+		echo "  $(GLSLANG) is not installed - building with the committed blob."; \
+		echo "  apt-get install glslang-tools (or set GLSLANG) to rebuild it."; \
+	fi
+
+$(B)/renderervk/vk.o: $(RVKSHADERDATA)
 
 $(B)/renderervk/%.o: $(RVKDIR)/%.c
 	$(DO_REF_VK_CC)
