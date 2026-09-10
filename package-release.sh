@@ -128,6 +128,12 @@ cp -p content/serverconfigs/*.cfg "$WD/baseq3/"
 cp -p content/autoexec.cfg "$LD/baseq3/"
 cp -p content/autoexec.cfg "$WD/baseq3/"
 
+# botnames.txt renames bots from a plain file. Ships empty (everything
+# commented) so behaviour is unchanged until somebody edits it, and loose next
+# to autoexec.cfg rather than inside pak01 so editing it does not mean repacking.
+cp -p content/botnames.txt "$LD/baseq3/"
+cp -p content/botnames.txt "$WD/baseq3/"
+
 # A manifest of everything in the archive, so an install can be checked against
 # what was actually shipped without running the game. The engine verifies the
 # extracted game modules against iobin.pk3 on every start (FS_ExtractGamecode);

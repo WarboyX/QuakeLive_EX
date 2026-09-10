@@ -1,0 +1,44 @@
+// botnames.txt - Quake Live Ex
+//
+// Names for bots, one per line, used in place of the name that comes with the
+// bot character. The bot keeps its own model, skin, skill and behaviour - only
+// the name changes.
+//
+// This file ships empty on purpose: with nothing uncommented below, bots are
+// named exactly as they always were (Klesk, Sarge, Anarki...). Add lines and
+// they start taking these names instead.
+//
+// WHERE IT LIVES: baseq3/botnames.txt, next to autoexec.cfg. It is read fresh
+// at every map load, so editing it and changing map is enough - no restart.
+// Point g_botNamesFile somewhere else to use a different file, or set it to ""
+// to switch the whole thing off.
+//
+// HOW NAMES ARE HANDED OUT: in the order written here, skipping any name a
+// player already has. So the first bot added takes the first line, and a bot
+// that leaves frees its name for the next one. When the list runs out - more
+// bots than names - the rest keep their character names, which is why a short
+// list is fine.
+//
+// COLOURS: ^1 through ^8 work, same as anywhere else.
+//
+//   ^1[a2m]^7 War        red tag, white name
+//   ^4[a2m]^7 War        blue tag
+//
+// A ^ code costs nothing visible but does count toward the 36-character limit.
+//
+// COMMENTS: a line starting with // is ignored, as is a blank one. There is no
+// end-of-line comment - everything after the // has to be on its own line, or
+// it becomes part of the name.
+//
+// ---------------------------------------------------------------------------
+// Names go below. Delete the // to use these, or write your own.
+// ---------------------------------------------------------------------------
+
+//[a2m] War
+//[a2m] Warboy
+//[a2m] Vandal
+//[a2m] Krait
+//[a2m] Hex
+//[a2m] Onyx
+//[a2m] Sable
+//[a2m] Ruin

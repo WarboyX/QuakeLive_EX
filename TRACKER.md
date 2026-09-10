@@ -5729,6 +5729,44 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E79. Bot names from a file — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Asked for as: *"could you make it so bot names are replaced by a cfg or txt
+file? like if I wanted a bot to be named [a2m] War"*.
+
+Bots take their name from their character entry in `scripts/bots.txt` — Klesk,
+Sarge, Anarki — and the only override was the **fifth argument to `addbot`**,
+which `bot_minplayers` never passes because it fills the server through
+`G_AddRandomBot`. So on a server that populates itself there was no way to name
+a bot at all, short of editing `pak00`, which is not ours to edit.
+
+`baseq3/botnames.txt`, one name per line. The bot keeps its own model, skin,
+skill and behaviour; only the name changes.
+
+- Loose next to `autoexec.cfg`, not inside `pak01`, so editing it does not mean
+  repacking and nothing in the pak shadows it.
+- Read at every map load, since `G_LoadBots` already runs then — edit, change
+  map, done. The strings come from the level pool that is freed with it.
+- Handed out **in file order, skipping any name a player already holds**. That
+  makes the file read as a roster rather than a bag, and the in-use test is also
+  the whole of the duplicate protection: two bots called `[a2m] War` is
+  confusing in a way two bots called Klesk never was, because nobody expects
+  these to repeat. A bot that disconnects hands its name back.
+- Running out is not a failure — the rest keep their character names, so eight
+  names on a sixty-bot server gives eight named bots and fifty-two ordinary
+  ones, which is a reasonable thing to want.
+- `^1`-`^8` colour codes work. They count toward the 36-character limit.
+- `g_botNamesFile` points it elsewhere; `""` turns it off. **Not `CVAR_ARCHIVE`**
+  — it is a default we choose, and archiving it would freeze the first value
+  into a config that then wins forever.
+
+Ships with every line commented out, so behaviour is unchanged until somebody
+edits it.
+
+An explicit `addbot <name> <skill> <team> <delay> <altname>` still wins over the
+file: somebody who typed a name meant it.
+
 ### E78. Alt routes were asking about the wrong areas, and E76 was a regression — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

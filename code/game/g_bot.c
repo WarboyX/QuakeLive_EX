@@ -27,6 +27,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 static int g_numBots;
 static char* g_botInfos[MAX_BOTS];
 
+/* [QL] Names from baseq3/botnames.txt, used in place of the bot character's
+   own. See G_LoadBotNames. */
+#define MAX_BOTNAMES 128
+#define MAX_BOTNAMES_TEXT 8192
+static int g_numBotNames;
+static char* g_botNames[MAX_BOTNAMES];
+// defined further down, next to the loader that fills the list
+static const char* G_NextBotName(void);
+
 int g_numArenas;
 static char* g_arenaInfos[MAX_ARENAS];
 
@@ -884,7 +893,20 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     if (!botname[0]) {
         botname = Info_ValueForKey(botinfo, "name");
     }
+    /*
+    [QL] A name from botnames.txt, if the file has one going spare. Only the
+    name - the bot keeps its own model, skin, skill and behaviour.
+    */
+    {
+        const char* fromfile = G_NextBotName();
+
+        if (fromfile) {
+            botname = (char*)fromfile;
+        }
+    }
     // check for an alternative name
+    // [QL] still wins: this is the explicit fifth argument to "addbot", and
+    // somebody who typed a name meant it
     if (altname && altname[0]) {
         botname = altname;
     }
@@ -1150,6 +1172,128 @@ static void G_LoadBotsFromFile(char* filename) {
 
 /*
 ===============
+G_LoadBotNames
+
+[QL] Read baseq3/botnames.txt into g_botNames.
+
+Bots are named from their character file - Klesk, Sarge, Anarki - and the only
+way to change that was the fifth argument to "addbot", which bot_minplayers
+never passes because it goes through G_AddRandomBot. So on a server that fills
+itself there was no way to name a bot at all.
+
+One name per line. Blank lines and lines starting with // are skipped; there is
+deliberately no end-of-line comment, because a name is allowed to contain almost
+anything and guessing where one ends is worse than requiring the comment to be
+on its own line.
+
+Read at every map load, since G_InitBots runs then - so editing the file and
+changing map is enough, and the memory comes from the level pool that is freed
+with it.
+===============
+*/
+static void G_LoadBotNames(void) {
+    vmCvar_t namesFile;
+    fileHandle_t f;
+    char buf[MAX_BOTNAMES_TEXT];
+    char* p;
+    int len;
+
+    g_numBotNames = 0;
+
+    /* [QL] not CVAR_ARCHIVE: this is a default we choose, and archiving it would
+       freeze the first value into a config that then wins forever */
+    trap_Cvar_Register(&namesFile, "g_botNamesFile", "botnames.txt", 0);
+    if (!namesFile.string[0]) {
+        return;  // deliberately off
+    }
+
+    len = trap_FS_FOpenFile(namesFile.string, &f, FS_READ);
+    if (!f) {
+        return;  // no file is not an error; bots keep their own names
+    }
+    if (len >= MAX_BOTNAMES_TEXT) {
+        G_Printf(S_COLOR_YELLOW "%s is %i bytes, max is %i - not loaded\n",
+                 namesFile.string, len, MAX_BOTNAMES_TEXT);
+        trap_FS_FCloseFile(f);
+        return;
+    }
+    trap_FS_Read(buf, len, f);
+    buf[len] = 0;
+    trap_FS_FCloseFile(f);
+
+    p = buf;
+    while (*p && g_numBotNames < MAX_BOTNAMES) {
+        char* line = p;
+        char* end;
+
+        while (*p && *p != '\n') {
+            p++;
+        }
+        if (*p) {
+            *p++ = 0;
+        }
+        // strip the carriage return a Windows editor leaves, and any padding
+        end = line + strlen(line);
+        while (end > line && (end[-1] == '\r' || end[-1] == ' ' || end[-1] == '\t')) {
+            *--end = 0;
+        }
+        while (*line == ' ' || *line == '\t') {
+            line++;
+        }
+        if (!*line || (line[0] == '/' && line[1] == '/')) {
+            continue;
+        }
+        g_botNames[g_numBotNames++] = G_NewString(line);
+    }
+    if (g_numBotNames) {
+        G_Printf("%i bot names from %s\n", g_numBotNames, namesFile.string);
+    }
+}
+
+/*
+===============
+G_NextBotName
+
+[QL] The first name in the file nobody is currently using, or NULL.
+
+By file order rather than at random, so the list reads as a roster: the first
+bot to join takes the first line. Skipping names in use is what lets a bot that
+disconnects hand its name back, and is also the whole of the duplicate
+protection - two bots called the same thing is confusing in a way two bots
+called Klesk never was, because nobody expects these to repeat.
+
+Returning NULL when the list is short is not a failure. The bot falls through to
+its character name, so eight names on a sixty-bot server gives eight named bots
+and fifty-two ordinary ones, which is a reasonable thing to want.
+===============
+*/
+static const char* G_NextBotName(void) {
+    int i, j;
+
+    for (i = 0; i < g_numBotNames; i++) {
+        qboolean taken = qfalse;
+
+        for (j = 0; j < level.maxclients; j++) {
+            if (!g_entities[j].inuse || !g_entities[j].client) {
+                continue;
+            }
+            if (g_entities[j].client->pers.connected == CON_DISCONNECTED) {
+                continue;
+            }
+            if (!Q_stricmp(g_entities[j].client->pers.netname, g_botNames[i])) {
+                taken = qtrue;
+                break;
+            }
+        }
+        if (!taken) {
+            return g_botNames[i];
+        }
+    }
+    return NULL;
+}
+
+/*
+===============
 G_LoadBots
 ===============
 */
@@ -1226,6 +1370,7 @@ G_InitBots
 */
 void G_InitBots(qboolean restart) {
     G_LoadBots();
+    G_LoadBotNames();
     G_LoadArenas();
 
     trap_Cvar_Register(&bot_minplayers, "bot_minplayers", "0", CVAR_SERVERINFO);
