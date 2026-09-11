@@ -9813,7 +9813,7 @@ qboolean vk_rt_ao( void )
 {
 	rtaoPush_t push;
 	float vp[16];
-	uint32_t i;
+	float proj[16];
 
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return qfalse;   // the little world-in-a-portal view, not the scene
@@ -9871,12 +9871,26 @@ qboolean vk_rt_ao( void )
 	}
 
 	/*
-	World to clip, then inverted. myGlMultMatrix( a, b ) applies a then b, so
-	this is the same product tr_main.c builds for the MVP - with the world
-	orientation rather than an entity's, because the depth buffer this reads
-	holds the whole scene and not one model.
+	World to clip, then inverted - and it has to be the *same* clip the depth
+	buffer was rendered with, which is not viewParms.projectionMatrix as it
+	stands.
+
+	get_mvp_transform negates element 5 before use: Quake's projection is an
+	OpenGL one and Vulkan's clip space has Y the other way up. Reconstructing
+	with the unmodified matrix mirrors every position vertically, which does not
+	look like a flip on screen - the ray origins slide smoothly across the view
+	and the result is broad diagonal gradients over the walls, with the AO noise
+	still visibly on top of them because the tracing itself is working fine.
+	Copied rather than referenced, since this must not disturb what the renderer
+	is about to draw with.
+
+	The modelview is the world orientation, matching what tr_backend.c puts in
+	vk_world.modelview_transform for world surfaces - the depth buffer holds the
+	whole scene, not one model.
 	*/
-	myGlMultMatrix( backEnd.viewParms.world.modelMatrix, backEnd.viewParms.projectionMatrix, vp );
+	Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof( proj ) );
+	proj[5] = -proj[5];
+	myGlMultMatrix( backEnd.viewParms.world.modelMatrix, proj, vp );
 	if ( !rt_invert_matrix( vp, push.invViewProj ) ) {
 		return qfalse;   // degenerate view, nothing sensible to reconstruct
 	}
@@ -9909,27 +9923,36 @@ qboolean vk_rt_ao( void )
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	/*
-	Put back what the pass clobbered, the same way vk_bloom does. Binding a
-	descriptor set at index 0 with a different layout invalidates the sets the
-	geometry path had bound there, and the next surface drawn would sample
-	whatever survived.
+	Put back what the pass clobbered. This is what ate the HUD.
+
+	Binding a descriptor set with vk.rt.pipeline_layout invalidates whatever the
+	geometry path had bound at those indices, and pushing constants with it
+	invalidates the MVP - both are "incompatible layout" in the spec's sense.
+	The renderer only re-binds a descriptor when its *value* changes, tracked as
+	a dirty range in vk.cmd->descriptor_set, so after this pass the values still
+	matched, the range was empty, and nothing was re-bound. Everything drawn
+	afterwards - which is the entire 2D pass - used a binding that no longer
+	existed, and the HUD simply did not appear.
+
+	The first attempt at this copied vk_bloom's restore loop, gated on
+	last_pipeline != VK_NULL_HANDLE. That gate can never be true here:
+	vk_begin_render_pass sets last_pipeline to VK_NULL_HANDLE itself, and one
+	was begun four lines ago. The loop was dead code from the moment it was
+	written, which is exactly the shape that does not announce itself.
+
+	Marking the whole range dirty is better than restoring by hand anyway - it
+	uses the machinery that already exists, and it cannot get the arguments
+	wrong the way an open-coded vkCmdBindDescriptorSets can.
 	*/
-	if ( vk.cmd->last_pipeline != VK_NULL_HANDLE ) {
-		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.cmd->last_pipeline );
+	vk.cmd->descriptor_set.start = 0;
+	vk.cmd->descriptor_set.end = VK_DESC_COUNT - 1;
 
-		vk_update_mvp( NULL );
+	/* The MVP push constant belongs to a different layout and is gone too.
+	   last_pipeline is already VK_NULL_HANDLE, so the next draw rebinds the
+	   pipeline; this puts the transform back with it. */
+	vk_update_mvp( NULL );
 
-		vk.cmd->depth_range = DEPTH_RANGE_COUNT;
-
-		for ( i = 0; i < VK_DESC_COUNT; i++ ) {
-			if ( vk.cmd->descriptor_set.current[i] != VK_NULL_HANDLE ) {
-				if ( i == VK_DESC_UNIFORM )
-					qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout, i, 1, &vk.cmd->descriptor_set.current[i], 1, &vk.cmd->descriptor_set.offset[i] );
-				else
-					qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout, i, 1, &vk.cmd->descriptor_set.current[i], 0, NULL );
-			}
-		}
-	}
+	vk.cmd->depth_range = DEPTH_RANGE_COUNT;
 
 	backEnd.doneRTAO = qtrue;
 
