@@ -270,6 +270,10 @@ void Cmd_Exec_f(void) {
         return;
     }
     Com_Printf("execing %s\n", filename);
+    /* [QL] ...and from where. "execing autoexec.cfg" is the same line whether
+       it came from the release archive or from a stale copy in %APPDATA%, and
+       fs_homepath is searched first, so the stale one wins silently. */
+    FS_ReportShadowedFile(filename);
 
     Cbuf_InsertText(f.c);
 

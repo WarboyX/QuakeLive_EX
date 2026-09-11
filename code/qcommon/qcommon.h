@@ -590,6 +590,9 @@ char** FS_ListFiles(const char* directory, const char* extension, int* numfiles)
 void FS_FreeFileList(char** list);
 
 qboolean FS_FileExists(const char* file);
+
+/* [QL] print which copy of a config exec used, and name any it shadowed */
+void FS_ReportShadowedFile(const char* filename);
 const char* FS_FindSystemFile(const char* file);
 
 qboolean FS_CreatePath(char* OSPath);

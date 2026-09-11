@@ -608,6 +608,54 @@ qboolean FS_FileInPathExists(const char* testpath) {
 	return qfalse;
 }
 
+
+/*
+================
+[QL] FS_ReportShadowedFile
+
+Say which copy of a config file exec actually used, and name any it shadowed.
+
+FS_FOpenFileRead stops on the first hit, and fs_homepath is searched before
+fs_basepath - so a stale autoexec.cfg in %APPDATA% silently wins over the one
+that ships in the release archive, and the log says only "execing autoexec.cfg"
+either way. That cost several builds' worth of autoexec changes in the field
+before anyone thought to look: the file was being updated and read, just not the
+same file.
+
+Only the directory search paths are examined. A config inside a .pk3 is not
+something anyone edits by hand and is not the confusion this exists to clear up.
+================
+*/
+void FS_ReportShadowedFile(const char* filename) {
+	searchpath_t* sp;
+	char ospath[MAX_OSPATH];
+	int found = 0;
+
+	if (!fs_searchpaths) {
+		return;
+	}
+
+	for (sp = fs_searchpaths; sp; sp = sp->next) {
+		if (sp->dir == NULL) {
+			continue;  // pak file, see above
+		}
+		Com_sprintf(ospath, sizeof(ospath), "%s%c%s", sp->dir->fullpath, PATH_SEP, filename);
+		if (!FS_FileInPathExists(ospath)) {
+			continue;
+		}
+		found++;
+		if (found == 1) {
+			Com_Printf("  from %s\n", ospath);
+		} else {
+			if (found == 2) {
+				Com_Printf(S_COLOR_YELLOW "  NOTE: %s also exists further down the search path "
+					"and is being ignored:\n", filename);
+			}
+			Com_Printf(S_COLOR_YELLOW "    %s\n", ospath);
+		}
+	}
+}
+
 /*
 ================
 FS_FileExists
