@@ -3361,6 +3361,8 @@ static void rt_walk_surface( const msurface_t *surf, rtVertex_t *verts, uint32_t
 			for ( i = 0; i < face->numPoints; i++ ) {
 				VectorCopy( face->points[i], verts[ base + i ].xyz );
 			}
+		}
+		if ( indices ) {
 			for ( i = 0; i < face->numIndices; i++ ) {
 				indices[ *indexCount + i ] = base + (uint32_t)ind[i];
 			}
@@ -3377,6 +3379,8 @@ static void rt_walk_surface( const msurface_t *surf, rtVertex_t *verts, uint32_t
 			for ( i = 0; i < tri->numVerts; i++ ) {
 				VectorCopy( tri->verts[i].xyz, verts[ base + i ].xyz );
 			}
+		}
+		if ( indices ) {
 			for ( i = 0; i < tri->numIndexes; i++ ) {
 				indices[ *indexCount + i ] = base + (uint32_t)tri->indexes[i];
 			}
@@ -3407,6 +3411,10 @@ static void rt_walk_surface( const msurface_t *surf, rtVertex_t *verts, uint32_t
 			for ( i = 0; i < grid->width * grid->height; i++ ) {
 				VectorCopy( grid->verts[i].xyz, verts[ base + i ].xyz );
 			}
+		}
+		if ( indices ) {
+			uint32_t n = *indexCount;
+
 			for ( y = 0; y < grid->height - 1; y++ ) {
 				for ( x = 0; x < grid->width - 1; x++ ) {
 					uint32_t v0 = base + (uint32_t)( y * grid->width + x );
@@ -3414,18 +3422,19 @@ static void rt_walk_surface( const msurface_t *surf, rtVertex_t *verts, uint32_t
 					uint32_t v2 = base + (uint32_t)( ( y + 1 ) * grid->width + x );
 					uint32_t v3 = v2 + 1;
 
-					indices[ (*indexCount)++ ] = v0;
-					indices[ (*indexCount)++ ] = v2;
-					indices[ (*indexCount)++ ] = v1;
+					indices[ n++ ] = v0;
+					indices[ n++ ] = v2;
+					indices[ n++ ] = v1;
 
-					indices[ (*indexCount)++ ] = v1;
-					indices[ (*indexCount)++ ] = v2;
-					indices[ (*indexCount)++ ] = v3;
+					indices[ n++ ] = v1;
+					indices[ n++ ] = v2;
+					indices[ n++ ] = v3;
 				}
 			}
-		} else {
-			*indexCount += (uint32_t)( ( grid->width - 1 ) * ( grid->height - 1 ) * 6 );
 		}
+		/* Counted the same way whether or not anything was written, so the
+		   fill passes cannot drift from the counting pass. */
+		*indexCount += (uint32_t)( ( grid->width - 1 ) * ( grid->height - 1 ) * 6 );
 		*vertexCount += (uint32_t)( grid->width * grid->height );
 		break;
 	}
@@ -3932,6 +3941,7 @@ void vk_rt_build_world( const world_t *world )
 	rtVertex_t *verts;
 	uint32_t *indices;
 	uint32_t vertexCount, indexCount, i;
+	uint32_t totalVertices, totalIndices;
 	VkDeviceSize vertexBytes, indexBytes;
 
 	vk_rt_destroy_world();
@@ -3954,6 +3964,7 @@ void vk_rt_build_world( const world_t *world )
 			vk.rt.numSurfacesSkipped++;
 			continue;
 		}
+		vk.rt.numSurfacesUsed++;
 		rt_walk_surface( surf, NULL, NULL, &vertexCount, &indexCount );
 	}
 
@@ -3966,25 +3977,11 @@ void vk_rt_build_world( const world_t *world )
 
 	vertexBytes = (VkDeviceSize)vertexCount * sizeof( rtVertex_t );
 	indexBytes = (VkDeviceSize)indexCount * sizeof( uint32_t );
+	totalVertices = vertexCount;
+	totalIndices = indexCount;
 
-	verts = (rtVertex_t *)ri.Hunk_AllocateTempMemory( (int)vertexBytes );
-	indices = (uint32_t *)ri.Hunk_AllocateTempMemory( (int)indexBytes );
-
-	// pass two: fill, over exactly the same surfaces
-	vertexCount = 0;
-	indexCount = 0;
-	for ( i = 0; i < (uint32_t)world->numsurfaces; i++ ) {
-		const msurface_t *surf = &world->surfaces[i];
-
-		if ( !rt_surface_is_occluder( surf ) ) {
-			continue;
-		}
-		rt_walk_surface( surf, verts, indices, &vertexCount, &indexCount );
-		vk.rt.numSurfacesUsed++;
-	}
-
-	vk.rt.numVertices = vertexCount;
-	vk.rt.numTriangles = indexCount / 3;
+	vk.rt.numVertices = totalVertices;
+	vk.rt.numTriangles = totalIndices / 3;
 
 	ri.Printf( PRINT_ALL, "RT: world geometry %i triangles from %i of %i surfaces (%i KiB)\n",
 		(int)vk.rt.numTriangles, (int)vk.rt.numSurfacesUsed, world->numsurfaces,
@@ -3998,19 +3995,87 @@ void vk_rt_build_world( const world_t *world )
 			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			&vk.rt.index_buffer, &vk.rt.index_memory ) ) {
-		ri.Hunk_FreeTempMemory( indices );
-		ri.Hunk_FreeTempMemory( verts );
+		vk_rt_destroy_world();
+		return;
+	}
+
+	/*
+	[QL] Vertices and indices are staged one after the other, from the zone.
+
+	Both of those are fixes for the same field report: "Hunk_AllocateTempMemory:
+	failed on 4194312" on a large map - 4194300 bytes of vertices, padded, plus
+	the hunk header, which is 349525 vertices at 12 bytes each.
+
+	Two things were wrong. The hunk is where the level itself has just been
+	loaded, and asking it for several more megabytes at the end of that load is
+	asking at the worst possible moment; ri.Malloc is the zone, a different pool
+	with 64 MB of its own that the map does not compete for. And holding both
+	arrays at once made the peak their sum when it only ever needed to be the
+	larger of the two - they are filled and uploaded independently, so there is
+	no reason for the first to still exist while the second is built.
+
+	The two fill passes re-walk the same surfaces. That is safe because
+	rt_walk_surface advances vertexCount and indexCount identically whether or
+	not it is writing anything - but "safe because" is not "checked", so the
+	totals are compared against the counting pass below.
+	*/
+	verts = (rtVertex_t *)ri.Malloc( (int)vertexBytes );
+	if ( verts == NULL ) {
+		ri.Printf( PRINT_WARNING, "RT: out of memory for %i KiB of vertices\n", (int)( vertexBytes / 1024 ) );
+		vk_rt_destroy_world();
+		return;
+	}
+
+	vertexCount = 0;
+	indexCount = 0;
+	for ( i = 0; i < (uint32_t)world->numsurfaces; i++ ) {
+		const msurface_t *surf = &world->surfaces[i];
+
+		if ( !rt_surface_is_occluder( surf ) ) {
+			continue;
+		}
+		rt_walk_surface( surf, verts, NULL, &vertexCount, &indexCount );
+	}
+
+	if ( vertexCount != totalVertices || indexCount != totalIndices ) {
+		ri.Printf( PRINT_WARNING, "RT: vertex pass disagreed with the count (%i/%i verts, %i/%i indices)\n",
+			(int)vertexCount, (int)totalVertices, (int)indexCount, (int)totalIndices );
+		ri.Free( verts );
 		vk_rt_destroy_world();
 		return;
 	}
 
 	rt_upload( vk.rt.vertex_buffer, verts, vertexBytes );
-	rt_upload( vk.rt.index_buffer, indices, indexBytes );
+	ri.Free( verts );
 
-	/* Freed in reverse allocation order - Hunk temp memory is a stack and
-	   freeing the older block first trips its own check. */
-	ri.Hunk_FreeTempMemory( indices );
-	ri.Hunk_FreeTempMemory( verts );
+	indices = (uint32_t *)ri.Malloc( (int)indexBytes );
+	if ( indices == NULL ) {
+		ri.Printf( PRINT_WARNING, "RT: out of memory for %i KiB of indices\n", (int)( indexBytes / 1024 ) );
+		vk_rt_destroy_world();
+		return;
+	}
+
+	vertexCount = 0;
+	indexCount = 0;
+	for ( i = 0; i < (uint32_t)world->numsurfaces; i++ ) {
+		const msurface_t *surf = &world->surfaces[i];
+
+		if ( !rt_surface_is_occluder( surf ) ) {
+			continue;
+		}
+		rt_walk_surface( surf, NULL, indices, &vertexCount, &indexCount );
+	}
+
+	if ( vertexCount != totalVertices || indexCount != totalIndices ) {
+		ri.Printf( PRINT_WARNING, "RT: index pass disagreed with the count (%i/%i verts, %i/%i indices)\n",
+			(int)vertexCount, (int)totalVertices, (int)indexCount, (int)totalIndices );
+		ri.Free( indices );
+		vk_rt_destroy_world();
+		return;
+	}
+
+	rt_upload( vk.rt.index_buffer, indices, indexBytes );
+	ri.Free( indices );
 
 	// ---- bottom level: the triangles ----
 	Com_Memset( &geom, 0, sizeof( geom ) );
