@@ -99,21 +99,24 @@ for f in *.vert; do
 done
 
 for f in *.frag; do
-    # rtao.frag is a ray-query shader and must not go through the default
-    # target - see emit_rt. Skipped here and emitted explicitly below; without
-    # this skip it would be compiled twice, and the first (broken) copy is the
-    # one bin2hex would append first.
-    case "$f" in
-        rtao.frag) continue ;;
-    esac
     emit frag "$(basename "$f" .frag)_frag_spv" "$f"
 done
 
 # ---------------------------------------------------------------------------
 # ray query (R13)
 # ---------------------------------------------------------------------------
+#
+# rtao is a .tmpl rather than a .frag on purpose, and not only because it has
+# variants: the loop above walks *.frag with the default SPIR-V target, so a
+# ray-query shader named .frag would be picked up by it and silently emitted as
+# a 1.0 module - the very thing emit_rt exists to prevent. The extension is what
+# keeps it out of that loop, with no special case to forget.
+#
+# Two variants because the depth attachment is multisampled when
+# r_ext_multisample is on, and sampler2D cannot read a multisampled image.
 
-emit_rt frag rtao_frag_spv rtao.frag
+emit_rt frag rtao_frag_spv    rtao.tmpl
+emit_rt frag rtao_frag_ms_spv rtao.tmpl -DUSE_MSAA
 
 # ---------------------------------------------------------------------------
 # lighting variations from templates

@@ -26,9 +26,23 @@ Two things about this shader are chosen and not accidents:
   weighted integral over the hemisphere; sampling uniformly and multiplying by
   cos(theta) spends most of the rays near the horizon where the weight is
   smallest. Cosine sampling puts them where the answer is.
+
+USE_MSAA builds the variant that reads a multisampled depth attachment. With
+r_ext_multisample on, vk.depth_image has samples > 1 and an ordinary sampler2D
+cannot read it at all - so this is two shaders rather than one, chosen by the
+sample count at pipeline creation.
+
+Sample 0 rather than an average of all of them. AO is a low-frequency term that
+gets denoised afterwards, the sample positions within a pixel differ by less
+than the trace radius by orders of magnitude, and resolving N depths per pixel
+to feed a 4-ray occlusion estimate is precision nobody can see paid for N times.
 */
 
+#ifdef USE_MSAA
+layout(set = 0, binding = 0) uniform sampler2DMS depthMap;
+#else
 layout(set = 0, binding = 0) uniform sampler2D depthMap;
+#endif
 layout(set = 0, binding = 1) uniform accelerationStructureEXT topLevel;
 
 layout(location = 0) in vec2 frag_tex_coord;
@@ -56,7 +70,15 @@ float hash12(vec2 p) {
 }
 
 void main() {
+#ifdef USE_MSAA
+	/* texelFetch, not texture: a multisampled sampler has no filtering and no
+	   normalised coordinates. The AO pass is fullscreen at the same resolution
+	   as the depth attachment, so gl_FragCoord maps one-to-one onto its texels
+	   and there is nothing to scale. */
+	float depth = texelFetch(depthMap, ivec2(gl_FragCoord.xy), 0).r;
+#else
 	float depth = texture(depthMap, frag_tex_coord).r;
+#endif
 
 	/*
 	The far plane is sky, and sky has no surface to occlude. Returning 1 rather

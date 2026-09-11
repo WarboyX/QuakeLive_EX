@@ -4260,6 +4260,9 @@ static void vk_alloc_attachments( void )
 	VkDeviceSize offset;
 	uint32_t memoryTypeBits;
 	uint32_t memoryTypeIndex;
+	VkMemoryPropertyFlags memoryFlags = 0;   // [QL] what the lazy request returned
+	qboolean lazyRequested;
+	qboolean lazyObtained;
 	uint32_t i;
 
 	if ( num_attachments == 0 ) {
@@ -4291,14 +4294,44 @@ static void vk_alloc_attachments( void )
 #endif
 	}
 
+	/*
+	[QL] R13: say whether lazy memory was actually obtained, and what this cost.
+
+	Dropping VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT from the depth attachment
+	so the AO pass can sample it was described as costing "a full-resolution
+	depth allocation the transient path avoids". That is true only where the
+	device has a LAZILY_ALLOCATED memory type at all - it is a tile-based-GPU
+	feature, and on a desktop card the fallback below already takes an ordinary
+	device-local allocation of exactly the same size, so the transient flag was
+	buying nothing and losing it costs nothing.
+
+	Which of those is true on a given card is a fact, not something to reason
+	about from the outside, and the answer was behind #ifdef _DEBUG where no
+	field log would ever show it. One line, once per attachment allocation.
+	*/
+	lazyRequested = qfalse;
+	lazyObtained = qfalse;
+
 	if ( num_attachments == 1 && attachments[ 0 ].usage & VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT ) {
 		// try lazy memory
-		memoryTypeIndex = find_memory_type2( memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT, NULL );
+		lazyRequested = qtrue;
+		memoryTypeIndex = find_memory_type2( memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT, &memoryFlags );
 		if ( memoryTypeIndex == ~0U ) {
 			memoryTypeIndex = find_memory_type( memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+		} else {
+			lazyObtained = ( memoryFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT ) ? qtrue : qfalse;
 		}
 	} else {
 		memoryTypeIndex = find_memory_type( memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+	}
+
+	if ( num_attachments == 1 && ( attachments[ 0 ].usage &
+			( VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT ) ) ) {
+		ri.Printf( PRINT_ALL, "attachment memory: %i KiB, %s\n", (int)( offset / 1024 ),
+			lazyObtained ? "lazily allocated (costs no real memory until touched)"
+			             : ( lazyRequested ? "device local - this card has no lazily-allocated "
+			                                 "memory type, so transient buys nothing here"
+			                               : "device local" ) );
 	}
 
 #ifdef _DEBUG
@@ -4477,12 +4510,13 @@ static void create_depth_attachment( uint32_t width, uint32_t height, VkSampleCo
 	flags are mutually exclusive in practice, so asking for both gets a
 	validation error or a driver that quietly ignores one of them.
 
-	Only when ray query is actually enabled. This costs a full-resolution depth
-	allocation that the transient path avoids, and charging that to every
-	player for a feature they have switched off would be the wrong trade - the
-	more so as r_rt defaults to 0.
+	Only when the check in vk_initialize said the device can actually do it at
+	this format and sample count. On a card with no lazily-allocated memory type
+	- every desktop one - the transient path was already taking an ordinary
+	device-local allocation of the same size, so nothing is being given up
+	there; the "attachment memory" line at startup says which case this is.
 	*/
-	if ( vk.rtActive ) {
+	if ( vk.rtDepthSampled ) {
 		create_desc.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 	} else if ( allowTransient ) {
 		create_desc.usage |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
@@ -5223,18 +5257,65 @@ void vk_initialize( void )
 			: "not enabled (r_rt is 0; set r_rt 1 and vid_restart)" );
 	}
 	/*
-	[QL] R13 step 3 needs to read the depth buffer, and a multisampled one
-	cannot be read through an ordinary sampler2D - it needs a subpassLoad or an
-	explicit resolve, neither of which exists here yet.
+	[QL] R13 step 3 reads the depth buffer, so ask - here, once - whether this
+	device can give us a sampleable one at the format and sample count actually
+	in use.
 
-	Said at startup rather than when the AO pass first runs, because "I turned
-	on AO and nothing happened" is a much worse way to find out, and the two
-	settings involved are in different menus.
+	MSAA is handled rather than excluded: there is a second build of the AO
+	shader that takes sampler2DMS, so a multisampled depth attachment is read
+	directly instead of needing a resolve. What still has to be checked is
+	whether the driver supports the *combination* - adding
+	VK_IMAGE_USAGE_SAMPLED_BIT can narrow the sample counts a depth format
+	offers, and that is a per-device answer, not something to reason out from
+	here.
+
+	Two questions, because they fail differently and the fix differs:
+
+	  format features   can this depth format be sampled at all
+	  image properties  at this sample count, with this usage combination
+
+	Answered before vk_create_attachments runs, which is what lets
+	create_depth_attachment act on the result rather than guess.
 	*/
-	if ( vk.rtActive && vkSamples != VK_SAMPLE_COUNT_1_BIT ) {
-		ri.Printf( PRINT_WARNING, "Ray query: depth is %ix multisampled, which the AO pass "
-			"cannot sample. Set r_ext_multisample 0 for RT ambient occlusion.\n",
-			(int)vkSamples );
+	vk.rtDepthSampled = qfalse;
+	if ( vk.rtActive ) {
+		PFN_vkGetPhysicalDeviceImageFormatProperties qvkGetImageFormatProps =
+			(PFN_vkGetPhysicalDeviceImageFormatProperties)ri.VK_GetInstanceProcAddr(
+				vk_instance, "vkGetPhysicalDeviceImageFormatProperties" );
+		VkFormatProperties fmtProps;
+
+		qvkGetPhysicalDeviceFormatProperties( vk.physical_device, vk.depth_format, &fmtProps );
+
+		if ( !( fmtProps.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT ) ) {
+			ri.Printf( PRINT_WARNING, "Ray query: depth format cannot be sampled on this device - "
+				"ambient occlusion will not be available\n" );
+		} else if ( qvkGetImageFormatProps == NULL ) {
+			ri.Printf( PRINT_WARNING, "Ray query: vkGetPhysicalDeviceImageFormatProperties is "
+				"missing - not making depth sampleable\n" );
+		} else {
+			VkImageFormatProperties imgProps;
+			VkResult res;
+
+			Com_Memset( &imgProps, 0, sizeof( imgProps ) );
+			res = qvkGetImageFormatProps( vk.physical_device, vk.depth_format,
+				VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+				0, &imgProps );
+
+			if ( res != VK_SUCCESS ) {
+				ri.Printf( PRINT_WARNING, "Ray query: depth cannot be both an attachment and "
+					"sampled on this device (%s) - ambient occlusion will not be available\n",
+					vk_result_string( res ) );
+			} else if ( !( imgProps.sampleCounts & vkSamples ) ) {
+				ri.Printf( PRINT_WARNING, "Ray query: a sampleable depth attachment does not "
+					"support %ix multisampling on this device. Lower r_ext_multisample for "
+					"RT ambient occlusion.\n", (int)vkSamples );
+			} else {
+				vk.rtDepthSampled = qtrue;
+				ri.Printf( PRINT_ALL, "Ray query: depth is sampleable%s\n",
+					vkSamples != VK_SAMPLE_COUNT_1_BIT ? " (multisampled - AO uses the MS shader)" : "" );
+			}
+		}
 	}
 	ri.Cvar_Set( "r_rtAvailable", vk.rayQuery ? "1" : "0" );
 	ri.Cvar_Set( "r_rtActive", vk.rtActive ? "1" : "0" );

@@ -21,14 +21,9 @@ for %%f in (*.vert) do (
 )
 
 for %%f in (*.frag) do (
-    @rem rtao.frag is a ray-query shader and must not use the default target -
-    @rem see the ray query block below. Without this skip it is compiled twice
-    @rem and the first, broken copy is the one bin2hex appends first.
-    if /I not "%%f"=="rtao.frag" (
-        "%cl%" -S frag -V -o "%tmpf%" "%%f"
-        "%bh%" "%tmpf%" %outf% %%~nf_frag_spv
-        del /Q "%tmpf%"
-    )
+    "%cl%" -S frag -V -o "%tmpf%" "%%f"
+    "%bh%" "%tmpf%" %outf% %%~nf_frag_spv
+    del /Q "%tmpf%"
 )
 
 @rem ray query (R13)
@@ -36,12 +31,24 @@ for %%f in (*.frag) do (
 @rem GL_EXT_ray_query needs SPIR-V 1.4, and glslang will NOT tell you otherwise:
 @rem compile it without --target-env and you get a SPIR-V 1.0 module full of
 @rem ray-query opcodes, exit code 0, and no output. No driver will accept it.
+@rem
+@rem rtao is a .tmpl and not a .frag for that reason as much as for its
+@rem variants - the loop above uses the default target, so a ray-query shader
+@rem named .frag would be swept up by it and quietly emitted as a 1.0 module.
+@rem
+@rem Two variants: the depth attachment is multisampled when r_ext_multisample
+@rem is on, and sampler2D cannot read a multisampled image.
+@rem
 @rem compile.sh additionally verifies the version word in the result; batch has
 @rem no clean way to do that, so if you are debugging a rejected shader module
 @rem run compile.sh instead and let it check.
 
-"%cl%" -S frag -V --target-env spirv1.4 -o "%tmpf%" rtao.frag
+"%cl%" -S frag -V --target-env spirv1.4 -o "%tmpf%" rtao.tmpl
 "%bh%" "%tmpf%" %outf% rtao_frag_spv
+del /Q "%tmpf%"
+
+"%cl%" -S frag -V --target-env spirv1.4 -o "%tmpf%" rtao.tmpl -DUSE_MSAA
+"%bh%" "%tmpf%" %outf% rtao_frag_ms_spv
 del /Q "%tmpf%"
 
 @rem compile lighting shader variations from templates

@@ -602,6 +602,12 @@ typedef struct {
 	   card cannot" and "you did not switch it on" the same message. */
 	qboolean rayQuery;
 	qboolean rtActive;
+	/* [QL] R13 step 3: the depth attachment can be created sampleable at the
+	   format and sample count actually in use, so the AO pass has something to
+	   reconstruct position from. Asked of the driver rather than assumed -
+	   adding VK_IMAGE_USAGE_SAMPLED_BIT can narrow the sample counts a depth
+	   format supports, and that is a per-device answer. */
+	qboolean rtDepthSampled;
 	uint32_t instanceVersion;
 	qboolean debugMarkers;
 

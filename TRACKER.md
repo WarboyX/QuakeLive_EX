@@ -5773,9 +5773,11 @@ target, and `compile.sh` **reads the version word out of the result and fails
 the build if it is not 1.4**. Verified by removing the flag: the build stops with
 `produced SPIR-V version bytes 00000100, expected 00040100 (1.4)`.
 
-`compile.bat` carries the same skip and the same explicit emit, because a shader
-in one script and not the other is one that silently does not exist in half the
-builds.
+The shader is `rtao.tmpl`, not `rtao.frag`, and the extension is load-bearing
+twice over: it keeps the file out of the `*.frag` loop with no special case to
+forget, and `.tmpl` is already this tree's convention for a shader with build
+variants. `compile.bat` carries the same explicit emits, because a shader in one
+script and not the other is one that silently does not exist in half the builds.
 
 #### The shader
 
@@ -5795,7 +5797,7 @@ fire short rays into the hemisphere, return the fraction that hit nothing.
 - Sky (`depth >= 1.0`) returns unoccluded without tracing. Not just cheaper:
   a ray from the far plane starts outside the world.
 
-#### The depth attachment had to change
+#### The depth attachment had to change, and the cost is probably zero
 
 It was created with `DEPTH_STENCIL_ATTACHMENT_BIT` and, when bloom was off,
 `TRANSIENT_ATTACHMENT_BIT` — which lets the driver keep it in tile memory and
@@ -5803,28 +5805,66 @@ never back it with real allocation. Free and correct for a buffer nothing reads
 afterwards, and **unsampleable by construction**. The two flags are effectively
 mutually exclusive, so this is an either/or, not an addition.
 
-`SAMPLED_BIT` is now added **only when `vk.rtActive`**. It costs a
-full-resolution depth allocation the transient path avoids, and charging that to
-every player for a feature that defaults to off would be the wrong trade.
+This was first written up as "costs a full-resolution depth allocation". **That
+is probably wrong on any desktop card**, and the correction is worth recording
+because it was an assumption presented as a fact. `VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT`
+is a tile-based-GPU feature; where no such memory type exists, the code already
+falls through to
 
-#### Known constraint, reported at startup
+```c
+memoryTypeIndex = find_memory_type( memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+```
 
-**MSAA and RT AO are mutually exclusive right now.** A multisampled depth image
-cannot be read through a `sampler2D`; it needs a `subpassLoad` or an explicit
-resolve, neither of which exists here. Rather than let this surface as "I turned
-on AO and nothing happened", startup says so:
+— an ordinary device-local allocation of exactly the same size. The transient
+flag was buying nothing, so losing it costs nothing.
+
+Rather than argue that from the outside, `vk_alloc_attachments` now says which
+case it is, once, at startup. The answer was previously behind `#ifdef _DEBUG`
+where no field log would ever carry it:
 
 ```
-Ray query: depth is 4x multisampled, which the AO pass cannot sample.
-Set r_ext_multisample 0 for RT ambient occlusion.
+attachment memory: 32400 KiB, device local - this card has no lazily-allocated
+memory type, so transient buys nothing here
+```
+
+#### MSAA is handled, not excluded
+
+The first write-up called MSAA and RT AO mutually exclusive. They are not.
+Vulkan allows sampling a multisampled image directly — it needs `sampler2DMS`
+and `texelFetch`, not a resolve — so there are **two builds of the AO shader**,
+`rtao_frag_spv` and `rtao_frag_ms_spv`, chosen by the sample count.
+
+Sample 0 rather than an average: AO is a low-frequency term that gets denoised
+anyway, and the sample positions within one pixel differ by orders of magnitude
+less than the trace radius. Resolving N depths to feed a 4-ray estimate is
+precision nobody can see, paid for N times.
+
+What *does* have to be checked is whether the driver supports the combination —
+adding `SAMPLED_BIT` can narrow the sample counts a depth format offers, and
+that is a per-device answer. Both questions are now asked at startup, before
+`vk_create_attachments` runs, so `create_depth_attachment` acts on the answer
+instead of guessing:
+
+| check | fails how |
+|---|---|
+| `VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT` on the depth format | this format cannot be sampled at all |
+| `vkGetPhysicalDeviceImageFormatProperties` with attachment+sampled usage | this *combination* is unsupported |
+| `imgProps.sampleCounts & vkSamples` | supported, but not at this MSAA level |
+
+Each prints its own reason, because the remedy differs — the third is the only
+one where lowering `r_ext_multisample` helps.
+
+```
+Ray query: depth is sampleable (multisampled - AO uses the MS shader)
 ```
 
 #### What is left for step 3b
 
 1. Descriptor set layout and pool for `{depth sampler, TLAS}` —
    `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` is a new type for this tree.
-2. Pipeline and render-pass wiring for the pass, plus the layout transition of
-   depth to `SHADER_READ_ONLY_OPTIMAL` and back.
+2. Pipeline and render-pass wiring for the pass — picking `rtao_frag_ms_spv`
+   when `vkSamples > 1` — plus the layout transition of depth to
+   `SHADER_READ_ONLY_OPTIMAL` and back.
 3. Push constants: inverse view-projection, eye position, radius/intensity/
    frame/bias.
 4. Compositing the AO term into the lit image.
