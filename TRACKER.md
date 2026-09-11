@@ -1832,7 +1832,7 @@ are GL-only too and want the same gate, and the Vulkan side has no
 supersampling control because `r_renderScale` needs `r_renderWidth`/`Height`
 alongside it rather than being a single switch.
 
-### R13. RT reflections and ambient occlusion — SCOPED, not started
+### R13. RT reflections and ambient occlusion — STEP 1 DONE (verify), step 2 next
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
 The hybrid from R10 - keep the baked lightmaps and lightgrid as the light field,
@@ -5726,6 +5726,91 @@ classnames still use ANY, which is safe because a different classname cannot
 return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
+
+### E85. R13 step 1: ray query is enabled on the device, not just detected — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+E81 compared four extension names and left them alone. This enables them, proves
+the feature bits, loads the entry points, and reports the result. Still no
+acceleration structure and no pass — what it establishes is that a ray query
+*would* work, which is the thing worth confirming on real hardware before any
+geometry work is written against it.
+
+**Three cvars, because there are three different answers:**
+
+| cvar | | |
+|---|---|---|
+| `r_rtAvailable` | ROM | the card advertises all four extensions |
+| `r_rt` | LATCH, default 0 | the master switch |
+| `r_rtActive` | ROM | it is actually on this run |
+
+`r_rtAvailable 1` with `r_rtActive 0` is the ordinary state: the card can, and
+nobody asked. Collapsing those would make *"your card cannot"* and *"you did not
+switch it on"* print the same line — one ends the conversation, the other is one
+cvar away.
+
+**To test:**
+
+```
+r_rt 1
+vid_restart
+```
+
+```
+Ray query: supported by this device
+Ray query: ENABLED - extensions on, feature bits confirmed, entry points loaded
+```
+
+#### Three things that had to be fixed to get there
+
+**1. Shipped builds asked for Vulkan 1.0.** `appInfo.apiVersion` was 1.1 under
+`_DEBUG` and 1.0 everywhere else. `VK_KHR_acceleration_structure` lists 1.1 as a
+hard dependency, so every release build was asking the card for ray tracing and
+then being told no *by our own instance*. Now `vkEnumerateInstanceVersion` — a
+1.1 entry point, so a NULL return is itself the answer — picks 1.1 when the
+loader has it. Raising it unconditionally would answer a 1.0 loader with
+`VK_ERROR_INCOMPATIBLE_DRIVER`, turning "no ray tracing" into "no renderer".
+
+**2. An advertised extension is not an enabled feature.** This is the
+Vulkan-shaped version of the trap in `CLAUDE.md`: enumerating the name only says
+the driver knows it. `vkCreateDevice` will happily succeed with `rayQuery` off
+and every trace silently returns a miss — renders nothing, reports nothing, the
+same shape as a dead cvar or a shader name the pak does not contain. So
+`vkGetPhysicalDeviceFeatures2` is asked and all three bits checked before
+anything is enabled.
+
+**3. `device_extension_list` was `[8]`** and a debug build already used seven.
+Four more would have written past a stack array with pointers the driver then
+dereferences. Now `[16]`.
+
+#### A bug found in this change before it shipped
+
+`init_vulkan_library` zeroes the whole `vk` struct on **every** init, but calls
+`create_instance` only when `vk_instance == VK_NULL_HANDLE` — i.e. once. An
+instance version stored in `vk` therefore reads 1.1 on first init and **0 on
+every `vid_restart` after it**, and 0 means "1.0 loader", so ray query would have
+switched itself off on the second `vid_restart` while blaming the driver. The
+version now lives in a static beside `vk_instance`, which is what it describes,
+and is published onto `vk` at the one point where the instance definitely exists.
+
+Worth recording because the failure needs two `vid_restart`s to appear and would
+have read as "it works, then it randomly stops".
+
+#### Deliberately still off by default
+
+`r_rt` defaults to 0. Enabling extensions changes `vkCreateDevice`, and a device
+that fails to create is not a missing effect — it is no renderer. Until a pass
+uses ray query, turning it on buys nothing and risks the renderer people
+actually run. Not `CVAR_ARCHIVE` either: an archived default is written to a
+config on first run and wins forever, which cost this tree two rounds already
+(`r_dlightMode`, `con_scale`) and would pin every tester to whatever the value
+was the first time they launched.
+
+`vkCreateDevice` failing with RT on prints the connection and the way out
+(`r_rt 0` + `vid_restart`) rather than a bare `VkResult`.
+
+**To verify:** the two lines above, then `vid_restart` twice more — `r_rtActive`
+must still read 1.
 
 ### E84. Two-flag CTF routed its alternative routes through the neutral flag — DONE (verify)
 **Lives in:** our **server** (qagame + botlib) · **Seen by:** every client

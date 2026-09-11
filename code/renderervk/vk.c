@@ -12,6 +12,15 @@ static int vkSamples = VK_SAMPLE_COUNT_1_BIT;
 static int vkMaxSamples = VK_SAMPLE_COUNT_1_BIT;
 
 static VkInstance vk_instance = VK_NULL_HANDLE;
+
+/* [QL] R13. Lives beside vk_instance rather than in vk, and for the same
+   reason: init_vulkan_library zeroes the whole vk struct on every vid_restart
+   but only calls create_instance when vk_instance is VK_NULL_HANDLE. A version
+   kept in vk would therefore read 1.1 on the first init and 0 on every restart
+   after it - and 0 means "1.0 loader", so ray query would turn itself off on
+   the second vid_restart while blaming the driver. The instance outlives the
+   struct, so what we know about it has to as well. */
+static uint32_t vk_instance_version = VK_API_VERSION_1_0;
 static VkSurfaceKHR vk_surface = VK_NULL_HANDLE;
 
 #ifndef NDEBUG
@@ -130,6 +139,16 @@ static PFN_vkGetBufferMemoryRequirements2KHR			qvkGetBufferMemoryRequirements2KH
 static PFN_vkGetImageMemoryRequirements2KHR				qvkGetImageMemoryRequirements2KHR;
 
 static PFN_vkDebugMarkerSetObjectNameEXT				qvkDebugMarkerSetObjectNameEXT;
+
+/* [QL] R13 ray query entry points. Loaded only when vk.rtActive, and every one
+   of them is NULL otherwise - so anything that calls them has to check, the
+   same as the dedicated-allocation pair above. */
+static PFN_vkCreateAccelerationStructureKHR				qvkCreateAccelerationStructureKHR;
+static PFN_vkDestroyAccelerationStructureKHR			qvkDestroyAccelerationStructureKHR;
+static PFN_vkGetAccelerationStructureBuildSizesKHR		qvkGetAccelerationStructureBuildSizesKHR;
+static PFN_vkCmdBuildAccelerationStructuresKHR			qvkCmdBuildAccelerationStructuresKHR;
+static PFN_vkGetAccelerationStructureDeviceAddressKHR	qvkGetAccelerationStructureDeviceAddressKHR;
+static PFN_vkGetBufferDeviceAddressKHR					qvkGetBufferDeviceAddressKHR;
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -1385,11 +1404,40 @@ static void create_instance( void )
 	appInfo.applicationVersion = 0x0;
 	appInfo.pEngineName = NULL;
 	appInfo.engineVersion = 0x0;
-#ifdef _DEBUG
-	appInfo.apiVersion = VK_API_VERSION_1_1;
-#else
-	appInfo.apiVersion = VK_API_VERSION_1_0;
-#endif
+	/*
+	[QL] R13: ask for 1.1 when the loader has it, 1.0 otherwise.
+
+	This used to be 1.1 under _DEBUG and 1.0 in every shipped build, which put
+	ray query out of reach of exactly the builds people run:
+	VK_KHR_acceleration_structure lists Vulkan 1.1 as a hard dependency, so a
+	1.0 instance cannot enable it however capable the card is. The card was
+	being asked and then told no by our own instance.
+
+	Raising it unconditionally is not safe either - a 1.0 loader answers
+	vkCreateInstance with VK_ERROR_INCOMPATIBLE_DRIVER, which would turn "no ray
+	tracing" into "no renderer". vkEnumerateInstanceVersion is the sanctioned
+	way to ask: it is itself a 1.1 entry point, so a NULL return *is* the answer
+	- this loader is 1.0 - and there is no version to misreport.
+
+	Recorded on vk_instance_version - a static, not a vk field, see its
+	declaration - so the RT path can say which of the two reasons it is off,
+	rather than reporting an unsupported card.
+	*/
+	vk_instance_version = VK_API_VERSION_1_0;
+	{
+		PFN_vkEnumerateInstanceVersion qvkEnumerateInstanceVersion =
+			(PFN_vkEnumerateInstanceVersion)ri.VK_GetInstanceProcAddr( NULL, "vkEnumerateInstanceVersion" );
+
+		if ( qvkEnumerateInstanceVersion != NULL ) {
+			uint32_t loaderVersion = VK_API_VERSION_1_0;
+
+			if ( qvkEnumerateInstanceVersion( &loaderVersion ) == VK_SUCCESS &&
+				 loaderVersion >= VK_API_VERSION_1_1 ) {
+				vk_instance_version = VK_API_VERSION_1_1;
+			}
+		}
+	}
+	appInfo.apiVersion = vk_instance_version;
 
 	// create instance
 	desc.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -1692,7 +1740,11 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 
 	// create VkDevice
 	{
-		const char *device_extension_list[8];
+		/* [QL] Was [8], and a debug build already used seven of them. Ray query
+		   adds four more, so this is sized with room rather than to fit: the
+		   array has no bounds check and overrunning it writes past the end of a
+		   stack array with a pointer the driver then reads. Sixteen is free. */
+		const char *device_extension_list[16];
 		uint32_t device_extension_count;
 		const char *ext, *end;
 		char *str;
@@ -1714,13 +1766,20 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		qboolean rayQuery = qfalse;
 		qboolean deferredHostOps = qfalse;
 		qboolean bufferDeviceAddress = qfalse;
+		/* [QL] R13: the three feature structs a ray query needs chained onto
+		   device creation, and the request that turns the whole thing on. */
+		VkPhysicalDeviceAccelerationStructureFeaturesKHR accel_features;
+		VkPhysicalDeviceRayQueryFeaturesKHR rayquery_features;
+		VkPhysicalDeviceBufferDeviceAddressFeatures rt_devaddr_features;
+		qboolean wantRT;
 #ifdef _DEBUG
 		qboolean timelineSemaphore = qfalse;
 		qboolean memoryModel = qfalse;
 		qboolean devAddrFeat = qfalse;
 		qboolean storage8bit = qfalse;
-		const void** pNextPtr;
 #endif
+		/* [QL] no longer _DEBUG-only: the RT structs below chain onto it too */
+		const void** pNextPtr;
 		uint32_t i, len, count = 0;
 
 		VK_CHECK( qvkEnumerateDeviceExtensionProperties( physical_device, NULL, &count, NULL ) );
@@ -1798,7 +1857,122 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 
 		vk.rayQuery = ( accelStructure && rayQuery && deferredHostOps && bufferDeviceAddress ) ? qtrue : qfalse;
 
+		/*
+		[QL] R13 step 1: actually enable it, when asked and when possible.
+
+		Two gates, and they answer different questions:
+
+		  vk.rayQuery       the card advertises all four extensions
+		  r_rt              the user asked for it (latched, default 0)
+
+		Default 0 is deliberate and is not timidity. Enabling extensions changes
+		vkCreateDevice, and a device that fails to create is not a missing
+		effect - it is no renderer at all. Until there is a pass that uses ray
+		query, turning it on buys nothing and risks the thing people are
+		actually running, so it stays opt-in until the AO pass ships and has
+		been run on more than one vendor.
+
+		r_rt is CVAR_LATCH and NOT CVAR_ARCHIVE. Latched because the device is
+		created once per vid_restart and a mid-frame change would be a lie.
+		Not archived because it is a default we choose: archiving writes the
+		first value into a config that then wins forever, which has cost this
+		tree two rounds already (r_dlightMode, con_scale), and would freeze
+		every tester at whatever the value was the first time they ran it.
+		*/
+		/* Checked rather than assumed, because reading a cvar that does not
+		   exist yet returns 0 and would look exactly like "the user left it
+		   off": R_Register() is tr_init.c:1976 and InitOpenGL() - which is what
+		   reaches vk_initialize and then here - is 1988. r_rt is registered
+		   twelve lines before anything can read it. The null test covers a
+		   future reordering rather than today's code. */
+		wantRT = ( vk.rayQuery && r_rt && r_rt->integer ) ? qtrue : qfalse;
+
+		if ( wantRT && vk.instanceVersion < VK_API_VERSION_1_1 ) {
+			/* The card is willing and our own instance is what says no. Worth
+			   its own message: "not supported" would send someone to look at
+			   their driver when the limit is the loader. */
+			ri.Printf( PRINT_WARNING, "Ray query: the card supports it, but this Vulkan loader is 1.0 "
+				"and VK_KHR_acceleration_structure requires 1.1 - not enabling\n" );
+			wantRT = qfalse;
+		}
+
+		if ( wantRT ) {
+			/*
+			[QL] An advertised extension is not an enabled feature.
+
+			This is the Vulkan-shaped version of the trap this tree keeps
+			hitting: a registered cvar nothing reads, a shader name the pak does
+			not contain, and here an extension whose feature bit comes back
+			VK_FALSE. Enumerating the extension only says the driver knows the
+			name. vkCreateDevice would then succeed with rayQuery off and every
+			trace would silently return a miss - an effect that renders nothing
+			and reports nothing, which is the exact failure shape that has cost
+			rounds here before.
+
+			So ask. vkGetPhysicalDeviceFeatures2 is core 1.1, which is checked
+			above, and the chain is queried and then handed to vkCreateDevice
+			with the bits we need forced on.
+			*/
+			PFN_vkGetPhysicalDeviceFeatures2 qvkGetPhysicalDeviceFeatures2 =
+				(PFN_vkGetPhysicalDeviceFeatures2)ri.VK_GetInstanceProcAddr( vk_instance, "vkGetPhysicalDeviceFeatures2" );
+
+			if ( qvkGetPhysicalDeviceFeatures2 == NULL ) {
+				ri.Printf( PRINT_WARNING, "Ray query: vkGetPhysicalDeviceFeatures2 is missing - not enabling\n" );
+				wantRT = qfalse;
+			} else {
+				VkPhysicalDeviceFeatures2 probe;
+
+				Com_Memset( &accel_features, 0, sizeof( accel_features ) );
+				Com_Memset( &rayquery_features, 0, sizeof( rayquery_features ) );
+				Com_Memset( &rt_devaddr_features, 0, sizeof( rt_devaddr_features ) );
+				Com_Memset( &probe, 0, sizeof( probe ) );
+
+				accel_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+				rayquery_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+				rt_devaddr_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+
+				probe.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+				probe.pNext = &accel_features;
+				accel_features.pNext = &rayquery_features;
+				rayquery_features.pNext = &rt_devaddr_features;
+				rt_devaddr_features.pNext = NULL;
+
+				qvkGetPhysicalDeviceFeatures2( physical_device, &probe );
+
+				if ( !accel_features.accelerationStructure || !rayquery_features.rayQuery ||
+					 !rt_devaddr_features.bufferDeviceAddress ) {
+					ri.Printf( PRINT_WARNING, "Ray query: the extensions are present but the feature bits are not "
+						"(accelerationStructure %i, rayQuery %i, bufferDeviceAddress %i) - not enabling\n",
+						(int)accel_features.accelerationStructure,
+						(int)rayquery_features.rayQuery,
+						(int)rt_devaddr_features.bufferDeviceAddress );
+					wantRT = qfalse;
+				} else {
+					/* Ask for exactly what is used and nothing else. Host builds
+					   and capture-replay are debugging conveniences that cost
+					   memory and are not wanted in a shipped build. */
+					accel_features.pNext = NULL;
+					accel_features.accelerationStructureCaptureReplay = VK_FALSE;
+					accel_features.accelerationStructureIndirectBuild = VK_FALSE;
+					accel_features.accelerationStructureHostCommands = VK_FALSE;
+					accel_features.descriptorBindingAccelerationStructureUpdateAfterBind = VK_FALSE;
+
+					rayquery_features.pNext = NULL;
+					rt_devaddr_features.pNext = NULL;
+					rt_devaddr_features.bufferDeviceAddressCaptureReplay = VK_FALSE;
+					rt_devaddr_features.bufferDeviceAddressMultiDevice = VK_FALSE;
+				}
+			}
+		}
+
 		device_extension_list[ device_extension_count++ ] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+
+		if ( wantRT ) {
+			device_extension_list[ device_extension_count++ ] = VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME;
+			device_extension_list[ device_extension_count++ ] = VK_KHR_RAY_QUERY_EXTENSION_NAME;
+			device_extension_list[ device_extension_count++ ] = VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME;
+			device_extension_list[ device_extension_count++ ] = VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME;
+		}
 
 		if ( vk.dedicatedAllocation ) {
 			device_extension_list[ device_extension_count++ ] = VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME;
@@ -1818,7 +1992,11 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 			device_extension_list[ device_extension_count++ ] = VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME;
 		}
 
-		if ( devAddrFeat ) {
+		/* [QL] ...unless the RT path above already added it. The same extension
+		   name twice is at best redundant and the matching feature struct twice
+		   in one pNext chain is invalid - two structs of one sType is not a
+		   thing a driver is required to survive. */
+		if ( devAddrFeat && !wantRT ) {
 			device_extension_list[ device_extension_count++ ] = VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME;
 		}
 
@@ -1875,9 +2053,9 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		device_desc.ppEnabledExtensionNames = device_extension_list;
 		device_desc.pEnabledFeatures = &features;
 
-#ifdef _DEBUG
 		pNextPtr = (const void **)&device_desc.pNext;
 
+#ifdef _DEBUG
 		if ( timelineSemaphore ) {
 			*pNextPtr = &timeline_semaphore;
 			timeline_semaphore.pNext = NULL;
@@ -1896,7 +2074,7 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 			pNextPtr = (const void **)&memory_model.pNext;
 		}
 
-		if ( devAddrFeat ) {
+		if ( devAddrFeat && !wantRT ) {  // see the extension list: one sType, once
 			*pNextPtr = &devaddr_features;
 			devaddr_features.pNext = NULL;
 			devaddr_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
@@ -1916,11 +2094,42 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 			pNextPtr = (const void **)&storage_8bit_features.pNext;
 		}
 #endif
+		/* [QL] R13: the ray query chain, appended last so it does not disturb
+		   the order of anything that was already here. The three go together -
+		   acceleration_structure requires buffer_device_address, and a ray
+		   query with no acceleration structure has nothing to trace against. */
+		if ( wantRT ) {
+			*pNextPtr = &accel_features;
+			pNextPtr = (const void **)&accel_features.pNext;
+			*pNextPtr = &rayquery_features;
+			pNextPtr = (const void **)&rayquery_features.pNext;
+			*pNextPtr = &rt_devaddr_features;
+			pNextPtr = (const void **)&rt_devaddr_features.pNext;
+			*pNextPtr = NULL;
+		}
+
 		res = qvkCreateDevice( physical_device, &device_desc, NULL, &vk.device );
 		if ( res < 0 ) {
-			ri.Printf( PRINT_ERROR, "vkCreateDevice returned %s\n", vk_result_string( res ) );
+			/*
+			[QL] If RT was the only new thing this run, say so before giving up.
+
+			vkCreateDevice failing is fatal to the renderer, and a user who has
+			just set r_rt 1 needs the connection made for them rather than
+			reading a raw VkResult and filing "vulkan is broken". They can get
+			their renderer back with one cvar.
+			*/
+			if ( wantRT ) {
+				ri.Printf( PRINT_ERROR, "vkCreateDevice returned %s with ray query enabled. "
+					"Set r_rt 0 and vid_restart to get the renderer back, and report this - "
+					"the device advertised all four extensions and their feature bits.\n",
+					vk_result_string( res ) );
+			} else {
+				ri.Printf( PRINT_ERROR, "vkCreateDevice returned %s\n", vk_result_string( res ) );
+			}
 			return qfalse;
 		}
+
+		vk.rtActive = wantRT;
 	}
 
 	return qtrue;
@@ -2039,6 +2248,18 @@ static void init_vulkan_library( void )
 			return;
 		}
 	} // vk_instance == VK_NULL_HANDLE
+
+	/*
+	[QL] R13: publish the instance version onto vk, here and not earlier.
+
+	It has to be after the block above, not before it, and the two orderings
+	fail in opposite directions: set before, and the first init reads the
+	static's initial 1.0 because create_instance has not run yet; left out
+	entirely, and every vid_restart after the first reads 0 from the memset
+	because create_instance is skipped. Here is the one point where the
+	instance definitely exists and the static definitely describes it.
+	*/
+	vk.instanceVersion = vk_instance_version;
 
 	res = qvkEnumeratePhysicalDevices( vk_instance, &device_count, NULL );
 	if ( device_count == 0 ) {
@@ -2182,6 +2403,32 @@ static void init_vulkan_library( void )
 	if ( vk.debugMarkers ) {
 		INIT_DEVICE_FUNCTION_EXT(vkDebugMarkerSetObjectNameEXT)
 	}
+
+	/*
+	[QL] R13: ray query entry points.
+
+	Enabling an extension and getting its function pointers are separate steps,
+	and a driver is allowed to hand back NULL for either. Checking here - once,
+	loudly - rather than at the first build call means a partial load turns the
+	feature off with a message instead of crashing in an acceleration-structure
+	build several frames later, where the cause would be nowhere in sight.
+	*/
+	if ( vk.rtActive ) {
+		INIT_DEVICE_FUNCTION_EXT(vkCreateAccelerationStructureKHR)
+		INIT_DEVICE_FUNCTION_EXT(vkDestroyAccelerationStructureKHR)
+		INIT_DEVICE_FUNCTION_EXT(vkGetAccelerationStructureBuildSizesKHR)
+		INIT_DEVICE_FUNCTION_EXT(vkCmdBuildAccelerationStructuresKHR)
+		INIT_DEVICE_FUNCTION_EXT(vkGetAccelerationStructureDeviceAddressKHR)
+		INIT_DEVICE_FUNCTION_EXT(vkGetBufferDeviceAddressKHR)
+
+		if ( !qvkCreateAccelerationStructureKHR || !qvkDestroyAccelerationStructureKHR ||
+			 !qvkGetAccelerationStructureBuildSizesKHR || !qvkCmdBuildAccelerationStructuresKHR ||
+			 !qvkGetAccelerationStructureDeviceAddressKHR || !qvkGetBufferDeviceAddressKHR ) {
+			ri.Printf( PRINT_WARNING, "Ray query: the device enabled the extensions but did not provide "
+				"every entry point - disabling\n" );
+			vk.rtActive = qfalse;
+		}
+	}
 }
 
 #undef INIT_INSTANCE_FUNCTION
@@ -2306,6 +2553,16 @@ static void deinit_device_functions( void )
 	qvkGetImageMemoryRequirements2KHR			= NULL;
 
 	qvkDebugMarkerSetObjectNameEXT				= NULL;
+
+	/* [QL] R13. These are static and a vid_restart runs through here without
+	   unloading the module, so a stale pointer would survive into the next
+	   device - which is a different VkDevice, and calling it is undefined. */
+	qvkCreateAccelerationStructureKHR			= NULL;
+	qvkDestroyAccelerationStructureKHR			= NULL;
+	qvkGetAccelerationStructureBuildSizesKHR	= NULL;
+	qvkCmdBuildAccelerationStructuresKHR		= NULL;
+	qvkGetAccelerationStructureDeviceAddressKHR	= NULL;
+	qvkGetBufferDeviceAddressKHR				= NULL;
 }
 
 
@@ -4259,13 +4516,25 @@ void vk_initialize( void )
 	switch that does nothing is the registered-cvar trap, and this tree has
 	stepped in it often enough.
 
-	It reports capability, not activity. Nothing is enabled and no acceleration
-	structure is built; the extensions are compared and then left alone. When the
-	AO pass lands (R13) this is what it will be gated on.
+	r_rtAvailable reports capability and r_rtActive reports activity, and they
+	are two cvars because they fail for different reasons and the fix differs.
+	"Your card cannot" and "you did not switch it on" must not print the same
+	line - the first is the end of the conversation and the second is one cvar
+	away.
+
+	Still no acceleration structure and no pass: rtActive means a ray query
+	*would* work, which is the thing worth confirming on real hardware before
+	any of the geometry work is written against it.
 	*/
 	ri.Printf( PRINT_ALL, "Ray query: %s\n",
 		vk.rayQuery ? "supported by this device" : "not supported by this device" );
+	if ( vk.rayQuery ) {
+		ri.Printf( PRINT_ALL, "Ray query: %s\n", vk.rtActive
+			? "ENABLED - extensions on, feature bits confirmed, entry points loaded"
+			: "not enabled (r_rt is 0; set r_rt 1 and vid_restart)" );
+	}
 	ri.Cvar_Set( "r_rtAvailable", vk.rayQuery ? "1" : "0" );
+	ri.Cvar_Set( "r_rtActive", vk.rtActive ? "1" : "0" );
 
 	Q_strncpyz( glConfig.vendor_string, vendor_name, sizeof( glConfig.vendor_string ) );
 	Q_strncpyz( glConfig.renderer_string, renderer_name( &props ), sizeof( glConfig.renderer_string ) );

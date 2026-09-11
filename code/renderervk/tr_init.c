@@ -143,6 +143,7 @@ cvar_t	*r_picmip;
 cvar_t	*r_nomip;
 cvar_t	*r_showtris;
 cvar_t	*r_showsky;
+cvar_t	*r_rt;		// [QL] R13
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -1832,7 +1833,32 @@ static void R_Register( void )
 	be gated on cl_renderer as well, which is the pattern R12 already uses for
 	every other Vulkan-only row. See R13.
 	*/
-	ri.Cvar_Get( "r_rtAvailable", "0", CVAR_ROM );
+	ri.Cvar_SetDescription( ri.Cvar_Get( "r_rtAvailable", "0", CVAR_ROM ),
+		"Read-only. 1 when this device supports ray queries (Vulkan renderer only)." );
+
+	/*
+	[QL] R13: the master switch.
+
+	CVAR_LATCH because the device is created once per vid_restart and a
+	mid-frame change would be a lie. NOT CVAR_ARCHIVE: this is a default we
+	choose, and an archived default is written into a config on first run and
+	then wins forever - which cost this tree two rounds already (r_dlightMode,
+	con_scale) and would pin every tester to whatever the value happened to be
+	the first time they launched.
+
+	Default 0 until there is a pass that uses it. Enabling the extensions
+	changes vkCreateDevice, and a device that fails to create is not a missing
+	effect, it is no renderer.
+	*/
+	r_rt = ri.Cvar_Get( "r_rt", "0", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_rt, "Enable Vulkan ray query support on the device. "
+		"Requires r_rtAvailable 1 and a vid_restart. No visible effect yet - "
+		"this is the device plumbing the AO pass will be built on." );
+
+	ri.Cvar_Get( "r_rtActive", "0", CVAR_ROM );
+	ri.Cvar_SetDescription( ri.Cvar_Get( "r_rtActive", "0", CVAR_ROM ),
+		"Read-only. 1 when ray query is actually enabled on the device this run, "
+		"as opposed to merely supported." );
 
 	r_device = ri.Cvar_Get( "r_device", "-1", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_device, "-2", NULL, CV_INTEGER );

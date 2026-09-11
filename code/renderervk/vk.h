@@ -579,10 +579,22 @@ typedef struct {
 	qboolean samplerAnisotropy;
 	qboolean fragmentStores;
 	qboolean dedicatedAllocation;
-	/* [QL] the device advertises everything a ray query needs. Detection only -
-	   nothing is enabled and no acceleration structure is built yet. See
-	   vk_create_device and R13. */
+	/* [QL] R13 ray query state. Three separate facts, deliberately not one:
+
+	     rayQuery      the device advertises all four extensions
+	     rtActive      they are enabled on the device created this run, their
+	                   feature bits came back VK_TRUE, and the entry points
+	                   loaded - so a ray query would actually work
+	     instanceVersion  what the loader gave us. Acceleration structures need
+	                   a 1.1 instance; a 1.0 one cannot enable them however
+	                   willing the card is.
+
+	   rayQuery without rtActive is the ordinary state: the card can, and r_rt
+	   is 0, so nothing was asked of it. Collapsing the two would make "your
+	   card cannot" and "you did not switch it on" the same message. */
 	qboolean rayQuery;
+	qboolean rtActive;
+	uint32_t instanceVersion;
 	qboolean debugMarkers;
 
 	float maxAnisotropy;
