@@ -5727,6 +5727,134 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E84. Two-flag CTF routed its alternative routes through the neutral flag — DONE (verify)
+**Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
+
+*"bots are still not pathing to the right side of flag room and to the garden
+area."* This is why, and it is not the same bug as E83 — it is the other half.
+
+**The log said it in two lines that had to be read together:**
+
+```
+alt routes: no route from area 1109 to area 1169 yet     <- toward the red base
+alt routes: no route from area 1109 to area 4040 yet     <- toward the blue base
+```
+
+Both journeys start in **area 1109**. Base-to-base routing cannot produce that —
+it would read `1109 to 1169` and `1169 to 1109`, the same pair reversed. One
+shared start means the start is the *neutral flag*, and `BotSetupAlternativeRouteGoals`
+preferred the neutral-flag midpoint whenever the map defined one.
+
+japanesecastles defines one. Quake Live ships several gametypes per map and the
+entity is in the `.bsp` whether or not the gametype uses it, so **this is the
+common case on QL maps, not the exotic one.** The E70 comment already argued the
+other base is the better midpoint — and then the code kept the neutral branch as
+the preferred one, so the better path only ever ran on maps that had no neutral
+flag to prefer.
+
+**Result: 50 retries, 50 zeros, then latched.** The alternative-route table was
+empty for the entire match. With no alternatives AAS hands every bot with the
+same goal the same cheapest reachability chain, so a whole team files out of one
+door — exactly the reported symptom, going back to *"the bots will leave out the
+left side only."*
+
+**Fix:** `GT_CTF` routes base to base unconditionally. The neutral flag is still
+resolved, because One Flag CTF genuinely uses it.
+
+#### And "yet" was the wrong word
+
+`AAS_AreaRouteToGoalArea` rejects an area with **no reachabilities** outright —
+the `numreachableareas` test in `be_aas_route.c`. That is a permanent no, not a
+cold cache that will warm up. The diagnostic said "yet" to it 50 times, which
+sent the diagnosis after a warm-up problem that did not exist while the real
+fault — a start area sitting on an entity nothing can walk to — printed in the
+same words and read as noise.
+
+`be_aas_routealt.c` now tells the two apart and names **which end** is at fault,
+since the caller passes two areas and usually only one is wrong:
+
+```
+alt routes: the start area (start 1109 DEAD, goal 1169) has no reachabilities -
+nothing can walk to or from it, and retrying will not change that
+```
+
+**To verify:** `alternate routes toward the red base: N` with **N > 0**, once,
+early, and no `DEAD` in the log. Then bots should use both exits.
+
+### E83. The CTF role census counted attackers as defenders, and could not recover — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+62 bots, and every one of them on `LTG_GETFLAG`. Twenty-two shuffling on one
+staircase. 87 role decisions in the match, of which **87 chose attack**, and not
+one `over-subscribed, re-deciding` line in four thousand lines of log.
+
+**The census measured where bodies were, not what they were doing**, and those
+two diverge in exactly one place: the start of an attacking run. An attacker
+always begins inside its own base, because that is where it spawns. Position
+calls it a defender.
+
+The last decision before the pile-up:
+
+```
+Lucy: ctf role 0 (team 32, want 12.9/12.7/0.0/6.4, have 3/28/0/0)
+```
+
+`have[ATTACK]` is 3 and `have[DEFEND]` is 28, while the map report has all 62
+bots holding `LTG_GETFLAG`. The order is `attack, defend, escort, roam`, so that
+line reads: *three attackers on a team of 32 where everybody is attacking.*
+
+**It is a loop, and it tightens:**
+
+```
+bots jam in their own base
+  -> position counts the jam as 28 defenders, 3 attackers
+    -> attack looks 10 short of quota, so every decision picks attack
+      -> BotCTFRoleCrowded never fires, so no bot ever re-decides
+        -> another attacker joins the jam, which is in its own base
+```
+
+The fuller the jam gets, the emptier attack looks. `CTF_GETFLAG_TIME` is ten
+minutes and the "already has a team goal" gate returns for all of it, so once
+the loop closes nothing reopens it. The role decisions in the log stop dead at
+line 3115 — every one of them is a bot *joining* — and the remaining thousand
+lines contain none.
+
+**Fix:** a declared job decides for a bot that has one; position decides for
+everyone else.
+
+This reverses the E67 fix, so both halves of that history matter. Position came
+from Xonotic's `havocbot_ctf_teamcount`, and it fixed a real bug: defenders were
+being converted the moment our flag was taken, the census read nought defenders
+because it was reading intentions, and the picker reissued an order destroyed
+before anyone acted on it. **That protection is kept, not traded away** — a bot
+whose goal was destroyed has `ltgtype` 0 and still falls through to position, so
+a body standing in the flag room with no declared goal is still counted as
+holding it. What changes is only that a *declared* goal is no longer overridden
+by standing where that goal starts.
+
+Escort was already carved out of the position test for the same reason (E67's
+cap read `have 26/5/0/0` with 148 of 228 stuck episodes in `LTG_TEAMACCOMPANY`,
+so the cap silently stopped capping). This makes the other three consistent with
+it rather than leaving escort the exception.
+
+#### The census now prints
+
+Nothing printed `have`/`want` unless a bot re-decided — which in the failing case
+is precisely what stopped happening, so the only trace of a match-long fault was
+**the absence of a line**. Nobody notices an absence in a four-thousand-line log.
+The map report now carries it per team:
+
+```
+red roles (32): attack 24/12.9^3(full)^7 defend 4/12.7 escort 0/0.0 roam 4/6.4
+```
+
+`(full)` marks a role over quota, which is what makes a bot re-decide — the
+difference between a mix that is working and one that cannot correct itself.
+
+**To verify:** `attack` should go over quota and pick up `(full)`, `defend`
+should climb off zero, and `over-subscribed, re-deciding` should appear in the
+log. Room spread should follow.
+
 ### E82. The build never read its own dependency files — TOOLING ERROR, FIXED
 **Lives in:** the **build**, both binaries · **Seen by:** anyone running a build
 made incrementally — which is every build made while working

@@ -1007,6 +1007,11 @@ static const char* BotNodeName(bot_state_t* bs) {
     return "?";
 }
 
+/* [QL] Defined below, reported here. Declared rather than moved because the
+   report is the top of the file's reading order and the census is detail. */
+static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize);
+static void BotCTFRoleWanted(bot_state_t* bs, int teamsize, float* want);
+
 /*
 ==================
 BotTacticsReport
@@ -1144,6 +1149,55 @@ void BotTacticsReport(void) {
             for (j = 0; j < numrooms; j++) {
                 G_Printf(" %s %i%s", names[j], counts[j], (j < numrooms - 1) ? "," : "\n");
             }
+        }
+    }
+
+    /*
+    [QL] E83: what the role census believes, per team.
+
+    This number decides every CTF role and nothing printed it unless a bot
+    happened to re-decide, which in the failing case is exactly what stopped
+    happening. A whole match ran with the census reading 28 defenders and 3
+    attackers while all 62 bots held LTG_GETFLAG, and the only trace was the
+    absence of a line. An absence is not something anyone notices in a
+    four-thousand-line log.
+
+    Printed per team rather than per bot: the counts are a team-level fact and
+    one bot of each team is enough to ask.
+    */
+    if (gametype == GT_CTF && bot_tactics.integer) {
+        static const char* rolename[CTFROLE_COUNT] = {"attack", "defend", "escort", "roam"};
+        int t;
+
+        for (t = TEAM_RED; t <= TEAM_BLUE; t++) {
+            float want[CTFROLE_COUNT];
+            int have[CTFROLE_COUNT];
+            int teamsize, j;
+
+            bs = NULL;
+            for (i = 0; i < level.maxclients; i++) {
+                if (botstates[i] && botstates[i]->inuse && g_entities[i].inuse &&
+                    g_entities[i].client &&
+                    g_entities[i].client->sess.sessionTeam == t) {
+                    bs = botstates[i];
+                    break;
+                }
+            }
+            if (!bs) {
+                continue;  // no bots on this team, nothing decided anything
+            }
+            BotCTFRoleCounts(bs, have, &teamsize);
+            BotCTFRoleWanted(bs, teamsize, want);
+
+            G_Printf("%s roles (%i):", t == TEAM_RED ? "red" : "blue", teamsize);
+            for (j = 0; j < CTFROLE_COUNT; j++) {
+                /* over quota is what makes a bot re-decide, so mark it - it is
+                   the difference between a mix that is working and one that
+                   cannot correct itself */
+                G_Printf(" %s %i/%.1f%s", rolename[j], have[j], want[j],
+                         ((float)have[j] >= want[j] + 0.5f) ? "^3(full)^7" : "");
+            }
+            G_Printf("\n");
         }
     }
 }
@@ -1842,42 +1896,67 @@ static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize) {
             continue;  // a corpse is not holding anything
         }
         /*
-        [QL] Where they are, before what they say they are doing.
+        [QL] A declared job first, and position only for whoever has not
+        declared one. This is the reverse of what this census did until E83, and
+        the reversal is the fix for a feedback loop - so both halves of the
+        history matter.
 
-        This is the one idea worth taking wholesale from Xonotic's havocbot: its
-        havocbot_ctf_teamcount counts live team mates within a radius of a
-        point, and roles are decided by comparing bodies near the defence point,
-        the middle and the offence point. It never asks another bot what its
-        goal is.
+        Position came from Xonotic's havocbot, whose havocbot_ctf_teamcount
+        counts live team mates within a radius of a point and never asks another
+        bot what its goal is. That fixed E67, where every defender was converted
+        to attack the moment our flag was taken, the census read "nought
+        defenders" because it was reading intentions, and the role picker kept
+        reissuing an order that was destroyed before anyone acted on it.
 
-        Counting ltgtype is what hid E67 for three builds. Every defender was
-        being converted to attack the moment our flag was taken, the census read
-        "nought defenders" because it was reading intentions, and the role
-        picker kept issuing an order that was destroyed before anyone acted on
-        it. A census of bodies cannot be lied to that way: a bot standing in the
-        flag room is defending it whatever ltgtype says, and one that gets
-        converted and walks away stops counting when it leaves.
+        But position answers "where is this body", and the role picker is asking
+        "what is this body going to do", and those diverge in exactly one place:
+        the start of an attacking run. An attacker always begins inside its own
+        base, because that is where it spawns. Position calls it a defender.
 
-        Position first, then ltgtype for the ones in neither zone - which is
-        where escorting and roaming actually differ, and position cannot tell
-        them apart.
+        That is survivable at four a side and a runaway at thirty-two. A field
+        log of 62 bots on japanesecastles: every bot on the server holding
+        ltgtype LTG_GETFLAG, the last census before the pile-up reading
+        "have 3/28/0/0", and 87 role decisions of which 87 chose attack. The
+        loop closes on itself -
+
+          bots jam in their own base
+            -> position counts the jam as 28 defenders and 3 attackers
+              -> attack looks 10 short of its quota, so every decision picks it
+                -> BotCTFRoleCrowded never fires, so nobody re-decides
+                  -> another attacker joins the jam, which is in its own base
+
+        - and it cannot recover, because the fuller the jam gets the emptier
+        attack looks. No "over-subscribed, re-deciding" line appears in the whole
+        match. The screenshot is twenty-two bots shuffling on one staircase.
+
+        So: ltgtype decides for a bot that has one, position decides for
+        everyone else. The E67 protection is kept rather than traded away,
+        because the bot whose goal got destroyed has ltgtype 0 and therefore
+        still falls through to position - a body standing in the flag room with
+        no declared goal is still counted as holding it. What changes is only
+        that a *declared* goal is no longer overridden by standing where that
+        goal starts.
+
+        Escort was already carved out of the position test for the same reason
+        (E67's cap read "have 26/5/0/0" with 148 of 228 stuck episodes in
+        LTG_TEAMACCOMPANY, so the cap silently stopped capping). This makes the
+        other three consistent with it instead of leaving escort the exception.
         */
-        /*
-        [QL] Escort is asked of ltgtype first, before position.
-
-        Position is the right signal for attack and defence, which are about
-        holding ground. Escort is not: it is about *who* the bot is following,
-        and an escort standing in the enemy flag room is doing its job, not
-        attacking. Classifying it by position hid every escort behind a zone -
-        a field log on the first build of this census read "have 26/5/0/0" with
-        148 of 228 stuck episodes in LTG_TEAMACCOMPANY, which meant
-        BotCTFRoleCrowded saw nought escorts and the E67 cap silently stopped
-        capping.
-        */
-        if (botstates[i] && botstates[i]->inuse &&
-            botstates[i]->ltgtype == LTG_TEAMACCOMPANY) {
-            have[CTFROLE_ESCORT]++;
-            continue;
+        if (botstates[i] && botstates[i]->inuse) {
+            switch (botstates[i]->ltgtype) {
+                case LTG_GETFLAG:
+                case LTG_ATTACKENEMYBASE:
+                    have[CTFROLE_ATTACK]++;
+                    continue;
+                case LTG_DEFENDKEYAREA:
+                    have[CTFROLE_DEFEND]++;
+                    continue;
+                case LTG_TEAMACCOMPANY:
+                    have[CTFROLE_ESCORT]++;
+                    continue;
+                default:
+                    break;  // no declared job - position answers below
+            }
         }
         VectorSubtract(g_entities[i].r.currentOrigin, ctf_redflag.origin, dir);
         ownd = VectorLength(dir);
@@ -1890,30 +1969,10 @@ static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize) {
         }
         if (ownd < zone) {
             have[CTFROLE_DEFEND]++;
-            continue;
-        }
-        if (enemyd < zone) {
+        } else if (enemyd < zone) {
             have[CTFROLE_ATTACK]++;
-            continue;
-        }
-        if (!botstates[i] || !botstates[i]->inuse) {
+        } else {
             have[CTFROLE_ROAM]++;
-            continue;
-        }
-        switch (botstates[i]->ltgtype) {
-            case LTG_GETFLAG:
-            case LTG_ATTACKENEMYBASE:
-                have[CTFROLE_ATTACK]++;
-                break;
-            case LTG_DEFENDKEYAREA:
-                have[CTFROLE_DEFEND]++;
-                break;
-            case LTG_TEAMACCOMPANY:
-                have[CTFROLE_ESCORT]++;
-                break;
-            default:
-                have[CTFROLE_ROAM]++;
-                break;
         }
     }
     if (*teamsize < 1) {

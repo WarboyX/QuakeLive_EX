@@ -6077,6 +6077,40 @@ void BotSetupAlternativeRouteGoals(void) {
         wants to pick an approach from. No midpoint to synthesise, no risk of
         landing it inside a wall.
         */
+        /*
+        [QL] E84: in two-flag CTF the neutral flag is not a waypoint, it is a
+        leftover, and routing through it produced no alternative routes at all.
+
+        The paragraph above says the other base serves as the midpoint "as well,
+        and better" - and then the code below kept the neutral branch as the
+        preferred one, so the better path was only ever taken on maps that had
+        no neutral flag to prefer. japanesecastles has one. Quake Live ships
+        several gametypes per map and the entity is in the map whether or not
+        the gametype uses it, so this is the common case, not the exotic one.
+
+        The field log is unambiguous once the two lines are read together:
+
+            alt routes: no route from area 1109 to area 1169 yet     (red base)
+            alt routes: no route from area 1109 to area 4040 yet     (blue base)
+
+        Both journeys start in area 1109. Base-to-base routing cannot do that -
+        it would read "1109 to 1169" and "1169 to 1109" - so 1109 is the neutral
+        flag, sitting wherever a gametype nobody is playing left it. Every route
+        query out of it returned 0, 50 retries in a row, and the match ran its
+        whole length with an empty alternative-route table. That is what the
+        report "bots still exit the left side only" is: with no alternatives,
+        AAS hands every bot with the same goal the same cheapest reachability
+        chain, so a team files out of one door.
+
+        And "yet" was the wrong word. AAS_AreaRouteToGoalArea rejects an area
+        with no reachabilities outright (be_aas_route.c, the numreachableareas
+        test), so this was never a cold cache that would warm up - it was a
+        permanent no, retried 50 times and then latched. The diagnostic in
+        be_aas_routealt.c now tells those two apart.
+
+        So: two-flag CTF routes base to base and never consults the neutral
+        flag. It is still resolved, because One Flag CTF genuinely uses it.
+        */
         if (trap_BotGetLevelItemGoal(-1, "Neutral Flag", &ctf_neutralflag) < 0) {
             // not a warning: an ordinary CTF map is not supposed to have one
             ctf_neutralflag.areanum = 0;
@@ -6093,25 +6127,14 @@ void BotSetupAlternativeRouteGoals(void) {
         if (!ctf_blueflag.areanum) {
             trap_BotGetLevelItemGoal(-1, "Blue Flag", &ctf_blueflag);
         }
-        if (ctf_neutralflag.areanum) {
-            red_numaltroutegoals = BotAltRoutes(
-                ctf_neutralflag.origin, ctf_neutralflag.areanum,
-                ctf_redflag.origin, ctf_redflag.areanum,
-                red_altroutegoals, "toward the red base");
-            blue_numaltroutegoals = BotAltRoutes(
-                ctf_neutralflag.origin, ctf_neutralflag.areanum,
-                ctf_blueflag.origin, ctf_blueflag.areanum,
-                blue_altroutegoals, "toward the blue base");
-        } else {
-            red_numaltroutegoals = BotAltRoutes(
-                ctf_blueflag.origin, ctf_blueflag.areanum,
-                ctf_redflag.origin, ctf_redflag.areanum,
-                red_altroutegoals, "toward the red base");
-            blue_numaltroutegoals = BotAltRoutes(
-                ctf_redflag.origin, ctf_redflag.areanum,
-                ctf_blueflag.origin, ctf_blueflag.areanum,
-                blue_altroutegoals, "toward the blue base");
-        }
+        red_numaltroutegoals = BotAltRoutes(
+            ctf_blueflag.origin, ctf_blueflag.areanum,
+            ctf_redflag.origin, ctf_redflag.areanum,
+            red_altroutegoals, "toward the red base");
+        blue_numaltroutegoals = BotAltRoutes(
+            ctf_redflag.origin, ctf_redflag.areanum,
+            ctf_blueflag.origin, ctf_blueflag.areanum,
+            blue_altroutegoals, "toward the blue base");
         /*
         [QL] And do not latch a failure. If the flag areas were not resolved
         there is nothing to remember, and the next bot to finish setting up

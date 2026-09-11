@@ -126,11 +126,37 @@ int AAS_AlternativeRouteGoals(vec3_t start, int startareanum, vec3_t goal, int g
 
     Saying so is the difference between "this map has no alternative routes" and
     "you asked too early", which are the same silence and opposite problems.
+
+    [QL] E84: and there is a third thing a zero can mean, which is the one that
+    actually happened. AAS_AreaRouteToGoalArea refuses outright when either area
+    has no reachabilities of its own (the numreachableareas test in
+    be_aas_route.c) - that is a permanent no, not a cold cache. Saying "yet" to
+    it sent a field diagnosis after a warm-up problem that did not exist while
+    the real fault, a start area sitting on an entity nothing can walk to, was
+    printed 50 times in the same words and read as noise each time. Name the two
+    apart, and name which end is at fault, because the caller passes two areas
+    and only one of them is usually wrong.
     */
     if (!goaltraveltime) {
-        botimport.Print(PRT_MESSAGE,
-                        "alt routes: no route from area %d to area %d yet\n",
-                        startareanum, goalareanum);
+        qboolean startdead = !aasworld.areasettings[startareanum].numreachableareas;
+        qboolean goaldead = !aasworld.areasettings[goalareanum].numreachableareas;
+
+        if (startdead || goaldead) {
+            botimport.Print(PRT_MESSAGE,
+                            "alt routes: %s area (start %d%s, goal %d%s) has no "
+                            "reachabilities - nothing can walk to or from it, and "
+                            "retrying will not change that\n",
+                            (startdead && goaldead) ? "both the start and goal"
+                                                    : (startdead ? "the start" : "the goal"),
+                            startareanum, startdead ? " DEAD" : "",
+                            goalareanum, goaldead ? " DEAD" : "");
+        } else {
+            botimport.Print(PRT_MESSAGE,
+                            "alt routes: no route from area %d to area %d yet "
+                            "(both areas are walkable, so this is a cold routing "
+                            "cache and should succeed on a retry)\n",
+                            startareanum, goalareanum);
+        }
         return 0;
     }
     // clear the midrange areas
