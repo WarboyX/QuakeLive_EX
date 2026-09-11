@@ -1738,22 +1738,52 @@
             rect 30 208 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
 
-        // ---- what is not here yet, and why -----------------------------------
+        // ---- ambient occlusion -----------------------------------------------
+        //
+        // Every row here is now backed by a cvar the renderer reads, which is
+        // what it was waiting for. They are not gated on r_rtActive: cvarTest
+        // takes one cvar and these each need their own, and a control that is
+        // present but has no effect until ray query is on is better than one
+        // that vanishes with no explanation of where it went. The status rows
+        // at the top of the page are what say whether it can work.
         itemDef {
             name hdrao  text "AMBIENT OCCLUSION"  textscale .24
-            rect 20 246 260 18  textaligny 14  forecolor .6 .6 .6 1  visible 1  decoration
+            rect 20 246 260 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        itemDef { text "Ambient occlusion:"  textscale .22  rect 30 268 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name aoenable  type ITEM_TYPE_YESNO  text ""  cvar "r_rtao"
+            rect 230 268 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Radius:"  textscale .22  rect 30 290 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name aoradius  type ITEM_TYPE_SLIDER  text ""
+            cvarFloat "r_rtaoRadius" 64 8 512
+            rect 230 290 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Strength:"  textscale .22  rect 30 312 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name aostrength  type ITEM_TYPE_SLIDER  text ""
+            cvarFloat "r_rtaoIntensity" 0.8 0 1
+            rect 230 312 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef { text "Rays per pixel:"  textscale .22  rect 30 334 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name aosamples  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoSamples"
+            cvarFloatList { "2 (fastest)" 2 "4" 4 "8" 8 "16 (best)" 16 }
+            rect 230 334 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
         itemDef {
-            text "Not wired up yet - no controls here until there are cvars"  textscale .2
-            rect 30 268 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            text "Rays per pixel is baked into the pipeline - needs APPLY."  textscale .2
+            rect 30 354 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
         itemDef {
-            text "behind them. The shader and the acceleration structures are"  textscale .2
-            rect 30 284 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
-        }
-        itemDef {
-            text "done; the pass that runs them is next."  textscale .2
-            rect 30 300 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            text "Radius and strength take effect immediately."  textscale .2
+            rect 30 370 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
 
         // ---- buttons -----------------------------------------------------------

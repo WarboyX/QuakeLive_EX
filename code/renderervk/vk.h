@@ -300,6 +300,9 @@ void vk_update_mvp( const float *m );
 struct world_s;
 void vk_rt_build_world( const struct world_s *world );
 void vk_rt_destroy_world( void );
+/* [QL] R13 step 3: the ambient occlusion pass. Returns qtrue when it ran and
+   therefore left its own render pass open in place of the main one. */
+qboolean vk_rt_ao( void );
 
 uint32_t vk_tess_index( uint32_t numIndexes, const void *src );
 void vk_bind_index_buffer( VkBuffer buffer, uint32_t offset );
@@ -392,6 +395,12 @@ typedef struct {
 		VkRenderPass bloom_extract;
 		VkRenderPass blur[VK_NUM_BLOOM_PASSES*2]; // horizontal-vertical pairs
 		VkRenderPass post_bloom;
+		/* [QL] R13: same attachments as post_bloom and the same framebuffer,
+		   but with the depth reference in DEPTH_STENCIL_READ_ONLY_OPTIMAL so
+		   the AO shader may sample it. Reading an attachment the subpass can
+		   also write is a feedback loop and is not allowed; read-only is the
+		   exception that makes depth-as-texture legal. */
+		VkRenderPass rtao;
 	} render_pass;
 
 	VkDescriptorPool descriptor_pool;
@@ -519,6 +528,12 @@ typedef struct {
 
 		VkShaderModule dot_fs;
 		VkShaderModule dot_vs;
+
+		/* [QL] R13. Two builds of the AO shader - the _ms one reads a
+		   multisampled depth attachment through sampler2DMS. Which is used is
+		   decided by vkSamples at pipeline creation. */
+		VkShaderModule rtao_fs;
+		VkShaderModule rtao_ms_fs;
 	} modules;
 
 	VkPipelineCache pipelineCache;
@@ -697,6 +712,26 @@ typedef struct {
 		VkDeviceMemory	tlas_memory;
 		VkBuffer		instance_buffer;
 		VkDeviceMemory	instance_memory;
+
+		/* ---- the ambient occlusion pass ---- */
+
+		/* A second view of the depth image with only the DEPTH aspect. The
+		   attachment view carries DEPTH|STENCIL where the format has stencil,
+		   and a combined image sampler must name exactly one aspect - so this
+		   cannot reuse vk.depth_image_view. */
+		VkImageView		depth_view;
+		VkSampler		depth_sampler;
+
+		VkDescriptorSetLayout	set_layout;
+		VkDescriptorPool		pool;
+		VkDescriptorSet			descriptor;
+		VkPipelineLayout		pipeline_layout;
+		VkPipeline				pipeline;
+
+		/* Everything above exists and the pass may run. Separate from
+		   worldBuilt: the structures can be fine while the pass failed to
+		   build, and the two want different messages. */
+		qboolean		aoReady;
 	} rt;
 
 	struct samplers_s {

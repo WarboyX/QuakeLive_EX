@@ -5741,6 +5741,108 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E91. R13 step 3b: the AO pass is wired up — DONE (verify on hardware)
+**Lives in:** our **client** (renderervk + ui) · **Seen by:** our client only
+
+The ray query now runs. Descriptor set, render pass, pipeline, push constants,
+the per-frame draw, four cvars and the menu rows behind them.
+
+```
+r_rt 1            (needs APPLY / vid_restart)
+r_rtao 1
+```
+
+#### Where it sits in the frame, and why
+
+Asked for as *"AO should come after the main frame buffer but before
+vksamples"*, and that is what it does — but the reason it falls out so cleanly
+is worth recording, because the first read of the code suggested otherwise.
+
+`desc`, `subpass` and `attachments` are **mutated in place** as each render pass
+is built, and are not reset between them. So when MSAA is on, `colorRef0` is
+still attachment **2** — the multisampled image — with `pResolveAttachments`
+pointing at attachment 0, and any pass built from that state inherits both. The
+AO pass therefore multiplies the **samples**, and the resolve happens at the end
+of its own subpass. Anti-aliasing applies on top of AO rather than AO being
+painted over an already-resolved image.
+
+The one change from the post-bloom pass it is otherwise a copy of: `depthRef0`
+is `DEPTH_STENCIL_READ_ONLY_OPTIMAL`. Sampling an attachment the subpass can
+also write is a feedback loop and is not allowed; a read-only depth attachment
+is the sanctioned exception, and it is what lets the shader read the depth it is
+reconstructing world positions from. The framebuffer is reused unchanged —
+render pass compatibility is about attachment count, formats and sample counts,
+not layouts.
+
+And it runs **before bloom**, at the same 3D-to-2D hook. Bloom decides what is
+bright enough to glow; the other order lets a corner bloom and *then* be
+darkened, which reads as light leaking out of a shadow.
+
+#### A dependency that would have failed as a black screen
+
+`attachments[2].storeOp` was `STORE` only `if ( r_bloom->integer )` — otherwise
+`DONT_CARE`, and the driver may discard the multisampled colour the moment the
+main pass ends. The AO pass would then load undefined contents, multiply them by
+the occlusion term and resolve *that* to the screen. Now keyed on
+`r_bloom->integer || vk.rtActive`.
+
+Keyed on `rtActive` and not `r_rtao` on purpose: `r_rtao` is not latched and can
+be toggled mid-match, so the render pass has to be ready for AO at any time.
+
+#### Things that are easy to get wrong and are not
+
+- **The specialization block.** The eleven existing entries map constant ids
+  belonging to the gamma and bloom shaders, and id 0 there is a *float* gamma.
+  `rtao` declares id 0 as an *int* sample count. Handing it the shared block
+  feeds a float's bit pattern to an int and asks for millions of rays per pixel.
+  It gets its own block.
+- **The blend is multiplicative** (`DST_COLOR`/`ZERO`), not the additive
+  `ONE`/`ONE` every other post pass here uses. AO darkens what is already there;
+  an additive blend of a term near 1.0 washes the scene out instead.
+- **Alpha is masked out of the write.** The shader writes the occlusion value to
+  all four channels and only rgb should act on it.
+- **The acceleration structure rides in `pNext`** of the descriptor write, not
+  in `pImageInfo` or `pBufferInfo` — it is neither. A write with the right
+  `descriptorType` and no such `pNext` is silently nothing.
+- **The descriptor is rewritten on every map load**, because the TLAS is rebuilt
+  then and the old handle is freed. Pointing at the destroyed one is a
+  use-after-free the validation layers catch and a driver may not.
+- **A depth-aspect-only image view.** `vk.depth_image_view` carries
+  `DEPTH|STENCIL` where the format has stencil, and a combined image sampler
+  must name exactly one aspect — so this is a second view of the same image.
+- **`NEAREST` filtering, and it matters.** Averaging two depths describes a
+  surface that is not there, half way between them, and AO would trace from
+  inside geometry along every silhouette.
+- **Rebuilt on swapchain restart.** A resize recreates the depth image and the
+  render pass, so the view, descriptor and pipeline all point at destroyed
+  objects.
+
+#### The matrix inverse is verified, not assumed
+
+Reconstructing world position from depth needs clip→world, the opposite of every
+other matrix here, and there was no inverse in the tree. Written as a **general**
+4×4 inverse rather than by unpicking the projection's form — this renderer uses
+reversed depth, and hand-derived projection maths is exactly the thing that is
+right on one machine and subtly wrong after the next change.
+
+Tested standalone against a reversed-depth projection times a rotated,
+translated view: `VP * inv(VP)` comes back as the identity to 1e-4.
+
+#### What is not here yet
+
+**No denoise.** Four rays per pixel with a per-pixel rotation is noisy by
+construction — the rotation turns banding into noise, and something has to
+remove the noise afterwards. A spatial blur is the next step and is what will
+make this look finished rather than grainy. Expect it to look rough.
+
+**Static world only.** Players and models are not in the acceleration structure,
+so they neither occlude nor receive. That is step 4.
+
+**To verify:** `RT AO: pass ready` at startup, then `r_rtao 1` in a map. Corners
+and the undersides of things should darken. If the whole screen goes black the
+surface bias is too small for this map's scale; if nothing at all changes,
+`r_rtActive` and the `RT:` lines are where the answer is.
+
 ### E90. A ray tracing page under Render Options — DONE (verify)
 **Lives in:** our **client** (`ui`) · **Seen by:** our client only
 

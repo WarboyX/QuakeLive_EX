@@ -1205,6 +1205,11 @@ static const void *RB_StretchPic( const void *data ) {
 	RB_SetGL2D();
 
 #ifdef USE_VULKAN
+	/* [QL] R13: AO before bloom, deliberately. AO darkens the lit image and
+	   bloom decides what is bright enough to glow - the other order lets a
+	   corner bloom and then be darkened, which reads as light leaking out of a
+	   shadow. Both are no-ops when their cvar is off. */
+	vk_rt_ao();
 	if ( r_bloom->integer ) {
 		vk_bloom();
 	}
@@ -1692,6 +1697,11 @@ static const void *RB_FinishBloom( const void *data )
 	RB_EndSurface();
 
 #ifdef USE_VULKAN
+	/* [QL] R13: AO before bloom, deliberately. AO darkens the lit image and
+	   bloom decides what is bright enough to glow - the other order lets a
+	   corner bloom and then be darkened, which reads as light leaking out of a
+	   shadow. Both are no-ops when their cvar is off. */
+	vk_rt_ao();
 	if ( r_bloom->integer ) {
 		vk_bloom();
 	}
@@ -1780,6 +1790,7 @@ static const void *RB_SwapBuffers( const void *data ) {
 	backEnd.drawConsole = qfalse;
 #ifdef USE_VULKAN
 	backEnd.doneBloom = qfalse;
+	backEnd.doneRTAO = qfalse;	// [QL] R13, same lifetime as bloom
 #endif
 
 	return (const void *)(cmd + 1);

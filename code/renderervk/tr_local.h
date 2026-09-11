@@ -1162,6 +1162,9 @@ typedef struct {
 
 	qboolean screenMapDone;
 	qboolean doneBloom;
+	/* [QL] R13: the AO pass runs once per frame, like bloom. The 3D-to-2D
+	   transition it hangs off can be reached more than once in a frame. */
+	qboolean doneRTAO;
 
 } backEndState_t;
 
@@ -1392,6 +1395,10 @@ extern	cvar_t	*r_vertexLight;					// vertex lighting mode for better performance
 extern	cvar_t	*r_showtris;					// enables wireframe rendering of the world
 extern	cvar_t	*r_showsky;						// forces sky in front of all surfaces
 extern	cvar_t	*r_rt;							// [QL] R13: enable ray query on the device (latched)
+extern	cvar_t	*r_rtao;						// [QL] R13: ray-traced ambient occlusion
+extern	cvar_t	*r_rtaoRadius;					// [QL] R13: trace length, world units
+extern	cvar_t	*r_rtaoIntensity;				// [QL] R13: how far the term may darken
+extern	cvar_t	*r_rtaoSamples;					// [QL] R13: rays per pixel (latched)
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
 

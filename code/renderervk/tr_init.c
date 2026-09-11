@@ -144,6 +144,10 @@ cvar_t	*r_nomip;
 cvar_t	*r_showtris;
 cvar_t	*r_showsky;
 cvar_t	*r_rt;		// [QL] R13
+cvar_t	*r_rtao;
+cvar_t	*r_rtaoRadius;
+cvar_t	*r_rtaoIntensity;
+cvar_t	*r_rtaoSamples;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -1873,6 +1877,33 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( ri.Cvar_Get( "r_rtActive", "0", CVAR_ROM ),
 		"Read-only. 1 when ray query is actually enabled on the device this run, "
 		"as opposed to merely supported." );
+
+	/*
+	[QL] R13 step 3: ambient occlusion.
+
+	Archived, because every one of these is a value somebody sets from the ray
+	tracing menu - the side of the archive rule that archiving is for. Only the
+	sample count latches: it is a specialization constant baked into the
+	pipeline, so changing it means rebuilding the pipeline, and a slider that
+	silently did nothing until the next vid_restart would be worse than one that
+	says it needs one.
+	*/
+	r_rtao = ri.Cvar_Get( "r_rtao", "0", CVAR_ARCHIVE );
+	ri.Cvar_SetDescription( r_rtao, "Ray-traced ambient occlusion. Requires r_rtActive 1." );
+
+	r_rtaoRadius = ri.Cvar_Get( "r_rtaoRadius", "64", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_rtaoRadius, "8", "512", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtaoRadius, "How far ambient occlusion rays travel, in world units. "
+		"Larger darkens broader spaces and costs more to trace." );
+
+	r_rtaoIntensity = ri.Cvar_Get( "r_rtaoIntensity", "0.8", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_rtaoIntensity, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtaoIntensity, "How dark fully occluded areas become. 0 is no effect." );
+
+	r_rtaoSamples = ri.Cvar_Get( "r_rtaoSamples", "4", CVAR_ARCHIVE | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_rtaoSamples, "1", "32", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoSamples, "Rays per pixel. Baked into the pipeline, so this "
+		"needs a vid_restart." );
 
 	r_device = ri.Cvar_Get( "r_device", "-1", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_device, "-2", NULL, CV_INTEGER );

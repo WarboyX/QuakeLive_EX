@@ -789,8 +789,18 @@ static void vk_create_render_passes( void )
 #else
 		attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 #endif
-		if ( r_bloom->integer ) {
-			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // keep it for post-bloom pass
+		/*
+		[QL] R13: ...or for the AO pass, which is the other thing that renders
+		into this image after the main pass has ended.
+
+		Easy to miss and it fails as a black or garbage screen rather than as an
+		error: with DONT_CARE the driver is free to throw the multisampled
+		colour away the moment the main pass finishes, and the AO pass then
+		loads undefined contents, multiplies them by the occlusion term and
+		resolves that to the screen.
+		*/
+		if ( r_bloom->integer || vk.rtActive ) {
+			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // keep it for post-bloom / AO pass
 		} else {
 			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // Intermediate storage (not written)
 		}
@@ -854,6 +864,49 @@ static void vk_create_render_passes( void )
 
 	VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.main ) );
 	SET_OBJECT_NAME( vk.render_pass.main, "render pass - main", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
+
+	/*
+	[QL] R13: the ambient occlusion pass.
+
+	Structurally the post-bloom pass with one change, and the change is the
+	whole point: depthRef0 is DEPTH_STENCIL_READ_ONLY_OPTIMAL rather than
+	DEPTH_STENCIL_ATTACHMENT_OPTIMAL. Sampling an image the subpass can also
+	write is a feedback loop and is not allowed; a read-only depth attachment is
+	the sanctioned exception, and it is what makes depth-as-texture legal in the
+	same pass that still depth-tests against it.
+
+	Created here rather than after the bloom block because desc/subpass/
+	attachments are mutated in place as each pass is built, and at this point
+	they still describe the main pass - which is what this wants, bar the load
+	operations below.
+
+	Note what it inherits under MSAA, which is the reason this lands where the
+	rest of the frame wants it: colorRef0 is attachment 2 (the multisampled
+	image) with pResolveAttachments pointing at attachment 0. So the occlusion
+	term multiplies the samples and the resolve happens afterwards, rather than
+	being painted over an already-resolved image. Anti-aliasing therefore
+	applies on top of AO rather than the other way round.
+	*/
+	{
+		const VkImageLayout savedDepthLayout = depthRef0.layout;
+
+		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // whatever the scene drew
+		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // the depth we are about to read
+		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		if ( vk.msaaActive ) {
+			attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;  // bloom may still follow
+		}
+
+		depthRef0.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.rtao ) );
+		SET_OBJECT_NAME( vk.render_pass.rtao, "render pass - rtao", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
+
+		depthRef0.layout = savedDepthLayout;
+	}
 
 	if ( r_bloom->integer ) {
 
@@ -3532,6 +3585,293 @@ static qboolean rt_build_acceleration_structure(
 }
 
 
+/*
+=================
+[QL] R13 step 3b: the ambient occlusion pass.
+
+Descriptor set is {0: depth sampler, 1: the top-level acceleration structure}.
+Push constants carry the inverse view-projection, the eye, and the four tuning
+values, which is 96 bytes - inside the 128 every implementation guarantees, so
+no uniform buffer and no per-frame descriptor churn.
+=================
+*/
+
+typedef struct {
+	float invViewProj[16];
+	float eye[4];
+	float params[4];   // radius, intensity, frame, bias
+} rtaoPush_t;
+
+
+/* Defined below, called from vk_rt_create_ao above it. Declared rather than
+   reordered because create/destroy belong next to each other. */
+static void vk_rt_update_ao_descriptor( void );
+
+
+static void vk_rt_destroy_ao( void )
+{
+	if ( vk.rt.pipeline != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline, NULL );
+		vk.rt.pipeline = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.rt.pipeline_layout, NULL );
+		vk.rt.pipeline_layout = VK_NULL_HANDLE;
+	}
+	/* the set is freed with the pool, so it is not freed separately */
+	if ( vk.rt.pool != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorPool( vk.device, vk.rt.pool, NULL );
+		vk.rt.pool = VK_NULL_HANDLE;
+		vk.rt.descriptor = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.rt.set_layout, NULL );
+		vk.rt.set_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.depth_sampler != VK_NULL_HANDLE ) {
+		qvkDestroySampler( vk.device, vk.rt.depth_sampler, NULL );
+		vk.rt.depth_sampler = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.depth_view != VK_NULL_HANDLE ) {
+		qvkDestroyImageView( vk.device, vk.rt.depth_view, NULL );
+		vk.rt.depth_view = VK_NULL_HANDLE;
+	}
+	vk.rt.aoReady = qfalse;
+}
+
+
+/*
+=================
+vk_rt_create_ao
+
+Built after the attachments exist, because it needs a view onto the depth image.
+Any failure leaves aoReady false and says why - the pass then does nothing and
+the rest of the renderer is untouched.
+=================
+*/
+static void vk_rt_create_ao( void )
+{
+	VkDescriptorSetLayoutBinding bindings[2];
+	VkDescriptorSetLayoutCreateInfo layout_desc;
+	VkDescriptorPoolSize pool_sizes[2];
+	VkDescriptorPoolCreateInfo pool_desc;
+	VkDescriptorSetAllocateInfo set_alloc;
+	VkPushConstantRange push_range;
+	VkPipelineLayoutCreateInfo pl_desc;
+	VkImageViewCreateInfo view_desc;
+	VkSamplerCreateInfo sampler_desc;
+	VkResult res;
+
+	vk_rt_destroy_ao();
+
+	if ( !vk.rtActive || !vk.rtDepthSampled || vk.depth_image == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	/*
+	A depth-aspect-only view. vk.depth_image_view carries DEPTH|STENCIL where
+	the format has stencil, and a combined image sampler must name exactly one
+	aspect - so this is a second view of the same image rather than a reuse.
+	*/
+	Com_Memset( &view_desc, 0, sizeof( view_desc ) );
+	view_desc.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	view_desc.image = vk.depth_image;
+	view_desc.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	view_desc.format = vk.depth_format;
+	view_desc.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	view_desc.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	view_desc.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	view_desc.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	view_desc.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	view_desc.subresourceRange.baseMipLevel = 0;
+	view_desc.subresourceRange.levelCount = 1;
+	view_desc.subresourceRange.baseArrayLayer = 0;
+	view_desc.subresourceRange.layerCount = 1;
+
+	res = qvkCreateImageView( vk.device, &view_desc, NULL, &vk.rt.depth_view );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: depth view failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
+	/*
+	NEAREST and CLAMP_TO_EDGE. Depth is not a colour and must not be filtered -
+	averaging two depths produces a value describing a surface that is not
+	there, half way between the two, and the AO would trace from inside
+	geometry along every silhouette. The multisampled build does not use the
+	sampler's filtering at all (texelFetch ignores it) but still needs one
+	bound.
+	*/
+	Com_Memset( &sampler_desc, 0, sizeof( sampler_desc ) );
+	sampler_desc.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sampler_desc.magFilter = VK_FILTER_NEAREST;
+	sampler_desc.minFilter = VK_FILTER_NEAREST;
+	sampler_desc.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	sampler_desc.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.maxAnisotropy = 1.0f;
+	sampler_desc.minLod = 0.0f;
+	sampler_desc.maxLod = 0.0f;
+	sampler_desc.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+
+	res = qvkCreateSampler( vk.device, &sampler_desc, NULL, &vk.rt.depth_sampler );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: sampler failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
+	// ---- descriptor set layout ----
+	Com_Memset( bindings, 0, sizeof( bindings ) );
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	Com_Memset( &layout_desc, 0, sizeof( layout_desc ) );
+	layout_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layout_desc.bindingCount = 2;
+	layout_desc.pBindings = bindings;
+
+	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.rt.set_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: descriptor set layout failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
+	// ---- pool and set ----
+	Com_Memset( pool_sizes, 0, sizeof( pool_sizes ) );
+	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	pool_sizes[0].descriptorCount = 1;
+	pool_sizes[1].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	pool_sizes[1].descriptorCount = 1;
+
+	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
+	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_desc.maxSets = 1;
+	pool_desc.poolSizeCount = 2;
+	pool_desc.pPoolSizes = pool_sizes;
+
+	res = qvkCreateDescriptorPool( vk.device, &pool_desc, NULL, &vk.rt.pool );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: descriptor pool failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
+	Com_Memset( &set_alloc, 0, sizeof( set_alloc ) );
+	set_alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	set_alloc.descriptorPool = vk.rt.pool;
+	set_alloc.descriptorSetCount = 1;
+	set_alloc.pSetLayouts = &vk.rt.set_layout;
+
+	res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.rt.descriptor );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: descriptor set failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
+	// ---- pipeline layout ----
+	Com_Memset( &push_range, 0, sizeof( push_range ) );
+	push_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	push_range.offset = 0;
+	push_range.size = sizeof( rtaoPush_t );
+
+	Com_Memset( &pl_desc, 0, sizeof( pl_desc ) );
+	pl_desc.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl_desc.setLayoutCount = 1;
+	pl_desc.pSetLayouts = &vk.rt.set_layout;
+	pl_desc.pushConstantRangeCount = 1;
+	pl_desc.pPushConstantRanges = &push_range;
+
+	res = qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.rt.pipeline_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: pipeline layout failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
+	vk_create_post_process_pipeline( 4, glConfig.vidWidth, glConfig.vidHeight );
+	if ( vk.rt.pipeline == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "RT AO: pipeline failed\n" );
+		vk_rt_destroy_ao();
+		return;
+	}
+
+	vk.rt.aoReady = qtrue;
+
+	/* If a world is already loaded - which it is on a vid_restart mid-match -
+	   point the set at its structure now. Harmless before the first map, where
+	   the world build does it instead. */
+	vk_rt_update_ao_descriptor();
+
+	ri.Printf( PRINT_ALL, "RT AO: pass ready (%s depth)\n",
+		vkSamples != VK_SAMPLE_COUNT_1_BIT ? "multisampled" : "single-sample" );
+}
+
+
+/*
+=================
+vk_rt_update_ao_descriptor
+
+The depth view changes with every vid_restart and the acceleration structure
+with every map, so the set is written when both exist rather than once.
+=================
+*/
+static void vk_rt_update_ao_descriptor( void )
+{
+	VkWriteDescriptorSetAccelerationStructureKHR as_info;
+	VkDescriptorImageInfo image_info;
+	VkWriteDescriptorSet writes[2];
+
+	if ( !vk.rt.aoReady || vk.rt.tlas == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	Com_Memset( &image_info, 0, sizeof( image_info ) );
+	image_info.sampler = vk.rt.depth_sampler;
+	image_info.imageView = vk.rt.depth_view;
+	/* Must match the layout the image is actually in during the draw, which the
+	   render pass puts at DEPTH_STENCIL_READ_ONLY_OPTIMAL for its subpass. */
+	image_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+	Com_Memset( &as_info, 0, sizeof( as_info ) );
+	as_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+	as_info.accelerationStructureCount = 1;
+	as_info.pAccelerationStructures = &vk.rt.tlas;
+
+	Com_Memset( writes, 0, sizeof( writes ) );
+	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[0].dstSet = vk.rt.descriptor;
+	writes[0].dstBinding = 0;
+	writes[0].descriptorCount = 1;
+	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[0].pImageInfo = &image_info;
+
+	/* The acceleration structure rides in pNext rather than in a pBufferInfo or
+	   pImageInfo - it is neither, and the handle is carried by the extension
+	   struct. A write with descriptorType ACCELERATION_STRUCTURE_KHR and no
+	   such pNext is silently nothing. */
+	writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[1].pNext = &as_info;
+	writes[1].dstSet = vk.rt.descriptor;
+	writes[1].dstBinding = 1;
+	writes[1].descriptorCount = 1;
+	writes[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+
+	qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
+}
+
+
 void vk_rt_destroy_world( void )
 {
 	if ( !vk.rt.worldBuilt && vk.rt.blas == VK_NULL_HANDLE ) {
@@ -3747,6 +4087,13 @@ void vk_rt_build_world( const world_t *world )
 	}
 
 	vk.rt.worldBuilt = qtrue;
+
+	/* The AO descriptor names this TLAS, so it has to be rewritten whenever the
+	   structure is rebuilt - which is every map load. Pointing at the destroyed
+	   one from the previous map is a use-after-free the validation layers catch
+	   and a driver may not. */
+	vk_rt_update_ao_descriptor();
+
 	ri.Printf( PRINT_ALL, "RT: world acceleration structure ready\n" );
 }
 
@@ -3955,6 +4302,21 @@ static void vk_create_shader_modules( void )
 
 	SET_OBJECT_NAME( vk.modules.gamma_fs, "gamma post-processing fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	SET_OBJECT_NAME( vk.modules.gamma_vs, "gamma post-processing vertex module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+
+	/*
+	[QL] R13. Only when ray query is on: these are SPIR-V 1.4 modules using
+	GL_EXT_ray_query, and handing one to vkCreateShaderModule on a device that
+	did not enable the extension is not something to do for the sake of
+	symmetry. The vertex stage is gamma_vs, which is already the fullscreen
+	quad every post-process pass here draws with.
+	*/
+	if ( vk.rtActive ) {
+		vk.modules.rtao_fs = SHADER_MODULE( rtao_frag_spv );
+		vk.modules.rtao_ms_fs = SHADER_MODULE( rtao_frag_ms_spv );
+
+		SET_OBJECT_NAME( vk.modules.rtao_fs, "rt ambient occlusion fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+		SET_OBJECT_NAME( vk.modules.rtao_ms_fs, "rt ambient occlusion fragment module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+	}
 }
 
 
@@ -4948,6 +5310,12 @@ static void vk_restart_swapchain( const char *funcname, VkResult res )
 	vk_update_attachment_descriptors();
 
 	vk_update_post_process_pipelines();
+
+	/* [QL] R13: the depth image and the render pass were both just recreated,
+	   so the AO view, descriptor and pipeline all refer to destroyed objects.
+	   Rebuilt rather than patched - this path is a window resize, not a hot
+	   loop. */
+	vk_rt_create_ao();
 }
 
 
@@ -5523,6 +5891,16 @@ void vk_initialize( void )
 	// framebuffers for each swapchain image
 	vk_create_framebuffers();
 
+	/*
+	[QL] R13: the AO pass, after the attachments and render passes it needs.
+
+	It wants the depth image (for a view onto it) and vk.render_pass.rtao (for
+	the pipeline), so it cannot be built with the rest of the ray tracing state
+	in vk_create_device - the attachments do not exist that early. A no-op
+	unless ray query is enabled and the device agreed depth could be sampled.
+	*/
+	vk_rt_create_ao();
+
 	// preallocate staging buffer
 	if ( vk.defaults.staging_size == STAGING_BUFFER_SIZE_HI ) {
 		vk_alloc_staging_buffer( vk.defaults.staging_size );
@@ -5634,6 +6012,11 @@ static void vk_destroy_render_passes( void )
 		vk.render_pass.post_bloom = VK_NULL_HANDLE;
 	}
 
+	if ( vk.render_pass.rtao != VK_NULL_HANDLE ) {   // [QL] R13
+		qvkDestroyRenderPass( vk.device, vk.render_pass.rtao, NULL );
+		vk.render_pass.rtao = VK_NULL_HANDLE;
+	}
+
 	if ( vk.render_pass.screenmap != VK_NULL_HANDLE ) {
 		qvkDestroyRenderPass( vk.device, vk.render_pass.screenmap, NULL );
 		vk.render_pass.screenmap = VK_NULL_HANDLE;
@@ -5742,6 +6125,7 @@ void vk_shutdown( refShutdownCode_t code )
 	/* [QL] R13: before the device goes. These are device-local allocations and
 	   acceleration structure handles; outliving vk.device would leak them and
 	   then free them against a destroyed device on the next vid_restart. */
+	vk_rt_destroy_ao();
 	vk_rt_destroy_world();
 
 	vk_clean_staging_buffer();
@@ -6327,6 +6711,12 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	VkSampleCountFlagBits samples;
 	const char *pipeline_name;
 	qboolean blend;
+	/* [QL] R13: AO modulates rather than adds, which the ONE/ONE below cannot
+	   express, and it carries its own specialization constant. */
+	qboolean multiply = qfalse;
+	VkSpecializationMapEntry ao_spec_entry;
+	VkSpecializationInfo ao_spec_info;
+	int ao_sample_count;
 
 	struct FragSpecData {
 		float gamma;
@@ -6369,6 +6759,23 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			samples = VK_SAMPLE_COUNT_1_BIT;
 			pipeline_name = "capture buffer pipeline";
 			blend = qfalse;
+			break;
+		case 4: // [QL] R13 ray-traced ambient occlusion
+			pipeline = &vk.rt.pipeline;
+			/* The multisampled build reads depth with sampler2DMS. Chosen by
+			   vkSamples and not by a cvar, because it has to match the depth
+			   attachment that actually exists. */
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_ms_fs : vk.modules.rtao_fs;
+			renderpass = vk.render_pass.rtao;
+			layout = vk.rt.pipeline_layout;
+			/* Must match the render pass, which under MSAA targets the
+			   multisampled colour image and resolves afterwards - so occlusion
+			   lands on the samples and anti-aliasing applies on top of it,
+			   rather than AO being painted over an already-resolved image. */
+			samples = vkSamples;
+			pipeline_name = "rt ambient occlusion pipeline";
+			blend = qfalse;
+			multiply = qtrue;
 			break;
 		default: // gamma correction
 			pipeline = &vk.gamma_pipeline;
@@ -6462,6 +6869,35 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 
 	shader_stages[1].pSpecializationInfo = &frag_spec_info;
 
+	/*
+	[QL] R13: the AO shader gets its own specialization block.
+
+	The eleven entries above map constant ids belonging to the gamma and bloom
+	shaders, and id 0 there is a float "gamma". rtao declares id 0 as an int
+	sample count, so handing it that block feeds a float's bit pattern to an int
+	and asks for a sample count in the millions. Different shader, different
+	constants - only the ids a shader actually declares may be supplied.
+	*/
+	if ( program_index == 4 ) {
+		ao_sample_count = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
+		if ( ao_sample_count < 1 ) {
+			ao_sample_count = 4;
+		} else if ( ao_sample_count > 32 ) {
+			ao_sample_count = 32;  // the loop is unrolled at this constant; not a slider to open up
+		}
+
+		ao_spec_entry.constantID = 0;
+		ao_spec_entry.offset = 0;
+		ao_spec_entry.size = sizeof( ao_sample_count );
+
+		ao_spec_info.mapEntryCount = 1;
+		ao_spec_info.pMapEntries = &ao_spec_entry;
+		ao_spec_info.dataSize = sizeof( ao_sample_count );
+		ao_spec_info.pData = &ao_sample_count;
+
+		shader_stages[1].pSpecializationInfo = &ao_spec_info;
+	}
+
 	//
 	// Primitive assembly.
 	//
@@ -6538,6 +6974,20 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 		attachment_blend_state.blendEnable = VK_TRUE;
 		attachment_blend_state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
 		attachment_blend_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	} else if ( multiply ) {
+		/* [QL] dst * src. Ambient occlusion darkens what is already there - it
+		   does not add light, and an additive blend of a term near 1.0 would
+		   wash the scene out instead of shading it. Alpha is left alone: the
+		   shader writes the occlusion value to all four channels and only rgb
+		   should act on it. */
+		attachment_blend_state.blendEnable = VK_TRUE;
+		attachment_blend_state.srcColorBlendFactor = VK_BLEND_FACTOR_DST_COLOR;
+		attachment_blend_state.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+		attachment_blend_state.colorBlendOp = VK_BLEND_OP_ADD;
+		attachment_blend_state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		attachment_blend_state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		attachment_blend_state.alphaBlendOp = VK_BLEND_OP_ADD;
+		attachment_blend_state.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
 	} else {
 		attachment_blend_state.blendEnable = VK_FALSE;
 	}
@@ -8437,6 +8887,27 @@ void vk_begin_post_bloom_render_pass( void )
 }
 
 
+/*
+[QL] R13. Same framebuffer as the main pass - render pass compatibility is about
+attachment count, formats and sample counts, not layouts, so vk.render_pass.rtao
+can use vk.framebuffers.main despite referencing depth read-only.
+*/
+static void vk_begin_rtao_render_pass( void )
+{
+	VkFramebuffer frameBuffer = vk.framebuffers.main[ vk.cmd->swapchain_image_index ];
+
+	/* Deliberately not setting vk.renderPassIndex: that selects which cached
+	   pipeline variant the generic geometry path binds, and this pass binds one
+	   pipeline of its own and draws four vertices. Bloom extract does the same
+	   and says so. */
+	vk.renderWidth = glConfig.vidWidth;
+	vk.renderHeight = glConfig.vidHeight;
+	vk.renderScaleX = vk.renderScaleY = 1.0f;
+
+	vk_begin_render_pass( vk.render_pass.rtao, frameBuffer, qfalse, vk.renderWidth, vk.renderHeight );
+}
+
+
 void vk_begin_bloom_extract_render_pass( void )
 {
 	VkFramebuffer frameBuffer = vk.framebuffers.bloom_extract;
@@ -9092,6 +9563,156 @@ void vk_read_pixels( byte *buffer, uint32_t width, uint32_t height )
 
 		end_command_buffer( command_buffer, "restore layout" );
 	}
+}
+
+
+/*
+=================
+[QL] rt_invert_matrix
+
+General 4x4 inverse, column-major, matching the renderer's matrix convention.
+
+Needed because the AO shader goes the other way round from everything else here:
+every other matrix in this renderer takes world to clip, and reconstructing a
+world position from a depth buffer takes clip back to world. Written as a
+general inverse rather than by unpicking the projection's form, because the
+projection here is reversed-depth and the form is exactly the sort of thing that
+would be right on one machine and subtly wrong after the next change to it.
+
+Verified against a reversed-depth projection times a rotated, translated view
+matrix: VP * inv(VP) comes back as the identity to 1e-4.
+=================
+*/
+static qboolean rt_invert_matrix( const float *m, float *out )
+{
+	float inv[16], det;
+	int i;
+
+	inv[0]  =  m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
+	inv[4]  = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15] - m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
+	inv[8]  =  m[4]*m[9]*m[15]  - m[4]*m[11]*m[13] - m[8]*m[5]*m[15] + m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
+	inv[12] = -m[4]*m[9]*m[14]  + m[4]*m[10]*m[13] + m[8]*m[5]*m[14] - m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
+	inv[1]  = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
+	inv[5]  =  m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15] + m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
+	inv[9]  = -m[0]*m[9]*m[15]  + m[0]*m[11]*m[13] + m[8]*m[1]*m[15] - m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
+	inv[13] =  m[0]*m[9]*m[14]  - m[0]*m[10]*m[13] - m[8]*m[1]*m[14] + m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
+	inv[2]  =  m[1]*m[6]*m[15]  - m[1]*m[7]*m[14]  - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7]  - m[13]*m[3]*m[6];
+	inv[6]  = -m[0]*m[6]*m[15]  + m[0]*m[7]*m[14]  + m[4]*m[2]*m[15] - m[4]*m[3]*m[14] - m[12]*m[2]*m[7]  + m[12]*m[3]*m[6];
+	inv[10] =  m[0]*m[5]*m[15]  - m[0]*m[7]*m[13]  - m[4]*m[1]*m[15] + m[4]*m[3]*m[13] + m[12]*m[1]*m[7]  - m[12]*m[3]*m[5];
+	inv[14] = -m[0]*m[5]*m[14]  + m[0]*m[6]*m[13]  + m[4]*m[1]*m[14] - m[4]*m[2]*m[13] - m[12]*m[1]*m[6]  + m[12]*m[2]*m[5];
+	inv[3]  = -m[1]*m[6]*m[11]  + m[1]*m[7]*m[10]  + m[5]*m[2]*m[11] - m[5]*m[3]*m[10] - m[9]*m[2]*m[7]   + m[9]*m[3]*m[6];
+	inv[7]  =  m[0]*m[6]*m[11]  - m[0]*m[7]*m[10]  - m[4]*m[2]*m[11] + m[4]*m[3]*m[10] + m[8]*m[2]*m[7]   - m[8]*m[3]*m[6];
+	inv[11] = -m[0]*m[5]*m[11]  + m[0]*m[7]*m[9]   + m[4]*m[1]*m[11] - m[4]*m[3]*m[9]  - m[8]*m[1]*m[7]   + m[8]*m[3]*m[5];
+	inv[15] =  m[0]*m[5]*m[10]  - m[0]*m[6]*m[9]   - m[4]*m[1]*m[10] + m[4]*m[2]*m[9]  + m[8]*m[1]*m[6]   - m[8]*m[2]*m[5];
+
+	det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
+	if ( det == 0.0f ) {
+		return qfalse;
+	}
+	det = 1.0f / det;
+	for ( i = 0; i < 16; i++ ) {
+		out[i] = inv[i] * det;
+	}
+	return qtrue;
+}
+
+
+/*
+=================
+vk_rt_ao
+
+The ambient occlusion pass, run at the 3D-to-2D transition just before bloom.
+
+Order matters and is the reason it sits here rather than at the end of post: AO
+darkens the lit image, and bloom decides what is bright enough to glow. Bloom
+first would let a corner bloom and *then* be darkened, which reads as light
+leaking out of a shadow.
+
+Leaves its own render pass open rather than reopening the main one. Reopening
+main would clear - its load operations are baked in at creation and clear or
+discard the colour - so the AO pass doubles as the pass everything after it
+draws into, exactly as vk_bloom leaves post-bloom open for the 2D that follows.
+=================
+*/
+qboolean vk_rt_ao( void )
+{
+	rtaoPush_t push;
+	float vp[16];
+	uint32_t i;
+
+	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
+		return qfalse;
+	}
+	if ( !vk.rt.aoReady || !vk.rt.worldBuilt || vk.rt.tlas == VK_NULL_HANDLE ) {
+		return qfalse;
+	}
+	if ( backEnd.doneRTAO || !backEnd.doneSurfaces || !vk.fboActive ) {
+		return qfalse;
+	}
+	if ( r_rtao == NULL || r_rtao->integer == 0 ) {
+		return qfalse;
+	}
+
+	/*
+	World to clip, then inverted. myGlMultMatrix( a, b ) applies a then b, so
+	this is the same product tr_main.c builds for the MVP - with the world
+	orientation rather than an entity's, because the depth buffer this reads
+	holds the whole scene and not one model.
+	*/
+	myGlMultMatrix( backEnd.viewParms.world.modelMatrix, backEnd.viewParms.projectionMatrix, vp );
+	if ( !rt_invert_matrix( vp, push.invViewProj ) ) {
+		return qfalse;   // degenerate view, nothing sensible to reconstruct
+	}
+
+	VectorCopy( backEnd.viewParms.or.origin, push.eye );
+	push.eye[3] = 0.0f;
+
+	push.params[0] = r_rtaoRadius->value;
+	push.params[1] = r_rtaoIntensity->value;
+	/* A frame counter for the per-pixel rotation. Wrapped small deliberately:
+	   it only has to differ between neighbouring frames, and a float that grows
+	   without bound loses its low bits - which are the only part the hash
+	   uses - after a few hours of uptime. */
+	push.params[2] = (float)( vk.frame_count & 255 );
+	push.params[3] = 1.5f;   // surface bias, in world units
+
+	vk_end_render_pass();   // end main
+
+	vk_begin_rtao_render_pass();
+
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline );
+	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor, 0, NULL );
+	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.pipeline_layout,
+		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+
+	/*
+	Put back what the pass clobbered, the same way vk_bloom does. Binding a
+	descriptor set at index 0 with a different layout invalidates the sets the
+	geometry path had bound there, and the next surface drawn would sample
+	whatever survived.
+	*/
+	if ( vk.cmd->last_pipeline != VK_NULL_HANDLE ) {
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.cmd->last_pipeline );
+
+		vk_update_mvp( NULL );
+
+		vk.cmd->depth_range = DEPTH_RANGE_COUNT;
+
+		for ( i = 0; i < VK_DESC_COUNT; i++ ) {
+			if ( vk.cmd->descriptor_set.current[i] != VK_NULL_HANDLE ) {
+				if ( i == VK_DESC_UNIFORM )
+					qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout, i, 1, &vk.cmd->descriptor_set.current[i], 1, &vk.cmd->descriptor_set.offset[i] );
+				else
+					qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout, i, 1, &vk.cmd->descriptor_set.current[i], 0, NULL );
+			}
+		}
+	}
+
+	backEnd.doneRTAO = qtrue;
+
+	return qtrue;
 }
 
 
