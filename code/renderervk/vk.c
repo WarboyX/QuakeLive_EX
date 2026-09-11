@@ -1707,6 +1707,13 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		qboolean dedicatedAllocation = qfalse;
 		qboolean memoryRequirements2 = qfalse;
 		qboolean debugMarker = qfalse;
+		/* [QL] ray query wants all four - acceleration_structure pulls in
+		   deferred_host_operations and buffer_device_address as hard
+		   requirements, so any one of them missing means no. */
+		qboolean accelStructure = qfalse;
+		qboolean rayQuery = qfalse;
+		qboolean deferredHostOps = qfalse;
+		qboolean bufferDeviceAddress = qfalse;
 #ifdef _DEBUG
 		qboolean timelineSemaphore = qfalse;
 		qboolean memoryModel = qfalse;
@@ -1734,6 +1741,20 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 				memoryRequirements2 = qtrue;
 			} else if ( strcmp( ext, VK_EXT_DEBUG_MARKER_EXTENSION_NAME ) == 0 ) {
 				debugMarker = qtrue;
+			/* [QL] Ray query capability, reported and not used. This rides the loop
+			   that was already enumerating extensions, so it costs nothing and
+			   cannot change device creation - the names are only compared, never
+			   added to device_extension_list. Enabling them belongs with the pass
+			   that needs them (R13); this exists so there is something to test
+			   against before that pass is written. */
+			} else if ( strcmp( ext, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME ) == 0 ) {
+				accelStructure = qtrue;
+			} else if ( strcmp( ext, VK_KHR_RAY_QUERY_EXTENSION_NAME ) == 0 ) {
+				rayQuery = qtrue;
+			} else if ( strcmp( ext, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME ) == 0 ) {
+				deferredHostOps = qtrue;
+			} else if ( strcmp( ext, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME ) == 0 ) {
+				bufferDeviceAddress = qtrue;
 #ifdef _DEBUG
 			} else if ( strcmp( ext, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME ) == 0 ) {
 				timelineSemaphore = qtrue;
@@ -1774,6 +1795,8 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 #ifndef USE_DEDICATED_ALLOCATION
 		vk.dedicatedAllocation = qfalse;
 #endif
+
+		vk.rayQuery = ( accelStructure && rayQuery && deferredHostOps && bufferDeviceAddress ) ? qtrue : qfalse;
 
 		device_extension_list[ device_extension_count++ ] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 
@@ -4227,6 +4250,22 @@ void vk_initialize( void )
 		Com_sprintf( buf, sizeof( buf ), "VendorID: %04x", props.vendorID );
 		vendor_name = buf;
 	}
+
+	/*
+	[QL] Say whether this device could do ray queries, and publish it as a cvar.
+
+	r_rtAvailable is read-only and set by the renderer, so a menu can gate an RT
+	control on it the way R12 gates the Vulkan rows on cl_renderer - offering a
+	switch that does nothing is the registered-cvar trap, and this tree has
+	stepped in it often enough.
+
+	It reports capability, not activity. Nothing is enabled and no acceleration
+	structure is built; the extensions are compared and then left alone. When the
+	AO pass lands (R13) this is what it will be gated on.
+	*/
+	ri.Printf( PRINT_ALL, "Ray query: %s\n",
+		vk.rayQuery ? "supported by this device" : "not supported by this device" );
+	ri.Cvar_Set( "r_rtAvailable", vk.rayQuery ? "1" : "0" );
 
 	Q_strncpyz( glConfig.vendor_string, vendor_name, sizeof( glConfig.vendor_string ) );
 	Q_strncpyz( glConfig.renderer_string, renderer_name( &props ), sizeof( glConfig.renderer_string ) );

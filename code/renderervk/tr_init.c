@@ -1825,6 +1825,15 @@ static void R_Register( void )
 	r_showsky = ri.Cvar_Get( "r_showsky", "0", CVAR_LATCH );
 	ri.Cvar_SetDescription( r_showsky, "Forces sky in front of all surfaces." );
 #ifdef USE_VULKAN
+	/*
+	[QL] Read-only capability report, written by vk_init after device selection.
+	Registered here so it exists and reads 0 before the renderer has looked at
+	the device. It is a renderervk cvar only - an RT control in the menu has to
+	be gated on cl_renderer as well, which is the pattern R12 already uses for
+	every other Vulkan-only row. See R13.
+	*/
+	ri.Cvar_Get( "r_rtAvailable", "0", CVAR_ROM );
+
 	r_device = ri.Cvar_Get( "r_device", "-1", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_device, "-2", NULL, CV_INTEGER );
 	ri.Cvar_SetDescription( r_device, "Select physical device to render:\n" \

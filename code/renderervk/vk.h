@@ -579,6 +579,10 @@ typedef struct {
 	qboolean samplerAnisotropy;
 	qboolean fragmentStores;
 	qboolean dedicatedAllocation;
+	/* [QL] the device advertises everything a ray query needs. Detection only -
+	   nothing is enabled and no acceleration structure is built yet. See
+	   vk_create_device and R13. */
+	qboolean rayQuery;
 	qboolean debugMarkers;
 
 	float maxAnisotropy;

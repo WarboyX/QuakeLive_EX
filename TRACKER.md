@@ -5727,6 +5727,73 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E81. Ray query capability is reported, so there is something to gate on — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+*"how am I suppose to test it if theres nothing gating it from the client
+perspective yet?"* — fair. R13 step 1 is device plumbing and capability
+reporting, and it is the half that is testable on its own.
+
+**Capability only. Nothing is enabled.** The four extension names are compared
+against what the device reports and then left alone — they are never added to
+`device_extension_list`, no feature struct is chained, no acceleration structure
+is built. Device creation is byte-for-byte what it was.
+
+The detection rides the loop in `vk_create_device` that was already enumerating
+extensions for `glConfig.extensions_string`, so it costs nothing and cannot
+change the outcome. All four are required, because
+`VK_KHR_acceleration_structure` pulls in `deferred_host_operations` and
+`buffer_device_address` as hard dependencies — any one missing means no:
+
+```
+VK_KHR_acceleration_structure
+VK_KHR_ray_query
+VK_KHR_deferred_host_operations
+VK_KHR_buffer_device_address
+```
+
+**How to see it.** At startup, next to the device name:
+
+```
+Ray query: supported by this device
+```
+
+and as a read-only cvar:
+
+```
+] r_rtAvailable
+"r_rtAvailable" is:"1"
+```
+
+`r_rtAvailable` is registered in `tr_init.c` so it exists and reads 0 before the
+renderer has looked, and written by `vk_init` after device selection. It is a
+**renderervk cvar only** — an RT control in the menu has to be gated on
+`cl_renderer` as well, which is the pattern R12 already uses for every
+Vulkan-only row. Offering a switch that does nothing is the registered-cvar
+trap, in a menu of our own, which R12 existed to fix.
+
+Checked rather than assumed: `ri.Cvar_Set` is `Cvar_Set`, which is
+`Cvar_Set2( ..., qtrue )` — forcing, so it writes through `CVAR_ROM`. Had it
+been the non-forcing variant this would have been a dead cvar reporting 0 on
+every machine.
+
+**Not verified at runtime here**, and cannot be: `pak00.pk3` is not in this
+environment, so the client stops at `Couldn't load default.cfg` long before the
+renderer initialises. One launch confirms it.
+
+#### Two things R13's plan will need that it does not mention
+
+1. **`device_extension_list` is `[8]`** in `vk_create_device`, and a debug build
+   already uses seven. Enabling ray query adds four. It has to grow before
+   anything is enabled.
+2. **A release build asks for `VK_API_VERSION_1_0`** — the 1.1 request is inside
+   `#ifdef _DEBUG`. Ray query needs 1.1 and `vkGetPhysicalDeviceFeatures2` to
+   read the feature bits, so enabling means either raising `appInfo.apiVersion`
+   or going through `VK_KHR_get_physical_device_properties2` and the `KHR`
+   entry point. Raising it is simpler and rules out pre-1.1 drivers; the
+   extension route keeps them. **That is a decision to make deliberately**, not
+   to discover halfway through the AO pass.
+
 ### E80. The shader build could not run on the machine that builds the releases — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** nobody — build only
 
