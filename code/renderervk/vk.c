@@ -685,6 +685,80 @@ static void vk_create_swapchain( VkPhysicalDevice physical_device, VkDevice devi
 }
 
 
+/*
+================
+[QL] vk_create_rtao_render_pass
+
+The ambient occlusion pass, built from whatever the main pass was just built
+from.
+
+Structurally the main pass with one change, and the change is the whole point:
+depthRef is DEPTH_STENCIL_READ_ONLY_OPTIMAL rather than
+DEPTH_STENCIL_ATTACHMENT_OPTIMAL. Sampling an image the subpass can also write
+is a feedback loop and is not allowed; a read-only depth attachment is the
+sanctioned exception, and it is what makes depth-as-texture legal in the same
+pass that still depth-tests against it.
+
+Under MSAA it inherits colorRef pointing at the multisampled image with
+pResolveAttachments on the resolve target, because desc and subpass still
+describe the main pass when this is called. So occlusion multiplies the samples
+and the resolve happens afterwards - anti-aliasing applies on top of AO rather
+than AO being painted over an already-resolved image.
+
+A function rather than an inline block because it has to run on both sides of
+the r_fbo test, and the first version of this lived only on the FBO side. With
+r_fbo 0 the function that creates the render passes returns early, so
+vk.render_pass.rtao stayed VK_NULL_HANDLE, the pipeline was built against it
+anyway, and the first AO draw called vkCmdBeginRenderPass with a null handle and
+took the process with it. Two call sites, one definition, no way for them to
+drift.
+
+Everything it changes is saved and put back, since the caller goes on to build
+more passes from the same structures.
+================
+*/
+static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo *desc,
+	VkAttachmentDescription *attachments, VkAttachmentReference *depthRef, qboolean msaa )
+{
+	const VkImageLayout savedDepthLayout = depthRef->layout;
+	const VkAttachmentLoadOp savedColorLoad = attachments[0].loadOp;
+	const VkAttachmentLoadOp savedDepthLoad = attachments[1].loadOp;
+	const VkAttachmentStoreOp savedDepthStore = attachments[1].storeOp;
+	const VkAttachmentLoadOp savedStencilLoad = attachments[1].stencilLoadOp;
+	const VkAttachmentStoreOp savedStencilStore = attachments[1].stencilStoreOp;
+	VkAttachmentLoadOp savedMsaaLoad = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	VkAttachmentStoreOp savedMsaaStore = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // whatever the scene drew
+	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // the depth we are about to read
+	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	if ( msaa ) {
+		savedMsaaLoad = attachments[2].loadOp;
+		savedMsaaStore = attachments[2].storeOp;
+		attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;  // bloom may still follow
+	}
+
+	depthRef->layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+	VK_CHECK( qvkCreateRenderPass( device, desc, NULL, &vk.render_pass.rtao ) );
+	SET_OBJECT_NAME( vk.render_pass.rtao, "render pass - rtao", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
+
+	depthRef->layout = savedDepthLayout;
+	attachments[0].loadOp = savedColorLoad;
+	attachments[1].loadOp = savedDepthLoad;
+	attachments[1].storeOp = savedDepthStore;
+	attachments[1].stencilLoadOp = savedStencilLoad;
+	attachments[1].stencilStoreOp = savedStencilStore;
+	if ( msaa ) {
+		attachments[2].loadOp = savedMsaaLoad;
+		attachments[2].storeOp = savedMsaaStore;
+	}
+}
+
+
 static void vk_create_render_passes( void )
 {
 	VkAttachmentDescription attachments[3]; // color | depth | msaa color
@@ -840,6 +914,10 @@ static void vk_create_render_passes( void )
 		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.main ) );
 		SET_OBJECT_NAME( vk.render_pass.main, "render pass - main", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 
+		/* [QL] R13: and the AO pass, which is needed on this path too. Missing
+		   it here is what made the first AO draw with r_fbo 0 a crash. */
+		vk_create_rtao_render_pass( device, &desc, attachments, &depthRef0, qfalse );
+
 		return;
 	}
 
@@ -865,48 +943,7 @@ static void vk_create_render_passes( void )
 	VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.main ) );
 	SET_OBJECT_NAME( vk.render_pass.main, "render pass - main", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 
-	/*
-	[QL] R13: the ambient occlusion pass.
-
-	Structurally the post-bloom pass with one change, and the change is the
-	whole point: depthRef0 is DEPTH_STENCIL_READ_ONLY_OPTIMAL rather than
-	DEPTH_STENCIL_ATTACHMENT_OPTIMAL. Sampling an image the subpass can also
-	write is a feedback loop and is not allowed; a read-only depth attachment is
-	the sanctioned exception, and it is what makes depth-as-texture legal in the
-	same pass that still depth-tests against it.
-
-	Created here rather than after the bloom block because desc/subpass/
-	attachments are mutated in place as each pass is built, and at this point
-	they still describe the main pass - which is what this wants, bar the load
-	operations below.
-
-	Note what it inherits under MSAA, which is the reason this lands where the
-	rest of the frame wants it: colorRef0 is attachment 2 (the multisampled
-	image) with pResolveAttachments pointing at attachment 0. So the occlusion
-	term multiplies the samples and the resolve happens afterwards, rather than
-	being painted over an already-resolved image. Anti-aliasing therefore
-	applies on top of AO rather than the other way round.
-	*/
-	{
-		const VkImageLayout savedDepthLayout = depthRef0.layout;
-
-		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // whatever the scene drew
-		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // the depth we are about to read
-		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		if ( vk.msaaActive ) {
-			attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;  // bloom may still follow
-		}
-
-		depthRef0.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.rtao ) );
-		SET_OBJECT_NAME( vk.render_pass.rtao, "render pass - rtao", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
-
-		depthRef0.layout = savedDepthLayout;
-	}
+	vk_create_rtao_render_pass( device, &desc, attachments, &depthRef0, vk.msaaActive );
 
 	if ( r_bloom->integer ) {
 
@@ -3684,6 +3721,23 @@ static void vk_rt_create_ao( void )
 	vk_rt_destroy_ao();
 
 	if ( !vk.rtActive || !vk.rtDepthSampled || vk.depth_image == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	/*
+	[QL] The render pass has to exist before a pipeline is built against it.
+
+	Obvious, and it still cost a crash: vk_create_render_passes returns early
+	when r_fbo is 0, the AO pass was created past that return, and the pipeline
+	was then built with renderPass = VK_NULL_HANDLE without complaint. Nothing
+	said a word until the first draw called vkCmdBeginRenderPass with a null
+	handle. The cause is fixed - it is created on both paths now - but a missing
+	render pass should disable the feature with a message rather than arm a
+	pipeline that cannot be used, because the next early return in that function
+	will not announce itself either.
+	*/
+	if ( vk.render_pass.rtao == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "RT AO: no render pass was created - disabling\n" );
 		return;
 	}
 
