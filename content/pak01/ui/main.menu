@@ -1588,6 +1588,19 @@
         }
 
         // ---- buttons -----------------------------------------------------------
+        //
+        // [QL] Ray tracing gets its own page rather than four more rows here.
+        // Vulkan only, so it follows the same cvarTest the rows above use - a
+        // button that opens a page of controls none of which can apply is the
+        // registered-cvar trap wearing a hat.
+        itemDef {
+            name rtpage  text "RAY TRACING >"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 270 440 120 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; open io_raytracing }
+            mouseEnter { setitemcolor rtpage forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor rtpage forecolor 1 1 1 1 }
+            cvarTest "cl_renderer"  showCvar { "vulkan" }
+        }
         itemDef {
             name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
             rect 20 440 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
@@ -1601,6 +1614,162 @@
             action { play "sound/misc/menu1.wav" ; close io_renderoptions }
             mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor close forecolor 1 1 1 1 }
+        }
+    }
+
+    // =============================================
+    // RAY TRACING (R13)
+    //
+    // Every control on this page is backed by a cvar the renderer actually
+    // reads. That is the whole reason the ambient-occlusion rows are not here
+    // yet: r_rtao and its radius/intensity do not exist, because the pass that
+    // would read them is not written. Adding the sliders early would produce a
+    // menu where moving a control does nothing and says nothing - the trap
+    // CLAUDE.md names first, and the one R12 was created to get out of.
+    //
+    // What is here instead is the truth about the state, assembled from three
+    // read-only cvars the renderer writes at startup:
+    //
+    //   r_rtAvailable  the card advertises all four extensions
+    //   r_rtActive     they are enabled on the device this run
+    //   r_rt           the user's request, latched
+    //
+    // Those three give four distinct states, and each one has a different next
+    // step, so each gets its own line rather than a single "on/off" that would
+    // leave "my card cannot" and "you did not restart" looking identical.
+    // =============================================
+    menuDef {
+        name "io_raytracing"
+        rect 60 8 520 468
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.05 0.05 0.08 1
+        border 1
+        bordersize 1
+        bordercolor .5 .5 .5 1
+
+        onESC { close io_raytracing ; open io_renderoptions }
+
+        itemDef {
+            name title  text "RAY TRACING"  textscale .3
+            rect 0 8 520 24  textalign ITEM_ALIGN_CENTER  textalignx 260  textaligny 18
+            forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        // ---- status ----------------------------------------------------------
+        itemDef {
+            name hdrstat  text "STATUS"  textscale .24
+            rect 20 44 200 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        // Two rows, one cvar each, two mutually exclusive variants per row.
+        //
+        // The obvious layout - one line per *outcome* - does not work, because
+        // cvarTest takes a single cvar and "supported but not active" is a
+        // condition on two of them. Written that way the not-supported line and
+        // the not-active line both draw, at the same y, on a machine that has
+        // neither. Splitting by cvar instead gives four readable combinations
+        // from four items and nothing can overlap.
+        itemDef { text "This GPU:"  textscale .22  rect 30 66 150 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            text "supports ray queries"  textscale .22
+            rect 190 66 300 18  textaligny 14  forecolor .4 1 .4 1  visible 1  decoration
+            cvarTest "r_rtAvailable"  showCvar { "1" }
+        }
+        itemDef {
+            text "does not support ray queries"  textscale .22
+            rect 190 66 300 18  textaligny 14  forecolor 1 .4 .4 1  visible 1  decoration
+            cvarTest "r_rtAvailable"  showCvar { "0" }
+        }
+
+        itemDef { text "This run:"  textscale .22  rect 30 88 150 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            text "ACTIVE"  textscale .22
+            rect 190 88 300 18  textaligny 14  forecolor .4 1 .4 1  visible 1  decoration
+            cvarTest "r_rtActive"  showCvar { "1" }
+        }
+        itemDef {
+            text "not active"  textscale .22
+            rect 190 88 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+            cvarTest "r_rtActive"  showCvar { "0" }
+        }
+
+        // Only worth saying when the card could do it and is not doing it. That
+        // is exactly r_rtAvailable 1, since r_rtActive 0 is implied by the line
+        // above still being visible when this one is.
+        itemDef {
+            text "Needs acceleration structure, ray query, deferred host operations"  textscale .2
+            rect 30 112 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            cvarTest "r_rtAvailable"  showCvar { "0" }
+        }
+        itemDef {
+            text "and buffer device address, plus a Vulkan 1.1 loader."  textscale .2
+            rect 30 128 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            cvarTest "r_rtAvailable"  showCvar { "0" }
+        }
+        itemDef {
+            text "If this says not active, turn it on below and APPLY."  textscale .2
+            rect 30 112 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            cvarTest "r_rtAvailable"  showCvar { "1" }
+        }
+
+        // ---- the one real control --------------------------------------------
+        itemDef {
+            name hdrenable  text "DEVICE"  textscale .24
+            rect 20 132 200 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration
+        }
+
+        itemDef { text "Enable ray query:"  textscale .22  rect 30 154 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name rtenable  type ITEM_TYPE_YESNO  text ""  cvar "r_rt"
+            rect 230 154 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+        itemDef {
+            text "Latched - takes effect on the next video restart."  textscale .2
+            rect 30 174 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+        }
+        itemDef {
+            text "No visible change yet: this enables the device features and"  textscale .2
+            rect 30 192 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+        }
+        itemDef {
+            text "builds the world acceleration structure at map load."  textscale .2
+            rect 30 208 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+        }
+
+        // ---- what is not here yet, and why -----------------------------------
+        itemDef {
+            name hdrao  text "AMBIENT OCCLUSION"  textscale .24
+            rect 20 246 260 18  textaligny 14  forecolor .6 .6 .6 1  visible 1  decoration
+        }
+        itemDef {
+            text "Not wired up yet - no controls here until there are cvars"  textscale .2
+            rect 30 268 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+        }
+        itemDef {
+            text "behind them. The shader and the acceleration structures are"  textscale .2
+            rect 30 284 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+        }
+        itemDef {
+            text "done; the pass that runs them is next."  textscale .2
+            rect 30 300 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+        }
+
+        // ---- buttons -----------------------------------------------------------
+        itemDef {
+            name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 20 440 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
+            mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name back  text "BACK"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 400 440 100 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_raytracing ; open io_renderoptions }
+            mouseEnter { setitemcolor back forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor back forecolor 1 1 1 1 }
         }
     }
 

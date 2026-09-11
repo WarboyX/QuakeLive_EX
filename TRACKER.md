@@ -5741,6 +5741,68 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E90. A ray tracing page under Render Options — DONE (verify)
+**Lives in:** our **client** (`ui`) · **Seen by:** our client only
+
+`RAY TRACING >` in Render Options, gated on `cl_renderer vulkan` the same way
+every other Vulkan-only row on that page is. A button that opens a page of
+controls none of which can apply is the registered-cvar trap wearing a hat.
+
+**Every control on the page is backed by a cvar the renderer reads.** That is
+why there are no ambient-occlusion sliders yet: `r_rtao` and its radius and
+intensity do not exist, because the pass that would read them is not written.
+Adding them early gives a menu where moving a control does nothing and says
+nothing — the trap `CLAUDE.md` names first, in a menu of our own, which is what
+R12 existed to get out of. The page says so in place of the controls, rather
+than leaving a gap that looks like an oversight.
+
+#### The status block, and why it is two rows rather than four lines
+
+The obvious layout is one line per outcome — *not supported*, *active*,
+*supported but not active*. It does not work: `cvarTest` takes a **single**
+cvar, and "supported but not active" is a condition on two of them. Written that
+way, the not-supported line and the not-active line both draw, **at the same
+y**, on the machine that has neither. Caught by re-reading the block rather than
+by the parser, which has no opinion about two items sharing a rect.
+
+Split by cvar instead — one row each, two mutually exclusive variants per row —
+and four readable combinations fall out of four items with nothing able to
+overlap:
+
+```
+This GPU:   supports ray queries   /  does not support ray queries     (r_rtAvailable)
+This run:   ACTIVE                 /  not active                       (r_rtActive)
+```
+
+#### `r_rt` becomes CVAR_ARCHIVE, reversing what E85 said
+
+E85 registered it `CVAR_LATCH` only, and argued the archive rule at length: an
+archived *default we choose* gets frozen into a config on first run and wins
+forever (`r_dlightMode`, `con_scale`, two rounds each).
+
+A menu toggle changes which side of that rule it is on. The moment somebody can
+click it, it is a value a user sets — the first kind, the kind archive is for —
+and without archive they turn it on, restart, and find it off again, which for a
+menu control is simply broken. `cl_renderer` is `ARCHIVE|LATCH` for the same
+reason and is the closest precedent here.
+
+**The cost is real and is worth stating before it surprises anyone:** once this
+archives, changing its *default* stops reaching anyone who has already run the
+game. So if RT AO is ever good enough to be on by default, that ships as a new
+cvar with its own default, not by flipping this one underneath people — which is
+better behaviour for a device feature regardless.
+
+**Checks run** (both required by `CLAUDE.md` after this kind of edit):
+
+```
+tools/check-menus.py    107 menus, 0 problems, 0 unresolved references
+tools/dead-cvars.py     no r_rt* cvar reported dead
+```
+
+**To verify:** Render Options → `RAY TRACING >` under Vulkan, and the button
+absent under OpenGL. The two status rows should agree with the `Ray query:` lines
+in the console.
+
 ### E89. R13 step 3a: the AO shader, and a build trap that would have shipped a broken one
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

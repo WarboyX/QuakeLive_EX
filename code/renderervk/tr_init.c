@@ -1840,17 +1840,31 @@ static void R_Register( void )
 	[QL] R13: the master switch.
 
 	CVAR_LATCH because the device is created once per vid_restart and a
-	mid-frame change would be a lie. NOT CVAR_ARCHIVE: this is a default we
-	choose, and an archived default is written into a config on first run and
-	then wins forever - which cost this tree two rounds already (r_dlightMode,
-	con_scale) and would pin every tester to whatever the value happened to be
-	the first time they launched.
+	mid-frame change would be a lie.
+
+	CVAR_ARCHIVE, which reverses what this said when it was console-only, and
+	the reversal is the point rather than a slip. The rule in CLAUDE.md is that
+	archive is for values a user sets and not for values we choose - the damage
+	case being a shipped default that gets frozen into a config on first run and
+	then wins forever (r_dlightMode, con_scale, two rounds each). The moment
+	this got a toggle in the ray tracing menu it became the first kind: a
+	setting someone deliberately turns on, and one that would otherwise be off
+	again every time they launched the game, which for a menu control is simply
+	broken. cl_renderer is ARCHIVE|LATCH for exactly this reason and is the
+	closest precedent in the tree.
+
+	The trade that buys is real and is worth writing down rather than
+	discovering later: once this archives, changing the *default* stops reaching
+	anyone who has already run the game. So if RT AO is ever good enough to be
+	on by default, that has to ship as a new cvar with its own default, not by
+	flipping this one under people - which is the better behaviour for a device
+	feature anyway.
 
 	Default 0 until there is a pass that uses it. Enabling the extensions
 	changes vkCreateDevice, and a device that fails to create is not a missing
 	effect, it is no renderer.
 	*/
-	r_rt = ri.Cvar_Get( "r_rt", "0", CVAR_LATCH );
+	r_rt = ri.Cvar_Get( "r_rt", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_rt, "Enable Vulkan ray query support on the device. "
 		"Requires r_rtAvailable 1 and a vid_restart. No visible effect yet - "
 		"this is the device plumbing the AO pass will be built on." );
