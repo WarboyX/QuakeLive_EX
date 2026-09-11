@@ -52,6 +52,18 @@ layout(push_constant) uniform Push {
 	mat4 invViewProj;   // clip -> world
 	vec4 eye;           // xyz = view origin
 	vec4 params;        // x = radius, y = intensity, z = frame index, w = bias
+	/*
+	Which depth values mean "not a surface to shade", supplied rather than
+	assumed because both depend on engine build options this shader cannot see.
+
+	  x  the value the depth buffer is cleared to - nothing was drawn there
+	  y  where the weapon's compressed depth range begins
+	  z  +1 when near is 1.0 and far is 0.0 (USE_REVERSED_DEPTH), -1 otherwise
+
+	Getting x backwards is not a subtle error: it traces the sky, from a
+	position reconstructed at the far plane, and skips the near plane instead.
+	*/
+	vec4 depthInfo;
 } pc;
 
 layout(constant_id = 0) const int sampleCount = 4;
@@ -81,12 +93,31 @@ void main() {
 #endif
 
 	/*
-	The far plane is sky, and sky has no surface to occlude. Returning 1 rather
-	than tracing is not only the cheap answer, it is the correct one: a ray
-	fired from the far plane starts outside the world and hits the first thing
-	behind the camera.
+	Nothing was drawn here - sky, or outside the world. Returning unoccluded is
+	not only the cheap answer but the correct one: a ray fired from the far
+	plane starts outside the world and hits the first thing behind the camera.
+
+	Written against pc.depthInfo rather than a literal because this renderer
+	uses reversed depth, where the cleared value is 0.0 and the near plane is
+	1.0 - the opposite of the obvious test.
 	*/
-	if (depth >= 1.0) {
+	if (pc.depthInfo.z * (depth - pc.depthInfo.x) <= 0.0) {
+		out_color = vec4(1.0);
+		return;
+	}
+
+	/*
+	The view weapon. It is drawn with a squashed viewport depth range so it
+	cannot poke through walls, which means its depth values do not describe
+	where it actually is - reconstructing a world position from them puts it
+	somewhere near the eye and the rays go off into geometry from inside it.
+	The result is a patch of noise over the gun, in the corner of the screen,
+	that looks like memory corruption and is not.
+
+	Nothing else reaches this band: it is the front 40% of the depth range,
+	which on a perspective projection is a few units from the eye.
+	*/
+	if (pc.depthInfo.z * (depth - pc.depthInfo.y) >= 0.0) {
 		out_color = vec4(1.0);
 		return;
 	}

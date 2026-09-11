@@ -728,6 +728,9 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	const VkAttachmentStoreOp savedStencilStore = attachments[1].stencilStoreOp;
 	VkAttachmentLoadOp savedMsaaLoad = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	VkAttachmentStoreOp savedMsaaStore = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	VkSubpassDependency deps[3];
+	uint32_t savedDepCount;
+	const VkSubpassDependency *savedDeps;
 
 	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // whatever the scene drew
 	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // the depth we are about to read
@@ -743,9 +746,61 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 
 	depthRef->layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
+	/*
+	[QL] This pass needs its own dependencies, and the depth one is the point.
+
+	Every dependency the caller has set up describes the colour attachment,
+	because no pass before this one ever read depth - it was written, tested
+	against, and never looked at again. This pass samples it, and a layout
+	transition is not synchronisation: without an explicit dependency the AO
+	pass may sample depth before the main pass's depth writes are visible.
+
+	What that looks like is not a wrong image. It is a *patch* of wrong image -
+	a tile or two of stale depth in whatever corner lost the race, drawn as
+	noise, in a fixed place on screen that does not move with anything in the
+	world. Which is exactly what was reported: corruption in the bottom right
+	that does not follow the weapon when it bobs.
+
+	Not BY_REGION even though this shader happens to sample only its own pixel.
+	The flag is a promise about every future version of the shader, and the
+	first thing a denoise pass will do is read its neighbours.
+	*/
+	deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	deps[0].dstSubpass = 0;
+	deps[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	deps[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	deps[0].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	deps[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	deps[0].dependencyFlags = 0;
+
+	/* and the colour we are about to load and blend into */
+	deps[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+	deps[1].dstSubpass = 0;
+	deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[1].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	deps[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	deps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	/* and let what follows read the colour this wrote */
+	deps[2].srcSubpass = 0;
+	deps[2].dstSubpass = VK_SUBPASS_EXTERNAL;
+	deps[2].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[2].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	deps[2].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	deps[2].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	deps[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	savedDepCount = desc->dependencyCount;
+	savedDeps = desc->pDependencies;
+	desc->dependencyCount = 3;
+	desc->pDependencies = deps;
+
 	VK_CHECK( qvkCreateRenderPass( device, desc, NULL, &vk.render_pass.rtao ) );
 	SET_OBJECT_NAME( vk.render_pass.rtao, "render pass - rtao", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 
+	desc->dependencyCount = savedDepCount;
+	desc->pDependencies = savedDeps;
 	depthRef->layout = savedDepthLayout;
 	attachments[0].loadOp = savedColorLoad;
 	attachments[1].loadOp = savedDepthLoad;
@@ -3645,7 +3700,8 @@ no uniform buffer and no per-frame descriptor churn.
 typedef struct {
 	float invViewProj[16];
 	float eye[4];
-	float params[4];   // radius, intensity, frame, bias
+	float params[4];      // radius, intensity, frame, bias
+	float depthInfo[4];   // cleared depth, weapon band start, sign, unused
 } rtaoPush_t;
 
 /* [QL] One line each per map, not per frame - 250 of these a second is not a
@@ -9906,6 +9962,31 @@ qboolean vk_rt_ao( void )
 	   uses - after a few hours of uptime. */
 	push.params[2] = (float)( vk.frame_count & 255 );
 	push.params[3] = 1.5f;   // surface bias, in world units
+
+	/*
+	[QL] Which depth values are not surfaces, taken from the engine's own
+	definitions rather than written out again in the shader.
+
+	Both depend on USE_REVERSED_DEPTH, which flips the whole convention: with it
+	the buffer is cleared to 0.0 and the near plane is 1.0, so the obvious test
+	for "nothing here" - depth >= 1.0 - is exactly wrong and skips the near
+	plane while tracing the sky. It was written that way, and the sky was traced
+	from a position reconstructed at the far plane for several builds.
+
+	The weapon band is the viewport depth range get_viewport applies for
+	DEPTH_RANGE_WEAPON. Anything inside it is the view model, whose depth says
+	where it was squashed to rather than where it is.
+	*/
+#ifdef USE_REVERSED_DEPTH
+	push.depthInfo[0] = 0.0f;   // cleared to far
+	push.depthInfo[1] = 0.6f;   // DEPTH_RANGE_WEAPON minDepth
+	push.depthInfo[2] = 1.0f;   // near is 1.0
+#else
+	push.depthInfo[0] = 1.0f;
+	push.depthInfo[1] = 0.3f;   // DEPTH_RANGE_WEAPON maxDepth
+	push.depthInfo[2] = -1.0f;
+#endif
+	push.depthInfo[3] = 0.0f;
 
 	vk_end_render_pass();   // end main
 
