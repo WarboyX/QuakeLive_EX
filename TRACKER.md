@@ -5741,6 +5741,96 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E89. R13 step 3a: the AO shader, and a build trap that would have shipped a broken one
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The ray-query ambient occlusion shader, the build-system work to compile it
+correctly, and the depth attachment it needs. **The pass that runs it is not
+wired up yet** — see below for exactly what is left.
+
+This part is *verified here*, unlike E86: `glslangValidator` is in this
+environment, so the shader genuinely compiles and the guard genuinely fires.
+
+#### The trap: glslang emits a broken module and says nothing
+
+A `GL_EXT_ray_query` shader needs **SPIR-V 1.4**. Compile it without
+`--target-env` and glslang produces a **SPIR-V 1.0** module full of ray-query
+opcodes, exits 0, and prints nothing. Measured, not assumed:
+
+```
+rtao.spv           magic=07230203 spirv=1.4     (with --target-env spirv1.4)
+rtao_default.spv   magic=07230203 spirv=1.0     (without)
+```
+
+No driver will accept the second one. It is the same silent-wrong-artifact shape
+as a registered cvar nothing reads or a shader name the pak does not contain —
+success reported, wrong thing produced.
+
+And `compile.sh` walks `*.frag` in a loop with the default target, so **merely
+adding the file would have produced the broken module automatically.** The
+generic loop now skips `rtao.frag`, it is emitted explicitly with the right
+target, and `compile.sh` **reads the version word out of the result and fails
+the build if it is not 1.4**. Verified by removing the flag: the build stops with
+`produced SPIR-V version bytes 00000100, expected 00040100 (1.4)`.
+
+`compile.bat` carries the same skip and the same explicit emit, because a shader
+in one script and not the other is one that silently does not exist in half the
+builds.
+
+#### The shader
+
+Fullscreen pass over the depth buffer: reconstruct world position, get a normal,
+fire short rays into the hemisphere, return the fraction that hit nothing.
+
+- **No G-buffer.** This is a forward renderer with no normal buffer and adding
+  one means touching every pipeline. The normal comes from `cross(dFdx(P),
+  dFdy(P))` — free, and exact for the flat surfaces most of a Quake map is.
+- **Cosine-weighted directions**, not uniform. AO *is* a cosine-weighted
+  integral; sampling uniformly spends rays near the horizon where the weight is
+  smallest.
+- **Distance falloff on hits**, so AO does not paint a hard edge exactly at the
+  trace radius, which reads as a ring around the player.
+- **Surface bias**, or every ray re-hits the triangle it left at t≈0 and the
+  whole world comes out uniformly black — AO's version of shadow acne.
+- Sky (`depth >= 1.0`) returns unoccluded without tracing. Not just cheaper:
+  a ray from the far plane starts outside the world.
+
+#### The depth attachment had to change
+
+It was created with `DEPTH_STENCIL_ATTACHMENT_BIT` and, when bloom was off,
+`TRANSIENT_ATTACHMENT_BIT` — which lets the driver keep it in tile memory and
+never back it with real allocation. Free and correct for a buffer nothing reads
+afterwards, and **unsampleable by construction**. The two flags are effectively
+mutually exclusive, so this is an either/or, not an addition.
+
+`SAMPLED_BIT` is now added **only when `vk.rtActive`**. It costs a
+full-resolution depth allocation the transient path avoids, and charging that to
+every player for a feature that defaults to off would be the wrong trade.
+
+#### Known constraint, reported at startup
+
+**MSAA and RT AO are mutually exclusive right now.** A multisampled depth image
+cannot be read through a `sampler2D`; it needs a `subpassLoad` or an explicit
+resolve, neither of which exists here. Rather than let this surface as "I turned
+on AO and nothing happened", startup says so:
+
+```
+Ray query: depth is 4x multisampled, which the AO pass cannot sample.
+Set r_ext_multisample 0 for RT ambient occlusion.
+```
+
+#### What is left for step 3b
+
+1. Descriptor set layout and pool for `{depth sampler, TLAS}` —
+   `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` is a new type for this tree.
+2. Pipeline and render-pass wiring for the pass, plus the layout transition of
+   depth to `SHADER_READ_ONLY_OPTIMAL` and back.
+3. Push constants: inverse view-projection, eye position, radius/intensity/
+   frame/bias.
+4. Compositing the AO term into the lit image.
+5. `r_rtao`, `r_rtaoRadius`, `r_rtaoIntensity`, `r_rtaoSamples`, gated on
+   `r_rtActive`.
+
 ### E88. The console stopped drawing text and could never recover — DONE (verify)
 **Lives in:** our **client** (client engine) · **Seen by:** our client only
 

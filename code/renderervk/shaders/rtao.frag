@@ -1,0 +1,147 @@
+#version 460
+#extension GL_EXT_ray_query : require
+
+/*
+[QL] R13 step 3: ray-traced ambient occlusion.
+
+A fullscreen pass over the depth buffer. For each pixel it reconstructs the
+world position and a normal, fires a handful of short rays into the hemisphere,
+and returns the fraction that hit nothing. The result multiplies the lit image.
+
+The lighting stays baked. This does not compute light - it computes how much of
+the sky-and-bounce ambient a corner is shut off from, which is the part
+lightmaps at Quake 3's resolution get worst. That is the whole hybrid from R10:
+ray trace the term the bake cannot express, keep everything else.
+
+Two things about this shader are chosen and not accidents:
+
+  No G-buffer. This is a forward renderer with no normal buffer, and adding one
+  would mean touching every pipeline. The normal comes from the derivatives of
+  the reconstructed world position, which costs nothing and is exact for the
+  flat surfaces most of a Quake map is made of. It is wrong along a depth
+  discontinuity, where the derivative spans two surfaces - so silhouettes get
+  the nearby-pixel treatment below rather than a wrong hemisphere.
+
+  Cosine-weighted directions, not uniform. Ambient occlusion is a cosine-
+  weighted integral over the hemisphere; sampling uniformly and multiplying by
+  cos(theta) spends most of the rays near the horizon where the weight is
+  smallest. Cosine sampling puts them where the answer is.
+*/
+
+layout(set = 0, binding = 0) uniform sampler2D depthMap;
+layout(set = 0, binding = 1) uniform accelerationStructureEXT topLevel;
+
+layout(location = 0) in vec2 frag_tex_coord;
+layout(location = 0) out vec4 out_color;
+
+layout(push_constant) uniform Push {
+	mat4 invViewProj;   // clip -> world
+	vec4 eye;           // xyz = view origin
+	vec4 params;        // x = radius, y = intensity, z = frame index, w = bias
+} pc;
+
+layout(constant_id = 0) const int sampleCount = 4;
+
+/*
+Hash-based per-pixel rotation. A fixed sample set produces banding you can read
+the pattern of; rotating it per pixel turns that into noise, which the spatial
+denoise then removes. Including the frame index means successive frames use
+different sets, so anything accumulating over time converges instead of
+repeating.
+*/
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+void main() {
+	float depth = texture(depthMap, frag_tex_coord).r;
+
+	/*
+	The far plane is sky, and sky has no surface to occlude. Returning 1 rather
+	than tracing is not only the cheap answer, it is the correct one: a ray
+	fired from the far plane starts outside the world and hits the first thing
+	behind the camera.
+	*/
+	if (depth >= 1.0) {
+		out_color = vec4(1.0);
+		return;
+	}
+
+	// clip -> world
+	vec4 clip = vec4(frag_tex_coord * 2.0 - 1.0, depth, 1.0);
+	vec4 world = pc.invViewProj * clip;
+	world /= world.w;
+	vec3 P = world.xyz;
+
+	/*
+	Normal from the derivatives of world position. cross(dFdx, dFdy) points
+	along the surface normal; which way depends on the handedness of the screen
+	derivatives, so it is flipped to face the viewer, which is the side we are
+	shading and the only side a visible pixel can be lit from.
+	*/
+	vec3 N = normalize(cross(dFdx(P), dFdy(P)));
+	vec3 V = normalize(pc.eye.xyz - P);
+	if (dot(N, V) < 0.0) {
+		N = -N;
+	}
+
+	// orthonormal basis around N
+	vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 T = normalize(cross(up, N));
+	vec3 B = cross(N, T);
+
+	float radius = pc.params.x;
+	float bias = pc.params.w;
+	float rot = hash12(gl_FragCoord.xy + pc.params.z) * 6.2831853;
+
+	float occluded = 0.0;
+
+	for (int i = 0; i < sampleCount; i++) {
+		/*
+		Cosine-weighted hemisphere direction. r = sqrt(u) and z = sqrt(1-u) is
+		the concentric-disc mapping: the disc radius grows as sqrt so equal-area
+		annuli get equal sample counts, and lifting it onto the hemisphere gives
+		the cosine distribution for free, with no rejection loop.
+		*/
+		float u = (float(i) + 0.5) / float(sampleCount);
+		float r = sqrt(u);
+		float phi = rot + float(i) * 2.39996323;   // golden angle, so the few
+		                                           // samples we have spread out
+		vec3 dir = normalize(T * (r * cos(phi)) + B * (r * sin(phi)) + N * sqrt(1.0 - u));
+
+		/*
+		Start the ray slightly off the surface. Without the bias a ray leaving a
+		triangle re-hits the triangle it started on at t near zero, and every
+		pixel returns fully occluded - the classic shadow acne, which in AO
+		shows up as the whole world going uniformly dark rather than as stripes.
+		*/
+		rayQueryEXT rq;
+		rayQueryInitializeEXT(rq, topLevel,
+			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+			0xFF, P + N * bias, bias, dir, radius);
+
+		/*
+		No candidate handling. Every geometry in the structure was built with
+		VK_GEOMETRY_OPAQUE_BIT_KHR and traced with gl_RayFlagsOpaqueEXT, so
+		there are no any-hit candidates to resolve and the loop body is empty by
+		construction rather than by omission.
+		*/
+		while (rayQueryProceedEXT(rq)) {}
+
+		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+			/*
+			Nearer occluders matter more. A wall at arm's length darkens a
+			corner; the same wall at the far end of the radius barely does.
+			Falling off with distance is what stops AO from painting a hard edge
+			exactly at the radius, which reads as a ring around the player.
+			*/
+			float t = rayQueryGetIntersectionTEXT(rq, true);
+			occluded += 1.0 - clamp(t / radius, 0.0, 1.0);
+		}
+	}
+
+	float ao = 1.0 - (occluded / float(sampleCount)) * pc.params.y;
+	out_color = vec4(clamp(ao, 0.0, 1.0));
+}

@@ -4466,7 +4466,25 @@ static void create_depth_attachment( uint32_t width, uint32_t height, VkSampleCo
 	create_desc.samples = samples;
 	create_desc.tiling = VK_IMAGE_TILING_OPTIMAL;
 	create_desc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-	if ( allowTransient ) {
+	/*
+	[QL] R13 step 3: the AO pass reads depth, so it has to be sampleable.
+
+	Two changes, and the second is the one that matters. SAMPLED_BIT is the
+	obvious half. TRANSIENT_ATTACHMENT_BIT is the half that would have been a
+	confusing failure: it lets the driver keep the attachment in tile memory
+	and never back it with real allocation, which is free and correct for a
+	depth buffer nothing reads afterwards - and makes it unsampleable. The two
+	flags are mutually exclusive in practice, so asking for both gets a
+	validation error or a driver that quietly ignores one of them.
+
+	Only when ray query is actually enabled. This costs a full-resolution depth
+	allocation that the transient path avoids, and charging that to every
+	player for a feature they have switched off would be the wrong trade - the
+	more so as r_rt defaults to 0.
+	*/
+	if ( vk.rtActive ) {
+		create_desc.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	} else if ( allowTransient ) {
 		create_desc.usage |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
 	}
 	create_desc.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -5203,6 +5221,20 @@ void vk_initialize( void )
 		ri.Printf( PRINT_ALL, "Ray query: %s\n", vk.rtActive
 			? "ENABLED - extensions on, feature bits confirmed, entry points loaded"
 			: "not enabled (r_rt is 0; set r_rt 1 and vid_restart)" );
+	}
+	/*
+	[QL] R13 step 3 needs to read the depth buffer, and a multisampled one
+	cannot be read through an ordinary sampler2D - it needs a subpassLoad or an
+	explicit resolve, neither of which exists here yet.
+
+	Said at startup rather than when the AO pass first runs, because "I turned
+	on AO and nothing happened" is a much worse way to find out, and the two
+	settings involved are in different menus.
+	*/
+	if ( vk.rtActive && vkSamples != VK_SAMPLE_COUNT_1_BIT ) {
+		ri.Printf( PRINT_WARNING, "Ray query: depth is %ix multisampled, which the AO pass "
+			"cannot sample. Set r_ext_multisample 0 for RT ambient occlusion.\n",
+			(int)vkSamples );
 	}
 	ri.Cvar_Set( "r_rtAvailable", vk.rayQuery ? "1" : "0" );
 	ri.Cvar_Set( "r_rtActive", vk.rtActive ? "1" : "0" );

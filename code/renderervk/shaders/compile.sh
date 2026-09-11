@@ -53,6 +53,43 @@ emit() {
 }
 
 # ---------------------------------------------------------------------------
+# Ray-query shaders need SPIR-V 1.4, and glslang will not tell you otherwise
+# ---------------------------------------------------------------------------
+#
+# Compile a GL_EXT_ray_query shader without --target-env and glslang emits a
+# SPIR-V *1.0* module containing ray-query opcodes, exits 0, and prints nothing.
+# The result is a module no driver will accept, produced by a build that
+# reported success - the same silent-wrong-artifact shape as a cvar nothing
+# reads or a shader name the pak does not contain.
+#
+# So these are emitted separately from the *.frag loop below (which uses the
+# default target) and the version word in the output is checked. A module that
+# comes back as anything but 1.4 fails the build here rather than at
+# vkCreateShaderModule on somebody's machine.
+#
+# emit_rt <stage> <array-name> <source> [defines...]
+emit_rt() {
+    stage=$1
+    name=$2
+    src=$3
+    shift 3
+    "$GLSLANG" -S "$stage" -V --target-env spirv1.4 -o "$TMP" "$src" "$@" >/dev/null
+
+    # bytes 4-7 of a SPIR-V module are the version: 0x00 major minor 0x00
+    ver=$(od -An -tx1 -j 4 -N 4 "$TMP" | tr -d ' \n')
+    if [ "$ver" != "00040100" ]; then
+        echo "compile.sh: $src produced SPIR-V version bytes $ver, expected 00040100 (1.4)." >&2
+        echo "compile.sh: a ray-query shader in a pre-1.4 module will be rejected by the" >&2
+        echo "compile.sh: driver. Check that $GLSLANG supports --target-env spirv1.4." >&2
+        rm -f "$TMP" "$BH"
+        exit 1
+    fi
+
+    "$BH" "$TMP" "+$OUT" "$name"
+    rm -f "$TMP"
+}
+
+# ---------------------------------------------------------------------------
 # individual shaders - name follows the file, as in the .bat: color.vert
 # becomes color_vert_spv
 # ---------------------------------------------------------------------------
@@ -62,8 +99,21 @@ for f in *.vert; do
 done
 
 for f in *.frag; do
+    # rtao.frag is a ray-query shader and must not go through the default
+    # target - see emit_rt. Skipped here and emitted explicitly below; without
+    # this skip it would be compiled twice, and the first (broken) copy is the
+    # one bin2hex would append first.
+    case "$f" in
+        rtao.frag) continue ;;
+    esac
     emit frag "$(basename "$f" .frag)_frag_spv" "$f"
 done
+
+# ---------------------------------------------------------------------------
+# ray query (R13)
+# ---------------------------------------------------------------------------
+
+emit_rt frag rtao_frag_spv rtao.frag
 
 # ---------------------------------------------------------------------------
 # lighting variations from templates

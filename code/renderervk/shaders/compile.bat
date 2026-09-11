@@ -21,10 +21,28 @@ for %%f in (*.vert) do (
 )
 
 for %%f in (*.frag) do (
-    "%cl%" -S frag -V -o "%tmpf%" "%%f"
-    "%bh%" "%tmpf%" %outf% %%~nf_frag_spv
-    del /Q "%tmpf%"
+    @rem rtao.frag is a ray-query shader and must not use the default target -
+    @rem see the ray query block below. Without this skip it is compiled twice
+    @rem and the first, broken copy is the one bin2hex appends first.
+    if /I not "%%f"=="rtao.frag" (
+        "%cl%" -S frag -V -o "%tmpf%" "%%f"
+        "%bh%" "%tmpf%" %outf% %%~nf_frag_spv
+        del /Q "%tmpf%"
+    )
 )
+
+@rem ray query (R13)
+@rem
+@rem GL_EXT_ray_query needs SPIR-V 1.4, and glslang will NOT tell you otherwise:
+@rem compile it without --target-env and you get a SPIR-V 1.0 module full of
+@rem ray-query opcodes, exit code 0, and no output. No driver will accept it.
+@rem compile.sh additionally verifies the version word in the result; batch has
+@rem no clean way to do that, so if you are debugging a rejected shader module
+@rem run compile.sh instead and let it check.
+
+"%cl%" -S frag -V --target-env spirv1.4 -o "%tmpf%" rtao.frag
+"%bh%" "%tmpf%" %outf% rtao_frag_spv
+del /Q "%tmpf%"
 
 @rem compile lighting shader variations from templates
 
