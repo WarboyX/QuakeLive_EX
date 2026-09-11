@@ -920,7 +920,10 @@ typedef struct {
 	int			numSurfaces;
 } bmodel_t;
 
-typedef struct {
+/* [QL] Tagged so it can be forward-declared. vk.h takes a const world_t* for
+   the ray-tracing acceleration structures and is included in places that do
+   not have tr_local.h; an untagged typedef cannot be named ahead of itself. */
+typedef struct world_s {
 	char		name[MAX_QPATH];		// ie: maps/tim_dm2.bsp
 	char		baseName[MAX_QPATH];	// ie: tim_dm2
 

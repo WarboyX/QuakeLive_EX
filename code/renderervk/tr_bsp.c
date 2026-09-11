@@ -2460,5 +2460,17 @@ void RE_LoadWorldMap( const char *name ) {
 	// only set tr.world now that we know the entire level has loaded properly
 	tr.world = &s_worldData;
 
+#ifdef USE_VULKAN
+	/*
+	[QL] R13: build the ray-tracing acceleration structures for this world.
+
+	After tr.world is set and after R_BuildWorldVBO, because it walks the same
+	finished surfaces. A no-op unless r_rt enabled ray query on the device, so
+	there is no guard here - the one inside is the only one, which keeps the
+	"is RT on" test in a single place rather than at every call site.
+	*/
+	vk_rt_build_world( &s_worldData );
+#endif
+
 	ri.FS_FreeFile( buffer.v );
 }

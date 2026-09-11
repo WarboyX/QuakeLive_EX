@@ -3080,6 +3080,677 @@ qboolean vk_alloc_vbo( const byte *vbo_data, int vbo_size )
 }
 #endif
 
+
+/*
+===========================================================================
+[QL] R13 step 2: acceleration structures for the static world.
+
+A bottom-level structure holding every opaque world triangle, and a top-level
+structure with one instance of it at identity. Built once when the map loads,
+freed when it unloads. Nothing traces against it yet - that is the AO pass -
+but the geometry is the bulk of the work and is what everything else stands on.
+
+Positions and indices only. A ray query for ambient occlusion asks "is anything
+in the way", so normals, texcoords and lightmap coordinates would be bytes no
+trace ever reads.
+===========================================================================
+*/
+
+/* Only needed while ray query is on, and fetched rather than added to the
+   instance function table: this is core 1.1, the instance is known to be 1.1
+   by the time anything here runs (vk_create_device refuses RT otherwise), and
+   keeping it local means the non-RT path is untouched. */
+static PFN_vkGetPhysicalDeviceProperties2 rt_getPhysicalDeviceProperties2;
+
+typedef struct {
+	float xyz[3];
+} rtVertex_t;
+
+
+/*
+=================
+rt_create_buffer
+
+A device-local buffer whose address can be taken.
+
+VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT on the allocation is the part that is easy
+to miss: without it vkGetBufferDeviceAddress is undefined behaviour even though
+the buffer carries VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, and the failure is
+a plausible-looking garbage address rather than an error.
+=================
+*/
+static qboolean rt_create_buffer( VkDeviceSize size, VkBufferUsageFlags usage,
+	VkBuffer *buffer, VkDeviceMemory *memory )
+{
+	VkBufferCreateInfo desc;
+	VkMemoryRequirements reqs;
+	VkMemoryAllocateInfo alloc_info;
+	VkMemoryAllocateFlagsInfo flags_info;
+	VkResult res;
+
+	if ( size == 0 ) {
+		return qfalse;
+	}
+
+	Com_Memset( &desc, 0, sizeof( desc ) );
+	desc.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	desc.size = size;
+	desc.usage = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	desc.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	res = qvkCreateBuffer( vk.device, &desc, NULL, buffer );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT: vkCreateBuffer(%i bytes) returned %s\n",
+			(int)size, vk_result_string( res ) );
+		*buffer = VK_NULL_HANDLE;
+		return qfalse;
+	}
+
+	qvkGetBufferMemoryRequirements( vk.device, *buffer, &reqs );
+
+	Com_Memset( &flags_info, 0, sizeof( flags_info ) );
+	flags_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+	flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+
+	Com_Memset( &alloc_info, 0, sizeof( alloc_info ) );
+	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	alloc_info.pNext = &flags_info;
+	alloc_info.allocationSize = reqs.size;
+	alloc_info.memoryTypeIndex = find_memory_type( reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+
+	res = qvkAllocateMemory( vk.device, &alloc_info, NULL, memory );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT: vkAllocateMemory(%i bytes) returned %s\n",
+			(int)reqs.size, vk_result_string( res ) );
+		qvkDestroyBuffer( vk.device, *buffer, NULL );
+		*buffer = VK_NULL_HANDLE;
+		*memory = VK_NULL_HANDLE;
+		return qfalse;
+	}
+
+	qvkBindBufferMemory( vk.device, *buffer, *memory, 0 );
+	return qtrue;
+}
+
+
+static VkDeviceAddress rt_buffer_address( VkBuffer buffer )
+{
+	VkBufferDeviceAddressInfo info;
+
+	Com_Memset( &info, 0, sizeof( info ) );
+	info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+	info.buffer = buffer;
+
+	return qvkGetBufferDeviceAddressKHR( vk.device, &info );
+}
+
+
+/*
+=================
+rt_upload
+
+Staged copy into a device-local buffer, in whatever slices the existing staging
+buffer can take - the same loop vk_alloc_vbo uses, for the same reason: a world
+vertex buffer is routinely larger than the staging buffer and a single
+vkCmdCopyBuffer would silently truncate.
+=================
+*/
+static void rt_upload( VkBuffer dst, const void *data, VkDeviceSize size )
+{
+	VkDeviceSize done = 0;
+
+	while ( done < size ) {
+		VkDeviceSize chunk = vk.staging_buffer.size;
+		VkCommandBuffer cmd;
+		VkBufferCopy region;
+
+		if ( done + chunk > size ) {
+			chunk = size - done;
+		}
+		memcpy( vk.staging_buffer.ptr, (const byte *)data + done, chunk );
+
+		cmd = begin_command_buffer();
+		region.srcOffset = 0;
+		region.dstOffset = done;
+		region.size = chunk;
+		qvkCmdCopyBuffer( cmd, vk.staging_buffer.handle, dst, 1, &region );
+		end_command_buffer( cmd, __func__ );
+
+		done += chunk;
+	}
+}
+
+
+/*
+=================
+rt_surface_is_occluder
+
+Whether a world surface should cast ambient occlusion.
+
+Skipped, and each for a different reason:
+
+  no shader / no data   nothing to read
+  sky                   the sky is a backdrop at infinity, not a ceiling. An
+                        AO structure containing it occludes the whole outdoors.
+  portal / mirror       a surface you see through is not a surface light stops
+                        at, and q3map already put real geometry behind it
+  nodraw / non-solid    clip, hint, trigger and caulk brushes. Present in the
+                        BSP, never rendered, and would occlude from inside a
+                        wall where a player cannot see the cause
+  translucent           glass and fog blend rather than block. Treating them as
+                        opaque is a visible wrong answer; treating them as
+                        absent is a small one, and it is the cheap direction.
+
+This is the list a first pass can defend. It is deliberately conservative:
+missing an occluder makes a corner slightly too bright, while including sky or
+caulk makes whole rooms wrong.
+=================
+*/
+static qboolean rt_surface_is_occluder( const msurface_t *surf )
+{
+	const shader_t *shader;
+
+	if ( surf->data == NULL || surf->shader == NULL ) {
+		return qfalse;
+	}
+	shader = surf->shader;
+
+	if ( shader->isSky ) {
+		return qfalse;
+	}
+	/*
+	Exactly SS_OPAQUE, not "SS_OPAQUE or below". The sort enum runs
+	SS_BAD, SS_PORTAL, SS_ENVIRONMENT, SS_OPAQUE, SS_DECAL, ... so the two
+	things that most need excluding - mirrors and the sky box - sort *lower*
+	than opaque, and a `> SS_OPAQUE` test would have let both straight through
+	while looking like it excluded them.
+	*/
+	if ( shader->sort != SS_OPAQUE ) {
+		return qfalse;
+	}
+	if ( shader->surfaceFlags & ( SURF_NODRAW | SURF_SKY ) ) {
+		return qfalse;
+	}
+	if ( shader->surfaceFlags & SURF_NONSOLID ) {
+		return qfalse;
+	}
+	return qtrue;
+}
+
+
+/*
+=================
+rt_count_surface / rt_emit_surface
+
+Two passes over the same surfaces: count to size the buffers, then fill. Kept as
+one pair of functions with a NULL-output mode rather than two walks that could
+disagree - a count pass and a fill pass that drift apart by one surface type is
+a buffer overrun that only happens on maps with that surface type.
+=================
+*/
+static void rt_walk_surface( const msurface_t *surf, rtVertex_t *verts, uint32_t *indices,
+	uint32_t *vertexCount, uint32_t *indexCount )
+{
+	const surfaceType_t *data = surf->data;
+	uint32_t base = *vertexCount;
+	int i;
+
+	switch ( *data ) {
+
+	case SF_FACE: {
+		const srfSurfaceFace_t *face = (const srfSurfaceFace_t *)data;
+		/* ofsIndices is a byte offset from the surface itself, and the indices
+		   are unsigned - the same read as tr_surface.c:990, spelled the same
+		   way so the two are obviously the same thing. */
+		const unsigned *ind = (const unsigned *)( (const byte *)face + face->ofsIndices );
+
+		if ( verts ) {
+			for ( i = 0; i < face->numPoints; i++ ) {
+				VectorCopy( face->points[i], verts[ base + i ].xyz );
+			}
+			for ( i = 0; i < face->numIndices; i++ ) {
+				indices[ *indexCount + i ] = base + (uint32_t)ind[i];
+			}
+		}
+		*vertexCount += (uint32_t)face->numPoints;
+		*indexCount += (uint32_t)face->numIndices;
+		break;
+	}
+
+	case SF_TRIANGLES: {
+		const srfTriangles_t *tri = (const srfTriangles_t *)data;
+
+		if ( verts ) {
+			for ( i = 0; i < tri->numVerts; i++ ) {
+				VectorCopy( tri->verts[i].xyz, verts[ base + i ].xyz );
+			}
+			for ( i = 0; i < tri->numIndexes; i++ ) {
+				indices[ *indexCount + i ] = base + (uint32_t)tri->indexes[i];
+			}
+		}
+		*vertexCount += (uint32_t)tri->numVerts;
+		*indexCount += (uint32_t)tri->numIndexes;
+		break;
+	}
+
+	case SF_GRID: {
+		/*
+		A curved patch, stored as a width x height control grid rather than as
+		triangles. Two triangles per cell, taken at full grid resolution.
+
+		Deliberately not the LOD-stitched triangulation tr_surface.c draws: that
+		one varies with r_lodCurveError and the viewer's distance, and an
+		occluder that changes shape as you walk toward it would make AO crawl.
+		Full resolution is the stable answer and is also the most accurate one.
+
+		Winding is not matched to the drawn surface because it cannot matter
+		here - the instance is built with TRIANGLE_FACING_CULL_DISABLE, so a
+		trace hits a patch from either side, which is what an occluder should do.
+		*/
+		const srfGridMesh_t *grid = (const srfGridMesh_t *)data;
+		int x, y;
+
+		if ( verts ) {
+			for ( i = 0; i < grid->width * grid->height; i++ ) {
+				VectorCopy( grid->verts[i].xyz, verts[ base + i ].xyz );
+			}
+			for ( y = 0; y < grid->height - 1; y++ ) {
+				for ( x = 0; x < grid->width - 1; x++ ) {
+					uint32_t v0 = base + (uint32_t)( y * grid->width + x );
+					uint32_t v1 = v0 + 1;
+					uint32_t v2 = base + (uint32_t)( ( y + 1 ) * grid->width + x );
+					uint32_t v3 = v2 + 1;
+
+					indices[ (*indexCount)++ ] = v0;
+					indices[ (*indexCount)++ ] = v2;
+					indices[ (*indexCount)++ ] = v1;
+
+					indices[ (*indexCount)++ ] = v1;
+					indices[ (*indexCount)++ ] = v2;
+					indices[ (*indexCount)++ ] = v3;
+				}
+			}
+		} else {
+			*indexCount += (uint32_t)( ( grid->width - 1 ) * ( grid->height - 1 ) * 6 );
+		}
+		*vertexCount += (uint32_t)( grid->width * grid->height );
+		break;
+	}
+
+	default:
+		/* SF_BAD, SF_SKIP, SF_FLARE, SF_ENTITY, SF_DISPLAY_LIST and the model
+		   types. None of them is static world geometry. */
+		break;
+	}
+}
+
+
+/*
+=================
+rt_scratch_alignment
+
+minAccelerationStructureScratchOffsetAlignment, which has no default worth
+guessing: it is 128 on some drivers and 256 on others, and an underaligned
+scratch address is undefined behaviour rather than an error return.
+=================
+*/
+static VkDeviceSize rt_scratch_alignment( void )
+{
+	VkPhysicalDeviceAccelerationStructurePropertiesKHR as_props;
+	VkPhysicalDeviceProperties2 props2;
+
+	if ( rt_getPhysicalDeviceProperties2 == NULL ) {
+		return 256;  // the larger of the two values seen in the wild
+	}
+
+	Com_Memset( &as_props, 0, sizeof( as_props ) );
+	Com_Memset( &props2, 0, sizeof( props2 ) );
+	as_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+	props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+	props2.pNext = &as_props;
+
+	rt_getPhysicalDeviceProperties2( vk.physical_device, &props2 );
+
+	if ( as_props.minAccelerationStructureScratchOffsetAlignment == 0 ) {
+		return 256;
+	}
+	return as_props.minAccelerationStructureScratchOffsetAlignment;
+}
+
+
+/*
+=================
+rt_build_acceleration_structure
+
+Shared tail of the BLAS and TLAS builds: size the structure, create its backing
+buffer, create the structure, allocate scratch, record the build, wait.
+
+One command buffer per structure and a full wait after each. This is map-load
+work that happens twice, so the simplicity is worth more than the overlap.
+=================
+*/
+static qboolean rt_build_acceleration_structure(
+	VkAccelerationStructureBuildGeometryInfoKHR *build_info,
+	uint32_t primitiveCount,
+	VkAccelerationStructureTypeKHR type,
+	VkAccelerationStructureKHR *as,
+	VkBuffer *as_buffer,
+	VkDeviceMemory *as_memory,
+	const char *what )
+{
+	VkAccelerationStructureBuildSizesInfoKHR sizes;
+	VkAccelerationStructureCreateInfoKHR create_info;
+	VkAccelerationStructureBuildRangeInfoKHR range;
+	const VkAccelerationStructureBuildRangeInfoKHR *ranges[1];
+	VkBuffer scratch_buffer = VK_NULL_HANDLE;
+	VkDeviceMemory scratch_memory = VK_NULL_HANDLE;
+	VkDeviceSize scratchAlign;
+	VkCommandBuffer cmd;
+	VkMemoryBarrier barrier;
+	VkResult res;
+
+	Com_Memset( &sizes, 0, sizeof( sizes ) );
+	sizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+
+	qvkGetAccelerationStructureBuildSizesKHR( vk.device,
+		VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, build_info, &primitiveCount, &sizes );
+
+	if ( sizes.accelerationStructureSize == 0 ) {
+		ri.Printf( PRINT_WARNING, "RT: %s sized to zero bytes\n", what );
+		return qfalse;
+	}
+
+	if ( !rt_create_buffer( sizes.accelerationStructureSize,
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, as_buffer, as_memory ) ) {
+		return qfalse;
+	}
+
+	Com_Memset( &create_info, 0, sizeof( create_info ) );
+	create_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+	create_info.buffer = *as_buffer;
+	create_info.offset = 0;
+	create_info.size = sizes.accelerationStructureSize;
+	create_info.type = type;
+
+	res = qvkCreateAccelerationStructureKHR( vk.device, &create_info, NULL, as );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT: vkCreateAccelerationStructureKHR(%s) returned %s\n",
+			what, vk_result_string( res ) );
+		*as = VK_NULL_HANDLE;
+		return qfalse;
+	}
+
+	/* Over-allocate by the alignment so the address can be rounded up into the
+	   buffer rather than hoping the allocator already returned an aligned one. */
+	scratchAlign = rt_scratch_alignment();
+	if ( !rt_create_buffer( sizes.buildScratchSize + scratchAlign,
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, &scratch_buffer, &scratch_memory ) ) {
+		qvkDestroyAccelerationStructureKHR( vk.device, *as, NULL );
+		*as = VK_NULL_HANDLE;
+		return qfalse;
+	}
+
+	build_info->mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	build_info->dstAccelerationStructure = *as;
+	build_info->scratchData.deviceAddress =
+		( rt_buffer_address( scratch_buffer ) + scratchAlign - 1 ) & ~( scratchAlign - 1 );
+
+	Com_Memset( &range, 0, sizeof( range ) );
+	range.primitiveCount = primitiveCount;
+	ranges[0] = &range;
+
+	cmd = begin_command_buffer();
+	qvkCmdBuildAccelerationStructuresKHR( cmd, 1, build_info, ranges );
+
+	/*
+	The TLAS build reads the BLAS this barrier follows, and the AO pass will
+	read the TLAS. VK_ACCESS_ACCELERATION_STRUCTURE_WRITE/READ is the pair that
+	covers both, and without it the second build can begin before the first has
+	landed - on a driver that overlaps them, which is not the one you test on.
+	*/
+	Com_Memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	barrier.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+	barrier.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+	qvkCmdPipelineBarrier( cmd,
+		VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+		VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+		0, 1, &barrier, 0, NULL, 0, NULL );
+
+	end_command_buffer( cmd, what );
+
+	/* end_command_buffer waits for the queue, so the scratch is finished with
+	   by the time we get here and can go back immediately - it is the largest
+	   allocation in the whole build and holding it for the map would be pure
+	   waste. */
+	qvkDestroyBuffer( vk.device, scratch_buffer, NULL );
+	qvkFreeMemory( vk.device, scratch_memory, NULL );
+
+	ri.Printf( PRINT_DEVELOPER, "RT: %s built, %i primitives, %i KiB\n",
+		what, (int)primitiveCount, (int)( sizes.accelerationStructureSize / 1024 ) );
+	return qtrue;
+}
+
+
+void vk_rt_destroy_world( void )
+{
+	if ( !vk.rt.worldBuilt && vk.rt.blas == VK_NULL_HANDLE ) {
+		return;
+	}
+	/* Handles are freed newest first and every one is guarded, because this is
+	   also the cleanup path for a build that failed halfway. */
+	if ( vk.rt.tlas != VK_NULL_HANDLE ) {
+		qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.tlas, NULL );
+	}
+	if ( vk.rt.blas != VK_NULL_HANDLE ) {
+		qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.blas, NULL );
+	}
+	if ( vk.rt.tlas_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.tlas_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.tlas_memory, NULL );
+	}
+	if ( vk.rt.blas_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.blas_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.blas_memory, NULL );
+	}
+	if ( vk.rt.instance_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.instance_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.instance_memory, NULL );
+	}
+	if ( vk.rt.vertex_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.vertex_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.vertex_memory, NULL );
+	}
+	if ( vk.rt.index_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.index_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.index_memory, NULL );
+	}
+	Com_Memset( &vk.rt, 0, sizeof( vk.rt ) );
+}
+
+
+/*
+=================
+vk_rt_build_world
+
+Called once when a map finishes loading. Silent and harmless when ray query is
+off, which is every ordinary build.
+=================
+*/
+void vk_rt_build_world( const world_t *world )
+{
+	VkAccelerationStructureGeometryKHR geom;
+	VkAccelerationStructureBuildGeometryInfoKHR build_info;
+	VkAccelerationStructureInstanceKHR instance;
+	VkAccelerationStructureDeviceAddressInfoKHR addr_info;
+	rtVertex_t *verts;
+	uint32_t *indices;
+	uint32_t vertexCount, indexCount, i;
+	VkDeviceSize vertexBytes, indexBytes;
+
+	vk_rt_destroy_world();
+
+	if ( !vk.rtActive || world == NULL || world->numsurfaces <= 0 ) {
+		return;
+	}
+	if ( rt_getPhysicalDeviceProperties2 == NULL ) {
+		rt_getPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)
+			ri.VK_GetInstanceProcAddr( vk_instance, "vkGetPhysicalDeviceProperties2" );
+	}
+
+	// pass one: how big
+	vertexCount = 0;
+	indexCount = 0;
+	for ( i = 0; i < (uint32_t)world->numsurfaces; i++ ) {
+		const msurface_t *surf = &world->surfaces[i];
+
+		if ( !rt_surface_is_occluder( surf ) ) {
+			vk.rt.numSurfacesSkipped++;
+			continue;
+		}
+		rt_walk_surface( surf, NULL, NULL, &vertexCount, &indexCount );
+	}
+
+	if ( vertexCount == 0 || indexCount < 3 ) {
+		ri.Printf( PRINT_WARNING, "RT: no world geometry to trace against "
+			"(%i surfaces, %i skipped) - not building\n",
+			world->numsurfaces, (int)vk.rt.numSurfacesSkipped );
+		return;
+	}
+
+	vertexBytes = (VkDeviceSize)vertexCount * sizeof( rtVertex_t );
+	indexBytes = (VkDeviceSize)indexCount * sizeof( uint32_t );
+
+	verts = (rtVertex_t *)ri.Hunk_AllocateTempMemory( (int)vertexBytes );
+	indices = (uint32_t *)ri.Hunk_AllocateTempMemory( (int)indexBytes );
+
+	// pass two: fill, over exactly the same surfaces
+	vertexCount = 0;
+	indexCount = 0;
+	for ( i = 0; i < (uint32_t)world->numsurfaces; i++ ) {
+		const msurface_t *surf = &world->surfaces[i];
+
+		if ( !rt_surface_is_occluder( surf ) ) {
+			continue;
+		}
+		rt_walk_surface( surf, verts, indices, &vertexCount, &indexCount );
+		vk.rt.numSurfacesUsed++;
+	}
+
+	vk.rt.numVertices = vertexCount;
+	vk.rt.numTriangles = indexCount / 3;
+
+	ri.Printf( PRINT_ALL, "RT: world geometry %i triangles from %i of %i surfaces (%i KiB)\n",
+		(int)vk.rt.numTriangles, (int)vk.rt.numSurfacesUsed, world->numsurfaces,
+		(int)( ( vertexBytes + indexBytes ) / 1024 ) );
+
+	if ( !rt_create_buffer( vertexBytes,
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			&vk.rt.vertex_buffer, &vk.rt.vertex_memory ) ||
+		 !rt_create_buffer( indexBytes,
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			&vk.rt.index_buffer, &vk.rt.index_memory ) ) {
+		ri.Hunk_FreeTempMemory( indices );
+		ri.Hunk_FreeTempMemory( verts );
+		vk_rt_destroy_world();
+		return;
+	}
+
+	rt_upload( vk.rt.vertex_buffer, verts, vertexBytes );
+	rt_upload( vk.rt.index_buffer, indices, indexBytes );
+
+	/* Freed in reverse allocation order - Hunk temp memory is a stack and
+	   freeing the older block first trips its own check. */
+	ri.Hunk_FreeTempMemory( indices );
+	ri.Hunk_FreeTempMemory( verts );
+
+	// ---- bottom level: the triangles ----
+	Com_Memset( &geom, 0, sizeof( geom ) );
+	geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geom.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;  // every surface here passed the opaque test
+	geom.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+	geom.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+	geom.geometry.triangles.vertexData.deviceAddress = rt_buffer_address( vk.rt.vertex_buffer );
+	geom.geometry.triangles.vertexStride = sizeof( rtVertex_t );
+	geom.geometry.triangles.maxVertex = vertexCount - 1;
+	geom.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+	geom.geometry.triangles.indexData.deviceAddress = rt_buffer_address( vk.rt.index_buffer );
+	geom.geometry.triangles.transformData.deviceAddress = 0;
+
+	Com_Memset( &build_info, 0, sizeof( build_info ) );
+	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+	/* PREFER_FAST_TRACE, not FAST_BUILD: this is built once at map load and
+	   then traced against every frame for the length of the match. */
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+	build_info.geometryCount = 1;
+	build_info.pGeometries = &geom;
+
+	if ( !rt_build_acceleration_structure( &build_info, vk.rt.numTriangles,
+			VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+			&vk.rt.blas, &vk.rt.blas_buffer, &vk.rt.blas_memory, "world BLAS" ) ) {
+		vk_rt_destroy_world();
+		return;
+	}
+
+	// ---- top level: one instance of it, at identity ----
+	Com_Memset( &instance, 0, sizeof( instance ) );
+	/* A 3x4 row-major identity. The world is already in world space, so there
+	   is nothing to transform - but the field is not optional and a zeroed
+	   matrix collapses every triangle to the origin. */
+	instance.transform.matrix[0][0] = 1.0f;
+	instance.transform.matrix[1][1] = 1.0f;
+	instance.transform.matrix[2][2] = 1.0f;
+	instance.instanceCustomIndex = 0;
+	instance.mask = 0xFF;
+	instance.instanceShaderBindingTableRecordOffset = 0;
+	instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+
+	Com_Memset( &addr_info, 0, sizeof( addr_info ) );
+	addr_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+	addr_info.accelerationStructure = vk.rt.blas;
+	instance.accelerationStructureReference =
+		qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
+
+	if ( !rt_create_buffer( sizeof( instance ),
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			&vk.rt.instance_buffer, &vk.rt.instance_memory ) ) {
+		vk_rt_destroy_world();
+		return;
+	}
+	rt_upload( vk.rt.instance_buffer, &instance, sizeof( instance ) );
+
+	Com_Memset( &geom, 0, sizeof( geom ) );
+	geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geom.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+	geom.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+	geom.geometry.instances.arrayOfPointers = VK_FALSE;
+	geom.geometry.instances.data.deviceAddress = rt_buffer_address( vk.rt.instance_buffer );
+
+	Com_Memset( &build_info, 0, sizeof( build_info ) );
+	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+	build_info.geometryCount = 1;
+	build_info.pGeometries = &geom;
+
+	if ( !rt_build_acceleration_structure( &build_info, 1,
+			VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+			&vk.rt.tlas, &vk.rt.tlas_buffer, &vk.rt.tlas_memory, "world TLAS" ) ) {
+		vk_rt_destroy_world();
+		return;
+	}
+
+	vk.rt.worldBuilt = qtrue;
+	ri.Printf( PRINT_ALL, "RT: world acceleration structure ready\n" );
+}
+
+
 #include "shaders/spirv/shader_data.c"
 #define SHADER_MODULE(name) SHADER_MODULE(name,sizeof(name))
 
@@ -4954,6 +5625,11 @@ void vk_shutdown( refShutdownCode_t code )
 #ifdef USE_VBO
 	vk_release_vbo();
 #endif
+
+	/* [QL] R13: before the device goes. These are device-local allocations and
+	   acceleration structure handles; outliving vk.device would leak them and
+	   then free them against a destroyed device on the next vid_restart. */
+	vk_rt_destroy_world();
 
 	vk_clean_staging_buffer();
 

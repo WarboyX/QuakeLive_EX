@@ -1832,7 +1832,7 @@ are GL-only too and want the same gate, and the Vulkan side has no
 supersampling control because `r_renderScale` needs `r_renderWidth`/`Height`
 alongside it rather than being a single switch.
 
-### R13. RT reflections and ambient occlusion — STEP 1 DONE (verify), step 2 next
+### R13. RT reflections and ambient occlusion — STEPS 1-2 DONE (verify), AO pass next
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
 The hybrid from R10 - keep the baked lightmaps and lightgrid as the light field,
@@ -1877,6 +1877,20 @@ capability reporting → world BLAS → `r_rtao` as a ray-query AO pass with a
 spatial denoise → temporal accumulation → dynamic BLAS for models →
 `r_rtreflections`. Each of the first three is testable on its own and the menu
 gate from R12 is already the right place to expose them.
+
+**Where it is now.** Step 1 is E85 (extensions enabled, feature bits proved,
+entry points loaded, `r_rt`/`r_rtAvailable`/`r_rtActive`). Step 2 is E86 (world
+BLAS + TLAS, built at map load). Both compile and link on both platforms and
+neither has been run on hardware from here - there is no `pak00.pk3` in this
+environment, so the client cannot reach a map.
+
+**Next: the AO pass.** It needs, in this order: a descriptor set layout carrying
+the TLAS (`VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR`), a depth/normal
+source to reconstruct world position and hemisphere from, a compute or fragment
+shader with `GL_EXT_ray_query` compiled to **SPIR-V 1.4** - note `compile.sh`
+currently emits the default, so that pass needs `--target-env spirv1.4` - and a
+spatial denoise before it is worth looking at. `r_rtao` gates it, on top of
+`r_rtActive`.
 
 **What it is not:** path tracing. The lighting stays baked, which is exactly
 what makes it possible without the emitter classification described in R10.
@@ -5726,6 +5740,80 @@ classnames still use ANY, which is safe because a different classname cannot
 return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
+
+### E86. R13 step 2: acceleration structures for the static world — DONE (verify on hardware)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+A BLAS holding every opaque world triangle and a TLAS with one instance of it at
+identity, built when the map loads and freed when it unloads. **Nothing traces
+against it yet** — that is the AO pass — but this is the bulk of the geometry
+work and what everything after it stands on.
+
+**Positions and indices only.** A ray query for ambient occlusion asks "is
+anything in the way". Normals, texcoords and lightmap coordinates would be bytes
+no trace ever reads, on the largest buffer in the renderer.
+
+**What it says when it works:**
+
+```
+RT: world geometry 41230 triangles from 2891 of 4102 surfaces (1102 KiB)
+RT: world acceleration structure ready
+```
+
+The gap between 2891 and 4102 is the skip list, and it is deliberately
+conservative — missing an occluder makes a corner slightly too bright, while
+including the wrong thing makes whole rooms wrong:
+
+| skipped | why |
+|---|---|
+| sky | a backdrop at infinity, not a ceiling. In the structure it occludes the whole outdoors |
+| portal / mirror | you see through it; q3map already put real geometry behind it |
+| nodraw, nonsolid | clip, hint, trigger, caulk. In the BSP, never drawn, and would occlude from inside a wall |
+| translucent | glass and fog blend rather than block. Absent is a small wrong answer; opaque is a visible one |
+
+#### A trap in the sort test, caught while writing it
+
+The obvious filter is `shader->sort > SS_OPAQUE` for "not opaque". It is wrong,
+and wrong in the worst direction: the enum runs `SS_BAD, SS_PORTAL,
+SS_ENVIRONMENT, SS_OPAQUE, SS_DECAL, …`, so **mirrors and the sky box sort
+*lower* than opaque** and that test lets both straight through while reading as
+though it excluded them. The check is `!= SS_OPAQUE`.
+
+#### Things that had to be right and are easy to get wrong
+
+- **`VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT` on the allocation**, not just
+  `SHADER_DEVICE_ADDRESS` on the buffer. Without it `vkGetBufferDeviceAddress`
+  is undefined behaviour, and it fails by returning a plausible garbage address
+  rather than an error.
+- **Scratch alignment** is `minAccelerationStructureScratchOffsetAlignment`,
+  which is 128 on some drivers and 256 on others. The scratch buffer is
+  over-allocated by the alignment and the address rounded up into it, rather
+  than hoping the allocator returned something aligned.
+- **Grids are taken at full resolution, not the LOD-stitched triangulation**
+  `tr_surface.c` draws. That one varies with `r_lodCurveError` and view
+  distance; an occluder that changes shape as you walk toward it would make AO
+  crawl.
+- **The instance transform is an explicit identity.** The world is already in
+  world space so there is nothing to transform, but the field is not optional
+  and a zeroed matrix collapses every triangle onto the origin.
+- **Scratch is freed immediately** after the build. `end_command_buffer` calls
+  `vk_queue_wait_idle`, so it is finished with — and it is the largest
+  allocation in the build.
+
+`PREFER_FAST_TRACE` rather than `FAST_BUILD`: built once at map load, traced
+every frame for the length of the match.
+
+**Verified at the object level, not the source level** (E82's lesson):
+`tr_bsp.o` carries `U vk_rt_build_world` and `vk.o` defines it `T`, so the call
+is genuinely linked rather than sitting inside an `#ifdef` that is off.
+
+**Not run on hardware here** — no `pak00.pk3` in this environment, so the client
+stops at `Couldn't load default.cfg` long before a map loads. Compiles and links
+clean on both platforms; the two lines above are what confirms it.
+
+**To verify:** `r_rt 1`, `vid_restart`, load any map, and look for the two `RT:`
+lines. A triangle count in the tens of thousands is right for a QL map; zero
+surfaces used means the skip list is wrong and is worth a log.
 
 ### E85. R13 step 1: ray query is enabled on the device, not just detected — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only

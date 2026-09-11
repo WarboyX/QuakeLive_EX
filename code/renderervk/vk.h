@@ -293,6 +293,14 @@ qboolean vk_bloom( void );
 qboolean vk_alloc_vbo( const byte *vbo_data, int vbo_size );
 void vk_update_mvp( const float *m );
 
+/* [QL] R13 step 2: the world's acceleration structures. Both are no-ops unless
+   ray query is active, so the call sites need no guard of their own.
+   world_t rather than void* so a wrong argument is a compile error - this is
+   called from tr_bsp.c, which is the other side of the renderer. */
+struct world_s;
+void vk_rt_build_world( const struct world_s *world );
+void vk_rt_destroy_world( void );
+
 uint32_t vk_tess_index( uint32_t numIndexes, const void *src );
 void vk_bind_index_buffer( VkBuffer buffer, uint32_t offset );
 #ifdef USE_VBO
@@ -649,6 +657,41 @@ typedef struct {
 		VkDeviceSize offset;
 #endif
 	} staging_buffer;
+
+	/*
+	[QL] R13 step 2: the world's acceleration structures.
+
+	Positions and indices only - a ray query for ambient occlusion asks "is
+	anything in the way", which needs geometry and nothing else. No normals, no
+	texcoords, no lightmap: carrying them would multiply the vertex buffer for
+	data no trace reads.
+
+	Built once when the world loads and freed with it. Static world geometry
+	only; models are step 3 and need a rebuild or refit per frame, which is the
+	expensive half and is exactly why world-only ships first.
+	*/
+	struct rt_s {
+		qboolean		worldBuilt;
+		uint32_t		numVertices;
+		uint32_t		numTriangles;
+		uint32_t		numSurfacesUsed;
+		uint32_t		numSurfacesSkipped;
+
+		VkBuffer		vertex_buffer;
+		VkDeviceMemory	vertex_memory;
+		VkBuffer		index_buffer;
+		VkDeviceMemory	index_memory;
+
+		VkAccelerationStructureKHR	blas;
+		VkBuffer		blas_buffer;
+		VkDeviceMemory	blas_memory;
+
+		VkAccelerationStructureKHR	tlas;
+		VkBuffer		tlas_buffer;
+		VkDeviceMemory	tlas_memory;
+		VkBuffer		instance_buffer;
+		VkDeviceMemory	instance_memory;
+	} rt;
 
 	struct samplers_s {
 		int count;
