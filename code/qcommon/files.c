@@ -645,7 +645,7 @@ void FS_ReportShadowedFile(const char* filename) {
 		}
 		found++;
 		if (found == 1) {
-			Com_Printf("  from %s\n", ospath);
+			Com_Printf("%s: using %s\n", filename, ospath);
 		} else {
 			if (found == 2) {
 				Com_Printf(S_COLOR_YELLOW "  NOTE: %s also exists further down the search path "

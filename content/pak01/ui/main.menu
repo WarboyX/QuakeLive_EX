@@ -1758,18 +1758,26 @@
             rect 230 268 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
+        // [QL] Lists rather than sliders, and the reason is what a slider here
+        // actually looked like: a bar with no number beside it. ITEM_TYPE_SLIDER
+        // draws the handle and nothing else, so there was no way to see what
+        // the value was, no way to tell what a nudge had changed it to, and -
+        // with no default marked - no way back to where you started. A named
+        // list shows the value, shows which one is the default, and cannot land
+        // on an unreadable number in between. The console still takes any value
+        // for anyone who wants one.
         itemDef { text "Radius:"  textscale .22  rect 30 290 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            name aoradius  type ITEM_TYPE_SLIDER  text ""
-            cvarFloat "r_rtaoRadius" 64 8 512
-            rect 230 290 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
+            name aoradius  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoRadius"
+            cvarFloatList { "16 (tight creases)" 16 "32" 32 "64 (default)" 64 "128" 128 "256 (wide, slower)" 256 }
+            rect 230 290 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
         itemDef { text "Strength:"  textscale .22  rect 30 312 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            name aostrength  type ITEM_TYPE_SLIDER  text ""
-            cvarFloat "r_rtaoIntensity" 0.8 0 1
-            rect 230 312 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1
+            name aostrength  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoIntensity"
+            cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.8 (default)" 0.8 "1.0 (full)" 1 }
+            rect 230 312 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
         itemDef { text "Rays per pixel:"  textscale .22  rect 30 334 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
@@ -1796,6 +1804,17 @@
         }
 
         // ---- buttons -----------------------------------------------------------
+        // [QL] A way back. Every value on this page is archived, so a session
+        // spent finding out what the controls do leaves whatever you last tried
+        // in the config forever - and without this there is nothing in the game
+        // that says what the defaults were, let alone restores them.
+        itemDef {
+            name aodefaults  text "RESET AO"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 270 440 120 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "set r_rtao 0 ; set r_rtaoRadius 64 ; set r_rtaoIntensity 0.8 ; set r_rtaoSamples 4" }
+            mouseEnter { setitemcolor aodefaults forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor aodefaults forecolor 1 1 1 1 }
+        }
         itemDef {
             name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
             rect 20 440 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1

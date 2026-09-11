@@ -2404,6 +2404,21 @@ void Com_ExecuteCfg(void) {
 #endif
         Cbuf_ExecuteText(EXEC_NOW, "exec autoexec.cfg\n");
         Cbuf_Execute();
+
+        /*
+        [QL] Say where autoexec came from again, now that a log exists.
+
+        exec already reports the path it used and any copies it shadowed - but
+        autoexec.cfg is the one config that cannot benefit from it, because
+        autoexec is what sets logfile_keep, so the log file is opened *during*
+        this exec and the line naming the file is printed before there is
+        anywhere to print it. A field log had no "execing" lines at all and
+        looked like autoexec had never run.
+
+        Repeated here, after Cbuf_Execute has finished, where it lands in the
+        file. Costs a few fopen calls once per launch.
+        */
+        FS_ReportShadowedFile("autoexec.cfg");
     }
 }
 
