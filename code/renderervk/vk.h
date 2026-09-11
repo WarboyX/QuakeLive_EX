@@ -727,6 +727,11 @@ typedef struct {
 		VkDescriptorSet			descriptor;
 		VkPipelineLayout		pipeline_layout;
 		VkPipeline				pipeline;
+		/* [QL] Same shader, replace instead of multiply, so r_rtao 2 shows the
+		   raw occlusion term rather than its effect on the scene. "Is it
+		   working" is otherwise a question about a subtle darkening that a
+		   screenshot cannot settle. */
+		VkPipeline				pipeline_debug;
 
 		/* Everything above exists and the pass may run. Separate from
 		   worldBuilt: the structures can be fine while the pass failed to

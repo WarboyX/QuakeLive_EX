@@ -3629,6 +3629,10 @@ static void vk_rt_destroy_ao( void )
 		qvkDestroyPipeline( vk.device, vk.rt.pipeline, NULL );
 		vk.rt.pipeline = VK_NULL_HANDLE;
 	}
+	if ( vk.rt.pipeline_debug != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_debug, NULL );
+		vk.rt.pipeline_debug = VK_NULL_HANDLE;
+	}
 	if ( vk.rt.pipeline_layout != VK_NULL_HANDLE ) {
 		qvkDestroyPipelineLayout( vk.device, vk.rt.pipeline_layout, NULL );
 		vk.rt.pipeline_layout = VK_NULL_HANDLE;
@@ -3816,7 +3820,8 @@ static void vk_rt_create_ao( void )
 	}
 
 	vk_create_post_process_pipeline( 4, glConfig.vidWidth, glConfig.vidHeight );
-	if ( vk.rt.pipeline == VK_NULL_HANDLE ) {
+	vk_create_post_process_pipeline( 5, glConfig.vidWidth, glConfig.vidHeight );
+	if ( vk.rt.pipeline == VK_NULL_HANDLE || vk.rt.pipeline_debug == VK_NULL_HANDLE ) {
 		ri.Printf( PRINT_WARNING, "RT AO: pipeline failed\n" );
 		vk_rt_destroy_ao();
 		return;
@@ -6883,6 +6888,16 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			blend = qfalse;
 			multiply = qtrue;
 			break;
+		case 5: // [QL] R13 AO debug view - same shader, replaces instead of modulating
+			pipeline = &vk.rt.pipeline_debug;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_ms_fs : vk.modules.rtao_fs;
+			renderpass = vk.render_pass.rtao;
+			layout = vk.rt.pipeline_layout;
+			samples = vkSamples;
+			pipeline_name = "rt ambient occlusion pipeline (debug view)";
+			blend = qfalse;
+			multiply = qfalse;   // write the occlusion term straight out
+			break;
 		default: // gamma correction
 			pipeline = &vk.gamma_pipeline;
 			fsmodule = vk.modules.gamma_fs;
@@ -6984,7 +6999,7 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	and asks for a sample count in the millions. Different shader, different
 	constants - only the ids a shader actually declares may be supplied.
 	*/
-	if ( program_index == 4 ) {
+	if ( program_index == 4 || program_index == 5 ) {
 		ao_sample_count = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
 		if ( ao_sample_count < 1 ) {
 			ao_sample_count = 4;
@@ -9747,41 +9762,58 @@ qboolean vk_rt_ao( void )
 	uint32_t i;
 
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
-		return qfalse;
+		return qfalse;   // the little world-in-a-portal view, not the scene
 	}
+	if ( backEnd.doneRTAO || !backEnd.doneSurfaces ) {
+		return qfalse;   // already run this frame, or there is no 3D yet
+	}
+
+	/*
+	[QL] Everything that can stop this, named individually, once per map.
+
+	The first version of this printed one line - "everything is ready but
+	r_rtao is 0" - and reached it only after three earlier conditions had
+	already returned in silence. A field report of "I'm not seeing anything
+	different" turned out to be one of those silent ones: vk.fboActive was
+	false because r_fbo defaults to 0, so the pass returned on its first line
+	every frame and said nothing at all, while every setup line in the log
+	still read as success.
+
+	One condition per message, because the fix differs for each and a single
+	"not running" tells nobody which one to go and change.
+	*/
 	if ( !vk.rt.aoReady || !vk.rt.worldBuilt || vk.rt.tlas == VK_NULL_HANDLE ) {
-		return qfalse;
-	}
-	if ( backEnd.doneRTAO || !backEnd.doneSurfaces || !vk.fboActive ) {
+		if ( !rtaoOffReported ) {
+			rtaoOffReported = qtrue;
+			ri.Printf( PRINT_ALL, "RT AO: not running - %s\n",
+				!vk.rt.aoReady ? "the pass was not created (see the Ray query lines above)"
+				               : "no acceleration structure for this map" );
+		}
 		return qfalse;
 	}
 	if ( r_rtao == NULL || r_rtao->integer == 0 ) {
-		/*
-		[QL] Say so, once, when everything else is ready and this is the only
-		thing off.
-
-		A field log had every line of the build reporting success - extensions
-		enabled, depth sampleable, pass ready, 33493 triangles in the structure
-		- and no way to tell whether the pass had run, because the only cvar
-		that decides it defaults to 0 and a cvar left alone prints nothing. The
-		log looked like a working AO pass and was a working *setup* with the
-		effect switched off, and those two read identically. Rate-limited to one
-		line per map so it says it once and then stops.
-		*/
 		if ( !rtaoOffReported ) {
 			rtaoOffReported = qtrue;
-			ri.Printf( PRINT_ALL, "RT AO: everything is ready but r_rtao is 0 - nothing is being traced\n" );
+			ri.Printf( PRINT_ALL, "RT AO: not running - r_rtao is 0. Everything else is ready.\n" );
 		}
 		return qfalse;
 	}
 
 	/* The other half of the same problem: when it does run, say so once, so a
-	   log can distinguish "drew" from "was ready to draw". */
+	   log can tell "drew" from "was ready to draw". */
 	if ( !rtaoOnReported ) {
 		rtaoOnReported = qtrue;
-		ri.Printf( PRINT_ALL, "RT AO: tracing - %i rays/pixel, radius %g, strength %g\n",
+		ri.Printf( PRINT_ALL, "RT AO: tracing%s - %i rays/pixel, radius %g, strength %g\n",
+			r_rtao->integer >= 2 ? " (DEBUG VIEW: showing raw occlusion)" : "",
 			ri.Cvar_VariableIntegerValue( "r_rtaoSamples" ),
 			r_rtaoRadius->value, r_rtaoIntensity->value );
+		if ( !vk.fboActive ) {
+			/* Not fatal - this pass only samples depth, unlike bloom, which
+			   needs the colour attachment and is why r_fbo gates that one. Said
+			   anyway, because it is the difference between MSAA being available
+			   and not. */
+			ri.Printf( PRINT_ALL, "RT AO: r_fbo is 0, so there is no multisampling to apply AO before\n" );
+		}
 	}
 
 	/*
@@ -9811,7 +9843,11 @@ qboolean vk_rt_ao( void )
 
 	vk_begin_rtao_render_pass();
 
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline );
+	/* r_rtao 2 shows the occlusion term itself instead of its effect. Grey with
+	   dark creases means it is working; flat white means every ray is missing;
+	   an unchanged scene means the pass never drew. */
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		r_rtao->integer >= 2 ? vk.rt.pipeline_debug : vk.rt.pipeline );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor, 0, NULL );
 	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.pipeline_layout,
