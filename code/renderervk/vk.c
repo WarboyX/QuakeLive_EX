@@ -3602,6 +3602,12 @@ typedef struct {
 	float params[4];   // radius, intensity, frame, bias
 } rtaoPush_t;
 
+/* [QL] One line each per map, not per frame - 250 of these a second is not a
+   diagnostic. Reset when the world is rebuilt, which is where a change of state
+   would actually matter. */
+static qboolean rtaoOnReported = qfalse;
+static qboolean rtaoOffReported = qfalse;
+
 
 /* Defined below, called from vk_rt_create_ao above it. Declared rather than
    reordered because create/destroy belong next to each other. */
@@ -4087,6 +4093,8 @@ void vk_rt_build_world( const world_t *world )
 	}
 
 	vk.rt.worldBuilt = qtrue;
+	rtaoOnReported = qfalse;   // [QL] report the AO state once for this map
+	rtaoOffReported = qfalse;
 
 	/* The AO descriptor names this TLAS, so it has to be rewritten whenever the
 	   structure is rebuilt - which is every map load. Pointing at the destroyed
@@ -4689,11 +4697,44 @@ static void vk_alloc_attachments( void )
 
 	if ( num_attachments == 1 && ( attachments[ 0 ].usage &
 			( VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT ) ) ) {
-		ri.Printf( PRINT_ALL, "attachment memory: %i KiB, %s\n", (int)( offset / 1024 ),
-			lazyObtained ? "lazily allocated (costs no real memory until touched)"
-			             : ( lazyRequested ? "device local - this card has no lazily-allocated "
-			                                 "memory type, so transient buys nothing here"
-			                               : "device local" ) );
+		const char *how;
+
+		if ( lazyObtained ) {
+			how = "lazily allocated (costs no real memory until touched)";
+		} else if ( lazyRequested ) {
+			how = "device local - no lazily-allocated memory type on this card, "
+			      "so transient was buying nothing";
+		} else {
+			/*
+			[QL] Not asked for, which is the case whenever RT AO made depth
+			sampleable - and it left the original question unanswered, because
+			the branch that would have reported it is the one we stopped taking.
+			A field log showed exactly that: "attachment memory: 32640 KiB,
+			device local" and no way to tell whether anything had been given up.
+
+			So ask the device directly rather than inferring it from which path
+			we happened to take. This is the whole answer to "what did making
+			depth sampleable cost", in one line, every run.
+			*/
+			VkPhysicalDeviceMemoryProperties mem;
+			uint32_t m;
+			qboolean haveLazy = qfalse;
+
+			qvkGetPhysicalDeviceMemoryProperties( vk.physical_device, &mem );
+			for ( m = 0; m < mem.memoryTypeCount; m++ ) {
+				if ( mem.memoryTypes[m].propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT ) {
+					haveLazy = qtrue;
+					break;
+				}
+			}
+			how = haveLazy
+				? "device local, not transient - this card DOES have lazily-allocated "
+				  "memory, so that is a real cost"
+				: "device local, not transient - but this card has no lazily-allocated "
+				  "memory type either way, so nothing was given up";
+		}
+
+		ri.Printf( PRINT_ALL, "attachment memory: %i KiB, %s\n", (int)( offset / 1024 ), how );
 	}
 
 #ifdef _DEBUG
@@ -9650,7 +9691,32 @@ qboolean vk_rt_ao( void )
 		return qfalse;
 	}
 	if ( r_rtao == NULL || r_rtao->integer == 0 ) {
+		/*
+		[QL] Say so, once, when everything else is ready and this is the only
+		thing off.
+
+		A field log had every line of the build reporting success - extensions
+		enabled, depth sampleable, pass ready, 33493 triangles in the structure
+		- and no way to tell whether the pass had run, because the only cvar
+		that decides it defaults to 0 and a cvar left alone prints nothing. The
+		log looked like a working AO pass and was a working *setup* with the
+		effect switched off, and those two read identically. Rate-limited to one
+		line per map so it says it once and then stops.
+		*/
+		if ( !rtaoOffReported ) {
+			rtaoOffReported = qtrue;
+			ri.Printf( PRINT_ALL, "RT AO: everything is ready but r_rtao is 0 - nothing is being traced\n" );
+		}
 		return qfalse;
+	}
+
+	/* The other half of the same problem: when it does run, say so once, so a
+	   log can distinguish "drew" from "was ready to draw". */
+	if ( !rtaoOnReported ) {
+		rtaoOnReported = qtrue;
+		ri.Printf( PRINT_ALL, "RT AO: tracing - %i rays/pixel, radius %g, strength %g\n",
+			ri.Cvar_VariableIntegerValue( "r_rtaoSamples" ),
+			r_rtaoRadius->value, r_rtaoIntensity->value );
 	}
 
 	/*
