@@ -5741,6 +5741,116 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E88. The console stopped drawing text and could never recover — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+Reported as *"console broke and isn't rendering text after a certain point."* The
+screenshot is the diagnosis: a row of evenly spaced red marks across the top of
+an otherwise empty console. That row is this, in `Con_DrawSolidConsole`:
+
+```c
+if (con.display != con.current) {
+    // draw arrows to show the buffer is backscrolled
+    for (x = 0; x < con.linewidth; x += 4)
+        Con_DrawCharScaled(..., '^');
+```
+
+A red `^` every four columns — the console saying *you are scrolled back*.
+
+`Con_Linefeed` follows the bottom only while the view is already **at** the
+bottom (`if (con.display == con.current) con.display++`). Scroll up one notch
+and `con.display` stays put while `con.current` keeps climbing. Once it has
+climbed a whole buffer's worth, every row fails the *past scrollback wrap point*
+test in the draw loop and is skipped — and nothing ever pulls `con.display`
+forward again. The console draws the arrows, the version line, and nothing else,
+for the rest of the session.
+
+**Why it bites here and not in stock Quake 3.** Stock has a 32 KiB buffer and
+78-column lines: 420 lines of scrollback, and you have to work to lose it. Here
+`CON_TEXTSIZE` is 524288, but a 4K display gives **340-column lines**, so the
+scrollback is 1542 lines — and with `developer 1` and sixty bots printing
+tactics, that is under a minute of output. One scroll up mid-match and the
+console is gone.
+
+**Fix:** clamp `con.display` to the oldest line still in the buffer as lines are
+added. That keeps the view as far back as the data allows, which is the honest
+answer — the lines being looked at really were overwritten, so the view follows
+the data instead of pointing past it.
+
+**Also fixed while reading it:** the `con_timestamps` block walked `con.x`
+forward with no test against `con.linewidth`, so on a console too narrow for the
+stamp it wrote past the end of the line, and on the last line of the ring past
+the end of `con.text` itself. The stamp grows, too — `[1234:56.789] ` once a run
+passes a thousand minutes.
+
+**Not a bug, for the record:** `WARNING: R_FindImageFile could not find
+'gfx/misc/console01.tga' in shader 'console'` appears in every log and is noise.
+`con_background` defaults to 0, so the console draws a solid fill at
+`con_opacity` and the shader is registered at startup but never used. The dark
+console in the screenshot is working as designed.
+
+**To verify:** open the console mid-match, scroll up, wait, scroll back down —
+text throughout, and `shift+End` returns to the bottom.
+
+### E87. Deliberate defenders were converted to attackers on the next think — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+E83 fixed the census and it worked: `over-subscribed, re-deciding` fires 83 times
+where it fired 0 before, and the picker chose **defend 114 times and roam 35**
+against only 13 attack. And the end-of-map census still read:
+
+```
+red roles (31): attack 28/14.4 (full) defend 0/10.4 escort 0/0.0 roam 0/6.2
+```
+
+Every bot on `LTG_GETFLAG`. All 149 non-attack decisions were undone on the
+think that followed them.
+
+**`BotCTFEnforceOffense` did it**, and it runs after everything else on every
+think:
+
+```c
+if (bs->ltgtype == LTG_RUSHBASE ||
+    (bs->ltgtype == LTG_DEFENDKEYAREA && bs->teamgoal.number == ownflag->number)) {
+    bs->ltgtype = 0;
+}
+if (bs->ltgtype != 0) return;
+... bs->ltgtype = LTG_GETFLAG;
+```
+
+It clears exactly the goal the picker gives a defender, and `ltgtype == 0` —
+which is what *roaming* is — falls straight through to the forced GETFLAG. So
+defend and roam were both impossible, by construction.
+
+It was written before the role picker existed, to fix *"the bots touch their own
+flag first"*, when the only thing sending a bot to its own flag was the stock
+code's aimless third. It is the right answer to a bot that drifted home with no
+plan and the wrong one to a deliberate assignment, and it had no way to tell
+them apart because they are the same state.
+
+**Fix:** `bs->tac.assignedrole` records what the picker last asked for, and the
+enforcer honours a defender holding the base or a roamer with no long-term goal.
+
+**Gated on the quota, not a timer** — and the timer is the tempting wrong
+answer. A defender only re-runs the picker when its role is *crowded*, so a
+timestamp goes stale precisely while the bot is doing its job correctly, and the
+enforcer would take it back for being right for too long. `BotCTFRoleCrowded`
+is self-correcting instead: when defence is over-subscribed the surplus falls
+through to the clear and goes on offence, which is exactly what should happen to
+the bot standing on its own flag that nobody needs there.
+
+`assignedrole` resets to **-1**, not 0 — `CTFROLE_ATTACK` is 0, so a zeroed
+struct would have every fresh bot claiming it had been assigned to attack, which
+is the one answer that needs no special handling and so would never be noticed.
+
+**What E84 already bought**, from the same log: room spread went from 13-in-one
+across 5 rooms to a maximum of 10 across **17 rooms**, and the Garden — which
+nothing used before — held 10 bots. Alternative routes went from `0` to
+`32 (from the map's portals)` both ways.
+
+**To verify:** `defend` should climb off zero and `roam` off zero in the map
+report, and attack should sit near its quota rather than at double it.
+
 ### E86. R13 step 2: acceleration structures for the static world — DONE (verify on hardware)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

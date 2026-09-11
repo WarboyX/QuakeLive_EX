@@ -998,6 +998,18 @@ void BotCTFSeekGoals(bot_state_t* bs) {
     {
         int role = BotCTFPickRole(bs);
 
+        /*
+        [QL] E87: record what the team asked for, so BotCTFEnforceOffense can
+        tell a deliberate defender from a bot that wandered home.
+
+        Set before the branches below rather than inside each of them, because
+        the escort branch returns early and would otherwise be the one job the
+        enforcer never hears about.
+        */
+        if (role >= 0) {
+            bs->tac.assignedrole = role;
+        }
+
         if (role == CTFROLE_ESCORT) {
             int carrier = BotTeamFlagCarrier(bs);
 
@@ -1723,6 +1735,47 @@ static void BotCTFEnforceOffense(bot_state_t* bs) {
         }
     } else if (bs->ltgtype == LTG_RETURNFLAG) {
         bs->ltgtype = 0;   // nothing to fetch
+    }
+
+    /*
+    [QL] E87: and a third thing legitimately points at the bot's own base -
+    being told to defend it.
+
+    This function was written before the role picker existed, when the only
+    thing that sent a bot to its own flag was the stock code's aimless third,
+    and "clear it and go on offence" was the right answer to that. It is the
+    wrong answer to a deliberate assignment, and because it runs after
+    everything else on every think it wins: a field log of 62 bots shows the
+    picker choosing defend 114 times and roam 35 times, and the end-of-map
+    census reading
+
+        red roles (31): attack 28/14.4 (full) defend 0/10.4 escort 0/0.0 roam 0/6.2
+
+    - every single bot on LTG_GETFLAG, nobody holding either base, because each
+    of those 149 decisions was undone on the think that followed it. That is the
+    staircase pile-up: a whole team with one goal and one destination.
+
+    So the assignment is honoured while the team still wants it - the quota,
+    not a timer. A timer would be wrong here: a defender only re-runs the picker
+    when its role is *crowded*, so a timestamp goes stale precisely while the
+    bot is doing the job correctly, and the enforcer would take it back for
+    being right for too long.
+
+    The quota is also what keeps the original fix alive. When defence is
+    over-subscribed the surplus falls through to the clear below and goes on
+    offence, which is exactly what should happen to the bot standing on its own
+    flag that nobody needs there.
+    */
+    if (bot_tactics.integer) {
+        if (bs->tac.assignedrole == CTFROLE_DEFEND &&
+            bs->ltgtype == LTG_DEFENDKEYAREA &&
+            !BotCTFRoleCrowded(bs, CTFROLE_DEFEND)) {
+            return;   // asked to hold the base, holding it, and still wanted there
+        }
+        if (bs->tac.assignedrole == CTFROLE_ROAM && bs->ltgtype == 0 &&
+            !BotCTFRoleCrowded(bs, CTFROLE_ROAM)) {
+            return;   // having no long-term goal is the point of roaming, not an absence of one
+        }
     }
 
     if (bs->ltgtype == LTG_RUSHBASE ||

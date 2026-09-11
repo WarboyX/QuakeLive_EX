@@ -158,6 +158,16 @@ typedef struct bot_tactics_s {
     int reportedstuck;       // this stuck episode has already been reported
     float roleredecide_time;  // [QL] CTF role may not be reconsidered before this
     float reroute_time;       // [QL] and the route may not be reconsidered before this
+    /* [QL] E87: the job the role picker last handed this bot, and when.
+       BotCTFEnforceOffense clears every goal that points at the bot's own base
+       and replaces it with LTG_GETFLAG - which is right for a bot that drifted
+       home with no plan, and wrong for one the team deliberately made a
+       defender. Without a record of the difference the two are the same state
+       and the enforcer cannot tell them apart. -1 is "the picker has not
+       spoken", which is why this is reset rather than left at 0 - 0 is
+       CTFROLE_ATTACK and a zeroed struct would claim every fresh bot had been
+       assigned to attack. */
+    int assignedrole;
     /* [QL] Aim anticipation - see BotAimSweep. How fast the place the bot wants
        to look is itself moving, filtered, so the view can lead a strafing target
        instead of trailing it. Xonotic's havocbot calls these the 1st and 2nd

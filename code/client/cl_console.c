@@ -639,6 +639,34 @@ void Con_Linefeed(qboolean skipnotify) {
     if (con.display == con.current)
         con.display++;
     con.current++;
+
+    /*
+    [QL] E88: keep the scrollback position inside the buffer.
+
+    The line above follows the bottom only while the view is *at* the bottom.
+    Scroll up one notch and con.display stays put while con.current keeps
+    climbing - and once it has climbed a whole buffer's worth, every row fails
+    the "past scrollback wrap point" test in Con_DrawSolidConsole and is
+    skipped. The console then draws nothing at all, forever, because nothing
+    pulls con.display forward again. What is left on screen is the row of red
+    backscroll arrows and the version line, over an empty console.
+
+    That is stock Quake 3 behaviour and is survivable there, where the buffer is
+    32 KiB and a line is 78 columns. Here CON_TEXTSIZE is 524288 but a 4K
+    display gives 340-column lines, so the scrollback is 1542 lines - and with
+    developer 1 and sixty bots printing tactics, that is under a minute of
+    output. One scroll up during a match and the console is gone for the rest of
+    the session.
+
+    Clamping to the oldest line still in the buffer keeps the user as far back
+    as the data allows, which is the honest answer: the lines they were looking
+    at are genuinely overwritten, so the view follows the data rather than
+    pointing past it.
+    */
+    if (con.current - con.display >= con.totallines) {
+        con.display = con.current - con.totallines + 1;
+    }
+
     for (i = 0; i < con.linewidth; i++)
         con.text[(con.current % con.totallines) * con.linewidth + i] = (ColorIndex(COLOR_WHITE) << 8) | ' ';
 }
@@ -696,8 +724,14 @@ void CL_ConsolePrint(char* txt) {
         millis = (int)((time_sec - minutes * 60.0f - seconds) * 1000.0f);
         Com_sprintf(tsbuf, sizeof(tsbuf), "[%d:%02d.%03d] ", minutes, seconds, millis);
 
+        /* [QL] Bounded. This walked con.x forward with no test against
+           linewidth, so on a console narrow enough for the stamp not to fit -
+           a small window, or con_scale turned up - it wrote past the end of the
+           line, and on the last line of the ring past the end of con.text
+           itself. The stamp also grows: "[1234:56.789] " once a run passes a
+           thousand minutes. Truncating it is the right failure. */
         p = tsbuf;
-        while (*p) {
+        while (*p && con.x < con.linewidth) {
             y = con.current % con.totallines;
             con.text[y * con.linewidth + con.x] = (ColorIndex(COLOR_WHITE) << 8) | *p;
             con.x++;

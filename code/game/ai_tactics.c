@@ -68,6 +68,11 @@ void BotTacticsReset(bot_state_t* bs) {
     bs->tac.nearestallydist = 99999;
     bs->tac.posture = TACTIC_EVEN;
     bs->tac.lasthealth = bs->inventory[INVENTORY_HEALTH];
+    /* [QL] E87: not 0 - CTFROLE_ATTACK is 0, so the memset above would
+       otherwise have every fresh bot claiming the picker had assigned it to
+       attack, which is the one answer that needs no special handling and so
+       would never be noticed. */
+    bs->tac.assignedrole = -1;
 }
 
 /*
