@@ -2628,8 +2628,43 @@ ifneq ($(DEPEND_MAKEFILE),0)
 endif
 
 ifneq ($(B),)
-  OBJ_D_FILES=$(filter %.d,$(OBJ:%.o=%.d))
+  # [QL] Dependency files were generated and never read.
+  #
+  # OBJ is not assigned anywhere in this Makefile - the object lists are Q3OBJ,
+  # Q3R2OBJ, Q3RVKOBJ, JPGOBJ, Q3DOBJ and friends - so OBJ_D_FILES expanded to
+  # nothing and this -include included nothing. Every .c file carries -MMD and
+  # writes a .d next to its .o, and not one of them has ever been used.
+  #
+  # The effect: changing a header rebuilt nothing that included it. Usually that
+  # only costs a missing prototype and a link error. When the header defines a
+  # struct it silently corrupts the build - the files that happen to be
+  # recompiled see the new layout and the stale objects keep reading the old
+  # offsets.
+  #
+  # That is exactly what E81 hit: adding one qboolean to vk_t shifted every
+  # field after it, vk.c and tr_init.c were rebuilt because their .c files had
+  # changed, and tr_image.c was not - so tr_image.c:1663 went on reading
+  # vk.fboActive at the old offset, got the wrong answer, and flipped
+  # tr.overbrightBits from 0 to 1. The whole image came out dark, from a diff
+  # that only compared extension strings.
+  #
+  # Collected by find rather than by listing the object variables, because
+  # missing one of those lists is how this happened in the first place.
+  OBJ_D_FILES := $(shell find $(B) -name '*.d' 2>/dev/null)
   -include $(OBJ_D_FILES)
+
+  # The same failure is one typo away from coming back, and it is silent: a
+  # build with no dependency tracking looks exactly like a build with it, right
+  # up until something renders wrong. So say it out loud. Objects present but no
+  # .d files collected means this block expanded to nothing again.
+  ifneq ($(wildcard $(B)/client/*.o)$(wildcard $(B)/ded/*.o),)
+    ifeq ($(OBJ_D_FILES),)
+      $(warning [QL] No .d files were included - header changes will NOT)
+      $(warning [QL] trigger rebuilds. This is the E81 bug. Objects compiled)
+      $(warning [QL] against an old struct layout link cleanly and read the)
+      $(warning [QL] wrong offsets. Run "rm -rf build" and fix this block.)
+    endif
+  endif
 endif
 
 .PHONY: all clean clean2 clean-debug clean-release copyfiles \

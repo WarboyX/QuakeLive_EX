@@ -62,6 +62,16 @@ trap 'sed -i "s/pak01 $REV/pak01 @@PAKSTAMP@@/g" content/pak01/ui/main.menu' EXI
 make BUILD_RENDERER_VULKAN=1 -j"$JOBS"
 make PLATFORM=mingw32 ARCH=x86_64 BUILD_RENDERER_VULKAN=1 -j"$JOBS"
 
+# Nothing above can tell whether the build it just did was correct. A stale
+# object links as happily as a fresh one; E81 shipped a half-brightness client
+# from a commit that only compared extension strings, because one object was
+# built against the previous layout of vk_t and nothing rebuilt it.
+#
+# This reads the .d files the compiler wrote and checks no object is older than
+# a header it includes. It runs after make, not before, because the question is
+# about what was produced and not about what the source says.
+python3 tools/check-stale-objects.py
+
 rm -rf "$OUT/pkg"
 mkdir -p "$OUT/pkg" "$OUT/stage"
 

@@ -5727,6 +5727,108 @@ return an entity an earlier pass already saw.
 
 **To verify:** thunderstruck should report 5 usable points, not 10.
 
+### E82. The build never read its own dependency files — TOOLING ERROR, FIXED
+**Lives in:** the **build**, both binaries · **Seen by:** anyone running a build
+made incrementally — which is every build made while working
+
+This is the cause of the darkness reported against E81, and it is not a bug in
+E81's code. E81's diff was inert, as claimed. The build was not.
+
+**What happened.** E81 added one field to `vk_t`:
+
+```c
+qboolean dedicatedAllocation;
+qboolean rayQuery;          /* <- added here */
+...
+qboolean fboActive;
+```
+
+Every field after `rayQuery` moved. `make` rebuilt `vk.c` and `tr_init.c`,
+because those two `.c` files had changed. It did not rebuild `tr_image.c`, whose
+only change was the header. So `tr_image.o` kept reading `vk.fboActive` at the
+offset it had before the insertion, found whatever now lives there, and took the
+wrong branch at `code/renderervk/tr_image.c:1663`:
+
+```c
+if ( !glConfig.deviceSupportsGamma && !vk.fboActive ) {
+    tr.overbrightBits = 0;      // need hardware gamma for overbright
+```
+
+`tr.overbrightBits` went 0 → 1, `tr.identityLight` is `1.0f / (1 <<
+overbrightBits)` so it went 1.0 → 0.5, and every surface in the game and every
+panel in the menu rendered at half brightness. The two logs differ on exactly
+one line:
+
+```
+control 4506b63:  GAMMA: software w/ 0 overbright bits
+bad     4506b63:  GAMMA: software w/ 1 overbright bits
+```
+
+Same commit, same source, different binaries. That is only possible if the
+objects differ, which is the whole tell and was there from the first log.
+
+**Why no header change had ever rebuilt anything.** The dependency block read:
+
+```make
+OBJ_D_FILES=$(filter %.d,$(OBJ:%.o=%.d))
+-include $(OBJ_D_FILES)
+```
+
+`OBJ` is never assigned in this Makefile. The object lists are `Q3OBJ`,
+`Q3R2OBJ`, `Q3RVKOBJ`, `Q3R2STRINGOBJ`, `JPGOBJ`, `Q3DOBJ`; the only other bare
+`$(OBJ)` is the `rm -f` in `clean`. So `OBJ_D_FILES` expanded to nothing and the
+`-include` included nothing. Every `.c` in the tree has been compiled with
+`-MMD` and has been writing a `.d` next to its `.o` this whole time, and not one
+of those files had ever been read — by this commit or any commit before it.
+
+Most of the time that costs a link error, which is loud. When the changed header
+defines a struct it silently produces a binary whose objects disagree about
+memory layout, links cleanly, and misbehaves somewhere unrelated to the change.
+
+**The fix.**
+
+```make
+OBJ_D_FILES := $(shell find $(B) -name '*.d' 2>/dev/null)
+-include $(OBJ_D_FILES)
+```
+
+Collected with `find` rather than from the object variables, because missing one
+of those lists is how this happened. Measured: `touch code/renderervk/vk.h`
+rebuilt **2** files before and **28** after, `tr_image.c`, `tr_shade.c` and
+`tr_backend.c` among them.
+
+**The safeguards**, because the fix is one typo from silently reverting and the
+failure does not look like a build failure:
+
+1. `tools/check-stale-objects.py` — parses the `.d` files the compiler wrote and
+   fails if any object is older than a header it includes. It checks the
+   *outcome*, so it holds regardless of how the dependency mechanism breaks next
+   time. `package-release.sh` runs it after `make` and before packaging, so a
+   stale object cannot reach an archive.
+2. A `$(warning)` in the Makefile when objects exist but no `.d` files were
+   collected — the exact shape of the original bug.
+
+Verified by reproducing it: with the old line restored, `touch vk.h` rebuilt 2
+files and the checker failed naming `tr_image.o` against `code/renderervk/vk.h`.
+With the fix, a clean build reports 860 objects up to date.
+
+Two classes are exempt, both deliberately: `win_resource.o` comes from `windres`
+and has no `.d`, but the Makefile lists its prerequisites by hand; and
+prerequisites *inside* the build tree are generated intermediates —
+`renderergl2`'s GLSL becomes `.c` under `$(B)`, is compiled, and is then deleted
+by make, so its absence afterwards is normal.
+
+**What went wrong in the diagnosis, separately from the build.** The diff was
+read, re-read, and asserted inert three times. It was inert. The question "then
+why do the binaries differ" was never asked, and it is the only question that
+could have resolved it: two builds that behave differently have different
+objects, and `size`/`nm`/a rebuild count answers that in seconds. Source review
+cannot answer it at all. Written down in `CLAUDE.md` under the traps, because
+the next struct field will do this again.
+
+**To verify:** a build from `4506b63` should report `GAMMA: software w/ 0
+overbright bits` and look identical to the control.
+
 ### E81. Ray query capability is reported, so there is something to gate on — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

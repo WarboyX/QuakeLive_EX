@@ -59,7 +59,7 @@ so a change is invisible here and wrong for everyone else. The shotgun is
 exactly this. A server change to anything the client redraws from a seed is
 broken for stock clients until proven otherwise.
 
-## Two recurring traps in this codebase
+## Recurring traps in this codebase
 
 **A registered cvar is not an implemented feature.** 186 cvars are registered
 and read by nothing — setting them produces no error and no effect. This has
@@ -81,6 +81,31 @@ value is written into a config on first run and that config then wins forever,
 so changing the default later does nothing. Cost two rounds already
 (`r_dlightMode`, `con_scale`). Archive is for values a user sets, not values we
 choose.
+
+**Adding a field to a struct changes every offset after it, and the build will
+not necessarily notice.** This is a tooling error, not a coding one, and it is
+the worst-behaved item on this list because the symptom never points at the
+cause. E81 added one `qboolean` to `vk_t`; `make` rebuilt the two files whose
+`.c` had changed and left the rest compiled against the old layout, so
+`tr_image.c` read `vk.fboActive` at the wrong offset and the whole game rendered
+at half brightness. The diff under review only compared extension strings. Three
+rounds went into re-reading a diff that was correct.
+
+Dependency tracking had never worked in this tree — `-include $(OBJ_D_FILES)`
+derived from `$(OBJ)`, a variable the Makefile never assigns — so *no* header
+change had ever rebuilt anything, for any commit in the history. Fixed, plus two
+guards:
+
+- `tools/check-stale-objects.py` reads the `.d` files the compiler wrote and
+  fails if any object is older than a header it includes. `package-release.sh`
+  runs it after `make`, so a stale object cannot be packaged. Run it by hand
+  after any incremental build you are about to trust.
+- The Makefile warns loudly if the include block ever expands to nothing again.
+
+The general rule this came from: **when a diff cannot explain a behaviour
+change, stop reading the diff and look at what the compiler produced.** Two
+builds that differ in behaviour differ in their objects; `size`, `nm`, or a
+rebuild count settles in seconds what source review cannot settle at all.
 
 ## Assets
 
