@@ -751,7 +751,7 @@ gitem_t bg_itemlist[] =
             "sound/misc/am_pkup.wav",
             {"models/powerups/ammo/nailgunam.md3",
              NULL, NULL, NULL},
-            /* icon */ "icons/icona_nailgun",
+            /* icon */ "icons/ammo_nailgun",
             /* pickup */ "Nails",
             20,
             IT_AMMO,
@@ -766,7 +766,7 @@ gitem_t bg_itemlist[] =
             "sound/misc/am_pkup.wav",
             {"models/powerups/ammo/proxmineam.md3",
              NULL, NULL, NULL},
-            /* icon */ "icons/icona_proxlauncher",
+            /* icon */ "icons/ammo_proxmine",
             /* pickup */ "Proximity Mines",
             10,
             IT_AMMO,
@@ -781,7 +781,7 @@ gitem_t bg_itemlist[] =
             "sound/misc/am_pkup.wav",
             {"models/powerups/ammo/chaingunam.md3",
              NULL, NULL, NULL},
-            /* icon */ "icons/icona_chaingun",
+            /* icon */ "icons/ammo_chaingun",
             /* pickup */ "Chaingun Belt",
             100,
             IT_AMMO,
@@ -891,6 +891,22 @@ gitem_t bg_itemlist[] =
          0,
          /* precache */ "",
          /* sounds */ ""},
+        /*
+        [QL] The three Team Arena weapons below, and their ammo, carried Quake 3
+        icon names - icons/iconw_nailgun and friends - that Quake Live's pak does
+        not contain. Quake Live renamed them: nailgun128, proxmine, chaingun128,
+        and ammo_nailgun / ammo_proxmine / ammo_chaingun.
+
+        RE_RegisterShader returns 0 for a name the pak has no file for and says
+        nothing, so a wrong icon draws nothing and reports nothing - the same
+        silent shape as a registered cvar nothing reads. The nine Quake 3
+        weapons above are unaffected because their names did not change, and the
+        HMG below was already right, which is why this went unnoticed: every
+        weapon anyone routinely picks up had an icon.
+
+        Names checked against docs/pak-manifest.txt; the models and sounds in
+        these entries were checked at the same time and are correct.
+        */
         /*QUAKED weapon_nailgun (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
          */
         {
@@ -898,7 +914,7 @@ gitem_t bg_itemlist[] =
             "sound/misc/w_pkup.wav",
             {"models/weapons/nailgun/nailgun.md3",
              NULL, NULL, NULL},
-            /* icon */ "icons/iconw_nailgun",
+            /* icon */ "icons/nailgun128",
             /* pickup */ "Nailgun",
             10,
             IT_WEAPON,
@@ -913,7 +929,7 @@ gitem_t bg_itemlist[] =
             "sound/misc/w_pkup.wav",
             {"models/weapons/proxmine/proxmine.md3",
              NULL, NULL, NULL},
-            /* icon */ "icons/iconw_proxlauncher",
+            /* icon */ "icons/proxmine",
             /* pickup */ "Prox Launcher",
             5,
             IT_WEAPON,
@@ -933,7 +949,7 @@ gitem_t bg_itemlist[] =
             "sound/misc/w_pkup.wav",
             {"models/weapons/vulcan/vulcan.md3",
              NULL, NULL, NULL},
-            /* icon */ "icons/iconw_chaingun",
+            /* icon */ "icons/chaingun128",
             /* pickup */ "Chaingun",
             80,
             IT_WEAPON,
