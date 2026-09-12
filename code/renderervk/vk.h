@@ -773,6 +773,47 @@ typedef struct {
 			VkDeviceMemory	tlas_memory;
 			VkBuffer		instance_buffer;
 			VkDeviceMemory	instance_memory;
+
+			/*
+			[QL] R13 step 4: the dynamic half of the scene.
+
+			The structures above hold the map and nothing else, so players,
+			items, gibs and movers cast no occlusion at all - someone standing
+			beside you does not darken the wall. These give them one.
+
+			A shared box rather than their real meshes. An MD3 is vertex-morphed
+			per frame, so exact geometry would mean rebuilding a bottom level
+			structure for every visible entity every frame - the expensive half
+			of ray tracing - to sharpen a term that is deliberately blurry.
+			A box at the entity's bounds costs twelve triangles built once and
+			an instance transform per frame, and occlusion this soft cannot tell
+			the difference at the distances it acts over.
+
+			Doubled per command buffer. The top level is rebuilt every frame,
+			and with two frames in flight the one being rebuilt could otherwise
+			still be in use by the frame before it - so each command buffer
+			gets its own, and its own descriptor set naming it.
+			*/
+			VkAccelerationStructureKHR	proxy_blas;
+			VkBuffer		proxy_blas_buffer;
+			VkDeviceMemory	proxy_blas_memory;
+			VkBuffer		proxy_vertex_buffer;
+			VkDeviceMemory	proxy_vertex_memory;
+			VkBuffer		proxy_index_buffer;
+			VkDeviceMemory	proxy_index_memory;
+
+			VkAccelerationStructureKHR	dyn_tlas[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		dyn_tlas_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	dyn_tlas_memory[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		dyn_instance_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	dyn_instance_memory[ NUM_COMMAND_BUFFERS ];
+			void			*dyn_instance_ptr[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		dyn_scratch_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	dyn_scratch_memory[ NUM_COMMAND_BUFFERS ];
+			VkDeviceAddress	dyn_scratch_address[ NUM_COMMAND_BUFFERS ];
+
+			uint32_t		dyn_maxInstances;
+			qboolean		dynReady;
 		} world;
 
 		/* ---- the ambient occlusion pass ---- */
@@ -786,7 +827,10 @@ typedef struct {
 
 		VkDescriptorSetLayout	set_layout;
 		VkDescriptorPool		pool;
-		VkDescriptorSet			descriptor;
+		/* One per command buffer: each names that frame's top level structure,
+		   which is rebuilt every frame and so cannot be shared. Both name the
+		   same depth image. */
+		VkDescriptorSet			descriptor[ NUM_COMMAND_BUFFERS ];
 		VkPipelineLayout		pipeline_layout;
 
 		/*

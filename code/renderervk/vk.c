@@ -3941,7 +3941,8 @@ static void vk_rt_destroy_ao( void )
 	if ( vk.rt.pool != VK_NULL_HANDLE ) {
 		qvkDestroyDescriptorPool( vk.device, vk.rt.pool, NULL );
 		vk.rt.pool = VK_NULL_HANDLE;
-		vk.rt.descriptor = VK_NULL_HANDLE;
+		vk.rt.descriptor[0] = VK_NULL_HANDLE;
+		vk.rt.descriptor[1] = VK_NULL_HANDLE;
 		vk.rt.blur_descriptor[0] = VK_NULL_HANDLE;
 		vk.rt.blur_descriptor[1] = VK_NULL_HANDLE;
 	}
@@ -4147,13 +4148,13 @@ static void vk_rt_create_ao( void )
 	/* Three sets: the trace's, and one per occlusion target for the denoise. */
 	Com_Memset( pool_sizes, 0, sizeof( pool_sizes ) );
 	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	pool_sizes[0].descriptorCount = 5;   // trace: depth. denoise: 2 x (ao + depth)
+	pool_sizes[0].descriptorCount = 6;   // trace: depth x2. denoise: 2 x (ao + depth)
 	pool_sizes[1].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-	pool_sizes[1].descriptorCount = 1;
+	pool_sizes[1].descriptorCount = 2;   // one per command buffer
 
 	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
 	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	pool_desc.maxSets = 3;
+	pool_desc.maxSets = 4;   // two trace sets, two denoise sets
 	pool_desc.poolSizeCount = 2;
 	pool_desc.pPoolSizes = pool_sizes;
 
@@ -4170,11 +4171,13 @@ static void vk_rt_create_ao( void )
 	set_alloc.descriptorSetCount = 1;
 	set_alloc.pSetLayouts = &vk.rt.set_layout;
 
-	res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.rt.descriptor );
-	if ( res < 0 ) {
-		ri.Printf( PRINT_WARNING, "RT AO: descriptor set failed (%s)\n", vk_result_string( res ) );
-		vk_rt_destroy_ao();
-		return;
+	for ( i = 0; i < ARRAY_LEN( vk.rt.descriptor ); i++ ) {
+		res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.rt.descriptor[i] );
+		if ( res < 0 ) {
+			ri.Printf( PRINT_WARNING, "RT AO: descriptor set %i failed (%s)\n", i, vk_result_string( res ) );
+			vk_rt_destroy_ao();
+			return;
+		}
 	}
 
 	set_alloc.pSetLayouts = &vk.rt.blur_set_layout;
@@ -4290,6 +4293,7 @@ with every map, so the set is written when both exist rather than once.
 */
 static void vk_rt_update_ao_descriptor( void )
 {
+	uint32_t n;
 	VkWriteDescriptorSetAccelerationStructureKHR as_info;
 	VkDescriptorImageInfo image_info;
 	VkWriteDescriptorSet writes[2];
@@ -4305,33 +4309,491 @@ static void vk_rt_update_ao_descriptor( void )
 	   render pass puts at DEPTH_STENCIL_READ_ONLY_OPTIMAL for its subpass. */
 	image_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
-	Com_Memset( &as_info, 0, sizeof( as_info ) );
-	as_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-	as_info.accelerationStructureCount = 1;
-	as_info.pAccelerationStructures = &vk.rt.world.tlas;
+	/*
+	[QL] One set per command buffer, each naming that frame's structure.
 
-	Com_Memset( writes, 0, sizeof( writes ) );
-	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[0].dstSet = vk.rt.descriptor;
-	writes[0].dstBinding = 0;
-	writes[0].descriptorCount = 1;
-	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	writes[0].pImageInfo = &image_info;
+	With the dynamic structures built, each command buffer traces against its
+	own top level - they are rebuilt every frame and sharing one would have a
+	frame rebuilding the structure the frame before it is still reading.
+	Without them, both name the static world structure and the two sets are
+	identical, which costs nothing and keeps one code path.
+	*/
+	for ( n = 0; n < ARRAY_LEN( vk.rt.descriptor ); n++ ) {
+		VkAccelerationStructureKHR as = vk.rt.world.dynReady
+			? vk.rt.world.dyn_tlas[n] : vk.rt.world.tlas;
 
-	/* The acceleration structure rides in pNext rather than in a pBufferInfo or
-	   pImageInfo - it is neither, and the handle is carried by the extension
-	   struct. A write with descriptorType ACCELERATION_STRUCTURE_KHR and no
-	   such pNext is silently nothing. */
-	writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[1].pNext = &as_info;
-	writes[1].dstSet = vk.rt.descriptor;
-	writes[1].dstBinding = 1;
-	writes[1].descriptorCount = 1;
-	writes[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		if ( as == VK_NULL_HANDLE ) {
+			continue;
+		}
 
-	qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
+		Com_Memset( &as_info, 0, sizeof( as_info ) );
+		as_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+		as_info.accelerationStructureCount = 1;
+		as_info.pAccelerationStructures = &as;
+
+		Com_Memset( writes, 0, sizeof( writes ) );
+		writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[0].dstSet = vk.rt.descriptor[n];
+		writes[0].dstBinding = 0;
+		writes[0].descriptorCount = 1;
+		writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[0].pImageInfo = &image_info;
+
+		/* The acceleration structure rides in pNext rather than in a pBufferInfo
+		   or pImageInfo - it is neither, and the handle is carried by the
+		   extension struct. A write with descriptorType
+		   ACCELERATION_STRUCTURE_KHR and no such pNext is silently nothing. */
+		writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[1].pNext = &as_info;
+		writes[1].dstSet = vk.rt.descriptor[n];
+		writes[1].dstBinding = 1;
+		writes[1].descriptorCount = 1;
+		writes[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+
+		qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
+	}
 }
 
+
+/* [QL] R13 step 4: the dynamic half. One instance of the world, plus a box per
+   visible entity, in a top level structure rebuilt every frame. */
+#define RT_MAX_DYN_INSTANCES 256
+
+/*
+=================
+rt_create_host_buffer
+
+Like rt_create_buffer but in memory the CPU can write, and left mapped.
+
+The instance array is rewritten every frame from the entity list, so it wants
+host-visible memory and one persistent mapping rather than a staging copy and a
+transfer per frame for a few kilobytes.
+=================
+*/
+static qboolean rt_create_host_buffer( VkDeviceSize size, VkBufferUsageFlags usage,
+	VkBuffer *buffer, VkDeviceMemory *memory, void **mapped )
+{
+	VkBufferCreateInfo desc;
+	VkMemoryAllocateInfo alloc_info;
+	VkMemoryAllocateFlagsInfo flags_info;
+	VkMemoryRequirements reqs;
+	VkResult res;
+
+	*buffer = VK_NULL_HANDLE;
+	*memory = VK_NULL_HANDLE;
+	*mapped = NULL;
+
+	Com_Memset( &desc, 0, sizeof( desc ) );
+	desc.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	desc.size = size;
+	desc.usage = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	desc.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	res = qvkCreateBuffer( vk.device, &desc, NULL, buffer );
+	if ( res < 0 ) {
+		*buffer = VK_NULL_HANDLE;
+		return qfalse;
+	}
+
+	qvkGetBufferMemoryRequirements( vk.device, *buffer, &reqs );
+
+	Com_Memset( &flags_info, 0, sizeof( flags_info ) );
+	flags_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+	flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+
+	Com_Memset( &alloc_info, 0, sizeof( alloc_info ) );
+	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	alloc_info.pNext = &flags_info;
+	alloc_info.allocationSize = reqs.size;
+	alloc_info.memoryTypeIndex = find_memory_type( reqs.memoryTypeBits,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+
+	res = qvkAllocateMemory( vk.device, &alloc_info, NULL, memory );
+	if ( res < 0 ) {
+		qvkDestroyBuffer( vk.device, *buffer, NULL );
+		*buffer = VK_NULL_HANDLE;
+		*memory = VK_NULL_HANDLE;
+		return qfalse;
+	}
+
+	qvkBindBufferMemory( vk.device, *buffer, *memory, 0 );
+
+	res = qvkMapMemory( vk.device, *memory, 0, VK_WHOLE_SIZE, 0, mapped );
+	if ( res < 0 ) {
+		qvkFreeMemory( vk.device, *memory, NULL );
+		qvkDestroyBuffer( vk.device, *buffer, NULL );
+		*buffer = VK_NULL_HANDLE;
+		*memory = VK_NULL_HANDLE;
+		*mapped = NULL;
+		return qfalse;
+	}
+
+	return qtrue;
+}
+
+
+static void vk_rt_destroy_dynamic( void )
+{
+	uint32_t i;
+
+	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
+		if ( vk.rt.world.dyn_tlas[i] != VK_NULL_HANDLE ) {
+			qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.world.dyn_tlas[i], NULL );
+			vk.rt.world.dyn_tlas[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.rt.world.dyn_tlas_buffer[i] != VK_NULL_HANDLE ) {
+			qvkDestroyBuffer( vk.device, vk.rt.world.dyn_tlas_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.rt.world.dyn_tlas_memory[i], NULL );
+			vk.rt.world.dyn_tlas_buffer[i] = VK_NULL_HANDLE;
+			vk.rt.world.dyn_tlas_memory[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.rt.world.dyn_instance_buffer[i] != VK_NULL_HANDLE ) {
+			qvkUnmapMemory( vk.device, vk.rt.world.dyn_instance_memory[i] );
+			qvkDestroyBuffer( vk.device, vk.rt.world.dyn_instance_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.rt.world.dyn_instance_memory[i], NULL );
+			vk.rt.world.dyn_instance_buffer[i] = VK_NULL_HANDLE;
+			vk.rt.world.dyn_instance_memory[i] = VK_NULL_HANDLE;
+			vk.rt.world.dyn_instance_ptr[i] = NULL;
+		}
+		if ( vk.rt.world.dyn_scratch_buffer[i] != VK_NULL_HANDLE ) {
+			qvkDestroyBuffer( vk.device, vk.rt.world.dyn_scratch_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.rt.world.dyn_scratch_memory[i], NULL );
+			vk.rt.world.dyn_scratch_buffer[i] = VK_NULL_HANDLE;
+			vk.rt.world.dyn_scratch_memory[i] = VK_NULL_HANDLE;
+			vk.rt.world.dyn_scratch_address[i] = 0;
+		}
+	}
+
+	if ( vk.rt.world.proxy_blas != VK_NULL_HANDLE ) {
+		qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.world.proxy_blas, NULL );
+		vk.rt.world.proxy_blas = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.world.proxy_blas_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.world.proxy_blas_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.proxy_blas_memory, NULL );
+		vk.rt.world.proxy_blas_buffer = VK_NULL_HANDLE;
+		vk.rt.world.proxy_blas_memory = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.world.proxy_vertex_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.world.proxy_vertex_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.proxy_vertex_memory, NULL );
+		vk.rt.world.proxy_vertex_buffer = VK_NULL_HANDLE;
+		vk.rt.world.proxy_vertex_memory = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.world.proxy_index_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.world.proxy_index_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.proxy_index_memory, NULL );
+		vk.rt.world.proxy_index_buffer = VK_NULL_HANDLE;
+		vk.rt.world.proxy_index_memory = VK_NULL_HANDLE;
+	}
+
+	vk.rt.world.dynReady = qfalse;
+	vk.rt.world.dyn_maxInstances = 0;
+}
+
+
+/*
+=================
+vk_rt_create_dynamic
+
+The unit box every dynamic entity is instanced from, and the per-frame
+structures that hold those instances.
+
+Everything here is sized and allocated once. The per-frame work is then writing
+an instance array and one vkCmdBuildAccelerationStructures into a structure that
+already exists at the right size - no allocation, no queue wait, nothing that
+can fail in the middle of a frame.
+
+Any failure leaves dynReady false, the descriptors pointing at the static world
+structure, and the occlusion pass exactly as it was.
+=================
+*/
+static qboolean vk_rt_create_dynamic( void )
+{
+	/* A unit cube centred on the origin. The instance transform scales it to
+	   the entity's bounds, so the geometry is the same for every entity and is
+	   built once. */
+	static const float boxVerts[8][3] = {
+		{ -0.5f, -0.5f, -0.5f }, {  0.5f, -0.5f, -0.5f },
+		{ -0.5f,  0.5f, -0.5f }, {  0.5f,  0.5f, -0.5f },
+		{ -0.5f, -0.5f,  0.5f }, {  0.5f, -0.5f,  0.5f },
+		{ -0.5f,  0.5f,  0.5f }, {  0.5f,  0.5f,  0.5f },
+	};
+	static const uint32_t boxIndices[36] = {
+		0,1,3, 0,3,2,   4,6,7, 4,7,5,   /* -z, +z */
+		0,4,5, 0,5,1,   2,3,7, 2,7,6,   /* -y, +y */
+		0,2,6, 0,6,4,   1,5,7, 1,7,3,   /* -x, +x */
+	};
+	VkAccelerationStructureGeometryKHR geom;
+	VkAccelerationStructureBuildGeometryInfoKHR build_info;
+	VkAccelerationStructureBuildSizesInfoKHR sizes;
+	VkAccelerationStructureCreateInfoKHR create_info;
+	VkDeviceSize scratchAlign;
+	uint32_t maxInstances = RT_MAX_DYN_INSTANCES;
+	uint32_t i;
+	VkResult res;
+
+	vk_rt_destroy_dynamic();
+
+	if ( vk.rt.world.blas == VK_NULL_HANDLE ) {
+		return qfalse;
+	}
+
+	// ---- the proxy box ----
+	if ( !rt_create_buffer( sizeof( boxVerts ),
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			&vk.rt.world.proxy_vertex_buffer, &vk.rt.world.proxy_vertex_memory ) ) {
+		goto fail;
+	}
+	rt_upload( vk.rt.world.proxy_vertex_buffer, boxVerts, sizeof( boxVerts ) );
+
+	if ( !rt_create_buffer( sizeof( boxIndices ),
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			&vk.rt.world.proxy_index_buffer, &vk.rt.world.proxy_index_memory ) ) {
+		goto fail;
+	}
+	rt_upload( vk.rt.world.proxy_index_buffer, boxIndices, sizeof( boxIndices ) );
+
+	Com_Memset( &geom, 0, sizeof( geom ) );
+	geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geom.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+	geom.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+	geom.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+	geom.geometry.triangles.vertexData.deviceAddress = rt_buffer_address( vk.rt.world.proxy_vertex_buffer );
+	geom.geometry.triangles.vertexStride = sizeof( float ) * 3;
+	geom.geometry.triangles.maxVertex = 7;
+	geom.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+	geom.geometry.triangles.indexData.deviceAddress = rt_buffer_address( vk.rt.world.proxy_index_buffer );
+
+	Com_Memset( &build_info, 0, sizeof( build_info ) );
+	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+	build_info.geometryCount = 1;
+	build_info.pGeometries = &geom;
+
+	if ( !rt_build_acceleration_structure( &build_info, 12,
+			VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+			&vk.rt.world.proxy_blas, &vk.rt.world.proxy_blas_buffer,
+			&vk.rt.world.proxy_blas_memory, "entity proxy BLAS" ) ) {
+		goto fail;
+	}
+
+	// ---- per-frame top level, sized for the worst case and built into forever ----
+	Com_Memset( &geom, 0, sizeof( geom ) );
+	geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geom.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+	geom.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+	geom.geometry.instances.arrayOfPointers = VK_FALSE;
+
+	Com_Memset( &build_info, 0, sizeof( build_info ) );
+	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+	/* FAST_BUILD, not FAST_TRACE: this one is rebuilt every frame, and a
+	   structure of a couple of hundred boxes is traced against far fewer times
+	   than the world one it sits beside. */
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
+	build_info.geometryCount = 1;
+	build_info.pGeometries = &geom;
+
+	Com_Memset( &sizes, 0, sizeof( sizes ) );
+	sizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+	qvkGetAccelerationStructureBuildSizesKHR( vk.device,
+		VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &build_info, &maxInstances, &sizes );
+
+	if ( sizes.accelerationStructureSize == 0 ) {
+		goto fail;
+	}
+
+	scratchAlign = rt_scratch_alignment();
+
+	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
+		if ( !rt_create_buffer( sizes.accelerationStructureSize,
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR,
+				&vk.rt.world.dyn_tlas_buffer[i], &vk.rt.world.dyn_tlas_memory[i] ) ) {
+			goto fail;
+		}
+
+		Com_Memset( &create_info, 0, sizeof( create_info ) );
+		create_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+		create_info.buffer = vk.rt.world.dyn_tlas_buffer[i];
+		create_info.size = sizes.accelerationStructureSize;
+		create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+
+		res = qvkCreateAccelerationStructureKHR( vk.device, &create_info, NULL, &vk.rt.world.dyn_tlas[i] );
+		if ( res < 0 ) {
+			vk.rt.world.dyn_tlas[i] = VK_NULL_HANDLE;
+			goto fail;
+		}
+
+		if ( !rt_create_buffer( sizes.buildScratchSize + scratchAlign,
+				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				&vk.rt.world.dyn_scratch_buffer[i], &vk.rt.world.dyn_scratch_memory[i] ) ) {
+			goto fail;
+		}
+		vk.rt.world.dyn_scratch_address[i] =
+			( rt_buffer_address( vk.rt.world.dyn_scratch_buffer[i] ) + scratchAlign - 1 ) & ~( scratchAlign - 1 );
+
+		if ( !rt_create_host_buffer( sizeof( VkAccelerationStructureInstanceKHR ) * maxInstances,
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+				&vk.rt.world.dyn_instance_buffer[i], &vk.rt.world.dyn_instance_memory[i],
+				&vk.rt.world.dyn_instance_ptr[i] ) ) {
+			goto fail;
+		}
+	}
+
+	vk.rt.world.dyn_maxInstances = maxInstances;
+	vk.rt.world.dynReady = qtrue;
+	return qtrue;
+
+fail:
+	ri.Printf( PRINT_WARNING, "RT: could not create the dynamic structures - "
+		"entities will cast no occlusion (the map still will)\n" );
+	vk_rt_destroy_dynamic();
+	return qfalse;
+}
+
+
+/*
+=================
+vk_rt_build_dynamic_tlas
+
+One instance of the world, plus a box per visible entity, built into this
+command buffer's top level structure.
+
+Recorded into the frame's own command buffer, between the main render pass
+ending and the occlusion pass beginning - an acceleration structure build cannot
+be inside a render pass, and that gap is the only place in the frame that is
+outside one and still before the trace.
+=================
+*/
+static qboolean vk_rt_build_dynamic_tlas( void )
+{
+	VkAccelerationStructureInstanceKHR *inst;
+	VkAccelerationStructureDeviceAddressInfoKHR addr_info;
+	VkAccelerationStructureGeometryKHR geom;
+	VkAccelerationStructureBuildGeometryInfoKHR build_info;
+	VkAccelerationStructureBuildRangeInfoKHR range;
+	const VkAccelerationStructureBuildRangeInfoKHR *ranges[1];
+	VkMemoryBarrier barrier;
+	uint64_t worldRef, proxyRef;
+	uint32_t count = 0;
+	const int idx = vk.cmd_index;
+	int i;
+
+	if ( !vk.rt.world.dynReady ) {
+		return qfalse;
+	}
+
+	inst = (VkAccelerationStructureInstanceKHR *)vk.rt.world.dyn_instance_ptr[idx];
+	if ( inst == NULL ) {
+		return qfalse;
+	}
+
+	Com_Memset( &addr_info, 0, sizeof( addr_info ) );
+	addr_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+	addr_info.accelerationStructure = vk.rt.world.blas;
+	worldRef = qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
+
+	addr_info.accelerationStructure = vk.rt.world.proxy_blas;
+	proxyRef = qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
+
+	// the map, at identity
+	Com_Memset( &inst[0], 0, sizeof( inst[0] ) );
+	inst[0].transform.matrix[0][0] = 1.0f;
+	inst[0].transform.matrix[1][1] = 1.0f;
+	inst[0].transform.matrix[2][2] = 1.0f;
+	inst[0].mask = 0xFF;
+	inst[0].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+	inst[0].accelerationStructureReference = worldRef;
+	count = 1;
+
+	for ( i = 0; r_rtDynamic->integer && i < backEnd.refdef.num_entities &&
+			count < vk.rt.world.dyn_maxInstances; i++ ) {
+		const trRefEntity_t *ent = &backEnd.refdef.entities[i];
+		vec3_t mins, maxs, size, centre;
+
+		/*
+		The view weapon and the player's own body. One is drawn a few units
+		from the eye with a squashed depth range and the other is not drawn at
+		all in first person - either would put a large occluder around the
+		camera and darken the whole view from inside it.
+		*/
+		if ( ent->e.renderfx & ( RF_FIRST_PERSON | RF_THIRD_PERSON ) ) {
+			continue;
+		}
+
+		if ( !R_GetEntityWorldBounds( ent, mins, maxs ) ) {
+			continue;
+		}
+
+		VectorSubtract( maxs, mins, size );
+		if ( size[0] <= 0.0f || size[1] <= 0.0f || size[2] <= 0.0f ) {
+			continue;
+		}
+		VectorAdd( mins, maxs, centre );
+		VectorScale( centre, 0.5f, centre );
+
+		/*
+		A 3x4 row-major transform taking the unit box to this entity's bounds:
+		the diagonal scales, the last column translates. No rotation - the
+		bounds are already axis-aligned in world space, the rotation having been
+		taken into account when they were computed.
+		*/
+		Com_Memset( &inst[count], 0, sizeof( inst[count] ) );
+		inst[count].transform.matrix[0][0] = size[0];
+		inst[count].transform.matrix[1][1] = size[1];
+		inst[count].transform.matrix[2][2] = size[2];
+		inst[count].transform.matrix[0][3] = centre[0];
+		inst[count].transform.matrix[1][3] = centre[1];
+		inst[count].transform.matrix[2][3] = centre[2];
+		inst[count].mask = 0xFF;
+		inst[count].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+		inst[count].accelerationStructureReference = proxyRef;
+		count++;
+	}
+
+	Com_Memset( &geom, 0, sizeof( geom ) );
+	geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geom.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+	geom.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+	geom.geometry.instances.arrayOfPointers = VK_FALSE;
+	geom.geometry.instances.data.deviceAddress = rt_buffer_address( vk.rt.world.dyn_instance_buffer[idx] );
+
+	Com_Memset( &build_info, 0, sizeof( build_info ) );
+	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
+	build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	build_info.dstAccelerationStructure = vk.rt.world.dyn_tlas[idx];
+	build_info.geometryCount = 1;
+	build_info.pGeometries = &geom;
+	build_info.scratchData.deviceAddress = vk.rt.world.dyn_scratch_address[idx];
+
+	Com_Memset( &range, 0, sizeof( range ) );
+	range.primitiveCount = count;
+	ranges[0] = &range;
+
+	qvkCmdBuildAccelerationStructuresKHR( vk.cmd->command_buffer, 1, &build_info, ranges );
+
+	/* The occlusion pass traces against what was just written. Without this the
+	   fragment shader may read a structure the build has not finished. */
+	Com_Memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	barrier.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+	barrier.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+	qvkCmdPipelineBarrier( vk.cmd->command_buffer,
+		VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		0, 1, &barrier, 0, NULL, 0, NULL );
+
+	return qtrue;
+}
 
 void vk_rt_destroy_world( void )
 {
@@ -4366,6 +4828,7 @@ void vk_rt_destroy_world( void )
 		qvkDestroyBuffer( vk.device, vk.rt.world.index_buffer, NULL );
 		qvkFreeMemory( vk.device, vk.rt.world.index_memory, NULL );
 	}
+	vk_rt_destroy_dynamic();   // [QL] R13 step 4, before the clear below zeroes its handles
 	/*
 	[QL] The map's half of vk.rt, and only that half.
 
@@ -4623,13 +5086,31 @@ void vk_rt_build_world( const world_t *world )
 	rtaoOnReported = qfalse;   // [QL] report the AO state once for this map
 	rtaoOffReported = qfalse;
 
+	/*
+	[QL] R13 step 4.
+
+	Skipped entirely when r_rtDynamic is off at map load, which leaves dynReady
+	false, the descriptors naming the static world structure, and every frame
+	exactly as it was before any of this existed - a real off switch, not a
+	branch inside the new path. Toggling the cvar during a map still works and
+	controls whether entities go into the structure; turning it off and
+	reloading removes the structure as well.
+
+	Failure is not failure of the map's structure either: it warns, leaves
+	dynReady false, and the occlusion pass carries on tracing the world alone.
+	*/
+	if ( r_rtDynamic->integer ) {
+		vk_rt_create_dynamic();
+	}
+
 	/* The AO descriptor names this TLAS, so it has to be rewritten whenever the
 	   structure is rebuilt - which is every map load. Pointing at the destroyed
 	   one from the previous map is a use-after-free the validation layers catch
 	   and a driver may not. */
 	vk_rt_update_ao_descriptor();
 
-	ri.Printf( PRINT_ALL, "RT: world acceleration structure ready\n" );
+	ri.Printf( PRINT_ALL, "RT: world acceleration structure ready%s\n",
+		vk.rt.world.dynReady ? " (+ dynamic entities)" : "" );
 }
 
 
@@ -10484,6 +10965,22 @@ qboolean vk_rt_ao( void )
 	vk_end_render_pass();   // end main
 
 	/*
+	[QL] R13 step 4: the entities, into this frame's top level structure.
+
+	Here because an acceleration structure build cannot be inside a render pass,
+	and the gap between the main pass ending and the occlusion pass beginning is
+	the only point in the frame that is outside one and still before the trace.
+
+	Built every frame whether or not entities are wanted in it. Skipping the
+	build when r_rtDynamic is 0 would leave the structure holding whatever the
+	last frame that did build left in it, and the trace reading that - so the
+	cvar instead controls only whether the entity instances are added. Off, the
+	structure holds the map and nothing else, which is exactly what the static
+	one held, for the price of rebuilding a one-instance structure per frame.
+	*/
+	vk_rt_build_dynamic_tlas();
+
+	/*
 	[QL] Depth becomes a texture, once, here.
 
 	The first two passes sample it outside any render pass, so it has to be
@@ -10507,7 +11004,7 @@ qboolean vk_rt_ao( void )
 
 	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline_gen );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor, 0, NULL );
+		vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor[ vk.cmd_index ], 0, NULL );
 	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.pipeline_layout,
 		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );

@@ -1419,6 +1419,7 @@ extern	cvar_t	*r_rtao;						// [QL] R13: ray-traced ambient occlusion
 extern	cvar_t	*r_rtaoRadius;					// [QL] R13: trace length, world units
 extern	cvar_t	*r_rtaoIntensity;				// [QL] R13: how far the term may darken
 extern	cvar_t	*r_rtaoSamples;					// [QL] R13: rays per pixel (latched)
+extern	cvar_t	*r_rtDynamic;					// [QL] R13: entities occlude, not just the map
 extern	cvar_t	*r_rtaoDenoise;					// [QL] R13: bilateral denoise width (latched)
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
@@ -1469,6 +1470,7 @@ void R_AddBeamSurfaces( trRefEntity_t *e );
 void R_AddRailSurfaces( trRefEntity_t *e, qboolean isUnderwater );
 void R_AddLightningBoltSurfaces( trRefEntity_t *e );
 
+qboolean R_GetEntityWorldBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t maxs );   // [QL] for the RT structures
 void R_AddPolygonSurfaces( void );
 
 void R_DecomposeSort( unsigned sort, int *entityNum, shader_t **shader, 

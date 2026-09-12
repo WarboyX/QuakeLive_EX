@@ -149,6 +149,7 @@ cvar_t	*r_rtao;
 cvar_t	*r_rtaoRadius;
 cvar_t	*r_rtaoIntensity;
 cvar_t	*r_rtaoSamples;
+cvar_t	*r_rtDynamic;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
@@ -1925,6 +1926,16 @@ static void R_Register( void )
 	serve the width would make the useful half of it require a vid_restart. The
 	width takes effect on the next one; off/on is immediate.
 	*/
+	/*
+	[QL] Live, not latched: the structures exist either way and the cvar only
+	decides whether entity instances go into the one built this frame.
+	*/
+	r_rtDynamic = ri.Cvar_Get( "r_rtDynamic", "1", CVAR_ARCHIVE );
+	ri.Cvar_SetDescription( r_rtDynamic, "Let players, items and movers cast ambient occlusion, "
+		"not just the map. They are traced as a box at their bounds rather than as their real "
+		"mesh - occlusion this soft cannot tell the difference, and an exact one would mean "
+		"rebuilding an acceleration structure per entity per frame." );
+
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtaoDenoise, "Denoise the occlusion term:\n"

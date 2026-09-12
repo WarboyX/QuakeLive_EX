@@ -1735,3 +1735,92 @@ void R_RenderView( const viewParms_t *parms ) {
 
 	R_SortDrawSurfs( tr.refdef.drawSurfs + firstDrawSurf, numDrawSurfs - firstDrawSurf );
 }
+
+
+/*
+=================
+[QL] R_GetEntityWorldBounds
+
+The axis-aligned world-space box an entity occupies, for the ray tracing
+acceleration structures.
+
+Lives here rather than in vk.c so that reaching into md3 frame data and bmodel
+bounds stays on the renderer side of the line. vk.c is handed a box.
+
+Frame bounds rather than the interpolated pose: a model's frames differ by the
+swing of a limb, and the box is feeding an occlusion term measured in tens of
+units. The current frame's box is exact enough and cheaper than blending two.
+
+Returns qfalse for anything with no geometry to bound - sprites, beams, rails,
+the portal surface - which the caller skips.
+=================
+*/
+qboolean R_GetEntityWorldBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t maxs ) {
+	const model_t *model;
+	vec3_t local[2];
+	vec3_t corner;
+	int i, j;
+
+	if ( ent->e.reType != RT_MODEL ) {
+		return qfalse;
+	}
+
+	model = R_GetModelByHandle( ent->e.hModel );
+	if ( model == NULL ) {
+		return qfalse;
+	}
+
+	switch ( model->type ) {
+	case MOD_BRUSH:
+		if ( model->bmodel == NULL ) {
+			return qfalse;
+		}
+		VectorCopy( model->bmodel->bounds[0], local[0] );
+		VectorCopy( model->bmodel->bounds[1], local[1] );
+		break;
+
+	case MOD_MESH: {
+		const md3Header_t *header = model->md3[0];
+		const md3Frame_t *frame;
+		int frameNum;
+
+		if ( header == NULL || header->numFrames <= 0 ) {
+			return qfalse;
+		}
+		frameNum = ent->e.frame;
+		if ( frameNum < 0 || frameNum >= header->numFrames ) {
+			frameNum = 0;
+		}
+		frame = ( const md3Frame_t * )( ( const byte * )header + header->ofsFrames ) + frameNum;
+		VectorCopy( frame->bounds[0], local[0] );
+		VectorCopy( frame->bounds[1], local[1] );
+		break;
+	}
+
+	default:
+		return qfalse;
+	}
+
+	/*
+	Rotate the eight corners and take the box of the result. The entity's axis
+	is a rotation, so the model box's own axes do not survive it - taking the
+	box of the rotated corners is the only way to get one that still contains
+	the model.
+	*/
+	ClearBounds( mins, maxs );
+	for ( i = 0; i < 8; i++ ) {
+		vec3_t v;
+
+		v[0] = ( i & 1 ) ? local[1][0] : local[0][0];
+		v[1] = ( i & 2 ) ? local[1][1] : local[0][1];
+		v[2] = ( i & 4 ) ? local[1][2] : local[0][2];
+
+		VectorCopy( ent->e.origin, corner );
+		for ( j = 0; j < 3; j++ ) {
+			VectorMA( corner, v[j], ent->e.axis[j], corner );
+		}
+		AddPointToBounds( corner, mins, maxs );
+	}
+
+	return qtrue;
+}
