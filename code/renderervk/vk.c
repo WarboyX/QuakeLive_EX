@@ -4790,14 +4790,22 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 		under the model, the wall behind it - still hit the front face and are
 		occluded, which is the contact darkening this is all for.
 
-		FRONT_COUNTERCLOCKWISE because the default is the other one: without it
-		Vulkan treats clockwise-as-seen-from-the-ray as front, the test comes
-		out backwards, and boxes occlude only from the inside.
+		No flip flag, and that is the whole of the previous fix's mistake. I
+		added FRONT_COUNTERCLOCKWISE believing Vulkan's default was that
+		clockwise-from-the-ray is the front face; it is counter-clockwise, so
+		the flag inverted a test that was already right and the boxes occluded
+		from the inside and nowhere else. That is not deduced from the
+		specification, it is read off a controlled pair of screenshots at the
+		same radius: with the flag, entities were black and the floor beneath
+		them was untouched - inside hits kept, outside hits culled, exactly
+		inverted. Leaving flags at zero takes the default, under which a box
+		wound outwards is front-facing from outside and back-facing from
+		within.
 
 		The world instance keeps CULL_DISABLE and is unaffected - a map is not a
 		closed shell and its surfaces have to stop rays from either side.
 		*/
-		inst[count].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_KHR;
+		inst[count].flags = 0;
 		inst[count].accelerationStructureReference = proxyRef;
 		count++;
 	}
