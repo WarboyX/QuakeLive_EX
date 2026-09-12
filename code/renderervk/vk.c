@@ -4735,6 +4735,21 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 			continue;
 		}
 
+		/*
+		Projectiles, gibs and brass. cgame marks these because the renderer
+		cannot tell them apart from a pickup: both are a small model with
+		bounds, and the pickup is the one that wants contact darkening.
+
+		Note this is not RF_NOSHADOW, which is the obvious-looking test and the
+		wrong one. cgame sets RF_NOSHADOW on the missile, but also on every part
+		of every player model and on every mover - so testing it would have
+		taken the doors and the players out of the structure, which is most of
+		what the structure is for.
+		*/
+		if ( ent->e.renderfx & RF_NOOCCLUDE ) {
+			continue;
+		}
+
 		if ( !R_GetEntityModelBounds( ent, mins, maxs ) ) {
 			continue;
 		}

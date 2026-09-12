@@ -54,6 +54,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define RF_WRAP_FRAMES 0x0200   // mod the model frames by the maxframes to allow continuous
                                 // animation without needing to know the frame count
 
+#define RF_NOOCCLUDE 0x0400  // [QL] keep this entity out of the ray tracing structure.
+                             // The dynamic structure stands each entity up as a box the
+                             // size of its model bounds, which is a fair stand-in for a
+                             // player or a door and a poor one for a rocket: the box is
+                             // far larger than the thing inside it, it is lit from
+                             // within, and it crosses the room in a second, so what it
+                             // leaves on the floor is a hard-edged rectangle sliding
+                             // along underneath. Only cgame knows which entities those
+                             // are - to the renderer a rocket and an ammo box are both
+                             // a small model with bounds - so cgame says so here.
+
 // refdef flags
 #define RDF_NOWORLDMODEL 0x0001  // used for player configuration screen
 #define RDF_HYPERSPACE 0x0004    // teleportation effect
