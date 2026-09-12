@@ -61,3 +61,56 @@ models/weapons/nailgun/nailgun
 		rgbGen lightingDiffuse
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The lightning bolt, style 6.
+//
+// A sixth style rather than a replacement for any of the five in pak00, so
+// nothing about the gun changes until cg_lightningStyle 6 asks for it.
+//
+// What it is for: styles 1 to 4 are additive, and additive light has nowhere to
+// go on a surface that is already white. On japanesecastles the shoji panes are
+// near enough to 1.0 that the bolt disappears over them entirely while staying
+// bright over the dark wood beside them - which reads as the panes being drawn
+// on top of the beam, and is not. Style 5 does not do it, which is what proved
+// the cause: all five bolts sort at 9.00 and are depth-tested identically, so
+// the only thing that can differ between them is how they blend.
+//
+// Getting a bolt to read on a white background needs the result to land below
+// white, and that rules out the obvious blends. Additive, screen
+// (GL_ONE GL_ONE_MINUS_SRC_COLOR) and soft-add (GL_ONE_MINUS_DST_COLOR GL_ONE)
+// all evaluate to exactly 1.0 against a white destination, whatever the source
+// is. The usual escape - alpha blending with the bolt's own shape as the alpha
+// - is not available either: every lightning texture in the pak is a .jpg and
+// has no alpha channel, and GL_SRC_COLOR is not a legal source factor here.
+//
+// So it is done in two stages. The first multiplies the destination by the
+// inverse of the bolt, which carves the bolt's shape out of whatever is behind
+// it and is the step that makes room on a bright surface. The second adds the
+// bolt back tinted and below full strength, so the sum stays under white and
+// the colour survives instead of washing out.
+//
+// Against black the first stage does nothing and the second is an ordinary
+// additive bolt. Against white the first stage does the work. Both ends of the
+// range read, which is the whole point.
+//
+// RB_SurfaceLightningBolt draws four quads rotated about the beam axis, so
+// every fragment near the axis goes through this four times: the darkening
+// compounds and the additive term saturates, which should put a white-hot core
+// inside a blue bolt. That is the intent, and it is the part most worth judging
+// on screen rather than from the arithmetic.
+lightningBolt6
+{
+	cull none
+	nopicmip
+	{
+		map gfx/misc/lightning2.jpg
+		blendFunc GL_ZERO GL_ONE_MINUS_SRC_COLOR
+		rgbGen identity
+	}
+	{
+		map gfx/misc/lightning2.jpg
+		blendFunc GL_ONE GL_ONE
+		rgbGen const ( 0.45 0.70 1.00 )
+	}
+}
