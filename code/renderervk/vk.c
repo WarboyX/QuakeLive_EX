@@ -3905,6 +3905,17 @@ typedef struct {
 static qboolean rtaoOnReported = qfalse;
 static qboolean rtaoOffReported = qfalse;
 static qboolean rtDynReported = qfalse;   // [QL] instance count, once per map
+/*
+[QL] And once per map again, the first time a round proxy actually appears.
+
+The line above fires on the first frame the structure is built, which is before
+anybody has fired anything, so its round count is always 0 and it can never
+answer the question it looks like it answers. Nothing round exists at map load:
+projectiles, gibs and brass are the only things that carry RF_OCCLUDE_ROUND and
+all three are made by shooting. This is the one that says whether they reach the
+structure at all.
+*/
+static qboolean rtDynRoundReported = qfalse;
 
 
 /* Defined below, called from vk_rt_create_ao above it. Declared rather than
@@ -5057,6 +5068,13 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 				count == 2 ? "y" : "ies", (int)numRound ) : " alone" );
 	}
 
+	if ( !rtDynRoundReported && numRound > 0 ) {
+		rtDynRoundReported = qtrue;
+		ri.Printf( PRINT_ALL, "RT: first round proxy - %i of %i entity instance(s) "
+			"are ellipsoids (projectiles, gibs, brass)\n",
+			(int)numRound, (int)count - 1 );
+	}
+
 	qvkCmdBuildAccelerationStructuresKHR( vk.cmd->command_buffer, 1, &build_info, ranges );
 
 	/* The occlusion pass traces against what was just written. Without this the
@@ -5364,6 +5382,7 @@ void vk_rt_build_world( const world_t *world )
 	rtaoOnReported = qfalse;   // [QL] report the AO state once for this map
 	rtaoOffReported = qfalse;
 	rtDynReported = qfalse;
+	rtDynRoundReported = qfalse;
 
 	/*
 	[QL] R13 step 4.
