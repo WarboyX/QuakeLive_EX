@@ -1280,6 +1280,25 @@ void CG_RegisterWeapon(int weaponNum) {
             //		weaponInfo->missileModel = cgs.media.invulnerabilityPowerupModel;
             weaponInfo->missileTrailFunc = CG_PlasmaTrail;
             weaponInfo->missileSound = trap_S_RegisterSound("sound/weapons/plasma/lasfly.ogg", qfalse);
+            /*
+            [QL] The plasma ball lights what it flies past.
+
+            It set flashDlightColor and stopped, so the only light a plasma shot
+            ever cast was at the muzzle - the ball itself, which is a glowing
+            sphere by every other account the game gives of it, lit nothing.
+            CG_Missile's dlight block runs before the sprite branch returns, so
+            this is all it needed.
+
+            100 rather than the rocket's 200, and the reason is rate of fire.
+            The rocket is one light every 800ms; the plasma gun is ten a second,
+            each alive for as long as the ball flies, so a full budget of them
+            is in the air at once against a ceiling of 64. A tight glow that
+            travels with the ball is also what it should look like - a plasma
+            bolt is not a flare, and at 200 a stream of them floods a corridor
+            into one flat sheet with no individual bolts visible in it.
+            */
+            weaponInfo->missileDlight = 100;
+            MAKERGB(weaponInfo->missileDlightColor, 0.6f, 0.6f, 1.0f);
             MAKERGB(weaponInfo->flashDlightColor, 0.6f, 0.6f, 1.0f);
             weaponInfo->flashSound[0] = trap_S_RegisterSound("sound/weapons/plasma/hyprbf1a.ogg", qfalse);
             cgs.media.plasmaExplosionShader = trap_R_RegisterShader("plasmaExplosion");
@@ -1559,12 +1578,21 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
     beam really was behind it.
 
     Lifting the endpoint along the surface normal clears the whole tail at once,
-    where pulling it back along the beam only helps the tip. Eight units is the
-    quad half-width, so it is exactly enough and small enough to see no
-    difference - the impact crackle sits over that gap anyway.
+    where pulling it back along the beam only helps the tip.
+
+    Sixteen, not the eight the first attempt used. Eight is the quad half-width,
+    which is the offset at which the worst-placed quad edge lands exactly on the
+    plane at the endpoint - the minimum that touches, with no margin at all, and
+    everything before the endpoint clears only because the beam is already
+    climbing away. Anything standing proud of the surface it hit eats that
+    margin immediately, and a shoji screen is exactly that: the frame bars sit
+    in front of the paper the trace stops on, so a bolt into a pane was still
+    passing behind the bars. Sixteen clears the trim as well as the plane, and
+    is still inside the impact crackle, which sits 16 units back along the beam
+    and is wider than the bolt.
     */
     if (trace.fraction < 1.0f) {
-        VectorMA(trace.endpos, 8, trace.plane.normal, beam.oldorigin);
+        VectorMA(trace.endpos, 16, trace.plane.normal, beam.oldorigin);
     } else {
         VectorCopy(trace.endpos, beam.oldorigin);
     }
