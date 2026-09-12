@@ -31,16 +31,27 @@
 // underneath it - the sheen is not decoration on this model, it is the half of
 // the material the artist left room for.
 //
-// So the stage is restored with textures/effects/tinfx, the environment map
-// id's own weapon shaders use for exactly this - the rocket launcher and
-// railgun are shiny for the same reason and by the same means. The arrangement
-// below is theirs too: environment underneath, diffuse blended over the top, so
-// the chrome reads through where the diffuse is transparent and the painted
-// camo stays painted everywhere else.
+// So the stage is restored with an environment map that is already in the pak,
+// in the arrangement id's own weapon shaders use: environment underneath,
+// diffuse blended over the top, so metal reads through where the diffuse is
+// transparent and the painted camo stays painted everywhere else. The rocket
+// launcher and railgun are shiny for the same reason and by the same means.
+//
+// Which environment map matters, and the first attempt got it wrong. tinfx is
+// bright tin, and under a diffuse this transparent it lifted the entire gun to
+// a uniform pale grey. The weapon is not pale: it is dark weathered gunmetal
+// with orange hazard panels, and only the barrel tube and the strut rails are
+// polished. envmapdim is the dim variant and leaves the body dark, which is the
+// half of the reference tinfx was erasing.
+//
+// There is no envmapnail to be had. The per-weapon set in textures/effects -
+// envmapmach, envmaprail, envmaproc, envmapligh, envmapplas, envmapbfg - covers
+// the Quake 3 weapons only; the Team Arena three carried their own *_env.tga
+// beside their models, which is precisely what Quake Live's conversion dropped.
 models/weapons/nailgun/nailgun
 {
 	{
-		map textures/effects/tinfx.jpg
+		map textures/effects/envmapdim.jpg
 		rgbGen lightingDiffuse
 		tcGen environment
 	}
