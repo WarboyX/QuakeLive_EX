@@ -1540,8 +1540,34 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
     // the beam, so it's removed pending identification of that flag. Beam still
     // draws (as before), correct in all non-underwater cases.
 
-    // this is the endpoint
-    VectorCopy(trace.endpos, beam.oldorigin);
+    /*
+    [QL] End the bolt just off the surface, not on it.
+
+    RB_SurfaceLightningBolt builds the beam as four quads of half-width 8,
+    rotated 45 degrees apart about the beam axis, running from origin to
+    oldorigin. With oldorigin exactly on the impact surface, the quads on the
+    far side of the axis lie *behind* that surface for the last stretch of the
+    beam - and how long that stretch is goes as 1/sin of the angle the beam
+    makes with the wall. Shoot a ceiling square on and it is a few units and
+    invisible; graze a wall and it is tens of units, which is why a bolt into a
+    shoji screen came out sliced by the window frame while the same bolt into a
+    ceiling looked right.
+
+    Not a sort problem, which is where this looked like it was going: the window
+    is textures/gothic_trim/window_a1, one lightmapped stage and no shader
+    script at all, so it is opaque geometry drawn before any transparency. The
+    beam really was behind it.
+
+    Lifting the endpoint along the surface normal clears the whole tail at once,
+    where pulling it back along the beam only helps the tip. Eight units is the
+    quad half-width, so it is exactly enough and small enough to see no
+    difference - the impact crackle sits over that gap anyway.
+    */
+    if (trace.fraction < 1.0f) {
+        VectorMA(trace.endpos, 8, trace.plane.normal, beam.oldorigin);
+    } else {
+        VectorCopy(trace.endpos, beam.oldorigin);
+    }
 
     // use the provided origin, even though it may be slightly
     // different than the muzzle origin

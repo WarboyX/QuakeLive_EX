@@ -4552,6 +4552,18 @@ void	R_ShaderList_f (void) {
 			sh = tr.shaders[i];
 		}
 
+		/*
+		[QL] The sort value, which this listing has never printed.
+
+		Draw order for anything blended is decided by sort first and depth only
+		within a sort, so "why is A drawn over B" is a question about these two
+		numbers - and the one command named after listing shaders could not
+		answer it. Cost a round trip finding that out. Two decimals because
+		FinishShader assigns fractional sorts to break ties between shaders that
+		would otherwise land on the same value.
+		*/
+		ri.Printf( PRINT_ALL, "%6.2f ", sh->sort );
+
 		ri.Printf( PRINT_ALL, "%i ", sh->numUnfoggedPasses );
 
 		if ( sh->lightmapIndex >= 0 ) {
