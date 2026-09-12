@@ -1570,6 +1570,15 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
 
         memset(&beam, 0, sizeof(beam));
         beam.hModel = cgs.media.lightningExplosionModel;
+        /*
+        [QL] The crackle is light. It is also the worst case for a box proxy:
+        the orientation below is random on all three axes, not just one, so what
+        it put on the wall was a polygon at an arbitrary angle rather than even
+        a consistent diamond. This one is added straight to the scene and never
+        goes near a local entity, which is why the leType rule in
+        CG_AddLocalEntities does not reach it.
+        */
+        beam.renderfx |= RF_NOOCCLUDE;
 
         VectorMA(trace.endpos, -16, dir, beam.origin);
 

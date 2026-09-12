@@ -236,10 +236,6 @@ void CG_AddFragment(localEntity_t* le) {
     vec3_t newOrigin;
     trace_t trace;
 
-    // gibs and shell casings, tumbling across the room - round, small, and no
-    // more box-shaped than a rocket is
-    le->refEntity.renderfx |= RF_OCCLUDE_ROUND;
-
     if (le->pos.trType == TR_STATIONARY) {
         // sink into the ground if near the removal time
         int t;
@@ -806,6 +802,28 @@ void CG_AddLocalEntities(void) {
             CG_FreeLocalEntity(le);
             continue;
         }
+        /*
+        [QL] What a local entity is, as far as the occlusion structure cares.
+
+        One place rather than one per handler, because the last two rounds of
+        this were whack-a-mole: the explosion flash was flagged in
+        CG_MakeExplosion and the lightning crackle then turned up doing the same
+        thing from somewhere else entirely. Every leType below is an effect made
+        of light - explosions, trails, bubbles, blood, score plums, the kamikaze
+        and the invulnerability shells - and none of them should stand a box up
+        on a wall. LE_FRAGMENT is the one exception: gibs and shell casings are
+        real objects, small and round, so they occlude as ellipsoids.
+
+        A leType added later lands in the "light" case by default, which is the
+        right way round: the failure it produces is a missing contact shadow on
+        something small, not a hard-edged square in the middle of a wall.
+        */
+        if (le->leType == LE_FRAGMENT) {
+            le->refEntity.renderfx |= RF_OCCLUDE_ROUND;
+        } else {
+            le->refEntity.renderfx |= RF_NOOCCLUDE;
+        }
+
         switch (le->leType) {
             default:
                 CG_Error("Bad leType: %i", le->leType);
