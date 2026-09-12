@@ -2369,6 +2369,7 @@ Called directly from cgame
 */
 void RE_LoadWorldMap( const char *name ) {
 	int			i;
+	int			numLumps;
 	int32_t		size;
 	dheader_t	*header;
 	union {
@@ -2418,13 +2419,41 @@ void RE_LoadWorldMap( const char *name ) {
 	header = (dheader_t *)buffer.b;
 	fileBase = (byte *)header;
 
-	// swap all the lumps
-	for ( i = 0; i < sizeof( dheader_t ) / 4; i++ ) {
-		( (int32_t *)header )[i] = LittleLong( ( (int32_t *)header )[i] );
+	/*
+	[QL] Ident and version first, then as many lumps as this version has.
+
+	It used to swap sizeof(dheader_t)/4 words unconditionally, which on a Quake
+	3 map is eight bytes past the end of its shorter header - and this header is
+	a pointer into the loaded file, not a copy, so those eight bytes are the
+	start of the next lump's data being byte-swapped in place. On a
+	little-endian machine LittleLong is the identity and nothing happens, which
+	is exactly the kind of bug that ships.
+	*/
+	( (int32_t *)header )[0] = LittleLong( ( (int32_t *)header )[0] );   // ident
+	( (int32_t *)header )[1] = LittleLong( ( (int32_t *)header )[1] );   // version
+
+	numLumps = ( header->version == BSP_VERSION_Q3 ) ? HEADER_LUMPS_Q3 : HEADER_LUMPS;
+	for ( i = 0; i < numLumps * ( sizeof( lump_t ) / 4 ); i++ ) {
+		( (int32_t *)header->lumps )[i] = LittleLong( ( (int32_t *)header->lumps )[i] );
 	}
 
-	if ( header->version != BSP_VERSION ) {
-		ri.Error( ERR_DROP, "%s: %s has wrong version number (%i should be %i)", __func__, name, header->version, BSP_VERSION );
+	if ( header->version != BSP_VERSION && header->version != BSP_VERSION_Q3 ) {
+		ri.Error( ERR_DROP, "%s: %s has wrong version number (%i should be %i or %i)", __func__, name,
+			header->version, BSP_VERSION, BSP_VERSION_Q3 );
+	}
+
+	/*
+	[QL] Quake 3 maps carry one lump fewer, and this one matters here in a way
+	it does not in the collision loader: header is a pointer into the file
+	rather than a copy, so lumps[LUMP_ADVERTISEMENTS] is genuinely the first
+	eight bytes of the next lump's data, already byte-swapped in place by the
+	loop above. The bounds check below would then reject the map for a lump
+	that does not exist, and R_LoadAdvertisements would read entity text as
+	geometry. Zeroing it says "empty", which is the truth.
+	*/
+	if ( header->version == BSP_VERSION_Q3 ) {
+		Com_Memset( &header->lumps[LUMP_ADVERTISEMENTS], 0, sizeof( lump_t ) );
+		ri.Printf( PRINT_ALL, "%s: Quake 3 map (BSP 46), no advertisements lump\n", name );
 	}
 
 	for ( i = 0; i < HEADER_LUMPS; i++ ) {

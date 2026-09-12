@@ -290,6 +290,26 @@ typedef struct {
 
 #define BSP_VERSION 47  // Quake Live BSP version
 
+/*
+[QL] Quake 3 and Team Arena maps.
+
+The only difference between the two versions is the last lump. Every struct
+below - planes, nodes, leafs, brushes, brushsides, drawverts, surfaces - is
+byte-identical between 46 and 47, which is worth stating plainly because the
+other engine that uses 47 does not share that property: RTCW widened
+dbrushside_t with a surfaceNum, and a loader that assumed "47 is 47" would read
+every brush side of an RTCW map at the wrong stride. These structs are Quake 3's
+and always were.
+
+So v47 is v46 plus LUMP_ADVERTISEMENTS, and loading a v46 map is accepting the
+version and treating that lump as empty. It cannot simply be read: dheader_t is
+eight bytes longer than a v46 header, so the lump entry at index 17 lands on
+whatever data follows the header in the file - usually the entity string - and
+would be interpreted as an offset and a length.
+*/
+#define BSP_VERSION_Q3 46
+#define HEADER_LUMPS_Q3 17
+
 // there shouldn't be any problem with increasing these values at the
 // expense of more memory allocation in the utilities
 #define MAX_MAP_MODELS 0x400

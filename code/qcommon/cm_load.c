@@ -606,8 +606,18 @@ void CM_LoadMap(const char* name, qboolean clientload, int* checksum) {
         ((int*)&header)[i] = LittleLong(((int*)&header)[i]);
     }
 
-    if (header.version != BSP_VERSION) {
-        Com_Error(ERR_DROP, "CM_LoadMap: %s has wrong version number (%i should be %i)", name, header.version, BSP_VERSION);
+    if (header.version != BSP_VERSION && header.version != BSP_VERSION_Q3) {
+        Com_Error(ERR_DROP, "CM_LoadMap: %s has wrong version number (%i should be %i or %i)", name, header.version,
+                  BSP_VERSION, BSP_VERSION_Q3);
+    }
+    if (header.version == BSP_VERSION_Q3) {
+        /*
+        [QL] A Quake 3 map. Its header is one lump shorter, so the copy above
+        read eight bytes of the following lump's data into the advertisements
+        entry. Nothing here uses that entry, but leaving a fabricated offset and
+        length in it is how a later reader of this struct gets a surprise.
+        */
+        Com_Memset(&header.lumps[LUMP_ADVERTISEMENTS], 0, sizeof(lump_t));
     }
 
     cmod_base = (byte*)buf.i;

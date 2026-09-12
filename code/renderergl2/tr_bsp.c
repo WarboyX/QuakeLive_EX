@@ -2777,14 +2777,25 @@ void RE_LoadWorldMap(const char* name) {
     fileBase = (byte*)header;
 
     bsp_version = LittleLong(header->version);
-    if (bsp_version != BSP_VERSION) {
-        ri.Error(ERR_DROP, "RE_LoadWorldMap: %s has wrong version number (%i should be %i)",
-                 name, bsp_version, BSP_VERSION);
+    if (bsp_version != BSP_VERSION && bsp_version != BSP_VERSION_Q3) {
+        ri.Error(ERR_DROP, "RE_LoadWorldMap: %s has wrong version number (%i should be %i or %i)",
+                 name, bsp_version, BSP_VERSION, BSP_VERSION_Q3);
     }
 
-    // swap all the lumps
-    for (i = 0; i < sizeof(dheader_t) / 4; i++) {
-        ((int*)header)[i] = LittleLong(((int*)header)[i]);
+    // [QL] as many lumps as this version has; a Quake 3 header is one shorter,
+    // and this header is a pointer into the file rather than a copy, so
+    // swapping past its end byte-swaps the next lump's data in place
+    {
+        int numLumps = (bsp_version == BSP_VERSION_Q3) ? HEADER_LUMPS_Q3 : HEADER_LUMPS;
+
+        ((int*)header)[0] = LittleLong(((int*)header)[0]);  // ident
+        ((int*)header)[1] = LittleLong(((int*)header)[1]);  // version
+        for (i = 0; i < numLumps * (int)(sizeof(lump_t) / 4); i++) {
+            ((int*)header->lumps)[i] = LittleLong(((int*)header->lumps)[i]);
+        }
+        if (bsp_version == BSP_VERSION_Q3) {
+            Com_Memset(&header->lumps[LUMP_ADVERTISEMENTS], 0, sizeof(lump_t));
+        }
     }
 
     // load into heap
