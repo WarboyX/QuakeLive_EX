@@ -150,6 +150,7 @@ cvar_t	*r_rtaoRadius;
 cvar_t	*r_rtaoIntensity;
 cvar_t	*r_rtaoSamples;
 cvar_t	*r_rtDynamic;
+cvar_t	*r_rtaoNormals;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
@@ -1935,6 +1936,15 @@ static void R_Register( void )
 		"not just the map. They are traced as a box at their bounds rather than as their real "
 		"mesh - occlusion this soft cannot tell the difference, and an exact one would mean "
 		"rebuilding an acceleration structure per entity per frame." );
+
+	r_rtaoNormals = ri.Cvar_Get( "r_rtaoNormals", "1", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_rtaoNormals, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoNormals, "Where the occlusion normal comes from:\n"
+		" 0 - the screen-space derivatives of position, which is exact on a flat surface "
+		"and wrong along every silhouette\n"
+		" 1 - the better of two depth neighbours on each axis, which is right at "
+		"silhouettes\n"
+		"Live, so the two can be compared in a frame." );
 
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );

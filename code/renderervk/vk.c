@@ -11015,7 +11015,8 @@ qboolean vk_rt_ao( void )
 	push.depthInfo[1] = 0.3f;   // DEPTH_RANGE_WEAPON maxDepth
 	push.depthInfo[2] = -1.0f;
 #endif
-	push.depthInfo[3] = 0.0f;
+	/* [QL] Which normal to trace around - see r_rtaoNormals. */
+	push.depthInfo[3] = ( r_rtaoNormals->integer == 0 ) ? 1.0f : 0.0f;
 
 	/*
 	[QL] What the denoise needs to turn a depth value into a distance:

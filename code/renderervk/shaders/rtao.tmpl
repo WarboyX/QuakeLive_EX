@@ -68,6 +68,8 @@ layout(push_constant) uniform Push {
 	  x  the value the depth buffer is cleared to - nothing was drawn there
 	  y  where the weapon's compressed depth range begins
 	  z  +1 when near is 1.0 and far is 0.0 (USE_REVERSED_DEPTH), -1 otherwise
+	  w  nonzero to take the normal from dFdx/dFdy instead of from neighbouring
+	     depth taps - r_rtaoNormals, so the two can be compared in a frame
 
 	Getting x backwards is not a subtle error: it traces the sky, from a
 	position reconstructed at the far plane, and skips the near plane instead.
@@ -208,6 +210,26 @@ void main() {
 	vec3 dy = (abs(dot(Pu - P, Pu - P)) < abs(dot(P - Pd, P - Pd))) ? (Pu - P) : (P - Pd);
 
 	vec3 N = cross(dx, dy);
+
+	/*
+	[QL] ...or the derivative normal, when r_rtaoNormals says so.
+
+	The neighbour version above replaced cross(dFdx(P), dFdy(P)) and the world
+	term got lighter at the same radius and strength, with the trace maths
+	otherwise unchanged - so the normal is the only thing it can be, and the
+	way to find out which is right is to be able to switch between them in a
+	frame rather than in a build.
+
+	Both are computed and one is selected, rather than branching around the
+	derivatives. dFdx and dFdy are undefined in divergent control flow; the
+	branch here is on a push constant and so is uniform across the quad, but
+	computing both costs two subtractions and removes the question.
+	*/
+	vec3 Nd = cross(dFdx(P), dFdy(P));
+	if (pc.depthInfo.w != 0.0) {
+		N = Nd;
+	}
+
 	float nlen = length(N);
 	if (nlen < 1e-8) {
 		// degenerate - every tap landed on the same point. Nothing sensible to
