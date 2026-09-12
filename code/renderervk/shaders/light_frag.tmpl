@@ -21,19 +21,37 @@ layout(set = 2, binding = 0) uniform sampler2D fogtexture;
 #endif
 
 /*
-[QL] The stage's normal map, or tr.flatNormalImage when it has none.
+[QL] There was a normal map sampled here, at set 3. It is gone, and the reason
+is worth keeping.
 
-Always bound and always sampled. A flat normal decodes to (0,0,1) and perturbs
-by nothing, so a surface without a map lights exactly as it did - which is what
-buys the single code path: no "with" and "without" pipelines to build, store and
-choose between every frame, at the price of one fetch on dynamic-light
-fragments.
+The whole design rested on one claim: bind a flat normal when a stage has none,
+because a flat normal decodes to (0,0,1), the cotangent frame maps that straight
+back to the interpolated normal, and a surface without a map therefore lights
+exactly as it did. The claim was right. The premise was not - the image was not
+flat by the time the shader read it.
 
-Set 3 is VK_DESC_TEXTURE2. The light pipelines only ever used sets 0 to 2 (the
-uniform block, the diffuse, and fog), and the layout declares at least four, so
-this slot was already there and free.
+tr.flatNormalImage is (128,128,255), and it was created without
+IMGFLAG_NOLIGHTSCALE, so the upload path ran R_LightScaleTexture over it like
+any other colour texture. That table is built with the overbright shift folded
+in - inf <<= tr.overbrightBits - so at the default r_overBrightBits 1, the 128s
+came out as 255. The "flat" normal decoded to (1,1,1), normalized to a 55 degree
+tilt in tangent space, applied to every dynamically lit fragment in the game.
+
+A constant tangent-space tilt is not a constant world-space one. Tangent space
+is built from the surface's texture axes, so the tilt pointed a different way on
+every face, and the symptom was slits of light across large surfaces whose angle
+changed from room to room with the mapper's texture alignment - north-south in
+one, east-west in the next. Every dynamic light did it: rocket in flight, rocket
+impact, muzzle flash, plasma.
+
+Not fixed, removed. The flag is a one-word fix, but the count this code prints
+at the end of registration has been 0 on every map: Quake Live's shaders carry
+the normalMap keywords and ship no normal map images, so there is nothing for
+the perturbation to do but cost a fetch and be wrong. It goes back when there is
+art that needs it - and when it does, both the flat image and every real normal
+map need IMGFLAG_NOLIGHTSCALE, because a normal map is data and this path
+gamma-corrects and overbrights anything that does not say otherwise.
 */
-layout(set = 3, binding = 0) uniform sampler2D normalMap;
 
 layout(location = 0) centroid in vec2 frag_tex_coord;
 layout(location = 1) in vec3 N;  // normalized object-space normal vector
@@ -51,37 +69,6 @@ layout (constant_id = 1) const float alpha_test_value = 0.0;
 layout (constant_id = 3) const int alpha_to_coverage = 0;
 //layout (constant_id = 4) const int color_mode = 0;
 layout (constant_id = 5) const int abs_light = 0;
-
-/*
-[QL] A tangent frame built from screen-space derivatives, per Mikkelsen.
-
-This renderer has no tangent vertex attribute and adding one would mean a new
-vertex format, new VBO offsets and a change to every path that fills tess - for
-a frame that can be recovered exactly where it is needed from quantities the
-fragment shader already has. The derivatives of object-space position and of the
-texture coordinate span the same surface, so they determine the tangent basis
-directly.
-
-It is undefined along a triangle edge shared by two surfaces, in the same way
-every derivative-based trick is, and for a dynamic light falling on one surface
-at a time that does not arise.
-*/
-mat3 cotangentFrame(vec3 n, vec3 p, vec2 uv)
-{
-	vec3 dp1 = dFdx(p);
-	vec3 dp2 = dFdy(p);
-	vec2 duv1 = dFdx(uv);
-	vec2 duv2 = dFdy(uv);
-
-	vec3 dp2perp = cross(dp2, n);
-	vec3 dp1perp = cross(n, dp1);
-	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-
-	// scale by the larger of the two so a stretched mapping does not blow up
-	float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
-	return mat3(T * invmax, B * invmax, n);
-}
 
 float CorrectAlpha(float threshold, float alpha, vec2 tc)
 {
@@ -147,20 +134,7 @@ void main() {
 	base.xyz = base.xyz * ( 1.0 - fog.a );
 #endif
 
-	/*
-	[QL] Perturb the interpolated normal by the map.
-
-	V is the object-space vector from the fragment to the eye, so -V is the
-	position offset by a constant, and a constant offset vanishes under
-	differentiation - which makes it a usable stand-in for object-space position
-	without interpolating one.
-
-	Everything below then works unchanged: the light and view vectors are
-	already in object space, and the frame maps the tangent-space sample into
-	the same space.
-	*/
-	vec3 Nm = texture(normalMap, frag_tex_coord).xyz * 2.0 - 1.0;
-	vec3 nN = normalize(cotangentFrame(normalize(N), -V.xyz, frag_tex_coord) * Nm);
+	vec3 nN = normalize(N);
 
 	// Lambertian diffuse reflection term (N.L)
 	float diffuse = dot(nN, nL);

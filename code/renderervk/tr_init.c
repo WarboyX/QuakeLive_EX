@@ -144,7 +144,6 @@ cvar_t	*r_nomip;
 cvar_t	*r_showtris;
 cvar_t	*r_showsky;
 cvar_t	*r_rt;		// [QL] R13
-cvar_t	*r_normalMapping;
 cvar_t	*r_rtao;
 cvar_t	*r_rtaoRadius;
 cvar_t	*r_rtaoIntensity;
@@ -1893,15 +1892,11 @@ static void R_Register( void )
 	says it needs one.
 	*/
 	/*
-	[QL] Not latched, and it does not need to be: with and without are the same
-	pipeline and the same shader, differing only in which image is bound, so it
-	takes effect on the next frame.
+	[QL] r_normalMapping was registered here. It is gone with the feature it
+	controlled - a cvar nothing reads is worse than no cvar, because setting it
+	reports success and does nothing, and this one was CVAR_ARCHIVE as well, so
+	it would have persisted in everyone's config after the code behind it left.
 	*/
-	r_normalMapping = ri.Cvar_Get( "r_normalMapping", "1", CVAR_ARCHIVE );
-	ri.Cvar_SetDescription( r_normalMapping, "Light dynamic lights with the per-pixel normal maps "
-		"Quake Live's shaders carry, instead of the interpolated vertex normal. Affects surfaces "
-		"lit by rockets, plasma, the lightning gun and muzzle flashes; the baked lightmaps are "
-		"unchanged either way." );
 
 	r_rtao = ri.Cvar_Get( "r_rtao", "0", CVAR_ARCHIVE );
 	ri.Cvar_SetDescription( r_rtao, "Ray-traced ambient occlusion. Requires r_rtActive 1." );

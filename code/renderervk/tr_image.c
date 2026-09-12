@@ -1606,17 +1606,22 @@ static void R_CreateBuiltinImages( void ) {
 	tr.whiteImage = R_CreateImage( "*white", NULL, (byte *)data, 8, 8, IMGFLAG_NONE );
 
 	/*
-	[QL] A flat tangent-space normal, for the dynamic light pass.
+	[QL] A flat tangent-space normal. Nothing samples it today - the light pass
+	stopped perturbing normals, and light_frag.tmpl records why - but it is kept
+	because it is where that failure lived and the fix belongs with it.
 
-	(0.5, 0.5, 1) decodes to (0, 0, 1) - straight out of the surface - so
-	perturbing by it is the identity and a surface with no normal map lights
-	exactly as it did before.
+	(128, 128, 255) decodes to (0, 0, 1), straight out of the surface, so
+	perturbing by it is the identity. That was true of the bytes written here
+	and false of the texels the shader read: without IMGFLAG_NOLIGHTSCALE the
+	upload runs R_LightScaleTexture, whose table folds in the overbright shift
+	(inf <<= tr.overbrightBits), and at the default r_overBrightBits 1 the 128s
+	came back as 255. The "flat" normal was a 55 degree tilt, oriented by each
+	surface's texture axes, and it striped every dynamically lit surface in the
+	game with slits of light that changed angle from room to room.
 
-	It exists so the lighting shader can sample a normal map unconditionally.
-	The alternative was a second set of pipelines and shader modules for "with"
-	and "without", which is a permutation to build, store and pick correctly
-	every frame, in exchange for one texture fetch on the fragments of a
-	dynamic light. This is the cheaper thing to get right.
+	So the flag is the important half of this line. A normal map is data, not
+	colour; gamma-correcting and overbrighting it is meaningless. Any real
+	normal map loaded later needs the same flag, for the same reason.
 	*/
 	for ( x = 0; x < 8; x++ ) {
 		for ( y = 0; y < 8; y++ ) {
@@ -1626,7 +1631,7 @@ static void R_CreateBuiltinImages( void ) {
 			data[y][x][3] = 255;
 		}
 	}
-	tr.flatNormalImage = R_CreateImage( "*flatnormal", NULL, (byte *)data, 8, 8, IMGFLAG_NONE );
+	tr.flatNormalImage = R_CreateImage( "*flatnormal", NULL, (byte *)data, 8, 8, IMGFLAG_NOLIGHTSCALE );
 
 	// with overbright bits active, we need an image which is some fraction of full color,
 	// for default lightmaps, etc
