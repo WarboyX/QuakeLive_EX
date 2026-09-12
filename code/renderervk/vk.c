@@ -5307,7 +5307,13 @@ static void vk_alloc_attachments( void )
 static void vk_add_attachment_desc( VkImage desc, VkImageView *image_view, VkImageUsageFlags usage, VkMemoryRequirements *reqs, VkFormat image_format, VkImageAspectFlags aspect_flags, VkImageLayout image_layout )
 {
 	if ( num_attachments >= ARRAY_LEN( attachments ) ) {
-		ri.Error( ERR_FATAL, "Attachments array overflow" );
+		/* [QL] Say which bound and where it lives. This fires at startup, kills
+		   the process, and the old message named neither - so the one thing the
+		   reader needs, that a new attachment was added without a term being
+		   added to the sum in vk.h, was not in it. */
+		ri.Error( ERR_FATAL, "Attachments array overflow: more than %i attachments. "
+			"Add a term to MAX_ATTACHMENTS_IN_POOL in vk.h for whatever was added.",
+			(int)ARRAY_LEN( attachments ) );
 	} else {
 		attachments[ num_attachments ].descriptor = desc;
 		attachments[ num_attachments ].image_view = image_view;

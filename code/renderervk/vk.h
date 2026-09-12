@@ -33,7 +33,33 @@
 #define USE_DEDICATED_ALLOCATION
 #endif
 //#define MIN_IMAGE_ALIGN (128*1024)
-#define MAX_ATTACHMENTS_IN_POOL (8+VK_NUM_BLOOM_PASSES*2) // depth + msaa + msaa-resolve + depth-resolve + screenmap.msaa + screenmap.resolve + screenmap.depth + bloom_extract + blur pairs
+/*
+[QL] Every attachment vk_create_attachments can allocate, as a sum rather than
+a total.
+
+It was "8 + VK_NUM_BLOOM_PASSES*2" with the eight listed in a comment, and the
+eight were exactly what the function created - no headroom at all. Adding the
+two ray-traced occlusion targets therefore turned a working configuration into
+"Attachments array overflow" and a fatal exit at startup, but only with r_fbo 1
+and bloom on, because that is the only combination that allocates the whole set.
+Off by two, invisible in every build where either was off.
+
+Written as one term per attachment so the number cannot drift from the code
+again: a new attachment adds its line here next to the others, and a term that
+no longer corresponds to anything is visible as such. Do not collapse it back
+into a total.
+*/
+#define MAX_ATTACHMENTS_IN_POOL ( \
+	1 +                          /* bloom extract                     */ \
+	VK_NUM_BLOOM_PASSES * 2 +    /* blur ping-pong pairs              */ \
+	1 +                          /* color / msaa resolve              */ \
+	1 +                          /* screenmap msaa                    */ \
+	1 +                          /* screenmap resolve                 */ \
+	1 +                          /* screenmap depth                   */ \
+	1 +                          /* msaa                              */ \
+	1 +                          /* capture (r_ext_supersample)       */ \
+	2 +                          /* rt ambient occlusion targets      */ \
+	1 )                          /* depth                             */
 
 #define VK_DESC_STORAGE      0
 #define VK_DESC_UNIFORM      0
