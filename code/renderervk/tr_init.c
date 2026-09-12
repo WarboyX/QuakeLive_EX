@@ -150,6 +150,7 @@ cvar_t	*r_rtaoIntensity;
 cvar_t	*r_rtaoSamples;
 cvar_t	*r_rtDynamic;
 cvar_t	*r_rtaoNormals;
+cvar_t	*r_rtaoWeapon;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
@@ -1940,6 +1941,15 @@ static void R_Register( void )
 		" 1 - the better of two depth neighbours on each axis, which is right at "
 		"silhouettes\n"
 		"Live, so the two can be compared in a frame." );
+
+	r_rtaoWeapon = ri.Cvar_Get( "r_rtaoWeapon", "1", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_rtaoWeapon, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoWeapon, "Occlude the first person weapon.\n"
+		" 0 - leave it alone, as every build before this one did\n"
+		" 1 - un-map its squashed depth range and shade it with the rest of the scene\n"
+		"It darkens against the world - a corner, a low ceiling - but does not shadow "
+		"itself, because the view model is deliberately not an occluder: a box around "
+		"the camera would black out the whole screen from inside.\nLive." );
 
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );

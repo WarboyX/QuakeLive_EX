@@ -11244,7 +11244,20 @@ qboolean vk_rt_ao( void )
 	push.depthInfo[2] = -1.0f;
 #endif
 	/* [QL] Which normal to trace around - see r_rtaoNormals. */
-	push.depthInfo[3] = ( r_rtaoNormals->integer == 0 ) ? 1.0f : 0.0f;
+	/*
+	[QL] Two toggles in one float, as a bitmask of small exact integers.
+
+	Bit 0: use the derivative normal rather than the neighbour one.
+	Bit 1: leave the view weapon out of the pass.
+
+	Packed rather than given a field each because the push constant is already
+	112 bytes against a 128 byte guarantee, and spending the last 16 on two
+	booleans would leave nothing for the next thing that needs it. 0 to 3 are
+	exactly representable, so comparing for equality in the shader is exact and
+	not the usual float-compare hazard.
+	*/
+	push.depthInfo[3] = (float)( ( ( r_rtaoNormals->integer == 0 ) ? 1 : 0 ) |
+	                             ( ( r_rtaoWeapon->integer == 0 ) ? 2 : 0 ) );
 
 	/*
 	[QL] What the denoise needs to turn a depth value into a distance:

@@ -116,8 +116,44 @@ ivec2 depthSize() {
 One body for both variants: texelFetch's third argument is a sample index for
 sampler2DMS and a mip level for sampler2D, and 0 is what this wants either way.
 */
+/*
+[QL] Is this depth the view weapon rather than the world?
+
+The view model is drawn through a squashed viewport depth range so it cannot
+poke through a wall. depthInfo.y is the band edge and depthInfo.z the sign that
+makes one test serve both depth conventions.
+*/
+bool inWeaponBand(float d) {
+	return pc.depthInfo.z * (d - pc.depthInfo.y) >= 0.0;
+}
+
+/*
+[QL] Undo that squash.
+
+The viewport maps normalized depth linearly onto [minDepth, maxDepth], so it
+inverts exactly - there is no approximation here and no second matrix. The band
+runs between depthInfo.y and the value the near plane stores, and the near value
+falls out of the cleared one: far is depthInfo.x and the two ends of a depth
+buffer are 0 and 1 either way round, so near is 1 - depthInfo.x. Which end is
+which in normalized depth then depends on the convention, hence the flip on the
+sign.
+
+The result goes through the same inverse view-projection as everything else,
+because the weapon is drawn with the scene's projection matrix and only its
+viewport differs. That is the whole reason this is three lines rather than a
+second pass: the information was never lost, only remapped.
+*/
+float unsquashWeaponDepth(float d) {
+	float nearEdge = 1.0 - pc.depthInfo.x;
+	float t = (d - pc.depthInfo.y) / (nearEdge - pc.depthInfo.y);
+	return (pc.depthInfo.z > 0.0) ? t : (1.0 - t);
+}
+
 vec3 worldAt(ivec2 p, vec2 invSize) {
 	float d = texelFetch(depthMap, p, 0).r;
+	if (inWeaponBand(d)) {
+		d = unsquashWeaponDepth(d);
+	}
 	vec2 uv = (vec2(p) + 0.5) * invSize;
 	vec4 clip = vec4(uv * 2.0 - 1.0, d, 1.0);
 	vec4 w = pc.invViewProj * clip;
@@ -169,17 +205,25 @@ void main() {
 	}
 
 	/*
-	The view weapon. It is drawn with a squashed viewport depth range so it
-	cannot poke through walls, which means its depth values do not describe
-	where it actually is - reconstructing a world position from them puts it
-	somewhere near the eye and the rays go off into geometry from inside it.
-	The result is a patch of noise over the gun, in the corner of the screen,
-	that looks like memory corruption and is not.
+	[QL] The view weapon is shaded with everything else now.
 
-	Nothing else reaches this band: it is the front 40% of the depth range,
-	which on a perspective projection is a few units from the eye.
+	It used to return unoccluded here, on the grounds that a squashed depth
+	range does not describe where the gun is - true, and the reason the first
+	attempt at this produced a patch of noise over the gun that looked like
+	memory corruption. But the squash is a linear viewport mapping, so it
+	inverts exactly; worldAt undoes it and hands back the position the gun is
+	really at. See unsquashWeaponDepth.
+
+	What that buys is the gun darkening against the world - pushed into a
+	corner, under a low ceiling, up against a wall. What it does not buy is the
+	gun shadowing itself, because the view model is deliberately not in the
+	acceleration structure: a box around the camera occludes everything from
+	inside and blacks out the screen. So this is contact shading, not a
+	self-shadowing gun, and the two should not be confused when judging it.
+
+	r_rtaoWeapon 0 puts the early-out back.
 	*/
-	if (pc.depthInfo.z * (depth - pc.depthInfo.y) >= 0.0) {
+	if ((pc.depthInfo.w == 2.0 || pc.depthInfo.w == 3.0) && inWeaponBand(depth)) {
 		out_color = vec4(1.0);
 		return;
 	}
@@ -239,7 +283,8 @@ void main() {
 	computing both costs two subtractions and removes the question.
 	*/
 	vec3 Nd = cross(dFdx(P), dFdy(P));
-	if (pc.depthInfo.w != 0.0) {
+	// bit 0 of the flag word; bit 1 is the weapon toggle handled above
+	if (pc.depthInfo.w == 1.0 || pc.depthInfo.w == 3.0) {
 		N = Nd;
 	}
 

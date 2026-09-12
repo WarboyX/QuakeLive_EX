@@ -1419,6 +1419,7 @@ extern	cvar_t	*r_rtaoIntensity;				// [QL] R13: how far the term may darken
 extern	cvar_t	*r_rtaoSamples;					// [QL] R13: rays per pixel (latched)
 extern	cvar_t	*r_rtDynamic;					// [QL] R13: entities occlude, not just the map
 extern	cvar_t	*r_rtaoNormals;					// [QL] R13: where the AO normal comes from
+extern	cvar_t	*r_rtaoWeapon;					// [QL] R13: occlude the first person weapon
 extern	cvar_t	*r_rtaoDenoise;					// [QL] R13: bilateral denoise width (latched)
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
