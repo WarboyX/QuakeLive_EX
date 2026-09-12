@@ -253,8 +253,20 @@ void main() {
 		shows up as the whole world going uniformly dark rather than as stripes.
 		*/
 		rayQueryEXT rq;
+		/*
+		Cull back faces. The entity proxy boxes are wound outwards and carry
+		FRONT_COUNTERCLOCKWISE, so a ray that starts inside one - which every
+		ray leaving a model's own surface does - sees only its back faces and
+		passes through, while rays arriving from outside are stopped. Without
+		this every entity occludes itself completely and renders black.
+
+		The world instance disables face culling on itself, so this flag does
+		not reach it: a map is not a closed shell and its surfaces must stop
+		rays from either side.
+		*/
 		rayQueryInitializeEXT(rq, topLevel,
-			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT |
+			gl_RayFlagsCullBackFacingTrianglesEXT,
 			0xFF, P + N * bias, bias, dir, radius);
 
 		/*

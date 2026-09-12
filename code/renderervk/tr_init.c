@@ -2193,6 +2193,19 @@ Touch all images to make sure they are resident
 =============
 */
 static void RE_EndRegistration( void ) {
+	/*
+	[QL] What the material maps came to, counted here and not at world load.
+
+	At world load only the map's own shaders have been through FinishShader -
+	the player models, the weapons and everything cgame registers come after it,
+	and those are the shaders most likely to carry a normal map. Reporting there
+	counted the half of the set least likely to have any and called it the
+	answer. Registration ending is the first point at which the count is of
+	everything.
+	*/
+	ri.Printf( PRINT_ALL, "Materials: %i stage(s) with a normal map, %i with a specular map.\n",
+		tr.numNormalMappedStages, tr.numSpecularStages );
+
 #ifdef USE_VULKAN
 	vk_wait_idle();
 	// command buffer is not in recording state at this stage

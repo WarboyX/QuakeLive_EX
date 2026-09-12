@@ -2469,18 +2469,6 @@ void RE_LoadWorldMap( const char *name ) {
 	there is no guard here - the one inside is the only one, which keeps the
 	"is RT on" test in a single place rather than at every call site.
 	*/
-	/*
-	[QL] What the material maps came to on this map.
-
-	Printed here because by now every world shader has been through
-	FinishShader, so the count is the map's own. Zero is the interesting answer:
-	it means the art does not carry these after all and r_normalMapping has
-	nothing to act on, which is worth knowing directly rather than inferring
-	from a wall that looks the same either way.
-	*/
-	ri.Printf( PRINT_ALL, "Materials: %i stage(s) with a normal map, %i with a specular map.\n",
-		tr.numNormalMappedStages, tr.numSpecularStages );
-
 	vk_rt_build_world( &s_worldData );
 #endif
 

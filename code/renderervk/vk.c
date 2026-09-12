@@ -4519,10 +4519,17 @@ static qboolean vk_rt_create_dynamic( void )
 		{ -0.5f, -0.5f,  0.5f }, {  0.5f, -0.5f,  0.5f },
 		{ -0.5f,  0.5f,  0.5f }, {  0.5f,  0.5f,  0.5f },
 	};
+	/*
+	Wound so every triangle's normal points out of the box. That is not
+	cosmetic: the occlusion trace culls back faces on these instances, and which
+	face is the back one is decided by this winding. Reverse a triple here and
+	that box stops occluding from the outside and starts occluding from the
+	inside, which is the bug this arrangement exists to prevent.
+	*/
 	static const uint32_t boxIndices[36] = {
-		0,1,3, 0,3,2,   4,6,7, 4,7,5,   /* -z, +z */
-		0,4,5, 0,5,1,   2,3,7, 2,7,6,   /* -y, +y */
-		0,2,6, 0,6,4,   1,5,7, 1,7,3,   /* -x, +x */
+		0,3,1, 0,2,3,   4,7,6, 4,5,7,   /* -z, +z */
+		0,5,4, 0,1,5,   2,7,3, 2,6,7,   /* -y, +y */
+		0,6,2, 0,4,6,   1,7,5, 1,3,7,   /* -x, +x */
 	};
 	VkAccelerationStructureGeometryKHR geom;
 	VkAccelerationStructureBuildGeometryInfoKHR build_info;
@@ -4766,7 +4773,30 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 				+ ent->e.axis[2][j] * centre[2];
 		}
 		inst[count].mask = 0xFF;
-		inst[count].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+		/*
+		[QL] Back faces cull on these, and that is what stops an entity's box
+		from occluding the entity.
+
+		The visible surface of a model is inside its own bounding box, so a ray
+		leaving that surface starts inside the box and hits the far wall a few
+		units later - every entity came out fully occluded, which in the debug
+		view is a black model and in the scene is a black model. The box is the
+		occluder, and it was occluding the thing it stands for.
+
+		A ray that starts inside a closed box can only hit it from the inside,
+		and with the winding above that is the back face. So culling back faces
+		lets those rays leave, while rays arriving from outside - the floor
+		under the model, the wall behind it - still hit the front face and are
+		occluded, which is the contact darkening this is all for.
+
+		FRONT_COUNTERCLOCKWISE because the default is the other one: without it
+		Vulkan treats clockwise-as-seen-from-the-ray as front, the test comes
+		out backwards, and boxes occlude only from the inside.
+
+		The world instance keeps CULL_DISABLE and is unaffected - a map is not a
+		closed shell and its surfaces have to stop rays from either side.
+		*/
+		inst[count].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_KHR;
 		inst[count].accelerationStructureReference = proxyRef;
 		count++;
 	}
