@@ -538,6 +538,11 @@ typedef struct {
     int             pendingVoteCaller;      /* [QL] */
     qboolean        spawning;
     int             numSpawnVars;
+
+    // [QL] Team Arena weapon/ammo entities this map had that g_devWeapons kept
+    // from spawning. Reported once at load so a map that quietly loses items
+    // says so rather than just being different from the .bsp.
+    int             devWeaponsSuppressed;
     char            *spawnVars[64][2];
     int             numSpawnVarChars;
     char            spawnVarChars[4096];
@@ -821,6 +826,7 @@ qboolean FreezeTagInWarmup(void);    // [QL] 0x10067e30
 void CalculateRanks(void);
 qboolean SpotWouldTelefrag(gentity_t* spot);
 qboolean G_IsSpawnPointClassname(const char* classname);
+qboolean G_IsDevWeaponClassname(const char* classname);   // [QL] Team Arena weapons, gated by g_devWeapons
 
 //
 // g_svcmds.c
@@ -1317,6 +1323,9 @@ extern vmCvar_t weapon_gravity_rl;
 extern vmCvar_t weapon_gravity_pg;
 extern vmCvar_t weapon_gravity_bfg;
 extern vmCvar_t weapon_gravity_ng;
+
+// [QL] Team Arena weapons (nailgun, prox launcher, chaingun) on maps
+extern vmCvar_t g_devWeapons;
 
 // [QL] nailgun cvars
 extern vmCvar_t g_nailspeed;

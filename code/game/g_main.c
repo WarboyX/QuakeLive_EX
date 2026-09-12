@@ -333,6 +333,7 @@ vmCvar_t weapon_gravity_ng;
 
 // [QL] nailgun cvars
 vmCvar_t g_nailspeed;
+vmCvar_t g_devWeapons;
 vmCvar_t g_nailcount;
 vmCvar_t g_nailspread;
 vmCvar_t g_nailbounce;
@@ -843,6 +844,20 @@ static cvarTable_t gameCvarTable[] = {
 
     // [QL] nailgun cvars
     {&g_nailspeed, "g_nailspeed", "1000", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},
+    /*
+    [QL] Put the Team Arena weapons back on maps that carry them.
+
+    CVAR_CHEAT, so it is 0 on any server without sv_cheats and cannot be left on
+    by accident - which is the shape asked for: the weapons are off unless
+    somebody deliberately turns developer weapons on. Quake Live's own answer
+    was the same in effect, the weapons reachable through cheats and through
+    community modes but absent from ordinary play.
+
+    Not archived, for the reason CLAUDE.md gives: a value we choose is not a
+    value a user set, and an archived default stops applying the moment it is
+    written to a config.
+    */
+    {&g_devWeapons, "g_devWeapons", "0", CVAR_CHEAT, 0, NULL},
     {&g_nailcount, "g_nailcount", "10", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},
     {&g_nailspread, "g_nailspread", "400", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},
     {&g_nailbounce, "g_nailbounce", "1", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},

@@ -478,6 +478,45 @@ point held in reserve that the selector never queries is worse than one deleted,
 because it looks like it is there.
 ====================
 */
+/*
+====================
+G_IsDevWeaponClassname
+
+[QL] The Team Arena weapons and their ammo - the items Quake Live removed from
+its maps in August 2014 and left reachable only through cheats and community
+modes. g_devWeapons is what turns them back on here.
+
+Classnames rather than weapon numbers because this is asked during entity spawn,
+before there is an item to consult, and because the ammo items have no weapon of
+their own to be identified by.
+
+Not the heavy machinegun: Quake Live *added* that one to maps in the same
+update, so it is current content and belongs on every map that carries it.
+====================
+*/
+qboolean G_IsDevWeaponClassname(const char* classname) {
+    static const char* const names[] = {
+        "weapon_nailgun",
+        "weapon_prox_launcher",
+        "weapon_chaingun",
+        "ammo_nails",
+        "ammo_mines",
+        "ammo_belt",
+    };
+    int i;
+
+    if (!classname) {
+        return qfalse;
+    }
+    for (i = 0; i < (int)ARRAY_LEN(names); i++) {
+        if (!Q_stricmp(classname, names[i])) {
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+
 qboolean G_IsSpawnPointClassname(const char* classname) {
     static const char* const names[] = {
         "info_player_deathmatch",
@@ -628,6 +667,36 @@ void G_SpawnGEntityFromSpawnVars(void) {
             }
             ent->flags |= FL_SPAWN_RESERVE;
         }
+    }
+
+    /*
+    [QL] The three Team Arena weapons, off unless g_devWeapons says otherwise.
+
+    Quake Live took these off its maps in the August 2014 update - the
+    proximity mine launcher from all of them, the nailgun and chaingun from
+    several - and added the heavy machinegun in their place. They stayed in the
+    game, reachable through cheats and through community modes, but they are not
+    part of normal play any more.
+
+    The entities are still in the shipped .bsp files, which is how this was
+    found: a nailgun on japanesecastles in a plain FFA warmup. Nothing here
+    filtered them, so every map that still carries one handed it out.
+
+    Deliberately last in this chain and deliberately ignoring itemValid. The
+    filters above answer "does this belong in this gametype", which is the
+    mapper's and the gametype's business; this answers "is this weapon enabled
+    at all", which is the server's, and a gametype that declares an item valid
+    should not be able to reintroduce a weapon the operator has switched off.
+
+    Ammo goes with the weapons. Leaving the nail boxes on a map with no nailgun
+    is litter, and it would also keep the item registered - which is enough on
+    its own to put the weapon back in everyone's hands during warmup, since the
+    warmup grant hands out whatever registered.
+    */
+    if (!g_devWeapons.integer && G_IsDevWeaponClassname(ent->classname)) {
+        level.devWeaponsSuppressed++;
+        G_FreeEntity(ent);
+        return;
     }
 
     // move editor origin to pos
@@ -849,6 +918,21 @@ void G_SpawnEntitiesFromString(void) {
     // parse ents
     while (G_ParseSpawnVars()) {
         G_SpawnGEntityFromSpawnVars();
+    }
+
+    /*
+    [QL] Say when a map lost items to g_devWeapons.
+
+    Without this the only symptom is a weapon that used to be on the map not
+    being there, which reads as a broken map or a broken build rather than as a
+    setting doing its job - and the reverse, a server operator who turned
+    developer weapons on and wants to know whether this map actually has any,
+    gets no answer either. One line, only when something was suppressed.
+    */
+    if (level.devWeaponsSuppressed) {
+        G_Printf("Team Arena weapons: %i entit%s on this map not spawned (g_devWeapons is 0).\n",
+                 level.devWeaponsSuppressed,
+                 level.devWeaponsSuppressed == 1 ? "y" : "ies");
     }
 
     level.spawning = qfalse;  // any future calls to G_Spawn*() will be errors
