@@ -1580,19 +1580,26 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
     Lifting the endpoint along the surface normal clears the whole tail at once,
     where pulling it back along the beam only helps the tip.
 
-    Sixteen, not the eight the first attempt used. Eight is the quad half-width,
-    which is the offset at which the worst-placed quad edge lands exactly on the
-    plane at the endpoint - the minimum that touches, with no margin at all, and
-    everything before the endpoint clears only because the beam is already
-    climbing away. Anything standing proud of the surface it hit eats that
-    margin immediately, and a shoji screen is exactly that: the frame bars sit
-    in front of the paper the trace stops on, so a bolt into a pane was still
-    passing behind the bars. Sixteen clears the trim as well as the plane, and
-    is still inside the impact crackle, which sits 16 units back along the beam
-    and is wider than the bolt.
+    The distance is a cvar, and that is the point of this revision rather than a
+    detail of it. It went 0 -> 8 -> 16 on my reasoning about quad half-widths
+    and window trim, and 16 looked "visually the same" as 8. A doubling of the
+    one quantity the explanation turns on producing no visible change is
+    evidence against the explanation, not an argument for 32 - so it stops being
+    something I guess at between builds and becomes something that can be
+    measured in one.
+
+    Set cg_lightningEndOffset to something absurd, 128 say, and watch the bolt
+    stop well short of the wall. If the frame bars still cut across it at that
+    distance then the slicing has nothing to do with the endpoint, the account
+    above is wrong, and the thing to look at next is how RB_SurfaceLightningBolt
+    orients its quads: `right` there is the cross product of the vectors from
+    the eye to each end of the beam, which in first person are very nearly
+    parallel, so the normalize that follows is amplifying whatever is left after
+    the cancellation.
     */
     if (trace.fraction < 1.0f) {
-        VectorMA(trace.endpos, 16, trace.plane.normal, beam.oldorigin);
+        VectorMA(trace.endpos, cg_lightningEndOffset.value, trace.plane.normal,
+                 beam.oldorigin);
     } else {
         VectorCopy(trace.endpos, beam.oldorigin);
     }

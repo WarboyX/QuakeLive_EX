@@ -1796,21 +1796,22 @@
             rect 230 356 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
+        // [QL] Not an occlusion setting - a light one - but this is the only
+        // render page we ship, and a beam weapon lighting the corridor it
+        // crosses is the same conversation as the rest of this page.
+        itemDef { text "Beam weapon lights:"  textscale .22  rect 30 378 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            text "Rays per pixel and denoise width are baked into the pipeline -"  textscale .2
-            rect 30 378 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            name beamlights  type ITEM_TYPE_YESNO  text ""  cvar "cg_beamLights"
+            rect 230 378 60 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef {
+            text "Rays per pixel and denoise width need APPLY; the rest is live."  textscale .2
+            rect 30 398 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
         itemDef {
-            text "they need APPLY. Everything else takes effect immediately."  textscale .2
-            rect 30 394 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
-        }
-        itemDef {
-            text "Debug draws the occlusion term instead of applying it: grey with"  textscale .2
-            rect 30 412 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
-        }
-        itemDef {
-            text "dark creases means it works, flat white means every ray misses."  textscale .2
-            rect 30 428 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            text "Debug draws raw occlusion: creased grey works, flat white fails."  textscale .2
+            rect 30 414 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
 
         // ---- buttons -----------------------------------------------------------

@@ -1765,6 +1765,7 @@ extern vmCvar_t cg_killBeep;
 extern vmCvar_t cg_lightningImpactCap;
 extern vmCvar_t cg_lightningImpact;         // [QL] gate the LG impact flare
 extern vmCvar_t cg_beamLights;             // [QL] linear dlight along rail and lightning beams
+extern vmCvar_t cg_lightningEndOffset;     // [QL] bolt endpoint lift off the impact surface
 extern vmCvar_t cg_rocketTrailRadius;       // [QL] rocket smoke-trail radius (0 disables)
 extern vmCvar_t cg_grenadeTrailRadius;      // [QL] grenade smoke-trail radius (0 disables)
 extern vmCvar_t cg_nailTrailRadius;         // [QL] nail smoke-trail radius (0 disables)
