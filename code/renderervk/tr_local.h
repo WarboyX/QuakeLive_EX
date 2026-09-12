@@ -397,6 +397,22 @@ typedef struct {
 	qboolean		isDetail;
 	qboolean		depthFragment;
 
+	/*
+	[QL] The renderergl2 material maps Quake Live's shaders carry.
+
+	normalMap is used by the dynamic light pass; the stage lights with a
+	per-pixel perturbed normal instead of the interpolated vertex one. NULL
+	means "no map", and the light pass binds tr.flatNormalImage instead, which
+	perturbs by nothing.
+
+	specularMap is parsed and kept but not yet consumed - it is here so the
+	parser has one place to put it and the shading can use it without another
+	pass over every shader.
+	*/
+	image_t			*normalMap;
+	image_t			*specularMap;
+	float			normalScale;    // "normalScale <x> <y>", x used; 0 means unset -> 1
+
 #ifdef USE_VULKAN
 	uint32_t		tessFlags;
 	uint32_t		numTexBundles;
@@ -1205,6 +1221,9 @@ typedef struct {
 	image_t					*flareImage;
 	image_t					*blackImage;
 	image_t					*whiteImage;			// full of 0xff
+	image_t					*flatNormalImage;		// [QL] (128,128,255): a tangent-space normal straight out of the surface
+	int						numNormalMappedStages;	// [QL] stages that carry a normal map, counted as shaders are finished
+	int						numSpecularStages;		// [QL] likewise, parsed but not yet shaded with
 	image_t					*identityLightImage;	// full of tr.identityLightByte
 
 	shader_t				*defaultShader;
@@ -1395,6 +1414,7 @@ extern	cvar_t	*r_vertexLight;					// vertex lighting mode for better performance
 extern	cvar_t	*r_showtris;					// enables wireframe rendering of the world
 extern	cvar_t	*r_showsky;						// forces sky in front of all surfaces
 extern	cvar_t	*r_rt;							// [QL] R13: enable ray query on the device (latched)
+extern	cvar_t	*r_normalMapping;				// [QL] per-pixel normals on the dynamic light pass
 extern	cvar_t	*r_rtao;						// [QL] R13: ray-traced ambient occlusion
 extern	cvar_t	*r_rtaoRadius;					// [QL] R13: trace length, world units
 extern	cvar_t	*r_rtaoIntensity;				// [QL] R13: how far the term may darken

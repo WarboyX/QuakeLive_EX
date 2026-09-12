@@ -1215,6 +1215,23 @@ void VK_LightingPass( void )
 	GL_SelectTexture( 0 );
 	R_BindAnimatedImage( &pStage->bundle[ tess.shader->lightingBundle ] );
 
+	/*
+	[QL] The stage's normal map, or a flat one when it has none.
+
+	Always bound, because the lighting shader always samples it. A flat normal
+	decodes to straight out of the surface and perturbs by nothing, so a stage
+	without a map lights exactly as it did before - which is what lets one
+	pipeline serve both cases instead of a "with" and a "without" set to build
+	and pick between.
+
+	Set at VK_DESC_TEXTURE2, which the light pipelines never used: they bind the
+	uniform block, the diffuse, and fog, and stop.
+	*/
+	vk_update_descriptor( VK_DESC_TEXTURE2,
+		( r_normalMapping->integer && pStage->normalMap )
+			? pStage->normalMap->descriptor
+			: tr.flatNormalImage->descriptor );
+
 #ifdef USE_VBO
 	if ( tess.vboIndex == 0 )
 #endif

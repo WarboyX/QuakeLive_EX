@@ -1605,6 +1605,29 @@ static void R_CreateBuiltinImages( void ) {
 	Com_Memset( data, 255, sizeof( data ) );
 	tr.whiteImage = R_CreateImage( "*white", NULL, (byte *)data, 8, 8, IMGFLAG_NONE );
 
+	/*
+	[QL] A flat tangent-space normal, for the dynamic light pass.
+
+	(0.5, 0.5, 1) decodes to (0, 0, 1) - straight out of the surface - so
+	perturbing by it is the identity and a surface with no normal map lights
+	exactly as it did before.
+
+	It exists so the lighting shader can sample a normal map unconditionally.
+	The alternative was a second set of pipelines and shader modules for "with"
+	and "without", which is a permutation to build, store and pick correctly
+	every frame, in exchange for one texture fetch on the fragments of a
+	dynamic light. This is the cheaper thing to get right.
+	*/
+	for ( x = 0; x < 8; x++ ) {
+		for ( y = 0; y < 8; y++ ) {
+			data[y][x][0] = 128;
+			data[y][x][1] = 128;
+			data[y][x][2] = 255;
+			data[y][x][3] = 255;
+		}
+	}
+	tr.flatNormalImage = R_CreateImage( "*flatnormal", NULL, (byte *)data, 8, 8, IMGFLAG_NONE );
+
 	// with overbright bits active, we need an image which is some fraction of full color,
 	// for default lightmaps, etc
 	for (x=0 ; x<DEFAULT_SIZE ; x++) {

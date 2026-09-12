@@ -1251,12 +1251,66 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 				  !Q_stricmp( token, "normalParallaxMap" ) || !Q_stricmp( token, "bumpParallaxMap" ) ||
 				  !Q_stricmp( token, "specularMap" ) )
 		{
-			// "<kind>Map <image>" - the image is one this renderer cannot use
-			materialStage = qtrue;
+			/*
+			[QL] "<kind>Map <image>" beside a diffuse in the same stage.
+
+			These used to drop the stage, on the grounds that this renderer had
+			no material pipeline and painting a normal map on as if it were
+			colour is worse than not drawing it. The dynamic light pass has one
+			now, so the map is loaded and kept: it perturbs the normal that pass
+			lights with.
+
+			The parallax variants are taken as ordinary normal maps. The height
+			they also carry needs a displacement step there is nowhere to put,
+			and the normal half of them is correct on its own.
+
+			A missing file here is not a reason to lose the stage - the diffuse
+			is still perfectly drawable - so it warns and carries on with no
+			map, unlike "map" where the stage has nothing left to show.
+			*/
+			qboolean isSpecular = ( Q_stricmp( token, "specularMap" ) == 0 );
+			imgFlags_t flags = IMGFLAG_NOLIGHTSCALE;
+			image_t *img;
+
+			if ( !shader.noMipMaps )
+				flags |= IMGFLAG_MIPMAP;
+			if ( !shader.noPicMip )
+				flags |= IMGFLAG_PICMIP;
+
+			token = COM_ParseExt( text, qfalse );
+			if ( token[0] == 0 ) {
+				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for material map in shader '%s'\n", shader.name );
+				continue;
+			}
+
+			img = R_FindImageFile( token, flags );
+			if ( !img ) {
+				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - "
+					"drawing this stage without it\n", token, shader.name );
+				SkipRestOfLine( text );
+				continue;
+			}
+
+			if ( isSpecular ) {
+				stage->specularMap = img;
+			} else {
+				stage->normalMap = img;
+			}
 			SkipRestOfLine( text );
 			continue;
 		}
-		else if ( !Q_stricmp( token, "normalScale" ) || !Q_stricmp( token, "specularScale" ) ||
+		else if ( !Q_stricmp( token, "normalScale" ) )
+		{
+			// "normalScale <x> <y>" - one number is enough for a tangent-space
+			// perturbation this renderer applies uniformly.
+			token = COM_ParseExt( text, qfalse );
+			if ( token[0] != 0 ) {
+				stage->normalScale = Q_atof( token );
+			}
+			SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "specularScale" ) ||
 				  !Q_stricmp( token, "specularExponent" ) || !Q_stricmp( token, "specularReflectance" ) ||
 				  !Q_stricmp( token, "gloss" ) || !Q_stricmp( token, "roughness" ) ||
 				  !Q_stricmp( token, "parallaxDepth" ) )
@@ -3579,6 +3633,23 @@ static shader_t *FinishShader( void ) {
 	//
 	// compute number of passes
 	//
+	/*
+	[QL] Count the material maps that survived to a finished shader.
+
+	The whole value of reading these depends on Quake Live's art actually
+	carrying them, and that is not something to take on trust from a commit
+	message - so the build says how many it found rather than leaving "is this
+	doing anything" to be judged by looking at a wall.
+	*/
+	for ( i = 0; i < stage; i++ ) {
+		if ( stages[i].normalMap ) {
+			tr.numNormalMappedStages++;
+		}
+		if ( stages[i].specularMap ) {
+			tr.numSpecularStages++;
+		}
+	}
+
 	shader.numUnfoggedPasses = stage;
 
 	// fogonly shaders don't have any normal passes
