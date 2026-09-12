@@ -333,6 +333,31 @@ void CG_AddFadeRGB(localEntity_t* le) {
     re->shaderRGBA[2] = le->color[2] * c;
     re->shaderRGBA[3] = le->color[3] * c;
 
+    /*
+    [QL] The rail shot lights the room it crosses.
+
+    A rail beam is a column of light from the muzzle to the impact, and until
+    now it lit nothing at all - the only dynamic light on the shot was the
+    muzzle flash, a point at one end of a beam that can be a thousand units
+    long. The renderer has always been able to do this properly: a linear light
+    has a start and an end, and the per-pixel light shader projects the fragment
+    onto that axis before applying falloff, so the whole corridor lights rather
+    than one end of it.
+
+    Here rather than in CG_RailTrail because a light has to be added every frame
+    it is visible and CG_RailTrail runs once, when the shot happens. This
+    handler is what runs per frame for that beam, and c is already the fade, so
+    the light dies with the beam it belongs to - a quick flash, which is what a
+    rail shot is.
+
+    Gated on reType because LE_FADE_RGB also carries the teleport effect, which
+    is a model and has no second endpoint.
+    */
+    if (cg_beamLights.integer && re->reType == RT_RAIL_CORE) {
+        trap_R_AddLinearLightToScene(re->origin, re->oldorigin, 200.0f * (c / 255.0f),
+                                     le->color[0], le->color[1], le->color[2]);
+    }
+
     trap_R_AddRefEntityToScene(re);
 }
 

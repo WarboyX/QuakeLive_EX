@@ -1585,6 +1585,28 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
 
     trap_R_AddRefEntityToScene(&beam);
 
+    /*
+    [QL] And the bolt lights what it crosses, for as long as it is held.
+
+    Same linear light as the rail, but continuous rather than a fade: the
+    lightning gun is fired as a held beam, so this is re-added every frame the
+    bolt exists and stops the frame it does not.
+
+    The light is a straight line between the two ends. The bolt's twist is in
+    the four rotated quads RB_SurfaceLightningBolt builds, and a linear light
+    has no shape beyond its axis, so the room lights along the beam while the
+    beam itself is what looks alive. Making the light itself twist would mean
+    several lights stepped along the bolt, which is several times the per-pixel
+    light cost for a difference nothing in the scene is sharp enough to show.
+
+    A little blue, a little under the rail's reach - the lightning is a
+    close-range weapon and a 200 unit column from a gun you are firing at a wall
+    six feet away washes the room out.
+    */
+    if (cg_beamLights.integer) {
+        trap_R_AddLinearLightToScene(beam.origin, beam.oldorigin, 150.0f, 0.6f, 0.7f, 1.0f);
+    }
+
     // [QL] add the impact flare if it hit something and cg_lightningImpact is set
     if (cg_lightningImpact.integer && trace.fraction < 1.0) {
         vec3_t angles;

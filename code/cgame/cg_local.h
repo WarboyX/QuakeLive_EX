@@ -1764,6 +1764,7 @@ extern vmCvar_t cg_hitBeep;
 extern vmCvar_t cg_killBeep;
 extern vmCvar_t cg_lightningImpactCap;
 extern vmCvar_t cg_lightningImpact;         // [QL] gate the LG impact flare
+extern vmCvar_t cg_beamLights;             // [QL] linear dlight along rail and lightning beams
 extern vmCvar_t cg_rocketTrailRadius;       // [QL] rocket smoke-trail radius (0 disables)
 extern vmCvar_t cg_grenadeTrailRadius;      // [QL] grenade smoke-trail radius (0 disables)
 extern vmCvar_t cg_nailTrailRadius;         // [QL] nail smoke-trail radius (0 disables)
@@ -2331,6 +2332,7 @@ void trap_R_AddPolyToScene(qhandle_t hShader, int numVerts, const polyVert_t* ve
 void trap_R_AddPolysToScene(qhandle_t hShader, int numVerts, const polyVert_t* verts, int numPolys);
 void trap_R_AddLightToScene(const vec3_t org, float intensity, float r, float g, float b);
 void trap_R_AddAdditiveLightToScene(const vec3_t org, float intensity, float r, float g, float b);
+void trap_R_AddLinearLightToScene(const vec3_t start, const vec3_t end, float intensity, float r, float g, float b);
 int trap_R_LightForPoint(vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir);
 void trap_R_RenderScene(const refdef_t* fd);
 void trap_R_SetColor(const float* rgba);  // NULL = 1,1,1,1

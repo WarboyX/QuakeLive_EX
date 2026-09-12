@@ -187,7 +187,24 @@ typedef enum {
     CG_R_FONT_DRAWSTRING,         // [QL] fontstash/stb_truetype text rendering
     CG_R_FONT_TEXTEXTENTS,
     CG_R_GETGLYPHINFO,
-    CG_IME_SETCOMPOSITIONFONT
+    CG_IME_SETCOMPOSITIONFONT,
+
+    /*
+    [QL] A light along a line rather than at a point, for beam weapons.
+
+    The renderer has had RE_AddLinearLightToScene and a whole second set of
+    dynamic light pipelines for it - light_frag.tmpl's USE_LINE variant, which
+    projects the fragment onto the light's axis before doing the falloff - since
+    it was vendored. Nothing could ever call it, because cgame had no syscall
+    for it and every light in the game went through CG_R_ADDLIGHTTOSCENE at a
+    point.
+
+    Appended, never inserted. These are ordinals shared between the engine and a
+    module compiled separately, so putting one in the middle renumbers every
+    call after it and the module starts asking for the wrong thing entirely -
+    with no build error, because both sides compile fine on their own.
+    */
+    CG_R_ADDLINEARLIGHTTOSCENE
 } cgameImport_t;
 
 /*

@@ -274,6 +274,11 @@ void trap_R_AddAdditiveLightToScene(const vec3_t org, float intensity, float r, 
     syscall(CG_R_ADDADDITIVELIGHTTOSCENE, org, PASSFLOAT(intensity), PASSFLOAT(r), PASSFLOAT(g), PASSFLOAT(b));
 }
 
+// [QL] a light along start..end rather than at a point; see CG_R_ADDLINEARLIGHTTOSCENE
+void trap_R_AddLinearLightToScene(const vec3_t start, const vec3_t end, float intensity, float r, float g, float b) {
+    syscall(CG_R_ADDLINEARLIGHTTOSCENE, start, end, PASSFLOAT(intensity), PASSFLOAT(r), PASSFLOAT(g), PASSFLOAT(b));
+}
+
 void trap_R_RenderScene(const refdef_t* fd) {
     syscall(CG_R_RENDERSCENE, fd);
 }

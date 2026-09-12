@@ -252,6 +252,7 @@ vmCvar_t cg_itemTimers;
 vmCvar_t cg_killBeep;
 vmCvar_t cg_levelTimerDirection;
 vmCvar_t cg_lightningImpact;
+vmCvar_t cg_beamLights;  // [QL] linear dynamic light along rail and lightning beams
 vmCvar_t cg_rocketTrailRadius;
 vmCvar_t cg_grenadeTrailRadius;
 vmCvar_t cg_nailTrailRadius;
@@ -764,6 +765,7 @@ static cvarTable_t cvarTable[] = {
     {&cg_killBeep, "cg_killBeep", "7", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_levelTimerDirection, "cg_levelTimerDirection", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lightningImpact, "cg_lightningImpact", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    {&cg_beamLights, "cg_beamLights", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_rocketTrailRadius, "cg_rocketTrailRadius", "64", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_grenadeTrailRadius, "cg_grenadeTrailRadius", "32", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_nailTrailRadius, "cg_nailTrailRadius", "16", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
