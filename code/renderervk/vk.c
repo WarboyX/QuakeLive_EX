@@ -4265,7 +4265,7 @@ static void vk_rt_update_ao_descriptor( void )
 	VkDescriptorImageInfo image_info;
 	VkWriteDescriptorSet writes[2];
 
-	if ( !vk.rt.aoReady || vk.rt.tlas == VK_NULL_HANDLE ) {
+	if ( !vk.rt.aoReady || vk.rt.world.tlas == VK_NULL_HANDLE ) {
 		return;
 	}
 
@@ -4279,7 +4279,7 @@ static void vk_rt_update_ao_descriptor( void )
 	Com_Memset( &as_info, 0, sizeof( as_info ) );
 	as_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
 	as_info.accelerationStructureCount = 1;
-	as_info.pAccelerationStructures = &vk.rt.tlas;
+	as_info.pAccelerationStructures = &vk.rt.world.tlas;
 
 	Com_Memset( writes, 0, sizeof( writes ) );
 	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -4306,38 +4306,54 @@ static void vk_rt_update_ao_descriptor( void )
 
 void vk_rt_destroy_world( void )
 {
-	if ( !vk.rt.worldBuilt && vk.rt.blas == VK_NULL_HANDLE ) {
+	if ( !vk.rt.world.worldBuilt && vk.rt.world.blas == VK_NULL_HANDLE ) {
 		return;
 	}
 	/* Handles are freed newest first and every one is guarded, because this is
 	   also the cleanup path for a build that failed halfway. */
-	if ( vk.rt.tlas != VK_NULL_HANDLE ) {
-		qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.tlas, NULL );
+	if ( vk.rt.world.tlas != VK_NULL_HANDLE ) {
+		qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.world.tlas, NULL );
 	}
-	if ( vk.rt.blas != VK_NULL_HANDLE ) {
-		qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.blas, NULL );
+	if ( vk.rt.world.blas != VK_NULL_HANDLE ) {
+		qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.world.blas, NULL );
 	}
-	if ( vk.rt.tlas_buffer != VK_NULL_HANDLE ) {
-		qvkDestroyBuffer( vk.device, vk.rt.tlas_buffer, NULL );
-		qvkFreeMemory( vk.device, vk.rt.tlas_memory, NULL );
+	if ( vk.rt.world.tlas_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.world.tlas_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.tlas_memory, NULL );
 	}
-	if ( vk.rt.blas_buffer != VK_NULL_HANDLE ) {
-		qvkDestroyBuffer( vk.device, vk.rt.blas_buffer, NULL );
-		qvkFreeMemory( vk.device, vk.rt.blas_memory, NULL );
+	if ( vk.rt.world.blas_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.world.blas_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.blas_memory, NULL );
 	}
-	if ( vk.rt.instance_buffer != VK_NULL_HANDLE ) {
-		qvkDestroyBuffer( vk.device, vk.rt.instance_buffer, NULL );
-		qvkFreeMemory( vk.device, vk.rt.instance_memory, NULL );
+	if ( vk.rt.world.instance_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.world.instance_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.instance_memory, NULL );
 	}
-	if ( vk.rt.vertex_buffer != VK_NULL_HANDLE ) {
-		qvkDestroyBuffer( vk.device, vk.rt.vertex_buffer, NULL );
-		qvkFreeMemory( vk.device, vk.rt.vertex_memory, NULL );
+	if ( vk.rt.world.vertex_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.world.vertex_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.vertex_memory, NULL );
 	}
-	if ( vk.rt.index_buffer != VK_NULL_HANDLE ) {
-		qvkDestroyBuffer( vk.device, vk.rt.index_buffer, NULL );
-		qvkFreeMemory( vk.device, vk.rt.index_memory, NULL );
+	if ( vk.rt.world.index_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, vk.rt.world.index_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.index_memory, NULL );
 	}
-	Com_Memset( &vk.rt, 0, sizeof( vk.rt ) );
+	/*
+	[QL] The map's half of vk.rt, and only that half.
+
+	This cleared the whole of vk.rt, which also zeroed the ambient occlusion
+	pass - aoReady, the depth view and sampler, the descriptor pool, both
+	pipeline layouts and all four pipelines - without destroying any of them.
+	Since this runs at the top of every world build, the effect was that AO
+	worked on the first map after a vid_restart (the early-out above fires when
+	nothing has been built yet, so the memset never ran) and was dead on every
+	map after it, with the handles leaked and nothing in the log but "the pass
+	was not created". Changing map looked like it broke ray tracing; restarting
+	the video looked like it fixed it.
+
+	See vk.h for why the fields moved into a sub-struct rather than this
+	becoming a list of assignments.
+	*/
+	Com_Memset( &vk.rt.world, 0, sizeof( vk.rt.world ) );
 }
 
 
@@ -4378,17 +4394,17 @@ void vk_rt_build_world( const world_t *world )
 		const msurface_t *surf = &world->surfaces[i];
 
 		if ( !rt_surface_is_occluder( surf ) ) {
-			vk.rt.numSurfacesSkipped++;
+			vk.rt.world.numSurfacesSkipped++;
 			continue;
 		}
-		vk.rt.numSurfacesUsed++;
+		vk.rt.world.numSurfacesUsed++;
 		rt_walk_surface( surf, NULL, NULL, &vertexCount, &indexCount );
 	}
 
 	if ( vertexCount == 0 || indexCount < 3 ) {
 		ri.Printf( PRINT_WARNING, "RT: no world geometry to trace against "
 			"(%i surfaces, %i skipped) - not building\n",
-			world->numsurfaces, (int)vk.rt.numSurfacesSkipped );
+			world->numsurfaces, (int)vk.rt.world.numSurfacesSkipped );
 		return;
 	}
 
@@ -4397,21 +4413,21 @@ void vk_rt_build_world( const world_t *world )
 	totalVertices = vertexCount;
 	totalIndices = indexCount;
 
-	vk.rt.numVertices = totalVertices;
-	vk.rt.numTriangles = totalIndices / 3;
+	vk.rt.world.numVertices = totalVertices;
+	vk.rt.world.numTriangles = totalIndices / 3;
 
 	ri.Printf( PRINT_ALL, "RT: world geometry %i triangles from %i of %i surfaces (%i KiB)\n",
-		(int)vk.rt.numTriangles, (int)vk.rt.numSurfacesUsed, world->numsurfaces,
+		(int)vk.rt.world.numTriangles, (int)vk.rt.world.numSurfacesUsed, world->numsurfaces,
 		(int)( ( vertexBytes + indexBytes ) / 1024 ) );
 
 	if ( !rt_create_buffer( vertexBytes,
 			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			&vk.rt.vertex_buffer, &vk.rt.vertex_memory ) ||
+			&vk.rt.world.vertex_buffer, &vk.rt.world.vertex_memory ) ||
 		 !rt_create_buffer( indexBytes,
 			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			&vk.rt.index_buffer, &vk.rt.index_memory ) ) {
+			&vk.rt.world.index_buffer, &vk.rt.world.index_memory ) ) {
 		vk_rt_destroy_world();
 		return;
 	}
@@ -4462,7 +4478,7 @@ void vk_rt_build_world( const world_t *world )
 		return;
 	}
 
-	rt_upload( vk.rt.vertex_buffer, verts, vertexBytes );
+	rt_upload( vk.rt.world.vertex_buffer, verts, vertexBytes );
 	ri.Free( verts );
 
 	indices = (uint32_t *)ri.Malloc( (int)indexBytes );
@@ -4491,7 +4507,7 @@ void vk_rt_build_world( const world_t *world )
 		return;
 	}
 
-	rt_upload( vk.rt.index_buffer, indices, indexBytes );
+	rt_upload( vk.rt.world.index_buffer, indices, indexBytes );
 	ri.Free( indices );
 
 	// ---- bottom level: the triangles ----
@@ -4501,11 +4517,11 @@ void vk_rt_build_world( const world_t *world )
 	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;  // every surface here passed the opaque test
 	geom.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
 	geom.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-	geom.geometry.triangles.vertexData.deviceAddress = rt_buffer_address( vk.rt.vertex_buffer );
+	geom.geometry.triangles.vertexData.deviceAddress = rt_buffer_address( vk.rt.world.vertex_buffer );
 	geom.geometry.triangles.vertexStride = sizeof( rtVertex_t );
 	geom.geometry.triangles.maxVertex = vertexCount - 1;
 	geom.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
-	geom.geometry.triangles.indexData.deviceAddress = rt_buffer_address( vk.rt.index_buffer );
+	geom.geometry.triangles.indexData.deviceAddress = rt_buffer_address( vk.rt.world.index_buffer );
 	geom.geometry.triangles.transformData.deviceAddress = 0;
 
 	Com_Memset( &build_info, 0, sizeof( build_info ) );
@@ -4517,9 +4533,9 @@ void vk_rt_build_world( const world_t *world )
 	build_info.geometryCount = 1;
 	build_info.pGeometries = &geom;
 
-	if ( !rt_build_acceleration_structure( &build_info, vk.rt.numTriangles,
+	if ( !rt_build_acceleration_structure( &build_info, vk.rt.world.numTriangles,
 			VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-			&vk.rt.blas, &vk.rt.blas_buffer, &vk.rt.blas_memory, "world BLAS" ) ) {
+			&vk.rt.world.blas, &vk.rt.world.blas_buffer, &vk.rt.world.blas_memory, "world BLAS" ) ) {
 		vk_rt_destroy_world();
 		return;
 	}
@@ -4539,18 +4555,18 @@ void vk_rt_build_world( const world_t *world )
 
 	Com_Memset( &addr_info, 0, sizeof( addr_info ) );
 	addr_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-	addr_info.accelerationStructure = vk.rt.blas;
+	addr_info.accelerationStructure = vk.rt.world.blas;
 	instance.accelerationStructureReference =
 		qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
 
 	if ( !rt_create_buffer( sizeof( instance ),
 			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			&vk.rt.instance_buffer, &vk.rt.instance_memory ) ) {
+			&vk.rt.world.instance_buffer, &vk.rt.world.instance_memory ) ) {
 		vk_rt_destroy_world();
 		return;
 	}
-	rt_upload( vk.rt.instance_buffer, &instance, sizeof( instance ) );
+	rt_upload( vk.rt.world.instance_buffer, &instance, sizeof( instance ) );
 
 	Com_Memset( &geom, 0, sizeof( geom ) );
 	geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -4558,7 +4574,7 @@ void vk_rt_build_world( const world_t *world )
 	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
 	geom.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
 	geom.geometry.instances.arrayOfPointers = VK_FALSE;
-	geom.geometry.instances.data.deviceAddress = rt_buffer_address( vk.rt.instance_buffer );
+	geom.geometry.instances.data.deviceAddress = rt_buffer_address( vk.rt.world.instance_buffer );
 
 	Com_Memset( &build_info, 0, sizeof( build_info ) );
 	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -4569,12 +4585,12 @@ void vk_rt_build_world( const world_t *world )
 
 	if ( !rt_build_acceleration_structure( &build_info, 1,
 			VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-			&vk.rt.tlas, &vk.rt.tlas_buffer, &vk.rt.tlas_memory, "world TLAS" ) ) {
+			&vk.rt.world.tlas, &vk.rt.world.tlas_buffer, &vk.rt.world.tlas_memory, "world TLAS" ) ) {
 		vk_rt_destroy_world();
 		return;
 	}
 
-	vk.rt.worldBuilt = qtrue;
+	vk.rt.world.worldBuilt = qtrue;
 	rtaoOnReported = qfalse;   // [QL] report the AO state once for this map
 	rtaoOffReported = qfalse;
 
@@ -10318,7 +10334,7 @@ qboolean vk_rt_ao( void )
 	One condition per message, because the fix differs for each and a single
 	"not running" tells nobody which one to go and change.
 	*/
-	if ( !vk.rt.aoReady || !vk.rt.worldBuilt || vk.rt.tlas == VK_NULL_HANDLE ) {
+	if ( !vk.rt.aoReady || !vk.rt.world.worldBuilt || vk.rt.world.tlas == VK_NULL_HANDLE ) {
 		if ( !rtaoOffReported ) {
 			rtaoOffReported = qtrue;
 			ri.Printf( PRINT_ALL, "RT AO: not running - %s\n",

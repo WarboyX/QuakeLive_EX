@@ -707,26 +707,47 @@ typedef struct {
 	expensive half and is exactly why world-only ships first.
 	*/
 	struct rt_s {
-		qboolean		worldBuilt;
-		uint32_t		numVertices;
-		uint32_t		numTriangles;
-		uint32_t		numSurfacesUsed;
-		uint32_t		numSurfacesSkipped;
+		/*
+		[QL] Everything that belongs to the loaded map, in its own struct so
+		that vk_rt_destroy_world can clear it wholesale.
 
-		VkBuffer		vertex_buffer;
-		VkDeviceMemory	vertex_memory;
-		VkBuffer		index_buffer;
-		VkDeviceMemory	index_memory;
+		It used to be flat, and vk_rt_destroy_world ended with
+		Com_Memset(&vk.rt, 0, sizeof(vk.rt)) - which also zeroed every field
+		below, the ambient occlusion pass included. Since that function runs at
+		the top of every world build, the first map after a vid_restart kept its
+		AO (the early-out fires when nothing has been built yet) and every map
+		after it lost the pass, silently, with aoReady cleared and the Vulkan
+		handles leaked rather than destroyed. The report was "AO works, then
+		stops working when I change map".
 
-		VkAccelerationStructureKHR	blas;
-		VkBuffer		blas_buffer;
-		VkDeviceMemory	blas_memory;
+		The sub-struct is the fix rather than a list of assignments because the
+		failure was a wholesale memset outliving the assumption that everything
+		in rt_s had the same lifetime. A field added here is cleared with the
+		map; a field added below is not; neither can be got wrong by forgetting
+		to update a clear function.
+		*/
+		struct {
+			qboolean		worldBuilt;
+			uint32_t		numVertices;
+			uint32_t		numTriangles;
+			uint32_t		numSurfacesUsed;
+			uint32_t		numSurfacesSkipped;
 
-		VkAccelerationStructureKHR	tlas;
-		VkBuffer		tlas_buffer;
-		VkDeviceMemory	tlas_memory;
-		VkBuffer		instance_buffer;
-		VkDeviceMemory	instance_memory;
+			VkBuffer		vertex_buffer;
+			VkDeviceMemory	vertex_memory;
+			VkBuffer		index_buffer;
+			VkDeviceMemory	index_memory;
+
+			VkAccelerationStructureKHR	blas;
+			VkBuffer		blas_buffer;
+			VkDeviceMemory	blas_memory;
+
+			VkAccelerationStructureKHR	tlas;
+			VkBuffer		tlas_buffer;
+			VkDeviceMemory	tlas_memory;
+			VkBuffer		instance_buffer;
+			VkDeviceMemory	instance_memory;
+		} world;
 
 		/* ---- the ambient occlusion pass ---- */
 
