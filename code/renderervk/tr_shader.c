@@ -2027,6 +2027,37 @@ static qboolean ParseShader( const char **text )
 				return qfalse;
 			}
 
+			/*
+			[QL] A stage that asked to be dropped leaves no hole.
+
+			ParseStage drops a stage by returning qtrue with active still false
+			- a normal or specular map this renderer cannot draw, or a stage
+			whose image the pak does not contain. numStages was incremented
+			anyway, so the dropped stage stayed in the array as an inactive slot
+			with live stages behind it.
+
+			FinishShader walks stages until the first inactive one and stops
+			there. An inactive slot is therefore not a gap, it is a terminator:
+			every stage after it is discarded. Drop stage 0 of a two-stage
+			shader and the shader ends up with nothing to draw, and a surface
+			with no stages is not the default grid - it is invisible.
+
+			That is what took the nailgun from wrong to absent. Its shader's
+			first stage is an environment map Quake Live no longer ships, so
+			dropping it also threw away the diffuse stage behind it.
+
+			Reusing the slot compacts the array as it is built, which is cheaper
+			than compacting afterwards and cannot leave the two counts
+			disagreeing. The slot is cleared because ParseStage only resets
+			'active', so a reused one would otherwise inherit the dropped
+			stage's blend bits and tcMods.
+			*/
+			if ( !stages[numStages].active )
+			{
+				Com_Memset( &stages[numStages], 0, sizeof( stages[0] ) );
+				continue;
+			}
+
 			FinishStage( &stages[numStages] );
 			numStages++;
 			continue;
@@ -4105,8 +4136,22 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImag
 			ri.Printf( PRINT_ALL, "*SHADER* %s\n", name );
 		}
 
+		/*
+		[QL] A shader that parsed but has nothing left to draw is the default
+		shader, not an invisible surface.
+
+		Only reachable since stages became droppable: a shader whose every stage
+		named an image the pak does not have parses cleanly and ends with none.
+		FinishShader has no guard for that - it gives a stageless shader
+		sort SS_FOG and draws nothing - so the surface disappears silently,
+		which is the worst of the three outcomes. The grid at least says where
+		the problem is, and the console line above it says which file.
+		*/
 		if ( !ParseShader( &shaderText ) ) {
 			// had errors, so use default shader
+			shader.defaultShader = qtrue;
+		} else if ( !stages[0].active && !shader.isSky ) {
+			ri.Printf( PRINT_WARNING, "WARNING: shader '%s' has no stage left to draw - using the default shader\n", shader.name );
 			shader.defaultShader = qtrue;
 		}
 
