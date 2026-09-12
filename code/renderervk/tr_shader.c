@@ -633,6 +633,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 	// [QL] set when the stage declares itself a normal or specular map - see
 	// the material-keyword block below.
 	qboolean materialStage = qfalse;
+	qboolean missingImage = qfalse;
 
 	stage->active = qfalse;
 
@@ -704,8 +705,9 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 
 				if ( !stage->bundle[0].image[0] )
 				{
-					ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s'\n", token, shader.name );
-					return qfalse;
+					ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - dropping that stage\n", token, shader.name );
+					missingImage = qtrue;
+					continue;
 				}
 			}
 		}
@@ -746,8 +748,9 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			stage->bundle[0].image[0] = R_FindImageFile( token, flags );
 			if ( !stage->bundle[0].image[0] )
 			{
-				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s'\n", token, shader.name );
-				return qfalse;
+				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - dropping that stage\n", token, shader.name );
+				missingImage = qtrue;
+				continue;
 			}
 		}
 		//
@@ -790,12 +793,23 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 					stage->bundle[0].image[num] = R_FindImageFile( token, flags );
 					if ( !stage->bundle[0].image[num] )
 					{
-						ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s'\n", token, shader.name );
-						return qfalse;
+						/* [QL] One frame, not the whole animation. The
+						   remaining frames still load into this slot, so a
+						   sequence missing a frame plays the frames it has
+						   rather than disappearing. Only an animMap with
+						   nothing left drops its stage, below. */
+						ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - skipping that frame\n", token, shader.name );
+						totalImages++;
+						continue;
 					}
 					stage->bundle[0].numImageAnimations++;
 				}
 				totalImages++;
+			}
+
+			if ( stage->bundle[0].numImageAnimations == 0 ) {
+				ri.Printf( PRINT_WARNING, "WARNING: no frame of the 'animMap' in shader '%s' could be loaded - dropping that stage\n", shader.name );
+				missingImage = qtrue;
 			}
 
 			if ( totalImages > maxAnimations ) {
@@ -1203,8 +1217,9 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 
 			stage->bundle[0].image[0] = R_FindImageFile( token, flags );
 			if ( !stage->bundle[0].image[0] ) {
-				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s'\n", token, shader.name );
-				return qfalse;
+				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - dropping that stage\n", token, shader.name );
+				missingImage = qtrue;
+				continue;
 			}
 			continue;
 		}
@@ -1245,6 +1260,36 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 	// drawing one as if it were colour is worse than leaving it out. Leaving
 	// active qfalse drops the stage and keeps the rest of the shader.
 	if ( materialStage ) {
+		return qtrue;
+	}
+
+	/*
+	[QL] A stage whose image is missing is dropped the same way, and for the
+	same reason the material keywords are tolerated above: one bad stage used to
+	discard the entire shader.
+
+	R_FindImageFile returning NULL made ParseStage return qfalse, ParseShader
+	return qfalse, and the shader become tr.defaultShader - the black and white
+	grid - for every surface using it. So a model lost all of its texturing
+	because one stage it barely needed referred to a file that is not there.
+
+	The nailgun is the case that found this. Quake Live's own
+	models/weapons/nailgun/nailgun shader asks for nailgun_env.tga, an
+	environment map that did not survive the conversion to .png: the pak has no
+	nailgun_env under any extension, and only three *_env files in total, all
+	map textures. The nailgun therefore drew as the default grid in every build
+	this renderer has ever produced, view model and world model alike, while the
+	base texture it needed - nailgun.png - was sitting in the pak unused.
+
+	Dropping the stage keeps every other stage, so the model renders with its
+	diffuse and without the shine. A shader whose stages are *all* missing ends
+	up with none, and FinishShader gives that the default shader, which is the
+	right answer for a shader with nothing to draw.
+
+	Deliberately not tr.defaultImage for the stage: painting the grid onto one
+	stage of an otherwise correct shader is the same mistake in miniature.
+	*/
+	if ( missingImage ) {
 		return qtrue;
 	}
 
