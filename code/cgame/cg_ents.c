@@ -565,7 +565,7 @@ static void CG_Missile(centity_t* cent) {
     // flicker between two skins
     ent.skinNum = cg.clientFrame & 1;
     ent.hModel = weapon->missileModel;
-    ent.renderfx = weapon->missileRenderfx | RF_NOSHADOW | RF_NOOCCLUDE;
+    ent.renderfx = weapon->missileRenderfx | RF_NOSHADOW | RF_OCCLUDE_ROUND;
 
     if (cent->currentState.weapon == WP_PROX_LAUNCHER) {
         if (s1->generic1 == TEAM_BLUE) {
@@ -630,7 +630,7 @@ static void CG_Grapple(centity_t* cent) {
     // flicker between two skins
     ent.skinNum = cg.clientFrame & 1;
     ent.hModel = weapon->missileModel;
-    ent.renderfx = weapon->missileRenderfx | RF_NOSHADOW | RF_NOOCCLUDE;
+    ent.renderfx = weapon->missileRenderfx | RF_NOSHADOW | RF_OCCLUDE_ROUND;
 
     // convert direction of travel into axis
     if (VectorNormalize2(s1->pos.trDelta, ent.axis[0]) == 0) {

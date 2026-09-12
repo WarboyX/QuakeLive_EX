@@ -236,9 +236,9 @@ void CG_AddFragment(localEntity_t* le) {
     vec3_t newOrigin;
     trace_t trace;
 
-    // gibs and shell casings, tumbling across the room - the same box-shaped
-    // shadow a rocket used to drag with it, several at a time
-    le->refEntity.renderfx |= RF_NOOCCLUDE;
+    // gibs and shell casings, tumbling across the room - round, small, and no
+    // more box-shaped than a rocket is
+    le->refEntity.renderfx |= RF_OCCLUDE_ROUND;
 
     if (le->pos.trType == TR_STATIONARY) {
         // sink into the ground if near the removal time

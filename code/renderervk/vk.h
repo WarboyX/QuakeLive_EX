@@ -386,6 +386,23 @@ typedef struct vk_tess_s {
 } vk_tess_t;
 
 
+/*
+[QL] One proxy shape a dynamic entity can be instanced from: the geometry, and
+the bottom level structure built over it. Grouped because there are two of them
+and the create/destroy paths are identical - the only difference is the mesh
+handed in.
+*/
+typedef struct {
+	VkAccelerationStructureKHR	blas;
+	VkBuffer		blas_buffer;
+	VkDeviceMemory	blas_memory;
+	VkBuffer		vertex_buffer;
+	VkDeviceMemory	vertex_memory;
+	VkBuffer		index_buffer;
+	VkDeviceMemory	index_memory;
+} vk_rt_proxy_t;
+
+
 // Vk_Instance contains engine-specific vulkan resources that persist entire renderer lifetime.
 // This structure is initialized/deinitialized by vk_initialize/vk_shutdown functions correspondingly.
 typedef struct {
@@ -781,26 +798,31 @@ typedef struct {
 			items, gibs and movers cast no occlusion at all - someone standing
 			beside you does not darken the wall. These give them one.
 
-			A shared box rather than their real meshes. An MD3 is vertex-morphed
-			per frame, so exact geometry would mean rebuilding a bottom level
-			structure for every visible entity every frame - the expensive half
-			of ray tracing - to sharpen a term that is deliberately blurry.
-			A box at the entity's bounds costs twelve triangles built once and
-			an instance transform per frame, and occlusion this soft cannot tell
-			the difference at the distances it acts over.
+			A shared proxy rather than their real meshes. An MD3 is
+			vertex-morphed per frame, so exact geometry would mean rebuilding a
+			bottom level structure for every visible entity every frame - the
+			expensive half of ray tracing - to sharpen a term that is
+			deliberately blurry. A proxy at the entity's bounds costs a few
+			dozen triangles built once and an instance transform per frame, and
+			occlusion this soft cannot tell the difference at the distances it
+			acts over.
+
+			Two proxies, because one shape does not fit both halves of what is
+			in here. A door is a box and a player standing on the floor wants
+			the full footprint a box gives; a rocket is not a box at all, and
+			the box around it laid a hard-edged rectangle on the floor and slid
+			it across the room. The ball is the ellipsoid inscribed in the same
+			bounds - strictly smaller, no corners, and for a projectile or a gib
+			a far closer account of the volume. cgame says which an entity gets;
+			see RF_OCCLUDE_ROUND.
 
 			Doubled per command buffer. The top level is rebuilt every frame,
 			and with two frames in flight the one being rebuilt could otherwise
 			still be in use by the frame before it - so each command buffer
 			gets its own, and its own descriptor set naming it.
 			*/
-			VkAccelerationStructureKHR	proxy_blas;
-			VkBuffer		proxy_blas_buffer;
-			VkDeviceMemory	proxy_blas_memory;
-			VkBuffer		proxy_vertex_buffer;
-			VkDeviceMemory	proxy_vertex_memory;
-			VkBuffer		proxy_index_buffer;
-			VkDeviceMemory	proxy_index_memory;
+			vk_rt_proxy_t	proxy_box;
+			vk_rt_proxy_t	proxy_ball;
 
 			VkAccelerationStructureKHR	dyn_tlas[ NUM_COMMAND_BUFFERS ];
 			VkBuffer		dyn_tlas_buffer[ NUM_COMMAND_BUFFERS ];

@@ -4356,9 +4356,17 @@ static void vk_rt_update_ao_descriptor( void )
 }
 
 
-/* [QL] R13 step 4: the dynamic half. One instance of the world, plus a box per
-   visible entity, in a top level structure rebuilt every frame. */
+/* [QL] R13 step 4: the dynamic half. One instance of the world, plus a proxy
+   per visible entity, in a top level structure rebuilt every frame. */
 #define RT_MAX_DYN_INSTANCES 256
+
+/* The ball proxy's tessellation. Vertices are the two poles plus each
+   intermediate ring; triangles are a fan at each pole plus two per quad in
+   between. */
+#define RT_BALL_SEGMENTS 12
+#define RT_BALL_RINGS 6
+#define RT_BALL_VERTS ( 2 + ( RT_BALL_RINGS - 1 ) * RT_BALL_SEGMENTS )
+#define RT_BALL_TRIS ( 2 * RT_BALL_SEGMENTS + ( RT_BALL_RINGS - 2 ) * RT_BALL_SEGMENTS * 2 )
 
 /*
 =================
@@ -4433,6 +4441,224 @@ static qboolean rt_create_host_buffer( VkDeviceSize size, VkBufferUsageFlags usa
 }
 
 
+static void rt_destroy_proxy( vk_rt_proxy_t *proxy )
+{
+	if ( proxy->blas != VK_NULL_HANDLE ) {
+		qvkDestroyAccelerationStructureKHR( vk.device, proxy->blas, NULL );
+		proxy->blas = VK_NULL_HANDLE;
+	}
+	if ( proxy->blas_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, proxy->blas_buffer, NULL );
+		qvkFreeMemory( vk.device, proxy->blas_memory, NULL );
+		proxy->blas_buffer = VK_NULL_HANDLE;
+		proxy->blas_memory = VK_NULL_HANDLE;
+	}
+	if ( proxy->vertex_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, proxy->vertex_buffer, NULL );
+		qvkFreeMemory( vk.device, proxy->vertex_memory, NULL );
+		proxy->vertex_buffer = VK_NULL_HANDLE;
+		proxy->vertex_memory = VK_NULL_HANDLE;
+	}
+	if ( proxy->index_buffer != VK_NULL_HANDLE ) {
+		qvkDestroyBuffer( vk.device, proxy->index_buffer, NULL );
+		qvkFreeMemory( vk.device, proxy->index_memory, NULL );
+		proxy->index_buffer = VK_NULL_HANDLE;
+		proxy->index_memory = VK_NULL_HANDLE;
+	}
+}
+
+
+/*
+=================
+rt_proxy_winding_is_outward
+
+Every triangle of a proxy must have its normal pointing away from the centre.
+
+This is checked rather than assumed because getting it wrong is invisible.
+The occlusion trace culls back faces on these instances, so the winding alone
+decides whether a proxy occludes the world around it or only occludes from
+inside itself - and both look like "a plausible render with the ambient
+occlusion slightly off". A reversed triple in the table below produced exactly
+that once already, and it took a matched pair of screenshots to find, because
+nothing in the build or the validation layers has any opinion about it.
+
+Both proxies are convex and centred on the origin, so the test is the cheap one
+it looks like: for a triangle of an outward-wound convex hull about the origin,
+the cross product of its edges points the same way as the vector from the origin
+to the triangle. Sum over the mesh and the sign is the whole answer.
+=================
+*/
+static qboolean rt_proxy_winding_is_outward( const float ( *verts )[3],
+	const uint32_t *indices, uint32_t numTriangles )
+{
+	uint32_t t, j;
+
+	for ( t = 0; t < numTriangles; t++ ) {
+		const float *a = verts[ indices[ t * 3 + 0 ] ];
+		const float *b = verts[ indices[ t * 3 + 1 ] ];
+		const float *c = verts[ indices[ t * 3 + 2 ] ];
+		vec3_t ab, ac, n, centroid;
+
+		for ( j = 0; j < 3; j++ ) {
+			ab[j] = b[j] - a[j];
+			ac[j] = c[j] - a[j];
+			centroid[j] = ( a[j] + b[j] + c[j] ) * ( 1.0f / 3.0f );
+		}
+		CrossProduct( ab, ac, n );
+
+		if ( DotProduct( n, centroid ) <= 0.0f ) {
+			ri.Printf( PRINT_WARNING, "RT: proxy triangle %i is wound inward\n", (int)t );
+			return qfalse;
+		}
+	}
+
+	return qtrue;
+}
+
+
+/*
+=================
+rt_build_ball_mesh
+
+The other proxy: a unit sphere, generated rather than tabulated.
+
+Segments and rings are deliberately low. This stands in for a rocket or a gib
+at the far end of a soft, blurred, distance-weighted occlusion term - the
+difference between 120 facets and a real sphere is not expressible in the
+output, and the whole point of a shared proxy is that it is built once and
+costs nothing per frame. It is generated because a hand-written table of 62
+vertices is 62 chances to transpose a sign, and because every triangle here has
+to be wound outward for the same reason the box does.
+
+Diameter 1, matching the box, so the instance transform that scales the box to
+an entity's bounds scales this to the ellipsoid inscribed in those same bounds
+with no separate arithmetic at the call site.
+=================
+*/
+static void rt_build_ball_mesh( float ( *verts )[3], uint32_t *indices )
+{
+	const uint32_t north = 0;
+	const uint32_t south = RT_BALL_VERTS - 1;
+	uint32_t ring, seg, v, n;
+
+	/* poles, then each intermediate ring from the top down */
+	VectorSet( verts[north], 0.0f, 0.0f, 0.5f );
+	VectorSet( verts[south], 0.0f, 0.0f, -0.5f );
+
+	v = 1;
+	for ( ring = 1; ring < RT_BALL_RINGS; ring++ ) {
+		const float theta = (float)M_PI * (float)ring / (float)RT_BALL_RINGS;
+		const float z = cosf( theta ) * 0.5f;
+		const float r = sinf( theta ) * 0.5f;
+
+		for ( seg = 0; seg < RT_BALL_SEGMENTS; seg++ ) {
+			const float phi = 2.0f * (float)M_PI * (float)seg / (float)RT_BALL_SEGMENTS;
+			VectorSet( verts[v], r * cosf( phi ), r * sinf( phi ), z );
+			v++;
+		}
+	}
+
+	/*
+	Ring r's segment s, for r in 1 .. RINGS-1. The poles are not in the rings,
+	hence the -1 on the ring index and the +1 for the north pole ahead of them.
+	*/
+#define BALL_V( r, s ) ( 1 + ( ( (r) - 1 ) * RT_BALL_SEGMENTS ) + ( (s) % RT_BALL_SEGMENTS ) )
+
+	n = 0;
+
+	/* top cap: pole, then the two ring vertices in increasing segment order */
+	for ( seg = 0; seg < RT_BALL_SEGMENTS; seg++ ) {
+		indices[n++] = north;
+		indices[n++] = BALL_V( 1, seg );
+		indices[n++] = BALL_V( 1, seg + 1 );
+	}
+
+	/* the bands between rings, two triangles per quad, same handedness */
+	for ( ring = 1; ring + 1 < RT_BALL_RINGS; ring++ ) {
+		for ( seg = 0; seg < RT_BALL_SEGMENTS; seg++ ) {
+			indices[n++] = BALL_V( ring, seg );
+			indices[n++] = BALL_V( ring + 1, seg );
+			indices[n++] = BALL_V( ring + 1, seg + 1 );
+
+			indices[n++] = BALL_V( ring, seg );
+			indices[n++] = BALL_V( ring + 1, seg + 1 );
+			indices[n++] = BALL_V( ring, seg + 1 );
+		}
+	}
+
+	/* bottom cap: the mirror of the top, so the segment order reverses */
+	for ( seg = 0; seg < RT_BALL_SEGMENTS; seg++ ) {
+		indices[n++] = south;
+		indices[n++] = BALL_V( RT_BALL_RINGS - 1, seg + 1 );
+		indices[n++] = BALL_V( RT_BALL_RINGS - 1, seg );
+	}
+
+#undef BALL_V
+}
+
+
+/*
+=================
+rt_create_proxy
+
+Upload one proxy mesh and build a bottom level structure over it.
+=================
+*/
+static qboolean rt_create_proxy( vk_rt_proxy_t *proxy, const float ( *verts )[3],
+	uint32_t numVertices, const uint32_t *indices, uint32_t numTriangles,
+	const char *name )
+{
+	VkAccelerationStructureGeometryKHR geom;
+	VkAccelerationStructureBuildGeometryInfoKHR build_info;
+	const VkDeviceSize vertexSize = (VkDeviceSize)numVertices * sizeof( float ) * 3;
+	const VkDeviceSize indexSize = (VkDeviceSize)numTriangles * 3 * sizeof( uint32_t );
+
+	if ( !rt_proxy_winding_is_outward( verts, indices, numTriangles ) ) {
+		ri.Printf( PRINT_WARNING, "RT: %s has inward faces, dynamic occlusion disabled\n", name );
+		return qfalse;
+	}
+
+	if ( !rt_create_buffer( vertexSize,
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			&proxy->vertex_buffer, &proxy->vertex_memory ) ) {
+		return qfalse;
+	}
+	rt_upload( proxy->vertex_buffer, verts, vertexSize );
+
+	if ( !rt_create_buffer( indexSize,
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			&proxy->index_buffer, &proxy->index_memory ) ) {
+		return qfalse;
+	}
+	rt_upload( proxy->index_buffer, indices, indexSize );
+
+	Com_Memset( &geom, 0, sizeof( geom ) );
+	geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geom.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+	geom.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+	geom.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+	geom.geometry.triangles.vertexData.deviceAddress = rt_buffer_address( proxy->vertex_buffer );
+	geom.geometry.triangles.vertexStride = sizeof( float ) * 3;
+	geom.geometry.triangles.maxVertex = numVertices - 1;
+	geom.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+	geom.geometry.triangles.indexData.deviceAddress = rt_buffer_address( proxy->index_buffer );
+
+	Com_Memset( &build_info, 0, sizeof( build_info ) );
+	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+	build_info.geometryCount = 1;
+	build_info.pGeometries = &geom;
+
+	return rt_build_acceleration_structure( &build_info, numTriangles,
+		VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+		&proxy->blas, &proxy->blas_buffer, &proxy->blas_memory, name );
+}
+
+
 static void vk_rt_destroy_dynamic( void )
 {
 	uint32_t i;
@@ -4465,28 +4691,8 @@ static void vk_rt_destroy_dynamic( void )
 		}
 	}
 
-	if ( vk.rt.world.proxy_blas != VK_NULL_HANDLE ) {
-		qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.world.proxy_blas, NULL );
-		vk.rt.world.proxy_blas = VK_NULL_HANDLE;
-	}
-	if ( vk.rt.world.proxy_blas_buffer != VK_NULL_HANDLE ) {
-		qvkDestroyBuffer( vk.device, vk.rt.world.proxy_blas_buffer, NULL );
-		qvkFreeMemory( vk.device, vk.rt.world.proxy_blas_memory, NULL );
-		vk.rt.world.proxy_blas_buffer = VK_NULL_HANDLE;
-		vk.rt.world.proxy_blas_memory = VK_NULL_HANDLE;
-	}
-	if ( vk.rt.world.proxy_vertex_buffer != VK_NULL_HANDLE ) {
-		qvkDestroyBuffer( vk.device, vk.rt.world.proxy_vertex_buffer, NULL );
-		qvkFreeMemory( vk.device, vk.rt.world.proxy_vertex_memory, NULL );
-		vk.rt.world.proxy_vertex_buffer = VK_NULL_HANDLE;
-		vk.rt.world.proxy_vertex_memory = VK_NULL_HANDLE;
-	}
-	if ( vk.rt.world.proxy_index_buffer != VK_NULL_HANDLE ) {
-		qvkDestroyBuffer( vk.device, vk.rt.world.proxy_index_buffer, NULL );
-		qvkFreeMemory( vk.device, vk.rt.world.proxy_index_memory, NULL );
-		vk.rt.world.proxy_index_buffer = VK_NULL_HANDLE;
-		vk.rt.world.proxy_index_memory = VK_NULL_HANDLE;
-	}
+	rt_destroy_proxy( &vk.rt.world.proxy_box );
+	rt_destroy_proxy( &vk.rt.world.proxy_ball );
 
 	vk.rt.world.dynReady = qfalse;
 	vk.rt.world.dyn_maxInstances = 0;
@@ -4497,7 +4703,7 @@ static void vk_rt_destroy_dynamic( void )
 =================
 vk_rt_create_dynamic
 
-The unit box every dynamic entity is instanced from, and the per-frame
+The two proxy shapes every dynamic entity is instanced from, and the per-frame
 structures that hold those instances.
 
 Everything here is sized and allocated once. The per-frame work is then writing
@@ -4525,13 +4731,16 @@ static qboolean vk_rt_create_dynamic( void )
 	cosmetic: the occlusion trace culls back faces on these instances, and which
 	face is the back one is decided by this winding. Reverse a triple here and
 	that box stops occluding from the outside and starts occluding from the
-	inside, which is the bug this arrangement exists to prevent.
+	inside, which is the bug this arrangement exists to prevent -
+	rt_proxy_winding_is_outward now checks it rather than trusting this comment.
 	*/
 	static const uint32_t boxIndices[36] = {
 		0,3,1, 0,2,3,   4,7,6, 4,5,7,   /* -z, +z */
 		0,5,4, 0,1,5,   2,7,3, 2,6,7,   /* -y, +y */
 		0,6,2, 0,4,6,   1,7,5, 1,3,7,   /* -x, +x */
 	};
+	static float ballVerts[RT_BALL_VERTS][3];
+	static uint32_t ballIndices[RT_BALL_TRIS * 3];
 	VkAccelerationStructureGeometryKHR geom;
 	VkAccelerationStructureBuildGeometryInfoKHR build_info;
 	VkAccelerationStructureBuildSizesInfoKHR sizes;
@@ -4547,46 +4756,15 @@ static qboolean vk_rt_create_dynamic( void )
 		return qfalse;
 	}
 
-	// ---- the proxy box ----
-	if ( !rt_create_buffer( sizeof( boxVerts ),
-			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			&vk.rt.world.proxy_vertex_buffer, &vk.rt.world.proxy_vertex_memory ) ) {
+	// ---- the two proxy shapes ----
+	if ( !rt_create_proxy( &vk.rt.world.proxy_box, boxVerts, 8,
+			boxIndices, 12, "entity proxy box BLAS" ) ) {
 		goto fail;
 	}
-	rt_upload( vk.rt.world.proxy_vertex_buffer, boxVerts, sizeof( boxVerts ) );
 
-	if ( !rt_create_buffer( sizeof( boxIndices ),
-			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			&vk.rt.world.proxy_index_buffer, &vk.rt.world.proxy_index_memory ) ) {
-		goto fail;
-	}
-	rt_upload( vk.rt.world.proxy_index_buffer, boxIndices, sizeof( boxIndices ) );
-
-	Com_Memset( &geom, 0, sizeof( geom ) );
-	geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-	geom.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-	geom.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
-	geom.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-	geom.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-	geom.geometry.triangles.vertexData.deviceAddress = rt_buffer_address( vk.rt.world.proxy_vertex_buffer );
-	geom.geometry.triangles.vertexStride = sizeof( float ) * 3;
-	geom.geometry.triangles.maxVertex = 7;
-	geom.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
-	geom.geometry.triangles.indexData.deviceAddress = rt_buffer_address( vk.rt.world.proxy_index_buffer );
-
-	Com_Memset( &build_info, 0, sizeof( build_info ) );
-	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-	build_info.geometryCount = 1;
-	build_info.pGeometries = &geom;
-
-	if ( !rt_build_acceleration_structure( &build_info, 12,
-			VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-			&vk.rt.world.proxy_blas, &vk.rt.world.proxy_blas_buffer,
-			&vk.rt.world.proxy_blas_memory, "entity proxy BLAS" ) ) {
+	rt_build_ball_mesh( ballVerts, ballIndices );
+	if ( !rt_create_proxy( &vk.rt.world.proxy_ball, ballVerts, RT_BALL_VERTS,
+			ballIndices, RT_BALL_TRIS, "entity proxy ball BLAS" ) ) {
 		goto fail;
 	}
 
@@ -4670,7 +4848,7 @@ fail:
 =================
 vk_rt_build_dynamic_tlas
 
-One instance of the world, plus a box per visible entity, built into this
+One instance of the world, plus a proxy per visible entity, built into this
 command buffer's top level structure.
 
 Recorded into the frame's own command buffer, between the main render pass
@@ -4688,8 +4866,9 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	VkAccelerationStructureBuildRangeInfoKHR range;
 	const VkAccelerationStructureBuildRangeInfoKHR *ranges[1];
 	VkMemoryBarrier barrier;
-	uint64_t worldRef, proxyRef;
+	uint64_t worldRef, boxRef, ballRef;
 	uint32_t count = 0;
+	uint32_t numRound = 0;
 	const int idx = vk.cmd_index;
 	int i, j;
 
@@ -4707,8 +4886,11 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	addr_info.accelerationStructure = vk.rt.world.blas;
 	worldRef = qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
 
-	addr_info.accelerationStructure = vk.rt.world.proxy_blas;
-	proxyRef = qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
+	addr_info.accelerationStructure = vk.rt.world.proxy_box.blas;
+	boxRef = qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
+
+	addr_info.accelerationStructure = vk.rt.world.proxy_ball.blas;
+	ballRef = qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
 
 	// the map, at identity
 	Com_Memset( &inst[0], 0, sizeof( inst[0] ) );
@@ -4732,21 +4914,6 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 		camera and darken the whole view from inside it.
 		*/
 		if ( ent->e.renderfx & ( RF_FIRST_PERSON | RF_THIRD_PERSON ) ) {
-			continue;
-		}
-
-		/*
-		Projectiles, gibs and brass. cgame marks these because the renderer
-		cannot tell them apart from a pickup: both are a small model with
-		bounds, and the pickup is the one that wants contact darkening.
-
-		Note this is not RF_NOSHADOW, which is the obvious-looking test and the
-		wrong one. cgame sets RF_NOSHADOW on the missile, but also on every part
-		of every player model and on every mover - so testing it would have
-		taken the doors and the players out of the structure, which is most of
-		what the structure is for.
-		*/
-		if ( ent->e.renderfx & RF_NOOCCLUDE ) {
 			continue;
 		}
 
@@ -4821,7 +4988,23 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 		closed shell and its surfaces have to stop rays from either side.
 		*/
 		inst[count].flags = 0;
-		inst[count].accelerationStructureReference = proxyRef;
+
+		/*
+		Box or ball, decided by cgame. Same transform either way - the ball is
+		the unit sphere, so the matrix that takes the unit box to the entity's
+		bounds takes the sphere to the ellipsoid inscribed in them.
+
+		The box is right for the things that are box-shaped or that rest on the
+		floor: a door is a box, and a player standing on ground wants the full
+		footprint, which an ellipsoid touching the floor at one point does not
+		give. The ball is right for a projectile - see RF_OCCLUDE_ROUND.
+		*/
+		if ( ent->e.renderfx & RF_OCCLUDE_ROUND ) {
+			inst[count].accelerationStructureReference = ballRef;
+			numRound++;
+		} else {
+			inst[count].accelerationStructureReference = boxRef;
+		}
 		count++;
 	}
 
@@ -4859,8 +5042,8 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	if ( !rtDynReported ) {
 		rtDynReported = qtrue;
 		ri.Printf( PRINT_ALL, "RT: dynamic structure holds %i instance(s) - the map%s\n",
-			(int)count, count > 1 ? va( " and %i entit%s", (int)count - 1,
-				count == 2 ? "y" : "ies" ) : " alone" );
+			(int)count, count > 1 ? va( " and %i entit%s (%i round)", (int)count - 1,
+				count == 2 ? "y" : "ies", (int)numRound ) : " alone" );
 	}
 
 	qvkCmdBuildAccelerationStructuresKHR( vk.cmd->command_buffer, 1, &build_info, ranges );
