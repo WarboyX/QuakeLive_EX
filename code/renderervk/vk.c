@@ -3904,6 +3904,7 @@ typedef struct {
    would actually matter. */
 static qboolean rtaoOnReported = qfalse;
 static qboolean rtaoOffReported = qfalse;
+static qboolean rtDynReported = qfalse;   // [QL] instance count, once per map
 
 
 /* Defined below, called from vk_rt_create_ao above it. Declared rather than
@@ -4823,6 +4824,22 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	range.primitiveCount = count;
 	ranges[0] = &range;
 
+	/*
+	[QL] Say what actually went into the structure, once per map.
+
+	Two theories about why entities come out wrong look identical from a
+	screenshot - the proxies are in the structure and occluding badly, or they
+	were never added and the darkness is something else entirely - and guessing
+	between them has already cost a build. The count separates them: 1 means the
+	map and nothing else, and every explanation involving the boxes is wrong.
+	*/
+	if ( !rtDynReported ) {
+		rtDynReported = qtrue;
+		ri.Printf( PRINT_ALL, "RT: dynamic structure holds %i instance(s) - the map%s\n",
+			(int)count, count > 1 ? va( " and %i entit%s", (int)count - 1,
+				count == 2 ? "y" : "ies" ) : " alone" );
+	}
+
 	qvkCmdBuildAccelerationStructuresKHR( vk.cmd->command_buffer, 1, &build_info, ranges );
 
 	/* The occlusion pass traces against what was just written. Without this the
@@ -5129,6 +5146,7 @@ void vk_rt_build_world( const world_t *world )
 	vk.rt.world.worldBuilt = qtrue;
 	rtaoOnReported = qfalse;   // [QL] report the AO state once for this map
 	rtaoOffReported = qfalse;
+	rtDynReported = qfalse;
 
 	/*
 	[QL] R13 step 4.
