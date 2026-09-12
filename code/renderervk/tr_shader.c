@@ -34,6 +34,30 @@ static	shaderStage_t	stages[MAX_SHADER_STAGES];
 static	shader_t		shader;
 static	texModInfo_t	texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS+1]; // reserve one additional texmod for lightmap atlas correction
 
+
+/*
+===============
+[QL] ResetStage
+
+Put one slot of the working stage array back to its initial state.
+
+The memset is not the whole of it, and that is the point of having this in one
+place: stages[i].bundle[0].texMods is a *pointer* into the static texMods array,
+handed out one row per stage index, and zeroing the slot zeroes the pointer with
+it. The next stage parsed into that slot then writes its first tcMod through
+NULL.
+
+That is a hard crash with nothing in the log, and it is what "crashed on launch"
+was: the console shader's first stage was dropped for a missing image, the
+second was parsed into the reused slot, and its tcMod went through the pointer
+the memset had just cleared.
+===============
+*/
+static void ResetStage( int index ) {
+	Com_Memset( &stages[index], 0, sizeof( stages[0] ) );
+	stages[index].bundle[0].texMods = texMods[index];
+}
+
 #define FILE_HASH_SIZE		1024
 static	shader_t*		hashTable[FILE_HASH_SIZE];
 
@@ -2048,13 +2072,14 @@ static qboolean ParseShader( const char **text )
 
 			Reusing the slot compacts the array as it is built, which is cheaper
 			than compacting afterwards and cannot leave the two counts
-			disagreeing. The slot is cleared because ParseStage only resets
+			disagreeing. The slot is reset because ParseStage only clears
 			'active', so a reused one would otherwise inherit the dropped
-			stage's blend bits and tcMods.
+			stage's blend bits and tcMods - and ResetStage rather than a bare
+			memset because the slot owns a pointer that a memset would null.
 			*/
 			if ( !stages[numStages].active )
 			{
-				Com_Memset( &stages[numStages], 0, sizeof( stages[0] ) );
+				ResetStage( numStages );
 				continue;
 			}
 
@@ -3236,7 +3261,6 @@ static void InitShader( const char *name, int lightmapIndex ) {
 
 	// clear the global shader
 	Com_Memset( &shader, 0, sizeof( shader ) );
-	Com_Memset( &stages, 0, sizeof( stages ) );
 
 	Q_strncpyz( shader.name, name, sizeof( shader.name ) );
 	shader.lightmapIndex = lightmapIndex;
@@ -3247,7 +3271,7 @@ static void InitShader( const char *name, int lightmapIndex ) {
 	shader.lightmapSearchIndex = shader.lightmapIndex;
 
 	for ( i = 0 ; i < MAX_SHADER_STAGES ; i++ ) {
-		stages[i].bundle[0].texMods = texMods[i];
+		ResetStage( i );
 	}
 
 #ifdef USE_PMLIGHT
@@ -4137,21 +4161,14 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImag
 		}
 
 		/*
-		[QL] A shader that parsed but has nothing left to draw is the default
-		shader, not an invisible surface.
-
-		Only reachable since stages became droppable: a shader whose every stage
-		named an image the pak does not have parses cleanly and ends with none.
-		FinishShader has no guard for that - it gives a stageless shader
-		sort SS_FOG and draws nothing - so the surface disappears silently,
-		which is the worst of the three outcomes. The grid at least says where
-		the problem is, and the console line above it says which file.
+		[QL] A shader that loses every stage to a missing image needs no guard
+		here: ParseShader's own tail already returns qfalse when numStages is 0
+		and the shader is neither sky nor fog, so it lands on defaultShader
+		below - the grid, which says where the problem is, with the console line
+		above it naming the file.
 		*/
 		if ( !ParseShader( &shaderText ) ) {
 			// had errors, so use default shader
-			shader.defaultShader = qtrue;
-		} else if ( !stages[0].active && !shader.isSky ) {
-			ri.Printf( PRINT_WARNING, "WARNING: shader '%s' has no stage left to draw - using the default shader\n", shader.name );
 			shader.defaultShader = qtrue;
 		}
 
