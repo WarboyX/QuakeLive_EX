@@ -419,6 +419,19 @@ static void record_image_layout_transition( VkCommandBuffer command_buffer, VkIm
 			src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 			barrier.srcAccessMask = VK_ACCESS_NONE;
 			break;
+		/*
+		[QL] R13: depth, on its way to being sampled by the AO passes.
+
+		Both fragment-test stages, not just LATE. Depth is written by the early
+		test for most geometry and by the late one wherever the fragment shader
+		can change coverage - alpha-tested surfaces, which Quake maps are full
+		of - so naming only one leaves the other unsynchronised, and what
+		escapes is exactly the stale-depth patch this barrier exists to prevent.
+		*/
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+			src_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			break;
 		default:
 			ri.Error( ERR_DROP, "unsupported old layout %i", old_layout );
 			src_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -450,6 +463,16 @@ static void record_image_layout_transition( VkCommandBuffer command_buffer, VkIm
 		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
 			dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+			break;
+		/*
+		[QL] R13: the layout depth is sampled in. Read-only rather than plain
+		SHADER_READ_ONLY because the composite pass still lists it as a depth
+		attachment while sampling it, and that combination is only legal in this
+		layout - it is the exception that makes depth-as-texture work at all.
+		*/
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+			dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 			break;
 		default:
 			ri.Error( ERR_DROP, "unsupported new layout %i", new_layout);
@@ -726,6 +749,8 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	const VkAttachmentStoreOp savedDepthStore = attachments[1].storeOp;
 	const VkAttachmentLoadOp savedStencilLoad = attachments[1].stencilLoadOp;
 	const VkAttachmentStoreOp savedStencilStore = attachments[1].stencilStoreOp;
+	const VkImageLayout savedDepthInitial = attachments[1].initialLayout;
+	const VkImageLayout savedDepthFinal = attachments[1].finalLayout;
 	VkAttachmentLoadOp savedMsaaLoad = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	VkAttachmentStoreOp savedMsaaStore = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	VkSubpassDependency deps[3];
@@ -745,6 +770,22 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	}
 
 	depthRef->layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+	/*
+	[QL] R13 step 3c: depth arrives already in the read-only layout.
+
+	The trace and the horizontal denoise pass run before this one and sample
+	depth outside any render pass, so vk_rt_ao transitions it with an explicit
+	barrier once, before the first of the three. Saying ATTACHMENT_OPTIMAL here
+	would claim the image is in a layout it is not, which is undefined contents
+	rather than an error - the shape that shows up as a corner of the depth
+	buffer reading as garbage and nothing at all in the log.
+
+	It goes back to ATTACHMENT_OPTIMAL at the end, because this is also the pass
+	the 2D and the post-bloom pass inherit, and they expect it that way.
+	*/
+	attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 	/*
 	[QL] This pass needs its own dependencies, and the depth one is the point.
@@ -807,10 +848,103 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	attachments[1].storeOp = savedDepthStore;
 	attachments[1].stencilLoadOp = savedStencilLoad;
 	attachments[1].stencilStoreOp = savedStencilStore;
+	attachments[1].initialLayout = savedDepthInitial;
+	attachments[1].finalLayout = savedDepthFinal;
 	if ( msaa ) {
 		attachments[2].loadOp = savedMsaaLoad;
 		attachments[2].storeOp = savedMsaaStore;
 	}
+}
+
+
+/*
+================
+[QL] vk_create_rtao_offscreen_render_pass
+
+One single-channel colour attachment and nothing else - the pass the trace and
+the horizontal denoise both render into.
+
+One render pass object for two passes because they differ only in which
+framebuffer they are begun with: ao_image[0] for the trace, ao_image[1] for the
+blur. Render pass compatibility is about attachment formats and sample counts,
+and those are identical.
+
+No depth attachment, and that is deliberate rather than an omission. Both passes
+*sample* depth, and an attachment cannot be sampled by the same subpass that
+lists it unless it is read-only - which works, and is what the composite pass
+does, but it also drags the depth image's sample count into the pass. Under MSAA
+that would force this single-channel target to be multisampled too, to pay for
+anti-aliasing a term that is about to be blurred. Sampling depth as an ordinary
+texture, transitioned once by a barrier beforehand, keeps the target at one
+sample whatever the scene is doing.
+================
+*/
+static void vk_create_rtao_offscreen_render_pass( VkDevice device )
+{
+	VkAttachmentDescription attachment;
+	VkAttachmentReference colorRef;
+	VkSubpassDescription subpass;
+	VkSubpassDependency deps[2];
+	VkRenderPassCreateInfo desc;
+
+	Com_Memset( &attachment, 0, sizeof( attachment ) );
+	attachment.format = vk.rt.ao_format;
+	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	/* Every pixel is written by the fullscreen quad, so there is nothing to
+	   preserve and nothing to clear. */
+	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	/* UNDEFINED because the previous contents are the previous frame's and are
+	   not wanted. It is also what lets the same image be written again next
+	   frame without a transition back from SHADER_READ_ONLY. */
+	attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	colorRef.attachment = 0;
+	colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	Com_Memset( &subpass, 0, sizeof( subpass ) );
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorRef;
+
+	/* Do not start overwriting this image while the pass that read it last is
+	   still reading - which is the previous frame's, since the two targets
+	   alternate roles within a frame and repeat across frames. */
+	Com_Memset( deps, 0, sizeof( deps ) );
+	deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	deps[0].dstSubpass = 0;
+	deps[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	deps[0].dependencyFlags = 0;
+
+	/* And let the next pass read what this one wrote. Not BY_REGION: the
+	   denoise reads sideways, so a tile cannot be handed on before its
+	   neighbours are finished. This is the dependency a separable blur exists
+	   to need. */
+	deps[1].srcSubpass = 0;
+	deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	deps[1].dependencyFlags = 0;
+
+	Com_Memset( &desc, 0, sizeof( desc ) );
+	desc.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	desc.attachmentCount = 1;
+	desc.pAttachments = &attachment;
+	desc.subpassCount = 1;
+	desc.pSubpasses = &subpass;
+	desc.dependencyCount = 2;
+	desc.pDependencies = deps;
+
+	VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.rtao_offscreen ) );
+	SET_OBJECT_NAME( vk.render_pass.rtao_offscreen, "render pass - rtao offscreen", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 }
 
 
@@ -829,6 +963,13 @@ static void vk_create_render_passes( void )
 
 	depth_format = vk.depth_format;
 	device = vk.device;
+
+	/* [QL] R13: independent of r_fbo and of everything below - it has its own
+	   attachment and its own framebuffers. Created first so vk_rt_create_ao can
+	   test for it the same way it tests for the composite pass. */
+	if ( vk.rtActive && vk.rtDepthSampled ) {
+		vk_create_rtao_offscreen_render_pass( device );
+	}
 
 	if ( r_fbo->integer == 0 )
 	{
@@ -876,8 +1017,20 @@ static void vk_create_render_passes( void )
 	attachments[1].samples = vkSamples;
 	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Need empty depth buffer before use
 	attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	if ( r_bloom->integer ) {
-		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // keep it for post-bloom pass
+	/*
+	[QL] R13: ...or for the AO pass, which samples it.
+
+	The same trap as attachments[2] below, and it took longer to see because
+	this one usually works anyway. DONT_CARE makes the attachment's contents
+	*undefined* once the pass ends - it is permission to throw them away, not a
+	promise to keep them - and the AO pass then begins with loadOp LOAD and
+	samples whatever is there. Every desktop driver tested keeps the data, which
+	is why the pass appeared correct; a driver that resolves or decompresses
+	depth lazily is entitled to hand back garbage for some of it, and "some of
+	it" is a patch of a few tiles that differs frame to frame.
+	*/
+	if ( r_bloom->integer || vk.rtActive ) {
+		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // keep it for post-bloom / AO pass
 		attachments[1].stencilStoreOp = glConfig.stencilBits ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	} else {
 		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -3704,6 +3857,19 @@ typedef struct {
 	float depthInfo[4];   // cleared depth, weapon band start, sign, unused
 } rtaoPush_t;
 
+/*
+[QL] R13 step 3c: what the denoise passes are pushed.
+
+Deliberately not sharing rtaoPush_t. The blur needs none of the trace's 96 bytes
+of matrix and eye position, and the two shaders declare different blocks -
+handing one the other's layout is the same class of mistake as feeding the AO
+shader the gamma shader's specialization constants, which cost a round already.
+*/
+typedef struct {
+	float step[4];         // xy = texel step along the axis being blurred
+	float depthLinear[4];  // proj[10], proj[14], depth tolerance, unused
+} rtaoBlurPush_t;
+
 /* [QL] One line each per map, not per frame - 250 of these a second is not a
    diagnostic. Reset when the world is rebuilt, which is where a change of state
    would actually matter. */
@@ -3718,6 +3884,14 @@ static void vk_rt_update_ao_descriptor( void );
 
 static void vk_rt_destroy_ao( void )
 {
+	if ( vk.rt.pipeline_gen != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_gen, NULL );
+		vk.rt.pipeline_gen = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.pipeline_blur != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_blur, NULL );
+		vk.rt.pipeline_blur = VK_NULL_HANDLE;
+	}
 	if ( vk.rt.pipeline != VK_NULL_HANDLE ) {
 		qvkDestroyPipeline( vk.device, vk.rt.pipeline, NULL );
 		vk.rt.pipeline = VK_NULL_HANDLE;
@@ -3730,15 +3904,29 @@ static void vk_rt_destroy_ao( void )
 		qvkDestroyPipelineLayout( vk.device, vk.rt.pipeline_layout, NULL );
 		vk.rt.pipeline_layout = VK_NULL_HANDLE;
 	}
-	/* the set is freed with the pool, so it is not freed separately */
+	if ( vk.rt.blur_pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.rt.blur_pipeline_layout, NULL );
+		vk.rt.blur_pipeline_layout = VK_NULL_HANDLE;
+	}
+	/* the sets are freed with the pool, so they are not freed separately */
 	if ( vk.rt.pool != VK_NULL_HANDLE ) {
 		qvkDestroyDescriptorPool( vk.device, vk.rt.pool, NULL );
 		vk.rt.pool = VK_NULL_HANDLE;
 		vk.rt.descriptor = VK_NULL_HANDLE;
+		vk.rt.blur_descriptor[0] = VK_NULL_HANDLE;
+		vk.rt.blur_descriptor[1] = VK_NULL_HANDLE;
 	}
 	if ( vk.rt.set_layout != VK_NULL_HANDLE ) {
 		qvkDestroyDescriptorSetLayout( vk.device, vk.rt.set_layout, NULL );
 		vk.rt.set_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.blur_set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.rt.blur_set_layout, NULL );
+		vk.rt.blur_set_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.ao_sampler != VK_NULL_HANDLE ) {
+		qvkDestroySampler( vk.device, vk.rt.ao_sampler, NULL );
+		vk.rt.ao_sampler = VK_NULL_HANDLE;
 	}
 	if ( vk.rt.depth_sampler != VK_NULL_HANDLE ) {
 		qvkDestroySampler( vk.device, vk.rt.depth_sampler, NULL );
@@ -3773,6 +3961,7 @@ static void vk_rt_create_ao( void )
 	VkImageViewCreateInfo view_desc;
 	VkSamplerCreateInfo sampler_desc;
 	VkResult res;
+	uint32_t i;
 
 	vk_rt_destroy_ao();
 
@@ -3792,8 +3981,14 @@ static void vk_rt_create_ao( void )
 	pipeline that cannot be used, because the next early return in that function
 	will not announce itself either.
 	*/
-	if ( vk.render_pass.rtao == VK_NULL_HANDLE ) {
-		ri.Printf( PRINT_WARNING, "RT AO: no render pass was created - disabling\n" );
+	if ( vk.render_pass.rtao == VK_NULL_HANDLE || vk.render_pass.rtao_offscreen == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "RT AO: no %s render pass was created - disabling\n",
+			vk.render_pass.rtao == VK_NULL_HANDLE ? "composite" : "offscreen" );
+		return;
+	}
+
+	if ( vk.rt.ao_image_view[0] == VK_NULL_HANDLE || vk.rt.ao_image_view[1] == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "RT AO: the occlusion targets were not created - disabling\n" );
 		return;
 	}
 
@@ -3852,6 +4047,21 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
+	/*
+	[QL] And one for the occlusion targets. Also NEAREST, and for a related
+	reason: every tap the denoise takes is a texelFetch at an integer
+	coordinate, so filtering would never be asked for - but a LINEAR sampler
+	here would be a standing invitation for a later change to sample at
+	half-texel offsets and silently get a filtered result the bilateral weights
+	know nothing about. The sampler says what the shader is allowed to do.
+	*/
+	res = qvkCreateSampler( vk.device, &sampler_desc, NULL, &vk.rt.ao_sampler );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: occlusion sampler failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
 	// ---- descriptor set layout ----
 	Com_Memset( bindings, 0, sizeof( bindings ) );
 	bindings[0].binding = 0;
@@ -3876,16 +4086,45 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
-	// ---- pool and set ----
+	/*
+	[QL] And the denoise layout: an occlusion target and depth, both sampled.
+
+	Binding 1 is the same depth image the trace reads, because the blur has to
+	know which neighbours are on the same surface and depth is the only thing
+	this renderer has that says so - there is no normal buffer to consult.
+	*/
+	Com_Memset( bindings, 0, sizeof( bindings ) );
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	layout_desc.bindingCount = 2;
+	layout_desc.pBindings = bindings;
+
+	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.rt.blur_set_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: denoise set layout failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
+	// ---- pool and sets ----
+	/* Three sets: the trace's, and one per occlusion target for the denoise. */
 	Com_Memset( pool_sizes, 0, sizeof( pool_sizes ) );
 	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	pool_sizes[0].descriptorCount = 1;
+	pool_sizes[0].descriptorCount = 5;   // trace: depth. denoise: 2 x (ao + depth)
 	pool_sizes[1].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 	pool_sizes[1].descriptorCount = 1;
 
 	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
 	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	pool_desc.maxSets = 1;
+	pool_desc.maxSets = 3;
 	pool_desc.poolSizeCount = 2;
 	pool_desc.pPoolSizes = pool_sizes;
 
@@ -3909,7 +4148,57 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
-	// ---- pipeline layout ----
+	set_alloc.pSetLayouts = &vk.rt.blur_set_layout;
+	for ( i = 0; i < ARRAY_LEN( vk.rt.blur_descriptor ); i++ ) {
+		res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.rt.blur_descriptor[i] );
+		if ( res < 0 ) {
+			ri.Printf( PRINT_WARNING, "RT AO: denoise set %i failed (%s)\n", i, vk_result_string( res ) );
+			vk_rt_destroy_ao();
+			return;
+		}
+	}
+
+	/*
+	The denoise sets never change after this: they point at two images that live
+	as long as the attachments do, and the acceleration structure - the one
+	thing that changes per map - is not in them. Written here rather than in
+	vk_rt_update_ao_descriptor for that reason.
+	*/
+	for ( i = 0; i < ARRAY_LEN( vk.rt.blur_descriptor ); i++ ) {
+		VkDescriptorImageInfo blur_info[2];
+		VkWriteDescriptorSet blur_writes[2];
+
+		Com_Memset( blur_info, 0, sizeof( blur_info ) );
+		blur_info[0].sampler = vk.rt.ao_sampler;
+		blur_info[0].imageView = vk.rt.ao_image_view[i];
+		blur_info[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		blur_info[1].sampler = vk.rt.depth_sampler;
+		blur_info[1].imageView = vk.rt.depth_view;
+		/* The layout depth is actually in during these draws: vk_rt_ao puts it
+		   there with a barrier before the first of the three passes, and the
+		   composite pass's attachment description agrees. */
+		blur_info[1].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+		Com_Memset( blur_writes, 0, sizeof( blur_writes ) );
+		blur_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		blur_writes[0].dstSet = vk.rt.blur_descriptor[i];
+		blur_writes[0].dstBinding = 0;
+		blur_writes[0].descriptorCount = 1;
+		blur_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		blur_writes[0].pImageInfo = &blur_info[0];
+
+		blur_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		blur_writes[1].dstSet = vk.rt.blur_descriptor[i];
+		blur_writes[1].dstBinding = 1;
+		blur_writes[1].descriptorCount = 1;
+		blur_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		blur_writes[1].pImageInfo = &blur_info[1];
+
+		qvkUpdateDescriptorSets( vk.device, 2, blur_writes, 0, NULL );
+	}
+
+	// ---- pipeline layouts ----
 	Com_Memset( &push_range, 0, sizeof( push_range ) );
 	push_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	push_range.offset = 0;
@@ -3929,9 +4218,22 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
+	push_range.size = sizeof( rtaoBlurPush_t );
+	pl_desc.pSetLayouts = &vk.rt.blur_set_layout;
+
+	res = qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.rt.blur_pipeline_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "RT AO: denoise pipeline layout failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
 	vk_create_post_process_pipeline( 4, glConfig.vidWidth, glConfig.vidHeight );
 	vk_create_post_process_pipeline( 5, glConfig.vidWidth, glConfig.vidHeight );
-	if ( vk.rt.pipeline == VK_NULL_HANDLE || vk.rt.pipeline_debug == VK_NULL_HANDLE ) {
+	vk_create_post_process_pipeline( 6, glConfig.vidWidth, glConfig.vidHeight );
+	vk_create_post_process_pipeline( 7, glConfig.vidWidth, glConfig.vidHeight );
+	if ( vk.rt.pipeline_gen == VK_NULL_HANDLE || vk.rt.pipeline_blur == VK_NULL_HANDLE ||
+		vk.rt.pipeline == VK_NULL_HANDLE || vk.rt.pipeline_debug == VK_NULL_HANDLE ) {
 		ri.Printf( PRINT_WARNING, "RT AO: pipeline failed\n" );
 		vk_rt_destroy_ao();
 		return;
@@ -4501,9 +4803,13 @@ static void vk_create_shader_modules( void )
 	if ( vk.rtActive ) {
 		vk.modules.rtao_fs = SHADER_MODULE( rtao_frag_spv );
 		vk.modules.rtao_ms_fs = SHADER_MODULE( rtao_frag_ms_spv );
+		vk.modules.rtao_blur_fs = SHADER_MODULE( rtao_blur_frag_spv );
+		vk.modules.rtao_blur_ms_fs = SHADER_MODULE( rtao_blur_frag_ms_spv );
 
 		SET_OBJECT_NAME( vk.modules.rtao_fs, "rt ambient occlusion fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 		SET_OBJECT_NAME( vk.modules.rtao_ms_fs, "rt ambient occlusion fragment module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+		SET_OBJECT_NAME( vk.modules.rtao_blur_fs, "rt ambient occlusion denoise module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+		SET_OBJECT_NAME( vk.modules.rtao_blur_ms_fs, "rt ambient occlusion denoise module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	}
 }
 
@@ -5188,6 +5494,30 @@ static void vk_create_attachments( void )
 
 	//vk_alloc_attachments();
 
+	/*
+	[QL] R13 step 3c: the two denoise targets.
+
+	Outside the fboActive block above, because AO only needs depth and works
+	with r_fbo 0 - unlike bloom, which needs the colour attachment and is why
+	everything up there is gated.
+
+	Single-sample even when the scene is multisampled: occlusion is computed
+	once per pixel and applied to all of that pixel's samples at composite time.
+	Two of them because the denoise is separable and the horizontal pass cannot
+	write into the image the vertical one still has to read.
+	*/
+	if ( vk.rtActive && vk.rtDepthSampled ) {
+		VkImageUsageFlags aoUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		vk.rt.ao_format = VK_FORMAT_R8_UNORM;
+
+		for ( i = 0; i < ARRAY_LEN( vk.rt.ao_image ); i++ ) {
+			create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT,
+				vk.rt.ao_format, aoUsage, &vk.rt.ao_image[i], &vk.rt.ao_image_view[i],
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, qfalse );
+		}
+	}
+
 	create_depth_attachment( glConfig.vidWidth, glConfig.vidHeight, vkSamples, &vk.depth_image, &vk.depth_image_view,
 		(vk.fboActive && r_bloom->integer) ? qfalse : qtrue );
 
@@ -5272,6 +5602,24 @@ static void vk_create_framebuffers( void )
 			VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.gamma[n] ) );
 
 			SET_OBJECT_NAME( vk.framebuffers.gamma[n], "framebuffer - gamma-correction", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
+		}
+	}
+
+	/* [QL] R13: the two denoise targets. One attachment each and no depth, so
+	   they are built from the offscreen pass rather than from anything above. */
+	if ( vk.render_pass.rtao_offscreen != VK_NULL_HANDLE )
+	{
+		uint32_t k;
+
+		desc.renderPass = vk.render_pass.rtao_offscreen;
+		desc.attachmentCount = 1;
+		desc.width = glConfig.vidWidth;
+		desc.height = glConfig.vidHeight;
+
+		for ( k = 0; k < ARRAY_LEN( vk.framebuffers.rtao ); k++ ) {
+			attachments[0] = vk.rt.ao_image_view[k];
+			VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.rtao[k] ) );
+			SET_OBJECT_NAME( vk.framebuffers.rtao[k], va( "framebuffer - rtao %i", k ), VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 		}
 	}
 
@@ -5466,6 +5814,13 @@ static void vk_destroy_framebuffers( void ) {
 		if ( vk.framebuffers.blur[n] != VK_NULL_HANDLE ) {
 			qvkDestroyFramebuffer( vk.device, vk.framebuffers.blur[n], NULL );
 			vk.framebuffers.blur[n] = VK_NULL_HANDLE;
+		}
+	}
+
+	for ( n = 0; n < ARRAY_LEN( vk.framebuffers.rtao ); n++ ) {   // [QL] R13
+		if ( vk.framebuffers.rtao[n] != VK_NULL_HANDLE ) {
+			qvkDestroyFramebuffer( vk.device, vk.framebuffers.rtao[n], NULL );
+			vk.framebuffers.rtao[n] = VK_NULL_HANDLE;
 		}
 	}
 }
@@ -6199,6 +6554,15 @@ static void vk_destroy_attachments( void )
 		vk.capture.image_view = VK_NULL_HANDLE;
 	}
 
+	for ( i = 0; i < ARRAY_LEN( vk.rt.ao_image ); i++ ) {   // [QL] R13
+		if ( vk.rt.ao_image[i] ) {
+			qvkDestroyImage( vk.device, vk.rt.ao_image[i], NULL );
+			qvkDestroyImageView( vk.device, vk.rt.ao_image_view[i], NULL );
+			vk.rt.ao_image[i] = VK_NULL_HANDLE;
+			vk.rt.ao_image_view[i] = VK_NULL_HANDLE;
+		}
+	}
+
 	for ( i = 0; i < vk.image_memory_count; i++ ) {
 		qvkFreeMemory( vk.device, vk.image_memory[i], NULL );
 	}
@@ -6236,6 +6600,11 @@ static void vk_destroy_render_passes( void )
 	if ( vk.render_pass.rtao != VK_NULL_HANDLE ) {   // [QL] R13
 		qvkDestroyRenderPass( vk.device, vk.render_pass.rtao, NULL );
 		vk.render_pass.rtao = VK_NULL_HANDLE;
+	}
+
+	if ( vk.render_pass.rtao_offscreen != VK_NULL_HANDLE ) {   // [QL] R13
+		qvkDestroyRenderPass( vk.device, vk.render_pass.rtao_offscreen, NULL );
+		vk.render_pass.rtao_offscreen = VK_NULL_HANDLE;
 	}
 
 	if ( vk.render_pass.screenmap != VK_NULL_HANDLE ) {
@@ -6981,28 +7350,52 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			pipeline_name = "capture buffer pipeline";
 			blend = qfalse;
 			break;
-		case 4: // [QL] R13 ray-traced ambient occlusion
-			pipeline = &vk.rt.pipeline;
+		case 4: // [QL] R13 ray-traced ambient occlusion - the trace
+			pipeline = &vk.rt.pipeline_gen;
 			/* The multisampled build reads depth with sampler2DMS. Chosen by
 			   vkSamples and not by a cvar, because it has to match the depth
 			   attachment that actually exists. */
 			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_ms_fs : vk.modules.rtao_fs;
-			renderpass = vk.render_pass.rtao;
+			renderpass = vk.render_pass.rtao_offscreen;
 			layout = vk.rt.pipeline_layout;
+			/* One sample, whatever the scene is doing. The target is the
+			   single-channel occlusion image, not the framebuffer - AO is
+			   computed once per pixel and applied to all of that pixel's
+			   samples when the composite pass multiplies it in. */
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "rt ambient occlusion pipeline (trace)";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
+		case 5: // [QL] R13 the horizontal denoise pass
+			pipeline = &vk.rt.pipeline_blur;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_blur_ms_fs : vk.modules.rtao_blur_fs;
+			renderpass = vk.render_pass.rtao_offscreen;
+			layout = vk.rt.blur_pipeline_layout;
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "rt ambient occlusion pipeline (denoise)";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
+		case 6: // [QL] R13 the vertical denoise, which is also the composite
+			pipeline = &vk.rt.pipeline;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_blur_ms_fs : vk.modules.rtao_blur_fs;
+			renderpass = vk.render_pass.rtao;
+			layout = vk.rt.blur_pipeline_layout;
 			/* Must match the render pass, which under MSAA targets the
 			   multisampled colour image and resolves afterwards - so occlusion
 			   lands on the samples and anti-aliasing applies on top of it,
 			   rather than AO being painted over an already-resolved image. */
 			samples = vkSamples;
-			pipeline_name = "rt ambient occlusion pipeline";
+			pipeline_name = "rt ambient occlusion pipeline (denoise + composite)";
 			blend = qfalse;
 			multiply = qtrue;
 			break;
-		case 5: // [QL] R13 AO debug view - same shader, replaces instead of modulating
+		case 7: // [QL] R13 AO debug view - same shader, replaces instead of modulating
 			pipeline = &vk.rt.pipeline_debug;
-			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_ms_fs : vk.modules.rtao_fs;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_blur_ms_fs : vk.modules.rtao_blur_fs;
 			renderpass = vk.render_pass.rtao;
-			layout = vk.rt.pipeline_layout;
+			layout = vk.rt.blur_pipeline_layout;
 			samples = vkSamples;
 			pipeline_name = "rt ambient occlusion pipeline (debug view)";
 			blend = qfalse;
@@ -7109,12 +7502,28 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	and asks for a sample count in the millions. Different shader, different
 	constants - only the ids a shader actually declares may be supplied.
 	*/
-	if ( program_index == 4 || program_index == 5 ) {
-		ao_sample_count = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
-		if ( ao_sample_count < 1 ) {
-			ao_sample_count = 4;
-		} else if ( ao_sample_count > 32 ) {
-			ao_sample_count = 32;  // the loop is unrolled at this constant; not a slider to open up
+	if ( program_index >= 4 && program_index <= 7 ) {
+		if ( program_index == 4 ) {
+			ao_sample_count = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
+			if ( ao_sample_count < 1 ) {
+				ao_sample_count = 4;
+			} else if ( ao_sample_count > 32 ) {
+				ao_sample_count = 32;  // the loop is unrolled at this constant; not a slider to open up
+			}
+		} else {
+			/*
+			[QL] The denoise radius, in taps per side. r_rtaoDenoise is a
+			quality step rather than a raw count, so the menu has three states
+			to offer instead of a number nobody can judge: off, and two widths.
+
+			0 does not build a narrower kernel - it is passed through as a
+			radius anyway and turned off at draw time by pushing a zero step,
+			so off and on share one pipeline and one code path.
+			*/
+			switch ( ri.Cvar_VariableIntegerValue( "r_rtaoDenoise" ) ) {
+				case 2:  ao_sample_count = 8; break;   // wide
+				default: ao_sample_count = 4; break;   // standard, and off
+			}
 		}
 
 		ao_spec_entry.constantID = 0;
@@ -9139,6 +9548,21 @@ static void vk_begin_rtao_render_pass( void )
 }
 
 
+/*
+[QL] R13 step 3c. The trace and the horizontal denoise, which differ only in
+which of the two occlusion targets they write into.
+*/
+static void vk_begin_rtao_offscreen_render_pass( int target )
+{
+	vk.renderWidth = glConfig.vidWidth;
+	vk.renderHeight = glConfig.vidHeight;
+	vk.renderScaleX = vk.renderScaleY = 1.0f;
+
+	vk_begin_render_pass( vk.render_pass.rtao_offscreen, vk.framebuffers.rtao[ target ],
+		qfalse, vk.renderWidth, vk.renderHeight );
+}
+
+
 void vk_begin_bloom_extract_render_pass( void )
 {
 	VkFramebuffer frameBuffer = vk.framebuffers.bloom_extract;
@@ -9868,8 +10292,10 @@ draws into, exactly as vk_bloom leaves post-bloom open for the 2D that follows.
 qboolean vk_rt_ao( void )
 {
 	rtaoPush_t push;
+	rtaoBlurPush_t blur;
 	float vp[16];
 	float proj[16];
+	int denoise;
 
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return qfalse;   // the little world-in-a-portal view, not the scene
@@ -9913,10 +10339,11 @@ qboolean vk_rt_ao( void )
 	   log can tell "drew" from "was ready to draw". */
 	if ( !rtaoOnReported ) {
 		rtaoOnReported = qtrue;
-		ri.Printf( PRINT_ALL, "RT AO: tracing%s - %i rays/pixel, radius %g, strength %g\n",
-			r_rtao->integer >= 2 ? " (DEBUG VIEW: showing raw occlusion)" : "",
+		ri.Printf( PRINT_ALL, "RT AO: tracing%s - %i rays/pixel, radius %g, strength %g, denoise %s\n",
+			r_rtao->integer >= 2 ? " (DEBUG VIEW: showing occlusion)" : "",
 			ri.Cvar_VariableIntegerValue( "r_rtaoSamples" ),
-			r_rtaoRadius->value, r_rtaoIntensity->value );
+			r_rtaoRadius->value, r_rtaoIntensity->value,
+			r_rtaoDenoise->integer == 0 ? "off" : ( r_rtaoDenoise->integer >= 2 ? "wide" : "on" ) );
 		if ( !vk.fboActive ) {
 			/* Not fatal - this pass only samples depth, unlike bloom, which
 			   needs the colour attachment and is why r_fbo gates that one. Said
@@ -9988,7 +10415,81 @@ qboolean vk_rt_ao( void )
 #endif
 	push.depthInfo[3] = 0.0f;
 
+	/*
+	[QL] What the denoise needs to turn a depth value into a distance:
+	dist = proj[14] / (depth + proj[10]). Taken from the same matrix the scene
+	was drawn with rather than from r_znear and r_zfar, which are the inputs to
+	that matrix and not always the numbers that ended up in it - R_SetupProjection
+	has four branches and the reversed-depth transform rewrites both terms
+	afterwards.
+	*/
+	blur.depthLinear[0] = proj[10];
+	blur.depthLinear[1] = proj[14];
+	blur.depthLinear[2] = 0.05f;   // taps within 5% of the centre's distance
+	blur.depthLinear[3] = 0.0f;
+
+	denoise = ( r_rtaoDenoise->integer != 0 );
+
 	vk_end_render_pass();   // end main
+
+	/*
+	[QL] Depth becomes a texture, once, here.
+
+	The first two passes sample it outside any render pass, so it has to be
+	moved out of DEPTH_STENCIL_ATTACHMENT_OPTIMAL explicitly - there is no
+	subpass to do it implicitly. The barrier is also the synchronisation: it is
+	what makes the main pass's depth writes visible to the fragment shader, in
+	place of the subpass dependency that did that job when the AO pass shared
+	the main framebuffer.
+
+	The composite pass's attachment description declares depth as arriving in
+	this layout and leaves it in ATTACHMENT_OPTIMAL, so nothing downstream sees
+	a difference.
+	*/
+	record_image_layout_transition( vk.cmd->command_buffer, vk.depth_image,
+		glConfig.stencilBits ? ( VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT ) : VK_IMAGE_ASPECT_DEPTH_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		0, 0 );
+
+	// ---- pass 1: trace, into ao_image[0] ----
+	vk_begin_rtao_offscreen_render_pass( 0 );
+
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline_gen );
+	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor, 0, NULL );
+	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.pipeline_layout,
+		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+
+	vk_end_render_pass();
+
+	// ---- pass 2: horizontal denoise, ao_image[0] -> ao_image[1] ----
+	/*
+	Skipped entirely when the denoise is off, rather than run with a zero step.
+	The composite below then reads target 0 instead of target 1, which is the
+	only thing that changes - there is no second path and no second pipeline.
+	*/
+	if ( denoise ) {
+		blur.step[0] = 1.0f;
+		blur.step[1] = 0.0f;
+		blur.step[2] = blur.step[3] = 0.0f;
+
+		vk_begin_rtao_offscreen_render_pass( 1 );
+
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline_blur );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[0], 0, NULL );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+
+		vk_end_render_pass();
+	}
+
+	// ---- pass 3: vertical denoise and composite, into the scene ----
+	blur.step[0] = 0.0f;
+	blur.step[1] = denoise ? 1.0f : 0.0f;   // a zero step is the shader's passthrough
+	blur.step[2] = blur.step[3] = 0.0f;
 
 	vk_begin_rtao_render_pass();
 
@@ -9998,9 +10499,9 @@ qboolean vk_rt_ao( void )
 	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		r_rtao->integer >= 2 ? vk.rt.pipeline_debug : vk.rt.pipeline );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor, 0, NULL );
-	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.pipeline_layout,
-		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+		vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[ denoise ? 1 : 0 ], 0, NULL );
+	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
+		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	/*

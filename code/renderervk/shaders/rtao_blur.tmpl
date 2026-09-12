@@ -1,0 +1,161 @@
+#version 450
+
+/*
+[QL] R13 step 3c: the ambient occlusion denoiser.
+
+Four rays per pixel is not an estimate of occlusion, it is a coin flipped four
+times. The mean is right and the variance is enormous, which on screen is a
+field of grain that crawls when you move. The fix is not more rays - it is to
+notice that the answer is nearly the same for neighbouring pixels *on the same
+surface*, and to average the ones that are.
+
+"On the same surface" is the whole difficulty, and it is why this is not a
+Gaussian blur. A plain blur drags the dark of a corner out across the wall it
+meets and smears occlusion onto the sky, because it weighs neighbours by
+distance on screen, and two pixels one texel apart can be a metre apart in the
+world. So each tap is weighted twice: by how far away it is on screen, and by
+how much its depth disagrees with the centre's. A neighbour across a silhouette
+contributes nothing.
+
+Separable, in two passes. A 9x9 bilateral kernel is 81 taps; the same kernel as
+a horizontal pass then a vertical one is 18. Bilateral filters are not strictly
+separable - the range weight makes the two-pass result differ from the true 2D
+one near an edge - but the difference is invisible on a term this smooth, and
+the factor of four and a half is not.
+
+The second pass is also the composite: it is built a second time with multiply
+blending against the main framebuffer, so the vertical blur and the darkening of
+the scene are one draw rather than two. That is why the shader writes plain AO
+rather than anything pre-multiplied, and why the blend state is the only
+difference between the two pipelines built from it.
+
+USE_MSAA builds the variant that reads a multisampled depth attachment, for the
+same reason rtao.tmpl has one: with r_ext_multisample on there is no
+single-sample depth image to read.
+*/
+
+layout(set = 0, binding = 0) uniform sampler2D aoMap;
+#ifdef USE_MSAA
+layout(set = 0, binding = 1) uniform sampler2DMS depthMap;
+#else
+layout(set = 0, binding = 1) uniform sampler2D depthMap;
+#endif
+
+layout(location = 0) in vec2 frag_tex_coord;
+layout(location = 0) out vec4 out_color;
+
+layout(push_constant) uniform Push {
+	/*
+	xy  the step between taps, in texels, along the axis this pass blurs.
+	    (1,0) horizontal, (0,1) vertical, (0,0) means "do not blur" - see
+	    below, it is how r_rtaoDenoise 0 turns this into a passthrough without
+	    needing a second pipeline.
+	zw  unused.
+	*/
+	vec4 step;
+	/*
+	x,y  the projection terms that turn a depth value into a view-space
+	     distance: dist = y / (depth + x), taken from elements 10 and 14 of the
+	     projection matrix the scene was drawn with.
+
+	     Comparing raw depth values instead does not work at all. Depth is
+	     distributed hyperbolically, so the same raw difference is a
+	     centimetre near the camera and fifty metres across the room; a
+	     tolerance that keeps edges sharp up close blurs through walls at
+	     distance, and one that holds at distance kills the filter in front of
+	     you. Linearising first makes one tolerance correct everywhere.
+
+	     This works unchanged under reversed depth: negating and offsetting
+	     elements 10 and 14, which is what the reversed transform does, leaves
+	     y/(d+x) algebraically identical.
+
+	z    depth tolerance, as a fraction of the centre pixel's distance. A
+	     neighbour further than this contributes nothing.
+	w    unused.
+	*/
+	vec4 depthLinear;
+} pc;
+
+/*
+Taps per side. A specialization constant so the loop is unrolled at the value in
+use and there is no per-pixel branch on a number that changes once a session.
+*/
+layout(constant_id = 0) const int blurRadius = 4;
+
+/*
+One body for both variants: texelFetch's third argument is a sample index for
+sampler2DMS and a mip level for sampler2D, and 0 is what this pass wants either
+way. The #ifdef is on the declaration above, where the types genuinely differ -
+sampler2D cannot read a multisampled image at all.
+*/
+float fetchDepth(ivec2 p) {
+	return texelFetch(depthMap, p, 0).r;
+}
+
+float linearise(float d) {
+	return pc.depthLinear.y / (d + pc.depthLinear.x);
+}
+
+void main() {
+	ivec2 c = ivec2(gl_FragCoord.xy);
+
+	/*
+	r_rtaoDenoise 0. Returning the raw trace here rather than building a
+	separate passthrough pipeline keeps one code path for the composite, which
+	this pass also is - the alternative is a second pipeline that exists only to
+	not do something.
+	*/
+	if (pc.step.x == 0.0 && pc.step.y == 0.0) {
+		out_color = vec4(texelFetch(aoMap, c, 0).r);
+		return;
+	}
+
+	ivec2 size = textureSize(aoMap, 0);
+	ivec2 dir = ivec2(pc.step.xy);
+
+	float centerDepth = linearise(fetchDepth(c));
+	/*
+	Absolute tolerance in world units, scaled by how far away the centre is. A
+	fixed fraction of distance is the right shape: a wall seen from across the
+	map occupies few pixels and its depth changes fast per pixel, so the window
+	has to open as it recedes or the filter stops working exactly where the
+	noise is most visible.
+
+	The +1 keeps it from collapsing to zero at the near plane, where centreDepth
+	is a few units and every tap would otherwise be rejected.
+	*/
+	float tolerance = pc.depthLinear.z * centerDepth + 1.0;
+
+	float sum = texelFetch(aoMap, c, 0).r;
+	float weightSum = 1.0;
+
+	/*
+	Gaussian falloff chosen so the outermost tap still carries about 10% of the
+	centre's weight - wide enough that the kernel is not effectively smaller
+	than it claims, narrow enough that it does not behave like a box filter.
+	*/
+	float sigma = max(float(blurRadius), 1.0) * 0.5;
+	float spatialScale = -0.5 / (sigma * sigma);
+
+	for (int i = 1; i <= blurRadius; i++) {
+		float spatial = exp(float(i * i) * spatialScale);
+
+		for (int s = -1; s <= 1; s += 2) {
+			/*
+			Clamped rather than skipped. texelFetch outside the image is
+			undefined, not zero, and clamping repeats the edge texel - which
+			for a term this smooth is the correct extrapolation anyway.
+			*/
+			ivec2 p = clamp(c + dir * (i * s), ivec2(0), size - ivec2(1));
+
+			float d = linearise(fetchDepth(p));
+			float range = max(0.0, 1.0 - abs(d - centerDepth) / tolerance);
+			float w = spatial * range;
+
+			sum += texelFetch(aoMap, p, 0).r * w;
+			weightSum += w;
+		}
+	}
+
+	out_color = vec4(sum / weightSum);
+}

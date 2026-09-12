@@ -401,6 +401,11 @@ typedef struct {
 		   also write is a feedback loop and is not allowed; read-only is the
 		   exception that makes depth-as-texture legal. */
 		VkRenderPass rtao;
+		/* [QL] R13: one single-channel colour attachment and nothing else -
+		   the target the trace writes and the horizontal denoise pass writes.
+		   One render pass for both, because they differ only in which
+		   framebuffer they are begun with. */
+		VkRenderPass rtao_offscreen;
 	} render_pass;
 
 	VkDescriptorPool descriptor_pool;
@@ -455,6 +460,10 @@ typedef struct {
 		VkFramebuffer gamma[MAX_SWAPCHAIN_IMAGES];
 		VkFramebuffer screenmap;
 		VkFramebuffer capture;
+		/* [QL] R13: [0] the raw trace target, [1] the half-denoised one. The
+		   trace writes 0, the horizontal pass reads 0 and writes 1, the
+		   vertical pass reads 1 and writes the scene. */
+		VkFramebuffer rtao[2];
 	} framebuffers;
 
 #ifdef USE_UPLOAD_QUEUE
@@ -534,6 +543,12 @@ typedef struct {
 		   decided by vkSamples at pipeline creation. */
 		VkShaderModule rtao_fs;
 		VkShaderModule rtao_ms_fs;
+
+		/* [QL] R13 step 3c. Same two-variant split and the same reason: the
+		   denoiser samples depth to weigh its taps. Fires no rays, so these are
+		   ordinary SPIR-V rather than 1.4 modules. */
+		VkShaderModule rtao_blur_fs;
+		VkShaderModule rtao_blur_ms_fs;
 	} modules;
 
 	VkPipelineCache pipelineCache;
@@ -726,11 +741,41 @@ typedef struct {
 		VkDescriptorPool		pool;
 		VkDescriptorSet			descriptor;
 		VkPipelineLayout		pipeline_layout;
-		VkPipeline				pipeline;
-		/* [QL] Same shader, replace instead of multiply, so r_rtao 2 shows the
-		   raw occlusion term rather than its effect on the scene. "Is it
-		   working" is otherwise a question about a subtle darkening that a
-		   screenshot cannot settle. */
+
+		/*
+		[QL] R13 step 3c: the denoise targets and the passes that use them.
+
+		[0] is what the trace writes, [1] what the horizontal blur writes. Both
+		are single-channel and single-sample whatever the scene's sample count
+		is - occlusion is computed once per pixel and applied to all of that
+		pixel's samples when it is composited.
+
+		The vertical blur is also the composite: it reads [1], blurs down the
+		other axis, and multiplies the result into the scene in one draw. So
+		there are three fullscreen passes for AO, not four, and pipeline_blur
+		and pipeline differ only in their render pass and blend state.
+		*/
+		/* R8_UNORM. Occlusion is one number in [0,1] and a byte of it is more
+		   precision than a 4-ray estimate carries; a wider format would cost
+		   bandwidth on every tap of the denoise for nothing. */
+		VkFormat				ao_format;
+		VkImage					ao_image[2];
+		VkImageView				ao_image_view[2];
+		VkSampler				ao_sampler;
+
+		VkDescriptorSetLayout	blur_set_layout;
+		/* [0] samples ao_image[0], [1] samples ao_image[1]. Binding 1 of both
+		   is depth, which the bilateral weight needs. */
+		VkDescriptorSet			blur_descriptor[2];
+		VkPipelineLayout		blur_pipeline_layout;
+
+		VkPipeline				pipeline_gen;	// trace        -> ao_image[0]
+		VkPipeline				pipeline_blur;	// ao_image[0]  -> ao_image[1]
+		VkPipeline				pipeline;		// ao_image[1]  -> scene, multiply
+		/* [QL] Same shader as pipeline, replace instead of multiply, so
+		   r_rtao 2 shows the occlusion term rather than its effect on the
+		   scene. "Is it working" is otherwise a question about a subtle
+		   darkening that a screenshot cannot settle. */
 		VkPipeline				pipeline_debug;
 
 		/* Everything above exists and the pass may run. Separate from

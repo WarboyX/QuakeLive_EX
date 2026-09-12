@@ -118,6 +118,18 @@ done
 emit_rt frag rtao_frag_spv    rtao.tmpl
 emit_rt frag rtao_frag_ms_spv rtao.tmpl -DUSE_MSAA
 
+# The denoiser fires no rays - it reads the target the trace wrote - so it goes
+# through the ordinary emit and the default SPIR-V target. Deliberately not
+# emit_rt: asking for 1.4 where 1.0 will do costs nothing here but would put a
+# version requirement on a module that has no reason to carry one.
+#
+# Still a .tmpl, for the same two variants: it samples depth to decide which
+# neighbours belong to the same surface, and depth is multisampled when
+# r_ext_multisample is on.
+
+emit frag rtao_blur_frag_spv    rtao_blur.tmpl
+emit frag rtao_blur_frag_ms_spv rtao_blur.tmpl -DUSE_MSAA
+
 # ---------------------------------------------------------------------------
 # lighting variations from templates
 # ---------------------------------------------------------------------------

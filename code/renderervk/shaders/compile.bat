@@ -51,6 +51,18 @@ del /Q "%tmpf%"
 "%bh%" "%tmpf%" %outf% rtao_frag_ms_spv
 del /Q "%tmpf%"
 
+@rem The denoiser fires no rays - it reads the target the trace wrote - so the
+@rem default SPIR-V target is right for it and --target-env is deliberately
+@rem absent. Still a .tmpl, for the same two variants: it samples depth.
+
+"%cl%" -S frag -V -o "%tmpf%" rtao_blur.tmpl
+"%bh%" "%tmpf%" %outf% rtao_blur_frag_spv
+del /Q "%tmpf%"
+
+"%cl%" -S frag -V -o "%tmpf%" rtao_blur.tmpl -DUSE_MSAA
+"%bh%" "%tmpf%" %outf% rtao_blur_frag_ms_spv
+del /Q "%tmpf%"
+
 @rem compile lighting shader variations from templates
 
 "%cl%" -S vert -V -o "%tmpf%" light_vert.tmpl

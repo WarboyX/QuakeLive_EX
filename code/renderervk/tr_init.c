@@ -148,6 +148,7 @@ cvar_t	*r_rtao;
 cvar_t	*r_rtaoRadius;
 cvar_t	*r_rtaoIntensity;
 cvar_t	*r_rtaoSamples;
+cvar_t	*r_rtaoDenoise;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -1904,6 +1905,21 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_rtaoSamples, "1", "32", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtaoSamples, "Rays per pixel. Baked into the pipeline, so this "
 		"needs a vid_restart." );
+
+	/*
+	[QL] Not CVAR_LATCH, even though the kernel width is a specialization
+	constant and changing it needs new pipelines. Turning the denoise off and on
+	needs neither - that is a push constant - and latching the whole cvar to
+	serve the width would make the useful half of it require a vid_restart. The
+	width takes effect on the next one; off/on is immediate.
+	*/
+	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoDenoise, "Denoise the occlusion term:\n"
+		" 0 - off, shows the raw per-pixel trace\n"
+		" 1 - on\n"
+		" 2 - wide (smoother, softer contact shadows)\n"
+		"The width needs a vid_restart; off and on do not." );
 
 	r_device = ri.Cvar_Get( "r_device", "-1", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_device, "-2", NULL, CV_INTEGER );

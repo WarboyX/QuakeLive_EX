@@ -6,7 +6,12 @@
 
 A fullscreen pass over the depth buffer. For each pixel it reconstructs the
 world position and a normal, fires a handful of short rays into the hemisphere,
-and returns the fraction that hit nothing. The result multiplies the lit image.
+and returns the fraction that hit nothing.
+
+It writes that to a single-channel offscreen target rather than into the scene,
+because four rays per pixel is far too noisy to look at directly. rtao_blur.tmpl
+denoises it and does the multiply against the lit image on its second pass. The
+values here are therefore raw per-pixel estimates, and are meant to be.
 
 The lighting stays baked. This does not compute light - it computes how much of
 the sky-and-bounce ambient a corner is shut off from, which is the part
@@ -36,6 +41,10 @@ Sample 0 rather than an average of all of them. AO is a low-frequency term that
 gets denoised afterwards, the sample positions within a pixel differ by less
 than the trace radius by orders of magnitude, and resolving N depths per pixel
 to feed a 4-ray occlusion estimate is precision nobody can see paid for N times.
+
+The target is single-sample even when the scene is multisampled. AO is computed
+once per pixel and applied to every sample of it at composite time, which is
+what anti-aliasing an already-smooth term is worth.
 */
 
 #ifdef USE_MSAA

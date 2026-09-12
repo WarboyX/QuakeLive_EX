@@ -1786,21 +1786,31 @@
             cvarFloatList { "2 (fastest)" 2 "4" 4 "8" 8 "16 (best)" 16 }
             rect 230 334 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
+        // [QL] A handful of rays per pixel is a noisy estimate, not a smooth
+        // one, so this is on by default and turning it off is a diagnostic
+        // rather than a performance option - it is what shows you the raw trace.
+        itemDef { text "Denoise:"  textscale .22  rect 30 356 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            text "Rays per pixel is baked into the pipeline - needs APPLY."  textscale .2
-            rect 30 354 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            name aodenoise  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoDenoise"
+            cvarFloatList { "Off (raw, grainy)" 0 "On (default)" 1 "Wide (smoothest)" 2 }
+            rect 230 356 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
+        itemDef {
+            text "Rays per pixel and denoise width are baked into the pipeline -"  textscale .2
+            rect 30 378 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
         itemDef {
-            text "Radius and strength take effect immediately."  textscale .2
-            rect 30 370 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            text "they need APPLY. Everything else takes effect immediately."  textscale .2
+            rect 30 394 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
         itemDef {
             text "Debug draws the occlusion term instead of applying it: grey with"  textscale .2
-            rect 30 390 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            rect 30 412 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
         itemDef {
             text "dark creases means it works, flat white means every ray misses."  textscale .2
-            rect 30 406 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
+            rect 30 428 460 18  textaligny 14  forecolor .7 .7 .7 1  visible 1  decoration
         }
 
         // ---- buttons -----------------------------------------------------------
@@ -1817,7 +1827,7 @@
         }
         itemDef {
             name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 20 440 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 20 452 240 24  textaligny 18  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
             mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
