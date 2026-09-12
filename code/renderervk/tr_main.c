@@ -1739,27 +1739,28 @@ void R_RenderView( const viewParms_t *parms ) {
 
 /*
 =================
-[QL] R_GetEntityWorldBounds
+[QL] R_GetEntityModelBounds
 
-The axis-aligned world-space box an entity occupies, for the ray tracing
-acceleration structures.
+The box an entity occupies, in its own model space.
 
-Lives here rather than in vk.c so that reaching into md3 frame data and bmodel
-bounds stays on the renderer side of the line. vk.c is handed a box.
+Model space and not world space, which is the whole point: the caller turns this
+into an instance transform for the ray tracing structures, and that transform is
+a full 3x4 that can carry the entity's rotation. Returning a world-space
+axis-aligned box instead would mean rotating the corners here and taking the box
+of the result - and the box of a rotated box is up to 41% wider on each
+horizontal axis than the thing inside it, which for an upright player spinning
+on the spot is a lot of occlusion coming from empty air.
 
 Frame bounds rather than the interpolated pose: a model's frames differ by the
-swing of a limb, and the box is feeding an occlusion term measured in tens of
+swing of a limb, and this is feeding an occlusion term measured in tens of
 units. The current frame's box is exact enough and cheaper than blending two.
 
 Returns qfalse for anything with no geometry to bound - sprites, beams, rails,
 the portal surface - which the caller skips.
 =================
 */
-qboolean R_GetEntityWorldBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t maxs ) {
+qboolean R_GetEntityModelBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t maxs ) {
 	const model_t *model;
-	vec3_t local[2];
-	vec3_t corner;
-	int i, j;
 
 	if ( ent->e.reType != RT_MODEL ) {
 		return qfalse;
@@ -1775,9 +1776,9 @@ qboolean R_GetEntityWorldBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t m
 		if ( model->bmodel == NULL ) {
 			return qfalse;
 		}
-		VectorCopy( model->bmodel->bounds[0], local[0] );
-		VectorCopy( model->bmodel->bounds[1], local[1] );
-		break;
+		VectorCopy( model->bmodel->bounds[0], mins );
+		VectorCopy( model->bmodel->bounds[1], maxs );
+		return qtrue;
 
 	case MOD_MESH: {
 		const md3Header_t *header = model->md3[0];
@@ -1792,35 +1793,12 @@ qboolean R_GetEntityWorldBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t m
 			frameNum = 0;
 		}
 		frame = ( const md3Frame_t * )( ( const byte * )header + header->ofsFrames ) + frameNum;
-		VectorCopy( frame->bounds[0], local[0] );
-		VectorCopy( frame->bounds[1], local[1] );
-		break;
+		VectorCopy( frame->bounds[0], mins );
+		VectorCopy( frame->bounds[1], maxs );
+		return qtrue;
 	}
 
 	default:
 		return qfalse;
 	}
-
-	/*
-	Rotate the eight corners and take the box of the result. The entity's axis
-	is a rotation, so the model box's own axes do not survive it - taking the
-	box of the rotated corners is the only way to get one that still contains
-	the model.
-	*/
-	ClearBounds( mins, maxs );
-	for ( i = 0; i < 8; i++ ) {
-		vec3_t v;
-
-		v[0] = ( i & 1 ) ? local[1][0] : local[0][0];
-		v[1] = ( i & 2 ) ? local[1][1] : local[0][1];
-		v[2] = ( i & 4 ) ? local[1][2] : local[0][2];
-
-		VectorCopy( ent->e.origin, corner );
-		for ( j = 0; j < 3; j++ ) {
-			VectorMA( corner, v[j], ent->e.axis[j], corner );
-		}
-		AddPointToBounds( corner, mins, maxs );
-	}
-
-	return qtrue;
 }

@@ -411,7 +411,6 @@ typedef struct {
 	*/
 	image_t			*normalMap;
 	image_t			*specularMap;
-	float			normalScale;    // "normalScale <x> <y>", x used; 0 means unset -> 1
 
 #ifdef USE_VULKAN
 	uint32_t		tessFlags;
@@ -1470,7 +1469,7 @@ void R_AddBeamSurfaces( trRefEntity_t *e );
 void R_AddRailSurfaces( trRefEntity_t *e, qboolean isUnderwater );
 void R_AddLightningBoltSurfaces( trRefEntity_t *e );
 
-qboolean R_GetEntityWorldBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t maxs );   // [QL] for the RT structures
+qboolean R_GetEntityModelBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t maxs );   // [QL] for the RT structures
 void R_AddPolygonSurfaces( void );
 
 void R_DecomposeSort( unsigned sort, int *entityNum, shader_t **shader, 

@@ -4683,7 +4683,7 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	uint64_t worldRef, proxyRef;
 	uint32_t count = 0;
 	const int idx = vk.cmd_index;
-	int i;
+	int i, j;
 
 	if ( !vk.rt.world.dynReady ) {
 		return qfalse;
@@ -4727,7 +4727,7 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 			continue;
 		}
 
-		if ( !R_GetEntityWorldBounds( ent, mins, maxs ) ) {
+		if ( !R_GetEntityModelBounds( ent, mins, maxs ) ) {
 			continue;
 		}
 
@@ -4739,18 +4739,32 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 		VectorScale( centre, 0.5f, centre );
 
 		/*
-		A 3x4 row-major transform taking the unit box to this entity's bounds:
-		the diagonal scales, the last column translates. No rotation - the
-		bounds are already axis-aligned in world space, the rotation having been
-		taken into account when they were computed.
+		A 3x4 row-major transform taking the unit box to this entity's oriented
+		box: each column is one of the entity's axes scaled to that side of the
+		model's bounds, and the last column is where the box's centre lands.
+
+		Oriented and not axis-aligned. The alternative - rotate the model box's
+		corners, take the world box of those, and use a diagonal matrix - is a
+		box up to 41% wider on each horizontal axis than the thing inside it,
+		which for an upright player turning on the spot is a lot of occlusion
+		coming out of empty air. The instance transform is a full 3x4 and can
+		hold the rotation, so there is no reason to throw it away.
+
+		The axes are used as they come. Quake lets an entity carry
+		non-normalized axes to scale a model, and multiplying by them rather
+		than by a normalized copy is what keeps the box on such a model the
+		right size.
 		*/
 		Com_Memset( &inst[count], 0, sizeof( inst[count] ) );
-		inst[count].transform.matrix[0][0] = size[0];
-		inst[count].transform.matrix[1][1] = size[1];
-		inst[count].transform.matrix[2][2] = size[2];
-		inst[count].transform.matrix[0][3] = centre[0];
-		inst[count].transform.matrix[1][3] = centre[1];
-		inst[count].transform.matrix[2][3] = centre[2];
+		for ( j = 0; j < 3; j++ ) {
+			inst[count].transform.matrix[j][0] = ent->e.axis[0][j] * size[0];
+			inst[count].transform.matrix[j][1] = ent->e.axis[1][j] * size[1];
+			inst[count].transform.matrix[j][2] = ent->e.axis[2][j] * size[2];
+			inst[count].transform.matrix[j][3] = ent->e.origin[j]
+				+ ent->e.axis[0][j] * centre[0]
+				+ ent->e.axis[1][j] * centre[1]
+				+ ent->e.axis[2][j] * centre[2];
+		}
 		inst[count].mask = 0xFF;
 		inst[count].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 		inst[count].accelerationStructureReference = proxyRef;

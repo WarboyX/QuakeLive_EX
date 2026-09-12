@@ -657,6 +657,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 	// [QL] set when the stage declares itself a normal or specular map - see
 	// the material-keyword block below.
 	qboolean materialStage = qfalse;
+	qboolean materialIsSpecular = qfalse;
 	qboolean missingImage = qfalse;
 
 	stage->active = qfalse;
@@ -1212,10 +1213,28 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			if ( !Q_stricmp( token, "diffuseMap" ) ) {
 				continue; // the only one this renderer can draw
 			}
+			/*
+			[QL] "stage normalMap" - the whole stage is a material map, and its
+			image arrives on the "map" line below like any other.
+
+			This used to set materialStage and drop the stage, image and all,
+			which threw away the very thing the dynamic light pass now wants.
+			The stage is still dropped - it is not something to draw - but the
+			image it parsed is carried out on stage->normalMap, and ParseShader
+			hands it to the diffuse stage in front of it.
+
+			This form and "normalMap <image>" inside a diffuse stage are both in
+			use and neither is the odd one; renderergl2 accepts either.
+			*/
 			if ( !Q_stricmp( token, "normalMap" ) || !Q_stricmp( token, "bumpMap" ) ||
-				 !Q_stricmp( token, "normalParallaxMap" ) || !Q_stricmp( token, "bumpParallaxMap" ) ||
-				 !Q_stricmp( token, "specularMap" ) ) {
+				 !Q_stricmp( token, "normalParallaxMap" ) || !Q_stricmp( token, "bumpParallaxMap" ) ) {
 				materialStage = qtrue;
+				materialIsSpecular = qfalse;
+				continue;
+			}
+			if ( !Q_stricmp( token, "specularMap" ) ) {
+				materialStage = qtrue;
+				materialIsSpecular = qtrue;
 				continue;
 			}
 			ri.Printf( PRINT_WARNING, "WARNING: unknown stage parameter '%s' in shader '%s'\n", token, shader.name );
@@ -1301,12 +1320,19 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		}
 		else if ( !Q_stricmp( token, "normalScale" ) )
 		{
-			// "normalScale <x> <y>" - one number is enough for a tangent-space
-			// perturbation this renderer applies uniformly.
-			token = COM_ParseExt( text, qfalse );
-			if ( token[0] != 0 ) {
-				stage->normalScale = Q_atof( token );
-			}
+			/*
+			[QL] Consumed, not stored.
+
+			It was being parsed into a field on the stage that nothing ever
+			read - the lighting shader perturbs by the map at full strength and
+			has no uniform slot to receive a per-stage scale, the light path's
+			uniform block being fixed by vkUniform_t. A field that looks like a
+			setting and changes nothing is the same trap as a cvar nothing
+			reads, so there is no field.
+
+			Applying it means a slot in that block, which is a change to the
+			shader interface. Worth doing with the specular term, not before.
+			*/
 			SkipRestOfLine( text );
 			continue;
 		}
@@ -1334,10 +1360,23 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		}
 	}
 
-	// [QL] A normal or specular map has no meaning to this renderer, and
-	// drawing one as if it were colour is worse than leaving it out. Leaving
-	// active qfalse drops the stage and keeps the rest of the shader.
+	/*
+	[QL] A stage that declared itself a material map is not drawn - painting a
+	normal map on as if it were colour is worse than leaving it out - but the
+	image it loaded is not thrown away. It leaves on the fields ParseShader
+	looks at, and goes to the diffuse stage in front of this one.
+
+	Leaving active qfalse is what drops the stage and keeps the rest of the
+	shader.
+	*/
 	if ( materialStage ) {
+		if ( stage->bundle[0].image[0] ) {
+			if ( materialIsSpecular ) {
+				stage->specularMap = stage->bundle[0].image[0];
+			} else {
+				stage->normalMap = stage->bundle[0].image[0];
+			}
+		}
 		return qtrue;
 	}
 
@@ -2133,6 +2172,29 @@ static qboolean ParseShader( const char **text )
 			*/
 			if ( !stages[numStages].active )
 			{
+				/*
+				[QL] A dropped stage that was a material map gives its image to
+				the stage in front of it.
+
+				"stage normalMap" declares a whole stage to be the map, so the
+				image arrives here on a stage that is not drawn, and the diffuse
+				it belongs to is the last one kept. Without this hand-off the
+				image is loaded and then discarded, which is what the first cut
+				of this did - and the whole feature would have been silently
+				inert on every shader written in that form.
+
+				Guarded on numStages: a material stage with no diffuse before it
+				has nothing to attach to, and a shader that opens that way is
+				not describing a surface this renderer can draw anyway.
+				*/
+				if ( numStages > 0 ) {
+					if ( stages[numStages].normalMap && !stages[numStages - 1].normalMap ) {
+						stages[numStages - 1].normalMap = stages[numStages].normalMap;
+					}
+					if ( stages[numStages].specularMap && !stages[numStages - 1].specularMap ) {
+						stages[numStages - 1].specularMap = stages[numStages].specularMap;
+					}
+				}
 				ResetStage( numStages );
 				continue;
 			}
