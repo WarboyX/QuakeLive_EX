@@ -4917,6 +4917,17 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 			continue;
 		}
 
+		/*
+		Things made of light. cgame marks these because no proxy shape is right
+		for them - see RF_NOOCCLUDE. The explosion flash is the one that made
+		the flag necessary: a flat dish model, randomly rotated about the impact
+		normal, whose box landed on the wall as a hard-edged square at a random
+		angle on every single impact.
+		*/
+		if ( ent->e.renderfx & RF_NOOCCLUDE ) {
+			continue;
+		}
+
 		if ( !R_GetEntityModelBounds( ent, mins, maxs ) ) {
 			continue;
 		}

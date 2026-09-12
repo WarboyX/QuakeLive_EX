@@ -289,11 +289,15 @@ void main() {
 		*/
 		rayQueryEXT rq;
 		/*
-		Cull back faces. The entity proxy boxes are wound outwards and carry
-		FRONT_COUNTERCLOCKWISE, so a ray that starts inside one - which every
-		ray leaving a model's own surface does - sees only its back faces and
-		passes through, while rays arriving from outside are stopped. Without
-		this every entity occludes itself completely and renders black.
+		Cull back faces. The entity proxies are wound outwards and carry no flip
+		flag, so a ray that starts inside one - which every ray leaving a
+		model's own surface does - sees only its back faces and passes through,
+		while rays arriving from outside are stopped. Without this every entity
+		occludes itself completely and renders black.
+
+		(This comment said FRONT_COUNTERCLOCKWISE until the flag was removed in
+		5335d81 for inverting the very test it was meant to fix. Left wrong, it
+		would have sent the next reader looking for a flag that is not set.)
 
 		The world instance disables face culling on itself, so this flag does
 		not reach it: a map is not a closed shell and its surfaces must stop

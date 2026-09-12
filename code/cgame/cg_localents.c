@@ -560,6 +560,9 @@ void CG_AddKamikaze(localEntity_t* le) {
         VectorScale(axis[1], c * KAMI_SHOCKWAVE_MAXRADIUS / KAMI_SHOCKWAVEMODEL_RADIUS, shockwave.axis[1]);
         VectorScale(axis[2], c * KAMI_SHOCKWAVE_MAXRADIUS / KAMI_SHOCKWAVEMODEL_RADIUS, shockwave.axis[2]);
         shockwave.nonNormalizedAxes = qtrue;
+        // a room-sized expanding flash, scaled well past its model bounds - light,
+        // not matter, and the box around it would darken half the map
+        shockwave.renderfx |= RF_NOOCCLUDE;
 
         if (t > KAMI_SHOCKWAVEFADE_STARTTIME) {
             c = (float)(t - KAMI_SHOCKWAVEFADE_STARTTIME) / (float)(KAMI_SHOCKWAVE_ENDTIME - KAMI_SHOCKWAVEFADE_STARTTIME);
@@ -629,6 +632,9 @@ void CG_AddKamikaze(localEntity_t* le) {
         VectorScale(axis[1], c * KAMI_SHOCKWAVE2_MAXRADIUS / KAMI_SHOCKWAVEMODEL_RADIUS, shockwave.axis[1]);
         VectorScale(axis[2], c * KAMI_SHOCKWAVE2_MAXRADIUS / KAMI_SHOCKWAVEMODEL_RADIUS, shockwave.axis[2]);
         shockwave.nonNormalizedAxes = qtrue;
+        // a room-sized expanding flash, scaled well past its model bounds - light,
+        // not matter, and the box around it would darken half the map
+        shockwave.renderfx |= RF_NOOCCLUDE;
 
         if (t > KAMI_SHOCKWAVE2FADE_STARTTIME) {
             c = (float)(t - KAMI_SHOCKWAVE2FADE_STARTTIME) / (float)(KAMI_SHOCKWAVE2_ENDTIME - KAMI_SHOCKWAVE2FADE_STARTTIME);

@@ -839,6 +839,19 @@ localEntity_t* CG_MakeExplosion(vec3_t origin, vec3_t dir, qhandle_t hModel, qha
         }
     }
 
+    /*
+    An explosion is light, not matter, and must stay out of the ray traced
+    occlusion structure. The model branch above is the reason: it is a flat dish
+    given a random rotation about the impact normal, so the box the renderer
+    stands it up in landed on the wall as a hard-edged square at a random angle,
+    on every impact, fading with the flash. Machine gun fire stacked several at
+    once, each at its own angle.
+
+    Not RF_OCCLUDE_ROUND. That would have made it a disc rather than a square
+    and still been wrong - a flash does not block ambient light.
+    */
+    ex->refEntity.renderfx |= RF_NOOCCLUDE;
+
     ex->startTime = cg.time - offset;
     ex->endTime = ex->startTime + msec;
 

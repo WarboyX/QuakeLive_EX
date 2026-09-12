@@ -73,6 +73,19 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
                                  // bounds, and the ammo box is the one that wants the
                                  // box.
 
+#define RF_NOOCCLUDE 0x0800  // [QL] keep this entity out of the occlusion structure
+                             // altogether. For things that are made of light rather
+                             // than matter - an explosion flash, a shockwave - where no
+                             // proxy shape is right, because the thing does not block
+                             // light, it is light.
+                             //
+                             // The explosion flash is why this exists. It is a flat dish
+                             // model given a random rotation about the impact normal, so
+                             // its box proxy landed on the wall as a hard-edged square
+                             // at a random angle, appearing on every impact and fading
+                             // with the flash. A round proxy would have made it a disc
+                             // instead of a square and still been wrong.
+
 // refdef flags
 #define RDF_NOWORLDMODEL 0x0001  // used for player configuration screen
 #define RDF_HYPERSPACE 0x0004    // teleportation effect
