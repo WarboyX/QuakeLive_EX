@@ -21,11 +21,11 @@ ray trace the term the bake cannot express, keep everything else.
 Two things about this shader are chosen and not accidents:
 
   No G-buffer. This is a forward renderer with no normal buffer, and adding one
-  would mean touching every pipeline. The normal comes from the derivatives of
-  the reconstructed world position, which costs nothing and is exact for the
-  flat surfaces most of a Quake map is made of. It is wrong along a depth
-  discontinuity, where the derivative spans two surfaces - so silhouettes get
-  the nearby-pixel treatment below rather than a wrong hemisphere.
+  would mean a second attachment on the main pass and a matching change to every
+  geometry pipeline in the renderer. The normal is reconstructed from depth
+  instead - not with dFdx/dFdy, which is exact on a flat surface and wrong on
+  every silhouette, but from the better of two neighbours on each axis. See the
+  block where it is built.
 
   Cosine-weighted directions, not uniform. Ambient occlusion is a cosine-
   weighted integral over the hemisphere; sampling uniformly and multiplying by
@@ -90,6 +90,38 @@ float hash12(vec2 p) {
 	return fract((p3.x + p3.y) * p3.z);
 }
 
+/*
+[QL] World position for an arbitrary pixel, from its depth.
+
+Needed because the normal below is built from neighbouring pixels rather than
+from the hardware derivative of this one, so it has to reconstruct positions
+the derivative would have given it for free.
+*/
+/*
+textureSize takes a mip level for sampler2D and none at all for sampler2DMS -
+a multisampled image has no mip chain to index - so the two spellings differ
+even though the answer does not.
+*/
+ivec2 depthSize() {
+#ifdef USE_MSAA
+	return textureSize(depthMap);
+#else
+	return textureSize(depthMap, 0);
+#endif
+}
+
+/*
+One body for both variants: texelFetch's third argument is a sample index for
+sampler2DMS and a mip level for sampler2D, and 0 is what this wants either way.
+*/
+vec3 worldAt(ivec2 p, vec2 invSize) {
+	float d = texelFetch(depthMap, p, 0).r;
+	vec2 uv = (vec2(p) + 0.5) * invSize;
+	vec4 clip = vec4(uv * 2.0 - 1.0, d, 1.0);
+	vec4 w = pc.invViewProj * clip;
+	return w.xyz / w.w;
+}
+
 void main() {
 #ifdef USE_MSAA
 	/* texelFetch, not texture: a multisampled sampler has no filtering and no
@@ -138,12 +170,53 @@ void main() {
 	vec3 P = world.xyz;
 
 	/*
-	Normal from the derivatives of world position. cross(dFdx, dFdy) points
-	along the surface normal; which way depends on the handedness of the screen
-	derivatives, so it is flipped to face the viewer, which is the side we are
-	shading and the only side a visible pixel can be lit from.
+	[QL] The normal, from the best pair of neighbours rather than from dFdx/dFdy.
+
+	The derivative version is exact on a flat surface and wrong on every
+	silhouette, because a 2x2 quad that straddles a depth discontinuity spans
+	two surfaces and the cross product of that is a normal belonging to neither.
+	On a Quake map the silhouettes are exactly the edges AO is supposed to
+	darken, so the error lands where the term is most visible: rays fired into
+	the geometry they were meant to graze, and a dark fringe tracing every
+	object against what is behind it.
+
+	So this takes four taps - left, right, up, down - and for each axis keeps
+	the side whose depth agrees better with the centre. Along an edge that is
+	the side still on this surface; in the interior both agree and the result is
+	the same as the derivative. Four extra depth fetches, no attachment, no
+	change to any other pipeline.
+
+	The remaining case is a one-pixel sliver with a discontinuity on both sides,
+	where there is no good neighbour to be had. That reads as a wrong normal on
+	a single pixel, which the denoise then averages away - the failure the
+	derivative version had was a wrong normal along every edge in the frame,
+	which it could not.
 	*/
-	vec3 N = normalize(cross(dFdx(P), dFdy(P)));
+	ivec2 pix = ivec2(gl_FragCoord.xy);
+	ivec2 size = depthSize();
+	vec2 invSize = 1.0 / vec2(size);
+	ivec2 lo = ivec2(0);
+	ivec2 hi = size - ivec2(1);
+
+	vec3 Pl = worldAt(clamp(pix + ivec2(-1, 0), lo, hi), invSize);
+	vec3 Pr = worldAt(clamp(pix + ivec2( 1, 0), lo, hi), invSize);
+	vec3 Pd = worldAt(clamp(pix + ivec2( 0,-1), lo, hi), invSize);
+	vec3 Pu = worldAt(clamp(pix + ivec2( 0, 1), lo, hi), invSize);
+
+	// keep the closer neighbour on each axis; the far one is across an edge
+	vec3 dx = (abs(dot(Pr - P, Pr - P)) < abs(dot(P - Pl, P - Pl))) ? (Pr - P) : (P - Pl);
+	vec3 dy = (abs(dot(Pu - P, Pu - P)) < abs(dot(P - Pd, P - Pd))) ? (Pu - P) : (P - Pd);
+
+	vec3 N = cross(dx, dy);
+	float nlen = length(N);
+	if (nlen < 1e-8) {
+		// degenerate - every tap landed on the same point. Nothing sensible to
+		// trace a hemisphere around, so leave the pixel unoccluded.
+		out_color = vec4(1.0);
+		return;
+	}
+	N /= nlen;
+
 	vec3 V = normalize(pc.eye.xyz - P);
 	if (dot(N, V) < 0.0) {
 		N = -N;

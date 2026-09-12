@@ -3547,6 +3547,7 @@ caulk makes whole rooms wrong.
 static qboolean rt_surface_is_occluder( const msurface_t *surf )
 {
 	const shader_t *shader;
+	int i;
 
 	if ( surf->data == NULL || surf->shader == NULL ) {
 		return qfalse;
@@ -3572,6 +3573,34 @@ static qboolean rt_surface_is_occluder( const msurface_t *surf )
 	if ( shader->surfaceFlags & SURF_NONSOLID ) {
 		return qfalse;
 	}
+
+	/*
+	[QL] Alpha-tested surfaces: grates, fences, ladders, foliage.
+
+	These sort SS_OPAQUE - the alpha test discards fragments rather than
+	blending them, so nothing about their sort says they are full of holes - and
+	they were going into the structure as solid triangles. A chain-link fence
+	then occluded like a wall, and the room behind one went dark.
+
+	Skipped rather than traced, which is the same call the translucent surfaces
+	above got and for the same reason: a missing occluder makes a corner
+	slightly too bright, a wrong one makes a room wrong. Light now passes
+	through the solid parts of a grate as well as the holes, which is a small
+	error in the forgiving direction.
+
+	Doing it properly means tracing them as non-opaque and running the alpha
+	test in an any-hit shader, which needs texture coordinates in the geometry
+	buffers and every surface's texture reachable from the trace - a descriptor
+	array and a second vertex stream. Worth doing; not worth pretending the
+	current structure can express it.
+	*/
+	for ( i = 0; i < shader->numUnfoggedPasses; i++ ) {
+		const shaderStage_t *st = shader->stages[i];
+		if ( st && st->active && ( st->stateBits & GLS_ATEST_BITS ) ) {
+			return qfalse;
+		}
+	}
+
 	return qtrue;
 }
 
