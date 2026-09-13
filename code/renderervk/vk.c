@@ -11357,12 +11357,44 @@ qboolean vk_rt_ao( void )
 	/* The other half of the same problem: when it does run, say so once, so a
 	   log can tell "drew" from "was ready to draw". */
 	if ( !rtaoOnReported ) {
+		const int aoSamples = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
+		const double rays = (double)glConfig.vidWidth * (double)glConfig.vidHeight * (double)aoSamples;
+
 		rtaoOnReported = qtrue;
 		ri.Printf( PRINT_ALL, "RT AO: tracing%s - %i rays/pixel, radius %g, strength %g, denoise %s\n",
 			r_rtao->integer >= 2 ? " (DEBUG VIEW: showing occlusion)" : "",
-			ri.Cvar_VariableIntegerValue( "r_rtaoSamples" ),
+			aoSamples,
 			r_rtaoRadius->value, r_rtaoIntensity->value,
 			r_rtaoDenoise->integer == 0 ? "off" : ( r_rtaoDenoise->integer >= 2 ? "wide" : "on" ) );
+
+		/*
+		[QL] The number nobody was being shown.
+
+		The trace is a full-resolution pass and the sample count is a
+		specialization constant with the loop unrolled, so the cost is
+		width x height x samples ray queries in one fragment shader, every
+		frame. At 4K with the menu's top sample setting that is 133 million,
+		which is more than most path tracers do per frame and well past what a
+		single draw call can finish inside a driver watchdog.
+
+		What that looks like from the outside is not slowness. The GPU is reset
+		mid-draw, so the display stalls while sound and input keep running, and
+		an application that resubmits the same work stalls again - reported as
+		the whole machine seizing for minutes at a time, with nothing in the log
+		to connect it to a slider in a menu.
+
+		Every input to that number was already on the line above. None of them
+		meant anything without being multiplied together, so multiply them.
+		*/
+		ri.Printf( PRINT_ALL, "RT AO: %.1fM rays/frame at %ix%i\n",
+			rays / 1000000.0, glConfig.vidWidth, glConfig.vidHeight );
+
+		if ( rays > 32000000.0 ) {
+			ri.Printf( PRINT_WARNING, "RT AO: that is a very large trace for one draw call. If the "
+				"display freezes for seconds at a time while sound keeps playing, the driver is "
+				"resetting the GPU - lower " S_COLOR_CYAN "\\r_rtaoSamples" S_COLOR_YELLOW
+				" (needs a vid_restart) or the resolution.\n" );
+		}
 		if ( !vk.fboActive ) {
 			/* Not fatal - this pass only samples depth, unlike bloom, which
 			   needs the colour attachment and is why r_fbo gates that one. Said

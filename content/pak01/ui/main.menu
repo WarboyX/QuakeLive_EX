@@ -1783,9 +1783,16 @@
         itemDef { text "Rays per pixel:"  textscale .22  rect 30 334 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
             name aosamples  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoSamples"
-            cvarFloatList { "2 (fastest)" 2 "4" 4 "8" 8 "16 (best)" 16 }
+            cvarFloatList { "2 (fastest)" 2 "4 (default)" 4 "8 (heavy)" 8 "16 (very heavy)" 16 }
             rect 230 334 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
+        // [QL] "16 (best)" is what this row used to say, and it is not a fair
+        // description of the setting. The trace is a full-resolution pass and
+        // the sample count is unrolled into the shader, so the cost is
+        // width x height x samples ray queries in one draw call - at 4K, 16
+        // rays is 133 million, past what a driver watchdog will allow to
+        // finish, and the GPU gets reset mid-frame. Labelled by what it costs.
+        //
         // [QL] A handful of rays per pixel is a noisy estimate, not a smooth
         // one, so this is on by default and turning it off is a diagnostic
         // rather than a performance option - it is what shows you the raw trace.
