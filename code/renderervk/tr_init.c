@@ -1920,9 +1920,12 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_rtao, "Ray-traced ambient occlusion. Requires r_rtActive 1." );
 
 	r_rtaoRadius = ri.Cvar_Get( "r_rtaoRadius", "64", CVAR_ARCHIVE );
-	ri.Cvar_CheckRange( r_rtaoRadius, "8", "512", CV_FLOAT );
+	ri.Cvar_CheckRange( r_rtaoRadius, "8", "4096", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtaoRadius, "How far ambient occlusion rays travel, in world units. "
-		"Larger darkens broader spaces and costs more to trace." );
+		"Larger darkens broader spaces and costs more to trace - the cost is per ray and grows "
+		"with the distance each one has to traverse, so this multiplies with " S_COLOR_CYAN
+		"\\r_rtaoSamples" S_COLOR_WHITE " and with resolution. Occlusion also falls off linearly "
+		"over the radius, so a large value both reaches further and darkens near hits harder." );
 
 	r_rtaoIntensity = ri.Cvar_Get( "r_rtaoIntensity", "0.8", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoIntensity, "0", "1", CV_FLOAT );
@@ -1985,7 +1988,7 @@ static void R_Register( void )
 	r_device->modified = qfalse;
 
 	r_rts = ri.Cvar_Get( "r_rts", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
-	ri.Cvar_CheckRange( r_rts, "0", "1", CV_INTEGER );
+	ri.Cvar_CheckRange( r_rts, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rts, "Real time shading.\n"
 		" 0 - the lighting response is baked into the assets at load. Overbright is "
 		"folded into lightmaps when it cannot be applied any later, the scene is drawn "
@@ -1994,8 +1997,12 @@ static void R_Register( void )
 		" 1 - the scene is drawn into a floating point target instead, so light that "
 		"adds past full brightness survives to be looked at, and the response curve is "
 		"applied per frame at the end rather than baked in\n"
+		" 2 - the same, on an unsigned float target (B10G11R11). Same headroom above full "
+		"brightness, but it cannot hold a value below zero, so anything writing a negative is "
+		"clamped at the point it is written - which is what the old fixed range target did. Use "
+		"this if 1 puts dark patches around dynamic lights\n"
 		"Implies " S_COLOR_CYAN "\\r_fbo 1" S_COLOR_WHITE ", which is what provides the pass to do it in. "
-		"Falls back to 0 if the device cannot blend to a float target." );
+		"Falls back to 0 if the device cannot blend to the chosen target." );
 
 	r_fbo = ri.Cvar_Get( "r_fbo", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_fbo, "Use framebuffer objects, enables gamma correction in windowed mode and allows arbitrary video size and screenshot/video capture.\n Required for bloom, HDR rendering, anti-aliasing and greyscale effects." );

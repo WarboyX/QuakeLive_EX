@@ -2006,7 +2006,39 @@ static void setup_surface_formats( VkPhysicalDevice physical_device )
 	pass later with nothing to explain it.
 	*/
 	if ( r_rts->integer ) {
-		const VkFormat rtsFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+		/*
+		[QL] r_rts 2: headroom without a sign bit.
+
+		The blend the projected dynamic lights use is dst * (1 + src), which is
+		monotonically increasing for any non-negative src and dst and therefore
+		cannot darken anything. It does darken, in a circle the size of the
+		light, and only on the float target - which narrows it to one rule:
+
+		  "If the color attachment is fixed-point, the components of the source
+		   and destination values and blend factors are each clamped to [0,1]
+		   prior to evaluating the blend operations. If the color attachment is
+		   floating-point, no clamping occurs."
+
+		A negative that the old UNORM target silently clamped to zero is now
+		kept, and the dynamic light pass is the only pass that multiplies by
+		dst, so it is the only one that shows it. R16G16B16A16_SFLOAT has a sign
+		bit. B10G11R11_UFLOAT does not: it holds values well past 1.0, which is
+		the entire point of r_rts, and clamps negatives at write exactly as the
+		fixed-point target did.
+
+		So mode 2 is both a working configuration and the measurement. If the
+		circles are gone at 2 and present at 1, a negative value is being
+		written into the scene somewhere and the only remaining question is
+		where. If they are present at both, they are not negatives and every
+		line of reasoning above is wrong.
+
+		No alpha channel, which is the trade. Vulkan reads DST_ALPHA as 1.0 from
+		an attachment that has none, and that is what the handful of Quake
+		shaders using it want anyway.
+		*/
+		const VkFormat rtsFormat = ( r_rts->integer >= 2 )
+			? VK_FORMAT_B10G11R11_UFLOAT_PACK32
+			: VK_FORMAT_R16G16B16A16_SFLOAT;
 		const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
 			VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
 		VkFormatProperties props;
@@ -2015,8 +2047,10 @@ static void setup_surface_formats( VkPhysicalDevice physical_device )
 		if ( ( props.optimalTilingFeatures & need ) == need ) {
 			vk.color_format = rtsFormat;
 		} else {
-			ri.Printf( PRINT_WARNING, "r_rts: this device cannot blend to a float colour target, "
-				"falling back to the fixed range one\n" );
+			ri.Printf( PRINT_WARNING, "r_rts: this device cannot blend to %s, "
+				"falling back to the fixed range target\n",
+				( r_rts->integer >= 2 ) ? "the unsigned float colour format (B10G11R11)"
+				                        : "a float colour target" );
 			ri.Cvar_Set( "r_rts", "0" );
 
 			/* Turning it off here changes the answer vk_fbo_wanted() gives, and
