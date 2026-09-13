@@ -2499,6 +2499,9 @@ void RE_LoadWorldMap( const char *name ) {
 	"is RT on" test in a single place rather than at every call site.
 	*/
 	vk_rt_build_world( &s_worldData );
+
+	/* [QL] independent of ray tracing - this is geometry, not a structure */
+	vk_find_water_planes( &s_worldData );
 #endif
 
 	ri.FS_FreeFile( buffer.v );

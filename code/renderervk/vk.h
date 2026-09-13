@@ -270,6 +270,30 @@ qboolean vk_fbo_wanted( void );
 // [QL] print the next dynamic acceleration structure build's contents
 void vk_rt_request_dump( void );
 
+/*
+[QL] The map's liquid surfaces, collected at load.
+
+A reflection needs to know which pixels are liquid and what plane they lie on.
+Doing that per surface at draw time means new pipeline state and a stencil bit;
+doing it from the plane means a handful of numbers and a test in the shader,
+because a map has a few distinct water heights, not a few thousand.
+
+Collected before anything is built on top of it, and reported, because the whole
+approach rests on QL's water being planar faces carrying CONTENTS_WATER - and if
+it is not, that is worth finding out in fifty lines rather than five hundred.
+*/
+#define VK_MAX_WATER_PLANES 8
+
+typedef struct {
+	float normal[3];
+	float dist;
+} vkWaterPlane_t;
+
+/* The function is declared next to vk_rt_build_world, below the forward
+   declaration of struct world_s. Declaring it here would put the tag in this
+   prototype's own scope, which makes it a different type from the real one and
+   every caller a pointer mismatch. */
+
 // Called after initialization or renderer restart
 void vk_init_descriptors( void );
 
@@ -332,6 +356,9 @@ void vk_update_mvp( const float *m );
    called from tr_bsp.c, which is the other side of the renderer. */
 struct world_s;
 void vk_rt_build_world( const struct world_s *world );
+
+/* [QL] the map's water planes - see VK_MAX_WATER_PLANES above */
+void vk_find_water_planes( const struct world_s *world );
 void vk_rt_destroy_world( void );
 /* [QL] R13 step 3: the ambient occlusion pass. Returns qtrue when it ran and
    therefore left its own render pass open in place of the main one. */
@@ -707,6 +734,10 @@ typedef struct {
 	   built for. fboActive says what the draw path intends to do; this says
 	   what it has to do it with. They must agree - see vk_fbo_wanted(). */
 	qboolean fboRenderPasses;
+
+	/* [QL] the map's water planes - see vk_find_water_planes */
+	vkWaterPlane_t	waterPlanes[ VK_MAX_WATER_PLANES ];
+	int				numWaterPlanes;
 	qboolean blitEnabled;
 	qboolean msaaActive;
 

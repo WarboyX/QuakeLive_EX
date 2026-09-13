@@ -3654,6 +3654,111 @@ missing an occluder makes a corner slightly too bright, while including sky or
 caulk makes whole rooms wrong.
 =================
 */
+/*
+=================
+vk_find_water_planes
+
+[QL] The distinct liquid planes in the map, collected once at load.
+
+Anything that reflects off water has to answer "is this pixel water, and what
+plane is it on" per pixel. Answering it per surface means marking water at draw
+time - new pipeline state, or a stencil bit, and a second reason for every water
+surface to be special. Answering it from the plane costs a handful of floats and
+a compare, because a map has a few water heights and not a few thousand.
+
+Up-facing only. A water volume has sides and a bottom too and neither reflects
+anything; the surface you see from above is the one that does. 0.7 is about 45
+degrees, which keeps a sloped waterfall lip and rejects the walls.
+
+Faces only. Water in these maps is flat brushwork - a patch mesh would have no
+single plane to collect, and forcing one would put a reflection plane through
+the middle of a curve.
+
+Reported even when it finds nothing, because "nothing" is the answer that says
+this approach does not fit the map, and that is worth one line at load rather
+than a reflection pass that silently never runs.
+=================
+*/
+void vk_find_water_planes( const world_t *world )
+{
+	const int liquid = CONTENTS_WATER | CONTENTS_SLIME | CONTENTS_LAVA;
+	int surfaces = 0, waterSurfaces = 0;
+	int i, j;
+
+	vk.numWaterPlanes = 0;
+
+	if ( world == NULL || world->surfaces == NULL || world->numsurfaces <= 0 ) {
+		return;
+	}
+
+	for ( i = 0; i < world->numsurfaces; i++ ) {
+		const msurface_t *surf = &world->surfaces[i];
+		const srfSurfaceFace_t *face;
+		qboolean known;
+
+		if ( surf->data == NULL || surf->shader == NULL ) {
+			continue;
+		}
+		if ( !( surf->shader->contentFlags & liquid ) ) {
+			continue;
+		}
+		surfaces++;
+
+		if ( *surf->data != SF_FACE ) {
+			continue;   // a patch has no one plane to stand for it
+		}
+		if ( !( surf->shader->contentFlags & CONTENTS_WATER ) ) {
+			continue;   // lava and slime are counted, not reflected
+		}
+		face = (const srfSurfaceFace_t *)surf->data;
+
+		if ( face->plane.normal[2] < 0.7f ) {
+			continue;   // a wall or the underside, not a surface to look at
+		}
+		waterSurfaces++;
+
+		known = qfalse;
+		for ( j = 0; j < vk.numWaterPlanes; j++ ) {
+			if ( fabsf( vk.waterPlanes[j].dist - face->plane.dist ) < 1.0f &&
+				 DotProduct( vk.waterPlanes[j].normal, face->plane.normal ) > 0.999f ) {
+				known = qtrue;
+				break;
+			}
+		}
+		if ( known ) {
+			continue;
+		}
+		if ( vk.numWaterPlanes >= VK_MAX_WATER_PLANES ) {
+			continue;
+		}
+
+		VectorCopy( face->plane.normal, vk.waterPlanes[ vk.numWaterPlanes ].normal );
+		vk.waterPlanes[ vk.numWaterPlanes ].dist = face->plane.dist;
+		vk.numWaterPlanes++;
+	}
+
+	if ( surfaces == 0 ) {
+		ri.Printf( PRINT_ALL, "Water: this map has no liquid surfaces\n" );
+		return;
+	}
+
+	ri.Printf( PRINT_ALL, "Water: %i plane(s) from %i up-facing water surface(s), "
+		"%i liquid surface(s) in all\n",
+		vk.numWaterPlanes, waterSurfaces, surfaces );
+
+	for ( i = 0; i < vk.numWaterPlanes; i++ ) {
+		ri.Printf( PRINT_ALL, "  plane %i: normal %.2f %.2f %.2f at %.0f\n", i,
+			vk.waterPlanes[i].normal[0], vk.waterPlanes[i].normal[1],
+			vk.waterPlanes[i].normal[2], vk.waterPlanes[i].dist );
+	}
+
+	if ( vk.numWaterPlanes >= VK_MAX_WATER_PLANES ) {
+		ri.Printf( PRINT_WARNING, "Water: hit the ceiling of %i planes - some water will not "
+			"reflect\n", VK_MAX_WATER_PLANES );
+	}
+}
+
+
 static qboolean rt_surface_is_occluder( const msurface_t *surf )
 {
 	const shader_t *shader;
