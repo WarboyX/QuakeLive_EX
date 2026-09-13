@@ -50,7 +50,14 @@ layout(push_constant) uniform Push {
 	    (1,0) horizontal, (0,1) vertical, (0,0) means "do not blur" - see
 	    below, it is how r_rtaoDenoise 0 turns this into a passthrough without
 	    needing a second pipeline.
-	zw  unused.
+	z   output scale. 1.0 for the composite, where this value is the blend
+	    source and must not be altered. For the debug view it is 1/obScale, so
+	    that the present pass multiplying by obScale hands back the occlusion
+	    term at the value the trace produced instead of a version pushed up
+	    into the tone curve's compressed range - the debug view exists to be
+	    read off the screen and compared between settings, and it could not be
+	    compared across r_rts while r_rts was scaling it.
+	w   unused.
 	*/
 	vec4 step;
 	/*
@@ -106,7 +113,7 @@ void main() {
 	not do something.
 	*/
 	if (pc.step.x == 0.0 && pc.step.y == 0.0) {
-		out_color = vec4(texelFetch(aoMap, c, 0).r);
+		out_color = vec4(texelFetch(aoMap, c, 0).r * pc.step.z);
 		return;
 	}
 
@@ -157,5 +164,5 @@ void main() {
 		}
 	}
 
-	out_color = vec4(sum / weightSum);
+	out_color = vec4((sum / weightSum) * pc.step.z);
 }

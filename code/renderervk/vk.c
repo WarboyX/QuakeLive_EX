@@ -11587,7 +11587,8 @@ qboolean vk_rt_ao( void )
 	if ( denoise ) {
 		blur.step[0] = 1.0f;
 		blur.step[1] = 0.0f;
-		blur.step[2] = blur.step[3] = 0.0f;
+		blur.step[2] = 1.0f;   // intermediate pass: no output scaling
+		blur.step[3] = 0.0f;
 
 		vk_begin_rtao_offscreen_render_pass( 1 );
 
@@ -11604,7 +11605,25 @@ qboolean vk_rt_ao( void )
 	// ---- pass 3: vertical denoise and composite, into the scene ----
 	blur.step[0] = 0.0f;
 	blur.step[1] = denoise ? 1.0f : 0.0f;   // a zero step is the shader's passthrough
-	blur.step[2] = blur.step[3] = 0.0f;
+	/*
+	[QL] The debug view has to survive the present pass to be worth looking at.
+
+	It replaces the scene with the occlusion term, and then the present pass
+	does what it does to every pixel: multiply by obScale and apply the response
+	curve. With r_rts that is a multiply by two into a curve that compresses
+	everything above 0.8, so an occlusion term of 0.5 and one of 0.9 both come
+	out near white and the view shows only the deepest creases. It reads as a
+	much tighter radius, and it was reported as one - the same settings looked
+	like a different radius at r_rts 0 and r_rts 1.
+
+	Pre-dividing by obScale cancels the multiply, so what reaches the screen is
+	the value the trace produced. The composite keeps 1.0, because there this
+	value is the blend source and scaling it would scale the occlusion itself.
+	*/
+	blur.step[2] = ( r_rtao->integer >= 2 && tr.overbrightBits > 0 )
+		? 1.0f / (float)( 1 << tr.overbrightBits )
+		: 1.0f;
+	blur.step[3] = 0.0f;
 
 	vk_begin_rtao_render_pass();
 
