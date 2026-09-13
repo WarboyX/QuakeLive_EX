@@ -1559,50 +1559,8 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
     // the beam, so it's removed pending identification of that flag. Beam still
     // draws (as before), correct in all non-underwater cases.
 
-    /*
-    [QL] End the bolt just off the surface, not on it.
-
-    RB_SurfaceLightningBolt builds the beam as four quads of half-width 8,
-    rotated 45 degrees apart about the beam axis, running from origin to
-    oldorigin. With oldorigin exactly on the impact surface, the quads on the
-    far side of the axis lie *behind* that surface for the last stretch of the
-    beam - and how long that stretch is goes as 1/sin of the angle the beam
-    makes with the wall. Shoot a ceiling square on and it is a few units and
-    invisible; graze a wall and it is tens of units, which is why a bolt into a
-    shoji screen came out sliced by the window frame while the same bolt into a
-    ceiling looked right.
-
-    Not a sort problem, which is where this looked like it was going: the window
-    is textures/gothic_trim/window_a1, one lightmapped stage and no shader
-    script at all, so it is opaque geometry drawn before any transparency. The
-    beam really was behind it.
-
-    Lifting the endpoint along the surface normal clears the whole tail at once,
-    where pulling it back along the beam only helps the tip.
-
-    The distance is a cvar, and that is the point of this revision rather than a
-    detail of it. It went 0 -> 8 -> 16 on my reasoning about quad half-widths
-    and window trim, and 16 looked "visually the same" as 8. A doubling of the
-    one quantity the explanation turns on producing no visible change is
-    evidence against the explanation, not an argument for 32 - so it stops being
-    something I guess at between builds and becomes something that can be
-    measured in one.
-
-    Set cg_lightningEndOffset to something absurd, 128 say, and watch the bolt
-    stop well short of the wall. If the frame bars still cut across it at that
-    distance then the slicing has nothing to do with the endpoint, the account
-    above is wrong, and the thing to look at next is how RB_SurfaceLightningBolt
-    orients its quads: `right` there is the cross product of the vectors from
-    the eye to each end of the beam, which in first person are very nearly
-    parallel, so the normalize that follows is amplifying whatever is left after
-    the cancellation.
-    */
-    if (trace.fraction < 1.0f) {
-        VectorMA(trace.endpos, cg_lightningEndOffset.value, trace.plane.normal,
-                 beam.oldorigin);
-    } else {
-        VectorCopy(trace.endpos, beam.oldorigin);
-    }
+    // this is the endpoint
+    VectorCopy(trace.endpos, beam.oldorigin);
 
     // use the provided origin, even though it may be slightly
     // different than the muzzle origin

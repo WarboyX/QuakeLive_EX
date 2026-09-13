@@ -485,12 +485,7 @@ typedef enum {
     WP_NUM_WEAPONS
 } weapon_t;
 
-/*
-[QL] Five come from pak00; the sixth is ours, in
-content/pak01/scripts/ql_weapons.shader. Styles 1-4 are additive and vanish
-against a surface already at white - see the note beside lightningBolt6.
-*/
-#define NUM_LIGHTNING_STYLES 6
+#define NUM_LIGHTNING_STYLES 5
 
 // reward sounds (stored in ps->persistant[PERS_PLAYEREVENTS])
 #define PLAYEREVENT_DENIEDREWARD 0x0001

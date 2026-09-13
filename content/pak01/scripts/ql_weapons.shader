@@ -63,54 +63,57 @@ models/weapons/nailgun/nailgun
 }
 
 // ---------------------------------------------------------------------------
-// The lightning bolt, style 6.
+// The shoji screens.
 //
-// A sixth style rather than a replacement for any of the five in pak00, so
-// nothing about the gun changes until cg_lightningStyle 6 asks for it.
+// These have no shader in pak00 - they are plain lightmapped surfaces, which
+// the renderer generates as two stages: the lightmap, then the diffuse
+// multiplied over it. What is below is exactly that generated pair, with one
+// change: the diffuse is scaled down so the result cannot reach 255.
 //
-// What it is for: styles 1 to 4 are additive, and additive light has nowhere to
-// go on a surface that is already white. On japanesecastles the shoji panes are
-// near enough to 1.0 that the bolt disappears over them entirely while staying
-// bright over the dark wood beside them - which reads as the panes being drawn
-// on top of the beam, and is not. Style 5 does not do it, which is what proved
-// the cause: all five bolts sort at 9.00 and are depth-tested identically, so
-// the only thing that can differ between them is how they blend.
+// Why it needs to. The panes are near-white paper and the map lights them hard,
+// and R_ColorShiftLightingBytes normalises an overflowing lightmap texel by its
+// brightest channel rather than clipping - so a hot texel comes back as
+// (255,255,255) and stays there. Pinned at white there is no headroom left, and
+// an additive effect drawn over them adds nothing at all. That is what ate the
+// lightning bolt, and no amount of work on the bolt could have fixed it: four
+// of the five bolt styles are additive and the fifth only differs because it
+// blends.
 //
-// Getting a bolt to read on a white background needs the result to land below
-// white, and that rules out the obvious blends. Additive, screen
-// (GL_ONE GL_ONE_MINUS_SRC_COLOR) and soft-add (GL_ONE_MINUS_DST_COLOR GL_ONE)
-// all evaluate to exactly 1.0 against a white destination, whatever the source
-// is. The usual escape - alpha blending with the bolt's own shape as the alpha
-// - is not available either: every lightning texture in the pak is a .jpg and
-// has no alpha channel, and GL_SRC_COLOR is not a legal source factor here.
+// The alternative was the overbright pipeline itself, which is where this went
+// first. r_fbo 1 does fix it - it stops textures being gamma-baked at upload and
+// moves overbright to shade time where nothing clamps - but that multiply then
+// lands on the whole frame instead of only the lightmap, and the rest of the
+// map blows out. Correcting one surface by re-exposing every surface is the
+// wrong trade.
 //
-// So it is done in two stages. The first multiplies the destination by the
-// inverse of the bolt, which carves the bolt's shape out of whatever is behind
-// it and is the step that makes room on a bright surface. The second adds the
-// bolt back tinted and below full strength, so the sum stays under white and
-// the colour survives instead of washing out.
+// 0.75 is a dial, not a derivation: it leaves about a quarter of the range free,
+// which is enough for an additive bolt to read, and costs a quarter of the glow.
+// These panes are the lit paper walls of the whole building seen from outside,
+// so the number is a look decision and belongs to whoever is looking at it.
 //
-// Against black the first stage does nothing and the second is an ordinary
-// additive bolt. Against white the first stage does the work. Both ends of the
-// range read, which is the whole point.
-//
-// RB_SurfaceLightningBolt draws four quads rotated about the beam axis, so
-// every fragment near the axis goes through this four times: the darkening
-// compounds and the additive term saturates, which should put a white-hot core
-// inside a blue bolt. That is the intent, and it is the part most worth judging
-// on screen rather than from the arithmetic.
-lightningBolt6
+// Both variants, because the map uses both and half a fix would show as a seam.
+textures/gothic_trim/window_a1
 {
-	cull none
-	nopicmip
 	{
-		map gfx/misc/lightning2.jpg
-		blendFunc GL_ZERO GL_ONE_MINUS_SRC_COLOR
+		map $lightmap
 		rgbGen identity
 	}
 	{
-		map gfx/misc/lightning2.jpg
-		blendFunc GL_ONE GL_ONE
-		rgbGen const ( 0.45 0.70 1.00 )
+		map textures/gothic_trim/window_a1.jpg
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen const ( 0.75 0.75 0.75 )
+	}
+}
+
+textures/gothic_trim/window_a2
+{
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/gothic_trim/window_a2.jpg
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen const ( 0.75 0.75 0.75 )
 	}
 }
