@@ -29,7 +29,7 @@ layout(set = 0, binding = 0) uniform sampler2D depthMap;
 #endif
 layout(set = 0, binding = 1) uniform sampler2D sceneMap;
 
-#define SSR_MAX_PLANES 8
+#define SSR_MAX_PLANES 16
 
 layout(set = 0, binding = 2) uniform SSR {
 	mat4 viewProj;      // world -> clip
@@ -51,8 +51,10 @@ layout(set = 0, binding = 2) uniform SSR {
 	  w  r_ssrDebug: 0 normal, 1 show the water mask, 2 show the raw reflection
 	*/
 	vec4 depthInfo;
-	vec4 planes[SSR_MAX_PLANES];   // xyz = normal, w = dist
-	vec4 planeCount;               // x = how many are filled
+	vec4 planes[SSR_MAX_PLANES];      // xyz = normal, w = dist
+	vec4 boundsMin[SSR_MAX_PLANES];   // xyz = world minimum of the water on it
+	vec4 boundsMax[SSR_MAX_PLANES];   // xyz = world maximum
+	vec4 planeCount;                  // x = how many are filled
 };
 
 layout(location = 0) in vec2 frag_tex_coord;
@@ -106,34 +108,80 @@ void main() {
 		return;
 	}
 
-	vec3 P = worldAt(pix, invSize);
-
 	/*
-	Is this pixel on one of the map's water planes?
+	[QL] Where is the water in this pixel? Ask the plane, not the depth buffer.
 
-	Both tests matter. The distance test alone would catch a floor directly
-	above or below the water at the same height somewhere else in the map;
-	the plane is infinite and the water is not.
+	The first version reconstructed a world position from depth and tested it
+	against the plane. That fails on both sides at once, and the debug view made
+	both visible in one frame:
 
-	2 units of tolerance because P is reconstructed from a depth buffer and a
-	surface seen at a glancing angle reconstructs with some slop along the view
-	ray. Tighter and the far edge of a pool drops out in bands.
+	  - Quake Live's water does not write depth. It is a translucent surface, so
+	    the depth at a water pixel is the *pool floor*, metres below the surface.
+	    The water was therefore never detected at all - no tolerance around the
+	    plane could have helped, because the surface is simply not in the buffer.
+	  - The plane is infinite. Every *other* surface in the map at the water's
+	    height did match, which on this map is the wooden decking around the
+	    pool, painted in speckles and bands along the height lines.
+
+	Intersecting the view ray with the plane answers the question directly and
+	needs neither fix: it finds the water surface whether or not anything wrote
+	depth there, and it gives the true position rather than an approximation of
+	one. Depth is still needed - to know whether something opaque is in front of
+	the water - which is what the sceneDist test below is.
 	*/
+	vec3 sceneP = worldAt(pix, invSize);
+	float sceneDist = length(sceneP - eye.xyz);
+	vec3 dir = normalize(sceneP - eye.xyz);
+
 	int count = int(planeCount.x);
 	vec3 N = vec3(0.0);
+	float bestT = 1.0e30;
 	bool onWater = false;
 
 	for (int i = 0; i < count; i++) {
 		vec3 n = planes[i].xyz;
-		if (abs(dot(P, n) - planes[i].w) < 2.0) {
+		float dn = dot(dir, n);
+
+		/*
+		Facing away. For an up-facing plane this is the ray travelling upward,
+		which is either the underside of the surface or the camera being below
+		it - and neither reflects the world above. Underwater is handled here
+		rather than as a special case.
+		*/
+		if (dn >= -0.0001) {
+			continue;
+		}
+
+		float t = (planes[i].w - dot(eye.xyz, n)) / dn;
+		if (t <= 0.0) {
+			continue;                 // behind the eye
+		}
+		/*
+		Something opaque in front of the water hides it. The tolerance matters:
+		when the water *does* write depth, t and sceneDist are the same number
+		and a strict test would reject every pixel of it.
+		*/
+		if (t > sceneDist + 4.0) {
+			continue;
+		}
+
+		vec3 hit = eye.xyz + dir * t;
+		if (any(lessThan(hit, boundsMin[i].xyz - 1.0)) ||
+		    any(greaterThan(hit, boundsMax[i].xyz + 1.0))) {
+			continue;                 // the plane goes on; the pool does not
+		}
+
+		if (t < bestT) {
+			bestT = t;
 			N = n;
 			onWater = true;
-			break;
 		}
 	}
 	if (!onWater) {
 		return;
 	}
+
+	vec3 P = eye.xyz + dir * bestT;
 
 	/*
 	[QL] r_ssrDebug 1: where the water test passed, and nothing else.
@@ -158,18 +206,10 @@ void main() {
 		return;
 	}
 
-	vec3 V = normalize(P - eye.xyz);
-
-	/* Underwater. The eye is below the plane, so this is the surface seen from
-	   beneath and there is nothing above it to reflect. */
-	if (dot(eye.xyz - P, N) <= 0.0) {
-		return;
-	}
-
+	/* The ray that found the plane is the view vector. Looking at the surface
+	   from beneath was already rejected by the facing test above. */
+	vec3 V = dir;
 	vec3 R = reflect(V, N);
-	if (dot(R, N) <= 0.0) {
-		return;      // reflected back into the water
-	}
 
 	float maxDist = params.y;
 	int steps = int(params.z);

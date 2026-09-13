@@ -283,11 +283,26 @@ Collected before anything is built on top of it, and reported, because the whole
 approach rests on QL's water being planar faces carrying CONTENTS_WATER - and if
 it is not, that is worth finding out in fifty lines rather than five hundred.
 */
-#define VK_MAX_WATER_PLANES 8
+#define VK_MAX_WATER_PLANES 16
 
 typedef struct {
 	float normal[3];
 	float dist;
+	/*
+	[QL] The plane is infinite and the water is not.
+
+	Without these, a test against the plane alone matches every surface in the
+	map that happens to lie at the water's height - which on a map with a
+	wooden floor at the same z as a pool means the floor is treated as water.
+	It shows up as bands and speckles along the height lines rather than as
+	anything resembling a mistake about water, which is why it needs saying
+	here.
+
+	World-space bounds of the surfaces found on this plane, so the test is
+	"on the plane AND inside where the water actually is".
+	*/
+	float mins[3];
+	float maxs[3];
 } vkWaterPlane_t;
 
 /* The function is declared next to vk_rt_build_world, below the forward

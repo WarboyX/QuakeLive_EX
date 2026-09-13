@@ -3697,7 +3697,8 @@ void vk_find_water_planes( const world_t *world )
 {
 	const int liquid = CONTENTS_WATER | CONTENTS_SLIME | CONTENTS_LAVA;
 	int surfaces = 0, waterSurfaces = 0;
-	int i, j;
+	vec3_t surfMins, surfMaxs;
+	int i, j, k;
 
 	vk.numWaterPlanes = 0;
 
@@ -3731,13 +3732,44 @@ void vk_find_water_planes( const world_t *world )
 		}
 		waterSurfaces++;
 
+		/*
+		[QL] The bounds of this face, so the plane can be bounded by them.
+
+		A plane is infinite and a pool is not. Testing against the plane alone
+		matches every surface in the map at the water's height - which on this
+		map is the wooden floor around the pool, and it shows up as bands and
+		speckles along the height lines rather than as anything that looks like
+		a mistake about water.
+		*/
+		ClearBounds( surfMins, surfMaxs );
+		for ( k = 0; k < face->numPoints; k++ ) {
+			AddPointToBounds( face->points[k], surfMins, surfMaxs );
+		}
+
+		/*
+		Merged into an existing record only when the plane matches *and* the
+		boxes touch, so a pool split into several BSP faces becomes one record
+		while two separate pools at the same height stay apart. Deduplicating on
+		the plane alone would merge those two into one box spanning the map
+		between them, which is the infinite-plane problem again in a smaller
+		box.
+		*/
 		known = qfalse;
 		for ( j = 0; j < vk.numWaterPlanes; j++ ) {
-			if ( fabsf( vk.waterPlanes[j].dist - face->plane.dist ) < 1.0f &&
-				 DotProduct( vk.waterPlanes[j].normal, face->plane.normal ) > 0.999f ) {
-				known = qtrue;
-				break;
+			vkWaterPlane_t *wp = &vk.waterPlanes[j];
+
+			if ( fabsf( wp->dist - face->plane.dist ) >= 1.0f ||
+				 DotProduct( wp->normal, face->plane.normal ) <= 0.999f ) {
+				continue;
 			}
+			if ( surfMins[0] > wp->maxs[0] + 1.0f || surfMaxs[0] < wp->mins[0] - 1.0f ||
+				 surfMins[1] > wp->maxs[1] + 1.0f || surfMaxs[1] < wp->mins[1] - 1.0f ) {
+				continue;   // same height, somewhere else
+			}
+			AddPointToBounds( surfMins, wp->mins, wp->maxs );
+			AddPointToBounds( surfMaxs, wp->mins, wp->maxs );
+			known = qtrue;
+			break;
 		}
 		if ( known ) {
 			continue;
@@ -3748,6 +3780,8 @@ void vk_find_water_planes( const world_t *world )
 
 		VectorCopy( face->plane.normal, vk.waterPlanes[ vk.numWaterPlanes ].normal );
 		vk.waterPlanes[ vk.numWaterPlanes ].dist = face->plane.dist;
+		VectorCopy( surfMins, vk.waterPlanes[ vk.numWaterPlanes ].mins );
+		VectorCopy( surfMaxs, vk.waterPlanes[ vk.numWaterPlanes ].maxs );
 		vk.numWaterPlanes++;
 	}
 
@@ -3761,9 +3795,12 @@ void vk_find_water_planes( const world_t *world )
 		vk.numWaterPlanes, waterSurfaces, surfaces );
 
 	for ( i = 0; i < vk.numWaterPlanes; i++ ) {
-		ri.Printf( PRINT_ALL, "  plane %i: normal %.2f %.2f %.2f at %.0f\n", i,
+		ri.Printf( PRINT_ALL, "  plane %i: normal %.2f %.2f %.2f at %.0f, "
+			"spanning %.0f %.0f to %.0f %.0f\n", i,
 			vk.waterPlanes[i].normal[0], vk.waterPlanes[i].normal[1],
-			vk.waterPlanes[i].normal[2], vk.waterPlanes[i].dist );
+			vk.waterPlanes[i].normal[2], vk.waterPlanes[i].dist,
+			vk.waterPlanes[i].mins[0], vk.waterPlanes[i].mins[1],
+			vk.waterPlanes[i].maxs[0], vk.waterPlanes[i].maxs[1] );
 	}
 
 	if ( vk.numWaterPlanes >= VK_MAX_WATER_PLANES ) {
@@ -12094,8 +12131,10 @@ typedef struct {
 	float invViewProj[16];
 	float eye[4];
 	float params[4];      // strength, distance, steps, thickness
-	float depthInfo[4];   // cleared depth, weapon band, sign, unused
+	float depthInfo[4];   // cleared depth, weapon band, sign, r_ssrDebug
 	float planes[SSR_MAX_PLANES][4];
+	float boundsMin[SSR_MAX_PLANES][4];
+	float boundsMax[SSR_MAX_PLANES][4];
 	float planeCount[4];
 } ssrUniform_t;
 
@@ -12542,6 +12581,10 @@ qboolean vk_ssr( void )
 		u->planes[i][1] = vk.waterPlanes[i].normal[1];
 		u->planes[i][2] = vk.waterPlanes[i].normal[2];
 		u->planes[i][3] = vk.waterPlanes[i].dist;
+
+		VectorCopy( vk.waterPlanes[i].mins, u->boundsMin[i] );
+		VectorCopy( vk.waterPlanes[i].maxs, u->boundsMax[i] );
+		u->boundsMin[i][3] = u->boundsMax[i][3] = 0.0f;
 	}
 	u->planeCount[0] = (float)i;
 	u->planeCount[1] = u->planeCount[2] = u->planeCount[3] = 0.0f;
