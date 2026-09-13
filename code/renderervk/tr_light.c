@@ -371,7 +371,35 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 		}
 		d = power / ( d * d );
 
-		VectorMA( ent->directedLight, d, dl->color, ent->directedLight );
+		/*
+		[QL] The dynamic light contribution belongs in the same space as
+		everything else in this function.
+
+		Every other term here is built in identityLight space - the no-lightgrid
+		fallback is identityLight * 150, the minimum add is identityLight * 32,
+		and ambient is clamped to identityLightByte. The light grid is shifted
+		to match at load. This one line was in absolute 0..255, which is only
+		the same thing when identityLight is 1.0.
+
+		tr.overbrightBits is forced to 0 in a window without an offscreen
+		target, so identityLight was 1.0 for years and the two spaces coincided.
+		r_rts provides that target, overbright goes to 1, identityLight becomes
+		0.5 - and the dynamic light term stays where it was, twice as strong
+		relative to the ambient floor it is summed against.
+
+		What that looks like is not "dynamic lights are bright". It is
+		RB_CalcDiffuseColor dropping every vertex whose normal faces away from
+		the light to ambient only, against a directed term that is now double -
+		so a grenade under a walkway lights the underside and takes the top of
+		it to near black, in a circle that shrinks as the explosion's radius
+		decays, because power goes as radius squared.
+
+		The direction pull below is stock behaviour and stays: one close light
+		does overwhelm the map's light direction for an entity, and that is how
+		Quake has always shaded a model next to an explosion. It was survivable
+		at the old contrast, and it is this line that changed the contrast.
+		*/
+		VectorMA( ent->directedLight, d * tr.identityLight, dl->color, ent->directedLight );
 		VectorMA( lightDir, d, dir, lightDir );
 	}
 
