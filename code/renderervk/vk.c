@@ -5327,11 +5327,41 @@ void vk_rt_build_world( const world_t *world )
 	uint32_t vertexCount, indexCount, i;
 	uint32_t totalVertices, totalIndices;
 	VkDeviceSize vertexBytes, indexBytes;
+	const msurface_t *worldSurfaces;
+	uint32_t worldSurfaceCount;
 
 	vk_rt_destroy_world();
 
 	if ( !vk.rtActive || world == NULL || world->numsurfaces <= 0 ) {
 		return;
+	}
+
+	/*
+	[QL] Submodel 0 only. This structure is the part of the map that cannot move.
+
+	world->surfaces holds every surface in the BSP, and the brush models - every
+	door, plat, mover and brush entity - keep theirs in that same array, each
+	one reached through its own submodel's firstSurface. Walking the array end
+	to end therefore baked every door into the static structure at the position
+	it was compiled at, where it stayed for the life of the map.
+
+	Those doors are also entities and get a proxy that does follow them. So a
+	door cast occlusion from two places at once: a shadow welded to its closed
+	position and a second one tracking the real one. Reported as the AO having
+	an open state and a closed state rather than an animation, which is what two
+	occluders and one door look like.
+
+	Submodel 0 is the world itself, and its range is the geometry that is
+	actually static. Everything past it belongs to something drawn as an entity,
+	and is occluded as one.
+	*/
+	worldSurfaces = world->surfaces;
+	worldSurfaceCount = (uint32_t)world->numsurfaces;
+
+	if ( world->bmodels != NULL && world->bmodels[0].numSurfaces > 0 &&
+		 world->bmodels[0].numSurfaces <= world->numsurfaces ) {
+		worldSurfaces = world->bmodels[0].firstSurface;
+		worldSurfaceCount = (uint32_t)world->bmodels[0].numSurfaces;
 	}
 	if ( rt_getPhysicalDeviceProperties2 == NULL ) {
 		rt_getPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)
@@ -5341,8 +5371,8 @@ void vk_rt_build_world( const world_t *world )
 	// pass one: how big
 	vertexCount = 0;
 	indexCount = 0;
-	for ( i = 0; i < (uint32_t)world->numsurfaces; i++ ) {
-		const msurface_t *surf = &world->surfaces[i];
+	for ( i = 0; i < worldSurfaceCount; i++ ) {
+		const msurface_t *surf = &worldSurfaces[i];
 
 		if ( !rt_surface_is_occluder( surf ) ) {
 			vk.rt.world.numSurfacesSkipped++;
@@ -5368,8 +5398,13 @@ void vk_rt_build_world( const world_t *world )
 	vk.rt.world.numTriangles = totalIndices / 3;
 
 	ri.Printf( PRINT_ALL, "RT: world geometry %i triangles from %i of %i surfaces (%i KiB)\n",
-		(int)vk.rt.world.numTriangles, (int)vk.rt.world.numSurfacesUsed, world->numsurfaces,
+		(int)vk.rt.world.numTriangles, (int)vk.rt.world.numSurfacesUsed, (int)worldSurfaceCount,
 		(int)( ( vertexBytes + indexBytes ) / 1024 ) );
+
+	if ( worldSurfaceCount != (uint32_t)world->numsurfaces ) {
+		ri.Printf( PRINT_ALL, "RT: %i surface(s) belong to movers and are occluded as entities\n",
+			world->numsurfaces - (int)worldSurfaceCount );
+	}
 
 	if ( !rt_create_buffer( vertexBytes,
 			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
@@ -5412,8 +5447,8 @@ void vk_rt_build_world( const world_t *world )
 
 	vertexCount = 0;
 	indexCount = 0;
-	for ( i = 0; i < (uint32_t)world->numsurfaces; i++ ) {
-		const msurface_t *surf = &world->surfaces[i];
+	for ( i = 0; i < worldSurfaceCount; i++ ) {
+		const msurface_t *surf = &worldSurfaces[i];
 
 		if ( !rt_surface_is_occluder( surf ) ) {
 			continue;
@@ -5441,8 +5476,8 @@ void vk_rt_build_world( const world_t *world )
 
 	vertexCount = 0;
 	indexCount = 0;
-	for ( i = 0; i < (uint32_t)world->numsurfaces; i++ ) {
-		const msurface_t *surf = &world->surfaces[i];
+	for ( i = 0; i < worldSurfaceCount; i++ ) {
+		const msurface_t *surf = &worldSurfaces[i];
 
 		if ( !rt_surface_is_occluder( surf ) ) {
 			continue;
