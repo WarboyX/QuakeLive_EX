@@ -63,57 +63,68 @@ models/weapons/nailgun/nailgun
 }
 
 // ---------------------------------------------------------------------------
-// The shoji screens.
+// The shoji screens, as frosted glass.
 //
 // These have no shader in pak00 - they are plain lightmapped surfaces, which
-// the renderer generates as two stages: the lightmap, then the diffuse
-// multiplied over it. What is below is exactly that generated pair, with one
-// change: the diffuse is scaled down so the result cannot reach 255.
+// the renderer generates as a lightmap stage and a diffuse multiplied over it.
+// The map lights near-white paper hard, and R_ColorShiftLightingBytes
+// normalises an overflowing lightmap texel by its brightest channel rather than
+// clipping, so a hot texel comes back (255,255,255) and stays there. Pinned at
+// white there is nothing left above, and an additive effect drawn over them adds
+// nothing at all. That is what ate the lightning bolt - four of the five bolt
+// styles are additive - and no work on the bolt could have fixed it.
 //
-// Why it needs to. The panes are near-white paper and the map lights them hard,
-// and R_ColorShiftLightingBytes normalises an overflowing lightmap texel by its
-// brightest channel rather than clipping - so a hot texel comes back as
-// (255,255,255) and stays there. Pinned at white there is no headroom left, and
-// an additive effect drawn over them adds nothing at all. That is what ate the
-// lightning bolt, and no amount of work on the bolt could have fixed it: four
-// of the five bolt styles are additive and the fifth only differs because it
-// blends.
+// Dimming the paper to 0.75 proved the diagnosis: the panes stopped being
+// perfectly white and the lightmap variation underneath them became visible for
+// the first time, having been hidden by the clipping all along. But it also
+// showed that dim paper is not what these want to be. What is behind them is
+// daylight, not a lamp in the room.
 //
-// The alternative was the overbright pipeline itself, which is where this went
-// first. r_fbo 1 does fix it - it stops textures being gamma-baked at upload and
-// moves overbright to shade time where nothing clamps - but that multiply then
-// lands on the whole frame instead of only the lightmap, and the rest of the
-// map blows out. Correcting one surface by re-exposing every surface is the
-// wrong trade.
+// So they are glass now rather than paper, and the shape of the shader is the
+// point rather than the numbers in it:
 //
-// 0.75 is a dial, not a derivation: it leaves about a quarter of the range free,
-// which is enough for an additive bolt to read, and costs a quarter of the glow.
-// These panes are the lit paper walls of the whole building seen from outside,
-// so the number is a look decision and belongs to whoever is looking at it.
+//   No lightmap. Backlit glass is lit from the far side, so shading it with the
+//   near side's lightmap is what produced the blotches - and dropping it makes
+//   the panels a uniform colour, which is what they read as from outside the
+//   building and what they should read as from inside.
 //
-// Both variants, because the map uses both and half a fix would show as a seam.
+//   A cool, dim base instead of hot white. This is the headroom: a surface that
+//   sits near 0.5 has half the range free, so anything additive drawn over it -
+//   a bolt, a muzzle flash, an explosion - has somewhere to go. It is also just
+//   what glass looks like next to lit wood.
+//
+//   An environment map over the top, additive and faint. That is the whole
+//   glass read: a sheen that slides across the panel as you move, which a flat
+//   texture cannot do at any brightness. envmapdimb is the dim neutral one -
+//   the coloured variants are for weapons and would tint the whole wall.
+//
+// Both variants, because the map uses both and half of it would show as a seam.
+// gothic_trim is a stock Quake 3 set, so any other map using window_a1/a2 gets
+// this too.
 textures/gothic_trim/window_a1
 {
 	{
-		map $lightmap
-		rgbGen identity
+		map textures/gothic_trim/window_a1.jpg
+		rgbGen const ( 0.50 0.54 0.60 )
 	}
 	{
-		map textures/gothic_trim/window_a1.jpg
-		blendFunc GL_DST_COLOR GL_ZERO
-		rgbGen const ( 0.75 0.75 0.75 )
+		map textures/effects/envmapdimb.jpg
+		blendFunc GL_ONE GL_ONE
+		tcGen environment
+		rgbGen const ( 0.30 0.30 0.34 )
 	}
 }
 
 textures/gothic_trim/window_a2
 {
 	{
-		map $lightmap
-		rgbGen identity
+		map textures/gothic_trim/window_a2.jpg
+		rgbGen const ( 0.50 0.54 0.60 )
 	}
 	{
-		map textures/gothic_trim/window_a2.jpg
-		blendFunc GL_DST_COLOR GL_ZERO
-		rgbGen const ( 0.75 0.75 0.75 )
+		map textures/effects/envmapdimb.jpg
+		blendFunc GL_ONE GL_ONE
+		tcGen environment
+		rgbGen const ( 0.30 0.30 0.34 )
 	}
 }
