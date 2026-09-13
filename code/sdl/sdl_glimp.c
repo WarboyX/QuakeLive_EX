@@ -981,6 +981,14 @@ void GLimp_Init(qboolean fixedFunction) {
     r_preferOpenGLES = ri.Cvar_Get("r_preferOpenGLES", "-1", CVAR_ARCHIVE | CVAR_LATCH);
 
     if (ri.Cvar_VariableIntegerValue("com_abnormalExit")) {
+        // [QL] Same reasoning as the Vulkan path in vk_window.c: these are
+        // archived cvars, so safe mode replaces them permanently and silently.
+        ri.Printf(PRINT_ALL, S_COLOR_YELLOW "Safe video settings applied: the last run did not exit cleanly "
+                             "and the startup dialog was answered yes.\n");
+        ri.Printf(PRINT_ALL, S_COLOR_YELLOW "Previous settings, to put them back: " S_COLOR_WHITE
+                             "\\r_mode %s; r_fullscreen %s; r_centerWindow %s; vid_restart\n",
+                  r_mode->string, r_fullscreen->string, r_centerWindow->string);
+
         ri.Cvar_Set("r_mode", va("%d", R_MODE_FALLBACK));
         ri.Cvar_Set("r_fullscreen", "0");
         ri.Cvar_Set("r_centerWindow", "0");

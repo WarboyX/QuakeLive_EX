@@ -324,6 +324,25 @@ void VKimp_Init(glconfig_t *config) {
     ri.Cvar_Get("r_availableModes", "", CVAR_ROM);
 
     if (ri.Cvar_VariableIntegerValue("com_abnormalExit")) {
+        /*
+        [QL] Say what safe mode took, and what it was.
+
+        Answering yes to the abnormal-exit dialog overwrites three cvars that
+        are CVAR_ARCHIVE, so the replacements are written to the config on the
+        next clean quit and become what the game starts with from then on. The
+        originals are gone at that point and nothing ever recorded them.
+
+        Clicking through that dialog during a crash loop therefore leaves a
+        player at 1024x768 in a window, permanently, with nothing on screen or
+        in the log connecting it to the dialog they answered. Printing the
+        restore line costs nothing and makes it one paste to undo.
+        */
+        ri.Printf(PRINT_ALL, S_COLOR_YELLOW "Safe video settings applied: the last run did not exit cleanly "
+                             "and the startup dialog was answered yes.\n");
+        ri.Printf(PRINT_ALL, S_COLOR_YELLOW "Previous settings, to put them back: " S_COLOR_WHITE
+                             "\\r_mode %s; r_fullscreen %s; r_centerWindow %s; vid_restart\n",
+                  r_mode->string, r_fullscreen->string, r_centerWindow->string);
+
         ri.Cvar_Set("r_mode", va("%d", VK_MODE_FALLBACK));
         ri.Cvar_Set("r_fullscreen", "0");
         ri.Cvar_Set("r_centerWindow", "0");
