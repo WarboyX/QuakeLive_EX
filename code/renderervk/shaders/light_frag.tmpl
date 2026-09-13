@@ -152,6 +152,43 @@ void main() {
 		specFactor = abs( specFactor );
 	}
 
+	/*
+	[QL] A surface facing away from the light receives no light. It does not
+	receive negative light.
+
+	dot(N,L) is negative for every fragment on the far side of a surface from
+	the light, and nothing clamped it. This pass blends ONE/ONE, so a negative
+	fragment colour is subtracted from the scene - the dynamic light darkens the
+	side of the geometry it does not reach, by as much as it brightens the side
+	it does.
+
+	It was invisible for as long as the scene target was fixed-point, because
+	Vulkan clamps the source and destination of a blend to [0,1] before
+	evaluating it when the attachment is fixed-point, and does not clamp at all
+	when it is floating-point. r_rts supplies a floating-point target. That is
+	the whole of why this appeared with r_rts and only with r_rts, and why
+	r_rts 2 did not help: B10G11R11 is floating-point too, so it is equally
+	unclamped at blend time and only clamps when the result is written - which
+	stops the pixel going below black without stopping it going below what was
+	already there.
+
+	Reported as a grenade under a walkway lighting the underside and putting a
+	black circle on the top, the circle shrinking with the light's radius. That
+	is exactly this: intensFactor bounds the circle at the radius, and the sign
+	of dot(N,L) picks which face of the walkway is lit and which is subtracted
+	from.
+
+	pow() of a negative base is undefined in GLSL, and specFactor went straight
+	into pow(specFactor, 10.0), so the specular term had the same problem with
+	less of a pattern to it.
+
+	After the abs_light branch, not before: that mode deliberately takes the
+	absolute value of both to light two-sided surfaces from either face, and
+	max(abs(x), 0.0) is abs(x), so one clamp here is correct for both paths.
+	*/
+	diffuse = max( diffuse, 0.0 );
+	specFactor = max( specFactor, 0.0 );
+
 	//float spec = pow(specFactor, 8.0) * 0.25;
 	vec4 spec = vec4(pow(specFactor, 10.0)*0.25) * base * 0.8;
 
