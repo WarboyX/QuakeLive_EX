@@ -1417,6 +1417,54 @@ static const void *RB_DrawSurfs( const void *data ) {
 	// add light flares on lights that aren't obscured
 	RB_RenderFlares();
 
+	/*
+	[QL] 3D is on screen from here. Moved up from the end of this function,
+	where it was set for bloom's benefit, because ambient occlusion now runs
+	below and uses the same flag to know there is a scene to darken.
+	*/
+	backEnd.doneSurfaces = qtrue;
+
+#ifdef USE_VULKAN
+	/*
+	[QL] Ambient occlusion goes before the dynamic lights, not after everything.
+
+	AO estimates how much *ambient* light reaches a point. It has no business
+	attenuating direct light, and it was doing exactly that: the pass ran at the
+	3D-to-2D transition, by which time every dynamic light was already summed
+	into the scene colour, so the whole lot got multiplied by the occlusion
+	term. A plasma ball lighting a corner had its own light darkened by that
+	corner's occlusion, which is backwards, and is a large part of why the
+	occlusion read as grime around bright sources rather than as shading.
+
+	Here, AO multiplies the lightmapped scene and the dynamic lights are added
+	on top of the result, untouched. That is not an approximation of the
+	behaviour - passing the light list into the AO shader and fading occlusion
+	where the light reaches would have been - it is the ordering the term is
+	defined by, it costs nothing, and it covers every light rather than however
+	many would fit in a push constant.
+
+	The depth buffer is complete here: the lit passes below are DEPTHFUNC_EQUAL
+	redraws and never write depth, so the trace sees exactly the surfaces it
+	would have seen at the end of the frame.
+
+	Safe against the render pass structure because vk_rt_ao ends the main pass
+	itself and leaves its own composite pass open in its place, and the two are
+	render-pass compatible - same attachments, formats and sample counts - so
+	the geometry pipelines built for the main pass draw into it unchanged. It
+	deliberately leaves vk.renderPassIndex alone for that reason.
+	RB_BeginDrawingLitSurfs below re-establishes the viewport and forces the
+	cull state, which is what a fullscreen pass in the middle needs.
+
+	The screenmap view is unaffected: vk_rt_ao returns on its first line when
+	the screenmap pass is the active one.
+
+	The two later calls are left where they are. They are no-ops once
+	backEnd.doneRTAO is set, and they still catch a frame that reaches the 2D
+	stage without having come through here.
+	*/
+	vk_rt_ao();
+#endif
+
 #ifdef USE_PMLIGHT
 	if ( backEnd.refdef.numLitSurfs ) {
 		RB_BeginDrawingLitSurfs();
@@ -1436,7 +1484,7 @@ static const void *RB_DrawSurfs( const void *data ) {
 #endif
 
 	//TODO Maybe check for rdf_noworld stuff but q3mme has full 3d ui
-	backEnd.doneSurfaces = qtrue; // for bloom
+	// [QL] backEnd.doneSurfaces is set above now, before the occlusion pass.
 
 	return (const void *)(cmd + 1);
 }
