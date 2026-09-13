@@ -48,7 +48,7 @@ layout(set = 0, binding = 2) uniform SSR {
 	  x  the value the depth buffer is cleared to
 	  y  where the weapon's squashed depth range begins
 	  z  +1 when near is 1.0 and far is 0.0 (USE_REVERSED_DEPTH), -1 otherwise
-	  w  unused
+	  w  r_ssrDebug: 0 normal, 1 show the water mask, 2 show the raw reflection
 	*/
 	vec4 depthInfo;
 	vec4 planes[SSR_MAX_PLANES];   // xyz = normal, w = dist
@@ -132,6 +132,29 @@ void main() {
 		}
 	}
 	if (!onWater) {
+		return;
+	}
+
+	/*
+	[QL] r_ssrDebug 1: where the water test passed, and nothing else.
+
+	This separates the three ways the feature can produce no visible change, and
+	they need completely different fixes:
+
+	  a black screen  - the pass is not running at all
+	  no green        - the plane test never matches, so the depth buffer does
+	                    not contain the water surface. That happens when the
+	                    water shader does not write depth, in which case the
+	                    depth there is the pool floor and no tolerance around
+	                    the plane will ever help
+	  green, no image - water is found and the march finds nothing, which is
+	                    distance, steps or thickness
+
+	Worth the eight lines. Guessing between those three from "the water looks
+	the same" is exactly the loop that has cost the most time on this project.
+	*/
+	if (depthInfo.w == 1.0) {
+		out_color = vec4(0.0, 1.0, 0.0, 1.0);
 		return;
 	}
 
@@ -220,6 +243,14 @@ void main() {
 			hit = edgeFade * distFade * mix(0.15, 1.0, fresnel);
 			break;
 		}
+	}
+
+	/* r_ssrDebug 2: the reflection itself, unfaded, and red where the march
+	   found nothing - which tells distance/steps/thickness apart from a bad
+	   reflection. */
+	if (depthInfo.w == 2.0) {
+		out_color = (hit > 0.0) ? vec4(hitColor, 1.0) : vec4(1.0, 0.0, 0.0, 1.0);
+		return;
 	}
 
 	if (hit <= 0.0) {

@@ -1429,6 +1429,7 @@ extern	cvar_t	*r_ssr;							// [QL] R19: reflection strength on water, 0 = off
 extern	cvar_t	*r_ssrDistance;					// [QL] how far a reflected ray travels
 extern	cvar_t	*r_ssrSteps;					// [QL] how many steps it takes getting there
 extern	cvar_t	*r_ssrThickness;				// [QL] how far behind a sample still counts as a hit
+extern	cvar_t	*r_ssrDebug;					// [QL] 1 = water mask, 2 = raw reflection
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
 

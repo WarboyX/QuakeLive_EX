@@ -24,4 +24,21 @@ layout(location = 0) out vec4 out_color;
 
 void main() {
 	out_color = texture(reflectionMap, frag_tex_coord);
+
+	/*
+	[QL] Belt and braces, and it earns its place.
+
+	The blend is source-alpha, so alpha 0 is already a no-op arithmetically -
+	but only if the alpha that arrives is the alpha the trace wrote. If the
+	offscreen target ever ends up in a format without an alpha channel, reads of
+	it return 1.0, and every pixel on screen would be replaced by a mostly-black
+	reflection image instead of being left alone. The target takes
+	vk.color_format, and B10G11R11 - which r_rts 2 selects - has no alpha.
+
+	Discarding on zero makes "no reflection here" mean no write at all, rather
+	than a write that happens to multiply out.
+	*/
+	if ( out_color.a <= 0.0 ) {
+		discard;
+	}
 }

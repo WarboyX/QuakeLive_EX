@@ -158,6 +158,7 @@ cvar_t	*r_ssr;
 cvar_t	*r_ssrDistance;
 cvar_t	*r_ssrSteps;
 cvar_t	*r_ssrThickness;
+cvar_t	*r_ssrDebug;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -2027,6 +2028,20 @@ static void R_Register( void )
 		"The depth buffer records a front face and says nothing about what is behind it, so this "
 		"is a guess at how solid things are. Too small and rays tunnel through railings and "
 		"pillars; too large and a ray reflects the empty space in front of a distant wall." );
+
+	r_ssrDebug = ri.Cvar_Get( "r_ssrDebug", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrDebug, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssrDebug, "Show what the reflection pass is doing instead of its "
+		"result.\n"
+		" 0 - off\n"
+		" 1 - paint the water green. Nothing green means the depth buffer does not contain the "
+		"water surface, which happens when the water shader does not write depth - no amount of "
+		"tolerance will help and the approach needs changing\n"
+		" 2 - the reflection itself, unfaded, red where the march found nothing. Red means "
+		S_COLOR_CYAN "\\r_ssrDistance" S_COLOR_WHITE ", " S_COLOR_CYAN "\\r_ssrSteps"
+		S_COLOR_WHITE " or " S_COLOR_CYAN "\\r_ssrThickness" S_COLOR_WHITE "\n"
+		"Needs " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " above 0 - this changes what the pass "
+		"draws, it does not turn it on." );
 
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );

@@ -12533,7 +12533,9 @@ qboolean vk_ssr( void )
 	u->depthInfo[1] = 0.3f;   // DEPTH_RANGE_WEAPON maxDepth
 	u->depthInfo[2] = -1.0f;
 #endif
-	u->depthInfo[3] = 0.0f;
+	/* [QL] r_ssrDebug - see the shader. 0 to 2 are exactly representable, so the
+	   equality compares over there are exact. */
+	u->depthInfo[3] = (float)r_ssrDebug->integer;
 
 	for ( i = 0; i < vk.numWaterPlanes && i < SSR_MAX_PLANES; i++ ) {
 		u->planes[i][0] = vk.waterPlanes[i].normal[0];
