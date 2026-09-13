@@ -14,6 +14,7 @@ layout(constant_id = 7) const int ditherMode = 0; // 0 - disabled, 1 - ordered
 layout(constant_id = 8) const int depth_r = 255;
 layout(constant_id = 9) const int depth_g = 255;
 layout(constant_id = 10) const int depth_b = 255;
+layout(constant_id = 11) const int toneMap = 0; // 0 - clip, 1 - roll off
 
 const vec3 sRGB = { 0.2126, 0.7152, 0.0722 };
 
@@ -61,7 +62,36 @@ void main() {
 
 	if ( gamma != 1.0 )
 	{
-		out_color = vec4(pow(base, vec3(gamma)) * obScale, 1);
+		base = pow(base, vec3(gamma));
+	}
+
+	/*
+	[QL] Overbright, with or without somewhere for the top of the range to go.
+
+	toneMap 0 is the original: multiply and let the hardware clamp. Every value
+	above 1/obScale lands on exactly 1.0, so at obScale 4 the top three quarters
+	of the range become one colour and any surface already near white has
+	nothing added to it - which is what makes an additive effect drawn over a
+	lit paper screen invisible.
+
+	toneMap 1 is Reinhard with a white point, and the white point is obScale
+	itself: 0 maps to 0, obScale maps to 1, and the curve is near enough linear
+	at the bottom that shadows and midtones keep the brightening they were asked
+	for. What changes is the top - it compresses towards white instead of
+	arriving there and stopping, so bright surfaces stay distinguishable from
+	each other and still have room above them.
+
+	Per channel rather than on luminance. Luminance-based tone mapping keeps
+	saturation better, but it also shifts hue on anything that clips in one
+	channel only, and Quake's palette does that constantly - a saturated red
+	lamp, a green rail trail. Per channel is the more predictable of the two
+	here.
+	*/
+	if ( toneMap == 1 )
+	{
+		vec3 c = base * obScale;
+		float w = max(obScale, 1.0);
+		out_color = vec4((c * (1.0 + c / (w * w))) / (1.0 + c), 1);
 	}
 	else
 	{

@@ -8122,7 +8122,7 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	VkGraphicsPipelineCreateInfo create_info;
 	VkViewport viewport;
 	VkRect2D scissor;
-	VkSpecializationMapEntry spec_entries[11];
+	VkSpecializationMapEntry spec_entries[12];
 	VkSpecializationInfo frag_spec_info;
 	VkPipeline *pipeline;
 	VkShaderModule fsmodule;
@@ -8150,6 +8150,7 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 		int depth_r;
 		int depth_g;
 		int depth_b;
+		int toneMap;
 	} frag_spec_data;
 
 	switch ( program_index ) {
@@ -8268,6 +8269,21 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	frag_spec_data.bloom_threshold_mode = r_bloom_threshold_mode->integer;
 	frag_spec_data.bloom_modulate = r_bloom_modulate->integer;
 	frag_spec_data.dither = r_dither->integer;
+	/*
+	[QL] Roll the overbright multiply off instead of letting it clip.
+
+	The present pass ends in base * obScale, where obScale is 2^overbrightBits -
+	a hard multiply with nothing to catch what goes over 1.0. At
+	r_overBrightBits 2 that is four, so every pixel above a quarter intensity
+	comes out white and the top three quarters of the range collapse into one
+	value. That is not a bug in anything, it is the absence of a tone curve, and
+	it is why the map cannot be made brighter without the bright parts going
+	flat.
+
+	Off by default, because it changes every pixel of the image and that is a
+	look decision.
+	*/
+	frag_spec_data.toneMap = r_toneMap->integer;
 
 	if ( !vk_surface_format_color_depth( vk.present_format.format, &frag_spec_data.depth_r, &frag_spec_data.depth_g, &frag_spec_data.depth_b ) )
 		ri.Printf( PRINT_ALL, "Format %s not recognized, dither to assume 8bpc\n", vk_format_string( vk.base_format.format ) );
@@ -8316,7 +8332,11 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	spec_entries[10].offset = offsetof(struct FragSpecData, depth_b);
 	spec_entries[10].size = sizeof(frag_spec_data.depth_b);
 
-	frag_spec_info.mapEntryCount = 11;
+	spec_entries[11].constantID = 11;
+	spec_entries[11].offset = offsetof( struct FragSpecData, toneMap );
+	spec_entries[11].size = sizeof( frag_spec_data.toneMap );
+
+	frag_spec_info.mapEntryCount = 12;
 	frag_spec_info.pMapEntries = spec_entries;
 	frag_spec_info.dataSize = sizeof( frag_spec_data );
 	frag_spec_info.pData = &frag_spec_data;

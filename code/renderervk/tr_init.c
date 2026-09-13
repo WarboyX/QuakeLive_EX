@@ -151,6 +151,7 @@ cvar_t	*r_rtaoSamples;
 cvar_t	*r_rtDynamic;
 cvar_t	*r_rtaoNormals;
 cvar_t	*r_rtaoWeapon;
+cvar_t	*r_toneMap;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
@@ -1966,6 +1967,17 @@ static void R_Register( void )
 		" -1 - first discrete GPU\n" \
 		" -2 - first integrated GPU" );
 	r_device->modified = qfalse;
+
+	r_toneMap = ri.Cvar_Get( "r_toneMap", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_toneMap, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_toneMap, "How the overbright multiply reaches the screen. "
+		"Requires " S_COLOR_CYAN "\\r_fbo 1" S_COLOR_WHITE ".\n"
+		" 0 - multiply and clamp, as every build before this one. Everything above "
+		"1/overbright lands on white, so at r_overBrightBits 2 the top three quarters "
+		"of the range become one colour\n"
+		" 1 - roll the top off instead, so bright surfaces stay apart from each other "
+		"and keep room above them for anything additive\n"
+		"Changes every pixel of the image, so it is off by default." );
 
 	r_fbo = ri.Cvar_Get( "r_fbo", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_fbo, "Use framebuffer objects, enables gamma correction in windowed mode and allows arbitrary video size and screenshot/video capture.\n Required for bloom, HDR rendering, anti-aliasing and greyscale effects." );
