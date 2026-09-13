@@ -948,6 +948,33 @@ static void vk_create_rtao_offscreen_render_pass( VkDevice device )
 }
 
 
+/*
+[QL] One answer to "is there an offscreen colour target this frame?".
+
+r_rts cannot draw into a float target without the offscreen pass r_fbo builds,
+so it has to imply it. The first version of that implication only set
+vk.fboActive, and left the render passes, the framebuffers and the present
+format reading r_fbo->integer on their own - two sources of truth for one
+structural decision.
+
+r_fbo defaults to 0, so on a stock config r_rts 1 produced a renderer whose
+draw path resolved an offscreen colour image at end of frame while its
+framebuffers pointed straight at the swapchain and no such image was ever
+rendered into. Nothing in initialisation can see that: every object is created
+successfully, just for two different renderers. The log ran to the end, printed
+the format, the MSAA level and the AO pass, and the process died on the first
+menu frame with no Com_Error to say why - and because r_rts is archived, the
+next launch did it again.
+
+Every site that decides structure calls this. Nothing reads r_fbo->integer for
+that question any more.
+*/
+qboolean vk_fbo_wanted( void )
+{
+	return ( r_fbo->integer || r_rts->integer ) ? qtrue : qfalse;
+}
+
+
 static void vk_create_render_passes( void )
 {
 	VkAttachmentDescription attachments[3]; // color | depth | msaa color
@@ -971,7 +998,9 @@ static void vk_create_render_passes( void )
 		vk_create_rtao_offscreen_render_pass( device );
 	}
 
-	if ( r_fbo->integer == 0 )
+	vk.fboRenderPasses = vk_fbo_wanted();
+
+	if ( !vk.fboRenderPasses )
 	{
 		// presentation
 		attachments[0].flags = 0;
@@ -1114,7 +1143,7 @@ static void vk_create_render_passes( void )
 	deps[2].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;			// What access scopes are waiting on the dependency
 	deps[2].dependencyFlags = 0;
 
-	if ( r_fbo->integer == 0 )
+	if ( !vk.fboRenderPasses )
 	{
 		desc.dependencyCount = 1;
 		desc.pDependencies = &deps[2];
@@ -1831,7 +1860,7 @@ static qboolean vk_blit_enabled( VkPhysicalDevice physical_device, const VkForma
 
 static VkFormat get_hdr_format( VkFormat base_format )
 {
-	if ( r_fbo->integer == 0 ) {
+	if ( !vk_fbo_wanted() ) {
 		return base_format;
 	}
 
@@ -1903,7 +1932,7 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 
 	get_present_format( 24, &base_bgr, &base_rgb );
 
-	if ( r_fbo->integer ) {
+	if ( vk_fbo_wanted() ) {
 		get_present_format( r_presentBits->integer, &ext_bgr, &ext_rgb );
 	} else {
 		ext_bgr = base_bgr;
@@ -1939,7 +1968,7 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 		}
 	}
 
-	if ( !r_fbo->integer ) {
+	if ( !vk_fbo_wanted() ) {
 		vk.present_format = vk.base_format;
 	}
 
@@ -1989,6 +2018,16 @@ static void setup_surface_formats( VkPhysicalDevice physical_device )
 			ri.Printf( PRINT_WARNING, "r_rts: this device cannot blend to a float colour target, "
 				"falling back to the fixed range one\n" );
 			ri.Cvar_Set( "r_rts", "0" );
+
+			/* Turning it off here changes the answer vk_fbo_wanted() gives, and
+			   two decisions were already taken with the old one: the present
+			   format, chosen in vk_select_surface_format just above, and the
+			   colour format on the line above that. Retake both, or this path
+			   leaves a renderer configured half for a feature that is off. */
+			vk.color_format = get_hdr_format( vk.base_format.format );
+			if ( !vk_fbo_wanted() ) {
+				vk.present_format = vk.base_format;
+			}
 		}
 	}
 
@@ -6428,7 +6467,7 @@ static void vk_create_framebuffers( void )
 	{
 		desc.renderPass = vk.render_pass.main;
 		desc.attachmentCount = 2;
-		if ( r_fbo->integer == 0 )
+		if ( !vk.fboRenderPasses )
 		{
 			desc.width = gls.windowWidth;
 			desc.height = gls.windowHeight;
@@ -6559,6 +6598,23 @@ static void vk_create_framebuffers( void )
 				SET_OBJECT_NAME( vk.framebuffers.blur[n+1], va( "framebuffer - blur %i", n+1 ), VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 			}
 		}
+	}
+
+	/*
+	[QL] Fail here, where it can be read, rather than on the first frame.
+
+	This exact disagreement - a draw path resolving an offscreen image against
+	framebuffers built for the swapchain - initialises cleanly and then takes
+	the process down with nothing logged. Cost three launches and a config the
+	user could not start the game with. One comparison is enough to turn it
+	into a line of text.
+	*/
+	if ( vk.fboActive != vk.fboRenderPasses ) {
+		ri.Error( ERR_FATAL, "vk: draw path wants the %s target but the render passes "
+			"were built for the %s one. r_fbo %i, r_rts %i",
+			vk.fboActive ? "offscreen" : "swapchain",
+			vk.fboRenderPasses ? "offscreen" : "swapchain",
+			r_fbo->integer, r_rts->integer );
 	}
 }
 
@@ -6797,7 +6853,7 @@ static void vk_set_render_scale( void )
 		vk.windowAdjusted = qtrue;
 	}
 
-	if ( r_fbo->integer && r_ext_supersample->integer && !r_renderScale->integer )
+	if ( vk_fbo_wanted() && r_ext_supersample->integer && !r_renderScale->integer )
 	{
 		vk.blitFilter = GL_LINEAR;
 	}
@@ -6838,7 +6894,7 @@ void vk_initialize( void )
 
 	/* [QL] r_rts draws into a float target and resolves it at the end, so it
 	   needs the offscreen pass r_fbo provides, whether or not r_fbo asked. */
-	if ( r_fbo->integer || r_rts->integer ) {
+	if ( vk_fbo_wanted() ) {
 		vk.fboActive = qtrue;
 		if ( r_ext_multisample->integer ) {
 			vk.msaaActive = qtrue;

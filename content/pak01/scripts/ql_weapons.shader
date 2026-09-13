@@ -101,8 +101,18 @@ models/weapons/nailgun/nailgun
 // Both variants, because the map uses both and half of it would show as a seam.
 // gothic_trim is a stock Quake 3 set, so any other map using window_a1/a2 gets
 // this too.
+// [QL] The shoji panes are glass, not lit paper.
+//
+// surfaceparm nolightmap is not decoration here. The BSP carries lightmap data
+// for these faces, and a shader with no lightmap stage to consume it logs
+// "has lightmap but no lightmap stage!" and then takes whatever the engine
+// decides to do about it - which was the panes picking up shadowing and coming
+// out unevenly lit, the thing that made them look wrong in the first place.
+// Declaring it says the surface does not want one, so the colour below is the
+// colour, everywhere on the pane.
 textures/gothic_trim/window_a1
 {
+	surfaceparm nolightmap
 	{
 		map textures/gothic_trim/window_a1.jpg
 		rgbGen const ( 0.50 0.54 0.60 )
@@ -117,6 +127,7 @@ textures/gothic_trim/window_a1
 
 textures/gothic_trim/window_a2
 {
+	surfaceparm nolightmap
 	{
 		map textures/gothic_trim/window_a2.jpg
 		rgbGen const ( 0.50 0.54 0.60 )

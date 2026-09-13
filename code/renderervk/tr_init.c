@@ -556,7 +556,7 @@ static void InitOpenGL( void )
 
 		ri.CL_SetScaling( 1.0, glConfig.vidWidth, glConfig.vidHeight );
 
-		if ( r_fbo->integer )
+		if ( vk_fbo_wanted() )
 		{
 			if ( r_renderScale->integer )
 			{

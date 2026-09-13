@@ -263,6 +263,10 @@ typedef struct vkUniform_s {
 // After calling this function we get fully functional vulkan subsystem.
 void vk_initialize( void );
 
+// [QL] is an offscreen colour target being used? r_fbo asks for one; r_rts
+// needs one. Every structural decision reads this and not r_fbo directly.
+qboolean vk_fbo_wanted( void );
+
 // Called after initialization or renderer restart
 void vk_init_descriptors( void );
 
@@ -696,6 +700,10 @@ typedef struct {
 
 	qboolean clearAttachment;		// requires VK_IMAGE_USAGE_TRANSFER_DST_BIT for swapchains
 	qboolean fboActive;
+	/* [QL] Which topology the render passes and framebuffers were actually
+	   built for. fboActive says what the draw path intends to do; this says
+	   what it has to do it with. They must agree - see vk_fbo_wanted(). */
+	qboolean fboRenderPasses;
 	qboolean blitEnabled;
 	qboolean msaaActive;
 
