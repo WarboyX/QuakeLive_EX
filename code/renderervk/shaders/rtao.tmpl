@@ -54,6 +54,28 @@ layout(set = 0, binding = 0) uniform sampler2D depthMap;
 #endif
 layout(set = 0, binding = 1) uniform accelerationStructureEXT topLevel;
 
+/*
+[QL] This frame's dynamic lights.
+
+Ambient occlusion estimates how much *ambient* light reaches a point. Where a
+rocket, a plasma bolt or a powerup is doing the lighting, the ambient term is a
+small part of what is there and its contact shadow should stop being drawn -
+left in, it reads as dirt on a lit surface rather than as shading.
+
+lights[i].xyz is the world origin and .w is 1/(radius*radius), which is the same
+falloff term light_frag.tmpl uses. Same number, same shape, so the region the
+occlusion fades in is exactly the region the light lit, with nothing to tune to
+make the two agree.
+
+lightParams.x is how many are filled, .y is r_rtaoLights.
+*/
+#define RT_MAX_AO_LIGHTS 32
+
+layout(set = 0, binding = 2) uniform Lights {
+	vec4 lightParams;
+	vec4 lights[RT_MAX_AO_LIGHTS];
+};
+
 layout(location = 0) in vec2 frag_tex_coord;
 layout(location = 0) out vec4 out_color;
 
@@ -374,5 +396,29 @@ void main() {
 	}
 
 	float ao = 1.0 - (occluded / float(sampleCount)) * pc.params.y;
+
+	/*
+	[QL] Fade the occlusion out inside whatever is lighting this point.
+
+	Accumulated across the lights rather than taken as a maximum, so two bolts
+	overlapping clear more than either alone - which is what the light they add
+	does. Clamped once at the end, so the sum cannot invert the term.
+
+	Uses the light's own falloff, so the shape of the fade is the shape of the
+	light and a small tight bolt clears a small tight area.
+	*/
+	if ( lightParams.y > 0.0 && lightParams.x > 0.0 ) {
+		int lightCount = int(lightParams.x);
+		float lit = 0.0;
+		int li;
+
+		for ( li = 0; li < lightCount; li++ ) {
+			vec3 d = lights[li].xyz - P;
+			lit += max( 0.0, 1.0 - dot(d, d) * lights[li].w );
+		}
+
+		ao = mix( ao, 1.0, clamp( lit * lightParams.y, 0.0, 1.0 ) );
+	}
+
 	out_color = vec4(clamp(ao, 0.0, 1.0));
 }

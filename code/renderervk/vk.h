@@ -867,6 +867,22 @@ typedef struct {
 		VkPipelineLayout		pipeline_layout;
 
 		/*
+		[QL] The frame's dynamic lights, for the trace to fade occlusion inside.
+
+		Binding 2 of the trace set. One buffer per command buffer for the same
+		reason the sets are: it is rewritten every frame and the previous frame
+		may still be reading it.
+
+		A uniform buffer rather than more push constants because rtaoPush_t is
+		already 96 of the 128 bytes every implementation guarantees, which
+		leaves room for two lights - enough for an explosion, not enough for a
+		stream of plasma, which is the case this exists for.
+		*/
+		VkBuffer				light_buffer[ NUM_COMMAND_BUFFERS ];
+		VkDeviceMemory			light_memory[ NUM_COMMAND_BUFFERS ];
+		void					*light_ptr[ NUM_COMMAND_BUFFERS ];
+
+		/*
 		[QL] R13 step 3c: the denoise targets and the passes that use them.
 
 		[0] is what the trace writes, [1] what the horizontal blur writes. Both

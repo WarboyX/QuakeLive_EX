@@ -1422,6 +1422,7 @@ extern	cvar_t	*r_rtaoNormals;					// [QL] R13: where the AO normal comes from
 extern	cvar_t	*r_rtaoWeapon;					// [QL] R13: occlude the first person weapon
 extern	cvar_t	*r_rts;							// [QL] real time shading: float target + tone curve
 extern	cvar_t	*r_rtaoDenoise;					// [QL] R13: bilateral denoise width (latched)
+extern	cvar_t	*r_rtaoLights;					// [QL] dynamic lights clear occlusion where they reach
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
 

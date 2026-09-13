@@ -153,6 +153,7 @@ cvar_t	*r_rtaoNormals;
 cvar_t	*r_rtaoWeapon;
 cvar_t	*r_rts;
 cvar_t	*r_rtaoDenoise;
+cvar_t	*r_rtaoLights;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -1970,6 +1971,18 @@ static void R_Register( void )
 		"It darkens against the world - a corner, a low ceiling - but does not shadow "
 		"itself, because the view model is deliberately not an occluder: a box around "
 		"the camera would black out the whole screen from inside.\nLive." );
+
+	r_rtaoLights = ri.Cvar_Get( "r_rtaoLights", "1", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_rtaoLights, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtaoLights, "How much a dynamic light clears ambient occlusion "
+		"inside the area it lights.\n"
+		"Occlusion estimates how much " S_COLOR_CYAN "ambient" S_COLOR_WHITE " light reaches a "
+		"point. Where a rocket, a plasma bolt or a powerup is the light, the ambient term is a "
+		"small part of what is there and its contact shadow should stop being drawn - otherwise "
+		"the occlusion reads as dirt on a lit surface.\n"
+		" 0 - off, occlusion is the same whatever is lighting the area\n"
+		" 1 - fully cleared where the light reaches\n"
+		"The area is the light's own falloff, so it matches what the light actually lit." );
 
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );

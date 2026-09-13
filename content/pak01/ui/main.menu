@@ -1796,6 +1796,18 @@
         // [QL] A handful of rays per pixel is a noisy estimate, not a smooth
         // one, so this is on by default and turning it off is a diagnostic
         // rather than a performance option - it is what shows you the raw trace.
+        // [QL] Occlusion is an ambient term. Where a rocket or a plasma bolt is
+        // the light, the ambient part is small and its contact shadow should
+        // stop being drawn - left in, it reads as dirt on a lit surface. The
+        // area cleared is the light's own falloff, so it matches what the light
+        // actually lit.
+        itemDef { text "Lights clear AO:"  textscale .22  rect 30 400 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name aolights  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoLights"
+            cvarFloatList { "Off" 0 "Half" 0.5 "Full (default)" 1 }
+            rect 230 400 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
         itemDef { text "Denoise:"  textscale .22  rect 30 356 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
             name aodenoise  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoDenoise"

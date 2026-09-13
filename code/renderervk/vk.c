@@ -4009,6 +4009,34 @@ typedef struct {
 	float depthLinear[4];  // proj[10], proj[14], depth tolerance, unused
 } rtaoBlurPush_t;
 
+/*
+[QL] The frame's dynamic lights, so the trace can fade occlusion inside them.
+
+Ambient occlusion estimates how much *ambient* light reaches a point. Where a
+local light dominates the illumination, the ambient term is a small part of what
+is there and its occlusion should not keep painting a contact shadow - which is
+why occlusion reads as grime around a plasma bolt or a powerup rather than as
+shading.
+
+Each light is xyz = world origin, w = 1/(radius*radius), which is exactly the
+form light_frag.tmpl uses for its own falloff. Same number, same shape, so the
+region the occlusion fades in is the region the light actually lights, rather
+than an approximation of it that has to be tuned to agree.
+
+32 is well past what is on screen at once: the engine's own ceiling is 64 and a
+plasma stream is the worst realistic case at around a dozen.
+*/
+#define RT_MAX_AO_LIGHTS 32
+
+typedef struct {
+	float params[4];                      // x = count, y = strength, zw unused
+	float light[RT_MAX_AO_LIGHTS][4];     // xyz = origin, w = 1/(r*r)
+} rtaoLights_t;
+
+/* Defined below vk_rt_create_ao, which needs it. */
+static qboolean rt_create_host_buffer( VkDeviceSize size, VkBufferUsageFlags usage,
+	VkBuffer *buffer, VkDeviceMemory *memory, void **mapped );
+
 /* [QL] One line each per map, not per frame - 250 of these a second is not a
    diagnostic. Reset when the world is rebuilt, which is where a change of state
    would actually matter. */
@@ -4059,6 +4087,20 @@ static void vk_rt_destroy_ao( void )
 		qvkDestroyPipelineLayout( vk.device, vk.rt.blur_pipeline_layout, NULL );
 		vk.rt.blur_pipeline_layout = VK_NULL_HANDLE;
 	}
+	{
+		uint32_t li;
+		for ( li = 0; li < ARRAY_LEN( vk.rt.light_buffer ); li++ ) {
+			if ( vk.rt.light_buffer[li] != VK_NULL_HANDLE ) {
+				qvkUnmapMemory( vk.device, vk.rt.light_memory[li] );
+				qvkDestroyBuffer( vk.device, vk.rt.light_buffer[li], NULL );
+				qvkFreeMemory( vk.device, vk.rt.light_memory[li], NULL );
+				vk.rt.light_buffer[li] = VK_NULL_HANDLE;
+				vk.rt.light_memory[li] = VK_NULL_HANDLE;
+				vk.rt.light_ptr[li] = NULL;
+			}
+		}
+	}
+
 	/* the sets are freed with the pool, so they are not freed separately */
 	if ( vk.rt.pool != VK_NULL_HANDLE ) {
 		qvkDestroyDescriptorPool( vk.device, vk.rt.pool, NULL );
@@ -4103,9 +4145,9 @@ the rest of the renderer is untouched.
 */
 static void vk_rt_create_ao( void )
 {
-	VkDescriptorSetLayoutBinding bindings[2];
+	VkDescriptorSetLayoutBinding bindings[3];
 	VkDescriptorSetLayoutCreateInfo layout_desc;
-	VkDescriptorPoolSize pool_sizes[2];
+	VkDescriptorPoolSize pool_sizes[3];
 	VkDescriptorPoolCreateInfo pool_desc;
 	VkDescriptorSetAllocateInfo set_alloc;
 	VkPushConstantRange push_range;
@@ -4226,9 +4268,16 @@ static void vk_rt_create_ao( void )
 	bindings[1].descriptorCount = 1;
 	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	/* [QL] the frame's dynamic lights - see rtaoLights_t */
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	bindings[2].pImmutableSamplers = NULL;
+
 	Com_Memset( &layout_desc, 0, sizeof( layout_desc ) );
 	layout_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layout_desc.bindingCount = 2;
+	layout_desc.bindingCount = 3;
 	layout_desc.pBindings = bindings;
 
 	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.rt.set_layout );
@@ -4266,6 +4315,26 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
+	/*
+	[QL] One light list per command buffer, host visible and written each frame.
+
+	Created before the sets because the descriptor write names the buffer, and
+	that write happens once rather than per frame - only the contents change.
+
+	A failure here disables the whole pass rather than the feature, which is
+	heavy-handed for a list of lights, but the alternative is a descriptor set
+	with an unbound binding that the shader still reads.
+	*/
+	for ( i = 0; i < ARRAY_LEN( vk.rt.light_buffer ); i++ ) {
+		if ( !rt_create_host_buffer( sizeof( rtaoLights_t ), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				&vk.rt.light_buffer[i], &vk.rt.light_memory[i], &vk.rt.light_ptr[i] ) ) {
+			ri.Printf( PRINT_WARNING, "RT AO: could not create the light list - disabling\n" );
+			vk_rt_destroy_ao();
+			return;
+		}
+		Com_Memset( vk.rt.light_ptr[i], 0, sizeof( rtaoLights_t ) );
+	}
+
 	// ---- pool and sets ----
 	/* Three sets: the trace's, and one per occlusion target for the denoise. */
 	Com_Memset( pool_sizes, 0, sizeof( pool_sizes ) );
@@ -4273,11 +4342,13 @@ static void vk_rt_create_ao( void )
 	pool_sizes[0].descriptorCount = 6;   // trace: depth x2. denoise: 2 x (ao + depth)
 	pool_sizes[1].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 	pool_sizes[1].descriptorCount = 2;   // one per command buffer
+	pool_sizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	pool_sizes[2].descriptorCount = 2;   // the light list, one per command buffer
 
 	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
 	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	pool_desc.maxSets = 4;   // two trace sets, two denoise sets
-	pool_desc.poolSizeCount = 2;
+	pool_desc.poolSizeCount = 3;
 	pool_desc.pPoolSizes = pool_sizes;
 
 	res = qvkCreateDescriptorPool( vk.device, &pool_desc, NULL, &vk.rt.pool );
@@ -4418,7 +4489,8 @@ static void vk_rt_update_ao_descriptor( void )
 	uint32_t n;
 	VkWriteDescriptorSetAccelerationStructureKHR as_info;
 	VkDescriptorImageInfo image_info;
-	VkWriteDescriptorSet writes[2];
+	VkDescriptorBufferInfo light_info;
+	VkWriteDescriptorSet writes[3];
 
 	if ( !vk.rt.aoReady || vk.rt.world.tlas == VK_NULL_HANDLE ) {
 		return;
@@ -4472,7 +4544,22 @@ static void vk_rt_update_ao_descriptor( void )
 		writes[1].descriptorCount = 1;
 		writes[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 
-		qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
+		/* [QL] this frame's dynamic lights - see rtaoLights_t. The buffer is
+		   whole-size and rewritten per frame; only its contents change, so this
+		   write happens once here rather than every frame. */
+		Com_Memset( &light_info, 0, sizeof( light_info ) );
+		light_info.buffer = vk.rt.light_buffer[n];
+		light_info.offset = 0;
+		light_info.range = sizeof( rtaoLights_t );
+
+		writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[2].dstSet = vk.rt.descriptor[n];
+		writes[2].dstBinding = 2;
+		writes[2].descriptorCount = 1;
+		writes[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writes[2].pBufferInfo = &light_info;
+
+		qvkUpdateDescriptorSets( vk.device, 3, writes, 0, NULL );
 	}
 }
 
@@ -11563,6 +11650,54 @@ qboolean vk_rt_ao( void )
 	blur.depthLinear[3] = 0.0f;
 
 	denoise = ( r_rtaoDenoise->integer != 0 );
+
+	/*
+	[QL] This frame's dynamic lights, for the trace to fade occlusion inside.
+
+	Read here rather than anywhere later because the occlusion pass now runs
+	before the lit surface pass, and RB_LightingPass clears
+	backEnd.viewParms.num_dlights on its way out. backEnd.refdef keeps its own
+	count and is not cleared, so this reads that one and is correct either way.
+
+	dl->origin is world space, which is the space the trace reconstructs
+	positions in. dl->transformed is the same light in eye space and is what
+	the lit pass wants; picking the wrong one of those would put every
+	suppression sphere somewhere near the camera instead of near its light, so
+	it is worth saying which is which.
+	*/
+	if ( vk.rt.light_ptr[ vk.cmd_index ] != NULL ) {
+		rtaoLights_t *lights = (rtaoLights_t *)vk.rt.light_ptr[ vk.cmd_index ];
+		float strength = r_rtaoLights->value;
+		int count = 0;
+
+		if ( strength > 0.0f ) {
+			int li;
+
+			if ( strength > 1.0f ) {
+				strength = 1.0f;
+			}
+
+			for ( li = 0; li < backEnd.refdef.num_dlights && count < RT_MAX_AO_LIGHTS; li++ ) {
+				const dlight_t *dl = &backEnd.refdef.dlights[li];
+
+				if ( dl->radius <= 0.0f ) {
+					continue;
+				}
+				lights->light[count][0] = dl->origin[0];
+				lights->light[count][1] = dl->origin[1];
+				lights->light[count][2] = dl->origin[2];
+				/* 1/(r*r) - the same falloff term light_frag.tmpl uses, so the
+				   region occlusion fades in is the region the light lights. */
+				lights->light[count][3] = 1.0f / ( dl->radius * dl->radius );
+				count++;
+			}
+		}
+
+		lights->params[0] = (float)count;
+		lights->params[1] = strength;
+		lights->params[2] = 0.0f;
+		lights->params[3] = 0.0f;
+	}
 
 	vk_end_render_pass();   // end main
 
