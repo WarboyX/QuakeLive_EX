@@ -6669,6 +6669,14 @@ static void vk_create_framebuffers( void )
 			vk.fboRenderPasses ? "offscreen" : "swapchain",
 			r_fbo->integer, r_rts->integer );
 	}
+
+	/* The same question for the sample count. msaaActive decides the attachment
+	   shape here and the clear count at draw time, and those disagreeing is the
+	   same fault by a different route. */
+	if ( vk.msaaActive != ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ) {
+		ri.Error( ERR_FATAL, "vk: msaaActive is %i but the sample count is %i",
+			(int)vk.msaaActive, (int)vkSamples );
+	}
 }
 
 
@@ -6947,13 +6955,26 @@ void vk_initialize( void )
 
 	/* [QL] r_rts draws into a float target and resolves it at the end, so it
 	   needs the offscreen pass r_fbo provides, whether or not r_fbo asked. */
+	/*
+	[QL] Both assigned on both paths.
+
+	msaaActive was only ever set to qtrue and never cleared, and vk is a global
+	that a vid_restart does not zero. So turning r_rts off after having it on
+	left fboActive false and msaaActive true: render passes and framebuffers
+	carrying a multisampled colour attachment, under a draw path that believes
+	it is going straight to the swapchain.
+
+	That is the same shape as the r_rts crash and would land the same way, on
+	the first frame after the restart, with an initialisation log that reads
+	clean. Toggling the feature off is exactly what someone does when they
+	suspect it, so it is the second thing they would have hit.
+	*/
 	if ( vk_fbo_wanted() ) {
 		vk.fboActive = qtrue;
-		if ( r_ext_multisample->integer ) {
-			vk.msaaActive = qtrue;
-		}
+		vk.msaaActive = r_ext_multisample->integer ? qtrue : qfalse;
 	} else {
 		vk.fboActive = qfalse;
+		vk.msaaActive = qfalse;
 	}
 
 	// multisampling
