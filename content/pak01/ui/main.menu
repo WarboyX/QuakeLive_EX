@@ -1808,6 +1808,17 @@
             rect 230 400 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
         }
 
+        // [QL] R19. Screen space: only what is on screen can be reflected, so a
+        // wall behind you never appears in the water. The trace fades toward the
+        // edges of the screen rather than stopping at them, which is where that
+        // limitation shows up rather than being pretended away.
+        itemDef { text "Water reflections:"  textscale .22  rect 30 422 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name ssr  type ITEM_TYPE_MULTI  text ""  cvar "r_ssr"
+            cvarFloatList { "Off (default)" 0 "Subtle" 0.35 "Half" 0.5 "Full" 1 }
+            rect 230 422 250 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
+        }
+
         itemDef { text "Denoise:"  textscale .22  rect 30 356 190 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
             name aodenoise  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoDenoise"

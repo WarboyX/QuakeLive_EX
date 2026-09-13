@@ -154,6 +154,10 @@ cvar_t	*r_rtaoWeapon;
 cvar_t	*r_rts;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_rtaoLights;
+cvar_t	*r_ssr;
+cvar_t	*r_ssrDistance;
+cvar_t	*r_ssrSteps;
+cvar_t	*r_ssrThickness;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -1983,6 +1987,46 @@ static void R_Register( void )
 		" 0 - off, occlusion is the same whatever is lighting the area\n"
 		" 1 - fully cleared where the light reaches\n"
 		"The area is the light's own falloff, so it matches what the light actually lit." );
+
+	/*
+	[QL] R19: reflections on the map's water.
+
+	Archived and not latched. Everything here is read per frame into a uniform
+	buffer, so all of it takes effect immediately - there is no pipeline to
+	rebuild and nothing to restart.
+	*/
+	r_ssr = ri.Cvar_Get( "r_ssr", "0", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_ssr, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_ssr, "Reflect the scene in the map's water, by marching the depth "
+		"buffer.\n"
+		" 0   - off\n"
+		" 0.5 - half strength\n"
+		" 1   - full\n"
+		"Only what is on screen can be reflected: a wall behind you is not in the depth buffer "
+		"and cannot appear in the water. The reflection fades out toward the edges of the screen "
+		"rather than ending at them, which is where that shows.\n"
+		"Needs a map with a water plane - the count is printed at load." );
+
+	r_ssrDistance = ri.Cvar_Get( "r_ssrDistance", "1024", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_ssrDistance, "64", "8192", CV_FLOAT );
+	ri.Cvar_SetDescription( r_ssrDistance, "How far a reflected ray travels before giving up, in "
+		"world units. Larger reaches further across a pool and spends the same number of steps "
+		"doing it, so each step is coarser and thin geometry is more likely to be stepped over." );
+
+	r_ssrSteps = ri.Cvar_Get( "r_ssrSteps", "24", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_ssrSteps, "4", "128", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssrSteps, "How many samples a reflected ray takes over "
+		S_COLOR_CYAN "\\r_ssrDistance" S_COLOR_WHITE ". This is the quality control and the "
+		"cost: it is taken per water pixel on screen, so it only costs anything where water is "
+		"visible." );
+
+	r_ssrThickness = ri.Cvar_Get( "r_ssrThickness", "24", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_ssrThickness, "1", "512", CV_FLOAT );
+	ri.Cvar_SetDescription( r_ssrThickness, "How far behind a surface a ray may pass and still "
+		"count as having hit it, in world units.\n"
+		"The depth buffer records a front face and says nothing about what is behind it, so this "
+		"is a guess at how solid things are. Too small and rays tunnel through railings and "
+		"pillars; too large and a ray reflects the empty space in front of a distant wall." );
 
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );

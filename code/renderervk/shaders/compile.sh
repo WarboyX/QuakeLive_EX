@@ -118,6 +118,22 @@ done
 emit_rt frag rtao_frag_spv    rtao.tmpl
 emit_rt frag rtao_frag_ms_spv rtao.tmpl -DUSE_MSAA
 
+# ---------------------------------------------------------------------------
+# screen-space reflections (R19)
+# ---------------------------------------------------------------------------
+#
+# Two variants for the same reason rtao has two - it reads the depth attachment,
+# which is multisampled when r_ext_multisample is on, and sampler2D cannot read
+# a multisampled image.
+#
+# Plain emit, not emit_rt: this one fires no rays. It marches the depth buffer,
+# so it has no reason to carry a SPIR-V 1.4 requirement.
+#
+# A .tmpl rather than a .frag because the *.frag loop above would emit it once,
+# without the define, and the MSAA variant would silently never exist.
+emit frag ssr_frag_spv    ssr.tmpl
+emit frag ssr_frag_ms_spv ssr.tmpl -DUSE_MSAA
+
 # The denoiser fires no rays - it reads the target the trace wrote - so it goes
 # through the ordinary emit and the default SPIR-V target. Deliberately not
 # emit_rt: asking for 1.4 where 1.0 will do costs nothing here but would put a

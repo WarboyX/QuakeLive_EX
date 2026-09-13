@@ -59,6 +59,7 @@ into a total.
 	1 +                          /* msaa                              */ \
 	1 +                          /* capture (r_ext_supersample)       */ \
 	2 +                          /* rt ambient occlusion targets      */ \
+	1 +                          /* screen-space reflection target    */ \
 	1 )                          /* depth                             */
 
 #define VK_DESC_STORAGE      0
@@ -359,6 +360,10 @@ void vk_rt_build_world( const struct world_s *world );
 
 /* [QL] the map's water planes - see VK_MAX_WATER_PLANES above */
 void vk_find_water_planes( const struct world_s *world );
+
+/* [QL] R19: reflect the scene in them. A no-op unless r_ssr is on, the map has
+   a water plane, and the pass was created. */
+qboolean vk_ssr( void );
 void vk_rt_destroy_world( void );
 /* [QL] R13 step 3: the ambient occlusion pass. Returns qtrue when it ran and
    therefore left its own render pass open in place of the main one. */
@@ -626,6 +631,14 @@ typedef struct {
 		   ordinary SPIR-V rather than 1.4 modules. */
 		VkShaderModule rtao_blur_fs;
 		VkShaderModule rtao_blur_ms_fs;
+
+		/* [QL] R19. Screen-space reflections. Same two-variant split, same
+		   reason - it marches the depth buffer, which is multisampled when
+		   r_ext_multisample is on. The composite reads only the offscreen
+		   result and needs no variant. */
+		VkShaderModule ssr_fs;
+		VkShaderModule ssr_ms_fs;
+		VkShaderModule ssr_composite_fs;
 	} modules;
 
 	VkPipelineCache pipelineCache;
@@ -738,6 +751,44 @@ typedef struct {
 	/* [QL] the map's water planes - see vk_find_water_planes */
 	vkWaterPlane_t	waterPlanes[ VK_MAX_WATER_PLANES ];
 	int				numWaterPlanes;
+
+	/*
+	[QL] R19: screen-space reflections on those planes.
+
+	Two passes, because the trace samples the scene colour and the composite
+	writes to it, and a pass cannot read the attachment it writes. The trace
+	resolves into `image` with alpha carrying how much of it to keep; the
+	composite is an ordinary source-alpha blend of that image over the scene,
+	which is why the water test exists in one shader and not both.
+
+	The composite borrows vk.render_pass.rtao - same attachments, same formats,
+	same sample count, so it is render-pass compatible and needs no framebuffer
+	or pass of its own.
+	*/
+	struct {
+		qboolean				ready;
+		VkImage					image;
+		VkImageView				image_view;
+		VkFramebuffer			framebuffer;
+		VkRenderPass			offscreen_pass;
+		VkSampler				sampler;
+
+		VkDescriptorSetLayout	trace_set_layout;
+		VkDescriptorSetLayout	composite_set_layout;
+		VkDescriptorPool		pool;
+		/* One per command buffer: each names that frame's uniform buffer. */
+		VkDescriptorSet			trace_descriptor[ NUM_COMMAND_BUFFERS ];
+		VkDescriptorSet			composite_descriptor;
+
+		VkPipelineLayout		trace_pipeline_layout;
+		VkPipelineLayout		composite_pipeline_layout;
+		VkPipeline				trace_pipeline;
+		VkPipeline				composite_pipeline;
+
+		VkBuffer				uniform_buffer[ NUM_COMMAND_BUFFERS ];
+		VkDeviceMemory			uniform_memory[ NUM_COMMAND_BUFFERS ];
+		void					*uniform_ptr[ NUM_COMMAND_BUFFERS ];
+	} ssr;
 	qboolean blitEnabled;
 	qboolean msaaActive;
 

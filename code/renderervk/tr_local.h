@@ -1180,6 +1180,7 @@ typedef struct {
 	/* [QL] R13: the AO pass runs once per frame, like bloom. The 3D-to-2D
 	   transition it hangs off can be reached more than once in a frame. */
 	qboolean doneRTAO;
+	qboolean doneSSR;			// [QL] R19, same lifetime as the two above
 
 } backEndState_t;
 
@@ -1423,6 +1424,11 @@ extern	cvar_t	*r_rtaoWeapon;					// [QL] R13: occlude the first person weapon
 extern	cvar_t	*r_rts;							// [QL] real time shading: float target + tone curve
 extern	cvar_t	*r_rtaoDenoise;					// [QL] R13: bilateral denoise width (latched)
 extern	cvar_t	*r_rtaoLights;					// [QL] dynamic lights clear occlusion where they reach
+
+extern	cvar_t	*r_ssr;							// [QL] R19: reflection strength on water, 0 = off
+extern	cvar_t	*r_ssrDistance;					// [QL] how far a reflected ray travels
+extern	cvar_t	*r_ssrSteps;					// [QL] how many steps it takes getting there
+extern	cvar_t	*r_ssrThickness;				// [QL] how far behind a sample still counts as a hit
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
 

@@ -1,0 +1,230 @@
+#version 450
+
+/*
+[QL] Screen-space reflections, on the map's water planes.
+
+Water in these maps is a scrolling texture. This gives it back what it reflects.
+
+Why a plane and not a surface flag: the map has a handful of distinct water
+heights, collected once at load by vk_find_water_planes. Testing a reconstructed
+world position against a few planes costs a compare; marking water per surface
+at draw time costs new pipeline state or a stencil bit and makes every water
+surface special for the rest of the frame.
+
+Why screen space and not the acceleration structure: rtVertex_t is three floats.
+The structure knows where geometry is and nothing about what it looks like, so a
+ray hit cannot be shaded without UVs, a material index and texture indexing added
+to it. Marching the depth buffer needs none of that. The cost is the standard
+one - what is not on screen cannot be reflected - and the fade at the end is
+where that gets hidden rather than pretended away.
+
+Two variants, for the same reason rtao.tmpl has two: with r_ext_multisample on
+there is no single-sample depth image to read.
+*/
+
+#ifdef USE_MSAA
+layout(set = 0, binding = 0) uniform sampler2DMS depthMap;
+#else
+layout(set = 0, binding = 0) uniform sampler2D depthMap;
+#endif
+layout(set = 0, binding = 1) uniform sampler2D sceneMap;
+
+#define SSR_MAX_PLANES 8
+
+layout(set = 0, binding = 2) uniform SSR {
+	mat4 viewProj;      // world -> clip
+	mat4 invViewProj;   // clip -> world
+	vec4 eye;           // xyz = view origin
+	/*
+	  x  strength: how much of the reflection survives, r_ssrStrength
+	  y  how far a ray travels in world units before giving up
+	  z  how many steps it takes getting there
+	  w  thickness: how far behind a depth sample still counts as hitting it,
+	     in world units. Too small and rays tunnel through thin geometry; too
+	     large and a ray "hits" the empty space in front of a distant wall.
+	*/
+	vec4 params;
+	/*
+	  x  the value the depth buffer is cleared to
+	  y  where the weapon's squashed depth range begins
+	  z  +1 when near is 1.0 and far is 0.0 (USE_REVERSED_DEPTH), -1 otherwise
+	  w  unused
+	*/
+	vec4 depthInfo;
+	vec4 planes[SSR_MAX_PLANES];   // xyz = normal, w = dist
+	vec4 planeCount;               // x = how many are filled
+};
+
+layout(location = 0) in vec2 frag_tex_coord;
+layout(location = 0) out vec4 out_color;
+
+ivec2 depthSize() {
+#ifdef USE_MSAA
+	return textureSize(depthMap);
+#else
+	return textureSize(depthMap, 0);
+#endif
+}
+
+float fetchDepth(ivec2 p) {
+	return texelFetch(depthMap, p, 0).r;
+}
+
+vec3 worldAt(ivec2 p, vec2 invSize) {
+	float d = fetchDepth(p);
+	vec2 uv = (vec2(p) + 0.5) * invSize;
+	vec4 clip = vec4(uv * 2.0 - 1.0, d, 1.0);
+	vec4 w = invViewProj * clip;
+	return w.xyz / w.w;
+}
+
+/* clip -> screen uv, and the depth that came with it */
+vec3 project(vec3 world) {
+	vec4 clip = viewProj * vec4(world, 1.0);
+	if (clip.w <= 0.0) {
+		return vec3(-1.0);          // behind the eye
+	}
+	vec3 ndc = clip.xyz / clip.w;
+	return vec3(ndc.xy * 0.5 + 0.5, ndc.z);
+}
+
+void main() {
+	ivec2 size = depthSize();
+	ivec2 pix = clamp(ivec2(gl_FragCoord.xy), ivec2(0), size - ivec2(1));
+	vec2 invSize = 1.0 / vec2(size);
+
+	float depth = fetchDepth(pix);
+
+	out_color = vec4(0.0);
+
+	// nothing drawn here - sky, or outside the world
+	if (depthInfo.z * (depth - depthInfo.x) <= 0.0) {
+		return;
+	}
+	// the view weapon lives in a squashed depth range and is not water
+	if (depthInfo.z * (depth - depthInfo.y) > 0.0) {
+		return;
+	}
+
+	vec3 P = worldAt(pix, invSize);
+
+	/*
+	Is this pixel on one of the map's water planes?
+
+	Both tests matter. The distance test alone would catch a floor directly
+	above or below the water at the same height somewhere else in the map;
+	the plane is infinite and the water is not.
+
+	2 units of tolerance because P is reconstructed from a depth buffer and a
+	surface seen at a glancing angle reconstructs with some slop along the view
+	ray. Tighter and the far edge of a pool drops out in bands.
+	*/
+	int count = int(planeCount.x);
+	vec3 N = vec3(0.0);
+	bool onWater = false;
+
+	for (int i = 0; i < count; i++) {
+		vec3 n = planes[i].xyz;
+		if (abs(dot(P, n) - planes[i].w) < 2.0) {
+			N = n;
+			onWater = true;
+			break;
+		}
+	}
+	if (!onWater) {
+		return;
+	}
+
+	vec3 V = normalize(P - eye.xyz);
+
+	/* Underwater. The eye is below the plane, so this is the surface seen from
+	   beneath and there is nothing above it to reflect. */
+	if (dot(eye.xyz - P, N) <= 0.0) {
+		return;
+	}
+
+	vec3 R = reflect(V, N);
+	if (dot(R, N) <= 0.0) {
+		return;      // reflected back into the water
+	}
+
+	float maxDist = params.y;
+	int steps = int(params.z);
+	float thickness = params.w;
+
+	/*
+	March in world space and project each step, rather than interpolating a
+	screen-space line.
+
+	A screen-space march is cheaper per step and wrong at glancing angles: even
+	spacing on screen is wildly uneven in the world, so the first step off a
+	near-horizontal water surface can jump past a whole wall. Water is only ever
+	seen at glancing angles, so the cheap version fails exactly where this is
+	used.
+	*/
+	vec3 hitColor = vec3(0.0);
+	float hit = 0.0;
+	float stepLen = maxDist / float(steps);
+
+	/* Start a step out. At t=0 the ray is on the surface it came from and the
+	   first sample would find that surface, which is the classic self-hit. */
+	for (int i = 1; i <= steps; i++) {
+		float t = stepLen * float(i);
+		vec3 Q = P + R * t;
+		vec3 s = project(Q);
+
+		if (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
+			break;              // left the screen - nothing on screen to reflect
+		}
+
+		ivec2 sp = clamp(ivec2(s.xy * vec2(size)), ivec2(0), size - ivec2(1));
+		float sceneDepth = fetchDepth(sp);
+
+		if (depthInfo.z * (sceneDepth - depthInfo.x) <= 0.0) {
+			continue;           // sky at that pixel, keep going
+		}
+
+		vec3 sceneP = worldAt(sp, invSize);
+
+		/*
+		Behind the recorded surface means the ray has gone past something.
+		Compared along the view direction rather than in depth-buffer units,
+		because the buffer is not linear and a fixed epsilon in it means a
+		different distance at every range.
+		*/
+		float rayDist = length(Q - eye.xyz);
+		float sceneDist = length(sceneP - eye.xyz);
+		float behind = rayDist - sceneDist;
+
+		if (behind > 0.0 && behind < thickness + stepLen) {
+			hitColor = texture(sceneMap, s.xy).rgb;
+			hit = 1.0;
+
+			/*
+			Fade out where the result stops being trustworthy, rather than
+			letting it end abruptly:
+
+			  - near the screen edge, because what is off-screen was never
+			    traced and the boundary would otherwise be a hard line
+			  - with distance, because a longer march found its hit with fewer
+			    effective samples
+			  - at steep viewing angles, where a real water surface reflects
+			    least and the march is most accurate - the Fresnel-ish term
+			    that makes it look like water rather than a mirror
+			*/
+			vec2 edge = min(s.xy, 1.0 - s.xy) / 0.12;
+			float edgeFade = clamp(min(edge.x, edge.y), 0.0, 1.0);
+			float distFade = 1.0 - clamp(t / maxDist, 0.0, 1.0);
+			float fresnel = pow(1.0 - clamp(dot(-V, N), 0.0, 1.0), 3.0);
+
+			hit = edgeFade * distFade * mix(0.15, 1.0, fresnel);
+			break;
+		}
+	}
+
+	if (hit <= 0.0) {
+		return;
+	}
+
+	out_color = vec4(hitColor, clamp(hit * params.x, 0.0, 1.0));
+}

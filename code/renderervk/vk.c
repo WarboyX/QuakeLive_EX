@@ -975,6 +975,13 @@ qboolean vk_fbo_wanted( void )
 }
 
 
+/* [QL] R19. Defined near vk_bloom, with the rest of the reflection pass; they
+   are called from here, from vk_initialize and from the teardown paths. */
+void vk_ssr_create_render_pass( VkDevice device );
+void vk_ssr_create( void );
+void vk_ssr_destroy( void );
+
+
 static void vk_create_render_passes( void )
 {
 	VkAttachmentDescription attachments[3]; // color | depth | msaa color
@@ -996,6 +1003,13 @@ static void vk_create_render_passes( void )
 	   test for it the same way it tests for the composite pass. */
 	if ( vk.rtActive && vk.rtDepthSampled ) {
 		vk_create_rtao_offscreen_render_pass( device );
+	}
+
+	/* [QL] R19: independent of ray tracing - the march reads depth and colour
+	   and fires nothing. Needs a sampleable depth image, which is the same
+	   condition the occlusion view is created under. */
+	if ( vk.rtDepthSampled ) {
+		vk_ssr_create_render_pass( device );
 	}
 
 	vk.fboRenderPasses = vk_fbo_wanted();
@@ -6023,6 +6037,13 @@ static void vk_create_shader_modules( void )
 		SET_OBJECT_NAME( vk.modules.rtao_fs, "rt ambient occlusion fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 		SET_OBJECT_NAME( vk.modules.rtao_ms_fs, "rt ambient occlusion fragment module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 		SET_OBJECT_NAME( vk.modules.rtao_blur_fs, "rt ambient occlusion denoise module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+
+		/* [QL] R19 */
+		vk.modules.ssr_fs = SHADER_MODULE( ssr_frag_spv );
+		vk.modules.ssr_ms_fs = SHADER_MODULE( ssr_frag_ms_spv );
+		vk.modules.ssr_composite_fs = SHADER_MODULE( ssr_composite_frag_spv );
+		SET_OBJECT_NAME( vk.modules.ssr_fs, "ssr trace module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+		SET_OBJECT_NAME( vk.modules.ssr_composite_fs, "ssr composite module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 		SET_OBJECT_NAME( vk.modules.rtao_blur_ms_fs, "rt ambient occlusion denoise module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	}
 }
@@ -6738,6 +6759,29 @@ static void vk_create_attachments( void )
 		}
 	}
 
+	/*
+	[QL] R19: where the reflection is resolved before it is blended in.
+
+	vk.color_format, not a format of its own: it holds scene colour sampled out
+	of the scene target, so anything narrower would quantise it, and matching
+	means the format is already known good as a colour attachment that can be
+	sampled - it was validated for the scene.
+
+	Single sample whatever the scene is doing. The reflection is resolved once
+	per pixel and blended over every sample of it, same reasoning as the
+	occlusion targets above.
+
+	Outside any fbo test because the composite blends into whatever the main
+	framebuffer is, which exists on both paths.
+	*/
+	{
+		VkImageUsageFlags ssrUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT,
+			vk.color_format, ssrUsage, &vk.ssr.image, &vk.ssr.image_view,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, qfalse );
+	}
+
 	create_depth_attachment( glConfig.vidWidth, glConfig.vidHeight, vkSamples, &vk.depth_image, &vk.depth_image_view,
 		(vk.fboActive && r_bloom->integer) ? qfalse : qtrue );
 
@@ -6841,6 +6885,20 @@ static void vk_create_framebuffers( void )
 			VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.rtao[k] ) );
 			SET_OBJECT_NAME( vk.framebuffers.rtao[k], va( "framebuffer - rtao %i", k ), VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 		}
+	}
+
+	/* [QL] R19: the reflection target. Its own pass because the format differs
+	   from the occlusion targets, and render pass compatibility is by format. */
+	if ( vk.ssr.offscreen_pass != VK_NULL_HANDLE && vk.ssr.image_view != VK_NULL_HANDLE )
+	{
+		desc.renderPass = vk.ssr.offscreen_pass;
+		desc.attachmentCount = 1;
+		desc.width = glConfig.vidWidth;
+		desc.height = glConfig.vidHeight;
+		attachments[0] = vk.ssr.image_view;
+
+		VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.ssr.framebuffer ) );
+		SET_OBJECT_NAME( vk.ssr.framebuffer, "framebuffer - ssr", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 	}
 
 	if ( vk.fboActive )
@@ -7068,6 +7126,11 @@ static void vk_destroy_framebuffers( void ) {
 			vk.framebuffers.rtao[n] = VK_NULL_HANDLE;
 		}
 	}
+
+	if ( vk.ssr.framebuffer != VK_NULL_HANDLE ) {   // [QL] R19
+		qvkDestroyFramebuffer( vk.device, vk.ssr.framebuffer, NULL );
+		vk.ssr.framebuffer = VK_NULL_HANDLE;
+	}
 }
 
 
@@ -7137,6 +7200,7 @@ static void vk_restart_swapchain( const char *funcname, VkResult res )
 	   Rebuilt rather than patched - this path is a window resize, not a hot
 	   loop. */
 	vk_rt_create_ao();
+	vk_ssr_create();
 }
 
 
@@ -7736,6 +7800,7 @@ void vk_initialize( void )
 	unless ray query is enabled and the device agreed depth could be sampled.
 	*/
 	vk_rt_create_ao();
+	vk_ssr_create();
 
 	// preallocate staging buffer
 	if ( vk.defaults.staging_size == STAGING_BUFFER_SIZE_HI ) {
@@ -7823,6 +7888,13 @@ static void vk_destroy_attachments( void )
 		}
 	}
 
+	if ( vk.ssr.image != VK_NULL_HANDLE ) {   // [QL] R19
+		qvkDestroyImage( vk.device, vk.ssr.image, NULL );
+		qvkDestroyImageView( vk.device, vk.ssr.image_view, NULL );
+		vk.ssr.image = VK_NULL_HANDLE;
+		vk.ssr.image_view = VK_NULL_HANDLE;
+	}
+
 	for ( i = 0; i < vk.image_memory_count; i++ ) {
 		qvkFreeMemory( vk.device, vk.image_memory[i], NULL );
 	}
@@ -7860,6 +7932,11 @@ static void vk_destroy_render_passes( void )
 	if ( vk.render_pass.rtao != VK_NULL_HANDLE ) {   // [QL] R13
 		qvkDestroyRenderPass( vk.device, vk.render_pass.rtao, NULL );
 		vk.render_pass.rtao = VK_NULL_HANDLE;
+	}
+
+	if ( vk.ssr.offscreen_pass != VK_NULL_HANDLE ) {   // [QL] R19
+		qvkDestroyRenderPass( vk.device, vk.ssr.offscreen_pass, NULL );
+		vk.ssr.offscreen_pass = VK_NULL_HANDLE;
 	}
 
 	if ( vk.render_pass.rtao_offscreen != VK_NULL_HANDLE ) {   // [QL] R13
@@ -7976,6 +8053,7 @@ void vk_shutdown( refShutdownCode_t code )
 	   acceleration structure handles; outliving vk.device would leak them and
 	   then free them against a destroyed device on the next vid_restart. */
 	vk_rt_destroy_ao();
+	vk_ssr_destroy();
 	vk_rt_destroy_world();
 
 	vk_clean_staging_buffer();
@@ -8564,6 +8642,9 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	/* [QL] R13: AO modulates rather than adds, which the ONE/ONE below cannot
 	   express, and it carries its own specialization constant. */
 	qboolean multiply = qfalse;
+	/* [QL] R19: the reflection carries its own coverage in alpha, so it wants
+	   an ordinary source-alpha blend rather than the add or the multiply. */
+	qboolean alphaBlend = qfalse;
 	VkSpecializationMapEntry ao_spec_entry;
 	VkSpecializationInfo ao_spec_info;
 	int ao_sample_count;
@@ -8661,6 +8742,30 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			pipeline_name = "rt ambient occlusion pipeline (debug view)";
 			blend = qfalse;
 			multiply = qfalse;   // write the occlusion term straight out
+			break;
+		case 8: // [QL] R19 screen-space reflection - the march
+			pipeline = &vk.ssr.trace_pipeline;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.ssr_ms_fs : vk.modules.ssr_fs;
+			renderpass = vk.ssr.offscreen_pass;
+			layout = vk.ssr.trace_pipeline_layout;
+			/* The reflection is resolved once per pixel and blended over all of
+			   that pixel's samples, the same as the occlusion term. */
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "ssr pipeline (march)";
+			blend = qfalse;
+			break;
+		case 9: // [QL] R19 screen-space reflection - blend it onto the scene
+			pipeline = &vk.ssr.composite_pipeline;
+			fsmodule = vk.modules.ssr_composite_fs;
+			/* Borrowed: same attachments, formats and sample count as the pass
+			   the occlusion composite uses, so it is render-pass compatible and
+			   needs none of its own. */
+			renderpass = vk.render_pass.rtao;
+			layout = vk.ssr.composite_pipeline_layout;
+			samples = vkSamples;
+			pipeline_name = "ssr pipeline (composite)";
+			blend = qfalse;
+			alphaBlend = qtrue;
 			break;
 		default: // gamma correction
 			pipeline = &vk.gamma_pipeline;
@@ -8894,6 +8999,15 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 		attachment_blend_state.blendEnable = VK_TRUE;
 		attachment_blend_state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
 		attachment_blend_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	} else if ( alphaBlend ) {
+		attachment_blend_state.blendEnable = VK_TRUE;
+		attachment_blend_state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+		attachment_blend_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		attachment_blend_state.colorBlendOp = VK_BLEND_OP_ADD;
+		attachment_blend_state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		attachment_blend_state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		attachment_blend_state.alphaBlendOp = VK_BLEND_OP_ADD;
+		attachment_blend_state.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
 	} else if ( multiply ) {
 		/* [QL] dst * src. Ambient occlusion darkens what is already there - it
 		   does not add light, and an additive blend of a term near 1.0 would
@@ -11946,6 +12060,535 @@ qboolean vk_rt_ao( void )
 	vk.cmd->depth_range = DEPTH_RANGE_COUNT;
 
 	backEnd.doneRTAO = qtrue;
+
+	return qtrue;
+}
+
+
+
+/*
+=================
+[QL] R19: screen-space reflections on the map's water planes.
+
+Two passes, and the reason is a Vulkan rule rather than a preference: the trace
+samples the scene colour and the composite writes to it, and a pass cannot read
+the attachment it is writing. So the trace resolves into vk.ssr.image with alpha
+carrying how much of the result to keep, and the composite is an ordinary
+source-alpha blend of that image over the scene. The water test therefore lives
+in one shader instead of two, with nothing to keep in step.
+
+The composite borrows vk.render_pass.rtao. Render pass compatibility is by
+attachment count, format and sample count, and that pass was built against the
+same main framebuffer - so it needs no pass or framebuffer of its own, and the
+blend state is the only thing that differs from the occlusion composite.
+
+Every failure disables the feature with a reason and leaves the rest of the
+renderer alone.
+=================
+*/
+
+#define SSR_MAX_PLANES VK_MAX_WATER_PLANES
+
+typedef struct {
+	float viewProj[16];
+	float invViewProj[16];
+	float eye[4];
+	float params[4];      // strength, distance, steps, thickness
+	float depthInfo[4];   // cleared depth, weapon band, sign, unused
+	float planes[SSR_MAX_PLANES][4];
+	float planeCount[4];
+} ssrUniform_t;
+
+static qboolean ssrReported = qfalse;
+
+
+void vk_ssr_destroy( void )
+{
+	uint32_t i;
+
+	vk.ssr.ready = qfalse;
+
+	if ( vk.ssr.trace_pipeline != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.ssr.trace_pipeline, NULL );
+		vk.ssr.trace_pipeline = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.composite_pipeline != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.ssr.composite_pipeline, NULL );
+		vk.ssr.composite_pipeline = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.trace_pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.ssr.trace_pipeline_layout, NULL );
+		vk.ssr.trace_pipeline_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.composite_pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.ssr.composite_pipeline_layout, NULL );
+		vk.ssr.composite_pipeline_layout = VK_NULL_HANDLE;
+	}
+
+	for ( i = 0; i < ARRAY_LEN( vk.ssr.uniform_buffer ); i++ ) {
+		if ( vk.ssr.uniform_buffer[i] != VK_NULL_HANDLE ) {
+			qvkUnmapMemory( vk.device, vk.ssr.uniform_memory[i] );
+			qvkDestroyBuffer( vk.device, vk.ssr.uniform_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.ssr.uniform_memory[i], NULL );
+			vk.ssr.uniform_buffer[i] = VK_NULL_HANDLE;
+			vk.ssr.uniform_memory[i] = VK_NULL_HANDLE;
+			vk.ssr.uniform_ptr[i] = NULL;
+		}
+	}
+
+	/* the sets go with the pool */
+	if ( vk.ssr.pool != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorPool( vk.device, vk.ssr.pool, NULL );
+		vk.ssr.pool = VK_NULL_HANDLE;
+		Com_Memset( vk.ssr.trace_descriptor, 0, sizeof( vk.ssr.trace_descriptor ) );
+		vk.ssr.composite_descriptor = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.trace_set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.ssr.trace_set_layout, NULL );
+		vk.ssr.trace_set_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.composite_set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.ssr.composite_set_layout, NULL );
+		vk.ssr.composite_set_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.sampler != VK_NULL_HANDLE ) {
+		qvkDestroySampler( vk.device, vk.ssr.sampler, NULL );
+		vk.ssr.sampler = VK_NULL_HANDLE;
+	}
+	/* the framebuffer and the image belong to the attachment set and are
+	   destroyed with it; the render pass is destroyed with the others */
+	ssrReported = qfalse;
+}
+
+
+void vk_ssr_create_render_pass( VkDevice device )
+{
+	VkAttachmentDescription attachment;
+	VkAttachmentReference colorRef;
+	VkSubpassDescription subpass;
+	VkSubpassDependency deps[2];
+	VkRenderPassCreateInfo desc;
+
+	Com_Memset( &attachment, 0, sizeof( attachment ) );
+	attachment.format = vk.color_format;
+	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	/* The trace writes every pixel - it clears to zero on the paths that find
+	   nothing - so there is nothing to load and nothing to clear. */
+	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	colorRef.attachment = 0;
+	colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	Com_Memset( &subpass, 0, sizeof( subpass ) );
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorRef;
+
+	Com_Memset( deps, 0, sizeof( deps ) );
+	/* Do not start overwriting this while last frame's composite is still
+	   reading it. */
+	deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	deps[0].dstSubpass = 0;
+	deps[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+	/* And let the composite read what this wrote. Not BY_REGION - the trace
+	   marches sideways across the screen, so a tile's result depends on pixels
+	   outside it. */
+	deps[1].srcSubpass = 0;
+	deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+	Com_Memset( &desc, 0, sizeof( desc ) );
+	desc.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	desc.attachmentCount = 1;
+	desc.pAttachments = &attachment;
+	desc.subpassCount = 1;
+	desc.pSubpasses = &subpass;
+	desc.dependencyCount = 2;
+	desc.pDependencies = deps;
+
+	VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.ssr.offscreen_pass ) );
+	SET_OBJECT_NAME( vk.ssr.offscreen_pass, "render pass - ssr offscreen", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
+}
+
+
+void vk_ssr_create( void )
+{
+	VkDescriptorSetLayoutBinding bindings[3];
+	VkDescriptorSetLayoutCreateInfo layout_desc;
+	VkDescriptorPoolSize pool_sizes[2];
+	VkDescriptorPoolCreateInfo pool_desc;
+	VkDescriptorSetAllocateInfo set_alloc;
+	VkPipelineLayoutCreateInfo pl_desc;
+	VkSamplerCreateInfo sampler_desc;
+	VkResult res;
+	uint32_t i;
+
+	vk_ssr_destroy();
+
+	if ( vk.ssr.offscreen_pass == VK_NULL_HANDLE || vk.ssr.framebuffer == VK_NULL_HANDLE ) {
+		return;   // nothing to draw into; r_ssr will report why when asked
+	}
+	if ( vk.render_pass.rtao == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "SSR: no composite render pass - disabling\n" );
+		return;
+	}
+	if ( vk.rt.depth_view == VK_NULL_HANDLE || vk.color_image_view == VK_NULL_HANDLE ) {
+		/* depth_view is the depth-aspect-only view the occlusion pass makes. It
+		   is created whether or not ray tracing is on, but not if the renderer
+		   decided depth is not sampleable - which is a real device limit and
+		   the one case this cannot work around. */
+		return;
+	}
+
+	/* Linear and clamped. The march lands between texels and the fade at the
+	   screen edge is computed from the coordinate, so wrapping there would put
+	   the opposite edge of the screen into the reflection. */
+	Com_Memset( &sampler_desc, 0, sizeof( sampler_desc ) );
+	sampler_desc.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sampler_desc.magFilter = VK_FILTER_LINEAR;
+	sampler_desc.minFilter = VK_FILTER_LINEAR;
+	sampler_desc.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	sampler_desc.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.maxLod = 0.0f;
+	sampler_desc.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+
+	res = qvkCreateSampler( vk.device, &sampler_desc, NULL, &vk.ssr.sampler );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: sampler failed (%s)\n", vk_result_string( res ) );
+		vk_ssr_destroy();
+		return;
+	}
+
+	// ---- trace set: depth, scene colour, parameters ----
+	Com_Memset( bindings, 0, sizeof( bindings ) );
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	Com_Memset( &layout_desc, 0, sizeof( layout_desc ) );
+	layout_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layout_desc.bindingCount = 3;
+	layout_desc.pBindings = bindings;
+
+	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.ssr.trace_set_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: trace set layout failed (%s)\n", vk_result_string( res ) );
+		vk_ssr_destroy();
+		return;
+	}
+
+	// ---- composite set: just the resolved reflection ----
+	layout_desc.bindingCount = 1;
+	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.ssr.composite_set_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: composite set layout failed (%s)\n", vk_result_string( res ) );
+		vk_ssr_destroy();
+		return;
+	}
+
+	for ( i = 0; i < ARRAY_LEN( vk.ssr.uniform_buffer ); i++ ) {
+		if ( !rt_create_host_buffer( sizeof( ssrUniform_t ), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				&vk.ssr.uniform_buffer[i], &vk.ssr.uniform_memory[i], &vk.ssr.uniform_ptr[i] ) ) {
+			ri.Printf( PRINT_WARNING, "SSR: could not create the parameter buffer - disabling\n" );
+			vk_ssr_destroy();
+			return;
+		}
+		Com_Memset( vk.ssr.uniform_ptr[i], 0, sizeof( ssrUniform_t ) );
+	}
+
+	Com_Memset( pool_sizes, 0, sizeof( pool_sizes ) );
+	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	pool_sizes[0].descriptorCount = 2 * NUM_COMMAND_BUFFERS + 1;  // trace: depth + scene. composite: one
+	pool_sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	pool_sizes[1].descriptorCount = NUM_COMMAND_BUFFERS;
+
+	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
+	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_desc.maxSets = NUM_COMMAND_BUFFERS + 1;
+	pool_desc.poolSizeCount = 2;
+	pool_desc.pPoolSizes = pool_sizes;
+
+	res = qvkCreateDescriptorPool( vk.device, &pool_desc, NULL, &vk.ssr.pool );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: descriptor pool failed (%s)\n", vk_result_string( res ) );
+		vk_ssr_destroy();
+		return;
+	}
+
+	Com_Memset( &set_alloc, 0, sizeof( set_alloc ) );
+	set_alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	set_alloc.descriptorPool = vk.ssr.pool;
+	set_alloc.descriptorSetCount = 1;
+	set_alloc.pSetLayouts = &vk.ssr.trace_set_layout;
+
+	for ( i = 0; i < ARRAY_LEN( vk.ssr.trace_descriptor ); i++ ) {
+		res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.ssr.trace_descriptor[i] );
+		if ( res < 0 ) {
+			ri.Printf( PRINT_WARNING, "SSR: trace set %i failed (%s)\n", i, vk_result_string( res ) );
+			vk_ssr_destroy();
+			return;
+		}
+	}
+
+	set_alloc.pSetLayouts = &vk.ssr.composite_set_layout;
+	res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.ssr.composite_descriptor );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: composite set failed (%s)\n", vk_result_string( res ) );
+		vk_ssr_destroy();
+		return;
+	}
+
+	/*
+	Written once. Every one of these names an object that lives as long as the
+	attachments do - unlike the occlusion pass, nothing here changes per map.
+	*/
+	for ( i = 0; i < ARRAY_LEN( vk.ssr.trace_descriptor ); i++ ) {
+		VkDescriptorImageInfo image_info[2];
+		VkDescriptorBufferInfo buffer_info;
+		VkWriteDescriptorSet writes[3];
+
+		Com_Memset( image_info, 0, sizeof( image_info ) );
+		image_info[0].sampler = vk.rt.depth_sampler;
+		image_info[0].imageView = vk.rt.depth_view;
+		image_info[0].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+		image_info[1].sampler = vk.ssr.sampler;
+		image_info[1].imageView = vk.color_image_view;
+		image_info[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		Com_Memset( &buffer_info, 0, sizeof( buffer_info ) );
+		buffer_info.buffer = vk.ssr.uniform_buffer[i];
+		buffer_info.range = sizeof( ssrUniform_t );
+
+		Com_Memset( writes, 0, sizeof( writes ) );
+		writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[0].dstSet = vk.ssr.trace_descriptor[i];
+		writes[0].dstBinding = 0;
+		writes[0].descriptorCount = 1;
+		writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[0].pImageInfo = &image_info[0];
+
+		writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[1].dstSet = vk.ssr.trace_descriptor[i];
+		writes[1].dstBinding = 1;
+		writes[1].descriptorCount = 1;
+		writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[1].pImageInfo = &image_info[1];
+
+		writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[2].dstSet = vk.ssr.trace_descriptor[i];
+		writes[2].dstBinding = 2;
+		writes[2].descriptorCount = 1;
+		writes[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writes[2].pBufferInfo = &buffer_info;
+
+		qvkUpdateDescriptorSets( vk.device, 3, writes, 0, NULL );
+	}
+
+	{
+		VkDescriptorImageInfo image_info;
+		VkWriteDescriptorSet write;
+
+		Com_Memset( &image_info, 0, sizeof( image_info ) );
+		image_info.sampler = vk.ssr.sampler;
+		image_info.imageView = vk.ssr.image_view;
+		image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		Com_Memset( &write, 0, sizeof( write ) );
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.dstSet = vk.ssr.composite_descriptor;
+		write.dstBinding = 0;
+		write.descriptorCount = 1;
+		write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		write.pImageInfo = &image_info;
+
+		qvkUpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
+	}
+
+	Com_Memset( &pl_desc, 0, sizeof( pl_desc ) );
+	pl_desc.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl_desc.setLayoutCount = 1;
+	pl_desc.pSetLayouts = &vk.ssr.trace_set_layout;
+
+	res = qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.ssr.trace_pipeline_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: trace pipeline layout failed (%s)\n", vk_result_string( res ) );
+		vk_ssr_destroy();
+		return;
+	}
+
+	pl_desc.pSetLayouts = &vk.ssr.composite_set_layout;
+	res = qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.ssr.composite_pipeline_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: composite pipeline layout failed (%s)\n", vk_result_string( res ) );
+		vk_ssr_destroy();
+		return;
+	}
+
+	vk_create_post_process_pipeline( 8, glConfig.vidWidth, glConfig.vidHeight );   // trace
+	vk_create_post_process_pipeline( 9, glConfig.vidWidth, glConfig.vidHeight );   // composite
+
+	if ( vk.ssr.trace_pipeline == VK_NULL_HANDLE || vk.ssr.composite_pipeline == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "SSR: pipelines were not created - disabling\n" );
+		vk_ssr_destroy();
+		return;
+	}
+
+	vk.ssr.ready = qtrue;
+}
+
+
+qboolean vk_ssr( void )
+{
+	ssrUniform_t *u;
+	float proj[16];
+	int i;
+
+	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
+		return qfalse;
+	}
+	if ( backEnd.doneSSR || !backEnd.doneSurfaces ) {
+		return qfalse;   // already run this frame, or there is no 3D yet
+	}
+	if ( r_ssr == NULL || r_ssr->value <= 0.0f ) {
+		return qfalse;
+	}
+	if ( !vk.ssr.ready ) {
+		if ( !ssrReported ) {
+			ssrReported = qtrue;
+			ri.Printf( PRINT_ALL, "SSR: not running - the pass was not created\n" );
+		}
+		return qfalse;
+	}
+	if ( vk.numWaterPlanes == 0 ) {
+		if ( !ssrReported ) {
+			ssrReported = qtrue;
+			ri.Printf( PRINT_ALL, "SSR: not running - this map has no water plane to reflect in\n" );
+		}
+		return qfalse;
+	}
+
+	u = (ssrUniform_t *)vk.ssr.uniform_ptr[ vk.cmd_index ];
+	if ( u == NULL ) {
+		return qfalse;
+	}
+
+	/*
+	The same clip the depth buffer was rendered with, which is not
+	viewParms.projectionMatrix as it stands: get_mvp_transform negates element 5
+	before use, because Quake's projection is an OpenGL one and Vulkan's clip
+	space has Y the other way up. Reconstructing with the unmodified matrix
+	mirrors every position vertically, and the result does not look like a flip -
+	it looks like the reflection sliding the wrong way as you turn. The occlusion
+	pass learned this the hard way; it is the same matrix and the same fix.
+	*/
+	Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof( proj ) );
+	proj[5] = -proj[5];
+	myGlMultMatrix( backEnd.viewParms.world.modelMatrix, proj, u->viewProj );
+
+	if ( !rt_invert_matrix( u->viewProj, u->invViewProj ) ) {
+		return qfalse;
+	}
+
+	VectorCopy( backEnd.viewParms.or.origin, u->eye );
+	u->eye[3] = 0.0f;
+
+	u->params[0] = r_ssr->value;
+	u->params[1] = r_ssrDistance->value;
+	u->params[2] = (float)r_ssrSteps->integer;
+	u->params[3] = r_ssrThickness->value;
+
+	/* Same convention the occlusion pass uses - see its depthInfo. */
+#ifdef USE_REVERSED_DEPTH
+	u->depthInfo[0] = 0.0f;   // cleared to far
+	u->depthInfo[1] = 0.6f;   // DEPTH_RANGE_WEAPON minDepth
+	u->depthInfo[2] = 1.0f;   // near is 1.0
+#else
+	u->depthInfo[0] = 1.0f;
+	u->depthInfo[1] = 0.3f;   // DEPTH_RANGE_WEAPON maxDepth
+	u->depthInfo[2] = -1.0f;
+#endif
+	u->depthInfo[3] = 0.0f;
+
+	for ( i = 0; i < vk.numWaterPlanes && i < SSR_MAX_PLANES; i++ ) {
+		u->planes[i][0] = vk.waterPlanes[i].normal[0];
+		u->planes[i][1] = vk.waterPlanes[i].normal[1];
+		u->planes[i][2] = vk.waterPlanes[i].normal[2];
+		u->planes[i][3] = vk.waterPlanes[i].dist;
+	}
+	u->planeCount[0] = (float)i;
+	u->planeCount[1] = u->planeCount[2] = u->planeCount[3] = 0.0f;
+
+	if ( !ssrReported ) {
+		ssrReported = qtrue;
+		ri.Printf( PRINT_ALL, "SSR: reflecting in %i water plane(s) - strength %g, "
+			"%g units over %i steps\n",
+			vk.numWaterPlanes, r_ssr->value, r_ssrDistance->value, r_ssrSteps->integer );
+	}
+
+	vk_end_render_pass();   // end main
+
+	/* ---- pass 1: march, into the offscreen target ---- */
+	vk.renderWidth = glConfig.vidWidth;
+	vk.renderHeight = glConfig.vidHeight;
+	vk.renderScaleX = vk.renderScaleY = 1.0f;
+	vk_begin_render_pass( vk.ssr.offscreen_pass, vk.ssr.framebuffer, qfalse,
+		vk.renderWidth, vk.renderHeight );
+
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.ssr.trace_pipeline );
+	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vk.ssr.trace_pipeline_layout, 0, 1, &vk.ssr.trace_descriptor[ vk.cmd_index ], 0, NULL );
+	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+
+	vk_end_render_pass();
+
+	/* ---- pass 2: blend it over the scene ---- */
+	vk_begin_rtao_render_pass();
+
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.ssr.composite_pipeline );
+	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vk.ssr.composite_pipeline_layout, 0, 1, &vk.ssr.composite_descriptor, 0, NULL );
+	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+
+	/*
+	Put back what these passes clobbered - the same repair the occlusion pass
+	makes, for the same reason. Binding a descriptor set with a different
+	pipeline layout invalidates whatever the geometry path had bound at those
+	indices, and the renderer only rebinds a descriptor when its value changes.
+	Without this the 2D pass that follows draws against bindings that no longer
+	exist, which is what ate the HUD once already.
+	*/
+	vk.cmd->descriptor_set.start = 0;
+	vk.cmd->descriptor_set.end = VK_DESC_COUNT - 1;
+	vk_update_mvp( NULL );
+	vk.cmd->depth_range = DEPTH_RANGE_COUNT;
+
+	backEnd.doneSSR = qtrue;
 
 	return qtrue;
 }
