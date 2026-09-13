@@ -4944,6 +4944,36 @@ be inside a render pass, and that gap is the only place in the frame that is
 outside one and still before the trace.
 =================
 */
+/*
+[QL] One line per entity the structure considered, on request.
+
+The instance count answered "are the proxies there at all". It cannot answer
+the question that keeps coming back, which is *which* entity is the one making
+a hard black box on a bridge railing - and that question has now been guessed
+at from screenshots several times, wrongly, because a box proxy looks the same
+whatever model it belongs to.
+
+Names and numbers instead. Model name says what it is, the flags say why it was
+kept or dropped, and the size against the origin says whether the box is
+anywhere near the size of the thing it stands for - a long thin railing and a
+compact post produce very different boxes and only one of them is a problem.
+*/
+static qboolean rtDumpRequested = qfalse;
+
+void vk_rt_request_dump( void ) {
+	rtDumpRequested = qtrue;
+}
+
+static void rt_dump_entity( int index, const trRefEntity_t *ent, const char *what ) {
+	const model_t *mod = R_GetModelByHandle( ent->e.hModel );
+
+	ri.Printf( PRINT_ALL, "  [%3i] %-28s reType %i rfx 0x%04x  %s\n",
+		index,
+		( mod != NULL && mod->name[0] ) ? mod->name : "<no model>",
+		ent->e.reType, ent->e.renderfx, what );
+}
+
+
 static qboolean vk_rt_build_dynamic_tlas( void )
 {
 	VkAccelerationStructureInstanceKHR *inst;
@@ -4957,7 +4987,10 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	uint32_t count = 0;
 	uint32_t numRound = 0;
 	const int idx = vk.cmd_index;
+	const qboolean dump = rtDumpRequested;
 	int i, j;
+
+	rtDumpRequested = qfalse;
 
 	if ( !vk.rt.world.dynReady ) {
 		return qfalse;
@@ -5001,6 +5034,7 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 		camera and darken the whole view from inside it.
 		*/
 		if ( ent->e.renderfx & ( RF_FIRST_PERSON | RF_THIRD_PERSON ) ) {
+			if ( dump ) rt_dump_entity( i, ent, "skipped - view model" );
 			continue;
 		}
 
@@ -5012,15 +5046,18 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 		angle on every single impact.
 		*/
 		if ( ent->e.renderfx & RF_NOOCCLUDE ) {
+			if ( dump ) rt_dump_entity( i, ent, "skipped - RF_NOOCCLUDE" );
 			continue;
 		}
 
 		if ( !R_GetEntityModelBounds( ent, mins, maxs ) ) {
+			if ( dump ) rt_dump_entity( i, ent, "skipped - no bounds" );
 			continue;
 		}
 
 		VectorSubtract( maxs, mins, size );
 		if ( size[0] <= 0.0f || size[1] <= 0.0f || size[2] <= 0.0f ) {
+			if ( dump ) rt_dump_entity( i, ent, "skipped - empty bounds" );
 			continue;
 		}
 		VectorAdd( mins, maxs, centre );
@@ -5103,7 +5140,23 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 		} else {
 			inst[count].accelerationStructureReference = boxRef;
 		}
+
+		if ( dump ) {
+			rt_dump_entity( i, ent, va( "%s  size %.0f %.0f %.0f  at %.0f %.0f %.0f",
+				( ent->e.renderfx & RF_OCCLUDE_ROUND ) ? "ball" : "BOX ",
+				size[0], size[1], size[2],
+				inst[count].transform.matrix[0][3],
+				inst[count].transform.matrix[1][3],
+				inst[count].transform.matrix[2][3] ) );
+		}
+
 		count++;
+	}
+
+	if ( dump ) {
+		ri.Printf( PRINT_ALL, "RT: %i of %i scene entit%s in the structure, %i round\n",
+			(int)count - 1, backEnd.refdef.num_entities,
+			backEnd.refdef.num_entities == 1 ? "y" : "ies", (int)numRound );
 	}
 
 	Com_Memset( &geom, 0, sizeof( geom ) );

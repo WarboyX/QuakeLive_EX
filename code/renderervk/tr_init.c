@@ -1467,6 +1467,21 @@ static void GfxInfo_f( void )
 
 
 #ifdef USE_VULKAN
+/*
+[QL] rtao_instances - what the occlusion structure was built from this frame.
+
+Requested rather than continuous: the interesting frame is the one the player
+is looking at when something is wrong, and that frame has a hundred entities in
+it. Type the command while standing in front of the problem and the next build
+prints its own contents.
+*/
+static void R_RTAOInstances_f( void )
+{
+	vk_rt_request_dump();
+	ri.Printf( PRINT_ALL, "RT: dumping the next dynamic structure build...\n" );
+}
+
+
 static void VkInfo_f( void )
 {
 	ri.Printf(PRINT_ALL, "max_vertex_usage: %iKb\n", (int)((vk.stats.vertex_buffer_max + 1023) / 1024) );
@@ -1514,6 +1529,7 @@ static void R_Register( void )
 	ri.Cmd_AddCommand( "gfxinfo", GfxInfo_f );
 #ifdef USE_VULKAN
 	ri.Cmd_AddCommand( "vkinfo", VkInfo_f );
+	ri.Cmd_AddCommand( "rtao_instances", R_RTAOInstances_f );
 #endif
 
 	//
@@ -2151,6 +2167,7 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	ri.Cmd_RemoveCommand( "gfxinfo" );
 	ri.Cmd_RemoveCommand( "shaderstate" );
 #ifdef USE_VULKAN
+	ri.Cmd_RemoveCommand( "rtao_instances" );
 	ri.Cmd_RemoveCommand( "vkinfo" );
 #endif
 

@@ -267,6 +267,9 @@ void vk_initialize( void );
 // needs one. Every structural decision reads this and not r_fbo directly.
 qboolean vk_fbo_wanted( void );
 
+// [QL] print the next dynamic acceleration structure build's contents
+void vk_rt_request_dump( void );
+
 // Called after initialization or renderer restart
 void vk_init_descriptors( void );
 
