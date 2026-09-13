@@ -1458,11 +1458,25 @@ static const void *RB_DrawSurfs( const void *data ) {
 	The screenmap view is unaffected: vk_rt_ao returns on its first line when
 	the screenmap pass is the active one.
 
+	Portal and mirror views have to be skipped here, and that is not the same
+	condition. This function runs once per view, not once per frame, and a
+	portal is a view - it is drawn before the main one. Without the test, a
+	teleporter showing the room behind it meant the portal's view ran the
+	occlusion pass, set backEnd.doneRTAO, and the main view's call returned on
+	that flag: occlusion landed on the portal render and the scene went without.
+	It showed up as the debug view refusing to draw and the lighting shifting as
+	you walked up to a teleporter, and it only exists because the pass moved
+	from the 3D-to-2D transition - which happens once a frame, after every view
+	- into this function.
+
 	The two later calls are left where they are. They are no-ops once
 	backEnd.doneRTAO is set, and they still catch a frame that reaches the 2D
-	stage without having come through here.
+	stage without having come through here - including one where every view was
+	a portal and this was skipped every time.
 	*/
-	vk_rt_ao();
+	if ( backEnd.viewParms.portalView == PV_NONE ) {
+		vk_rt_ao();
+	}
 #endif
 
 #ifdef USE_PMLIGHT
