@@ -2946,6 +2946,67 @@ void CL_InitAliases(void) {
     Cmd_AddCommand("unaliasall", CL_UnaliasAll_f);
 }
 
+/*
+===============
+CL_Video_f
+
+[QL] Start writing an AVI of the game.
+
+The whole writer was already here and complete - CL_OpenAVIForWriting,
+CL_WriteAVIVideoFrame, CL_WriteAVIAudioFrame, CL_CloseAVI - and already wired
+into everything that has to know about it: Com_Frame locks to cl_aviFrameRate
+while recording, the mixer feeds it audio, and disconnect, demo end and
+shutdown all close it. The only missing pieces were the two commands that turn
+it on and off, so none of it could ever run.
+
+That is the same silent shape as a registered cvar nothing reads: every part
+reports success and the feature does not exist.
+===============
+*/
+static void CL_Video_f(void) {
+    char filename[MAX_OSPATH];
+    int i;
+
+    if (!clc.demoplaying && clc.state != CA_ACTIVE) {
+        Com_Printf("The %s command needs a live game or a demo playing.\n", Cmd_Argv(0));
+        return;
+    }
+
+    if (Cmd_Argc() == 2) {
+        Com_sprintf(filename, sizeof(filename), "videos/%s.avi", Cmd_Argv(1));
+    } else {
+        // first videos/videoNNNN.avi that does not already exist
+        for (i = 0; i <= 9999; i++) {
+            Com_sprintf(filename, sizeof(filename), "videos/video%04i.avi", i);
+            if (!FS_FileExists(filename)) {
+                break;
+            }
+        }
+        if (i > 9999) {
+            Com_Printf(S_COLOR_RED "Could not find a free video filename.\n");
+            return;
+        }
+    }
+
+    if (CL_OpenAVIForWriting(filename)) {
+        Com_Printf("Recording to %s at %i fps. Type " S_COLOR_CYAN "stopvideo" S_COLOR_WHITE " to finish.\n",
+                   filename, cl_aviFrameRate->integer);
+    }
+}
+
+/*
+===============
+CL_StopVideo_f
+===============
+*/
+static void CL_StopVideo_f(void) {
+    if (!CL_VideoRecording()) {
+        Com_Printf("Not recording a video.\n");
+        return;
+    }
+    CL_CloseAVI();
+}
+
 // =====================================================================
 
 /*
@@ -3141,6 +3202,8 @@ void CL_Init(void) {
     Cmd_AddCommand("demo", CL_PlayDemo_f);
     Cmd_SetCommandCompletionFunc("demo", CL_CompleteDemoName);
     Cmd_AddCommand("stoprecord", CL_StopRecord_f);
+    Cmd_AddCommand("video", CL_Video_f);
+    Cmd_AddCommand("stopvideo", CL_StopVideo_f);
     Cmd_AddCommand("connect", CL_Connect_f);
     Cmd_AddCommand("reconnect", CL_Reconnect_f);
     Cmd_AddCommand("rcon", CL_Rcon_f);
@@ -3214,6 +3277,8 @@ void CL_Shutdown(char* finalmsg, qboolean disconnect, qboolean quit) {
     Cmd_RemoveCommand("record");
     Cmd_RemoveCommand("demo");
     Cmd_RemoveCommand("stoprecord");
+    Cmd_RemoveCommand("video");
+    Cmd_RemoveCommand("stopvideo");
     Cmd_RemoveCommand("connect");
     Cmd_RemoveCommand("reconnect");
     Cmd_RemoveCommand("rcon");
