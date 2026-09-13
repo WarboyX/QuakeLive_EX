@@ -1,33 +1,3 @@
-### C16. Score tracker never shows the player's score — DONE (verify)
-**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
-
-The two-bar tracker top-left read 39/38 while the player was 40th with 1, and
-0/0 while the player was on -1. Four samples, always the top two players, never
-the viewer — so this was never a negative-number bug, which is how it was first
-reported.
-
-**The HUD that loads is not the one I was reading.** `cg_hudFiles` defaults to
-`ui/hud.txt`, which loads `ui/hud.menu`, and that asks for
-`CG_1ST_PLACE_SCORE` and `CG_2ND_PLACE_SCORE` with **no ownerdrawflags at all**
-— both are plain `visible 1`. The four-item
-first-place/not-first-place arrangement I traced through `comp_hud.menu` is a
-different HUD and never applied. So the earlier round spent ruling out
-`ownerDrawVisible`, `PERS_RANK` and the flag gating was looking at the wrong
-file the whole time; all three were fine.
-
-Both owner-draws were mapped straight to `CG_DrawRedScore` / `CG_DrawBlueScore`,
-which read `cgs.scores1` / `cgs.scores2`. In a team game those are the team
-scores and it is correct; in a free-for-all they are 1st and 2nd place.
-
-`CG_DrawPlaceScore` now serves both: team gametypes keep red and blue, and
-free-for-all draws the leader on the top line and **your** score on the bottom,
-swapping the bottom line to the runner-up when you are the one leading. That is
-the same information `comp_hud.menu` builds from four gated items, expressed as
-two.
-
-This follows the reported intent rather than a binary trace — the behaviour was
-stated as "one should be the client's player, one should be the top fragger".
-
 # ioquakelive — issue and feature tracker
 
 Working notes for the port. Open items first, resolved at the bottom so we do not
@@ -43,10 +13,10 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 |---|---|---|
 | **Client / UI** (U) | `███████████████░░░░░  12/16` | U18 root-caused: missing commas, not the string pool |
 | **Client / cgame** (C) | `████████████████████  9/9` | C12: the scoreboard panel is an ad slot, not a levelshot |
-| **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan runs and draws text |
+| **Renderer** (R) | `███████████░░░░░░░░░  10/18` | R8 root-caused: unclamped `dot(N,L)` subtracting light |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
 | **Engine / server** (E) | `████████░░░░░░░░░░░░  7/14` | E11: map_restart ran GAME_INIT twice |
-| **Overall** | `████████████░░░░░░░░  31/52` | by binary: 13 server · 36 client · 3 both |
+| **Overall** | `█████████████░░░░░░░  39/62` | by binary: 13 server · 46 client · 3 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -259,8 +229,11 @@ server and whatever stops was in our client.
 1. **C3** viewmodel is bigger and lower than it should be. `cg_fov` ruled out;
    next move is diffing `CG_AddPlayerWeapon` against upstream `1487e89` for the
    `MatrixMultiply` reorder.
-2. **R8** rocket blasts light far too weakly. My `r_dlightMode` diagnosis was
-   wrong; three leads recorded, none tried.
+2. ~~**R8** rocket blasts light far too weakly.~~ **Closed 2026-09-13** —
+   `dot(N,L)` was never clamped in `light_frag.tmpl`, so a dynamic light
+   subtracted from everything it did not reach. Only visible once `r_rts` gave
+   the scene a floating-point target, because a fixed-point attachment clamps
+   blend inputs to [0,1] and a floating-point one does not.
 
 *(U9 closed — see below. It was `ItemParse_cvarFloatList` eating the menu's
 closing brace, which merged two menus into one. Run the headless parse check
@@ -825,6 +798,37 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 ---
 
 ## Client / cgame
+
+### C16. Score tracker never shows the player's score — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+The two-bar tracker top-left read 39/38 while the player was 40th with 1, and
+0/0 while the player was on -1. Four samples, always the top two players, never
+the viewer — so this was never a negative-number bug, which is how it was first
+reported.
+
+**The HUD that loads is not the one I was reading.** `cg_hudFiles` defaults to
+`ui/hud.txt`, which loads `ui/hud.menu`, and that asks for
+`CG_1ST_PLACE_SCORE` and `CG_2ND_PLACE_SCORE` with **no ownerdrawflags at all**
+— both are plain `visible 1`. The four-item
+first-place/not-first-place arrangement I traced through `comp_hud.menu` is a
+different HUD and never applied. So the earlier round spent ruling out
+`ownerDrawVisible`, `PERS_RANK` and the flag gating was looking at the wrong
+file the whole time; all three were fine.
+
+Both owner-draws were mapped straight to `CG_DrawRedScore` / `CG_DrawBlueScore`,
+which read `cgs.scores1` / `cgs.scores2`. In a team game those are the team
+scores and it is correct; in a free-for-all they are 1st and 2nd place.
+
+`CG_DrawPlaceScore` now serves both: team gametypes keep red and blue, and
+free-for-all draws the leader on the top line and **your** score on the bottom,
+swapping the bottom line to the runner-up when you are the one leading. That is
+the same information `comp_hud.menu` builds from four gated items, expressed as
+two.
+
+This follows the reported intent rather than a binary trace — the behaviour was
+stated as "one should be the client's player, one should be the top fragger".
+
 
 ### C4. Console commands sent as chat in-game — DONE (verify), with a caveat
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -1832,8 +1836,38 @@ are GL-only too and want the same gate, and the Vulkan side has no
 supersampling control because `r_renderScale` needs `r_renderWidth`/`Height`
 alongside it rather than being a single switch.
 
-### R13. RT reflections and ambient occlusion — STEPS 1-2 DONE (verify), AO pass next
+### R13. RT reflections and ambient occlusion — AO DONE (verify), reflections in R19
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**Status 2026-09-13.** The AO pass ships and works. Since it first drew:
+
+- **It ran after the dynamic lights**, so occlusion multiplied direct light as
+  well as ambient — a plasma bolt lighting a corner had its own light darkened
+  by that corner. Moved to just before the lit surface pass, where AO multiplies
+  the lightmapped scene and dynamic lights are added on top untouched. Not an
+  approximation of the physics; the ordering the term is defined by.
+- **A portal is a view.** `RB_DrawSurfs` runs once per view, so a teleporter
+  showing the room behind it ran the occlusion pass on the *portal's* view, set
+  `doneRTAO`, and the main view returned on the flag. Regression from the move
+  above; guarded on `portalView == PV_NONE` now. The screenmap test did not
+  cover it — screenmap has its own render pass, a portal uses the main one.
+- **Doors were in the static structure and the moving one.** Brush models keep
+  their surfaces in `world->surfaces`, so every door was baked in at its
+  compiled position *and* got a proxy that tracked it: two occluders, one door,
+  reported as the AO having an open state and a closed state rather than an
+  animation. The world structure is submodel 0 only now.
+- **`r_rtaoLights`** fades occlusion inside a dynamic light, using the light's
+  own falloff so the region cleared is the region lit.
+- **The debug view was being read through the tone curve**, so `r_rtao 2` at
+  `r_rts 1` showed only the deepest creases and looked like a much tighter
+  radius. It cancels `obScale` now.
+- **Cost is now printed.** `width x height x samples` ray queries in one draw
+  call: 133M at 4K with 16 rays, which is past what a driver watchdog allows and
+  was reported as the whole machine seizing for minutes. The menu called that
+  setting "best"; it is labelled by cost now.
+
+Original design notes follow.
+
 
 The hybrid from R10 - keep the baked lightmaps and lightgrid as the light field,
 ray trace only reflections and AO on top. Recording the design and the real
@@ -4344,33 +4378,6 @@ set. Gated on the mode rather than on a new cvar: a server handing out a fixed
 loadout with no ammo pickups has already decided this, and a cvar nobody sets is
 a cvar nobody reads (E8). Powerups still drop — those are still worth taking.
 
-### C16. Score tracker never shows the player's score — OPEN
-**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
-
-**This is C15, not a negative-number bug, and the screenshots settle it.** Four
-samples: tracker 12/11 with the player 10th on 8; 10/9 with the player 7th on 7;
-and 0/0 with the player on **-1** while everyone else sat on 0. In every case
-the two bars are 1st and 2nd place. The player's score is never shown at all —
-it only looked like a negative-handling fault because when scores are low the
-leader's numbers happen to look plausible.
-
-So `CG_DrawPlayerScore` and the `%i` formatting are fine, and so is the wire
-format. What is wrong is that the `CG_PLAYER_SCORE` half of the pair never
-draws.
-
-Checked and ruled out this round: `cgDC.ownerDrawVisible` **is** wired
-(`cg_main.c`), `ui_shared.c` **does** consult it before painting, and
-`CG_OwnerDrawVisible`'s logic reads correctly — an item flagged
-`IF_PLYR_IS_FIRST_PLACE` falls through every branch and hits the closing
-`return qfalse` when the player is not first.
-
-Which leaves **which HUD file is actually loaded**. `comp_hud.menu` is the one
-with the four-item gated layout; Quake Live also ships `hud.menu`, `hud2`,
-`hud3` and others, selected by `cg_hudfiles`, and `hud3.menu` lays these out
-differently. If the loaded HUD asks for `CG_1STPLACE` and `CG_2NDPLACE`
-unconditionally then the rendering is faithful and the layout is the thing to
-change. That is the next thing to check and it has not been checked.
-
 ### C15. HUD score tracker shows 1st and 2nd, not 1st and yours — DONE (confirmed)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
@@ -4628,6 +4635,99 @@ path fault it will affect this light too.
 
 ## Renderer
 
+### R18. Real time shading (`r_rts`) — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The scene target was 8-bit UNORM, so everything above full brightness was
+discarded at the moment it was written and no curve applied later could recover
+it. `r_rts 1` draws into `R16G16B16A16_SFLOAT` instead and applies a response
+curve in the present pass — identity below a knee of 0.8, rolling off above it,
+so turning it on changes nothing except where the image used to clip.
+
+`r_rts 2` is the same on `B10G11R11_UFLOAT` — same headroom, no sign bit.
+
+**What it mostly did was expose four older bugs.** This is the entry's real
+value: a floating-point attachment removes clamping the fixed-point one had
+been applying silently for years, and anything relying on that clamp surfaces
+at once. When something looks like an `r_rts` fault, ask first what the old
+target was quietly fixing.
+
+1. **A crash on every launch.** `r_rts` implies the offscreen target, but the
+   implication only reached `vk.fboActive` — the render passes, framebuffers,
+   present format and render scale each still read `r_fbo`, which defaults to
+   0. Result: a draw path resolving an offscreen image against framebuffers
+   pointing at the swapchain. Every Vulkan object created successfully; the
+   process died on the first frame with nothing logged, and because `r_rts` is
+   archived it did it again next launch. One accessor now, `vk_fbo_wanted()`,
+   plus a tripwire that errors if the built topology and the draw path
+   disagree.
+2. **A second crash waiting on the way back out.** `vk.msaaActive` was only
+   ever assigned `qtrue` and `vk` is a global a `vid_restart` does not zero, so
+   turning `r_rts` off again left multisampled attachments under a swapchain
+   draw path. Same shape, and toggling the feature off is exactly what someone
+   does when they suspect it.
+3. **Dynamic lights subtracting.** See R8 — the real one.
+4. **Entity lighting in the wrong space.** `R_SetupEntityLighting` builds every
+   term in `identityLight` space except the dynamic light contribution to
+   `ent->directedLight`, which was absolute 0–255. The two coincide only while
+   `identityLight` is 1.0, which it had been because overbright is forced to 0
+   in a window without an offscreen target.
+
+Also fixed here: safe video mode now prints what it overwrote and the line to
+put it back. Answering yes to the abnormal-exit dialog silently replaces three
+`CVAR_ARCHIVE` cvars and the originals are gone — a crash loop left the game at
+1024x768 windowed with nothing connecting it to a dialog answered before the
+window opened.
+
+---
+
+### R19. Reflective water — IN PROGRESS
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Water is essentially a scrolling texture. Wanted: reflection and some motion.
+
+**Ruled out first, so nobody re-proposes them:**
+
+- **Ray-traced reflection.** `rtVertex_t` is `float xyz[3]`. The acceleration
+  structure knows where geometry is and nothing about what it looks like, so a
+  hit cannot be shaded without UVs, a material index and texture indexing added
+  to the BLAS. Large.
+- **Geometry waves.** `deformVertexes wave` moves the vertices a surface already
+  has, and planar BSP faces are subdivided at map compile time from the
+  shader's `tessSize`. A runtime override cannot retessellate QL's water; on
+  coarse water it would heave in flat slabs. This is why it reads as "mostly a
+  texture" — at the geometry level it largely is one.
+- **The engine's own mirror path.** `R_GetPortalOrientations` already
+  implements a plane mirror needing no camera, but it only triggers on a
+  `misc_portal_surface` entity, and the portal scan only reaches surfaces
+  sorted at or below `SS_PORTAL`. Forcing water there moves it from transparent
+  to near-first in draw order. The reflection is not the risky part; the sort
+  is.
+
+**Step 1, done:** `vk_find_water_planes` collects the map's distinct liquid
+planes at load. Per-pixel "is this water" from a plane costs a few floats and a
+compare; per surface it costs pipeline state or a stencil bit.
+
+Premise confirmed on japanesecastles:
+
+```
+Water: 2 plane(s) from 4 up-facing water surface(s), 18 liquid surface(s) in all
+  plane 0: normal 0.00 0.00 1.00 at -356
+  plane 1: normal 0.00 0.00 1.00 at -340
+```
+
+Flat, horizontal, and the 14 rejected surfaces are the sides and bottoms. Built
+and reported *before* anything depends on it precisely because pak00 is not in
+this tree and the manifest is names only — fifty lines to test the premise
+rather than five hundred.
+
+**Step 2, next:** the reflection pass. Trace against the existing TLAS and shade
+the hit by projecting it back to screen and sampling the scene colour — which
+sidesteps the missing material data, at the cost of hits that are off-screen.
+Two passes in the shape of the AO pass, opt-in, with a debug view.
+
+---
+
 ### R9. Quad glow dimmer under Vulkan than OpenGL — DONE (verify, second pass)
 **Lives in:** our **client** (renderer) · **Seen by:** our client only, Vulkan only
 
@@ -4679,7 +4779,42 @@ to remove it or set `r_dlightMode 2` by hand.
 Note this is a different question from R8, which is about dynamic lights being
 weak in *both* renderers. R8 stays open.
 
-### R8. Dynamic light glow is weak or absent — OPEN, my earlier diagnosis was wrong
+### R8. Dynamic lights subtracted light from what they did not reach — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**Root cause, found 2026-09-13.** `light_frag.tmpl` computed
+`float diffuse = dot(nN, nL);` and never clamped it. That is negative for every
+fragment on the far side of a surface from the light, and the per-pixel light
+pass blends `ONE/ONE` — so a dynamic light darkened the geometry it did not
+reach by as much as it brightened what it did. `specFactor` had the same fault
+and went straight into `pow()`, which is undefined for a negative base. Both are
+clamped now, after the `abs_light` branch rather than before, since that mode
+deliberately takes the absolute value of each and `max(abs(x), 0)` is `abs(x)`.
+
+Invisible while the scene target was fixed-point: Vulkan clamps blend source and
+destination to [0,1] before evaluating when the attachment is fixed-point, and
+does not clamp at all when it is floating-point. `r_rts` supplies a
+floating-point target. That is the whole of why it appeared with `r_rts` and
+only with `r_rts`, and why `r_rts 2` did not help — `B10G11R11` is
+floating-point too, unclamped at blend time, clamping only at write.
+
+**How it was found is worth keeping.** Six settings that did *not* fix it did
+the work — `r_dlightBacks 0`, `r_dlightMode 2`, `r_ext_multisample 0`,
+`r_rts 2`, `r_rtao 0`, and `r_overBrightBits` — eliminating AO, MSAA, the colour
+format, the back-facing projection and the entity fold-in in turn. The one that
+turned it was volunteered: **`r_dlightMode 0` does not show it.** Mode 0 is the
+legacy projected path and 1 and 2 are both per-pixel, which cut the search to
+one shader. Three rounds had gone into reading `RB_ProjectDlightTexture`, a
+function that was never running on the reporter's machine.
+
+Five wrong theories preceded it, each one plausible and each one killed by a
+single cheap test. The pattern to copy is the tests, not the theories.
+
+---
+
+### R8a. Earlier notes on this item — superseded
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
 **Correction.** I claimed `r_dlightMode 0` keeps dynamic lights off world surfaces

@@ -14,6 +14,71 @@ platform, so one pak serves a Linux server and its Windows clients under the
 same `sv_pure` checksum), `baseq3/pak01.pk3`, ready-to-run server configs and
 `server.cfg.example`.
 
+## Lighting and ambient occlusion
+
+A scene target that can hold light brighter than white, and the four bugs turning
+it on uncovered.
+
+**`r_rts` — real time shading.** The scene was drawn into an 8-bit target, so
+anything above full brightness was discarded at the moment it was written and no
+amount of adjustment afterwards could recover it. `r_rts 1` draws into a
+floating-point target and applies a response curve at the end of the frame
+instead: identity below 0.8, rolling off above it, so turning it on changes
+nothing except where the image used to clip. `r_rts 2` uses an unsigned float
+format with the same headroom. Off by default — it changes every pixel, and that
+is a look decision.
+
+**Dynamic lights no longer subtract light.** The per-pixel light shader computed
+`dot(N, L)` and never clamped it, so a rocket or a plasma bolt *darkened* the
+geometry it did not reach by as much as it lit what it did — a grenade under a
+walkway lit the underside and put a black circle on the top. It had been
+invisible for as long as the scene target was fixed-point, because Vulkan clamps
+blend inputs to [0,1] for a fixed-point attachment and not at all for a floating-
+point one.
+
+**Ambient occlusion now runs before the dynamic lights.** Occlusion estimates how
+much *ambient* light reaches a point and has no business attenuating direct
+light, which it was doing — a light in a corner had its own contribution
+multiplied by that corner's occlusion. `r_rtaoLights` additionally fades
+occlusion inside a light, using the light's own falloff so the region cleared is
+the region lit.
+
+**Doors cast one shadow now, not two.** Brush models keep their surfaces in the
+world's surface array, so every door was baked into the static acceleration
+structure at the position it was compiled at *and* given a proxy that followed
+it. The static structure is the world's own geometry only.
+
+**Occlusion cost is printed at map load.** The trace is a full-resolution pass and
+`r_rtaoSamples` is unrolled into the shader, so the cost is
+`width x height x samples` ray queries in a single draw call — 133 million at 4K
+with 16 rays, which is past what a driver watchdog permits and shows up as the
+display freezing for seconds while sound keeps playing. The log now says the
+number and warns past 32M, and the menu labels that setting by cost rather than
+calling it "best".
+
+## Sound, the console, and getting back in
+
+**Audio runs at 44kHz.** The mixer was opening the device at 22050 and resampling
+Quake Live's 44kHz assets down to meet it. The "not a 22kHz audio file" lines in
+every log were the engine saying it was about to throw half of each sound away.
+
+**The console has a backdrop again.** Its shader referenced two Quake 3 image
+names that Quake Live's pak does not contain, so both stages were dropped, the
+shader ended up with none, and the console drew its text straight over the game.
+
+**Safe video mode says what it took.** Answering yes to the "did not exit
+properly" dialog replaces three saved video settings and the originals are gone.
+A crash loop left the game at 1024x768 in a window with nothing on screen or in
+the log connecting it to a dialog answered before the window opened. It now
+prints the previous values and the exact line to restore them.
+
+**`\video` and `\stopvideo` work.** The AVI writer was complete and wired into
+the frame loop, the mixer and every shutdown path — the two commands that start
+and stop it were the only missing pieces, so none of it had ever run.
+
+**Quake 3 maps load.** BSP version 46 is accepted alongside Quake Live's 47; the
+only difference between them is a lump Quake 3 does not have.
+
 ## Spawning, which turned out to be the largest fault in the game
 
 On a full server most deaths were not kills. Every spawn selector ended the same
@@ -136,6 +201,19 @@ in and which client sees it. Worth knowing before you run a server:
 - Console text is still the Quake 3 bitmap charset, so scaling it magnifies it.
   Moving it onto the TrueType renderer already used for the HUD is scoped in
   `TRACKER.md` (R16).
+- **Ambient occlusion is expensive at high settings.** The trace is a
+  full-resolution pass and the sample count is unrolled into the shader, so cost
+  is `width x height x samples`. At 4K, `r_rtaoSamples 16` is 133 million ray
+  queries in one draw call and will trip a driver watchdog — the display freezes
+  for seconds at a time while sound and input keep working. The default of 4 is
+  the default for that reason; the log prints the number and warns.
+- **`r_rts` is off by default and changes every pixel.** It is also the setting
+  that has repeatedly exposed older faults rather than caused them, because a
+  floating-point target removes clamping the fixed-point one applied silently.
+  If something looks wrong only with `r_rts 1`, the first question is what the
+  old target was quietly correcting.
+- **Water is still a texture.** Reflection is scoped in `TRACKER.md` (R19); the
+  plane detection it needs is in and reports at map load.
 
 ## Before cutting the release
 
