@@ -151,7 +151,7 @@ cvar_t	*r_rtaoSamples;
 cvar_t	*r_rtDynamic;
 cvar_t	*r_rtaoNormals;
 cvar_t	*r_rtaoWeapon;
-cvar_t	*r_toneMap;
+cvar_t	*r_rts;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
@@ -1968,16 +1968,18 @@ static void R_Register( void )
 		" -2 - first integrated GPU" );
 	r_device->modified = qfalse;
 
-	r_toneMap = ri.Cvar_Get( "r_toneMap", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
-	ri.Cvar_CheckRange( r_toneMap, "0", "1", CV_INTEGER );
-	ri.Cvar_SetDescription( r_toneMap, "How the overbright multiply reaches the screen. "
-		"Requires " S_COLOR_CYAN "\\r_fbo 1" S_COLOR_WHITE ".\n"
-		" 0 - multiply and clamp, as every build before this one. Everything above "
-		"1/overbright lands on white, so at r_overBrightBits 2 the top three quarters "
-		"of the range become one colour\n"
-		" 1 - roll the top off instead, so bright surfaces stay apart from each other "
-		"and keep room above them for anything additive\n"
-		"Changes every pixel of the image, so it is off by default." );
+	r_rts = ri.Cvar_Get( "r_rts", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_rts, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rts, "Real time shading.\n"
+		" 0 - the lighting response is baked into the assets at load. Overbright is "
+		"folded into lightmaps when it cannot be applied any later, the scene is drawn "
+		"into an 8 bit target, and everything above full brightness is thrown away "
+		"where it happens\n"
+		" 1 - the scene is drawn into a floating point target instead, so light that "
+		"adds past full brightness survives to be looked at, and the response curve is "
+		"applied per frame at the end rather than baked in\n"
+		"Implies " S_COLOR_CYAN "\\r_fbo 1" S_COLOR_WHITE ", which is what provides the pass to do it in. "
+		"Falls back to 0 if the device cannot blend to a float target." );
 
 	r_fbo = ri.Cvar_Get( "r_fbo", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_fbo, "Use framebuffer objects, enables gamma correction in windowed mode and allows arbitrary video size and screenshot/video capture.\n Required for bloom, HDR rendering, anti-aliasing and greyscale effects." );

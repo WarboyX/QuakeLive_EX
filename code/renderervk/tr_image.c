@@ -1752,6 +1752,9 @@ void R_SetColorMappings( void ) {
 				( glConfig.deviceSupportsGamma || vk.fboActive ) ? "unbaked" : "gamma-baked at upload",
 				vk.fboActive ? "fbo on" : "fbo off",
 				glConfig.isFullscreen ? "fullscreen" : "windowed" );
+			ri.Printf( PRINT_ALL, "Image pipeline: real time shading %s\n",
+				r_rts->integer ? "on - float scene target, response curve applied per frame"
+				               : "off - fixed range target, response baked at load" );
 		}
 	}
 

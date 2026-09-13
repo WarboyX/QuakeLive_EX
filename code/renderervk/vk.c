@@ -1955,6 +1955,43 @@ static void setup_surface_formats( VkPhysicalDevice physical_device )
 
 	vk.color_format = get_hdr_format( vk.base_format.format );
 
+	/*
+	[QL] r_rts: a scene target that can hold light brighter than white.
+
+	Every format get_hdr_format can return is UNORM - normalized to [0,1] - so
+	the target clamps at full brightness while the scene is still being drawn.
+	Two additive lights on one wall, or one additive light on a surface already
+	near white, and the sum is discarded at the moment it is written. Nothing
+	downstream can recover it: a response curve in the present pass only ever
+	sees what survived, which is why putting one there flattened the image
+	rather than rescuing the highlights.
+
+	A float target keeps the sum. The curve at the end then has real range to
+	bring down, which is the difference between a blown torch being a flat white
+	patch and being a bright centre with falloff around it.
+
+	Checked rather than assumed: the device must accept the format as a colour
+	attachment AND blend to it. Blending is the half that matters, because every
+	light in this renderer is an additive blend. If either is missing this stays
+	on the fixed range path and says so, instead of failing to create a render
+	pass later with nothing to explain it.
+	*/
+	if ( r_rts->integer ) {
+		const VkFormat rtsFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+		const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+			VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+		VkFormatProperties props;
+
+		qvkGetPhysicalDeviceFormatProperties( physical_device, rtsFormat, &props );
+		if ( ( props.optimalTilingFeatures & need ) == need ) {
+			vk.color_format = rtsFormat;
+		} else {
+			ri.Printf( PRINT_WARNING, "r_rts: this device cannot blend to a float colour target, "
+				"falling back to the fixed range one\n" );
+			ri.Cvar_Set( "r_rts", "0" );
+		}
+	}
+
 	vk.capture_format = VK_FORMAT_R8G8B8A8_UNORM;
 
 	vk.bloom_format = vk.base_format.format;
@@ -6799,7 +6836,9 @@ void vk_initialize( void )
 
 	vk_set_render_scale();
 
-	if ( r_fbo->integer ) {
+	/* [QL] r_rts draws into a float target and resolves it at the end, so it
+	   needs the offscreen pass r_fbo provides, whether or not r_fbo asked. */
+	if ( r_fbo->integer || r_rts->integer ) {
 		vk.fboActive = qtrue;
 		if ( r_ext_multisample->integer ) {
 			vk.msaaActive = qtrue;
@@ -8283,7 +8322,7 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	Off by default, because it changes every pixel of the image and that is a
 	look decision.
 	*/
-	frag_spec_data.toneMap = r_toneMap->integer;
+	frag_spec_data.toneMap = r_rts->integer;
 
 	if ( !vk_surface_format_color_depth( vk.present_format.format, &frag_spec_data.depth_r, &frag_spec_data.depth_g, &frag_spec_data.depth_b ) )
 		ri.Printf( PRINT_ALL, "Format %s not recognized, dither to assume 8bpc\n", vk_format_string( vk.base_format.format ) );

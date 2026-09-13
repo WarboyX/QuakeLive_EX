@@ -66,32 +66,36 @@ void main() {
 	}
 
 	/*
-	[QL] Overbright, with or without somewhere for the top of the range to go.
+	[QL] The response curve, applied to whatever the scene target handed over.
 
-	toneMap 0 is the original: multiply and let the hardware clamp. Every value
-	above 1/obScale lands on exactly 1.0, so at obScale 4 the top three quarters
-	of the range become one colour and any surface already near white has
-	nothing added to it - which is what makes an additive effect drawn over a
-	lit paper screen invisible.
+	toneMap 0 is the original: multiply by obScale and let the hardware clamp.
 
-	toneMap 1 is Reinhard with a white point, and the white point is obScale
-	itself: 0 maps to 0, obScale maps to 1, and the curve is near enough linear
-	at the bottom that shadows and midtones keep the brightening they were asked
-	for. What changes is the top - it compresses towards white instead of
-	arriving there and stopping, so bright surfaces stay distinguishable from
-	each other and still have room above them.
+	toneMap 1 is real time shading. It matters what is upstream: with r_rts the
+	scene target is floating point, so values above full brightness arrived here
+	intact instead of being discarded when they were written, and this is where
+	they get brought down.
 
-	Per channel rather than on luminance. Luminance-based tone mapping keeps
-	saturation better, but it also shifts hue on anything that clips in one
-	channel only, and Quake's palette does that constantly - a saturated red
-	lamp, a green rail trail. Per channel is the more predictable of the two
-	here.
+	The curve is identity below a knee and bends only above it. That flat
+	section is the entire point, and the first attempt at this got it wrong - it
+	used Reinhard, which has no flat section anywhere. Reinhard pulls midtones
+	down everywhere: a value of 0.1 at obScale 4 comes back 0.293 where it
+	should be 0.4. The menu went dark and the game went washed out, in exchange
+	for headroom that nothing down there ever needed.
+
+	Above the knee: knee + (1-knee)(1 - exp(-(c-knee)/(1-knee))). It meets the
+	identity line at the knee with a matching slope, so there is no seam where
+	it takes over, and it approaches 1.0 without arriving. Everything below the
+	knee is bit for bit what it would have been with the curve off - which is
+	the property that lets this be turned on without the picture changing except
+	where it used to clip.
 	*/
 	if ( toneMap == 1 )
 	{
-		vec3 c = base * obScale;
-		float w = max(obScale, 1.0);
-		out_color = vec4((c * (1.0 + c / (w * w))) / (1.0 + c), 1);
+		const float knee = 0.8;
+		vec3 c = max(base * obScale, vec3(0.0));
+		vec3 over = max(c - knee, vec3(0.0));
+		out_color = vec4(min(c, vec3(knee)) +
+			(1.0 - knee) * (1.0 - exp(-over / (1.0 - knee))), 1);
 	}
 	else
 	{
