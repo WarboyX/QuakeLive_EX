@@ -1716,6 +1716,45 @@ void R_SetColorMappings( void ) {
 	tr.identityLight = 1.0f / ( 1 << tr.overbrightBits );
 	tr.identityLightByte = 255 * tr.identityLight;
 
+	/*
+	[QL] Say what the image pipeline actually ended up doing.
+
+	None of this is visible from a cvar. r_overBrightBits is what was asked for;
+	tr.overbrightBits is what survived, and the block above sets it to zero
+	whenever the renderer has no way to apply overbright at present time -
+	windowed, or no hardware gamma, and in both cases only when r_fbo is off.
+
+	That matters because R_ColorShiftLightingBytes shifts lightmaps by
+	r_mapOverBrightBits MINUS tr.overbrightBits. Zeroing the second term does not
+	remove the boost, it moves all of it into the lightmap: the intended shift of
+	1 becomes 2, the map is lit four times rather than twice, and bright surfaces
+	pin at white. A shoji screen that ate an additive lightning bolt whole is
+	what that looks like from the inside, and it cost several rounds of looking
+	at the bolt.
+
+	The gamma table line is the other half. Without hardware gamma and without an
+	FBO, overbright is baked into every texture at upload through a table that
+	folds the same shift in - which is what turned the flat normal map into a
+	55 degree tilt earlier on this branch. Two different bugs, one cause, and
+	neither was visible in any log.
+	*/
+	{
+		static int reported = -1;
+		const int state = ( tr.overbrightBits << 4 ) | ( r_mapOverBrightBits->integer << 1 ) |
+		                  ( vk.fboActive ? 1 : 0 );
+
+		if ( state != reported ) {
+			reported = state;
+			ri.Printf( PRINT_ALL, "Image pipeline: overbright %i of %i requested, "
+				"lightmap shift %i, textures %s, %s, %s\n",
+				tr.overbrightBits, abs( r_overBrightBits->integer ),
+				r_mapOverBrightBits->integer - tr.overbrightBits,
+				( glConfig.deviceSupportsGamma || vk.fboActive ) ? "unbaked" : "gamma-baked at upload",
+				vk.fboActive ? "fbo on" : "fbo off",
+				glConfig.isFullscreen ? "fullscreen" : "windowed" );
+		}
+	}
+
 	g = r_gamma->value;
 
 	shift = tr.overbrightBits;
