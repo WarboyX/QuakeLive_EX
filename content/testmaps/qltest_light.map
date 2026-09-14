@@ -1,0 +1,152 @@
+// [QL] A test map for R20 / R21 / R22 - surface detail work.
+//
+// Hand-authored, ours, and committable: Quake Live's own map sources were never
+// released, so there is no legitimate way to recompile one of its maps, and a
+// recompiled .bsp would be redistributing its content anyway. This is a few
+// brushes we wrote, which is neither.
+//
+// WHAT IT IS FOR, and it is not what it was first asked for. The question was
+// whether a map with light entities could be produced to test runtime
+// relighting. It can - compile with -keeplights and /maplights will report them
+// - but that path is no longer needed: the lightgrid already carries a light
+// direction per cell, and what has to vary across a rock is the normal, not the
+// light. See R20 in TRACKER.md.
+//
+// What it is genuinely good for is a controlled scene: known geometry, known
+// lighting, no dependency on pak00, and small enough to recompile in seconds
+// while iterating on shading. And one specific experiment worth running before
+// R20 Stage B is built, because Stage B is designed around its outcome:
+//
+//   compile twice, once with the rock shader carrying q3map_shadeAngle 60 and
+//   once without, and compare the lightmaps.
+//
+// Stage B assumes the faceting on Quake Live's rocks is baked into the lightmap
+// by q3map2's per-face lighting, and is designed to stop the lightmap being
+// what shapes the surface because of it. If the two compiles look identical
+// that assumption is wrong and Stage B needs rethinking before it is written,
+// not after.
+//
+// COMPILING (q3map2, from NetRadiant-custom or GtkRadiant):
+//
+//   q3map2 -fs_basepath <ql> -meta qltest_light.map
+//   q3map2 -fs_basepath <ql> -vis qltest_light.bsp
+//   q3map2 -fs_basepath <ql> -light -fast -keeplights qltest_light.bsp
+//
+// Add -deluxe to the light phase to produce a BSP that /maplights reports as
+// having deluxemaps - useful only for testing that detection, since none of
+// Quake Live's own maps carry them.
+//
+// NOT COMPILED OR LOADED. Written in an environment with no q3map2 available -
+// no package, and the upstream releases unreachable - so the geometry is kept
+// to axis-aligned boxes, the one form that cannot be got subtly wrong. A
+// faceted rock with sloped faces is what the shading work actually wants, and
+// it should be added in Radiant where it can be seen; the stacked boxes below
+// give hard edges to look at in the meantime.
+//
+// Texture names are from docs/pak-manifest.txt, not from memory.
+// RE_RegisterShader returns 0 for a name the pak does not contain and reports
+// nothing, so a guessed name renders nothing and says nothing about it.
+
+// entity 0
+{
+"classname" "worldspawn"
+"message" "QL surface detail test"
+// floor
+{
+( -272 -272 0 ) ( 272 -272 0 ) ( 272 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 -16 ) ( 272 272 -16 ) ( 272 -272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 0 ) ( 272 272 0 ) ( 272 272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 0 ) ( -272 -272 0 ) ( -272 -272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 0 ) ( 272 -272 0 ) ( 272 -272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 -272 0 ) ( -272 272 0 ) ( -272 272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// ceiling
+{
+( -272 -272 272 ) ( 272 -272 272 ) ( 272 272 272 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 256 ) ( 272 272 256 ) ( 272 -272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 272 ) ( 272 272 272 ) ( 272 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 272 ) ( -272 -272 272 ) ( -272 -272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 272 ) ( 272 -272 272 ) ( 272 -272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 -272 272 ) ( -272 272 272 ) ( -272 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// wall +X
+{
+( 256 -272 256 ) ( 272 -272 256 ) ( 272 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 272 0 ) ( 272 272 0 ) ( 272 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 272 256 ) ( 272 272 256 ) ( 272 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 256 ) ( 256 -272 256 ) ( 256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 256 ) ( 272 -272 256 ) ( 272 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 -272 256 ) ( 256 272 256 ) ( 256 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// wall -X
+{
+( -272 -272 256 ) ( -256 -272 256 ) ( -256 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 0 ) ( -256 272 0 ) ( -256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 256 ) ( -256 272 256 ) ( -256 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 -272 256 ) ( -272 -272 256 ) ( -272 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 272 256 ) ( -256 -272 256 ) ( -256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 -272 256 ) ( -272 272 256 ) ( -272 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// wall +Y
+{
+( -256 256 256 ) ( 256 256 256 ) ( 256 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 272 0 ) ( 256 272 0 ) ( 256 256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 272 256 ) ( 256 272 256 ) ( 256 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 256 256 ) ( -256 256 256 ) ( -256 256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 272 256 ) ( 256 256 256 ) ( 256 256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 256 256 ) ( -256 272 256 ) ( -256 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// wall -Y
+{
+( -256 -272 256 ) ( 256 -272 256 ) ( 256 -256 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 -256 0 ) ( 256 -256 0 ) ( 256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 -256 256 ) ( 256 -256 256 ) ( 256 -256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 -272 256 ) ( -256 -272 256 ) ( -256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 -256 256 ) ( 256 -272 256 ) ( 256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 -272 256 ) ( -256 -256 256 ) ( -256 -256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// the "rock" - lower block. Stacked boxes rather than a sloped lump, because
+// this file could not be compiled where it was written and an axis-aligned box
+// is the one brush form that cannot be got subtly wrong. Replace with real
+// sloped faces in Radiant.
+{
+( -96 -96 96 ) ( 96 -96 96 ) ( 96 96 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -96 96 0 ) ( 96 96 0 ) ( 96 -96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -96 96 96 ) ( 96 96 96 ) ( 96 96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 96 -96 96 ) ( -96 -96 96 ) ( -96 -96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 96 96 96 ) ( 96 -96 96 ) ( 96 -96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -96 -96 96 ) ( -96 96 96 ) ( -96 96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// the "rock" - upper block, offset so the silhouette has hard steps in it
+{
+( -48 -64 160 ) ( 64 -64 160 ) ( 64 48 160 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -48 48 96 ) ( 64 48 96 ) ( 64 -64 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -48 48 160 ) ( 64 48 160 ) ( 64 48 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 64 -64 160 ) ( -48 -64 160 ) ( -48 -64 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 64 48 160 ) ( 64 -64 160 ) ( 64 -64 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -48 -64 160 ) ( -48 48 160 ) ( -48 48 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+}
+// entity 1 - the light this map exists to keep. Off to one side and high, so
+// the rock is lit from a direction rather than from directly above, which is
+// what makes faceting obvious.
+{
+"classname" "light"
+"origin" "-160 -160 224"
+"light" "600"
+"_color" "1.0 0.95 0.85"
+}
+// entity 2 - a second, dimmer fill from the far side, so the shadowed faces are
+// not pure black and the shading gradient is readable across the whole form
+{
+"classname" "light"
+"origin" "192 192 200"
+"light" "250"
+"_color" "0.75 0.82 1.0"
+}
+// entity 3
+{
+"classname" "info_player_deathmatch"
+"origin" "-192 -192 32"
+"angle" "45"
+}
