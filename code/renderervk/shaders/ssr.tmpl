@@ -258,10 +258,27 @@ void main() {
 			continue;
 		}
 
+		/*
+		Inside the water surface - which is not the same as inside the pool, and
+		must not be mistaken for it.
+
+		A mapper builds the water brush larger than the hole it shows through
+		and tucks the overhang under the decking, in X and Y but rarely in Z.
+		There is nothing to gain from trimming it to the opening and something
+		to lose: a seam if the two ever disagree. So these bounds legitimately
+		run past the visible pool by however far that overhang goes, and no
+		tightening of them can be right - the surface really is out there.
+
+		What decides whether it can be *seen* out there is the test above: under
+		the decking the decking is in front of it, so the geometry at that pixel
+		is nearer than the plane crossing and the pixel is rejected. That is
+		where the real edge of the pool comes from. This test only says which
+		reflector, if any, the ray could have met.
+		*/
 		vec3 hit = eye.xyz + dir * t;
 		if (any(lessThan(hit, boundsMin[i].xyz - 1.0)) ||
 		    any(greaterThan(hit, boundsMax[i].xyz + 1.0))) {
-			continue;                 // the plane goes on; the pool does not
+			continue;
 		}
 
 		if (t < bestT) {

@@ -12437,7 +12437,30 @@ void vk_ssr_create( void )
 		Com_Memset( image_info, 0, sizeof( image_info ) );
 		image_info[0].sampler = vk.rt.depth_sampler;
 		image_info[0].imageView = vk.rt.depth_view;
-		image_info[0].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		/*
+		[QL] R19: SHADER_READ_ONLY, and not the DEPTH_STENCIL_READ_ONLY the
+		occlusion pass uses. The difference is the whole bug.
+
+		DEPTH_STENCIL_READ_ONLY_OPTIMAL exists for an image that is *still a
+		depth attachment* while being sampled - which is the occlusion
+		composite's situation, and why it needs that layout. The trace here
+		binds depth to nothing; it only samples. In that layout a driver is free
+		to leave the image in its depth-optimised form, and a fully covered tile
+		in that form is metadata rather than samples - so a raw read of it comes
+		back as the value the buffer was cleared to.
+
+		Which is precisely what it looked like: flat surfaces classified as sky,
+		while the geometry edges and anything that had just moved came back
+		correct, because a tile holding an edge or a fresh draw cannot be
+		compressed. It read as a wireframe over a red screen, it survived
+		r_ext_multisample 0, and it happened to items bouncing on the spot with
+		the camera perfectly still - which is what ruled out every explanation
+		involving the camera.
+
+		SHADER_READ_ONLY_OPTIMAL says the image has to be readable by a shader,
+		so the transition into it is the decompression.
+		*/
+		image_info[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 		image_info[1].sampler = vk.ssr.sampler;
 		image_info[1].imageView = vk.color_image_view;
@@ -12643,37 +12666,34 @@ qboolean vk_ssr( void )
 	vk_end_render_pass();   // end main
 
 	/*
-	[QL] R19: depth becomes a texture here, the same way the occlusion pass does
-	it, and for the same reason - this was the bug.
+	[QL] R19: depth becomes a texture here, and the layout it becomes is the
+	whole of this bug.
 
 	The trace samples depth outside any render pass, so nothing transitions the
-	image implicitly. Its descriptor says DEPTH_STENCIL_READ_ONLY_OPTIMAL, the
-	main pass leaves the image in DEPTH_STENCIL_ATTACHMENT_OPTIMAL, and sampling
-	an image in a layout the descriptor does not name is undefined contents
-	rather than an error - nothing in the log, nothing from the validation
-	layers at draw time, and a depth buffer that reads back as structured
-	garbage.
+	image implicitly - the barrier is also the synchronisation, standing in for
+	the subpass dependency that did the job while this shared the main
+	framebuffer. That much this had from the start, copied from the occlusion
+	pass, including its choice of DEPTH_STENCIL_READ_ONLY_OPTIMAL. Copying that
+	last part was the mistake, and see the trace descriptor for why: that layout
+	is for an image still bound as a depth attachment while being sampled, and
+	it lets a driver keep the image compressed. The trace binds depth to
+	nothing. It wants SHADER_READ_ONLY_OPTIMAL, which is the layout that
+	guarantees a shader can read what is in there.
 
-	Which is exactly what it looked like. r_ssrDebug 3 classifies every pixel
-	from that depth, and it came back a fine red/green speckle over the whole
-	screen - world pixels reading as the cleared value - instead of the flat
-	green a room ought to give. Everything the mask was accused of follows from
-	depth it could not trust: water found where the pool is not, the view weapon
-	not recognised as the view weapon, and both worse at glancing angles where a
-	depth tile covers more geometry.
-
-	The barrier is also the synchronisation, standing in for the subpass
-	dependency that did the job while this shared the main framebuffer.
+	The symptom was a depth buffer that read back as the cleared value over
+	every flat surface while geometry edges and freshly moved objects read
+	correctly - compressed tiles against tiles that cannot be compressed. It
+	looked like a wireframe over a red screen, which is not a shape that
+	suggests a layout, and four rounds went into the mask before r_ssrDebug 3
+	and an item bouncing on the spot with the camera still made it obvious.
 
 	Unconditional, and it has to be: the occlusion pass puts depth back to
 	ATTACHMENT_OPTIMAL when its composite ends, so the layout here is the same
-	whether or not r_rtao ran. The composite below then borrows the occlusion
-	pass, which declares depth arriving read-only and leaving as an attachment -
-	so the pair leaves the image exactly where the 2D pass expects it.
+	whether or not r_rtao ran.
 	*/
 	record_image_layout_transition( vk.cmd->command_buffer, vk.depth_image,
 		glConfig.stencilBits ? ( VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT ) : VK_IMAGE_ASPECT_DEPTH_BIT,
-		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		0, 0 );
 
 	/* ---- pass 1: march, into the offscreen target ---- */
@@ -12689,6 +12709,20 @@ qboolean vk_ssr( void )
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	vk_end_render_pass();
+
+	/*
+	[QL] And hand it back in the layout the composite pass expects.
+
+	The composite borrows the occlusion pass, whose attachment description says
+	depth arrives as DEPTH_STENCIL_READ_ONLY_OPTIMAL and leaves as an
+	attachment - so the pair still puts the image exactly where the 2D and bloom
+	passes that inherit it want it. This one barrier is what keeps the trace
+	free to ask for a layout of its own without the composite having to know.
+	*/
+	record_image_layout_transition( vk.cmd->command_buffer, vk.depth_image,
+		glConfig.stencilBits ? ( VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT ) : VK_IMAGE_ASPECT_DEPTH_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		0, 0 );
 
 	/* ---- pass 2: blend it over the scene ---- */
 	vk_begin_rtao_render_pass();

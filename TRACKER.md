@@ -4752,7 +4752,50 @@ question* rather than a tolerance that wanted turning:
 3. *Merge the bounds of touching faces.* Water tucked under decking inflates the
    box. One record per face instead.
 
-**Step 4, the actual fault: depth was sampled in the wrong image layout.**
+**Step 4, the actual fault: depth was sampled in the wrong image layout — twice,
+for two different reasons.**
+
+The second one is the one that mattered, and it is worth reading before adding
+any pass that samples depth:
+
+`DEPTH_STENCIL_READ_ONLY_OPTIMAL` is for an image that is **still bound as a
+depth attachment** while being sampled. That is the occlusion composite's
+situation and why it uses that layout. A pass that only samples wants
+`SHADER_READ_ONLY_OPTIMAL`. The difference is not pedantry: in the depth layout
+a driver may keep the image in its depth-optimised form, and a fully covered
+tile in that form is *metadata*, not samples — so a raw read comes back as the
+value the buffer was cleared to. Transitioning to `SHADER_READ_ONLY_OPTIMAL` is
+what forces the decompression.
+
+The symptom: flat surfaces classified as sky, while geometry **edges** and
+anything that had **just moved** read correctly — tiles that cannot be
+compressed. On screen it was a wireframe over a red field. Nothing about that
+shape suggests a layout, which is why it survived `r_ext_multisample 0` and four
+rounds of reading the mask. What ended it was `r_ssrDebug 3` plus a health orb
+bouncing on the spot **with the camera still**: that one observation killed every
+explanation involving the camera, the matrices, or the march.
+
+The first one, found the round before: the pass sampled depth with no barrier at
+all, leaving the image in `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` while the
+descriptor named a read-only layout. Undefined contents, reported nowhere.
+
+**And this is also why the mask ran past the pool**, which had looked like a
+second, separate fault. Two facts meet:
+
+- A mapper builds the water brush larger than the hole it shows through and
+  tucks the overhang under the decking — in X and Y, rarely in Z. So the
+  surface bounds legitimately extend past the visible pool, and no tightening of
+  them is correct: the water really is out there. What decides whether it can be
+  *seen* out there is the occlusion test, because under the decking the decking
+  is in front of it.
+- The decking is flat, and flat fully covered tiles are exactly the ones depth
+  compression turns into metadata. So the geometry that was supposed to stop the
+  effect was the geometry reading back as the cleared value.
+
+The bounds were never going to be the answer and the overshoot was never a
+second bug. One layout, two symptoms.
+
+
 
 The mask exceeded the pool at glancing angles and appeared over the view weapon.
 The bounds were never the cause — the report above is the shipped build, and
