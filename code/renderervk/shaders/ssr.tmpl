@@ -67,9 +67,8 @@ layout(set = 0, binding = 2) uniform SSR {
 	vec4 wave;
 	/*
 	  x  crest-to-trough height in world units, r_waterWaveHeight
-	  y..w  spare - the obvious next occupant is a short list of disturbance
-	        sources for splashes, which want exactly this height field with a
-	        decaying radial term added to it
+	  y  how white a splash goes, r_waterFoam. 0 turns it off
+	  z..w  spare
 	*/
 	vec4 wave2;
 	/*
@@ -210,14 +209,24 @@ Disturbances add to both. They are what makes the water look like it is being
 acted on rather than merely existing, and they cost a short loop over a list
 that is almost always empty.
 */
-vec3 waterSurface(vec2 p, int planeIdx) {
-	vec3 ph = wavePhase(p);
+/*
+[QL] R19: the disturbances alone - height in x, slope in yz.
 
-	float h = wave2.x * ( 0.55 * sin(ph.x) + 0.30 * sin(ph.y) + 0.15 * sin(ph.z) );
+Split out from the wind waves rather than folded in with them because two
+things need to ask about impacts specifically and cannot if the answer arrives
+already summed: the foam, which only whitewater should trigger and not an
+ordinary swell, and r_ssrDebug 5, which exists to answer "is anything arriving
+here at all".
 
-	vec2 grad = ( WAVE_D0 * 0.55 * cos(ph.x)
-	            + WAVE_D1 * 0.30 * cos(ph.y)
-	            + WAVE_D2 * 0.15 * cos(ph.z) ) * wave.x;
+That question kept coming back with no way to answer it. The console said the
+events were arriving and the water looked unchanged, and a ripple that perturbs
+only the reflection is invisible wherever the reflection itself is subtle - so
+"no ripples" and "ripples too faint to see" looked identical. They are not the
+same problem and they do not have the same fix.
+*/
+vec3 rippleSurface(vec2 p, int planeIdx) {
+	float h = 0.0;
+	vec2 grad = vec2(0.0);
 
 	int n = int(planeCount.y);
 	for (int i = 0; i < n; i++) {
@@ -259,12 +268,6 @@ vec3 waterSurface(vec2 p, int planeIdx) {
 
 		h += amp * sin(phase);
 
-		/*
-		Only the sine's own derivative, not the envelope's. The envelope varies
-		over the whole ripple while the sine turns over within one ring, so this
-		term is the slope everywhere it matters, and the ones left out would
-		cost three more multiplies to adjust the flat parts between rings.
-		*/
 		if (d > 0.001) {
 			/*
 			Scaled down hard, and it is not a fudge. The wind waves put their
@@ -273,15 +276,33 @@ vec3 waterSurface(vec2 p, int planeIdx) {
 			than the water it is disturbing. Left alone the impact does not read
 			as a splash on the surface, it reads as a hole in it, and most of it
 			is then eaten by the facing guard further down anyway.
-
-			RIPPLE_SLOPE puts a strong impact a little above the ambient chop,
-			which is what a splash looks like.
 			*/
 			grad += ((p - c) / d) * amp * k * cos(phase) * RIPPLE_SLOPE;
 		}
 	}
 
 	return vec3(h, grad);
+}
+
+/*
+[QL] R19: the water surface at a point - height in x, slope in yz.
+
+Height and slope together, from one evaluation, because they are the same
+function and computing them apart is how they drift out of step. The wind waves
+scale the two independently (r_waterWaveHeight and r_waterWaveSteepness are
+separate controls) but they share the phases, so crests stay where the slope is
+zero however the two are set.
+*/
+vec3 waterSurface(vec2 p, int planeIdx) {
+	vec3 ph = wavePhase(p);
+
+	float h = wave2.x * ( 0.55 * sin(ph.x) + 0.30 * sin(ph.y) + 0.15 * sin(ph.z) );
+
+	vec2 grad = ( WAVE_D0 * 0.55 * cos(ph.x)
+	            + WAVE_D1 * 0.30 * cos(ph.y)
+	            + WAVE_D2 * 0.15 * cos(ph.z) ) * wave.x;
+
+	return vec3(h, grad) + rippleSurface(p, planeIdx);
 }
 
 float waveHeight(vec2 p, int planeIdx) {
@@ -607,6 +628,25 @@ void main() {
 	instead of off it. That is a black pixel in the middle of the water, and it
 	flickers, because the wave that caused it is moving.
 	*/
+	/* the disturbances alone, for the foam and for r_ssrDebug 5 */
+	vec3 rip = rippleSurface(P.xy, bestIdx);
+
+	/*
+	[QL] r_ssrDebug 5: where the disturbances are, and nothing else.
+
+	Red is a crest, blue a trough, black is undisturbed water. This settles the
+	question the console cannot: RE_AddWaterRipple printing an event proves cgame
+	called, and this proves the ripple reached the surface, is on the right
+	plane, and is where the splash was. "No ripples" and "ripples too faint to
+	see against a subtle reflection" look identical on screen and are not the
+	same problem.
+	*/
+	if (depthInfo.w == 5.0) {
+		float v = clamp(rip.x * 0.5, -1.0, 1.0);
+		out_color = vec4(max(v, 0.0), abs(v) * 0.25, max(-v, 0.0), 1.0);
+		return;
+	}
+
 	N = waveNormal(P.xy, bestIdx);
 	if (dot(N, -V) <= 0.02) {
 		N = normalize(N - V * (dot(N, V) + 0.02));
@@ -758,6 +798,30 @@ void main() {
 	if (depthInfo.w == 2.0) {
 		out_color = (hit > 0.0) ? vec4(hitColor, 1.0) : vec4(1.0, 0.0, 0.0, 1.0);
 		return;
+	}
+
+	/*
+	[QL] R19: whitewater where the surface is being thrown about.
+
+	Everything else this pass does is a change to the *reflection*, and a
+	reflection is only as visible as what it is reflecting. Over a dark pool
+	floor with nothing overhead a rocket could land and perturb the normal
+	beautifully and look like almost nothing at all - which is exactly what a
+	splash that only tilts the normal did look like.
+
+	Foam does not depend on there being anything to reflect. It is driven off
+	the disturbance field on its own, not the wind waves: ordinary chop should
+	never whiten, only an impact should, so the threshold sits above anything
+	r_waterWaveHeight produces and the term rises sharply past it.
+
+	Written into the reflection's own colour and alpha, so it needs no second
+	pass and no second blend - it is the same source-alpha composite, arriving
+	white.
+	*/
+	float foam = smoothstep(0.35, 1.6, abs(rip.x)) * wave2.y;
+	if (foam > 0.0) {
+		hitColor = mix(hitColor, vec3(1.0), foam);
+		hit = max(hit, foam);
 	}
 
 	if (hit <= 0.0) {

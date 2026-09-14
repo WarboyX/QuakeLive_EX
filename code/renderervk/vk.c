@@ -12833,11 +12833,13 @@ qboolean vk_ssr( void )
 		u->wave[2] = R_WaterSetting( r_waterWaveSpeed,     wp->haveSpeed,     wp->speed );
 		u->wave[3] = (float)backEnd.refdef.floatTime;
 		u->wave2[0] = R_WaterSetting( r_waterWaveHeight,   wp->haveHeight,    wp->height );
+		u->wave2[1] = r_waterFoam->value;
 	} else {
 		u->wave[0] = u->wave[1] = u->wave[2] = u->wave[3] = 0.0f;
 		u->wave2[0] = 0.0f;
+		u->wave2[1] = 0.0f;
 	}
-	u->wave2[1] = u->wave2[2] = u->wave2[3] = 0.0f;
+	u->wave2[2] = u->wave2[3] = 0.0f;
 
 	/*
 	[QL] R19: the disturbances, matched to the plane each one belongs to.

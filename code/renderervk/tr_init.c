@@ -165,6 +165,7 @@ cvar_t	*r_waterWaveScale;
 cvar_t	*r_waterWaveSpeed;
 cvar_t	*r_waterWaveSteepness;
 cvar_t	*r_waterWaveHeight;
+cvar_t	*r_waterFoam;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -2036,7 +2037,7 @@ static void R_Register( void )
 		"pillars; too large and a ray reflects the empty space in front of a distant wall." );
 
 	r_ssrDebug = ri.Cvar_Get( "r_ssrDebug", "0", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_ssrDebug, "0", "4", CV_INTEGER );
+	ri.Cvar_CheckRange( r_ssrDebug, "0", "5", CV_INTEGER );
 	ri.Cvar_SetDescription( r_ssrDebug, "Show what the reflection pass is doing instead of its "
 		"result.\n"
 		" 0 - off\n"
@@ -2057,6 +2058,9 @@ static void R_Register( void )
 		"smooth distance field with the gun in front means depth is sound; the room's "
 		"textures or the HUD showing through means this is not the depth image; the previous "
 		"frame smeared across it means the read is racing the next frame's writes\n"
+		" 5 - where the impacts are: red a crest, blue a trough, black undisturbed. The "
+		"console printing a ripple event proves cgame called; this proves the ripple reached "
+		"the surface, landed on the right plane and is where the splash was\n"
 		"Needs " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " above 0 - this changes what the pass "
 		"draws, it does not turn it on." );
 
@@ -2115,6 +2119,15 @@ static void R_Register( void )
 		"This is what makes the reflection ripple, and it is the strongest of the four. Past "
 		"about 0.2 the reflection starts sampling wildly different parts of the screen from "
 		"one pixel to the next and reads as noise rather than water." );
+
+	r_waterFoam = ri.Cvar_Get( "r_waterFoam", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterFoam, "0", "2", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterFoam, "How white the water goes where something has just "
+		"hit it. 0 turns it off.\n"
+		"Driven off impacts alone and not the wind waves - ordinary chop should never whiten, "
+		"only a splash should. This is also the only part of a disturbance that does not "
+		"depend on there being something to reflect: over a dark pool with nothing overhead, "
+		"a ripple that tilts the normal has almost nothing to work with." );
 
 	r_waterWaveHeight = ri.Cvar_Get( "r_waterWaveHeight", "2", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_waterWaveHeight, "0", "32", CV_FLOAT );
