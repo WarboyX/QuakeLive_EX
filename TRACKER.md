@@ -4873,6 +4873,24 @@ What the measurement did kill is the *implementation* scoped for Stage B.
 comes from the **lightgrid** (`R_LoadLightGrid`, already parsed - 8 bytes a
 cell: ambient RGB, directed RGB, lat/long direction, trilinearly interpolated).
 
+**TESTED, not assumed.** `content/testmaps/qltest_light.map` compiled twice with
+id-tech-3-tools/map-compiler - identical geometry, identical lights, the only
+difference being `q3map_shadeAngle 179` on the rock shader:
+
+```
+lightmap bytes: plain=49152 phong=49152
+bytes differing: 13907 of 49152 (28.3%), max delta 252
+```
+
+Nearly the full 0-255 range, over more than a quarter of the lightmap. The
+surface's response to its own orientation is baked at compile time, and Quake
+Live's shaders do not carry the keyword. Reproduce with the two shader variants
+described in that map file; the compiler builds from source with everything
+vendored, so this needs no toolchain beyond cmake and a C++ compiler.
+
+That is the first assumption in this whole line of work to be measured rather
+than argued, and it is the one the design below depends on.
+
 **Not by modulating the lightmap, which was the original plan and does not
 work.** q3map2 lights brush faces per face unless the shader asks for phong, so
 the faceting on those rocks is baked into the lightmap texture itself.
