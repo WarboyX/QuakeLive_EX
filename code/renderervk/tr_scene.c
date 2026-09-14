@@ -530,7 +530,25 @@ void RE_AddWaterRipple( const vec3_t origin, float radius, float strength ) {
 	VectorCopy( origin, rp->origin );
 	rp->radius = radius;
 	rp->strength = strength;
-	rp->startTime = tr.refdef.time;
+	/*
+	[QL] Unstamped. The backend puts the time on it, and that is not fussiness.
+
+	tr.refdef.time is whatever the last scene set, and cgame renders 3D model
+	icons for the HUD through their own refdef - so by the time an event fires
+	this holds that refdef's clock, which is near zero, and not the world's.
+	The line above at floatTime shows this tree already has to special-case
+	such scenes.
+
+	The result was every ripple arriving stamped at about zero against a world
+	clock ten seconds in, and every one of them discarded as expired before it
+	drew a single frame. The console said the events arrived and the water said
+	nothing happened, and both were telling the truth.
+
+	So the only clock used is backEnd.refdef.time, at both ends. A negative
+	startTime means "not yet seen by the reflection pass"; it stamps it the
+	first time it looks.
+	*/
+	rp->startTime = -1;
 
 	/*
 	[QL] Loud enough to find, quiet enough to live with.

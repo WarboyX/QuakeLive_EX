@@ -12875,10 +12875,18 @@ qboolean vk_ssr( void )
 		}
 
 		for ( r = first; r < tr.numWaterRipples && count < SSR_MAX_RIPPLES; r++ ) {
-			const waterRipple_t *rp = &tr.waterRipples[ r % MAX_WATER_RIPPLES ];
-			float age = now - (float)rp->startTime * 0.001f;
+			waterRipple_t *rp = &tr.waterRipples[ r % MAX_WATER_RIPPLES ];
+			float age;
 			int p, best = -1;
 			float bestDist = band;
+
+			/* [QL] first sight of it - see RE_AddWaterRipple for why the stamp
+			   happens here and not where it was added */
+			if ( rp->startTime < 0 ) {
+				rp->startTime = backEnd.refdef.time;
+			}
+
+			age = now - (float)rp->startTime * 0.001f;
 
 			if ( age < 0.0f || age >= SSR_RIPPLE_LIFE ) {
 				dropAge++;
@@ -12930,12 +12938,45 @@ qboolean vk_ssr( void )
 		Rate-limited to once a second: this runs every frame and the interesting
 		case is a steady stream of drops, not any individual one.
 		*/
-		if ( ( dropAge || dropPlane ) && backEnd.refdef.time - ssrRippleReport > 1000 ) {
+		/*
+		[QL] Say what happened to every ripple, not only the ones that were
+		dropped inside the loop.
+
+		The first version of this only printed when the loop rejected something,
+		which cannot distinguish "the loop rejected them all" from "the loop
+		never ran" - and the second is what a stale count, an empty buffer or a
+		zero plane count all look like. It reported nothing in exactly the case
+		that needed reporting.
+
+		So: the counts, and then the newest ripple measured against the nearest
+		plane, which is the pair of numbers the height match is made of. If the
+		two z values are far apart the match is the fault; if they are close and
+		it still dropped, the footprint test is; if the age is large the clock
+		the two ends use is not the same one.
+		*/
+		if ( tr.numWaterRipples > 0 && backEnd.refdef.time - ssrRippleReport > 1000 ) {
+			const waterRipple_t *newest =
+				&tr.waterRipples[ ( tr.numWaterRipples - 1 ) % MAX_WATER_RIPPLES ];
+			float bestZ = 0.0f, bestGap = 1.0e30f;
+			int p;
+
 			ssrRippleReport = backEnd.refdef.time;
-			ri.Printf( PRINT_DEVELOPER, "SSR ripples: %i live, %i sent, "
-				"%i dropped as expired (now %.2fs), %i dropped with no plane within %.0f units\n",
-				tr.numWaterRipples < MAX_WATER_RIPPLES ? tr.numWaterRipples : MAX_WATER_RIPPLES,
-				count, dropAge, now, dropPlane, band );
+
+			for ( p = 0; p < i; p++ ) {
+				float gap = fabsf( newest->origin[2] - vk.waterPlanes[p].dist );
+				if ( gap < bestGap ) {
+					bestGap = gap;
+					bestZ = vk.waterPlanes[p].dist;
+				}
+			}
+
+			ri.Printf( PRINT_DEVELOPER,
+				"SSR ripples: %i sent, %i expired, %i unmatched, %i plane(s)\n"
+				"  newest at %.0f %.0f %.0f, age %.2fs, nearest plane z %.0f (gap %.0f, band %.0f)\n",
+				count, dropAge, dropPlane, i,
+				newest->origin[0], newest->origin[1], newest->origin[2],
+				now - (float)newest->startTime * 0.001f,
+				bestZ, bestGap, band );
 		}
 	}
 
