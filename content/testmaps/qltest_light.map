@@ -43,7 +43,24 @@
 // does nothing - which is exactly what happened the first time, and the lights
 // were stripped while the command line looked correct.
 //
-// Add -deluxe to the light phase for a BSP that exercises the deluxemap
+// LOADING IT. The .bsp has to go in a .pk3, not loose in baseq3/maps/.
+//
+// A pure client only reads files that live inside a pk3, and the server side
+// does not go through that check - so a loose .bsp produces a server that loads
+// the map, spawns into it and reports a spawn point, and a renderer that says
+//
+//   ERROR: RE_LoadWorldMap: couldn't load maps/qltest_light.bsp
+//
+// which reads like a corrupt or invalid BSP and is nothing of the kind. The
+// give-away is CM_LoadMap succeeding a few lines above it and "Connected to a
+// pure server" in between.
+//
+//   cd baseq3 && zip -r qltest.pk3 maps/qltest_light.bsp
+//
+// sv_pure 0 also works and is worse: it changes what the client will load for
+// everything, to avoid packaging one file.
+//
+// // Add -deluxe to the light phase for a BSP that exercises the deluxemap
 // detection in /maplights. No Quake Live map carries them.
 //
 // COMPILED AND CHECKED, unlike the first version of this file. That version
