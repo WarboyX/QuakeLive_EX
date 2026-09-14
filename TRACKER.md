@@ -4752,8 +4752,48 @@ question* rather than a tolerance that wanted turning:
 3. *Merge the bounds of touching faces.* Water tucked under decking inflates the
    box. One record per face instead.
 
-**Step 5, the one that was actually producing it: the reflection target was
-never initialised.**
+**Step 6, the cause: the occlusion pass declared depth `STORE_OP_DONT_CARE`.**
+
+```c
+attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+```
+
+`vk.render_pass.rtao` is not merely the occlusion pass. It is **the pass the
+rest of the frame is drawn in** — `vk_rt_ao` ends the main pass and leaves this
+one open in its place, and the lit surfaces, the 2D and bloom all inherit it. So
+the moment that pass ends, `DONT_CARE` makes the depth contents **undefined by
+declaration**. No error, no validation warning: it is precisely what the pass
+asked for.
+
+Harmless while occlusion was the only depth reader — it reads depth *during*
+that pass and nothing afterwards cared. The reflection pass reads it *after*, at
+the 2D transition.
+
+**Which is why `r_rtao 0` fixed it and nothing else did.** The user found that,
+after six rounds: depth sound with occlusion off, noise with it on, shown
+directly by `r_ssrDebug 4`. Everything blamed on the reflection pass came from
+here — the mask spilling past the pool, the view weapon painted as water, and
+the smearing that looked exactly like a buffer holding what was there before,
+because that is what undefined contents are.
+
+Now `STORE`, on the same reasoning as the line below it that keeps the
+multisampled colour alive for bloom. Cost: a store of an image the frame already
+holds.
+
+**Note the near-miss.** The corruption in the bottom right of the screen, fixed
+earlier, was the *other* half of this same relationship: the occlusion pass
+sampling depth before the main pass's writes were visible — a missing subpass
+dependency. Ordering there, preservation here, three lines apart in the same
+function, both invisible to the validation layers. **Any pass that reads depth
+has to answer both questions: is the write visible yet, and is the content still
+declared to exist.**
+
+---
+
+The four faults below were all real and all found on the way. None of them was
+the cause.
+
+**Step 5: the reflection target was never initialised.**
 
 The target was `LOAD_OP_DONT_CARE` with `initialLayout = UNDEFINED`, justified
 by "the trace writes every pixel" — which is a claim about the *shader*. The

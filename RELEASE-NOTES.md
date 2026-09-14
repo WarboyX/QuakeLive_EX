@@ -219,10 +219,14 @@ in and which client sees it. Worth knowing before you run a server:
   pretended away. Tunables: `r_ssr` (strength), `r_ssrDistance`, `r_ssrSteps`,
   `r_ssrThickness`, and `r_ssrDebug` to see what the pass is doing.
 
-  It spent four rounds painting the wall, the decking and the view weapon before
-  the cause turned out to be the pass sampling depth in the wrong image layout —
-  undefined contents, which Vulkan reports nowhere. Worth a look on a map with
-  water, and worth reporting if anything still lands where water is not.
+  It spent six rounds painting the wall, the decking and the view weapon before
+  the cause turned out to be in the **occlusion** pass, not this one: that pass
+  declared the depth buffer as `STORE_OP_DONT_CARE`, and since it is the pass
+  the rest of the frame is drawn in, depth became undefined the moment it ended
+  — which is exactly when the reflection pass reads it. Harmless for years,
+  because occlusion reads depth during that pass and nothing else ever read it
+  at all. `r_rtao 0` was the only thing that ever fixed the reflection, and that
+  is what located it.
 
   There are still no waves; `TRACKER.md` (R19) records why deforming the
   geometry cannot give them without retessellating the map.

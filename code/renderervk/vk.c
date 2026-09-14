@@ -759,9 +759,38 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 
 	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // whatever the scene drew
 	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // the depth we are about to read
-	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	/*
+	[QL] R19: STORE, and it was DONT_CARE - that one word was the reflection
+	pass's entire problem.
+
+	This is not merely the occlusion pass. It is the pass *the rest of the frame
+	is drawn in*: vk_rt_ao ends the main pass and leaves this one open in its
+	place, and the lit surfaces, the 2D and bloom all inherit it. So the moment
+	this pass ends, DONT_CARE makes the depth contents undefined - by
+	declaration, with nothing to report and no validation error, because it is
+	exactly what the pass asked for.
+
+	That was true and harmless while occlusion was the only thing that read
+	depth, because it reads it *during* this pass and nothing afterwards cared.
+	The reflection pass reads it *after*, at the 2D transition. So depth was
+	sound with r_rtao 0 and undefined with r_rtao 1, which is what finally
+	located this: r_ssrDebug 4 draws a clean distance field with occlusion off
+	and noise with it on.
+
+	Everything blamed on the reflection pass for six rounds came from here - the
+	mask spilling past the pool, the view weapon painted as water, the
+	smearing that looked like a buffer holding what was there before, because
+	that is precisely what undefined contents are. Two image layouts, an
+	uninitialised target and a missing alpha channel were all found and fixed on
+	the way, and all of them were real, and none of them was this.
+
+	Keeping depth costs a store of an image the frame already holds. The line
+	below keeps the multisampled colour for bloom's benefit on the same
+	reasoning; this is the same trade for the pass that follows bloom.
+	*/
+	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
 	if ( msaa ) {
 		savedMsaaLoad = attachments[2].loadOp;
 		savedMsaaStore = attachments[2].storeOp;
