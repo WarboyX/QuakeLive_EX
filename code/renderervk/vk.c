@@ -12239,6 +12239,7 @@ typedef struct {
 } ssrUniform_t;
 
 static qboolean ssrReported = qfalse;
+static int ssrRippleReport = 0;   /* [QL] rate limit for the drop report below */
 
 
 void vk_ssr_destroy( void )
@@ -12862,6 +12863,7 @@ qboolean vk_ssr( void )
 		const float band = 48.0f;   // world units either side of a surface
 		float now = (float)backEnd.refdef.time * 0.001f;
 		int r, first, count;
+		int dropAge = 0, dropPlane = 0;
 
 		count = 0;
 
@@ -12879,6 +12881,7 @@ qboolean vk_ssr( void )
 			float bestDist = band;
 
 			if ( age < 0.0f || age >= SSR_RIPPLE_LIFE ) {
+				dropAge++;
 				continue;           // not yet, or long gone
 			}
 
@@ -12898,6 +12901,7 @@ qboolean vk_ssr( void )
 			}
 
 			if ( best < 0 ) {
+				dropPlane++;
 				continue;
 			}
 
@@ -12913,6 +12917,26 @@ qboolean vk_ssr( void )
 		}
 
 		u->planeCount[1] = (float)count;
+
+		/*
+		[QL] Say why a ripple did not arrive, because "I see no ripples" has
+		three causes and the console could only rule out one of them.
+
+		RE_AddWaterRipple printing proves cgame called. r_ssrDebug 5 proves what
+		reached the surface. Between those two sits this function, which drops
+		ripples for exactly two reasons and used to do it in silence - and a
+		silent drop is indistinguishable from a shader that is not drawing.
+
+		Rate-limited to once a second: this runs every frame and the interesting
+		case is a steady stream of drops, not any individual one.
+		*/
+		if ( ( dropAge || dropPlane ) && backEnd.refdef.time - ssrRippleReport > 1000 ) {
+			ssrRippleReport = backEnd.refdef.time;
+			ri.Printf( PRINT_DEVELOPER, "SSR ripples: %i live, %i sent, "
+				"%i dropped as expired (now %.2fs), %i dropped with no plane within %.0f units\n",
+				tr.numWaterRipples < MAX_WATER_RIPPLES ? tr.numWaterRipples : MAX_WATER_RIPPLES,
+				count, dropAge, now, dropPlane, band );
+		}
 	}
 
 	/*

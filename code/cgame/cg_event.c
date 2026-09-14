@@ -682,15 +682,42 @@ both without a trace call.
 Silent when there is no water within reach, which is the common case - most
 explosions in this game are nowhere near a pond.
 */
-static void CG_WaterRipple(const vec3_t origin, float radius, float strength) {
+/*
+[QL] R19: roughly where a shot came from, for the entry-point solve above.
+
+The attacker's eye rather than their origin, because a shot leaves at eye height
+and the difference is most of a player's height - enough to move the crossing
+point noticeably on a flat shot across a pool.
+
+es->otherEntityNum is the attacker for the bullet events. Where it is not a
+client, the local camera is the best guess available and is exactly right for
+the case that matters most: the shots the player is firing and watching land.
+Returns NULL only when there is nothing sensible to say, and the caller then
+keeps the impact position it already had.
+*/
+static const float *CG_ShotOrigin(const entityState_t *es) {
+    static vec3_t org;
+
+    if (es->otherEntityNum >= 0 && es->otherEntityNum < MAX_CLIENTS) {
+        VectorCopy(cg_entities[es->otherEntityNum].lerpOrigin, org);
+        org[2] += DEFAULT_VIEWHEIGHT;
+        return org;
+    }
+
+    VectorCopy(cg.refdef.vieworg, org);
+    return org;
+}
+
+static void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float strength) {
     vec3_t p;
+    float surfaceZ;
     int i;
 
     if (!cg_waterRipples.integer) {
         return;
     }
 
-    VectorCopy(origin, p);
+    VectorCopy(impact, p);
 
     if (trap_CM_PointContents(p, 0) & CONTENTS_WATER) {
         /* under it - climb to the surface */
@@ -714,6 +741,32 @@ static void CG_WaterRipple(const vec3_t origin, float radius, float strength) {
         if (i == 8) {
             return;             // no water under this at all
         }
+    }
+
+    surfaceZ = p[2];
+
+    /*
+    [QL] Where it went IN, not where it stopped.
+
+    Water is not solid, so a bullet fired into a pool passes straight through
+    the surface and travels on to hit the floor - and the event carries that
+    floor impact. Walking up from it corrects the height and nothing else, so
+    the splash appeared directly above where the bullet stopped, which at any
+    angle other than straight down is somewhere else entirely. The steeper the
+    pool and the flatter the shot, the further out it lands.
+
+    So intersect the shot with the surface. `from` is the muzzle, or as near as
+    the event can say; the crossing is one lerp on Z once the surface height is
+    known, which the walk above has just established.
+
+    Guarded on the shot actually crossing the plane downward. A shot fired from
+    inside the water, or along it, has no entry point to find and keeps the
+    position it came with.
+    */
+    if (from != NULL && from[2] > surfaceZ && impact[2] < surfaceZ) {
+        float t = (from[2] - surfaceZ) / (from[2] - impact[2]);
+        p[0] = from[0] + (impact[0] - from[0]) * t;
+        p[1] = from[1] + (impact[1] - from[1]) * t;
     }
 
     trap_R_AddWaterRipple(p, radius, strength);
@@ -770,7 +823,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
-            CG_WaterRipple(cent->lerpOrigin, 48.0f, 0.4f);
+            CG_WaterRipple(NULL, cent->lerpOrigin, 48.0f, 0.4f);
             break;
         case EV_FOOTWADE:
             DEBUGNAME("EV_FOOTWADE");
@@ -778,7 +831,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
-            CG_WaterRipple(cent->lerpOrigin, 56.0f, 0.6f);
+            CG_WaterRipple(NULL, cent->lerpOrigin, 56.0f, 0.6f);
             break;
         case EV_SWIM:
             DEBUGNAME("EV_SWIM");
@@ -786,7 +839,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
-            CG_WaterRipple(cent->lerpOrigin, 64.0f, 0.5f);
+            CG_WaterRipple(NULL, cent->lerpOrigin, 64.0f, 0.5f);
             break;
 
         case EV_FALL_SHORT:
@@ -890,12 +943,12 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
         case EV_WATER_TOUCH:
             DEBUGNAME("EV_WATER_TOUCH");
             trap_S_StartSound(NULL, es->number, CHAN_AUTO, cgs.media.watrInSound);
-            CG_WaterRipple(cent->lerpOrigin, 96.0f, 1.4f);
+            CG_WaterRipple(NULL, cent->lerpOrigin, 96.0f, 1.4f);
             break;
         case EV_WATER_LEAVE:
             DEBUGNAME("EV_WATER_LEAVE");
             trap_S_StartSound(NULL, es->number, CHAN_AUTO, cgs.media.watrOutSound);
-            CG_WaterRipple(cent->lerpOrigin, 80.0f, 1.0f);
+            CG_WaterRipple(NULL, cent->lerpOrigin, 80.0f, 1.0f);
             break;
         case EV_WATER_UNDER:
             DEBUGNAME("EV_WATER_UNDER");
@@ -1167,14 +1220,14 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_MISSILE_HIT");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitPlayer(es->weapon, position, dir, es->otherEntityNum);
-            CG_WaterRipple(position, 120.0f, 1.6f);
+            CG_WaterRipple(CG_ShotOrigin(es), position, 120.0f, 1.6f);
             break;
 
         case EV_MISSILE_MISS:
             DEBUGNAME("EV_MISSILE_MISS");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitWall(es->weapon, 0, position, dir, IMPACTSOUND_DEFAULT);
-            CG_WaterRipple(position, 160.0f, 2.2f);
+            CG_WaterRipple(CG_ShotOrigin(es), position, 160.0f, 2.2f);
             break;
 
         case EV_MISSILE_MISS_METAL:
@@ -1222,7 +1275,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             if (es->eventParm != 255) {
                 ByteToDir(es->eventParm, dir);
                 CG_MissileHitWall(es->weapon, es->clientNum, position, dir, IMPACTSOUND_DEFAULT);
-                CG_WaterRipple(position, 160.0f, 2.2f);
+                CG_WaterRipple(CG_ShotOrigin(es), position, 160.0f, 2.2f);
             }
             break;
 
@@ -1230,7 +1283,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_BULLET_HIT_WALL");
             ByteToDir(es->eventParm, dir);
             CG_Bullet(es->pos.trBase, es->otherEntityNum, dir, qfalse, ENTITYNUM_WORLD);
-            CG_WaterRipple(es->pos.trBase, 40.0f, 0.6f);
+            CG_WaterRipple(CG_ShotOrigin(es), es->pos.trBase, 40.0f, 0.6f);
             break;
 
         case EV_BULLET_HIT_FLESH:
