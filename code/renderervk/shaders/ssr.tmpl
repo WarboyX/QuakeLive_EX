@@ -157,11 +157,30 @@ void main() {
 			continue;                 // behind the eye
 		}
 		/*
-		Something opaque in front of the water hides it. The tolerance matters:
-		when the water *does* write depth, t and sceneDist are the same number
-		and a strict test would reject every pixel of it.
+		There has to be a pool under it.
+
+		This started as "is anything opaque in front of the water", allowing a
+		few units of slack for the case where the water writes depth and t and
+		sceneDist are the same number. Quake Live's water does not write depth -
+		the debug view settled that - so the slack bought nothing and cost the
+		test its discrimination.
+
+		What it cost is specific: the decking around a pool tends to sit at the
+		water's own height, which is why the very first version of this test
+		painted the decking. For a decking pixel the distance to the plane and
+		the distance to the decking are nearly equal, so any slack lets it
+		through, and at a glancing angle that is most of the screen.
+
+		Requiring the surface to be meaningfully nearer than the geometry behind
+		it says "water has a pool under it" instead of "water is at this height",
+		and a floor at the water's height has nothing under it at all. It also
+		rejects everything in front of the water - the view weapon included -
+		without needing to know what any of it is.
+
+		The cost is a thin band where the surface meets the pool wall, which was
+		going to fade out there anyway.
 		*/
-		if (t > sceneDist + 4.0) {
+		if (t > sceneDist - 8.0) {
 			continue;
 		}
 
