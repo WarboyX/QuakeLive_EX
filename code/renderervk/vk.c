@@ -8810,6 +8810,19 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			blend = qfalse;
 			alphaBlend = qtrue;
 			break;
+		case 10: // [QL] R19 the same, for the debug views, without the blend
+			pipeline = &vk.ssr.debug_pipeline;
+			fsmodule = vk.modules.ssr_composite_fs;
+			renderpass = vk.render_pass.rtao;
+			layout = vk.ssr.composite_pipeline_layout;
+			samples = vkSamples;
+			pipeline_name = "ssr pipeline (debug composite)";
+			/* Neither: blendEnable stays false, so what the trace wrote is what
+			   lands on screen. The shader's discard still spares every pixel it
+			   did not claim, so the scene is intact around the water. */
+			blend = qfalse;
+			alphaBlend = qfalse;
+			break;
 		default: // gamma correction
 			pipeline = &vk.gamma_pipeline;
 			fsmodule = vk.modules.gamma_fs;
@@ -12161,6 +12174,10 @@ void vk_ssr_destroy( void )
 		qvkDestroyPipeline( vk.device, vk.ssr.composite_pipeline, NULL );
 		vk.ssr.composite_pipeline = VK_NULL_HANDLE;
 	}
+	if ( vk.ssr.debug_pipeline != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.ssr.debug_pipeline, NULL );
+		vk.ssr.debug_pipeline = VK_NULL_HANDLE;
+	}
 	if ( vk.ssr.trace_pipeline_layout != VK_NULL_HANDLE ) {
 		qvkDestroyPipelineLayout( vk.device, vk.ssr.trace_pipeline_layout, NULL );
 		vk.ssr.trace_pipeline_layout = VK_NULL_HANDLE;
@@ -12497,6 +12514,7 @@ void vk_ssr_create( void )
 
 	vk_create_post_process_pipeline( 8, glConfig.vidWidth, glConfig.vidHeight );   // trace
 	vk_create_post_process_pipeline( 9, glConfig.vidWidth, glConfig.vidHeight );   // composite
+	vk_create_post_process_pipeline( 10, glConfig.vidWidth, glConfig.vidHeight );  // debug composite
 
 	if ( vk.ssr.trace_pipeline == VK_NULL_HANDLE || vk.ssr.composite_pipeline == VK_NULL_HANDLE ) {
 		ri.Printf( PRINT_WARNING, "SSR: pipelines were not created - disabling\n" );
@@ -12600,6 +12618,26 @@ qboolean vk_ssr( void )
 		ri.Printf( PRINT_ALL, "SSR: reflecting in %i water plane(s) - strength %g, "
 			"%g units over %i steps\n",
 			vk.numWaterPlanes, r_ssr->value, r_ssrDistance->value, r_ssrSteps->integer );
+		/*
+		[QL] What the pass was actually built with, rather than what the source
+		says it was built with.
+
+		Both of these have been guessed at across several rounds and both were
+		guessed wrong. The depth numbers say which convention this build
+		compiled - they decide what counts as sky and what counts as the view
+		weapon, and a reflection appearing on the gun is exactly what a wrong
+		weapon band looks like. The blend says whether the reflection replaces
+		what is under it or adds to it, which is the difference between a debug
+		view that means something and one that shows the scene tinted.
+
+		Two lines in the log, and neither question ever has to be argued from
+		the source again.
+		*/
+		ri.Printf( PRINT_ALL, "SSR: depth cleared to %g, weapon band from %g, near is %s\n",
+			u->depthInfo[0], u->depthInfo[1], u->depthInfo[2] > 0.0f ? "1.0" : "0.0" );
+		ri.Printf( PRINT_ALL, "SSR: composite blends src_alpha/one_minus_src_alpha%s\n",
+			vk.ssr.debug_pipeline != VK_NULL_HANDLE
+				? "; debug views go on unblended" : "; no unblended debug pipeline" );
 	}
 
 	vk_end_render_pass();   // end main
@@ -12655,7 +12693,12 @@ qboolean vk_ssr( void )
 	/* ---- pass 2: blend it over the scene ---- */
 	vk_begin_rtao_render_pass();
 
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.ssr.composite_pipeline );
+	/* [QL] A debug view goes on unblended - see vk.ssr.debug_pipeline. Falls
+	   back to the blending one if that pipeline was not created, which is worth
+	   nothing but is better than binding a null handle. */
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		( r_ssrDebug->integer != 0 && vk.ssr.debug_pipeline != VK_NULL_HANDLE )
+			? vk.ssr.debug_pipeline : vk.ssr.composite_pipeline );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vk.ssr.composite_pipeline_layout, 0, 1, &vk.ssr.composite_descriptor, 0, NULL );
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );

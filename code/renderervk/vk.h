@@ -799,6 +799,21 @@ typedef struct {
 		VkPipelineLayout		composite_pipeline_layout;
 		VkPipeline				trace_pipeline;
 		VkPipeline				composite_pipeline;
+		/*
+		[QL] R19: the same composite with blending switched off, used whenever
+		r_ssrDebug is on.
+
+		A debug view that is blended with the scene is not a debug view - it
+		shows the scene tinted, which is what the pass does anyway, and every
+		conclusion drawn from it is about the blend as much as about the trace.
+		That cost two rounds: the classification view came back a red/green mix
+		over a scene that was itself the occlusion debug view, and reading a
+		three-colour answer out of that is guesswork.
+
+		Off, r_ssrDebug 1/2/3 show exactly what the trace wrote, and the
+		composite's discard still leaves every pixel the trace did not claim.
+		*/
+		VkPipeline				debug_pipeline;
 
 		VkBuffer				uniform_buffer[ NUM_COMMAND_BUFFERS ];
 		VkDeviceMemory			uniform_memory[ NUM_COMMAND_BUFFERS ];
