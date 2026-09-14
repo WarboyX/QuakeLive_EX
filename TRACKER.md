@@ -4771,13 +4771,27 @@ which is a worse failure than the flatness it set out to fix. The standard
 smoothing-group angle is about 45 degrees. Per-surface opt-out through our own
 shader scripts, the same mechanism R21 uses for `qlDisplace`.
 
-Independent of R20 and R21 and worth doing before either: it needs no new data,
-no new pipeline, no device feature, and it is the only one of the three that
-changes how a static scene looks without touching the lighting path.
+**Correction, and it changes what this is worth on its own.** An earlier draft
+of this entry claimed it was the one item that changes a static scene without
+touching the lighting path. That is wrong. World surfaces are lit by a **baked
+lightmap**; vertex normals are read by the dynamic light pass and by little
+else. Smoothing them changes nothing at all in a still frame - the same
+limitation R20 Stage A has, for the same reason.
+
+So this is not a standalone improvement. It is the **input** that makes R20
+Stage B worth anything on low-poly geometry: modulating the lightmap by a
+constant per-face normal gives a constant per face and no sense of form, while
+modulating it by a smoothly varying one gives the gradient across the mass that
+makes a seven-sided rock look round. The two are a pair, and neither is much use
+without the other.
+
+Cheap either way - no new data, no new pipeline, no device feature.
 
 ---
 
-**Order:** R20 Stage A, then R20 Stage B, then this. Each is testable on its own
+**Order:** R22 and R20 Stage A (either way round - both feed the same place),
+then R20 Stage B, which is the first point at which any of it shows up in a
+still frame, then this. Each is testable on its own
 and each is useless without the one before it — displacement without the
 lighting is worse than nothing, and the lighting without the height maps has
 nothing to read.
