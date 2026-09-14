@@ -1675,6 +1675,7 @@ extern vmCvar_t cg_nopredict;
 extern vmCvar_t cg_noPlayerAnims;
 extern vmCvar_t cg_showmiss;
 extern vmCvar_t cg_footsteps;
+extern vmCvar_t cg_waterRipples;   // [QL] R19
 extern vmCvar_t cg_addMarks;
 extern vmCvar_t cg_brassTime;
 extern vmCvar_t cg_gun_frame;
@@ -2333,6 +2334,7 @@ void trap_R_AddPolysToScene(qhandle_t hShader, int numVerts, const polyVert_t* v
 void trap_R_AddLightToScene(const vec3_t org, float intensity, float r, float g, float b);
 void trap_R_AddAdditiveLightToScene(const vec3_t org, float intensity, float r, float g, float b);
 void trap_R_AddLinearLightToScene(const vec3_t start, const vec3_t end, float intensity, float r, float g, float b);
+void trap_R_AddWaterRipple(const vec3_t origin, float radius, float strength);
 int trap_R_LightForPoint(vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir);
 void trap_R_RenderScene(const refdef_t* fd);
 void trap_R_SetColor(const float* rgba);  // NULL = 1,1,1,1

@@ -2461,6 +2461,7 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.AddLightToScene = RE_AddLightToScene;
 	re.AddAdditiveLightToScene = RE_AddAdditiveLightToScene;
 	re.AddLinearLightToScene = RE_AddLinearLightToScene;
+	re.AddWaterRipple = RE_AddWaterRipple;   // [QL] R19
 
 	re.RenderScene = RE_RenderScene;
 

@@ -1187,6 +1187,28 @@ typedef struct {
 typedef struct drawSurfsCommand_s drawSurfsCommand_t;
 
 /*
+[QL] R19: one disturbance on the water - a splash, an impact, a footfall.
+
+Held in world space rather than as an offset on a water plane. The caller is
+cgame, which knows a rocket hit something wet but has no idea which of the map's
+water surfaces that was, or that the renderer keeps a list of them at all. The
+reflection pass matches it to a plane by height when it uses it, which is also
+the only place that can do it correctly.
+
+`radius` is how far the disturbance eventually spreads, not how big it is now:
+the ring expands from nothing to this over its life. A footstep and a rocket
+differ in this far more than in strength.
+*/
+#define MAX_WATER_RIPPLES 16
+
+typedef struct {
+	vec3_t		origin;
+	float		radius;
+	float		strength;
+	int			startTime;   // tr.refdef.time when it was added
+} waterRipple_t;
+
+/*
 ** trGlobals_t 
 **
 ** Most renderer globals are defined here.
@@ -1307,6 +1329,23 @@ typedef struct {
 #endif
 
 	qboolean				vertexLightingAllowed;
+
+	/*
+	[QL] R19: disturbances on the water, from RE_AddWaterRipple.
+
+	A ring buffer and not a per-frame list, which is the whole difference
+	between this and every other scene-add in this renderer. A dynamic light
+	exists for the frame that adds it; a ripple is added once, by an event that
+	happens in a single frame, and has to go on spreading for a second or two
+	after nothing is adding it any more. So these survive across frames and age
+	out on their own.
+
+	Oldest is overwritten when it is full. Sixteen is a lot of simultaneous
+	splashes - a rocket volley into a pond - and dropping the oldest is right
+	anyway, since it is the one closest to having faded out.
+	*/
+	waterRipple_t			waterRipples[ MAX_WATER_RIPPLES ];
+	int						numWaterRipples;   // total ever added; index with %
 } trGlobals_t;
 
 
@@ -1828,6 +1867,7 @@ void RE_AddPolyToScene( qhandle_t hShader , int numVerts, const polyVert_t *vert
 void RE_AddLightToScene( const vec3_t org, float intensity, float r, float g, float b );
 void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, float g, float b );
 void RE_AddLinearLightToScene( const vec3_t start, const vec3_t end, float intensity, float r, float g, float b );
+void RE_AddWaterRipple( const vec3_t origin, float radius, float strength );
 
 void RE_RenderScene( const refdef_t *fd );
 

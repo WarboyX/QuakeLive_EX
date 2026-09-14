@@ -115,6 +115,8 @@ typedef struct {
     // untouched.
     void (*SetColorMappings)(void);
     void (*AddLinearLightToScene)(const vec3_t start, const vec3_t end, float intensity, float r, float g, float b);
+    /* [QL] R19: a disturbance on the water surface, for the reflection pass */
+    void (*AddWaterRipple)(const vec3_t origin, float radius, float strength);
     void (*ThrottleBackend)(void);
     void (*FinishBloom)(void);
     qboolean (*CanMinimize)(void);

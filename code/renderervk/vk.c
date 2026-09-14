@@ -12216,6 +12216,8 @@ renderer alone.
 */
 
 #define SSR_MAX_PLANES VK_MAX_WATER_PLANES
+#define SSR_MAX_RIPPLES MAX_WATER_RIPPLES   /* [QL] R19, and the shader's copy */
+#define SSR_RIPPLE_LIFE 2.2f                /* seconds; must match ssr.tmpl */
 
 typedef struct {
 	float viewProj[16];
@@ -12229,6 +12231,8 @@ typedef struct {
 	float planeCount[4];
 	float wave[4];        // slope, units per wavelength, speed, seconds
 	float wave2[4];       // height in units; y..w spare
+	float ripple[SSR_MAX_RIPPLES][4];    // xy where, z age, w reach
+	float ripple2[SSR_MAX_RIPPLES][4];   // x strength, y plane index
 } ssrUniform_t;
 
 static qboolean ssrReported = qfalse;
@@ -12827,6 +12831,80 @@ qboolean vk_ssr( void )
 		u->wave2[0] = 0.0f;
 	}
 	u->wave2[1] = u->wave2[2] = u->wave2[3] = 0.0f;
+
+	/*
+	[QL] R19: the disturbances, matched to the plane each one belongs to.
+
+	Matched here rather than in the shader because it is once per ripple per
+	frame against once per ripple per pixel, and because the answer does not
+	change between pixels. A ripple keeps only its world XY and an age by the
+	time it reaches the shader.
+
+	The height test is what does the matching, with a generous band: cgame calls
+	this from an event, and the origin it has is a trace endpoint, a player's
+	feet or a missile's last position - close to the surface but rarely exactly
+	on it. An explosion a little above the water should still ripple it.
+
+	Ripples that match nothing are dropped silently. A splash in a puddle the
+	reflection pass has no plane for is not an error; there is simply nothing
+	for it to disturb.
+	*/
+	{
+		const float band = 48.0f;   // world units either side of a surface
+		float now = (float)backEnd.refdef.time * 0.001f;
+		int r, first, count;
+
+		count = 0;
+
+		/* The ring holds at most MAX_WATER_RIPPLES; start at the oldest that
+		   is still in it so the newest survive a full buffer. */
+		first = tr.numWaterRipples - MAX_WATER_RIPPLES;
+		if ( first < 0 ) {
+			first = 0;
+		}
+
+		for ( r = first; r < tr.numWaterRipples && count < SSR_MAX_RIPPLES; r++ ) {
+			const waterRipple_t *rp = &tr.waterRipples[ r % MAX_WATER_RIPPLES ];
+			float age = now - (float)rp->startTime * 0.001f;
+			int p, best = -1;
+			float bestDist = band;
+
+			if ( age < 0.0f || age >= SSR_RIPPLE_LIFE ) {
+				continue;           // not yet, or long gone
+			}
+
+			for ( p = 0; p < i; p++ ) {
+				float d = fabsf( rp->origin[2] - vk.waterPlanes[p].dist );
+				if ( d < bestDist ) {
+					/* and within that surface's footprint, or it belongs to a
+					   pool somewhere else at the same height */
+					if ( rp->origin[0] >= vk.waterPlanes[p].mins[0] - band &&
+					     rp->origin[0] <= vk.waterPlanes[p].maxs[0] + band &&
+					     rp->origin[1] >= vk.waterPlanes[p].mins[1] - band &&
+					     rp->origin[1] <= vk.waterPlanes[p].maxs[1] + band ) {
+						bestDist = d;
+						best = p;
+					}
+				}
+			}
+
+			if ( best < 0 ) {
+				continue;
+			}
+
+			u->ripple[count][0] = rp->origin[0];
+			u->ripple[count][1] = rp->origin[1];
+			u->ripple[count][2] = age;
+			u->ripple[count][3] = rp->radius;
+
+			u->ripple2[count][0] = rp->strength;
+			u->ripple2[count][1] = (float)best;
+			u->ripple2[count][2] = u->ripple2[count][3] = 0.0f;
+			count++;
+		}
+
+		u->planeCount[1] = (float)count;
+	}
 
 	if ( !ssrReported ) {
 		ssrReported = qtrue;

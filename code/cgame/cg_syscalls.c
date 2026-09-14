@@ -279,6 +279,11 @@ void trap_R_AddLinearLightToScene(const vec3_t start, const vec3_t end, float in
     syscall(CG_R_ADDLINEARLIGHTTOSCENE, start, end, PASSFLOAT(intensity), PASSFLOAT(r), PASSFLOAT(g), PASSFLOAT(b));
 }
 
+// [QL] R19: something hit the water here; see CG_R_ADDWATERRIPPLE
+void trap_R_AddWaterRipple(const vec3_t origin, float radius, float strength) {
+    syscall(CG_R_ADDWATERRIPPLE, origin, PASSFLOAT(radius), PASSFLOAT(strength));
+}
+
 void trap_R_RenderScene(const refdef_t* fd) {
     syscall(CG_R_RENDERSCENE, fd);
 }

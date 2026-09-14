@@ -567,6 +567,13 @@ intptr_t CL_CgameSystemCalls(intptr_t* args) {
                 re.AddLinearLightToScene(VMA(1), VMA(2), VMF(3), VMF(4), VMF(5), VMF(6));
             }
             return 0;
+        case CG_R_ADDWATERRIPPLE:
+            /* [QL] R19: null-checked like the one above, because a renderer
+               without it is a renderer without reflective water, not an error */
+            if (re.AddWaterRipple) {
+                re.AddWaterRipple(VMA(1), VMF(2), VMF(3));
+            }
+            return 0;
         case CG_R_RENDERSCENE:
             re.RenderScene(VMA(1));
             return 0;

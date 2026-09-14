@@ -347,6 +347,50 @@ void RE_AddLinearLightToScene( const vec3_t start, const vec3_t end, float inten
 }
 
 
+/*
+=====================
+RE_AddWaterRipple
+
+[QL] R19: something disturbed the water here.
+
+Deliberately not stored in backEndData like the lights and the entities are.
+Those are the frame's scene and are rebuilt from nothing every frame; a ripple
+is added by an event that happens in one frame and has to keep spreading for a
+second or two afterwards, while nothing is adding it. So it lives in tr, ages
+out on its own, and the caller fires and forgets.
+
+No water test here, and that is on purpose. cgame knows it hit something wet -
+it already checked the contents to decide whether to play a splash sound - and
+the renderer's water planes are the wrong thing to test against anyway: an
+explosion a few units above the surface should still ripple it. The reflection
+pass decides what, if anything, a given ripple touches.
+=====================
+*/
+void RE_AddWaterRipple( const vec3_t origin, float radius, float strength ) {
+	waterRipple_t *rp;
+
+	if ( !tr.registered || !tr.world ) {
+		return;
+	}
+	if ( strength <= 0.0f || radius <= 0.0f ) {
+		return;
+	}
+
+	/*
+	Overwrite the oldest when full rather than dropping the newest. A ripple
+	that has been spreading longest is the one closest to having faded out, and
+	the new one is the event the player just caused and is looking at.
+	*/
+	rp = &tr.waterRipples[ tr.numWaterRipples % MAX_WATER_RIPPLES ];
+	tr.numWaterRipples++;
+
+	VectorCopy( origin, rp->origin );
+	rp->radius = radius;
+	rp->strength = strength;
+	rp->startTime = tr.refdef.time;
+}
+
+
 
 /*
 =====================

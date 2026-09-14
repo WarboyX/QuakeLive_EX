@@ -142,6 +142,7 @@ vmCvar_t cg_nopredict;
 vmCvar_t cg_noPlayerAnims;
 vmCvar_t cg_showmiss;
 vmCvar_t cg_footsteps;
+vmCvar_t cg_waterRipples;   // [QL] R19
 vmCvar_t cg_addMarks;
 vmCvar_t cg_brassTime;
 vmCvar_t cg_viewsize;
@@ -658,6 +659,12 @@ static cvarTable_t cvarTable[] = {
     {&cg_noPlayerAnims, "cg_noplayeranims", "0", CVAR_CHEAT},
     {&cg_showmiss, "cg_showmiss", "0", 0},
     {&cg_footsteps, "cg_footsteps", "1", CVAR_CHEAT},
+    /* [QL] R19: whether impacts and footfalls disturb reflective water.
+       CVAR_ARCHIVE and not ARCHIVE_ND, which the VM headers do not expose -
+       and it is the right flag regardless: an on/off toggle is a value a user
+       sets, which is what archive is for. The r_waterWave* tuning numbers are
+       the other case and are archived only when changed. */
+    {&cg_waterRipples, "cg_waterRipples", "1", CVAR_ARCHIVE},
     {&cg_tracerChance, "cg_tracerchance", "0.4", CVAR_CHEAT},
     {&cg_tracerWidth, "cg_tracerwidth", "1", CVAR_CHEAT},
     {&cg_tracerLength, "cg_tracerlength", "100", CVAR_CHEAT},

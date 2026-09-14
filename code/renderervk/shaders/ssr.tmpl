@@ -30,6 +30,7 @@ layout(set = 0, binding = 0) uniform sampler2D depthMap;
 layout(set = 0, binding = 1) uniform sampler2D sceneMap;
 
 #define SSR_MAX_PLANES 32
+#define SSR_MAX_RIPPLES 16
 
 layout(set = 0, binding = 2) uniform SSR {
 	mat4 viewProj;      // world -> clip
@@ -70,7 +71,25 @@ layout(set = 0, binding = 2) uniform SSR {
 	        decaying radial term added to it
 	*/
 	vec4 wave2;
+	/*
+	[QL] Disturbances - splashes, impacts, footfalls. planeCount.y says how many
+	are filled.
+
+	  ripple[i]   xy = where, z = seconds since it started, w = how far it
+	              eventually spreads
+	  ripple2[i]  x  = strength, y = which water plane it belongs to
+
+	Matched to a plane on the C side rather than here: the renderer knows the
+	planes' heights and can do it once per ripple per frame instead of once per
+	ripple per pixel, and a ripple on the pool upstairs has no business
+	perturbing the one in the basement.
+	*/
+	vec4 ripple[SSR_MAX_RIPPLES];
+	vec4 ripple2[SSR_MAX_RIPPLES];
 };
+
+#define RIPPLE_LIFE 2.2     /* seconds from impact to gone */
+#define RIPPLE_WAVES 5.0    /* rings behind the leading edge */
 
 layout(location = 0) in vec2 frag_tex_coord;
 layout(location = 0) out vec4 out_color;
@@ -162,27 +181,88 @@ vec3 wavePhase(vec2 p) {
 		dot(WAVE_D2, p) * k0 * 3.1   + t * 1.70 );
 }
 
-/* Height above the flat plane, in world units. */
-float waveHeight(vec2 p) {
-	if (wave2.x <= 0.0) {
-		return 0.0;
-	}
+/*
+[QL] R19: the water surface at a point - height in x, slope in yz.
+
+Height and slope together, from one evaluation, because they are the same
+function and computing them apart is how they drift out of step. The wind waves
+scale the two independently (r_waterWaveHeight and r_waterWaveSteepness are
+separate controls) but they share the phases, so crests stay where the slope is
+zero however the two are set.
+
+Disturbances add to both. They are what makes the water look like it is being
+acted on rather than merely existing, and they cost a short loop over a list
+that is almost always empty.
+*/
+vec3 waterSurface(vec2 p, int planeIdx) {
 	vec3 ph = wavePhase(p);
-	return wave2.x * ( 0.55 * sin(ph.x) + 0.30 * sin(ph.y) + 0.15 * sin(ph.z) );
+
+	float h = wave2.x * ( 0.55 * sin(ph.x) + 0.30 * sin(ph.y) + 0.15 * sin(ph.z) );
+
+	vec2 grad = ( WAVE_D0 * 0.55 * cos(ph.x)
+	            + WAVE_D1 * 0.30 * cos(ph.y)
+	            + WAVE_D2 * 0.15 * cos(ph.z) ) * wave.x;
+
+	int n = int(planeCount.y);
+	for (int i = 0; i < n; i++) {
+		if (int(ripple2[i].y) != planeIdx) {
+			continue;               // a different pool
+		}
+
+		float age = ripple[i].z;
+		float reach = ripple[i].w;
+		vec2 c = ripple[i].xy;
+
+		float d = distance(p, c);
+		if (d > reach) {
+			continue;               // outside where this one ever gets to
+		}
+
+		/*
+		An expanding ring, not a standing wobble. The leading edge travels out
+		to `reach` over the ripple's life, and behind it the rings trail off:
+		nothing has happened yet ahead of the front, which is what makes an
+		impact read as an impact rather than as the water suddenly vibrating
+		everywhere at once.
+		*/
+		float front = (age / RIPPLE_LIFE) * reach;
+		if (d > front) {
+			continue;               // it has not arrived here yet
+		}
+
+		/* three ways it dies: with age, with distance from the impact, and
+		   behind the front - so the oldest rings at the centre are gone while
+		   the leading edge is still going */
+		float fade = 1.0 - age / RIPPLE_LIFE;
+		float falloff = 1.0 - d / reach;
+		float trail = exp( -(front - d) * (3.0 / reach) );
+		float amp = ripple2[i].x * fade * falloff * falloff * trail;
+
+		float k = RIPPLE_WAVES * 6.2831853 / reach;
+		float phase = (d - front) * k;
+
+		h += amp * sin(phase);
+
+		/*
+		Only the sine's own derivative, not the envelope's. The envelope varies
+		over the whole ripple while the sine turns over within one ring, so this
+		term is the slope everywhere it matters, and the ones left out would
+		cost three more multiplies to adjust the flat parts between rings.
+		*/
+		if (d > 0.001) {
+			grad += ((p - c) / d) * amp * k * cos(phase);
+		}
+	}
+
+	return vec3(h, grad);
 }
 
-vec3 waveNormal(vec2 p) {
-	if (wave.x <= 0.0) {
-		return vec3(0.0, 0.0, 1.0);
-	}
-	vec3 ph = wavePhase(p);
+float waveHeight(vec2 p, int planeIdx) {
+	return waterSurface(p, planeIdx).x;
+}
 
-	/* gradient of the same sum, which is the slope at this point */
-	vec2 grad = WAVE_D0 * 0.55 * cos(ph.x)
-	          + WAVE_D1 * 0.30 * cos(ph.y)
-	          + WAVE_D2 * 0.15 * cos(ph.z);
-
-	return normalize(vec3(-grad * wave.x, 1.0));
+vec3 waveNormal(vec2 p, int planeIdx) {
+	return normalize(vec3(-waterSurface(p, planeIdx).yz, 1.0));
 }
 
 /* clip -> screen uv, and the depth that came with it */
@@ -441,14 +521,14 @@ void main() {
 	    water. It just gets this frame's reflection from the undisplaced
 	    surface, which is where it came from before any of this.
 	*/
-	if (wave2.x > 0.0 && bestIdx >= 0) {
+	if (bestIdx >= 0) {
 		float dn = dot(dir, N);
 		if (dn < -0.02) {
 			float t2 = bestT;
 			float eyeN = dot(eye.xyz, N);
 
-			t2 = (bestW + waveHeight((eye.xyz + dir * t2).xy) - eyeN) / dn;
-			t2 = (bestW + waveHeight((eye.xyz + dir * t2).xy) - eyeN) / dn;
+			t2 = (bestW + waveHeight((eye.xyz + dir * t2).xy, bestIdx) - eyeN) / dn;
+			t2 = (bestW + waveHeight((eye.xyz + dir * t2).xy, bestIdx) - eyeN) / dn;
 
 			if (t2 > 0.0 && t2 < sceneDist - 8.0) {
 				vec3 hp = eye.xyz + dir * t2;
@@ -500,7 +580,7 @@ void main() {
 	instead of off it. That is a black pixel in the middle of the water, and it
 	flickers, because the wave that caused it is moving.
 	*/
-	N = waveNormal(P.xy);
+	N = waveNormal(P.xy, bestIdx);
 	if (dot(N, -V) <= 0.02) {
 		N = normalize(N - V * (dot(N, V) + 0.02));
 	}
@@ -541,6 +621,27 @@ void main() {
 
 		if (depthInfo.z * (sceneDepth - depthInfo.x) <= 0.0) {
 			continue;           // sky at that pixel, keep going
+		}
+
+		/*
+		[QL] The view weapon is not in the world and must not be reflected.
+
+		It is drawn into a squashed depth range so it never clips through
+		anything, which means the depth recorded for it does not correspond to
+		where it appears to be. Reflect it and the player sees their own weapon a
+		second time, at a plausible-looking angle, from the same viewpoint - a
+		duplicate that tracks every movement of the real one.
+
+		The rejection is the same band the pixel-classification test at the top
+		uses, and it is deliberately `continue` rather than `break`: the weapon
+		fills a lot of the lower screen, and stopping the march there would cost
+		every reflection whose ray happens to cross it. Marching past it usually
+		finds nothing, since the weapon hides whatever is behind it, and that is
+		the honest answer - a reflection off-screen is a reflection we do not
+		have.
+		*/
+		if (depthInfo.z * (sceneDepth - depthInfo.y) >= 0.0) {
+			continue;
 		}
 
 		vec3 sceneP = worldAt(sp, invSize);

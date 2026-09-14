@@ -663,6 +663,63 @@ also called by CG_CheckPlayerstateEvents
     if (cg_debugEvents.integer) { \
         CG_Printf(x "\n");        \
     }
+
+/*
+[QL] R19: tell the renderer something disturbed the water here.
+
+One place rather than a call at every event site, because every caller has the
+same two questions to get wrong: is this actually water, and where is its
+surface. An event's origin is whatever the game had to hand - a player's feet, a
+trace endpoint, a missile's last position - and none of those is reliably on the
+surface.
+
+So: walk up from the origin until the contents stop being liquid, and use that
+as the surface. A rocket that went in has its origin under the water and needs
+the ripple at the top; a grenade that went off just above it is already out and
+needs the first water below. Sixteen units a step over a short distance covers
+both without a trace call.
+
+Silent when there is no water within reach, which is the common case - most
+explosions in this game are nowhere near a pond.
+*/
+static void CG_WaterRipple(const vec3_t origin, float radius, float strength) {
+    vec3_t p;
+    int i;
+
+    if (!cg_waterRipples.integer) {
+        return;
+    }
+
+    VectorCopy(origin, p);
+
+    if (trap_CM_PointContents(p, 0) & CONTENTS_WATER) {
+        /* under it - climb to the surface */
+        for (i = 0; i < 16; i++) {
+            p[2] += 16.0f;
+            if (!(trap_CM_PointContents(p, 0) & CONTENTS_WATER)) {
+                break;
+            }
+        }
+        if (i == 16) {
+            return;             // deeper than this looks; not a surface event
+        }
+    } else {
+        /* above it - drop until we find some */
+        for (i = 0; i < 8; i++) {
+            p[2] -= 16.0f;
+            if (trap_CM_PointContents(p, 0) & CONTENTS_WATER) {
+                break;
+            }
+        }
+        if (i == 8) {
+            return;             // no water under this at all
+        }
+    }
+
+    trap_R_AddWaterRipple(p, radius, strength);
+}
+
+
 void CG_EntityEvent(centity_t* cent, vec3_t position) {
     entityState_t* es;
     int event;
@@ -713,6 +770,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
+            CG_WaterRipple(cent->lerpOrigin, 48.0f, 1.2f);
             break;
         case EV_FOOTWADE:
             DEBUGNAME("EV_FOOTWADE");
@@ -720,6 +778,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
+            CG_WaterRipple(cent->lerpOrigin, 56.0f, 1.6f);
             break;
         case EV_SWIM:
             DEBUGNAME("EV_SWIM");
@@ -727,6 +786,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
+            CG_WaterRipple(cent->lerpOrigin, 64.0f, 1.4f);
             break;
 
         case EV_FALL_SHORT:
@@ -830,10 +890,12 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
         case EV_WATER_TOUCH:
             DEBUGNAME("EV_WATER_TOUCH");
             trap_S_StartSound(NULL, es->number, CHAN_AUTO, cgs.media.watrInSound);
+            CG_WaterRipple(cent->lerpOrigin, 96.0f, 3.5f);
             break;
         case EV_WATER_LEAVE:
             DEBUGNAME("EV_WATER_LEAVE");
             trap_S_StartSound(NULL, es->number, CHAN_AUTO, cgs.media.watrOutSound);
+            CG_WaterRipple(cent->lerpOrigin, 80.0f, 2.5f);
             break;
         case EV_WATER_UNDER:
             DEBUGNAME("EV_WATER_UNDER");
@@ -1105,12 +1167,14 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_MISSILE_HIT");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitPlayer(es->weapon, position, dir, es->otherEntityNum);
+            CG_WaterRipple(position, 120.0f, 4.0f);
             break;
 
         case EV_MISSILE_MISS:
             DEBUGNAME("EV_MISSILE_MISS");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitWall(es->weapon, 0, position, dir, IMPACTSOUND_DEFAULT);
+            CG_WaterRipple(position, 160.0f, 6.0f);
             break;
 
         case EV_MISSILE_MISS_METAL:
@@ -1158,6 +1222,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             if (es->eventParm != 255) {
                 ByteToDir(es->eventParm, dir);
                 CG_MissileHitWall(es->weapon, es->clientNum, position, dir, IMPACTSOUND_DEFAULT);
+                CG_WaterRipple(position, 160.0f, 6.0f);
             }
             break;
 
@@ -1165,6 +1230,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_BULLET_HIT_WALL");
             ByteToDir(es->eventParm, dir);
             CG_Bullet(es->pos.trBase, es->otherEntityNum, dir, qfalse, ENTITYNUM_WORLD);
+            CG_WaterRipple(es->pos.trBase, 40.0f, 1.8f);
             break;
 
         case EV_BULLET_HIT_FLESH:

@@ -204,7 +204,19 @@ typedef enum {
     call after it and the module starts asking for the wrong thing entirely -
     with no build error, because both sides compile fine on their own.
     */
-    CG_R_ADDLINEARLIGHTTOSCENE
+    CG_R_ADDLINEARLIGHTTOSCENE,
+
+    /*
+    [QL] R19: tell the reflection pass that something disturbed the water.
+
+    The renderer knows where every water surface is and what it looks like; it
+    has no idea that a rocket just went into one. Only cgame sees the events -
+    the splash, the impact, the footstep - and there is no entity for a bullet
+    hitting a pond.
+
+    Appended, for the reason spelled out above this.
+    */
+    CG_R_ADDWATERRIPPLE
 } cgameImport_t;
 
 /*
