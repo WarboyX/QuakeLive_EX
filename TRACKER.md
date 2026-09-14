@@ -4752,10 +4752,36 @@ question* rather than a tolerance that wanted turning:
 3. *Merge the bounds of touching faces.* Water tucked under decking inflates the
    box. One record per face instead.
 
-**Open:** at a glancing angle the mask still exceeds the pool, and the
-reflection appears over the view weapon. The bounds are not the cause — the
-report above is the shipped build and those spans are the pools' own footprints.
-Three fixes went in for it, plus the debug view that will settle it:
+**Step 4, the actual fault: depth was sampled in the wrong image layout.**
+
+The mask exceeded the pool at glancing angles and appeared over the view weapon.
+The bounds were never the cause — the report above is the shipped build, and
+those spans are the four pools' own footprints.
+
+`vk_ssr` ends the main render pass and samples depth outside any render pass, so
+nothing transitions the image implicitly. Its descriptor names
+`DEPTH_STENCIL_READ_ONLY_OPTIMAL`; the main pass leaves the image in
+`DEPTH_STENCIL_ATTACHMENT_OPTIMAL`. Sampling an image in a layout the descriptor
+does not name is **undefined contents, not an error** — nothing in the log,
+nothing from the validation layers at draw time, and a depth buffer that reads
+back as structured garbage. The occlusion pass makes that barrier explicitly and
+its own comment says why; the reflection pass was written from the same shape
+and did not copy the one line that mattered.
+
+Every symptom follows from depth that could not be trusted: water found where
+the pool is not, the view weapon not recognised as the view weapon, and both
+worse at glancing angles, where one depth tile covers more geometry.
+
+`r_ssrDebug 3` is what caught it, on its first frame. A room should classify
+flat green. It came back a fine red/green speckle over the whole screen — world
+pixels reading as the cleared depth value. That is not a mask that needs
+tightening, and no amount of further reading of the mask would have said so.
+Four rounds went into the mask; the classification view answered it in one
+screenshot, which is the same lesson as E81 in a different costume: **when the
+source cannot explain the behaviour, stop reading the source and look at what
+was actually produced.**
+
+**Also in, and kept — they are correct independently of the above:**
 
 - the view-ray direction now comes from the pixel, not from the position
   reconstructed at that pixel. The two agree only when the depth buffer is
@@ -4766,10 +4792,8 @@ Three fixes went in for it, plus the debug view that will settle it:
   position reconstructed from depth does not belong to the ray, which is the
   failure the other two guard against.
 - `r_ssrDebug 3` paints the depth classification: red sky, blue weapon band,
-  green world. If the gun is blue this pass rejects it correctly and the fault
-  is downstream; if green, the weapon band is not where the pass was told it is.
-  One screenshot decides which, and reasoning from source has been wrong on this
-  every round so far.
+  green world. Kept permanently — it is the instrument that found the layout
+  bug, and it is the first thing to reach for if the mask ever misbehaves again.
 
 ---
 

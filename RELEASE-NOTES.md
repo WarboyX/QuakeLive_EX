@@ -212,14 +212,20 @@ in and which client sees it. Worth knowing before you run a server:
   floating-point target removes clamping the fixed-point one applied silently.
   If something looks wrong only with `r_rts 1`, the first question is what the
   old target was quietly correcting.
-- **Water reflections (`r_ssr`) are unfinished and off by default.** The pass
-  runs and reflects, but the mask that decides which pixels are water still
-  exceeds the pool at glancing angles and can appear over the view weapon.
-  `r_ssrDebug 3` paints what the pass thinks it is looking at — red sky, blue
-  view weapon, green world — which is the screenshot that will settle it.
-  Tunables: `r_ssrDistance`, `r_ssrSteps`, `r_ssrThickness`. There are still no
-  waves; `TRACKER.md` (R19) records why geometry deformation cannot give them
-  without retessellating the map.
+- **Water reflections, `r_ssr`.** New, off by default. Quake Live's water is a
+  scrolling texture; this gives it back what it reflects, by marching the depth
+  buffer from the map's water planes. Screen space, so what is not on screen
+  cannot be reflected — the edge fade is where that is hidden rather than
+  pretended away. Tunables: `r_ssr` (strength), `r_ssrDistance`, `r_ssrSteps`,
+  `r_ssrThickness`, and `r_ssrDebug` to see what the pass is doing.
+
+  It spent four rounds painting the wall, the decking and the view weapon before
+  the cause turned out to be the pass sampling depth in the wrong image layout —
+  undefined contents, which Vulkan reports nowhere. Worth a look on a map with
+  water, and worth reporting if anything still lands where water is not.
+
+  There are still no waves; `TRACKER.md` (R19) records why deforming the
+  geometry cannot give them without retessellating the map.
 
 ## Before cutting the release
 

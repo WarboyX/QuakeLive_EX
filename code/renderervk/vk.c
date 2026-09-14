@@ -12604,6 +12604,40 @@ qboolean vk_ssr( void )
 
 	vk_end_render_pass();   // end main
 
+	/*
+	[QL] R19: depth becomes a texture here, the same way the occlusion pass does
+	it, and for the same reason - this was the bug.
+
+	The trace samples depth outside any render pass, so nothing transitions the
+	image implicitly. Its descriptor says DEPTH_STENCIL_READ_ONLY_OPTIMAL, the
+	main pass leaves the image in DEPTH_STENCIL_ATTACHMENT_OPTIMAL, and sampling
+	an image in a layout the descriptor does not name is undefined contents
+	rather than an error - nothing in the log, nothing from the validation
+	layers at draw time, and a depth buffer that reads back as structured
+	garbage.
+
+	Which is exactly what it looked like. r_ssrDebug 3 classifies every pixel
+	from that depth, and it came back a fine red/green speckle over the whole
+	screen - world pixels reading as the cleared value - instead of the flat
+	green a room ought to give. Everything the mask was accused of follows from
+	depth it could not trust: water found where the pool is not, the view weapon
+	not recognised as the view weapon, and both worse at glancing angles where a
+	depth tile covers more geometry.
+
+	The barrier is also the synchronisation, standing in for the subpass
+	dependency that did the job while this shared the main framebuffer.
+
+	Unconditional, and it has to be: the occlusion pass puts depth back to
+	ATTACHMENT_OPTIMAL when its composite ends, so the layout here is the same
+	whether or not r_rtao ran. The composite below then borrows the occlusion
+	pass, which declares depth arriving read-only and leaving as an attachment -
+	so the pair leaves the image exactly where the 2D pass expects it.
+	*/
+	record_image_layout_transition( vk.cmd->command_buffer, vk.depth_image,
+		glConfig.stencilBits ? ( VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT ) : VK_IMAGE_ASPECT_DEPTH_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		0, 0 );
+
 	/* ---- pass 1: march, into the offscreen target ---- */
 	vk.renderWidth = glConfig.vidWidth;
 	vk.renderHeight = glConfig.vidHeight;
