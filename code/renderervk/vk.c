@@ -980,6 +980,9 @@ qboolean vk_fbo_wanted( void )
 void vk_ssr_create_render_pass( VkDevice device );
 void vk_ssr_create( void );
 void vk_ssr_destroy( void );
+/* Declared here because vk_create_attachments needs it and runs first - see
+   the note where vk.ssr.format is chosen. */
+static qboolean vk_format_has_alpha( VkFormat format );
 
 
 static void vk_create_render_passes( void )
@@ -6817,19 +6820,52 @@ static void vk_create_attachments( void )
 	Outside any fbo test because the composite blends into whatever the main
 	framebuffer is, which exists on both paths.
 	*/
-	/* Only if the pass exists: it is what chose vk.ssr.format, and it declines
-	   to be created at all on a device with no alpha-carrying target. */
-	if ( vk.ssr.offscreen_pass != VK_NULL_HANDLE )
 	{
 		VkImageUsageFlags ssrUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-		/* vk.ssr.format, not vk.color_format: the reflection's coverage lives in
-		   alpha and the scene's format may not have one. Chosen in
-		   vk_ssr_create_render_pass, which runs first, so the image and the
-		   pass agree by construction. */
-		create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT,
-			vk.ssr.format, ssrUsage, &vk.ssr.image, &vk.ssr.image_view,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, qfalse );
+		/*
+		[QL] R19: the reflection target's format is decided here, next to the
+		image, and not in vk_ssr_create_render_pass where it belongs by subject.
+
+		This function runs before the render passes are created. Deciding it
+		over there meant deciding it after the image had already been created -
+		and the build that did that disabled the feature on every launch, with
+		the render pass function reporting that the render pass had not been
+		created.
+
+		Not vk.color_format: the trace writes coverage into alpha and the
+		composite blends by it, and r_rts 2 selects B10G11R11_UFLOAT, which has
+		no alpha at all. Vulkan reads a missing channel back as 1.0, so every
+		pixel would arrive fully opaque and the whole screen would be replaced
+		by the reflection image.
+		*/
+		vk.ssr.format = vk.color_format;
+
+		if ( !vk_format_has_alpha( vk.ssr.format ) ) {
+			const VkFormat withAlpha = VK_FORMAT_R16G16B16A16_SFLOAT;
+			const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+				VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+			VkFormatProperties props;
+
+			qvkGetPhysicalDeviceFormatProperties( vk.physical_device, withAlpha, &props );
+			if ( ( props.optimalTilingFeatures & need ) == need ) {
+				vk.ssr.format = withAlpha;
+				ri.Printf( PRINT_ALL, "SSR: scene format %s has no alpha - "
+					"resolving the reflection in %s instead\n",
+					vk_format_string( vk.color_format ), vk_format_string( withAlpha ) );
+			} else {
+				ri.Printf( PRINT_WARNING, "SSR: scene format %s has no alpha and this device "
+					"has no float RGBA target - disabling\n",
+					vk_format_string( vk.color_format ) );
+				vk.ssr.format = VK_FORMAT_UNDEFINED;
+			}
+		}
+
+		if ( vk.ssr.format != VK_FORMAT_UNDEFINED ) {
+			create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT,
+				vk.ssr.format, ssrUsage, &vk.ssr.image, &vk.ssr.image_view,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, qfalse );
+		}
 	}
 
 	create_depth_attachment( glConfig.vidWidth, glConfig.vidHeight, vkSamples, &vk.depth_image, &vk.depth_image_view,
@@ -12275,29 +12311,21 @@ void vk_ssr_create_render_pass( VkDevice device )
 	VkRenderPassCreateInfo desc;
 
 	/*
-	[QL] Pick the target's format here, before anything uses it - see
-	vk.ssr.format. The scene's format is right whenever it carries alpha; when
-	it does not, coverage has nowhere to live and a format that has one has to
-	be found instead.
-	*/
-	vk.ssr.format = vk.color_format;
-	if ( !vk_format_has_alpha( vk.ssr.format ) ) {
-		const VkFormat withAlpha = VK_FORMAT_R16G16B16A16_SFLOAT;
-		const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
-			VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
-		VkFormatProperties props;
+	[QL] vk.ssr.format is chosen in vk_create_attachments, which runs *before*
+	this - that order is the whole reason this is not decided here.
 
-		qvkGetPhysicalDeviceFormatProperties( vk.physical_device, withAlpha, &props );
-		if ( ( props.optimalTilingFeatures & need ) == need ) {
-			vk.ssr.format = withAlpha;
-			ri.Printf( PRINT_ALL, "SSR: scene format %s has no alpha - "
-				"resolving the reflection in %s instead\n",
-				vk_format_string( vk.color_format ), vk_format_string( withAlpha ) );
-		} else {
-			ri.Printf( PRINT_WARNING, "SSR: scene format %s has no alpha and this device "
-				"has no float RGBA target - disabling\n", vk_format_string( vk.color_format ) );
-			return;   // no pass; vk_ssr_create finds no pass and reports
-		}
+	It was, for one build, and the feature disabled itself on every launch: the
+	image is created with the attachments, so by the time this function had
+	picked a format the image it was picking for had already been created, or
+	rather skipped, because it was guarded on this pass existing and this pass
+	does not exist yet. "SSR: not running - the pass was not created", from a
+	function whose only job is to create it.
+
+	UNDEFINED means vk_create_attachments found no target that can carry alpha
+	and said so. No pass, and vk_ssr_create reports it.
+	*/
+	if ( vk.ssr.format == VK_FORMAT_UNDEFINED ) {
+		return;
 	}
 
 	Com_Memset( &attachment, 0, sizeof( attachment ) );
@@ -12389,8 +12417,27 @@ void vk_ssr_create( void )
 
 	vk_ssr_destroy();
 
-	if ( vk.ssr.offscreen_pass == VK_NULL_HANDLE || vk.ssr.framebuffer == VK_NULL_HANDLE ) {
-		return;   // nothing to draw into; r_ssr will report why when asked
+	/*
+	[QL] Say which piece is missing, because they fail for different reasons and
+	the difference is the whole diagnosis.
+
+	This was one silent return and r_ssr reported "the pass was not created",
+	which sent a round of work at the render pass function - and the render pass
+	was fine. The image had not been created, because the format it needed was
+	being chosen after the image was built. Three words of log would have named
+	it immediately.
+	*/
+	if ( vk.ssr.offscreen_pass == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "SSR: no offscreen render pass%s - disabling\n",
+			vk.ssr.format == VK_FORMAT_UNDEFINED
+				? " (no colour target on this device carries alpha)" : "" );
+		return;
+	}
+	if ( vk.ssr.framebuffer == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "SSR: the render pass exists but its image does not - "
+			"disabling. The target is built with the attachments, before the render "
+			"passes; anything it depends on has to be decided by then.\n" );
+		return;
 	}
 	if ( vk.render_pass.rtao == VK_NULL_HANDLE ) {
 		ri.Printf( PRINT_WARNING, "SSR: no composite render pass - disabling\n" );

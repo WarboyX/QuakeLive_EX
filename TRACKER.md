@@ -4789,6 +4789,27 @@ The lesson worth keeping: **an alpha-blended offscreen target is not
 it is the mask, and both "what is in it before we write" and "does it have the
 channel at all" have to be answered before the first pixel is traced.
 
+**And a second, structural one, paid for immediately.** The format choice went
+into `vk_ssr_create_render_pass`, where it belongs by subject. It does not
+belong there by *order*:
+
+```
+vk_create_attachments();    /* images   */
+vk_create_render_passes();  /* passes   */
+```
+
+Attachments are built **first**. So the format was being chosen after the image
+that needed it had already been created — or rather skipped, since the image was
+guarded on a render pass that does not exist yet. The feature disabled itself on
+every launch, reporting `SSR: not running - the pass was not created` from the
+function whose only job is to create it.
+
+The rule: **anything an attachment depends on has to be decided before
+`vk_create_attachments` runs**, not in the pass that describes it. The failure
+paths now name which of the two pieces is missing, because "no pass" and "no
+image" have completely different causes and the single shared message sent a
+round of work at the wrong one.
+
 **Step 4, two wrong image layouts, both real, neither sufficient.**
 
 The second one is the one that mattered, and it is worth reading before adding
