@@ -3002,6 +3002,48 @@ CG_Player
 ===============
 */
 void CG_Player(centity_t* cent) {
+    /*
+    [QL] R19: a wake, rather than a splash on entry and nothing after.
+
+    The water events - EV_WATER_TOUCH, EV_FOOTSPLASH, EV_SWIM - fire on
+    transitions and on footfalls, which is why wading across a pool produced one
+    ring as you went in and then a flat surface while you walked through it.
+    Something moving through water disturbs it continuously, and only the
+    renderer's own frame loop knows that; there is no event for "still moving".
+
+    So this emits from the player itself, throttled in time and gated on actually
+    having moved. Standing still in water leaves it alone, which is right: the
+    rings from arriving should settle.
+
+    The size is small and the rate is what carries it - a line of overlapping
+    little rings behind a moving player reads as a wake, where one big ring per
+    step reads as stamping.
+    */
+    {
+        static int      lastWake[MAX_CLIENTS];
+        static vec3_t   lastWakePos[MAX_CLIENTS];
+        int             n = cent->currentState.clientNum;
+
+        if (n >= 0 && n < MAX_CLIENTS && cg_waterRipples.integer) {
+            if (cg.time - lastWake[n] > 110 || cg.time < lastWake[n]) {
+                vec3_t  feet;
+                float   moved;
+
+                VectorCopy(cent->lerpOrigin, feet);
+                moved = Distance(feet, lastWakePos[n]);
+
+                /* 8 units between emissions: enough that standing still is
+                   silent and a walk still lays down a continuous line */
+                if (moved > 8.0f && moved < 600.0f) {
+                    CG_WaterRipple(NULL, feet, 60.0f, 0.8f);
+                }
+
+                lastWake[n] = cg.time;
+                VectorCopy(feet, lastWakePos[n]);
+            }
+        }
+    }
+
     clientInfo_t* ci;
     refEntity_t legs;
     refEntity_t torso;

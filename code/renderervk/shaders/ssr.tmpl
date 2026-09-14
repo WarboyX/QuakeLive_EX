@@ -30,7 +30,7 @@ layout(set = 0, binding = 0) uniform sampler2D depthMap;
 layout(set = 0, binding = 1) uniform sampler2D sceneMap;
 
 #define SSR_MAX_PLANES 32
-#define SSR_MAX_RIPPLES 16
+#define SSR_MAX_RIPPLES 48   /* matches MAX_WATER_RIPPLES */
 #define SSR_MAX_LIGHTS 16
 
 layout(set = 0, binding = 2) uniform SSR {
@@ -224,8 +224,9 @@ only the reflection is invisible wherever the reflection itself is subtle - so
 "no ripples" and "ripples too faint to see" looked identical. They are not the
 same problem and they do not have the same fix.
 */
-vec3 rippleSurface(vec2 p, int planeIdx) {
+vec4 rippleSurface(vec2 p, int planeIdx) {
 	float h = 0.0;
+	float energy = 0.0;
 	vec2 grad = vec2(0.0);
 
 	int n = int(planeCount.y);
@@ -268,6 +269,20 @@ vec3 rippleSurface(vec2 p, int planeIdx) {
 
 		h += amp * sin(phase);
 
+		/*
+		The envelope, kept apart from the height on purpose.
+
+		h oscillates through zero - that is what a wave is - so anything driven
+		off it is only present where the sine happens to be near a peak, and
+		flickers as the ring travels. Foam did exactly that: thin arcs blinking
+		on and off instead of a splash, which reads as nothing at all.
+
+		This is how much disturbance is here regardless of which way the surface
+		happens to be moving at this instant. A splash is a patch of churn that
+		fades, not a set of alternating bands.
+		*/
+		energy += abs(amp);
+
 		if (d > 0.001) {
 			/*
 			Scaled down hard, and it is not a fudge. The wind waves put their
@@ -281,7 +296,7 @@ vec3 rippleSurface(vec2 p, int planeIdx) {
 		}
 	}
 
-	return vec3(h, grad);
+	return vec4(h, grad, energy);
 }
 
 /*
@@ -302,7 +317,7 @@ vec3 waterSurface(vec2 p, int planeIdx) {
 	            + WAVE_D1 * 0.30 * cos(ph.y)
 	            + WAVE_D2 * 0.15 * cos(ph.z) ) * wave.x;
 
-	return vec3(h, grad) + rippleSurface(p, planeIdx);
+	return vec3(h, grad) + rippleSurface(p, planeIdx).xyz;
 }
 
 float waveHeight(vec2 p, int planeIdx) {
@@ -629,7 +644,7 @@ void main() {
 	flickers, because the wave that caused it is moving.
 	*/
 	/* the disturbances alone, for the foam and for r_ssrDebug 5 */
-	vec3 rip = rippleSurface(P.xy, bestIdx);
+	vec4 rip = rippleSurface(P.xy, bestIdx);
 
 	/*
 	[QL] r_ssrDebug 5: where the disturbances are, and nothing else.
@@ -643,7 +658,10 @@ void main() {
 	*/
 	if (depthInfo.w == 5.0) {
 		float v = clamp(rip.x * 0.5, -1.0, 1.0);
-		out_color = vec4(max(v, 0.0), abs(v) * 0.25, max(-v, 0.0), 1.0);
+		/* red/blue is the height, green is the envelope the foam is driven off
+		   - if the rings are vivid and the green is dark, foam has nothing to
+		   work with no matter what the threshold is */
+		out_color = vec4(max(v, 0.0), clamp(rip.w * 0.7, 0.0, 1.0), max(-v, 0.0), 1.0);
 		return;
 	}
 
@@ -818,7 +836,7 @@ void main() {
 	pass and no second blend - it is the same source-alpha composite, arriving
 	white.
 	*/
-	float foam = smoothstep(0.35, 1.6, abs(rip.x)) * wave2.y;
+	float foam = smoothstep(0.25, 1.40, rip.w) * wave2.y;
 	if (foam > 0.0) {
 		hitColor = mix(hitColor, vec3(1.0), foam);
 		hit = max(hit, foam);

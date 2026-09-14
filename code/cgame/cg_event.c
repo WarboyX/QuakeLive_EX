@@ -698,7 +698,7 @@ something like a single heavy hit rather than a boiling pot.
 Radius is how far it eventually spreads and matters more to how it reads than
 strength does: a wide, gentle ring is a rocket, a tight sharp one is a bullet.
 */
-static void CG_WaterImpactSize(int weapon, float *radius, float *strength) {
+void CG_WaterImpactSize(int weapon, float *radius, float *strength) {
     switch (weapon) {
         case WP_ROCKET_LAUNCHER:
             *radius = 220.0f; *strength = 4.0f; break;
@@ -715,10 +715,11 @@ static void CG_WaterImpactSize(int weapon, float *radius, float *strength) {
         case WP_LIGHTNING:
             *radius = 55.0f;  *strength = 0.5f; break;
         case WP_SHOTGUN:
-            /* one ripple for the whole blast, not one per pellet - twenty
-               pellets would flush the entire ring buffer on a single shot and
-               leave no room for anything else in the room */
-            *radius = 130.0f; *strength = 2.0f; break;
+            /* per pellet, and there are twenty of them. Small and sharp: what
+               makes a shotgun read as a shotgun on water is the scatter, so
+               the individual hit wants to stay a point rather than grow into
+               something that merges with its neighbours. */
+            *radius = 34.0f;  *strength = 0.5f; break;
         default:
             *radius = 40.0f;  *strength = 0.6f; break;
     }
@@ -763,7 +764,7 @@ static const float *CG_ShotOrigin(const entityState_t *es) {
     return org;
 }
 
-static void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float strength) {
+void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float strength) {
     vec3_t p;
     float surfaceZ;
     int i;
@@ -1374,19 +1375,9 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
         case EV_SHOTGUN:
             DEBUGNAME("EV_SHOTGUN");
             CG_ShotgunFire(es);
-            /* [QL] R19: the blast, once. es->origin2 is the fire direction and
-               es->pos.trBase the muzzle, so the centre of the pattern is a
-               trace along it - and a shotgun into a pond is one splash, not
-               twenty. */
-            {
-                vec3_t end;
-                trace_t tr;
-
-                VectorMA(es->pos.trBase, 8192.0f, es->origin2, end);
-                CG_Trace(&tr, es->pos.trBase, NULL, NULL, end, es->otherEntityNum, MASK_SHOT);
-                CG_WaterImpactSize(WP_SHOTGUN, &rippleRadius, &rippleStrength);
-                CG_WaterRipple(es->pos.trBase, tr.endpos, rippleRadius, rippleStrength);
-            }
+            /* [QL] R19: the splash is per pellet, in CG_ShotgunPellet - a
+               shotgun into a pond is a scatter of small hits in the shape of
+               the pattern, not one big ring in the middle of it. */
             break;
 
         case EV_GENERAL_SOUND:

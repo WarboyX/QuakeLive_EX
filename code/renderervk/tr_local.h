@@ -1199,7 +1199,17 @@ the only place that can do it correctly.
 the ring expands from nothing to this over its life. A footstep and a rocket
 differ in this far more than in strength.
 */
-#define MAX_WATER_RIPPLES 16
+/*
+A shotgun is twenty pellets and each one that lands in water is its own small
+splash, so sixteen was one blast away from flushing everything else in the room.
+Forty-eight holds a full blast with room to spare.
+
+The shader walks this list per water pixel, so it is not free - but a pellet's
+ripple has a small reach and the distance test rejects it for almost every pixel
+on screen, which is why the cheap early-out in that loop is ordered the way it
+is.
+*/
+#define MAX_WATER_RIPPLES 48
 
 typedef struct {
 	vec3_t		origin;

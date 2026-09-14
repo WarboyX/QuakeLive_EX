@@ -2923,6 +2923,26 @@ static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum, vec3_t hitOu
         (*numHits)++;
     }
 
+    /*
+    [QL] R19: this pellet's own splash.
+
+    Here rather than on the EV_SHOTGUN event because this is where the pattern
+    actually is. These traces reproduce the server's exactly - same basis, same
+    seed, same serverinfo spread - so the splashes land in the shape the shot
+    was really fired in, and anything that changes the pattern changes them with
+    it for free.
+
+    Every pellet, not a sample of them: the scatter is the whole character of a
+    shotgun hitting water, and picking every third one would read as a much
+    lighter weapon. CG_WaterRipple drops the ones that missed the water.
+    */
+    if (tr.fraction < 1.0f) {
+        float rippleRadius, rippleStrength;
+
+        CG_WaterImpactSize(WP_SHOTGUN, &rippleRadius, &rippleStrength);
+        CG_WaterRipple(start, tr.endpos, rippleRadius, rippleStrength);
+    }
+
     sourceContentType = CG_PointContents(start, 0);
     destContentType = CG_PointContents(tr.endpos, 0);
 

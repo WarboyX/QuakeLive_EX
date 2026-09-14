@@ -12981,9 +12981,9 @@ qboolean vk_ssr( void )
 			}
 
 			ri.Printf( PRINT_DEVELOPER,
-				"SSR ripples: %i sent, %i expired, %i unmatched, %i plane(s)\n"
+				"SSR ripples: %i sent, %i expired, %i unmatched, %i plane(s), foam %g\n"
 				"  newest at %.0f %.0f %.0f, age %.2fs, nearest plane z %.0f (gap %.0f, band %.0f)\n",
-				count, dropAge, dropPlane, i,
+				count, dropAge, dropPlane, i, r_waterFoam->value,
 				newest->origin[0], newest->origin[1], newest->origin[2],
 				now - (float)newest->startTime * 0.001f,
 				bestZ, bestGap, band );
