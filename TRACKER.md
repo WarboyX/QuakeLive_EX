@@ -4752,6 +4752,64 @@ brick walls, decking, floors.
 
 ---
 
+### R23. Rebuilding Quake Live's maps from decompiled BSPs — TESTED, not recommended
+**Lives in:** offline tooling · **Seen by:** nobody, if it stays offline
+
+The idea: decompile a shipped `.bsp` to `.map`, work out what the author meant
+by the lighting, and recompile with better settings - phong on the rock shaders
+and `-deluxe` - so the *data* is fixed rather than worked around at runtime. It
+would make R20 Stage B unnecessary.
+
+Four things were measured with id-tech-3-tools/map-compiler rather than reasoned
+about, and together they close it.
+
+**1. Re-lighting a shipped BSP in place is impossible.** The obvious shortcut -
+skip the decompile, just re-run `-light` on the `.bsp` - does not work. The light
+phase opens the `.map` and the `.srf` next to it, and the `.srf` is written by
+the BSP phase. A shipped map has neither:
+
+```
+Loading .../relit.srf
+************ ERROR ************
+Error opening .../relit.srf: No such file or directory
+```
+
+A first attempt at this appeared to succeed and report zero lightmap change. It
+had not run at all. Grepping the output for the lines expected on success, and
+finding none, is what caught it.
+
+**2. So the decompile is mandatory, and it degrades the geometry.**
+`-convert -format map` works and produces a valid `.map`. But a BSP holds the
+*result* of CSG - brushes split, clipped and merged against each other - not the
+brushes the author drew. What comes back is a fragment soup with texture
+alignment to match. Fine as reference, not as a source to rebuild from.
+
+**3. Most of the lighting intent is simply gone.** `/maplights` measured it: zero
+`light` entities in either map tested. Rebuilding means *inventing* lighting and
+calling it the author's.
+
+What does survive is worth knowing: **`q3map_sun` and `q3map_surfacelight` are
+shader keywords, not entities**, and the shaders are in pak00. On a sunlit
+outdoor map or one lit by glowing panels, that may be most of the light in the
+scene - so a rebuild would not start from black. It would still be a
+reconstruction.
+
+**4. It cannot be distributed.** A rebuilt `.bsp` is derived from Quake Live's
+map content, which is the same rule that keeps pak00 out of this repo. The only
+shippable form is a script that runs against the user's own installation and
+writes into their own baseq3 - the shape texture-upscaling mods use. Defensible,
+but it makes the feature "run this and wait" rather than something that works on
+first launch.
+
+**Against R20 Stage B**, which needs no decompile, no recompile, no distribution
+question and no invented lighting - this is the worse path for a worse result.
+
+Recorded because it is a reasonable idea that looks better than it is, and
+because points 1 and 2 are the kind of thing worth knowing before spending a day
+on it.
+
+---
+
 ### R22. Smoothed vertex normals on world geometry — SCOPED, not started
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
