@@ -2030,7 +2030,7 @@ static void R_Register( void )
 		"pillars; too large and a ray reflects the empty space in front of a distant wall." );
 
 	r_ssrDebug = ri.Cvar_Get( "r_ssrDebug", "0", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_ssrDebug, "0", "3", CV_INTEGER );
+	ri.Cvar_CheckRange( r_ssrDebug, "0", "4", CV_INTEGER );
 	ri.Cvar_SetDescription( r_ssrDebug, "Show what the reflection pass is doing instead of its "
 		"result.\n"
 		" 0 - off\n"
@@ -2045,6 +2045,12 @@ static void R_Register( void )
 		"appears somewhere it cannot be - if the gun comes out blue it is being rejected "
 		"correctly and the fault is downstream of the water test, if it comes out green the "
 		"weapon range is not where this pass was told it is\n"
+		" 4 - the depth buffer itself, near bright and far dark, before anything is decided "
+		"about it. Start here. Every view above is a threshold applied to this, and a "
+		"threshold applied to bad data looks like a bad threshold rather than bad data. A "
+		"smooth distance field with the gun in front means depth is sound; the room's "
+		"textures or the HUD showing through means this is not the depth image; the previous "
+		"frame smeared across it means the read is racing the next frame's writes\n"
 		"Needs " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " above 0 - this changes what the pass "
 		"draws, it does not turn it on." );
 

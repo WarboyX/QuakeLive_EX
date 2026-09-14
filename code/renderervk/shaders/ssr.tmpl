@@ -121,6 +121,39 @@ void main() {
 
 	out_color = vec4(0.0);
 
+	/*
+	[QL] r_ssrDebug 4: the depth buffer itself, before anything is decided about
+	it. Near is bright, far is dark, under either depth convention.
+
+	This should have existed before any of the others. Every debug view above
+	shows a *classification* - a threshold applied to this number - and a
+	threshold applied to bad data does not look like bad data. It looks like a
+	bad threshold, which is where four rounds of work went: at the water test,
+	at the plane bounds, at the weapon band, at two image layouts. Each was
+	answered with a picture that was itself downstream of the thing that was
+	wrong.
+
+	What this one shows cannot be argued with:
+
+	  a smooth distance field, the gun clearly in front - depth is sound, and
+	    whatever is wrong is in what this pass does with it
+	  the room's textures, the HUD, glyphs - this is not the depth image at all
+	  the previous frame, or several - the read is racing the next frame's
+	    writes, which is the "out of bounds smear" this looks like
+
+	Those three need completely different fixes and nothing above distinguishes
+	them.
+
+	The fourth root makes the reversed range visible: with near at 1.0 most of a
+	room sits close to 0 and a linear grey would be almost entirely black.
+	*/
+	if (depthInfo.w == 4.0) {
+		float d = clamp(depth, 0.0, 1.0);
+		float near1 = (depthInfo.z > 0.0) ? d : 1.0 - d;
+		out_color = vec4(vec3(pow(near1, 0.25)), 1.0);
+		return;
+	}
+
 	// nothing drawn here - sky, or outside the world
 	bool isSky = (depthInfo.z * (depth - depthInfo.x) <= 0.0);
 
