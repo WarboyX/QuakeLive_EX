@@ -4681,6 +4681,72 @@ window opened.
 
 ---
 
+### R21. Real tessellation and displacement on world geometry — SCOPED, not started
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Earlier scoping said no to this, on the grounds that subdividing a flat wall
+leaves a flat wall and there is no height data to displace along. The first half
+still holds. The second half stops being true if R20 lands: luminance-derived
+height maps are exactly the displacement data that was missing.
+
+Vulkan has the stages. `tessellationShader` is an optional device feature and is
+**not requested at device creation in this tree** — same position ray query was
+in before R13, so it is a real prerequisite with a capability check and a
+fallback path, not a flag to flip.
+
+**What it is for.** Bezier patches already tessellate at load
+(`R_SubdividePatchToGrid`, `r_subdivisions`, already shipped at 1 where stock
+ioquake3 is 4 — no headroom left there). The gap is **planar faces**: a rock
+face or a brick wall arrives as two triangles and stays that way. Those are the
+surfaces that read as flat photographs.
+
+**The safety property that makes this possible at all: displace INWARD ONLY.**
+
+The server traces against the BSP brushes and those never move. Any displacement
+is client-side, so a surface pushed *outward* means the player visually clips
+into rock that the game says is not there — a disagreement between what is drawn
+and what is solid, and precisely the `Seen by` trap. Clamp the displacement to
+be zero or negative along the face normal and that cannot happen: the visible
+surface never leaves the collision hull. The worst case becomes a small gap
+where a player stands over a dip, which is invisible in practice and always safe.
+
+That also settles the "only decorative geometry" question. With inward-only
+displacement there is no need to restrict this to surfaces players cannot reach;
+the constraint does the work that a whitelist would have done, and does it
+everywhere.
+
+**Opt in per texture, through our own shader scripts.** pak01 loads after pak00,
+so a shader we ship under the same name wins — the console shader already works
+this way. A `qlDisplace <scale>` keyword in our own script marks rock, brick and
+gravel and leaves everything else alone. No edit to Quake Live's files, and the
+list of what is displaced is a checked-in file rather than a heuristic.
+
+**Four things that will bite, all known in advance:**
+
+- **Cracks at shared edges.** Two faces that tessellate to different factors
+  split along the edge they share. The fix is to compute each edge's factor from
+  the edge's own endpoints only, so both sides derive the same number without
+  knowing about each other.
+- **The pipeline matrix.** `MAX_VK_PIPELINES` is 2304 and the world pipelines
+  are a combinatorial set. Adding tessellation stages to all of them is not
+  viable; this wants a second, small set of pipelines used only by opted-in
+  surfaces.
+- **Lighting will not follow the new shape.** Displaced vertices still sample
+  the lightmap at the same UVs, so a bump moves without its shading changing —
+  which looks worse than no bump. **R20 Stage B is a hard dependency, not a
+  nice-to-have**: the perturbed-normal lighting is what makes displaced geometry
+  read as geometry.
+- **Cost, and where it is not paid.** Tessellation factors must fall off with
+  distance or this subdivides a wall across the map to no purpose. Distance-based
+  LOD, and a hard cap.
+
+**Order:** R20 Stage A, then R20 Stage B, then this. Each is testable on its own
+and each is useless without the one before it — displacement without the
+lighting is worse than nothing, and the lighting without the height maps has
+nothing to read.
+
+---
+
 ### R20. Surface detail from the textures we already have — SCOPED, not started
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
