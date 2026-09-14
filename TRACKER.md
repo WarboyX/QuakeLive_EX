@@ -4681,6 +4681,72 @@ window opened.
 
 ---
 
+### R20. Surface detail from the textures we already have — SCOPED, not started
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Quake Live's rock, brick and gravel read as flat planes with a photograph on
+them. The bumps are in the diffuse texture as light and dark; nothing in the
+lighting knows about them.
+
+**The idea:** derive a normal map from each diffuse texture at load — luminance
+to height, Sobel to normal — and light with it. No new assets, no geometry, no
+collision change.
+
+**The plumbing is half-built and the missing half was removed on purpose.**
+`stage->normalMap` is parsed (`normalMap`/`bumpMap` in `tr_shader.c`) and stored
+and **nothing consumes it at draw time**. `light_frag.tmpl` says why: the count
+printed at registration has been 0 on every map, because Quake Live's shaders
+carry the keywords and ship no images, so the perturbation cost a fetch and was
+wrong. That is the "registered but not implemented" shape, correctly identified
+and correctly removed rather than left to rot.
+
+**Two traps already documented, both from that removal:**
+
+- A constant **tangent-space** tilt is not a constant world-space one. Tangent
+  space is built from the surface's texture axes, so the previous attempt tilted
+  a different way on every face and produced slits of light whose angle changed
+  room to room with the mapper's texture alignment. Q3 BSP carries no tangents;
+  derive the basis in the fragment shader from screen-space derivatives of the
+  texture coordinates rather than adding per-vertex tangents — no vertex format
+  change, no BSP change, works on all three surface types.
+- **`IMGFLAG_NOLIGHTSCALE` is mandatory** on every derived map and on the flat
+  fallback. A normal map is data; this path gamma-corrects and overbrights
+  anything that does not say otherwise.
+
+**Two stages, and the difference matters more than it sounds.**
+
+*Stage A — dynamic lights.* Restore the perturbation in the dynamic light pass.
+A rocket flying past a rock wall lights every bump and self-shadows between
+them. Self-contained, and it de-risks the tangent basis where a mistake is
+obvious and temporary rather than baked into every frame.
+
+**This changes nothing in a static scene.** The sunlight and shadow on those
+rocks is a baked lightmap. Standing still with nothing flying past, the rocks
+look exactly as they do now. Worth saying plainly, because "make the rocks look
+better" usually means the static case.
+
+*Stage B — static light.* The one that changes the screenshot. Modulate the
+lightmap by the perturbed normal against a light direction taken from the
+**lightgrid** (`R_LoadLightGrid`, already parsed). The grid is nominally for
+entities rather than world surfaces, so this is an approximation — but it is the
+only per-point light *direction* the BSP gives us, and it is what makes bumps
+appear under baked light. Higher risk: it touches every world surface in every
+frame, and getting the normalisation wrong washes out or darkens the whole map.
+
+**Where luminance-as-height is wrong, and it has to be opt-out-able.** It is
+honest for rock, brick, gravel, plate — surfaces whose light and dark *is*
+geometry. It is wrong wherever albedo varies for other reasons: the wave
+painting on japanesecastles, signs, posters, decals, anything with lettering.
+Those would grow bumps that track the artwork. Skip sky, liquids and 2D
+outright, and give shaders a keyword to decline.
+
+**What it cannot do:** the silhouette. Those rocks are low-poly with hard edges
+and will stay faceted against the sky — see the tessellation note in R19 for why
+displacing world geometry is not on the table (no height data, and it desyncs
+the render from the collision the server traces against).
+
+---
+
 ### R19. Reflective water — IN PROGRESS
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
