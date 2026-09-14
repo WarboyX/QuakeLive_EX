@@ -584,6 +584,19 @@ void main() {
 	    water. It just gets this frame's reflection from the undisplaced
 	    surface, which is where it came from before any of this.
 	*/
+	/*
+	[QL] Keep the undisplaced hit. Anything that should look painted onto the
+	surface has to be sampled here and not at the point below.
+
+	The displacement solve moves the intersection along the view ray, and at a
+	glancing angle - which is most of how water is seen - two units of height
+	moves it a long way. For the reflection that is exactly right and reads as
+	parallax. For foam it is a shear: the splash stops lying flat on the water
+	and smears off in whatever direction the eye happens to be looking from,
+	which is not a thing water does.
+	*/
+	float flatT = bestT;
+
 	if (bestIdx >= 0) {
 		float dn = dot(dir, N);
 		if (dn < -0.02) {
@@ -644,7 +657,8 @@ void main() {
 	flickers, because the wave that caused it is moving.
 	*/
 	/* the disturbances alone, for the foam and for r_ssrDebug 5 */
-	vec4 rip = rippleSurface(P.xy, bestIdx);
+	/* on the flat surface, so it stays put - see flatT above */
+	vec4 rip = rippleSurface((eye.xyz + dir * flatT).xy, bestIdx);
 
 	/*
 	[QL] r_ssrDebug 5: where the disturbances are, and nothing else.
@@ -838,8 +852,18 @@ void main() {
 	*/
 	float foam = smoothstep(0.25, 1.40, rip.w) * wave2.y;
 	if (foam > 0.0) {
-		hitColor = mix(hitColor, vec3(1.0), foam);
-		hit = max(hit, foam);
+		/*
+		Aerated water, not a white light. Slightly cool rather than pure white,
+		and never fully opaque - foam sits on water and the water is still
+		visible through it, so leaving a little of the reflection underneath is
+		what keeps it looking like part of the surface instead of a decal laid
+		over the top.
+		*/
+		vec3 froth = vec3(0.88, 0.93, 0.96);
+		float cover = min(foam, 0.85);
+
+		hitColor = mix(hitColor, froth, cover);
+		hit = max(hit, cover);
 	}
 
 	if (hit <= 0.0) {
