@@ -4711,9 +4711,11 @@ compare; per surface it costs pipeline state or a stencil bit.
 Premise confirmed on japanesecastles:
 
 ```
-Water: 2 plane(s) from 4 up-facing water surface(s), 18 liquid surface(s) in all
-  plane 0: normal 0.00 0.00 1.00 at -356
-  plane 1: normal 0.00 0.00 1.00 at -340
+Water: 4 plane(s) from 4 up-facing water surface(s), 18 liquid surface(s) in all
+  plane 0: normal 0.00 0.00 1.00 at -356, spanning 2460 0 to 2748 136
+  plane 1: normal 0.00 0.00 1.00 at -340, spanning 115 1276 to 862 1826
+  plane 2: normal 0.00 0.00 1.00 at -340, spanning -858 -1786 to -111 -1236
+  plane 3: normal 0.00 0.00 1.00 at -356, spanning -2744 -96 to -2456 40
 ```
 
 Flat, horizontal, and the 14 rejected surfaces are the sides and bottoms. Built
@@ -4721,10 +4723,53 @@ and reported *before* anything depends on it precisely because pak00 is not in
 this tree and the manifest is names only — fifty lines to test the premise
 rather than five hundred.
 
-**Step 2, next:** the reflection pass. Trace against the existing TLAS and shade
-the hit by projecting it back to screen and sampling the scene colour — which
-sidesteps the missing material data, at the cost of hits that are off-screen.
-Two passes in the shape of the AO pass, opt-in, with a debug view.
+A plane on its own is infinite, so each record carries the world bounds of the
+surface that made it. One record per face and no merging: a water brush usually
+continues under the decking, those faces touch the visible ones, and a merged
+box covers ground the water cannot be seen on.
+
+**Step 2, done:** the reflection pass, `r_ssr`. Two passes in the shape of the
+AO pass — a march into an offscreen target, then a source-alpha blend over the
+scene, because a pass cannot read the attachment it writes. Marching the depth
+buffer rather than the TLAS sidesteps the missing material data entirely; the
+cost is the standard screen-space one, and the edge fade is where that is hidden
+rather than pretended away. Cvars: `r_ssr`, `r_ssrDistance`, `r_ssrSteps`,
+`r_ssrThickness`, `r_ssrDebug`.
+
+**Step 3, in progress:** the mask. Three wrong answers so far, each a *different
+question* rather than a tolerance that wanted turning:
+
+1. *Reconstruct a world position from depth and test it against the plane.*
+   Fails on both sides at once. QL's water does not write depth, so the water
+   was never found; and the plane is infinite, so the decking at the water's
+   height was found instead.
+2. *Intersect the view ray with the plane, allowing slack against the depth
+   behind it.* Decking at the water's own height slips through, and at a
+   glancing angle that is most of the screen. Replaced with "there has to be a
+   pool under it" — the geometry behind must be meaningfully further away — 
+   which also rejects everything in front of the water without knowing what it
+   is.
+3. *Merge the bounds of touching faces.* Water tucked under decking inflates the
+   box. One record per face instead.
+
+**Open:** at a glancing angle the mask still exceeds the pool, and the
+reflection appears over the view weapon. The bounds are not the cause — the
+report above is the shipped build and those spans are the pools' own footprints.
+Three fixes went in for it, plus the debug view that will settle it:
+
+- the view-ray direction now comes from the pixel, not from the position
+  reconstructed at that pixel. The two agree only when the depth buffer is
+  trustworthy, and the pixels in question are exactly the ones where it is not.
+- the weapon-band test is `>=`, matching the occlusion pass exactly.
+- the geometry behind the water must be *below* the water. For consistent data
+  this follows from the test above and rejects nothing; it fires only when the
+  position reconstructed from depth does not belong to the ray, which is the
+  failure the other two guard against.
+- `r_ssrDebug 3` paints the depth classification: red sky, blue weapon band,
+  green world. If the gun is blue this pass rejects it correctly and the fault
+  is downstream; if green, the weapon band is not where the pass was told it is.
+  One screenshot decides which, and reasoning from source has been wrong on this
+  every round so far.
 
 ---
 

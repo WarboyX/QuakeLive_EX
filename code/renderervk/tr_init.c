@@ -2030,7 +2030,7 @@ static void R_Register( void )
 		"pillars; too large and a ray reflects the empty space in front of a distant wall." );
 
 	r_ssrDebug = ri.Cvar_Get( "r_ssrDebug", "0", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_ssrDebug, "0", "2", CV_INTEGER );
+	ri.Cvar_CheckRange( r_ssrDebug, "0", "3", CV_INTEGER );
 	ri.Cvar_SetDescription( r_ssrDebug, "Show what the reflection pass is doing instead of its "
 		"result.\n"
 		" 0 - off\n"
@@ -2040,6 +2040,11 @@ static void R_Register( void )
 		" 2 - the reflection itself, unfaded, red where the march found nothing. Red means "
 		S_COLOR_CYAN "\\r_ssrDistance" S_COLOR_WHITE ", " S_COLOR_CYAN "\\r_ssrSteps"
 		S_COLOR_WHITE " or " S_COLOR_CYAN "\\r_ssrThickness" S_COLOR_WHITE "\n"
+		" 3 - what the pass thinks the depth buffer says: red is sky, blue is the view weapon's "
+		"squashed depth range, green is ordinary world geometry. Use this when the reflection "
+		"appears somewhere it cannot be - if the gun comes out blue it is being rejected "
+		"correctly and the fault is downstream of the water test, if it comes out green the "
+		"weapon range is not where this pass was told it is\n"
 		"Needs " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " above 0 - this changes what the pass "
 		"draws, it does not turn it on." );
 

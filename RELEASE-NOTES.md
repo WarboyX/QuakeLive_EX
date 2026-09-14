@@ -212,8 +212,14 @@ in and which client sees it. Worth knowing before you run a server:
   floating-point target removes clamping the fixed-point one applied silently.
   If something looks wrong only with `r_rts 1`, the first question is what the
   old target was quietly correcting.
-- **Water is still a texture.** Reflection is scoped in `TRACKER.md` (R19); the
-  plane detection it needs is in and reports at map load.
+- **Water reflections (`r_ssr`) are unfinished and off by default.** The pass
+  runs and reflects, but the mask that decides which pixels are water still
+  exceeds the pool at glancing angles and can appear over the view weapon.
+  `r_ssrDebug 3` paints what the pass thinks it is looking at — red sky, blue
+  view weapon, green world — which is the screenshot that will settle it.
+  Tunables: `r_ssrDistance`, `r_ssrSteps`, `r_ssrThickness`. There are still no
+  waves; `TRACKER.md` (R19) records why geometry deformation cannot give them
+  without retessellating the map.
 
 ## Before cutting the release
 

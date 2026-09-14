@@ -283,7 +283,7 @@ Collected before anything is built on top of it, and reported, because the whole
 approach rests on QL's water being planar faces carrying CONTENTS_WATER - and if
 it is not, that is worth finding out in fifty lines rather than five hundred.
 */
-#define VK_MAX_WATER_PLANES 16
+#define VK_MAX_WATER_PLANES 32
 
 typedef struct {
 	float normal[3];

@@ -29,7 +29,7 @@ layout(set = 0, binding = 0) uniform sampler2D depthMap;
 #endif
 layout(set = 0, binding = 1) uniform sampler2D sceneMap;
 
-#define SSR_MAX_PLANES 16
+#define SSR_MAX_PLANES 32
 
 layout(set = 0, binding = 2) uniform SSR {
 	mat4 viewProj;      // world -> clip
@@ -48,7 +48,8 @@ layout(set = 0, binding = 2) uniform SSR {
 	  x  the value the depth buffer is cleared to
 	  y  where the weapon's squashed depth range begins
 	  z  +1 when near is 1.0 and far is 0.0 (USE_REVERSED_DEPTH), -1 otherwise
-	  w  r_ssrDebug: 0 normal, 1 show the water mask, 2 show the raw reflection
+	  w  r_ssrDebug: 0 normal, 1 the water mask, 2 the raw reflection,
+	     3 what the depth buffer was taken to mean
 	*/
 	vec4 depthInfo;
 	vec4 planes[SSR_MAX_PLANES];      // xyz = normal, w = dist
@@ -80,6 +81,27 @@ vec3 worldAt(ivec2 p, vec2 invSize) {
 	return w.xyz / w.w;
 }
 
+/*
+[QL] The direction the eye is looking through this pixel, from the pixel alone.
+
+Deliberately not normalize(worldAt(p) - eye). That answer is the same only when
+the depth buffer is trustworthy, and the whole difficulty here has been pixels
+where it is not: the view weapon is stored in a squashed depth range, so
+unprojecting it with the ordinary matrix gives a position that is not where the
+weapon is, and a pixel whose depth lands on the near plane unprojects to the eye
+itself, where normalize() is a division by zero.
+
+Unprojecting a fixed mid-frustum depth has neither problem. 0.5 is inside the
+frustum under both depth conventions and nowhere near a degenerate w, and the
+ray through a pixel does not depend on what was drawn there - so the plane test
+below now asks a question about geometry only.
+*/
+vec3 rayAt(ivec2 p, vec2 invSize) {
+	vec2 uv = (vec2(p) + 0.5) * invSize;
+	vec4 w = invViewProj * vec4(uv * 2.0 - 1.0, 0.5, 1.0);
+	return normalize(w.xyz / w.w - eye.xyz);
+}
+
 /* clip -> screen uv, and the depth that came with it */
 vec3 project(vec3 world) {
 	vec4 clip = viewProj * vec4(world, 1.0);
@@ -100,11 +122,43 @@ void main() {
 	out_color = vec4(0.0);
 
 	// nothing drawn here - sky, or outside the world
-	if (depthInfo.z * (depth - depthInfo.x) <= 0.0) {
+	bool isSky = (depthInfo.z * (depth - depthInfo.x) <= 0.0);
+
+	/*
+	The view weapon lives in a squashed depth range and is not water.
+
+	>= and not >, to agree with the occlusion pass exactly. A fragment sitting on
+	the boundary of the weapon's range is the weapon, and the two passes
+	disagreeing about one value is the kind of difference that is invisible until
+	it is the thing you are chasing.
+	*/
+	bool isWeapon = !isSky && (depthInfo.z * (depth - depthInfo.y) >= 0.0);
+
+	/*
+	[QL] r_ssrDebug 3: what this pass thinks the depth buffer is telling it.
+
+	  red    sky, or nothing drawn
+	  blue   inside the weapon's squashed depth range
+	  green  ordinary world geometry
+
+	This exists because "the reflection is appearing on the gun" has two
+	completely different causes and they need opposite fixes. If the gun comes
+	out blue, this pass is rejecting it correctly and whatever is drawn over it
+	arrived from somewhere else - the composite, or the blend. If the gun comes
+	out green, the weapon band is not where this pass was told it is, and no
+	amount of work on the water test will help.
+
+	Reading it off the screen takes one screenshot. Reasoning about it from the
+	source has so far taken several rounds and got the wrong answer each time.
+	*/
+	if (depthInfo.w == 3.0) {
+		out_color = isSky    ? vec4(1.0, 0.0, 0.0, 1.0)
+		          : isWeapon ? vec4(0.0, 0.0, 1.0, 1.0)
+		                     : vec4(0.0, 1.0, 0.0, 1.0);
 		return;
 	}
-	// the view weapon lives in a squashed depth range and is not water
-	if (depthInfo.z * (depth - depthInfo.y) > 0.0) {
+
+	if (isSky || isWeapon) {
 		return;
 	}
 
@@ -131,7 +185,7 @@ void main() {
 	*/
 	vec3 sceneP = worldAt(pix, invSize);
 	float sceneDist = length(sceneP - eye.xyz);
-	vec3 dir = normalize(sceneP - eye.xyz);
+	vec3 dir = rayAt(pix, invSize);
 
 	int count = int(planeCount.x);
 	vec3 N = vec3(0.0);
@@ -181,6 +235,26 @@ void main() {
 		going to fade out there anyway.
 		*/
 		if (t > sceneDist - 8.0) {
+			continue;
+		}
+
+		/*
+		And whatever is under it has to be under it.
+
+		A straight ray that crosses a plane downward is below that plane for the
+		rest of its length, so for consistent data this follows from the test
+		above and rejects nothing. That is the point of it. It fires only when
+		the position reconstructed from depth does not belong to this ray, which
+		is a real failure mode rather than a hypothetical one: the view weapon is
+		stored in a squashed depth range, a multisampled buffer hands back one
+		sample that may belong to a different primitive than the pixel's
+		coverage, and either produces a distance that passes the test above for
+		no good reason.
+
+		One dot product to make an inconsistency visible as rejection instead of
+		as water in the wrong place.
+		*/
+		if (dot(sceneP, n) > planes[i].w + 1.0) {
 			continue;
 		}
 

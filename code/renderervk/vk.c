@@ -3747,29 +3747,35 @@ void vk_find_water_planes( const world_t *world )
 		}
 
 		/*
-		Merged into an existing record only when the plane matches *and* the
-		boxes touch, so a pool split into several BSP faces becomes one record
-		while two separate pools at the same height stay apart. Deduplicating on
-		the plane alone would merge those two into one box spanning the map
-		between them, which is the infinite-plane problem again in a smaller
-		box.
+		One record per face, and deliberately no merging.
+
+		Merging faces whose boxes touch looked tidy and is wrong in the way that
+		matters: a water brush usually continues under the decking around the
+		pool, those faces touch the visible ones, and the merged box therefore
+		covers ground the water cannot be seen on. The box is the only thing
+		bounding an infinite plane, so every unit it gains is a unit of floor
+		the mask can spill onto - which is what "the mask does not stop at the
+		pool edge" is.
+
+		A duplicate face costs one more iteration of a loop over a handful of
+		planes. A box larger than the water costs correctness.
+
+		Still skipped when an identical face is already recorded, because BSP
+		splitting can hand back the same rectangle twice and there is nothing to
+		be gained from holding it twice.
 		*/
 		known = qfalse;
 		for ( j = 0; j < vk.numWaterPlanes; j++ ) {
-			vkWaterPlane_t *wp = &vk.waterPlanes[j];
+			const vkWaterPlane_t *wp = &vk.waterPlanes[j];
 
 			if ( fabsf( wp->dist - face->plane.dist ) >= 1.0f ||
 				 DotProduct( wp->normal, face->plane.normal ) <= 0.999f ) {
 				continue;
 			}
-			if ( surfMins[0] > wp->maxs[0] + 1.0f || surfMaxs[0] < wp->mins[0] - 1.0f ||
-				 surfMins[1] > wp->maxs[1] + 1.0f || surfMaxs[1] < wp->mins[1] - 1.0f ) {
-				continue;   // same height, somewhere else
+			if ( VectorCompare( wp->mins, surfMins ) && VectorCompare( wp->maxs, surfMaxs ) ) {
+				known = qtrue;
+				break;
 			}
-			AddPointToBounds( surfMins, wp->mins, wp->maxs );
-			AddPointToBounds( surfMaxs, wp->mins, wp->maxs );
-			known = qtrue;
-			break;
 		}
 		if ( known ) {
 			continue;
@@ -3790,15 +3796,15 @@ void vk_find_water_planes( const world_t *world )
 		return;
 	}
 
-	ri.Printf( PRINT_ALL, "Water: %i plane(s) from %i up-facing water surface(s), "
+	ri.Printf( PRINT_ALL, "Water: %i reflector(s) from %i up-facing water surface(s), "
 		"%i liquid surface(s) in all\n",
 		vk.numWaterPlanes, waterSurfaces, surfaces );
 
 	for ( i = 0; i < vk.numWaterPlanes; i++ ) {
-		ri.Printf( PRINT_ALL, "  plane %i: normal %.2f %.2f %.2f at %.0f, "
-			"spanning %.0f %.0f to %.0f %.0f\n", i,
-			vk.waterPlanes[i].normal[0], vk.waterPlanes[i].normal[1],
-			vk.waterPlanes[i].normal[2], vk.waterPlanes[i].dist,
+		ri.Printf( PRINT_ALL, "  %2i: z %.0f, %.0f x %.0f units, from %.0f %.0f to %.0f %.0f\n", i,
+			vk.waterPlanes[i].dist,
+			vk.waterPlanes[i].maxs[0] - vk.waterPlanes[i].mins[0],
+			vk.waterPlanes[i].maxs[1] - vk.waterPlanes[i].mins[1],
 			vk.waterPlanes[i].mins[0], vk.waterPlanes[i].mins[1],
 			vk.waterPlanes[i].maxs[0], vk.waterPlanes[i].maxs[1] );
 	}
