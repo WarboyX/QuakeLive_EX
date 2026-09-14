@@ -4752,6 +4752,42 @@ question* rather than a tolerance that wanted turning:
 3. *Merge the bounds of touching faces.* Water tucked under decking inflates the
    box. One record per face instead.
 
+**Step 7, waves — and the R19 "geometry waves are impossible" finding turns out
+not to matter.**
+
+That finding stands and is still correct: `deformVertexes` moves the vertices a
+surface already has, Quake Live's water is subdivided at map compile time from
+`tessSize`, and a runtime override cannot retessellate it.
+
+It only matters if the silhouette is what sells a wave, and it is not. At the
+angles water is actually seen, what sells it is **what the surface reflects** —
+and the reflected direction is `reflect(V, N)`. Tilt `N` in a travelling pattern
+and the reflection ripples on a surface that never moves a vertex.
+
+Three directional waves at 1×, 1.7× and 3.1× the base frequency. Non-integer
+ratios deliberately: harmonics repeat visibly, and the eye finds a repeat in
+water instantly. Amplitudes sum to 1 so `r_waterWaveSteepness` is the true
+maximum slope rather than an arbitrary scale.
+
+**Real Z as well as tilt.** Solving the ray/plane intersection again against a
+plane displaced by the wave height gives two things the tilt cannot: the
+waterline against the pool wall rises and falls, and the reflection parallaxes —
+stretching over a trough, compressing over a crest. Two fixed-point iterations,
+with a grazing-angle cutoff (the solve divides by `dot(dir, N)`), a re-test of
+the occlusion and bounds rules for the displaced point, and a fall back to the
+flat solve rather than a discard when it fails — the pixel is still water.
+
+Cvars: `r_waterWaves`, `r_waterWaveScale`, `r_waterWaveSpeed`,
+`r_waterWaveSteepness`, `r_waterWaveHeight`. All `CVAR_ARCHIVE_ND`, because they
+are still being tuned and `CVAR_ARCHIVE` would freeze today's defaults into
+every config on first run — the `r_dlightMode` / `con_scale` lesson.
+
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only. Worth
+stating because event-driven ripples are the obvious next step and they change
+nothing about that: cgame already knows about water impacts, and drawing them is
+a client-side redraw. A *server* cvar that changed what water looks like would
+be the `Seen by` trap, and is not what this is.
+
 **Step 6, the cause: the occlusion pass declared depth `STORE_OP_DONT_CARE`.**
 
 ```c

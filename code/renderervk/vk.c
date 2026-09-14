@@ -12227,6 +12227,8 @@ typedef struct {
 	float boundsMin[SSR_MAX_PLANES][4];
 	float boundsMax[SSR_MAX_PLANES][4];
 	float planeCount[4];
+	float wave[4];        // slope, units per wavelength, speed, seconds
+	float wave2[4];       // height in units; y..w spare
 } ssrUniform_t;
 
 static qboolean ssrReported = qfalse;
@@ -12801,6 +12803,30 @@ qboolean vk_ssr( void )
 	}
 	u->planeCount[0] = (float)i;
 	u->planeCount[1] = u->planeCount[2] = u->planeCount[3] = 0.0f;
+
+	/*
+	[QL] R19 waves. Both controls collapse to zero when r_waterWaves is off, so
+	the shader's two early-outs cover the whole feature and there is no second
+	place for it to be switched on.
+
+	backEnd.refdef.floatTime rather than a counter of our own: it is the time
+	the rest of the frame was built with, so the waves are in step with anything
+	that is ever made to react to them, and it is the value a demo replays with.
+	Seconds since the client started, so it is large - a float holds about a
+	tenth of a millisecond of precision after a day of uptime, which is far
+	finer than a wave that takes a second to cross a pool.
+	*/
+	if ( r_waterWaves->integer ) {
+		u->wave[0] = r_waterWaveSteepness->value;
+		u->wave[1] = r_waterWaveScale->value;
+		u->wave[2] = r_waterWaveSpeed->value;
+		u->wave[3] = (float)backEnd.refdef.floatTime;
+		u->wave2[0] = r_waterWaveHeight->value;
+	} else {
+		u->wave[0] = u->wave[1] = u->wave[2] = u->wave[3] = 0.0f;
+		u->wave2[0] = 0.0f;
+	}
+	u->wave2[1] = u->wave2[2] = u->wave2[3] = 0.0f;
 
 	if ( !ssrReported ) {
 		ssrReported = qtrue;

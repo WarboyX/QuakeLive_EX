@@ -56,6 +56,20 @@ layout(set = 0, binding = 2) uniform SSR {
 	vec4 boundsMin[SSR_MAX_PLANES];   // xyz = world minimum of the water on it
 	vec4 boundsMax[SSR_MAX_PLANES];   // xyz = world maximum
 	vec4 planeCount;                  // x = how many are filled
+	/*
+	  x  slope: how far the surface normal is allowed to tilt, r_waterWaveSteepness
+	  y  world units per wavelength of the largest wave, r_waterWaveScale
+	  z  speed, r_waterWaveSpeed
+	  w  seconds, for the animation. x at 0 means flat water.
+	*/
+	vec4 wave;
+	/*
+	  x  crest-to-trough height in world units, r_waterWaveHeight
+	  y..w  spare - the obvious next occupant is a short list of disturbance
+	        sources for splashes, which want exactly this height field with a
+	        decaying radial term added to it
+	*/
+	vec4 wave2;
 };
 
 layout(location = 0) in vec2 frag_tex_coord;
@@ -100,6 +114,75 @@ vec3 rayAt(ivec2 p, vec2 invSize) {
 	vec2 uv = (vec2(p) + 0.5) * invSize;
 	vec4 w = invViewProj * vec4(uv * 2.0 - 1.0, 0.5, 1.0);
 	return normalize(w.xyz / w.w - eye.xyz);
+}
+
+/*
+[QL] Waves, without moving a single vertex.
+
+R19 ruled out geometry waves and the reasoning still holds: deformVertexes moves
+the vertices a surface already has, and Quake Live's water is subdivided at map
+compile time from the shader's tessSize. A runtime override cannot retessellate
+it, so coarse water would heave in flat slabs.
+
+None of that matters here, because what sells a wave to the eye is not the
+silhouette - at these angles you can barely see it - it is what the surface
+*reflects*. The reflected direction is reflect(V, N). Tilt N and the reflection
+slides; tilt it in a travelling pattern and the reflection ripples. The surface
+stays geometrically flat and nobody can tell.
+
+Three directional waves rather than one, at 1x, 1.7x and 3.1x the base
+frequency. Non-integer ratios on purpose: with harmonics the pattern repeats
+visibly, and the eye finds a repeat in water immediately. Amplitudes sum to 1 so
+that r_waterWaveSteepness is the actual maximum slope and not an arbitrary
+scale - a number a person can reason about rather than tune blind.
+
+Computed in world XY with Z up, which is exact here rather than an
+approximation: vk_find_water_planes keeps only up-facing surfaces, and in
+practice a Quake water brush's top face is exactly (0,0,1). A tilted water plane
+would want a tangent basis; there is no such thing in this game.
+
+The perturbed normal is used for shading only - for the reflected direction and
+for the Fresnel term. Where the surface *is* stays the flat plane, because
+that is what the geometry and the depth buffer agree on, and moving it would put
+the reflection somewhere the water is not.
+*/
+/* The three waves, evaluated once. sin for the height, cos for the slope -
+   which is the actual derivative, so crests and flats stay in step however the
+   two are scaled. */
+const vec2 WAVE_D0 = vec2( 0.80,  0.60);
+const vec2 WAVE_D1 = vec2(-0.55,  0.84);
+const vec2 WAVE_D2 = vec2( 0.31, -0.95);
+
+vec3 wavePhase(vec2 p) {
+	float k0 = 6.2831853 / max(wave.y, 8.0);
+	float t = wave.w * wave.z;
+	return vec3(
+		dot(WAVE_D0, p) * k0         + t * 1.00,
+		dot(WAVE_D1, p) * k0 * 1.7   + t * 1.30,
+		dot(WAVE_D2, p) * k0 * 3.1   + t * 1.70 );
+}
+
+/* Height above the flat plane, in world units. */
+float waveHeight(vec2 p) {
+	if (wave2.x <= 0.0) {
+		return 0.0;
+	}
+	vec3 ph = wavePhase(p);
+	return wave2.x * ( 0.55 * sin(ph.x) + 0.30 * sin(ph.y) + 0.15 * sin(ph.z) );
+}
+
+vec3 waveNormal(vec2 p) {
+	if (wave.x <= 0.0) {
+		return vec3(0.0, 0.0, 1.0);
+	}
+	vec3 ph = wavePhase(p);
+
+	/* gradient of the same sum, which is the slope at this point */
+	vec2 grad = WAVE_D0 * 0.55 * cos(ph.x)
+	          + WAVE_D1 * 0.30 * cos(ph.y)
+	          + WAVE_D2 * 0.15 * cos(ph.z);
+
+	return normalize(vec3(-grad * wave.x, 1.0));
 }
 
 /* clip -> screen uv, and the depth that came with it */
@@ -223,6 +306,8 @@ void main() {
 	int count = int(planeCount.x);
 	vec3 N = vec3(0.0);
 	float bestT = 1.0e30;
+	float bestW = 0.0;
+	int bestIdx = -1;
 	bool onWater = false;
 
 	for (int i = 0; i < count; i++) {
@@ -316,12 +401,63 @@ void main() {
 
 		if (t < bestT) {
 			bestT = t;
+			bestW = planes[i].w;
+			bestIdx = i;
 			N = n;
 			onWater = true;
 		}
 	}
 	if (!onWater) {
 		return;
+	}
+
+	/*
+	[QL] Put the surface on the wave, rather than only tilting it.
+
+	The tilt alone gives a rippling reflection on a surface that is still, in
+	every other respect, a sheet of glass at a fixed height. Solving the
+	intersection again against a plane displaced by the wave height gives real
+	Z variance, and two things follow from it that the tilt cannot produce: the
+	waterline against the pool wall rises and falls, and the reflection
+	parallaxes - it stretches over a trough and compresses over a crest, which
+	is most of what makes water read as a surface with a thickness rather than a
+	picture.
+
+	Two iterations. The height depends on where the ray lands and where the ray
+	lands depends on the height, so this is a fixed point; for amplitudes small
+	against the wavelength it is converged well inside a pixel after two.
+
+	Three guards, and each one is a real case rather than defensive habit:
+
+	  the grazing cutoff - as dot(dir, N) approaches zero the solve divides by
+	    it, and a two-unit change in height moves the intersection an unbounded
+	    distance along the ray. Physically that is true, a crest really does
+	    occlude a long way at grazing incidence, but it is not something to
+	    compute this way.
+	  the occlusion and bounds re-test - the displaced point is somewhere the
+	    flat point was not, and it has to earn its place by the same rules. A
+	    crest can lift the surface in front of the pool lip.
+	  falling back to the flat solve rather than discarding - the pixel is still
+	    water. It just gets this frame's reflection from the undisplaced
+	    surface, which is where it came from before any of this.
+	*/
+	if (wave2.x > 0.0 && bestIdx >= 0) {
+		float dn = dot(dir, N);
+		if (dn < -0.02) {
+			float t2 = bestT;
+			float eyeN = dot(eye.xyz, N);
+
+			t2 = (bestW + waveHeight((eye.xyz + dir * t2).xy) - eyeN) / dn;
+			t2 = (bestW + waveHeight((eye.xyz + dir * t2).xy) - eyeN) / dn;
+
+			if (t2 > 0.0 && t2 < sceneDist - 8.0) {
+				vec3 hp = eye.xyz + dir * t2;
+				if (!any(lessThan(hp, boundsMin[bestIdx].xyz - 1.0)) &&
+				    !any(greaterThan(hp, boundsMax[bestIdx].xyz + 1.0))) {
+					bestT = t2;
+				}
+			}
+		}
 	}
 
 	vec3 P = eye.xyz + dir * bestT;
@@ -352,6 +488,23 @@ void main() {
 	/* The ray that found the plane is the view vector. Looking at the surface
 	   from beneath was already rejected by the facing test above. */
 	vec3 V = dir;
+
+	/*
+	Shading normal from here on: the waves live in this and nowhere else. P is
+	still on the flat plane, which is what the depth buffer and the geometry
+	agree about.
+
+	Kept facing the viewer. At a glancing angle - which is most of how water is
+	ever seen - a steep enough wave can tilt the normal past the view direction,
+	and reflect() about a normal facing away sends the ray into the surface
+	instead of off it. That is a black pixel in the middle of the water, and it
+	flickers, because the wave that caused it is moving.
+	*/
+	N = waveNormal(P.xy);
+	if (dot(N, -V) <= 0.02) {
+		N = normalize(N - V * (dot(N, V) + 0.02));
+	}
+
 	vec3 R = reflect(V, N);
 
 	float maxDist = params.y;

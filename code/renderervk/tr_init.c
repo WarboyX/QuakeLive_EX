@@ -159,6 +159,11 @@ cvar_t	*r_ssrDistance;
 cvar_t	*r_ssrSteps;
 cvar_t	*r_ssrThickness;
 cvar_t	*r_ssrDebug;
+cvar_t	*r_waterWaves;
+cvar_t	*r_waterWaveScale;
+cvar_t	*r_waterWaveSpeed;
+cvar_t	*r_waterWaveSteepness;
+cvar_t	*r_waterWaveHeight;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -2053,6 +2058,54 @@ static void R_Register( void )
 		"frame smeared across it means the read is racing the next frame's writes\n"
 		"Needs " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " above 0 - this changes what the pass "
 		"draws, it does not turn it on." );
+
+	/*
+	[QL] R19 waves. CVAR_ARCHIVE_ND on all five, deliberately: these are numbers
+	still being tuned, and CVAR_ARCHIVE would write the current default into
+	every user's config on first run and then win forever, so a better default
+	later would reach nobody. Archive-if-changed keeps the user's choice and
+	lets the shipped value keep applying to everyone who has not made one. This
+	has cost two rounds elsewhere in this tree already - r_dlightMode, con_scale.
+	*/
+	r_waterWaves = ri.Cvar_Get( "r_waterWaves", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaves, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_waterWaves, "Wave motion on reflective water.\n"
+		"The surface stays geometrically flat - Quake Live's water is subdivided at map "
+		"compile time and cannot be retessellated at runtime, so moving its vertices would "
+		"heave it in slabs. What moves is the reflection: the surface normal travels in a "
+		"wave pattern, and the reflected image ripples with it.\n"
+		"Costs nothing when " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " is 0, because the pass "
+		"this lives in does not run." );
+
+	r_waterWaveScale = ri.Cvar_Get( "r_waterWaveScale", "96", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaveScale, "8", "1024", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterWaveScale, "World units from one wave crest to the next, "
+		"for the largest of the three waves; the other two are 1.7 and 3.1 times finer.\n"
+		"Small values give choppy water, large values a slow swell. A Quake Live player is "
+		"about 56 units wide, for scale." );
+
+	r_waterWaveSpeed = ri.Cvar_Get( "r_waterWaveSpeed", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaveSpeed, "0", "8", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterWaveSpeed, "How fast the waves travel. 0 freezes them, "
+		"which is the easiest way to see the wave shape itself." );
+
+	r_waterWaveSteepness = ri.Cvar_Get( "r_waterWaveSteepness", "0.08", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaveSteepness, "0", "0.5", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterWaveSteepness, "The largest slope the surface tilts to, as a "
+		"rise over run - 0.08 is a little under five degrees.\n"
+		"This is what makes the reflection ripple, and it is the strongest of the four. Past "
+		"about 0.2 the reflection starts sampling wildly different parts of the screen from "
+		"one pixel to the next and reads as noise rather than water." );
+
+	r_waterWaveHeight = ri.Cvar_Get( "r_waterWaveHeight", "2", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaveHeight, "0", "32", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterWaveHeight, "How far the surface actually rises and falls, in "
+		"world units, crest to trough.\n"
+		"Unlike the steepness above this moves the surface rather than only its normal, so the "
+		"waterline against the pool wall rises and falls with it and the reflection stretches "
+		"over a trough and compresses over a crest. Keep it small against "
+		S_COLOR_CYAN "\\r_waterWaveScale" S_COLOR_WHITE ": the two are solved against each "
+		"other, and a height approaching the wavelength stops converging." );
 
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );
