@@ -4740,6 +4740,43 @@ list of what is displaced is a checked-in file rather than a heuristic.
   distance or this subdivides a wall across the map to no purpose. Distance-based
   LOD, and a hard cap.
 
+**What this does NOT fix, and it is the case it was first proposed for.** A
+Quake Live boulder is on the order of seven polygons. Tessellated to thousands
+of triangles and displaced inward it is still a seven-sided lump, now with
+texture-shaped dents in it. Rounding a silhouette needs Phong or PN tessellation
+pushing geometry *outward* - which puts the visible surface outside the collision
+hull and has the player clipping into rock the server says is not there. The
+inward-only constraint above and a rounded outline are mutually exclusive, so
+this cannot be the answer for low-poly props. It is for large textured planes:
+brick walls, decking, floors.
+
+---
+
+### R22. Smoothed vertex normals on world geometry — SCOPED, not started
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The cheapest large return available on Quake Live's low-poly props, and the
+right answer to "that rock is seven polygons".
+
+Those faces are uniformly shaded, which is hard per-face normals. Averaging
+vertex normals across adjacent faces at load, above an angle threshold, makes
+the shading continuous across the form. The outline stays faceted - nothing in a
+renderer can add silhouette that the BSP does not contain - but the rock stops
+reading as folded paper and starts reading as a rounded mass. A load-time pass
+over the surfaces, nothing at runtime.
+
+**The threshold is the entire design.** Too permissive and it smooths across
+edges that are meant to be hard: crates, steps, door frames and trim go soft,
+which is a worse failure than the flatness it set out to fix. The standard
+smoothing-group angle is about 45 degrees. Per-surface opt-out through our own
+shader scripts, the same mechanism R21 uses for `qlDisplace`.
+
+Independent of R20 and R21 and worth doing before either: it needs no new data,
+no new pipeline, no device feature, and it is the only one of the three that
+changes how a static scene looks without touching the lighting path.
+
+---
+
 **Order:** R20 Stage A, then R20 Stage B, then this. Each is testable on its own
 and each is useless without the one before it — displacement without the
 lighting is worse than nothing, and the lighting without the height maps has
