@@ -1529,9 +1529,129 @@ static void RE_SyncRender( void )
 R_Register
 ===============
 */
+
+/*
+============
+R_MapLights_f
+
+[QL] R20/R22: does this map still carry its light entities?
+
+The whole question of whether a Quake Live rock can be made to look round turns
+on one fact that cannot be reasoned out from here. Those rocks are brushwork -
+Quake levels are one BSP, there are no props - and q3map2 lights brush faces per
+face unless the shader asks for phong, so the faceting is baked into the
+lightmap texture. Nothing that changes a normal at runtime can un-bake a
+discontinuity by multiplying against it.
+
+Computing direct light at runtime instead could, and R13 already built the
+acceleration structure it would need. That requires knowing where the lights
+are. q3map2 strips `light` entities from the BSP after compiling unless it was
+run with -keeplights, and whether Quake Live's maps were is not something to
+guess at after the last several days of guessing.
+
+R_LoadEntities keeps the entire entity string and parses only worldspawn out of
+it, so if the lights are there they are already in memory and unread.
+
+Prints the lightgrid as well, because that is the fallback if they are gone, and
+its resolution is the thing that decides whether the fallback is usable at all -
+one sample every 64 x 64 x 128 units cannot shape a rock.
+============
+*/
+static void R_MapLights_f( void ) {
+	const char *p;
+	char *token;
+	int totalEnts = 0, lights = 0, shown = 0;
+
+	if ( tr.world == NULL || tr.world->entityString == NULL ) {
+		ri.Printf( PRINT_ALL, "No world loaded.\n" );
+		return;
+	}
+
+	p = tr.world->entityString;
+
+	while ( 1 ) {
+		char classname[MAX_TOKEN_CHARS];
+		char origin[MAX_TOKEN_CHARS];
+		char light[MAX_TOKEN_CHARS];
+		char color[MAX_TOKEN_CHARS];
+
+		token = COM_ParseExt( (char **)&p, qtrue );
+		if ( !token[0] ) {
+			break;                  // end of the string
+		}
+		if ( Q_stricmp( token, "{" ) != 0 ) {
+			continue;               // not at a block yet
+		}
+
+		classname[0] = origin[0] = light[0] = color[0] = '\0';
+		totalEnts++;
+
+		while ( 1 ) {
+			char key[MAX_TOKEN_CHARS];
+
+			token = COM_ParseExt( (char **)&p, qtrue );
+			if ( !token[0] || Q_stricmp( token, "}" ) == 0 ) {
+				break;
+			}
+			Q_strncpyz( key, token, sizeof( key ) );
+
+			token = COM_ParseExt( (char **)&p, qfalse );
+			if ( !token[0] ) {
+				break;
+			}
+
+			if ( !Q_stricmp( key, "classname" ) ) {
+				Q_strncpyz( classname, token, sizeof( classname ) );
+			} else if ( !Q_stricmp( key, "origin" ) ) {
+				Q_strncpyz( origin, token, sizeof( origin ) );
+			} else if ( !Q_stricmp( key, "light" ) || !Q_stricmp( key, "_light" ) ) {
+				Q_strncpyz( light, token, sizeof( light ) );
+			} else if ( !Q_stricmp( key, "_color" ) || !Q_stricmp( key, "color" ) ) {
+				Q_strncpyz( color, token, sizeof( color ) );
+			}
+		}
+
+		if ( !Q_stricmp( classname, "light" ) ) {
+			lights++;
+			/* a handful is enough to see the shape of it; a map with lights has
+			   hundreds and printing them all buries the summary */
+			if ( shown < 8 ) {
+				shown++;
+				ri.Printf( PRINT_ALL, "  light at %s, intensity %s, colour %s\n",
+					origin[0] ? origin : "(none)",
+					light[0] ? light : "(default 300)",
+					color[0] ? color : "(white)" );
+			}
+		}
+	}
+
+	ri.Printf( PRINT_ALL, "%s: %i entities in the BSP, %i of them lights\n",
+		tr.world->baseName, totalEnts, lights );
+
+	if ( lights == 0 ) {
+		ri.Printf( PRINT_ALL, "  q3map2 stripped them - it does unless run with -keeplights.\n"
+			"  Runtime relighting is off the table for this map; the lightgrid below is\n"
+			"  the only directional light data left.\n" );
+	} else {
+		ri.Printf( PRINT_ALL, "  They survived. Runtime direct lighting against the R13\n"
+			"  acceleration structure is possible on this map.\n" );
+	}
+
+	if ( tr.world->lightGridData != NULL ) {
+		ri.Printf( PRINT_ALL, "Lightgrid: %i x %i x %i samples, one every %g x %g x %g units\n",
+			tr.world->lightGridBounds[0], tr.world->lightGridBounds[1], tr.world->lightGridBounds[2],
+			tr.world->lightGridSize[0], tr.world->lightGridSize[1], tr.world->lightGridSize[2] );
+	} else {
+		ri.Printf( PRINT_ALL, "Lightgrid: none in this map\n" );
+	}
+}
+
+
+
 static void R_Register( void )
 {
 	// make sure all the commands added here are also removed in R_Shutdown
+	ri.Cmd_AddCommand( "maplights", R_MapLights_f );   /* [QL] R20/R22 probe */
 	ri.Cmd_AddCommand( "imagelist", R_ImageList_f );
 	ri.Cmd_AddCommand( "shaderlist", R_ShaderList_f );
 	ri.Cmd_AddCommand( "skinlist", R_SkinList_f );
@@ -2332,6 +2452,7 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 #endif
 	ri.Printf( PRINT_ALL, "RE_Shutdown( %i )\n", code );
 
+	ri.Cmd_RemoveCommand( "maplights" );   /* [QL] R20/R22 probe */
 	ri.Cmd_RemoveCommand( "modellist" );
 	ri.Cmd_RemoveCommand( "screenshotBMP" );
 	ri.Cmd_RemoveCommand( "screenshotJPEG" );
