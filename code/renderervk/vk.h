@@ -782,6 +782,21 @@ typedef struct {
 	*/
 	struct {
 		qboolean				ready;
+		/*
+		[QL] R19: the reflection target's format, which is NOT vk.color_format
+		and must not be assumed to be.
+
+		The trace writes coverage into alpha and the composite blends by it, so
+		this target has to have an alpha channel. The scene's format need not:
+		r_rts 2 selects B10G11R11_UFLOAT, which has none, and Vulkan reads the
+		missing channel back as 1.0 - so every pixel would arrive fully opaque,
+		the composite's discard would never fire, and the whole screen would be
+		replaced by the reflection image.
+
+		Chosen once, in vk_ssr_create_render_pass, and used by both the pass and
+		the image so the two cannot drift.
+		*/
+		VkFormat				format;
 		VkImage					image;
 		VkImageView				image_view;
 		VkFramebuffer			framebuffer;

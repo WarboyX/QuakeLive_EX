@@ -6817,11 +6817,18 @@ static void vk_create_attachments( void )
 	Outside any fbo test because the composite blends into whatever the main
 	framebuffer is, which exists on both paths.
 	*/
+	/* Only if the pass exists: it is what chose vk.ssr.format, and it declines
+	   to be created at all on a device with no alpha-carrying target. */
+	if ( vk.ssr.offscreen_pass != VK_NULL_HANDLE )
 	{
 		VkImageUsageFlags ssrUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
+		/* vk.ssr.format, not vk.color_format: the reflection's coverage lives in
+		   alpha and the scene's format may not have one. Chosen in
+		   vk_ssr_create_render_pass, which runs first, so the image and the
+		   pass agree by construction. */
 		create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT,
-			vk.color_format, ssrUsage, &vk.ssr.image, &vk.ssr.image_view,
+			vk.ssr.format, ssrUsage, &vk.ssr.image, &vk.ssr.image_view,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, qfalse );
 	}
 
@@ -12223,6 +12230,42 @@ void vk_ssr_destroy( void )
 }
 
 
+/*
+[QL] R19: does this format have an alpha channel to write coverage into?
+
+A whitelist of the formats this renderer can actually end up with as a colour
+target, and not a general answer - a general one would be a table of every
+VkFormat, and every entry past these would be dead code that still has to be
+right. Anything unrecognised is treated as having no alpha, so a format added
+later fails safe into the branch that picks a known-good target rather than
+silently producing a reflection whose coverage is always 1.
+*/
+static qboolean vk_format_has_alpha( VkFormat format )
+{
+	switch ( format ) {
+		case VK_FORMAT_R8G8B8A8_UNORM:
+		case VK_FORMAT_B8G8R8A8_UNORM:
+		case VK_FORMAT_R8G8B8A8_SRGB:
+		case VK_FORMAT_B8G8R8A8_SRGB:
+		case VK_FORMAT_R8G8B8A8_SNORM:
+		case VK_FORMAT_B8G8R8A8_SNORM:
+		case VK_FORMAT_R4G4B4A4_UNORM_PACK16:
+		case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
+		case VK_FORMAT_R5G5B5A1_UNORM_PACK16:
+		case VK_FORMAT_B5G5R5A1_UNORM_PACK16:
+		case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+		case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+		case VK_FORMAT_R16G16B16A16_UNORM:
+		case VK_FORMAT_R16G16B16A16_SFLOAT:
+		case VK_FORMAT_R32G32B32A32_SFLOAT:
+			return qtrue;
+		default:
+			/* B10G11R11_UFLOAT (r_rts 2) and R5G6B5 land here, correctly. */
+			return qfalse;
+	}
+}
+
+
 void vk_ssr_create_render_pass( VkDevice device )
 {
 	VkAttachmentDescription attachment;
@@ -12231,12 +12274,59 @@ void vk_ssr_create_render_pass( VkDevice device )
 	VkSubpassDependency deps[2];
 	VkRenderPassCreateInfo desc;
 
+	/*
+	[QL] Pick the target's format here, before anything uses it - see
+	vk.ssr.format. The scene's format is right whenever it carries alpha; when
+	it does not, coverage has nowhere to live and a format that has one has to
+	be found instead.
+	*/
+	vk.ssr.format = vk.color_format;
+	if ( !vk_format_has_alpha( vk.ssr.format ) ) {
+		const VkFormat withAlpha = VK_FORMAT_R16G16B16A16_SFLOAT;
+		const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+			VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+		VkFormatProperties props;
+
+		qvkGetPhysicalDeviceFormatProperties( vk.physical_device, withAlpha, &props );
+		if ( ( props.optimalTilingFeatures & need ) == need ) {
+			vk.ssr.format = withAlpha;
+			ri.Printf( PRINT_ALL, "SSR: scene format %s has no alpha - "
+				"resolving the reflection in %s instead\n",
+				vk_format_string( vk.color_format ), vk_format_string( withAlpha ) );
+		} else {
+			ri.Printf( PRINT_WARNING, "SSR: scene format %s has no alpha and this device "
+				"has no float RGBA target - disabling\n", vk_format_string( vk.color_format ) );
+			return;   // no pass; vk_ssr_create finds no pass and reports
+		}
+	}
+
 	Com_Memset( &attachment, 0, sizeof( attachment ) );
-	attachment.format = vk.color_format;
+	attachment.format = vk.ssr.format;
 	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	/* The trace writes every pixel - it clears to zero on the paths that find
-	   nothing - so there is nothing to load and nothing to clear. */
-	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	/*
+	[QL] Cleared, and this is not the cheap-versus-safe trade it looks like.
+
+	It was DONT_CARE, on the grounds that the trace writes every pixel: it
+	assigns out_color before any return, so every path leaves a value. That
+	reasoning is about the shader, and the shader is not the only thing that
+	decides whether a pixel is written - the render area, the viewport and the
+	scissor do too, and any pixel none of them reach keeps whatever was in that
+	memory.
+
+	Uninitialised memory here does not read as noise, because the composite
+	blends by the alpha it finds. Garbage alpha is almost never zero, so the
+	discard does not fire and the garbage *colour* goes on screen: font-atlas
+	glyphs and old framebuffer contents appearing on the water, effects spilling
+	past the pool onto the decking, the debug views washing over the whole
+	screen, all of it fine immediately after a vid_restart while the memory is
+	still fresh and degrading from there as the rest of the renderer churns it.
+
+	Clearing to zero makes "not written" mean alpha 0, which is the one value
+	the composite already treats as nothing to do. One clear of one
+	screen-sized target per frame, against a class of bug that cannot be
+	reasoned about from the shader at all.
+	*/
+	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -12700,8 +12790,35 @@ qboolean vk_ssr( void )
 	vk.renderWidth = glConfig.vidWidth;
 	vk.renderHeight = glConfig.vidHeight;
 	vk.renderScaleX = vk.renderScaleY = 1.0f;
-	vk_begin_render_pass( vk.ssr.offscreen_pass, vk.ssr.framebuffer, qfalse,
-		vk.renderWidth, vk.renderHeight );
+	/*
+	[QL] Begun by hand rather than through vk_begin_render_pass, because that
+	helper's clear path is written for the main framebuffer - two or three
+	attachments, with a depth clear in the middle. This pass has one colour
+	attachment and wants it transparent black. See the pass description for why
+	it is cleared at all.
+	*/
+	{
+		VkRenderPassBeginInfo rp;
+		VkClearValue clear;
+
+		Com_Memset( &clear, 0, sizeof( clear ) );
+
+		rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		rp.pNext = NULL;
+		rp.renderPass = vk.ssr.offscreen_pass;
+		rp.framebuffer = vk.ssr.framebuffer;
+		rp.renderArea.offset.x = 0;
+		rp.renderArea.offset.y = 0;
+		rp.renderArea.extent.width = vk.renderWidth;
+		rp.renderArea.extent.height = vk.renderHeight;
+		rp.clearValueCount = 1;
+		rp.pClearValues = &clear;
+
+		qvkCmdBeginRenderPass( vk.cmd->command_buffer, &rp, VK_SUBPASS_CONTENTS_INLINE );
+
+		vk.cmd->last_pipeline = VK_NULL_HANDLE;
+		vk.cmd->depth_range = DEPTH_RANGE_COUNT;
+	}
 
 	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.ssr.trace_pipeline );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,

@@ -4752,8 +4752,44 @@ question* rather than a tolerance that wanted turning:
 3. *Merge the bounds of touching faces.* Water tucked under decking inflates the
    box. One record per face instead.
 
-**Step 4, the actual fault: depth was sampled in the wrong image layout — twice,
-for two different reasons.**
+**Step 5, the one that was actually producing it: the reflection target was
+never initialised.**
+
+The target was `LOAD_OP_DONT_CARE` with `initialLayout = UNDEFINED`, justified
+by "the trace writes every pixel" — which is a claim about the *shader*. The
+shader is not the only thing that decides whether a pixel is written; the render
+area, the viewport and the scissor do too, and a pixel none of them reach keeps
+whatever was in that memory.
+
+Uninitialised memory here does not read as noise, because **the composite blends
+by the alpha it finds**. Garbage alpha is almost never 0, so the discard does not
+fire and the garbage *colour* is what goes on screen. That single fact accounts
+for every symptom that survived the layout fixes:
+
+- font-atlas glyphs and old framebuffer contents appearing on the water
+- the effect spilling past the pool onto the decking
+- the debug views washing over the whole screen instead of showing flat colours
+- correct immediately after a `vid_restart`, while the memory is still fresh,
+  and degrading from there as the rest of the renderer churns it
+- unaffected by `r_ext_multisample`, which is why that test said nothing
+
+Cleared to transparent black, "not written" now means alpha 0, which is the one
+value the composite already treats as nothing to do.
+
+**And the same bug had a second entrance.** The target took `vk.color_format`,
+and `r_rts 2` selects `B10G11R11_UFLOAT` — **no alpha channel**. Vulkan reads a
+missing channel back as 1.0, so every pixel arrives fully opaque, the discard
+never fires, and the whole screen is replaced by the reflection image. The
+target now picks its own format (`vk.ssr.format`), falling back to
+`R16G16B16A16_SFLOAT` and reporting it. Coverage lives in alpha; a target
+without one cannot carry it.
+
+The lesson worth keeping: **an alpha-blended offscreen target is not
+`DONT_CARE`-safe, and its format is not free.** Alpha is not decoration there,
+it is the mask, and both "what is in it before we write" and "does it have the
+channel at all" have to be answered before the first pixel is traced.
+
+**Step 4, two wrong image layouts, both real, neither sufficient.**
 
 The second one is the one that mattered, and it is worth reading before adding
 any pass that samples depth:
