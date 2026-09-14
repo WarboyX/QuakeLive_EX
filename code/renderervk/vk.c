@@ -12834,12 +12834,22 @@ qboolean vk_ssr( void )
 		u->wave[2] = R_WaterSetting( r_waterWaveSpeed,     wp->haveSpeed,     wp->speed );
 		u->wave[3] = (float)backEnd.refdef.floatTime;
 		u->wave2[0] = R_WaterSetting( r_waterWaveHeight,   wp->haveHeight,    wp->height );
-		u->wave2[1] = r_waterFoam->value;
 	} else {
 		u->wave[0] = u->wave[1] = u->wave[2] = u->wave[3] = 0.0f;
 		u->wave2[0] = 0.0f;
-		u->wave2[1] = 0.0f;
 	}
+
+	/*
+	[QL] Outside the r_waterWaves test, deliberately - it was inside it, and
+	that was wrong.
+
+	Foam is about impacts, not wind. Someone who turns the swell off to get
+	still water has not asked for rockets to stop splashing, and the two
+	controls reading as one made "no foam" and "waves off" the same symptom with
+	no way to tell them apart. r_ssrDebug 5 showed the rings perfectly the whole
+	time, because the disturbance field never depended on the wind either.
+	*/
+	u->wave2[1] = r_waterFoam->value;
 	u->wave2[2] = u->wave2[3] = 0.0f;
 
 	/*

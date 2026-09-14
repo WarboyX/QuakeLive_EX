@@ -683,6 +683,48 @@ Silent when there is no water within reach, which is the common case - most
 explosions in this game are nowhere near a pond.
 */
 /*
+[QL] R19: how hard each weapon hits the water.
+
+One size for everything made the plasma gun the biggest splash in the game and
+the rocket launcher one of the smallest, which is backwards - and it was a rate
+effect rather than a strength one. Plasma puts out about ten projectiles a
+second and every one of them added a full-strength ripple, so they piled on top
+of each other; the rocket gets one.
+
+So each weapon is sized by what it should do on its own, and the ones that fire
+fast are sized down by roughly their rate so a stream of them adds up to
+something like a single heavy hit rather than a boiling pot.
+
+Radius is how far it eventually spreads and matters more to how it reads than
+strength does: a wide, gentle ring is a rocket, a tight sharp one is a bullet.
+*/
+static void CG_WaterImpactSize(int weapon, float *radius, float *strength) {
+    switch (weapon) {
+        case WP_ROCKET_LAUNCHER:
+            *radius = 220.0f; *strength = 4.0f; break;
+        case WP_BFG:
+            *radius = 300.0f; *strength = 5.0f; break;
+        case WP_GRENADE_LAUNCHER:
+            *radius = 190.0f; *strength = 3.4f; break;
+        case WP_PLASMAGUN:
+            /* fast, so small - ten of these a second should read as a churn,
+               not as ten rockets */
+            *radius = 70.0f;  *strength = 0.7f; break;
+        case WP_RAILGUN:
+            *radius = 90.0f;  *strength = 1.8f; break;
+        case WP_LIGHTNING:
+            *radius = 55.0f;  *strength = 0.5f; break;
+        case WP_SHOTGUN:
+            /* one ripple for the whole blast, not one per pellet - twenty
+               pellets would flush the entire ring buffer on a single shot and
+               leave no room for anything else in the room */
+            *radius = 130.0f; *strength = 2.0f; break;
+        default:
+            *radius = 40.0f;  *strength = 0.6f; break;
+    }
+}
+
+/*
 [QL] R19: roughly where a shot came from, for the entry-point solve above.
 
 The attacker's eye rather than their origin, because a shot leaves at eye height
@@ -697,6 +739,19 @@ keeps the impact position it already had.
 */
 static const float *CG_ShotOrigin(const entityState_t *es) {
     static vec3_t org;
+
+    /*
+    The local player's own shots start at the eye this frame is being rendered
+    from, which is exact. cg_entities[].lerpOrigin for one's own client is
+    filled from the predicted state during the same entity loop these events are
+    processed in, so reading it here can pick up whatever was there before the
+    loop reached it - and a shooter's own shots are the ones they are watching
+    land, so that is the case worth getting exactly right.
+    */
+    if (es->otherEntityNum == cg.predictedPlayerState.clientNum) {
+        VectorCopy(cg.refdef.vieworg, org);
+        return org;
+    }
 
     if (es->otherEntityNum >= 0 && es->otherEntityNum < MAX_CLIENTS) {
         VectorCopy(cg_entities[es->otherEntityNum].lerpOrigin, org);
@@ -743,6 +798,26 @@ static void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius,
         }
     }
 
+    /*
+    [QL] Refine it. The walk above steps 16 units at a time and stops at the
+    first point that is not water, so it lands anywhere up to a full step above
+    the real surface - and that error does not stay small. It goes into the
+    crossing solve below as a fraction of the shot's total drop, so on a flat
+    shot across a pool a 16-unit error in height becomes tens of units of error
+    along the ground.
+
+    Two units is finer than anything downstream can see.
+    */
+    for (i = 0; i < 8; i++) {
+        vec3_t q;
+        VectorCopy(p, q);
+        q[2] -= 2.0f;
+        if (trap_CM_PointContents(q, 0) & CONTENTS_WATER) {
+            break;
+        }
+        p[2] = q[2];
+    }
+
     surfaceZ = p[2];
 
     /*
@@ -774,6 +849,7 @@ static void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius,
 
 
 void CG_EntityEvent(centity_t* cent, vec3_t position) {
+    float rippleRadius, rippleStrength;   /* [QL] R19 */
     entityState_t* es;
     int event;
     vec3_t dir;
@@ -1220,14 +1296,16 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_MISSILE_HIT");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitPlayer(es->weapon, position, dir, es->otherEntityNum);
-            CG_WaterRipple(CG_ShotOrigin(es), position, 120.0f, 1.6f);
+            CG_WaterImpactSize(es->weapon, &rippleRadius, &rippleStrength);
+            CG_WaterRipple(CG_ShotOrigin(es), position, rippleRadius, rippleStrength);
             break;
 
         case EV_MISSILE_MISS:
             DEBUGNAME("EV_MISSILE_MISS");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitWall(es->weapon, 0, position, dir, IMPACTSOUND_DEFAULT);
-            CG_WaterRipple(CG_ShotOrigin(es), position, 160.0f, 2.2f);
+            CG_WaterImpactSize(es->weapon, &rippleRadius, &rippleStrength);
+            CG_WaterRipple(CG_ShotOrigin(es), position, rippleRadius, rippleStrength);
             break;
 
         case EV_MISSILE_MISS_METAL:
@@ -1275,7 +1353,8 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             if (es->eventParm != 255) {
                 ByteToDir(es->eventParm, dir);
                 CG_MissileHitWall(es->weapon, es->clientNum, position, dir, IMPACTSOUND_DEFAULT);
-                CG_WaterRipple(CG_ShotOrigin(es), position, 160.0f, 2.2f);
+                CG_WaterImpactSize(es->weapon, &rippleRadius, &rippleStrength);
+            CG_WaterRipple(CG_ShotOrigin(es), position, rippleRadius, rippleStrength);
             }
             break;
 
@@ -1283,7 +1362,8 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_BULLET_HIT_WALL");
             ByteToDir(es->eventParm, dir);
             CG_Bullet(es->pos.trBase, es->otherEntityNum, dir, qfalse, ENTITYNUM_WORLD);
-            CG_WaterRipple(CG_ShotOrigin(es), es->pos.trBase, 40.0f, 0.6f);
+            CG_WaterImpactSize(es->weapon, &rippleRadius, &rippleStrength);
+            CG_WaterRipple(CG_ShotOrigin(es), es->pos.trBase, rippleRadius, rippleStrength);
             break;
 
         case EV_BULLET_HIT_FLESH:
@@ -1294,6 +1374,19 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
         case EV_SHOTGUN:
             DEBUGNAME("EV_SHOTGUN");
             CG_ShotgunFire(es);
+            /* [QL] R19: the blast, once. es->origin2 is the fire direction and
+               es->pos.trBase the muzzle, so the centre of the pattern is a
+               trace along it - and a shotgun into a pond is one splash, not
+               twenty. */
+            {
+                vec3_t end;
+                trace_t tr;
+
+                VectorMA(es->pos.trBase, 8192.0f, es->origin2, end);
+                CG_Trace(&tr, es->pos.trBase, NULL, NULL, end, es->otherEntityNum, MASK_SHOT);
+                CG_WaterImpactSize(WP_SHOTGUN, &rippleRadius, &rippleStrength);
+                CG_WaterRipple(es->pos.trBase, tr.endpos, rippleRadius, rippleStrength);
+            }
             break;
 
         case EV_GENERAL_SOUND:
