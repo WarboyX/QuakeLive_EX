@@ -228,8 +228,23 @@ in and which client sees it. Worth knowing before you run a server:
   at all. `r_rtao 0` was the only thing that ever fixed the reflection, and that
   is what located it.
 
-  There are still no waves; `TRACKER.md` (R19) records why deforming the
-  geometry cannot give them without retessellating the map.
+- **Waves, `r_waterWaves`.** On by default wherever `r_ssr` is, and free when it
+  is not. The surface stays geometrically flat — Quake Live's water is
+  subdivided at map compile time and cannot be retessellated at runtime — but
+  the normal travels in a wave pattern, so the reflection ripples, and the
+  surface is displaced in Z as well, so the waterline against a pool wall rises
+  and falls and the reflection stretches over a trough.
+
+  `r_waterWaveSteepness` (default `0.08`) is the strongest control by a distance
+  — it is the maximum slope, so `0.08` is about five degrees, and past `0.2` the
+  reflection reads as noise. `r_waterWaveHeight` (`2`) is the Z variance in
+  world units. `r_waterWaveScale` (`96`) is units per wavelength; a player is
+  about 56 units wide. `r_waterWaveSpeed 0` freezes them, which is the easiest
+  way to see the wave shape itself.
+
+  What is still missing is refraction: what is *under* the water is drawn
+  undistorted and has no depth-based colour, so the surface reflects properly
+  but does not yet read as having anything behind it.
 
 ## Before cutting the release
 
