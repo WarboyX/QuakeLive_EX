@@ -26,22 +26,37 @@
 // that assumption is wrong and Stage B needs rethinking before it is written,
 // not after.
 //
-// COMPILING (q3map2, from NetRadiant-custom or GtkRadiant):
+// COMPILING. Verified with id-tech-3-tools/map-compiler, which builds from
+// source with no external dependencies - everything it needs is vendored, so
+// cmake and a C++ compiler are the whole toolchain:
 //
-//   q3map2 -fs_basepath <ql> -meta qltest_light.map
-//   q3map2 -fs_basepath <ql> -vis qltest_light.bsp
-//   q3map2 -fs_basepath <ql> -light -fast -keeplights qltest_light.bsp
+//   git clone --depth 1 https://github.com/id-tech-3-tools/map-compiler
+//   cmake -S map-compiler -B bld -DCMAKE_BUILD_TYPE=Release && cmake --build bld
 //
-// Add -deluxe to the light phase to produce a BSP that /maplights reports as
-// having deluxemaps - useful only for testing that detection, since none of
-// Quake Live's own maps carry them.
+//   mapcompiler -fs_basepath <ql> -meta -keeplights maps/qltest_light.map
+//   mapcompiler -fs_basepath <ql> -vis               maps/qltest_light.bsp
+//   mapcompiler -fs_basepath <ql> -light -fast       maps/qltest_light.bsp
 //
-// NOT COMPILED OR LOADED. Written in an environment with no q3map2 available -
-// no package, and the upstream releases unreachable - so the geometry is kept
-// to axis-aligned boxes, the one form that cannot be got subtly wrong. A
-// faceted rock with sloped faces is what the shading work actually wants, and
-// it should be added in Radiant where it can be seen; the stacked boxes below
-// give hard edges to look at in the meantime.
+// -keeplights goes on the BSP phase, NOT the light phase. It is parsed in
+// bsp.cpp and works by stamping "_keepLights" "1" into worldspawn, which the
+// light phase then reads back. Passing it to -light is accepted in silence and
+// does nothing - which is exactly what happened the first time, and the lights
+// were stripped while the command line looked correct.
+//
+// Add -deluxe to the light phase for a BSP that exercises the deluxemap
+// detection in /maplights. No Quake Live map carries them.
+//
+// COMPILED AND CHECKED, unlike the first version of this file. That version
+// produced a 1188-byte BSP with zero surfaces, because every plane was wound
+// backwards: q3map2 takes the face normal as (p0-p1) x (p2-p1), so the winding
+// used here made every brush inside-out and enclosing nothing. It reported no
+// error - an inside-out brush is not invalid, it is just empty. Compiling it
+// was the only thing that would have caught that, and the first version of this
+// comment said it had not been compiled and left the geometry conservative in
+// the hope that would be enough. It was not.
+//
+// The texture name is also written WITHOUT the "textures/" prefix. q3map2 adds
+// it, so a name carrying it becomes textures/textures/... and silently misses.
 //
 // Texture names are from docs/pak-manifest.txt, not from memory.
 // RE_RegisterShader returns 0 for a name the pak does not contain and reports
@@ -53,78 +68,77 @@
 "message" "QL surface detail test"
 // floor
 {
-( -272 -272 0 ) ( 272 -272 0 ) ( 272 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 272 -16 ) ( 272 272 -16 ) ( 272 -272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 272 0 ) ( 272 272 0 ) ( 272 272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 272 -272 0 ) ( -272 -272 0 ) ( -272 -272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 272 272 0 ) ( 272 -272 0 ) ( 272 -272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 -272 0 ) ( -272 272 0 ) ( -272 272 -16 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 0 ) ( 272 -272 0 ) ( -272 -272 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 -16 ) ( 272 272 -16 ) ( -272 272 -16 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 -16 ) ( 272 272 0 ) ( -272 272 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 -272 -16 ) ( -272 -272 0 ) ( 272 -272 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 -16 ) ( 272 -272 0 ) ( 272 272 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 -16 ) ( -272 272 0 ) ( -272 -272 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 // ceiling
 {
-( -272 -272 272 ) ( 272 -272 272 ) ( 272 272 272 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 272 256 ) ( 272 272 256 ) ( 272 -272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 272 272 ) ( 272 272 272 ) ( 272 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 272 -272 272 ) ( -272 -272 272 ) ( -272 -272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 272 272 272 ) ( 272 -272 272 ) ( 272 -272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 -272 272 ) ( -272 272 272 ) ( -272 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 272 ) ( 272 -272 272 ) ( -272 -272 272 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 256 ) ( 272 272 256 ) ( -272 272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 256 ) ( 272 272 272 ) ( -272 272 272 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 -272 256 ) ( -272 -272 272 ) ( 272 -272 272 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 256 ) ( 272 -272 272 ) ( 272 272 272 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 256 ) ( -272 272 272 ) ( -272 -272 272 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 // wall +X
 {
-( 256 -272 256 ) ( 272 -272 256 ) ( 272 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 256 272 0 ) ( 272 272 0 ) ( 272 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 256 272 256 ) ( 272 272 256 ) ( 272 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 272 -272 256 ) ( 256 -272 256 ) ( 256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 272 272 256 ) ( 272 -272 256 ) ( 272 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 256 -272 256 ) ( 256 272 256 ) ( 256 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 256 ) ( 272 -272 256 ) ( 256 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 0 ) ( 272 272 0 ) ( 256 272 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 272 0 ) ( 272 272 256 ) ( 256 272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 -272 0 ) ( 256 -272 256 ) ( 272 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 272 -272 0 ) ( 272 -272 256 ) ( 272 272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 272 0 ) ( 256 272 256 ) ( 256 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 // wall -X
 {
-( -272 -272 256 ) ( -256 -272 256 ) ( -256 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 272 0 ) ( -256 272 0 ) ( -256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 272 256 ) ( -256 272 256 ) ( -256 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -256 -272 256 ) ( -272 -272 256 ) ( -272 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -256 272 256 ) ( -256 -272 256 ) ( -256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -272 -272 256 ) ( -272 272 256 ) ( -272 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 272 256 ) ( -256 -272 256 ) ( -272 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 -272 0 ) ( -256 272 0 ) ( -272 272 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 272 0 ) ( -256 272 256 ) ( -272 272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 -272 0 ) ( -272 -272 256 ) ( -256 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 -272 0 ) ( -256 -272 256 ) ( -256 272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -272 272 0 ) ( -272 272 256 ) ( -272 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 // wall +Y
 {
-( -256 256 256 ) ( 256 256 256 ) ( 256 272 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -256 272 0 ) ( 256 272 0 ) ( 256 256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -256 272 256 ) ( 256 272 256 ) ( 256 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 256 256 256 ) ( -256 256 256 ) ( -256 256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 256 272 256 ) ( 256 256 256 ) ( 256 256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -256 256 256 ) ( -256 272 256 ) ( -256 272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 272 256 ) ( 256 256 256 ) ( -256 256 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 256 0 ) ( 256 272 0 ) ( -256 272 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 272 0 ) ( 256 272 256 ) ( -256 272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 256 0 ) ( -256 256 256 ) ( 256 256 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 256 0 ) ( 256 256 256 ) ( 256 272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 272 0 ) ( -256 272 256 ) ( -256 256 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 // wall -Y
 {
-( -256 -272 256 ) ( 256 -272 256 ) ( 256 -256 256 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -256 -256 0 ) ( 256 -256 0 ) ( 256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -256 -256 256 ) ( 256 -256 256 ) ( 256 -256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 256 -272 256 ) ( -256 -272 256 ) ( -256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 256 -256 256 ) ( 256 -272 256 ) ( 256 -272 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -256 -272 256 ) ( -256 -256 256 ) ( -256 -256 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 -256 256 ) ( 256 -272 256 ) ( -256 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 -272 0 ) ( 256 -256 0 ) ( -256 -256 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 -256 0 ) ( 256 -256 256 ) ( -256 -256 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 -272 0 ) ( -256 -272 256 ) ( 256 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 256 -272 0 ) ( 256 -272 256 ) ( 256 -256 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -256 -256 0 ) ( -256 -256 256 ) ( -256 -272 256 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 // the "rock" - lower block. Stacked boxes rather than a sloped lump, because
-// this file could not be compiled where it was written and an axis-aligned box
-// is the one brush form that cannot be got subtly wrong. Replace with real
-// sloped faces in Radiant.
+// sloped faces are what the shading work actually wants and should be added in
+// Radiant where they can be seen. These give hard edges to look at meanwhile.
 {
-( -96 -96 96 ) ( 96 -96 96 ) ( 96 96 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -96 96 0 ) ( 96 96 0 ) ( 96 -96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -96 96 96 ) ( 96 96 96 ) ( 96 96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 96 -96 96 ) ( -96 -96 96 ) ( -96 -96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 96 96 96 ) ( 96 -96 96 ) ( 96 -96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -96 -96 96 ) ( -96 96 96 ) ( -96 96 0 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 96 96 96 ) ( 96 -96 96 ) ( -96 -96 96 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 96 -96 0 ) ( 96 96 0 ) ( -96 96 0 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 96 96 0 ) ( 96 96 96 ) ( -96 96 96 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -96 -96 0 ) ( -96 -96 96 ) ( 96 -96 96 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 96 -96 0 ) ( 96 -96 96 ) ( 96 96 96 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -96 96 0 ) ( -96 96 96 ) ( -96 -96 96 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 // the "rock" - upper block, offset so the silhouette has hard steps in it
 {
-( -48 -64 160 ) ( 64 -64 160 ) ( 64 48 160 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -48 48 96 ) ( 64 48 96 ) ( 64 -64 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -48 48 160 ) ( 64 48 160 ) ( 64 48 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 64 -64 160 ) ( -48 -64 160 ) ( -48 -64 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( 64 48 160 ) ( 64 -64 160 ) ( 64 -64 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
-( -48 -64 160 ) ( -48 48 160 ) ( -48 48 96 ) textures/ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 64 48 160 ) ( 64 -64 160 ) ( -48 -64 160 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 64 -64 96 ) ( 64 48 96 ) ( -48 48 96 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 64 48 96 ) ( 64 48 160 ) ( -48 48 160 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -48 -64 96 ) ( -48 -64 160 ) ( 64 -64 160 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 64 -64 96 ) ( 64 -64 160 ) ( 64 48 160 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -48 48 96 ) ( -48 48 160 ) ( -48 -64 160 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 }
 // entity 1 - the light this map exists to keep. Off to one side and high, so
