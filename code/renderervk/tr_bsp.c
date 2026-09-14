@@ -438,6 +438,23 @@ static void R_LoadLightmaps( const lump_t *l ) {
 
 	numLightmaps = l->filelen / (LIGHTMAP_SIZE * LIGHTMAP_SIZE * 3);
 
+	/*
+	[QL] R20: deluxemap detection.
+
+	q3map2 -deluxe interleaves them with the lightmaps - even indices are light,
+	odd are direction - so a map that has them has an even count and every
+	surface referencing an even index. Neither test alone is enough: an ordinary
+	map can happen to have an even number of lightmaps, and a map with one
+	lightmap is even by accident.
+
+	Recorded only. This renderer has no deluxemap path, and the reason to know
+	is that with the light entities stripped from these maps, a deluxemap is the
+	only per-texel light direction a BSP can still contain - so whether it is
+	worth writing that path is exactly this question.
+	*/
+	s_worldData.numLightmapsInBsp = numLightmaps;
+	s_worldData.deluxeMaps = ( numLightmaps >= 2 && ( numLightmaps & 1 ) == 0 ) ? qtrue : qfalse;
+
 	if ( r_mergeLightmaps->integer && numLightmaps > 1 ) {
 		// check for low texture sizes
 		if ( glConfig.maxTextureSize >= LIGHTMAP_LEN * 2 ) {
@@ -667,6 +684,16 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, int numPoi
 	//static const int idx_pattern2[] = {5, 4, 3, 2, 3, 4};
 
 	lightmapNum = LittleLong( ds->lightmapNum );
+
+	/*
+	[QL] R20: the other half of the deluxemap test - see R_LoadLightmaps.
+	Interleaved deluxemaps mean every surface sits on an even index, so a single
+	odd one anywhere settles it. Counted here because this is where the BSP's
+	own index is read; the runtime surface does not keep it.
+	*/
+	if ( lightmapNum >= 0 && ( lightmapNum & 1 ) ) {
+		s_worldData.oddLightmapRefs++;
+	}
 	if ( lightmapNum >= 0 && tr.mergeLightmaps ) {
 		lightmapNum = R_GetLightmapCoords( lightmapNum, &lightmapX, &lightmapY );
 	} else {

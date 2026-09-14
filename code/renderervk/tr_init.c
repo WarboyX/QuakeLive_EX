@@ -1637,6 +1637,31 @@ static void R_MapLights_f( void ) {
 			"  acceleration structure is possible on this map.\n" );
 	}
 
+	/*
+	[QL] The surfaces have the other half of the deluxemap answer: with them
+	interleaved, every surface points at an even index. Counted during surface
+	parsing, because the BSP's index is not kept on the runtime surface.
+	*/
+	if ( tr.world->deluxeMaps ) {
+		const int odd = tr.world->oddLightmapRefs;
+
+		if ( odd > 0 ) {
+			tr.world->deluxeMaps = qfalse;
+			ri.Printf( PRINT_ALL, "Deluxemaps: no - %i lightmaps is even, but %i surface(s)\n"
+				"  reference an odd one, so they are all ordinary lightmaps.\n",
+				tr.world->numLightmapsInBsp, odd );
+		} else {
+			ri.Printf( PRINT_ALL, "Deluxemaps: YES - %i maps, every surface on an even index.\n"
+				"  Per-texel light direction exists in this BSP. A deluxemap path plus\n"
+				"  smoothed normals could shade that geometry under the baked light.\n",
+				tr.world->numLightmapsInBsp );
+		}
+	} else {
+		ri.Printf( PRINT_ALL, "Deluxemaps: no - %i lightmap(s), not interleaved.\n"
+			"  There is no per-texel light direction anywhere in this BSP.\n",
+			tr.world->numLightmapsInBsp );
+	}
+
 	if ( tr.world->lightGridData != NULL ) {
 		ri.Printf( PRINT_ALL, "Lightgrid: %i x %i x %i samples, one every %g x %g x %g units\n",
 			tr.world->lightGridBounds[0], tr.world->lightGridBounds[1], tr.world->lightGridBounds[2],

@@ -965,6 +965,22 @@ typedef struct world_s {
 	int			numfogs;
 	fog_t		*fogs;
 
+	/*
+	[QL] R20: does this map carry deluxemaps?
+
+	q3map2 -deluxe writes a second map alongside every lightmap holding the
+	dominant light *direction* per texel. That is the only per-texel directional
+	data a compiled BSP can contain, and with the light entities stripped it is
+	the last thing that could shade a normal under baked light.
+
+	Detected at load and recorded rather than acted on: this renderer has no
+	deluxemap path, and whether writing one is worth anything depends entirely
+	on this being true.
+	*/
+	qboolean	deluxeMaps;
+	int			numLightmapsInBsp;
+	int			oddLightmapRefs;   // a single one rules deluxemaps out
+
 	vec3_t		lightGridOrigin;
 	vec3_t		lightGridSize;
 	vec3_t		lightGridInverseSize;
