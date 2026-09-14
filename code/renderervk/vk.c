@@ -12218,6 +12218,7 @@ renderer alone.
 #define SSR_MAX_PLANES VK_MAX_WATER_PLANES
 #define SSR_MAX_RIPPLES MAX_WATER_RIPPLES   /* [QL] R19, and the shader's copy */
 #define SSR_RIPPLE_LIFE 2.2f                /* seconds; must match ssr.tmpl */
+#define SSR_MAX_LIGHTS 16                   /* and the shader's copy */
 
 typedef struct {
 	float viewProj[16];
@@ -12233,6 +12234,8 @@ typedef struct {
 	float wave2[4];       // height in units; y..w spare
 	float ripple[SSR_MAX_RIPPLES][4];    // xy where, z age, w reach
 	float ripple2[SSR_MAX_RIPPLES][4];   // x strength, y plane index
+	float emitter[SSR_MAX_LIGHTS][4];    // xyz world, w radius
+	float emitter2[SSR_MAX_LIGHTS][4];   // rgb colour, a intensity
 } ssrUniform_t;
 
 static qboolean ssrReported = qfalse;
@@ -12776,7 +12779,7 @@ qboolean vk_ssr( void )
 	VectorCopy( backEnd.viewParms.or.origin, u->eye );
 	u->eye[3] = 0.0f;
 
-	u->params[0] = r_ssr->value;
+	u->params[0] = R_WaterSetting( r_ssr, tr.waterProfile.haveStrength, tr.waterProfile.strength );
 	u->params[1] = r_ssrDistance->value;
 	u->params[2] = (float)r_ssrSteps->integer;
 	u->params[3] = r_ssrThickness->value;
@@ -12821,11 +12824,15 @@ qboolean vk_ssr( void )
 	finer than a wave that takes a second to cross a pool.
 	*/
 	if ( r_waterWaves->integer ) {
-		u->wave[0] = r_waterWaveSteepness->value;
-		u->wave[1] = r_waterWaveScale->value;
-		u->wave[2] = r_waterWaveSpeed->value;
+		/* [QL] R19: the map's numbers where the player has left the cvar alone,
+		   theirs where they have not. See R_WaterSetting. */
+		const waterProfile_t *wp = &tr.waterProfile;
+
+		u->wave[0] = R_WaterSetting( r_waterWaveSteepness, wp->haveSteepness, wp->steepness );
+		u->wave[1] = R_WaterSetting( r_waterWaveScale,     wp->haveScale,     wp->scale );
+		u->wave[2] = R_WaterSetting( r_waterWaveSpeed,     wp->haveSpeed,     wp->speed );
 		u->wave[3] = (float)backEnd.refdef.floatTime;
-		u->wave2[0] = r_waterWaveHeight->value;
+		u->wave2[0] = R_WaterSetting( r_waterWaveHeight,   wp->haveHeight,    wp->height );
 	} else {
 		u->wave[0] = u->wave[1] = u->wave[2] = u->wave[3] = 0.0f;
 		u->wave2[0] = 0.0f;
@@ -12904,6 +12911,46 @@ qboolean vk_ssr( void )
 		}
 
 		u->planeCount[1] = (float)count;
+	}
+
+	/*
+	[QL] R19: the frame's dynamic lights, so emitters reflect.
+
+	dl->origin and not dl->transformed, the same choice the occlusion pass
+	makes and for the same reason: transformed is in the current entity's
+	space, and by the time this runs there is no current entity. World space is
+	what the reflected ray is in.
+
+	Linear lights are skipped rather than approximated. A lightning beam is a
+	segment, the test over in the shader is against a sphere, and a sphere at
+	one end of a rail trail is worse than no reflection of it at all.
+	*/
+	{
+		int l, count = 0;
+
+		for ( l = 0; l < backEnd.refdef.num_dlights && count < SSR_MAX_LIGHTS; l++ ) {
+			const dlight_t *dl = &backEnd.refdef.dlights[l];
+
+			if ( dl->linear ) {
+				continue;
+			}
+			if ( dl->radius <= 0.0f ) {
+				continue;
+			}
+
+			u->emitter[count][0] = dl->origin[0];
+			u->emitter[count][1] = dl->origin[1];
+			u->emitter[count][2] = dl->origin[2];
+			u->emitter[count][3] = dl->radius;
+
+			u->emitter2[count][0] = dl->color[0];
+			u->emitter2[count][1] = dl->color[1];
+			u->emitter2[count][2] = dl->color[2];
+			u->emitter2[count][3] = r_ssrEmitters->value;
+			count++;
+		}
+
+		u->planeCount[2] = (float)count;
 	}
 
 	if ( !ssrReported ) {

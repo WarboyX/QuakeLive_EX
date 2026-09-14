@@ -2504,5 +2504,9 @@ void RE_LoadWorldMap( const char *name ) {
 	vk_find_water_planes( &s_worldData );
 #endif
 
+	/* [QL] R19: what this map wants its water to look like. After the planes,
+	   so the report can say whether the map has any water to apply it to. */
+	R_LoadWaterProfile( s_worldData.baseName );
+
 	ri.FS_FreeFile( buffer.v );
 }

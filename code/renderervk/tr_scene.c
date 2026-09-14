@@ -366,6 +366,149 @@ explosion a few units above the surface should still ripple it. The reflection
 pass decides what, if anything, a given ripple touches.
 =====================
 */
+/*
+=====================
+R_LoadWaterProfile
+
+[QL] R19: per-map water settings, from scripts/water.cfg.
+
+Block format rather than one line per map, for the reason Quake's own shader
+files use it: a map can set one field and inherit the rest, and a field can be
+added later without every existing entry becoming malformed. Same reason a
+missing key is silent and an unknown key is loud - the first is a map that does
+not care, the second is a typo that would otherwise do nothing at all and say
+nothing about it, which is the same silent-failure shape as a registered cvar
+that nothing reads.
+
+A `map` of `default` applies to everything not named, so a sensible baseline
+does not have to be repeated. The named entry wins.
+
+No file is not an error. Neither is a map that is not in it.
+=====================
+*/
+void R_LoadWaterProfile( const char *mapName ) {
+	union { char *c; void *v; } buffer;
+	waterProfile_t defaults, named;
+	const char *p;
+	char *token;
+	int len, applied;
+
+	Com_Memset( &tr.waterProfile, 0, sizeof( tr.waterProfile ) );
+	Com_Memset( &defaults, 0, sizeof( defaults ) );
+	Com_Memset( &named, 0, sizeof( named ) );
+
+	len = ri.FS_ReadFile( "scripts/water.cfg", &buffer.v );
+	if ( len <= 0 || buffer.c == NULL ) {
+		return;         // nothing to say about any map
+	}
+
+	p = buffer.c;
+
+	while ( 1 ) {
+		waterProfile_t block;
+		char blockMap[ MAX_QPATH ];
+
+		token = COM_ParseExt( (char **)&p, qtrue );
+		if ( !token[0] ) {
+			break;      // end of file
+		}
+		if ( Q_stricmp( token, "{" ) != 0 ) {
+			ri.Printf( PRINT_WARNING, "water.cfg: expected '{', found '%s' - "
+				"stopping here; everything after this point is ignored\n", token );
+			break;
+		}
+
+		Com_Memset( &block, 0, sizeof( block ) );
+		blockMap[0] = '\0';
+
+		while ( 1 ) {
+			token = COM_ParseExt( (char **)&p, qtrue );
+			if ( !token[0] || Q_stricmp( token, "}" ) == 0 ) {
+				break;
+			}
+
+			if ( Q_stricmp( token, "map" ) == 0 ) {
+				token = COM_ParseExt( (char **)&p, qfalse );
+				Q_strncpyz( blockMap, token, sizeof( blockMap ) );
+			}
+#define WATER_KEY( name, field, have ) \
+			else if ( Q_stricmp( token, name ) == 0 ) { \
+				token = COM_ParseExt( (char **)&p, qfalse ); \
+				block.field = atof( token ); \
+				block.have = qtrue; \
+			}
+			WATER_KEY( "scale",     scale,     haveScale )
+			WATER_KEY( "speed",     speed,     haveSpeed )
+			WATER_KEY( "steepness", steepness, haveSteepness )
+			WATER_KEY( "height",    height,    haveHeight )
+			WATER_KEY( "strength",  strength,  haveStrength )
+#undef WATER_KEY
+			else {
+				ri.Printf( PRINT_WARNING, "water.cfg: unknown key '%s' in block for '%s' - "
+					"ignored\n", token, blockMap[0] ? blockMap : "(no map named yet)" );
+				COM_ParseExt( (char **)&p, qfalse );   // and its value
+			}
+		}
+
+		if ( !blockMap[0] ) {
+			ri.Printf( PRINT_WARNING, "water.cfg: a block with no 'map' - ignored\n" );
+		} else if ( Q_stricmp( blockMap, "default" ) == 0 ) {
+			defaults = block;
+		} else if ( Q_stricmp( blockMap, mapName ) == 0 ) {
+			named = block;
+		}
+	}
+
+	ri.FS_FreeFile( buffer.v );
+
+	/* the named entry over the default block, field by field */
+	tr.waterProfile = defaults;
+#define WATER_TAKE( field, have ) \
+	if ( named.have ) { tr.waterProfile.field = named.field; tr.waterProfile.have = qtrue; }
+	WATER_TAKE( scale,     haveScale )
+	WATER_TAKE( speed,     haveSpeed )
+	WATER_TAKE( steepness, haveSteepness )
+	WATER_TAKE( height,    haveHeight )
+	WATER_TAKE( strength,  haveStrength )
+#undef WATER_TAKE
+
+	applied = tr.waterProfile.haveScale + tr.waterProfile.haveSpeed +
+		tr.waterProfile.haveSteepness + tr.waterProfile.haveHeight +
+		tr.waterProfile.haveStrength;
+
+	if ( applied ) {
+		ri.Printf( PRINT_ALL, "Water: %i setting(s) for %s from water.cfg%s\n",
+			applied, mapName, named.haveScale || named.haveSpeed || named.haveSteepness ||
+				named.haveHeight || named.haveStrength ? "" : " (the default block)" );
+	}
+}
+
+
+/*
+=====================
+R_WaterSetting
+
+[QL] R19: the map's value, or the player's, and the rule is one comparison.
+
+A map value applies only where the cvar is still at its shipped default. The
+moment a player sets it themselves, theirs wins - on this map and every other -
+and setting it back to the default hands control to the maps again.
+
+Compared against resetString rather than tracked with a snapshot at map load on
+purpose. There is no state to get out of step, nothing is ever written into a
+cvar so nothing reaches the player's config, and the question "why is my setting
+being ignored" has one answer that is true every time.
+=====================
+*/
+float R_WaterSetting( const cvar_t *cv, qboolean haveMapValue, float mapValue ) {
+	if ( haveMapValue && cv->resetString != NULL &&
+	     Q_stricmp( cv->string, cv->resetString ) == 0 ) {
+		return mapValue;
+	}
+	return cv->value;
+}
+
+
 void RE_AddWaterRipple( const vec3_t origin, float radius, float strength ) {
 	waterRipple_t *rp;
 
@@ -388,6 +531,17 @@ void RE_AddWaterRipple( const vec3_t origin, float radius, float strength ) {
 	rp->radius = radius;
 	rp->strength = strength;
 	rp->startTime = tr.refdef.time;
+
+	/*
+	[QL] Loud enough to find, quiet enough to live with.
+
+	"I see no ripples" has two completely different causes - cgame never called,
+	or it called and the reflection pass did nothing with it - and no way to
+	tell them apart from the screen. This line settles it: if it appears, the
+	event arrived and the fault is downstream.
+	*/
+	ri.Printf( PRINT_DEVELOPER, "water ripple: %.0f %.0f %.0f, reach %.0f, strength %.1f\n",
+		origin[0], origin[1], origin[2], radius, strength );
 }
 
 

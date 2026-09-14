@@ -1209,6 +1209,41 @@ typedef struct {
 } waterRipple_t;
 
 /*
+[QL] R19: per-map water settings, from scripts/water.cfg.
+
+A still pool in a dojo and a river running through a canyon want different
+numbers, and one global set of cvars cannot be right for both. So the map gets
+to say.
+
+The precedence rule is the whole design, and it is one comparison: **a map value
+applies only where the player has left that cvar at its shipped default.** Touch
+r_waterWaveHeight and your value wins on every map from then on; set it back to
+the default and the maps take over again.
+
+What that buys is everything the obvious implementation gets wrong. Nothing is
+ever written to a cvar, so nothing lands in the player's config and becomes
+sticky for maps that never asked for it. Nothing has to be saved on map load and
+restored on unload, so there is no path where a crash or a vid_restart leaves a
+map's numbers applied forever. And "why is my setting being ignored" has a
+single answer that is true every time.
+
+`valid` is per field, not per profile: a map that only wants to say "my water is
+choppier" says exactly that and inherits the rest.
+*/
+typedef struct {
+	qboolean	haveScale;
+	qboolean	haveSpeed;
+	qboolean	haveSteepness;
+	qboolean	haveHeight;
+	qboolean	haveStrength;
+	float		scale;
+	float		speed;
+	float		steepness;
+	float		height;
+	float		strength;
+} waterProfile_t;
+
+/*
 ** trGlobals_t 
 **
 ** Most renderer globals are defined here.
@@ -1346,6 +1381,8 @@ typedef struct {
 	*/
 	waterRipple_t			waterRipples[ MAX_WATER_RIPPLES ];
 	int						numWaterRipples;   // total ever added; index with %
+
+	waterProfile_t			waterProfile;      // [QL] R19, from scripts/water.cfg
 } trGlobals_t;
 
 
@@ -1469,6 +1506,7 @@ extern	cvar_t	*r_ssrDistance;					// [QL] how far a reflected ray travels
 extern	cvar_t	*r_ssrSteps;					// [QL] how many steps it takes getting there
 extern	cvar_t	*r_ssrThickness;				// [QL] how far behind a sample still counts as a hit
 extern	cvar_t	*r_ssrDebug;					// [QL] 1 = water mask, 2 = raw reflection
+extern	cvar_t	*r_ssrEmitters;					// [QL] R19: how brightly emitters reflect, 0 = off
 extern	cvar_t	*r_waterWaves;					// [QL] R19: wave motion on the reflection, 0 = flat
 extern	cvar_t	*r_waterWaveScale;				// [QL] world units per wavelength
 extern	cvar_t	*r_waterWaveSpeed;				// [QL] how fast they travel
@@ -1868,6 +1906,8 @@ void RE_AddLightToScene( const vec3_t org, float intensity, float r, float g, fl
 void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, float g, float b );
 void RE_AddLinearLightToScene( const vec3_t start, const vec3_t end, float intensity, float r, float g, float b );
 void RE_AddWaterRipple( const vec3_t origin, float radius, float strength );
+void R_LoadWaterProfile( const char *mapName );
+float R_WaterSetting( const cvar_t *cv, qboolean haveMapValue, float mapValue );
 
 void RE_RenderScene( const refdef_t *fd );
 

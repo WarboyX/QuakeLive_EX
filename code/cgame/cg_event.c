@@ -770,7 +770,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
-            CG_WaterRipple(cent->lerpOrigin, 48.0f, 1.2f);
+            CG_WaterRipple(cent->lerpOrigin, 48.0f, 0.4f);
             break;
         case EV_FOOTWADE:
             DEBUGNAME("EV_FOOTWADE");
@@ -778,7 +778,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
-            CG_WaterRipple(cent->lerpOrigin, 56.0f, 1.6f);
+            CG_WaterRipple(cent->lerpOrigin, 56.0f, 0.6f);
             break;
         case EV_SWIM:
             DEBUGNAME("EV_SWIM");
@@ -786,7 +786,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
-            CG_WaterRipple(cent->lerpOrigin, 64.0f, 1.4f);
+            CG_WaterRipple(cent->lerpOrigin, 64.0f, 0.5f);
             break;
 
         case EV_FALL_SHORT:
@@ -890,12 +890,12 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
         case EV_WATER_TOUCH:
             DEBUGNAME("EV_WATER_TOUCH");
             trap_S_StartSound(NULL, es->number, CHAN_AUTO, cgs.media.watrInSound);
-            CG_WaterRipple(cent->lerpOrigin, 96.0f, 3.5f);
+            CG_WaterRipple(cent->lerpOrigin, 96.0f, 1.4f);
             break;
         case EV_WATER_LEAVE:
             DEBUGNAME("EV_WATER_LEAVE");
             trap_S_StartSound(NULL, es->number, CHAN_AUTO, cgs.media.watrOutSound);
-            CG_WaterRipple(cent->lerpOrigin, 80.0f, 2.5f);
+            CG_WaterRipple(cent->lerpOrigin, 80.0f, 1.0f);
             break;
         case EV_WATER_UNDER:
             DEBUGNAME("EV_WATER_UNDER");
@@ -1167,14 +1167,14 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_MISSILE_HIT");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitPlayer(es->weapon, position, dir, es->otherEntityNum);
-            CG_WaterRipple(position, 120.0f, 4.0f);
+            CG_WaterRipple(position, 120.0f, 1.6f);
             break;
 
         case EV_MISSILE_MISS:
             DEBUGNAME("EV_MISSILE_MISS");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitWall(es->weapon, 0, position, dir, IMPACTSOUND_DEFAULT);
-            CG_WaterRipple(position, 160.0f, 6.0f);
+            CG_WaterRipple(position, 160.0f, 2.2f);
             break;
 
         case EV_MISSILE_MISS_METAL:
@@ -1222,7 +1222,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             if (es->eventParm != 255) {
                 ByteToDir(es->eventParm, dir);
                 CG_MissileHitWall(es->weapon, es->clientNum, position, dir, IMPACTSOUND_DEFAULT);
-                CG_WaterRipple(position, 160.0f, 6.0f);
+                CG_WaterRipple(position, 160.0f, 2.2f);
             }
             break;
 
@@ -1230,7 +1230,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_BULLET_HIT_WALL");
             ByteToDir(es->eventParm, dir);
             CG_Bullet(es->pos.trBase, es->otherEntityNum, dir, qfalse, ENTITYNUM_WORLD);
-            CG_WaterRipple(es->pos.trBase, 40.0f, 1.8f);
+            CG_WaterRipple(es->pos.trBase, 40.0f, 0.6f);
             break;
 
         case EV_BULLET_HIT_FLESH:

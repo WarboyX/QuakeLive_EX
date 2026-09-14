@@ -159,6 +159,7 @@ cvar_t	*r_ssrDistance;
 cvar_t	*r_ssrSteps;
 cvar_t	*r_ssrThickness;
 cvar_t	*r_ssrDebug;
+cvar_t	*r_ssrEmitters;
 cvar_t	*r_waterWaves;
 cvar_t	*r_waterWaveScale;
 cvar_t	*r_waterWaveSpeed;
@@ -2067,6 +2068,24 @@ static void R_Register( void )
 	lets the shipped value keep applying to everyone who has not made one. This
 	has cost two rounds elsewhere in this tree already - r_dlightMode, con_scale.
 	*/
+	/*
+	[QL] R19: emitters, which the march cannot find.
+
+	A plasma ball is an additive sprite and writes no depth, so there is nothing
+	in the buffer for the reflection to hit. A rocket is an opaque model and
+	already reflects; the glow around it does not. This tests the reflected ray
+	against the frame's dynamic lights directly, which also means it works for
+	lights that are off screen entirely - and that is most of where a projectile
+	is when you can see its reflection.
+	*/
+	r_ssrEmitters = ri.Cvar_Get( "r_ssrEmitters", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrEmitters, "0", "4", CV_FLOAT );
+	ri.Cvar_SetDescription( r_ssrEmitters, "How brightly projectiles and powerups glow in "
+		"reflective water. 0 turns it off.\n"
+		"These have to be handled apart from everything else the reflection finds, because "
+		"they are additive sprites and write no depth - there is nothing in the depth buffer "
+		"to march into. Rockets reflect without this; the light around them does not." );
+
 	r_waterWaves = ri.Cvar_Get( "r_waterWaves", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_waterWaves, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_waterWaves, "Wave motion on reflective water.\n"

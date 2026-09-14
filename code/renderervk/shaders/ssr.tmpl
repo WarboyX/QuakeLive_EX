@@ -31,6 +31,7 @@ layout(set = 0, binding = 1) uniform sampler2D sceneMap;
 
 #define SSR_MAX_PLANES 32
 #define SSR_MAX_RIPPLES 16
+#define SSR_MAX_LIGHTS 16
 
 layout(set = 0, binding = 2) uniform SSR {
 	mat4 viewProj;      // world -> clip
@@ -86,10 +87,25 @@ layout(set = 0, binding = 2) uniform SSR {
 	*/
 	vec4 ripple[SSR_MAX_RIPPLES];
 	vec4 ripple2[SSR_MAX_RIPPLES];
+	/*
+	[QL] R19: the frame's dynamic lights, so emitters reflect. planeCount.z says
+	how many.
+
+	  emitter[i]   xyz = world position, w = radius
+	  emitter2[i]  rgb = colour, a = intensity
+
+	Why these are needed at all: the march finds what the depth buffer knows
+	about, and a plasma ball is an additive sprite that does not write depth. A
+	rocket does - it is an opaque model - which is why rockets already reflect
+	and plasma does not.
+	*/
+	vec4 emitter[SSR_MAX_LIGHTS];
+	vec4 emitter2[SSR_MAX_LIGHTS];
 };
 
 #define RIPPLE_LIFE 2.2     /* seconds from impact to gone */
 #define RIPPLE_WAVES 5.0    /* rings behind the leading edge */
+#define RIPPLE_SLOPE 0.35   /* see waterSurface - keeps a splash near the chop */
 
 layout(location = 0) in vec2 frag_tex_coord;
 layout(location = 0) out vec4 out_color;
@@ -250,7 +266,18 @@ vec3 waterSurface(vec2 p, int planeIdx) {
 		cost three more multiplies to adjust the flat parts between rings.
 		*/
 		if (d > 0.001) {
-			grad += ((p - c) / d) * amp * k * cos(phase);
+			/*
+			Scaled down hard, and it is not a fudge. The wind waves put their
+			slope through r_waterWaveSteepness, which is about 0.08 - and a
+			ripple's own amp*k lands near 0.4 for a rocket, five times steeper
+			than the water it is disturbing. Left alone the impact does not read
+			as a splash on the surface, it reads as a hole in it, and most of it
+			is then eaten by the facing guard further down anyway.
+
+			RIPPLE_SLOPE puts a strong impact a little above the ambient chop,
+			which is what a splash looks like.
+			*/
+			grad += ((p - c) / d) * amp * k * cos(phase) * RIPPLE_SLOPE;
 		}
 	}
 
@@ -679,6 +706,49 @@ void main() {
 
 			hit = edgeFade * distFade * mix(0.15, 1.0, fresnel);
 			break;
+		}
+	}
+
+	/*
+	[QL] R19: emitters, which the march cannot find.
+
+	A plasma ball, a rocket's glow, a powerup's halo - these are additive
+	sprites and they do not write depth, so there is nothing in the buffer for
+	the march to hit. A rocket reflects already because it is an opaque model;
+	the light around it does not.
+
+	Tested as a ray against a sphere in world space rather than by mirroring the
+	light and projecting it to screen. The reflected ray is a real world-space
+	ray, so this places the glow where it actually belongs, and it works for
+	lights that are off-screen entirely - which screen-space anything cannot do,
+	and which is most of where a projectile is when its reflection is visible.
+
+	Added to whatever the march found rather than replacing it: a glow over a
+	reflected wall should light the wall, not erase it.
+	*/
+	{
+		int nl = int(planeCount.z);
+		for (int i = 0; i < nl; i++) {
+			vec3 toLight = emitter[i].xyz - P;
+			float along = dot(toLight, R);
+			if (along <= 0.0) {
+				continue;           // behind the reflection
+			}
+
+			float rad = emitter[i].w;
+			float perp2 = dot(toLight, toLight) - along * along;
+			if (perp2 >= rad * rad) {
+				continue;           // the ray misses it
+			}
+
+			/* squared so the centre is bright and the rim falls away, and faded
+			   along the ray on the same terms the march's own hits are */
+			float f = 1.0 - sqrt(max(perp2, 0.0)) / rad;
+			f = f * f;
+			f *= 1.0 - clamp(along / maxDist, 0.0, 1.0);
+
+			hitColor += emitter2[i].rgb * emitter2[i].a * f;
+			hit = max(hit, f * 0.85);
 		}
 	}
 
