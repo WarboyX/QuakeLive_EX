@@ -4842,12 +4842,51 @@ rocks is a baked lightmap. Standing still with nothing flying past, the rocks
 look exactly as they do now. Worth saying plainly, because "make the rocks look
 better" usually means the static case.
 
-*Stage B — static light.* The one that changes the screenshot. Modulate the
-lightmap by the perturbed normal against a light direction taken from the
-**lightgrid** (`R_LoadLightGrid`, already parsed). The grid is nominally for
-entities rather than world surfaces, so this is an approximation — but it is the
-only per-point light *direction* the BSP gives us, and it is what makes bumps
-appear under baked light. Higher risk: it touches every world surface in every
+**MEASURED, by `/maplights`.** Two maps, both the same answer:
+
+```
+japanesecastles: 469 entities in the BSP, 0 of them lights
+  Deluxemaps: no - 34 lightmap(s), not interleaved.
+  Lightgrid: 93 x 65 x 20 samples, one every 64 x 64 x 128 units
+
+longestyard: 138 entities in the BSP, 0 of them lights
+  Deluxemaps: no - 8 lightmaps is even, but 657 surface(s) reference an odd one
+```
+
+No light entities, no deluxemaps. The `longestyard` line is why the deluxemap
+test had two halves: an even lightmap count alone would have been a false
+positive there.
+
+**Correction, and it reverses a conclusion recorded an hour earlier.** The first
+reading of that result was "the lightgrid is one sample per 64 x 64 x 128 units,
+too coarse to shape a rock, so this cannot be done". That confuses two different
+things. **The light direction does not need to vary across the rock; the normal
+does.** A rock is smaller than a single grid cell, and one light direction across
+it is not an approximation - it is what a distant light actually looks like. The
+variation that makes a surface read as shaped comes from the normals, which is
+precisely what Stage A and R22 supply. The grid is sufficient and Stage B is
+alive.
+
+What the measurement did kill is the *implementation* scoped for Stage B.
+
+*Stage B — static light.* The one that changes the screenshot. Light direction
+comes from the **lightgrid** (`R_LoadLightGrid`, already parsed - 8 bytes a
+cell: ambient RGB, directed RGB, lat/long direction, trilinearly interpolated).
+
+**Not by modulating the lightmap, which was the original plan and does not
+work.** q3map2 lights brush faces per face unless the shader asks for phong, so
+the faceting on those rocks is baked into the lightmap texture itself.
+Multiplying a faceted base by a smooth term leaves it faceted - a discontinuity
+cannot be divided out.
+
+Instead: take **intensity and shadowing** from the lightmap, which is what it is
+genuinely good for and what nothing else can supply, and take **direction** from
+the grid. Shade the lightmap's luminance against
+`ambient + directed * max(0, dot(N, gridDir))` with N perturbed. The facets go
+because the lightmap's own directional variation is no longer what shapes the
+surface; the shadows stay because its intensity still is.
+
+Higher risk than Stage A regardless: it touches every world surface in every
 frame, and getting the normalisation wrong washes out or darkens the whole map.
 
 **Where luminance-as-height is wrong, and it has to be opt-out-able.** It is
