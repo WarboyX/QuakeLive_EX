@@ -12,7 +12,15 @@
 // direction per cell, and what has to vary across a rock is the normal, not the
 // light. See R20 in TRACKER.md.
 //
-// What it is genuinely good for is a controlled scene: known geometry, known
+// R20 STAGE A is what it now mostly exists for: the row of seven panels against
+// the +Y wall, documented where they are declared below. Stage A's one claim a
+// build cannot check is that the derived bumps point the right way, and a
+// mirrored tangent is invisible on axis-aligned UVs - which every face in the
+// first version of this map was. The panels put four rotations, a shear, the
+// qlNoPerturb opt-out and a collapsed lightmap-first shader side by side under
+// one light, so the answer is a glance rather than a measurement.
+//
+// What it is otherwise good for is a controlled scene: known geometry, known
 // lighting, no dependency on pak00, and small enough to recompile in seconds
 // while iterating on shading. And one specific experiment worth running before
 // R20 Stage B is built, because Stage B is designed around its outcome:
@@ -26,16 +34,37 @@
 // that assumption is wrong and Stage B needs rethinking before it is written,
 // not after.
 //
-// COMPILING. Verified with id-tech-3-tools/map-compiler, which builds from
-// source with no external dependencies - everything it needs is vendored, so
-// cmake and a C++ compiler are the whole toolchain:
+// COMPILING. Use build-testmap.sh next to this file; it stages the filesystem,
+// runs the three phases and packs the pk3. The flags it uses and why are in its
+// header. Verified with id-tech-3-tools/map-compiler, which builds from source
+// with everything vendored, so cmake and a C++ compiler are the whole toolchain:
 //
 //   git clone --depth 1 https://github.com/id-tech-3-tools/map-compiler
-//   cmake -S map-compiler -B bld -DCMAKE_BUILD_TYPE=Release && cmake --build bld
+//   cmake -S map-compiler -B bld -DCMAKE_BUILD_TYPE=Release && cmake --build bld -j
+//   MAPCOMPILER=./bld/mapcompiler ./content/testmaps/build-testmap.sh
 //
-//   mapcompiler -fs_basepath <ql> -meta -keeplights maps/qltest_light.map
-//   mapcompiler -fs_basepath <ql> -vis               maps/qltest_light.bsp
-//   mapcompiler -fs_basepath <ql> -light -fast       maps/qltest_light.bsp
+// It needs no Quake Live install. The R20 panels use textures/qltest/tangent,
+// which is ours and ships in the test pk3; set QLDIR if you want the room's
+// ct_ragnarok/rock_03 at its real scale as well.
+//
+// BSP VERSION. -game quakelive is a stock profile in that compiler and it is
+// what makes this a version 47 BSP - nothing has to be patched to get one.
+// Our loader takes 46 too (v47 is v46 plus LUMP_ADVERTISEMENTS, see qfiles.h),
+// so a -game quake3 build also loads; 47 is what the real maps are, so it is
+// what the test should be. Confirmed by reading the header back: IBSP 47.
+//
+// TWO SILENT TRAPS, both found by compiling rather than by reading:
+//
+// q3map2 loads ONLY the .shader files named in scripts/shaderlist.txt. Without
+// that file the test shaders are never parsed and their panels come out at the
+// wrong UV scale, reported as one "Couldn't find image for shader" line. The
+// engine has no such list and loads every .shader it finds, so this is a
+// compile-time requirement with no run-time symptom to lead you to it.
+//
+// And the "textures/" prefix rule is INVERTED between the two files. A face in
+// this .map writes "qltest/tangent" and q3map2 adds the prefix; a shader block
+// in the .shader must be named "textures/qltest/noperturb" in full. Getting it
+// wrong in either direction fails the same quiet way.
 //
 // -keeplights goes on the BSP phase, NOT the light phase. It is parsed in
 // bsp.cpp and works by stamping "_keepLights" "1" into worldspawn, which the
@@ -156,6 +185,87 @@
 ( -48 -64 96 ) ( -48 -64 160 ) ( 64 -64 160 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 ( 64 -64 96 ) ( 64 -64 160 ) ( 64 48 160 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 ( -48 48 96 ) ( -48 48 160 ) ( -48 -64 160 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+
+// R20 STAGE A - the tangent panels. Seven slabs standing against the +Y wall,
+// z 16..144, each 60 wide with an 8 gap, their -Y face turned into the room.
+//
+// All seven carry the SAME texture, so they share one image and one derived
+// normal map. Only the UV transform on the test face differs. That is the whole
+// point: the derived map is a constant, the tangent basis is the variable, and
+// anything that changes between panels is the basis and nothing else.
+//
+// The bump direction on every panel must agree with the texture's own light and
+// dark. If panel 2 (90 deg) is lit from the opposite side to panel 0, the
+// tangent is mirrored - which is the defect an axis-aligned wall cannot show,
+// and the reason this row exists at all.
+//
+// Read them with a rocket, not with the static lighting: stand at the -X end of
+// the row and fire along it, so one moving light sweeps all seven in one pass
+// and they are directly comparable. The map's two light entities are baked into
+// the lightmap at compile time and Stage A does not touch them.
+	// panel 0 - 0 deg - the baseline the other six are read against
+{
+( -174 256 144 ) ( -174 240 144 ) ( -234 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -174 240 16 ) ( -174 256 16 ) ( -234 256 16 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -174 256 16 ) ( -174 256 144 ) ( -234 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -234 240 16 ) ( -234 240 144 ) ( -174 240 144 ) qltest/tangent 0 0 0 0.250000 0.250000 0 0 0	// <- the test face
+( -174 240 16 ) ( -174 240 144 ) ( -174 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -234 256 16 ) ( -234 256 144 ) ( -234 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// panel 1 - 45 deg
+{
+( -106 256 144 ) ( -106 240 144 ) ( -166 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -106 240 16 ) ( -106 256 16 ) ( -166 256 16 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -106 256 16 ) ( -106 256 144 ) ( -166 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -166 240 16 ) ( -166 240 144 ) ( -106 240 144 ) qltest/tangent 0 0 45 0.250000 0.250000 0 0 0	// <- the test face
+( -106 240 16 ) ( -106 240 144 ) ( -106 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -166 256 16 ) ( -166 256 144 ) ( -166 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// panel 2 - 90 deg - the case a mirrored tangent gets wrong and 0 deg hides
+{
+( -38 256 144 ) ( -38 240 144 ) ( -98 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -38 240 16 ) ( -38 256 16 ) ( -98 256 16 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -38 256 16 ) ( -38 256 144 ) ( -98 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -98 240 16 ) ( -98 240 144 ) ( -38 240 144 ) qltest/tangent 0 0 90 0.250000 0.250000 0 0 0	// <- the test face
+( -38 240 16 ) ( -38 240 144 ) ( -38 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -98 256 16 ) ( -98 256 144 ) ( -98 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// panel 3 - 135 deg
+{
+( 30 256 144 ) ( 30 240 144 ) ( -30 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 30 240 16 ) ( 30 256 16 ) ( -30 256 16 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 30 256 16 ) ( 30 256 144 ) ( -30 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -30 240 16 ) ( -30 240 144 ) ( 30 240 144 ) qltest/tangent 0 0 135 0.250000 0.250000 0 0 0	// <- the test face
+( 30 240 16 ) ( 30 240 144 ) ( 30 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( -30 256 16 ) ( -30 256 144 ) ( -30 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// panel 4 - 30 deg at 0.25 x 0.125 - rotation plus anisotropy is a real shear
+{
+( 98 256 144 ) ( 98 240 144 ) ( 38 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 98 240 16 ) ( 98 256 16 ) ( 38 256 16 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 98 256 16 ) ( 98 256 144 ) ( 38 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 38 240 16 ) ( 38 240 144 ) ( 98 240 144 ) qltest/tangent 0 0 30 0.250000 0.125000 0 0 0	// <- the test face
+( 98 240 16 ) ( 98 240 144 ) ( 98 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 38 256 16 ) ( 38 256 144 ) ( 38 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// panel 5 - qlNoPerturb - the opt-out. Must stay flat.
+{
+( 166 256 144 ) ( 166 240 144 ) ( 106 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 166 240 16 ) ( 166 256 16 ) ( 106 256 16 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 166 256 16 ) ( 166 256 144 ) ( 106 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 106 240 16 ) ( 106 240 144 ) ( 166 240 144 ) qltest/noperturb 0 0 0 0.250000 0.250000 0 0 0	// <- the test face
+( 166 240 16 ) ( 166 240 144 ) ( 166 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 106 256 16 ) ( 106 256 144 ) ( 106 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+}
+// panel 6 - lightmap stage first, so the collapsed lighting bundle is bundle 1
+{
+( 234 256 144 ) ( 234 240 144 ) ( 174 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 234 240 16 ) ( 234 256 16 ) ( 174 256 16 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 234 256 16 ) ( 234 256 144 ) ( 174 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 174 240 16 ) ( 174 240 144 ) ( 234 240 144 ) qltest/lightmapfirst 0 0 0 0.250000 0.250000 0 0 0	// <- the test face
+( 234 240 16 ) ( 234 240 144 ) ( 234 256 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
+( 174 256 16 ) ( 174 256 144 ) ( 174 240 144 ) ct_ragnarok/rock_03 0 0 0 0.500000 0.500000 0 0 0
 }
 }
 // entity 1 - the light this map exists to keep. Off to one side and high, so

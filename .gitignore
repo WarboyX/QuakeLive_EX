@@ -76,3 +76,6 @@ release/
 # Python bytecode from the tools/
 __pycache__/
 *.pyc
+
+# [QL] Compiled test maps are build output, same rule as release/
+/content/testmaps/out/
