@@ -53,6 +53,11 @@ QL_NAMES = "docs/ql-menu-names.txt"
 MENU_REFS = ("open", "close", "conditionalopen", "toggle")
 
 
+# [QL] R24. Written in a comment on, or just above, an itemDef whose overlap is
+# deliberate - a button over its highlight bar, a full-page fade.
+WAIVER = "check-menus: overlap-ok"
+
+
 def strip_comments(text):
     """Remove // and /* */ comments without eating them inside quotes."""
     out = []
@@ -115,9 +120,98 @@ def tokenize(text):
     return tokens
 
 
+def exclusive(a, b):
+    """
+    True when two items can never be on screen together, so sharing space is
+    deliberate rather than a collision.
+
+    The only form of this the engine gives us is cvarTest: an item draws when
+    its cvar's value is in showCvar (or is not in hideCvar). Two items keyed on
+    the SAME cvar with disjoint show sets are alternatives - the status rows at
+    the top of the ray tracing page are exactly that, and the comment there
+    explains why they had to be written per cvar rather than per outcome.
+    Different cvars prove nothing: both can be true at once.
+    """
+    if not a["test"] or a["test"] != b["test"]:
+        return False
+    sa, sb = a.get("showcvar"), b.get("showcvar")
+    if sa and sb:
+        return not (sa & sb)
+    ha, hb = a.get("hidecvar"), b.get("hidecvar")
+    if sa and hb:
+        return sa <= hb
+    if sb and ha:
+        return sb <= ha
+    return False
+
+
+def check_geometry(menu_name, menu_rect, items, report, waived=(), menu_line=0):
+    """
+    [QL] R24. Two ways a .menu is wrong that parse perfectly.
+
+    An item whose rect overlaps another's draws over it - which is how the ray
+    tracing page ended up printing its help text through two of its own rows.
+    An item that extends past its menuDef's rect draws outside the window's
+    border, which is how APPLY ended up below the frame.
+
+    Both are invisible to every other check in this file and to the engine.
+    Rects are relative to the parent window, so the frame is 0 0 w h.
+    """
+    live = [i for i in items if i["rect"] and not i["hidden"]]
+
+    # A waiver on or just above the menuDef covers the whole page, for one that
+    # is layered by design - the main menu draws every button over its own
+    # highlight bar and a fade over all of them. Per-item waivers there would be
+    # a dozen copies of one reason.
+    page_waived = any(menu_line - 6 <= m <= menu_line + 2 for m in waived)
+
+    if menu_rect and not page_waived:
+        mw, mh = menu_rect[2], menu_rect[3]
+        for i in live:
+            x, y, w, h = i["rect"]
+            who = i["name"] or "item"
+            if x < 0 or y < 0 or x + w > mw or y + h > mh:
+                report(i["line"], "%s '%s' at %g %g %g %g falls outside the menu's "
+                       "%g x %g frame - it draws past the border"
+                       % (menu_name or "?", who, x, y, w, h, mw, mh))
+
+    for ai in range(len(live)):
+        for bi in range(ai + 1, len(live)):
+            a, b = live[ai], live[bi]
+            ax, ay, aw, ah = a["rect"]
+            bx, by, bw, bh = b["rect"]
+            ox = min(ax + aw, bx + bw) - max(ax, bx)
+            oy = min(ay + ah, by + bh) - max(ay, by)
+            if ox <= 0 or oy <= 0:
+                continue
+            if exclusive(a, b):
+                continue
+            # An overlap can be the point: a button drawn over its own
+            # highlight bar, a fade that covers the page. Those say so.
+            if page_waived:
+                continue
+            # The marker normally sits in a comment just above the itemDef, so
+            # look a few lines back as well as inside it.
+            if any(a["line"] - 5 <= m <= a.get("end", a["line"]) or
+                   b["line"] - 5 <= m <= b.get("end", b["line"]) for m in waived):
+                continue
+            report(b["line"], "%s '%s' overlaps '%s' (line %d) by %g x %g - "
+                   "they draw on top of each other"
+                   % (menu_name or "?", b["name"] or "item",
+                      a["name"] or "item", a["line"], ox, oy))
+
+
 def check_file(path, problems, defined, referenced, shape):
     raw = open(path, "r", errors="replace").read()
     tokens = tokenize(strip_comments(raw))
+
+    # Comments are stripped before tokenising, so the waiver is read off the raw
+    # text. Deliberately a comment and not a keyword: the engine must never see
+    # it, and it should sit where the reason for the overlap is written down.
+    waived = set()
+    for n, ln in enumerate(raw.splitlines(), 1):
+        if WAIVER in ln:
+            waived.add(n)
 
     depth = 0
     menu_depth = None
@@ -126,6 +220,14 @@ def check_file(path, problems, defined, referenced, shape):
     item_depth = None
     item_has_rect = False
     item_line = 0
+
+    # [QL] Geometry. The parser has no opinion about where an item lands, so a
+    # row appended at a y that already belongs to something else draws on top of
+    # it and nothing anywhere says so - see R24. These two lists carry the
+    # current menuDef's frame and its items until the menuDef closes.
+    menu_rect = None
+    items = []
+    cur = None
 
     def report(line, msg):
         if shape:
@@ -144,11 +246,19 @@ def check_file(path, problems, defined, referenced, shape):
                 return
             if item_depth is not None and depth < item_depth:
                 item_depth = None
+                if cur is not None:
+                    cur["end"] = line
+                cur = None
             if menu_depth is not None and depth < menu_depth:
                 if menu_name is None:
                     report(menu_line, "menuDef has no name")
+                if shape:
+                    check_geometry(menu_name, menu_rect, items, report, waived,
+                                   menu_line)
                 menu_depth = None
                 menu_name = None
+                menu_rect = None
+                items = []
             continue
 
         if low == "menudef":
@@ -161,11 +271,47 @@ def check_file(path, problems, defined, referenced, shape):
             item_depth = depth + 1
             item_has_rect = False
             item_line = line
+            cur = {"line": line, "end": line, "rect": None, "test": None,
+                   "hidden": False, "name": None, "showcvar": None,
+                   "hidecvar": None}
+            items.append(cur)
             continue
 
-        if low == "rect" and item_depth is not None:
-            item_has_rect = True
+        if low == "rect":
+            nums = []
+            for k in range(idx + 1, min(idx + 5, len(tokens))):
+                try:
+                    nums.append(float(tokens[k][0]))
+                except ValueError:
+                    break
+            if item_depth is not None:
+                item_has_rect = True
+                if cur is not None and len(nums) == 4:
+                    cur["rect"] = nums
+            elif menu_depth is not None and len(nums) == 4:
+                menu_rect = nums
             continue
+
+        if item_depth is not None and cur is not None:
+            if low == "cvartest" and idx + 1 < len(tokens):
+                cur["test"] = tokens[idx + 1][0].strip('"').lower()
+                continue
+            if low in ("showcvar", "hidecvar"):
+                vals = []
+                k = idx + 2 if idx + 1 < len(tokens) and tokens[idx + 1][0] == "{" else None
+                while k is not None and k < len(tokens) and tokens[k][0] != "}":
+                    vals.append(tokens[k][0].strip('"'))
+                    k += 1
+                cur[low] = set(vals)
+                continue
+            if low == "visible" and idx + 1 < len(tokens):
+                v = tokens[idx + 1][0].strip('"').lower()
+                if v in ("0", "menu_false", "no", "false"):
+                    cur["hidden"] = True
+                continue
+            if low == "name" and idx + 1 < len(tokens):
+                cur["name"] = tokens[idx + 1][0].strip('"')
+                continue
 
         if low == "name" and menu_depth is not None and item_depth is None:
             if idx + 1 < len(tokens):
