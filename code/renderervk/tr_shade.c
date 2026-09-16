@@ -1216,9 +1216,23 @@ void VK_LightingPass( void )
 	R_BindAnimatedImage( &pStage->bundle[ tess.shader->lightingBundle ] );
 
 	/*
-	[QL] No normal map is bound here any more. The light shader does not sample
-	one - see the note at the top of light_frag.tmpl for why it stopped.
+	[QL] R20 Stage A: bind the lighting stage's normal map to set 3, or the flat
+	fallback when this surface has none.
+
+	The fallback is bound rather than skipped because the shader samples set 3
+	unconditionally: tr.flatNormalImage decodes to (0,0,1) in tangent space, and
+	perturbing by (0,0,1) is the interpolated normal back again. That is what
+	makes an un-perturbed surface light identically to before, and it is why
+	tr.flatNormalImage must keep IMGFLAG_NOLIGHTSCALE - see the note at the top
+	of light_frag.tmpl for what happened the time it did not.
+
+	r_qlNormalMaps is latched, so it cannot change between here and the parse
+	that decided whether pStage->normalMap exists; the test is on the pointer.
 	*/
+	{
+		const image_t *nmap = pStage->normalMap ? pStage->normalMap : tr.flatNormalImage;
+		vk_update_descriptor( VK_DESC_TEXTURE2, nmap->descriptor );
+	}
 
 #ifdef USE_VBO
 	if ( tess.vboIndex == 0 )

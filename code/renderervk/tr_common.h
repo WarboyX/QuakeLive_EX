@@ -96,6 +96,14 @@ image_t *R_FindImageFile( const char *name, imgFlags_t flags );
 image_t *R_CreateImage( const char *name, const char *name2, byte *pic, int width, int height, imgFlags_t flags );
 void R_UploadSubImage( byte *data, int x, int y, int width, int height, image_t *image );
 
+/*
+[QL] R20 Stage A - see tr_image.c. R_GenerateNormalMap is pure array math over
+RGBA8 (a flat input gives exactly the identity 128,128,255); R_DeriveNormalMap
+wraps it with the file re-read and the per-image cache.
+*/
+void R_GenerateNormalMap( const byte *rgba, int w, int h, float strength, byte *outRGBA );
+image_t *R_DeriveNormalMap( image_t *base, float strength );
+
 qhandle_t RE_RegisterShaderLightMap( const char *name, int lightmapIndex );
 qhandle_t RE_RegisterShader( const char *name );
 qhandle_t RE_RegisterShaderNoMip( const char *name );

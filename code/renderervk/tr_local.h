@@ -412,6 +412,13 @@ typedef struct {
 	image_t			*normalMap;
 	image_t			*specularMap;
 
+	/*
+	[QL] R20 Stage A opt-out, set by the qlNoPerturb shader keyword. When true
+	this stage never gets a derived normal map and lights with the flat
+	(identity) fallback, exactly as it does today.
+	*/
+	qboolean		noNormalPerturb;
+
 #ifdef USE_VULKAN
 	uint32_t		tessFlags;
 	uint32_t		numTexBundles;
@@ -588,6 +595,16 @@ typedef struct image_s {
 	int			uploadHeight;
 	imgFlags_t	flags;
 	int			frameUsed;			// for texture usage in frame statistics
+
+	/*
+	[QL] R20 Stage A: the normal map derived from this texture's luminance, or
+	NULL if none has been asked for yet. Cached here rather than on the stage
+	because several shaders share one texture and the derivation re-reads the
+	file - see R_DeriveNormalMap(). derivationFailed records that the re-read
+	was already tried and did not work, so it is not retried once per shader.
+	*/
+	struct image_s *derivedNormalMap;
+	qboolean	derivationFailed;
 
 #ifdef USE_VULKAN
 	int			internalFormat;
@@ -1307,6 +1324,8 @@ typedef struct {
 	image_t					*flatNormalImage;		// [QL] (128,128,255): a tangent-space normal straight out of the surface
 	int						numNormalMappedStages;	// [QL] stages that carry a normal map, counted as shaders are finished
 	int						numSpecularStages;		// [QL] likewise, parsed but not yet shaded with
+	int						numDerivedNormalMaps;	// [QL] R20 Stage A: lighting stages given a map derived from their own texture
+	int						numUnderivableStages;	// [QL] R20 Stage A: lighting stages that asked and had nothing to derive from
 	image_t					*identityLightImage;	// full of tr.identityLightByte
 
 	shader_t				*defaultShader;

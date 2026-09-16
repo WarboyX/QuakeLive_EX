@@ -21,8 +21,18 @@ layout(set = 2, binding = 0) uniform sampler2D fogtexture;
 #endif
 
 /*
-[QL] There was a normal map sampled here, at set 3. It is gone, and the reason
-is worth keeping.
+[QL] R20 Stage A: the lighting stage's normal map, derived from its own diffuse
+texture's luminance at shader-parse time (R_DeriveNormalMap), or
+tr.flatNormalImage when the surface has none. It is always bound: a flat image
+decodes to (0,0,1) in tangent space and perturbs by nothing, so a surface
+without a map lights exactly as it did.
+
+This sampler was here once before and was removed. The reason is below, it is
+still the reason, and the two things it names - IMGFLAG_NOLIGHTSCALE on every
+normal image, and art that actually carries maps - are the two conditions Stage
+A had to meet before putting it back.
+
+------------------------------------------------------------------------------
 
 The whole design rested on one claim: bind a flat normal when a stage has none,
 because a flat normal decodes to (0,0,1), the cotangent frame maps that straight
@@ -51,7 +61,16 @@ the perturbation to do but cost a fetch and be wrong. It goes back when there is
 art that needs it - and when it does, both the flat image and every real normal
 map need IMGFLAG_NOLIGHTSCALE, because a normal map is data and this path
 gamma-corrects and overbrights anything that does not say otherwise.
+
+------------------------------------------------------------------------------
+
+Both conditions are met now. tr.flatNormalImage carries IMGFLAG_NOLIGHTSCALE and
+so does every map R_DeriveNormalMap creates, and "ships no normal map images" is
+answered by deriving them from the diffuse rather than by waiting for art. The
+count printed at the end of registration reports the shipped maps and the
+derived ones separately, so the shipped number staying at 0 stays visible.
 */
+layout(set = 3, binding = 0) uniform sampler2D normalmap;
 
 layout(location = 0) centroid in vec2 frag_tex_coord;
 layout(location = 1) in vec3 N;  // normalized object-space normal vector
@@ -60,6 +79,8 @@ layout(location = 3) in vec4 V;  // object-space view vector
 #ifdef USE_FOG
 layout(location = 4) in vec2 fog_tex_coord;
 #endif
+layout(location = 5) in vec3 P;      // [QL] R20 Stage A: object-space position
+layout(location = 6) in vec2 tc_lin; // [QL] R20 Stage A: non-centroid texcoord, derivatives only
 
 layout(location = 0) out vec4 out_color;
 
@@ -134,7 +155,54 @@ void main() {
 	base.xyz = base.xyz * ( 1.0 - fog.a );
 #endif
 
-	vec3 nN = normalize(N);
+	/*
+	[QL] R20 Stage A: perturb the interpolated normal by the bound normal map,
+	in a tangent basis built from screen-space derivatives. Q3 BSP vertices
+	carry no tangents and adding them would change the vertex format, so the
+	basis is solved per fragment from how P and the texture coords move across
+	the pixel quad.
+
+	Cramer's rule on the 2x2 UV Jacobian. The two relations the quad gives are
+	dPdx = T*duv1.x + B*duv1.y and dPdy = T*duv2.x + B*duv2.y; solving for T
+	component-wise gives ( duv2.y*dPdx - duv1.y*dPdy ) / det. duv1.y, not
+	duv2.x: the two agree on axis-aligned UVs and the wrong one mirrors the
+	tangent on rotated UVs and skews it on sheared ones, which Quake maps use
+	constantly, so an axis-aligned test wall proves nothing about it.
+
+	det keeps its sign through the floor, so a near-degenerate Jacobian flips
+	handedness rather than dividing by zero, and a face with no usable tangent
+	at all falls back to an arbitrary one off the geometric normal instead of
+	emitting NaN.
+
+	With tr.flatNormalImage bound this reduces to normalize(N) to within the
+	rounding of its bytes - 0.318 degrees, measured, not assumed.
+	*/
+	vec3 nN;
+	{
+		vec3 geomN = normalize(N);
+
+		vec3 dPdx = dFdx(P);
+		vec3 dPdy = dFdy(P);
+		vec2 duv1 = dFdx(tc_lin);
+		vec2 duv2 = dFdy(tc_lin);
+
+		float a01 = duv1.x * duv2.y;
+		float b01 = duv2.x * duv1.y;
+		float det = ((a01 >= b01) ? 1.0 : -1.0) * max(abs(a01 - b01), 1e-6);
+
+		vec3 Traw = (duv2.y * dPdx - duv1.y * dPdy) / det;
+		if (dot(Traw, Traw) < 1e-8) {
+			vec3 up = (abs(geomN.y) < 0.99) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+			Traw = cross(up, geomN);
+		}
+
+		vec3 Tn = normalize(Traw - geomN * dot(geomN, Traw));
+		vec3 Bn = cross(geomN, Tn);
+
+		vec3 tsn = normalize(texture(normalmap, frag_tex_coord).xyz * 2.0 - 1.0);
+
+		nN = normalize(Tn * tsn.x + Bn * tsn.y + geomN * tsn.z);
+	}
 
 	// Lambertian diffuse reflection term (N.L)
 	float diffuse = dot(nN, nL);

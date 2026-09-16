@@ -33,6 +33,23 @@ layout(location = 3) out vec4 V; // object-space view vector
 layout(location = 4) out vec2 fog_tex_coord;
 #endif
 
+/*
+[QL] R20 Stage A. Both are unconditional in all four variants so that the
+fragment interface is the same shape whether or not fog is compiled in.
+
+P is the object-space position; the fragment stage differentiates it to build a
+tangent basis, because Q3 BSP vertices carry no tangents.
+
+tc_lin is frag_tex_coord again, and exists because frag_tex_coord is declared
+centroid in the fragment shader. Centroid interpolation moves the sample point
+inside the covered part of a partly covered pixel, which is what it is for, and
+which makes its screen-space derivative wrong on exactly the pixels along every
+triangle edge. Sampling wants the centroid value; differentiating wants the
+plain one. They are not the same varying.
+*/
+layout(location = 5) out vec3 P;
+layout(location = 6) out vec2 tc_lin;
+
 out gl_PerVertex {
 	vec4 gl_Position;
 };
@@ -41,6 +58,8 @@ void main() {
 	gl_Position = mvp * vec4(in_position, 1.0);
 
 	frag_tex_coord = in_tex_coord;
+	tc_lin = in_tex_coord;	// [QL] R20 Stage A: the non-centroid copy, for derivatives only
+	P = in_position;		// [QL] R20 Stage A
 	N = in_normal;
 	L = lightPos - vec4(in_position, 1.0);
 	V = eyePos - vec4(in_position, 1.0);

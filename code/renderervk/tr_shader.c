@@ -34,6 +34,10 @@ static	shaderStage_t	stages[MAX_SHADER_STAGES];
 static	shader_t		shader;
 static	texModInfo_t	texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS+1]; // reserve one additional texmod for lightmap atlas correction
 
+// [QL] R20 Stage A
+extern	cvar_t	*r_qlNormalMaps;
+extern	cvar_t	*r_qlNormalScale;
+
 
 /*
 ===============
@@ -1315,6 +1319,17 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			} else {
 				stage->normalMap = img;
 			}
+			SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "qlNoPerturb" ) )
+		{
+			/*
+			[QL] R20 Stage A opt-out. A surface whose diffuse texture already
+			paints the shape it wants - decals, screens, liquids, anything flat
+			by intent - says so here and keeps the flat fallback.
+			*/
+			stage->noNormalPerturb = qtrue;
 			SkipRestOfLine( text );
 			continue;
 		}
@@ -4027,6 +4042,49 @@ static shader_t *FinishShader( void ) {
 
 #ifdef USE_PMLIGHT
 	FindLightingBundle();
+
+	/*
+	[QL] R20 Stage A: derive the normal map here, and only for the one stage and
+	bundle the dynamic light pass will actually bind.
+
+	Not in ParseStage(), which is the obvious place and the wrong one. The
+	lighting stage is chosen by FindLightingStage() after the stages exist, and
+	FindLightingBundle() picks the bundle after multitexture collapsing - so at
+	parse time bundle[0] is not reliably the texture that gets lit, and on a
+	collapsed shader it is often the lightmap. Deriving per stage would also
+	generate a map for every HUD icon, sprite and skin in the game to use a
+	handful of them.
+
+	An explicit normalMap from the shader always wins; qlNoPerturb and an
+	underivable base both leave normalMap NULL and the light pass falls back to
+	tr.flatNormalImage, which is the identity.
+	*/
+	if ( r_qlNormalMaps->integer && shader.lightingStage >= 0 ) {
+		shaderStage_t *lstage = &stages[ shader.lightingStage ];
+		if ( !lstage->noNormalPerturb && lstage->normalMap == NULL ) {
+			lstage->normalMap = R_DeriveNormalMap( lstage->bundle[ shader.lightingBundle ].image[0],
+				r_qlNormalScale->value );
+			if ( lstage->normalMap ) {
+				/*
+				Counted apart from numNormalMappedStages on purpose. That one
+				answers "does Quake Live's art ship normal maps", and its answer
+				is 0 on every map; folding derived maps into it would erase the
+				fact and make the next reader think the art had changed.
+				*/
+				tr.numDerivedNormalMaps++;
+			} else {
+				/*
+				A derivation that fails does so silently - the re-read misses,
+				or the base is a lightmap or procedural - and the surface just
+				lights as it did. That is the right behaviour and the wrong
+				diagnostic, so the failures are counted too: "0 derived" with
+				no second number would look the same whether the feature was
+				working on art that declines it or not working at all.
+				*/
+				tr.numUnderivableStages++;
+			}
+		}
+	}
 #endif
 
 #if 1

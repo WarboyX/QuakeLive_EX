@@ -193,6 +193,10 @@ cvar_t	*r_defaultImage;
 
 cvar_t	*r_ambientScale;
 cvar_t	*r_directedScale;
+
+// [QL] R20 Stage A
+cvar_t	*r_qlNormalMaps;
+cvar_t	*r_qlNormalScale;
 cvar_t	*r_debugLight;
 cvar_t	*r_debugSort;
 cvar_t	*r_printShaders;
@@ -1850,6 +1854,21 @@ static void R_Register( void )
 	r_directedScale = ri.Cvar_Get( "r_directedScale", "1", CVAR_CHEAT );
 	ri.Cvar_SetDescription( r_directedScale, "Light grid direct light scaling on entity models." );
 
+	/*
+	[QL] R20 Stage A. Both are CVAR_LATCH and neither is CVAR_ARCHIVE.
+
+	Latched because the perturbation is baked into image bytes at shader-parse
+	time, not applied by a uniform: changing either value only means anything
+	once the shaders are re-parsed, and CVAR_LATCH is the engine saying so
+	instead of the value appearing to take and doing nothing. Not archived
+	because these are defaults we choose, and an archived default stops being a
+	default the first time a config is written.
+	*/
+	r_qlNormalMaps = ri.Cvar_Get( "r_qlNormalMaps", "1", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNormalMaps, "[QL] Perturb dynamically lit world surfaces with a normal map derived from their own texture. Takes effect on vid_restart." );
+	r_qlNormalScale = ri.Cvar_Get( "r_qlNormalScale", "0.5", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNormalScale, "[QL] Strength of derived normal-map perturbation. 1.0 tilts 45 degrees at a luminance slope of 32 per texel. Takes effect on vid_restart." );
+
 	//r_anaglyphMode = ri.Cvar_Get( "r_anaglyphMode", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	//ri.Cvar_SetDescription( r_anaglyphMode, "Enable rendering of anaglyph images. Valid options for 3D glasses types:\n 0: Disabled\n 1: Red-cyan\n 2: Red-blue\n 3: Red-green\n 4: Green-magenta" );
 
@@ -2570,8 +2589,8 @@ static void RE_EndRegistration( void ) {
 	answer. Registration ending is the first point at which the count is of
 	everything.
 	*/
-	ri.Printf( PRINT_ALL, "Materials: %i stage(s) with a normal map, %i with a specular map.\n",
-		tr.numNormalMappedStages, tr.numSpecularStages );
+	ri.Printf( PRINT_ALL, "Materials: %i stage(s) with a normal map, %i with a specular map; %i derived, %i underivable (R20).\n",
+		tr.numNormalMappedStages, tr.numSpecularStages, tr.numDerivedNormalMaps, tr.numUnderivableStages );
 
 #ifdef USE_VULKAN
 	vk_wait_idle();

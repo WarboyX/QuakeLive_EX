@@ -1256,6 +1256,182 @@ static const char *R_LoadImage( const char *name, byte **pic, int *width, int *h
 
 /*
 ===============
+R_GenerateNormalMap
+
+Derives a tangent-space normal map from a source image's luminance.
+
+Pure array math, no engine state: reads w*h RGBA8 and writes w*h RGBA8 with
+alpha 255. Alpha is not sampled by the light pass, but the upload path below is
+four bytes per pixel throughout - ResampleTexture() and R_MipMap2() both walk it
+as uint32 - so a three-byte buffer would be read past its end.
+
+A flat input yields exactly (128,128,255): the identity in tangent space. That
+is what makes an un-perturbed surface light exactly as it does today, so the
+rounding here is deliberate and not cosmetic. Truncating instead of rounding
+gives 127, a systematic tilt toward -u/-v on every derived map in the game.
+
+The gradient is a separable 5-tap kernel rather than a 3x3 Sobel so that low
+frequency detail survives and single-texel noise does not: uniform regions read
+exactly flat and only real edges carry slope. Edges clamp.
+
+Gain is ~72 output units per luminance-unit-per-pixel of slope, so at strength
+1.0 essentially any real texture edge saturates to maximum tilt. That is why
+r_qlNormalScale exists and why its default is not 1.
+===============
+*/
+static const int R_NormalSmooth[ 5 ] = { 1, 2, 3, 2, 1 };	// perpendicular smoothing (sum 9)
+static const int R_NormalDiff[ 5 ]   = { -1, -2, 0, 2, 1 };	// gradient central difference (sum 0)
+
+void R_GenerateNormalMap( const byte *rgba, int w, int h, float strength, byte *outRGBA ) {
+	int		x, y, dx, dy, xx, yy;
+	float	gx, gy, nx, ny, nz, inv, hv;
+	const byte *p;
+	byte	*o;
+
+	for ( y = 0; y < h; y++ ) {
+		for ( x = 0; x < w; x++ ) {
+			gx = 0.0f;
+			gy = 0.0f;
+			for ( dy = -2; dy <= 2; dy++ ) {
+				yy = y + dy;
+				if ( yy < 0 ) yy = 0; else if ( yy >= h ) yy = h - 1;
+				for ( dx = -2; dx <= 2; dx++ ) {
+					xx = x + dx;
+					if ( xx < 0 ) xx = 0; else if ( xx >= w ) xx = w - 1;
+					p = rgba + ( yy * w + xx ) * 4;
+					hv = 0.299f * p[0] + 0.587f * p[1] + 0.114f * p[2];
+					gx += R_NormalSmooth[ dy + 2 ] * R_NormalDiff[ dx + 2 ] * hv;	// smooth in y, differentiate in x
+					gy += R_NormalDiff[ dy + 2 ] * R_NormalSmooth[ dx + 2 ] * hv;	// differentiate in y, smooth in x
+				}
+			}
+
+			nx = -gx * strength;
+			ny = -gy * strength;
+			nz = 1.0f;
+			inv = 1.0f / (float)sqrt( nx * nx + ny * ny + nz * nz );
+
+			o = outRGBA + ( y * w + x ) * 4;
+			o[0] = (byte)( ( nx * inv * 0.5f + 0.5f ) * 255.0f + 0.5f );
+			o[1] = (byte)( ( ny * inv * 0.5f + 0.5f ) * 255.0f + 0.5f );
+			o[2] = (byte)( ( nz * inv * 0.5f + 0.5f ) * 255.0f + 0.5f );
+			o[3] = 255;
+		}
+	}
+}
+
+
+/*
+===============
+R_DeriveNormalMap
+
+Returns the normal map derived from base's luminance, creating it on first ask
+and caching it on base. NULL when there is nothing to derive from.
+
+The source pixels are re-read from the pak rather than kept in memory. Retaining
+a CPU copy of every texture is the obvious implementation and it does not fit:
+the copy alone is four bytes per texel of h_low for every image the game loads,
+against a 256 MB hunk shared with the BSP, and only the handful of textures that
+end up on a shader's lighting bundle are ever asked for one. Re-reading costs a
+decode per lit texture at map load and nothing at all afterwards.
+
+Called from FinishShader() for the stage the dynamic light pass will actually
+bind, which is not knowable at ParseStage() time: the lighting stage and bundle
+are chosen after stage collapsing, and the bundle is not always bundle 0.
+===============
+*/
+image_t *R_DeriveNormalMap( image_t *base, float strength ) {
+	char	nmName[ MAX_QPATH ];
+	byte	*pic, *out;
+	int		width, height;
+
+	if ( base == NULL || base->derivedNormalMap != NULL ) {
+		return base ? base->derivedNormalMap : NULL;
+	}
+
+	if ( base->derivationFailed ) {
+		return NULL;
+	}
+
+	/*
+	Lightmaps are light, not surface shape - deriving a normal from one carves
+	the baked lighting into the geometry. Both spellings have to be excluded:
+	the internal atlases carry IMGFLAG_LIGHTMAP, and the external maps/<map>/lm_
+	atlases come through R_FindImageFile as ordinary images and do not.
+	*/
+	if ( base->flags & IMGFLAG_LIGHTMAP ) {
+		base->derivationFailed = qtrue;
+		return NULL;
+	}
+	if ( Q_stristr( base->imgName, "maps/" ) == base->imgName && Q_stristr( base->imgName + 5, "/lm_" ) != NULL ) {
+		base->derivationFailed = qtrue;
+		return NULL;
+	}
+
+	// procedural images have no file to re-read
+	if ( base->imgName[0] == '*' ) {
+		base->derivationFailed = qtrue;
+		return NULL;
+	}
+
+	/*
+	imgName, not imgName2. imgName2 is only ever the base file name -
+	R_CreateImage() strips the directory off it deliberately, to record which
+	extension actually loaded without storing the path twice - so it is not
+	something R_LoadImage can open. imgName is the path the shader asked for,
+	and R_LoadImage does the same extension fallback here that it did when the
+	image was first loaded, so the two reads resolve to the same file.
+	*/
+	R_LoadImage( base->imgName, &pic, &width, &height );
+	if ( pic == NULL ) {
+		base->derivationFailed = qtrue;
+		return NULL;
+	}
+
+	/*
+	The kernel's gain is exact and worth writing down, because the scale is
+	meaningless without it. For a luminance ramp of slope s per pixel the inner
+	difference sums to s * SUM(Diff[dx]*dx) = 8s and the outer smoothing to
+	SUM(Smooth) = 9, so gx = 72s. Feeding that straight in saturates every real
+	texture edge to maximum tilt at a scale of 1.0.
+
+	Dividing by 72*32 puts the scale in surface terms: at r_qlNormalScale 1.0 a
+	luminance slope of 32 per pixel tilts the normal 45 degrees. Quake Live's
+	wall textures run roughly 10-30 per pixel across mortar lines and panel
+	seams, which is where the default of 0.5 comes from. That is arithmetic, not
+	a measurement - it is a starting point to tune against, not a result.
+	*/
+	out = ri.Malloc( width * height * 4 );
+	R_GenerateNormalMap( pic, width, height, strength / ( 72.0f * 32.0f ), out );
+
+	/*
+	R_CreateImage() drops with ERR_DROP on a name longer than MAX_QPATH, so the
+	prefix has to be built into a bounded buffer rather than through va() - a
+	handful of Quake Live's texture paths are long enough to hit it. Com_sprintf
+	truncates; two truncated names colliding costs nothing, since these are
+	never looked up by name.
+	*/
+	Com_sprintf( nmName, sizeof( nmName ), "*dnm_%s", base->imgName );
+
+	/*
+	IMGFLAG_NOLIGHTSCALE is not optional. This upload path gamma-corrects and
+	overbrights anything that does not say otherwise, and a normal map is data:
+	that is exactly how the previous attempt at this turned its flat fallback
+	into a 55 degree tilt. NO_COMPRESSION for the same reason - r_texturebits 16
+	would quantise the normals to five bits a channel.
+	*/
+	base->derivedNormalMap = R_CreateImage( nmName, NULL, out,
+		width, height, IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION |
+		( base->flags & ( IMGFLAG_MIPMAP | IMGFLAG_PICMIP | IMGFLAG_CLAMPTOEDGE ) ) );
+
+	ri.Free( out );
+	ri.Free( pic );
+
+	return base->derivedNormalMap;
+}
+
+
+/*
+===============
 R_FindImageFile
 
 Finds or loads the given image.

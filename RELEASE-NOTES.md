@@ -246,6 +246,27 @@ in and which client sees it. Worth knowing before you run a server:
   undistorted and has no depth-based colour, so the surface reflects properly
   but does not yet read as having anything behind it.
 
+- **Surface detail under dynamic lights, `r_qlNormalMaps`.** New, on by default,
+  and **not yet tested in play** — it compiles and its maths is verified, which
+  is not the same thing. Quake Live's rock and brick read as flat planes with a
+  photograph on them; this derives a normal map from each lit surface's own
+  texture at load and perturbs the normal the dynamic light pass shades with, so
+  a rocket flying past a wall lights the bumps that are painted on it. No new
+  assets and no geometry change.
+
+  **A still scene is unchanged.** The sunlight and shadow on those surfaces is a
+  baked lightmap and this does not touch it; it is only what rockets, impacts,
+  muzzle flashes and plasma do. `r_qlNormalScale` (default `0.5`) sets the
+  strength — `1.0` means a luminance slope of 32 per texel tilts the normal 45
+  degrees. Both cvars are latched, because the strength is baked into the image
+  at load, so a change needs a `vid_restart` and the engine says so rather than
+  appearing to take and doing nothing.
+
+  Luminance-as-height is honest for rock, brick and gravel and wrong wherever a
+  texture is light and dark for some other reason — signs, posters, lettering
+  will grow bumps that track the artwork. A shader declines with `qlNoPerturb`,
+  and `r_qlNormalMaps 0` plus `vid_restart` turns the whole thing off.
+
 ## Before cutting the release
 
 `developer` still defaults to `1` (`common.c`), and `cg_scoreboardDebug` /

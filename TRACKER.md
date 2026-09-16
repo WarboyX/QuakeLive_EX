@@ -4856,7 +4856,7 @@ nothing to read.
 
 ---
 
-### R20. Surface detail from the textures we already have — SCOPED, not started
+### R20. Surface detail from the textures we already have — STAGE A BUILT, untested in play
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
 Quake Live's rock, brick and gravel read as flat planes with a photograph on
@@ -4899,6 +4899,80 @@ obvious and temporary rather than baked into every frame.
 rocks is a baked lightmap. Standing still with nothing flying past, the rocks
 look exactly as they do now. Worth saying plainly, because "make the rocks look
 better" usually means the static case.
+
+**Stage A is built and compiles; it has not been seen running.** Derivation in
+`R_DeriveNormalMap` (tr_image.c), the tangent basis and perturbation in
+`light_frag.tmpl`, the bind in `VK_LightingPass`, `r_qlNormalMaps` and
+`r_qlNormalScale` in tr_init.c. Both cvars are `CVAR_LATCH` and neither is
+archived: the strength is baked into image bytes at parse time, so the value
+means nothing until the shaders are re-parsed, and latching is the engine saying
+that rather than the value appearing to take and doing nothing.
+
+A first draft of this arrived as a written handoff from another model. Four
+things in it were right and are kept, and four were wrong. Recording both,
+because the wrong ones are the kind a build does not catch.
+
+*Right, and verified here rather than taken:* Cramer's rule on the 2x2 UV
+Jacobian is `T = (duv2.y*dPdx - duv1.y*dPdy)/det`, and the `duv2.x` version an
+earlier draft had agrees with it on axis-aligned UVs, mirrors it on rotated ones
+and skews it on sheared ones — so an axis-aligned test wall proves nothing about
+it. Writing the derived map as RGB would have been a buffer overrun:
+`ResampleTexture` and `R_MipMap2` both walk the upload buffer as uint32.
+`IMGFLAG_NOLIGHTSCALE` is mandatory. The kernel's gain really is 72 per
+luminance-unit per pixel — inner `SUM(Diff[dx]*dx)` = 8, outer `SUM(Smooth)` = 9
+— which is why a strength of 1.0 saturates every real texture edge.
+
+*Wrong 1 — the derivation was in the wrong place.* The draft derived at the end
+of `ParseStage()` from `bundle[0].image[0]`. The dynamic light pass binds
+`pStage->bundle[shader.lightingBundle]`, and both the stage and the bundle are
+chosen *after* parsing, by `FindLightingStage()` and `FindLightingBundle()`,
+after multitexture collapsing. On a collapsed shader bundle 0 is frequently the
+lightmap. It would also have derived a map for every HUD icon, sprite and player
+skin in the game in order to use a handful of them. Moved to just after
+`FindLightingBundle()`, keyed on the stage and bundle that actually get bound.
+
+*Wrong 2 — retaining a CPU copy of every texture.* The draft kept
+`image->cpuPixels` for every non-lightmap image, forever, so a normal map could
+be derived later. That is 4 bytes per texel of `h_low` per image against a
+256 MB hunk shared with the BSP — and the draft's derived-map path then
+allocated a second never-freed buffer and, because it created the derived image
+through `R_CreateImage` with `pic != NULL`, made that image retain a third copy.
+Roughly 12 bytes per texel per texture, none of it freed. Replaced with a re-read
+of the file at derivation time: one decode per lit texture at map load, nothing
+retained afterwards.
+
+*Wrong 3 — truncation.* `(byte)((n*0.5+0.5)*255.0)` gives **127** on a flat
+input, not 128, so every derived map in the game would carry a systematic tilt
+toward -u/-v. The draft measured this and called it acceptable. Rounding is free,
+and the identity is the whole basis of "a surface without a map lights exactly as
+it did", so it is now exact: verified 128,128,255 on every pixel of a flat field.
+
+*Wrong 4 — differentiating a centroid varying.* `frag_tex_coord` is declared
+`centroid` in `light_frag.tmpl`. Centroid interpolation moves the sample point
+inside the covered part of a partly covered pixel, which makes its screen-space
+derivative wrong on exactly the pixels along every triangle edge — with MSAA on,
+a thin wrong-tangent line around every face, which is the same *shape* of
+artifact as the slits of light that got this feature removed the first time.
+Sampling wants the centroid value; differentiating wants the plain one. They are
+now two varyings, `frag_tex_coord` and `tc_lin`.
+
+**The scale is arithmetic, not a measurement.** Gain 72 per luminance-unit per
+pixel, divided by 72*32 so that `r_qlNormalScale 1.0` means "a luminance slope of
+32 per texel tilts the normal 45 degrees" — verified at exactly 45.00 degrees.
+Quake Live's wall textures run roughly 10-30 per texel across mortar lines, hence
+the default of 0.5. That is a starting point to tune against and nothing more.
+
+**What a build cannot tell us, and what to look at first:** whether the bumps
+point the right way. A mirrored tangent still produces finite, plausible-looking
+bumps lit from the wrong side, and it is invisible on an axis-aligned wall. Take
+a rocket past a wall whose texture is rotated or sheared and check the lit side
+of each bump against the texture's own light and dark. `r_qlNormalMaps 0` plus
+`vid_restart` must restore the previous lighting exactly.
+
+**Counted separately on purpose.** The registration line now reads
+`Materials: N stage(s) with a normal map, M with a specular map, K derived (R20)`.
+N has been 0 on every map and that fact is worth keeping visible; folding the
+derived maps into it would make the next reader think the art had changed.
 
 **MEASURED, by `/maplights`.** Two maps, both the same answer:
 
