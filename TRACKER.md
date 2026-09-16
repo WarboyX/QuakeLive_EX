@@ -11,12 +11,12 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 
 | Area | Progress | Notes |
 |---|---|---|
-| **Client / UI** (U) | `███████████████░░░░░  12/16` | U18 root-caused: missing commas, not the string pool |
-| **Client / cgame** (C) | `████████████████████  9/9` | C12: the scoreboard panel is an ad slot, not a levelshot |
-| **Renderer** (R) | `███████████░░░░░░░░░  10/18` | R8 root-caused: unclamped `dot(N,L)` subtracting light |
-| **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
-| **Engine / server** (E) | `████████░░░░░░░░░░░░  7/14` | E11: map_restart ran GAME_INIT twice |
-| **Overall** | `█████████████░░░░░░░  39/62` | by binary: 13 server · 46 client · 3 both |
+| **Client / UI** (U) | `████████████████░░░░  14/17` | U11/U2 partial, U4 open; R24 is the live one - our own pages need a rebuild |
+| **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
+| **Renderer** (R) | `████████░░░░░░░░░░░░  10/24` | R20 Stage A built and untested; R19 step 8 built and untested; R24 menus open |
+| **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
+| **Engine / server** (E) | `███████████████░░░░░  69/93` | E92/E93 new, both found by reading: a double registration and a dead networked field |
+| **Overall** | `██████████████░░░░░░  123/174` | by binary: 66 server · 91 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -3300,7 +3300,7 @@ intermission summary and wrong for a hold-to-view `+scores`. It needs either a
 toggled scoreboard mode (press to open, mouse works, press to close) or a
 modifier, and which one is a preference. Not guessed at.
 
-### E39. Animated textures run at a speed that varies with framerate — NEEDS TEST
+### E94. Animated textures run at a speed that varies with framerate — NEEDS TEST
 **Lives in:** our **client** (client engine / renderer) · **Seen by:** our client only
 
 Reported with two examples — a liquid pool and a set of jump pads — both visibly
@@ -3366,7 +3366,7 @@ it at `r_shaderTimeSource 0`, then `r_shaderTimeSource 1`, then cap framerate
 
 Left open until that comparison is run.
 
-### E40. macOS arm64 (Apple Silicon) build — BUILDABLE ON A MAC, NOT FROM HERE
+### E95. macOS arm64 (Apple Silicon) build — BUILDABLE ON A MAC, NOT FROM HERE
 **Lives in:** build system · **Seen by:** n/a
 
 **Why it cannot be cross-compiled the way Windows is.** `package-release.sh`
@@ -3475,7 +3475,7 @@ past the end. This is also why the warning was x86-only: the ARM fallback uses
 width, but a toolchain that packs enums to the smallest type that fits — which
 `-fshort-enums` does, and which is the default on some bare ARM targets — would
 truncate 2 and 3 to 1 and make the scoreboard and the HUD editor
-indistinguishable. Now `int`. Directly relevant to E40: this is the class of bug
+indistinguishable. Now `int`. Directly relevant to E95: this is the class of bug
 that only appears when you actually build for another architecture.
 
 **`Cvar_VariableString` returned `char *` into cvar-owned storage.** The
@@ -3527,7 +3527,7 @@ everyone else. The print is what makes it findable; relaxing the range to allow
 - `8dfedc6` / `d07bf88` "Remove architecture from binary filenames" /
   `USE_ARCHLESS_FILENAMES` — the engine finds its modules as
   `cgame{ARCH_STRING}{DLL_EXT}` inside `iobin.pk3`, and that naming is what lets
-  one pak serve every platform at one `sv_pure` checksum (E40). Taking this
+  one pak serve every platform at one `sv_pure` checksum (E95). Taking this
   would break that on purpose.
 - `3e0b279` / `0912659` / `858ccc9` / `2c91b38`, all the VM and JIT work — there
   is no QVM layer in this tree at all.
@@ -3598,11 +3598,11 @@ the old loop back if that spin costs more than the smoothness is worth.
 below, so `cls.realtime`, `cl.serverTime`, `cg.time` and `level.time` still
 advance in whole milliseconds exactly as before, and nothing on the wire moves.
 
-**Bearing on E39.** This is not the animated-texture bug, and checking ruled it
+**Bearing on E94.** This is not the animated-texture bug, and checking ruled it
 out rather than confirming it: because `minMsec` is floored at 1, `msec` is never
 0 in the current code, so `Com_ModifyMsec`'s floor never fires and `cls.realtime`
 never outruns the wall clock. Worth stating explicitly, since "time runs fast in
-proportion to framerate" is exactly the shape E39 describes and this is the one
+proportion to framerate" is exactly the shape E94 describes and this is the one
 mechanism in the engine that could produce it. It is disarmed today — and
 lifting the fps ceiling is precisely what would arm it.
 
@@ -4974,6 +4974,63 @@ of each bump against the texture's own light and dark. `r_qlNormalMaps 0` plus
 N has been 0 on every map and that fact is worth keeping visible; folding the
 derived maps into it would make the next reader think the art had changed.
 
+**The test map now tests it, which it previously could not.**
+`content/testmaps/qltest_light.map`, built by `content/testmaps/build-testmap.sh`
+into `qltest_light.pk3`. The name matters: the pk3 was `qltest.pk3` for one
+round and `/map qltest` finds nothing, because the map inside is
+`qltest_light.bsp`. Pk3 and map share a name now.
+
+The map had 48 faces, all at texture rotation 0, and an axis-aligned UV is
+exactly where a mirrored tangent is invisible — so it could not have failed the
+one check that matters. Seven panels stand against the +Y wall, all on the same
+texture so the derived map is a constant and the tangent basis is the only
+variable:
+
+| panel | UV | what it catches |
+|---|---|---|
+| 0 | 0° | baseline the rest are read against |
+| 1-3 | 45°, 90°, 135° | mirrored tangent; 90° is the case 0° hides |
+| 4 | 30° at 0.25 x 0.125 | a real shear, not just anisotropy |
+| 5 | `qlNoPerturb` | the opt-out; must stay flat |
+| 6 | lightmap stage first | lighting bundle 1, not 0 — the ParseStage defect |
+
+Read with a rocket fired along the row, not with the static lighting: the map's
+two lights are entities, baked at compile time, and Stage A does not touch them.
+
+The texture is **ours** — `textures/qltest/tangent`, generated, a sawtooth that
+ramps over 16 texels then drops off a cliff, horizontally in the top half and
+vertically in the bottom. A ramp is a constant luminance slope, so it derives to
+a constant tilt and lights as a flat band, and *which* band is bright is the
+sign of the tangent. A photograph of brick does not answer that. It also removes
+the pak00 dependency, which is not only a licensing point: q3map2 converts the
+`.map`'s texture axes into UVs using the image's real dimensions, so compiling
+against a texture it cannot find silently gives the wrong scale.
+
+**Verified by compiling and reading the result back**, because the last time
+geometry went in here uncompiled all 48 planes were wound backwards and made a
+1188-byte BSP with zero surfaces. This one: IBSP v47, 51 surfaces, 2 lights
+kept, and the panels' UV spans read out of the drawvert lump as 0.94x2.00 at 0°,
+2.00x0.94 at 90°, 2.08 square at 45° and 135°, 1.81x4.40 sheared, with panels 5
+and 6 identical to panel 0 so they are directly comparable. `CM_LoadMap`
+succeeds on our own dedicated server.
+
+**BSP version 47 needs no patched compiler.** `-game quakelive` is a stock
+profile in id-tech-3-tools/map-compiler (`src/game_quakelive.h`, `47 /* bsp file
+version */`). Our loader takes 46 as well — v47 is v46 plus
+LUMP_ADVERTISEMENTS, `qfiles.h` says so — so a `-game quake3` build also loads;
+47 is simply what the real maps are.
+
+**Two silent compile traps, both found by compiling rather than reading:**
+
+- q3map2 loads **only** the `.shader` files named in `scripts/shaderlist.txt`.
+  Without it the test shaders are never parsed and their panels come out at the
+  wrong UV scale, reported as one `Couldn't find image for shader` line. The
+  engine has no such list and loads every `.shader` it finds, so this is a
+  compile-time requirement with no run-time symptom to lead you back to it.
+- The `textures/` prefix rule is **inverted** between the two files. A face in
+  the `.map` writes `qltest/tangent` and q3map2 adds the prefix; a shader block
+  in the `.shader` must be named `textures/qltest/noperturb` in full.
+
 **MEASURED, by `/maplights`.** Two maps, both the same answer:
 
 ```
@@ -5159,6 +5216,58 @@ stating because event-driven ripples are the obvious next step and they change
 nothing about that: cgame already knows about water impacts, and drawing them is
 a client-side redraw. A *server* cvar that changed what water looks like would
 be the `Seen by` trap, and is not what this is.
+
+**Step 8, event-driven ripples, foam and wake — BUILT, NOT VALIDATED IN PLAY.**
+Shipped in `7895ff8`. Everything below is written and compiles; none of it has
+been confirmed on screen, and the last four times something in this feature
+looked finished it was not.
+
+`RE_AddWaterRipple(origin, radius, strength)` queues a ripple; `ssr.tmpl`'s
+`rippleSurface()` sums the live ones into the same height/gradient the waves
+feed, so a ripple is a wave with a moving envelope rather than a second system.
+Emitters (rockets, plasma in flight) add a ray/sphere glow. Foam comes off the
+ripple's **envelope**, `rip.w`, not its instantaneous height.
+
+Who raises them: `CG_WaterRipple()` in `cg_event.c` on impacts, sized per weapon
+by `CG_WaterImpactSize()`; `CG_ShotgunPellet()` raises one per pellet so the
+pattern is the spread rather than one big disc; `CG_Player()` raises a wake on a
+110 ms throttle behind an 8-unit movement gate.
+
+**Five wrong answers, all mine, all recorded because none of them were visible
+as wrong:**
+
+1. *Ripples never drew at all.* `RE_AddWaterRipple` stamped `startTime` from
+   `tr.refdef.time`, which is whatever the last scene set — and cgame renders
+   3D HUD icons through their own refdefs, so the stamp came from an icon's
+   clock and every ripple was already expired. Found by a diagnostic line
+   printing `1 dropped as expired (now 10.21s)`, not by reading the code. Now
+   stamped lazily from `backEnd.refdef.time` behind a `startTime < 0` sentinel.
+2. *Ripples landed in the wrong place.* The impact event carries the **floor**
+   position, not where the shot crossed the water. Walking the surface upward
+   only corrected Z, so they sat short of the entry point. Fixed by lerping the
+   ray from the shooter's eye against the water plane.
+3. *Foam invisible — three separate causes, in sequence.* Gated inside
+   `r_waterWaves` so it vanished with the waves; driven off `abs(rip.x)`, the
+   instantaneous height, instead of the envelope, so it flickered at the
+   wave rate; and sampled at the **displaced** point, so it sheared along the
+   view ray and tilted instead of lying flat on the surface.
+4. *Rocket impacts weaker than plasma.* The per-weapon table had them the wrong
+   way round.
+5. *Shotgun made one disc.* It fired a single ripple from the shot origin
+   instead of one per pellet.
+
+**What to check, since none of it is confirmed:** foam placement and whether it
+reads as level rather than tilted; ripple entry point against where the shot
+actually crossed; the per-weapon sizes against each other; whether the wake
+follows a swimming player or only fires once; whether the shotgun's pattern
+matches its spread. `r_waterFoam` exists as its own cvar so foam can be isolated
+from the rest.
+
+**Known scruffiness, not yet fixed:** `tr_scene.c:561` prints a developer line
+per ripple, and `developer` defaults to `1` in this tree, so play fills the
+console. Either drop it to a counter or put it behind `r_ssrDebug`. Tracked here
+rather than left as a TODO in the file because the last three of these were
+found by reading console output, and this is now burying it.
 
 **Step 6, the cause: the occlusion pass declared depth `STORE_OP_DONT_CARE`.**
 
@@ -5724,6 +5833,115 @@ Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
 ---
 
 ## Engine / server
+
+### R24. The Render and Ray Tracing menus have outgrown their layout — OPEN
+**Lives in:** our **client** (`content/pak01/ui/main.menu`) · **Seen by:** our client only
+
+Reported with a screenshot, and it is not a matter of taste: on the Ray Tracing
+page the two help lines at y=398 and y=414 draw **on top of** the "Lights clear
+AO" row at y=400 and the "Water reflections" row at y=422, and `APPLY` sits at
+y=452 with height 24 inside a window that is 468 tall, so it renders outside its
+own border.
+
+**The cause is the method, not the numbers.** Every `rect` on the page is a hand
+-picked absolute coordinate. Rows were appended as cvars landed - AO, then beam
+lights, then denoise, then `r_ssr` - and nothing checks that a new y does not
+already belong to something else. `tools/check-menus.py` catches unbalanced
+braces and unresolvable open/close targets, which is the failure that makes a
+menu silently merge into the next one, but it has never had an opinion about
+geometry. So the parser is happy, the console is quiet, and the page is wrong
+only where you are looking.
+
+Two things follow, and the second matters more than the first:
+
+- Lay both pages out on a computed row grid rather than by hand, so a row's y
+  is derived from its index and collisions are not expressible.
+- Teach `check-menus.py` to fail on overlapping item rects and on any item that
+  extends past its `menuDef`'s rect. This is exactly the shape of defect the
+  other checkers in `tools/` exist for - loud in principle, silent where you
+  look - and it is the only one of them that has no check.
+
+The Render page also needs filling out: the renderer keeps gaining cvars
+(`r_qlNormalMaps`, `r_qlNormalScale`, `r_waterFoam` and the five `r_waterWave*`)
+and none of them have a home in the menus, which is how a shipped default
+becomes something only the console knows about.
+
+---
+
+### E92. `fraglimit` is registered twice, with different defaults — OPEN
+**Lives in:** our **server** (engine and qagame) · **Seen by:** every client — it is a `CVAR_SERVERINFO` value
+
+`sv_init.c:797` registers it `"20"` `CVAR_SERVERINFO`; `g_main.c:661` registers
+it `"50"` `CVAR_GAMERULE | CVAR_NORESTART | CVAR_SERVERINFO`. Which default wins
+depends on which runs first, and `Cvar_Get` keeps the existing value when a cvar
+already exists, so the engine's 20 wins on a cold start and the game's 50 is
+never seen - but a `game_restart` or a VM reload can reorder that.
+
+Not yet reproduced in play; found by reading. Worth settling either way, because
+a server whose advertised fraglimit depends on startup order is the kind of
+thing that gets noticed as "the server said 20 and the match ended at 20" long
+after anyone would connect it to two registrations.
+
+---
+
+### E93. `crouchTime` is networked and read by nothing — OPEN
+**Lives in:** our **server** (`bg_pmove.c`, `msg.c`) · **Seen by:** every client — it is a `playerState_t` field
+
+`q_shared.h:1115` declares it, `msg.c:1148` sends it as 32 bits of every
+`playerState_t`, and `bg_pmove.c:1706` writes it. **Nothing reads it.**
+
+It is also written wrong for what its comment claims. The guard is
+`if (crouchTime == 0) crouchTime = pm->cmd.serverTime;` and nothing anywhere
+sets it back to 0, so it records the first crouch of a life and then never
+changes - it is not "crouch start time", it is "time of first ever crouch".
+
+This is E8's shape moved into the playerState: a field that looks like a
+setting, costs wire space, and changes nothing. Either give it a reader and a
+reset or delete it - but note it is a **networked** field, so removing it
+changes the `playerState_t` layout and both binaries have to ship together.
+
+---
+
+### C39. Crouching bounces the view — OPEN, one confirmed defect and two candidates
+**Lives in:** our **server** (`bg_pmove.c`) and possibly our **client** (`cg_view.c`) · **Seen by:** every client if it is pmove, our client only if it is view smoothing
+
+Reported in play: "if I crouch, I bounce".
+
+**Confirmed by reading, independent of whether it is the cause.** In
+`PM_CheckDuck` (`bg_pmove.c:1720`):
+
+```c
+if (pm->ps->crouchSlideTime == 0 && (pm->ps->pm_flags & PMF_CROUCH_SLIDE)
+    && pm->ps->speed < 400) {
+    pm->ps->speed = 400;
+}
+```
+
+The comment says "ensure minimum speed of 400 when **starting** a slide", and it
+does not start anything. `crouchSlideTime` is only ever *incremented* in
+`PM_AirMove` (line 996) and that path requires `cmd.upmove >= 0` - it cannot run
+while crouch is held. `PM_DropTimers` only *decrements* it, and only when it is
+already non-zero. So while you hold crouch on the ground it stays 0 and this
+branch re-applies `speed = 400` **every frame**, permanently, instead of once.
+`PM_WalkMove` then clamps `wishspeed` to `speed * 0.75`. A speed floor that
+re-arms every frame fighting friction is exactly the shape that produces a
+stutter.
+
+**Two candidate mechanisms for the bounce itself, not yet separated:**
+
+1. *Physics.* The above, driving a velocity oscillation, which reaches the view
+   through `cg.xyspeed` (`cg_view.c:833`, from `ps->velocity`) and the bob cycle.
+2. *View smoothing.* `cg_view.c:394` offsets the view by
+   `cg.duckChange * (DUCK_TIME - timeDelta) / DUCK_TIME`. If `PMF_DUCKED` is
+   being set and cleared repeatedly, `duckTime` re-arms and the view rocks with
+   nothing wrong in the physics at all.
+
+**The test that separates them is `cg_thirdPerson 1`.** If the player model
+bounces, it is pmove and every client sees it. If only the camera moves, it is
+`cg_view.c` and it is ours alone. That distinction is the whole "Lives in" /
+"Seen by" split and it has not been run yet, so both lines above are provisional.
+
+---
 
 ### E8. 186 cvars are registered but read by nothing — OPEN, survey done
 **Lives in:** our **client and server** both · **Seen by:** every client, vanilla included — game cvars are server side, cgame/ui cvars client side
@@ -8839,7 +9057,7 @@ compiler warnings in engine code).
 | Command | Scope | What it reports |
 |---|---|---|
 | `cg_debugShotgun 1` | client, in-map | Per blast: fire direction vs view axis, muzzle vs camera, resolved pattern parameters, pellet spread off the crosshair |
-| `r_shaderTimeSource 0/1` | client, in-map | Switches shader animation between scene time (`cg.time`) and the real-time clock. If 1 is steady where 0 is not, uneven animation is `cg.time`, not the renderer (E39) |
+| `r_shaderTimeSource 0/1` | client, in-map | Switches shader animation between scene time (`cg.time`) and the real-time clock. If 1 is steady where 0 is not, uneven animation is `cg.time`, not the renderer (E94) |
 | `com_framePacing 0/1` | client | Frame limiter ruler: 1 sleeps in microseconds (even spacing at any rate), 0 is the old whole-millisecond loop. Does not change the 1000 fps ceiling — see E43 for why that is the clock and not a limiter |
 | `menu_open <name>` | client | Opens any loaded menu by name |
 | `menu_close <name>` | client | Closes it |

@@ -1,5 +1,5 @@
 #!/bin/sh
-# [QL] Build content/testmaps/qltest_light.map into a loadable qltest.pk3.
+# [QL] Build content/testmaps/qltest_light.map into a loadable qltest_light.pk3 (named to match the map, so /map qltest_light is the pk3 name too).
 #
 # Output goes to content/testmaps/out/, which is gitignored - a compiled BSP is
 # build output and does not belong in the tree, the same rule release/ follows.
@@ -80,9 +80,9 @@ mkdir -p "$pk3/maps" "$pk3/scripts" "$pk3/textures/qltest"
 cp "$bsp" "$pk3/maps/"
 cp "$here/qltest.shader" "$here/shaderlist.txt" "$pk3/scripts/"
 cp "$here/textures/tangent.tga" "$pk3/textures/qltest/"
-rm -f "$out/qltest.pk3"
-( cd "$pk3" && zip -qr "$out/qltest.pk3" . )
+rm -f "$out/qltest_light.pk3"
+( cd "$pk3" && zip -qr "$out/qltest_light.pk3" . )
 
 echo
-echo "wrote $out/qltest.pk3"
+echo "wrote $out/qltest_light.pk3"
 echo "drop it in baseq3/ next to pak00.pk3, then:  /map qltest_light"
