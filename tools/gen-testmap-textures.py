@@ -37,23 +37,34 @@ def write_tga(name, rows):
     to (1,0,0) - a normal lying flat in the tangent plane with no z at all - and
     every authored map is silently meaningless. That shipped once.
     """
-    data = b"".join(bytes(r[i + 2 - 2 * (i % 3)] for i in range(len(r)))
+    # 3 bytes a texel is BGR, 4 is BGRA - and alpha is not decoration here, it
+    # is the height field the parallax march reads. A normal map without it
+    # cannot self-occlude, which is the difference between shading that looks
+    # painted on and detail that hides what is behind it.
+    n = len(rows[0]) // W
+    data = b"".join(bytes(r[(i // n) * n + (2 - i % n if i % n < 3 else 3)]
+                          for i in range(len(r)))
                     for r in reversed(rows))
-    hdr = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, W, H, 24, 0)
+    hdr = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, W, H, 8 * n,
+                      8 if n == 4 else 0)
     path = os.path.join(OUT, name)
     open(path, "wb").write(hdr + data)
     print("  %-18s %7d bytes" % (name, len(hdr) + len(data)))
 
 
-def encode(nx, ny, nz):
-    """Unit normal to RGB. Rounds - truncating puts 127 where 128 belongs and
-    tilts every flat texel toward -u/-v, which is a bias over the whole sheet."""
+def encode(nx, ny, nz, h=None):
+    """Unit normal to RGB, and the height to A when one is given. Rounds -
+    truncating puts 127 where 128 belongs and tilts every flat texel toward
+    -u/-v, which is a bias over the whole sheet."""
     m = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
-    return bytes((
+    out = [
         max(0, min(255, int((nx / m * 0.5 + 0.5) * 255.0 + 0.5))),
         max(0, min(255, int((ny / m * 0.5 + 0.5) * 255.0 + 0.5))),
         max(0, min(255, int((nz / m * 0.5 + 0.5) * 255.0 + 0.5))),
-    ))
+    ]
+    if h is not None:
+        out.append(max(0, min(255, int(h * 255.0 + 0.5))))
+    return bytes(out)
 
 
 def domes(cell=64, radius=26):
@@ -66,13 +77,14 @@ def domes(cell=64, radius=26):
             dy = (y % cell) - cell / 2.0 + 0.5
             r2 = dx * dx + dy * dy
             if r2 >= radius * radius:
-                row += encode(0.0, 0.0, 1.0)          # flat between the domes
+                row += encode(0.0, 0.0, 1.0, 0.0)     # flat between the domes
             else:
                 nx = dx / radius
                 ny = dy / radius
                 # OpenGL convention: +Y is up in texture space, and v runs down,
                 # so the y component is negated relative to the pixel axis.
-                row += encode(nx, -ny, math.sqrt(max(0.0, 1.0 - r2 / (radius * radius))))
+                hz = math.sqrt(max(0.0, 1.0 - r2 / (radius * radius)))
+                row += encode(nx, -ny, hz, hz)
         rows.append(bytes(row))
     return rows
 
@@ -133,14 +145,15 @@ def _clampb(v):
 
 
 def normals_from_height(height, scale):
-    """Central differences, wrapping, so the sheet tiles."""
+    """Central differences, wrapping, so the sheet tiles. Alpha carries the
+    height itself, which is what the parallax march steps through."""
     rows = []
     for y in range(H):
         row = bytearray()
         for x in range(W):
             hx = height[y][(x + 1) % W] - height[y][(x - 1) % W]
             hy = height[(y + 1) % H][x] - height[(y - 1) % H][x]
-            row += encode(-hx * scale, hy * scale, 1.0)
+            row += encode(-hx * scale, hy * scale, 1.0, height[y][x])
         rows.append(bytes(row))
     return rows
 

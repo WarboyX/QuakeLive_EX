@@ -57,6 +57,8 @@ shaderCommands_t	tess;
 // USE_PMLIGHT block that carries the other renderer cvars this file reaches for.
 extern cvar_t	*r_deluxeMapping;
 extern cvar_t	*r_qlBumpScale;
+extern cvar_t	*r_qlParallax;
+extern cvar_t	*r_qlBumpSpecular;
 #ifndef USE_VULKAN
 static qboolean	setArraysOnce;
 #endif
@@ -1291,7 +1293,7 @@ static void VK_BumpPass( void )
 	and is the one thing worth being able to look at on a map with no
 	deluxemaps at all.
 	*/
-	if ( tr.world == NULL || ( !tr.world->deluxeMaps && r_deluxeMapping->integer != 5 ) )
+	if ( tr.world == NULL || ( !tr.world->deluxeMaps && r_deluxeMapping->integer != 5 && r_deluxeMapping->integer != 6 ) )
 		return;
 
 	if ( tess.shader->lightingStage < 0 || tess.shader->numUnfoggedPasses < 1 )
@@ -1318,11 +1320,11 @@ static void VK_BumpPass( void )
 	if ( dmap == NULL || dmap->descriptor == VK_NULL_HANDLE )
 		return;
 
-	debug = r_deluxeMapping->integer - 1;	// 2..5 -> 1..4, 1 -> 0
+	debug = r_deluxeMapping->integer - 1;	// 2..6 -> 1..5, 1 -> 0
 	if ( debug < 0 )
 		debug = 0;
-	if ( debug > 4 )
-		debug = 4;
+	if ( debug > 5 )
+		debug = 5;
 
 	Com_Memset( &def, 0, sizeof( def ) );
 	def.shader_type = TYPE_BUMP;
@@ -1349,6 +1351,12 @@ static void VK_BumpPass( void )
 	if ( def.bump_scale < 0.0f ) def.bump_scale = 0.0f;
 	if ( def.bump_scale > 1.0f ) def.bump_scale = 1.0f;
 	def.bump_debug = debug;
+	def.bump_parallax = (float)( (int)( r_qlParallax->value * 1000.0f + 0.5f ) ) / 1000.0f;
+	if ( def.bump_parallax < 0.0f ) def.bump_parallax = 0.0f;
+	if ( def.bump_parallax > 0.25f ) def.bump_parallax = 0.25f;
+	def.bump_specular = (float)( (int)( r_qlBumpSpecular->value * 100.0f + 0.5f ) ) / 100.0f;
+	if ( def.bump_specular < 0.0f ) def.bump_specular = 0.0f;
+	if ( def.bump_specular > 4.0f ) def.bump_specular = 4.0f;
 
 	/*
 	Which texcoord set carries which. The vertex attributes arrive in bundle
@@ -1359,6 +1367,21 @@ static void VK_BumpPass( void )
 	def.bump_tc_swap = ( tess.shader->lightingBundle != 0 ) ? 1 : 0;
 
 	pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
+
+	/*
+	Parallax and specular both need to know where the eye is, and this pass has
+	no uniform block of its own - so it borrows the light path's. Only eyePos is
+	filled; bump.frag declares the same leading four vec4s so set 0 means the
+	same thing here as everywhere else, and reads the first.
+	*/
+	{
+		vkUniform_t u;
+		Com_Memset( &u, 0, sizeof( u ) );
+		VectorCopy( backEnd.or.viewOrigin, u.eyePos );
+		u.eyePos[3] = 0.0f;
+		if ( VK_PushUniform( &u ) == ~0U )
+			return;	// no uniform space left this frame
+	}
 
 	vk_update_descriptor( VK_DESC_TEXTURE0, nmap->descriptor );
 	vk_update_descriptor( VK_DESC_TEXTURE1, dmap->descriptor );

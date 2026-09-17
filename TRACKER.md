@@ -6000,6 +6000,57 @@ basis, not the light - so it is the first thing to look at when the other views
 disagree, and the only one worth having on a map with no deluxemaps at all. It
 is also what would have caught the BGR channel swap immediately.
 
+### R25c. Parallax and specular — the two reasons a normal map reads as paint
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported as "the bumpmaps aren't adding depth", and the report is right for
+reasons that are not about the normal map's strength at all. Three causes, and
+only the third is what anyone would call a bug.
+
+**1. No self-occlusion, and a normal map structurally cannot have any.** It
+changes how a flat surface answers light and changes nothing about *where its
+detail sits*. At a grazing angle a brick never hides the mortar behind it, so
+the wall stays visibly flat however hard the shading is pushed. Only moving the
+lookup fixes that.
+
+`r_qlParallax` marches the view ray through a height field in tangent space and
+offsets the texture lookup - steep parallax, with a linear step back across the
+crossing so it does not stair-step. Height rides in the normal map's **alpha**,
+so it costs no extra texture and no extra binding.
+
+Nothing displaces a vertex. Geometry, silhouette and collision are untouched,
+which is exactly what separates this from R21 - no `tessellationShader` device
+feature, and no desync between what is drawn and what the server traces against.
+R21 remains parked and this does not unpark it.
+
+**2. No specular, and a lightmap can never supply one.** A diffuse-only bump is
+a smooth gradient across each bump, and the eye reads a smooth gradient as
+paint. What says "relief" is a highlight that *moves when you move* - and a
+lightmap was baked from a viewpoint that was not yours, so it cannot contain
+one. `r_qlBumpSpecular` adds Blinn-Phong against the deluxemap's direction.
+
+It modulates rather than adds, which keeps the pass single-blend and has a
+defensible side effect: the highlight can brighten what is already lit but
+cannot light what the lightmap left dark. An unlit crevice should not glint.
+
+Both need the eye position, which this pass had no uniform for. It borrows the
+light path's block - `bump.frag` declares the same leading four vec4s so set 0
+means the same thing here as everywhere else, and reads only `eyePos`.
+
+**3. And the map being tested could not run the pass at all.** The screenshots
+were a stock Quake Live map. Those carry no deluxemaps and never can, measured
+in R20, so the static pass returns on its second line. The load-time count says
+so now in as many words rather than leaving it to be inferred from a wall.
+
+**Also:** authored normal maps now load with `IMGFLAG_NO_COMPRESSION` as well as
+`NOLIGHTSCALE`. The alpha is a height field now, and a 16-bit format quantising
+it to four bits would turn a smooth surface into terraces. The derived maps
+already set both.
+
+`r_deluxeMapping 6` draws how far parallax moved the lookup.
+
+---
+
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.

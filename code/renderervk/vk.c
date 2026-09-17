@@ -9851,6 +9851,8 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		frag_spec_data[0].f = def->bump_scale;
 		frag_spec_data[1].i = def->bump_debug;
 		frag_spec_data[2].i = def->bump_tc_swap;
+		frag_spec_data[3].f = def->bump_parallax;
+		frag_spec_data[4].f = def->bump_specular;
 	}
 
 	frag_spec_info.mapEntryCount = 11;

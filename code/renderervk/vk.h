@@ -234,6 +234,8 @@ typedef struct {
 	float bump_scale;
 	int bump_debug;
 	int bump_tc_swap;
+	float bump_parallax;
+	float bump_specular;
 } Vk_Pipeline_Def;
 
 typedef struct VK_Pipeline {

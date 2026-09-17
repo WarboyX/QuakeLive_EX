@@ -1797,10 +1797,22 @@
         itemDef { name "" text "STATIC BUMP (deluxemaps)"  textscale .24  rect 20 294 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { text "Deluxemap shading:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name dlx  type ITEM_TYPE_MULTI  text ""  cvar "r_deluxeMapping"
-                  cvarFloatList { "Off" 0 "On (default)" 1 "Debug: light direction" 2 "Debug: perturbed normal" 3 "Debug: modulation only" 4 "Debug: the normal map itself" 5 }  rect 216 315 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+                  cvarFloatList { "Off" 0 "On (default)" 1 "Debug: light direction" 2 "Debug: perturbed normal" 3 "Debug: modulation only" 4 "Debug: the normal map itself" 5 "Debug: parallax offset" 6 }  rect 216 315 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { text "Static bump strength:"  textscale .22  rect 24 336 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name dlxscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpScale"
                   cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1 }  rect 216 336 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        // [QL] The two that make a normal map read as depth rather than as
+        // paint, and neither is its strength. Parallax marches the view ray
+        // through the height in the map's alpha, so a brick hides the mortar
+        // behind it - self-occlusion a normal map structurally cannot do.
+        // Specular is a highlight that MOVES with the view, which a lightmap
+        // baked from someone else's viewpoint can never produce.
+        itemDef { text "Parallax depth:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name plx  type ITEM_TYPE_MULTI  text ""  cvar "r_qlParallax"
+                  cvarFloatList { "Off" 0 "0.02 (shallow)" 0.02 "0.04 (default)" 0.04 "0.08" 0.08 "0.12 (deep)" 0.12 }  rect 216 357 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Bump specular:"  textscale .22  rect 24 378 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name bspec  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpSpecular"
+                  cvarFloatList { "Off" 0 "0.25" 0.25 "0.5 (default)" 0.5 "1.0" 1 "2.0 (wet)" 2 }  rect 216 378 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
 
         // [QL] renderergl2 material maps. Vulkan has no consumer for these,
         // so they are hidden there rather than offered and ignored.

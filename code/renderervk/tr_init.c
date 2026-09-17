@@ -200,6 +200,8 @@ cvar_t	*r_qlNormalScale;
 cvar_t	*r_qlNormalMaxTilt;
 cvar_t	*r_deluxeMapping;
 cvar_t	*r_qlBumpScale;
+cvar_t	*r_qlParallax;
+cvar_t	*r_qlBumpSpecular;
 cvar_t	*r_debugLight;
 cvar_t	*r_debugSort;
 cvar_t	*r_printShaders;
@@ -1917,6 +1919,30 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_deluxeMapping, "[QL] Light normal-mapped world surfaces with the deluxemap's per-texel light direction. 2-5 are debug views; 5 shows the normal map itself. Needs a map compiled with -deluxe." );
 	r_qlBumpScale = ri.Cvar_Get( "r_qlBumpScale", "1", 0 );
 	ri.Cvar_SetDescription( r_qlBumpScale, "[QL] Strength of static normal-map shading, 0 to 1." );
+
+	/*
+	[QL] R25. The two things that make a normal map read as depth rather than
+	as paint, and neither is the normal map's strength.
+
+	r_qlParallax marches the view ray through the height field in the normal
+	map's alpha and offsets the lookup, so a brick hides the mortar behind it at
+	a grazing angle. That self-occlusion is what a normal map structurally
+	cannot do - it changes how a flat surface answers light and never where its
+	detail sits. No vertex moves: geometry, silhouette and collision are
+	untouched, which is what separates it from R21.
+
+	r_qlBumpSpecular adds a Blinn-Phong highlight against the deluxemap's
+	direction. A lightmap was baked from a viewpoint that was not yours and can
+	never produce a highlight that moves when you do, and a moving highlight is
+	most of what the eye reads as relief.
+
+	Measured in uv units, so the right value depends on how far a texture tiles
+	over a surface. 0.04 is about a brick's depth at the test map's scale.
+	*/
+	r_qlParallax = ri.Cvar_Get( "r_qlParallax", "0.04", 0 );
+	ri.Cvar_SetDescription( r_qlParallax, "[QL] Parallax depth for static bump surfaces, in texture units. 0 disables. Needs height in the normal map's alpha." );
+	r_qlBumpSpecular = ri.Cvar_Get( "r_qlBumpSpecular", "0.5", 0 );
+	ri.Cvar_SetDescription( r_qlBumpSpecular, "[QL] Specular highlight strength on static bump surfaces. A highlight that moves with the view is most of what reads as depth." );
 
 	ri.Cvar_SetDescription( r_qlNormalMaxTilt, "[QL] Steepest angle a derived normal may reach, in degrees. Caps hard texture edges without flattening gentle shading; above about 20 a grazing light bands them. Takes effect on vid_restart." );
 

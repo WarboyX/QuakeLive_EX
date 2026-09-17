@@ -1293,7 +1293,14 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			map, unlike "map" where the stage has nothing left to show.
 			*/
 			qboolean isSpecular = ( Q_stricmp( token, "specularMap" ) == 0 );
-			imgFlags_t flags = IMGFLAG_NOLIGHTSCALE;
+			/*
+			[QL] NO_COMPRESSION alongside NOLIGHTSCALE. A normal map is data and
+			must not be gamma-corrected, which is what NOLIGHTSCALE says - and
+			its alpha is now the height field the parallax march steps through,
+			so a 16-bit format quantising it to four bits would turn a smooth
+			surface into terraces. The derived maps already set both.
+			*/
+			imgFlags_t flags = IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION;
 			image_t *img;
 
 			if ( !shader.noMipMaps )

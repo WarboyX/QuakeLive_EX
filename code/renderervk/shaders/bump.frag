@@ -28,6 +28,18 @@ out by any smooth term. This adds detail within a face, which multiplication
 does perfectly well.
 */
 
+/*
+Only eyePos is read, but the block has to match vkUniform_t's leading bytes or
+set 0 means something different here than it does everywhere else. The light
+path declares the same four and uses all of them.
+*/
+layout(set = 0, binding = 0) uniform UBO {
+	vec4 eyePos;
+	vec4 lightPos;
+	vec4 lightColor;
+	vec4 lightVector;
+};
+
 layout(set = 1, binding = 0) uniform sampler2D normalmap;
 layout(set = 2, binding = 0) uniform sampler2D deluxemap;
 
@@ -53,6 +65,11 @@ specialization constant costs nothing because the branch is compiled out.
 */
 layout (constant_id = 2) const int tc_swap = 0;
 
+// r_qlParallax: depth of the parallax offset in uv units, 0 disables it.
+layout (constant_id = 3) const float parallax_depth = 0.0;
+// r_qlBumpSpecular
+layout (constant_id = 4) const float spec_scale = 0.0;
+
 void main() {
 	vec2 uvN = (tc_swap != 0) ? tc1 : tc0;	// the normal map's, in the diffuse's uv
 	vec2 uvD = (tc_swap != 0) ? tc0 : tc1;	// the deluxemap's, in the lightmap's uv
@@ -76,6 +93,68 @@ void main() {
 	}
 
 	vec3 geomN = normalize(N);
+
+	/*
+	PARALLAX. A normal map changes how a flat surface responds to light and
+	changes nothing about where its detail sits, so at a grazing angle a brick
+	never hides the mortar behind it and the wall stays visibly flat however
+	strong the shading. That missing self-occlusion is most of what "it does not
+	read as depth" is, and no amount of normal-map strength supplies it.
+
+	Steep parallax: march the view ray through the height field in tangent space
+	and stop at the first step that is under the surface. Height lives in the
+	normal map's alpha, so it costs no extra texture and no extra binding - the
+	generator writes it there.
+
+	Nothing here displaces a vertex. The geometry, the silhouette and the
+	collision are all untouched, which is what separates this from R21 and is
+	why it can ship without the tessellation device feature or a desync between
+	what is drawn and what the server traces against.
+	*/
+	vec3 viewW = normalize(eyePos.xyz - P);
+
+	if (parallax_depth > 0.0) {
+		// a tangent basis for the march - the same one the shading uses below
+		vec3 dPdx0 = dFdx(P), dPdy0 = dFdy(P);
+		vec2 du10 = dFdx(uvN), du20 = dFdy(uvN);
+		float a0 = du10.x * du20.y, b0 = du20.x * du10.y;
+		float det0 = ((a0 >= b0) ? 1.0 : -1.0) * max(abs(a0 - b0), 1e-6);
+		vec3 T0 = (du20.y * dPdx0 - du10.y * dPdy0) / det0;
+		if (dot(T0, T0) > 1e-8) {
+			vec3 Tn0 = normalize(T0 - geomN * dot(geomN, T0));
+			vec3 Bn0 = cross(geomN, Tn0);
+			vec3 vT = vec3(dot(viewW, Tn0), dot(viewW, Bn0), dot(viewW, geomN));
+
+			if (vT.z > 0.05) {
+				// more steps at grazing angles, where the offset is largest
+				float steps = mix(24.0, 8.0, clamp(vT.z, 0.0, 1.0));
+				float dz = 1.0 / steps;
+				vec2 duv = (vT.xy / vT.z) * parallax_depth * dz;
+
+				float h = 1.0;
+				vec2 uv = uvN;
+				float t = texture(normalmap, uv).a;
+				for (int i = 0; i < 32; i++) {
+					if (float(i) >= steps || t >= h) break;
+					h -= dz;
+					uv -= duv;
+					t = texture(normalmap, uv).a;
+				}
+				// one linear step back across the crossing, which is the whole
+				// difference between steep parallax and the stair-stepped kind
+				vec2 prev = uv + duv;
+				float aft = t - h;
+				float bef = texture(normalmap, prev).a - (h + dz);
+				uvN = mix(uv, prev, clamp(aft / max(aft - bef, 1e-5), 0.0, 1.0));
+			}
+		}
+	}
+
+	if (debug_mode == 5) {
+		// how far parallax moved the lookup, scaled to be visible
+		out_color = vec4(abs(uvN - ((tc_swap != 0) ? tc1 : tc0)) * 40.0, 0.0, 1.0);
+		return;
+	}
 
 	// Modelspace direction, and it is not necessarily unit after filtering.
 	vec4 dtex = texture(deluxemap, uvD);
@@ -165,7 +244,26 @@ void main() {
 	float bumpTerm = dot(nN, dir);
 
 	float ratio = 1.0 + (bumpTerm - flatTerm) * bump_scale;
-	ratio = clamp(ratio, 0.25, 1.75);
+
+	/*
+	SPECULAR, and it is not a luxury here. A diffuse-only bump is a smooth
+	gradient across each bump and the eye reads that as paint. What says "this
+	has relief" is a highlight that MOVES when you move, and a lightmap alone
+	can never produce one because it was baked from a fixed viewpoint that was
+	not yours.
+
+	Blinn-Phong against the deluxemap's direction. Modulating rather than adding
+	keeps the pass single-blend: the highlight brightens what is already lit and
+	cannot light something the lightmap left dark, which is wrong in principle
+	and right in practice - an unlit crevice should not glint.
+	*/
+	if (spec_scale > 0.0) {
+		vec3 halfV = normalize(dir + viewW);
+		float sp = max(dot(nN, halfV), 0.0);
+		ratio += pow(sp, 24.0) * spec_scale * step(0.0, flatTerm);
+	}
+
+	ratio = clamp(ratio, 0.25, 2.5);
 
 	if (debug_mode == 3) {
 		// the modulation alone, mid-grey being "unchanged"
