@@ -44,6 +44,12 @@ command -v "$MAPCOMPILER" >/dev/null 2>&1 || [ -x "$MAPCOMPILER" ] || {
 # than "WARNING: Couldn't find image for shader textures/qltest/noperturb". The
 # engine has no such list and loads every .shader it finds, so this is a
 # compile-time requirement that does not show up at run time.
+# A sheet that does not tile is invisible in the sheet and unmistakable on a
+# wall, and the failure is periodic - at a distance the seams line up into a
+# grid and read as architecture rather than as a texture bug. Check before
+# compiling rather than after looking.
+python3 "$here/../../tools/check-tiling.py"
+
 fs="$out/fs"
 rm -rf "$fs"
 mkdir -p "$fs/baseq3/maps" "$fs/baseq3/scripts" "$fs/baseq3/textures/qltest"

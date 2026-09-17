@@ -125,11 +125,42 @@ void main() {
 			vec3 Bn0 = cross(geomN, Tn0);
 			vec3 vT = vec3(dot(viewW, Tn0), dot(viewW, Bn0), dot(viewW, geomN));
 
-			if (vT.z > 0.05) {
-				// more steps at grazing angles, where the offset is largest
-				float steps = mix(24.0, 8.0, clamp(vT.z, 0.0, 1.0));
+			/*
+			OFFSET LIMITING, and the first version had none - which is what
+			"it warps and stretches when you walk round a block" was.
+
+			The offset is vT.xy/vT.z, and vT.z goes to zero as a face turns
+			edge-on. Guarding only against vT.z > 0.05 permits an offset of
+			TWENTY times the configured depth: the march walks clean off the
+			feature it was sampling and lands on unrelated texels, which reads
+			as smearing. Circling a cube sweeps every face through that range
+			continuously, so it is the worst case and the one that showed it.
+
+			Two guards, and they do different jobs. Flooring the divisor stops
+			the direction exploding; capping the LENGTH stops the total travel
+			exceeding what the height field can justify - a height of h can
+			never legitimately shift a lookup by more than about h, and 2x is
+			already generous for a ray that has to climb out of a hole.
+
+			Then a fade over the last sliver before edge-on, where even a capped
+			offset is guesswork: the derivatives that built this basis are
+			themselves unreliable there, and no clamp makes a bad basis good.
+			*/
+			float vz = max(vT.z, 0.25);
+			vec2 pdir = vT.xy / vz;
+			float plen = length(pdir);
+			if (plen > 2.0) {
+				pdir *= 2.0 / plen;
+			}
+			float fade = smoothstep(0.03, 0.22, vT.z);
+			float depth = parallax_depth * fade;
+
+			if (depth > 0.0001) {
+				// more steps where the offset is longest, which is where a
+				// coarse march shows its stairs
+				float steps = clamp(8.0 + plen * 10.0, 8.0, 28.0);
 				float dz = 1.0 / steps;
-				vec2 duv = (vT.xy / vT.z) * parallax_depth * dz;
+				vec2 duv = pdir * depth * dz;
 
 				float h = 1.0;
 				vec2 uv = uvN;

@@ -96,7 +96,7 @@ def rocknoise(octaves=4, seed=1337):
     height = [[0.0] * W for _ in range(H)]
     amp, freq = 1.0, 4
     for _ in range(octaves):
-        grid = [[rnd.random() for _ in range(freq + 1)] for _ in range(freq + 1)]
+        grid = wrap_grid(rnd, freq)
         for y in range(H):
             gy = y / H * freq
             y0 = int(gy); fy = gy - y0
@@ -169,12 +169,30 @@ def diffuse_from(height, rgb_fn):
     return rows
 
 
+def wrap_grid(rnd, freq):
+    """A (freq+1)^2 lattice whose last row and column REPEAT the first.
+
+    This is the whole reason the noise tiles, and getting it wrong is invisible
+    in the sheet and obvious on a wall. A lattice of freq+1 independent randoms
+    interpolates fine everywhere in the middle and then, at x=W-1, is heading
+    for a value that has nothing to do with x=0 - so every texture with grain
+    over it has one vertical and one horizontal discontinuity, no matter how
+    neatly its blocks or cells divide 256. That was the "line break between
+    them" along the corridor wall: not the masonry, the grain on it.
+    """
+    g = [[rnd.random() for _ in range(freq)] for _ in range(freq)]
+    for row in g:
+        row.append(row[0])
+    g.append(list(g[0]))
+    return g
+
+
 def fbm(seed, octaves=5, freq0=4):
     rnd = random.Random(seed)
     out = [[0.0] * W for _ in range(H)]
     amp, freq = 1.0, freq0
     for _ in range(octaves):
-        g = [[rnd.random() for _ in range(freq + 1)] for _ in range(freq + 1)]
+        g = wrap_grid(rnd, freq)
         for y in range(H):
             gy = y / H * freq; y0 = int(gy); fy = gy - y0
             fy = fy * fy * (3 - 2 * fy)
@@ -355,7 +373,7 @@ def steps(n=8, seed=5):
     return height, rgb
 
 
-def studs(cell=48, radius=17, seed=9):
+def studs(cell=64, radius=22, seed=9):
     """Hemispheres standing proud. The dome sheet's realistic cousin - it has a
     diffuse, so it answers 'does this look like relief' where domes_n answers
     'is the basis correct'."""
@@ -393,15 +411,34 @@ def stoneblock(seed=31):
     grain = fbm(seed, octaves=5, freq0=20)
     face = fbm(seed + 3, octaves=4, freq0=8)
     rnd = random.Random(seed)
-    rows_y = [0]
-    while rows_y[-1] < H:
-        rows_y.append(rows_y[-1] + rnd.choice((38, 46, 56, 64)))
+
+    def partition(total, choices):
+        """Random sizes that sum to EXACTLY total, so the sheet tiles.
+
+        Accumulating until you pass the edge and truncating is the obvious way
+        and it is why a wall shows a hard line where the texture wraps: the last
+        course is a different height from the first and the joint does not meet
+        itself. Nothing in the texture says so - you only see it on a surface
+        big enough to repeat."""
+        out, acc = [], 0
+        while total - acc > max(choices):
+            c = rnd.choice(choices)
+            out.append(c)
+            acc += c
+        out.append(total - acc)       # the remainder, kept whole
+        return out
+
+    heights = partition(H, (38, 46, 56, 64))
+    rows_y, acc = [0], 0
+    for h in heights:
+        acc += h
+        rows_y.append(acc)
     cuts = {}
     for i in range(len(rows_y) - 1):
-        xs, x = [0], 0
-        while x < W:
-            x += rnd.choice((44, 58, 72, 90))
-            xs.append(min(x, W))
+        xs, acc = [0], 0
+        for wdt in partition(W, (44, 58, 72, 90)):
+            acc += wdt
+            xs.append(acc)
         cuts[i] = xs
     JOINT = 6
     height = [[0.0] * W for _ in range(H)]
@@ -436,9 +473,13 @@ def stoneblock(seed=31):
     return height, rgb
 
 
-def cobble(cell=44, seed=47):
+def cobble(cell=64, seed=47):
     """Rounded stones with deep gaps between them. The best floor for this:
-    every gap is a hole the view ray has to climb out of."""
+    every gap is a hole the view ray has to climb out of.
+
+    cell must divide W and H exactly, and the alternating row offset needs an
+    even number of rows, or the sheet does not tile and every surface wide
+    enough to repeat shows a seam."""
     grain = fbm(seed, octaves=4, freq0=22)
     jitter = fbm(seed + 7, octaves=2, freq0=W // cell + 1)
     height = [[0.0] * W for _ in range(H)]
