@@ -5911,6 +5911,83 @@ Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
 
 ## Engine / server
 
+### R25. Authored bump maps on our own maps — SCOPED, and most of it already works
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only — a stock client ignores the keyword and draws the diffuse, so it degrades rather than breaks
+
+The question: if we build the map and we own the renderer, can we ship real
+authored normal maps instead of deriving them from luminance? Yes, and the
+honest framing is that **R20 Stage A built the consumer** — what was missing was
+never the asset pipeline, it was something that reads `stage->normalMap`.
+
+**Working today, no new code.** `normalMap`/`bumpMap` in a shader is parsed
+(tr_shader.c), loaded with `IMGFLAG_NOLIGHTSCALE | MIPMAP | PICMIP`, and bound
+to set 3 by `VK_LightingPass`. An explicit map beats the derived one — the
+derivation in `FinishShader` only runs when `normalMap == NULL`. So a shader in
+our own map's pk3 can carry a hand-authored normal map right now and the dynamic
+light pass will use it.
+
+One gap in that path: no `IMGFLAG_NO_COMPRESSION`, so `r_texturebits 16` would
+quantise an authored map to five bits a channel. The derived maps already set
+it; the authored path should match.
+
+**What it will not do, and this is the part that matters for a rock.** It only
+touches the *dynamic* light pass. A rock lit by the baked lightmap looks exactly
+as it does now until a rocket goes past. Deriving or authoring makes no
+difference to that — the limitation is which pass reads the map, not where the
+map came from.
+
+**Which is what makes `-deluxe` the real unlock, for our maps specifically.**
+q3map2's `-deluxe` writes a second lightmap alongside every lightmap holding the
+dominant light *direction* per texel. With it, static lighting can be re-shaded
+against a normal map: intensity from the lightmap, direction from the deluxemap,
+normal from the bump map. That is exactly what normal mapping needs and exactly
+what Quake Live's maps cannot supply — measured, in R20: no light entities, no
+deluxemaps, which is why Stage B was designed around the lightgrid instead.
+
+**The data is already loaded.** `R_LoadLightmaps` creates every lightmap in the
+BSP as `tr.lightmaps[i]`, including the odd-index direction maps, and
+`lightmapFlags` already carries `IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION`
+— which happens to be exactly right for direction data rather than colour. In a
+`-deluxe` BSP, `tr.lightmaps[n+1]` is the direction map for `tr.lightmaps[n]`,
+uploaded and sitting unused. `tr_bsp.c` detects the case and says in as many
+words that it records it only because whether the path is worth writing is this
+question.
+
+So the work is: bind the odd map as a second sampler on the world path, and
+shade `lightmapIntensity * max(0, dot(N_perturbed, deluxeDirection))`. The
+complication is `r_mergeLightmaps`, which atlases them — light and direction end
+up interleaved in one texture and the tc offsets have to account for it.
+
+**Strictly better than Stage B where it applies:** per-texel direction against
+the lightgrid's one sample per 64 x 64 x 128 units. Stage B does not go away —
+it is what Quake Live's own maps get, since they have no deluxemaps and we
+cannot recompile them. Two paths for two situations, and `tr.world->deluxeMaps`
+already says which one a map is in.
+
+**The licensing line, which is not the same for the two cases.** Our maps use
+our textures, so authoring normal maps for them and shipping them is ours to do.
+Authoring or baking a normal map *for a pak00 texture* and shipping it is a
+derivative of Quake Live's art and is not. That is precisely why Stage A derives
+at runtime and ships nothing — the distinction is shipping, not generating.
+
+**Handedness gets more important, not less.** A map derived from luminance is
+forgiving; an authored or baked map carries real directional detail, and a
+mirrored tangent puts it visibly the wrong way round. Q3 BSP drawverts carry no
+tangents and that format is fixed even for our own maps, so the screen-space
+derivative basis is what we have. For our own maps the mitigation is in the
+authoring: avoid mirrored UVs on bump-mapped faces.
+
+**Silhouette is still untouched.** A seven-polygon rock with a superb normal map
+is still seven polygons against the sky. That is R21, still parked on the
+`tessellationShader` device feature not being requested at device creation.
+
+**Companion, nearly free:** `specularMap` is parsed and stored on the stage and
+consumed by nothing — the same shape `normalMap` was in before Stage A. The
+light pass already computes a specular term; giving it a map is a small change
+once this is being touched.
+
+---
+
 ### R24. The Render and Ray Tracing menus have outgrown their layout — OPEN
 **Lives in:** our **client** (`content/pak01/ui/main.menu`) · **Seen by:** our client only
 
