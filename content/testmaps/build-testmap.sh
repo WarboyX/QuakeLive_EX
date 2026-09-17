@@ -1,5 +1,9 @@
 #!/bin/sh
-# [QL] Build content/testmaps/qltest_light.map into a loadable qltest_light.pk3 (named to match the map, so /map qltest_light is the pk3 name too).
+# [QL] Build the test maps into a loadable qltest_maps.pk3.
+#
+# The pk3 name is NOT a map name - /map takes the .bsp inside it. That cost a
+# round once: the pk3 was qltest.pk3, the map was qltest_light, and "map qltest"
+# found nothing.
 #
 # Output goes to content/testmaps/out/, which is gitignored - a compiled BSP is
 # build output and does not belong in the tree, the same rule release/ follows.
@@ -43,9 +47,9 @@ command -v "$MAPCOMPILER" >/dev/null 2>&1 || [ -x "$MAPCOMPILER" ] || {
 fs="$out/fs"
 rm -rf "$fs"
 mkdir -p "$fs/baseq3/maps" "$fs/baseq3/scripts" "$fs/baseq3/textures/qltest"
-cp "$here/qltest_light.map" "$fs/baseq3/maps/"
+cp "$here"/qltest_*.map "$fs/baseq3/maps/"
 cp "$here/qltest.shader" "$here/shaderlist.txt" "$fs/baseq3/scripts/"
-cp "$here/textures/tangent.tga" "$fs/baseq3/textures/qltest/"
+cp "$here"/textures/*.tga "$fs/baseq3/textures/qltest/"
 
 # -fs_basepath can be given more than once and the paths stack, so the staged
 # tree supplies our files and the install (when there is one) supplies Quake
@@ -53,7 +57,15 @@ cp "$here/textures/tangent.tga" "$fs/baseq3/textures/qltest/"
 paths="-fs_basepath $fs"
 [ -n "$QLDIR" ] && paths="$paths -fs_basepath $QLDIR"
 
-bsp="$fs/baseq3/maps/qltest_light.bsp"
+# qltest_light is R20's map and takes no deluxemaps - it is read under a
+# dynamic light, which needs none. qltest_bump is R25's and is meaningless
+# without them, so -deluxe goes on its light phase and only its light phase.
+#
+# Modelspace, which is -deluxemode 0 and the default for every game profile
+# here, so it is left alone rather than passed. Tangentspace deluxemaps are
+# written against a basis q3map2 builds from worldUp x normal, and that is not
+# the UV-derived basis light_frag.tmpl builds; the two disagreeing would light
+# every surface wrongly with nothing on screen to say why.
 
 # -game quakelive is what makes this a version 47 BSP. It is a stock profile in
 # the compiler (src/game_quakelive.h, "47 /* bsp file version */"), not a patch
@@ -64,10 +76,17 @@ bsp="$fs/baseq3/maps/qltest_light.bsp"
 # -keeplights goes on the BSP phase, NOT the light phase. It works by stamping
 # "_keepLights" "1" into worldspawn, which the light phase reads back. Passed to
 # -light it is accepted in silence and does nothing.
-# shellcheck disable=SC2086  # $paths is a deliberate multi-flag expansion
-"$MAPCOMPILER" -game quakelive $paths -meta -keeplights "$fs/baseq3/maps/qltest_light.map"
-"$MAPCOMPILER" -game quakelive $paths -vis "$bsp"
-"$MAPCOMPILER" -game quakelive $paths -light -fast "$bsp"
+for map in qltest_light qltest_bump; do
+	bsp="$fs/baseq3/maps/$map.bsp"
+	deluxe=""
+	[ "$map" = "qltest_bump" ] && deluxe="-deluxe"
+	echo
+	echo "=== $map ${deluxe:+($deluxe)} ==="
+	# shellcheck disable=SC2086  # $paths and $deluxe are deliberate expansions
+	"$MAPCOMPILER" -game quakelive $paths -meta -keeplights "$fs/baseq3/maps/$map.map"
+	"$MAPCOMPILER" -game quakelive $paths -vis "$bsp"
+	"$MAPCOMPILER" -game quakelive $paths -light -fast $deluxe "$bsp"
+done
 
 # The .bsp has to be inside a .pk3. A pure client only reads files that live in
 # one and the server side does not go through that check, so a loose .bsp gives
@@ -77,12 +96,14 @@ bsp="$fs/baseq3/maps/qltest_light.bsp"
 pk3="$out/pk3"
 rm -rf "$pk3"
 mkdir -p "$pk3/maps" "$pk3/scripts" "$pk3/textures/qltest"
-cp "$bsp" "$pk3/maps/"
+cp "$fs"/baseq3/maps/*.bsp "$pk3/maps/"
 cp "$here/qltest.shader" "$here/shaderlist.txt" "$pk3/scripts/"
-cp "$here/textures/tangent.tga" "$pk3/textures/qltest/"
-rm -f "$out/qltest_light.pk3"
-( cd "$pk3" && zip -qr "$out/qltest_light.pk3" . )
+cp "$here"/textures/*.tga "$pk3/textures/qltest/"
+rm -f "$out/qltest_maps.pk3"
+( cd "$pk3" && zip -qr "$out/qltest_maps.pk3" . )
 
 echo
-echo "wrote $out/qltest_light.pk3"
-echo "drop it in baseq3/ next to pak00.pk3, then:  /map qltest_light"
+echo "wrote $out/qltest_maps.pk3  (both maps - the pk3 name is not a map name)"
+echo "drop it in baseq3/ next to pak00.pk3, then:"
+echo "  /devmap qltest_light   R20, derived normals under a dynamic light"
+echo "  /devmap qltest_bump    R25, authored normals under static light (deluxemaps)"

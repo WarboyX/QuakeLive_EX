@@ -62,3 +62,88 @@ textures/qltest/lightmapfirst
 		rgbGen identity
 	}
 }
+
+// =============================================================================
+// R25 - qltest_bump.map. Authored normal maps under static light.
+//
+// All three carry a FLAT GREY diffuse on purpose. If the diffuse had any detail
+// you could never tell shading from paint, and that ambiguity is exactly what
+// made R20 Stage A's results hard to read on real art. Here anything you see is
+// the normal map.
+//
+// normalMap is a stage keyword and belongs on the stage the light pass binds -
+// the diffuse, which with lightmap-first ordering is stage 1. An explicit map
+// always beats the derived one: FinishShader only derives when normalMap is
+// still NULL.
+// =============================================================================
+
+// The diagnostic. A hemisphere fails a bad basis in two independent ways at
+// once, and they have different fixes:
+//   craters instead of domes      -> green channel convention (OpenGL vs DirectX)
+//   lit on the side from the light -> mirrored tangent
+textures/qltest/domes
+{
+	qer_editorimage textures/qltest/flatgrey
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/flatgrey
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/domes_n
+	}
+}
+
+// The realistic case - value noise differentiated into normals. This is what
+// the rock in the middle of the map wears, and what R25 is actually for.
+textures/qltest/rocknoise
+{
+	qer_editorimage textures/qltest/flatgrey
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/flatgrey
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/rocknoise_n
+	}
+}
+
+// The control. Same diffuse, no normal map, and qlNoPerturb so R20 cannot
+// derive one either - otherwise this panel would quietly grow bumps from the
+// flat grey and stop being a control.
+textures/qltest/plaingrey
+{
+	qer_editorimage textures/qltest/flatgrey
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/flatgrey
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		qlNoPerturb
+	}
+}
+
+// Room walls and ceiling. Plain, unlit-looking, deliberately uninteresting so
+// the panels are what the eye goes to.
+textures/qltest/flatgrey
+{
+	qer_editorimage textures/qltest/flatgrey
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/flatgrey
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		qlNoPerturb
+	}
+}

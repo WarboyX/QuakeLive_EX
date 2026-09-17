@@ -1,0 +1,176 @@
+// [QL] R25 test map - authored normal maps under STATIC light, via deluxemaps.
+//
+// Separate from qltest_light.map on purpose. That one tests R20 Stage A: normals
+// derived from a texture's own luminance, seen only under a DYNAMIC light,
+// because that is the only pass Stage A touches. This one tests the other half -
+// a real authored normal map lighting a surface that nothing is shooting at.
+//
+// WHY IT NEEDS -deluxe, AND WHY WE CAN HAVE IT HERE.
+//
+// A lightmap stores how much light reached a texel and not which way it came
+// from, so there is nothing for a normal to be dotted against and no amount of
+// normal map changes a static surface. q3map2 -deluxe writes a SECOND lightmap
+// beside every lightmap holding the dominant light direction per texel, and that
+// is the missing operand.
+//
+// Quake Live's maps do not have them - measured in R20, no light entities and no
+// deluxemaps - and its map sources were never released, so they never can. Ours
+// can, because we run the compiler. That asymmetry is the whole reason this map
+// exists as a separate file: it is the only place the static path can be
+// developed against real data.
+//
+// MODELSPACE, NOT TANGENT SPACE. q3map2 has both (-deluxemode 0 and 1) and the
+// default is 0, modelspace. Take the default. A tangentspace deluxemap is
+// written against a basis q3map2 builds from worldUp x normal, which is NOT the
+// UV-derived basis light_frag.tmpl builds, and the two disagreeing would light
+// every surface wrongly with nothing on screen to say why. A modelspace
+// direction needs no agreement at all: transform the normal into world space -
+// which the shader already does - and dot.
+//
+// Verified on this compiler rather than assumed: -deluxe turns 1 lightmap into
+// 2, every surface still references the even index, and lump 1 decodes to a unit
+// vector field rather than a second intensity map.
+//
+// WHAT TO LOOK FOR. Three panels on the far wall, all flat grey diffuse so any
+// shading you see is the normal map and nothing else:
+//
+//   A  domes      the diagnostic. Two independent faults, distinguishable:
+//                 domes reading as CRATERS is the green channel convention,
+//                 domes lit on the side AWAY from the light is a mirrored
+//                 tangent. A sawtooth cannot tell those apart; a hemisphere can.
+//   B  rocknoise  the realistic case, and what the rock in the middle wears.
+//   C  plaingrey  the control. No normal map. Must stay flat.
+//
+// The light is deliberately off to one side and high, at -X, so "which side is
+// lit" has an unambiguous answer before anyone argues about it.
+//
+// COMPILING. content/testmaps/build-testmap.sh builds this one with -deluxe.
+// Texture names here carry no "textures/" prefix - q3map2 adds it - while the
+// shader blocks in qltest.shader must spell it in full. That rule is inverted
+// between the two files and fails silently in both directions.
+
+// entity 0
+{
+"classname" "worldspawn"
+"message" "QL authored bump map test"
+	// floor
+	{
+		( 400 272 0 ) ( 400 -272 0 ) ( -400 -272 0 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 400 -272 -16 ) ( 400 272 -16 ) ( -400 272 -16 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 272 -16 ) ( 400 272 0 ) ( -400 272 0 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 -272 -16 ) ( -400 -272 0 ) ( 400 -272 0 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 -272 -16 ) ( 400 -272 0 ) ( 400 272 0 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 272 -16 ) ( -400 272 0 ) ( -400 -272 0 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// ceiling
+	{
+		( 400 272 272 ) ( 400 -272 272 ) ( -400 -272 272 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 -272 256 ) ( 400 272 256 ) ( -400 272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 272 256 ) ( 400 272 272 ) ( -400 272 272 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 -272 256 ) ( -400 -272 272 ) ( 400 -272 272 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 -272 256 ) ( 400 -272 272 ) ( 400 272 272 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 272 256 ) ( -400 272 272 ) ( -400 -272 272 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// wall +X
+	{
+		( 400 272 256 ) ( 400 -272 256 ) ( 384 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 -272 0 ) ( 400 272 0 ) ( 384 272 0 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 272 0 ) ( 400 272 256 ) ( 384 272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 384 -272 0 ) ( 384 -272 256 ) ( 400 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 -272 0 ) ( 400 -272 256 ) ( 400 272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 384 272 0 ) ( 384 272 256 ) ( 384 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// wall -X
+	{
+		( -384 272 256 ) ( -384 -272 256 ) ( -400 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -384 -272 0 ) ( -384 272 0 ) ( -400 272 0 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -384 272 0 ) ( -384 272 256 ) ( -400 272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 -272 0 ) ( -400 -272 256 ) ( -384 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -384 -272 0 ) ( -384 -272 256 ) ( -384 272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 272 0 ) ( -400 272 256 ) ( -400 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// wall +Y
+	{
+		( 400 272 256 ) ( 400 256 256 ) ( -400 256 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 256 0 ) ( 400 272 0 ) ( -400 272 0 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 272 0 ) ( 400 272 256 ) ( -400 272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 256 0 ) ( -400 256 256 ) ( 400 256 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 256 0 ) ( 400 256 256 ) ( 400 272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 272 0 ) ( -400 272 256 ) ( -400 256 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// wall -Y
+	{
+		( 400 -256 256 ) ( 400 -272 256 ) ( -400 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 -272 0 ) ( 400 -256 0 ) ( -400 -256 0 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 -256 0 ) ( 400 -256 256 ) ( -400 -256 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 -272 0 ) ( -400 -272 256 ) ( 400 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 400 -272 0 ) ( 400 -272 256 ) ( 400 -256 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -400 -256 0 ) ( -400 -256 256 ) ( -400 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// panel A - domes. Bright side must face the light.
+	{
+		( -120 256 192 ) ( -120 240 192 ) ( -280 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -120 240 32 ) ( -120 256 32 ) ( -280 256 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -120 256 32 ) ( -120 256 192 ) ( -280 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -280 240 32 ) ( -280 240 192 ) ( -120 240 192 ) qltest/domes 0 0 0 0.250000 0.250000 0 0 0
+		( -120 240 32 ) ( -120 240 192 ) ( -120 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -280 256 32 ) ( -280 256 192 ) ( -280 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// panel B - rock noise. The realistic case.
+	{
+		( 80 256 192 ) ( 80 240 192 ) ( -80 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 80 240 32 ) ( 80 256 32 ) ( -80 256 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 80 256 32 ) ( 80 256 192 ) ( -80 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -80 240 32 ) ( -80 240 192 ) ( 80 240 192 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 80 240 32 ) ( 80 240 192 ) ( 80 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -80 256 32 ) ( -80 256 192 ) ( -80 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// panel C - no normal map. The control.
+	{
+		( 280 256 192 ) ( 280 240 192 ) ( 120 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 280 240 32 ) ( 280 256 32 ) ( 120 256 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 280 256 32 ) ( 280 256 192 ) ( 120 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 120 240 32 ) ( 120 240 192 ) ( 280 240 192 ) qltest/plaingrey 0 0 0 0.250000 0.250000 0 0 0
+		( 280 240 32 ) ( 280 240 192 ) ( 280 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 120 256 32 ) ( 120 256 192 ) ( 120 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// rock, lower
+	{
+		( 96 96 96 ) ( 96 -96 96 ) ( -96 -96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 96 -96 0 ) ( 96 96 0 ) ( -96 96 0 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 96 96 0 ) ( 96 96 96 ) ( -96 96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( -96 -96 0 ) ( -96 -96 96 ) ( 96 -96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 96 -96 0 ) ( 96 -96 96 ) ( 96 96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( -96 96 0 ) ( -96 96 96 ) ( -96 -96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// rock, upper
+	{
+		( 48 56 168 ) ( 48 -64 168 ) ( -64 -64 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 48 -64 96 ) ( 48 56 96 ) ( -64 56 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 48 56 96 ) ( 48 56 168 ) ( -64 56 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( -64 -64 96 ) ( -64 -64 168 ) ( 48 -64 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 48 -64 96 ) ( 48 -64 168 ) ( 48 56 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( -64 56 96 ) ( -64 56 168 ) ( -64 -64 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+	}
+}
+// entity 1 - the key light. Off to -X and high, so the lit side of a dome has
+// one answer and not an argument.
+{
+"classname" "light"
+"origin" "-280 -120 200"
+"light" "700"
+"_color" "1.0 0.96 0.88"
+}
+// entity 2 - a dim fill from the far side so the unlit faces are not pure black
+{
+"classname" "light"
+"origin" "280 120 200"
+"light" "200"
+"_color" "0.7 0.78 1.0"
+}
+// entity 3
+{
+"classname" "info_player_deathmatch"
+"origin" "-300 -180 32"
+"angle" "45"
+}
