@@ -408,7 +408,7 @@ void R_LoadWaterProfile( const char *mapName ) {
 		waterProfile_t block;
 		char blockMap[ MAX_QPATH ];
 
-		token = COM_ParseExt( (char **)&p, qtrue );
+		token = R_ParseExt( &p, qtrue );
 		if ( !token[0] ) {
 			break;      // end of file
 		}
@@ -422,18 +422,18 @@ void R_LoadWaterProfile( const char *mapName ) {
 		blockMap[0] = '\0';
 
 		while ( 1 ) {
-			token = COM_ParseExt( (char **)&p, qtrue );
+			token = R_ParseExt( &p, qtrue );
 			if ( !token[0] || Q_stricmp( token, "}" ) == 0 ) {
 				break;
 			}
 
 			if ( Q_stricmp( token, "map" ) == 0 ) {
-				token = COM_ParseExt( (char **)&p, qfalse );
+				token = R_ParseExt( &p, qfalse );
 				Q_strncpyz( blockMap, token, sizeof( blockMap ) );
 			}
 #define WATER_KEY( name, field, have ) \
 			else if ( Q_stricmp( token, name ) == 0 ) { \
-				token = COM_ParseExt( (char **)&p, qfalse ); \
+				token = R_ParseExt( &p, qfalse ); \
 				block.field = atof( token ); \
 				block.have = qtrue; \
 			}
@@ -446,7 +446,7 @@ void R_LoadWaterProfile( const char *mapName ) {
 			else {
 				ri.Printf( PRINT_WARNING, "water.cfg: unknown key '%s' in block for '%s' - "
 					"ignored\n", token, blockMap[0] ? blockMap : "(no map named yet)" );
-				COM_ParseExt( (char **)&p, qfalse );   // and its value
+				R_ParseExt( &p, qfalse );   // and its value
 			}
 		}
 

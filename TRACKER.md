@@ -13,10 +13,10 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 |---|---|---|
 | **Client / UI** (U) | `████████████████░░░░  14/17` | U11/U2 partial, U4 open; R24 is the live one - our own pages need a rebuild |
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
-| **Renderer** (R) | `█████████░░░░░░░░░░░  11/25` | R27 (natural textures) built and measured, not looked at; R20/R19-8 built and untested; R24 menus open |
+| **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
 | **Engine / server** (E) | `███████████████░░░░░  69/93` | E92/E93 new, both found by reading: a double registration and a dead networked field |
-| **Overall** | `██████████████░░░░░░  124/175` | by binary: 66 server · 92 client · 10 both |
+| **Overall** | `██████████████░░░░░░  125/176` | by binary: 66 server · 93 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,75 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### R28. Codebase cleanup — a per-frame linear scan, and 102 warnings hiding one — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Two findings, and the second explains why the first kind of thing keeps
+happening.
+
+**1. vk_find_pipeline_ext was a linear memcmp scan, and R25 made it per-draw.**
+
+Every call site in vk.c and tr_shader.c runs once — at renderer start or when a
+shader is finished. So a linear scan over every pipeline ever allocated was
+free, and had been for as long as the file existed. R25's static bump pass broke
+that: the def carries the live cvars as specialization constants, so the
+pipeline has to be looked up again for **every bump surface, every frame**.
+`tr_shade.c:1394` is now the only hot call site in the tree, and it is mine.
+
+Measured, at the real `sizeof(Vk_Pipeline_Def)` of 84 bytes:
+
+| pipelines | lookups/frame | linear | hashed |
+|---|---|---|---|
+| 400 | 400 | 0.269 ms | 0.036 ms |
+| 1200 | 400 | 0.782 ms | 0.038 ms |
+| 2304 | 400 | 1.472 ms | 0.040 ms |
+
+0.78 ms/frame at 125 fps is a tenth of the budget spent deciding something that
+had not changed. Fixed with a 4096-bucket FNV-1a index over the same bytes the
+memcmp compares, chained through a `uint32` per pipeline — no allocation. Safe
+for the same reason the memcmp is: every def is memset before use, so padding is
+zero rather than stack garbage.
+
+Two things that had to be got right and would have been silent if not:
+- the empty bucket value is `~0U`, not 0, so the zeroed `vk` struct does not
+  start out claiming every bucket holds pipeline 0
+- both places that *shrink* the array rebuild the index, or a chain points at a
+  destroyed pipeline and hands back a `VK_NULL_HANDLE` that nothing checks
+
+`/gfxinfo` now prints buckets used and longest chain, because a hash that has
+degenerated into one long chain performs exactly like the scan it replaced while
+looking fine from the outside.
+
+**2. 109 build warnings, 102 of them one benign thing, and something real inside.**
+
+`tr_shader.c` and `tr_bsp.c` hold shader text as `const char *`; this tree's
+q_shared.h is ioquake3's and declares the parsers as `char **`, where Quake3e's
+declares them const. Neither writes through the pointer. 102 warnings, all
+noise.
+
+That is the problem rather than the finding. A hundred warnings that are always
+there is the same as none, and one that mattered had already hidden in them: the
+vendored `GetRefAPI` assigned a two-argument `RE_AddRefEntityToScene` to a
+one-argument export slot, and the note in `vk_ql_exports.c` records that it
+"compiled with a warning" and shipped, calling with a garbage second argument
+for every entity in every frame. That one was found and shimmed earlier; it
+should never have got as far as shipping, and the reason it did is sitting in
+this warning count.
+
+So: four `const`-taking inline shims in `tr_common.h`, one documented cast each,
+and the 102 call sites renamed. The rest were cast explicitly where the
+conversion is deliberate (`RE_Shutdown`'s enum-vs-qboolean, the cinematic
+uploaders' missing const, `GetConfig`'s return type, `VK_CreateSurface`'s
+deliberately Vulkan-header-free `void **`).
+
+**109 warnings to 7, and all 7 remaining are vendored libvorbis.** renderervk
+builds clean on both platforms.
+
+**Still unverified:** the pipeline index has not been run. The arithmetic is
+measured and the invariants are argued; what has not happened is a frame.
 
 ---
 

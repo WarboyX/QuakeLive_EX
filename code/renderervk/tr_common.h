@@ -131,6 +131,50 @@ void R_LoadTGA( const char *name, byte **pic, int *width, int *height );
 /*
 ====================================================================
 
+TEXT PARSING - [QL] R28
+
+This renderer came from Quake3e, whose q_shared.h declares the text parsers as
+taking "const char **". This tree's q_shared.h is ioquake3's, which declares
+them as "char **". Neither is wrong and neither writes through the pointer -
+COM_ParseExt copies into the global com_token and only advances *data_p - but
+the renderer holds its shader text as const and the engine's prototype does not
+say so, which produced 102 incompatible-pointer warnings across tr_shader.c and
+tr_bsp.c. Every one of them benign.
+
+That is the problem. A hundred warnings that are always there is the same as no
+warnings at all, and one that mattered had already hidden in them: the vendored
+GetRefAPI assigned a two-argument RE_AddRefEntityToScene to a one-argument
+export slot, and the note in vk_ql_exports.c records that it "compiled with a
+warning" and shipped anyway, calling with a garbage second argument.
+
+So the cast happens once, here, where it can be read and argued with, rather
+than 102 times invisibly. Changing q_shared.h instead would push the same
+warnings onto every char ** caller in the game, cgame, ui and qcommon - a bigger
+edit to fix a smaller problem, and it would touch VM code for a renderer's
+convenience.
+
+====================================================================
+*/
+
+static ID_INLINE char *R_ParseExt( const char **data_p, qboolean allowLineBreaks ) {
+	return COM_ParseExt( (char **)data_p, allowLineBreaks );
+}
+
+static ID_INLINE char *R_Parse( const char **data_p ) {
+	return COM_Parse( (char **)data_p );
+}
+
+static ID_INLINE void R_SkipRestOfLine( const char **data ) {
+	SkipRestOfLine( (char **)data );
+}
+
+static ID_INLINE qboolean R_SkipBracedSection( const char **program, int depth ) {
+	return SkipBracedSection( (char **)program, depth );
+}
+
+/*
+====================================================================
+
 IMPLEMENTATION SPECIFIC FUNCTIONS
 
 ====================================================================

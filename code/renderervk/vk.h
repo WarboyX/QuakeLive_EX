@@ -704,6 +704,27 @@ typedef struct {
 	uint32_t pipelines_count;
 	uint32_t pipelines_world_base;
 
+	/*
+	[QL] R28. An index over the above, because vk_find_pipeline_ext used to be a
+	linear memcmp scan of every pipeline ever made.
+
+	That was free for as long as it was only called at load: every call site in
+	vk.c and tr_shader.c runs once, when the shader is finished or the renderer
+	starts. R25's static bump pass made it a PER-DRAW call - the def carries the
+	live cvars as specialization constants, so the pipeline has to be looked up
+	again for every surface, every frame. Measured at 84 bytes per def: 1200
+	pipelines and 400 bump surfaces cost 0.78 ms of memcmp per frame, which at
+	125 fps is a tenth of the budget spent deciding something that had not
+	changed. Hashed, the same case is 0.038 ms.
+
+	The chain is next-index-into-pipelines[], terminated by ~0U, so it costs one
+	uint32 per pipeline and no allocation. Hashing the same bytes memcmp compares
+	is safe for exactly the reason the memcmp is: every def is memset before use,
+	so padding is zero rather than stack garbage.
+	*/
+	uint32_t pipeline_hash[ 4096 ];
+	uint32_t pipeline_next[ MAX_VK_PIPELINES ];
+
 	// pipeline statistics
 	int32_t pipeline_create_count;
 

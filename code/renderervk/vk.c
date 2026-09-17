@@ -1012,6 +1012,7 @@ void vk_ssr_destroy( void );
 /* Declared here because vk_create_attachments needs it and runs first - see
    the note where vk.ssr.format is chosen. */
 static qboolean vk_format_has_alpha( VkFormat format );
+static void vk_rebuild_pipeline_hash( void ); // [QL] R28
 
 
 static void vk_create_render_passes( void )
@@ -2645,6 +2646,14 @@ static void init_vulkan_library( void )
 	VkResult res;
 
 	Com_Memset( &vk, 0, sizeof( vk ) );
+	/*
+	[QL] R28. The pipeline index's empty value is ~0U, not 0 - a zeroed table
+	says "bucket 0 holds pipeline 0", and pipeline 0 does not exist yet. So the
+	memset above does not initialise it and this does. Without this the very
+	first lookup walks a chain into a zeroed def and matches it, which would
+	hand out pipeline 0 for something else entirely.
+	*/
+	vk_rebuild_pipeline_hash();
 
 	if ( vk_instance == VK_NULL_HANDLE ) {
 
@@ -2696,8 +2705,15 @@ static void init_vulkan_library( void )
 		}
 #endif
 
-		// create surface
-		if ( !ri.VK_CreateSurface( vk_instance, &vk_surface ) ) {
+		/*
+		[QL] R28. The cast is the deliberate half of a decision made in
+		vk_window.c: the import is typed void * / void ** so that tr_public.h,
+		which every module in the tree includes, does not have to pull in the
+		Vulkan headers. VkSurfaceKHR is a handle either way and the callee casts
+		it straight back. Spelled out here so this is the last warning in the
+		renderer rather than the one survivor nobody looks at.
+		*/
+		if ( !ri.VK_CreateSurface( vk_instance, (void **)&vk_surface ) ) {
 			ri.Error( ERR_FATAL, "Error creating Vulkan surface" );
 			return;
 		}
@@ -8100,6 +8116,7 @@ static void vk_destroy_pipelines( qboolean resetCounter )
 	if ( resetCounter ) {
 		Com_Memset( &vk.pipelines, 0, sizeof( vk.pipelines ) );
 		vk.pipelines_count = 0;
+		vk_rebuild_pipeline_hash();	// [QL] R28: empties it
 	}
 
 	if ( vk.gamma_pipeline ) {
@@ -8323,6 +8340,10 @@ void vk_release_resources( void ) {
 		Com_Memset( &vk.pipelines[i], 0, sizeof( vk.pipelines[0] ) );
 	}
 	vk.pipelines_count = vk.pipelines_world_base;
+	// [QL] R28. The index still chains through the pipelines just destroyed, and
+	// a stale chain hands back a VK_NULL_HANDLE nothing checks. Rebuild over
+	// what is left.
+	vk_rebuild_pipeline_hash();
 
 	VK_CHECK( qvkResetDescriptorPool( vk.device, vk.descriptor_pool, 0 ) );
 
@@ -10435,19 +10456,74 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 }
 
 
+/*
+[QL] R28. FNV-1a over the def's bytes - the same bytes vk_find_pipeline_ext
+compares, which is what makes the two agree. See the index in vk.h for why this
+exists at all.
+
+PIPELINE_HASH_SIZE is a power of two so the mask is an and. 4096 against a
+ceiling of 2304 pipelines keeps chains near one link even with a poor spread.
+*/
+#define PIPELINE_HASH_SIZE ARRAY_LEN( vk.pipeline_hash )
+
+static uint32_t pipeline_hash( const Vk_Pipeline_Def *def ) {
+	const byte *p = (const byte *)def;
+	uint32_t h = 2166136261u;
+	size_t i;
+
+	for ( i = 0; i < sizeof( *def ); i++ ) {
+		h ^= p[i];
+		h *= 16777619u;
+	}
+
+	return h & ( PIPELINE_HASH_SIZE - 1 );
+}
+
+
+/*
+Rebuild the index over pipelines [0, pipelines_count). Called after either of
+the two places that shrink the array - a full teardown and the per-map one that
+drops everything above pipelines_world_base - because a chain that still points
+at a destroyed pipeline hands back a VK_NULL_HANDLE that nothing checks.
+
+Rebuilding rather than unlinking: the shrink is always a truncation, it happens
+once per map load, and 2304 entries take microseconds. Unlinking each dropped
+pipeline individually would be more code for a case that is never hot.
+*/
+static void vk_rebuild_pipeline_hash( void ) {
+	uint32_t i;
+
+	Com_Memset( vk.pipeline_hash, 0xFF, sizeof( vk.pipeline_hash ) );
+
+	for ( i = 0; i < vk.pipelines_count; i++ ) {
+		const uint32_t h = pipeline_hash( &vk.pipelines[i].def );
+		vk.pipeline_next[i] = vk.pipeline_hash[h];
+		vk.pipeline_hash[h] = i;
+	}
+}
+
+
 static uint32_t vk_alloc_pipeline( const Vk_Pipeline_Def *def ) {
 	VK_Pipeline_t *pipeline;
 	if ( vk.pipelines_count >= MAX_VK_PIPELINES ) {
 		ri.Error( ERR_DROP, "alloc_pipeline: MAX_VK_PIPELINES reached" );
 		return 0;
 	} else {
+		const uint32_t index = vk.pipelines_count;
+		uint32_t h;
 		int j;
-		pipeline = &vk.pipelines[ vk.pipelines_count ];
+		pipeline = &vk.pipelines[ index ];
 		pipeline->def = *def;
 		for ( j = 0; j < RENDER_PASS_COUNT; j++ ) {
 			pipeline->handle[j] = VK_NULL_HANDLE;
 		}
-		return vk.pipelines_count++;
+
+		h = pipeline_hash( def );
+		vk.pipeline_next[ index ] = vk.pipeline_hash[ h ];
+		vk.pipeline_hash[ h ] = index;
+
+		vk.pipelines_count++;
+		return index;
 	}
 }
 
@@ -10471,10 +10547,25 @@ uint32_t vk_find_pipeline_ext( uint32_t base, const Vk_Pipeline_Def *def, qboole
 	const Vk_Pipeline_Def *cur_def;
 	uint32_t index;
 
-	for ( index = base; index < vk.pipelines_count; index++ ) {
-		cur_def = &vk.pipelines[ index ].def;
-		if ( memcmp( cur_def, def, sizeof( *def ) ) == 0 ) {
-			goto found;
+	/*
+	[QL] R28. The hash covers the whole array, so it can only answer a search
+	that starts at 0 - which every call site in this tree does. A nonzero base
+	means "ignore the pipelines below this one", and rather than assume nobody
+	will ever pass one, that case keeps the scan it always had.
+	*/
+	if ( base == 0 ) {
+		for ( index = vk.pipeline_hash[ pipeline_hash( def ) ]; index != ~0U; index = vk.pipeline_next[ index ] ) {
+			cur_def = &vk.pipelines[ index ].def;
+			if ( memcmp( cur_def, def, sizeof( *def ) ) == 0 ) {
+				goto found;
+			}
+		}
+	} else {
+		for ( index = base; index < vk.pipelines_count; index++ ) {
+			cur_def = &vk.pipelines[ index ].def;
+			if ( memcmp( cur_def, def, sizeof( *def ) ) == 0 ) {
+				goto found;
+			}
 		}
 	}
 

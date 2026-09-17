@@ -1514,6 +1514,37 @@ static void VkInfo_f( void )
 
 	ri.Printf(PRINT_ALL, "pipeline handles: %i\n", vk.pipeline_create_count );
 	ri.Printf(PRINT_ALL, "pipeline descriptors: %i, base: %i\n", vk.pipelines_count, vk.pipelines_world_base );
+
+	/*
+	[QL] R28. The health of the pipeline index, because it is the thing standing
+	between the static bump pass and a linear scan of every pipeline per surface
+	per frame - and a hash that has degenerated into one long chain performs
+	exactly like the scan it replaced while looking fine.
+
+	"longest chain" is the number that says so. It should be a small single
+	digit. Anything approaching the pipeline count means the hash is not
+	spreading and the lookup is linear again.
+
+	Walked here rather than maintained as a counter: this runs when someone types
+	/gfxinfo, and a statistic that costs something on every alloc to answer a
+	question nobody asks most days is the wrong trade.
+	*/
+	{
+		uint32_t i, len, longest = 0, used = 0;
+		for ( i = 0; i < ARRAY_LEN( vk.pipeline_hash ); i++ ) {
+			uint32_t n = vk.pipeline_hash[i];
+			if ( n == ~0U )
+				continue;
+			used++;
+			for ( len = 0; n != ~0U && len <= MAX_VK_PIPELINES; len++ )
+				n = vk.pipeline_next[n];
+			if ( len > longest )
+				longest = len;
+		}
+		ri.Printf(PRINT_ALL, "pipeline index: %i/%i buckets used, longest chain %i\n",
+			used, (int)ARRAY_LEN( vk.pipeline_hash ), longest );
+	}
+
 	ri.Printf(PRINT_ALL, "image chunks: %i\n", vk_world.num_image_chunks );
 }
 #endif
@@ -1587,7 +1618,7 @@ static void R_MapLights_f( void ) {
 		char light[MAX_TOKEN_CHARS];
 		char color[MAX_TOKEN_CHARS];
 
-		token = COM_ParseExt( (char **)&p, qtrue );
+		token = R_ParseExt( &p, qtrue );
 		if ( !token[0] ) {
 			break;                  // end of the string
 		}
@@ -1601,13 +1632,13 @@ static void R_MapLights_f( void ) {
 		while ( 1 ) {
 			char key[MAX_TOKEN_CHARS];
 
-			token = COM_ParseExt( (char **)&p, qtrue );
+			token = R_ParseExt( &p, qtrue );
 			if ( !token[0] || Q_stricmp( token, "}" ) == 0 ) {
 				break;
 			}
 			Q_strncpyz( key, token, sizeof( key ) );
 
-			token = COM_ParseExt( (char **)&p, qfalse );
+			token = R_ParseExt( &p, qfalse );
 			if ( !token[0] ) {
 				break;
 			}
@@ -2781,7 +2812,17 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 
 	// the RE_ functions are Renderer Entry points
 
-	re.Shutdown = RE_Shutdown;
+	/*
+	[QL] Cast, and it is load-bearing rather than cosmetic.
+
+	Quake3e's RE_Shutdown takes a refShutdownCode_t where this tree's export
+	takes a qboolean. VK_QL_FillExports reads this slot back out to keep the
+	vendored function and installs its own wrapper that translates the two, so
+	the assignment has to happen AND has to be spelled as a deliberate
+	conversion - an implicit one is a warning that trains the eye to skip this
+	whole block, which is where a genuine mismatch was already hiding.
+	*/
+	re.Shutdown = (void (*)( qboolean ))RE_Shutdown;
 
 	re.BeginRegistration = RE_BeginRegistration;
 	re.RegisterModel = RE_RegisterModel;
@@ -2800,7 +2841,20 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.ModelBounds = R_ModelBounds;
 
 	re.ClearScene = RE_ClearScene;
-	re.AddRefEntityToScene = RE_AddRefEntityToScene;
+	/*
+	[QL] AddRefEntityToScene is filled by VK_QL_FillExports at the end of this
+	function and deliberately NOT here.
+
+	Quake3e's RE_AddRefEntityToScene takes a second argument; this tree's
+	refexport_t entry takes one. The vendored line assigned the two-argument
+	function to the one-argument slot, which is a type the compiler warns about
+	and a call that reads whatever was in the second argument register. The shim
+	passes the constant the tr_backend.c patches assume.
+
+	Left as a comment rather than deleted because the assignment being absent
+	from a list where every other export is assigned looks like an oversight,
+	and the next person to "fix" it would put the bug back.
+	*/
 	re.AddPolyToScene = RE_AddPolyToScene;
 	re.LightForPoint = R_LightForPoint;
 	re.AddLightToScene = RE_AddLightToScene;
@@ -2812,8 +2866,16 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 
 	re.SetColor = RE_SetColor;
 	re.DrawStretchPic = RE_StretchPic;
-	re.DrawStretchRaw = RE_StretchRaw;
-	re.UploadCinematic = RE_UploadCinematic;
+	/*
+	[QL] These two differ from the export only in const: the slot promises not
+	to write through data, the function takes a plain byte *. Neither writes to
+	it - both hand it straight to the uploader - but the uploader's own
+	signature is byte *, so adding const here would cascade through
+	R_CreateImage and vk_upload_image_data for no gain. Cast at the one place
+	the two types meet instead.
+	*/
+	re.DrawStretchRaw = (void (*)( int, int, int, int, int, int, const byte *, int, qboolean ))RE_StretchRaw;
+	re.UploadCinematic = (void (*)( int, int, int, int, const byte *, int, qboolean ))RE_UploadCinematic;
 
 	re.RegisterFont = RE_RegisterFont;
 	re.RemapShader = RE_RemapShader;
@@ -2826,7 +2888,9 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.ThrottleBackend = RE_ThrottleBackend;
 	re.FinishBloom = RE_FinishBloom;
 	re.CanMinimize = RE_CanMinimize;
-	re.GetConfig = RE_GetConfig;
+	// [QL] the export is const void * and this returns const glconfig_t *; the
+	// caller casts it back to exactly that.
+	re.GetConfig = (const void *(*)( void ))RE_GetConfig;
 	re.VertexLighting = RE_VertexLighting;
 	re.SyncRender = RE_SyncRender;
 
