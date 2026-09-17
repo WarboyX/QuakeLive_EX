@@ -34,12 +34,28 @@
 // WHAT TO LOOK FOR. Three panels on the far wall, all flat grey diffuse so any
 // shading you see is the normal map and nothing else:
 //
+// TWO WALLS, TWO JOBS. The +Y row is diagnostics on a flat grey diffuse: it
+// answers "is this correct". The -Y row behind the spawn is real materials -
+// diffuse and normal map built from one height field - and answers "does this
+// look better". Neither wall can do the other's job, which is why there are two.
+//
 //   A  domes      the diagnostic. Two independent faults, distinguishable:
 //                 domes reading as CRATERS is the green channel convention,
 //                 domes lit on the side AWAY from the light is a mirrored
 //                 tangent. A sawtooth cannot tell those apart; a hemisphere can.
 //   B  rocknoise  the realistic case, and what the rock in the middle wears.
 //   C  plaingrey  the control. No normal map. Must stay flat.
+//   D  brick      mortar recessed, bricks proud, per-brick albedo
+//   E  rock       fractal height with sharpened crevices - and what the block
+//                 in the middle of the room wears, so the "does a low-poly rock
+//                 read as rock" question has something to look at
+//   F  plate      bevelled panel seams and corner rivets, the metal case
+//
+// The materials keep lighting OUT of the diffuse on purpose. Quake Live's art
+// has it painted in, which is what makes R20's derive-from-luminance weak there:
+// the derived normals encode the light the artist painted and the engine then
+// lights them again. Here albedo carries colour and dirt, the height field
+// carries shape, and only the height field becomes the normal.
 //
 // The light is deliberately off to one side and high, at -X, so "which side is
 // lit" has an unambiguous answer before anyone argues about it.
@@ -136,21 +152,48 @@
 	}
 	// rock, lower
 	{
-		( 96 96 96 ) ( 96 -96 96 ) ( -96 -96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( 96 -96 0 ) ( 96 96 0 ) ( -96 96 0 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( 96 96 0 ) ( 96 96 96 ) ( -96 96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( -96 -96 0 ) ( -96 -96 96 ) ( 96 -96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( 96 -96 0 ) ( 96 -96 96 ) ( 96 96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( -96 96 0 ) ( -96 96 96 ) ( -96 -96 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 96 96 96 ) ( 96 -96 96 ) ( -96 -96 96 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( 96 -96 0 ) ( 96 96 0 ) ( -96 96 0 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( 96 96 0 ) ( 96 96 96 ) ( -96 96 96 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( -96 -96 0 ) ( -96 -96 96 ) ( 96 -96 96 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( 96 -96 0 ) ( 96 -96 96 ) ( 96 96 96 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( -96 96 0 ) ( -96 96 96 ) ( -96 -96 96 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
 	}
 	// rock, upper
 	{
-		( 48 56 168 ) ( 48 -64 168 ) ( -64 -64 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( 48 -64 96 ) ( 48 56 96 ) ( -64 56 96 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( 48 56 96 ) ( 48 56 168 ) ( -64 56 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( -64 -64 96 ) ( -64 -64 168 ) ( 48 -64 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( 48 -64 96 ) ( 48 -64 168 ) ( 48 56 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
-		( -64 56 96 ) ( -64 56 168 ) ( -64 -64 168 ) qltest/rocknoise 0 0 0 0.250000 0.250000 0 0 0
+		( 48 56 168 ) ( 48 -64 168 ) ( -64 -64 168 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( 48 -64 96 ) ( 48 56 96 ) ( -64 56 96 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( 48 56 96 ) ( 48 56 168 ) ( -64 56 168 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( -64 -64 96 ) ( -64 -64 168 ) ( 48 -64 168 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( 48 -64 96 ) ( 48 -64 168 ) ( 48 56 168 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( -64 56 96 ) ( -64 56 168 ) ( -64 -64 168 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// panel D - brick. Mortar recessed, bricks proud.
+	{
+		( -120 -240 192 ) ( -120 -256 192 ) ( -280 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -120 -256 32 ) ( -120 -240 32 ) ( -280 -240 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -120 -240 32 ) ( -120 -240 192 ) ( -280 -240 192 ) qltest/mat_brick 0 0 0 0.250000 0.250000 0 0 0
+		( -280 -256 32 ) ( -280 -256 192 ) ( -120 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -120 -256 32 ) ( -120 -256 192 ) ( -120 -240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -280 -240 32 ) ( -280 -240 192 ) ( -280 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// panel E - rock. Fractal height, sharpened crevices.
+	{
+		( 80 -240 192 ) ( 80 -256 192 ) ( -80 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 80 -256 32 ) ( 80 -240 32 ) ( -80 -240 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 80 -240 32 ) ( 80 -240 192 ) ( -80 -240 192 ) qltest/mat_rock 0 0 0 0.250000 0.250000 0 0 0
+		( -80 -256 32 ) ( -80 -256 192 ) ( 80 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 80 -256 32 ) ( 80 -256 192 ) ( 80 -240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -80 -240 32 ) ( -80 -240 192 ) ( -80 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// panel F - plate. Bevelled seams and rivets.
+	{
+		( 280 -240 192 ) ( 280 -256 192 ) ( 120 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 280 -256 32 ) ( 280 -240 32 ) ( 120 -240 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 280 -240 32 ) ( 280 -240 192 ) ( 120 -240 192 ) qltest/mat_plate 0 0 0 0.250000 0.250000 0 0 0
+		( 120 -256 32 ) ( 120 -256 192 ) ( 280 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 280 -256 32 ) ( 280 -256 192 ) ( 280 -240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( 120 -240 32 ) ( 120 -240 192 ) ( 120 -256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
 	}
 }
 // entity 1 - the key light. Off to -X and high, so the lit side of a dome has

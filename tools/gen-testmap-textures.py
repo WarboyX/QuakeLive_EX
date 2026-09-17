@@ -102,9 +102,160 @@ def flat(v=128):
     return [bytes((v, v, v)) * W for _ in range(H)]
 
 
+# ---------------------------------------------------------------------------
+# Materials: a diffuse and a normal map generated from ONE height field, so the
+# two genuinely agree.
+#
+# That agreement is the whole argument for authoring maps over deriving them,
+# and it is worth stating plainly. R20 derives normals from a texture's
+# luminance, which assumes light and dark mean high and low. On Quake Live's art
+# that assumption is weak, because its diffuse already has lighting painted into
+# it - so the derived normals encode the light the artist painted, and then the
+# engine lights them again. Here the albedo carries colour and dirt, the height
+# field carries shape, and only the height field becomes the normal.
+# ---------------------------------------------------------------------------
+
+def _clampb(v):
+    return max(0, min(255, int(v + 0.5)))
+
+
+def normals_from_height(height, scale):
+    """Central differences, wrapping, so the sheet tiles."""
+    rows = []
+    for y in range(H):
+        row = bytearray()
+        for x in range(W):
+            hx = height[y][(x + 1) % W] - height[y][(x - 1) % W]
+            hy = height[(y + 1) % H][x] - height[(y - 1) % H][x]
+            row += encode(-hx * scale, hy * scale, 1.0)
+        rows.append(bytes(row))
+    return rows
+
+
+def diffuse_from(height, rgb_fn):
+    rows = []
+    for y in range(H):
+        row = bytearray()
+        for x in range(W):
+            r, g, b = rgb_fn(x, y, height[y][x])
+            row += bytes((_clampb(r), _clampb(g), _clampb(b)))
+        rows.append(bytes(row))
+    return rows
+
+
+def fbm(seed, octaves=5, freq0=4):
+    rnd = random.Random(seed)
+    out = [[0.0] * W for _ in range(H)]
+    amp, freq = 1.0, freq0
+    for _ in range(octaves):
+        g = [[rnd.random() for _ in range(freq + 1)] for _ in range(freq + 1)]
+        for y in range(H):
+            gy = y / H * freq; y0 = int(gy); fy = gy - y0
+            fy = fy * fy * (3 - 2 * fy)
+            for x in range(W):
+                gx = x / W * freq; x0 = int(gx); fx = gx - x0
+                fx = fx * fx * (3 - 2 * fx)
+                a = g[y0][x0] + (g[y0][x0 + 1] - g[y0][x0]) * fx
+                b = g[y0 + 1][x0] + (g[y0 + 1][x0 + 1] - g[y0 + 1][x0]) * fx
+                out[y][x] += (a + (b - a) * fy) * amp
+        amp *= 0.5; freq *= 2
+    lo = min(map(min, out)); hi = max(map(max, out)); rng = (hi - lo) or 1.0
+    return [[(v - lo) / rng for v in row] for row in out]
+
+
+def brick(seed=7):
+    """Running-bond brick. Bricks proud, mortar recessed, per-brick colour."""
+    BH, BW, M = 32, 64, 5
+    rnd = random.Random(seed)
+    tint = {}
+    height = [[0.0] * W for _ in range(H)]
+    ids = [[None] * W for _ in range(H)]
+    grain = fbm(seed + 1, octaves=4, freq0=16)
+    for y in range(H):
+        rowi = y // BH
+        off = (rowi % 2) * (BW // 2)
+        for x in range(W):
+            bx = ((x + off) % W) // BW
+            iny = y % BH
+            inx = (x + off) % BW
+            mortar = iny < M or inx < M
+            ids[y][x] = None if mortar else (rowi, bx)
+            if mortar:
+                height[y][x] = 0.12 + grain[y][x] * 0.06
+            else:
+                # slight dome across each brick so it is not a flat slab
+                fx = (inx - M) / float(BW - M) - 0.5
+                fy = (iny - M) / float(BH - M) - 0.5
+                height[y][x] = 0.78 - (fx * fx + fy * fy) * 0.25 + grain[y][x] * 0.14
+    for k in set(v for row in ids for v in row if v):
+        tint[k] = 0.80 + rnd.random() * 0.40
+
+    def rgb(x, y, h):
+        k = ids[y][x]
+        if k is None:
+            v = 96 + grain[y][x] * 40            # mortar: pale grey, no shading
+            return (v, v * 0.98, v * 0.94)
+        t = tint[k]
+        base = (150 * t, 88 * t, 66 * t)         # albedo only
+        d = 0.85 + grain[y][x] * 0.30            # dirt, not light
+        return (base[0] * d, base[1] * d, base[2] * d)
+    return height, rgb
+
+
+def rock(seed=99):
+    h = fbm(seed, octaves=6, freq0=3)
+    h = [[v ** 1.4 for v in row] for row in h]   # sharpen the crevices
+    detail = fbm(seed + 5, octaves=3, freq0=32)
+
+    def rgb(x, y, hv):
+        v = 96 + hv * 70 + detail[y][x] * 26
+        return (v * 1.02, v * 0.99, v * 0.93)
+    return h, rgb
+
+
+def plate(seed=21):
+    """Panel seams with bevels and corner rivets - the metal case."""
+    P, SEAM, BEV, RIV = 128, 4, 7, 5
+    grain = fbm(seed, octaves=4, freq0=24)
+    height = [[0.0] * W for _ in range(H)]
+    rivet = [[False] * W for _ in range(H)]
+    for y in range(H):
+        for x in range(W):
+            ix, iy = x % P, y % P
+            dx = min(ix, P - 1 - ix); dy = min(iy, P - 1 - iy)
+            d = min(dx, dy)
+            if d < SEAM:
+                height[y][x] = 0.10
+            elif d < SEAM + BEV:
+                height[y][x] = 0.10 + 0.72 * (d - SEAM) / float(BEV)
+            else:
+                height[y][x] = 0.82 + grain[y][x] * 0.05
+            # rivets, inset from each corner
+            for cx in (SEAM + BEV + 6, P - SEAM - BEV - 6):
+                for cy in (SEAM + BEV + 6, P - SEAM - BEV - 6):
+                    r2 = (ix - cx) ** 2 + (iy - cy) ** 2
+                    if r2 < RIV * RIV:
+                        height[y][x] = 0.82 + 0.30 * math.sqrt(1 - r2 / float(RIV * RIV))
+                        rivet[y][x] = True
+
+    def rgb(x, y, hv):
+        v = 118 + grain[y][x] * 34
+        if rivet[y][x]:
+            v += 14
+        return (v * 0.97, v, v * 1.05)
+    return height, rgb
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     print("writing to content/testmaps/textures/")
     write_tga("domes_n.tga", domes())
     write_tga("rocknoise_n.tga", rocknoise())
     write_tga("flatgrey.tga", flat(128))
+
+    for name, fn, scale in (("brick", brick, 90.0),
+                            ("rock",  rock,  70.0),
+                            ("plate", plate, 110.0)):
+        h, rgb = fn()
+        write_tga("%s_d.tga" % name, diffuse_from(h, rgb))
+        write_tga("%s_n.tga" % name, normals_from_height(h, scale))

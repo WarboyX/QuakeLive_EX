@@ -147,3 +147,54 @@ textures/qltest/flatgrey
 		qlNoPerturb
 	}
 }
+
+// -----------------------------------------------------------------------------
+// R25 materials. Diffuse and normal map from one height field - see
+// tools/gen-testmap-textures.py. These answer "does it look better"; the flat
+// grey panels above answer "is it correct".
+// -----------------------------------------------------------------------------
+
+textures/qltest/mat_brick
+{
+	qer_editorimage textures/qltest/brick_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/brick_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/brick_n
+	}
+}
+
+textures/qltest/mat_rock
+{
+	qer_editorimage textures/qltest/rock_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/rock_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/rock_n
+	}
+}
+
+textures/qltest/mat_plate
+{
+	qer_editorimage textures/qltest/plate_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/plate_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/plate_n
+	}
+}
