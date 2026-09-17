@@ -1,0 +1,315 @@
+// [QL] R25 parallax showcase - a stone corridor.
+//
+// qltest_bump asks "is the shading correct" and uses flat grey and abstract
+// sheets to do it. This one asks the question the whole line of work started
+// from: does a low-polygon rock read as rock.
+//
+// WHY A CORRIDOR, AND WHY YOU WALK DOWN IT. Parallax offset is proportional to
+// how grazing your view is, and head-on it is nearly a no-op by construction.
+// A panel on a facing wall - which is what qltest_bump gives you - is close to
+// the worst place to judge it. Here every surface is long, you pass it at a
+// shallow angle, and the floor is the best showcase in any game because a floor
+// is never seen any other way.
+//
+// WHAT IS WHERE
+//
+//   floor            cobble      rounded stones with deep gaps. Every gap is a
+//                                hole the view ray has to climb out of.
+//   both walls       stoneblock  irregular masonry, deeply recessed joints.
+//                                Irregular on purpose - a regular grid reads as
+//                                brick, and the joints stop looking like depth.
+//   the boulders     boulder     ridged noise, so the creases are creases. These
+//                                are ordinary axis-aligned blocks, which is
+//                                exactly the seven-polygon rock R20 started
+//                                from. Whether they read as rock is the test.
+//   the strip        gravel      deliberately shallow, as the control. Parallax
+//                                should be nearly invisible here; if it pops as
+//                                hard as the cobble, the depth is running off
+//                                something other than the height field.
+//
+//   behind the spawn             the four abstract sheets from qltest_bump, as
+//                                a calibration bay: deep wells, channels, eight
+//                                terraces, hemispheres. The terraces are the only
+//                                thing here readable as a number rather than an
+//                                impression - at the right depth the risers meet
+//                                the treads, too deep and it shears.
+//
+// The silhouette is still flat. Every boulder is a box and will read as a box
+// against the ceiling, because nothing here moves a vertex - that is R21 and it
+// is parked. What is being judged is whether the FACES read as stone.
+//
+// Lights alternate sides and sit off the centre line, so nothing is lit head-on
+// and a highlight sweeps as you walk. A light square in front of a surface
+// cannot produce a moving highlight, and a moving highlight is most of what the
+// eye reads as relief.
+//
+// Dim - 250, not the 700 the first qltest_bump used. At full white a modulation
+// can only darken and half its range is invisible.
+//
+// Needs -deluxe, which build-testmap.sh passes. Without a deluxemap none of
+// this does anything: a lightmap records how much light arrived, not from where.
+
+// entity 0
+{
+"classname" "worldspawn"
+"message" "QL stone corridor - parallax showcase"
+	// floor - cobble. A floor is only ever seen at a grazing angle, which is
+	// the only angle parallax does anything at.
+	{
+		( 976 208 0 ) ( 976 -208 0 ) ( -1232 -208 0 ) qltest/mat_cobble 0 0 0 0.250000 0.250000 0 0 0
+		( 976 -208 -16 ) ( 976 208 -16 ) ( -1232 208 -16 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 208 -16 ) ( 976 208 0 ) ( -1232 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1232 -208 -16 ) ( -1232 -208 0 ) ( 976 -208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 -208 -16 ) ( 976 -208 0 ) ( 976 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1232 208 -16 ) ( -1232 208 0 ) ( -1232 -208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// ceiling
+	{
+		( 976 208 272 ) ( 976 -208 272 ) ( -1232 -208 272 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 -208 256 ) ( 976 208 256 ) ( -1232 208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 208 256 ) ( 976 208 272 ) ( -1232 208 272 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1232 -208 256 ) ( -1232 -208 272 ) ( 976 -208 272 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 -208 256 ) ( 976 -208 272 ) ( 976 208 272 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1232 208 256 ) ( -1232 208 272 ) ( -1232 -208 272 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// end -X
+	{
+		( -1216 208 256 ) ( -1216 -208 256 ) ( -1232 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1216 -208 0 ) ( -1216 208 0 ) ( -1232 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1216 208 0 ) ( -1216 208 256 ) ( -1232 208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1232 -208 0 ) ( -1232 -208 256 ) ( -1216 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1216 -208 0 ) ( -1216 -208 256 ) ( -1216 208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1232 208 0 ) ( -1232 208 256 ) ( -1232 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// end +X
+	{
+		( 976 208 256 ) ( 976 -208 256 ) ( 960 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 -208 0 ) ( 976 208 0 ) ( 960 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 208 0 ) ( 976 208 256 ) ( 960 208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 960 -208 0 ) ( 960 -208 256 ) ( 976 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 -208 0 ) ( 976 -208 256 ) ( 976 208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 960 208 0 ) ( 960 208 256 ) ( 960 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// wall +Y - stone block, the full run
+	{
+		( 960 208 256 ) ( 960 192 256 ) ( -1216 192 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 960 192 0 ) ( 960 208 0 ) ( -1216 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 960 208 0 ) ( 960 208 256 ) ( -1216 208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1216 192 0 ) ( -1216 192 256 ) ( 960 192 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 960 192 0 ) ( 960 192 256 ) ( 960 208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1216 208 0 ) ( -1216 208 256 ) ( -1216 192 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// wall -Y - stone block, the full run
+	{
+		( 960 -192 256 ) ( 960 -208 256 ) ( -1216 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 960 -208 0 ) ( 960 -192 0 ) ( -1216 -192 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 960 -192 0 ) ( 960 -192 256 ) ( -1216 -192 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1216 -208 0 ) ( -1216 -208 256 ) ( 960 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 960 -208 0 ) ( 960 -208 256 ) ( 960 -192 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1216 -192 0 ) ( -1216 -192 256 ) ( -1216 -208 256 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// calibration 0 - deep wells
+	{
+		( -1056 192 192 ) ( -1056 176 192 ) ( -1176 176 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1056 176 48 ) ( -1056 192 48 ) ( -1176 192 48 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1056 192 48 ) ( -1056 192 192 ) ( -1176 192 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1176 176 48 ) ( -1176 176 192 ) ( -1056 176 192 ) qltest/mat_waffle 0 0 0 0.250000 0.250000 0 0 0
+		( -1056 176 48 ) ( -1056 176 192 ) ( -1056 192 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1176 192 48 ) ( -1176 192 192 ) ( -1176 176 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// calibration 1 - channels
+	{
+		( -906 192 192 ) ( -906 176 192 ) ( -1026 176 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -906 176 48 ) ( -906 192 48 ) ( -1026 192 48 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -906 192 48 ) ( -906 192 192 ) ( -1026 192 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1026 176 48 ) ( -1026 176 192 ) ( -906 176 192 ) qltest/mat_grooves 0 0 0 0.250000 0.250000 0 0 0
+		( -906 176 48 ) ( -906 176 192 ) ( -906 192 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1026 192 48 ) ( -1026 192 192 ) ( -1026 176 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// calibration 2 - eight terraces
+	{
+		( -756 192 192 ) ( -756 176 192 ) ( -876 176 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -756 176 48 ) ( -756 192 48 ) ( -876 192 48 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -756 192 48 ) ( -756 192 192 ) ( -876 192 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -876 176 48 ) ( -876 176 192 ) ( -756 176 192 ) qltest/mat_steps 0 0 0 0.250000 0.250000 0 0 0
+		( -756 176 48 ) ( -756 176 192 ) ( -756 192 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -876 192 48 ) ( -876 192 192 ) ( -876 176 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// calibration 3 - hemispheres
+	{
+		( -606 192 192 ) ( -606 176 192 ) ( -726 176 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -606 176 48 ) ( -606 192 48 ) ( -726 192 48 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -606 192 48 ) ( -606 192 192 ) ( -726 192 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -726 176 48 ) ( -726 176 192 ) ( -606 176 192 ) qltest/mat_studs 0 0 0 0.250000 0.250000 0 0 0
+		( -606 176 48 ) ( -606 176 192 ) ( -606 192 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -726 192 48 ) ( -726 192 192 ) ( -726 176 192 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 0
+	{
+		( -752 96 48 ) ( -752 -16 48 ) ( -880 -16 48 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -752 -16 0 ) ( -752 96 0 ) ( -880 96 0 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -752 96 0 ) ( -752 96 48 ) ( -880 96 48 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -880 -16 0 ) ( -880 -16 48 ) ( -752 -16 48 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -752 -16 0 ) ( -752 -16 48 ) ( -752 96 48 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -880 96 0 ) ( -880 96 48 ) ( -880 -16 48 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 1 - stacked
+	{
+		( -803 65 88 ) ( -803 -9 88 ) ( -867 -9 88 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -803 -9 48 ) ( -803 65 48 ) ( -867 65 48 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -803 65 48 ) ( -803 65 88 ) ( -867 65 88 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -867 -9 48 ) ( -867 -9 88 ) ( -803 -9 88 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -803 -9 48 ) ( -803 -9 88 ) ( -803 65 88 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -867 65 48 ) ( -867 65 88 ) ( -867 -9 88 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 2
+	{
+		( -402 136 72 ) ( -402 56 72 ) ( -562 56 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -402 56 0 ) ( -402 136 0 ) ( -562 136 0 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -402 136 0 ) ( -402 136 72 ) ( -562 136 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -562 56 0 ) ( -562 56 72 ) ( -402 56 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -402 56 0 ) ( -402 56 72 ) ( -402 136 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -562 136 0 ) ( -562 136 72 ) ( -562 56 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 3 - stacked
+	{
+		( -439 117 112 ) ( -439 65 112 ) ( -519 65 112 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -439 65 72 ) ( -439 117 72 ) ( -519 117 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -439 117 72 ) ( -439 117 112 ) ( -519 117 112 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -519 65 72 ) ( -519 65 112 ) ( -439 65 112 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -439 65 72 ) ( -439 65 112 ) ( -439 117 112 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -519 117 72 ) ( -519 117 112 ) ( -519 65 112 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 4
+	{
+		( -84 40 96 ) ( -84 -40 96 ) ( -212 -40 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -84 -40 0 ) ( -84 40 0 ) ( -212 40 0 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -84 40 0 ) ( -84 40 96 ) ( -212 40 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -212 -40 0 ) ( -212 -40 96 ) ( -84 -40 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -84 -40 0 ) ( -84 -40 96 ) ( -84 40 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -212 40 0 ) ( -212 40 96 ) ( -212 -40 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 5 - stacked
+	{
+		( -121 28 168 ) ( -121 -24 168 ) ( -185 -24 168 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -121 -24 96 ) ( -121 28 96 ) ( -185 28 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -121 28 96 ) ( -121 28 168 ) ( -185 28 168 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -185 -24 96 ) ( -185 -24 168 ) ( -121 -24 168 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -121 -24 96 ) ( -121 -24 168 ) ( -121 28 168 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( -185 28 96 ) ( -185 28 168 ) ( -185 -24 168 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 6
+	{
+		( 316 80 96 ) ( 316 0 96 ) ( 156 0 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 316 0 0 ) ( 316 80 0 ) ( 156 80 0 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 316 80 0 ) ( 316 80 96 ) ( 156 80 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 156 0 0 ) ( 156 0 96 ) ( 316 0 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 316 0 0 ) ( 316 0 96 ) ( 316 80 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 156 80 0 ) ( 156 80 96 ) ( 156 0 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 7 - stacked
+	{
+		( 266 65 152 ) ( 266 13 152 ) ( 186 13 152 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 266 13 96 ) ( 266 65 96 ) ( 186 65 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 266 65 96 ) ( 266 65 152 ) ( 186 65 152 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 186 13 96 ) ( 186 13 152 ) ( 266 13 152 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 266 13 96 ) ( 266 13 152 ) ( 266 65 152 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 186 65 96 ) ( 186 65 152 ) ( 186 13 152 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 8
+	{
+		( 602 -24 96 ) ( 602 -168 96 ) ( 506 -168 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 602 -168 0 ) ( 602 -24 0 ) ( 506 -24 0 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 602 -24 0 ) ( 602 -24 96 ) ( 506 -24 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 506 -168 0 ) ( 506 -168 96 ) ( 602 -168 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 602 -168 0 ) ( 602 -168 96 ) ( 602 -24 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 506 -24 0 ) ( 506 -24 96 ) ( 506 -168 96 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 9
+	{
+		( 1002 112 72 ) ( 1002 -32 72 ) ( 842 -32 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 1002 -32 0 ) ( 1002 112 0 ) ( 842 112 0 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 1002 112 0 ) ( 1002 112 72 ) ( 842 112 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 842 -32 0 ) ( 842 -32 72 ) ( 1002 -32 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 1002 -32 0 ) ( 1002 -32 72 ) ( 1002 112 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 842 112 0 ) ( 842 112 72 ) ( 842 -32 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// boulder 10 - stacked
+	{
+		( 966 99 128 ) ( 966 3 128 ) ( 886 3 128 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 966 3 72 ) ( 966 99 72 ) ( 886 99 72 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 966 99 72 ) ( 966 99 128 ) ( 886 99 128 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 886 3 72 ) ( 886 3 128 ) ( 966 3 128 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 966 3 72 ) ( 966 3 128 ) ( 966 99 128 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+		( 886 99 72 ) ( 886 99 128 ) ( 886 3 128 ) qltest/mat_boulder 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// gravel strip - deliberately shallow, as the thing the others are judged
+	// against. Parallax should be nearly invisible here.
+	{
+		( -640 48 4 ) ( -640 -48 4 ) ( -1100 -48 4 ) qltest/mat_gravel 0 0 0 0.250000 0.250000 0 0 0
+		( -640 -48 0 ) ( -640 48 0 ) ( -1100 48 0 ) qltest/mat_gravel 0 0 0 0.250000 0.250000 0 0 0
+		( -640 48 0 ) ( -640 48 4 ) ( -1100 48 4 ) qltest/mat_gravel 0 0 0 0.250000 0.250000 0 0 0
+		( -1100 -48 0 ) ( -1100 -48 4 ) ( -640 -48 4 ) qltest/mat_gravel 0 0 0 0.250000 0.250000 0 0 0
+		( -640 -48 0 ) ( -640 -48 4 ) ( -640 48 4 ) qltest/mat_gravel 0 0 0 0.250000 0.250000 0 0 0
+		( -1100 48 0 ) ( -1100 48 4 ) ( -1100 -48 4 ) qltest/mat_gravel 0 0 0 0.250000 0.250000 0 0 0
+	}
+}
+{
+"classname" "light"
+"origin" "-1100 130 200"
+"light" "250"
+"_color" "1.0 0.94 0.84"
+}
+{
+"classname" "light"
+"origin" "-870 -130 200"
+"light" "250"
+"_color" "0.84 0.90 1.0"
+}
+{
+"classname" "light"
+"origin" "-640 130 200"
+"light" "250"
+"_color" "1.0 0.94 0.84"
+}
+{
+"classname" "light"
+"origin" "-410 -130 200"
+"light" "250"
+"_color" "0.84 0.90 1.0"
+}
+{
+"classname" "light"
+"origin" "-180 130 200"
+"light" "250"
+"_color" "1.0 0.94 0.84"
+}
+{
+"classname" "light"
+"origin" "50 -130 200"
+"light" "250"
+"_color" "0.84 0.90 1.0"
+}
+{
+"classname" "light"
+"origin" "280 130 200"
+"light" "250"
+"_color" "1.0 0.94 0.84"
+}
+{
+"classname" "light"
+"origin" "510 -130 200"
+"light" "250"
+"_color" "0.84 0.90 1.0"
+}
+{
+"classname" "light"
+"origin" "740 130 200"
+"light" "250"
+"_color" "1.0 0.94 0.84"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-1150 0 32"
+"angle" "0"
+}

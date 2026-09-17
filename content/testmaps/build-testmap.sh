@@ -76,10 +76,10 @@ paths="-fs_basepath $fs"
 # -keeplights goes on the BSP phase, NOT the light phase. It works by stamping
 # "_keepLights" "1" into worldspawn, which the light phase reads back. Passed to
 # -light it is accepted in silence and does nothing.
-for map in qltest_light qltest_bump; do
+for map in qltest_light qltest_bump qltest_stone; do
 	bsp="$fs/baseq3/maps/$map.bsp"
 	deluxe=""
-	[ "$map" = "qltest_bump" ] && deluxe="-deluxe"
+	case "$map" in qltest_bump|qltest_stone) deluxe="-deluxe" ;; esac
 	echo
 	echo "=== $map ${deluxe:+($deluxe)} ==="
 	# shellcheck disable=SC2086  # $paths and $deluxe are deliberate expansions
@@ -103,7 +103,8 @@ rm -f "$out/qltest_maps.pk3"
 ( cd "$pk3" && zip -qr "$out/qltest_maps.pk3" . )
 
 echo
-echo "wrote $out/qltest_maps.pk3  (both maps - the pk3 name is not a map name)"
+echo "wrote $out/qltest_maps.pk3  (all three maps - the pk3 name is not a map name)"
 echo "drop it in baseq3/ next to pak00.pk3, then:"
 echo "  /devmap qltest_light   R20, derived normals under a dynamic light"
 echo "  /devmap qltest_bump    R25, authored normals under static light (deluxemaps)"
+echo "  /devmap qltest_stone   R25, the stone corridor - parallax at grazing angles"

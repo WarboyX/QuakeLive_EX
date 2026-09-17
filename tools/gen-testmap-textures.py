@@ -272,6 +272,234 @@ def plate(seed=21):
     return height, rgb
 
 
+# ---------------------------------------------------------------------------
+# Parallax showcases. Everything above was built to test whether the SHADING is
+# right; these are built to make the DEPTH unmistakable, which wants the
+# opposite properties:
+#
+#   deep, not subtle          parallax offset is proportional to height
+#   vertical sides            a sloped wall self-occludes barely at all
+#   a flat-ish albedo         so what you see is shape and not paint
+#   a regular grid            so a wrong offset reads as a warp, not as noise
+#
+# And they are meant to be seen at a GRAZING angle, which is where parallax does
+# its work - head on it is nearly a no-op by construction. A floor is the best
+# showcase in any game, because you never see one any other way.
+# ---------------------------------------------------------------------------
+
+def waffle(cell=64, wall=12, seed=3):
+    """Deep square wells with vertical sides - the strongest parallax case."""
+    grain = fbm(seed, octaves=3, freq0=16)
+    height = [[0.0] * W for _ in range(H)]
+    for y in range(H):
+        for x in range(W):
+            ix, iy = x % cell, y % cell
+            d = min(min(ix, cell - 1 - ix), min(iy, cell - 1 - iy))
+            # plateau at the rim, a short bevel, then floor - the bevel is two
+            # texels so the sides read as vertical without aliasing to nothing
+            if d < wall - 2:
+                height[y][x] = 0.95 + grain[y][x] * 0.04
+            elif d < wall:
+                height[y][x] = 0.95 - 0.85 * (d - (wall - 2)) / 2.0
+            else:
+                height[y][x] = 0.10 + grain[y][x] * 0.05
+
+    def rgb(x, y, h):
+        v = 150 if h > 0.5 else 96          # rim lighter than the well, albedo only
+        v += grain[y][x] * 26
+        return (v, v * 0.98, v * 0.93)
+    return height, rgb
+
+
+def grooves(period=32, seed=11):
+    """Deep parallel channels. Directional on purpose: walk along them and the
+    parallax barely moves, walk across and it swims. If both look the same the
+    offset is not following the view."""
+    grain = fbm(seed, octaves=3, freq0=20)
+    height = [[0.0] * W for _ in range(H)]
+    for y in range(H):
+        for x in range(W):
+            t = (x % period) / float(period)
+            # square channel with a two-texel bevel each side
+            if t < 0.12 or t > 0.88:
+                height[y][x] = 0.08
+            elif t < 0.20:
+                height[y][x] = 0.08 + 0.84 * (t - 0.12) / 0.08
+            elif t > 0.80:
+                height[y][x] = 0.08 + 0.84 * (0.88 - t) / 0.08
+            else:
+                height[y][x] = 0.92 + grain[y][x] * 0.05
+
+    def rgb(x, y, h):
+        v = 128 + grain[y][x] * 30
+        return (v * 0.95, v, v * 1.02)
+    return height, rgb
+
+
+def steps(n=8, seed=5):
+    """A terrace of n equal steps. Quantitative: at the right parallax depth the
+    risers line up with the treads and the staircase looks solid; too deep and it
+    shears, too shallow and it flattens. Nothing else here can be read as a
+    number rather than an impression."""
+    grain = fbm(seed, octaves=2, freq0=12)
+    height = [[0.0] * W for _ in range(H)]
+    for y in range(H):
+        k = int(y / float(H) * n)
+        for x in range(W):
+            height[y][x] = 0.06 + (k / float(n - 1)) * 0.88 + grain[y][x] * 0.02
+
+    def rgb(x, y, h):
+        k = int(y / float(H) * n)
+        v = 104 + (k % 2) * 34              # alternating treads, so steps are countable
+        return (v, v * 0.99, v * 0.95)
+    return height, rgb
+
+
+def studs(cell=48, radius=17, seed=9):
+    """Hemispheres standing proud. The dome sheet's realistic cousin - it has a
+    diffuse, so it answers 'does this look like relief' where domes_n answers
+    'is the basis correct'."""
+    grain = fbm(seed, octaves=3, freq0=18)
+    height = [[0.0] * W for _ in range(H)]
+    on = [[False] * W for _ in range(H)]
+    for y in range(H):
+        for x in range(W):
+            dx = (x % cell) - cell / 2.0 + 0.5
+            dy = (y % cell) - cell / 2.0 + 0.5
+            r2 = dx * dx + dy * dy
+            if r2 < radius * radius:
+                height[y][x] = 0.30 + 0.66 * math.sqrt(1.0 - r2 / (radius * radius))
+                on[y][x] = True
+            else:
+                height[y][x] = 0.18 + grain[y][x] * 0.06
+
+    def rgb(x, y, h):
+        v = (150 if on[y][x] else 104) + grain[y][x] * 22
+        return (v * 1.02, v, v * 0.94)
+    return height, rgb
+
+
+# ---------------------------------------------------------------------------
+# Stone. The abstract sheets above prove the effect is there; these ask the
+# question the whole line of work started from - does a low-polygon rock read as
+# rock. They want deep, irregular relief with hard crevices, because that is
+# what stone has and what a flat photograph of stone cannot imply.
+# ---------------------------------------------------------------------------
+
+def stoneblock(seed=31):
+    """Irregular masonry with deeply recessed joints. Blocks vary in size, which
+    is what separates stonework from brick and what makes the joints read as
+    depth rather than as a grid."""
+    grain = fbm(seed, octaves=5, freq0=20)
+    face = fbm(seed + 3, octaves=4, freq0=8)
+    rnd = random.Random(seed)
+    rows_y = [0]
+    while rows_y[-1] < H:
+        rows_y.append(rows_y[-1] + rnd.choice((38, 46, 56, 64)))
+    cuts = {}
+    for i in range(len(rows_y) - 1):
+        xs, x = [0], 0
+        while x < W:
+            x += rnd.choice((44, 58, 72, 90))
+            xs.append(min(x, W))
+        cuts[i] = xs
+    JOINT = 6
+    height = [[0.0] * W for _ in range(H)]
+    ids = [[None] * W for _ in range(H)]
+    for y in range(H):
+        ri = 0
+        while ri + 1 < len(rows_y) and rows_y[ri + 1] <= y:
+            ri += 1
+        dy = min(y - rows_y[ri], (rows_y[ri + 1] if ri + 1 < len(rows_y) else H) - 1 - y)
+        xs = cuts.get(ri, [0, W])
+        ci = 0
+        for x in range(W):
+            while ci + 1 < len(xs) - 1 and xs[ci + 1] <= x:
+                ci += 1
+            dx = min(x - xs[ci], (xs[ci + 1] if ci + 1 < len(xs) else W) - 1 - x)
+            d = min(dx, dy)
+            if d < JOINT - 2:
+                height[y][x] = 0.06 + grain[y][x] * 0.05      # deep joint
+            elif d < JOINT + 3:
+                height[y][x] = 0.06 + 0.80 * (d - (JOINT - 2)) / 5.0
+            else:
+                # each block slightly domed and independently weathered
+                height[y][x] = 0.86 + face[y][x] * 0.10 + grain[y][x] * 0.04
+                ids[y][x] = (ri, ci)
+
+    def rgb(x, y, h):
+        if ids[y][x] is None:
+            v = 74 + grain[y][x] * 22                          # mortar, dark
+            return (v, v * 0.99, v * 0.95)
+        v = 112 + face[y][x] * 44 + grain[y][x] * 18
+        return (v * 1.02, v, v * 0.92)
+    return height, rgb
+
+
+def cobble(cell=44, seed=47):
+    """Rounded stones with deep gaps between them. The best floor for this:
+    every gap is a hole the view ray has to climb out of."""
+    grain = fbm(seed, octaves=4, freq0=22)
+    jitter = fbm(seed + 7, octaves=2, freq0=W // cell + 1)
+    height = [[0.0] * W for _ in range(H)]
+    on = [[False] * W for _ in range(H)]
+    for y in range(H):
+        for x in range(W):
+            # offset alternate rows, and wobble each stone off its cell centre
+            row = y // cell
+            ox = (cell // 2) if row % 2 else 0
+            cx = ((x + ox) % cell) - cell / 2.0
+            cy = (y % cell) - cell / 2.0
+            jx = (jitter[y][x] - 0.5) * 7.0
+            r = math.sqrt((cx - jx) ** 2 + (cy + jx) ** 2)
+            rad = cell * 0.44 * (0.82 + grain[y][x] * 0.34)
+            if r < rad:
+                height[y][x] = 0.26 + 0.70 * math.sqrt(max(0.0, 1.0 - (r / rad) ** 2))
+                on[y][x] = True
+            else:
+                height[y][x] = 0.05 + grain[y][x] * 0.06       # deep gap
+
+    def rgb(x, y, h):
+        if on[y][x]:
+            v = 104 + grain[y][x] * 52
+            return (v * 1.01, v, v * 0.95)
+        v = 58 + grain[y][x] * 20
+        return (v, v * 0.98, v * 0.94)
+    return height, rgb
+
+
+def boulder(seed=71):
+    """Lumpy rock with sharp crevices - the surface a seven-polygon block has to
+    wear if it is going to read as a boulder. Ridged noise, so the creases are
+    creases and not smooth valleys."""
+    a = fbm(seed, octaves=6, freq0=3)
+    b = fbm(seed + 11, octaves=5, freq0=9)
+    height = [[0.0] * W for _ in range(H)]
+    for y in range(H):
+        for x in range(W):
+            # 1 - |2v-1| turns a smooth field into one with creases at its zeros
+            ridge = 1.0 - abs(2.0 * b[y][x] - 1.0)
+            height[y][x] = 0.12 + 0.62 * a[y][x] + 0.26 * (ridge ** 2)
+
+    def rgb(x, y, h):
+        v = 88 + h * 74 + b[y][x] * 20
+        return (v * 1.0, v * 0.99, v * 0.94)
+    return height, rgb
+
+
+def gravel(seed=83):
+    """Small chips. Fine, dense, shallow - the case where parallax should be
+    almost invisible and the normal map does the work. Worth having so the
+    others can be judged against something that is not meant to pop."""
+    g = fbm(seed, octaves=6, freq0=40)
+    height = [[0.10 + 0.55 * (v ** 1.6) for v in row] for row in g]
+
+    def rgb(x, y, h):
+        v = 96 + g[y][x] * 66
+        return (v, v * 0.99, v * 0.96)
+    return height, rgb
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     print("writing to content/testmaps/textures/")
@@ -279,9 +507,17 @@ if __name__ == "__main__":
     write_tga("rocknoise_n.tga", rocknoise())
     write_tga("flatgrey.tga", flat(128))
 
-    for name, fn, scale in (("brick", brick, 90.0),
-                            ("rock",  rock,  70.0),
-                            ("plate", plate, 110.0)):
+    for name, fn, scale in (("brick",   brick,   90.0),
+                            ("rock",    rock,    70.0),
+                            ("plate",   plate,  110.0),
+                            ("waffle",  waffle, 140.0),
+                            ("grooves", grooves,140.0),
+                            ("steps",   steps,   90.0),
+                            ("studs",   studs,  120.0),
+                            ("stoneblock", stoneblock, 120.0),
+                            ("cobble",  cobble, 130.0),
+                            ("boulder", boulder, 95.0),
+                            ("gravel",  gravel,  80.0)):
         h, rgb = fn()
         write_tga("%s_d.tga" % name, diffuse_from(h, rgb))
         write_tga("%s_n.tga" % name, normals_from_height(h, scale))

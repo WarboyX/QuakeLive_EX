@@ -198,3 +198,143 @@ textures/qltest/mat_plate
 		normalMap textures/qltest/plate_n
 	}
 }
+
+// =============================================================================
+// R25 parallax showcase materials - qltest_stone.map.
+//
+// Diffuse and normal map from one height field (tools/gen-testmap-textures.py),
+// with the HEIGHT in the normal map's alpha - that is what the parallax march
+// steps through. Without it these are ordinary normal maps and the surface
+// cannot self-occlude.
+//
+// normalMap sits on the diffuse stage, which with lightmap-first ordering is
+// stage 1 - and is the stage CollapseMultitexture used to throw away.
+// =============================================================================
+
+// Deep square wells, vertical sides. The strongest parallax case there is - nothing self-occludes like a hole.
+textures/qltest/mat_waffle
+{
+	qer_editorimage textures/qltest/waffle_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/waffle_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/waffle_n
+	}
+}
+
+// Deep parallel channels. Directional: along them the offset barely moves, across them it swims.
+textures/qltest/mat_grooves
+{
+	qer_editorimage textures/qltest/grooves_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/grooves_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/grooves_n
+	}
+}
+
+// Eight equal terraces. The only sheet here readable as a number - at the right depth the risers meet the treads.
+textures/qltest/mat_steps
+{
+	qer_editorimage textures/qltest/steps_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/steps_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/steps_n
+	}
+}
+
+// Hemispheres proud of the surface. domes_n's realistic cousin: it has a diffuse, so it answers 'does this read as relief'.
+textures/qltest/mat_studs
+{
+	qer_editorimage textures/qltest/studs_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/studs_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/studs_n
+	}
+}
+
+// Irregular masonry, deeply recessed joints. Irregular on purpose - a regular grid reads as brick and the joints stop looking like depth.
+textures/qltest/mat_stoneblock
+{
+	qer_editorimage textures/qltest/stoneblock_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/stoneblock_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/stoneblock_n
+	}
+}
+
+// Rounded stones with deep gaps. The floor material: every gap is a hole the view ray climbs out of.
+textures/qltest/mat_cobble
+{
+	qer_editorimage textures/qltest/cobble_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/cobble_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/cobble_n
+	}
+}
+
+// Ridged noise, so creases are creases. What a seven-polygon block has to wear to read as a boulder.
+textures/qltest/mat_boulder
+{
+	qer_editorimage textures/qltest/boulder_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/boulder_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/boulder_n
+	}
+}
+
+// Fine and shallow, as the control. Parallax should be nearly invisible here; if it pops like the cobble, the depth is running off something other than the height field.
+textures/qltest/mat_gravel
+{
+	qer_editorimage textures/qltest/gravel_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/gravel_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/gravel_n
+	}
+}
