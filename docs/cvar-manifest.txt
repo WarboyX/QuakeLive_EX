@@ -39,6 +39,20 @@
 # not as its result. When you do investigate one, replace the reason with what
 # you found.
 #
+# Two places that rule is sharper than it looks, because the first pass got both
+# wrong and they are worth not getting wrong again:
+#
+#   CVAR_USERINFO does NOT make a client setting NETWORKED. It sends the value
+#   to the server; the behaviour still belongs to cgame, and cgame is what does
+#   not implement it. cg_autoAction is QL-FEATURE, not NETWORKED - the hole is
+#   here, not on the wire.
+#
+#   CVAR_ROM means different things either side. In the game it is qagame
+#   setting something for the server to report, so the wire is the reader. In
+#   cgame and ui it is our VM setting something for Quake Live's own menus and
+#   HUD to display, and those live in pak00 where this tool cannot see them -
+#   that is QL-ASSET, and pointing the tool at a QL install would resolve it.
+#
 # Nothing here is GAP. That is not a claim the tree has no dead cvars of its own
 # - it is that every unread cvar currently in the tables came in with the Quake
 # Live port rather than being invented here, checked against the root commit.
@@ -49,150 +63,166 @@
 
 # ---------------------------------------------------------------------------
 # NETWORKED - the wire is the reader
+#
+# These leave the machine. Nothing in our C reading them is the
+# correct and complete answer, not a gap.
 # ---------------------------------------------------------------------------
-NETWORKED	cg_autoAction	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_USERINFO | CVAR_ARCHIVE - goes out in the info string; the consumer is a client or the server browser
-NETWORKED	cg_gameInfo1	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	cg_gameInfo2	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	cg_gameInfo3	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	cg_gameInfo4	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	cg_gameInfo5	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	cg_gameInfo6	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	cg_ignoreMouseInput	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	cg_latchedHookOffset	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	cg_playerTeam	cgame, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	g_adTouchScoreBonus	game, CVAR_GAMERULE | CVAR_SERVERINFO - goes out in the info string; the consumer is a client or the server browser
-NETWORKED	g_factory	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info string; the consumer is a client or the server browser
-NETWORKED	g_factoryTitle	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info string; the consumer is a client or the server browser
-NETWORKED	g_version	game, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	gamedate	game, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	sv_mapname	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info string; the consumer is a client or the server browser
-NETWORKED	ui_cdkeychecked	ui, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	ui_gibs	ui, CVAR_ROM - read-only informational, reported rather than acted on
-NETWORKED	ui_version	ui, CVAR_ROM - read-only informational, reported rather than acted on
+NETWORKED	g_adTouchScoreBonus	game, CVAR_GAMERULE | CVAR_SERVERINFO - goes out in the info string; the server browser and every client read it there
+NETWORKED	g_factory	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info string; the server browser and every client read it there
+NETWORKED	g_factoryTitle	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info string; the server browser and every client read it there
+NETWORKED	g_version	game, CVAR_ROM - read-only, set by qagame to be reported rather than acted on
+NETWORKED	gamedate	game, CVAR_ROM - read-only, set by qagame to be reported rather than acted on
+NETWORKED	sv_mapname	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info string; the server browser and every client read it there
 
 # ---------------------------------------------------------------------------
-# QL-FEATURE - the backlog. Each of these is a Quake Live feature that is not
-# here yet; the cvar is the shape of the hole it left.
+# QL-ASSET - read by pak00, which this tool cannot see
+#
+# Set by our VM for Quake Live's own menus and HUD. Point
+# tools/dead-cvars.py at a QL ui/ directory and these stop being
+# reported at all; the rows are here so the count is honest without one.
 # ---------------------------------------------------------------------------
-QL-FEATURE	cg_announcerLastStandingVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_announcerLeadsVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_announcerRewardsVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_announcerTiesVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_autoProjectileNudge	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
+QL-ASSET	cg_gameInfo1	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	cg_gameInfo2	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	cg_gameInfo3	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	cg_gameInfo4	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	cg_gameInfo5	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	cg_gameInfo6	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	cg_ignoreMouseInput	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	cg_latchedHookOffset	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	cg_playerTeam	cgame, CVAR_ROM - read-only, set by cgame for Quake Live's own menus and HUD to display
+QL-ASSET	ui_cdkeychecked	ui, CVAR_ROM - read-only, set by ui for Quake Live's own menus and HUD to display
+QL-ASSET	ui_gibs	ui, CVAR_ROM - read-only, set by ui for Quake Live's own menus and HUD to display
+QL-ASSET	ui_version	ui, CVAR_ROM - read-only, set by ui for Quake Live's own menus and HUD to display
+
+# ---------------------------------------------------------------------------
+# QL-FEATURE - the backlog
+#
+# Each of these is a Quake Live feature that is not here yet, and the
+# cvar is the shape of the hole it left. The largest single group is
+# the cgame player settings: a player can set cg_hitBeep, cg_railStyle,
+# cg_itemTimers, cg_crosshairPulse and ninety-odd others, they persist
+# to config, and cgame acts on none of them.
+# ---------------------------------------------------------------------------
+QL-FEATURE	cg_announcerLastStandingVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_announcerLeadsVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_announcerRewardsVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_announcerTiesVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_autoAction	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_USERINFO | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_autoProjectileNudge	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_blueTeamName	cgame, 0 - cgame registers it and nothing acts on it
-QL-FEATURE	cg_bob	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_buzzerSound	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
+QL-FEATURE	cg_bob	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_buzzerSound	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_cameraSmartMode	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_cameraThirdPersonSmartMode	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
-QL-FEATURE	cg_crosshairBrightness	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_crosshairHitColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_crosshairHitStyle	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_crosshairHitTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_crosshairPulse	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
+QL-FEATURE	cg_crosshairBrightness	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_crosshairHitColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_crosshairHitStyle	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_crosshairHitTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_crosshairPulse	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_currentSelectedPlayerName	cgame, 0 - cgame registers it and nothing acts on it
 QL-FEATURE	cg_debugFlags	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
-QL-FEATURE	cg_drawCrosshairTeamHealth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawCrosshairTeamHealthSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawDeadFriendTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawDemoHUD	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawFragMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawHitFriendTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawInputCmds	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawInputCmdsSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawInputCmdsX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawInputCmdsY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawItemPickups	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawPregameMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawProfileImages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawRewardsRowSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawSpecMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawSpriteSelf	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawTeamOverlayOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawTeamOverlaySize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawTeamOverlayX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawTeamOverlayY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_drawTieredArmorAvailability	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_enemyCrosshairNamesOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_flagPOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_forceDrawCrosshair	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_forceEnemyWeaponColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_forceTeamWeaponColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_hitBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
+QL-FEATURE	cg_drawCrosshairTeamHealth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawCrosshairTeamHealthSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawDeadFriendTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawDemoHUD	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawFragMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawHitFriendTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawInputCmds	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawInputCmdsSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawInputCmdsX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawInputCmdsY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawItemPickups	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawPregameMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawProfileImages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawRewardsRowSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawSpecMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawSpriteSelf	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawTeamOverlayOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawTeamOverlaySize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawTeamOverlayX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawTeamOverlayY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_drawTieredArmorAvailability	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_enemyCrosshairNamesOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_flagPOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_forceDrawCrosshair	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_forceEnemyWeaponColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_forceTeamWeaponColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_hitBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_ignore	cgame, 0 - cgame registers it and nothing acts on it
-QL-FEATURE	cg_itemFx	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_itemTimers	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_killBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_lowAmmoWarningPercentile	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_lowAmmoWarningSound	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_noProjectileTrail	cgame, CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_noTaunt	cgame, CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_oldPlasma	cgame, CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_oldRocket	cgame, CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_overheadNamesWidth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_playerLean	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_powerupPOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_preferredStartingWeapons	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
+QL-FEATURE	cg_itemFx	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_itemTimers	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_killBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_lowAmmoWarningPercentile	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_lowAmmoWarningSound	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_noProjectileTrail	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_noTaunt	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_oldPlasma	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_oldRocket	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_overheadNamesWidth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_playerLean	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_powerupPOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_preferredStartingWeapons	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_projectileNudge	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
-QL-FEATURE	cg_raceBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_railStyle	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
+QL-FEATURE	cg_raceBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_railStyle	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_redTeamName	cgame, 0 - cgame registers it and nothing acts on it
-QL-FEATURE	cg_screenDamageAlpha	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_screenDamageAlpha_Team	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_screenDamage_Self	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_screenDamage_Team	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_selfOnTeamOverlay	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_simpleItemsBob	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_simpleItemsHeightOffset	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_simpleItemsRadius	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_GL	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_NG	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_RL	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_dust	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_flight	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_haste	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specDuelHealthArmor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specDuelHealthColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specItemTimers	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specItemTimersSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specItemTimersX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specItemTimersY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specTeamVitals	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specTeamVitalsHealthColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specTeamVitalsWidth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_specTeamVitalsY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_teamChatBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_teammateCrosshairNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_teammateCrosshairNamesOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_teammateNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_teammatePOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
+QL-FEATURE	cg_screenDamageAlpha	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_screenDamageAlpha_Team	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_screenDamage_Self	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_screenDamage_Team	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_selfOnTeamOverlay	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_simpleItemsBob	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_simpleItemsHeightOffset	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_simpleItemsRadius	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_smokeRadius_GL	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_smokeRadius_NG	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_smokeRadius_RL	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_smokeRadius_dust	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_smokeRadius_flight	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_smokeRadius_haste	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specDuelHealthArmor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specDuelHealthColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specItemTimers	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specItemTimersSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specItemTimersX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specItemTimersY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specTeamVitals	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specTeamVitalsHealthColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specTeamVitalsWidth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_specTeamVitalsY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_teamChatBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_teammateCrosshairNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_teammateCrosshairNamesOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_teammateNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_teammatePOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_thirdPersonPitch	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_trackPlayer	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
-QL-FEATURE	cg_trueShotgun	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_useItemMessage	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_useItemWarning	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_voiceChatIndicator	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_waterWarp	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponColor_grenade	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_bfg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_cg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_g	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_gh	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_gl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_hmg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_lg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_mg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_ng	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_pg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_pl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_rg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_rl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_sg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	cg_zoomSensitivity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	s_ambient	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_LATCH | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	s_announcerVolume	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
-QL-FEATURE	s_killBeepVolume	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting persisted to config; cgame never reads it
+QL-FEATURE	cg_trueShotgun	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_useItemMessage	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_useItemWarning	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_voiceChatIndicator	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_waterWarp	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponColor_grenade	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_bfg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_cg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_g	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_gh	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_gl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_hmg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_lg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_mg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_ng	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_pg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_pl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_rg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_rl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_weaponConfig_sg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	cg_zoomSensitivity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	s_ambient	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_LATCH | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	s_announcerVolume	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-FEATURE	s_killBeepVolume	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	ui_recordSPDemoName	cgame, 0 - cgame registers it and nothing acts on it
 QL-FEATURE	bot_breakPoint	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	bot_debugVar	game, 0 - game registers it and nothing acts on it
@@ -221,7 +251,7 @@ QL-FEATURE	g_ammoPackHack	game, CVAR_GAMERULE | CVAR_LATCH - factory gamerule; a
 QL-FEATURE	g_autoAction	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_bestStartingWeapons	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_botSpawnList	game, 0 - game registers it and nothing acts on it
-QL-FEATURE	g_complaintDamageThreshold	game, CVAR_ARCHIVE - player setting persisted to config; game never reads it
+QL-FEATURE	g_complaintDamageThreshold	game, CVAR_ARCHIVE - player setting, persisted to config; game never reads it
 QL-FEATURE	g_dropCmds	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_dropPowerups	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_dropSkulls	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
@@ -267,31 +297,32 @@ QL-FEATURE	g_tackleFlag	game, CVAR_GAMERULE - factory gamerule; a factory file c
 QL-FEATURE	g_teamSpecSayEnable	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_throwFlagForwardMult	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_throwFlagVelocity	game, 0 - game registers it and nothing acts on it
-QL-FEATURE	ui_bloomPreset	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_blueteam	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_browserGameType	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_browserMaster	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_browserSortKey	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_ctf_capturelimit	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_ctf_friendly	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_ctf_timelimit	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_currentOpponent	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_currentTier	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
+QL-FEATURE	ui_bloomPreset	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_blueteam	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_browserGameType	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_browserMaster	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_browserSortKey	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_ctf_capturelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_ctf_friendly	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_ctf_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_currentOpponent	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_currentTier	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_debug	ui, CVAR_TEMP - ui registers it and nothing acts on it
-QL-FEATURE	ui_enemyColor	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_ffa_fraglimit	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_ffa_timelimit	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
+QL-FEATURE	ui_enemyColor	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_ffa_fraglimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_ffa_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_forceEnemyModel	ui, CVAR_TEMP - ui registers it and nothing acts on it
 QL-FEATURE	ui_forceEnemySkin	ui, CVAR_TEMP - ui registers it and nothing acts on it
 QL-FEATURE	ui_forceTeamModel	ui, CVAR_TEMP - ui registers it and nothing acts on it
 QL-FEATURE	ui_forceTeamSkin	ui, CVAR_TEMP - ui registers it and nothing acts on it
 QL-FEATURE	ui_initialized	ui, CVAR_TEMP - ui registers it and nothing acts on it
-QL-FEATURE	ui_redteam	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_screenDamage	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_screenDamage_Team	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_teamColor	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_team_fraglimit	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_team_friendly	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_team_timelimit	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_tourney_fraglimit	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
-QL-FEATURE	ui_tourney_timelimit	ui, CVAR_ARCHIVE - player setting persisted to config; ui never reads it
+QL-FEATURE	ui_redteam	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_screenDamage	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_screenDamage_Team	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_teamColor	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_team_fraglimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_team_friendly	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_team_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_tourney_fraglimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-FEATURE	ui_tourney_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+

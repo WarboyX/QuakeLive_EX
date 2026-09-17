@@ -6077,10 +6077,18 @@ fails on an unread cvar with no row. `package-release.sh` runs it beside
 
 | verdict | count | meaning |
 |---|---|---|
-| **QL-FEATURE** | 221 | Quake Live feature not implemented here. The backlog. |
-| **NETWORKED** | 19 | goes out in an info string, or read-only informational - the wire is the reader, and unread by our C is correct |
-| QL-ASSET | 0 | read only by Quake Live's own pak00 menus (needs a QL install to detect) |
+| **QL-FEATURE** | 222 | Quake Live feature not implemented here. The backlog. |
+| QL-ASSET | 12 | our VM sets it for Quake Live's own menus and HUD to display; pointing the tool at a QL install resolves these |
+| NETWORKED | 6 | goes out in the server info string - the wire is the reader, and unread by our C is correct |
 | GAP | 0 | nothing reads it and no QL feature behind it - a real defect |
+
+The first pass at these got two rules wrong, both worth not repeating.
+`CVAR_USERINFO` does not make a client setting NETWORKED: it sends the value to
+the server, but the behaviour is still cgame's and cgame is what does not
+implement it, so `cg_autoAction` is QL-FEATURE. And `CVAR_ROM` means different
+things either side - in the game it is qagame reporting something, on the client
+it is our VM setting something for pak00's menus to display. A flag-class rule
+is only as good as the classes.
 
 Nothing is GAP, and that is a checked claim rather than an assumption: every
 unread cvar in the tables was present at or added by the Quake Live port work,
