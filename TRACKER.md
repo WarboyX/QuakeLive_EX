@@ -5911,6 +5911,67 @@ Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
 
 ## Engine / server
 
+### R26. Ray-traced player shadows, instead of the blob — SCOPED, most of the machinery exists
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported in play: players still have the Quake 3 blob under them.
+
+**Two different problems wear the same name, and only one of them is cheap.**
+Keeping them apart is the whole of the scoping, because the machinery they need
+is not the same.
+
+*(a) Shadows from DYNAMIC lights.* A rocket flies past a player and the player
+throws a moving shadow. Everything this needs already exists and was built for
+R13:
+
+- Players are already in the acceleration structure. `vk.c` rebuilds a dynamic
+  top level every frame from entity proxies - a box for anything that rests on
+  the floor, an inscribed ball for projectiles and gibs via `RF_OCCLUDE_ROUND` -
+  so a player is already a box in the structure the AO pass traces against.
+- The frame's dynamic lights are already uploaded and bound to the trace set,
+  because `r_rtaoLights` already fades occlusion inside a light and needs them.
+- Both are doubled per command buffer already, for the two-frames-in-flight
+  reason.
+
+So this is a shadow ray per light per pixel against a structure that is already
+built and already bound. Cheap next to AO, which is 8 rays a pixel.
+
+*(b) Shadows under STATIC light - which is what the blob is standing in for.* A
+player standing in a lit room casting a shadow on the floor. This is harder and
+the reason Quake 3 shipped a blob: the lightmap is baked, players are not in it,
+and there is no runtime light to shadow from.
+
+There is a direction available, and `R_SetupEntityLightingGrid` already computes
+it - the lightgrid gives an ambient term, a directed term and a dominant
+direction per cell, and `ent->lightDir` is that direction sampled at the
+entity's own origin. That is enough to cast from, and a player is small next to
+a 64 x 64 x 128 cell, so one direction per caster is not an approximation worth
+apologising for.
+
+What it is NOT enough for is the general case, where every receiving pixel wants
+its own light direction. That needs the lightgrid as a GPU texture, which is R20
+Stage B - a real dependency, and worth noticing before starting rather than
+halfway through.
+
+**The order to build them in is (a) then (b)**, and not only because (a) is
+easier. (a) puts a shadow ray through the whole path - trace set, dynamic
+structure, compositing - against lights that already exist, so when (b) arrives
+the only new thing is where the direction comes from.
+
+**What the receiving surface is, and why a screen-space mask.** The world is
+drawn through the generic multitexture path and darkening it there would mean a
+fourth texture slot on a three-slot layout. A full-screen mask composited the
+way AO already is avoids that entirely and mirrors a pass that works.
+
+**The existing paths, for completeness.** `r_shadows` is registered from
+`cg_shadows` and `tr_shadows.c` carries Quake 3's stencil volume path at
+`cg_shadows 2`, gated behind `r_dlightMode 2`. It is not what we want - hard
+edged, and correct only against the world - but it should be checked rather than
+assumed dead, because if it still works it is a free comparison for whatever
+replaces it.
+
+---
+
 ### R25. Authored bump maps on our own maps — SCOPED, and most of it already works
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only — a stock client ignores the keyword and draws the diffuse, so it degrades rather than breaks
 
