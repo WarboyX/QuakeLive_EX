@@ -1875,9 +1875,28 @@ static void R_Register( void )
 	gets, this says how hard a painted line is allowed to become. One knob could
 	not do both - a texture's seams outrun its shading by an order of magnitude,
 	so a scale low enough to tame the seams leaves the shading invisible.
+
+	15, not 30, and the difference is not taste. What matters is not the tilt
+	angle but the brightness ratio it produces, because diffuse is dot(N,L) and
+	a normal tilted +-t at light incidence phi spans cos(phi-t) to cos(phi+t).
+	A projectile flying along a wall lights it at grazing incidence, and there
+	the ratio runs away:
+
+	    cap     30deg incidence   45deg    60deg
+	    12deg        1.3x          1.5x     2.2x
+	    15deg        1.4x          1.7x     2.7x
+	    30deg        2.0x          3.7x    86.0x
+
+	At 30 the shaded face of a slat goes to black and every painted seam reads
+	as a hard band - reported from play, and directional, because which face of
+	an asymmetric slat meets the light depends on which side you fire from.
+	That is the perturbation behaving correctly on normals that were too steep.
+
+	The first version of this cap shipped at 30 because the tilt angle was the
+	thing measured. The angle was never the quantity that mattered.
 	*/
-	r_qlNormalMaxTilt = ri.Cvar_Get( "r_qlNormalMaxTilt", "30", CVAR_LATCH );
-	ri.Cvar_SetDescription( r_qlNormalMaxTilt, "[QL] Steepest angle a derived normal may reach, in degrees. Caps hard texture edges without flattening gentle shading. Takes effect on vid_restart." );
+	r_qlNormalMaxTilt = ri.Cvar_Get( "r_qlNormalMaxTilt", "15", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNormalMaxTilt, "[QL] Steepest angle a derived normal may reach, in degrees. Caps hard texture edges without flattening gentle shading; above about 20 a grazing light bands them. Takes effect on vid_restart." );
 
 	//r_anaglyphMode = ri.Cvar_Get( "r_anaglyphMode", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	//ri.Cvar_SetDescription( r_anaglyphMode, "Enable rendering of anaglyph images. Valid options for 3D glasses types:\n 0: Disabled\n 1: Red-cyan\n 2: Red-blue\n 3: Red-green\n 4: Green-magenta" );

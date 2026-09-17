@@ -5008,6 +5008,37 @@ louvre slat edge            128    63.4deg    30.0deg   <- was the banding
 black->white in 1 texel     255    75.9deg    30.0deg
 ```
 
+**The cap then shipped at the wrong value, and the reason is worth keeping: I
+measured the angle, and the angle was never the quantity that mattered.**
+
+Banding was reported again at 30 degrees, with two details that identified it.
+It was **directional** - present firing right-to-left, absent left-to-right -
+and it was **only on particular panels**. Both follow from the perturbation
+behaving *correctly* on normals that are too steep: diffuse is dot(N,L), a
+normal tilted +-t at light incidence phi spans cos(phi-t) to cos(phi+t), and
+which face of an asymmetric slat meets the light depends on which side the shot
+came from. Nothing about it implicates the tangent frame.
+
+What runs away is the brightness ratio, and it runs away at grazing incidence -
+which is exactly how a projectile flying along a wall lights it:
+
+```
+cap        30deg incidence   45deg    60deg
+ 8deg           1.2x          1.3x     1.6x
+12deg           1.3x          1.5x     2.2x
+15deg           1.4x          1.7x     2.7x
+22deg           1.6x          2.4x     5.7x
+30deg           2.0x          3.7x    86.0x   <- shipped here
+```
+
+At 30 the shaded face of a slat goes to black. Default is now **15**, worst case
+2.7x, and rock shading lands at 8.9 degrees so no cap above that touches it.
+
+That is twice now on this feature that a number was chosen by computing the
+quantity that was easy to compute rather than the one that is seen: first the
+scale against a luminance slope, then the cap against a tilt angle. The thing to
+measure is the brightness ratio a surface ends up with.
+
 **What a build cannot tell us, and what to look at first:** whether the bumps
 point the right way. A mirrored tangent still produces finite, plausible-looking
 bumps lit from the wrong side, and it is invisible on an axis-aligned wall. Take
