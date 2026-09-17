@@ -24,8 +24,21 @@ OUT = os.path.join(os.path.dirname(__file__), "..", "content", "testmaps", "text
 
 
 def write_tga(name, rows):
-    """24-bit uncompressed TGA. Bottom-up, so rows are written reversed."""
-    data = b"".join(reversed(rows))
+    """
+    24-bit uncompressed TGA. Two conversions, and getting either wrong fails
+    quietly in a way that looks like a shader bug.
+
+    Bottom-up, so the rows are written reversed.
+
+    And BGR, not RGB - tr_image_tga.c reads blue, green, red in that order for
+    a 24-bit file. Producers here work in RGB and the swap happens once, here.
+    On a diffuse this merely turns red brick blue, which at least announces
+    itself. On a NORMAL MAP it swaps x with z, so a flat (128,128,255) decodes
+    to (1,0,0) - a normal lying flat in the tangent plane with no z at all - and
+    every authored map is silently meaningless. That shipped once.
+    """
+    data = b"".join(bytes(r[i + 2 - 2 * (i % 3)] for i in range(len(r)))
+                    for r in reversed(rows))
     hdr = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, W, H, 24, 0)
     path = os.path.join(OUT, name)
     open(path, "wb").write(hdr + data)
