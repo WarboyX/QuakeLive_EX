@@ -163,6 +163,44 @@ fewer snapshots than `sv_fps`.
   to this client with nothing needed from us; use `r_ext_multisample 0` if you
   want its depth-buffer effects.
 
+## Natural textures — no more hard cuts
+
+A texture tiled thirty times across a floor reads as a grid, not as a floor.
+`r_qlNaturalTextures` breaks that up.
+
+The request was for Minecraft's "natural textures", and that mechanism does not
+port: OptiFine rotates a *block's* texture from the block's coordinates, which
+works because the seam it creates lands on a block boundary you were going to see
+anyway. A Quake Live wall is one polygon with continuous UVs and has no such
+boundary. So this uses the continuous-surface form of the same idea — stochastic
+hex-tiling (Heitz & Neyret, HPG 2018; Mikkelsen, JCGT 2022): a triangle lattice
+over UV space, a random offset and rotation per hexagon, the three nearest
+blended. Randomised per cell exactly as OptiFine does it, with no edge between
+cells.
+
+Measured on the test corridor's cobble floor, luminance autocorrelation at a lag
+of exactly one texture repeat drops from **+0.88 to +0.035** — the repeat is gone
+— and contrast is not lost doing it (stddev 26.2 → 30.7).
+
+- `r_qlNaturalTextures 1` (default) applies it to shaders that ask, with the
+  `qlNaturalTexture` stage keyword. `2` forces it on every world diffuse stage,
+  which is for looking at a whole map at once: it costs three texture fetches per
+  surface and it **destroys any texture with structure in it**, because three
+  randomly offset copies of a brick wall are three brick walls. OptiFine ships a
+  per-texture allow-list for this exact reason, and mode 1 is that allow-list.
+- `r_qlNaturalRotate` (0–1, default 0.5) and `r_qlNaturalContrast` tune it.
+  All three are latched — the pipelines are built once at map load — so they take
+  effect on `vid_restart`, which the Render menu's APPLY button runs.
+- The normal map is hex-tiled with the albedo, in derivative space rather than as
+  a colour blend: averaging three unit normals gives a *flatter* surface, not the
+  slope the three describe.
+
+Separately, the noise underneath the test textures now wraps. It never had, so
+every generated material carried one vertical and one horizontal discontinuity
+regardless of how neatly its cells divided 256 — visible as a line break repeating
+down a corridor wall. `tools/check-tiling.py` measures this rather than leaving it
+to the eye, and the test-map build runs it.
+
 ## Bots
 
 Stopped hunting their own team in instagib, stopped dancing around each other,

@@ -38,6 +38,9 @@ static	texModInfo_t	texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS+1]; // reserve one
 extern	cvar_t	*r_qlNormalMaps;
 extern	cvar_t	*r_qlNormalScale;
 extern	cvar_t	*r_qlNormalMaxTilt;
+extern	cvar_t	*r_qlNaturalTextures;
+extern	cvar_t	*r_qlNaturalRotate;
+extern	cvar_t	*r_qlNaturalContrast;
 
 
 /*
@@ -1338,6 +1341,24 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			by intent - says so here and keeps the flat fallback.
 			*/
 			stage->noNormalPerturb = qtrue;
+			SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "qlNaturalTexture" ) )
+		{
+			/*
+			[QL] R27 opt-in. This stage's texture is stochastic enough to be
+			hex-tiled: rubble, rock, moss, dirt, gravel, sand - anything whose
+			look does not depend on where a feature is. Anything with structure
+			must NOT say this. Three randomly offset copies of a brick wall
+			blended together is not a brick wall.
+
+			No parameters. Strength and contrast are global (r_qlNaturalRotate,
+			r_qlNaturalContrast) rather than per-stage, because they are a look
+			to be tuned once by whoever is looking at the screen, and a per-stage
+			float would be a number nobody ever revisits.
+			*/
+			stage->naturalTexture = qtrue;
 			SkipRestOfLine( text );
 			continue;
 		}
@@ -2759,6 +2780,18 @@ static int CollapseMultitexture( unsigned int st0bits, shaderStage_t *st0, shade
 	if ( st1->noNormalPerturb ) {
 		st0->noNormalPerturb = qtrue;
 	}
+	/*
+	[QL] R27. qlNaturalTexture travels for the same reason, with one difference
+	that matters: it is declared on the DIFFUSE stage, and after the collapse the
+	surviving stage carries both the diffuse and the lightmap. So the flag alone
+	is not enough downstream - which bundle the diffuse ended up in is what
+	decides whether hex-tiling is applied to texture0 or texture1, and applying
+	it to the wrong one hex-tiles the lightmap. shader.lightingBundle already
+	records that, and FinishShader reads it.
+	*/
+	if ( st1->naturalTexture ) {
+		st0->naturalTexture = qtrue;
+	}
 
 	//
 	// move down subsequent shaders
@@ -3849,6 +3882,52 @@ static shader_t *FinishShader( void ) {
 			int env_mask;
 			shaderStage_t *pStage = &stages[i];
 			def.state_bits = pStage->stateBits;
+
+			/*
+			[QL] R27. Which texture, if any, this stage hex-tiles.
+
+			The answer is "the diffuse bundle", and after a multitexture collapse
+			that is whichever of the two is NOT the lightmap - stage order in the
+			.shader decides, and both orders are ordinary. Getting it backwards
+			does not look like a texture bug: it randomises the LIGHTMAP lookup,
+			so the surface's lighting scrambles and bleeds in the lightmap texels
+			of unrelated surfaces sharing the atlas page.
+
+			Only bundles 0 and 1 can be tiled - gen_frag.tmpl does not wrap
+			texture2 - so a diffuse that landed in bundle 2 opts itself out
+			rather than being silently mis-applied to bundle 0.
+
+			Mode 2 forces it on any stage with a lightmap beside it, which is as
+			close to "world diffuse surfaces" as this loop can see.
+			*/
+			def.hex_tile = 0;
+			def.hex_rot = 0.0f;
+			def.hex_contrast = 0.0f;
+
+			if ( r_qlNaturalTextures->integer ) {
+				qboolean wants = pStage->naturalTexture;
+				int diffuseBundle = -1;
+				int hasLightmap = 0;
+				int n;
+
+				for ( n = 0; n < (int)pStage->numTexBundles && n < NUM_TEXTURE_BUNDLES; n++ ) {
+					if ( pStage->bundle[n].lightmap != LIGHTMAP_INDEX_NONE ) {
+						hasLightmap = 1;
+					} else if ( diffuseBundle < 0 ) {
+						diffuseBundle = n;
+					}
+				}
+
+				if ( r_qlNaturalTextures->integer >= 2 && hasLightmap ) {
+					wants = qtrue;
+				}
+
+				if ( wants && diffuseBundle >= 0 && diffuseBundle <= 1 ) {
+					def.hex_tile = diffuseBundle + 1;
+					def.hex_rot = r_qlNaturalRotate->value;
+					def.hex_contrast = r_qlNaturalContrast->value;
+				}
+			}
 
 			if ( pStage->mtEnv3 ) {
 				switch ( pStage->mtEnv3 ) {

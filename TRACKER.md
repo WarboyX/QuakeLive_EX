@@ -13,10 +13,10 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 |---|---|---|
 | **Client / UI** (U) | `████████████████░░░░  14/17` | U11/U2 partial, U4 open; R24 is the live one - our own pages need a rebuild |
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
-| **Renderer** (R) | `████████░░░░░░░░░░░░  10/24` | R20 Stage A built and untested; R19 step 8 built and untested; R24 menus open |
+| **Renderer** (R) | `█████████░░░░░░░░░░░  11/25` | R27 (natural textures) built and measured, not looked at; R20/R19-8 built and untested; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
 | **Engine / server** (E) | `███████████████░░░░░  69/93` | E92/E93 new, both found by reading: a double registration and a dead networked field |
-| **Overall** | `██████████████░░░░░░  123/174` | by binary: 66 server · 91 client · 10 both |
+| **Overall** | `██████████████░░░░░░  124/175` | by binary: 66 server · 92 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,107 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### R27. Hard cuts and visible repetition — "natural textures" — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Two complaints, one round apart, that turned out to be two different faults with
+the same symptom. Both are now fixed and the second one is the interesting one.
+
+**1. The wrap seam.** *"along the right wall, you see a line break between
+them."* `fbm()` in `tools/gen-testmap-textures.py` built a `(freq+1)^2` lattice
+of independent randoms, so the value it interpolates towards at the right edge
+had nothing to do with the value at the left. Every material lays fbm grain over
+its blocks, so every one of them carried one vertical and one horizontal
+discontinuity — regardless of whether its cells divided 256, which is what the
+first two attempts at this chased. `wrap_grid()` repeats the first row and column
+as the last; `rocknoise()` had its own copy of the lattice with the same bug.
+
+`tools/check-tiling.py` measures it now, and the measurement is the deliverable
+as much as the fix is: the wrap step against the 99th percentile of the sheet's
+own interior steps. Not the median — brick's wrap column lands on a mortar joint
+and measures 14.4 against joints of 14.6, so it tiles, and against a median every
+masonry texture ever made fails forever. On the sheets as they were: 8 fail. As
+they are: none. `build-testmap.sh` runs it before compiling.
+
+**2. Repetition, which is not a seam.** *"there's modifications for minecraft
+called natural textures... so we don't have hard cuts in the textures."*
+
+Researched, and the honest finding is that the Minecraft mechanism does not
+port. OptiFine's Natural Textures rotates and flips a block's texture from the
+block's coordinates — 4, 2 or 8 symmetries per texture, listed in
+`natural.properties`. That works because Minecraft's world is blocks: "the
+texture of this block" is a thing you can rotate independently, and the seam it
+creates falls on a block boundary you were going to see anyway. A Quake Live wall
+is ONE polygon with continuous UVs. There is no boundary to hide a rotation on,
+so rotating part of it produces a visible cut — the problem, not the fix.
+
+The continuous-surface form of the same idea is stochastic tiling: Heitz and
+Neyret, *High-Performance By-Example Noise using a Histogram-Preserving Blending
+Operator* (HPG 2018), in the real-time form Mikkelsen published as *Practical
+Real-Time Hex-Tiling* (JCGT 11(3), 2022). Lay a triangle lattice over UV space,
+give each hexagon a random offset and rotation from its integer index, and blend
+the three nearest — so the texture is randomised per cell exactly as OptiFine
+does it, and there is never an edge between cells.
+
+Mikkelsen's version is the one that is usable here, and specifically because it
+drops the histogram preservation. The original needs a precomputed lookup texture
+per source image; we have neither the pipeline nor the licence to bake one for
+Quake Live's art. Mikkelsen samples the ORIGINAL texture and puts a contrast ramp
+on the blend weights instead, so it works on any image the engine has loaded.
+
+Built as `code/renderervk/shaders/hextile.glsl`, included by `bump.frag` (the
+normal map, in derivative space — averaging three unit normals gives the wrong
+slope, so they are converted to dh/du before blending and back after) and by
+`gen_frag.tmpl` (the albedo). Specialization constants, so a surface that does
+not use it compiles to exactly what it compiled to before.
+
+**Measured**, on the cobble sheet over the corridor's 34 repeats. Luminance
+autocorrelation at a lag of exactly one texture repeat:
+
+| | autocorr @1 repeat | @2 | stddev |
+|---|---|---|---|
+| plain tiling | **+0.880** | +0.755 | 26.2 |
+| hex-tiled | **+0.035** | −0.019 | 30.7 |
+
+0.880 *is* the visible repeat — the surface one tile over is nearly the same
+signal. It is gone, and the contrast is not lost doing it.
+
+One received belief did not survive measurement and is recorded rather than
+repeated: the contrast ramp is supposed to be what saves the variance from a
+three-way average. It is worth 3% here (29.7 at r=0.5 against 30.7 at 0.75) and
+both are *above* plain tiling, because `pow(w,7)` on the barycentrics has
+already made the weights nearly one-hot before Gain3 runs. Kept at the
+reference's 0.75 because it is free, not because it is load-bearing.
+
+**Where it is wrong, and this is the part to read before turning it on.**
+Blending three randomly offset copies assumes a stochastic texture — moss,
+granite, sand, rubble. Give it structure and it destroys the structure: brick
+courses stop lining up, rivets smear, a sign becomes three overlapping signs.
+That is why OptiFine ships an allow-list rather than a switch, and why
+`r_qlNaturalTextures 1` waits for a shader to ask with `qlNaturalTexture`. Mode 2
+forces it on every world diffuse stage — for seeing the effect across a map at
+once, not for playing.
+
+The trap the C side had to avoid: after a multitexture collapse one of the two
+bundles is the LIGHTMAP, and which one depends on stage order in the `.shader`.
+Hex-tiling a lightmap is not a subtle mistake — a lightmap is a unique unwrapped
+atlas, so randomising its lookup scrambles the surface's lighting and bleeds in
+neighbouring surfaces' texels. `hex_tile` names the bundle rather than being a
+flag, for that reason.
+
+Latched, and declared as such: the generic path builds every stage's pipeline
+once in `FinishShader` at map load, so a live cvar would be a cvar that silently
+does nothing — the failure this tree has hit most often.
+
+**To see it:** `/devmap qltest_stone`. The corridor floor is split at x = −128
+into `mat_cobble` (west) and `mat_cobble_natural` (east), same texture, same
+scale, same offsets, UVs continuous across the join. Stand at the join and look
+each way.
+
+**Still unverified:** everything above is measured or compiled, not looked at.
 
 ---
 

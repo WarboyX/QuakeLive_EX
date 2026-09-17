@@ -419,6 +419,17 @@ typedef struct {
 	*/
 	qboolean		noNormalPerturb;
 
+	/*
+	[QL] R27, set by the qlNaturalTexture shader keyword. Opt IN, where
+	noNormalPerturb above is opt out, and the asymmetry is deliberate: deriving
+	a normal map from a texture that should not have one costs some shading
+	nobody asked for, while hex-tiling a texture that should not be hex-tiled
+	destroys it outright - a sign becomes three overlapping signs. So this waits
+	to be asked. r_qlNaturalTextures 2 overrides it for world surfaces, which is
+	a debug setting and says so.
+	*/
+	qboolean		naturalTexture;
+
 #ifdef USE_VULKAN
 	uint32_t		tessFlags;
 	uint32_t		numTexBundles;

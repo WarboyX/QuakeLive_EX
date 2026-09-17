@@ -9409,8 +9409,8 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	VkShaderModule *vs_module = NULL;
 	VkShaderModule *fs_module = NULL;
 	//int32_t vert_spec_data[1]; // clippping
-	floatint_t frag_spec_data[11]; // 0:alpha-test-func, 1:alpha-test-value, 2:depth-fragment, 3:alpha-to-coverage, 4:color_mode, 5:abs_light, 6:multitexture mode, 7:discard mode, 8: ident.color, 9 - ident.alpha, 10 - acff
-	VkSpecializationMapEntry spec_entries[12];
+	floatint_t frag_spec_data[14]; // 0:alpha-test-func, 1:alpha-test-value, 2:depth-fragment, 3:alpha-to-coverage, 4:color_mode, 5:abs_light, 6:multitexture mode, 7:discard mode, 8: ident.color, 9 - ident.alpha, 10 - acff, 11 - hex tile, 12 - hex rotation, 13 - hex contrast
+	VkSpecializationMapEntry spec_entries[15];
 	//VkSpecializationInfo vert_spec_info;
 	VkSpecializationInfo frag_spec_info;
 	VkPipelineVertexInputStateCreateInfo vertex_input_state;
@@ -9839,6 +9839,23 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	spec_entries[11].offset = 10 * sizeof( int32_t );
 	spec_entries[11].size = sizeof( int32_t );
 
+	// [QL] R27
+	spec_entries[12].constantID = 11; // hex tile: 0 off, 1 texture0, 2 texture1
+	spec_entries[12].offset = 11 * sizeof( int32_t );
+	spec_entries[12].size = sizeof( int32_t );
+
+	spec_entries[13].constantID = 12; // hex rotation strength
+	spec_entries[13].offset = 12 * sizeof( int32_t );
+	spec_entries[13].size = sizeof( float );
+
+	spec_entries[14].constantID = 13; // hex blend contrast
+	spec_entries[14].offset = 13 * sizeof( int32_t );
+	spec_entries[14].size = sizeof( float );
+
+	frag_spec_data[11].i = def->hex_tile;
+	frag_spec_data[12].f = def->hex_rot;
+	frag_spec_data[13].f = def->hex_contrast;
+
 	/*
 	[QL] R25. bump.frag declares constant 0 as a float and constant 1 as an int,
 	where the table above calls them alpha-test-func and alpha-test-value. The
@@ -9853,11 +9870,20 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		frag_spec_data[2].i = def->bump_tc_swap;
 		frag_spec_data[3].f = def->bump_parallax;
 		frag_spec_data[4].f = def->bump_specular;
+		/*
+		[QL] R27. bump.frag declares 5 and 6 as its hex knobs, where the generic
+		table calls them abs_light and multitexture mode - the same reuse the
+		comment above describes, one row further down. A negative rotation is
+		what bump.frag reads as "off", because 0.0 means "offsets, no rotation"
+		and the two have to stay tellable apart.
+		*/
+		frag_spec_data[5].f = def->hex_tile ? def->hex_rot : -1.0f;
+		frag_spec_data[6].f = def->hex_contrast;
 	}
 
-	frag_spec_info.mapEntryCount = 11;
+	frag_spec_info.mapEntryCount = 14;
 	frag_spec_info.pMapEntries = spec_entries + 1;
-	frag_spec_info.dataSize = sizeof( int32_t ) * 11;
+	frag_spec_info.dataSize = sizeof( int32_t ) * 14;
 	frag_spec_info.pData = &frag_spec_data[0];
 	shader_stages[1].pSpecializationInfo = &frag_spec_info;
 

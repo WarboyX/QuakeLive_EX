@@ -59,6 +59,10 @@ extern cvar_t	*r_deluxeMapping;
 extern cvar_t	*r_qlBumpScale;
 extern cvar_t	*r_qlParallax;
 extern cvar_t	*r_qlBumpSpecular;
+// [QL] R27
+extern cvar_t	*r_qlNaturalTextures;
+extern cvar_t	*r_qlNaturalRotate;
+extern cvar_t	*r_qlNaturalContrast;
 #ifndef USE_VULKAN
 static qboolean	setArraysOnce;
 #endif
@@ -1365,6 +1369,27 @@ static void VK_BumpPass( void )
 	it is the common case rather than the odd one.
 	*/
 	def.bump_tc_swap = ( tess.shader->lightingBundle != 0 ) ? 1 : 0;
+
+	/*
+	[QL] R27. Hex-tile the normal map exactly when the albedo is hex-tiled, and
+	the flag to read for that is the stage's, not the cvar's: mode 1 means "only
+	shaders that asked" and this pass must make the same choice FinishShader
+	made. Randomising one and not the other leaves a surface with scattered
+	paint over relief that still repeats on the old grid, which is a worse
+	artifact than the repeat because two periods are now visible instead of one.
+
+	Rotation is quantised for the same reason bump_scale is - it is part of the
+	pipeline's identity.
+	*/
+	if ( r_qlNaturalTextures->integer && ( pStage->naturalTexture || r_qlNaturalTextures->integer >= 2 ) ) {
+		def.hex_tile = 1;
+		def.hex_rot = (float)( (int)( r_qlNaturalRotate->value * 100.0f + 0.5f ) ) / 100.0f;
+		if ( def.hex_rot < 0.0f ) def.hex_rot = 0.0f;
+		if ( def.hex_rot > 1.0f ) def.hex_rot = 1.0f;
+		def.hex_contrast = (float)( (int)( r_qlNaturalContrast->value * 100.0f + 0.5f ) ) / 100.0f;
+		if ( def.hex_contrast < 0.05f ) def.hex_contrast = 0.05f;
+		if ( def.hex_contrast > 0.95f ) def.hex_contrast = 0.95f;
+	}
 
 	pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
 

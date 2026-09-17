@@ -55,13 +55,36 @@
 "message" "QL stone corridor - parallax showcase"
 	// floor - cobble. A floor is only ever seen at a grazing angle, which is
 	// the only angle parallax does anything at.
+	//
+	// [QL] R27. Split at x = -128 into two brushes that differ in ONE thing:
+	// the west half is mat_cobble and the east half is mat_cobble_natural,
+	// which is the same shader plus qlNaturalTexture. Same texture, same scale,
+	// same offsets, so the UVs run continuously across the join and the two
+	// halves are directly comparable - which is the only way to judge this.
+	// Repetition is not visible in a texture, only in a texture repeated, so
+	// the thing to do is stand at the join and look up the corridor each way.
+	//
+	// A floor is the right surface for it: 2176 units at 0.25 scale is about
+	// thirty-four repeats, all seen at once, at the grazing angle where the
+	// grid is most obvious.
+	//
+	// west half - plain
 	{
-		( 976 208 0 ) ( 976 -208 0 ) ( -1232 -208 0 ) qltest/mat_cobble 0 0 0 0.250000 0.250000 0 0 0
-		( 976 -208 -16 ) ( 976 208 -16 ) ( -1232 208 -16 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
-		( 976 208 -16 ) ( 976 208 0 ) ( -1232 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
-		( -1232 -208 -16 ) ( -1232 -208 0 ) ( 976 -208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
-		( 976 -208 -16 ) ( 976 -208 0 ) ( 976 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -128 208 0 ) ( -128 -208 0 ) ( -1232 -208 0 ) qltest/mat_cobble 0 0 0 0.250000 0.250000 0 0 0
+		( -128 -208 -16 ) ( -128 208 -16 ) ( -1232 208 -16 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -128 208 -16 ) ( -128 208 0 ) ( -1232 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -1232 -208 -16 ) ( -1232 -208 0 ) ( -128 -208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -128 -208 -16 ) ( -128 -208 0 ) ( -128 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
 		( -1232 208 -16 ) ( -1232 208 0 ) ( -1232 -208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+	}
+	// east half - hex-tiled
+	{
+		( 976 208 0 ) ( 976 -208 0 ) ( -128 -208 0 ) qltest/mat_cobble_natural 0 0 0 0.250000 0.250000 0 0 0
+		( 976 -208 -16 ) ( 976 208 -16 ) ( -128 208 -16 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 208 -16 ) ( 976 208 0 ) ( -128 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -128 -208 -16 ) ( -128 -208 0 ) ( 976 -208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( 976 -208 -16 ) ( 976 -208 0 ) ( 976 208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
+		( -128 208 -16 ) ( -128 208 0 ) ( -128 -208 0 ) qltest/mat_stoneblock 0 0 0 0.250000 0.250000 0 0 0
 	}
 	// ceiling
 	{

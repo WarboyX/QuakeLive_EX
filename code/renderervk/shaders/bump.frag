@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "hextile.glsl"
 
 /*
 [QL] R25. Normal mapping on surfaces nothing is shooting at.
@@ -70,6 +73,27 @@ layout (constant_id = 3) const float parallax_depth = 0.0;
 // r_qlBumpSpecular
 layout (constant_id = 4) const float spec_scale = 0.0;
 
+/*
+[QL] R27. Stochastic hex-tiling of the NORMAL MAP - see hextile.glsl for what
+that is and where it comes from. Negative means off, because 0.0 is a legitimate
+value meaning "offsets but no rotation" and the two must stay distinguishable.
+
+This has to be driven by the same cvar as the albedo's hex-tiling, and it has to
+agree with it. Break the repeat in the diffuse and not in the relief and the
+surface ends up with randomised paint over a shading pattern that still repeats
+on the old grid - which is more obviously wrong than the repeat was, because now
+there are two periods fighting.
+*/
+layout (constant_id = 5) const float hex_rot = -1.0;
+layout (constant_id = 6) const float hex_contrast = 0.75;
+
+vec4 sampleNormal( vec2 uv ) {
+	if ( hex_rot >= 0.0 ) {
+		return QL_HexSampleNormal( normalmap, uv, hex_rot, hex_contrast );
+	}
+	return texture( normalmap, uv );
+}
+
 void main() {
 	vec2 uvN = (tc_swap != 0) ? tc1 : tc0;	// the normal map's, in the diffuse's uv
 	vec2 uvD = (tc_swap != 0) ? tc0 : tc1;	// the deluxemap's, in the lightmap's uv
@@ -88,7 +112,7 @@ void main() {
 	shipped once and this view is what would have caught it.
 	*/
 	if (debug_mode == 4) {
-		out_color = vec4(texture(normalmap, uvN).xyz, 1.0);
+		out_color = vec4(sampleNormal(uvN).xyz, 1.0);
 		return;
 	}
 
@@ -156,14 +180,35 @@ void main() {
 			float depth = parallax_depth * fade;
 
 			if (depth > 0.0001) {
+				/*
+				[QL] R27. With hex-tiling on, the march runs inside the single
+				dominant hexagon rather than blending three - thirty-two fetches
+				is already the expensive part of this shader and tripling it is
+				not a trade worth making. QL_HexDominant's comment has the
+				approximation this costs.
+
+				The march has to happen in the CELL's coordinate space, because
+				that is where the height field it is stepping through actually
+				lives. So: transform in, march, and rotate the resulting offset
+				back out. rot is a rotation, so (v * rot) and (rot * v) are
+				inverses of each other and no matrix has to be inverted.
+				*/
+				mat2 hrot = mat2(1.0, 0.0, 0.0, 1.0);
+				vec2 hcen = vec2(0.0), hoff = vec2(0.0);
+				if (hex_rot >= 0.0) {
+					QL_HexDominant(uvN, hex_rot, hrot, hcen, hoff);
+				}
+				vec2 uvStart = (uvN - hcen) * hrot + hcen + hoff;
+				vec2 marchDir = pdir * hrot;
+
 				// more steps where the offset is longest, which is where a
 				// coarse march shows its stairs
 				float steps = clamp(8.0 + plen * 10.0, 8.0, 28.0);
 				float dz = 1.0 / steps;
-				vec2 duv = pdir * depth * dz;
+				vec2 duv = marchDir * depth * dz;
 
 				float h = 1.0;
-				vec2 uv = uvN;
+				vec2 uv = uvStart;
 				float t = texture(normalmap, uv).a;
 				for (int i = 0; i < 32; i++) {
 					if (float(i) >= steps || t >= h) break;
@@ -176,7 +221,10 @@ void main() {
 				vec2 prev = uv + duv;
 				float aft = t - h;
 				float bef = texture(normalmap, prev).a - (h + dz);
-				uvN = mix(uv, prev, clamp(aft / max(aft - bef, 1e-5), 0.0, 1.0));
+				vec2 hit = mix(uv, prev, clamp(aft / max(aft - bef, 1e-5), 0.0, 1.0));
+
+				// back out of the cell: the offset the march found, un-rotated
+				uvN += hrot * (hit - uvStart);
 			}
 		}
 	}
@@ -245,7 +293,7 @@ void main() {
 	vec3 Tn = normalize(Traw - geomN * dot(geomN, Traw));
 	vec3 Bn = cross(geomN, Tn);
 
-	vec3 tsn = normalize(texture(normalmap, uvN).xyz * 2.0 - 1.0);
+	vec3 tsn = normalize(sampleNormal(uvN).xyz * 2.0 - 1.0);
 	vec3 nN = normalize(Tn * tsn.x + Bn * tsn.y + geomN * tsn.z);
 
 	if (debug_mode == 2) {

@@ -202,6 +202,9 @@ cvar_t	*r_deluxeMapping;
 cvar_t	*r_qlBumpScale;
 cvar_t	*r_qlParallax;
 cvar_t	*r_qlBumpSpecular;
+cvar_t	*r_qlNaturalTextures;
+cvar_t	*r_qlNaturalRotate;
+cvar_t	*r_qlNaturalContrast;
 cvar_t	*r_debugLight;
 cvar_t	*r_debugSort;
 cvar_t	*r_printShaders;
@@ -1945,6 +1948,62 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_qlBumpSpecular, "[QL] Specular highlight strength on static bump surfaces. A highlight that moves with the view is most of what reads as depth." );
 
 	ri.Cvar_SetDescription( r_qlNormalMaxTilt, "[QL] Steepest angle a derived normal may reach, in degrees. Caps hard texture edges without flattening gentle shading; above about 20 a grazing light bands them. Takes effect on vid_restart." );
+
+	/*
+	[QL] R27. Stochastic hex-tiling - Minecraft's "natural textures" for a game
+	whose walls are polygons rather than blocks. hextile.glsl has the algorithm
+	and why OptiFine's own mechanism does not port.
+
+	LATCHED, unlike the R25 pair above, and the reason is worth recording because
+	it is not laziness. The static bump pass builds its pipeline at draw time, so
+	its knobs can be live; the generic path builds every stage's pipeline once, in
+	FinishShader, at map load. Changing a specialization constant after that
+	changes nothing until the shaders are re-finished, which is vid_restart. A
+	cvar that silently does nothing is the failure mode this tree has hit most
+	often, so it is declared as what it is.
+
+	0 off. 1 is the useful setting: shaders that ask for it with qlNaturalTexture
+	get it and nothing else does. 2 forces it on every world diffuse stage, which
+	is for seeing the effect across a whole map at once and is NOT a play setting
+	- it costs three texture fetches per surface and it destroys any texture with
+	structure in it, because blending three randomly offset copies of a brick
+	wall is three brick walls. OptiFine ships an allow-list for exactly this
+	reason and mode 1 is that allow-list.
+	*/
+	r_qlNaturalTextures = ri.Cvar_Get( "r_qlNaturalTextures", "1", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNaturalTextures, "[QL] Break up texture repetition with stochastic hex-tiling. 0 off, 1 shaders that ask (qlNaturalTexture), 2 force on all world diffuse stages - 2 costs 3x texture fetches and mangles structured textures. Takes effect on vid_restart." );
+
+	/*
+	Rotation strength. 0 offsets each hex cell without turning it, 1 turns it to
+	any angle. Offsets alone already break a repeat; rotation is what stops the
+	three blended copies sharing a direction, which is what gives a stone or a
+	grain away. Not latched - it is read when a shader's pipelines are built, so
+	it follows r_qlNaturalTextures and takes effect on the same vid_restart.
+	*/
+	r_qlNaturalRotate = ri.Cvar_Get( "r_qlNaturalRotate", "0.5", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNaturalRotate, "[QL] Per-cell rotation for natural textures, 0 to 1. 0 is offsets only. Takes effect on vid_restart." );
+
+	/*
+	Contrast on the blend weights, standing in for the histogram preservation the
+	original algorithm needs a precomputed per-texture lookup for. The reasoning
+	is that averaging three samples averages away their variance, so an averaged
+	texture reads flat and grey, and pushing the weights towards 0 and 1 keeps
+	most of the surface mostly one sample.
+
+	Measured on the cobble sheet at the corridor's scale, the received wisdom
+	overstates it: plain tiling has a luminance stddev of 26.2, and hex-tiling
+	gives 29.7 at 0.5 and 30.7 at 0.75 - a 3% difference between them, and BOTH
+	are above plain rather than below it. The variance never gets averaged away
+	here because the pow(w,7) falloff on the barycentrics has already made the
+	weights nearly one-hot before this runs; Gain3 is adjusting something that is
+	mostly decided.
+
+	So 0.75 is the reference's value and it is a fine default, but it is not
+	load-bearing, and anyone chasing a washed-out surface should look at the
+	rotation or the texture rather than here.
+	*/
+	r_qlNaturalContrast = ri.Cvar_Get( "r_qlNaturalContrast", "0.75", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNaturalContrast, "[QL] Blend contrast for natural textures, 0.5 to 0.95. Measured effect is small - the barycentric falloff already does this job. Takes effect on vid_restart." );
 
 	//r_anaglyphMode = ri.Cvar_Get( "r_anaglyphMode", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	//ri.Cvar_SetDescription( r_anaglyphMode, "Enable rendering of anaglyph images. Valid options for 3D glasses types:\n 0: Disabled\n 1: Red-cyan\n 2: Red-blue\n 3: Red-green\n 4: Green-magenta" );

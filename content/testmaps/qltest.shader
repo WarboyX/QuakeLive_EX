@@ -338,3 +338,84 @@ textures/qltest/mat_gravel
 		normalMap textures/qltest/gravel_n
 	}
 }
+
+// =============================================================================
+// R27 - stochastic hex-tiling ("natural textures"). See hextile.glsl.
+//
+// qlNaturalTexture on the DIFFUSE stage. Each of these is the plain material
+// above it with one keyword added and nothing else changed, so the pair is an
+// A/B: put them on adjacent surfaces with continuous UVs and the only thing
+// that differs on screen is the repetition.
+//
+// Which materials get a pair is not arbitrary. Hex-tiling blends three randomly
+// offset copies of the texture, so it needs a texture whose look does not
+// depend on where a feature is - cobble, gravel, boulder. The ones NOT given a
+// pair here are the ones it would destroy: brick and stoneblock are courses
+// that must line up, plate has rivets in fixed places, waffle grooves and steps
+// are regular grids whose whole point is regularity. Three overlapping copies
+// of a staircase is not a staircase.
+// =============================================================================
+
+textures/qltest/mat_cobble_natural
+{
+	qer_editorimage textures/qltest/cobble_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/cobble_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/cobble_n
+		qlNaturalTexture
+	}
+}
+
+textures/qltest/mat_gravel_natural
+{
+	qer_editorimage textures/qltest/gravel_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/gravel_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/gravel_n
+		qlNaturalTexture
+	}
+}
+
+textures/qltest/mat_boulder_natural
+{
+	qer_editorimage textures/qltest/boulder_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/boulder_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/boulder_n
+		qlNaturalTexture
+	}
+}
+
+textures/qltest/mat_rock_natural
+{
+	qer_editorimage textures/qltest/rock_d
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/rock_d
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/rock_n
+		qlNaturalTexture
+	}
+}

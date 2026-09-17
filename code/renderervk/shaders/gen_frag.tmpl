@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "hextile.glsl"
 
 #ifdef USE_TX2
 #define USE_TX1
@@ -101,6 +104,43 @@ layout (constant_id = 9) const float identity_alpha = 1.0;
 layout (constant_id = 10) const int acff = 0; // NONE, RGB, RGBA, ALPHA
 #endif
 
+/*
+[QL] R27. Stochastic hex-tiling, which is this tree's answer to Minecraft's
+"natural textures" - see hextile.glsl for the whole of what that means and why
+the Minecraft mechanism itself does not port.
+
+hex_tile says WHICH texture to break the repeat in, not whether to: 0 off,
+1 texture0, 2 texture1. It has to be told, because on a collapsed world shader
+one of those two is the LIGHTMAP, and hex-tiling a lightmap is not a subtle
+mistake - a lightmap is a unique unwrapped atlas, not a tiling detail texture,
+so randomising its lookup scrambles the lighting of the whole surface and
+bleeds in neighbouring surfaces' lightmap texels. Which of the two it is
+depends on the stage order in the .shader, so only the C side knows.
+
+texture2 is deliberately never hex-tiled. A third texture in a collapse is
+almost always an animated or blended stage rather than a tiling detail map, and
+the cost is three fetches per texture.
+*/
+layout (constant_id = 11) const int hex_tile = 0;
+layout (constant_id = 12) const float hex_rot = 0.5;
+layout (constant_id = 13) const float hex_contrast = 0.75;
+
+vec4 ql_tex0( vec2 tc ) {
+	if ( hex_tile == 1 ) {
+		return QL_HexSample( texture0, tc, hex_rot, hex_contrast );
+	}
+	return texture( texture0, tc );
+}
+
+#ifdef USE_TX1
+vec4 ql_tex1( vec2 tc ) {
+	if ( hex_tile == 2 ) {
+		return QL_HexSample( texture1, tc, hex_rot, hex_contrast );
+	}
+	return texture( texture1, tc );
+}
+#endif
+
 #ifdef USE_ATEST
 #if 0
 float CorrectAlpha(float threshold, float alpha, vec2 tc)
@@ -122,14 +162,14 @@ void main() {
 #endif
 
 #if defined (USE_CLX_IDENT)
-	vec4 color0 = texture(texture0, frag_tex_coord0);
+	vec4 color0 = ql_tex0(frag_tex_coord0);
 #elif defined (USE_FIXED_COLOR)
 	const vec4 frag_color = vec4(identity_color, identity_color,identity_color, identity_alpha);
-	vec4 color0 = texture(texture0, frag_tex_coord0) * frag_color;
+	vec4 color0 = ql_tex0(frag_tex_coord0) * frag_color;
 #elif defined (USE_ENT_COLOR)
-	vec4 color0 = texture(texture0, frag_tex_coord0) * ent_color0;
+	vec4 color0 = ql_tex0(frag_tex_coord0) * ent_color0;
 #else
-	vec4 color0 = texture(texture0, frag_tex_coord0) * frag_color0;
+	vec4 color0 = ql_tex0(frag_tex_coord0) * frag_color0;
 #endif
 	vec4 base;
 
@@ -141,16 +181,16 @@ void main() {
 	{
 		// add
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * ent_color2;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color2;
 #endif
 
@@ -160,16 +200,16 @@ void main() {
 	{
 		// modulate by alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * ent_color2;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color2;
 #endif
 		color0 *= color0.a;
@@ -181,16 +221,16 @@ void main() {
 	{
 		// modulate by 1.0-alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * ent_color2;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color2;
 #endif
 		color0 *= 1.0-color0.a;
@@ -202,16 +242,16 @@ void main() {
 	{
 		// mix by src alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * ent_color2;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color2;
 #endif
 		//base = mix( color0, color1, color1.a );
@@ -222,16 +262,16 @@ void main() {
 	{
 		// mix by 1-src alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * ent_color2;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color2;
 #endif
 		//base = mix( color1, color0, color1.a );
@@ -241,16 +281,16 @@ void main() {
 	else if ( tex_mode == 7 ) // 0 + 2x GLS_DSTBLEND_SRC_ALPHA | GLS_SRCBLEND_DST_COLOR
 	{
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * ent_color2;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color2;
 #endif
 		base = (color2 + color2.a) * (color1 + color1.a) * color0;
@@ -259,16 +299,16 @@ void main() {
 	{
 		// default case, modulate
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * ent_color2;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color2;
 #endif
 		base = color0 * color1 * color2;
@@ -278,7 +318,7 @@ void main() {
 	if ( tex_mode == 1 )
 	{
 		// add (identity color0 == 1.0)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 		base = vec4(color0.rgb + color1.rgb + color2.rgb, color0.a * color1.a * color2.a);
 	}
@@ -286,16 +326,16 @@ void main() {
 	{
 		// add (color0 != 1.0)
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * ent_color2;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color0;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color0;
 		vec4 color2 = texture(texture2, frag_tex_coord2) * frag_color0;
 #endif
 		base = vec4(color0.rgb + color1.rgb + color2.rgb, color0.a * color1.a * color2.a);
@@ -303,7 +343,7 @@ void main() {
 	else 
 	{
 		// default case, modulate
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		vec4 color2 = texture(texture2, frag_tex_coord2);
 		base = color0 * color1 * color2;
 	}
@@ -316,13 +356,13 @@ void main() {
 	{
 		// add
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 #endif
 		base = vec4( color0.rgb + color1.rgb, color0.a * color1.a );
 	}
@@ -330,13 +370,13 @@ void main() {
 	{
 		// modulate by alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 #endif
 		color0 *= color0.a;
 		color1 *= color1.a;
@@ -346,13 +386,13 @@ void main() {
 	{
 		// modulate by 1.0-alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 #endif
 		color0 *= 1.0-color0.a;
 		color1 *= 1.0-color1.a;
@@ -362,13 +402,13 @@ void main() {
 	{
 		// mix by src alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 #endif
 		base = mix( color0, color1, color1.a );
 	}
@@ -376,13 +416,13 @@ void main() {
 	{
 		// mix by 1-src alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 #endif
 		base = mix( color1, color0, color1.a );
 	}
@@ -391,13 +431,13 @@ void main() {
 		// modulate color1 by color0
 		// moduleta color0 by color1.alpha
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 #endif
 		base = (color1 + color1.a) * color0;
 	}
@@ -405,13 +445,13 @@ void main() {
 	{
 		// default case, modulate
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color1;
 #endif
 		base = color0 * color1;
 	}
@@ -420,20 +460,20 @@ void main() {
 	if ( tex_mode == 1 )
 	{
 		// add (identity)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 		base = vec4(color0.rgb + color1.rgb, color0.a * color1.a);
 	}
 	else if ( tex_mode == 2 )
 	{
 		// add
 #if defined (USE_CLX_IDENT)
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #elif defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color0;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color0;
 #endif
 		base = vec4(color0.rgb + color1.rgb, color0.a * color1.a);
 	}
@@ -441,11 +481,11 @@ void main() {
 	{
 		// modulate
 #if defined (USE_FIXED_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * frag_color;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * frag_color;
 #elif defined (USE_ENT_COLOR)
-		vec4 color1 = texture(texture1, frag_tex_coord1) * ent_color1;
+		vec4 color1 = ql_tex1(frag_tex_coord1) * ent_color1;
 #else
-		vec4 color1 = texture(texture1, frag_tex_coord1);
+		vec4 color1 = ql_tex1(frag_tex_coord1);
 #endif
 		base = color0 * color1;
 	}

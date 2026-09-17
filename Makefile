@@ -259,7 +259,12 @@ RVKSHADERDIR=$(RVKDIR)/shaders
 RVKSHADERDATA=$(RVKSHADERDIR)/spirv/shader_data.c
 RVKSHADERSRC=$(wildcard $(RVKSHADERDIR)/*.vert) \
              $(wildcard $(RVKSHADERDIR)/*.frag) \
-             $(wildcard $(RVKSHADERDIR)/*.tmpl)
+             $(wildcard $(RVKSHADERDIR)/*.tmpl) \
+             $(wildcard $(RVKSHADERDIR)/*.glsl)
+# [QL] R27 added the fourth line, and it is the same class of bug as the
+# $(OBJ_D_FILES) one: hextile.glsl is #included by bump.frag and gen_frag.tmpl
+# and is not itself emitted, so without it here an edit to the shared shader
+# code rebuilds nothing and the binary keeps the old SPIR-V. Nothing says so.
 CMDIR=$(MOUNT_DIR)/qcommon
 SDLDIR=$(MOUNT_DIR)/sdl
 SYSDIR=$(MOUNT_DIR)/sys

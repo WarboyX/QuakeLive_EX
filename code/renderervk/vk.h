@@ -236,6 +236,23 @@ typedef struct {
 	int bump_tc_swap;
 	float bump_parallax;
 	float bump_specular;
+	/*
+	[QL] R27, stochastic hex-tiling. Also specialization constants, for the same
+	reason. hex_tile names the texture to break the repeat in rather than being
+	a flag: 0 none, 1 texture0, 2 texture1 - because on a collapsed world shader
+	the other one is the lightmap and hex-tiling a lightmap wrecks the lighting
+	of the surface. On TYPE_BUMP it is 0 or 1 and means the normal map.
+
+	Anything added AFTER these moves no offsets, but anything added BEFORE moves
+	all of them, and vk_find_pipeline_ext compares this struct with memcmp - so
+	every field has to be written on every path or padding decides how many
+	pipelines exist. Every site memsets the def first; the one that does not is
+	the fogCollapse path in tr_shader.c, which copies a whole def out of an
+	existing pipeline and is therefore safe by construction.
+	*/
+	int hex_tile;
+	float hex_rot;
+	float hex_contrast;
 } Vk_Pipeline_Def;
 
 typedef struct VK_Pipeline {
