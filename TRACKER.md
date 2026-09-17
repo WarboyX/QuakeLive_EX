@@ -4962,6 +4962,25 @@ pixel, divided by 72*32 so that `r_qlNormalScale 1.0` means "a luminance slope o
 Quake Live's wall textures run roughly 10-30 per texel across mortar lines, hence
 the default of 0.5. That is a starting point to tune against and nothing more.
 
+**CONFIRMED ACTIVE IN PLAY**, on a stock Quake Live map, with both a rocket
+impact and a plasma bolt as the light: the dynamic light picks out ribbing on a
+corridor wall that the lightmap alone never showed, and the bump pattern follows
+the texture's own ribs rather than sitting at an unrelated angle. That settles
+that the derivation runs, the map is bound and the light pass samples it.
+
+It settles nothing about **handedness**, and the screenshots cannot. The wall in
+them is vertical ribbing - a luminance gradient on one axis, axis-aligned, which
+is exactly the case a mirrored tangent survives unnoticed: flip the sign and the
+other side of each rib lights, and on near-symmetric ribbing that looks the same.
+That is what the 90 degree and sheared panels in `qltest_light` are for and they
+have not been run yet.
+
+Also unsettled: **strength**. It reads strong in those shots, and part of that is
+likely not the diffuse shaping at all - `light_frag.tmpl` ends with
+`pow(specFactor, 10.0)`, and a perturbed normal drives an exponent that sharp
+very hard. Tune with `r_qlNormalScale` before concluding the derivation is too
+aggressive, and remember the 0.5 default is arithmetic rather than a measurement.
+
 **What a build cannot tell us, and what to look at first:** whether the bumps
 point the right way. A mirrored tangent still produces finite, plausible-looking
 bumps lit from the wrong side, and it is invisible on an axis-aligned wall. Take
