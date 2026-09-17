@@ -47,6 +47,16 @@ python3 content/serverconfigs/check-configs.py
 # seventy-odd that were already there.
 python3 tools/stub-report.py
 
+# The same idea for cvars. 240 are registered and read by nothing, and they are
+# staying - they are Quake Live's, transcribed from the real binary so a factory
+# file or a stock client finds the name it expects, and wiring one up means
+# implementing the feature rather than deleting the name. Each has a recorded
+# verdict in docs/cvar-manifest.txt; a 241st with no verdict fails here, which is
+# the whole point. g_spawnItemWeapons was registered, documented, set in the
+# shipped instagib configs and read by nothing, and instagib servers kept
+# spawning weapons.
+python3 tools/dead-cvars.py
+
 echo "building $REV"
 
 # Stamp the loaded pak01 with the revision. Menu fixes live in pak01.pk3 and

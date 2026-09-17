@@ -61,10 +61,25 @@ broken for stock clients until proven otherwise.
 
 ## Recurring traps in this codebase
 
-**A registered cvar is not an implemented feature.** 186 cvars are registered
+**A registered cvar is not an implemented feature.** 240 cvars are registered
 and read by nothing — setting them produces no error and no effect. This has
-caused real bugs twice (`g_spawnItemWeapons`, `g_instaGib`). Run
-`tools/dead-cvars.py <path-to-ql-ui>` after adding one.
+caused real bugs twice (`g_spawnItemWeapons`, `g_instaGib`).
+
+Those 240 stay. They are Quake Live's own, transcribed from the real binary's
+cvar table so a factory file, a server config or a stock client finds the name
+and flags it expects; wiring one up means implementing the feature behind it,
+not deleting the name. `docs/cvar-manifest.txt` carries a one-line verdict for
+each — `QL-FEATURE` is the wiring-up backlog, `NETWORKED` means the wire is the
+reader — and `tools/dead-cvars.py` fails the build on an unread cvar that has no
+row, so the 241st does not disappear into the 240. `package-release.sh` runs it.
+
+The verdicts are assigned by flag class, not by investigating each cvar: a
+`QL-FEATURE` row asserts "carries `CVAR_GAMERULE`/`CVAR_USERSAVE`, our code
+never reads it" and nothing about what the feature does. Replace the reason with
+what you find when you look at one.
+
+Pass a directory of Quake Live's `ui/` to stop its menu-only cvars counting as
+unread.
 
 **A menu that fails to parse does not look like one.** The parser keeps going,
 so a stray brace merges the next menu into the current one and what you see is a

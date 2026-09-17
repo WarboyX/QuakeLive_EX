@@ -314,7 +314,7 @@
         // CREDITS
         itemDef {
             name pakstamp
-            text "pak01 @@PAKSTAMP@@"
+            text "pak01 1066916-dirty"
             textscale .2
             // textalignx is relative to the item rect - Item_SetTextExtents
             // computes textRect.x from it and then ToWindowCoords adds rect.x on

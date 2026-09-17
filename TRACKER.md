@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `███████████████░░░░░  69/93` | E92/E93 new, both found by reading: a double registration and a dead networked field |
-| **Overall** | `██████████████░░░░░░  125/176` | by binary: 66 server · 93 client · 10 both |
+| **Engine / server** (E) | `███████████████░░░░░  70/94` | E96: the 240 unread cvars are kept and manifested, so the 241st fails the build |
+| **Overall** | `██████████████░░░░░░  126/177` | by binary: 67 server · 93 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,54 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E96. 240 cvars registered and read by nothing — MANIFESTED, not deleted
+**Lives in:** our **server** (qagame) and our **client** (cgame/ui) · **Seen by:** our client only
+
+Kept deliberately, on your call: they are the shape of the features that are not
+here yet, and deleting a name only makes its absence harder to find.
+
+The problem was never that they exist, it was that 240 of anything is the same
+list every time. Nobody reads it, so the 241st - the one added last week and
+never wired - disappears into it. That is exactly how `g_spawnItemWeapons` got
+registered, exposed as a gamerule, documented, set to 0 in the shipped instagib
+configs and read by no code at all, while instagib servers kept spawning
+weapons.
+
+So they are now manifested the way the 76 empty function bodies already were.
+`docs/cvar-manifest.txt` carries a verdict per cvar and `tools/dead-cvars.py`
+fails on an unread cvar with no row. `package-release.sh` runs it beside
+`stub-report.py`.
+
+| verdict | count | meaning |
+|---|---|---|
+| **QL-FEATURE** | 221 | Quake Live feature not implemented here. The backlog. |
+| **NETWORKED** | 19 | goes out in an info string, or read-only informational - the wire is the reader, and unread by our C is correct |
+| QL-ASSET | 0 | read only by Quake Live's own pak00 menus (needs a QL install to detect) |
+| GAP | 0 | nothing reads it and no QL feature behind it - a real defect |
+
+Nothing is GAP, and that is a checked claim rather than an assumption: every
+unread cvar in the tables was present at or added by the Quake Live port work,
+verified against the root commit. A newly invented one should get GAP.
+
+**What the verdicts are worth.** They are assigned BY FLAG CLASS, not by
+investigating each cvar. A QL-FEATURE row asserts "this carries CVAR_GAMERULE or
+CVAR_USERSAVE and our code never reads it" - a fact - and asserts nothing about
+what the feature does or what wiring it would cost. Recording that limit is the
+point; a manifest that overclaims is worse than none. Replace a reason with what
+you found when you look at one.
+
+The largest single group is 101 cgame `CVAR_USERSAVE | CVAR_REPLICATE |
+CVAR_ARCHIVE` client settings - `cg_hitBeep`, `cg_railStyle`, `cg_itemTimers`,
+`cg_crosshairPulse` and the rest. A player can set every one of them, they
+persist to config, and cgame acts on none of them. Next is 50 `CVAR_GAMERULE`
+server rules a factory file can set to no effect.
+
+Both directions tested: adding an unread cvar fails the build and names it;
+wiring one up reports the manifest row as stale so the backlog shrinks when the
+work is done rather than drifting.
 
 ---
 
