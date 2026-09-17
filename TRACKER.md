@@ -5957,6 +5957,49 @@ Empty now reads black in the direction view.
 tiling noise rather than masonry. Now 32 x 16. Reported before it was measured,
 and correct.
 
+**Wrong 3, and it was the real one - found from a LOG, not from the screen.**
+The registration line read:
+
+```
+Materials: 0 stage(s) with a normal map, 0 with a specular map; 44 derived, 2 underivable (R20).
+```
+
+**Zero shipped normal maps**, on a map whose shaders plainly declare three. The
+panels were wearing R20's derived maps instead, so none of the authored art was
+ever being tested.
+
+`CollapseMultitexture` merges the lightmap and diffuse stages into one and then
+memmoves the second out of existence - and it never carried `normalMap`,
+`specularMap` or `noNormalPerturb` across. A shader writes `normalMap` on the
+stage that has the texture on it, and with the lightmap stage first (which is
+what `R_CreateDefaultShading` builds and what most world shaders are) that is
+exactly the stage being discarded. The map was dropped on the floor with no
+diagnostic at all bar a count of 0, and R20 then derived a replacement because
+`normalMap` was NULL by the time it looked.
+
+`qlNoPerturb` travelled the same road, which is how the "control" panel in
+qltest_bump quietly stopped being a control - the 44 derived maps include every
+flat grey wall that had explicitly declined perturbation.
+
+**This is the single strongest argument yet for counting things rather than
+looking at them.** Nothing on screen distinguishes "the authored normal map was
+discarded and a derived one substituted" from "the authored normal map is
+working". One line of load-time output did it immediately. There is now a
+matching count for this pass:
+`Static bump: N shader(s) have both a normal map and a lightmap (R25).`
+
+**Wrong 4 - the test map was lit into saturation.** Lights of 700 and 200 put
+every surface at or near white, where a modulation can only darken: half the
+range was invisible and the panels read as inert. Now 300 and 90, so surfaces
+sit near mid-grey and brightening is visible too. A test scene that cannot show
+something being made brighter is not a test scene.
+
+**`r_deluxeMapping 5`** draws the normal map itself, in the lavender every tool
+shows one in. It depends on nothing else - not the deluxemap, not the tangent
+basis, not the light - so it is the first thing to look at when the other views
+disagree, and the only one worth having on a map with no deluxemaps at all. It
+is also what would have caught the BGR channel swap immediately.
+
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.

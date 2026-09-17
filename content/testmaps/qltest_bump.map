@@ -60,6 +60,11 @@
 // The light is deliberately off to one side and high, at -X, so "which side is
 // lit" has an unambiguous answer before anyone argues about it.
 //
+// And it is deliberately DIM. The first version used 700 and 200 and every
+// surface sat at or near white, where a modulation can only darken - half its
+// range was invisible and the panels read as "not working". A test scene has to
+// sit near mid-grey or it cannot show something being made brighter.
+//
 // COMPILING. content/testmaps/build-testmap.sh builds this one with -deluxe.
 // Texture names here carry no "textures/" prefix - q3map2 adds it - while the
 // shader blocks in qltest.shader must spell it in full. That rule is inverted
@@ -201,14 +206,14 @@
 {
 "classname" "light"
 "origin" "-280 -120 200"
-"light" "700"
+"light" "300"
 "_color" "1.0 0.96 0.88"
 }
 // entity 2 - a dim fill from the far side so the unlit faces are not pure black
 {
 "classname" "light"
 "origin" "280 120 200"
-"light" "200"
+"light" "90"
 "_color" "0.7 0.78 1.0"
 }
 // entity 3

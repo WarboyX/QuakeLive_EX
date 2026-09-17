@@ -57,6 +57,24 @@ void main() {
 	vec2 uvN = (tc_swap != 0) ? tc1 : tc0;	// the normal map's, in the diffuse's uv
 	vec2 uvD = (tc_swap != 0) ? tc0 : tc1;	// the deluxemap's, in the lightmap's uv
 
+	/*
+	The normal map itself, raw, in the lavender that every tool draws one in.
+	First because it depends on nothing: not the deluxemap, not the tangent
+	basis, not the light. It answers one question and only one - is a real
+	normal map bound to this surface - and that is the question the rest of
+	these views cannot separate from their own.
+
+	Flat lavender everywhere means the flat fallback is bound, or the map is
+	genuinely flat. Anything reddish or greenish overall means the channels are
+	wrong, which is its own bug and not a shading one: a 24-bit TGA is BGR, and
+	writing one RGB swaps x with z so a flat normal decodes to (1,0,0). That
+	shipped once and this view is what would have caught it.
+	*/
+	if (debug_mode == 4) {
+		out_color = vec4(texture(normalmap, uvN).xyz, 1.0);
+		return;
+	}
+
 	vec3 geomN = normalize(N);
 
 	// Modelspace direction, and it is not necessarily unit after filtering.

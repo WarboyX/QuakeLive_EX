@@ -1285,9 +1285,13 @@ static void VK_BumpPass( void )
 	if ( !r_deluxeMapping->integer )
 		return;
 
-	// Needs a map that carries them. Every Quake Live map does not - measured
-	// in R20, no light entities and no deluxemaps - so this is our maps only.
-	if ( tr.world == NULL || !tr.world->deluxeMaps )
+	/*
+	Needs a map that carries them - every Quake Live map does not, measured in
+	R20 - except for the raw normal-map view, which reads only the normal map
+	and is the one thing worth being able to look at on a map with no
+	deluxemaps at all.
+	*/
+	if ( tr.world == NULL || ( !tr.world->deluxeMaps && r_deluxeMapping->integer != 5 ) )
 		return;
 
 	if ( tess.shader->lightingStage < 0 || tess.shader->numUnfoggedPasses < 1 )
@@ -1314,11 +1318,11 @@ static void VK_BumpPass( void )
 	if ( dmap == NULL || dmap->descriptor == VK_NULL_HANDLE )
 		return;
 
-	debug = r_deluxeMapping->integer - 1;	// 2/3/4 -> 1/2/3, 1 -> 0
+	debug = r_deluxeMapping->integer - 1;	// 2..5 -> 1..4, 1 -> 0
 	if ( debug < 0 )
 		debug = 0;
-	if ( debug > 3 )
-		debug = 3;
+	if ( debug > 4 )
+		debug = 4;
 
 	Com_Memset( &def, 0, sizeof( def ) );
 	def.shader_type = TYPE_BUMP;

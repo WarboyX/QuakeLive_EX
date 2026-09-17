@@ -2724,6 +2724,35 @@ static int CollapseMultitexture( unsigned int st0bits, shaderStage_t *st0, shade
 
 	st0->numTexBundles++;
 
+	/*
+	[QL] R20/R25. Carry the material maps across the collapse.
+
+	The two stages merge into one and st1 is about to be memmoved out of
+	existence. A shader writes normalMap on the stage that has the texture on
+	it, and with the lightmap stage first - which is what R_CreateDefaultShading
+	builds and what most world shaders are - that is st1, the one being
+	discarded. Without this the map is dropped here and the surface lights flat.
+
+	It failed exactly that quietly: the registration line read "0 stage(s) with
+	a normal map" while the shader plainly declared one, and R20 then derived a
+	map for the same stage because normalMap was NULL by the time it looked.
+	Found from a log, not from the screen - the surface just looks unlit-ish,
+	which is also what a correct flat surface looks like.
+
+	qlNoPerturb travels too, or a stage that declined perturbation quietly
+	starts getting it the moment it is collapsed - which is how the "control"
+	panel in qltest_bump stopped being a control.
+	*/
+	if ( st1->normalMap != NULL && st0->normalMap == NULL ) {
+		st0->normalMap = st1->normalMap;
+	}
+	if ( st1->specularMap != NULL && st0->specularMap == NULL ) {
+		st0->specularMap = st1->specularMap;
+	}
+	if ( st1->noNormalPerturb ) {
+		st0->noNormalPerturb = qtrue;
+	}
+
 	//
 	// move down subsequent shaders
 	//
@@ -4043,6 +4072,19 @@ static shader_t *FinishShader( void ) {
 
 #ifdef USE_PMLIGHT
 	FindLightingBundle();
+
+	/*
+	[QL] R25. Count the shaders the static bump pass can run on, so whether it
+	is doing anything is a number at load rather than a judgement about a wall.
+	Needs all three: a lighting stage to hang the map on, a lightmap to modulate,
+	and a map that carries the direction to modulate by.
+	*/
+	if ( shader.lightingStage >= 0 && shader.lightmapIndex >= 0
+		&& tr.world != NULL && tr.world->deluxeMaps
+		&& stages[ shader.lightingStage ].normalMap != NULL
+		&& stages[ shader.lightingStage ].normalMap != tr.flatNormalImage ) {
+		tr.numStaticBumpShaders++;
+	}
 
 	/*
 	[QL] R20 Stage A: derive the normal map here, and only for the one stage and

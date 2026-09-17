@@ -1905,11 +1905,16 @@ static void R_Register( void )
 
 	r_deluxeMapping: 0 off, 1 on, 2 draws the deluxemap's direction field, 3
 	draws the perturbed normal, 4 draws the modulation alone with mid-grey
-	meaning unchanged. The debug views replace what is under them rather than
+	meaning unchanged, 5 draws the normal map itself in the lavender every tool
+	shows one in. The debug views replace what is under them rather than
 	multiplying it, which is why there are two blends.
+
+	5 is the one that depends on nothing else - not the deluxemap, not the
+	tangent basis, not the light - so it is the first thing to look at when the
+	rest disagree, and the only one worth having on a map with no deluxemaps.
 	*/
 	r_deluxeMapping = ri.Cvar_Get( "r_deluxeMapping", "1", 0 );
-	ri.Cvar_SetDescription( r_deluxeMapping, "[QL] Light normal-mapped world surfaces with the deluxemap's per-texel light direction. 2/3/4 are debug views. Needs a map compiled with -deluxe." );
+	ri.Cvar_SetDescription( r_deluxeMapping, "[QL] Light normal-mapped world surfaces with the deluxemap's per-texel light direction. 2-5 are debug views; 5 shows the normal map itself. Needs a map compiled with -deluxe." );
 	r_qlBumpScale = ri.Cvar_Get( "r_qlBumpScale", "1", 0 );
 	ri.Cvar_SetDescription( r_qlBumpScale, "[QL] Strength of static normal-map shading, 0 to 1." );
 
@@ -2637,6 +2642,18 @@ static void RE_EndRegistration( void ) {
 	*/
 	ri.Printf( PRINT_ALL, "Materials: %i stage(s) with a normal map, %i with a specular map; %i derived, %i underivable (R20).\n",
 		tr.numNormalMappedStages, tr.numSpecularStages, tr.numDerivedNormalMaps, tr.numUnderivableStages );
+
+	/*
+	[QL] R25. A count rather than a wall to look at. Zero here and nothing the
+	static bump pass does can matter, which is a different problem from it
+	running and looking wrong - and the two are indistinguishable on screen.
+	*/
+	if ( tr.world != NULL && tr.world->deluxeMaps ) {
+		ri.Printf( PRINT_ALL, "Static bump: %i shader(s) have both a normal map and a lightmap (R25).\n",
+			tr.numStaticBumpShaders );
+	} else {
+		ri.Printf( PRINT_ALL, "Static bump: this map has no deluxemaps, so the pass cannot run (R25).\n" );
+	}
 
 #ifdef USE_VULKAN
 	vk_wait_idle();

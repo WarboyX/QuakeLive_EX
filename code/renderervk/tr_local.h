@@ -1326,6 +1326,7 @@ typedef struct {
 	int						numSpecularStages;		// [QL] likewise, parsed but not yet shaded with
 	int						numDerivedNormalMaps;	// [QL] R20 Stage A: lighting stages given a map derived from their own texture
 	int						numUnderivableStages;	// [QL] R20 Stage A: lighting stages that asked and had nothing to derive from
+	int						numStaticBumpShaders;	// [QL] R25: shaders the static bump pass can run on
 	image_t					*identityLightImage;	// full of tr.identityLightByte
 
 	shader_t				*defaultShader;
