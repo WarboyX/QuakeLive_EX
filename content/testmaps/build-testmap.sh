@@ -25,15 +25,48 @@
 # read that image's dimensions, falls back to 64x64, and those surfaces come out
 # with the texture four times too large - one WARNING line and no other sign.
 # The test panels are unaffected either way.
+#
+# --if-stale rebuilds only when the pk3 is older than something that goes into
+# it, and exits 0 having done nothing when it is not. That is what lets
+# package-release.sh call this on every release without adding a minute to a
+# build that changed no map. It is also the only honest way to bundle these:
+# the alternative is a release that ships whichever pk3 happened to be lying in
+# out/, which is the stale-artifact shape this tree keeps getting caught by.
+#
+#   ./content/testmaps/build-testmap.sh --if-stale
 set -e
 
 here=$(cd "$(dirname "$0")" && pwd)
 out="$here/out"
 MAPCOMPILER=${MAPCOMPILER:-mapcompiler}
 
+if_stale=0
+[ "$1" = "--if-stale" ] && if_stale=1
+
+pk3="$out/qltest_maps.pk3"
+
+# Everything the pk3 is built from. The textures are in it as well as compiled
+# against it, and the .shader decides UV scale at compile time, so all three
+# kinds of input count.
+newest_input=$(ls -t "$here"/qltest_*.map "$here"/qltest.shader "$here"/shaderlist.txt \
+	"$here"/textures/*.tga "$here"/build-testmap.sh 2>/dev/null | head -1)
+
+if [ "$if_stale" = 1 ] && [ -f "$pk3" ] && [ -n "$newest_input" ] && [ ! "$newest_input" -nt "$pk3" ]; then
+	echo "build-testmap: $pk3 is up to date"
+	exit 0
+fi
+
 command -v "$MAPCOMPILER" >/dev/null 2>&1 || [ -x "$MAPCOMPILER" ] || {
 	echo "build-testmap: no map compiler. Set MAPCOMPILER=<path to mapcompiler>." >&2
 	echo "See the header of this script for how to build one." >&2
+	if [ "$if_stale" = 1 ]; then
+		if [ -f "$pk3" ]; then
+			echo "build-testmap: $pk3 exists but is OLDER than $newest_input." >&2
+			echo "build-testmap: refusing to pass off a stale map as a current one." >&2
+		else
+			echo "build-testmap: and there is no $pk3 to fall back on." >&2
+		fi
+	fi
 	exit 1
 }
 

@@ -144,6 +144,34 @@ cp -p content/autoexec.cfg "$WD/baseq3/"
 cp -p content/botnames.txt "$LD/baseq3/"
 cp -p content/botnames.txt "$WD/baseq3/"
 
+# The test maps, in baseq3/ so "/devmap qltest_stone" works out of the archive
+# with nothing to move first. They are what the renderer work is judged against
+# and until now they only existed on the machine that compiled them, which made
+# every report about them a report about a build nobody else had.
+#
+# qltest_maps.pk3 is a pk3 name and NOT a map name - the maps inside it are
+# qltest_light, qltest_bump and qltest_stone. That has cost a round before.
+#
+# Safe to ship beside a real install: everything in it is namespaced under
+# textures/qltest/ and maps/qltest_*, so it collides with nothing in pak00, and
+# an unreferenced pak does not enter an sv_pure exchange - a normal game neither
+# loads nor checksums it.
+#
+# --if-stale does nothing when no map input changed, so this costs nothing on
+# most releases. It FAILS when the pk3 is missing or out of date and there is no
+# compiler to fix that, rather than quietly shipping yesterday's map or none at
+# all; SKIP_TESTMAPS=1 is the deliberate way out.
+#
+# The compiler is a separate build - see the header of build-testmap.sh. Point
+# MAPCOMPILER at it.
+if [ "${SKIP_TESTMAPS:-0}" = "1" ]; then
+    echo "package-release: SKIP_TESTMAPS=1, no test maps in this archive"
+else
+    ./content/testmaps/build-testmap.sh --if-stale
+    cp -p content/testmaps/out/qltest_maps.pk3 "$LD/baseq3/"
+    cp -p content/testmaps/out/qltest_maps.pk3 "$WD/baseq3/"
+fi
+
 # A manifest of everything in the archive, so an install can be checked against
 # what was actually shipped without running the game. The engine verifies the
 # extracted game modules against iobin.pk3 on every start (FS_ExtractGamecode);

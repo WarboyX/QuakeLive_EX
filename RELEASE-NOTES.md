@@ -217,6 +217,21 @@ address was touched and from where, the log can keep a timestamped file per run
 reports its own scale, and an out-of-range model frame names the model instead of
 faulting.
 
+**Test maps now ship with the build.** `baseq3/qltest_maps.pk3` is in both
+archives — no moving anything, just:
+
+- `/devmap qltest_stone` — the stone corridor. Parallax at grazing angles, and
+  the floor is split at x = −128 into plain and hex-tiled cobble so the natural
+  textures work can be judged against itself.
+- `/devmap qltest_bump` — authored normal maps under static light (deluxemaps).
+- `/devmap qltest_light` — derived normal maps under a dynamic light. Fire at the
+  panels.
+
+`qltest_maps.pk3` is the *pak* name, not a map name; the three maps above are
+what `/devmap` takes. Everything in it is namespaced under `maps/qltest_*` and
+`textures/qltest/`, so it collides with nothing in `pak00.pk3` and a normal game
+neither loads nor checksums it.
+
 ## Known issues
 
 `TRACKER.md` is the full list, each item tagged with which binary the fault lives
