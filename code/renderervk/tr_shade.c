@@ -52,6 +52,11 @@ SURFACE SHADERS
 */
 
 shaderCommands_t	tess;
+
+// [QL] R25. Declared here rather than beside the pass, which sits above the
+// USE_PMLIGHT block that carries the other renderer cvars this file reaches for.
+extern cvar_t	*r_deluxeMapping;
+extern cvar_t	*r_qlBumpScale;
 #ifndef USE_VULKAN
 static qboolean	setArraysOnce;
 #endif
@@ -1246,6 +1251,132 @@ void VK_LightingPass( void )
 	vk_bind_lighting( tess.shader->lightingStage, tess.shader->lightingBundle );
 	vk_draw_geometry( tess.depthRange, qtrue );
 }
+
+/*
+===============
+VK_BumpPass
+
+[QL] R25. Normal mapping on statically lit world surfaces.
+
+The lightmap says how much light reached a texel, not which way it came from,
+so a normal map has nothing to be dotted against and changes nothing. A map
+compiled with q3map2 -deluxe carries a second lightmap beside every lightmap
+holding the dominant direction per texel; this pass reads it, perturbs the
+normal, and multiplies the surface by how much that changed its response.
+
+A second pass, because the world already spends two of this backend's three
+texture slots on lightmap and diffuse and this needs two more. Multiplying what
+is in the framebuffer needs only the normal map and the deluxemap, costs one
+draw on surfaces that opt in, and cannot touch a surface that does not.
+
+Not what R20 ruled out. That was removing FACETING - a discontinuity baked
+across a face boundary, which no smooth term can divide out. This adds detail
+within a face.
+===============
+*/
+static void VK_BumpPass( void )
+{
+	const shaderStage_t *pStage;
+	const image_t *nmap, *dmap;
+	Vk_Pipeline_Def def;
+	uint32_t pipeline;
+	int lmIndex, debug;
+
+	if ( !r_deluxeMapping->integer )
+		return;
+
+	// Needs a map that carries them. Every Quake Live map does not - measured
+	// in R20, no light entities and no deluxemaps - so this is our maps only.
+	if ( tr.world == NULL || !tr.world->deluxeMaps )
+		return;
+
+	if ( tess.shader->lightingStage < 0 || tess.shader->numUnfoggedPasses < 1 )
+		return;
+
+	// The deluxemap is the odd map beside this surface's lightmap. Lightmap
+	// merging is disabled on these maps precisely so this index is the literal
+	// one - see R_LoadLightmaps.
+	lmIndex = tess.shader->lightmapIndex;
+	if ( lmIndex < 0 || lmIndex + 1 >= tr.numLightmaps )
+		return;
+
+	pStage = tess.xstages[ tess.shader->lightingStage ];
+	if ( pStage == NULL || pStage->normalMap == NULL )
+		return;
+
+	// Only a real authored or derived map is worth a draw. The flat fallback
+	// perturbs by nothing, so the whole pass would multiply by 1.
+	if ( pStage->normalMap == tr.flatNormalImage )
+		return;
+
+	nmap = pStage->normalMap;
+	dmap = tr.lightmaps[ lmIndex + 1 ];
+	if ( dmap == NULL || dmap->descriptor == VK_NULL_HANDLE )
+		return;
+
+	debug = r_deluxeMapping->integer - 1;	// 2/3/4 -> 1/2/3, 1 -> 0
+	if ( debug < 0 )
+		debug = 0;
+	if ( debug > 3 )
+		debug = 3;
+
+	Com_Memset( &def, 0, sizeof( def ) );
+	def.shader_type = TYPE_BUMP;
+	def.face_culling = tess.shader->cullType;
+	def.polygon_offset = tess.shader->polygonOffset;
+	def.mirror = ( backEnd.viewParms.portalView == PV_MIRROR ) ? qtrue : qfalse;
+
+	/*
+	Depth EQUAL and no depth write: the surface is already there, this only
+	changes its colour. The real pass multiplies; the debug views replace, or
+	they would be multiplied by whatever they are describing and unreadable.
+	*/
+	if ( debug )
+		def.state_bits = GLS_DEPTHFUNC_EQUAL;
+	else
+		def.state_bits = GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO | GLS_DEPTHFUNC_EQUAL;
+
+	/*
+	Quantised, because the scale is a specialization constant and so part of
+	the pipeline's identity - vk_find_pipeline_ext memcmps the def. Without
+	this a cvar dragged through a range would allocate a pipeline per value.
+	*/
+	def.bump_scale = (float)( (int)( r_qlBumpScale->value * 100.0f + 0.5f ) ) / 100.0f;
+	if ( def.bump_scale < 0.0f ) def.bump_scale = 0.0f;
+	if ( def.bump_scale > 1.0f ) def.bump_scale = 1.0f;
+	def.bump_debug = debug;
+
+	/*
+	Which texcoord set carries which. The vertex attributes arrive in bundle
+	order, and a collapsed world shader puts the lightmap in bundle 0 when its
+	lightmap stage came first - which is what R_CreateDefaultShading builds, so
+	it is the common case rather than the odd one.
+	*/
+	def.bump_tc_swap = ( tess.shader->lightingBundle != 0 ) ? 1 : 0;
+
+	pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
+
+	vk_update_descriptor( VK_DESC_TEXTURE0, nmap->descriptor );
+	vk_update_descriptor( VK_DESC_TEXTURE1, dmap->descriptor );
+
+#ifdef USE_VBO
+	// vk_bind_geometry reads the offsets off this stage in the VBO path, and
+	// RB_IterateStagesGeneric has left it wherever it finished.
+	tess.vboStage = tess.shader->lightingStage;
+	if ( tess.vboIndex == 0 )
+#endif
+	{
+		R_ComputeTexCoords( 0, &pStage->bundle[0] );
+		R_ComputeTexCoords( 1, &pStage->bundle[1] );
+	}
+
+	vk_bind_pipeline( pipeline );
+	vk_bind_geometry( TESS_XYZ | TESS_ST0 | TESS_ST1 | TESS_NNN );
+	vk_bind_index();
+	vk_draw_geometry( tess.depthRange, qtrue );
+}
+
+
 #endif // USE_PMLIGHT
 
 
@@ -1277,6 +1408,10 @@ void RB_StageIteratorGeneric( void )
 
 	// call shader function
 	RB_IterateStagesGeneric( &tess, fogCollapse );
+
+	// [QL] R25: normal-map shading from the deluxemap, before dlights and fog
+	// so those still sit on top of the result rather than under it.
+	VK_BumpPass();
 
 	// now do any dynamic lighting needed
 #ifdef USE_LEGACY_DLIGHTS

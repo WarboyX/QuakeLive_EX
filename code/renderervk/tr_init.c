@@ -198,6 +198,8 @@ cvar_t	*r_directedScale;
 cvar_t	*r_qlNormalMaps;
 cvar_t	*r_qlNormalScale;
 cvar_t	*r_qlNormalMaxTilt;
+cvar_t	*r_deluxeMapping;
+cvar_t	*r_qlBumpScale;
 cvar_t	*r_debugLight;
 cvar_t	*r_debugSort;
 cvar_t	*r_printShaders;
@@ -1896,6 +1898,21 @@ static void R_Register( void )
 	thing measured. The angle was never the quantity that mattered.
 	*/
 	r_qlNormalMaxTilt = ri.Cvar_Get( "r_qlNormalMaxTilt", "15", CVAR_LATCH );
+	/*
+	[QL] R25. The static bump pass. Live, not latched, because unlike the R20
+	pair nothing here is baked into an image - both values are specialization
+	constants, so changing one allocates a pipeline and takes effect at once.
+
+	r_deluxeMapping: 0 off, 1 on, 2 draws the deluxemap's direction field, 3
+	draws the perturbed normal, 4 draws the modulation alone with mid-grey
+	meaning unchanged. The debug views replace what is under them rather than
+	multiplying it, which is why there are two blends.
+	*/
+	r_deluxeMapping = ri.Cvar_Get( "r_deluxeMapping", "1", 0 );
+	ri.Cvar_SetDescription( r_deluxeMapping, "[QL] Light normal-mapped world surfaces with the deluxemap's per-texel light direction. 2/3/4 are debug views. Needs a map compiled with -deluxe." );
+	r_qlBumpScale = ri.Cvar_Get( "r_qlBumpScale", "1", 0 );
+	ri.Cvar_SetDescription( r_qlBumpScale, "[QL] Strength of static normal-map shading, 0 to 1." );
+
 	ri.Cvar_SetDescription( r_qlNormalMaxTilt, "[QL] Steepest angle a derived normal may reach, in degrees. Caps hard texture edges without flattening gentle shading; above about 20 a grazing light bands them. Takes effect on vid_restart." );
 
 	//r_anaglyphMode = ri.Cvar_Get( "r_anaglyphMode", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );

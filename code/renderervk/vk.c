@@ -6082,6 +6082,13 @@ static void vk_create_shader_modules( void )
 	SET_OBJECT_NAME( vk.modules.dot_vs, "dot vertex module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	SET_OBJECT_NAME( vk.modules.dot_fs, "dot fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 
+	// [QL] R25 static bump pass. Plain .vert/.frag, so compile.sh's *.vert and
+	// *.frag loops name them without needing an entry of their own.
+	vk.modules.bump_vs = SHADER_MODULE( bump_vert_spv );
+	vk.modules.bump_fs = SHADER_MODULE( bump_frag_spv );
+	SET_OBJECT_NAME( vk.modules.bump_vs, "bump vertex module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+	SET_OBJECT_NAME( vk.modules.bump_fs, "bump fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+
 	vk.modules.bloom_fs = SHADER_MODULE( bloom_frag_spv );
 	vk.modules.blur_fs = SHADER_MODULE( blur_frag_spv );
 	vk.modules.blend_fs = SHADER_MODULE( blend_frag_spv );
@@ -9505,6 +9512,13 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 			fs_module = &vk.modules.frag.fixed[1][0];
 			break;
 
+		case TYPE_BUMP:
+			// [QL] R25. One pair, no env/fog variants - it emits a modulation
+			// factor, and fogging that would fog the surface a second time.
+			vs_module = &vk.modules.bump_vs;
+			fs_module = &vk.modules.bump_fs;
+			break;
+
 		case TYPE_MULTI_TEXTURE_MUL2:
 		case TYPE_MULTI_TEXTURE_ADD2_1_1:
 		case TYPE_MULTI_TEXTURE_ADD2:
@@ -9825,6 +9839,20 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	spec_entries[11].offset = 10 * sizeof( int32_t );
 	spec_entries[11].size = sizeof( int32_t );
 
+	/*
+	[QL] R25. bump.frag declares constant 0 as a float and constant 1 as an int,
+	where the table above calls them alpha-test-func and alpha-test-value. The
+	map entries are the same four bytes either way and it is the module that
+	decides how to read them, so only the values have to change - and a map
+	entry naming a constant the module does not declare is ignored, which is
+	what happens to the other nine.
+	*/
+	if ( def->shader_type == TYPE_BUMP ) {
+		frag_spec_data[0].f = def->bump_scale;
+		frag_spec_data[1].i = def->bump_debug;
+		frag_spec_data[2].i = def->bump_tc_swap;
+	}
+
 	frag_spec_info.mapEntryCount = 11;
 	frag_spec_info.pMapEntries = spec_entries + 1;
 	frag_spec_info.dataSize = sizeof( int32_t ) * 11;
@@ -9935,6 +9963,23 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 			push_attr( 1, 1, VK_FORMAT_R8G8B8A8_UNORM );
 			push_attr( 2, 2, VK_FORMAT_R32G32_SFLOAT );
 			push_attr( 3, 3, VK_FORMAT_R32G32_SFLOAT );
+			break;
+
+		/*
+		[QL] R25. No colour array - the pass emits a modulation factor and
+		never a vertex colour - but both texcoord sets, because the normal map
+		is sampled in the diffuse's uv and the deluxemap in the lightmap's, and
+		normals, because the ratio needs the geometric normal to divide by.
+		*/
+		case TYPE_BUMP:
+			push_bind( 0, sizeof( vec4_t ) );					// xyz array
+			push_bind( 2, sizeof( vec2_t ) );					// st0 array
+			push_bind( 3, sizeof( vec2_t ) );					// st1 array
+			push_bind( 5, sizeof( vec4_t ) );					// normals
+			push_attr( 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT );
+			push_attr( 2, 2, VK_FORMAT_R32G32_SFLOAT );
+			push_attr( 3, 3, VK_FORMAT_R32G32_SFLOAT );
+			push_attr( 5, 5, VK_FORMAT_R32G32B32A32_SFLOAT );
 			break;
 
 		case TYPE_MULTI_TEXTURE_MUL2_ENV:

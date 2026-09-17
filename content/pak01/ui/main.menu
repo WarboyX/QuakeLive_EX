@@ -1785,6 +1785,23 @@
         itemDef { text "Strength shapes gentle gradients; max tilt caps hard painted edges, which"  textscale .2  rect 24 231 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { text "otherwise band. Both latched - they are baked into the image, so APPLY."  textscale .2  rect 24 252 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
 
+        // [QL] R25. Authored normal maps under STATIC light. Needs a map
+        // compiled with q3map2 -deluxe: a lightmap says how much light
+        // reached a texel and not which way it came from, so without the
+        // deluxemap there is nothing for a normal to be dotted against and
+        // no normal map changes a still scene at all. Quake Live's own maps
+        // carry none and never can, so this is our maps only.
+        //
+        // Live, not latched - both are specialization constants, so a change
+        // allocates a pipeline and takes effect at once.
+        itemDef { name "" text "STATIC BUMP (deluxemaps)"  textscale .24  rect 20 294 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Deluxemap shading:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name dlx  type ITEM_TYPE_MULTI  text ""  cvar "r_deluxeMapping"
+                  cvarFloatList { "Off" 0 "On (default)" 1 "Debug: light direction" 2 "Debug: perturbed normal" 3 "Debug: modulation only" 4 }  rect 216 315 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Static bump strength:"  textscale .22  rect 24 336 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name dlxscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpScale"
+                  cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1 }  rect 216 336 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+
         // [QL] renderergl2 material maps. Vulkan has no consumer for these,
         // so they are hidden there rather than offered and ignored.
         itemDef { name "" text "MATERIAL MAPS"  textscale .24  rect 20 294 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }

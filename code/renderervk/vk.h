@@ -87,6 +87,14 @@ typedef enum {
 
 	TYPE_SIGNLE_TEXTURE_DF,
 
+	/*
+	[QL] R25. The static bump pass: modulates what the world already drew by
+	how a normal map changes its response to the deluxemap's light direction.
+	Outside TYPE_GENERIC_BEGIN because it has no env/fog variants - it is one
+	shader pair with two specialization constants.
+	*/
+	TYPE_BUMP,
+
 	TYPE_GENERIC_BEGIN, // start of non-env/env shader pairs
 	TYPE_SIGNLE_TEXTURE = TYPE_GENERIC_BEGIN,
 	TYPE_SIGNLE_TEXTURE_ENV,
@@ -215,6 +223,17 @@ typedef struct {
 		byte rgb;
 		byte alpha;
 	} color;
+	/*
+	[QL] R25, TYPE_BUMP only. Specialization constants, so they belong to the
+	pipeline rather than to a uniform this pass does not have. Being part of the
+	def means vk_find_pipeline_ext's memcmp treats a different value as a
+	different pipeline and allocates one - so r_qlBumpScale takes effect
+	immediately instead of needing a restart, at the cost of one pipeline per
+	distinct value. The caller quantises it to keep that bounded.
+	*/
+	float bump_scale;
+	int bump_debug;
+	int bump_tc_swap;
 } Vk_Pipeline_Def;
 
 typedef struct VK_Pipeline {
@@ -622,6 +641,10 @@ typedef struct {
 		VkShaderModule color_fs;
 		VkShaderModule color_vs;
 
+		// [QL] R25 static bump pass
+		VkShaderModule bump_vs;
+		VkShaderModule bump_fs;
+
 		VkShaderModule bloom_fs;
 		VkShaderModule blur_fs;
 		VkShaderModule blend_fs;
@@ -690,6 +713,14 @@ typedef struct {
 	// cullType[3], polygonOffset[2], fogStage[2], absLight[2]
 #ifdef USE_PMLIGHT
 	uint32_t dlight_pipelines_x[3][2][2][2];
+
+	/*
+	[QL] R25. [modulate/replace][debug mode]. Two blends because the debug views
+	must REPLACE what is under them to be readable, where the real pass
+	multiplies it. Indexed by r_deluxeMapping at draw time, so switching views
+	costs nothing and needs no restart.
+	*/
+	uint32_t bump_pipelines[2][4];
 	uint32_t dlight1_pipelines_x[3][2][2][2];
 #endif
 

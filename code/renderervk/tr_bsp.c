@@ -455,7 +455,20 @@ static void R_LoadLightmaps( const lump_t *l ) {
 	s_worldData.numLightmapsInBsp = numLightmaps;
 	s_worldData.deluxeMaps = ( numLightmaps >= 2 && ( numLightmaps & 1 ) == 0 ) ? qtrue : qfalse;
 
-	if ( r_mergeLightmaps->integer && numLightmaps > 1 ) {
+	/*
+	[QL] R25. Not when the map carries deluxemaps.
+
+	Merging atlases the lightmaps into tiles and rewrites every surface's
+	lightmap texcoords through a texmod to land on its tile. A deluxemap is the
+	odd-indexed map beside its lightmap, so finding it means reproducing that
+	tile arithmetic for a second texture - and getting it subtly wrong would
+	sample a neighbouring surface's light direction, which looks like a shading
+	bug and is not one.
+
+	Unmerged costs more texture binds. These are our own maps, they are small,
+	and a correct lookup is worth more than the binds.
+	*/
+	if ( r_mergeLightmaps->integer && numLightmaps > 1 && !s_worldData.deluxeMaps ) {
 		// check for low texture sizes
 		if ( glConfig.maxTextureSize >= LIGHTMAP_LEN * 2 ) {
 			tr.mergeLightmaps = qtrue;
