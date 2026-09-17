@@ -101,8 +101,8 @@ void R_UploadSubImage( byte *data, int x, int y, int width, int height, image_t 
 RGBA8 (a flat input gives exactly the identity 128,128,255); R_DeriveNormalMap
 wraps it with the file re-read and the per-image cache.
 */
-void R_GenerateNormalMap( const byte *rgba, int w, int h, float strength, byte *outRGBA );
-image_t *R_DeriveNormalMap( image_t *base, float strength );
+void R_GenerateNormalMap( const byte *rgba, int w, int h, float strength, float maxTilt, byte *outRGBA );
+image_t *R_DeriveNormalMap( image_t *base, float strength, float maxTiltDegrees );
 
 qhandle_t RE_RegisterShaderLightMap( const char *name, int lightmapIndex );
 qhandle_t RE_RegisterShader( const char *name );

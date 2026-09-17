@@ -1779,9 +1779,11 @@
         itemDef { text "Strength:"  textscale .22  rect 24 189 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name qlnmscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalScale"
                   cvarFloatList { "0.25 (subtle)" 0.25 "0.5 (default)" 0.5 "1.0" 1 "1.5" 1.5 "2.0 (hard)" 2 }  rect 216 189 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "1.0 tilts 45 degrees at a luminance slope of 32 per texel. Needs APPLY."  textscale .2  rect 24 210 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Wrong wherever a texture is light and dark for some reason other than"  textscale .2  rect 24 231 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "shape - signs and lettering grow bumps. A shader declines with qlNoPerturb."  textscale .2  rect 24 252 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Max edge tilt:"  textscale .22  rect 24 210 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name qlnmtilt  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalMaxTilt"
+                  cvarFloatList { "15 (soft)" 15 "22" 22 "30 (default)" 30 "45" 45 "70 (uncapped)" 70 }  rect 216 210 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Strength shapes gentle gradients; max tilt caps hard painted edges, which"  textscale .2  rect 24 231 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "otherwise band. Both latched - they are baked into the image, so APPLY."  textscale .2  rect 24 252 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
 
         // [QL] renderergl2 material maps. Vulkan has no consumer for these,
         // so they are hidden there rather than offered and ignored.

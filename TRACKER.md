@@ -4975,11 +4975,38 @@ other side of each rib lights, and on near-symmetric ribbing that looks the same
 That is what the 90 degree and sheared panels in `qltest_light` are for and they
 have not been run yet.
 
-Also unsettled: **strength**. It reads strong in those shots, and part of that is
-likely not the diffuse shaping at all - `light_frag.tmpl` ends with
-`pow(specFactor, 10.0)`, and a perturbed normal drives an exponent that sharp
-very hard. Tune with `r_qlNormalScale` before concluding the derivation is too
-aggressive, and remember the 0.5 default is arithmetic rather than a measurement.
+**BANDING, reported and fixed - and the cause is the premise, not the scale.**
+A third screenshot showed hard bright bands along every slat of a louvre wall.
+
+A luminance edge is not a height edge, and this is where that stops being
+academic. A dark line painted on metal runs black to white in about two texels:
+a slope near 128 per texel, where a rock face's own shading is nearer 10. The
+scale is defined so 32 per texel is 45 degrees, so at `r_qlNormalScale 0.5` the
+painted line tilted the normal 63 degrees while the rock tilted 9 - every seam in
+the game became a cliff, and `pow(specFactor, 10.0)` in `light_frag.tmpl` turned
+each cliff into a glint.
+
+Turning the scale down is the wrong answer: it flattens the rock by exactly the
+factor it flattens the seam. The fix is a second control - `r_qlNormalMaxTilt`,
+degrees, default 30, latched - that limits how steep any derived normal may get,
+leaving the scale to say how much shaping a gentle gradient receives. Two
+different questions, so two knobs; one could never have done both.
+
+**The curve took two attempts and the first was caught by measuring it.** The
+obvious `g / (1 + g/limit)` compresses everywhere, not just near the limit, and
+cost 21% of a rock's shading to cap a seam. Replaced with a knee: below half the
+limit the slope passes through untouched, above it approaches the limit
+exponentially so a seam saturates smoothly rather than clipping at a threshold
+that would band on its own account. Measured, at scale 0.5 and 30 degrees:
+
+```
+                          slope   before      after
+rock/brick shading           10     8.9deg     8.9deg   <- unchanged
+strong mortar line           30    25.1deg    22.9deg
+panel seam                   64    45.0deg    28.9deg
+louvre slat edge            128    63.4deg    30.0deg   <- was the banding
+black->white in 1 texel     255    75.9deg    30.0deg
+```
 
 **What a build cannot tell us, and what to look at first:** whether the bumps
 point the right way. A mirrored tangent still produces finite, plausible-looking

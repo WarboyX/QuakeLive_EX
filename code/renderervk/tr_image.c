@@ -1282,9 +1282,9 @@ r_qlNormalScale exists and why its default is not 1.
 static const int R_NormalSmooth[ 5 ] = { 1, 2, 3, 2, 1 };	// perpendicular smoothing (sum 9)
 static const int R_NormalDiff[ 5 ]   = { -1, -2, 0, 2, 1 };	// gradient central difference (sum 0)
 
-void R_GenerateNormalMap( const byte *rgba, int w, int h, float strength, byte *outRGBA ) {
+void R_GenerateNormalMap( const byte *rgba, int w, int h, float strength, float maxTilt, byte *outRGBA ) {
 	int		x, y, dx, dy, xx, yy;
-	float	gx, gy, nx, ny, nz, inv, hv;
+	float	gx, gy, nx, ny, nz, inv, hv, gmag, soft;
 	const byte *p;
 	byte	*o;
 
@@ -1307,6 +1307,42 @@ void R_GenerateNormalMap( const byte *rgba, int w, int h, float strength, byte *
 
 			nx = -gx * strength;
 			ny = -gy * strength;
+
+			/*
+			Soft-limit the slope. A luminance edge is not a height edge, and
+			this is where that difference stops being academic: a dark line
+			painted on metal - a louvre slat, a panel seam - runs black to white
+			in about two texels, which is a slope near 128 per texel where a
+			rock face's shading is nearer 10. Passed straight through, the
+			painted line tilts the normal about 63 degrees while the rock tilts
+			8, so every seam in the game becomes a cliff and the specular term
+			(pow(specFactor, 10.0) in light_frag.tmpl) turns each one into a
+			hard bright band. That is what was reported as banding, and turning
+			r_qlNormalScale down is the wrong answer to it: it flattens the rock
+			by the same factor it flattens the seam.
+
+			A knee, not a smooth roll-off. g/(1 + g/limit) is the obvious
+			curve and it is wrong here: it compresses everywhere, so it takes
+			21% off a rock's shading to cap a seam - measured, which is how it
+			was caught. Below half the limit this passes the slope through
+			untouched, and above it approaches the limit exponentially, so a
+			seam saturates smoothly instead of clipping at a threshold that
+			would band on its own account.
+
+			maxTilt is the tangent of the steepest angle any derived normal may
+			reach - r_qlNormalMaxTilt, in degrees.
+			*/
+			gmag = (float)sqrt( nx * nx + ny * ny );
+			if ( gmag > 0.0f && maxTilt > 0.0f ) {
+				float knee = maxTilt * 0.5f;
+				if ( gmag > knee ) {
+					soft = knee + ( maxTilt - knee ) *
+						( 1.0f - (float)exp( -( gmag - knee ) / ( maxTilt - knee ) ) );
+					nx *= soft / gmag;
+					ny *= soft / gmag;
+				}
+			}
+
 			nz = 1.0f;
 			inv = 1.0f / (float)sqrt( nx * nx + ny * ny + nz * nz );
 
@@ -1339,7 +1375,7 @@ bind, which is not knowable at ParseStage() time: the lighting stage and bundle
 are chosen after stage collapsing, and the bundle is not always bundle 0.
 ===============
 */
-image_t *R_DeriveNormalMap( image_t *base, float strength ) {
+image_t *R_DeriveNormalMap( image_t *base, float strength, float maxTiltDegrees ) {
 	char	nmName[ MAX_QPATH ];
 	byte	*pic, *out;
 	int		width, height;
@@ -1401,7 +1437,8 @@ image_t *R_DeriveNormalMap( image_t *base, float strength ) {
 	a measurement - it is a starting point to tune against, not a result.
 	*/
 	out = ri.Malloc( width * height * 4 );
-	R_GenerateNormalMap( pic, width, height, strength / ( 72.0f * 32.0f ), out );
+	R_GenerateNormalMap( pic, width, height, strength / ( 72.0f * 32.0f ),
+		(float)tan( DEG2RAD( maxTiltDegrees ) ), out );
 
 	/*
 	R_CreateImage() drops with ERR_DROP on a name longer than MAX_QPATH, so the

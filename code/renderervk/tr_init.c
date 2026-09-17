@@ -197,6 +197,7 @@ cvar_t	*r_directedScale;
 // [QL] R20 Stage A
 cvar_t	*r_qlNormalMaps;
 cvar_t	*r_qlNormalScale;
+cvar_t	*r_qlNormalMaxTilt;
 cvar_t	*r_debugLight;
 cvar_t	*r_debugSort;
 cvar_t	*r_printShaders;
@@ -1868,6 +1869,15 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_qlNormalMaps, "[QL] Perturb dynamically lit world surfaces with a normal map derived from their own texture. Takes effect on vid_restart." );
 	r_qlNormalScale = ri.Cvar_Get( "r_qlNormalScale", "0.5", CVAR_LATCH );
 	ri.Cvar_SetDescription( r_qlNormalScale, "[QL] Strength of derived normal-map perturbation. 1.0 tilts 45 degrees at a luminance slope of 32 per texel. Takes effect on vid_restart." );
+	/*
+	[QL] The steepest angle a derived normal may reach, in degrees. Separate
+	from the scale on purpose: the scale says how much shaping a gentle gradient
+	gets, this says how hard a painted line is allowed to become. One knob could
+	not do both - a texture's seams outrun its shading by an order of magnitude,
+	so a scale low enough to tame the seams leaves the shading invisible.
+	*/
+	r_qlNormalMaxTilt = ri.Cvar_Get( "r_qlNormalMaxTilt", "30", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNormalMaxTilt, "[QL] Steepest angle a derived normal may reach, in degrees. Caps hard texture edges without flattening gentle shading. Takes effect on vid_restart." );
 
 	//r_anaglyphMode = ri.Cvar_Get( "r_anaglyphMode", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	//ri.Cvar_SetDescription( r_anaglyphMode, "Enable rendering of anaglyph images. Valid options for 3D glasses types:\n 0: Disabled\n 1: Red-cyan\n 2: Red-blue\n 3: Red-green\n 4: Green-magenta" );

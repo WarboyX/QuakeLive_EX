@@ -37,6 +37,7 @@ static	texModInfo_t	texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS+1]; // reserve one
 // [QL] R20 Stage A
 extern	cvar_t	*r_qlNormalMaps;
 extern	cvar_t	*r_qlNormalScale;
+extern	cvar_t	*r_qlNormalMaxTilt;
 
 
 /*
@@ -4063,7 +4064,7 @@ static shader_t *FinishShader( void ) {
 		shaderStage_t *lstage = &stages[ shader.lightingStage ];
 		if ( !lstage->noNormalPerturb && lstage->normalMap == NULL ) {
 			lstage->normalMap = R_DeriveNormalMap( lstage->bundle[ shader.lightingBundle ].image[0],
-				r_qlNormalScale->value );
+				r_qlNormalScale->value, r_qlNormalMaxTilt->value );
 			if ( lstage->normalMap ) {
 				/*
 				Counted apart from numNormalMappedStages on purpose. That one
