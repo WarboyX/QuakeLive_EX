@@ -5911,6 +5911,58 @@ Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
 
 ## Engine / server
 
+### R25b. The static bump pass, first run — the ratio was the wrong shape
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Built, shipped, and looked at. It draws, and the modulation view shows real
+relief on the brick, so the plumbing is right end to end: deluxemap bound,
+normal map bound, tangent basis built, pass running. Two things were wrong.
+
+**The sign convention was NOT one of them, and it is worth writing down so
+nobody re-opens it.** Read out of the compiler rather than guessed: in
+`light.cpp`, `trace->direction` is what `angle = DotProduct(trace->normal,
+trace->direction)` uses as the N.L term, line 936 rejects samples where that is
+negative, and `trace->hit = origin + depth * direction` traces from the surface
+toward the light. `directionContribution` is that direction scaled. So a
+deluxemap stores the direction **toward** the light and `dot(N, dir)` is
+positive where lit. The shader's convention is correct.
+
+**Wrong 1 - a ratio where a difference belongs.** The tempting form is
+`bumped/flat`: the lightmap has `dot(geomN, dir)` baked in, so dividing it back
+out and multiplying the bumped term in looks exact. It is not. A lightmap is not
+intensity times one N.L - it is every light, plus shadowing, plus ambient - so
+there is no single term in there to divide out. And the quotient runs away
+exactly where the light is shallowest: floored at 0.35 it still pinned at the
+2.0 clamp across most of a room, which is what "everything is white" was on
+screen.
+
+`1 + (bumped - flat) * scale` cannot run away. It is zero where the normal map
+is flat, so an unperturbed surface is untouched to the bit; it is symmetric
+about 1, so a bump brightens by as much as its far side darkens; and both terms
+are bounded, so the result is bounded before any clamp. The clamp is now a guard
+rather than the mechanism - if it is doing work, the scale is too high.
+
+That is the **third** time on this pair of features that a quantity was chosen
+by computing the convenient thing rather than the visible one: the R20 scale
+against a luminance slope, the R20 cap against a tilt angle, and now this
+against an algebraic identity that the data does not actually satisfy.
+
+**Wrong 2 - the one debug view that existed to answer a question could not
+answer it.** Empty deluxemap texels returned white before the debug branch, and
+white is also what an untouched surface looks like, so "the deluxemap did not
+arrive" and "the deluxemap arrived and says do nothing" were the same colour.
+Empty now reads black in the direction view.
+
+**Also:** the brick was authored at 16 x 8 world units a brick, which reads as
+tiling noise rather than masonry. Now 32 x 16. Reported before it was measured,
+and correct.
+
+**Still unverified:** whether the shading is right, as opposed to present and
+bounded. And handedness, which neither this nor R20 has yet tested - the dome
+panel is still the only thing that can.
+
+---
+
 ### R26. Ray-traced player shadows, instead of the blob — SCOPED, most of the machinery exists
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

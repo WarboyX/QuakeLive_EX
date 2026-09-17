@@ -72,6 +72,16 @@ void main() {
 	and leaves it exactly as it found it.
 	*/
 	if (dlen < 0.1) {
+		/*
+		Black in the direction view, so "no data here" and "data here" are
+		different colours. The first version returned white for both, which is
+		also what an untouched surface looks like - so the one view that exists
+		to answer "did the deluxemap arrive" could not answer it.
+		*/
+		if (debug_mode == 1) {
+			out_color = vec4(0.0, 0.0, 0.0, 1.0);
+			return;
+		}
 		out_color = vec4(1.0);
 		return;
 	}
@@ -116,22 +126,28 @@ void main() {
 	}
 
 	/*
-	The ratio, and the floor on its divisor is the whole of the numerical care
-	here. The lightmap already has dot(geomN, dir) baked into it, so recovering
-	the bumped result means dividing that back out - and at grazing incidence
-	the flat term goes to zero and the ratio to infinity. R20 learned the same
-	lesson from the other side: what runs away is not the tilt, it is the
-	brightness ratio the surface ends up with, and it runs away exactly where
-	the light is shallowest.
+	A DIFFERENCE, not a ratio, and the first version of this got it wrong.
 
-	0.35 caps the amplification at about 3x. The clamp above catches the rest.
+	The tempting form is bumped/flat: the lightmap has dot(geomN, dir) baked
+	into it, so dividing that back out and multiplying the bumped term in looks
+	like the exact answer. It is not, for two reasons. The lightmap is not
+	intensity times one N.L - it is every light, plus shadowing, plus ambient,
+	so there is no single term in there to divide out. And the quotient runs
+	away exactly where the light is shallowest: floored at 0.35 it still pinned
+	at the 2.0 clamp over most of a room, which is what "everything is white"
+	was.
+
+	The difference cannot run away. It is zero where the normal map is flat, so
+	an unperturbed surface is untouched to the bit; it is symmetric about 1, so
+	a bump brightens by as much as its far side darkens; and both terms are
+	bounded, so the result is bounded before any clamp. The clamp below is a
+	guard, not the mechanism - if it is doing work, the scale is too high.
 	*/
-	float flatTerm = max(dot(geomN, dir), 0.0);
-	float bumpTerm = max(dot(nN, dir), 0.0);
+	float flatTerm = dot(geomN, dir);
+	float bumpTerm = dot(nN, dir);
 
-	float ratio = bumpTerm / max(flatTerm, 0.35);
-	ratio = mix(1.0, ratio, bump_scale);
-	ratio = clamp(ratio, 0.0, 2.0);
+	float ratio = 1.0 + (bumpTerm - flatTerm) * bump_scale;
+	ratio = clamp(ratio, 0.25, 1.75);
 
 	if (debug_mode == 3) {
 		// the modulation alone, mid-grey being "unchanged"
