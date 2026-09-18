@@ -57,6 +57,14 @@ python3 tools/stub-report.py
 # spawning weapons.
 python3 tools/dead-cvars.py
 
+# And the same idea for assets. RE_RegisterModel and RE_RegisterShader return 0
+# for a name the paks do not contain - not an error code, a handle that draws
+# nothing - so a wrong name is invisible in the console and on screen. This
+# checks every literal model, sound and skin name against
+# docs/pak-manifest.txt. It found Overload's "your base is under attack" sound
+# registered under a Quake 3 name the paks have never contained.
+python3 tools/check-assets.py
+
 echo "building $REV"
 
 # Stamp the loaded pak01 with the revision. Menu fixes live in pak01.pk3 and

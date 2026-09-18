@@ -1635,9 +1635,21 @@ static void CG_RegisterSounds(void) {
             cgs.media.holyShitSound = trap_S_RegisterSound("sound/vo/holy_shit", qtrue);
         }
 
-        if (cgs.gametype == GT_OBELISK) {
-            cgs.media.yourBaseIsUnderAttackSound = trap_S_RegisterSound("sound/teamplay/voc_base_attack.ogg", qtrue);
-        }
+        /* [QL] E99. No registration for Overload's "your base is under attack".
+           sound/teamplay/voc_base_attack.ogg is Quake 3's name and the paks do
+           not contain it - they contain no voc_ file at all, and sound/teamplay/
+           holds six sounds, none of them this. So the handle was 0, every time,
+           and GTS_REDOBELISK_ATTACKED / GTS_BLUEOBELISK_ATTACKED in cg_event.c
+           announced nothing. CG_AddBufferedSound drops a 0 handle silently, so
+           there was nothing to see or hear either way.
+
+           There is no right name to substitute: the paks ship no base-attack
+           voiceover. Registering nothing is the same call made for the Overload
+           gametype ICON a few hundred lines below, for the same reason - a name
+           the pak cannot contain buys a failure line per start and no sound.
+
+           If Quake Live ever ships one, this is where it goes; check
+           docs/pak-manifest.txt first, which is what found this. */
     }
 
     cgs.media.tracerSound = trap_S_RegisterSound("sound/weapons/machinegun/buletby1.ogg", qfalse);

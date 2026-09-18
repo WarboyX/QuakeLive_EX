@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `███████████████░░░░░  72/96` | E98: every lead followed - 12 reclassified, 1 real defect (sv_mapname), 1 doc error fixed; E97 wired 4 |
-| **Overall** | `██████████████░░░░░░  128/179` | by binary: 68 server · 94 client · 10 both |
+| **Engine / server** (E) | `███████████████░░░░░  73/97` | E99: dead-end audit - assets/events/statics checked, 1 silent dead end fixed; E98 reclassified 12 |
+| **Overall** | `██████████████░░░░░░  129/180` | by binary: 68 server · 95 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,71 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E99. Dead ends: every call path that can silently go nowhere — AUDITED
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+"Make sure everything has proper calls, no dead ends." Four classes of silent
+dead end are checkable in this tree. Three came back clean, one did not, and one
+more could not be answered honestly with the tools available - which is recorded
+rather than dressed up.
+
+**1. Asset registrations — ONE REAL DEAD END, fixed.**
+
+`RE_RegisterModel` and `RE_RegisterShader` return **0** for a name the paks do
+not contain. Zero is not an error code anyone checks; it is a handle that draws
+nothing. CLAUDE.md names this as a trap that already cost a round.
+`tools/check-assets.py` now resolves every literal asset name against
+`docs/pak-manifest.txt`: **397 registrations against 9024 pak names.**
+
+The find: `sound/teamplay/voc_base_attack.ogg`, registered for Overload. The
+paks contain **no `voc_` file at all**, and `sound/teamplay/` holds six sounds,
+none of them this - it is Quake 3's name. So the handle was 0 every time, and
+`GTS_REDOBELISK_ATTACKED` / `GTS_BLUEOBELISK_ATTACKED` announced nothing.
+`CG_AddBufferedSound` drops a 0 handle silently, so there was nothing to hear
+and nothing to see. Overload is selectable in our own menu, so this was reachable.
+
+No right name exists to substitute - the paks ship no base-attack voiceover - so
+nothing is registered now, which is the same call already made a few hundred
+lines below for the Overload gametype *icon*, for the same reason.
+
+The checker is honest about its own limits: 69 shader names have no matching
+file, and that is **not** a failure list. A shader can be defined inside a
+`scripts/*.shader` file and the manifest holds file names, not script contents.
+They are reported separately, and 50 of the 69 are bare names with no `/` in
+them - the classic script-defined shape. The two file-like ones worth checking,
+`ui/assets/selectcursor.png` and `menu/art/unknownmap`, both already have
+explicit `if (!handle)` fallbacks written by whoever hit them first.
+
+**2. Events — clean.** All 101 `entity_event_t` members: every one the game
+raises has a `case` in cgame, and no cgame handler is unreachable. The two
+without handlers, `EV_BULLET` and `EV_DEBUG_HITBOX`, are already annotated in
+`bg_public.h` as server-side only.
+
+**3. Static functions — clean.** `-Wall` is already in `BASE_CFLAGS`, so
+`-Wunused-function` has been on the whole time, and a full rebuild produces
+**zero** unused-function and unused-variable warnings. Every static function in
+the tree is called within its translation unit.
+
+**4. Cross-binary dead code — NOT ANSWERED, and the attempt is worth recording.**
+Tried `-ffunction-sections` with `--gc-sections --print-gc-sections`: the linker
+discarded 2965 sections, 891 of them functions defined in our own sources. The
+result is unusable. This tree links four separate binaries plus three VM modules,
+and a function absent from one link is not dead - `CL_Frame` and
+`Weapon_BFG_Fire` both appear in that list because the *dedicated server* does
+not contain them. Reporting 891 findings would have been 891 false ones.
+Answering this properly needs per-binary reachability with the VM exports as
+roots, which is a tool, not a grep.
+
+`package-release.sh` runs `check-assets.py` beside `stub-report.py` and
+`dead-cvars.py`, so a wrong asset name now fails a release rather than drawing
+nothing on somebody's screen.
+
+**Still unverified:** the Overload change removes a registration that was
+returning 0, so by construction nothing that worked stops working. Not observed
+in game - Overload needs a map and two teams.
 
 ---
 
