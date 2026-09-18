@@ -75,6 +75,15 @@ def slurp(patterns):
     return "\n".join(out)
 
 
+def registered_names():
+    """Every cvar name the three tables register, read or not."""
+    out = set()
+    for table in TABLES.values():
+        with open(table) as fh:
+            out |= set(re.findall(r'\{\s*&\w+\s*,\s*"([^"]+)"', fh.read()))
+    return out
+
+
 def find_unread(assets_extra=None):
     """[(module, name, flags)] for every registered cvar nothing consumes."""
     code = slurp(CODE)
@@ -161,14 +170,25 @@ def main(argv):
               (MANIFEST, ", ".join(sorted(bad))), file=sys.stderr)
         return 1
 
-    # A stale row is worth knowing about too: it means a cvar got wired up and
-    # the manifest still calls it unread, which is a backlog item silently done.
-    live = set(n for _, n, _ in unread)
-    stale = sorted(n for n in manifest if n not in live)
-    if stale:
-        print("\ndead-cvars: %d manifest row(s) for cvars that ARE read now - "
-              "wired up since, remove the row:" % len(stale))
-        for name in stale:
+    # A stale row is worth knowing about too, and there are two ways to get one.
+    # They are not the same event and saying so matters most when someone is
+    # doing a removal pass: "wired up" is a backlog item finished, "no longer
+    # registered" is a cvar that left the tree and may still be set by a config,
+    # a factory file or Quake Live's own menus.
+    unread_now = set(n for _, n, _ in unread)
+    registered = registered_names()
+    wired = sorted(n for n in manifest if n not in unread_now and n in registered)
+    gone = sorted(n for n in manifest if n not in registered)
+
+    if wired:
+        print("\ndead-cvars: %d cvar(s) are READ now - wired up since, remove "
+              "the row:" % len(wired))
+        for name in wired:
+            print("    %s" % name)
+    if gone:
+        print("\ndead-cvars: %d cvar(s) are NO LONGER REGISTERED - removed from "
+              "the tables, remove the row:" % len(gone))
+        for name in gone:
             print("    %s" % name)
 
     if unclassified:
