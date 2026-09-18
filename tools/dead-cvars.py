@@ -56,6 +56,9 @@ MANIFEST = "docs/cvar-manifest.txt"
 
 VERDICTS = {
     "QL-FEATURE": "Quake Live feature this port has not implemented yet",
+    "SUPERSEDED": "Quake Live replaced it; a differently-named cvar is live",
+    "VESTIGIAL":  "the feature is here, reached another way - not by this cvar",
+    "REFUSED":    "wiring it is known to be wrong; the reason is in the row",
     "NETWORKED":  "the consumer is a remote client or the server browser",
     "QL-ASSET":   "read by Quake Live's own pak00 menus, not visible from here",
     "GAP":        "genuinely nothing - these are the ones to fix",

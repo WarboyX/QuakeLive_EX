@@ -23,6 +23,14 @@
 #   QL-FEATURE  a Quake Live feature this port has not implemented. The cvar is
 #               real and so are its flags; the behaviour is what is missing.
 #               This is the wiring-up backlog.
+#   SUPERSEDED  Quake Live replaced this cvar with a differently-named one that
+#               IS live here. Wiring it would make us diverge FROM Quake Live,
+#               which is the opposite of the intent. The replacement is named in
+#               the row.
+#   VESTIGIAL   the feature is present and works, reached some other way - a
+#               command, a serverinfo key - and this cvar is not its interface.
+#   REFUSED     wiring it is known to be wrong, for a reason recorded in the row.
+#               Not "unknown", not "hard": known, and decided.
 #   NETWORKED   the value goes out in an info string or is read-only
 #               informational. Unread by our C is correct and complete - the
 #               consumer is a remote client or the server browser.
@@ -53,10 +61,19 @@
 #   HUD to display, and those live in pak00 where this tool cannot see them -
 #   that is QL-ASSET, and pointing the tool at a QL install would resolve it.
 #
-# Nothing here is GAP. That is not a claim the tree has no dead cvars of its own
-# - it is that every unread cvar currently in the tables came in with the Quake
-# Live port rather than being invented here, checked against the root commit.
-# A GAP row is what a newly added one should get.
+# There is exactly one GAP, sv_mapname, found by following the leads rather than
+# by flag class: everything real reads the "mapname" key that the ENGINE sets in
+# sv_init.c, and the game-side ROM|SERVERINFO twin is never set by anything, so
+# it publishes an empty sv_mapname key and nothing else. A newly invented dead
+# cvar should get GAP too.
+#
+# The SUPERSEDED / VESTIGIAL / REFUSED rows are the ones reached by reading code
+# rather than flags, and they are the answer to "why not just wire them up":
+# each is a cvar whose obvious wiring would have been WRONG. cg_teamChatBeep
+# defaults to 0 and the beep it names is already gated on cg_chatbeep, which
+# defaults to on - wiring it by name silences team chat beeps. cg_trueShotgun
+# was removed deliberately because it desynced what the player saw from what the
+# server traced. Those are not hypothetical.
 #
 # Regenerate the rows (verdicts are then re-applied by hand):
 #     tools/dead-cvars.py --list
@@ -72,7 +89,7 @@ NETWORKED	g_factory	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info stri
 NETWORKED	g_factoryTitle	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info string; the server browser and every client read it there
 NETWORKED	g_version	game, CVAR_ROM - read-only, set by qagame to be reported rather than acted on
 NETWORKED	gamedate	game, CVAR_ROM - read-only, set by qagame to be reported rather than acted on
-NETWORKED	sv_mapname	game, CVAR_ROM | CVAR_SERVERINFO - goes out in the info string; the server browser and every client read it there
+GAP	sv_mapname	game, redundant registration. Everything real reads the "mapname" key from serverinfo, which the engine sets in sv_init.c; this game-side ROM|SERVERINFO twin is never set, so it publishes an empty sv_mapname key and nothing else
 
 # ---------------------------------------------------------------------------
 # QL-ASSET - read by pak00, which this tool cannot see
@@ -110,7 +127,7 @@ QL-FEATURE	cg_announcerTiesVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPL
 QL-FEATURE	cg_autoAction	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_USERINFO | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_autoProjectileNudge	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_blueTeamName	cgame, 0 - cgame registers it and nothing acts on it
-QL-FEATURE	cg_bob	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+SUPERSEDED	cg_bob	cgame, Q3 legacy master switch. QL uses cg_bobpitch, cg_bobroll and cg_bobup, all live in cg_view.c CG_OffsetFirstPersonView
 QL-FEATURE	cg_buzzerSound	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_cameraSmartMode	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_cameraThirdPersonSmartMode	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
@@ -146,13 +163,13 @@ QL-FEATURE	cg_flagPOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE |
 QL-FEATURE	cg_forceDrawCrosshair	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_forceEnemyWeaponColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_forceTeamWeaponColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_ignore	cgame, 0 - cgame registers it and nothing acts on it
+VESTIGIAL	cg_ignore	cgame, the ignore feature is here and works - cg_ignoredClients[] and CG_IsClientIgnored in cg_consolecmds.c, driven by the mute/unmute commands. This cvar is not its interface
 QL-FEATURE	cg_itemFx	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_itemTimers	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_killBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_lowAmmoWarningPercentile	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_noProjectileTrail	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_noTaunt	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+SUPERSEDED	cg_noProjectileTrail	cgame, Q3 legacy. QL replaced its early-return with cg_bubbleTrail, cg_rocketTrailRadius, cg_grenadeTrailRadius, cg_nailTrailRadius and cg_plasmaStyle - three binary-cited comments in cg_effects.c and cg_weapons.c say the binary checks none of this cvar
+SUPERSEDED	cg_noTaunt	cgame, superseded by cg_allowTaunt, which gates the taunt sound in cg_event.c EV_TAUNT with a binary citation
 QL-FEATURE	cg_oldPlasma	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_oldRocket	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_overheadNamesWidth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
@@ -188,14 +205,14 @@ QL-FEATURE	cg_specTeamVitals	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLI
 QL-FEATURE	cg_specTeamVitalsHealthColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_specTeamVitalsWidth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_specTeamVitalsY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_teamChatBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+SUPERSEDED	cg_teamChatBeep	cgame, the tchat beep is gated on cg_chatbeep in cg_servercmds.c with a binary citation. This defaults to 0 and cg_chatbeep to on, so wiring it by name would silence team chat beeps by default
 QL-FEATURE	cg_teammateCrosshairNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_teammateCrosshairNamesOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_teammateNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_teammatePOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_thirdPersonPitch	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_trackPlayer	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
-QL-FEATURE	cg_trueShotgun	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+REFUSED	cg_trueShotgun	cgame, deliberately not honoured. cg_weapons.c: it changed the pattern the player was SHOWN without changing the pattern the server TRACED, which is a desync by construction. The pattern comes from the server's seed and serverinfo on purpose
 QL-FEATURE	cg_useItemMessage	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_useItemWarning	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_voiceChatIndicator	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
@@ -286,7 +303,7 @@ QL-FEATURE	g_shuffle_minplayers	game, 0 - game registers it and nothing acts on 
 QL-FEATURE	g_shuffle_timedelay	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_spawnMinDistance	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_spawnRandomRatio	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
-QL-FEATURE	g_suddenDeathRespawn	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
+SUPERSEDED	g_suddenDeathRespawn	game, replaced by the granular live set g_suddenDeathRespawnStart / Max / Increment / Tick
 QL-FEATURE	g_suddenDeathRespawnPrint	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_switchTeamDelay	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_tackleFlag	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
@@ -298,14 +315,14 @@ QL-FEATURE	ui_blueteam	ui, CVAR_ARCHIVE - player setting, persisted to config; u
 QL-FEATURE	ui_browserGameType	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_browserMaster	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_browserSortKey	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
-QL-FEATURE	ui_ctf_capturelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+SUPERSEDED	ui_ctf_capturelimit	ui, superseded by the live ui_captureLimit
 QL-FEATURE	ui_ctf_friendly	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_ctf_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_currentOpponent	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_currentTier	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
-QL-FEATURE	ui_debug	ui, CVAR_TEMP - ui registers it and nothing acts on it
+SUPERSEDED	ui_debug	ui, superseded by ui_debugMenus, which is live in ui_shared.c
 QL-FEATURE	ui_enemyColor	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
-QL-FEATURE	ui_ffa_fraglimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+SUPERSEDED	ui_ffa_fraglimit	ui, the per-gametype limit cvars were replaced by the single live ui_fragLimit
 QL-FEATURE	ui_ffa_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_forceEnemyModel	ui, CVAR_TEMP - ui registers it and nothing acts on it
 QL-FEATURE	ui_forceEnemySkin	ui, CVAR_TEMP - ui registers it and nothing acts on it
@@ -316,9 +333,9 @@ QL-FEATURE	ui_redteam	ui, CVAR_ARCHIVE - player setting, persisted to config; ui
 QL-FEATURE	ui_screenDamage	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_screenDamage_Team	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_teamColor	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
-QL-FEATURE	ui_team_fraglimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+SUPERSEDED	ui_team_fraglimit	ui, the per-gametype limit cvars were replaced by the single live ui_fragLimit
 QL-FEATURE	ui_team_friendly	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_team_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
-QL-FEATURE	ui_tourney_fraglimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+SUPERSEDED	ui_tourney_fraglimit	ui, the per-gametype limit cvars were replaced by the single live ui_fragLimit
 QL-FEATURE	ui_tourney_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 

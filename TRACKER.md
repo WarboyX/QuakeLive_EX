@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `███████████████░░░░░  71/95` | E97: 4 cvars wired, 218 need the decompilation this environment does not have; E96 manifests them |
-| **Overall** | `██████████████░░░░░░  127/178` | by binary: 67 server · 94 client · 10 both |
+| **Engine / server** (E) | `███████████████░░░░░  72/96` | E98: every lead followed - 12 reclassified, 1 real defect (sv_mapname), 1 doc error fixed; E97 wired 4 |
+| **Overall** | `██████████████░░░░░░  128/179` | by binary: 68 server · 94 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,69 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E98. A second pass over the dead cvars — every lead followed — DONE (verify)
+**Lives in:** our **client** (cgame/ui) and our **server** (qagame) · **Seen by:** our client only
+
+Asked again to work out purpose and wiring, so this time every evidence source in
+the repo got swept rather than sampled: all 1898 text files, not just the C.
+Fourteen of the 236 are mentioned somewhere outside their own registration -
+gametype docs, other source files, the README - and each of those leads was read.
+
+The result is not more wirings. It is that **the obvious wiring was wrong in
+every case where the evidence was good enough to check**, which is worth more
+than the wirings would have been.
+
+| cvar | what the evidence said |
+|---|---|
+| `cg_noProjectileTrail` | Q3 legacy. Three binary-cited comments in cg_effects.c and cg_weapons.c: QL replaced its early-return with `cg_bubbleTrail`, `cg_rocketTrailRadius`, `cg_grenadeTrailRadius`, `cg_nailTrailRadius`, `cg_plasmaStyle`. The binary checks this cvar nowhere. |
+| `cg_bob` | Q3 legacy master switch; QL uses `cg_bobpitch` / `cg_bobroll` / `cg_bobup`, all live in CG_OffsetFirstPersonView. |
+| `cg_teamChatBeep` | Defaults to **0**. The beep it names is already gated on `cg_chatbeep`, which defaults to **on**, binary-cited. Wiring it by name silences team chat beeps by default. |
+| `cg_trueShotgun` | Removed **on purpose**. cg_weapons.c: it changed the pattern the player was shown without changing the pattern the server traced - "a desync by construction". Exactly the hazard CLAUDE.md's "Seen by" axis names, and it names the shotgun specifically. |
+| `cg_ignore` | The ignore feature is here and works - `cg_ignoredClients[]`, `CG_IsClientIgnored`, mute/unmute commands. This cvar is simply not its interface. |
+| `ui_debug`, `ui_*_fraglimit`, `ui_ctf_capturelimit`, `g_suddenDeathRespawn` | All superseded by live replacements: `ui_debugMenus`, `ui_fragLimit`, `ui_captureLimit`, `g_suddenDeathRespawnStart/Max/Increment/Tick`. |
+
+New verdicts to carry that, because "QL-FEATURE" was actively misleading for
+them - it invites exactly the wiring that would break things:
+
+| verdict | n | |
+|---|---|---|
+| QL-FEATURE | 206 | still the backlog |
+| **SUPERSEDED** | 10 | QL replaced it; wiring it diverges FROM Quake Live |
+| **VESTIGIAL** | 1 | feature present, reached another way |
+| **REFUSED** | 1 | wiring it is known wrong, reason in the row |
+| QL-ASSET | 12 | pak00's menus read it |
+| NETWORKED | 5 | the wire is the reader |
+| **GAP** | 1 | a real defect - see below |
+
+**The one real defect.** `sv_mapname` is registered game-side as
+`CVAR_ROM | CVAR_SERVERINFO` with default `""` and is never set by anything.
+Everything real - cg_info.c, cg_servercmds.c, ai_chat.c, ai_dmq3.c - reads the
+`"mapname"` key, which the *engine* sets in sv_init.c. So the game-side twin
+publishes an empty `sv_mapname` key into serverinfo and does nothing else. Found
+by following a lead, not by flag class, which is the argument for following
+leads.
+
+**A documentation error, corrected.** `docs/gametypes/ca.md` said
+`g_accuracyFlags` is the bitfield controlling CA damage and knockback
+suppression, with the bit meanings spelled out. `CA_AdjustDamage` opens with
+`int flags = g_dmflags.integer;` and carries the note *"the self/team
+suppression keys off g_dmflags (binary DAT_10597dcc), NOT g_accuracyFlags."*
+The bit meanings were right and the cvar name was wrong. Anyone wiring
+`g_accuracyFlags` from that table would have built a duplicate `g_dmflags` under
+the wrong name and had a document agreeing with them. Fixed in three places.
+
+**No further wirings.** The four from E97 stand; nothing in this pass met the
+bar. `cg_teammatePOIs` came closest - `cg_teammatePOIsMaxWidth` and `MinWidth`
+are live beside it - but its only plausible gate is `CG_PlayerFloatSprite`,
+which draws every head sprite including the voice-chat indicator, so gating
+there would hide things the cvar does not name.
+
+**Still unverified:** the reclassifications are reasoning over code and cited
+comments, which is the same standard the comments themselves were written to.
+Nothing here changes a byte of behaviour - it is all manifest rows and one doc.
 
 ---
 
