@@ -1480,8 +1480,11 @@ static void CG_DrawCrosshair(void) {
 	w = h = cg_crosshairSize.value;
 
 	// pulse the size of the crosshair when picking up items
+	//
+	// [QL] E97. cg_crosshairPulse gates it; it was unconditional and the cvar
+	// was read by nothing. Defaults to 1, so nothing changes until it is set.
 	f = cg.time - cg.itemPickupBlendTime;
-	if (f > 0 && f < ITEM_BLOB_TIME) {
+	if (cg_crosshairPulse.integer && f > 0 && f < ITEM_BLOB_TIME) {
 		f /= ITEM_BLOB_TIME;
 		w *= (1 + f);
 		h *= (1 + f);
@@ -1535,9 +1538,10 @@ static void CG_DrawCrosshair3D(void) {
 
 	w = cg_crosshairSize.value;
 
-	// pulse the size of the crosshair when picking up items
+	// pulse the size of the crosshair when picking up items - [QL] E97, same
+	// gate as the other crosshair draw above; both sites or neither
 	f = cg.time - cg.itemPickupBlendTime;
-	if (f > 0 && f < ITEM_BLOB_TIME) {
+	if (cg_crosshairPulse.integer && f > 0 && f < ITEM_BLOB_TIME) {
 		f /= ITEM_BLOB_TIME;
 		w *= (1 + f);
 	}

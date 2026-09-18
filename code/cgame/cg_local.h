@@ -1663,6 +1663,11 @@ extern vmCvar_t cg_teamOverlayMaxPlayers;
 extern vmCvar_t cg_crosshairX;
 extern vmCvar_t cg_crosshairY;
 extern vmCvar_t cg_crosshairSize;
+// [QL] E97. Three of the 222 QL-FEATURE cvars that turned out to be a missing
+// GATE rather than a missing feature - see docs/cvar-manifest.txt.
+extern vmCvar_t cg_crosshairPulse;
+extern vmCvar_t cg_waterWarp;
+extern vmCvar_t cg_lowAmmoWarningSound;
 extern vmCvar_t cg_crosshairHealth;
 extern vmCvar_t cg_drawStatus;
 extern vmCvar_t cg_draw2D;

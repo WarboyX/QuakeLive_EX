@@ -86,7 +86,11 @@ void CG_CheckAmmo(void) {
     }
 
     // play a sound on transitions
-    if (cg.lowAmmoWarning != previous) {
+    //
+    // [QL] E97. cg_lowAmmoWarningSound gates the sound and nothing else - the
+    // on-screen warning cg.lowAmmoWarning drives is a separate thing and stays.
+    // Defaults to 1, so this changes nothing until someone sets it.
+    if (cg.lowAmmoWarning != previous && cg_lowAmmoWarningSound.integer) {
         trap_S_StartLocalSound(cgs.media.noAmmoSound, CHAN_LOCAL_SOUND);
     }
 }
@@ -329,19 +333,38 @@ void CG_CheckLocalSounds(playerState_t* ps, playerState_t* ops) {
         return;
     }
 
-    // hit changes
-    if (ps->persistant[PERS_HITS] > ops->persistant[PERS_HITS]) {
-        armor = ps->persistant[PERS_ATTACKEE_ARMOR] & 0xff;
-        health = ps->persistant[PERS_ATTACKEE_ARMOR] >> 8;
-        if (armor > 50) {
-            trap_S_StartLocalSound(cgs.media.hitSoundHighArmor, CHAN_LOCAL_SOUND);
-        } else if (armor || health > 100) {
-            trap_S_StartLocalSound(cgs.media.hitSoundLowArmor, CHAN_LOCAL_SOUND);
-        } else {
-            trap_S_StartLocalSound(cgs.media.hitSound, CHAN_LOCAL_SOUND);
+    /*
+    hit changes
+
+    [QL] E97, and this one is deliberately a PARTIAL wiring - say so rather
+    than let the manifest row claim more than was done.
+
+    cg_hitBeep defaults to "2", not to 0 or 1, so it is not a boolean: Quake
+    Live has at least a 0/1/2/3 here and 2 is the shipped choice. What 1 and 3
+    select is not knowable from this tree - the decompilation the rest of these
+    gates cite is not available - so guessing would mean inventing a sound
+    scheme and calling it Quake Live's.
+
+    0 meaning off is the one value that is not a guess, so that is the only one
+    implemented. Every non-zero value behaves as it does today. The manifest row
+    records the rest as still open.
+    */
+    if (cg_hitBeep.integer) {
+        if (ps->persistant[PERS_HITS] > ops->persistant[PERS_HITS]) {
+            armor = ps->persistant[PERS_ATTACKEE_ARMOR] & 0xff;
+            health = ps->persistant[PERS_ATTACKEE_ARMOR] >> 8;
+            if (armor > 50) {
+                trap_S_StartLocalSound(cgs.media.hitSoundHighArmor, CHAN_LOCAL_SOUND);
+            } else if (armor || health > 100) {
+                trap_S_StartLocalSound(cgs.media.hitSoundLowArmor, CHAN_LOCAL_SOUND);
+            } else {
+                trap_S_StartLocalSound(cgs.media.hitSound, CHAN_LOCAL_SOUND);
+            }
+        } else if (ps->persistant[PERS_HITS] < ops->persistant[PERS_HITS]) {
+            // the team-hit sound is a hit beep too, so 0 silences it as well -
+            // gating only the enemy branch would leave it firing on its else
+            trap_S_StartLocalSound(cgs.media.hitTeamSound, CHAN_LOCAL_SOUND);
         }
-    } else if (ps->persistant[PERS_HITS] < ops->persistant[PERS_HITS]) {
-        trap_S_StartLocalSound(cgs.media.hitTeamSound, CHAN_LOCAL_SOUND);
     }
 
     // health changes of more than -1 should make pain sounds

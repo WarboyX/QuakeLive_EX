@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `███████████████░░░░░  70/94` | E96: the 240 unread cvars are kept and manifested, so the 241st fails the build |
-| **Overall** | `██████████████░░░░░░  126/177` | by binary: 67 server · 93 client · 10 both |
+| **Engine / server** (E) | `███████████████░░░░░  71/95` | E97: 4 cvars wired, 218 need the decompilation this environment does not have; E96 manifests them |
+| **Overall** | `██████████████░░░░░░  127/178` | by binary: 67 server · 94 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,86 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E97. Wiring up the unread cvars — 4 done, and why the other 218 are not a wiring job
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+The ask was to go through the list and wire everything up by reading the names
+and inferring how each should operate. Four went in. The rest should not, and
+the reason is not caution — it is that the premise turns out to be wrong for
+almost all of them.
+
+**What "unread" actually means here.** I expected mostly missing *gates*:
+behaviour sitting in the tree, unconditional, with a cvar that nobody consults.
+That shape is a real wiring job with a verifiable answer. Sampling found it is
+the rare case. The common case is a missing *feature*:
+
+- `cg_itemTimers` — the only mention of item timers in cgame is
+  `cgs.itemTimers` parsed out of serverinfo. There is no timer display to gate.
+- `cg_drawTieredArmorAvailability` — same shape: `cgs.armorTiered` is read from
+  serverinfo, nothing draws anything.
+- `cg_oldRocket`, `cg_oldPlasma` — would select a second effect that does not
+  exist in the tree.
+- `cg_buzzerSound` — cg_event.c already carries a TODO saying the match-win
+  buzzer belongs to `cg_teamEventSounds`.
+
+Wiring those means implementing Quake Live features from their names. That is
+not wiring, and the result would not be Quake Live's behaviour — it would be
+mine, wearing Quake Live's cvar name, which is worse than the cvar doing
+nothing because it looks finished.
+
+**The concrete near-miss, and it is the whole argument.** `cg_teamChatBeep`
+defaults to **0** and looks exactly like "gate the team chat beep". The team
+chat beep is already gated — on `cg_chatbeep`, which defaults to on, with a
+binary citation beside it in cg_servercmds.c. Wiring `cg_teamChatBeep` by its
+name would have silenced team chat beeps by default: a regression, in working
+code, produced entirely by a confident guess. `cg_noTaunt` is the same story —
+superseded by `cg_allowTaunt`, which is live and cited.
+
+**The standard of evidence this tree already uses.** Every cvar gate anyone has
+established here cites the binary: *"QL binary: cg_chatbeep.integer gates the
+chat sound (vmCvar 0x10A6A9E0)"*, *"binary tests DAT_10a68eec, exact-nonzero"*.
+Twenty-odd such citations across cgame and game. That standard exists because
+guessing was already rejected once. The `ql-decompiled` tree those citations
+come from is **not in this environment** — files were ported from it, it is gone
+— so I cannot meet the standard the tree sets for itself, and inventing a looser
+one for 218 cvars in one pass is not an improvement.
+
+**What went in, and the filter.** Three conditions, all three required:
+behaviour exists in-tree and is unconditional; the name maps onto exactly that
+code with no value ambiguity; and the default preserves current behaviour, so
+wiring it changes nothing until someone sets it. That last one is what makes
+these zero-risk rather than merely plausible.
+
+| cvar | default | gate |
+|---|---|---|
+| `cg_waterWarp` | 1 | the underwater fov wobble in CG_CalcFov. `inwater` still gets set - it drives the underwater sound and tint, which the cvar does not name |
+| `cg_crosshairPulse` | 1 | the item-pickup crosshair pulse, both draw sites |
+| `cg_lowAmmoWarningSound` | 1 | the transition sound only; the on-screen warning is a separate thing and stays |
+| `cg_hitBeep` | 2 | **partial** - see below |
+
+`cg_hitBeep` defaults to "2", so it is not a boolean: Quake Live has at least
+0/1/2/3 and 2 is the shipped choice. What 1 and 3 select is not knowable from
+here. 0 meaning off is the one value that is not a guess, so it is the only one
+implemented; every non-zero value behaves as it did. Recorded in the code as a
+partial rather than left to look finished. Gating the enemy-hit branch alone
+would have left the team-hit sound firing on its `else`, so the whole block is
+gated.
+
+**What would make the other 218 tractable**, in order of how much they buy:
+1. The `ql-decompiled` tree back in the environment. That is what the existing
+   citations were written from and it settles semantics per cvar.
+2. A Quake Live install for `dead-cvars.py` to read - resolves the 12 QL-ASSET
+   rows outright and would reclassify an unknown number of others.
+3. Per-cvar, one at a time, against a live QL server to compare behaviour. That
+   is the honest path without the first two, and it is a cvar a session, not
+   218 in one.
+
+**Still unverified:** the four gates compile and default to current behaviour by
+construction, but none has been observed. `cg_waterWarp 0` in water and
+`cg_crosshairPulse 0` over an item are the two that take five seconds to check.
 
 ---
 

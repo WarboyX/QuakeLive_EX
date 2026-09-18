@@ -536,12 +536,22 @@ static int CG_CalcFov(void) {
     fov_y = fov_y * 360 / M_PI;
 
     // warp if underwater
+    //
+    // [QL] E97. cg_waterWarp gates it. The wobble was unconditional and the
+    // cvar was registered and read by nothing, so a player who turned it off
+    // got the wobble anyway. Defaults to 1, which is what the code did before,
+    // so this changes nothing until someone sets it.
+    //
+    // inwater is still set either way: it drives the underwater sound and the
+    // screen tint further down, which are not what this cvar names.
     contents = CG_PointContents(cg.refdef.vieworg, -1);
     if (contents & (CONTENTS_WATER | CONTENTS_SLIME | CONTENTS_LAVA)) {
-        phase = cg.time / 1000.0 * WAVE_FREQUENCY * M_PI * 2;
-        v = WAVE_AMPLITUDE * sin(phase);
-        fov_x += v;
-        fov_y -= v;
+        if (cg_waterWarp.integer) {
+            phase = cg.time / 1000.0 * WAVE_FREQUENCY * M_PI * 2;
+            v = WAVE_AMPLITUDE * sin(phase);
+            fov_x += v;
+            fov_y -= v;
+        }
         inwater = qtrue;
     } else {
         inwater = qfalse;
