@@ -781,13 +781,25 @@ static void CG_RocketTrail(centity_t* ent, const weaponInfo_t* wi) {
         return;
     }
 
-    // [QL] trail radius comes from cvars, disabled radius returns early. The binary
-    // replaced Q3's cg_noProjectileTrail early-return with this.
+    /* [QL] E101. Trail radius comes from cvars, 0 returns early - the binary
+       replaced Q3's cg_noProjectileTrail early-return with this.
+
+       The cvar READ here is cg_smokeRadius_*, not cg_*TrailRadius, and that is
+       a fix rather than a rename. Quake Live's own options menu drives
+       cg_smokeRadius_RL / _GL / _NG ("No/Thin/Medium/Thick") and mentions
+       cg_rocketTrailRadius nowhere - so a player setting smoke thickness in the
+       menu was changing a cvar this code never read, and nothing happened.
+
+       The defaults settle which set is real: cg_smokeRadius_RL defaults to 32
+       and GL to 64, exactly the "Thick" entries in Quake Live's own lists,
+       while our cg_rocketTrailRadius/cg_grenadeTrailRadius pair defaults 64/32 -
+       the same two numbers with RL and GL swapped. They were transcribed wrong
+       and then read instead of the real ones. */
     if (wi->missileTrailFunc == CG_RocketTrail) {
-        trailRadius = cg_rocketTrailRadius.value;
+        trailRadius = cg_smokeRadius_RL.value;
     }
     if (wi->missileTrailFunc == CG_GrenadeTrail) {
-        trailRadius = cg_grenadeTrailRadius.value;
+        trailRadius = cg_smokeRadius_GL.value;
     }
     if (trailRadius == 0.0f) {
         return;
@@ -825,9 +837,9 @@ static void CG_NailTrail(centity_t* ent, const weaponInfo_t* wi) {
     localEntity_t* smoke;
     float trailRadius;
 
-    // [QL] nail trail radius comes from cg_nailTrailRadius; 0 disables the trail
-    // (binary replaced the cg_noProjectileTrail early-return with this).
-    trailRadius = cg_nailTrailRadius.value;
+    // [QL] E101. cg_smokeRadius_NG, which is what Quake Live's menu drives; 0
+    // disables the trail. See CG_MissileTrail above for why not cg_nailTrailRadius.
+    trailRadius = cg_smokeRadius_NG.value;
     if (trailRadius == 0.0f) {
         return;
     }

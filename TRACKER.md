@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `███████████████░░░░░  73/97` | E99: dead-end audit - assets/events/statics checked, 1 silent dead end fixed; E98 reclassified 12 |
-| **Overall** | `██████████████░░░░░░  129/180` | by binary: 68 server · 95 client · 10 both |
+| **Engine / server** (E) | `████████████████░░░░  75/99` | E101: smoke radius read the wrong cvars entirely; E100: pak00 settles semantics and removal safety |
+| **Overall** | `███████████████░░░░░  131/182` | by binary: 68 server · 97 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,60 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E101. Wiring from pak00's own menus — a setting that lied — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+With `docs/ql-cvar-semantics.txt` in hand the wiring question changed from "what
+might this mean" to "what does Quake Live say it means". Three wirings, and the
+first is a real user-visible bug rather than a missing nicety.
+
+**Smoke trail radius read the wrong cvars entirely.** Quake Live's options menu
+drives `cg_smokeRadius_RL` / `_GL` / `_NG`. `CG_MissileTrail` and `CG_NailTrail`
+read `cg_rocketTrailRadius` / `cg_grenadeTrailRadius` / `cg_nailTrailRadius` —
+names that appear nowhere in pak00's UI. So the menu control took the player's
+value and nothing downstream ever looked at it.
+
+The defaults settle which set is real, and they also show how it happened:
+
+| | ours | Quake Live's | QL menu "Thick" |
+|---|---|---|---|
+| rocket | `cg_rocketTrailRadius` 64 | `cg_smokeRadius_RL` **32** | 32 |
+| grenade | `cg_grenadeTrailRadius` 32 | `cg_smokeRadius_GL` **64** | 64 |
+| nail | `cg_nailTrailRadius` 16 | `cg_smokeRadius_NG` **16** | 16 |
+
+Quake Live's defaults are exactly its own "Thick" entries. Ours are the same two
+numbers with rocket and grenade **swapped** — transcribed wrong, then read
+instead of the originals. The three duplicates are now SUPERSEDED rather than
+removed, per the standing decision to keep names.
+
+**`cg_useItemMessage` and `cg_useItemWarning`** map exactly onto the two branches
+already in `CG_UseItem` — the "Use <item>" print and the "No item to use" print.
+Both were unconditional and always `BIGCHAR_WIDTH`. Quake Live gives each
+0 "No" / 1 "Yes (Large)" / 2 "Yes (Small)", 1 is the default, so the behaviour is
+unchanged until somebody sets one. Anything other than 2 draws large, so an
+out-of-range value degrades to the default rather than vanishing.
+
+**What was NOT wired, and why**, because the semantics file makes the temptation
+worse rather than better:
+
+- `cg_crosshairBrightness` 0 "No" / .3 / .6 / 1 "Bright". The label at 0 is "No",
+  not "Invisible", so it is a boost and not a multiplier — and the formula for a
+  boost is exactly the thing that is not written down. Guessing it makes the
+  crosshair wrong at three of four settings.
+- `cg_specItemTimers` 0 / 1 "Power-ups Only" / 7 "PU/MH/RA" / 15 "All" is three
+  bits, and there is no spectator item-timer display to attach them to.
+- `cg_killBeep`'s nine sounds do not exist under any name in the pak manifest
+  beyond `chaching.ogg`; `sound/feedback/` holds `impact1`..`impact6`, which is
+  six, not eight.
+- `cg_railStyle` 1 "Beam" / 2 "Spiral" needs a second rail effect that is not in
+  the tree.
+
+**Still unverified:** the smoke change is the one worth looking at — set *Smoke
+Radius* to Thin and Thick in the menu and the rocket trail should now actually
+differ.
 
 ---
 

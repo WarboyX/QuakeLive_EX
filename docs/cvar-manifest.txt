@@ -188,9 +188,6 @@ QL-FEATURE	cg_selfOnTeamOverlay	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_RE
 QL-ASSET	cg_simpleItemsBob	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-ASSET	cg_simpleItemsHeightOffset	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_simpleItemsRadius	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-ASSET	cg_smokeRadius_GL	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 8=Thin, 32=Medium, 64=Thick.
-QL-ASSET	cg_smokeRadius_NG	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Thin, 8=Medium, 16=Thick.
-QL-ASSET	cg_smokeRadius_RL	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 8=Thin, 16=Medium, 32=Thick.
 QL-FEATURE	cg_smokeRadius_dust	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_smokeRadius_flight	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_smokeRadius_haste	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
@@ -213,8 +210,6 @@ QL-ASSET	cg_teammatePOIs	cgame, referenced by Quake Live's own pak00 menus or co
 QL-FEATURE	cg_thirdPersonPitch	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_trackPlayer	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-ASSET	cg_trueShotgun	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=Fancy, 1=Accurate.
-QL-ASSET	cg_useItemMessage	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Yes (Large), 2=Yes (Small).
-QL-ASSET	cg_useItemWarning	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Yes (Large), 2=Yes (Small).
 QL-FEATURE	cg_voiceChatIndicator	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_weaponColor_grenade	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-ASSET	cg_weaponConfig	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
@@ -339,3 +334,6 @@ QL-FEATURE	ui_team_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to con
 SUPERSEDED	ui_tourney_fraglimit	ui, the per-gametype limit cvars were replaced by the single live ui_fragLimit
 QL-FEATURE	ui_tourney_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 
+SUPERSEDED	cg_rocketTrailRadius	cgame, superseded by cg_smokeRadius_RL, which is the cvar Quake Live's own menu drives and which CG_MissileTrail now reads. This one is a duplicate transcribed with GL's default (64 against QL's 32).
+SUPERSEDED	cg_grenadeTrailRadius	cgame, superseded by cg_smokeRadius_GL - same duplication, with RL's default (32 against QL's 64). The two were swapped.
+SUPERSEDED	cg_nailTrailRadius	cgame, superseded by cg_smokeRadius_NG, which QL's menu drives. Default matched; the name did not.

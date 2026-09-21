@@ -1772,6 +1772,14 @@ extern vmCvar_t cg_lightningImpactCap;
 extern vmCvar_t cg_lightningImpact;         // [QL] gate the LG impact flare
 extern vmCvar_t cg_beamLights;             // [QL] linear dlight along rail and lightning beams
 extern vmCvar_t cg_rocketTrailRadius;       // [QL] rocket smoke-trail radius (0 disables)
+// [QL] E101. The cvars Quake Live's own options menu drives - these are the ones
+// CG_MissileTrail and CG_NailTrail read. See docs/ql-cvar-semantics.txt.
+extern vmCvar_t cg_smokeRadius_RL;
+extern vmCvar_t cg_smokeRadius_GL;
+extern vmCvar_t cg_smokeRadius_NG;
+// [QL] E101. 0 = off, 1 = large, 2 = small - Quake Live's own menu values.
+extern vmCvar_t cg_useItemMessage;
+extern vmCvar_t cg_useItemWarning;
 extern vmCvar_t cg_grenadeTrailRadius;      // [QL] grenade smoke-trail radius (0 disables)
 extern vmCvar_t cg_nailTrailRadius;         // [QL] nail smoke-trail radius (0 disables)
 extern vmCvar_t cg_railReloadTime;          // [QL] railgun refire interval (ms) for view-model tint

@@ -500,13 +500,26 @@ static void CG_UseItem(centity_t* cent) {
         itemNum = 0;
     }
 
-    // print a message if the local player
+    /* [QL] E101. Two cvars, and the two branches below are exactly what they
+       name - cg_useItemWarning is the "No item to use" case, cg_useItemMessage
+       is the "Use <item>" case. Both were registered and read by nothing, so
+       both prints were unconditional and always big.
+
+       Quake Live's own menu gives the values: 0 "No", 1 "Yes (Large)",
+       2 "Yes (Small)" for each (docs/ql-cvar-semantics.txt). 1 is the default
+       and is what this did before, so nothing changes until somebody sets one.
+       Anything other than 2 draws large, which keeps an out-of-range value
+       behaving like the default rather than vanishing. */
     if (es->number == cg.snap->ps.clientNum) {
         if (!itemNum) {
-            CG_CenterPrint("No item to use", SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH);
-        } else {
+            if (cg_useItemWarning.integer) {
+                CG_CenterPrint("No item to use", SCREEN_HEIGHT * 0.30,
+                               cg_useItemWarning.integer == 2 ? SMALLCHAR_WIDTH : BIGCHAR_WIDTH);
+            }
+        } else if (cg_useItemMessage.integer) {
             item = BG_FindItemForHoldable(itemNum);
-            CG_CenterPrint(va("Use %s", item->pickup_name), SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH);
+            CG_CenterPrint(va("Use %s", item->pickup_name), SCREEN_HEIGHT * 0.30,
+                           cg_useItemMessage.integer == 2 ? SMALLCHAR_WIDTH : BIGCHAR_WIDTH);
         }
     }
 

@@ -1,4 +1,4 @@
-# Quake Live Ex — beta
+# Quake Live Ex — Alpha 2
 
 The project has a name. Nothing on the wire changed with it: `com_gamename`,
 `com_protocol` 91 and `baseqz` are untouched, so stock Quake Live clients still
@@ -163,6 +163,31 @@ fewer snapshots than `sv_fps`.
   to this client with nothing needed from us; use `r_ext_multisample 0` if you
   want its depth-buffer effects.
 
+## Settings that were only pretending to work
+
+Quake Live's own options menu drives cvars this port registered and then never
+read. The result is a setting that takes your value and changes nothing.
+
+- **Smoke trail thickness works.** The menu's *Smoke Radius* controls set
+  `cg_smokeRadius_RL` / `_GL` / `_NG`; the trail code read
+  `cg_rocketTrailRadius` / `cg_grenadeTrailRadius` / `cg_nailTrailRadius` —
+  names Quake Live's UI has never mentioned. The duplicates even had rocket and
+  grenade swapped (64/32 against Quake Live's 32/64). Now read the real ones.
+- **"Use item" messages can be turned off or made small.** `cg_useItemMessage`
+  and `cg_useItemWarning` are each 0 / 1 large / 2 small, and both prints were
+  unconditional and always large.
+- **A few smaller gates**: `cg_waterWarp` (the underwater wobble),
+  `cg_crosshairPulse` (the pickup pulse), `cg_lowAmmoWarningSound`, and
+  `cg_hitBeep 0` to silence hit beeps.
+
+All of these default to what the code did before, so nothing changes until you
+set one.
+
+`docs/cvar-manifest.txt` now carries a verdict for every one of the 234 cvars
+that are still registered and read by nothing, and the build fails if a new one
+appears without a verdict. 75 of them turned out to be read by Quake Live's own
+menus rather than dead at all.
+
 ## Natural textures — no more hard cuts
 
 A texture tiled thirty times across a floor reads as a grid, not as a floor.
@@ -322,9 +347,14 @@ in and which client sees it. Worth knowing before you run a server:
 
 ## Before cutting the release
 
-`developer` still defaults to `1` (`common.c`), and `cg_scoreboardDebug` /
-`ui_inputDebug` scaffolding is still present. Both are wanted while testing and
-neither belongs in a release build.
+`developer` still defaults to `1` in `common.c`. That is deliberate for an alpha
+— every diagnostic in the tree is gated on it, and a tester who hits something
+odd already has the evidence instead of needing a second run — but it is a
+one-line change when this stops being an alpha, and it is the only switch
+(`CVAR_TEMP`, so it never sticks in a config).
+
+`cg_scoreboardDebug` and `ui_inputDebug` both default to `0` and are no longer a
+release concern; the scaffolding behind them is inert until set.
 
 ## Credits
 
