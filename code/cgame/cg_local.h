@@ -1780,6 +1780,8 @@ extern vmCvar_t cg_smokeRadius_NG;
 // [QL] E101. 0 = off, 1 = large, 2 = small - Quake Live's own menu values.
 extern vmCvar_t cg_useItemMessage;
 extern vmCvar_t cg_useItemWarning;
+// [QL] E102. RGB multiply on the crosshair, not alpha - see CG_DrawCrosshair.
+extern vmCvar_t cg_crosshairBrightness;
 extern vmCvar_t cg_grenadeTrailRadius;      // [QL] grenade smoke-trail radius (0 disables)
 extern vmCvar_t cg_nailTrailRadius;         // [QL] nail smoke-trail radius (0 disables)
 extern vmCvar_t cg_railReloadTime;          // [QL] railgun refire interval (ms) for view-model tint

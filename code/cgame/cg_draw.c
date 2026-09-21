@@ -1467,14 +1467,48 @@ static void CG_DrawCrosshair(void) {
 		return;
 	}
 
-	// set color based on health
-	if (cg_crosshairHealth.integer) {
-		vec4_t hcolor;
+	/* [QL] E102. cg_crosshairBrightness scales the crosshair's RGB.
 
-		CG_ColorForHealth(hcolor);
-		trap_R_SetColor(hcolor);
-	} else {
-		trap_R_SetColor(NULL);
+	   It is a multiply on the colour and NOT transparency, and the shader is
+	   what settles that rather than the name. gfx/2d/crosshair%i is
+	   "blendfunc blend" with "rgbGen exactVertex" and no alphaGen, so alphaGen
+	   stays AGEN_IDENTITY - the skip at tr_shader.c decide-which-agens only
+	   fires for CGEN_IDENTITY / CGEN_LIGHTING_DIFFUSE, and this is
+	   CGEN_EXACT_VERTEX. At draw time exactVertex copies the full RGBA across
+	   and the AGEN_IDENTITY branch then overwrites rgba[3] with 255. An alpha
+	   passed to trap_R_SetColor is thrown away; only RGB survives.
+
+	   The two are hard to tell apart in practice, which is why the question
+	   comes up: over a dark scene, scaling RGB down looks like fading out. They
+	   differ against a bright background, where 0 gives a BLACK crosshair and
+	   not an absent one - and Quake Live labels 0 "No", not "Invisible".
+
+	   Values from Quake Live's own menu: 0 "No", .3 "Low", .6 "Medium",
+	   1 "Bright" (docs/ql-cvar-semantics.txt). Default is 1.0, which is what
+	   trap_R_SetColor(NULL) already meant, so nothing changes until it is set.
+
+	   Applied to the health colour too: that is a colour, and dimming a colour
+	   is the same operation as dimming white. */
+	{
+		float bright = cg_crosshairBrightness.value;
+		vec4_t color;
+
+		if (bright < 0.0f) {
+			bright = 0.0f;
+		} else if (bright > 1.0f) {
+			bright = 1.0f;
+		}
+
+		if (cg_crosshairHealth.integer) {
+			CG_ColorForHealth(color);
+		} else {
+			color[0] = color[1] = color[2] = color[3] = 1.0f;
+		}
+		color[0] *= bright;
+		color[1] *= bright;
+		color[2] *= bright;
+
+		trap_R_SetColor(color);
 	}
 
 	w = h = cg_crosshairSize.value;

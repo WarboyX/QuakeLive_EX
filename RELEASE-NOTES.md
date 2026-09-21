@@ -176,6 +176,11 @@ read. The result is a setting that takes your value and changes nothing.
 - **"Use item" messages can be turned off or made small.** `cg_useItemMessage`
   and `cg_useItemWarning` are each 0 / 1 large / 2 small, and both prints were
   unconditional and always large.
+- **Crosshair brightness works.** `cg_crosshairBrightness` scales the crosshair
+  colour — 0 / .3 / .6 / 1 in the menu. It is a brightness multiply and not
+  transparency: at 0 you get a *black* crosshair rather than none, which is what
+  the shader allows (it discards any alpha passed to it) and what Quake Live's
+  own "No" label describes.
 - **A few smaller gates**: `cg_waterWarp` (the underwater wobble),
   `cg_crosshairPulse` (the pickup pulse), `cg_lowAmmoWarningSound`, and
   `cg_hitBeep 0` to silence hit beeps.

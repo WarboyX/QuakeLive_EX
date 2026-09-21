@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `████████████████░░░░  75/99` | E101: smoke radius read the wrong cvars entirely; E100: pak00 settles semantics and removal safety |
-| **Overall** | `███████████████░░░░░  131/182` | by binary: 68 server · 97 client · 10 both |
+| **Engine / server** (E) | `████████████████░░░░  76/100` | E102: crosshair brightness is RGB not alpha, settled from the shader; E101: smoke radius read the wrong cvars |
+| **Overall** | `███████████████░░░░░  132/183` | by binary: 68 server · 98 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,48 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E102. cg_crosshairBrightness — brightness or transparency? — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Raised as a question: with values 0 "No" / .3 "Low" / .6 "Medium" / 1 "Bright"
+and no separate alpha cvar anywhere in Quake Live's crosshair set, wouldn't this
+be transparency?
+
+Reasonable, and the name does not settle it. The shader does.
+
+`gfx/2d/crosshair%i` in pak00's `scripts/gfx.shader` is `blendfunc blend` with
+`rgbGen exactVertex` and **no alphaGen**, so alphaGen stays `AGEN_IDENTITY`. The
+"decide which agens we can skip" step in `tr_shader.c` only demotes that to
+`AGEN_SKIP` for `CGEN_IDENTITY` / `CGEN_LIGHTING_DIFFUSE`, and this is
+`CGEN_EXACT_VERTEX`, so it does not apply. At draw time `CGEN_EXACT_VERTEX`
+memcpys the full RGBA out of the vertex colours — and the `AGEN_IDENTITY` branch
+immediately overwrites `rgba[3]` with 255.
+
+**An alpha handed to `trap_R_SetColor` is discarded.** Only RGB reaches the
+blend, so transparency is not something this cvar could be doing through this
+path, whatever it is called.
+
+Why the question is a good one anyway: over a dark scene, scaling RGB toward 0
+and fading alpha toward 0 look nearly identical. They part company against a
+bright background, where brightness 0 leaves a **black** crosshair rather than
+no crosshair — and Quake Live labels that value "No", not "Invisible". A black
+crosshair is a thing people deliberately run.
+
+So: an RGB multiply, clamped 0..1, applied to the health colour as well since
+dimming a colour is the same operation as dimming white. Default 1.0 is exactly
+what `trap_R_SetColor(NULL)` already meant, so nothing changes until set.
+
+This is the one from E101's "not wired" list that had a determinable answer
+after all. The reason it was on that list — "the formula for a boost is exactly
+what is not written down" — was right about the menu and wrong about where to
+look. The shader had it.
+
+**Still unverified:** `cg_crosshairBrightness 0` should give a black crosshair,
+not an absent one. That is the check that distinguishes this from the
+transparency reading, and it takes one command.
 
 ---
 
