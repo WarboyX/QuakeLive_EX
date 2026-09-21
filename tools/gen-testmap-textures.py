@@ -81,10 +81,13 @@ def domes(cell=64, radius=26):
             else:
                 nx = dx / radius
                 ny = dy / radius
-                # OpenGL convention: +Y is up in texture space, and v runs down,
-                # so the y component is negated relative to the pixel axis.
+                # Matches the height-field encoders, which is what makes this
+                # panel comparable with every other sheet - measured, not
+                # assumed: below a dome's centre both give a negative green.
+                # Both were the inverted convention until the green-channel bug
+                # was found, and the two agreeing is why it survived.
                 hz = math.sqrt(max(0.0, 1.0 - r2 / (radius * radius)))
-                row += encode(nx, -ny, hz, hz)
+                row += encode(nx, ny, hz, hz)
         rows.append(bytes(row))
     return rows
 
@@ -118,7 +121,8 @@ def rocknoise(octaves=4, seed=1337):
             # wrap, so the sheet tiles
             hx = height[y][(x + 1) % W] - height[y][(x - 1) % W]
             hy = height[(y + 1) % H][x] - height[(y - 1) % H][x]
-            row += encode(-hx * scale, hy * scale, 1.0)
+            # -hy for the same reason as normals_from_height below
+            row += encode(-hx * scale, -hy * scale, 1.0)
         rows.append(bytes(row))
     return rows
 
@@ -153,7 +157,14 @@ def normals_from_height(height, scale):
         for x in range(W):
             hx = height[y][(x + 1) % W] - height[y][(x - 1) % W]
             hy = height[(y + 1) % H][x] - height[(y - 1) % H][x]
-            row += encode(-hx * scale, hy * scale, 1.0, height[y][x])
+            # -hy, not +hy. For a height field h(u,v) the tangent-space normal
+            # is (-dh/du, -dh/dv, 1); this had +dh/dv, which is green inverted.
+            # It survived because every texture this generator makes shared the
+            # error, so they all agreed with each other - and disagreed with
+            # R_GenerateNormalMap, the C path that derives a normal map from a
+            # diffuse at run time and does use -dL/dy. Two surfaces lit by the
+            # same shader shaded opposite ways depending on which made them.
+            row += encode(-hx * scale, -hy * scale, 1.0, height[y][x])
         rows.append(bytes(row))
     return rows
 

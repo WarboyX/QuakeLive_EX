@@ -1462,6 +1462,9 @@ extern Vk_World		vk_world;		// this data is cleared during ref re-init
 //
 // cvars
 //
+// [QL] E103. Read in vk.c's create_pipeline to set the green-flip spec constant.
+extern cvar_t	*r_qlNormalFlipG;
+
 extern cvar_t	*r_flareSize;
 extern cvar_t	*r_flareFade;
 extern cvar_t	*r_flareCoeff;			// coefficient for the flare intensity falloff function. 

@@ -2057,8 +2057,8 @@ static void R_Register( void )
 	so it takes effect the moment it is set and you can flip it back and forth
 	while looking at the panel.
 	*/
-	r_qlNormalFlipG = ri.Cvar_Get( "r_qlNormalFlipG", "0", 0 );
-	ri.Cvar_SetDescription( r_qlNormalFlipG, "[QL] Flip the normal map's green channel (OpenGL vs DirectX convention). If bumps look like dents, set this to 1. Diagnostic - see qltest_bump's dome panel." );
+	r_qlNormalFlipG = ri.Cvar_Get( "r_qlNormalFlipG", "0", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNormalFlipG, "[QL] Flip the normal map's green channel (OpenGL vs DirectX convention). If bumps look like dents, set this to 1. Diagnostic - see qltest_bump's dome panel. Takes effect on vid_restart." );
 
 
 	//r_anaglyphMode = ri.Cvar_Get( "r_anaglyphMode", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );

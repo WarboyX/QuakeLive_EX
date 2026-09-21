@@ -9430,8 +9430,8 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	VkShaderModule *vs_module = NULL;
 	VkShaderModule *fs_module = NULL;
 	//int32_t vert_spec_data[1]; // clippping
-	floatint_t frag_spec_data[14]; // 0:alpha-test-func, 1:alpha-test-value, 2:depth-fragment, 3:alpha-to-coverage, 4:color_mode, 5:abs_light, 6:multitexture mode, 7:discard mode, 8: ident.color, 9 - ident.alpha, 10 - acff, 11 - hex tile, 12 - hex rotation, 13 - hex contrast
-	VkSpecializationMapEntry spec_entries[15];
+	floatint_t frag_spec_data[15]; // 0:alpha-test-func, 1:alpha-test-value, 2:depth-fragment, 3:alpha-to-coverage, 4:color_mode, 5:abs_light, 6:multitexture mode, 7:discard mode, 8: ident.color, 9 - ident.alpha, 10 - acff, 11 - hex tile, 12 - hex rotation, 13 - hex contrast
+	VkSpecializationMapEntry spec_entries[16];
 	//VkSpecializationInfo vert_spec_info;
 	VkSpecializationInfo frag_spec_info;
 	VkPipelineVertexInputStateCreateInfo vertex_input_state;
@@ -9873,6 +9873,26 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	spec_entries[14].offset = 13 * sizeof( int32_t );
 	spec_entries[14].size = sizeof( float );
 
+	/*
+	[QL] E103. Green-channel convention, on its own constant rather than
+	borrowing one.
+
+	It first went on constant 7, which the generic table calls discard mode -
+	and discard mode is WRITTEN LATER in this function, from allow_discard. The
+	bump pass survived only because its def never sets allow_discard, and the
+	lighting path would have been clobbered outright: a surface would have
+	flipped its green depending on its blend mode. Borrowing an id works until
+	the other owner writes to it.
+
+	Read from the cvar rather than carried in Vk_Pipeline_Def because the
+	lighting pipelines are built once at init, not per draw - so this cannot be
+	live for both paths, and one rule is better than two. Hence CVAR_LATCH.
+	*/
+	spec_entries[15].constantID = 14;
+	spec_entries[15].offset = 14 * sizeof( int32_t );
+	spec_entries[15].size = sizeof( int32_t );
+	frag_spec_data[14].i = ( r_qlNormalFlipG && r_qlNormalFlipG->integer ) ? 1 : 0;
+
 	frag_spec_data[11].i = def->hex_tile;
 	frag_spec_data[12].f = def->hex_rot;
 	frag_spec_data[13].f = def->hex_contrast;
@@ -9900,12 +9920,11 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		*/
 		frag_spec_data[5].f = def->hex_tile ? def->hex_rot : -1.0f;
 		frag_spec_data[6].f = def->hex_contrast;
-		frag_spec_data[7].i = def->bump_flip_green;
 	}
 
-	frag_spec_info.mapEntryCount = 14;
+	frag_spec_info.mapEntryCount = 15;
 	frag_spec_info.pMapEntries = spec_entries + 1;
-	frag_spec_info.dataSize = sizeof( int32_t ) * 14;
+	frag_spec_info.dataSize = sizeof( int32_t ) * 15;
 	frag_spec_info.pData = &frag_spec_data[0];
 	shader_stages[1].pSpecializationInfo = &frag_spec_info;
 
