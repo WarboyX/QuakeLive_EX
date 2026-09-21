@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `████████████████░░░░  76/100` | E102: crosshair brightness is RGB not alpha, settled from the shader; E101: smoke radius read the wrong cvars |
-| **Overall** | `███████████████░░░░░  132/183` | by binary: 68 server · 98 client · 10 both |
+| **Engine / server** (E) | `████████████████░░░░  77/100` | E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
+| **Overall** | `███████████████░░░░░  133/183` | by binary: 69 server · 98 client · 10 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6054,6 +6054,41 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E92. `fraglimit` registered twice, with different defaults — FIXED, verified
+**Lives in:** our **server** (engine + qagame) · **Seen by:** every client
+
+Open since it was first noticed by reading. Now confirmed by running a server,
+fixed, and confirmed again the same way.
+
+`SV_Init` did `Cvar_Get("fraglimit", "20", CVAR_SERVERINFO)`; `g_main.c`
+registers the same name at **50**. `Cvar_Get` keeps the value the FIRST caller
+gave and only merges flags afterwards, and the engine runs first — so every
+server shipped with a fraglimit of **20** while the game module, the
+documentation and Quake Live itself all said 50.
+
+It was never silent. The engine printed it on every single start:
+
+    Warning: cvar "fraglimit" given initial values: "20" and "50"
+
+`dmflags` and `timelimit` are registered twice as well and both agree at 0,
+which is why only one of the three ever warned — and why the warning read like a
+cosmetic complaint rather than a gameplay default being overwritten.
+
+Fixed by removing all three engine-side registrations rather than correcting the
+number. The engine reads none of them — nothing outside `SV_Init` mentions any
+of the three anywhere in the engine — and qagame registers all three itself with
+`CVAR_SERVERINFO` from Quake Live's own table. Gamerules belong to the game
+module, and a duplicate that happens to agree today is the same bug lying
+dormant.
+
+**Verified by running it**, which is what finally caught it: the dedicated
+server now reports `fraglimit 50` in serverinfo and prints no warning. That was
+this session's first actually-executed test — `default.cfg` out of pak00 plus
+`qltest_maps.pk3` was enough to get a headless server onto a real map without
+Quake Live's assets.
 
 ---
 

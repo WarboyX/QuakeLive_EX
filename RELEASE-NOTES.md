@@ -173,6 +173,11 @@ read. The result is a setting that takes your value and changes nothing.
   `cg_rocketTrailRadius` / `cg_grenadeTrailRadius` / `cg_nailTrailRadius` —
   names Quake Live's UI has never mentioned. The duplicates even had rocket and
   grenade swapped (64/32 against Quake Live's 32/64). Now read the real ones.
+
+  **This one changes how the game looks by default**, unlike the rest of this
+  section: rocket trails go from 64 to Quake Live's 32 and grenade trails from
+  32 to 64. That is the point — those are Quake Live's numbers — but it is
+  visible on first launch and worth knowing before you file it as a regression.
 - **"Use item" messages can be turned off or made small.** `cg_useItemMessage`
   and `cg_useItemWarning` are each 0 / 1 large / 2 small, and both prints were
   unconditional and always large.
@@ -181,6 +186,12 @@ read. The result is a setting that takes your value and changes nothing.
   transparency: at 0 you get a *black* crosshair rather than none, which is what
   the shader allows (it discards any alpha passed to it) and what Quake Live's
   own "No" label describes.
+- **`fraglimit` was 20, not 50.** The engine registered it at 20 before the game
+  module registered it at 50, and the first registration keeps the value — so
+  every server shipped at 20 while the game module, the docs and Quake Live all
+  said 50. It announced itself on every start (`cvar "fraglimit" given initial
+  values: "20" and "50"`) and the line had been scrolling past for the life of
+  the tree. The engine no longer registers gamerules it never reads.
 - **A few smaller gates**: `cg_waterWarp` (the underwater wobble),
   `cg_crosshairPulse` (the pickup pulse), `cg_lowAmmoWarningSound`, and
   `cg_hitBeep 0` to silence hit beeps.

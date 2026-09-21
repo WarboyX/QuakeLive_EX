@@ -792,10 +792,30 @@ Only called at main exe startup, not for each game
 void SV_Init(void) {
     SV_AddOperatorCommands();
 
-    // serverinfo vars
-    Cvar_Get("dmflags", "0", CVAR_SERVERINFO);
-    Cvar_Get("fraglimit", "20", CVAR_SERVERINFO);
-    Cvar_Get("timelimit", "0", CVAR_SERVERINFO);
+    /* [QL] E92. The engine no longer registers the gamerule limits.
+
+       It never read them - nothing outside this function mentions dmflags,
+       fraglimit or timelimit anywhere in the engine - and qagame registers all
+       three itself, with CVAR_SERVERINFO, from Quake Live's own cvar table.
+       Two registrations of one name is not harmless: Cvar_Get keeps the value
+       the FIRST caller gave and only merges flags afterwards, so the engine
+       running first meant its default won and the game module's was discarded.
+
+       For fraglimit the two disagreed - engine 20 against qagame's 50 - so
+       every server shipped with a fraglimit of 20 while the game module, the
+       documentation and Quake Live all said 50. The engine announced it on
+       every single start and the line had been scrolling past for the life of
+       the tree:
+
+           Warning: cvar "fraglimit" given initial values: "20" and "50"
+
+       dmflags and timelimit agreed at 0, which is why only one of the three
+       ever warned and why this looked like a cosmetic complaint.
+
+       Removing rather than correcting the number: gamerules belong to the game
+       module, and a duplicate that happens to agree today is the same bug lying
+       dormant. Nothing is lost - a server with no map loaded is not in anyone's
+       browser, and by the time it is, qagame has registered all three. */
     sv_gametype = Cvar_Get("g_gametype", "0", CVAR_SERVERINFO | CVAR_LATCH);
     Cvar_Get("sv_keywords", "", CVAR_SERVERINFO);
     // [QL] Master servers the browser queries and dedicated servers heartbeat
