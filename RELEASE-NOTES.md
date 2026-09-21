@@ -275,6 +275,17 @@ neither loads nor checksums it.
 
 ## Known issues
 
+**Normal map green-channel convention.** `r_qlNormalFlipG` (latched, needs
+`vid_restart`) flips the green channel of every normal map. Our own generated
+maps all share one convention now, but a third-party map can ship a normal map
+baked against either — the shader parser accepts `normalMap` / `bumpMap` /
+`normalParallaxMap` / `bumpParallaxMap`, so this is not a question that closes.
+If bumps on a custom map read as dents, that cvar is the switch. The proper fix
+is a per-material keyword so a map declares its own convention; the obstacle is
+that the dynamic light pipelines are built once at init and cannot take a
+per-stage specialization constant.
+
+
 `TRACKER.md` is the full list, each item tagged with which binary the fault lives
 in and which client sees it. Worth knowing before you run a server:
 
