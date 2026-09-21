@@ -165,3 +165,19 @@ runtime, and holds no pak00.
 Note the manifest is a grep target, not prose: a plain `ice` search also matches
 `qzpract**ice**1`, `sl**ice**_12` and `vo**ice**_window`, so read the hits
 rather than counting them.
+
+### Quake Live's own cvar value lists
+
+`docs/ql-cvar-semantics.txt` records what each value of a cvar MEANS, harvested
+from the `cvarFloatList` entries in pak00's own menus — 59 cvars, names and
+labels only, same standing as the pak manifest. A cvar's default says nothing
+about what 1 versus 3 selects, and inventing a scheme and calling it Quake
+Live's is worse than leaving the cvar unwired. These lists are Quake Live
+answering the question.
+
+Read the values, not the count: several are bitfields and the labels give it
+away (`cg_specItemTimers` 0 / 1 "Power-ups Only" / 7 "PU/MH/RA" / 15 "All" is
+three bits). Regenerate with `tools/dump-cvar-semantics.py <ql ui dir>`.
+
+Absence means no menu exposes it, not that the cvar is simple — `cg_hitBeep` is
+absent and is still unwired for exactly that reason.

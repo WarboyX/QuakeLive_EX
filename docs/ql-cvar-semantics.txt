@@ -1,0 +1,83 @@
+# ql-cvar-semantics.txt - what Quake Live's own menus say each cvar's values MEAN.
+#
+# Harvested from the cvarFloatList / cvarStrList entries in pak00's ui/*.menu
+# files by tools/dump-cvar-semantics.py. NAMES AND LABELS ONLY - no menu markup,
+# no layout, no art, nothing that is Quake Live's to distribute. Same standing as
+# docs/pak-manifest.txt and docs/ql-menu-names.txt.
+#
+# WHY THIS FILE EXISTS. A cvar's default tells you almost nothing. cg_hitBeep
+# defaults to "2" and neither that nor the name says whether 1 and 3 are louder,
+# different, or off - so wiring one up meant inventing a scheme and calling it
+# Quake Live's. That was the stated reason only four cvars got wired in E97.
+# These lists are Quake Live answering the question itself.
+#
+# Read the VALUES, not just the count. Several are bitfields and the labels give
+# it away: cg_specItemTimers runs 0 / 1 "Power-ups Only" / 7 "PU/MH/RA" / 15
+# "All", which is three bits, not four settings. cg_drawItemPickups 0/3/7 and
+# cg_crosshairHitStyle 0/1/2/6/7/8 are the same shape. A switch statement on
+# those would be wrong in a way that looks right.
+#
+# A cvar being absent here means only that no menu exposes it - cg_hitBeep is
+# absent and is still unwired for exactly that reason.
+#
+# Format: <cvar><TAB><value>=<label>, <value>=<label>, ...
+
+bot_challenge	1=Yes, 0=No
+bot_nochat	0=Yes, 1=No
+bot_thinktime	0=Fast, 100=Normal, 200=Slow
+cg_announcer	1=Default, 2=Vadrigar, 3=Daemia
+cg_autoAction	0=None, 1=Demo, 2=Screenshot, 3=Demo + SS
+cg_bob	0=No, 0.25=Low, 0.5=Medium, 1=High
+cg_brassTime	0=No, 1000=Short, 2500=Normal, 5000=Long
+cg_crosshairBrightness	0=No, .3=Low, .6=Medium, 1=Bright
+cg_crosshairHitStyle	0=No, 1=Damage Color, 2=Color Flash, 6=Pulse, 7=Damage Pulse, 8=Color Pulse
+cg_crosshairHitTime	100=Short, 200=Normal, 500=Long
+cg_crosshairSize	32=Medium, 40=Large, 24=Small
+cg_drawCrosshairNames	0=No, 1=Yes, 2=Teammates Only
+cg_drawFullWeaponBar	1=All Available, 0=In Inventory
+cg_drawGun	1=Normal, 2=Still, 3=Transparent, 0=Hidden
+cg_drawInputCmds	0=No, 2=Yes
+cg_drawItemPickups	0=No, 3=Yes, 7=Timestamped
+cg_drawTeamOverlay	0=No, 1=Top, 2=Bottom
+cg_flagStyle	1=Cloth, 2=Hologram
+cg_followPowerup	0=No, 1=All Power-Ups, 2=Flags Only
+cg_guny	18=Left, 3=Center, 0=Default, -10=Right
+cg_hitbeep	0=No, 1=Single Pitch, 2=Descending, 3=Ascending
+cg_impactSparksVelocity	-128=Down/Fast, -96=Down/Medium, -64=Down/Slow, 0=No, 64=Up/Slow, 96=Up/Medium, 128=Up/Fast
+cg_kickScale	0=No, 0.25=Low, 0.5=Medium, 1=High
+cg_killBeep	0=No, 1=Ting, 2=Tink, 3=Dramatic, 4=Voosh, 5=Drum, 6=Bang, 7=Ding, 8=ChaChing
+cg_lagometer	0=No, 1=Basic, 2=Advanced
+cg_leveltimerdirection	1=Count down, 0=Count up
+cg_lightningStyle	1=Default QL, 2=QuakeWorld, 3=Team Arena, 4=Thin Shaft, 5=Wide Beam
+cg_plasmaStyle	1=No Trail, 2=Particle Trails
+cg_powerupPOIs	1=Hidden, 2=Default, 0=Off
+cg_railStyle	1=Beam, 2=Spiral
+cg_railTrailTime	100=Short, 400=Medium, 1500=Long
+cg_rocketStyle	1=No Plume, 2=Fire Plume
+cg_smokeRadius_GL	0=No, 8=Thin, 32=Medium, 64=Thick
+cg_smokeRadius_NG	0=No, 1=Thin, 8=Medium, 16=Thick
+cg_smokeRadius_RL	0=No, 8=Thin, 16=Medium, 32=Thick
+cg_specItemTimers	0=No, 1=Power-ups Only, 7=PU/MH/RA, 15=All
+cg_specNames	0=Off, 1=Targeted, 2=Always On
+cg_specTeamVitals	0=Off, 1=On, 2=On w/ HP
+cg_specTeamVitalsHealthColor	0=Team Colors, 1=Health Colors
+cg_speedometer	0=No, 1=Right Graph, 2=Center Graph, 3=Center Print
+cg_trueLightning	0=Very High, 0.25=High, 0.5=Medium, 0.75=Low, 1=None
+cg_trueShotgun	0=Fancy, 1=Accurate
+cg_useItemMessage	0=No, 1=Yes (Large), 2=Yes (Small)
+cg_useItemWarning	0=No, 1=Yes (Large), 2=Yes (Small)
+cg_weaponBar	1=Left, 2=Right, 3=Centered, 4=Classic, 0=No
+cl_demoRecordMessage	0=No, 1=Yes (Verbose), 2=Yes (Small)
+r_ambientScale	1=Low, 10=Medium, 100=High
+r_displayRefresh	0=Auto, 50=50Hz, 56=56Hz, 60=60Hz, 65=65Hz, 70=70Hz, 72=72Hz, 75=75Hz, 80=80Hz, 85=85Hz, 90=90Hz, 95=95Hz, 100=100Hz, 110=110Hz, 120=120Hz, 144=144Hz, 240=240Hz
+r_enableBloom	0=No, 1=Single Pass, 2=Two Passes
+r_lodbias	-2=Best, -1=High, 0=Medium, 1=Low, 2=Poor
+r_mapOverbrightBits	1=Low, 2=Medium, 3=High
+r_mode	-2=Native Desktop, -1=Custom, 0=^1320x240 (4:3), 1=^1400x300 (4:3), 2=^1512x384 (4:3), 3=^1640x360 (16:9), 4=^1640x400 (16:10), 5=^1640x480 (4:3), 6=^1800x450 (16:9), 7=^1852x480 (16:9), 8=^1800x500 (16:10), 9=^1800x600 (4:3), 10=1024x640 (16:10), 11=1024x576 (16:9), 12=1024x768 (4:3), 13=1152x864 (4:3), 14=1280x720 (16:9), 15=1280x768 (5:3), 16=1280x800 (16:10), 17=1280x1024 (5:4), 18=1440x900 (16:10), 19=1600x900 (16:9), 20=1600x1000 (16:10), 21=1680x1050 (16:10), 22=1600x1200 (4:3), 23=1920x1080 (16:9), 24=1920x1200 (16:10), 25=1920x1440 (4:3), 26=2048x1536 (4:3), 27=2560x1600 (16:10)
+r_overbrightBits	0=Low, 1=Medium, 2=High
+r_railCoreWidth	0=No, 1=Thin, 6=Medium, 16=Thick
+r_railSegmentLength	1=No, 8=Short, 32=Medium, 128=Long
+r_railWidth	0=No, 8=Thin, 16=Medium, 48=Thick
+r_subdivisions	4=Quality, 80=Performance
+r_windowedMode	-2=Native Desktop, -1=Custom, 0=^1320x240 (4:3), 1=^1400x300 (4:3), 2=^1512x384 (4:3), 3=^1640x360 (16:9), 4=^1640x400 (16:10), 5=^1640x480 (4:3), 6=^1800x450 (16:9), 7=^1852x480 (16:9), 8=^1800x500 (16:10), 9=^1800x600 (4:3), 10=1024x640 (16:10), 11=1024x576 (16:9), 12=1024x768 (4:3), 13=1152x864 (4:3), 14=1280x720 (16:9), 15=1280x768 (5:3), 16=1280x800 (16:10), 17=1280x1024 (5:4), 18=1440x900 (16:10), 19=1600x900 (16:9), 20=1600x1000 (16:10), 21=1680x1050 (16:10), 22=1600x1200 (4:3), 23=1920x1080 (16:9), 24=1920x1200 (16:10), 25=1920x1440 (4:3), 26=2048x1536 (4:3), 27=2560x1600 (16:10)
+ui_cvgametype	-1=Default, 0=FFA, 1=Duel, 2=Race, 3=TDM, 4=CA, 5=CTF, 6=1F, 8=HAR, 9=FT, 10=DOM, 11=AD, 12=RR

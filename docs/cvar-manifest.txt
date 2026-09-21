@@ -122,124 +122,124 @@ QL-ASSET	ui_version	ui, CVAR_ROM - read-only, set by ui for Quake Live's own men
 # ---------------------------------------------------------------------------
 QL-FEATURE	cg_announcerLastStandingVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_announcerLeadsVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_announcerRewardsVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_announcerRewardsVO	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_announcerTiesVO	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_autoAction	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_USERINFO | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_autoAction	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=None, 1=Demo, 2=Screenshot, 3=Demo + SS.
 QL-FEATURE	cg_autoProjectileNudge	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_blueTeamName	cgame, 0 - cgame registers it and nothing acts on it
-SUPERSEDED	cg_bob	cgame, Q3 legacy master switch. QL uses cg_bobpitch, cg_bobroll and cg_bobup, all live in cg_view.c CG_OffsetFirstPersonView
-QL-FEATURE	cg_buzzerSound	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_bob	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 0.25=Low, 0.5=Medium, 1=High.
+QL-ASSET	cg_buzzerSound	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_cameraSmartMode	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_cameraThirdPersonSmartMode	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
-QL-FEATURE	cg_crosshairBrightness	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_crosshairHitColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_crosshairHitStyle	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_crosshairHitTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_crosshairBrightness	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, .3=Low, .6=Medium, 1=Bright.
+QL-ASSET	cg_crosshairHitColor	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_crosshairHitStyle	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Damage Color, 2=Color Flash, 6=Pulse, 7=Damage Pulse, 8=Color Pulse.
+QL-ASSET	cg_crosshairHitTime	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 100=Short, 200=Normal, 500=Long.
 QL-FEATURE	cg_currentSelectedPlayerName	cgame, 0 - cgame registers it and nothing acts on it
 QL-FEATURE	cg_debugFlags	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_drawCrosshairTeamHealth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawCrosshairTeamHealthSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawDeadFriendTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawDemoHUD	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_drawFragMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_drawHitFriendTime	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_drawInputCmds	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_drawInputCmdsSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_drawFragMessages	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_drawHitFriendTime	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_drawInputCmds	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 2=Yes.
+QL-ASSET	cg_drawInputCmdsSize	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_drawInputCmdsX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawInputCmdsY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_drawItemPickups	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_drawItemPickups	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 3=Yes, 7=Timestamped.
 QL-FEATURE	cg_drawPregameMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawProfileImages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawRewardsRowSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawSpecMessages	cgame, CVAR_USERSAVE | CVAR_VM_CREATED - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawSpriteSelf	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawTeamOverlayOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_drawTeamOverlaySize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_drawTeamOverlaySize	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_drawTeamOverlayX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawTeamOverlayY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_drawTieredArmorAvailability	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_enemyCrosshairNamesOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_flagPOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_forceDrawCrosshair	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_forceEnemyWeaponColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_forceTeamWeaponColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_forceEnemyWeaponColor	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_forceTeamWeaponColor	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 VESTIGIAL	cg_ignore	cgame, the ignore feature is here and works - cg_ignoredClients[] and CG_IsClientIgnored in cg_consolecmds.c, driven by the mute/unmute commands. This cvar is not its interface
 QL-FEATURE	cg_itemFx	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_itemTimers	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_killBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_killBeep	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Ting, 2=Tink, 3=Dramatic, 4=Voosh, 5=Drum, 6=Bang, 7=Ding, 8=ChaChing.
 QL-FEATURE	cg_lowAmmoWarningPercentile	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-SUPERSEDED	cg_noProjectileTrail	cgame, Q3 legacy. QL replaced its early-return with cg_bubbleTrail, cg_rocketTrailRadius, cg_grenadeTrailRadius, cg_nailTrailRadius and cg_plasmaStyle - three binary-cited comments in cg_effects.c and cg_weapons.c say the binary checks none of this cvar
+QL-ASSET	cg_noProjectileTrail	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 SUPERSEDED	cg_noTaunt	cgame, superseded by cg_allowTaunt, which gates the taunt sound in cg_event.c EV_TAUNT with a binary citation
 QL-FEATURE	cg_oldPlasma	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_oldRocket	cgame, CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_overheadNamesWidth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_playerLean	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_powerupPOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_powerupPOIs	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 1=Hidden, 2=Default, 0=Off.
 QL-FEATURE	cg_preferredStartingWeapons	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_projectileNudge	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_raceBeep	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_railStyle	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_railStyle	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 1=Beam, 2=Spiral.
 QL-FEATURE	cg_redTeamName	cgame, 0 - cgame registers it and nothing acts on it
-QL-FEATURE	cg_screenDamageAlpha	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_screenDamageAlpha_Team	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_screenDamageAlpha	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_screenDamageAlpha_Team	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_screenDamage_Self	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_screenDamage_Team	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_selfOnTeamOverlay	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_simpleItemsBob	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_simpleItemsHeightOffset	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_simpleItemsBob	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_simpleItemsHeightOffset	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_simpleItemsRadius	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_GL	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_NG	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_smokeRadius_RL	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_smokeRadius_GL	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 8=Thin, 32=Medium, 64=Thick.
+QL-ASSET	cg_smokeRadius_NG	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Thin, 8=Medium, 16=Thick.
+QL-ASSET	cg_smokeRadius_RL	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 8=Thin, 16=Medium, 32=Thick.
 QL-FEATURE	cg_smokeRadius_dust	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_smokeRadius_flight	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_smokeRadius_haste	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_specDuelHealthArmor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_specDuelHealthColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_specItemTimers	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_specItemTimers	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Power-ups Only, 7=PU/MH/RA, 15=All.
 QL-FEATURE	cg_specItemTimersSize	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_specItemTimersX	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_specItemTimersY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_specNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_specTeamVitals	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_specTeamVitalsHealthColor	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_specNames	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=Off, 1=Targeted, 2=Always On.
+QL-ASSET	cg_specTeamVitals	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=Off, 1=On, 2=On w/ HP.
+QL-ASSET	cg_specTeamVitalsHealthColor	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=Team Colors, 1=Health Colors.
 QL-FEATURE	cg_specTeamVitalsWidth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_specTeamVitalsY	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-SUPERSEDED	cg_teamChatBeep	cgame, the tchat beep is gated on cg_chatbeep in cg_servercmds.c with a binary citation. This defaults to 0 and cg_chatbeep to on, so wiring it by name would silence team chat beeps by default
+QL-ASSET	cg_teamChatBeep	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_teammateCrosshairNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_teammateCrosshairNamesOpacity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_teammateNames	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_teammatePOIs	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_teammateNames	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_teammatePOIs	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_thirdPersonPitch	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_trackPlayer	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
-REFUSED	cg_trueShotgun	cgame, deliberately not honoured. cg_weapons.c: it changed the pattern the player was SHOWN without changing the pattern the server TRACED, which is a desync by construction. The pattern comes from the server's seed and serverinfo on purpose
-QL-FEATURE	cg_useItemMessage	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_useItemWarning	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_trueShotgun	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=Fancy, 1=Accurate.
+QL-ASSET	cg_useItemMessage	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Yes (Large), 2=Yes (Small).
+QL-ASSET	cg_useItemWarning	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Yes (Large), 2=Yes (Small).
 QL-FEATURE	cg_voiceChatIndicator	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_weaponColor_grenade	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_weaponConfig	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_weaponConfig_bfg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	cg_weaponConfig_cg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_g	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_weaponConfig_g	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_weaponConfig_gh	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_gl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_hmg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_lg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_mg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_weaponConfig_gl	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_weaponConfig_hmg	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_weaponConfig_lg	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_weaponConfig_mg	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_weaponConfig_ng	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_pg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_weaponConfig_pg	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_weaponConfig_pl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_rg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_rl	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_weaponConfig_sg	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	cg_zoomSensitivity	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	s_ambient	cgame, CVAR_USERSAVE | CVAR_REPLICATE | CVAR_LATCH | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
-QL-FEATURE	s_announcerVolume	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
+QL-ASSET	cg_weaponConfig_rg	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_weaponConfig_rl	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_weaponConfig_sg	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	cg_zoomSensitivity	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	s_ambient	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	s_announcerVolume	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	s_killBeepVolume	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it
 QL-FEATURE	ui_recordSPDemoName	cgame, 0 - cgame registers it and nothing acts on it
 QL-FEATURE	bot_breakPoint	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	bot_debugVar	game, 0 - game registers it and nothing acts on it
-QL-FEATURE	bot_dynamicSkill	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
+QL-ASSET	bot_dynamicSkill	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	bot_followDist	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	bot_followMe	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	bot_gauntlet	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
@@ -252,7 +252,7 @@ QL-FEATURE	bot_showAreas	game, CVAR_GAMERULE - factory gamerule; a factory file 
 QL-FEATURE	bot_showAvoidSpots	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	bot_showPath	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	bot_showTourPoints	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
-QL-FEATURE	bot_startingSkill	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
+QL-ASSET	bot_startingSkill	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	bot_teamkill	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	bot_training	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_accelRate_bfg	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
@@ -261,19 +261,19 @@ QL-FEATURE	g_accelRate_rl	game, CVAR_GAMERULE - factory gamerule; a factory file
 QL-FEATURE	g_accuracyFlags	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_allTalk	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_ammoPackHack	game, CVAR_GAMERULE | CVAR_LATCH - factory gamerule; a factory file can set it and nothing acts on it
-QL-FEATURE	g_autoAction	game, 0 - game registers it and nothing acts on it
+QL-ASSET	g_autoAction	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	g_bestStartingWeapons	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_botSpawnList	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_complaintDamageThreshold	game, CVAR_ARCHIVE - player setting, persisted to config; game never reads it
-QL-FEATURE	g_dropCmds	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
+QL-ASSET	g_dropCmds	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	g_dropPowerups	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_dropSkulls	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_droppedFlagBonus	game, CVAR_TEMP - game registers it and nothing acts on it
 QL-FEATURE	g_droppedPowerupsDecay	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_enableDebugTrace	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_enemyTeamRespawnRatio	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
-QL-FEATURE	g_flagBounce	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
-QL-FEATURE	g_flagPhysics	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
+QL-ASSET	g_flagBounce	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	g_flagPhysics	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	g_flightRefuelRate	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_flightThrust	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_floodprot_decay	game, 0 - game registers it and nothing acts on it
@@ -292,10 +292,10 @@ QL-FEATURE	g_maxDeferredSpawns	game, 0 - game registers it and nothing acts on i
 QL-FEATURE	g_maxFlightFuel	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_neutralFlagPingRate	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_powerupRespawn	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
-QL-FEATURE	g_quadHogIdle	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
+QL-ASSET	g_quadHogIdle	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	g_quadHogPingRate	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
-QL-FEATURE	g_respawn_delay_max	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
-QL-FEATURE	g_rrDeathScorePenalty	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
+QL-ASSET	g_respawn_delay_max	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	g_rrDeathScorePenalty	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	g_rrInfectedSurvivorPingRate	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_shuffle_automatic	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_shuffle_automatic_minplayers	game, 0 - game registers it and nothing acts on it
@@ -303,14 +303,14 @@ QL-FEATURE	g_shuffle_minplayers	game, 0 - game registers it and nothing acts on 
 QL-FEATURE	g_shuffle_timedelay	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_spawnMinDistance	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_spawnRandomRatio	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
-SUPERSEDED	g_suddenDeathRespawn	game, replaced by the granular live set g_suddenDeathRespawnStart / Max / Increment / Tick
+QL-ASSET	g_suddenDeathRespawn	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	g_suddenDeathRespawnPrint	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_switchTeamDelay	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_tackleFlag	game, CVAR_GAMERULE - factory gamerule; a factory file can set it and nothing acts on it
 QL-FEATURE	g_teamSpecSayEnable	game, 0 - game registers it and nothing acts on it
 QL-FEATURE	g_throwFlagForwardMult	game, 0 - game registers it and nothing acts on it
-QL-FEATURE	g_throwFlagVelocity	game, 0 - game registers it and nothing acts on it
-QL-FEATURE	ui_bloomPreset	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-ASSET	g_throwFlagVelocity	game, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	ui_bloomPreset	ui, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	ui_blueteam	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_browserGameType	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 QL-FEATURE	ui_browserMaster	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
@@ -324,14 +324,14 @@ SUPERSEDED	ui_debug	ui, superseded by ui_debugMenus, which is live in ui_shared.
 QL-FEATURE	ui_enemyColor	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 SUPERSEDED	ui_ffa_fraglimit	ui, the per-gametype limit cvars were replaced by the single live ui_fragLimit
 QL-FEATURE	ui_ffa_timelimit	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
-QL-FEATURE	ui_forceEnemyModel	ui, CVAR_TEMP - ui registers it and nothing acts on it
-QL-FEATURE	ui_forceEnemySkin	ui, CVAR_TEMP - ui registers it and nothing acts on it
-QL-FEATURE	ui_forceTeamModel	ui, CVAR_TEMP - ui registers it and nothing acts on it
-QL-FEATURE	ui_forceTeamSkin	ui, CVAR_TEMP - ui registers it and nothing acts on it
+QL-ASSET	ui_forceEnemyModel	ui, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	ui_forceEnemySkin	ui, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	ui_forceTeamModel	ui, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	ui_forceTeamSkin	ui, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	ui_initialized	ui, CVAR_TEMP - ui registers it and nothing acts on it
 QL-FEATURE	ui_redteam	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
-QL-FEATURE	ui_screenDamage	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
-QL-FEATURE	ui_screenDamage_Team	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
+QL-ASSET	ui_screenDamage	ui, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
+QL-ASSET	ui_screenDamage_Team	ui, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	ui_teamColor	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
 SUPERSEDED	ui_team_fraglimit	ui, the per-gametype limit cvars were replaced by the single live ui_fragLimit
 QL-FEATURE	ui_team_friendly	ui, CVAR_ARCHIVE - player setting, persisted to config; ui never reads it
