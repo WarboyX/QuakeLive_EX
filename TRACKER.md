@@ -13,7 +13,7 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 |---|---|---|
 | **Client / UI** (U) | `████████████████░░░░  14/17` | U11/U2 partial, U4 open; R24 is the live one - our own pages need a rebuild |
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
-| **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | R28 cleanup: warnings 109 -> 7, pipeline lookup no longer linear per-draw; R27 built and measured, not looked at; R24 menus open |
+| **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | E103: handedness now settleable with r_qlNormalFlipG; R28 cleanup; R27 built and measured, not looked at |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
 | **Engine / server** (E) | `████████████████░░░░  77/100` | E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
 | **Overall** | `███████████████░░░░░  133/183` | by binary: 69 server · 98 client · 10 both |
@@ -6054,6 +6054,58 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E103. Total codebase review, and the handedness question made answerable
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+A full pass with cppcheck (warning + style) over everything outside the vendored
+trees, plus a targeted review of the code this session added.
+
+**cppcheck: 6843 findings, essentially all noise.** Worth recording so nobody
+runs it again expecting different. The breakdown was 849 `variableScope`, 677
+`constParameter`/`constVariable`, and 138 `selfAssignment` — the last of which
+are all `x = LittleLong(x)`, a no-op macro on little-endian that the analyser
+reads as self-assignment. Of the ~40 findings in the dangerous categories:
+
+| flagged | verdict |
+|---|---|
+| `msg.c` `lc` indexing `playerStateFields` from the wire | **false positive** — `Com_Error(ERR_DROP)` validates `lc > numFields \|\| lc < 0` first |
+| `cl_parse.c` `newnum` indexing `entityBaselines` | **false positive** — same, bounds-checked with `Com_Error` |
+| `cl_main.c:3937` `cl_pinglist[32]` OOB write | **false positive**, and the closest call: `CL_GetPingQueueCount` counts the same `adr.port` predicate the search loop uses, so `slots < 32` guarantees a free slot. cppcheck cannot see the invariant. I nearly reported this as a buffer overflow. |
+| `q_math.c` `ColorBytes3` | **real but trivial** — writes bytes 0..2 of a 4-byte word and returns it, so the top byte is whatever was on the stack. Upstream ioquake3; callers use the low three. |
+| `g_svcmds.c`, `common.c` null derefs | deliberate — the crash-test commands |
+
+The honest conclusion: on a mature Q3-derived tree cppcheck's signal-to-noise is
+poor enough that it is not worth adding to the build gates. The four gates we
+have (menus, assets, cvars, stubs) each check something specific to this port
+and each has caught a real defect; a general-purpose analyser has now been run
+once and caught nothing the compiler had not.
+
+**Own-code review** found no leaks or bounds errors: `R_DeriveNormalMap` frees
+both buffers on every success path and every early return precedes the
+allocation; the pipeline hash writes `def` only at alloc and rebuilds on both
+shrink paths; the `cg_waterWarp` restructure keeps `inwater` set in both
+branches.
+
+**The handedness question, finally made answerable.** Reported twice — "you
+should be able to see the spheres sticking out here, but you dont" — and left
+open across several rounds because it genuinely cannot be settled from this end.
+A tangent-space normal map is authored against OpenGL (+G up) or DirectX (+G
+down); they are the same data with Y negated, and the wrong one turns every bump
+into a dent while the rest of the shading stays entirely plausible. Which is
+right depends on whether V increases up or down on the surface, which is a
+property of the map's UVs and not of the shader.
+
+So `r_qlNormalFlipG` — live, not latched, because it is a specialization
+constant on a draw-time pipeline and you can flip it back and forth while
+looking at the panel. `/devmap qltest_bump`, look at the dome panel, try 0 and
+1. Whichever shows hemispheres rather than craters is correct, and then it stops
+being a cvar and becomes a constant.
+
+That is the only outstanding renderer issue that was blocked on information
+nobody had. It now takes one command.
 
 ---
 

@@ -205,6 +205,7 @@ cvar_t	*r_qlBumpSpecular;
 cvar_t	*r_qlNaturalTextures;
 cvar_t	*r_qlNaturalRotate;
 cvar_t	*r_qlNaturalContrast;
+cvar_t	*r_qlNormalFlipG;
 cvar_t	*r_debugLight;
 cvar_t	*r_debugSort;
 cvar_t	*r_printShaders;
@@ -2035,6 +2036,30 @@ static void R_Register( void )
 	*/
 	r_qlNaturalContrast = ri.Cvar_Get( "r_qlNaturalContrast", "0.75", CVAR_LATCH );
 	ri.Cvar_SetDescription( r_qlNaturalContrast, "[QL] Blend contrast for natural textures, 0.5 to 0.95. Measured effect is small - the barycentric falloff already does this job. Takes effect on vid_restart." );
+
+	/*
+	[QL] E103. The green-channel convention, as a switch, because it is not
+	settleable by reasoning from this end.
+
+	A tangent-space normal map is authored against OpenGL (+G is up) or DirectX
+	(+G is down). They are the same data with Y negated, and the wrong one turns
+	every bump into a dent while everything else about the shading stays
+	plausible - which is why "you should be able to see the spheres sticking out
+	here, but you dont" survived several rounds unresolved.
+
+	Which is right depends on whether V increases up or down on the surface, a
+	property of the map's UVs rather than of the shader. So: look at it.
+	qltest_bump's dome panel shows hemispheres under one value and craters under
+	the other. Whichever shows domes is correct, and then this stops being a
+	cvar and becomes a constant.
+
+	Live, not latched - it is a specialization constant on a draw-time pipeline,
+	so it takes effect the moment it is set and you can flip it back and forth
+	while looking at the panel.
+	*/
+	r_qlNormalFlipG = ri.Cvar_Get( "r_qlNormalFlipG", "0", 0 );
+	ri.Cvar_SetDescription( r_qlNormalFlipG, "[QL] Flip the normal map's green channel (OpenGL vs DirectX convention). If bumps look like dents, set this to 1. Diagnostic - see qltest_bump's dome panel." );
+
 
 	//r_anaglyphMode = ri.Cvar_Get( "r_anaglyphMode", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	//ri.Cvar_SetDescription( r_anaglyphMode, "Enable rendering of anaglyph images. Valid options for 3D glasses types:\n 0: Disabled\n 1: Red-cyan\n 2: Red-blue\n 3: Red-green\n 4: Green-magenta" );

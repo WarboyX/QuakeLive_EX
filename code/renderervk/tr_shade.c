@@ -63,6 +63,7 @@ extern cvar_t	*r_qlBumpSpecular;
 extern cvar_t	*r_qlNaturalTextures;
 extern cvar_t	*r_qlNaturalRotate;
 extern cvar_t	*r_qlNaturalContrast;
+extern cvar_t	*r_qlNormalFlipG;
 #ifndef USE_VULKAN
 static qboolean	setArraysOnce;
 #endif
@@ -1390,6 +1391,10 @@ static void VK_BumpPass( void )
 		if ( def.hex_contrast < 0.05f ) def.hex_contrast = 0.05f;
 		if ( def.hex_contrast > 0.95f ) def.hex_contrast = 0.95f;
 	}
+
+	// [QL] E103. Green-channel convention - see bump.frag. A switch until one
+	// look at qltest_bump's dome panel settles which way is right.
+	def.bump_flip_green = r_qlNormalFlipG->integer ? 1 : 0;
 
 	pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
 

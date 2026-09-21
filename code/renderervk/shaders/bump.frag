@@ -87,6 +87,27 @@ there are two periods fighting.
 layout (constant_id = 5) const float hex_rot = -1.0;
 layout (constant_id = 6) const float hex_contrast = 0.75;
 
+/*
+[QL] E103. r_qlNormalFlipG: the green-channel convention, as a switch.
+
+A tangent-space normal map is authored against one of two conventions. OpenGL
+has +G meaning "up" in texture space; DirectX has +G meaning "down". They are
+the same data with Y negated, and picking wrong turns every bump into a dent -
+domes read as craters - while everything else about the shading stays perfectly
+plausible. That is why it has survived this long unresolved.
+
+It is NOT settleable by reasoning from this end. Which one is right depends on
+whether V increases up or down on the surface being looked at, and that is a
+property of the map's UVs, not of the shader. Two attempts to reason it out went
+nowhere and one report ("you should be able to see the spheres sticking out
+here, but you dont") stayed open across several rounds.
+
+So it is a switch, and one look settles it: qltest_bump's dome panel shows
+hemispheres under one value and craters under the other. Whichever shows domes
+is correct; then this stops being a cvar and becomes a constant.
+*/
+layout (constant_id = 7) const int flip_green = 0;
+
 vec4 sampleNormal( vec2 uv ) {
 	if ( hex_rot >= 0.0 ) {
 		return QL_HexSampleNormal( normalmap, uv, hex_rot, hex_contrast );
@@ -294,6 +315,9 @@ void main() {
 	vec3 Bn = cross(geomN, Tn);
 
 	vec3 tsn = normalize(sampleNormal(uvN).xyz * 2.0 - 1.0);
+	if (flip_green != 0) {
+		tsn.y = -tsn.y;
+	}
 	vec3 nN = normalize(Tn * tsn.x + Bn * tsn.y + geomN * tsn.z);
 
 	if (debug_mode == 2) {

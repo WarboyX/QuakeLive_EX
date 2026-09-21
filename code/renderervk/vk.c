@@ -9900,6 +9900,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		*/
 		frag_spec_data[5].f = def->hex_tile ? def->hex_rot : -1.0f;
 		frag_spec_data[6].f = def->hex_contrast;
+		frag_spec_data[7].i = def->bump_flip_green;
 	}
 
 	frag_spec_info.mapEntryCount = 14;

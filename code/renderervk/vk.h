@@ -253,6 +253,8 @@ typedef struct {
 	int hex_tile;
 	float hex_rot;
 	float hex_contrast;
+	// [QL] E103. Green-channel convention, TYPE_BUMP only.
+	int bump_flip_green;
 } Vk_Pipeline_Def;
 
 typedef struct VK_Pipeline {
