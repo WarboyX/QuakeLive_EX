@@ -6174,8 +6174,24 @@ outside team games and falls through to the same auto-pick, so those two are
 safe rather than needing a gametype test that would have to be kept in step with
 the gametype list.
 
-**Unverified:** the panel now reads correctly in a screenshot, but no button has
-been confirmed to do what it says.
+**Two columns**, on request, and grouped by what a button does rather than by
+where it fit: `JOIN` left, `MATCH` right, `SETTINGS` spanning below, `RESUME`
+full width at the bottom. 500 × 318 centred, replacing the 300 × 462 strip.
+
+The 226-wide columns are measured, not guessed. The widest label is
+`QUAKE LIVE MENU` at 15 characters, and the buttons already in this file
+calibrate the font at ~13.6px per character at `textscale .25` - `RESET WATER`
+is 11 characters in a 150-wide button. 15 characters plus the 8px `textalignx`
+inset needs ~212, so 226 holds it without dropping one button to a smaller
+scale and leaving the column ragged.
+
+`RESUME` spans the full width deliberately: it is the most-used action in the
+panel, and a quarter-row target sharing an edge with `LEAVE MATCH` - the one
+button here that cannot be undone - is a misclick waiting to happen.
+
+**Unverified:** the single-column panel read correctly in a screenshot; the
+two-column one has not been seen at all, and no button has been confirmed to do
+what it says. The team rows are the interesting check.
 
 ---
 

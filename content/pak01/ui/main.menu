@@ -55,11 +55,26 @@
     // The team rows use `cmd team ...` exactly as Quake Live's own
     // ingame_join.menu does, each followed by closeingame so the choice takes
     // effect and hands control straight back to the game.
+    //
+    // LAYOUT. Two columns, grouped by what a button does rather than by where
+    // it happened to fit: JOIN on the left, MATCH on the right, SETTINGS
+    // spanning below them, RESUME full width at the bottom.
+    //
+    // 226-wide columns are not arbitrary. The widest label here is
+    // "QUAKE LIVE MENU" at 15 characters, and the existing buttons in this file
+    // calibrate the font at roughly 13.6px per character at textscale .25 -
+    // "RESET WATER" is 11 characters in a 150-wide button. 15 characters plus
+    // the 8px textalignx inset needs ~212, so 226 fits it without dropping to a
+    // smaller textscale for one button and leaving the column ragged.
+    //
+    // RESUME spans the full width because it is the most-used action in the
+    // panel and should not be a quarter-row target sharing an edge with
+    // LEAVE MATCH, which is the one button here that cannot be undone.
     // =============================================
 
     menuDef {
         name "io_ingame"
-        rect 170 14 300 462
+        rect 70 81 500 318
         visible MENU_FALSE
         focusColor 1 .75 0 1
         style WINDOW_STYLE_FILLED
@@ -74,82 +89,60 @@
         onESC { uiScript closeingame }
 
         itemDef { name title  text "MENU"  textscale .3
-                  rect 0 6 300 26  textalign ITEM_ALIGN_CENTER  textalignx 150  textaligny 19
+                  rect 0 6 500 26  textalign ITEM_ALIGN_CENTER  textalignx 250  textaligny 19
                   forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { name titlerule  text ""  rect 24 36 252 1  visible 1  decoration
+        itemDef { name titlerule  text ""  rect 24 36 452 1  visible 1  decoration
                   style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
 
-        itemDef {
-            name igresume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 48 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript closeingame }
-            mouseEnter { setitemcolor igresume forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igresume forecolor 1 1 1 1 }
-        }
-
-        // ---- team ---------------------------------------------------------
+        // ---- left column: JOIN -------------------------------------------
         // "cmd team free" auto-picks in a team game and joins the free-for-all
         // pool otherwise, so one JOIN GAME entry is correct in every gametype.
         // RED and BLUE are only meaningful in team games; SetTeam ignores them
         // elsewhere and falls through to the same auto-pick, so they are safe
         // rather than hidden behind a gametype test that would have to be kept
         // in step with the gametype list.
-        itemDef { name "" text "TEAM"  textscale .22  rect 24 80 252 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
+        itemDef { name "" text "JOIN"  textscale .22  rect 24 48 226 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
         itemDef {
             name igjoin  text "JOIN GAME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 100 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 68 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd team free" ; uiScript closeingame }
             mouseEnter { setitemcolor igjoin forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor igjoin forecolor 1 1 1 1 }
         }
         itemDef {
             name igspec  text "SPECTATE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 134 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 102 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd team s" ; uiScript closeingame }
             mouseEnter { setitemcolor igspec forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor igspec forecolor 1 1 1 1 }
         }
         itemDef {
             name igred  text "JOIN RED"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 168 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 136 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd team red" ; uiScript closeingame }
             mouseEnter { setitemcolor igred forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor igred forecolor 1 1 1 1 }
         }
         itemDef {
             name igblue  text "JOIN BLUE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 202 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 170 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd team blue" ; uiScript closeingame }
             mouseEnter { setitemcolor igblue forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor igblue forecolor 1 1 1 1 }
         }
 
-        // ---- settings and the rest ----------------------------------------
-        itemDef { name "" text "SETTINGS"  textscale .22  rect 24 234 252 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef {
-            name igrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 254 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_renderoptions }
-            mouseEnter { setitemcolor igrender forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igrender forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 288 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_playersetup }
-            mouseEnter { setitemcolor igplayer forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igplayer forecolor 1 1 1 1 }
-        }
+        // ---- right column: MATCH -----------------------------------------
+        itemDef { name "" text "MATCH"  textscale .22  rect 250 48 226 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
         itemDef {
             name igvote  text "CALL VOTE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 322 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 250 68 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open ingame_callvote }
             mouseEnter { setitemcolor igvote forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor igvote forecolor 1 1 1 1 }
         }
         itemDef {
             name igbot  text "ADD BOT"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 356 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 250 102 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open ingame_addbot }
             mouseEnter { setitemcolor igbot forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor igbot forecolor 1 1 1 1 }
@@ -158,17 +151,48 @@
         // panel does not list is lost - match info, admin, vote status.
         itemDef {
             name igql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 390 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 250 136 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
             mouseEnter { setitemcolor igql forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor igql forecolor 1 1 1 1 }
         }
         itemDef {
             name igleave  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 424 252 26  textaligny 19  textalignx 8  forecolor .85 .55 .55 1  visible 1
+            rect 250 170 226 26  textaligny 19  textalignx 8  forecolor .85 .55 .55 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript Leave }
             mouseEnter { setitemcolor igleave forecolor 1 .4 .4 1 }
             mouseExit  { setitemcolor igleave forecolor .85 .55 .55 1 }
+        }
+
+        // ---- settings, spanning both columns ------------------------------
+        itemDef { name "" text "SETTINGS"  textscale .22  rect 24 206 452 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
+        itemDef {
+            name igrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 226 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_renderoptions }
+            mouseEnter { setitemcolor igrender forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igrender forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 250 226 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_playersetup }
+            mouseEnter { setitemcolor igplayer forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igplayer forecolor 1 1 1 1 }
+        }
+
+        // ---- resume, full width and centred -------------------------------
+        // The most-used action in the panel, so it gets the widest target
+        // rather than a quarter of a row shared with something destructive.
+        itemDef { name resumerule  text ""  rect 24 264 452 1  visible 1  decoration
+                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
+        itemDef {
+            name igresume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 272 452 26  textalign ITEM_ALIGN_CENTER  textalignx 226  textaligny 19
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript closeingame }
+            mouseEnter { setitemcolor igresume forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igresume forecolor 1 1 1 1 }
         }
     }
 
