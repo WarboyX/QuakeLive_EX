@@ -1971,6 +1971,7 @@ SCENE GENERATION
 */
 
 void R_InitNextFrame( void );
+void R_ResetRippleDiag( void );
 
 void RE_ClearScene( void );
 void RE_AddRefEntityToScene( const refEntity_t *ent, qboolean intShaderTime );

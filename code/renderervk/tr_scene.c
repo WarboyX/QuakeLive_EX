@@ -38,6 +38,9 @@ static int			r_firstScenePoly;
 
 static int			r_numpolyverts;
 
+/* [QL] Ripples seen since the last world load - see RE_AddWaterRipple. */
+static int			r_rippleCount;
+
 
 /*
 ====================
@@ -555,11 +558,51 @@ void RE_AddWaterRipple( const vec3_t origin, float radius, float strength ) {
 
 	"I see no ripples" has two completely different causes - cgame never called,
 	or it called and the reflection pass did nothing with it - and no way to
-	tell them apart from the screen. This line settles it: if it appears, the
+	tell them apart from the screen. One line settles it: if it appears, the
 	event arrived and the fault is downstream.
+
+	ONE line, though. This printed per ripple, and since `developer` defaults to
+	1 in this tree - and now stays that way through the Alpha 2 candidates,
+	which is a decision, not an oversight - a few seconds of shooting at water
+	pushed everything else out of the scrollback. A diagnostic that buries the
+	next diagnostic is a net loss, and the last three water bugs here were all
+	found by reading console output.
+
+	So: the first ripple after each world load prints and the rest are counted.
+	That still answers the question the line exists for, with no cvar to set and
+	no second run - which matters most for exactly the tester who cannot
+	reproduce on demand. r_ssrDebug restores the per-ripple detail for anyone
+	actually chasing placement, and the tail count means a silent console still
+	distinguishes "none arrived" from "many arrived".
 	*/
-	ri.Printf( PRINT_DEVELOPER, "water ripple: %.0f %.0f %.0f, reach %.0f, strength %.1f\n",
-		origin[0], origin[1], origin[2], radius, strength );
+	r_rippleCount++;
+
+	if ( r_ssrDebug->integer ) {
+		ri.Printf( PRINT_DEVELOPER, "water ripple: %.0f %.0f %.0f, reach %.0f, strength %.1f\n",
+			origin[0], origin[1], origin[2], radius, strength );
+	} else if ( r_rippleCount == 1 ) {
+		ri.Printf( PRINT_DEVELOPER, "water ripple: %.0f %.0f %.0f, reach %.0f, strength %.1f"
+			" (further ripples counted, not printed - r_ssrDebug 1 for each one)\n",
+			origin[0], origin[1], origin[2], radius, strength );
+	}
+}
+
+
+/*
+====================
+R_ResetRippleDiag
+
+[QL] Called from RE_LoadWorldMap. Without this the "first ripple" line is the
+first of the session rather than the first of the map, so a map where cgame
+never calls at all would look identical to one where it did - which is the
+single distinction the line is for.
+====================
+*/
+void R_ResetRippleDiag( void ) {
+	if ( r_rippleCount > 1 ) {
+		ri.Printf( PRINT_DEVELOPER, "water ripples last map: %i\n", r_rippleCount );
+	}
+	r_rippleCount = 0;
 }
 
 

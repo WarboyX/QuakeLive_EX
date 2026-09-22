@@ -3196,9 +3196,19 @@ on**, covering cgame, ui and the game module at once.
 
 **`developer` defaults to 1 on this branch** (`common.c`) so those lines and the
 `MAX_REFENTITIES` drop are visible without having to guess the cause and re-run.
-`CVAR_TEMP`, so it never reaches a config. **RELEASE: set it back to `"0"` before
-shipping** — that default is the only switch. The `MAX_REFENTITIES` warning is
-back to `PRINT_DEVELOPER` to match.
+`CVAR_TEMP`, so it never reaches a config.
+
+**DECIDED: it stays at `1` through the Alpha 2 release candidates, and flips to
+`"0"` when a candidate becomes the actual Alpha 2.** The gate is that
+transition, not "before shipping" — the candidates *are* shipped, to testers,
+and they are exactly the builds where a tester hitting something odd should
+already have the evidence rather than needing a second run. Asking a tester to
+reproduce is how a one-off report becomes no report at all.
+
+Do not raise this again while the version string says release candidate. That
+default is the only switch — one line in `common.c`, no config to clear, because
+`CVAR_TEMP` means it never reached one. The `MAX_REFENTITIES` warning is back to
+`PRINT_DEVELOPER` to match.
 
 ### E37. Doors never fully open or close, travel percentage jumps — DONE (confirmed)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
@@ -5340,11 +5350,27 @@ follows a swimming player or only fires once; whether the shotgun's pattern
 matches its spread. `r_waterFoam` exists as its own cvar so foam can be isolated
 from the rest.
 
-**Known scruffiness, not yet fixed:** `tr_scene.c:561` prints a developer line
-per ripple, and `developer` defaults to `1` in this tree, so play fills the
-console. Either drop it to a counter or put it behind `r_ssrDebug`. Tracked here
-rather than left as a TODO in the file because the last three of these were
-found by reading console output, and this is now burying it.
+**The per-ripple console spam — FIXED.** `tr_scene.c` printed a developer line
+per ripple, and `developer` defaults to `1` in this tree, so a few seconds of
+shooting at water pushed everything else out of the scrollback. This was tracked
+rather than left as a TODO in the file because the last three water bugs here
+were found by reading console output, and the diagnostic had started burying the
+next diagnostic.
+
+It became urgent when `developer 1` was confirmed to stay on through the Alpha 2
+release candidates (see the `developer` note above) — the spam was previously
+survivable only on the assumption it would go quiet at release, and that
+assumption is now wrong for every build a tester will actually run.
+
+Fixed by keeping the line and dropping the repetition: **the first ripple after
+each world load prints, the rest are counted**, and the count is printed at the
+next map load. `r_ssrDebug` (any non-zero value) restores the per-ripple detail
+for anyone chasing placement. The reset lives in `RE_LoadWorldMap` and is
+per-map deliberately — session-scoped, a map where cgame never calls at all
+would look identical to one where it did, which is the single distinction the
+line exists to draw. The tail count means a quiet console still separates "none
+arrived" from "many arrived", so nothing diagnostic was traded away for the
+quiet.
 
 **Step 6, the cause: the occlusion pass declared depth `STORE_OP_DONT_CARE`.**
 

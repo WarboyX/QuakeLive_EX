@@ -393,11 +393,14 @@ in and which client sees it. Worth knowing before you run a server:
 
 ## Before cutting the release
 
-`developer` still defaults to `1` in `common.c`. That is deliberate for an alpha
-— every diagnostic in the tree is gated on it, and a tester who hits something
-odd already has the evidence instead of needing a second run — but it is a
-one-line change when this stops being an alpha, and it is the only switch
-(`CVAR_TEMP`, so it never sticks in a config).
+`developer` still defaults to `1` in `common.c`, and that is a decision rather
+than an oversight: **it stays on for the Alpha 2 release candidates and goes to
+`0` when a candidate becomes the actual Alpha 2.** Every diagnostic in the tree
+is gated on it, so a tester on a candidate build who hits something odd already
+has the evidence in the console instead of being asked to reproduce it — which
+is how a one-off report turns into no report. When the candidate is promoted it
+is a one-line change, and that default is the only switch (`CVAR_TEMP`, so it
+never sticks in a config and there is nothing for a tester to clear).
 
 `cg_scoreboardDebug` and `ui_inputDebug` both default to `0` and are no longer a
 release concern; the scaffolding behind them is inert until set.

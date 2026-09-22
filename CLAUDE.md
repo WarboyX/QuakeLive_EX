@@ -122,6 +122,25 @@ change, stop reading the diff and look at what the compiler produced.** Two
 builds that differ in behaviour differ in their objects; `size`, `nm`, or a
 rebuild count settles in seconds what source review cannot settle at all.
 
+**A bare `make` does not build the Vulkan renderer.** `BUILD_RENDERER_VULKAN`
+defaults to `0`, so nothing under `code/renderervk/` is in the default target's
+dependency graph at all. Edit a file there, run `make`, and it succeeds without
+compiling what you changed — no error, no warning, no mention of the file. The
+symptom is the stale-object one wearing a disguise, and `check-stale-objects.py`
+will report those objects as stale forever because make is never going to
+rebuild them.
+
+Build renderer work the way `package-release.sh` does:
+
+```
+make BUILD_RENDERER_VULKAN=1 -j"$(nproc)"
+```
+
+Note also that `check-stale-objects.py` checks **both** platform trees. Building
+only Linux leaves every `release-mingw32-x86_64/` object stale, which is
+expected and not a finding — `package-release.sh` builds both. Read which tree
+the complaints name before chasing one.
+
 ## Assets
 
 Quake Live's `pak00.pk3` is **not** redistributable and must never be committed

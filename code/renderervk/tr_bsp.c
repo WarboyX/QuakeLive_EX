@@ -2432,6 +2432,9 @@ void RE_LoadWorldMap( const char *name ) {
 
 	tr.worldMapLoaded = qtrue;
 
+	// [QL] Per-map, not per-session - see RE_AddWaterRipple.
+	R_ResetRippleDiag();
+
 	// load it
 	size = ri.FS_ReadFile( name, &buffer.v );
 	if ( !buffer.b ) {
