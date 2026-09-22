@@ -6083,6 +6083,74 @@ panel is still the only thing that can.
 
 ---
 
+### E109. Linux flavours — and the Steam path that had to be fixed first — DONE (verify)
+**Lives in:** our **client** and our **server** (engine `sys_unix.c`, packaging) · **Seen by:** our client only
+
+Asked for Flatpak and friends. The packaging was the easy half; it would have
+shipped four broken packages.
+
+**The blocker.** `Sys_SteamPath()` on Unix was `#if 0`, under the comment
+*"Disabled since Steam doesn't let you install Quake 3 on Mac/Linux"*. That is
+inherited ioquake3 reasoning about **Quake 3**, and it is not true of Quake
+Live: app 282440 installs on Linux, and even a Proton install lands in
+`steamapps/common/Quake Live` like anything else. The whole Steam-discovery and
+pak00-copy machinery in `files.c` is `#ifdef _WIN32`, so on Linux **nothing
+looked for the player's install at all** - a Linux build ran only if pak00.pk3
+had already been copied next to the binary by hand. Every package would have
+inherited that: installs cleanly, finds no assets, dead.
+
+`fs_steampath` already did the rest - `FS_InitFilesystem` adds it with
+`FS_AddGameDirectory` when it is non-empty - so the fix is confined to
+`Sys_SteamPath` and **copies nothing**. The game reads pak00 out of the player's
+own Steam install where it sits, which matters beyond convenience: pak00 is not
+ours to move, let alone to ship.
+
+Three things the two-line version it replaces would have got wrong:
+
+- **Case.** Steam writes `steamapps` lower-case on Linux and wrote `SteamApps`
+  years ago. Windows did not care; here the wrong one simply does not exist.
+- **Library folders.** A second drive is normal, and the game is then nowhere
+  near `~/.steam`. `libraryfolders.vdf` records those - the same file the
+  Windows path already parses. Scanned for `"path"` keys rather than parsed as
+  VDF, which reads both the old flat and new nested formats without knowing
+  which it is looking at.
+- **Flatpak Steam**, which relocates everything under
+  `~/.var/app/com.valvesoftware.Steam`. Our build as a Flatpak talking to a
+  Steam installed as a Flatpak is two of the likelier halves meeting.
+
+**Verified by running it**, four ways: game in the default library, game on a
+second drive reached through `libraryfolders.vdf`, game under a Flatpak Steam,
+and no Steam at all - the last printing no `steamapps` line and falling through
+to the existing "pak00 not found" message rather than misbehaving.
+
+**The flavours**, all produced by `package-release.sh` beside the existing zips:
+
+| | built here | notes |
+|---|---|---|
+| `.tar.gz` | yes | verified byte-identical file list to the `.zip` |
+| `.deb` | yes | `/usr/lib/quakelive` payload, `/usr/bin/quakelive` launcher |
+| `.AppImage` | yes | type-2 runtime + squashfs, no appimagetool dependency |
+| Flatpak | **no** | manifest only - needs flatpak-builder and a runtime download |
+
+One launcher serves all of them and resolves its own location, because the three
+prefixes differ and a path baked in per flavour is three places for one bug.
+It sets `fs_basepath` and deliberately leaves `fs_homepath` alone: the engine's
+default is already the right writable location and is where modules are
+extracted from `iobin.pk3` at run time, which is what lets `/usr` and a Flatpak
+sandbox stay read-only.
+
+**Caught while testing:** the launcher and desktop entry were being staged
+*after* `checksums.txt` and the `.zip` were written, so they were in the tarball,
+deb and AppImage but not the zip, and in no checksum manifest - two archives of
+one revision with different contents. Staged earlier; the zip and tarball file
+lists are now identical and `sha256sum -c checksums.txt` passes clean.
+
+**Unverified:** the Flatpak has never been built, only written. The `.deb` and
+AppImage were both run here and reached the Steam pak00 from an unrelated
+working directory; neither has been run on a real desktop with a GPU.
+
+---
+
 ### E108. Our own in-game menu, and the water menu's missing half — DONE (verify)
 **Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
 

@@ -115,20 +115,186 @@ char* Sys_DefaultHomePath(void) {
 Sys_SteamPath
 ================
 */
-char* Sys_SteamPath(void) {
-    // Disabled since Steam doesn't let you install Quake 3 on Mac/Linux
-#if 0  // #ifdef STEAMPATH_NAME
-	char *p;
+/*
+[QL] E109. Steam discovery on Unix, which was #if 0 with the comment "Steam
+doesn't let you install Quake 3 on Mac/Linux".
 
-	if( ( p = getenv( "HOME" ) ) != NULL )
-	{
+That is inherited ioquake3 reasoning about QUAKE 3, and it is not true of Quake
+Live. App 282440 installs on Linux, and even a Proton install puts the game
+under steamapps/common/Quake Live like any other. The consequence was that
+fs_steampath came up empty on Linux and nothing looked for the user's install at
+all - so a Linux build ran only if the player had already copied pak00.pk3 next
+to the binary by hand. Every Linux package would have inherited that.
+
+Nothing is copied. FS_InitFilesystem already does the rest: a non-empty
+fs_steampath is added to the search path with FS_AddGameDirectory, so the game
+reads pak00 out of the player's own Steam install where it sits. That matters
+beyond convenience - pak00.pk3 is not ours to move, let alone to ship.
+
+Three things this has to get right that the old two-line version did not:
+
+  - CASE. Steam writes "steamapps" lower-case on Linux and wrote "SteamApps"
+    years ago. Windows did not care; here the wrong one simply does not exist.
+  - LIBRARY FOLDERS. A second drive is normal on Linux, and the game is then
+    nowhere near ~/.steam. libraryfolders.vdf is where Steam records those, and
+    it is the same file the Windows path already parses.
+  - FLATPAK STEAM. Steam is commonly installed as a Flatpak, which relocates
+    everything under ~/.var/app/com.valvesoftware.Steam. A build of ours shipped
+    as a Flatpak talking to a Steam installed as a Flatpak is not an exotic
+    case, it is two of the likelier halves meeting.
+*/
+static qboolean Sys_DirExists(const char *path) {
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+}
+
+/*
+Try <root>/<steamapps>/common/<game> for both spellings of steamapps, and fill
+steamPath if one of them is there.
+*/
+static qboolean Sys_TrySteamLibrary(const char *root) {
+    static const char *const appsDirs[] = { "steamapps", "SteamApps" };
+    char candidate[MAX_OSPATH];
+    size_t i;
+
+    if (!root || !root[0]) {
+        return qfalse;
+    }
+
+    for (i = 0; i < ARRAY_LEN(appsDirs); i++) {
+        Com_sprintf(candidate, sizeof(candidate), "%s/%s/common/%s", root, appsDirs[i], STEAMPATH_NAME);
+        if (Sys_DirExists(candidate)) {
+            Q_strncpyz(steamPath, candidate, sizeof(steamPath));
+            return qtrue;
+        }
+    }
+
+    return qfalse;
+}
+
+/*
+Pull the "path" values out of libraryfolders.vdf and try each as a library root.
+
+Deliberately not a VDF parser. The file is small, the only thing wanted from it
+is the quoted value after each "path" key, and both the old flat format and the
+newer nested one write that the same way - so scanning for the key and taking
+the next quoted string reads both without knowing which it is looking at.
+*/
+static qboolean Sys_TrySteamLibraryFolders(const char *root) {
+    static const char *const appsDirs[] = { "steamapps", "SteamApps" };
+    char vdfPath[MAX_OSPATH];
+    char *buf, *p;
+    long len;
+    FILE *f = NULL;
+    size_t i;
+    qboolean found = qfalse;
+
+    for (i = 0; i < ARRAY_LEN(appsDirs) && f == NULL; i++) {
+        Com_sprintf(vdfPath, sizeof(vdfPath), "%s/%s/libraryfolders.vdf", root, appsDirs[i]);
+        f = fopen(vdfPath, "rb");
+    }
+    if (f == NULL) {
+        return qfalse;
+    }
+
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    /* A libraryfolders.vdf is a couple of KB. Anything huge is not one. */
+    if (len <= 0 || len > 256 * 1024) {
+        fclose(f);
+        return qfalse;
+    }
+
+    buf = malloc((size_t)len + 1);
+    if (buf == NULL) {
+        fclose(f);
+        return qfalse;
+    }
+    if (fread(buf, 1, (size_t)len, f) != (size_t)len) {
+        free(buf);
+        fclose(f);
+        return qfalse;
+    }
+    buf[len] = '\0';
+    fclose(f);
+
+    p = buf;
+    while (!found && (p = strstr(p, "\"path\"")) != NULL) {
+        char libRoot[MAX_OSPATH];
+        char *start, *end;
+        size_t n;
+
+        p += 6;
+        start = strchr(p, '"');
+        if (start == NULL) {
+            break;
+        }
+        start++;
+        end = strchr(start, '"');
+        if (end == NULL) {
+            break;
+        }
+
+        n = (size_t)(end - start);
+        if (n > 0 && n < sizeof(libRoot)) {
+            memcpy(libRoot, start, n);
+            libRoot[n] = '\0';
+            if (Sys_TrySteamLibrary(libRoot)) {
+                found = qtrue;
+            }
+        }
+        p = end + 1;
+    }
+
+    free(buf);
+    return found;
+}
+
+char* Sys_SteamPath(void) {
+#ifdef STEAMPATH_NAME
+    const char *home;
+    char root[MAX_OSPATH];
+    size_t i;
+    /* Every place Steam itself is normally found, most likely first. */
+    static const char *const steamRoots[] = {
 #ifdef __APPLE__
-		char *steamPathEnd = "/Library/Application Support/Steam/SteamApps/common/" STEAMPATH_NAME;
+        "/Library/Application Support/Steam",
 #else
-		char *steamPathEnd = "/.steam/steam/SteamApps/common/" STEAMPATH_NAME;
+        "/.steam/steam",
+        "/.steam/root",
+        "/.local/share/Steam",
+        /* Steam installed as a Flatpak relocates all of the above. */
+        "/.var/app/com.valvesoftware.Steam/.steam/steam",
+        "/.var/app/com.valvesoftware.Steam/.local/share/Steam",
 #endif
-		Com_sprintf(steamPath, sizeof(steamPath), "%s%s", p, steamPathEnd);
-	}
+    };
+
+    if (steamPath[0]) {
+        return steamPath;   // already resolved
+    }
+
+    home = getenv("HOME");
+    if (home == NULL || !home[0]) {
+        return steamPath;
+    }
+
+    /* the game sitting in one of the default libraries */
+    for (i = 0; i < ARRAY_LEN(steamRoots); i++) {
+        Com_sprintf(root, sizeof(root), "%s%s", home, steamRoots[i]);
+        if (Sys_TrySteamLibrary(root)) {
+            return steamPath;
+        }
+    }
+
+    /* otherwise ask Steam where its other libraries are */
+    for (i = 0; i < ARRAY_LEN(steamRoots); i++) {
+        Com_sprintf(root, sizeof(root), "%s%s", home, steamRoots[i]);
+        if (Sys_TrySteamLibraryFolders(root)) {
+            return steamPath;
+        }
+    }
 #endif
 
     return steamPath;

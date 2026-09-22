@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Quake Live Ex
+GenericName=First-person shooter
+Comment=Quake Live engine port - requires an existing Steam Quake Live installation
+Exec=quakelive
+Icon=io.github.warboyx.QuakeLiveEx
+Terminal=false
+Categories=Game;ActionGame;
+Keywords=quake;fps;arena;
+StartupNotify=false

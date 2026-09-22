@@ -190,6 +190,19 @@ else
     cp -p content/testmaps/out/qltest_maps.pk3 "$WD/baseq3/"
 fi
 
+# [QL] E109. The Linux launcher and desktop entry, staged here rather than by
+# tools/package-linux.sh so they are in place BEFORE checksums.txt is written
+# and before the .zip is made. Added afterwards they would be in the .tar.gz,
+# the .deb and the AppImage but not the .zip, and absent from the checksum
+# manifest in all of them - two archives of the same revision with different
+# contents, which is the sort of thing nobody notices until it matters.
+#
+# The launcher resolves its own location, so the same file serves every flavour
+# including a plain unzip.
+cp -p packaging/quakelive-launcher.sh "$LD/"
+cp -p packaging/quakelive.desktop "$LD/"
+chmod 755 "$LD/quakelive-launcher.sh"
+
 # A manifest of everything in the archive, so an install can be checked against
 # what was actually shipped without running the game. The engine verifies the
 # extracted game modules against iobin.pk3 on every start (FS_ExtractGamecode);
@@ -214,6 +227,22 @@ rm -f "$OUT/out"/*-"$REV".zip
 (cd "$OUT/pkg" && zip -q -r -9 "$OUT/out/quakelive-linux-x86_64-$REV.zip" "quakelive-linux-x86_64-$REV")
 (cd "$OUT/pkg" && zip -q -r -9 "$OUT/out/quakelive-windows-x64-$REV.zip" "quakelive-windows-x64-$REV")
 
+# [QL] E109. Linux distribution flavours - .tar.gz, .deb, AppImage, and the
+# Flatpak manifest with this release's tarball name filled in.
+#
+# Run after the .zip so the zip is never at risk from a packaging tool that is
+# missing or unhappy: each flavour skips itself with a reason rather than
+# failing the release. SKIP_LINUX_FLAVOURS=1 opts out entirely.
+#
+# Deliberately after checksums.txt is written, and each flavour drops that file
+# from what it installs - it lists the archive's own contents, so carrying it
+# into a .deb would describe a layout that package no longer has.
+if [ "${SKIP_LINUX_FLAVOURS:-0}" = "1" ]; then
+    echo "package-release: SKIP_LINUX_FLAVOURS=1, .zip only"
+else
+    ./tools/package-linux.sh "$LD" "$REV" "$OUT/out"
+fi
+
 rm -rf "$OUT/stage"
 
 # What actually went into the shared pak. A Mac client cannot run without a
@@ -228,4 +257,6 @@ if ! unzip -l "$LD/baseq3/iobin.pk3" | grep -q '\.dylib'; then
 fi
 
 echo
-ls -lh "$OUT/out"/*-"$REV".zip
+# Every artefact for this revision, not only the zips - a flavour that silently
+# failed to build is otherwise invisible at exactly the moment it matters.
+ls -lh "$OUT/out"/*"$REV"* 2>/dev/null

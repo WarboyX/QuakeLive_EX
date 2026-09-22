@@ -1,0 +1,78 @@
+# [QL] E109. Flatpak manifest for the Linux build.
+#
+# NOT BUILT BY package-release.sh, and that is a limitation of this environment
+# rather than a choice: building a Flatpak needs flatpak-builder plus an
+# org.freedesktop runtime and SDK, which is a multi-hundred-megabyte download
+# and a daemon. The .tar.gz, the .deb and the AppImage are produced and checked
+# by the release script; this one is a recipe you run.
+#
+#   flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+#   cp release/out/quakelive-linux-x86_64-<rev>.tar.gz packaging/flatpak/
+#   flatpak-builder --force-clean --repo=repo build \
+#       packaging/flatpak/io.github.warboyx.QuakeLiveEx.yml
+#   flatpak build-bundle repo QuakeLiveEx.flatpak io.github.warboyx.QuakeLiveEx
+#
+# It consumes the release tarball rather than compiling from source, because the
+# archive the release script produces is the artefact that has been through
+# check-stale-objects and the pak checks. Rebuilding it inside the sandbox would
+# be a different binary that none of those have seen.
+#
+# THE PART THAT IS EASY TO GET WRONG. This game cannot ship its own game data -
+# pak00.pk3 is not redistributable - so it reads the player's existing Steam
+# install in place. A sandbox denies that by default, which would make a Flatpak
+# that installs perfectly and then cannot find a single asset. The
+# finish-args below grant read-only access to every location Steam normally puts
+# a library, INCLUDING Steam's own Flatpak, which is how a lot of people have it.
+#
+# A Steam library on another drive is still outside all of these. That is not
+# fixable in a manifest, because the path is different on every machine; it is
+# one command for the user:
+#
+#   flatpak override --user --filesystem=/mnt/games:ro io.github.warboyx.QuakeLiveEx
+#
+# Read-only is deliberate and sufficient. The engine only reads pak00 from
+# there; everything it writes - configs, extracted game modules, screenshots,
+# demos - goes to fs_homepath, which inside the sandbox is the app's own private
+# home and needs no permission at all.
+
+app-id: io.github.warboyx.QuakeLiveEx
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: quakelive
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # Gamepads and the like.
+  - --device=input
+  # Read the player's own Quake Live install. Read-only on purpose: see above.
+  - --filesystem=~/.steam:ro
+  - --filesystem=~/.local/share/Steam:ro
+  - --filesystem=xdg-data/Steam:ro
+  # Steam installed as a Flatpak relocates its whole tree under here.
+  - --filesystem=~/.var/app/com.valvesoftware.Steam:ro
+
+modules:
+  - name: quakelive
+    buildsystem: simple
+    build-commands:
+      # /app/lib/quakelive holds the payload; the launcher finds it by resolving
+      # its own path, so nothing here has a prefix baked into it.
+      - install -d /app/lib/quakelive
+      - cp -a quakelive-linux-x86_64-*/. /app/lib/quakelive/
+      - install -Dm755 /app/lib/quakelive/quakelive-launcher.sh /app/bin/quakelive
+      - install -Dm644 /app/lib/quakelive/quakelive.desktop
+        /app/share/applications/io.github.warboyx.QuakeLiveEx.desktop
+      - desktop-file-edit --set-key=Exec --set-value=quakelive
+        /app/share/applications/io.github.warboyx.QuakeLiveEx.desktop
+    sources:
+      # Point this at the tarball the release script produced. Replace the name
+      # with the revision you are packaging.
+      - type: archive
+        path: quakelive-linux-x86_64-REV.tar.gz
+        strip-components: 0
