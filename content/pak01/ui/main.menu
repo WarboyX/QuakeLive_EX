@@ -26,175 +26,1051 @@
     }
 
     // =============================================
-    // [QL] E108. Our own in-game menu.
+    // [QL] E108/E110. Our in-game menu, replacing Quake Live's.
     //
-    // WHY THERE HAS TO BE ONE. Everything we have added lives in main.menu and
-    // is reached from the main menu's RENDER entry. In a game, ESC calls
+    // WHY IT EXISTS. Everything this port adds lives in main.menu and is
+    // reached from the main menu's RENDER entry. In a game, ESC calls
     // _UI_SetActiveMenu(UIMENU_INGAME), which opened Quake Live's own "ingame"
-    // - and that menu's nav has no entry that could ever reach ours. The menus
-    // were loaded the whole time (_UI_Init loads menus.txt AND ingame.txt), so
-    // this was never a loading failure: there was simply no button.
+    // - and that menu's nav has no entry that could reach ours, nor any way to
+    // be given one: ingame.menu and ingame_lowernav.menu are in pak00, which is
+    // read-only to us. The menus were loaded the whole time (_UI_Init loads
+    // menus.txt AND ingame.txt); there was simply no button.
     //
-    // Nor was there anywhere to add one. Quake Live's ingame.menu and
-    // ingame_lowernav.menu live in pak00, which is read-only to us and not
-    // ours to ship. And its two most useful entries are no loss: "Settings"
-    // and "Main Menu" both run `web_changeHash`, which drives the Steam
-    // client's web overlay - there is no native in-game settings panel behind
-    // them to hook into. That is the real reason this has to be built rather
-    // than extended.
+    // Replacing rather than extending also costs less than it sounds. Two of
+    // Quake Live's seven in-game nav entries, "Settings" and "Main Menu", run
+    // `web_changeHash` - they drive the Steam client's web overlay, so there is
+    // no native panel behind either. E110 supplies the ones that were real:
+    // current match, call vote, admin, add bot, controls, settings, advanced.
     //
     // DEFINED FIRST, AND THAT IS LOAD-BEARING. Menu_PaintAll walks Menus[] in
     // index order and paints every visible menu, so draw order is DEFINITION
-    // order - not activation order, and not a stack. Defined next to the
-    // render menus, this panel painted ON TOP of the submenu it had just
-    // opened: PLAYER SETUP opened behind it and read as a dead button. First
-    // in the file means every other menu in it paints over this one, which is
-    // what a parent should do. The header comment at the top of this file
-    // already warns about this for a different pair of menus.
+    // order - not activation order, and not a stack. Defined next to the render
+    // menus, the frame painted ON TOP of the page it had just opened. First in
+    // the file means every other menu paints over it, which is what a frame
+    // wants: its pages are defined after it, and io_renderoptions and friends
+    // open over the whole thing.
     //
-    // The team rows use `cmd team ...` exactly as Quake Live's own
-    // ingame_join.menu does, each followed by closeingame so the choice takes
-    // effect and hands control straight back to the game.
+    // It also has to sit ABOVE the MAIN TITLE SCREEN banner rather than just
+    // before main's menuDef, because main's `check-menus: overlap-ok` waiver is
+    // matched positionally - inserting between the comment and the menuDef it
+    // waives orphaned it and turned 18 deliberate overlaps into 18 problems.
     //
-    // LAYOUT. Two columns, grouped by what a button does rather than by where
-    // it happened to fit: JOIN on the left, MATCH on the right, SETTINGS
-    // spanning below them, RESUME full width at the bottom.
-    //
-    // 226-wide columns are not arbitrary. The widest label here is
-    // "QUAKE LIVE MENU" at 15 characters, and the existing buttons in this file
-    // calibrate the font at roughly 13.6px per character at textscale .25 -
-    // "RESET WATER" is 11 characters in a 150-wide button. 15 characters plus
-    // the 8px textalignx inset needs ~212, so 226 fits it without dropping to a
-    // smaller textscale for one button and leaving the column ragged.
-    //
-    // RESUME spans the full width because it is the most-used action in the
-    // panel and should not be a quarter-row target sharing an edge with
-    // LEAVE MATCH, which is the one button here that cannot be undone.
+    // THE BLOCK BELOW IS GENERATED - tools/gen-ingame-menu.py. Edit that, not
+    // this, and run tools/check-menus.py afterwards. The tab bar alone is four
+    // itemDefs per tab plus a 24-line recolour in every tab's action; by hand
+    // that is where a tab ends up highlighting its neighbour.
     // =============================================
 
+    // >>> GENERATED io_ingame BEGIN - tools/gen-ingame-menu.py
+    // [QL] E110. The frame: dimmed backdrop, Quake Live's header and logo, the
+    // nav bar, and the content panel every page draws inside.
+    //
+    // THE ART IS QUAKE LIVE'S, BY NAME ONLY. header.tga, ql_logo.tga and
+    // content_background.tga are loaded out of the player's own pak00 - the
+    // same arrangement as the shader overrides in ql_enhanced.shader. Nothing
+    // is copied and nothing is shipped; checked against docs/pak-manifest.txt
+    // before being written here, because RE_RegisterShaderNoMip returns 0 for a
+    // name the pak does not have and draws nothing while reporting nothing.
+    //
+    // The geometry is Quake Live's too - rect 40 0 560 480, header 64 tall, nav
+    // bar at 63, content panel at 82 - so this reads as the game's own menu
+    // rather than as a mod's panel sitting on top of it.
+    //
+    // check-menus: overlap-ok - this frame is layered by design. The dimming
+    // backdrop sits under everything and deliberately overhangs the frame, the
+    // logo overhangs it to the left the way Quake Live's does, and each tab is
+    // four items sharing one rect. Per-item waivers would be forty copies of
+    // this sentence. Kept against the menuDef because the waiver is matched
+    // positionally and drifts out of range if it moves up into the notes above.
     menuDef {
         name "io_ingame"
-        rect 70 81 500 318
+        rect 40 0 560 480
         visible MENU_FALSE
-        focusColor 1 .75 0 1
-        style WINDOW_STYLE_FILLED
-        backcolor 0.04 0.04 0.07 1
-        border 1
-        bordersize 1
-        bordercolor .45 .45 .5 1
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        disableColor .5 .5 .5 1
 
-        // ESC resumes rather than closing to nothing. closeingame drops
-        // KEYCATCH_UI, clears key states and unpauses - the same script Quake
-        // Live's own ingame menu uses, so resuming behaves identically.
         onESC { uiScript closeingame }
 
-        itemDef { name title  text "MENU"  textscale .3
-                  rect 0 6 500 26  textalign ITEM_ALIGN_CENTER  textalignx 250  textaligny 19
-                  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { name titlerule  text ""  rect 24 36 452 1  visible 1  decoration
-                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
+        itemDef { name ig_dim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.55 }
+        itemDef { name ig_header  rect 0 0 560 64  background "ui/assets/main_menu/header.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name ig_logo  rect -20 0 256 64  background "ui/assets/main_menu/ql_logo.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
+        itemDef { name ig_bar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name ig_page  rect 0 82 560 310
+                  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
 
-        // ---- left column: JOIN -------------------------------------------
-        // "cmd team free" auto-picks in a team game and joins the free-for-all
-        // pool otherwise, so one JOIN GAME entry is correct in every gametype.
-        // RED and BLUE are only meaningful in team games; SetTeam ignores them
-        // elsewhere and falls through to the same auto-pick, so they are safe
-        // rather than hidden behind a gametype test that would have to be kept
-        // in step with the gametype list.
-        itemDef { name "" text "JOIN"  textscale .22  rect 24 48 226 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
+        // RESUME, bottom right of the frame. ESC does the same thing; this is
+        // for the player who is looking for a button rather than a key.
         itemDef {
-            name igjoin  text "JOIN GAME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 68 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "cmd team free" ; uiScript closeingame }
-            mouseEnter { setitemcolor igjoin forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igjoin forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igspec  text "SPECTATE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 102 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "cmd team s" ; uiScript closeingame }
-            mouseEnter { setitemcolor igspec forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igspec forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igred  text "JOIN RED"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 136 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "cmd team red" ; uiScript closeingame }
-            mouseEnter { setitemcolor igred forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igred forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igblue  text "JOIN BLUE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 170 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "cmd team blue" ; uiScript closeingame }
-            mouseEnter { setitemcolor igblue forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igblue forecolor 1 1 1 1 }
-        }
-
-        // ---- right column: MATCH -----------------------------------------
-        itemDef { name "" text "MATCH"  textscale .22  rect 250 48 226 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef {
-            name igvote  text "CALL VOTE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 250 68 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open ingame_callvote }
-            mouseEnter { setitemcolor igvote forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igvote forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igbot  text "ADD BOT"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 250 102 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open ingame_addbot }
-            mouseEnter { setitemcolor igbot forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igbot forecolor 1 1 1 1 }
-        }
-        // [QL] Quake Live's own ingame menu, kept reachable so nothing this
-        // panel does not list is lost - match info, admin, vote status.
-        itemDef {
-            name igql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 250 136 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
-            mouseEnter { setitemcolor igql forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igql forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igleave  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 250 170 226 26  textaligny 19  textalignx 8  forecolor .85 .55 .55 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript Leave }
-            mouseEnter { setitemcolor igleave forecolor 1 .4 .4 1 }
-            mouseExit  { setitemcolor igleave forecolor .85 .55 .55 1 }
-        }
-
-        // ---- settings, spanning both columns ------------------------------
-        itemDef { name "" text "SETTINGS"  textscale .22  rect 24 206 452 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef {
-            name igrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 226 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_renderoptions }
-            mouseEnter { setitemcolor igrender forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igrender forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 250 226 226 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_playersetup }
-            mouseEnter { setitemcolor igplayer forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igplayer forecolor 1 1 1 1 }
-        }
-
-        // ---- resume, full width and centred -------------------------------
-        // The most-used action in the panel, so it gets the widest target
-        // rather than a quarter of a row shared with something destructive.
-        itemDef { name resumerule  text ""  rect 24 264 452 1  visible 1  decoration
-                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
-        itemDef {
-            name igresume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 272 452 26  textalign ITEM_ALIGN_CENTER  textalignx 226  textaligny 19
+            name ig_resume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 420 400 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 19
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript closeingame }
-            mouseEnter { setitemcolor igresume forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igresume forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_resume forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_resume forecolor 1 1 1 1 }
+        }
+
+        // --- tab 1: Current Match ---
+        itemDef {
+            name ignav1
+            rect 0 64 70 16
+            style WINDOW_STYLE_FILLED
+            visible 1
+            type ITEM_TYPE_BUTTON
+            action {
+                play "sound/misc/menu1.wav"
+                close io_ig_vote
+                close io_ig_admin
+                close io_ig_addbot
+                close io_ig_controls
+                close io_ig_settings
+                close io_ig_advanced
+                close io_ig_leave
+                setitemcolor ignav1t forecolor 0.964 0.815 0 1
+                setitemcolor ignav2t forecolor 1 1 1 1
+                setitemcolor ignav3t forecolor 1 1 1 1
+                setitemcolor ignav4t forecolor 1 1 1 1
+                setitemcolor ignav5t forecolor 1 1 1 1
+                setitemcolor ignav6t forecolor 1 1 1 1
+                setitemcolor ignav7t forecolor 1 1 1 1
+                setitemcolor ignav8t forecolor 1 1 1 1
+                setitemcolor ignav1o backcolor 0 0 0 0.9
+                setitemcolor ignav2o backcolor 1 1 1 0
+                setitemcolor ignav3o backcolor 1 1 1 0
+                setitemcolor ignav4o backcolor 1 1 1 0
+                setitemcolor ignav5o backcolor 1 1 1 0
+                setitemcolor ignav6o backcolor 1 1 1 0
+                setitemcolor ignav7o backcolor 1 1 1 0
+                setitemcolor ignav8o backcolor 1 1 1 0
+                setitemcolor ignav1u backcolor 0.964 0.815 0 1
+                setitemcolor ignav2u backcolor 1 1 1 0
+                setitemcolor ignav3u backcolor 1 1 1 0
+                setitemcolor ignav4u backcolor 1 1 1 0
+                setitemcolor ignav5u backcolor 1 1 1 0
+                setitemcolor ignav6u backcolor 1 1 1 0
+                setitemcolor ignav7u backcolor 1 1 1 0
+                setitemcolor ignav8u backcolor 1 1 1 0
+                open io_ig_match
+            }
+        }
+        itemDef { name ignav1o  rect 2 64 66 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.9 }
+        itemDef { name ignav1u  rect 2 80 66 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0.964 0.815 0 1 }
+        itemDef { name ignav1t  rect 0 64 70 16  text "Current Match"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+
+        // --- tab 2: Call Vote ---
+        itemDef {
+            name ignav2
+            rect 70 64 70 16
+            style WINDOW_STYLE_FILLED
+            visible 1
+            type ITEM_TYPE_BUTTON
+            action {
+                play "sound/misc/menu1.wav"
+                close io_ig_match
+                close io_ig_admin
+                close io_ig_addbot
+                close io_ig_controls
+                close io_ig_settings
+                close io_ig_advanced
+                close io_ig_leave
+                setitemcolor ignav1t forecolor 1 1 1 1
+                setitemcolor ignav2t forecolor 0.964 0.815 0 1
+                setitemcolor ignav3t forecolor 1 1 1 1
+                setitemcolor ignav4t forecolor 1 1 1 1
+                setitemcolor ignav5t forecolor 1 1 1 1
+                setitemcolor ignav6t forecolor 1 1 1 1
+                setitemcolor ignav7t forecolor 1 1 1 1
+                setitemcolor ignav8t forecolor 1 1 1 1
+                setitemcolor ignav1o backcolor 1 1 1 0
+                setitemcolor ignav2o backcolor 0 0 0 0.9
+                setitemcolor ignav3o backcolor 1 1 1 0
+                setitemcolor ignav4o backcolor 1 1 1 0
+                setitemcolor ignav5o backcolor 1 1 1 0
+                setitemcolor ignav6o backcolor 1 1 1 0
+                setitemcolor ignav7o backcolor 1 1 1 0
+                setitemcolor ignav8o backcolor 1 1 1 0
+                setitemcolor ignav1u backcolor 1 1 1 0
+                setitemcolor ignav2u backcolor 0.964 0.815 0 1
+                setitemcolor ignav3u backcolor 1 1 1 0
+                setitemcolor ignav4u backcolor 1 1 1 0
+                setitemcolor ignav5u backcolor 1 1 1 0
+                setitemcolor ignav6u backcolor 1 1 1 0
+                setitemcolor ignav7u backcolor 1 1 1 0
+                setitemcolor ignav8u backcolor 1 1 1 0
+                open io_ig_vote
+            }
+        }
+        itemDef { name ignav2o  rect 72 64 66 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav2u  rect 72 80 66 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav2t  rect 70 64 70 16  text "Call Vote"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+
+        // --- tab 3: Admin ---
+        itemDef {
+            name ignav3
+            rect 140 64 70 16
+            style WINDOW_STYLE_FILLED
+            visible 1
+            type ITEM_TYPE_BUTTON
+            action {
+                play "sound/misc/menu1.wav"
+                close io_ig_match
+                close io_ig_vote
+                close io_ig_addbot
+                close io_ig_controls
+                close io_ig_settings
+                close io_ig_advanced
+                close io_ig_leave
+                setitemcolor ignav1t forecolor 1 1 1 1
+                setitemcolor ignav2t forecolor 1 1 1 1
+                setitemcolor ignav3t forecolor 0.964 0.815 0 1
+                setitemcolor ignav4t forecolor 1 1 1 1
+                setitemcolor ignav5t forecolor 1 1 1 1
+                setitemcolor ignav6t forecolor 1 1 1 1
+                setitemcolor ignav7t forecolor 1 1 1 1
+                setitemcolor ignav8t forecolor 1 1 1 1
+                setitemcolor ignav1o backcolor 1 1 1 0
+                setitemcolor ignav2o backcolor 1 1 1 0
+                setitemcolor ignav3o backcolor 0 0 0 0.9
+                setitemcolor ignav4o backcolor 1 1 1 0
+                setitemcolor ignav5o backcolor 1 1 1 0
+                setitemcolor ignav6o backcolor 1 1 1 0
+                setitemcolor ignav7o backcolor 1 1 1 0
+                setitemcolor ignav8o backcolor 1 1 1 0
+                setitemcolor ignav1u backcolor 1 1 1 0
+                setitemcolor ignav2u backcolor 1 1 1 0
+                setitemcolor ignav3u backcolor 0.964 0.815 0 1
+                setitemcolor ignav4u backcolor 1 1 1 0
+                setitemcolor ignav5u backcolor 1 1 1 0
+                setitemcolor ignav6u backcolor 1 1 1 0
+                setitemcolor ignav7u backcolor 1 1 1 0
+                setitemcolor ignav8u backcolor 1 1 1 0
+                open io_ig_admin
+            }
+        }
+        itemDef { name ignav3o  rect 142 64 66 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav3u  rect 142 80 66 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav3t  rect 140 64 70 16  text "Admin"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+
+        // --- tab 4: Add Bot ---
+        itemDef {
+            name ignav4
+            rect 210 64 70 16
+            style WINDOW_STYLE_FILLED
+            visible 1
+            type ITEM_TYPE_BUTTON
+            action {
+                play "sound/misc/menu1.wav"
+                close io_ig_match
+                close io_ig_vote
+                close io_ig_admin
+                close io_ig_controls
+                close io_ig_settings
+                close io_ig_advanced
+                close io_ig_leave
+                setitemcolor ignav1t forecolor 1 1 1 1
+                setitemcolor ignav2t forecolor 1 1 1 1
+                setitemcolor ignav3t forecolor 1 1 1 1
+                setitemcolor ignav4t forecolor 0.964 0.815 0 1
+                setitemcolor ignav5t forecolor 1 1 1 1
+                setitemcolor ignav6t forecolor 1 1 1 1
+                setitemcolor ignav7t forecolor 1 1 1 1
+                setitemcolor ignav8t forecolor 1 1 1 1
+                setitemcolor ignav1o backcolor 1 1 1 0
+                setitemcolor ignav2o backcolor 1 1 1 0
+                setitemcolor ignav3o backcolor 1 1 1 0
+                setitemcolor ignav4o backcolor 0 0 0 0.9
+                setitemcolor ignav5o backcolor 1 1 1 0
+                setitemcolor ignav6o backcolor 1 1 1 0
+                setitemcolor ignav7o backcolor 1 1 1 0
+                setitemcolor ignav8o backcolor 1 1 1 0
+                setitemcolor ignav1u backcolor 1 1 1 0
+                setitemcolor ignav2u backcolor 1 1 1 0
+                setitemcolor ignav3u backcolor 1 1 1 0
+                setitemcolor ignav4u backcolor 0.964 0.815 0 1
+                setitemcolor ignav5u backcolor 1 1 1 0
+                setitemcolor ignav6u backcolor 1 1 1 0
+                setitemcolor ignav7u backcolor 1 1 1 0
+                setitemcolor ignav8u backcolor 1 1 1 0
+                open io_ig_addbot
+            }
+        }
+        itemDef { name ignav4o  rect 212 64 66 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav4u  rect 212 80 66 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav4t  rect 210 64 70 16  text "Add Bot"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+
+        // --- tab 5: Controls ---
+        itemDef {
+            name ignav5
+            rect 280 64 70 16
+            style WINDOW_STYLE_FILLED
+            visible 1
+            type ITEM_TYPE_BUTTON
+            action {
+                play "sound/misc/menu1.wav"
+                close io_ig_match
+                close io_ig_vote
+                close io_ig_admin
+                close io_ig_addbot
+                close io_ig_settings
+                close io_ig_advanced
+                close io_ig_leave
+                setitemcolor ignav1t forecolor 1 1 1 1
+                setitemcolor ignav2t forecolor 1 1 1 1
+                setitemcolor ignav3t forecolor 1 1 1 1
+                setitemcolor ignav4t forecolor 1 1 1 1
+                setitemcolor ignav5t forecolor 0.964 0.815 0 1
+                setitemcolor ignav6t forecolor 1 1 1 1
+                setitemcolor ignav7t forecolor 1 1 1 1
+                setitemcolor ignav8t forecolor 1 1 1 1
+                setitemcolor ignav1o backcolor 1 1 1 0
+                setitemcolor ignav2o backcolor 1 1 1 0
+                setitemcolor ignav3o backcolor 1 1 1 0
+                setitemcolor ignav4o backcolor 1 1 1 0
+                setitemcolor ignav5o backcolor 0 0 0 0.9
+                setitemcolor ignav6o backcolor 1 1 1 0
+                setitemcolor ignav7o backcolor 1 1 1 0
+                setitemcolor ignav8o backcolor 1 1 1 0
+                setitemcolor ignav1u backcolor 1 1 1 0
+                setitemcolor ignav2u backcolor 1 1 1 0
+                setitemcolor ignav3u backcolor 1 1 1 0
+                setitemcolor ignav4u backcolor 1 1 1 0
+                setitemcolor ignav5u backcolor 0.964 0.815 0 1
+                setitemcolor ignav6u backcolor 1 1 1 0
+                setitemcolor ignav7u backcolor 1 1 1 0
+                setitemcolor ignav8u backcolor 1 1 1 0
+                open io_ig_controls
+            }
+        }
+        itemDef { name ignav5o  rect 282 64 66 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav5u  rect 282 80 66 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav5t  rect 280 64 70 16  text "Controls"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+
+        // --- tab 6: Settings ---
+        itemDef {
+            name ignav6
+            rect 350 64 70 16
+            style WINDOW_STYLE_FILLED
+            visible 1
+            type ITEM_TYPE_BUTTON
+            action {
+                play "sound/misc/menu1.wav"
+                close io_ig_match
+                close io_ig_vote
+                close io_ig_admin
+                close io_ig_addbot
+                close io_ig_controls
+                close io_ig_advanced
+                close io_ig_leave
+                setitemcolor ignav1t forecolor 1 1 1 1
+                setitemcolor ignav2t forecolor 1 1 1 1
+                setitemcolor ignav3t forecolor 1 1 1 1
+                setitemcolor ignav4t forecolor 1 1 1 1
+                setitemcolor ignav5t forecolor 1 1 1 1
+                setitemcolor ignav6t forecolor 0.964 0.815 0 1
+                setitemcolor ignav7t forecolor 1 1 1 1
+                setitemcolor ignav8t forecolor 1 1 1 1
+                setitemcolor ignav1o backcolor 1 1 1 0
+                setitemcolor ignav2o backcolor 1 1 1 0
+                setitemcolor ignav3o backcolor 1 1 1 0
+                setitemcolor ignav4o backcolor 1 1 1 0
+                setitemcolor ignav5o backcolor 1 1 1 0
+                setitemcolor ignav6o backcolor 0 0 0 0.9
+                setitemcolor ignav7o backcolor 1 1 1 0
+                setitemcolor ignav8o backcolor 1 1 1 0
+                setitemcolor ignav1u backcolor 1 1 1 0
+                setitemcolor ignav2u backcolor 1 1 1 0
+                setitemcolor ignav3u backcolor 1 1 1 0
+                setitemcolor ignav4u backcolor 1 1 1 0
+                setitemcolor ignav5u backcolor 1 1 1 0
+                setitemcolor ignav6u backcolor 0.964 0.815 0 1
+                setitemcolor ignav7u backcolor 1 1 1 0
+                setitemcolor ignav8u backcolor 1 1 1 0
+                open io_ig_settings
+            }
+        }
+        itemDef { name ignav6o  rect 352 64 66 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav6u  rect 352 80 66 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav6t  rect 350 64 70 16  text "Settings"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+
+        // --- tab 7: Advanced ---
+        itemDef {
+            name ignav7
+            rect 420 64 70 16
+            style WINDOW_STYLE_FILLED
+            visible 1
+            type ITEM_TYPE_BUTTON
+            action {
+                play "sound/misc/menu1.wav"
+                close io_ig_match
+                close io_ig_vote
+                close io_ig_admin
+                close io_ig_addbot
+                close io_ig_controls
+                close io_ig_settings
+                close io_ig_leave
+                setitemcolor ignav1t forecolor 1 1 1 1
+                setitemcolor ignav2t forecolor 1 1 1 1
+                setitemcolor ignav3t forecolor 1 1 1 1
+                setitemcolor ignav4t forecolor 1 1 1 1
+                setitemcolor ignav5t forecolor 1 1 1 1
+                setitemcolor ignav6t forecolor 1 1 1 1
+                setitemcolor ignav7t forecolor 0.964 0.815 0 1
+                setitemcolor ignav8t forecolor 1 1 1 1
+                setitemcolor ignav1o backcolor 1 1 1 0
+                setitemcolor ignav2o backcolor 1 1 1 0
+                setitemcolor ignav3o backcolor 1 1 1 0
+                setitemcolor ignav4o backcolor 1 1 1 0
+                setitemcolor ignav5o backcolor 1 1 1 0
+                setitemcolor ignav6o backcolor 1 1 1 0
+                setitemcolor ignav7o backcolor 0 0 0 0.9
+                setitemcolor ignav8o backcolor 1 1 1 0
+                setitemcolor ignav1u backcolor 1 1 1 0
+                setitemcolor ignav2u backcolor 1 1 1 0
+                setitemcolor ignav3u backcolor 1 1 1 0
+                setitemcolor ignav4u backcolor 1 1 1 0
+                setitemcolor ignav5u backcolor 1 1 1 0
+                setitemcolor ignav6u backcolor 1 1 1 0
+                setitemcolor ignav7u backcolor 0.964 0.815 0 1
+                setitemcolor ignav8u backcolor 1 1 1 0
+                open io_ig_advanced
+            }
+        }
+        itemDef { name ignav7o  rect 422 64 66 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav7u  rect 422 80 66 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav7t  rect 420 64 70 16  text "Advanced"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+
+        // --- tab 8: Leave ---
+        itemDef {
+            name ignav8
+            rect 490 64 70 16
+            style WINDOW_STYLE_FILLED
+            visible 1
+            type ITEM_TYPE_BUTTON
+            action {
+                play "sound/misc/menu1.wav"
+                close io_ig_match
+                close io_ig_vote
+                close io_ig_admin
+                close io_ig_addbot
+                close io_ig_controls
+                close io_ig_settings
+                close io_ig_advanced
+                setitemcolor ignav1t forecolor 1 1 1 1
+                setitemcolor ignav2t forecolor 1 1 1 1
+                setitemcolor ignav3t forecolor 1 1 1 1
+                setitemcolor ignav4t forecolor 1 1 1 1
+                setitemcolor ignav5t forecolor 1 1 1 1
+                setitemcolor ignav6t forecolor 1 1 1 1
+                setitemcolor ignav7t forecolor 1 1 1 1
+                setitemcolor ignav8t forecolor 0.964 0.815 0 1
+                setitemcolor ignav1o backcolor 1 1 1 0
+                setitemcolor ignav2o backcolor 1 1 1 0
+                setitemcolor ignav3o backcolor 1 1 1 0
+                setitemcolor ignav4o backcolor 1 1 1 0
+                setitemcolor ignav5o backcolor 1 1 1 0
+                setitemcolor ignav6o backcolor 1 1 1 0
+                setitemcolor ignav7o backcolor 1 1 1 0
+                setitemcolor ignav8o backcolor 0 0 0 0.9
+                setitemcolor ignav1u backcolor 1 1 1 0
+                setitemcolor ignav2u backcolor 1 1 1 0
+                setitemcolor ignav3u backcolor 1 1 1 0
+                setitemcolor ignav4u backcolor 1 1 1 0
+                setitemcolor ignav5u backcolor 1 1 1 0
+                setitemcolor ignav6u backcolor 1 1 1 0
+                setitemcolor ignav7u backcolor 1 1 1 0
+                setitemcolor ignav8u backcolor 0.964 0.815 0 1
+                open io_ig_leave
+            }
+        }
+        itemDef { name ignav8o  rect 492 64 66 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav8u  rect 492 80 66 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name ignav8t  rect 490 64 70 16  text "Leave"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+    }
+
+    menuDef {
+        name "io_ig_match"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "CURRENT MATCH"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Who is here, and which side you are on."  textscale .19  rect 20 26 520 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Players in this match"  textscale .21  rect 20 44 250 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_players  rect 20 64 260 190  type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY  elementwidth 260  elementheight 16
+            elementtype LISTBOX_TEXT  feeder FEEDER_PLAYER_LIST
+            textscale .2  textaligny 12  forecolor 1 1 1 1  backcolor 0 0 0 .35
+            border 1  bordercolor .35 .3 .12 1  visible 1
+        }
+        itemDef { text "Your team"  textscale .21  rect 300 44 240 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_join  text "JOIN GAME"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 64 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd team free" ; uiScript closeingame }
+            mouseEnter { setitemcolor ig_join forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_join forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_spec  text "SPECTATE"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 92 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd team s" ; uiScript closeingame }
+            mouseEnter { setitemcolor ig_spec forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_spec forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_red  text "JOIN RED"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 120 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd team red" ; uiScript closeingame }
+            mouseEnter { setitemcolor ig_red forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_red forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_blue  text "JOIN BLUE"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 148 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd team blue" ; uiScript closeingame }
+            mouseEnter { setitemcolor ig_blue forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_blue forecolor 1 1 1 1 }
+        }
+        itemDef { text "Scoreboard and match detail stay on the HUD - TAB shows them"  textscale .17  rect 300 184 240 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "live, which no menu page can do while it is covering them."  textscale .17  rect 300 200 240 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+    }
+
+    menuDef {
+        name "io_ig_vote"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "CALL VOTE"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "The server decides whether a vote is allowed - these only ask."  textscale .19  rect 20 26 520 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Map"  textscale .21  rect 20 44 250 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_votemaps  rect 20 64 260 150  type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY  elementwidth 260  elementheight 16
+            elementtype LISTBOX_TEXT  feeder FEEDER_CVMAPS
+            textscale .2  textaligny 12  forecolor 1 1 1 1  backcolor 0 0 0 .35
+            border 1  bordercolor .35 .3 .12 1  visible 1
+        }
+        itemDef {
+            name ig_votemap  text "CALL VOTE: MAP"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 20 222 260 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript voteMap }
+            mouseEnter { setitemcolor ig_votemap forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_votemap forecolor 1 1 1 1 }
+        }
+        itemDef { text "Player"  textscale .21  rect 300 44 240 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_voteplayers  rect 300 64 240 90  type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY  elementwidth 240  elementheight 16
+            elementtype LISTBOX_TEXT  feeder FEEDER_PLAYER_LIST
+            textscale .2  textaligny 12  forecolor 1 1 1 1  backcolor 0 0 0 .35
+            border 1  bordercolor .35 .3 .12 1  visible 1
+        }
+        itemDef {
+            name ig_votekick  text "CALL VOTE: KICK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 160 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript voteKick }
+            mouseEnter { setitemcolor ig_votekick forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_votekick forecolor 1 1 1 1 }
+        }
+        itemDef { text "Quick votes"  textscale .21  rect 300 192 240 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_voterestart  text "RESTART MATCH"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 212 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd callvote restart" ; uiScript closeingame }
+            mouseEnter { setitemcolor ig_voterestart forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_voterestart forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_voteshuffle  text "SHUFFLE TEAMS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 240 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd callvote shuffle" ; uiScript closeingame }
+            mouseEnter { setitemcolor ig_voteshuffle forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_voteshuffle forecolor 1 1 1 1 }
         }
     }
+
+    menuDef {
+        name "io_ig_admin"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "ADMIN"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Acts on the player selected on the left."  textscale .19  rect 20 26 520 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Select a player"  textscale .21  rect 20 44 250 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_adminplayers  rect 20 64 260 190  type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY  elementwidth 260  elementheight 16
+            elementtype LISTBOX_TEXT  feeder FEEDER_PLAYER_LIST
+            textscale .2  textaligny 12  forecolor 1 1 1 1  backcolor 0 0 0 .35
+            border 1  bordercolor .35 .3 .12 1  visible 1
+        }
+        itemDef {
+            name ig_akick  text "KICK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 64 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript kickPlayer }
+            mouseEnter { setitemcolor ig_akick forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_akick forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_atban  text "TEMP BAN"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 92 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript tempbanPlayer }
+            mouseEnter { setitemcolor ig_atban forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_atban forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_aban  text "BAN"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 120 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript banPlayer }
+            mouseEnter { setitemcolor ig_aban forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_aban forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_amute  text "MUTE"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 148 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript mutePlayer }
+            mouseEnter { setitemcolor ig_amute forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_amute forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_aunmute  text "UNMUTE"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 176 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript unmutePlayer }
+            mouseEnter { setitemcolor ig_aunmute forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_aunmute forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_ared  text "PUT ON RED"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 204 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript putred }
+            mouseEnter { setitemcolor ig_ared forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ared forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_ablue  text "PUT ON BLUE"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 232 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript putblue }
+            mouseEnter { setitemcolor ig_ablue forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ablue forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_aspec  text "PUT TO SPEC"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 260 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript putspec }
+            mouseEnter { setitemcolor ig_aspec forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_aspec forecolor 1 1 1 1 }
+        }
+        itemDef { text "These need referee or admin rights"  textscale .17  rect 20 258 260 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "on the server."  textscale .17  rect 20 274 260 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+    }
+
+    menuDef {
+        name "io_ig_addbot"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "ADD BOT"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Click a row to cycle through its choices."  textscale .19  rect 20 26 520 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Bot"  textscale .21  rect 24 60 160 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_botname  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_BOTNAME
+                  rect 200 60 300 20  textscale .24  textaligny 15  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Skill"  textscale .21  rect 24 96 160 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_botskill  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_BOTSKILL
+                  rect 200 96 300 20  textscale .24  textaligny 15  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Team"  textscale .21  rect 24 132 160 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_botteam  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_REDBLUE
+                  rect 200 132 300 20  textscale .24  textaligny 15  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name ig_addbot  text "ADD BOT"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 176 200 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript addBot }
+            mouseEnter { setitemcolor ig_addbot forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_addbot forecolor 1 1 1 1 }
+        }
+        itemDef { text "Team only applies in a team gametype; elsewhere the bot joins the"  textscale .17  rect 24 214 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "free-for-all. Bots need the server to allow them."  textscale .17  rect 24 230 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+    }
+
+    menuDef {
+        name "io_ig_controls"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "CONTROLS"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "The keys worth changing without leaving the game."  textscale .19  rect 20 26 520 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Forward"  textscale .21  rect 24 44 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bfwd  type ITEM_TYPE_BIND  text ""  cvar "+forward"
+                  rect 230 44 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Backpedal"  textscale .21  rect 24 61 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bback  type ITEM_TYPE_BIND  text ""  cvar "+back"
+                  rect 230 61 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Move left"  textscale .21  rect 24 78 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bleft  type ITEM_TYPE_BIND  text ""  cvar "+moveleft"
+                  rect 230 78 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Move right"  textscale .21  rect 24 95 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bright  type ITEM_TYPE_BIND  text ""  cvar "+moveright"
+                  rect 230 95 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Jump"  textscale .21  rect 24 112 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bjump  type ITEM_TYPE_BIND  text ""  cvar "+moveup"
+                  rect 230 112 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Crouch"  textscale .21  rect 24 129 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bcrouch  type ITEM_TYPE_BIND  text ""  cvar "+movedown"
+                  rect 230 129 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Attack"  textscale .21  rect 24 146 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_battack  type ITEM_TYPE_BIND  text ""  cvar "+attack"
+                  rect 230 146 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Next weapon"  textscale .21  rect 24 163 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bnext  type ITEM_TYPE_BIND  text ""  cvar "weapnext"
+                  rect 230 163 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Previous weapon"  textscale .21  rect 24 180 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bprev  type ITEM_TYPE_BIND  text ""  cvar "weapprev"
+                  rect 230 180 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Zoom"  textscale .21  rect 24 197 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bzoom  type ITEM_TYPE_BIND  text ""  cvar "+zoom"
+                  rect 230 197 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Scoreboard"  textscale .21  rect 24 214 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bscores  type ITEM_TYPE_BIND  text ""  cvar "+scores"
+                  rect 230 214 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Chat"  textscale .21  rect 24 231 200 17  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name ig_bchat  type ITEM_TYPE_BIND  text ""  cvar "messagemode"
+                  rect 230 231 220 17  textscale .21  textaligny 12  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name ig_ctlsave  text "SAVE"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 256 120 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript saveControls }
+            mouseEnter { setitemcolor ig_ctlsave forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ctlsave forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_ctlreload  text "RELOAD"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 154 256 120 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript loadControls }
+            mouseEnter { setitemcolor ig_ctlreload forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ctlreload forecolor 1 1 1 1 }
+        }
+        itemDef { text "Click a binding, then press the key you want."  textscale .17  rect 290 260 250 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+    }
+
+    menuDef {
+        name "io_ig_settings"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "SETTINGS"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "The common ones, applied as you change them."  textscale .19  rect 20 26 520 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Field of view"  textscale .21  rect 24 48 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_fov  type ITEM_TYPE_MULTI  text ""  cvar "cg_fov"
+                  cvarFloatList { "90" 90 "100" 100 "110" 110 "120" 120 "130" 130 }  rect 230 48 200 18  textscale .21  textaligny 13
+                  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Mouse sensitivity"  textscale .21  rect 24 70 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_sens  type ITEM_TYPE_MULTI  text ""  cvar "sensitivity"
+                  cvarFloatList { "1" 1 "2" 2 "3" 3 "5" 5 "8" 8 "12" 12 }  rect 230 70 200 18  textscale .21  textaligny 13
+                  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Crosshair"  textscale .21  rect 24 92 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_xhair  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR
+                  rect 230 88 24 24  visible 1 }
+        itemDef { text "Crosshair size"  textscale .21  rect 24 114 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_xsize  type ITEM_TYPE_MULTI  text ""  cvar "cg_crosshairSize"
+                  cvarFloatList { "16" 16 "24" 24 "32" 32 "48" 48 }  rect 230 114 200 18  textscale .21  textaligny 13
+                  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Draw gun"  textscale .21  rect 24 136 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_gun  type ITEM_TYPE_YESNO  text ""  cvar "cg_drawGun"
+                  rect 230 136 70 18  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Simple items"  textscale .21  rect 24 158 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_simple  type ITEM_TYPE_YESNO  text ""  cvar "cg_simpleItems"
+                  rect 230 158 70 18  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Master volume"  textscale .21  rect 24 180 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_vol  type ITEM_TYPE_MULTI  text ""  cvar "s_volume"
+                  cvarFloatList { "Off" 0 "Low" 0.3 "Medium" 0.6 "High" 1 }  rect 230 180 200 18  textscale .21  textaligny 13
+                  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Music"  textscale .21  rect 24 202 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_music  type ITEM_TYPE_MULTI  text ""  cvar "s_musicvolume"
+                  cvarFloatList { "Off" 0 "Low" 0.2 "Medium" 0.5 "High" 1 }  rect 230 202 200 18  textscale .21  textaligny 13
+                  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Brightness"  textscale .21  rect 24 224 200 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_gamma  type ITEM_TYPE_MULTI  text ""  cvar "r_gamma"
+                  cvarFloatList { "Dark" 1 "Normal" 1.3 "Bright" 1.6 "Very bright" 2 }  rect 230 224 200 18  textscale .21  textaligny 13
+                  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "These take effect immediately. Anything needing a restart lives"  textscale .17  rect 24 252 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "under Advanced, which says so where it applies."  textscale .17  rect 24 268 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+    }
+
+    menuDef {
+        name "io_ig_advanced"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "ADVANCED"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Everything with its own page."  textscale .19  rect 20 26 520 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Renderer"  textscale .21  rect 24 48 240 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_advrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 68 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_renderoptions }
+            mouseEnter { setitemcolor ig_advrender forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advrender forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_advwater  text "WATER"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 96 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_water }
+            mouseEnter { setitemcolor ig_advwater forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advwater forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_advrt  text "RAY TRACING"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 124 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_raytracing }
+            mouseEnter { setitemcolor ig_advrt forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advrt forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ig_advsurf  text "SURFACE DETAIL"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 152 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_surfacedetail }
+            mouseEnter { setitemcolor ig_advsurf forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advsurf forecolor 1 1 1 1 }
+        }
+        itemDef { text "Player"  textscale .21  rect 300 48 240 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_advplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 68 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_playersetup }
+            mouseEnter { setitemcolor ig_advplayer forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advplayer forecolor 1 1 1 1 }
+        }
+        itemDef { text "Quake Live's own menu"  textscale .21  rect 300 104 240 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_advql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 124 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
+            mouseEnter { setitemcolor ig_advql forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advql forecolor 1 1 1 1 }
+        }
+        itemDef { text "Opens on top of this one, for anything not reproduced here."  textscale .17  rect 300 152 240 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "These pages open over the frame rather than inside it - they are the"  textscale .17  rect 24 218 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "same menus the main menu uses, so a setting is in one place only and"  textscale .17  rect 24 234 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "cannot disagree with itself depending on where you opened it."  textscale .17  rect 24 250 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+    }
+
+    menuDef {
+        name "io_ig_leave"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "LEAVE MATCH"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "This one asks first."  textscale .19  rect 20 26 520 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Leaving drops you back to the main menu. If this is a server you"  textscale .21  rect 24 60 500 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "joined, you will have to find it again to come back."  textscale .21  rect 24 82 500 16  textaligny 12
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name ig_leaveyes  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 130 220 24  textaligny 17  textalignx 8  forecolor .85 .55 .55 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript Leave }
+            mouseEnter { setitemcolor ig_leaveyes forecolor 1 .4 .4 1 }
+            mouseExit  { setitemcolor ig_leaveyes forecolor .85 .55 .55 1 }
+        }
+        itemDef {
+            name ig_leaveno  text "STAY"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 264 130 220 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript closeingame }
+            mouseEnter { setitemcolor ig_leaveno forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_leaveno forecolor 1 1 1 1 }
+        }
+    }
+    // <<< GENERATED io_ingame END
 
     // =============================================
     // MAIN TITLE SCREEN

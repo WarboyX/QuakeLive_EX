@@ -6083,6 +6083,65 @@ panel is still the only thing that can.
 
 ---
 
+### E110. Replacing Quake Live's in-game menu, in its own style — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+E108 put a plain panel in front of the player. Asked for Quake Live's look
+rather than a box, and for the whole menu rather than a shortcut to ours.
+
+**The look is Quake Live's, and measured from it rather than approximated.**
+Frame `rect 40 0 560 480`, header 64 tall, nav bar at 63, content panel at 82,
+gold `0.964 0.815 0 1`, selected tab backed with black at 0.9 and underlined -
+every number read out of `pak00/ui/ingame.menu`. The art is Quake Live's own
+`header.tga`, `ql_logo.tga` and `content_background.tga`, loaded **by name** out
+of the player's pak00, the same arrangement as the shader overrides in
+`ql_enhanced.shader`: nothing copied, nothing shipped. Checked against
+`docs/pak-manifest.txt` first, because `RE_RegisterShaderNoMip` returns 0 for a
+name the pak lacks and then draws nothing while reporting nothing.
+
+**Eight tabs, each a page drawn inside the panel:** Current Match (player list
+and team change), Call Vote (map list via `FEEDER_CVMAPS`, kick via
+`FEEDER_PLAYER_LIST`, quick votes), Admin (eight actions on the selected
+player), Add Bot (`UI_BOTNAME`/`UI_BOTSKILL`/`UI_REDBLUE` ownerdraws), Controls
+(twelve bindable keys plus save/reload), Settings, Advanced, Leave.
+
+**Generated, not hand-written** - `tools/gen-ingame-menu.py`. A tab is four
+itemDefs sharing a rect, and every tab's action recolours three parts of all
+eight tabs: 24 `setitemcolor` lines per tab, ~200 for the bar alone, in which
+one wrong index is a tab that highlights its neighbour. Quake Live writes all of
+this by hand and spends 486 lines on seven tabs with no content. The tab table
+in the generator is now the whole definition; the block it emits is 1010 lines.
+
+**What was checked before being used, rather than after.** Every feeder,
+ownerdraw and uiScript referenced was confirmed implemented in `ui_main.c`
+first - `FEEDER_PLAYER_LIST`, `FEEDER_CVMAPS`, `UI_BOTNAME`, `UI_BOTSKILL`,
+`UI_REDBLUE`, `UI_CROSSHAIR`, and the `voteMap` / `voteKick` / `addBot` /
+`kickPlayer` / `putred` / `saveControls` family. **`UI_VOTE_KICK` is the one
+that is declared and not implemented**, so kick-by-vote uses the player-list
+feeder and the `voteKick` script instead of that ownerdraw. This is the
+registered-cvar failure shape in another costume: the constant exists, a menu
+referencing it parses, and it draws nothing.
+
+**Two code couplings this forced out.** `_UI_SetActiveMenu` opens the frame
+*and* its first page, the same two-menu arrangement Quake Live uses, because the
+frame alone is an empty panel. And `updateCallvoteMapPreview` reset the map
+feeder selection by menu *name* - hardcoded `"ingame_callvote"` - so it now
+names ours as well; Quake Live's menu is still reachable from the Advanced tab,
+and resetting only one leaves the other holding an index into a list it no
+longer has, which looks fine and votes for the wrong map.
+
+**check-menus caught 116 problems in the first generated draft** and they were
+all real: labels 18px tall stacked 16 apart, a heading 300 wide running under
+the next column, controls running past the bottom of the page, and - again - a
+`check-menus: overlap-ok` waiver written at the top of a 20-line comment instead
+of against the `menuDef`, where the positional match can see it. Same mistake as
+E108, same tool caught it. 0 problems now.
+
+**Unverified:** none of it has been run. Structure, names and geometry are
+checked; that the lists populate and the buttons act is not.
+
+---
+
 ### E109. Linux flavours — and the Steam path that had to be fixed first — DONE (verify)
 **Lives in:** our **client** and our **server** (engine `sys_unix.c`, packaging) · **Seen by:** our client only
 

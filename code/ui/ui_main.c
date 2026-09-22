@@ -3119,7 +3119,15 @@ static void UI_RunMenuScript(char** args) {
         } else if (Q_stricmp(name, "updateCallvoteMapPreview") == 0) {
             // [QL] Re-filter map list by callvote gametype and reset selection
             UI_MapCountByCallvoteGameType();
+            /*
+            [QL] E110. Both menus, because the selection is reset by NAME.
+            Quake Live's ingame_callvote is still reachable (our Advanced tab
+            opens its menu), and ours is io_ig_vote. Naming only one leaves the
+            other showing a selection index into a map list it no longer has -
+            a list that looks fine and votes for the wrong map.
+            */
             Menu_SetFeederSelection(NULL, FEEDER_CVMAPS, 0, "ingame_callvote");
+            Menu_SetFeederSelection(NULL, FEEDER_CVMAPS, 0, "io_ig_vote");
         } else if (Q_stricmp(name, "saveControls") == 0) {
             Controls_SetConfig(qtrue);
         } else if (Q_stricmp(name, "loadControls") == 0) {
@@ -5286,7 +5294,16 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 links to them, and its last entry opens Quake Live's ingame menu
                 itself for anything not surfaced here.
                 */
+                /*
+                [QL] E110. The frame and its first page, the same two-menu
+                arrangement Quake Live uses (ingame + ingame_about): io_ingame
+                draws the header, nav bar and content panel, and the page draws
+                inside it. Opening the frame alone is a menu with an empty
+                panel, so the first tab's page opens with it - and the nav bar's
+                first tab is defined already highlighted to match.
+                */
                 Menus_ActivateByName("io_ingame");
+                Menus_ActivateByName("io_ig_match");
                 return;
         }
     }
