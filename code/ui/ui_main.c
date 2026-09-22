@@ -5267,8 +5267,26 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 trap_Key_SetCatcher(KEYCATCH_UI);
                 UI_BuildPlayerList();
                 Menus_CloseAll();
-                Menus_ActivateByName("ingame");
-                Menus_ActivateByName("ingame_about");
+                /*
+                [QL] E108. Ours, not Quake Live's "ingame" + "ingame_about".
+
+                Everything this port adds lives in main.menu and is reached from
+                the main menu's RENDER entry. Quake Live's ingame nav has no
+                entry that could reach it, and no way to be given one: that menu
+                is in pak00, which is read-only to us. So in a game, none of it
+                was reachable - not because the menus were missing (_UI_Init
+                loads menus.txt AND ingame.txt, so they were in memory the whole
+                time) but because nothing on screen opened them.
+
+                Replacing rather than extending costs less than it sounds.
+                Quake Live's own ingame nav spends two of its seven entries on
+                "Settings" and "Main Menu", and both run `web_changeHash` - they
+                drive the Steam client's web overlay, so there is no native
+                panel behind them at all. The rest are still loaded, this menu
+                links to them, and its last entry opens Quake Live's ingame menu
+                itself for anything not surfaced here.
+                */
+                Menus_ActivateByName("io_ingame");
                 return;
         }
     }

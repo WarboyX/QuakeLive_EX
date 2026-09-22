@@ -6083,6 +6083,70 @@ panel is still the only thing that can.
 
 ---
 
+### E108. Our own in-game menu, and the water menu's missing half — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Two reports, one root: everything this port adds is reachable only from the
+main menu.
+
+**1. "We can't access our menus while in-game."**
+
+Not a loading failure, which is what it looks like. `_UI_Init` loads
+`ui/menus.txt` **and** `ui/ingame.txt` unconditionally, so every menu we ship is
+in memory the whole time a map is running. `tools/check-menus.py` was clean
+throughout. The problem was that ESC calls
+`_UI_SetActiveMenu(UIMENU_INGAME)`, which opened Quake Live's own `ingame`, and
+**that menu's nav has no entry that could reach ours and no way to be given
+one** - `ingame.menu` and `ingame_lowernav.menu` are in pak00, which is
+read-only to us and not ours to ship.
+
+So the menu is built rather than extended. What makes that cheap rather than
+wasteful: **two of Quake Live's seven in-game nav entries, "Settings" and "Main
+Menu", run `web_changeHash`** - they drive the Steam client's *web overlay*, and
+there is no native panel behind either one. There was never an in-game settings
+menu here to hook into, which is the actual reason this had to be written.
+
+`io_ingame`: RESUME, RENDER OPTIONS, PLAYER SETUP, CALL VOTE, ADD BOT, QUAKE
+LIVE MENU, LEAVE MATCH. Quake Live's own panels are still loaded and still work,
+so it links to them rather than replacing them, and the sixth entry opens Quake
+Live's ingame menu itself so nothing not surfaced here is lost.
+
+Two details that are not decoration:
+
+- It opens **without closing anything**, as do the submenus it opens. Menus
+  stack, so ESC out of `io_renderoptions` reveals this one underneath. The
+  alternative - closing the parent first - ends with `KEYCATCH_UI` still set and
+  no menu on screen, which is a captured cursor and no way back.
+- `onESC` runs `uiScript closeingame`, the same script Quake Live's own ingame
+  menu uses. It drops `KEYCATCH_UI`, clears key states and unpauses, so resuming
+  behaves identically to before.
+
+Checked while here: `uiInfo.inGameLoad` is **never set true anywhere** - only
+cleared in `UI_LoadNonIngame` - so both call sites gating on it are dead and
+`UI_LoadNonIngame` never runs. That is consistent rather than broken, because
+`_UI_Init` already loads both lists, but it means there is no lazy-load path to
+double-load `menus.txt` and no duplicate-menu risk from this change.
+
+**2. "You didn't add the new cvars to the water menu."** Correct - E107 shipped
+four cvars with no menu rows.
+
+The water menu was already full to y=399 in a 468-tall panel, so this needed a
+layout decision rather than four more lines. `WAVES` moved up one slot and
+**foam moved out of its own heading and under the new `IMPACTS (SPLASHES)`
+section**, which is where it belonged the whole time: foam is driven off impact
+energy alone and ordinary chop never whitens. It had been sitting under its own
+heading next to the waves - filed with the one thing that cannot cause it.
+
+The headings now say `WAVES (WIND CHOP)` and `IMPACTS (SPLASHES)`, because the
+two share no setting and "the water is too calm" and "the splashes are too
+small" were both leading to the same five rows, where only the first has an
+answer. RESET WATER now restores the four new cvars too.
+
+**Unverified:** none of it has been seen. ESC in a game is the whole check for
+the first half; the second is one screen.
+
+---
+
 ### E107. Cvars for the reactive water — impacts, not the wind chop — DONE (verify)
 **Lives in:** our **client** (renderervk + pak01) · **Seen by:** our client only
 

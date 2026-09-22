@@ -1414,6 +1414,109 @@
     // out of rows. If a page fills up, split it; do not shrink the pitch.
     // =============================================
 
+    // =============================================
+    // [QL] E108. Our own in-game menu.
+    //
+    // WHY THERE HAS TO BE ONE. Everything we have added lives in main.menu and
+    // is reached from the main menu's RENDER entry. In a game, ESC calls
+    // _UI_SetActiveMenu(UIMENU_INGAME), which opened Quake Live's own "ingame"
+    // - and that menu's nav has no entry that could ever reach ours. The menus
+    // were loaded the whole time (_UI_Init loads menus.txt AND ingame.txt), so
+    // this was never a loading failure: there was simply no button.
+    //
+    // Nor was there anywhere to add one. Quake Live's ingame.menu and
+    // ingame_lowernav.menu live in pak00, which is read-only to us and not
+    // ours to ship. And its two most useful entries are no loss: "Settings"
+    // and "Main Menu" both run `web_changeHash`, which drives the Steam client's
+    // web overlay - there is no native in-game settings panel behind them to
+    // hook into. That is the real reason this has to be built rather than
+    // extended.
+    //
+    // WHAT IT DOES NOT THROW AWAY. Quake Live's own panels are still loaded and
+    // still work, so this links to them rather than replacing them, and the
+    // last entry opens Quake Live's ingame menu itself for anything not
+    // surfaced here.
+    //
+    // Opened WITHOUT closing anything, and the submenus it opens do the same.
+    // Menus stack, so ESC out of io_renderoptions reveals this one underneath
+    // instead of dropping the player into a captured cursor with no menu.
+    // =============================================
+
+    menuDef {
+        name "io_ingame"
+        rect 170 96 300 290
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.04 0.04 0.07 1
+        border 1
+        bordersize 1
+        bordercolor .45 .45 .5 1
+
+        // ESC resumes rather than closing to nothing. closeingame drops
+        // KEYCATCH_UI, clears key states and unpauses - the same script Quake
+        // Live's own ingame menu uses, so resuming behaves identically.
+        onESC { uiScript closeingame }
+
+        itemDef { name title  text "MENU"  textscale .3
+                  rect 0 6 300 26  textalign ITEM_ALIGN_CENTER  textalignx 150  textaligny 19
+                  forecolor 1 .75 0 1  visible 1  decoration }
+        itemDef { name titlerule  text ""  rect 24 36 252 1  visible 1  decoration
+                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
+
+        itemDef {
+            name igresume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 48 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript closeingame }
+            mouseEnter { setitemcolor igresume forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igresume forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 82 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_renderoptions }
+            mouseEnter { setitemcolor igrender forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igrender forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 116 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_playersetup }
+            mouseEnter { setitemcolor igplayer forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igplayer forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igvote  text "CALL VOTE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 150 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open ingame_callvote }
+            mouseEnter { setitemcolor igvote forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igvote forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igbot  text "ADD BOT"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 184 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open ingame_addbot }
+            mouseEnter { setitemcolor igbot forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igbot forecolor 1 1 1 1 }
+        }
+        // [QL] Quake Live's own ingame menu, kept reachable so nothing this
+        // panel does not list is lost - match info, admin, vote status.
+        itemDef {
+            name igql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 218 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
+            mouseEnter { setitemcolor igql forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igql forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igleave  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 252 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript Leave }
+            mouseEnter { setitemcolor igleave forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igleave forecolor 1 1 1 1 }
+        }
+    }
+
     menuDef {
         name "io_renderoptions"
         rect 60 8 520 468
@@ -1693,38 +1796,65 @@
         itemDef { text "Debug view:"  textscale .22  rect 24 147 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name ssrdebug  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDebug"
                   cvarFloatList { "Off" 0 "1 mask" 1 "2 ray hit" 2 "3 reflection" 3 "4 waves" 4 "5 ripples + foam" 5 }  rect 216 147 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { name "" text "WAVES"  textscale .24  rect 20 189 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
+        itemDef { name "" text "WAVES (WIND CHOP)"  textscale .24  rect 20 168 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
         // [QL] The surface never moves a vertex - Quake Live's water is
         // subdivided at map compile time and cannot be retessellated at
         // runtime. What ripples is the normal, and the reflected direction is
         // reflect(V, N), so tilting N is what sells it. Steepness is the true
         // maximum slope, not an arbitrary scale, because the three waves'
         // amplitudes sum to 1.
-        itemDef { text "Waves:"  textscale .22  rect 24 210 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name waves  type ITEM_TYPE_YESNO  text ""  cvar "r_waterWaves"  rect 216 210 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Steepness:"  textscale .22  rect 24 231 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { text "Waves:"  textscale .22  rect 24 189 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name waves  type ITEM_TYPE_YESNO  text ""  cvar "r_waterWaves"  rect 216 189 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Steepness:"  textscale .22  rect 24 210 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name wavesteep  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSteepness"
-                  cvarFloatList { "0.02 (glassy)" 0.02 "0.05" 0.05 "0.08 (default)" 0.08 "0.12" 0.12 "0.2 (choppy)" 0.2 }  rect 216 231 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Height:"  textscale .22  rect 24 252 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+                  cvarFloatList { "0.02 (glassy)" 0.02 "0.05" 0.05 "0.08 (default)" 0.08 "0.12" 0.12 "0.2 (choppy)" 0.2 }  rect 216 210 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Height:"  textscale .22  rect 24 231 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name waveheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveHeight"
-                  cvarFloatList { "0 (flat)" 0 "1" 1 "2 (default)" 2 "4" 4 "8 (swell)" 8 }  rect 216 252 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Wavelength:"  textscale .22  rect 24 273 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+                  cvarFloatList { "0 (flat)" 0 "1" 1 "2 (default)" 2 "4" 4 "8 (swell)" 8 }  rect 216 231 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Wavelength:"  textscale .22  rect 24 252 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name wavescale  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveScale"
-                  cvarFloatList { "48 (fine)" 48 "96 (default)" 96 "192" 192 "384 (broad)" 384 }  rect 216 273 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Speed:"  textscale .22  rect 24 294 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+                  cvarFloatList { "48 (fine)" 48 "96 (default)" 96 "192" 192 "384 (broad)" 384 }  rect 216 252 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Speed:"  textscale .22  rect 24 273 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name wavespeed  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSpeed"
-                  cvarFloatList { "0 (frozen)" 0 "0.5 (slow)" 0.5 "1 (default)" 1 "2 (fast)" 2 }  rect 216 294 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { name "" text "FOAM"  textscale .24  rect 20 336 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "Foam:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+                  cvarFloatList { "0 (frozen)" 0 "0.5 (slow)" 0.5 "1 (default)" 1 "2 (fast)" 2 }  rect 216 273 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        // [QL] R28. The other half of the water, and the half that had no
+        // controls at all until now: what a rocket or a pellet does to it.
+        //
+        // These are a separate system from the waves above and share no
+        // setting with them, which is worth making visible in the menu rather
+        // than only true in the code - "the water is too calm" and "the
+        // splashes are too small" were both leading people to the WAVES rows,
+        // where only the first of them has an answer.
+        //
+        // Foam lives under this heading and not its own, because foam is
+        // driven off impact energy alone: ordinary chop never whitens, only a
+        // splash does. It was under a FOAM heading of its own, next to the
+        // waves, which put it with the one thing that cannot cause it.
+        //
+        // Every value here is a MULTIPLIER on what the weapon asked for, so
+        // the per-weapon differences survive being scaled and a rocket stays
+        // bigger than a shotgun pellet.
+        itemDef { name "" text "IMPACTS (SPLASHES)"  textscale .24  rect 20 294 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
+        itemDef { text "Splash size:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name ripplesize  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleSize"
+                  cvarFloatList { "0.5 (small)" 0.5 "1 (default)" 1 "2 (wide)" 2 "4 (huge)" 4 }  rect 216 315 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Splash strength:"  textscale .22  rect 24 336 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name rippleheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleHeight"
+                  cvarFloatList { "0 (none)" 0 "0.5 (soft)" 0.5 "1 (default)" 1 "2 (hard)" 2 "4 (violent)" 4 }  rect 216 336 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Ripple rings:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name ripplewaves  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleWaves"
+                  cvarFloatList { "2 (few, fat)" 2 "5 (default)" 5 "8" 8 "12 (fine)" 12 }  rect 216 357 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Ripple lifetime:"  textscale .22  rect 24 378 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name ripplelife  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleLife"
+                  cvarFloatList { "1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6 }  rect 216 378 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Foam:"  textscale .22  rect 24 399 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name foam  type ITEM_TYPE_MULTI  text ""  cvar "r_waterFoam"
-                  cvarFloatList { "Off" 0 "Subtle" 0.5 "On (default)" 1 "Heavy" 2 }  rect 216 357 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Foam rides a ripple's envelope, so it marks where impacts landed and"  textscale .2  rect 24 378 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration }
-        itemDef { text "fades with them. Untested in play - see R19 step 8 in TRACKER.md."  textscale .2  rect 24 399 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration }
+                  cvarFloatList { "Off" 0 "Subtle" 0.5 "On (default)" 1 "Heavy" 2 }  rect 216 399 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
         itemDef {
             name resetwater  text "RESET WATER"  type ITEM_TYPE_BUTTON  textscale .25
             rect 24 434 150 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "set r_ssr 0 ; set r_ssrDistance 2048 ; set r_ssrSteps 32 ; set r_ssrThickness 8 ; set r_ssrDebug 0 ; set r_waterWaves 1 ; set r_waterWaveSteepness 0.08 ; set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; set r_waterFoam 1" }
+            action { play "sound/misc/menu1.wav" ; exec "set r_ssr 0 ; set r_ssrDistance 2048 ; set r_ssrSteps 32 ; set r_ssrThickness 8 ; set r_ssrDebug 0 ; set r_waterWaves 1 ; set r_waterWaveSteepness 0.08 ; set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; set r_waterFoam 1 ; set r_waterRippleSize 1 ; set r_waterRippleHeight 1 ; set r_waterRippleWaves 5 ; set r_waterRippleLife 2.2" }
             mouseEnter { setitemcolor resetwater forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor resetwater forecolor 1 1 1 1 }
         }
