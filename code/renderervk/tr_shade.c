@@ -1138,7 +1138,19 @@ static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 	radius = dl->radius;
 
 	// vertex data
-	VectorCopy( backEnd.or.viewOrigin, uniform->eyePos ); uniform->eyePos[3] = 0.0f;
+	/*
+	[QL] E104. eyePos.w carries the per-material green flip on the dynamic light
+	path, because a specialization constant cannot: these pipelines are built once
+	at init, so anything per-stage has to travel in the uniform instead.
+
+	It is free. The vertex shader computes V = eyePos - vec4(position, 1.0) and
+	the fragment shader reads only V.xyz - V.w is never touched by anything.
+	Checked before using it rather than assumed.
+	*/
+	VectorCopy( backEnd.or.viewOrigin, uniform->eyePos );
+	uniform->eyePos[3] = (float)( ( r_qlNormalFlipG->integer ? 1 : 0 ) ^
+		( ( tess.shader->lightingStage >= 0 && tess.xstages[ tess.shader->lightingStage ] &&
+		    tess.xstages[ tess.shader->lightingStage ]->normalFlipG ) ? 1 : 0 ) );
 	VectorCopy( dl->transformed, uniform->light.pos ); uniform->light.pos[3] = 0.0f;
 
 	// fragment data
@@ -1390,6 +1402,16 @@ static void VK_BumpPass( void )
 		if ( def.hex_contrast < 0.05f ) def.hex_contrast = 0.05f;
 		if ( def.hex_contrast > 0.95f ) def.hex_contrast = 0.95f;
 	}
+
+	/*
+	[QL] E104. Effective green convention for this surface: the global default
+	XORed with the material's own declaration. A map that declares
+	qlNormalFlipG is saying "mine is the other way round from yours", so it has
+	to flip relative to whatever the global is rather than setting it absolutely -
+	otherwise turning the cvar on to fix one map silently un-fixes the other.
+	*/
+	def.bump_flip_green =
+		( ( r_qlNormalFlipG->integer ? 1 : 0 ) ^ ( pStage->normalFlipG ? 1 : 0 ) );
 
 	pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
 

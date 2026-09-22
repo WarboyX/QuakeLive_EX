@@ -13,7 +13,7 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 |---|---|---|
 | **Client / UI** (U) | `████████████████░░░░  14/17` | U11/U2 partial, U4 open; R24 is the live one - our own pages need a rebuild |
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
-| **Renderer** (R) | `█████████░░░░░░░░░░░  12/26` | E103: handedness now settleable with r_qlNormalFlipG; R28 cleanup; R27 built and measured, not looked at |
+| **Renderer** (R) | `██████████░░░░░░░░░░  13/27` | E104: per-material convention + our first deployment into a stock QL map; E103 fixed the inverted green |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
 | **Engine / server** (E) | `████████████████░░░░  77/100` | E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
 | **Overall** | `███████████████░░░░░  133/183` | by binary: 69 server · 98 client · 10 both |
@@ -6054,6 +6054,68 @@ already set both.
 **Still unverified:** whether the shading is right, as opposed to present and
 bounded. And handedness, which neither this nor R20 has yet tested - the dome
 panel is still the only thing that can.
+
+---
+
+### E104. Per-material green convention, and deploying into a stock map — DONE (verify)
+**Lives in:** our **client** (renderervk + pak01) · **Seen by:** our client only
+
+Two pieces: the keyword E103 said was the right shape, and an answer to whether
+any of this reaches a map we did not compile.
+
+**The keyword.** `qlNormalFlipG` on a stage declares "this material's normal map
+is baked the other way round from yours". It **XORs** against `r_qlNormalFlipG`
+rather than setting absolutely — a map saying "mine is the other way" must stay
+the other way when the global default moves, or turning the cvar on to fix one
+map silently un-fixes another. Travels across a multitexture collapse like
+`normalMap` and `qlNaturalTexture` do, because it sits on the diffuse stage,
+which is the one discarded when the lightmap stage came first.
+
+**The obstacle from E103, solved rather than worked around.** I recorded that a
+per-stage value cannot reach the dynamic light pipelines, since those are built
+once at init and a specialization constant is fixed at build. It travels in
+**`eyePos.w`** instead. That slot is free and it was checked, not assumed: the
+vertex shader computes `V = eyePos - vec4(position, 1.0)` and the fragment
+shader reads only `V.xyz`. The bump pass keeps its spec constant, because its
+pipeline *is* built per draw.
+
+**Both conventions now sit side by side.** `qltest_bump`'s dome panel is split
+into two halves of what was one face — left `domes`, right `domes_flipped` —
+so light, UV scale and view angle are identical by construction and the only
+difference is the keyword. One of them shows hemispheres, the other craters.
+**One screenshot answers it** instead of two `vid_restart`s.
+
+---
+
+**Deploying into a stock Quake Live map.** The answer splits three ways, and
+two of the three need nothing but a shader file:
+
+| | into a stock map? | why |
+|---|---|---|
+| R27 natural textures | **yes, anywhere** | hex-tiling is a texture-space operation; it needs no map data, only a shader that asks |
+| R20 derived normals | **yes, under a dynamic light** | the normal map is derived from the diffuse at load; a rocket lights it, the baked lightmap cannot |
+| R25 static bump | **no** | it reads a deluxemap, and only `q3map2 -deluxe` writes one. Quake Live's maps carry none. Recompiling them is R23, tested and not recommended |
+
+`content/pak01/scripts/ql_enhanced.shader` is the demonstration:
+`textures/stone/rockcliff_01` and `_02` with `qlNaturalTexture` added. Cliff
+faces are the best candidate there is — stochastic, large, and the repeat reads
+immediately.
+
+**Two things checked rather than hoped.** First, that an override actually wins:
+`ScanAndLoadShaderFiles` fills each hash bucket **backwards**
+(`shaderTextHashTable[hash][--size]`) and `FindShaderInShaderText` returns entry
+0, so the last definition in the concatenated text wins — and the text is
+appended in reverse list order, putting the higher-priority pak last. pak01
+beats pak00. Second, that the override reproduces Quake Live's own stage bodies
+exactly: diffed against `pak00/scripts/stone.shader` and identical modulo the
+added keyword. That matters because a wrong override does not fail visibly, it
+draws the surface wrongly.
+
+**It ships no art.** Every name is Quake Live's own texture out of Quake Live's
+own pak; all that is added is the keyword.
+
+**Still unverified:** which half of the dome panel is right, and whether the
+cliff override reads as less repetitive in a real map. Both are one look.
 
 ---
 

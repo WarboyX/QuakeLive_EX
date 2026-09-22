@@ -204,6 +204,23 @@ that are still registered and read by nothing, and the build fails if a new one
 appears without a verdict. 75 of them turned out to be read by Quake Live's own
 menus rather than dead at all.
 
+## Natural textures in Quake Live's own maps
+
+`baseq3/pak01.pk3` now carries `scripts/ql_enhanced.shader`, which adds
+`qlNaturalTexture` to `textures/stone/rockcliff_01` and `_02` — Quake Live's own
+cliff materials. No map is modified and no art is shipped; the shader overrides
+Quake Live's definition and asks the renderer to break up the repeat.
+
+Worth knowing what does and does not reach a stock map:
+
+- **Natural textures: anywhere.** Hex-tiling is a texture-space operation and
+  needs no map data.
+- **Derived normal maps: under a dynamic light.** The normal map is derived from
+  the diffuse at load, so a rocket or lightning beam lights it. The baked
+  lightmap cannot.
+- **Static bump mapping: not at all.** It reads a deluxemap, and only
+  `q3map2 -deluxe` writes one. Quake Live's maps carry none.
+
 ## Natural textures — no more hard cuts
 
 A texture tiled thirty times across a floor reads as a grid, not as a floor.
@@ -275,15 +292,17 @@ neither loads nor checksums it.
 
 ## Known issues
 
-**Normal map green-channel convention.** `r_qlNormalFlipG` (latched, needs
-`vid_restart`) flips the green channel of every normal map. Our own generated
-maps all share one convention now, but a third-party map can ship a normal map
-baked against either — the shader parser accepts `normalMap` / `bumpMap` /
-`normalParallaxMap` / `bumpParallaxMap`, so this is not a question that closes.
-If bumps on a custom map read as dents, that cvar is the switch. The proper fix
-is a per-material keyword so a map declares its own convention; the obstacle is
-that the dynamic light pipelines are built once at init and cannot take a
-per-stage specialization constant.
+**Normal map green-channel convention.** A normal map is baked against one of
+two conventions and the wrong one turns bumps into dents. Our own generated maps
+share one convention; a third-party map can ship either.
+
+- Per material: **`qlNormalFlipG`** on the stage, which says "this material is
+  baked the other way round". It XORs against the global, so a map that declares
+  it stays correct whatever the global is set to.
+- Globally: **`r_qlNormalFlipG`** (latched, needs `vid_restart`).
+
+If bumps on a custom map read as dents, either will fix it; the keyword is the
+one that does not break every other material at the same time.
 
 
 `TRACKER.md` is the full list, each item tagged with which binary the fault lives

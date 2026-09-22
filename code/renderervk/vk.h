@@ -253,6 +253,9 @@ typedef struct {
 	int hex_tile;
 	float hex_rot;
 	float hex_contrast;
+	// [QL] E104. Effective green flip for this draw: the global cvar XORed with
+	// the stage's qlNormalFlipG. TYPE_BUMP only.
+	int bump_flip_green;
 } Vk_Pipeline_Def;
 
 typedef struct VK_Pipeline {

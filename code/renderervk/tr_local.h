@@ -420,6 +420,18 @@ typedef struct {
 	qboolean		noNormalPerturb;
 
 	/*
+	[QL] E104. Per-material green-channel convention, set by the shader keyword
+	qlNormalFlipG. A normal map is authored against one of two conventions and
+	the wrong one turns every bump into a dent; which one a given map used is a
+	property of that map's art, not a global look setting, so a third-party pk3
+	can declare its own here rather than asking the player to flip a cvar and
+	break every other material while they are at it.
+
+	r_qlNormalFlipG remains the global default; this overrides it per stage.
+	*/
+	qboolean		normalFlipG;
+
+	/*
 	[QL] R27, set by the qlNaturalTexture shader keyword. Opt IN, where
 	noNormalPerturb above is opt out, and the asymmetry is deliberate: deriving
 	a normal map from a texture that should not have one costs some shading

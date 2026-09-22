@@ -419,3 +419,37 @@ textures/qltest/mat_rock_natural
 		qlNaturalTexture
 	}
 }
+
+// =============================================================================
+// E104. The same dome sheet with the OTHER green-channel convention.
+//
+// qltest_bump puts this immediately beside textures/qltest/domes, as two halves
+// of what used to be one face, so the light, the UV scale and the view angle are
+// identical by construction and the only difference is this keyword.
+//
+// One of the two shows hemispheres and the other shows craters. Whichever shows
+// hemispheres is the convention our generators should be writing, and looking at
+// them side by side answers it in one screenshot rather than two vid_restarts.
+//
+// qlNormalFlipG is a per-material declaration, not a global look setting: it
+// says "this map's normal maps are baked the other way round from yours", which
+// is a fact about the art. r_qlNormalFlipG is the global default and this XORs
+// against it, so turning the cvar on to fix one map cannot silently un-fix
+// another.
+// =============================================================================
+
+textures/qltest/domes_flipped
+{
+	qer_editorimage textures/qltest/flatgrey
+	{
+		map $lightmap
+		rgbGen identity
+	}
+	{
+		map textures/qltest/flatgrey
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+		normalMap textures/qltest/domes_n
+		qlNormalFlipG
+	}
+}

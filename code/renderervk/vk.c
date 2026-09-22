@@ -9892,6 +9892,12 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	spec_entries[15].offset = 14 * sizeof( int32_t );
 	spec_entries[15].size = sizeof( int32_t );
 	frag_spec_data[14].i = ( r_qlNormalFlipG && r_qlNormalFlipG->integer ) ? 1 : 0;
+	if ( def->shader_type == TYPE_BUMP ) {
+		// [QL] E104. The bump pass builds its pipeline per draw, so it can carry
+		// the per-material value; the generic and lighting paths cannot and take
+		// the global default above.
+		frag_spec_data[14].i = def->bump_flip_green;
+	}
 
 	frag_spec_data[11].i = def->hex_tile;
 	frag_spec_data[12].f = def->hex_rot;

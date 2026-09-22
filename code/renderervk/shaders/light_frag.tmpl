@@ -91,14 +91,19 @@ layout (constant_id = 3) const int alpha_to_coverage = 0;
 //layout (constant_id = 4) const int color_mode = 0;
 layout (constant_id = 5) const int abs_light = 0;
 /*
-[QL] E103. r_qlNormalFlipG, the same switch bump.frag carries - see there.
+[QL] E104. The green-channel convention arrives in eyePos.w, not as a
+specialization constant.
 
-It has to be on BOTH paths or it is not a global answer. The static bump pass
-and this dynamic one build the same tangent basis from the same derivatives and
-read the same normal maps; flipping green on one would leave a surface lit one
-way by a rocket and the other way by the lightmap.
+These pipelines are built once at init, so a spec constant here could only ever
+carry the GLOBAL default - and the convention is a property of the material, so
+a third-party map declaring qlNormalFlipG needs it per draw. eyePos.w is free:
+the vertex shader computes V = eyePos - vec4(position, 1.0) and nothing reads
+V.w. The C side puts the global cvar XORed with the stage's own declaration
+there.
+
+The bump pass does use a spec constant for the same value, because its pipeline
+is built per draw and can afford to.
 */
-layout (constant_id = 14) const int flip_green = 0;
 
 float CorrectAlpha(float threshold, float alpha, vec2 tc)
 {
@@ -209,7 +214,7 @@ void main() {
 		vec3 Bn = cross(geomN, Tn);
 
 		vec3 tsn = normalize(texture(normalmap, frag_tex_coord).xyz * 2.0 - 1.0);
-		if (flip_green != 0) {
+		if (eyePos.w != 0.0) {
 			tsn.y = -tsn.y;
 		}
 

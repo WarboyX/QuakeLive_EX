@@ -128,14 +128,31 @@
 		( 400 -272 0 ) ( 400 -272 256 ) ( 400 -256 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
 		( -400 -256 0 ) ( -400 -256 256 ) ( -400 -272 256 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
 	}
-	// panel A - domes. Bright side must face the light.
+	// panel A - domes, split in half so BOTH green-channel conventions are on
+	// screen at once under identical light. Left half is our default, right half
+	// carries qlNormalFlipG. One of them shows hemispheres and the other shows
+	// craters; whichever shows hemispheres is the convention our generators
+	// should be using, and it takes one screenshot instead of two vid_restarts.
+	//
+	// Adjacent halves of what was one face, so lighting, UV scale and view angle
+	// are identical between them by construction - the only difference is the
+	// keyword.
 	{
-		( -120 256 192 ) ( -120 240 192 ) ( -280 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
-		( -120 240 32 ) ( -120 256 32 ) ( -280 256 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
-		( -120 256 32 ) ( -120 256 192 ) ( -280 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
-		( -280 240 32 ) ( -280 240 192 ) ( -120 240 192 ) qltest/domes 0 0 0 0.250000 0.250000 0 0 0
-		( -120 240 32 ) ( -120 240 192 ) ( -120 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -200 256 192 ) ( -200 240 192 ) ( -280 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -200 240 32 ) ( -200 256 32 ) ( -280 256 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -200 256 32 ) ( -200 256 192 ) ( -280 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -280 240 32 ) ( -280 240 192 ) ( -200 240 192 ) qltest/domes 0 0 0 0.250000 0.250000 0 0 0
+		( -200 240 32 ) ( -200 240 192 ) ( -200 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
 		( -280 256 32 ) ( -280 256 192 ) ( -280 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+	}
+	// panel A2 - the same domes with qlNormalFlipG
+	{
+		( -120 256 192 ) ( -120 240 192 ) ( -200 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -120 240 32 ) ( -120 256 32 ) ( -200 256 32 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -120 256 32 ) ( -120 256 192 ) ( -200 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -200 240 32 ) ( -200 240 192 ) ( -120 240 192 ) qltest/domes_flipped 0 0 0 0.250000 0.250000 0 0 0
+		( -120 240 32 ) ( -120 240 192 ) ( -120 256 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
+		( -200 256 32 ) ( -200 256 192 ) ( -200 240 192 ) qltest/flatgrey 0 0 0 0.500000 0.500000 0 0 0
 	}
 	// panel B - rock noise. The realistic case.
 	{

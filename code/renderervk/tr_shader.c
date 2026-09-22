@@ -1344,6 +1344,24 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			R_SkipRestOfLine( text );
 			continue;
 		}
+		else if ( !Q_stricmp( token, "qlNormalFlipG" ) )
+		{
+			/*
+			[QL] E104. This stage's normal map uses the opposite green-channel
+			convention from our default.
+
+			The two conventions are the same data with Y negated, and the wrong
+			one is not subtle once you know to look: bumps read as dents. It is
+			a property of how the art was baked, so it belongs on the material
+			rather than on a cvar the player has to discover.
+
+			No parameter. It is a declaration about this stage's normal map, not
+			a strength.
+			*/
+			stage->normalFlipG = qtrue;
+			R_SkipRestOfLine( text );
+			continue;
+		}
 		else if ( !Q_stricmp( token, "qlNaturalTexture" ) )
 		{
 			/*
@@ -2791,6 +2809,11 @@ static int CollapseMultitexture( unsigned int st0bits, shaderStage_t *st0, shade
 	*/
 	if ( st1->naturalTexture ) {
 		st0->naturalTexture = qtrue;
+	}
+	// [QL] E104. Same reasoning: the keyword sits on the diffuse stage, which is
+	// the one being discarded when the lightmap stage came first.
+	if ( st1->normalFlipG ) {
+		st0->normalFlipG = qtrue;
 	}
 
 	//
