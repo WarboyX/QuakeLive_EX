@@ -1302,11 +1302,20 @@ typedef struct {
 	qboolean	haveSteepness;
 	qboolean	haveHeight;
 	qboolean	haveStrength;
+	/* [QL] R28: the impact ripples, same precedence rule as the rest */
+	qboolean	haveRippleSize;
+	qboolean	haveRippleHeight;
+	qboolean	haveRippleWaves;
+	qboolean	haveRippleLife;
 	float		scale;
 	float		speed;
 	float		steepness;
 	float		height;
 	float		strength;
+	float		rippleSize;
+	float		rippleHeight;
+	float		rippleWaves;
+	float		rippleLife;
 } waterProfile_t;
 
 /*
@@ -1585,6 +1594,10 @@ extern	cvar_t	*r_waterWaveSpeed;				// [QL] how fast they travel
 extern	cvar_t	*r_waterWaveSteepness;			// [QL] how far the normal tilts
 extern	cvar_t	*r_waterWaveHeight;				// [QL] crest-to-trough, in world units
 extern	cvar_t	*r_waterFoam;					// [QL] R19: how white a splash goes
+extern	cvar_t	*r_waterRippleSize;				// [QL] R28: impact ripples, not the wind chop
+extern	cvar_t	*r_waterRippleHeight;
+extern	cvar_t	*r_waterRippleWaves;
+extern	cvar_t	*r_waterRippleLife;
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
 

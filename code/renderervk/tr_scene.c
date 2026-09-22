@@ -445,6 +445,11 @@ void R_LoadWaterProfile( const char *mapName ) {
 			WATER_KEY( "steepness", steepness, haveSteepness )
 			WATER_KEY( "height",    height,    haveHeight )
 			WATER_KEY( "strength",  strength,  haveStrength )
+			/* [QL] R28: impacts, as opposed to the wind chop above */
+			WATER_KEY( "ripplesize",   rippleSize,   haveRippleSize )
+			WATER_KEY( "rippleheight", rippleHeight, haveRippleHeight )
+			WATER_KEY( "ripplewaves",  rippleWaves,  haveRippleWaves )
+			WATER_KEY( "ripplelife",   rippleLife,   haveRippleLife )
 #undef WATER_KEY
 			else {
 				ri.Printf( PRINT_WARNING, "water.cfg: unknown key '%s' in block for '%s' - "
@@ -473,17 +478,27 @@ void R_LoadWaterProfile( const char *mapName ) {
 	WATER_TAKE( steepness, haveSteepness )
 	WATER_TAKE( height,    haveHeight )
 	WATER_TAKE( strength,  haveStrength )
+	WATER_TAKE( rippleSize,   haveRippleSize )
+	WATER_TAKE( rippleHeight, haveRippleHeight )
+	WATER_TAKE( rippleWaves,  haveRippleWaves )
+	WATER_TAKE( rippleLife,   haveRippleLife )
 #undef WATER_TAKE
 
-	applied = tr.waterProfile.haveScale + tr.waterProfile.haveSpeed +
-		tr.waterProfile.haveSteepness + tr.waterProfile.haveHeight +
-		tr.waterProfile.haveStrength;
+	/*
+	[QL] Counted from the profile rather than tracked as the keys are read,
+	because the same field can be set by both blocks and must count once.
+	*/
+#define WATER_COUNT( p ) ( (p).haveScale + (p).haveSpeed + (p).haveSteepness + \
+	(p).haveHeight + (p).haveStrength + (p).haveRippleSize + (p).haveRippleHeight + \
+	(p).haveRippleWaves + (p).haveRippleLife )
+
+	applied = WATER_COUNT( tr.waterProfile );
 
 	if ( applied ) {
 		ri.Printf( PRINT_ALL, "Water: %i setting(s) for %s from water.cfg%s\n",
-			applied, mapName, named.haveScale || named.haveSpeed || named.haveSteepness ||
-				named.haveHeight || named.haveStrength ? "" : " (the default block)" );
+			applied, mapName, WATER_COUNT( named ) ? "" : " (the default block)" );
 	}
+#undef WATER_COUNT
 }
 
 

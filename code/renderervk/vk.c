@@ -12407,7 +12407,10 @@ renderer alone.
 
 #define SSR_MAX_PLANES VK_MAX_WATER_PLANES
 #define SSR_MAX_RIPPLES MAX_WATER_RIPPLES   /* [QL] R19, and the shader's copy */
-#define SSR_RIPPLE_LIFE 2.2f                /* seconds; must match ssr.tmpl */
+/* [QL] R28: SSR_RIPPLE_LIFE was 2.2f here and RIPPLE_LIFE 2.2 in ssr.tmpl, with
+   a comment on each telling the next person to keep them equal. They are now one
+   value, r_waterRippleLife, sent in rippleTune.x - so the comment is unnecessary
+   rather than merely obeyed, and the constant is gone instead of left unread. */
 #define SSR_MAX_LIGHTS 16                   /* and the shader's copy */
 
 typedef struct {
@@ -12421,7 +12424,8 @@ typedef struct {
 	float boundsMax[SSR_MAX_PLANES][4];
 	float planeCount[4];
 	float wave[4];        // slope, units per wavelength, speed, seconds
-	float wave2[4];       // height in units; y..w spare
+	float wave2[4];       // height in units, foam; z..w spare
+	float rippleTune[4];  // [QL] R28: life, waves, height scale, size scale
 	float ripple[SSR_MAX_RIPPLES][4];    // xy where, z age, w reach
 	float ripple2[SSR_MAX_RIPPLES][4];   // x strength, y plane index
 	float emitter[SSR_MAX_LIGHTS][4];    // xyz world, w radius
@@ -13064,6 +13068,27 @@ qboolean vk_ssr( void )
 		float now = (float)backEnd.refdef.time * 0.001f;
 		int r, first, count;
 		int dropAge = 0, dropPlane = 0;
+		/*
+		[QL] R28. Resolved once for the frame, not per ripple - these are
+		global tuning, and R_WaterSetting does a string compare.
+
+		`life` is read here as well as being handed to the shader because this
+		loop is what decides a ripple is over. Leave the two on different
+		numbers and a ripple either vanishes while the shader is still drawing
+		it or holds a slot after it is invisible, so there is one source.
+		*/
+		const waterProfile_t *rwp = &tr.waterProfile;
+		float rippleLife = R_WaterSetting( r_waterRippleLife, rwp->haveRippleLife, rwp->rippleLife );
+		float rippleSize = R_WaterSetting( r_waterRippleSize, rwp->haveRippleSize, rwp->rippleSize );
+
+		if ( rippleLife < 0.05f ) {
+			rippleLife = 0.05f;     // it divides the age in the shader
+		}
+
+		u->rippleTune[0] = rippleLife;
+		u->rippleTune[1] = R_WaterSetting( r_waterRippleWaves, rwp->haveRippleWaves, rwp->rippleWaves );
+		u->rippleTune[2] = R_WaterSetting( r_waterRippleHeight, rwp->haveRippleHeight, rwp->rippleHeight );
+		u->rippleTune[3] = rippleSize;
 
 		count = 0;
 
@@ -13088,7 +13113,7 @@ qboolean vk_ssr( void )
 
 			age = now - (float)rp->startTime * 0.001f;
 
-			if ( age < 0.0f || age >= SSR_RIPPLE_LIFE ) {
+			if ( age < 0.0f || age >= rippleLife ) {
 				dropAge++;
 				continue;           // not yet, or long gone
 			}
@@ -13116,7 +13141,9 @@ qboolean vk_ssr( void )
 			u->ripple[count][0] = rp->origin[0];
 			u->ripple[count][1] = rp->origin[1];
 			u->ripple[count][2] = age;
-			u->ripple[count][3] = rp->radius;
+			/* [QL] R28: scaled here rather than in the shader so the reach the
+			   shader tests against and the reach it draws are the same number */
+			u->ripple[count][3] = rp->radius * rippleSize;
 
 			u->ripple2[count][0] = rp->strength;
 			u->ripple2[count][1] = (float)best;

@@ -72,6 +72,18 @@ layout(set = 0, binding = 2) uniform SSR {
 	*/
 	vec4 wave2;
 	/*
+	[QL] R28: the impact ripples' shape, all four player-tunable.
+
+	  x  seconds from impact to gone, r_waterRippleLife. The C side ages
+	     ripples out against this same value - one source, so a ripple cannot
+	     vanish while this is still drawing it.
+	  y  rings trailing the leading edge, r_waterRippleWaves
+	  z  multiplier on each ripple's strength, r_waterRippleHeight
+	  w  multiplier on reach, r_waterRippleSize. Already applied to ripple[i].w
+	     by the C side; here only so the slope can be corrected for it.
+	*/
+	vec4 rippleTune;
+	/*
 	[QL] Disturbances - splashes, impacts, footfalls. planeCount.y says how many
 	are filled.
 
@@ -102,8 +114,13 @@ layout(set = 0, binding = 2) uniform SSR {
 	vec4 emitter2[SSR_MAX_LIGHTS];
 };
 
-#define RIPPLE_LIFE 2.2     /* seconds from impact to gone */
-#define RIPPLE_WAVES 5.0    /* rings behind the leading edge */
+/* [QL] R28: RIPPLE_LIFE and RIPPLE_WAVES were compile-time constants here, with
+   RIPPLE_LIFE duplicated in vk.c. Both now arrive in rippleTune. RIPPLE_SLOPE
+   stays a constant deliberately - it is the ratio between how far the surface
+   moves and how far its normal tilts, which is a property of the model rather
+   than a taste setting, and r_waterRippleHeight already scales both together. */
+#define RIPPLE_LIFE  rippleTune.x
+#define RIPPLE_WAVES rippleTune.y
 #define RIPPLE_SLOPE 0.35   /* see waterSurface - keeps a splash near the chop */
 
 layout(location = 0) in vec2 frag_tex_coord;
@@ -262,7 +279,7 @@ vec4 rippleSurface(vec2 p, int planeIdx) {
 		float fade = 1.0 - age / RIPPLE_LIFE;
 		float falloff = 1.0 - d / reach;
 		float trail = exp( -(front - d) * (3.0 / reach) );
-		float amp = ripple2[i].x * fade * falloff * falloff * trail;
+		float amp = ripple2[i].x * rippleTune.z * fade * falloff * falloff * trail;
 
 		float k = RIPPLE_WAVES * 6.2831853 / reach;
 		float phase = (d - front) * k;
@@ -292,7 +309,21 @@ vec4 rippleSurface(vec2 p, int planeIdx) {
 			as a splash on the surface, it reads as a hole in it, and most of it
 			is then eaten by the facing guard further down anyway.
 			*/
-			grad += ((p - c) / d) * amp * k * cos(phase) * RIPPLE_SLOPE;
+			/*
+			[QL] R28: times rippleTune.w, which undoes what k already did.
+
+			k is RIPPLE_WAVES/reach, so widening a ripple with
+			r_waterRippleSize makes k smaller and the slope gentler in exact
+			proportion. That is correct for a real wave and wrong for a
+			setting called "size": asking for bigger splashes would quietly
+			hand back fainter ones, and the obvious response is to raise
+			r_waterRippleHeight to compensate, which is the fix for a problem
+			that should not exist.
+
+			So size changes size and height changes strength. At the default
+			of 1 this multiplies by 1 and nothing moves.
+			*/
+			grad += ((p - c) / d) * amp * k * cos(phase) * RIPPLE_SLOPE * rippleTune.w;
 		}
 	}
 

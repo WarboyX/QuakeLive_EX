@@ -166,6 +166,10 @@ cvar_t	*r_waterWaveSpeed;
 cvar_t	*r_waterWaveSteepness;
 cvar_t	*r_waterWaveHeight;
 cvar_t	*r_waterFoam;
+cvar_t	*r_waterRippleSize;      // [QL] R28
+cvar_t	*r_waterRippleHeight;
+cvar_t	*r_waterRippleWaves;
+cvar_t	*r_waterRippleLife;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -2494,6 +2498,58 @@ static void R_Register( void )
 		"over a trough and compresses over a crest. Keep it small against "
 		S_COLOR_CYAN "\\r_waterWaveScale" S_COLOR_WHITE ": the two are solved against each "
 		"other, and a height approaching the wavelength stops converging." );
+
+	/*
+	[QL] R28. The reactive side of the water - what a rocket, a shotgun pellet
+	or a footfall does to it.
+
+	Everything above tunes the wind chop, which is always there and is the same
+	everywhere on the surface. None of it touches an impact: those came through
+	RE_AddWaterRipple with a per-weapon radius and strength, and the shape they
+	spread in was three #defines compiled into ssr.tmpl. So "make the splashes
+	bigger" had no answer that was not a rebuild, and turning the chop up to get
+	there made the whole pool choppier without making a single impact larger.
+
+	These four are that missing half. They are multipliers on what the weapon
+	asked for rather than absolute sizes, so the per-weapon differences that
+	cg_weapons.c sets up - a rocket against a pellet - survive being scaled.
+	*/
+	r_waterRippleSize = ri.Cvar_Get( "r_waterRippleSize", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleSize, "0.1", "8", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleSize, "How far an impact's rings spread, as a "
+		"multiple of what the weapon asked for. 2 makes every splash reach twice as far.\n"
+		"A multiplier and not a size, so a rocket stays bigger than a shotgun pellet.\n"
+		"The rings still take the same time to get there, so raising this also makes the "
+		"front travel outward faster - see " S_COLOR_CYAN "\\r_waterRippleLife"
+		S_COLOR_WHITE " to slow it back down." );
+
+	r_waterRippleHeight = ri.Cvar_Get( "r_waterRippleHeight", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleHeight, "0", "8", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleHeight, "How hard an impact hits the water, as a "
+		"multiple of the weapon's own strength. 0 leaves the chop but kills every splash.\n"
+		"Drives both how far the surface moves and how far its normal tilts, so this is the "
+		"one to reach for to make impacts read more strongly. Foam follows it too, since "
+		"foam is driven off how much disturbance is present." );
+
+	r_waterRippleWaves = ri.Cvar_Get( "r_waterRippleWaves", "5", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleWaves, "1", "24", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleWaves, "How many rings trail behind the leading edge "
+		"of a splash - the frequency of the ripple.\n"
+		"Low values give a few fat rings, high values a fine dense ring pattern. This is "
+		"counted across the ripple's whole reach, so a ring stays the same shape when "
+		S_COLOR_CYAN "\\r_waterRippleSize" S_COLOR_WHITE " changes.\n"
+		"Past about 12 the rings get close to a pixel apart at any distance and start to "
+		"shimmer rather than read as rings." );
+
+	r_waterRippleLife = ri.Cvar_Get( "r_waterRippleLife", "2.2", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleLife, "0.25", "10", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleLife, "Seconds from impact to gone.\n"
+		"A ripple's leading edge reaches its full spread exactly at the end of its life, so "
+		"this sets how fast the rings travel as well as how long they last. Longer means "
+		"slower and more lingering, not merely more of the same.\n"
+		"Only " S_COLOR_CYAN "48" S_COLOR_WHITE " ripples exist at once and the oldest is "
+		"dropped first, so a long life plus a busy fight means earlier splashes get evicted "
+		"before they fade." );
 
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );

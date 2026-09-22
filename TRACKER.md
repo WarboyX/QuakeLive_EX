@@ -6083,6 +6083,80 @@ panel is still the only thing that can.
 
 ---
 
+### E107. Cvars for the reactive water — impacts, not the wind chop — DONE (verify)
+**Lives in:** our **client** (renderervk + pak01) · **Seen by:** our client only
+
+Reported as: the water cvars only affect the non-reactive waves, and there is no
+way to change how the water answers being shot or blown up.
+
+**That was exactly right, and the split was structural.** The water is two
+systems that happen to share a surface:
+
+- the **wind chop** - always present, the same everywhere on the plane, fully
+  exposed through `r_waterWave{Scale,Speed,Steepness,Height}` and `r_waterFoam`
+  since R19;
+- the **impacts** - `RE_AddWaterRipple`, one event per shot or explosion with a
+  per-weapon radius and strength from `cg_weapons.c`.
+
+Every cvar we had tuned the first. The second's *shape* was three `#define`s
+compiled into `ssr.tmpl` (`RIPPLE_LIFE 2.2`, `RIPPLE_WAVES 5.0`,
+`RIPPLE_SLOPE 0.35`), with `RIPPLE_LIFE` duplicated a second time in `vk.c` as
+`SSR_RIPPLE_LIFE` under a comment telling the next person to keep the two equal.
+So "make the splashes bigger" had no answer short of a rebuild, and the nearest
+available lever - turning the chop up - made the whole pool choppier without
+making a single impact any larger.
+
+**Four cvars, and they are multipliers rather than absolute sizes** so the
+per-weapon differences survive being scaled - a rocket stays bigger than a
+shotgun pellet:
+
+| cvar | default | what it does |
+|---|---|---|
+| `r_waterRippleSize` | 1 | how far the rings spread, × what the weapon asked |
+| `r_waterRippleHeight` | 1 | how hard the impact hits, × the weapon's strength |
+| `r_waterRippleWaves` | 5 | rings trailing the leading edge - the frequency |
+| `r_waterRippleLife` | 2.2 | seconds from impact to gone |
+
+The defaults reproduce the old constants exactly, so **nothing changes until
+something is set.**
+
+**Two things that needed deciding rather than just plumbing.**
+
+*The duplicated lifetime is now one value.* `vk.c` ages ripples out of the ring
+buffer and the shader fades them; on different numbers a ripple either vanishes
+while the shader is still drawing it or holds one of the 48 slots after it is
+invisible. Both now read `rippleTune.x`, so the comment telling you to keep them
+equal is unnecessary rather than merely obeyed, and `SSR_RIPPLE_LIFE` is deleted
+rather than left unread.
+
+*Size no longer quietly weakens the splash.* The ring frequency is
+`RIPPLE_WAVES / reach`, so widening a ripple makes the slope gentler in exact
+proportion - correct for a real wave, wrong for a setting called "size", because
+asking for bigger splashes would hand back fainter ones and the obvious response
+is to raise the height to compensate. The slope is multiplied by the size factor
+to cancel it, so size changes size and height changes strength. At the default
+of 1 it multiplies by 1 and nothing moves.
+
+`RIPPLE_SLOPE` deliberately stays a constant: it is the ratio between how far
+the surface moves and how far its normal tilts, a property of the model rather
+than a taste setting, and `r_waterRippleHeight` already scales both together.
+
+**Also in `water.cfg`,** as `ripplesize` / `rippleheight` / `ripplewaves` /
+`ripplelife`, under the same precedence rule as the rest: a map's value applies
+only where the player has left that cvar at its shipped default. No map block
+sets any of them, so this changes nothing on its own. The header now says
+plainly that the chop keys and the impact keys are separate systems, because
+"the water is too calm" and "the splashes are too small" have no setting in
+common and that was not discoverable.
+
+**Unverified:** none of it has been seen. `r_waterRippleHeight 4` on a map with
+water is the one-command check - if impacts do not visibly change, the uniform
+is not arriving. Note also that a long `r_waterRippleLife` plus a busy fight
+evicts earlier splashes, since only 48 ripples exist at once and the oldest goes
+first.
+
+---
+
 ### E106. `Hunk_Alloc failed` at map load — the archived hunk size — FIXED (cause unconfirmed)
 **Lives in:** our **client** and our **server** (engine, `common.c`) · **Seen by:** our client only
 
