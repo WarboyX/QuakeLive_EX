@@ -6083,6 +6083,56 @@ panel is still the only thing that can.
 
 ---
 
+### E111. The options that were missing — sliders, models, resolution — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Four faults in E110's menu, all correct.
+
+**Sliders.** Mouse sensitivity, master volume and music were `cvarFloatList`s,
+which is wrong twice: a value between the listed stops **displays as blank** -
+the screenshot shows an empty Mouse sensitivity row, because the real value was
+not one of the five offered - and a continuous quantity presented as five stops
+is not the setting the player has. All three are now `ITEM_TYPE_SLIDER`, matching
+what Quake Live does (`ingame_controls.menu`: `cvarfloat "sensitivity" 5 1 30`).
+
+**Model picking.** Added to `io_playersetup` (enlarged 400×240 → 480×350) and to
+the in-game Settings tab: a `LISTBOX_IMAGE` over `FEEDER_Q3HEADS` with a
+`UI_PLAYERMODEL` preview - the same construction Quake Live's own basic options
+use. Both halves were confirmed implemented in `ui_main.c` first.
+
+**Resolution.** The render menu had none. It now carries Fullscreen and
+Resolution in the OUTPUT section, above the `APPLY (restart video)` button that
+was already there and is exactly what they need. The value list is Quake Live's
+own from `docs/ql-cvar-semantics.txt` - `r_mode -2` is Native Desktop, `-1`
+Custom, `0..27` its fixed modes - not a guessed mapping.
+
+**"Missing a lot of options."** Quake Live's `ingame_options_basic.menu` and
+`ingame_options_advanced.menu` name **134 cvars**. Those two files are now the
+specification, and the generator emits nine sub-pages from a table: Video,
+Lighting, Bloom & Post, Crosshair, HUD, Weapons, Effects, Sound, Game.
+
+**34 of those 134 are deliberately absent, and that is the interesting part.**
+Cross-referenced against `docs/cvar-manifest.txt`, they are `QL-ASSET`:
+registered so a config or a stock client finds the name, and **read by nothing
+in our code**. A row for one takes a value, displays it, persists it and changes
+nothing - the failure this tree has already paid for twice. `cg_railStyle` is on
+that list, which is why the rail style row Quake Live puts on its *basic* page is
+not on ours. The 34 are the backlog, not a gap in the menu.
+
+Value labels come from `docs/ql-cvar-semantics.txt` at generation time rather
+than being written by hand, so the generator **fails** on a cvar it has no list
+for instead of inventing one. That file exists precisely because `cg_hitBeep`
+defaults to 2 and nothing about the name says whether 1 and 3 are louder,
+different or off.
+
+**check-menus caught every layout error on the way** - row pitch against row
+height, a subtitle two pixels into the first row, a model preview under the name
+field, buttons past the frame. 0 problems now, 127 menus, 1820 generated lines.
+
+**Unverified:** not run. The sliders and the model list are the checks.
+
+---
+
 ### E110. Replacing Quake Live's in-game menu, in its own style — DONE (verify)
 **Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
 

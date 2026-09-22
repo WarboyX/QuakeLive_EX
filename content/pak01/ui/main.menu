@@ -543,7 +543,7 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "Who is here, and which side you are on."  textscale .19  rect 20 26 520 16  textaligny 12
+        itemDef { text "Who is here, and which side you are on."  textscale .19  rect 20 26 520 14  textaligny 11
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { text "Players in this match"  textscale .21  rect 20 44 250 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
@@ -606,7 +606,7 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "The server decides whether a vote is allowed - these only ask."  textscale .19  rect 20 26 520 16  textaligny 12
+        itemDef { text "The server decides whether a vote is allowed - these only ask."  textscale .19  rect 20 26 520 14  textaligny 11
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { text "Map"  textscale .21  rect 20 44 250 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
@@ -674,7 +674,7 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "Acts on the player selected on the left."  textscale .19  rect 20 26 520 16  textaligny 12
+        itemDef { text "Acts on the player selected on the left."  textscale .19  rect 20 26 520 14  textaligny 11
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { text "Select a player"  textscale .21  rect 20 44 250 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
@@ -763,7 +763,7 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "Click a row to cycle through its choices."  textscale .19  rect 20 26 520 16  textaligny 12
+        itemDef { text "Click a row to cycle through its choices."  textscale .19  rect 20 26 520 14  textaligny 11
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { text "Bot"  textscale .21  rect 24 60 160 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
@@ -809,7 +809,7 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "The keys worth changing without leaving the game."  textscale .19  rect 20 26 520 16  textaligny 12
+        itemDef { text "The keys worth changing without leaving the game."  textscale .19  rect 20 26 520 14  textaligny 11
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { text "Forward"  textscale .21  rect 24 44 200 17  textaligny 12
                   forecolor .72 .72 .72 1  visible 1  decoration }
@@ -905,55 +905,61 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "The common ones, applied as you change them."  textscale .19  rect 20 26 520 16  textaligny 12
+        itemDef { text "The common ones, applied as you change them."  textscale .19  rect 20 26 520 14  textaligny 11
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Field of view"  textscale .21  rect 24 48 200 16  textaligny 12
+        itemDef { text "Player model"  textscale .21  rect 24 44 250 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_fov  type ITEM_TYPE_MULTI  text ""  cvar "cg_fov"
-                  cvarFloatList { "90" 90 "100" 100 "110" 110 "120" 120 "130" 130 }  rect 230 48 200 18  textscale .21  textaligny 13
-                  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Mouse sensitivity"  textscale .21  rect 24 70 200 16  textaligny 12
+        itemDef {
+            name ig_models  rect 24 64 250 56  type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY  elementwidth 26  elementheight 26
+            elementtype LISTBOX_IMAGE  feeder FEEDER_Q3HEADS
+            border 1  bordercolor .35 .3 .12 1  visible 1
+        }
+        itemDef { name ig_modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
+                  rect 420 40 120 86  visible 1 }
+        itemDef { text "Mouse sensitivity"  textscale .21  rect 24 132 250 16  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_sens  type ITEM_TYPE_MULTI  text ""  cvar "sensitivity"
-                  cvarFloatList { "1" 1 "2" 2 "3" 3 "5" 5 "8" 8 "12" 12 }  rect 230 70 200 18  textscale .21  textaligny 13
-                  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Crosshair"  textscale .21  rect 24 92 200 16  textaligny 12
+        itemDef { name r_sensitivity  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "sensitivity" 5 1 30
+                  rect 290 132 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Field of view"  textscale .21  rect 24 149 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgfov  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_fov" 100 75 130
+                  rect 290 149 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Brightness"  textscale .21  rect 24 166 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rgamma  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_gamma" 1.3 1 3
+                  rect 290 166 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Master volume"  textscale .21  rect 24 183 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_svolume  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "s_volume" 0.8 0 1
+                  rect 290 183 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Music"  textscale .21  rect 24 200 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_smusicvolume  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "s_musicvolume" 0.25 0 1
+                  rect 290 200 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Crosshair"  textscale .21  rect 24 221 250 16  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name ig_xhair  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR
-                  rect 230 88 24 24  visible 1 }
-        itemDef { text "Crosshair size"  textscale .21  rect 24 114 200 16  textaligny 12
+                  rect 290 219 20 20  visible 1 }
+        itemDef { text "Crosshair size"  textscale .21  rect 24 243 250 16  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_xsize  type ITEM_TYPE_MULTI  text ""  cvar "cg_crosshairSize"
-                  cvarFloatList { "16" 16 "24" 24 "32" 32 "48" 48 }  rect 230 114 200 18  textscale .21  textaligny 13
-                  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Draw gun"  textscale .21  rect 24 136 200 16  textaligny 12
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_gun  type ITEM_TYPE_YESNO  text ""  cvar "cg_drawGun"
-                  rect 230 136 70 18  textscale .21  textaligny 13  textalignx 2
+        itemDef { name r_cgcrosshairsize  type ITEM_TYPE_MULTI  text ""  cvar "cg_crosshairSize"
+                  cvarFloatList { "Medium" 32 "Large" 40 "Small" 24 }
+                  rect 290 243 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Simple items"  textscale .21  rect 24 158 200 16  textaligny 12
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_simple  type ITEM_TYPE_YESNO  text ""  cvar "cg_simpleItems"
-                  rect 230 158 70 18  textscale .21  textaligny 13  textalignx 2
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Master volume"  textscale .21  rect 24 180 200 16  textaligny 12
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_vol  type ITEM_TYPE_MULTI  text ""  cvar "s_volume"
-                  cvarFloatList { "Off" 0 "Low" 0.3 "Medium" 0.6 "High" 1 }  rect 230 180 200 18  textscale .21  textaligny 13
-                  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Music"  textscale .21  rect 24 202 200 16  textaligny 12
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_music  type ITEM_TYPE_MULTI  text ""  cvar "s_musicvolume"
-                  cvarFloatList { "Off" 0 "Low" 0.2 "Medium" 0.5 "High" 1 }  rect 230 202 200 18  textscale .21  textaligny 13
-                  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Brightness"  textscale .21  rect 24 224 200 16  textaligny 12
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_gamma  type ITEM_TYPE_MULTI  text ""  cvar "r_gamma"
-                  cvarFloatList { "Dark" 1 "Normal" 1.3 "Bright" 1.6 "Very bright" 2 }  rect 230 224 200 18  textscale .21  textaligny 13
-                  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "These take effect immediately. Anything needing a restart lives"  textscale .17  rect 24 252 500 16  textaligny 12
+        itemDef { text "Resolution, texture detail and everything else Quake Live keeps on its"  textscale .17  rect 24 259 520 16  textaligny 12
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "under Advanced, which says so where it applies."  textscale .17  rect 24 268 500 16  textaligny 12
+        itemDef { text "advanced page are under the Advanced tab - and on the render menu."  textscale .17  rect 24 276 520 16  textaligny 12
                   forecolor .72 .72 .72 1  visible 1  decoration }
     }
 
@@ -973,64 +979,117 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "Everything with its own page."  textscale .19  rect 20 26 520 16  textaligny 12
+        itemDef { text "Grouped the way Quake Live groups them."  textscale .19  rect 20 26 520 14  textaligny 11
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Renderer"  textscale .21  rect 24 48 240 16  textaligny 12
+        itemDef { text "Quake Live's advanced options, minus the ones our code does not read."  textscale .19  rect 24 44 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name adv_io_ig_video  text "VIDEO"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_video }
+            mouseEnter { setitemcolor adv_io_ig_video forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_video forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name adv_io_ig_light  text "LIGHTING"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 196 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_light }
+            mouseEnter { setitemcolor adv_io_ig_light forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_light forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name adv_io_ig_bloom  text "BLOOM & POST"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 368 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_bloom }
+            mouseEnter { setitemcolor adv_io_ig_bloom forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_bloom forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name adv_io_ig_crosshair  text "CROSSHAIR"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_crosshair }
+            mouseEnter { setitemcolor adv_io_ig_crosshair forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_crosshair forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name adv_io_ig_hud  text "HUD"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 196 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_hud }
+            mouseEnter { setitemcolor adv_io_ig_hud forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_hud forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name adv_io_ig_weapons  text "WEAPONS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 368 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_weapons }
+            mouseEnter { setitemcolor adv_io_ig_weapons forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_weapons forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name adv_io_ig_effects  text "EFFECTS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_effects }
+            mouseEnter { setitemcolor adv_io_ig_effects forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_effects forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name adv_io_ig_sound  text "SOUND"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 196 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_sound }
+            mouseEnter { setitemcolor adv_io_ig_sound forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_sound forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name adv_io_ig_game  text "GAME"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 368 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_ig_game }
+            mouseEnter { setitemcolor adv_io_ig_game forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_game forecolor 1 1 1 1 }
+        }
+        itemDef { text "Ours, not Quake Live's"  textscale .21  rect 24 186 300 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_advrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 68 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 206 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_renderoptions }
             mouseEnter { setitemcolor ig_advrender forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advrender forecolor 1 1 1 1 }
         }
         itemDef {
             name ig_advwater  text "WATER"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 96 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 196 206 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_water }
             mouseEnter { setitemcolor ig_advwater forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advwater forecolor 1 1 1 1 }
         }
         itemDef {
             name ig_advrt  text "RAY TRACING"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 124 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 368 206 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_raytracing }
             mouseEnter { setitemcolor ig_advrt forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advrt forecolor 1 1 1 1 }
         }
         itemDef {
             name ig_advsurf  text "SURFACE DETAIL"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 152 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 234 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_surfacedetail }
             mouseEnter { setitemcolor ig_advsurf forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advsurf forecolor 1 1 1 1 }
         }
-        itemDef { text "Player"  textscale .21  rect 300 48 240 16  textaligny 12
-                  forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_advplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 68 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 196 234 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_playersetup }
             mouseEnter { setitemcolor ig_advplayer forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advplayer forecolor 1 1 1 1 }
         }
-        itemDef { text "Quake Live's own menu"  textscale .21  rect 300 104 240 16  textaligny 12
-                  forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_advql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 124 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 368 234 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
             mouseEnter { setitemcolor ig_advql forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advql forecolor 1 1 1 1 }
         }
-        itemDef { text "Opens on top of this one, for anything not reproduced here."  textscale .17  rect 300 152 240 16  textaligny 12
-                  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "These pages open over the frame rather than inside it - they are the"  textscale .17  rect 24 218 500 16  textaligny 12
-                  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "same menus the main menu uses, so a setting is in one place only and"  textscale .17  rect 24 234 500 16  textaligny 12
-                  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "cannot disagree with itself depending on where you opened it."  textscale .17  rect 24 250 500 16  textaligny 12
-                  forecolor .72 .72 .72 1  visible 1  decoration }
     }
 
     menuDef {
@@ -1049,7 +1108,7 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "This one asks first."  textscale .19  rect 20 26 520 16  textaligny 12
+        itemDef { text "This one asks first."  textscale .19  rect 20 26 520 14  textaligny 11
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { text "Leaving drops you back to the main menu. If this is a server you"  textscale .21  rect 24 60 500 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
@@ -1068,6 +1127,757 @@
             action { play "sound/misc/menu1.wav" ; uiScript closeingame }
             mouseEnter { setitemcolor ig_leaveno forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_leaveno forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_video"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "VIDEO"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Resolution and texture detail. Most of these need Apply."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Resolution"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rmode  type ITEM_TYPE_MULTI  text ""  cvar "r_mode"
+                  cvarFloatList { "Native Desktop" -2 "Custom" -1 "^1320x240 (4:3)" 0 "^1400x300 (4:3)" 1 "^1512x384 (4:3)" 2 "^1640x360 (16:9)" 3 "^1640x400 (16:10)" 4 "^1640x480 (4:3)" 5 "^1800x450 (16:9)" 6 "^1852x480 (16:9)" 7 "^1800x500 (16:10)" 8 "^1800x600 (4:3)" 9 "1024x640 (16:10)" 10 "1024x576 (16:9)" 11 "1024x768 (4:3)" 12 "1152x864 (4:3)" 13 "1280x720 (16:9)" 14 "1280x768 (5:3)" 15 "1280x800 (16:10)" 16 "1280x1024 (5:4)" 17 "1440x900 (16:10)" 18 "1600x900 (16:9)" 19 "1600x1000 (16:10)" 20 "1680x1050 (16:10)" 21 "1600x1200 (4:3)" 22 "1920x1080 (16:9)" 23 "1920x1200 (16:10)" 24 "1920x1440 (4:3)" 25 "2048x1536 (4:3)" 26 "2560x1600 (16:10)" 27 }
+                  rect 290 40 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Fullscreen"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rfullscreen  type ITEM_TYPE_YESNO  text ""  cvar "r_fullscreen"
+                  rect 290 57 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Windowed mode"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rwindowedmode  type ITEM_TYPE_MULTI  text ""  cvar "r_windowedMode"
+                  cvarFloatList { "Native Desktop" -2 "Custom" -1 "^1320x240 (4:3)" 0 "^1400x300 (4:3)" 1 "^1512x384 (4:3)" 2 "^1640x360 (16:9)" 3 "^1640x400 (16:10)" 4 "^1640x480 (4:3)" 5 "^1800x450 (16:9)" 6 "^1852x480 (16:9)" 7 "^1800x500 (16:10)" 8 "^1800x600 (4:3)" 9 "1024x640 (16:10)" 10 "1024x576 (16:9)" 11 "1024x768 (4:3)" 12 "1152x864 (4:3)" 13 "1280x720 (16:9)" 14 "1280x768 (5:3)" 15 "1280x800 (16:10)" 16 "1280x1024 (5:4)" 17 "1440x900 (16:10)" 18 "1600x900 (16:9)" 19 "1600x1000 (16:10)" 20 "1680x1050 (16:10)" 21 "1600x1200 (4:3)" 22 "1920x1080 (16:9)" 23 "1920x1200 (16:10)" 24 "1920x1440 (4:3)" 25 "2048x1536 (4:3)" 26 "2560x1600 (16:10)" 27 }
+                  rect 290 74 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Refresh rate"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rdisplayrefresh  type ITEM_TYPE_MULTI  text ""  cvar "r_displayRefresh"
+                  cvarFloatList { "Auto" 0 "50Hz" 50 "56Hz" 56 "60Hz" 60 "65Hz" 65 "70Hz" 70 "72Hz" 72 "75Hz" 75 "80Hz" 80 "85Hz" 85 "90Hz" 90 "95Hz" 95 "100Hz" 100 "110Hz" 110 "120Hz" 120 "144Hz" 144 "240Hz" 240 }
+                  rect 290 91 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Vertical sync"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rswapinterval  type ITEM_TYPE_MULTI  text ""  cvar "r_swapInterval"
+                  cvarFloatList { "Off" 0 "On" 1 "Adaptive" -1 }
+                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Texture detail"  textscale .21  rect 24 125 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rpicmip  type ITEM_TYPE_MULTI  text ""  cvar "r_picmip"
+                  cvarFloatList { "Highest" 0 "High" 1 "Medium" 2 "Low" 3 }
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Texture depth"  textscale .21  rect 24 142 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rtexturebits  type ITEM_TYPE_MULTI  text ""  cvar "r_texturebits"
+                  cvarFloatList { "Default" 0 "16-bit" 16 "32-bit" 32 }
+                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Compress textures"  textscale .21  rect 24 159 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rextcompressedtextures  type ITEM_TYPE_YESNO  text ""  cvar "r_ext_compressed_textures"
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Curve detail"  textscale .21  rect 24 176 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rsubdivisions  type ITEM_TYPE_MULTI  text ""  cvar "r_subdivisions"
+                  cvarFloatList { "Quality" 4 "Performance" 80 }
+                  rect 290 176 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Model detail"  textscale .21  rect 24 193 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rlodbias  type ITEM_TYPE_MULTI  text ""  cvar "r_lodbias"
+                  cvarFloatList { "Best" -2 "High" -1 "Medium" 0 "Low" 1 "Poor" 2 }
+                  rect 290 193 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Fast sky"  textscale .21  rect 24 210 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rfastsky  type ITEM_TYPE_YESNO  text ""  cvar "r_fastsky"
+                  rect 290 210 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name bk_io_ig_video  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_video ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_video forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_video forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name ap_io_ig_video  text "APPLY (restarts renderer)"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 24 264 250 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
+            mouseEnter { setitemcolor ap_io_ig_video forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ap_io_ig_video forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_light"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "LIGHTING"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Brightness, shadows and the overall tone."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Brightness"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rgamma  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_gamma" 1.3 1 3
+                  rect 290 40 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Overbright"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_roverbrightbits  type ITEM_TYPE_MULTI  text ""  cvar "r_overbrightBits"
+                  cvarFloatList { "Low" 0 "Medium" 1 "High" 2 }
+                  rect 290 57 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Map overbright"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rmapoverbrightbits  type ITEM_TYPE_MULTI  text ""  cvar "r_mapOverbrightBits"
+                  cvarFloatList { "Low" 1 "Medium" 2 "High" 3 }
+                  rect 290 74 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Ambient light"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rambientscale  type ITEM_TYPE_MULTI  text ""  cvar "r_ambientScale"
+                  cvarFloatList { "Low" 1 "Medium" 10 "High" 100 }
+                  rect 290 91 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Dynamic lights"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rdynamiclight  type ITEM_TYPE_YESNO  text ""  cvar "r_dynamicLight"
+                  rect 290 108 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Shadows"  textscale .21  rect 24 125 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgshadows  type ITEM_TYPE_MULTI  text ""  cvar "cg_shadows"
+                  cvarFloatList { "Off" 0 "Blob" 1 "Simple" 2 "Stencil" 3 }
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Darken dead bodies"  textscale .21  rect 24 142 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdeadbodydarken  type ITEM_TYPE_YESNO  text ""  cvar "cg_deadBodyDarken"
+                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Vignette"  textscale .21  rect 24 159 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgvignette  type ITEM_TYPE_YESNO  text ""  cvar "cg_vignette"
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name bk_io_ig_light  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_light ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_light forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_light forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_bloom"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "BLOOM & POST"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Drawn by the OpenGL2 renderer."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Bloom"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_renablebloom  type ITEM_TYPE_MULTI  text ""  cvar "r_enableBloom"
+                  cvarFloatList { "No" 0 "Single Pass" 1 "Two Passes" 2 }
+                  rect 290 40 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Bloom intensity"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rbloomintensity  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_bloomIntensity" 0.6 0 2
+                  rect 290 57 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Bright threshold"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rbloombrightthreshold  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_bloomBrightThreshold" 0.6 0 1
+                  rect 290 74 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Bloom saturation"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rbloomsaturation  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_bloomSaturation" 1 0 2
+                  rect 290 91 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Scene intensity"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rbloomsceneintensity  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_bloomSceneIntensity" 1 0 2
+                  rect 290 108 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Scene saturation"  textscale .21  rect 24 125 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rbloomscenesaturation  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_bloomSceneSaturation" 1 0 2
+                  rect 290 125 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Post processing"  textscale .21  rect 24 142 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_renablepostprocess  type ITEM_TYPE_YESNO  text ""  cvar "r_enablePostProcess"
+                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Colour correction"  textscale .21  rect 24 159 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_renablecolorcorrect  type ITEM_TYPE_YESNO  text ""  cvar "r_enableColorCorrect"
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "The Vulkan renderer has its own effects under Render Options."  textscale .17  rect 24 182 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name bk_io_ig_bloom  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_bloom ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_bloom forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_bloom forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_crosshair"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "CROSSHAIR"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Size, brightness and what it reacts to."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Size"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairsize  type ITEM_TYPE_MULTI  text ""  cvar "cg_crosshairSize"
+                  cvarFloatList { "Medium" 32 "Large" 40 "Small" 24 }
+                  rect 290 40 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Brightness"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairbrightness  type ITEM_TYPE_MULTI  text ""  cvar "cg_crosshairBrightness"
+                  cvarFloatList { "No" 0 "Low" .3 "Medium" .6 "Bright" 1 }
+                  rect 290 57 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Pulse on pickup"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairpulse  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairPulse"
+                  rect 290 74 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Colour by health"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairhealth  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairHealth"
+                  rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Show player names"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawcrosshairnames  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshairNames"
+                  cvarFloatList { "No" 0 "Yes" 1 "Teammates Only" 2 }
+                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "The crosshair shape itself is on the Settings tab, beside its preview."  textscale .17  rect 24 131 500 16  textaligny 12
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name bk_io_ig_crosshair  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_crosshair ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_crosshair forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_crosshair forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_hud"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "HUD"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "What is drawn on screen while you play."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Field of view"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgfov  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_fov" 100 75 130
+                  rect 290 40 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Zoom field of view"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgzoomfov  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_zoomfov" 22.5 10 90
+                  rect 290 57 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Draw gun"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawgun  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawGun"
+                  cvarFloatList { "Normal" 1 "Still" 2 "Transparent" 3 "Hidden" 0 }
+                  rect 290 74 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Gun height"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgguny  type ITEM_TYPE_MULTI  text ""  cvar "cg_guny"
+                  cvarFloatList { "Left" 18 "Center" 3 "Default" 0 "Right" -10 }
+                  rect 290 91 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Show FPS"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawfps  type ITEM_TYPE_YESNO  text ""  cvar "cg_drawFPS"
+                  rect 290 108 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Lagometer"  textscale .21  rect 24 125 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cglagometer  type ITEM_TYPE_MULTI  text ""  cvar "cg_lagometer"
+                  cvarFloatList { "No" 0 "Basic" 1 "Advanced" 2 }
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Speedometer"  textscale .21  rect 24 142 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgspeedometer  type ITEM_TYPE_MULTI  text ""  cvar "cg_speedometer"
+                  cvarFloatList { "No" 0 "Right Graph" 1 "Center Graph" 2 "Center Print" 3 }
+                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Show attacker"  textscale .21  rect 24 159 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawattacker  type ITEM_TYPE_YESNO  text ""  cvar "cg_drawAttacker"
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Team overlay"  textscale .21  rect 24 176 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawteamoverlay  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawTeamOverlay"
+                  cvarFloatList { "No" 0 "Top" 1 "Bottom" 2 }
+                  rect 290 176 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Weapon bar"  textscale .21  rect 24 193 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgweaponbar  type ITEM_TYPE_MULTI  text ""  cvar "cg_weaponBar"
+                  cvarFloatList { "Left" 1 "Right" 2 "Centered" 3 "Classic" 4 "No" 0 }
+                  rect 290 193 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Weapon bar shows"  textscale .21  rect 24 210 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawfullweaponbar  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawFullWeaponBar"
+                  cvarFloatList { "All Available" 1 "In Inventory" 0 }
+                  rect 290 210 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Match timer"  textscale .21  rect 24 227 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgleveltimerdirection  type ITEM_TYPE_MULTI  text ""  cvar "cg_leveltimerdirection"
+                  cvarFloatList { "Count down" 1 "Count up" 0 }
+                  rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name bk_io_ig_hud  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_hud ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_hud forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_hud forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_weapons"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "WEAPONS"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Switching, and how each weapon looks."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Auto switch on pickup"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgautoswitch  type ITEM_TYPE_YESNO  text ""  cvar "cg_autoSwitch"
+                  rect 290 40 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Switch when empty"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgswitchonempty  type ITEM_TYPE_YESNO  text ""  cvar "cg_switchOnEmpty"
+                  rect 290 57 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Allow switch to empty"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgswitchtoempty  type ITEM_TYPE_YESNO  text ""  cvar "cg_switchToEmpty"
+                  rect 290 74 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Muzzle flash"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgmuzzleflash  type ITEM_TYPE_YESNO  text ""  cvar "cg_muzzleFlash"
+                  rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Ejected brass"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgbrasstime  type ITEM_TYPE_MULTI  text ""  cvar "cg_brassTime"
+                  cvarFloatList { "No" 0 "Short" 1000 "Normal" 2500 "Long" 5000 }
+                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "True lightning"  textscale .21  rect 24 125 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgtruelightning  type ITEM_TYPE_MULTI  text ""  cvar "cg_trueLightning"
+                  cvarFloatList { "Very High" 0 "High" 0.25 "Medium" 0.5 "Low" 0.75 "None" 1 }
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Lightning style"  textscale .21  rect 24 142 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cglightningstyle  type ITEM_TYPE_MULTI  text ""  cvar "cg_lightningStyle"
+                  cvarFloatList { "Default QL" 1 "QuakeWorld" 2 "Team Arena" 3 "Thin Shaft" 4 "Wide Beam" 5 }
+                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Lightning impact"  textscale .21  rect 24 159 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cglightningimpact  type ITEM_TYPE_YESNO  text ""  cvar "cg_lightningImpact"
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Plasma style"  textscale .21  rect 24 176 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgplasmastyle  type ITEM_TYPE_MULTI  text ""  cvar "cg_plasmaStyle"
+                  cvarFloatList { "No Trail" 1 "Particle Trails" 2 }
+                  rect 290 176 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Rocket style"  textscale .21  rect 24 193 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgrocketstyle  type ITEM_TYPE_MULTI  text ""  cvar "cg_rocketStyle"
+                  cvarFloatList { "No Plume" 1 "Fire Plume" 2 }
+                  rect 290 193 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Rail trail time"  textscale .21  rect 24 210 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgrailtrailtime  type ITEM_TYPE_MULTI  text ""  cvar "cg_railTrailTime"
+                  cvarFloatList { "Short" 100 "Medium" 400 "Long" 1500 }
+                  rect 290 210 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Rail width"  textscale .21  rect 24 227 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rrailwidth  type ITEM_TYPE_MULTI  text ""  cvar "r_railWidth"
+                  cvarFloatList { "No" 0 "Thin" 8 "Medium" 16 "Thick" 48 }
+                  rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Rail core width"  textscale .21  rect 24 244 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rrailcorewidth  type ITEM_TYPE_MULTI  text ""  cvar "r_railCoreWidth"
+                  cvarFloatList { "No" 0 "Thin" 1 "Medium" 6 "Thick" 16 }
+                  rect 290 244 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name bk_io_ig_weapons  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_weapons ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_weapons forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_weapons forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_effects"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "EFFECTS"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Impacts, smoke and world detail."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Rail segments"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rrailsegmentlength  type ITEM_TYPE_MULTI  text ""  cvar "r_railSegmentLength"
+                  cvarFloatList { "No" 1 "Short" 8 "Medium" 32 "Long" 128 }
+                  rect 290 40 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Simple items"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgsimpleitems  type ITEM_TYPE_YESNO  text ""  cvar "cg_simpleItems"
+                  rect 290 57 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Impact sparks"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgimpactsparksvelocity  type ITEM_TYPE_MULTI  text ""  cvar "cg_impactSparksVelocity"
+                  cvarFloatList { "Down/Fast" -128 "Down/Medium" -96 "Down/Slow" -64 "No" 0 "Up/Slow" 64 "Up/Medium" 96 "Up/Fast" 128 }
+                  rect 290 74 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Underwater bubbles"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgbubbletrail  type ITEM_TYPE_YESNO  text ""  cvar "cg_bubbleTrail"
+                  rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Damage numbers"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdamageplum  type ITEM_TYPE_YESNO  text ""  cvar "cg_damagePlum"
+                  rect 290 108 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Rocket smoke"  textscale .21  rect 24 125 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgsmokeradiusrl  type ITEM_TYPE_MULTI  text ""  cvar "cg_smokeRadius_RL"
+                  cvarFloatList { "No" 0 "Thin" 8 "Medium" 16 "Thick" 32 }
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Grenade smoke"  textscale .21  rect 24 142 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgsmokeradiusgl  type ITEM_TYPE_MULTI  text ""  cvar "cg_smokeRadius_GL"
+                  cvarFloatList { "No" 0 "Thin" 8 "Medium" 32 "Thick" 64 }
+                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Nailgun smoke"  textscale .21  rect 24 159 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgsmokeradiusng  type ITEM_TYPE_MULTI  text ""  cvar "cg_smokeRadius_NG"
+                  cvarFloatList { "No" 0 "Thin" 1 "Medium" 8 "Thick" 16 }
+                  rect 290 159 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Shotgun smoke"  textscale .21  rect 24 176 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgsmokesg  type ITEM_TYPE_YESNO  text ""  cvar "cg_smoke_SG"
+                  rect 290 176 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "View kick"  textscale .21  rect 24 193 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgkickscale  type ITEM_TYPE_MULTI  text ""  cvar "cg_kickScale"
+                  cvarFloatList { "No" 0 "Low" 0.25 "Medium" 0.5 "High" 1 }
+                  rect 290 193 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Underwater warp"  textscale .21  rect 24 210 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgwaterwarp  type ITEM_TYPE_YESNO  text ""  cvar "cg_waterWarp"
+                  rect 290 210 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Flag style"  textscale .21  rect 24 227 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgflagstyle  type ITEM_TYPE_MULTI  text ""  cvar "cg_flagStyle"
+                  cvarFloatList { "Cloth" 1 "Hologram" 2 }
+                  rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name bk_io_ig_effects  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_effects ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_effects forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_effects forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_sound"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "SOUND"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Levels, and the sounds that carry information."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Master volume"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_svolume  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "s_volume" 0.8 0 1
+                  rect 290 40 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Music"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_smusicvolume  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "s_musicvolume" 0.25 0 1
+                  rect 290 57 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Voice chat"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_svoicevolume  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "s_voiceVolume" 1 0 1
+                  rect 290 74 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Doppler"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_sdoppler  type ITEM_TYPE_YESNO  text ""  cvar "s_doppler"
+                  rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Announcer"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgannouncer  type ITEM_TYPE_MULTI  text ""  cvar "cg_announcer"
+                  cvarFloatList { "Default" 1 "Vadrigar" 2 "Daemia" 3 }
+                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Chat beep"  textscale .21  rect 24 125 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgchatbeep  type ITEM_TYPE_YESNO  text ""  cvar "cg_chatbeep"
+                  rect 290 125 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Hit beep"  textscale .21  rect 24 142 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cghitbeep  type ITEM_TYPE_MULTI  text ""  cvar "cg_hitbeep"
+                  cvarFloatList { "No" 0 "Single Pitch" 1 "Descending" 2 "Ascending" 3 }
+                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name bk_io_ig_sound  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_sound ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_sound forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_sound forecolor 1 1 1 1 }
+        }
+    }
+
+    menuDef {
+        name "io_ig_game"
+        rect 40 99 560 292
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+
+        // Pages never handle ESC themselves. The frame owns it, so one key
+        // closes the whole menu from any tab instead of walking back a level.
+        onESC { uiScript closeingame }
+
+        itemDef { name pgtitle  text "GAME"  textscale .26  rect 20 0 520 24  textaligny 17
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "Behaviour that is not about how it looks."  textscale .19  rect 20 26 520 14  textaligny 11
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Allow taunts"  textscale .21  rect 24 40 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgallowtaunt  type ITEM_TYPE_YESNO  text ""  cvar "cg_allowTaunt"
+                  rect 290 40 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Zoom is a toggle"  textscale .21  rect 24 57 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgzoomtoggle  type ITEM_TYPE_YESNO  text ""  cvar "cg_zoomToggle"
+                  rect 290 57 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Scale zoom sensitivity"  textscale .21  rect 24 74 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgzoomscaling  type ITEM_TYPE_YESNO  text ""  cvar "cg_zoomScaling"
+                  rect 290 74 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Use-item message"  textscale .21  rect 24 91 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cguseitemmessage  type ITEM_TYPE_MULTI  text ""  cvar "cg_useItemMessage"
+                  cvarFloatList { "No" 0 "Yes (Large)" 1 "Yes (Small)" 2 }
+                  rect 290 91 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Use-item warning"  textscale .21  rect 24 108 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cguseitemwarning  type ITEM_TYPE_MULTI  text ""  cvar "cg_useItemWarning"
+                  cvarFloatList { "No" 0 "Yes (Large)" 1 "Yes (Small)" 2 }
+                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Force enemy model"  textscale .21  rect 24 125 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgforceenemymodel  type ITEM_TYPE_YESNO  text ""  cvar "cg_forceEnemyModel"
+                  rect 290 125 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Force team model"  textscale .21  rect 24 142 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgforceteammodel  type ITEM_TYPE_YESNO  text ""  cvar "cg_forceTeamModel"
+                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Follow killer"  textscale .21  rect 24 159 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgfollowkiller  type ITEM_TYPE_YESNO  text ""  cvar "cg_followKiller"
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Follow powerup"  textscale .21  rect 24 176 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgfollowpowerup  type ITEM_TYPE_MULTI  text ""  cvar "cg_followPowerup"
+                  cvarFloatList { "No" 0 "All Power-Ups" 1 "Flags Only" 2 }
+                  rect 290 176 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Spectator FOV"  textscale .21  rect 24 193 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgspecfov  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_specFov" 100 75 130
+                  rect 290 193 200 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Console chat"  textscale .21  rect 24 210 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_clallowconsolechat  type ITEM_TYPE_YESNO  text ""  cvar "cl_allowConsoleChat"
+                  rect 290 210 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Demo record message"  textscale .21  rect 24 227 250 16  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cldemorecordmessage  type ITEM_TYPE_MULTI  text ""  cvar "cl_demoRecordMessage"
+                  cvarFloatList { "No" 0 "Yes (Verbose)" 1 "Yes (Small)" 2 }
+                  rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef {
+            name bk_io_ig_game  text "BACK"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 400 264 140 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_game ; open io_ig_advanced }
+            mouseEnter { setitemcolor bk_io_ig_game forecolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_game forecolor 1 1 1 1 }
         }
     }
     // <<< GENERATED io_ingame END
@@ -2319,7 +3129,7 @@
     // =============================================
     menuDef {
         name "io_playersetup"
-        rect 120 120 400 240
+        rect 80 70 480 350
         visible MENU_FALSE
         focusColor 1 .75 0 1
         style WINDOW_STYLE_FILLED
@@ -2335,7 +3145,7 @@
             name title
             text "PLAYER SETUP"
             textscale .3
-            rect 0 10 400 24
+            rect 0 10 480 24
             textalign ITEM_ALIGN_CENTER
             textalignx 200
             textaligny 18
@@ -2404,16 +3214,39 @@
             name hint
             text "Colour codes are supported. The name applies as you type, in match too."
             textscale .18
-            rect 30 122 340 18
+            rect 30 122 300 18
             textaligny 12
             forecolor .6 .6 .6 1
             visible 1
             decoration
         }
 
+
+        // [QL] E111. Model picking, which this page did not have - the one
+        // thing Quake Live's own player options leads with.
+        //
+        // LISTBOX_IMAGE over FEEDER_Q3HEADS is how Quake Live builds it, and
+        // both halves are implemented here: the feeder in UI_FeederCount /
+        // UI_FeederItemImage, and the preview as the UI_PLAYERMODEL ownerdraw.
+        // Checked in ui_main.c before being written, because a menu bound to a
+        // feeder nobody serves shows an empty box and reports nothing.
+        itemDef { text "Player model:"  textscale .22  rect 30 150 120 18  textaligny 14
+                  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef {
+            name models  rect 30 172 300 56  type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY  elementwidth 26  elementheight 26
+            elementtype LISTBOX_IMAGE  feeder FEEDER_Q3HEADS
+            border 1  bordercolor .45 .45 .5 1  visible 1
+        }
+        itemDef { name modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
+                  rect 350 90 110 130  visible 1 }
+        itemDef { text "The preview is the model you will be seen as."  textscale .2
+                  rect 30 236 420 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration }
+        itemDef { text "Forced enemy and team models override it for other players."  textscale .2
+                  rect 30 254 420 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration }
         itemDef {
             name apply  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .28
-            rect 30 180 120 26  textaligny 19  textalignx 10
+            rect 30 300 120 26  textaligny 19  textalignx 10
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_playersetup }
             mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
@@ -2421,7 +3254,7 @@
         }
         itemDef {
             name cancel  text "CANCEL"  type ITEM_TYPE_BUTTON  textscale .28
-            rect 250 180 120 26  textaligny 19  textalignx 10
+            rect 330 300 120 26  textaligny 19  textalignx 10
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_playersetup }
             mouseEnter { setitemcolor cancel forecolor 1 .75 0 1 }
@@ -2521,7 +3354,21 @@
         itemDef { text "Dither:"  textscale .22  rect 24 147 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name dither  type ITEM_TYPE_MULTI  text ""  cvar "r_dither"
                   cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2 }  rect 216 147 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Dither strength follows the framebuffer the driver actually gives you."  textscale .2  rect 24 168 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration }
+        // [QL] E111. Resolution and fullscreen, which this menu did not have at
+        // all - "no resolution options under render menu" was exactly right.
+        // The APPLY button at the bottom of this page already runs vid_restart,
+        // which is what both of these need, so they belong here rather than
+        // somewhere with an Apply of its own.
+        //
+        // The value list is Quake Live's own, out of docs/ql-cvar-semantics.txt
+        // rather than invented: r_mode -2 is Native Desktop, -1 is Custom, and
+        // 0..27 are its fixed modes. Guessing that mapping and calling it Quake
+        // Live's is the thing that file exists to prevent.
+        itemDef { text "Fullscreen:"  textscale .22  rect 24 168 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name fullscreen  type ITEM_TYPE_YESNO  text ""  cvar "r_fullscreen"  rect 216 168 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Resolution:"  textscale .22  rect 24 189 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name resolution  type ITEM_TYPE_MULTI  text ""  cvar "r_mode"
+                  cvarFloatList { "Native Desktop" -2 "Custom" -1 "640x480 (4:3)" 5 "800x600 (4:3)" 9 "1024x768 (4:3)" 12 "1152x864 (4:3)" 13 "1280x720 (16:9)" 14 "1280x800 (16:10)" 16 "1280x1024 (5:4)" 17 "1440x900 (16:10)" 18 "1600x900 (16:9)" 19 "1680x1050 (16:10)" 21 "1600x1200 (4:3)" 22 "1920x1080 (16:9)" 23 "1920x1200 (16:10)" 24 "2048x1536 (4:3)" 26 "2560x1600 (16:10)" 27 }  rect 216 189 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { name "" text "IMAGE"  textscale .24  rect 20 210 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
         itemDef { text "Antialiasing:"  textscale .22  rect 24 231 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name msaa  type ITEM_TYPE_MULTI  text ""  cvar "r_ext_multisample"

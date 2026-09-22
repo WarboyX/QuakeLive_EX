@@ -191,7 +191,7 @@ PAGE_W, PAGE_H = 560, 292
 def page(name, title, body, subtitle=None):
     sub = ""
     if subtitle:
-        sub = ('        itemDef { text "%s"  textscale .19  rect 20 26 520 16  textaligny 12\n'
+        sub = ('        itemDef { text "%s"  textscale .19  rect 20 26 520 14  textaligny 11\n'
                '                  forecolor %s  visible 1  decoration }\n' % (subtitle, DIM))
     return """
     menuDef {
@@ -265,6 +265,92 @@ def bind(name, label_text, command, y):
                   rect 230 %d 220 17  textscale .21  textaligny 12  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
 """ % (label_text, y, DIM, name, command, y)
+
+
+
+# ---------------------------------------------------------------- rows -------
+# [QL] E111. Value lists come from docs/ql-cvar-semantics.txt, which is Quake
+# Live's own menus answering what each value MEANS, harvested names-and-labels
+# only. Inventing a scale and calling it Quake Live's is explicitly worse than
+# leaving a cvar alone - cg_hitBeep defaults to 2 and neither the name nor the
+# default says whether 1 and 3 are louder, different or off. So a row whose cvar
+# is in that file gets Quake Live's labels; one that is not gets a yes/no or an
+# explicit list written here, and never a guessed one.
+SEMANTICS = {}
+
+
+def load_semantics():
+    f = pathlib.Path(__file__).resolve().parent.parent / "docs/ql-cvar-semantics.txt"
+    for line in f.read_text().splitlines():
+        if line.startswith("#") or "\t" not in line:
+            continue
+        name, rest = line.split("\t", 1)
+        pairs = []
+        for part in rest.split(", "):
+            if "=" not in part:
+                continue
+            val, lab = part.split("=", 1)
+            pairs.append((val.strip(), lab.strip()))
+        if pairs:
+            SEMANTICS[name.strip().lower()] = pairs
+
+
+def cvarlist(cvar):
+    """Quake Live's own value list for a cvar, as a cvarFloatList body."""
+    pairs = SEMANTICS.get(cvar.lower())
+    if not pairs:
+        return None
+    return " ".join('"%s" %s' % (lab.replace('"', "'"), val) for val, lab in pairs)
+
+
+ROW_H = 17
+
+
+def row_label(text, y):
+    return ('        itemDef { text "%s"  textscale .21  rect 24 %d 250 %d  textaligny 13\n'
+            '                  forecolor %s  visible 1  decoration }\n'
+            % (text, y, ROW_H - 1, WHITE))
+
+
+def row(kind, cvar, text, y, extra=None):
+    """One settings row: the label on the left, the control at x=290."""
+    nm = "r_" + re.sub(r"[^a-z0-9]", "", cvar.lower())
+    out = row_label(text, y)
+    if kind == "slider":
+        dflt, lo, hi = extra
+        out += ('        itemDef { name %s  type ITEM_TYPE_SLIDER  text ""\n'
+                '                  cvarFloat "%s" %s %s %s\n'
+                '                  rect 290 %d 200 %d  textscale .21  textaligny 13\n'
+                '                  forecolor 1 1 1 1  visible 1 }\n'
+                % (nm, cvar, dflt, lo, hi, y, ROW_H - 1))
+    elif kind == "yesno":
+        out += ('        itemDef { name %s  type ITEM_TYPE_YESNO  text ""  cvar "%s"\n'
+                '                  rect 290 %d 70 %d  textscale .21  textaligny 13  textalignx 2\n'
+                '                  forecolor 1 1 1 1  visible 1 }\n'
+                % (nm, cvar, y, ROW_H - 1))
+    else:
+        vals = extra or cvarlist(cvar)
+        if vals is None:
+            raise SystemExit("gen-ingame-menu: no value list for %s - add one to "
+                             "docs/ql-cvar-semantics.txt or pass it explicitly" % cvar)
+        out += ('        itemDef { name %s  type ITEM_TYPE_MULTI  text ""  cvar "%s"\n'
+                '                  cvarFloatList { %s }\n'
+                '                  rect 290 %d 250 %d  textscale .21  textaligny 13  textalignx 2\n'
+                '                  forecolor 1 1 1 1  visible 1 }\n'
+                % (nm, cvar, vals, y, ROW_H - 1))
+    return out
+
+
+def rows_page(menu, title, subtitle, rows, footer=None, extra="", y0=40):
+    """A page that is a column of settings rows, plus any buttons it needs."""
+    b = ""
+    y = y0
+    for r in rows:
+        b += row(r[0], r[1], r[2], y, r[3] if len(r) > 3 else None)
+        y += ROW_H
+    if footer:
+        b += label(footer, 24, y + 6, 500, ".17")
+    return page(menu, title, b + extra, subtitle)
 
 
 # --- Current Match -----------------------------------------------------------
@@ -379,33 +465,58 @@ def page_controls():
 
 # --- Settings (basic) --------------------------------------------------------
 def page_settings():
-    b = label("Field of view", 24, 48, 200, ".21", WHITE)
-    b += multi("ig_fov", "cg_fov", '"90" 90 "100" 100 "110" 110 "120" 120 "130" 130', 230, 48)
-    b += label("Mouse sensitivity", 24, 70, 200, ".21", WHITE)
-    b += multi("ig_sens", "sensitivity",
-               '"1" 1 "2" 2 "3" 3 "5" 5 "8" 8 "12" 12', 230, 70)
-    b += label("Crosshair", 24, 92, 200, ".21", WHITE)
+    """
+    [QL] E111. Quake Live's BASIC options page, as near as our code allows.
+
+    Sliders where a slider is right. Mouse sensitivity, volume and music were
+    cvarFloatLists, which is wrong twice over: a value between the listed stops
+    displays as BLANK - a player on sensitivity 4.5 saw an empty row with no way
+    to tell what it was - and a continuous quantity presented as five stops is
+    not the setting the player actually has. Quake Live uses a slider for all
+    three (ingame_controls.menu: cvarfloat "sensitivity" 5 1 30); so does this.
+
+    cg_railStyle is on Quake Live's basic page and is deliberately NOT here: it
+    is QL-ASSET in docs/cvar-manifest.txt, registered and read by nothing of
+    ours. A row for it would take a value and change nothing.
+
+    Resolution lives on Advanced > Video and on the render menu, both of which
+    have the Apply this page would otherwise need. Putting a latched setting
+    next to eight live ones is how "I changed it and nothing happened" starts.
+    """
+    b = label("Player model", 24, 44, 250, ".21", WHITE)
+    # LISTBOX_IMAGE over FEEDER_Q3HEADS is how Quake Live's own basic page does
+    # the model picker; both it and UI_PLAYERMODEL are implemented in ui_main.c.
+    b += """        itemDef {
+            name ig_models  rect 24 64 250 56  type ITEM_TYPE_LISTBOX
+            style WINDOW_STYLE_EMPTY  elementwidth 26  elementheight 26
+            elementtype LISTBOX_IMAGE  feeder FEEDER_Q3HEADS
+            border 1  bordercolor .35 .3 .12 1  visible 1
+        }
+        itemDef { name ig_modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
+                  rect 420 40 120 86  visible 1 }
+"""
+    y = 132
+    for kind, cvar, text, extra in [
+        ("slider", "sensitivity",   "Mouse sensitivity", ("5", "1", "30")),
+        ("slider", "cg_fov",        "Field of view",     ("100", "75", "130")),
+        ("slider", "r_gamma",       "Brightness",        ("1.3", "1", "3")),
+        ("slider", "s_volume",      "Master volume",     ("0.8", "0", "1")),
+        ("slider", "s_musicvolume", "Music",             ("0.25", "0", "1")),
+    ]:
+        b += row(kind, cvar, text, y, extra)
+        y += ROW_H
+    # The crosshair preview is 20 square against a 16-tall row, so it gets its
+    # own slot rather than being squeezed into one and drawn over its neighbours.
+    b += row_label("Crosshair", y + 4)
     b += ('        itemDef { name ig_xhair  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR\n'
-          '                  rect 230 88 24 24  visible 1 }\n')
-    b += label("Crosshair size", 24, 114, 200, ".21", WHITE)
-    b += multi("ig_xsize", "cg_crosshairSize", '"16" 16 "24" 24 "32" 32 "48" 48', 230, 114)
-    b += label("Draw gun", 24, 136, 200, ".21", WHITE)
-    b += ('        itemDef { name ig_gun  type ITEM_TYPE_YESNO  text ""  cvar "cg_drawGun"\n'
-          '                  rect 230 136 70 18  textscale .21  textaligny 13  textalignx 2\n'
-          '                  forecolor 1 1 1 1  visible 1 }\n')
-    b += label("Simple items", 24, 158, 200, ".21", WHITE)
-    b += ('        itemDef { name ig_simple  type ITEM_TYPE_YESNO  text ""  cvar "cg_simpleItems"\n'
-          '                  rect 230 158 70 18  textscale .21  textaligny 13  textalignx 2\n'
-          '                  forecolor 1 1 1 1  visible 1 }\n')
-    b += label("Master volume", 24, 180, 200, ".21", WHITE)
-    b += multi("ig_vol", "s_volume", '"Off" 0 "Low" 0.3 "Medium" 0.6 "High" 1', 230, 180)
-    b += label("Music", 24, 202, 200, ".21", WHITE)
-    b += multi("ig_music", "s_musicvolume", '"Off" 0 "Low" 0.2 "Medium" 0.5 "High" 1', 230, 202)
-    b += label("Brightness", 24, 224, 200, ".21", WHITE)
-    b += multi("ig_gamma", "r_gamma", '"Dark" 1 "Normal" 1.3 "Bright" 1.6 "Very bright" 2', 230, 224)
-    b += label("These take effect immediately. Anything needing a restart lives", 24, 252, 500, ".17")
-    b += label("under Advanced, which says so where it applies.", 24, 268, 500, ".17")
-    return page("io_ig_settings", "SETTINGS", b, "The common ones, applied as you change them.")
+          '                  rect 290 %d 20 20  visible 1 }\n' % (y + 2))
+    y += 26
+    b += row("multi", "cg_crosshairSize", "Crosshair size", y)
+    y += ROW_H - 1
+    b += label("Resolution, texture detail and everything else Quake Live keeps on its", 24, y, 520, ".17")
+    b += label("advanced page are under the Advanced tab - and on the render menu.", 24, y + 17, 520, ".17")
+    return page("io_ig_settings", "SETTINGS", b,
+                "The common ones, applied as you change them.")
 
 
 # --- Advanced ----------------------------------------------------------------
@@ -413,20 +524,176 @@ def page_settings():
 # are already organised, and duplicating their rows here would be two places to
 # change one setting.
 def page_advanced():
-    b = label("Renderer", 24, 48, 240, ".21", WHITE)
-    b += button("ig_advrender", "RENDER OPTIONS", 24, 68, 240, "open io_renderoptions")
-    b += button("ig_advwater", "WATER", 24, 96, 240, "open io_water")
-    b += button("ig_advrt", "RAY TRACING", 24, 124, 240, "open io_raytracing")
-    b += button("ig_advsurf", "SURFACE DETAIL", 24, 152, 240, "open io_surfacedetail")
-    b += label("Player", 300, 48, 240, ".21", WHITE)
-    b += button("ig_advplayer", "PLAYER SETUP", 300, 68, 240, "open io_playersetup")
-    b += label("Quake Live's own menu", 300, 104, 240, ".21", WHITE)
-    b += button("ig_advql", "QUAKE LIVE MENU", 300, 124, 240, "open ingame ; open ingame_about")
-    b += label("Opens on top of this one, for anything not reproduced here.", 300, 152, 240, ".17")
-    b += label("These pages open over the frame rather than inside it - they are the", 24, 218, 500, ".17")
-    b += label("same menus the main menu uses, so a setting is in one place only and", 24, 234, 500, ".17")
-    b += label("cannot disagree with itself depending on where you opened it.", 24, 250, 500, ".17")
-    return page("io_ig_advanced", "ADVANCED", b, "Everything with its own page.")
+    """A hub. The sub-pages hold the rows; this only has to reach them."""
+    b = label("Quake Live's advanced options, minus the ones our code does not read.",
+              24, 44, 500, ".19")
+    x, y = 24, 68
+    for i, (menu, title) in enumerate(SUBPAGE_INDEX):
+        b += button("adv_" + menu, title, x, y, 160, "open %s" % menu)
+        x += 172
+        if x > 380:
+            x = 24
+            y += 28
+    y += 34
+    b += label("Ours, not Quake Live's", 24, y, 300, ".21", WHITE)
+    y += 20
+    b += button("ig_advrender", "RENDER OPTIONS", 24, y, 160, "open io_renderoptions")
+    b += button("ig_advwater", "WATER", 196, y, 160, "open io_water")
+    b += button("ig_advrt", "RAY TRACING", 368, y, 160, "open io_raytracing")
+    y += 28
+    b += button("ig_advsurf", "SURFACE DETAIL", 24, y, 160, "open io_surfacedetail")
+    b += button("ig_advplayer", "PLAYER SETUP", 196, y, 160, "open io_playersetup")
+    b += button("ig_advql", "QUAKE LIVE MENU", 368, y, 160,
+                "open ingame ; open ingame_about")
+    return page("io_ig_advanced", "ADVANCED", b, "Grouped the way Quake Live groups them.")
+
+
+
+# --- Advanced sub-pages ------------------------------------------------------
+# [QL] E111. The options Quake Live's own ingame_options_basic/_advanced expose,
+# minus the ones our code does not actually read.
+#
+# THAT SUBTRACTION IS THE POINT. Quake Live's two options pages name 134 cvars.
+# Cross-referenced against docs/cvar-manifest.txt, 34 of them are QL-ASSET
+# here - registered so a config or a stock client finds the name, and read by
+# nothing in our code. A row for one of those is the exact failure this tree
+# keeps paying for: it sets, it displays, it persists, and it does nothing.
+# cg_railStyle is on that list, which is why the rail style row Quake Live puts
+# on its BASIC page is absent from ours.
+#
+# The 34 are the backlog, not a gap in this menu. When one gets wired, add its
+# row; until then its absence is the honest state.
+SUBPAGES = [
+    ("io_ig_video", "VIDEO", "Resolution and texture detail. Most of these need Apply.", [
+        ("multi",  "r_mode",                    "Resolution"),
+        ("yesno",  "r_fullscreen",              "Fullscreen"),
+        ("multi",  "r_windowedMode",            "Windowed mode"),
+        ("multi",  "r_displayRefresh",          "Refresh rate"),
+        ("multi",  "r_swapInterval",            "Vertical sync",
+                   '"Off" 0 "On" 1 "Adaptive" -1'),
+        ("multi",  "r_picmip",                  "Texture detail",
+                   '"Highest" 0 "High" 1 "Medium" 2 "Low" 3'),
+        ("multi",  "r_texturebits",             "Texture depth",
+                   '"Default" 0 "16-bit" 16 "32-bit" 32'),
+        ("yesno",  "r_ext_compressed_textures", "Compress textures"),
+        ("multi",  "r_subdivisions",            "Curve detail"),
+        ("multi",  "r_lodbias",                 "Model detail"),
+        ("yesno",  "r_fastsky",                 "Fast sky"),
+    ], None),
+    ("io_ig_light", "LIGHTING", "Brightness, shadows and the overall tone.", [
+        ("slider", "r_gamma",             "Brightness",     ("1.3", "1", "3")),
+        ("multi",  "r_overbrightBits",    "Overbright"),
+        ("multi",  "r_mapOverbrightBits", "Map overbright"),
+        ("multi",  "r_ambientScale",      "Ambient light"),
+        ("yesno",  "r_dynamicLight",      "Dynamic lights"),
+        ("multi",  "cg_shadows",          "Shadows",
+                   '"Off" 0 "Blob" 1 "Simple" 2 "Stencil" 3'),
+        ("yesno",  "cg_deadBodyDarken",   "Darken dead bodies"),
+        ("yesno",  "cg_vignette",         "Vignette"),
+    ], None),
+    ("io_ig_bloom", "BLOOM & POST", "Drawn by the OpenGL2 renderer.", [
+        ("multi",  "r_enableBloom",          "Bloom"),
+        ("slider", "r_bloomIntensity",       "Bloom intensity",  ("0.6", "0", "2")),
+        ("slider", "r_bloomBrightThreshold", "Bright threshold", ("0.6", "0", "1")),
+        ("slider", "r_bloomSaturation",      "Bloom saturation", ("1", "0", "2")),
+        ("slider", "r_bloomSceneIntensity",  "Scene intensity",  ("1", "0", "2")),
+        ("slider", "r_bloomSceneSaturation", "Scene saturation", ("1", "0", "2")),
+        ("yesno",  "r_enablePostProcess",    "Post processing"),
+        ("yesno",  "r_enableColorCorrect",   "Colour correction"),
+    ], "The Vulkan renderer has its own effects under Render Options."),
+    ("io_ig_crosshair", "CROSSHAIR", "Size, brightness and what it reacts to.", [
+        ("multi",  "cg_crosshairSize",       "Size"),
+        ("multi",  "cg_crosshairBrightness", "Brightness"),
+        ("yesno",  "cg_crosshairPulse",      "Pulse on pickup"),
+        ("yesno",  "cg_crosshairHealth",     "Colour by health"),
+        ("multi",  "cg_drawCrosshairNames",  "Show player names"),
+    ], "The crosshair shape itself is on the Settings tab, beside its preview."),
+    ("io_ig_hud", "HUD", "What is drawn on screen while you play.", [
+        ("slider", "cg_fov",                 "Field of view",      ("100", "75", "130")),
+        ("slider", "cg_zoomfov",             "Zoom field of view", ("22.5", "10", "90")),
+        ("multi",  "cg_drawGun",             "Draw gun"),
+        ("multi",  "cg_guny",                "Gun height"),
+        ("yesno",  "cg_drawFPS",             "Show FPS"),
+        ("multi",  "cg_lagometer",           "Lagometer"),
+        ("multi",  "cg_speedometer",         "Speedometer"),
+        ("yesno",  "cg_drawAttacker",        "Show attacker"),
+        ("multi",  "cg_drawTeamOverlay",     "Team overlay"),
+        ("multi",  "cg_weaponBar",           "Weapon bar"),
+        ("multi",  "cg_drawFullWeaponBar",   "Weapon bar shows"),
+        ("multi",  "cg_leveltimerdirection", "Match timer"),
+    ], None),
+    ("io_ig_weapons", "WEAPONS", "Switching, and how each weapon looks.", [
+        ("yesno",  "cg_autoSwitch",      "Auto switch on pickup"),
+        ("yesno",  "cg_switchOnEmpty",   "Switch when empty"),
+        ("yesno",  "cg_switchToEmpty",   "Allow switch to empty"),
+        ("yesno",  "cg_muzzleFlash",     "Muzzle flash"),
+        ("multi",  "cg_brassTime",       "Ejected brass"),
+        ("multi",  "cg_trueLightning",   "True lightning"),
+        ("multi",  "cg_lightningStyle",  "Lightning style"),
+        ("yesno",  "cg_lightningImpact", "Lightning impact"),
+        ("multi",  "cg_plasmaStyle",     "Plasma style"),
+        ("multi",  "cg_rocketStyle",     "Rocket style"),
+        ("multi",  "cg_railTrailTime",   "Rail trail time"),
+        ("multi",  "r_railWidth",        "Rail width"),
+        ("multi",  "r_railCoreWidth",    "Rail core width"),
+    ], None),
+    ("io_ig_effects", "EFFECTS", "Impacts, smoke and world detail.", [
+        ("multi",  "r_railSegmentLength",     "Rail segments"),
+        ("yesno",  "cg_simpleItems",          "Simple items"),
+        ("multi",  "cg_impactSparksVelocity", "Impact sparks"),
+        ("yesno",  "cg_bubbleTrail",          "Underwater bubbles"),
+        ("yesno",  "cg_damagePlum",           "Damage numbers"),
+        ("multi",  "cg_smokeRadius_RL",       "Rocket smoke"),
+        ("multi",  "cg_smokeRadius_GL",       "Grenade smoke"),
+        ("multi",  "cg_smokeRadius_NG",       "Nailgun smoke"),
+        ("yesno",  "cg_smoke_SG",             "Shotgun smoke"),
+        ("multi",  "cg_kickScale",            "View kick"),
+        ("yesno",  "cg_waterWarp",            "Underwater warp"),
+        ("multi",  "cg_flagStyle",            "Flag style"),
+    ], None),
+    ("io_ig_sound", "SOUND", "Levels, and the sounds that carry information.", [
+        ("slider", "s_volume",      "Master volume", ("0.8", "0", "1")),
+        ("slider", "s_musicvolume", "Music",         ("0.25", "0", "1")),
+        ("slider", "s_voiceVolume", "Voice chat",    ("1", "0", "1")),
+        ("yesno",  "s_doppler",     "Doppler"),
+        ("multi",  "cg_announcer",  "Announcer"),
+        ("yesno",  "cg_chatbeep",   "Chat beep"),
+        ("multi",  "cg_hitbeep",    "Hit beep"),
+    ], None),
+    ("io_ig_game", "GAME", "Behaviour that is not about how it looks.", [
+        ("yesno",  "cg_allowTaunt",        "Allow taunts"),
+        ("yesno",  "cg_zoomToggle",        "Zoom is a toggle"),
+        ("yesno",  "cg_zoomScaling",       "Scale zoom sensitivity"),
+        ("multi",  "cg_useItemMessage",    "Use-item message"),
+        ("multi",  "cg_useItemWarning",    "Use-item warning"),
+        ("yesno",  "cg_forceEnemyModel",   "Force enemy model"),
+        ("yesno",  "cg_forceTeamModel",    "Force team model"),
+        ("yesno",  "cg_followKiller",      "Follow killer"),
+        ("multi",  "cg_followPowerup",     "Follow powerup"),
+        ("slider", "cg_specFov",           "Spectator FOV", ("100", "75", "130")),
+        ("yesno",  "cl_allowConsoleChat",  "Console chat"),
+        ("multi",  "cl_demoRecordMessage", "Demo record message"),
+    ], None),
+]
+
+SUBPAGE_INDEX = [(m, t) for m, t, _, _, _ in SUBPAGES]
+
+
+def advanced_subpages():
+    out = ""
+    for menu, title, sub, rows, footer in SUBPAGES:
+        # Every sub-page carries its own way back: it opens OVER the Advanced
+        # page rather than replacing it in the tab bar, so the bar still reads
+        # Advanced and there is nothing up there to click to return.
+        extra = button("bk_" + menu, "BACK", 400, 264, 140,
+                       "close %s ; open io_ig_advanced" % menu)
+        if menu == "io_ig_video":
+            # Resolution, fullscreen and colour depth are latched by the
+            # renderer; without this the page looks like it did nothing.
+            extra += button("ap_" + menu, "APPLY (restarts renderer)", 24, 264, 250,
+                            'exec "vid_restart"')
+        out += rows_page(menu, title, sub, rows, footer, extra)
+    return out
 
 
 # --- Leave -------------------------------------------------------------------
@@ -443,10 +710,12 @@ def page_leave():
 
 
 def main():
+    load_semantics()
     block = (BEGIN
              + frame()
              + page_match() + page_vote() + page_admin() + page_addbot()
              + page_controls() + page_settings() + page_advanced() + page_leave()
+             + advanced_subpages()
              + END)
 
     text = MENU.read_text()
@@ -458,7 +727,7 @@ def main():
     end = text.index(END) + len(END)
     MENU.write_text(text[:start] + block + text[end:])
 
-    menus = 1 + len(PAGES)
+    menus = 1 + len(PAGES) + len(SUBPAGES)
     print("gen-ingame-menu: wrote %d menus (%d tabs) into %s"
           % (menus, NTABS, MENU.name))
     print("gen-ingame-menu: now run tools/check-menus.py")
