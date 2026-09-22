@@ -6142,8 +6142,40 @@ two share no setting and "the water is too calm" and "the splashes are too
 small" were both leading to the same five rows, where only the first has an
 answer. RESET WATER now restores the four new cvars too.
 
-**Unverified:** none of it has been seen. ESC in a game is the whole check for
-the first half; the second is one screen.
+**Two things the first screenshot of it caught.**
+
+*Draw order is DEFINITION order.* `Menu_PaintAll` walks `Menus[]` by index and
+paints every visible menu; there is no stack and no z-order. Defined next to the
+render menus, `io_ingame` therefore painted **on top of the submenu it had just
+opened** - PLAYER SETUP opened correctly, behind it, and read as a dead button.
+Moving the `menuDef` to be the **first in the file** fixes it, because every
+other menu then paints over it, which is what a parent should do. Worth noting
+the header comment at the top of `main.menu` already warns about exactly this
+for a different pair of menus; the warning was there and was not applied to a
+new menu.
+
+*Where it was moved to mattered as much as that it moved.* The first attempt
+inserted it immediately before the first `menuDef`, which put it **between the
+main menu's `check-menus: overlap-ok` waiver comment and the `menuDef` it
+waives.** `check_geometry` matches a page waiver within a few lines of the
+`menuDef` line, so orphaning it turned 18 deliberate main-menu overlaps into 18
+reported problems. The check caught it immediately - the tool did its job - but
+it is a reminder that a waiver is positional and that inserting anything near a
+`menuDef` can silently detach one. It now sits above the MAIN TITLE SCREEN
+banner, leaving the waiver adjacent to `main`.
+
+**Also added: team and spectator rows**, which the first version had no answer
+for at all. `JOIN GAME` / `SPECTATE` / `JOIN RED` / `JOIN BLUE`, using
+`cmd team free|s|red|blue` followed by `closeingame` - the exact form Quake
+Live's own `ingame_join.menu` uses, so the behaviour matches. `cmd team free`
+auto-picks in a team game and joins the free-for-all pool otherwise, so one
+JOIN GAME entry is right in every gametype; `SetTeam` ignores `red`/`blue`
+outside team games and falls through to the same auto-pick, so those two are
+safe rather than needing a gametype test that would have to be kept in step with
+the gametype list.
+
+**Unverified:** the panel now reads correctly in a screenshot, but no button has
+been confirmed to do what it says.
 
 ---
 

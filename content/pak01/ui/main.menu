@@ -26,6 +26,153 @@
     }
 
     // =============================================
+    // [QL] E108. Our own in-game menu.
+    //
+    // WHY THERE HAS TO BE ONE. Everything we have added lives in main.menu and
+    // is reached from the main menu's RENDER entry. In a game, ESC calls
+    // _UI_SetActiveMenu(UIMENU_INGAME), which opened Quake Live's own "ingame"
+    // - and that menu's nav has no entry that could ever reach ours. The menus
+    // were loaded the whole time (_UI_Init loads menus.txt AND ingame.txt), so
+    // this was never a loading failure: there was simply no button.
+    //
+    // Nor was there anywhere to add one. Quake Live's ingame.menu and
+    // ingame_lowernav.menu live in pak00, which is read-only to us and not
+    // ours to ship. And its two most useful entries are no loss: "Settings"
+    // and "Main Menu" both run `web_changeHash`, which drives the Steam
+    // client's web overlay - there is no native in-game settings panel behind
+    // them to hook into. That is the real reason this has to be built rather
+    // than extended.
+    //
+    // DEFINED FIRST, AND THAT IS LOAD-BEARING. Menu_PaintAll walks Menus[] in
+    // index order and paints every visible menu, so draw order is DEFINITION
+    // order - not activation order, and not a stack. Defined next to the
+    // render menus, this panel painted ON TOP of the submenu it had just
+    // opened: PLAYER SETUP opened behind it and read as a dead button. First
+    // in the file means every other menu in it paints over this one, which is
+    // what a parent should do. The header comment at the top of this file
+    // already warns about this for a different pair of menus.
+    //
+    // The team rows use `cmd team ...` exactly as Quake Live's own
+    // ingame_join.menu does, each followed by closeingame so the choice takes
+    // effect and hands control straight back to the game.
+    // =============================================
+
+    menuDef {
+        name "io_ingame"
+        rect 170 14 300 462
+        visible MENU_FALSE
+        focusColor 1 .75 0 1
+        style WINDOW_STYLE_FILLED
+        backcolor 0.04 0.04 0.07 1
+        border 1
+        bordersize 1
+        bordercolor .45 .45 .5 1
+
+        // ESC resumes rather than closing to nothing. closeingame drops
+        // KEYCATCH_UI, clears key states and unpauses - the same script Quake
+        // Live's own ingame menu uses, so resuming behaves identically.
+        onESC { uiScript closeingame }
+
+        itemDef { name title  text "MENU"  textscale .3
+                  rect 0 6 300 26  textalign ITEM_ALIGN_CENTER  textalignx 150  textaligny 19
+                  forecolor 1 .75 0 1  visible 1  decoration }
+        itemDef { name titlerule  text ""  rect 24 36 252 1  visible 1  decoration
+                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
+
+        itemDef {
+            name igresume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 48 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript closeingame }
+            mouseEnter { setitemcolor igresume forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igresume forecolor 1 1 1 1 }
+        }
+
+        // ---- team ---------------------------------------------------------
+        // "cmd team free" auto-picks in a team game and joins the free-for-all
+        // pool otherwise, so one JOIN GAME entry is correct in every gametype.
+        // RED and BLUE are only meaningful in team games; SetTeam ignores them
+        // elsewhere and falls through to the same auto-pick, so they are safe
+        // rather than hidden behind a gametype test that would have to be kept
+        // in step with the gametype list.
+        itemDef { name "" text "TEAM"  textscale .22  rect 24 80 252 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
+        itemDef {
+            name igjoin  text "JOIN GAME"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 100 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd team free" ; uiScript closeingame }
+            mouseEnter { setitemcolor igjoin forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igjoin forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igspec  text "SPECTATE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 134 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd team s" ; uiScript closeingame }
+            mouseEnter { setitemcolor igspec forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igspec forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igred  text "JOIN RED"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 168 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd team red" ; uiScript closeingame }
+            mouseEnter { setitemcolor igred forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igred forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igblue  text "JOIN BLUE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 202 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "cmd team blue" ; uiScript closeingame }
+            mouseEnter { setitemcolor igblue forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igblue forecolor 1 1 1 1 }
+        }
+
+        // ---- settings and the rest ----------------------------------------
+        itemDef { name "" text "SETTINGS"  textscale .22  rect 24 234 252 16  textaligny 13  forecolor 1 .75 0 1  visible 1  decoration }
+        itemDef {
+            name igrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 254 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_renderoptions }
+            mouseEnter { setitemcolor igrender forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igrender forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 288 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open io_playersetup }
+            mouseEnter { setitemcolor igplayer forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igplayer forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igvote  text "CALL VOTE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 322 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open ingame_callvote }
+            mouseEnter { setitemcolor igvote forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igvote forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igbot  text "ADD BOT"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 356 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open ingame_addbot }
+            mouseEnter { setitemcolor igbot forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igbot forecolor 1 1 1 1 }
+        }
+        // [QL] Quake Live's own ingame menu, kept reachable so nothing this
+        // panel does not list is lost - match info, admin, vote status.
+        itemDef {
+            name igql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 390 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
+            mouseEnter { setitemcolor igql forecolor 1 .75 0 1 }
+            mouseExit  { setitemcolor igql forecolor 1 1 1 1 }
+        }
+        itemDef {
+            name igleave  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 24 424 252 26  textaligny 19  textalignx 8  forecolor .85 .55 .55 1  visible 1
+            action { play "sound/misc/menu1.wav" ; uiScript Leave }
+            mouseEnter { setitemcolor igleave forecolor 1 .4 .4 1 }
+            mouseExit  { setitemcolor igleave forecolor .85 .55 .55 1 }
+        }
+    }
+
+    // =============================================
     // MAIN TITLE SCREEN
     // =============================================
     // check-menus: overlap-ok - this page is layered on purpose. Every button
@@ -1413,109 +1560,6 @@
     // Four pages because the renderer keeps gaining controls and one page ran
     // out of rows. If a page fills up, split it; do not shrink the pitch.
     // =============================================
-
-    // =============================================
-    // [QL] E108. Our own in-game menu.
-    //
-    // WHY THERE HAS TO BE ONE. Everything we have added lives in main.menu and
-    // is reached from the main menu's RENDER entry. In a game, ESC calls
-    // _UI_SetActiveMenu(UIMENU_INGAME), which opened Quake Live's own "ingame"
-    // - and that menu's nav has no entry that could ever reach ours. The menus
-    // were loaded the whole time (_UI_Init loads menus.txt AND ingame.txt), so
-    // this was never a loading failure: there was simply no button.
-    //
-    // Nor was there anywhere to add one. Quake Live's ingame.menu and
-    // ingame_lowernav.menu live in pak00, which is read-only to us and not
-    // ours to ship. And its two most useful entries are no loss: "Settings"
-    // and "Main Menu" both run `web_changeHash`, which drives the Steam client's
-    // web overlay - there is no native in-game settings panel behind them to
-    // hook into. That is the real reason this has to be built rather than
-    // extended.
-    //
-    // WHAT IT DOES NOT THROW AWAY. Quake Live's own panels are still loaded and
-    // still work, so this links to them rather than replacing them, and the
-    // last entry opens Quake Live's ingame menu itself for anything not
-    // surfaced here.
-    //
-    // Opened WITHOUT closing anything, and the submenus it opens do the same.
-    // Menus stack, so ESC out of io_renderoptions reveals this one underneath
-    // instead of dropping the player into a captured cursor with no menu.
-    // =============================================
-
-    menuDef {
-        name "io_ingame"
-        rect 170 96 300 290
-        visible MENU_FALSE
-        focusColor 1 .75 0 1
-        style WINDOW_STYLE_FILLED
-        backcolor 0.04 0.04 0.07 1
-        border 1
-        bordersize 1
-        bordercolor .45 .45 .5 1
-
-        // ESC resumes rather than closing to nothing. closeingame drops
-        // KEYCATCH_UI, clears key states and unpauses - the same script Quake
-        // Live's own ingame menu uses, so resuming behaves identically.
-        onESC { uiScript closeingame }
-
-        itemDef { name title  text "MENU"  textscale .3
-                  rect 0 6 300 26  textalign ITEM_ALIGN_CENTER  textalignx 150  textaligny 19
-                  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { name titlerule  text ""  rect 24 36 252 1  visible 1  decoration
-                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
-
-        itemDef {
-            name igresume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 48 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript closeingame }
-            mouseEnter { setitemcolor igresume forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igresume forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 82 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_renderoptions }
-            mouseEnter { setitemcolor igrender forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igrender forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 116 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_playersetup }
-            mouseEnter { setitemcolor igplayer forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igplayer forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igvote  text "CALL VOTE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 150 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open ingame_callvote }
-            mouseEnter { setitemcolor igvote forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igvote forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igbot  text "ADD BOT"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 184 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open ingame_addbot }
-            mouseEnter { setitemcolor igbot forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igbot forecolor 1 1 1 1 }
-        }
-        // [QL] Quake Live's own ingame menu, kept reachable so nothing this
-        // panel does not list is lost - match info, admin, vote status.
-        itemDef {
-            name igql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 218 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
-            mouseEnter { setitemcolor igql forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igql forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name igleave  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 252 252 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript Leave }
-            mouseEnter { setitemcolor igleave forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor igleave forecolor 1 1 1 1 }
-        }
-    }
 
     menuDef {
         name "io_renderoptions"
