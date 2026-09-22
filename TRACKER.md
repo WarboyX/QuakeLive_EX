@@ -6083,6 +6083,83 @@ panel is still the only thing that can.
 
 ---
 
+### E106. `Hunk_Alloc failed` at map load — the archived hunk size — FIXED (cause unconfirmed)
+**Lives in:** our **client** and our **server** (engine, `common.c`) · **Seen by:** our client only
+
+Reported as "I can't load any maps", with two screenshots: `Hunk_Alloc failed on
+1567488` and `Hunk_Alloc failed on 6969696`, both dropping to the main menu.
+Then, without any change, **it started working again.**
+
+**What the two numbers said.** 1.5 MB and 6.9 MB are small requests. A small
+request failing does not mean a big allocation went wrong; it means the hunk was
+already nearly full when the map arrived. So the question was never "what asked
+for 6.9 MB" but "what spent the other 250".
+
+**What was ruled out.** The report initially looked like a regression from E105,
+since that was the only build between working and broken. It was not, and the
+check that settled it was the one this file already prescribes - compare what
+the compiler produced, not the diff. Unpacking both archives and diffing every
+member by size: only `vulkanx86_64.dll` differed, by 580 bytes, and the engine
+binary that owns the hunk was **byte-identical**. E105 changed a ripple counter
+in the renderer and cannot shrink a hunk the engine allocates. Two minutes of
+`unzip -l` beat any amount of re-reading the diff.
+
+**The real defect, which was there the whole time.** `com_hunkMegs` is
+`CVAR_ARCHIVE`. `93a083f` raised the shipped default 128 → 256 specifically
+because the snapshot entity pool was leaving no room for the map - and that
+raise reached **fresh installs only**. Every install that had already run once
+had 128 written into its config, and a config beats a default forever. This is
+the third time `CVAR_ARCHIVE` on a shipped default has cost a round here
+(`r_dlightMode`, `con_scale`, now this), and the trap is listed in `CLAUDE.md`.
+
+That also explains the intermittency, which a simple "too small" would not: at
+64 clients the snapshot pool alone is ~118 MB, so on a 128 MB hunk whether a map
+fits depends on the map and on `sv_maxclients` at the moment the server starts.
+Some maps load, some don't, and the same map can do both.
+
+**Fixed two ways.**
+
+1. **The shipped default is now a floor, not a suggestion.** The non-dedicated
+   floor is `DEF_COMHUNKMEGS`, so a stale archived value is raised to what we
+   ship and the raise is printed. A user who asked for *more* keeps it - this
+   only raises. A user who asked for less loses it, which is the right trade:
+   the saving is a fraction of what a map needs, and the failure it buys is a
+   hard drop to the menu partway through a load. The old `MIN_COMHUNKMEGS 64`
+   is deleted rather than left unread, because a second lower constant next to
+   the live one is exactly the shape this codebase keeps getting caught by.
+
+2. **The failure message now carries the budget.** `Hunk_Alloc failed on <n>`
+   said nothing about how big the hunk was, how much was already spent, or which
+   end spent it - so neither the screenshots nor a full console log could
+   distinguish "hunk too small" from "something filled it". Both hunk errors now
+   append hunk size, the `com_hunkMegs` behind it, usage split low/high, and
+   free. Low and high are reported separately on purpose: they grow toward each
+   other, so a single total cannot say whether the map is too big or the
+   server's snapshot pool took the other end.
+
+**Verified here, not assumed.** The message was driven to fire for real:
+
+```
+Hunk_AllocateTempMemory: failed on 4900016 - hunk is 1 MB (com_hunkMegs 1),
+0 MB already in use: low 0 KB, high 0 KB, 1 MB free
+```
+
+and the floor was confirmed against a config genuinely holding
+`seta com_hunkMegs "32"` - it printed `Minimum com_hunkMegs is 256, allocating
+256 megs.` Separately, a dedicated server at `com_hunkMegs 20` was caught by the
+existing `sv_maxclients`-derived floor (`...is 110, allocating 110 megs`), so
+that guard works too.
+
+**Honest status:** the cause is *unconfirmed*. The failure cleared up on its own
+and the console log supplied was from a working session, so nothing proves the
+archived value was what bit. What is certain is that the mechanism is real, was
+reachable, matches every observable (small allocations failing, intermittent,
+unaffected by the build), and is now both prevented and self-describing. **If it
+recurs, the error line itself now names the cause** - which is the part that was
+missing.
+
+---
+
 ### E104. Per-material green convention, and deploying into a stock map — DONE (verify)
 **Lives in:** our **client** (renderervk + pak01) · **Seen by:** our client only
 

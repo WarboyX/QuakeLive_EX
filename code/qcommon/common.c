@@ -36,7 +36,10 @@ int demo_protocols[] = {0};
 #define MAX_NUM_ARGVS 50
 
 #define MIN_DEDICATED_COMHUNKMEGS 1
-#define MIN_COMHUNKMEGS 64
+// [QL] The stock client floor was MIN_COMHUNKMEGS 64. It is gone rather than
+// merely unused: the client floor is now DEF_COMHUNKMEGS (see
+// Com_InitHunkMemory), and a second, lower constant sitting next to it that
+// nothing reads is exactly the shape this codebase keeps getting caught by.
 
 // [QL] Headroom left for everything that is not the snapshot entity pool:
 // the BSP and collision model, the game module's entity/client arrays, and
@@ -1584,7 +1587,25 @@ void Com_InitHunkMemory(void) {
         nMinAlloc = MIN_DEDICATED_COMHUNKMEGS;
         pMsg = "Minimum com_hunkMegs for a dedicated server is %i, allocating %i megs.\n";
     } else {
-        nMinAlloc = MIN_COMHUNKMEGS;
+        // [QL] The floor here is DEF_COMHUNKMEGS, not MIN_COMHUNKMEGS, and that
+        // is deliberate.
+        //
+        // com_hunkMegs is CVAR_ARCHIVE, so the value is written into the user's
+        // config on first run and that config wins forever after. When the
+        // default went from 128 to 256 to make room for the snapshot entity
+        // pool, the new value reached fresh installs only - every existing
+        // install kept 128 MB and kept failing, and nothing on screen connected
+        // the two. This is the third time CVAR_ARCHIVE on a shipped default has
+        // cost a round here (r_dlightMode, con_scale, now this one).
+        //
+        // Treating what we ship as a floor rather than a first-run suggestion
+        // keeps the rule the codebase already follows: archive is for values a
+        // user sets, not values we choose. A user who asked for MORE still gets
+        // it, because this only raises. A user who asked for less loses that,
+        // which is the right trade - the saving is a fraction of the memory a
+        // map already needs, and the failure it causes is a hard drop to the
+        // menu partway through a load, not a graceful degradation.
+        nMinAlloc = DEF_COMHUNKMEGS;
         pMsg = "Minimum com_hunkMegs is %i, allocating %i megs.\n";
     }
 
@@ -1757,6 +1778,33 @@ static void Hunk_SwapBanks(void) {
 
 /*
 =================
+Com_HunkState
+
+[QL] The hunk budget as one appendable clause, for the allocation-failure
+messages. Returns a pointer to a static buffer - one call per message.
+
+Deliberately reports low and high separately. They grow toward each other from
+opposite ends of one block, so "240 of 256 MB" does not say whether the map is
+too big or whether the server's snapshot pool took the other end; the split
+does, and that is the difference between raising com_hunkMegs and looking for
+what is really eating it.
+=================
+*/
+static const char* Com_HunkState(void) {
+    static char state[192];
+
+    Com_sprintf(state, sizeof(state),
+                " - hunk is %i MB (com_hunkMegs %i), %i MB already in use:"
+                " low %i KB, high %i KB, %i MB free",
+                s_hunkTotal / (1024 * 1024), Cvar_VariableIntegerValue("com_hunkMegs"),
+                (hunk_low.temp + hunk_high.temp) / (1024 * 1024), hunk_low.temp / 1024,
+                hunk_high.temp / 1024, (s_hunkTotal - hunk_low.temp - hunk_high.temp) / (1024 * 1024));
+
+    return state;
+}
+
+/*
+=================
 Hunk_Alloc
 
 Allocate permanent (until the hunk is cleared) memory
@@ -1796,9 +1844,17 @@ void* Hunk_Alloc(int size, ha_pref preference) {
         Hunk_Log();
         Hunk_SmallLog();
 
-        Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)", size, file, line, label);
+        Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)%s", size, file, line, label,
+                  Com_HunkState());
 #else
-        Com_Error(ERR_DROP, "Hunk_Alloc failed on %i", size);
+        // [QL] "Hunk_Alloc failed on <n>" on its own says only that a request
+        // was refused - not how big the hunk is, how much of it was already
+        // spent, or which end spent it. Every one of those is needed to tell a
+        // hunk that is too small from a hunk that something is filling, and
+        // none of them was recoverable from the message or from the log. The
+        // same failure had already cost a round on a dedicated server for
+        // exactly this reason. Print the budget with the refusal.
+        Com_Error(ERR_DROP, "Hunk_Alloc failed on %i%s", size, Com_HunkState());
 #endif
     }
 
@@ -1857,7 +1913,7 @@ void* Hunk_AllocateTempMemory(int size) {
     size = PAD(size, sizeof(intptr_t)) + sizeof(hunkHeader_t);
 
     if (hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal) {
-        Com_Error(ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size);
+        Com_Error(ERR_DROP, "Hunk_AllocateTempMemory: failed on %i%s", size, Com_HunkState());
     }
 
     if (hunk_temp == &hunk_low) {
