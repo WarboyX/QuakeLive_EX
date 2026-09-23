@@ -375,12 +375,18 @@ def bind(name, label_text, command, y):
     # 17 tall against a 17px step: the rows sit flush without overlapping. At
     # 18 every row ran one pixel into the next, which is invisible and is still
     # two items drawing over each other.
-    return """        itemDef { text "%s"  textscale .21  rect 24 %d 200 17  textaligny 12
+    #
+    # [QL] E116. The same centred form as every settings row since E113 - the
+    # label ends at the centre gutter, the key starts just after it. This page
+    # was built separately and missed that pass, so it was the one page still
+    # hugging the left edge.
+    return """        itemDef { text "%s"  textscale .21  rect 24 %d %d 17  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx %d
                   forecolor %s  visible 1  decoration }
         itemDef { name %s  type ITEM_TYPE_BIND  text ""  cvar "%s"
-                  rect 230 %d 220 17  textscale .21  textaligny 12  textalignx 2
+                  rect %d %d 220 17  textscale .21  textaligny 12  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-""" % (label_text, y, DIM, name, command, y)
+""" % (label_text, y, LABEL_END - 24, LABEL_END - 24, WHITE, name, command, CTRL_X, y)
 
 
 
@@ -517,8 +523,12 @@ def page_match():
                 'exec "cmd team red" ; uiScript closeingame')
     b += button("ig_blue", "JOIN BLUE", 300, 148, 240,
                 'exec "cmd team blue" ; uiScript closeingame')
-    b += label("Scoreboard and match detail stay on the HUD - TAB shows them", 300, 184, 240, ".17")
-    b += label("live, which no menu page can do while it is covering them.", 300, 200, 240, ".17")
+    # Shortened to fit its column: the old two-line note was ~280px of text in a
+    # 240px box and ran off the panel. Centred under the buttons it explains.
+    for i, t in enumerate(["The live scoreboard is on TAB -", "this page shows who is here."]):
+        b += ('        itemDef { text "%s"  textscale .17  rect 300 %d 240 16  textaligny 12\n'
+              '                  textalign ITEM_ALIGN_CENTER  textalignx 120\n'
+              '                  forecolor %s  visible 1  decoration }\n' % (t, 184 + i * 17, DIM))
     return page("io_ig_match", "CURRENT MATCH", b,
                 "Who is here, and which side you are on.")
 
@@ -566,21 +576,26 @@ def page_admin():
 
 # --- Add Bot -----------------------------------------------------------------
 def page_addbot():
-    b = label("Bot", 24, 60, 160, ".21", WHITE)
-    b += ('        itemDef { name ig_botname  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_BOTNAME\n'
-          '                  rect 200 60 300 20  textscale .24  textaligny 15  textalignx 2\n'
-          '                  forecolor 1 1 1 1  visible 1 }\n')
-    b += label("Skill", 24, 96, 160, ".21", WHITE)
-    b += ('        itemDef { name ig_botskill  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_BOTSKILL\n'
-          '                  rect 200 96 300 20  textscale .24  textaligny 15  textalignx 2\n'
-          '                  forecolor 1 1 1 1  visible 1 }\n')
-    b += label("Team", 24, 132, 160, ".21", WHITE)
-    b += ('        itemDef { name ig_botteam  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_REDBLUE\n'
-          '                  rect 200 132 300 20  textscale .24  textaligny 15  textalignx 2\n'
-          '                  forecolor 1 1 1 1  visible 1 }\n')
-    b += button("ig_addbot", "ADD BOT", 24, 176, 200, "uiScript addBot")
-    b += label("Team only applies in a team gametype; elsewhere the bot joins the", 24, 214, 500, ".17")
-    b += label("free-for-all. Bots need the server to allow them.", 24, 230, 500, ".17")
+    # [QL] E116. Centred form, like the settings pages - it was built separately
+    # and still had its labels on the left edge and values floating at x=200.
+    b = ""
+    for i, (lb, nm, od) in enumerate([("Bot", "ig_botname", "UI_BOTNAME"),
+                                      ("Skill", "ig_botskill", "UI_BOTSKILL"),
+                                      ("Team", "ig_botteam", "UI_REDBLUE")]):
+        y = 60 + i * 36
+        b += ('        itemDef { text "%s"  textscale .21  rect 24 %d %d 20  textaligny 15\n'
+              '                  textalign ITEM_ALIGN_RIGHT  textalignx %d\n'
+              '                  forecolor %s  visible 1  decoration }\n'
+              % (lb, y, LABEL_END - 24, LABEL_END - 24, WHITE))
+        b += ('        itemDef { name %s  type ITEM_TYPE_OWNERDRAW  ownerdraw %s\n'
+              '                  rect %d %d 246 20  textscale .24  textaligny 15  textalignx 2\n'
+              '                  forecolor 1 1 1 1  visible 1 }\n' % (nm, od, CTRL_X, y))
+    b += button("ig_addbot", "ADD BOT", 200, 176, 160, "uiScript addBot")
+    for i, t in enumerate(["Team only applies in a team gametype; elsewhere the bot joins the",
+                           "free-for-all. Bots need the server to allow them."]):
+        b += ('        itemDef { text "%s"  textscale .17  rect 24 %d 512 16  textaligny 12\n'
+              '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
+              '                  forecolor %s  visible 1  decoration }\n' % (t, 214 + i * 17, DIM))
     return page("io_ig_addbot", "ADD BOT", b, "Click a row to cycle through its choices.")
 
 
@@ -606,10 +621,13 @@ def page_controls():
     ]:
         b += bind(nm, lb, cmd, y)
         y += 17
-    b += button("ig_ctlsave", "SAVE", 24, y + 8, 120, "uiScript saveControls")
-    b += button("ig_ctlreload", "RELOAD", 154, y + 8, 120, "uiScript loadControls")
-    b += label("Click a binding, then press the key you want.", 290, y + 12, 250, ".17")
-    return page("io_ig_controls", "CONTROLS", b, "The keys worth changing without leaving the game.")
+    # Centred pair, like Apply/Back. The hint moved up into the subtitle: there
+    # is no room for it under the buttons, and beside them it was the one piece
+    # of text on the page that did not line up with anything.
+    b += button("ig_ctlsave", "SAVE", 150, y + 8, 120, "uiScript saveControls")
+    b += button("ig_ctlreload", "RELOAD", 290, y + 8, 120, "uiScript loadControls")
+    return page("io_ig_controls", "CONTROLS", b,
+                "Click a binding, then press the key you want to use.")
 
 
 # --- Settings (basic) --------------------------------------------------------
@@ -697,21 +715,25 @@ def page_advanced():
     not ours. Now Quake Live's options, this port's own pages, and Quake Live's
     own menu are three separate headings, and nothing sits under the wrong one.
     Button grids are centred on the page like every other page since E113.
+
+    E116: the headings are Normal Options (Quake Live's own settings, minus the
+    ones our code does not read), Exclusive Options (pages only this port has)
+    and Original Menu (Quake Live's own in-game menu, reached unchanged).
     """
     cols = [28, 200, 372]           # three 160-wide buttons, 12 apart, centred
-    b = heading("Quake Live's options - minus the ones our code does not read", 44)
+    b = heading("Normal Options", 44)
     for i, (menu, title) in enumerate(SUBPAGE_INDEX):
         b += button("adv_" + menu, title, cols[i % 3], 64 + (i // 3) * 28, 160,
                     "close io_ig_advanced ; open %s" % menu)
     # These are full-size menus that cover this page, so they leave it open
     # underneath - closing them is what brings you back here (see E112).
-    b += heading("This port's own pages", 156)
+    b += heading("Exclusive Options", 156)
     b += button("ig_advrender", "RENDER OPTIONS", cols[0], 176, 160, "open io_renderoptions")
     b += button("ig_advwater", "WATER", cols[1], 176, 160, "open io_water")
     b += button("ig_advrt", "RAY TRACING", cols[2], 176, 160, "open io_raytracing")
     b += button("ig_advsurf", "SURFACE DETAIL", 114, 204, 160, "open io_surfacedetail")
     b += button("ig_advplayer", "PLAYER SETUP", 286, 204, 160, "open io_playersetup")
-    b += heading("Quake Live's own in-game menu", 240)
+    b += heading("Original Menu", 240)
     b += button("ig_advql", "QUAKE LIVE MENU", 200, 260, 160,
                 "open ingame ; open ingame_about")
     return page("io_ig_advanced", "ADVANCED", b, "Grouped the way Quake Live groups them.")
@@ -885,6 +907,64 @@ def page_leave():
     return page("io_ig_leave", "LEAVE MATCH", b, "This one asks first.")
 
 
+# ---------------------------------------------------------------- fit --------
+# [QL] E116. Every label must fit inside its own rect.
+#
+# check-menus.py compares rects, and a rect can be perfectly placed while the text
+# drawn from it runs straight out of the side: the Current Match footnote was a
+# 240-wide rect holding ~277px of text, which ran off the panel. Nothing in the
+# toolchain could see it, and the widths were being judged by eye.
+#
+# Glyph widths measured off screenshots of the built menu, in virtual pixels per
+# unit of textscale: "Scoreboard and match detail stay on the HUD - TAB shows
+# them" at .17 is 277px, "JOIN GAME" at .22 is 65px. Capitals and digits 35,
+# lower case 29, spaces and punctuation 16 reproduce both (276 and 65). An
+# estimate, so the check allows 4% of slack rather than claiming to the pixel.
+GLYPH_UPPER, GLYPH_LOWER, GLYPH_OTHER = 35, 29, 16
+
+
+def text_width(text, scale):
+    w = 0
+    for ch in text:
+        if ch.isupper() or ch.isdigit():
+            w += GLYPH_UPPER
+        elif ch.islower():
+            w += GLYPH_LOWER
+        else:
+            w += GLYPH_OTHER
+    return w * scale
+
+
+def check_text_fit(block):
+    problems = []
+    # One chunk per itemDef, cut at the next itemDef or menuDef. Matching braces
+    # with a regex does not work here: single-line itemDefs close on the same
+    # line and actions nest braces, so a brace pattern runs on into the next
+    # item and pairs one item's text with another's rect.
+    for body in re.split(r"\bitemDef\s*\{|\bmenuDef\s*\{", block)[1:]:
+        t = re.search(r'\btext "([^"]+)"', body)
+        r = re.search(r"\brect (-?\d+) (-?\d+) (\d+) (\d+)", body)
+        if not t or not r:
+            continue
+        scale = re.search(r"\btextscale ([\d.]+)", body)
+        scale = float(scale.group(1)) if scale else 0.25
+        ax = re.search(r"\btextalignx (-?\d+)", body)
+        ax = int(ax.group(1)) if ax else 0
+        align = re.search(r"\btextalign (ITEM_ALIGN_\w+)", body)
+        align = align.group(1) if align else "ITEM_ALIGN_LEFT"
+        x, w = int(r.group(1)), int(r.group(3))
+        tw = text_width(t.group(1), scale) * 1.04
+        if align == "ITEM_ALIGN_RIGHT":
+            lo, hi = x + ax - tw, x + ax
+        elif align == "ITEM_ALIGN_CENTER":
+            lo, hi = x + ax - tw / 2, x + ax + tw / 2
+        else:
+            lo, hi = x + ax, x + ax + tw
+        if lo < x - 1 or hi > x + w + 1:
+            problems.append('"%s" is ~%dpx in a %dpx rect' % (t.group(1), tw, w))
+    return problems
+
+
 def main():
     load_semantics()
     block = (BEGIN
@@ -893,6 +973,10 @@ def main():
              + page_controls() + page_settings() + page_advanced() + page_leave()
              + advanced_subpages()
              + END)
+
+    overflow = check_text_fit(block)
+    if overflow:
+        sys.exit("gen-ingame-menu: text wider than its box:\n  " + "\n  ".join(overflow))
 
     text = MENU.read_text()
     if BEGIN not in text or END not in text:
