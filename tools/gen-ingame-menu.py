@@ -63,8 +63,20 @@ TABS = [
 PAGES = [t[2] for t in TABS]
 
 
-def close_all_pages(exclude=None):
-    return "".join("                close %s\n" % p for p in PAGES if p != exclude)
+def close_all_pages(exclude=None, indent="                "):
+    """
+    [QL] E112. Close every page AND every sub-page, not just the tab pages.
+
+    Menu_PaintAll walks Menus[] and paints every menu whose visible flag is set;
+    there is no stack and no "topmost". So a menu that is not explicitly closed
+    keeps drawing, and the result is two pages superimposed - both sets of rows
+    in the same place, which is what "it double draws" was.
+
+    Sub-pages are included because Advanced opens them and a tab press from
+    there has to clear them as well.
+    """
+    names = list(PAGES) + [m for m, _, _, _, _ in SUBPAGES]
+    return "".join("%sclose %s\n" % (indent, n) for n in names if n != exclude)
 
 
 def select_tab(idx):
@@ -487,9 +499,10 @@ def page_settings():
     # LISTBOX_IMAGE over FEEDER_Q3HEADS is how Quake Live's own basic page does
     # the model picker; both it and UI_PLAYERMODEL are implemented in ui_main.c.
     b += """        itemDef {
-            name ig_models  rect 24 64 250 56  type ITEM_TYPE_LISTBOX
+            name ig_models  rect 24 64 210 43  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 26  elementheight 26
             elementtype LISTBOX_IMAGE  feeder FEEDER_Q3HEADS
+            horizontalscroll
             border 1  bordercolor .35 .3 .12 1  visible 1
         }
         itemDef { name ig_modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
@@ -529,7 +542,8 @@ def page_advanced():
               24, 44, 500, ".19")
     x, y = 24, 68
     for i, (menu, title) in enumerate(SUBPAGE_INDEX):
-        b += button("adv_" + menu, title, x, y, 160, "open %s" % menu)
+        b += button("adv_" + menu, title, x, y, 160,
+                    "close io_ig_advanced ; open %s" % menu)
         x += 172
         if x > 380:
             x = 24

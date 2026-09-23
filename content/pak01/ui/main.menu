@@ -134,6 +134,15 @@
                 close io_ig_settings
                 close io_ig_advanced
                 close io_ig_leave
+                close io_ig_video
+                close io_ig_light
+                close io_ig_bloom
+                close io_ig_crosshair
+                close io_ig_hud
+                close io_ig_weapons
+                close io_ig_effects
+                close io_ig_sound
+                close io_ig_game
                 setitemcolor ignav1t forecolor 0.964 0.815 0 1
                 setitemcolor ignav2t forecolor 1 1 1 1
                 setitemcolor ignav3t forecolor 1 1 1 1
@@ -185,6 +194,15 @@
                 close io_ig_settings
                 close io_ig_advanced
                 close io_ig_leave
+                close io_ig_video
+                close io_ig_light
+                close io_ig_bloom
+                close io_ig_crosshair
+                close io_ig_hud
+                close io_ig_weapons
+                close io_ig_effects
+                close io_ig_sound
+                close io_ig_game
                 setitemcolor ignav1t forecolor 1 1 1 1
                 setitemcolor ignav2t forecolor 0.964 0.815 0 1
                 setitemcolor ignav3t forecolor 1 1 1 1
@@ -236,6 +254,15 @@
                 close io_ig_settings
                 close io_ig_advanced
                 close io_ig_leave
+                close io_ig_video
+                close io_ig_light
+                close io_ig_bloom
+                close io_ig_crosshair
+                close io_ig_hud
+                close io_ig_weapons
+                close io_ig_effects
+                close io_ig_sound
+                close io_ig_game
                 setitemcolor ignav1t forecolor 1 1 1 1
                 setitemcolor ignav2t forecolor 1 1 1 1
                 setitemcolor ignav3t forecolor 0.964 0.815 0 1
@@ -287,6 +314,15 @@
                 close io_ig_settings
                 close io_ig_advanced
                 close io_ig_leave
+                close io_ig_video
+                close io_ig_light
+                close io_ig_bloom
+                close io_ig_crosshair
+                close io_ig_hud
+                close io_ig_weapons
+                close io_ig_effects
+                close io_ig_sound
+                close io_ig_game
                 setitemcolor ignav1t forecolor 1 1 1 1
                 setitemcolor ignav2t forecolor 1 1 1 1
                 setitemcolor ignav3t forecolor 1 1 1 1
@@ -338,6 +374,15 @@
                 close io_ig_settings
                 close io_ig_advanced
                 close io_ig_leave
+                close io_ig_video
+                close io_ig_light
+                close io_ig_bloom
+                close io_ig_crosshair
+                close io_ig_hud
+                close io_ig_weapons
+                close io_ig_effects
+                close io_ig_sound
+                close io_ig_game
                 setitemcolor ignav1t forecolor 1 1 1 1
                 setitemcolor ignav2t forecolor 1 1 1 1
                 setitemcolor ignav3t forecolor 1 1 1 1
@@ -389,6 +434,15 @@
                 close io_ig_controls
                 close io_ig_advanced
                 close io_ig_leave
+                close io_ig_video
+                close io_ig_light
+                close io_ig_bloom
+                close io_ig_crosshair
+                close io_ig_hud
+                close io_ig_weapons
+                close io_ig_effects
+                close io_ig_sound
+                close io_ig_game
                 setitemcolor ignav1t forecolor 1 1 1 1
                 setitemcolor ignav2t forecolor 1 1 1 1
                 setitemcolor ignav3t forecolor 1 1 1 1
@@ -440,6 +494,15 @@
                 close io_ig_controls
                 close io_ig_settings
                 close io_ig_leave
+                close io_ig_video
+                close io_ig_light
+                close io_ig_bloom
+                close io_ig_crosshair
+                close io_ig_hud
+                close io_ig_weapons
+                close io_ig_effects
+                close io_ig_sound
+                close io_ig_game
                 setitemcolor ignav1t forecolor 1 1 1 1
                 setitemcolor ignav2t forecolor 1 1 1 1
                 setitemcolor ignav3t forecolor 1 1 1 1
@@ -491,6 +554,15 @@
                 close io_ig_controls
                 close io_ig_settings
                 close io_ig_advanced
+                close io_ig_video
+                close io_ig_light
+                close io_ig_bloom
+                close io_ig_crosshair
+                close io_ig_hud
+                close io_ig_weapons
+                close io_ig_effects
+                close io_ig_sound
+                close io_ig_game
                 setitemcolor ignav1t forecolor 1 1 1 1
                 setitemcolor ignav2t forecolor 1 1 1 1
                 setitemcolor ignav3t forecolor 1 1 1 1
@@ -910,9 +982,10 @@
         itemDef { text "Player model"  textscale .21  rect 24 44 250 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name ig_models  rect 24 64 250 56  type ITEM_TYPE_LISTBOX
+            name ig_models  rect 24 64 210 43  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 26  elementheight 26
             elementtype LISTBOX_IMAGE  feeder FEEDER_Q3HEADS
+            horizontalscroll
             border 1  bordercolor .35 .3 .12 1  visible 1
         }
         itemDef { name ig_modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
@@ -986,63 +1059,63 @@
         itemDef {
             name adv_io_ig_video  text "VIDEO"  type ITEM_TYPE_BUTTON  textscale .22
             rect 24 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_video }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_video }
             mouseEnter { setitemcolor adv_io_ig_video forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_video forecolor 1 1 1 1 }
         }
         itemDef {
             name adv_io_ig_light  text "LIGHTING"  type ITEM_TYPE_BUTTON  textscale .22
             rect 196 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_light }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_light }
             mouseEnter { setitemcolor adv_io_ig_light forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_light forecolor 1 1 1 1 }
         }
         itemDef {
             name adv_io_ig_bloom  text "BLOOM & POST"  type ITEM_TYPE_BUTTON  textscale .22
             rect 368 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_bloom }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_bloom }
             mouseEnter { setitemcolor adv_io_ig_bloom forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_bloom forecolor 1 1 1 1 }
         }
         itemDef {
             name adv_io_ig_crosshair  text "CROSSHAIR"  type ITEM_TYPE_BUTTON  textscale .22
             rect 24 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_crosshair }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_crosshair }
             mouseEnter { setitemcolor adv_io_ig_crosshair forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_crosshair forecolor 1 1 1 1 }
         }
         itemDef {
             name adv_io_ig_hud  text "HUD"  type ITEM_TYPE_BUTTON  textscale .22
             rect 196 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_hud }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_hud }
             mouseEnter { setitemcolor adv_io_ig_hud forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_hud forecolor 1 1 1 1 }
         }
         itemDef {
             name adv_io_ig_weapons  text "WEAPONS"  type ITEM_TYPE_BUTTON  textscale .22
             rect 368 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_weapons }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_weapons }
             mouseEnter { setitemcolor adv_io_ig_weapons forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_weapons forecolor 1 1 1 1 }
         }
         itemDef {
             name adv_io_ig_effects  text "EFFECTS"  type ITEM_TYPE_BUTTON  textscale .22
             rect 24 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_effects }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_effects }
             mouseEnter { setitemcolor adv_io_ig_effects forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_effects forecolor 1 1 1 1 }
         }
         itemDef {
             name adv_io_ig_sound  text "SOUND"  type ITEM_TYPE_BUTTON  textscale .22
             rect 196 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_sound }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_sound }
             mouseEnter { setitemcolor adv_io_ig_sound forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_sound forecolor 1 1 1 1 }
         }
         itemDef {
             name adv_io_ig_game  text "GAME"  type ITEM_TYPE_BUTTON  textscale .22
             rect 368 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_ig_game }
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_game }
             mouseEnter { setitemcolor adv_io_ig_game forecolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_game forecolor 1 1 1 1 }
         }
@@ -3233,9 +3306,10 @@
         itemDef { text "Player model:"  textscale .22  rect 30 150 120 18  textaligny 14
                   forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef {
-            name models  rect 30 172 300 56  type ITEM_TYPE_LISTBOX
+            name models  rect 30 172 210 43  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 26  elementheight 26
             elementtype LISTBOX_IMAGE  feeder FEEDER_Q3HEADS
+            horizontalscroll
             border 1  bordercolor .45 .45 .5 1  visible 1
         }
         itemDef { name modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL

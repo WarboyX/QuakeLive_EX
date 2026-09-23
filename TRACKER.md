@@ -6083,6 +6083,51 @@ panel is still the only thing that can.
 
 ---
 
+### E112. The model grid, and two menus drawn on top of each other — FIXED (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+**The model list drew one huge head per row.** `Item_ListBox_Paint`'s
+`LISTBOX_IMAGE` path advances **`y` only** - it is a single column, and
+`elementwidth` is not what decides how many fit. The giveaway is in that same
+loop: `size` is taken from `rect.h` and then has **`elementWidth`** subtracted
+from it, which is a horizontal layout flattened into a vertical one.
+
+There is a separate horizontal branch a few hundred lines up that lays images
+left to right, and it is reached by one keyword: **`horizontalscroll`**, which
+sets `WINDOW_HORIZONTAL`. Quake Live's own `ingame_options_basic.menu` uses it,
+which is why its picker is a row of eight heads with arrows at each end. Ours
+did not, so it fell into the vertical path.
+
+Fixed by adding the keyword and adopting Quake Live's proven geometry for both
+pickers - `210 x 43` with `26 x 26` elements, which is exactly eight across.
+Not derived: copied from the menu that demonstrably renders that way.
+
+**Video (and every other Advanced sub-page) drew on top of Advanced.**
+`Menu_PaintAll` paints every menu whose visible flag is set - no stack, no
+topmost - so opening a sub-page without closing the hub left both drawing in the
+same 560×292 rectangle, two sets of rows superimposed. This is the same fact
+about this menu system that caused the E108 draw-order bug, in a second
+disguise: there, definition order decided who won; here, nothing closed the
+loser at all.
+
+Two different fixes, because the two cases genuinely differ:
+
+- **Sub-pages** share the hub's exact geometry, so the hub button now closes
+  `io_ig_advanced` before opening one, and the sub-page's `BACK` reopens it.
+- **Our full-size menus** (Render Options, Water, Ray Tracing, Surface Detail,
+  Player Setup) are opaque `520 × 468` panels that cover the hub completely, so
+  they deliberately do **not** close it - leaving it open is what makes closing
+  them return to Advanced, with no extra wiring and nothing to get out of step.
+
+Also: a tab press now closes the sub-pages as well as the pages. Without that,
+switching tabs while a sub-page was open left it drawing over the new tab -
+the same bug one step removed. 16 closes per tab action, generated.
+
+**Unverified:** not run. Eight heads in a row and a single page at a time are
+the checks.
+
+---
+
 ### E111. The options that were missing — sliders, models, resolution — DONE (verify)
 **Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
 
