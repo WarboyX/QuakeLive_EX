@@ -70,7 +70,7 @@ TABS = [
     ("admin",    "Admin",         "io_ig_admin"),
     ("addbot",   "Add Bot",       "io_ig_addbot"),
     ("controls", "Controls",      "io_ig_controls"),
-    ("settings", "Settings",      "io_ig_settings"),
+    ("settings", "Player",        "io_ig_settings"),   # E118: was "Settings"
     ("advanced", "Advanced",      "io_ig_advanced"),
     # E117: no Leave tab. Leaving is on the Current Match page, which asks first.
 ]
@@ -692,6 +692,30 @@ def page_settings():
         itemDef { name ig_modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
                   rect 60 42 120 86  visible 1 }
 """ % CTRL_X
+    # [QL] E118. Name and handicap, so this page covers everything Player Setup
+    # did and the Player Setup button could go. Both sit in the gap between the
+    # model picker and the sliders; their labels are held right of the model
+    # preview (x 60-180), ending at the same gutter as every other row.
+    #
+    # The name field is bound straight to the live "name" cvar, the same way
+    # io_playersetup does it, so it applies as you type. Routing it through
+    # ui_Name and ui_SetName was an earlier bug: the field showed nothing and
+    # APPLY never wrote the name through.
+    for lb, y in (("Name", 94), ("Handicap", 112)):
+        b += ('        itemDef { text "%s"  textscale .21  rect 190 %d 80 16  textaligny 13\n'
+              '                  textalign ITEM_ALIGN_RIGHT  textalignx 80\n'
+              '                  forecolor %s  visible 1  decoration }\n' % (lb, y, WHITE))
+    b += ('        itemDef { name ig_name  type ITEM_TYPE_EDITFIELD  text ""  cvar "name"\n'
+          '                  maxchars 36  maxpaintchars 22\n'
+          '                  rect %d 94 246 16  textscale .2  textaligny 12  textalignx 4\n'
+          '                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55\n'
+          '                  border 1  bordersize 1  bordercolor .35 .3 .12 1\n'
+          '                  forecolor 1 1 1 1  visible 1 }\n' % CTRL_X)
+    # Player Setup's own list, copied rather than rebuilt so both menus agree.
+    b += ('        itemDef { name ig_handicap  type ITEM_TYPE_MULTI  text ""  cvar "handicap"\n'
+          '                  cvarFloatList { "None" 100 "90" 90 "80" 80 "70" 70 "60" 60 "50" 50 "40" 40 "30" 30 "20" 20 "10" 10 }\n'
+          '                  rect %d 112 200 16  textscale .21  textaligny 13  textalignx 2\n'
+          '                  forecolor 1 1 1 1  visible 1 }\n' % CTRL_X)
     y = 132
     for kind, cvar, text, extra in [
         ("slider", "sensitivity",   "Mouse sensitivity", ("5", "1", "30")),
@@ -715,8 +739,8 @@ def page_settings():
         b += ('        itemDef { text "%s"  textscale .17  rect 24 %d 512 16  textaligny 12\n'
               '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
               '                  forecolor %s  visible 1  decoration }\n' % (t, y + i * 17, DIM))
-    return page("io_ig_settings", "SETTINGS", b,
-                "The common ones, applied as you change them.")
+    return page("io_ig_settings", "PLAYER", b,
+                "Who you are, and the settings you change most.")
 
 
 # --- Advanced ----------------------------------------------------------------
@@ -753,11 +777,13 @@ def page_advanced():
     # These are full-size menus that cover this page, so they leave it open
     # underneath - closing them is what brings you back here (see E112).
     b += heading("Exclusive Options", 156)
-    b += button("ig_advrender", "RENDER OPTIONS", cols[0], 176, 160, "open io_renderoptions")
-    b += button("ig_advwater", "WATER", cols[1], 176, 160, "open io_water")
-    b += button("ig_advrt", "RAY TRACING", cols[2], 176, 160, "open io_raytracing")
-    b += button("ig_advsurf", "SURFACE DETAIL", 114, 204, 160, "open io_surfacedetail")
-    b += button("ig_advplayer", "PLAYER SETUP", 286, 204, 160, "open io_playersetup")
+    # E118: Player Setup is gone from here - its name, handicap and model picker
+    # are all on the Player tab now. It stays on the main menu, which has no
+    # Player tab. The four that remain are the renderer's, as a centred 2x2.
+    b += button("ig_advrender", "RENDER OPTIONS", 114, 176, 160, "open io_renderoptions")
+    b += button("ig_advwater", "WATER", 286, 176, 160, "open io_water")
+    b += button("ig_advrt", "RAY TRACING", 114, 204, 160, "open io_raytracing")
+    b += button("ig_advsurf", "SURFACE DETAIL", 286, 204, 160, "open io_surfacedetail")
     b += heading("Original Menu", 240)
     b += button("ig_advql", "QUAKE LIVE MENU", 200, 260, 160,
                 "open ingame ; open ingame_about")

@@ -160,7 +160,7 @@
         // --- tab 1: Current Match ---
         itemDef {
             name ignav1
-            rect 6 64 101 16
+            rect 6 64 103 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -205,18 +205,18 @@
                 open io_ig_match
             }
         }
-        itemDef { name ignav1o  rect 8 64 97 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav1o  rect 8 64 99 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name ignav1u  rect 8 80 97 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav1u  rect 8 80 99 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name ignav1t  rect 6 64 101 16  text "Current Match"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 50  textaligny 13
+        itemDef { name ignav1t  rect 6 64 103 16  text "Current Match"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 51  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
 
         // --- tab 2: Call Vote ---
         itemDef {
             name ignav2
-            rect 107 64 81 16
+            rect 109 64 83 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -261,18 +261,18 @@
                 open io_ig_vote
             }
         }
-        itemDef { name ignav2o  rect 109 64 77 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav2o  rect 111 64 79 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav2u  rect 109 80 77 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav2u  rect 111 80 79 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav2t  rect 107 64 81 16  text "Call Vote"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 40  textaligny 13
+        itemDef { name ignav2t  rect 109 64 83 16  text "Call Vote"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 41  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 3: Admin ---
         itemDef {
             name ignav3
-            rect 188 64 61 16
+            rect 192 64 63 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -317,18 +317,18 @@
                 open io_ig_admin
             }
         }
-        itemDef { name ignav3o  rect 190 64 57 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav3o  rect 194 64 59 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav3u  rect 190 80 57 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav3u  rect 194 80 59 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav3t  rect 188 64 61 16  text "Admin"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 30  textaligny 13
+        itemDef { name ignav3t  rect 192 64 63 16  text "Admin"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 31  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 4: Add Bot ---
         itemDef {
             name ignav4
-            rect 249 64 71 16
+            rect 255 64 73 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -373,18 +373,18 @@
                 open io_ig_addbot
             }
         }
-        itemDef { name ignav4o  rect 251 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav4o  rect 257 64 69 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav4u  rect 251 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav4u  rect 257 80 69 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav4t  rect 249 64 71 16  text "Add Bot"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name ignav4t  rect 255 64 73 16  text "Add Bot"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 36  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 5: Controls ---
         itemDef {
             name ignav5
-            rect 320 64 76 16
+            rect 328 64 78 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -429,18 +429,18 @@
                 open io_ig_controls
             }
         }
-        itemDef { name ignav5o  rect 322 64 72 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav5o  rect 330 64 74 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav5u  rect 322 80 72 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav5u  rect 330 80 74 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav5t  rect 320 64 76 16  text "Controls"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 38  textaligny 13
+        itemDef { name ignav5t  rect 328 64 78 16  text "Controls"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 39  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
-        // --- tab 6: Settings ---
+        // --- tab 6: Player ---
         itemDef {
             name ignav6
-            rect 396 64 76 16
+            rect 406 64 68 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -485,18 +485,18 @@
                 open io_ig_settings
             }
         }
-        itemDef { name ignav6o  rect 398 64 72 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav6o  rect 408 64 64 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav6u  rect 398 80 72 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav6u  rect 408 80 64 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav6t  rect 396 64 76 16  text "Settings"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 38  textaligny 13
+        itemDef { name ignav6t  rect 406 64 68 16  text "Player"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 34  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 7: Advanced ---
         itemDef {
             name ignav7
-            rect 472 64 76 16
+            rect 474 64 78 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -541,12 +541,12 @@
                 open io_ig_advanced
             }
         }
-        itemDef { name ignav7o  rect 474 64 72 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav7o  rect 476 64 74 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav7u  rect 474 80 72 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav7u  rect 476 80 74 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav7t  rect 472 64 76 16  text "Advanced"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 38  textaligny 13
+        itemDef { name ignav7t  rect 474 64 78 16  text "Advanced"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 39  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
     }
 
@@ -1039,12 +1039,12 @@
         // [QL] E113. Centred, like everything else on the page. The rows form a
         // two-column layout that meets at the page's centre line, and a title
         // hard against the left edge sat over nothing.
-        itemDef { name pgtitle  text "SETTINGS"  textscale .26  rect 20 0 520 24  textaligny 17
+        itemDef { name pgtitle  text "PLAYER"  textscale .26  rect 20 0 520 24  textaligny 17
                   textalign ITEM_ALIGN_CENTER  textalignx 260
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "The common ones, applied as you change them."  textscale .19  rect 20 26 520 14  textaligny 11
+        itemDef { text "Who you are, and the settings you change most."  textscale .19  rect 20 26 520 14  textaligny 11
                   textalign ITEM_ALIGN_CENTER  textalignx 260
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { text "Player model"  textscale .21  rect 190 57 80 16  textaligny 13
@@ -1059,6 +1059,22 @@
         }
         itemDef { name ig_modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
                   rect 60 42 120 86  visible 1 }
+        itemDef { text "Name"  textscale .21  rect 190 94 80 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 80
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Handicap"  textscale .21  rect 190 112 80 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 80
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name ig_name  type ITEM_TYPE_EDITFIELD  text ""  cvar "name"
+                  maxchars 36  maxpaintchars 22
+                  rect 290 94 246 16  textscale .2  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name ig_handicap  type ITEM_TYPE_MULTI  text ""  cvar "handicap"
+                  cvarFloatList { "None" 100 "90" 90 "80" 80 "70" 70 "60" 60 "50" 50 "40" 40 "30" 30 "20" 20 "10" 10 }
+                  rect 290 112 200 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Mouse sensitivity"  textscale .21  rect 24 132 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
@@ -1262,7 +1278,7 @@
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_advrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 28 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 114 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_renderoptions }
@@ -1271,7 +1287,7 @@
         }
         itemDef {
             name ig_advwater  text "WATER"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 200 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 286 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_water }
@@ -1280,7 +1296,7 @@
         }
         itemDef {
             name ig_advrt  text "RAY TRACING"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 372 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 114 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_raytracing }
@@ -1289,21 +1305,12 @@
         }
         itemDef {
             name ig_advsurf  text "SURFACE DETAIL"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 114 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 286 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_surfacedetail }
             mouseEnter { setitemcolor ig_advsurf backcolor 0 0 0 .9 ; setitemcolor ig_advsurf forecolor 0.964 0.815 0 1 ; setitemcolor ig_advsurf bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advsurf backcolor 0 0 0 .6 ; setitemcolor ig_advsurf forecolor 1 1 1 1 ; setitemcolor ig_advsurf bordercolor .35 .3 .12 1 }
-        }
-        itemDef {
-            name ig_advplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 286 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
-            forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; open io_playersetup }
-            mouseEnter { setitemcolor ig_advplayer backcolor 0 0 0 .9 ; setitemcolor ig_advplayer forecolor 0.964 0.815 0 1 ; setitemcolor ig_advplayer bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advplayer backcolor 0 0 0 .6 ; setitemcolor ig_advplayer forecolor 1 1 1 1 ; setitemcolor ig_advplayer bordercolor .35 .3 .12 1 }
         }
         itemDef { text "Original Menu"  textscale .21  rect 24 240 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
