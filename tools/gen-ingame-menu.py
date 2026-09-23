@@ -41,6 +41,11 @@ WHITE = "1 1 1 1"
 DIM = ".72 .72 .72 1"
 SEL_BACK = "0 0 0 0.9"
 OFF_BACK = "1 1 1 0"
+# Boxed buttons: Quake Live's Apply button on its player options page is a dark
+# red fill with a lighter edge. Matched rather than invented.
+BTN_BACK = ".42 .07 .05 .9"
+BTN_HOT = ".62 .12 .08 .95"
+BTN_EDGE = ".72 .55 .2 1"
 
 FRAME_W = 560
 NTABS = 8
@@ -97,11 +102,44 @@ def select_tab(idx):
     return "".join(out)
 
 
+# [QL] E113. Tab widths follow their labels, inside a padded bar.
+#
+# Eight equal 70px tabs put "Current Match" - the longest label, ~65px at
+# textscale .18 - in a 70px cell with its text centred, which leaves it about two
+# pixels from the frame's left edge: flush against the border, no padding, and
+# visibly further left than every other tab. Equal widths only look even when the
+# labels are.
+#
+# So each tab is its label plus the same padding either side, the bar is inset
+# from both frame edges, and whatever width is left over is shared out evenly.
+# TAB_CHAR is measured from the screenshot of the built menu (65 virtual px for
+# 13 characters), not assumed.
+TAB_CHAR = 5
+TAB_PAD = 12
+TAB_INSET = 6
+
+
+def tab_layout():
+    widths = [len(t[1]) * TAB_CHAR + TAB_PAD * 2 for t in TABS]
+    spare = FRAME_W - TAB_INSET * 2 - sum(widths)
+    if spare < 0:
+        raise SystemExit("gen-ingame-menu: tab labels no longer fit the bar - "
+                         "shorten one or drop TAB_PAD")
+    each = spare // len(widths)
+    widths = [w + each for w in widths]
+    xs, x = [], TAB_INSET
+    for w in widths:
+        xs.append(x)
+        x += w
+    return list(zip(xs, widths))
+
+
 def nav_items():
     out = []
+    layout = tab_layout()
     for i, (key, label, page) in enumerate(TABS):
         n = i + 1
-        x = i * TAB_W
+        x, TAB_W_I = layout[i]
         out.append("""
         // --- tab %d: %s ---
         itemDef {
@@ -123,13 +161,13 @@ def nav_items():
                   style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 13
                   forecolor %s  visible 1  decoration }
 """ % (n, label,
-       n, x, TAB_Y, TAB_W, TAB_H,
+       n, x, TAB_Y, TAB_W_I, TAB_H,
        close_all_pages(page), select_tab(i), page,
-       n, x + 2, TAB_Y, TAB_W - 4, TAB_H + 1,
+       n, x + 2, TAB_Y, TAB_W_I - 4, TAB_H + 1,
        SEL_BACK if i == 0 else OFF_BACK,
-       n, x + 2, TAB_Y + TAB_H, TAB_W - 4,
+       n, x + 2, TAB_Y + TAB_H, TAB_W_I - 4,
        GOLD if i == 0 else OFF_BACK,
-       n, x, TAB_Y, TAB_W, TAB_H, label, TAB_W // 2,
+       n, x, TAB_Y, TAB_W_I, TAB_H, label, TAB_W_I // 2,
        GOLD if i == 0 else WHITE))
     return "".join(out)
 
@@ -180,18 +218,26 @@ def frame():
                   style WINDOW_STYLE_FILLED  visible 1  decoration
                   forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
 
-        // RESUME, bottom right of the frame. ESC does the same thing; this is
-        // for the player who is looking for a button rather than a key.
+        // [QL] E113. A footer bar the width of the frame, with RESUME as a real
+        // button in it. It was bare text floating below the panel with nothing
+        // around it - it did not read as part of the menu, or as clickable.
+        // The box is Quake Live's own button language: the dark red fill and
+        // gold edge of the Apply button on its player options page.
+        itemDef { name ig_foot  rect 0 396 %d 36  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
             name ig_resume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect %d 400 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 19
+            rect %d 401 160 26  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 19
+            style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
             forecolor %s  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_resume forecolor %s }
-            mouseExit  { setitemcolor ig_resume forecolor %s }
+            mouseEnter { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s }
+            mouseExit  { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s }
         }
 %s    }
-""" % (FRAME_W, GOLD, FRAME_W, FRAME_W, FRAME_W, FRAME_W - 140, WHITE, GOLD, WHITE, nav_items())
+""" % (FRAME_W, GOLD, FRAME_W, FRAME_W, FRAME_W, FRAME_W,
+       (FRAME_W - 160) // 2, BTN_BACK, BTN_EDGE, WHITE, BTN_HOT, GOLD, BTN_BACK, WHITE,
+       nav_items())
 
 
 # ---------------------------------------------------------------- pages -----
@@ -204,6 +250,7 @@ def page(name, title, body, subtitle=None):
     sub = ""
     if subtitle:
         sub = ('        itemDef { text "%s"  textscale .19  rect 20 26 520 14  textaligny 11\n'
+               '                  textalign ITEM_ALIGN_CENTER  textalignx 260\n'
                '                  forecolor %s  visible 1  decoration }\n' % (subtitle, DIM))
     return """
     menuDef {
@@ -218,12 +265,31 @@ def page(name, title, body, subtitle=None):
         // closes the whole menu from any tab instead of walking back a level.
         onESC { uiScript closeingame }
 
+        // [QL] E113. Centred, like everything else on the page. The rows form a
+        // two-column layout that meets at the page's centre line, and a title
+        // hard against the left edge sat over nothing.
         itemDef { name pgtitle  text "%s"  textscale .26  rect 20 0 520 24  textaligny 17
+                  textalign ITEM_ALIGN_CENTER  textalignx 260
                   forecolor %s  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
 %s%s    }
 """ % (name, PAGE_W, PAGE_H, GOLD, title, GOLD, sub, body)
+
+
+def boxbutton(name, label, x, y, w, action):
+    """A button with a visible box, for actions rather than navigation."""
+    return """        itemDef {
+            name %s  text "%s"  type ITEM_TYPE_BUTTON  textscale .21
+            rect %d %d %d 22  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
+            forecolor %s  visible 1
+            action { play "sound/misc/menu1.wav" ; %s }
+            mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s }
+            mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s }
+        }
+""" % (name, label, x, y, w, w // 2, BTN_BACK, BTN_EDGE, WHITE, action,
+       name, BTN_HOT, name, GOLD, name, BTN_BACK, name, WHITE)
 
 
 def button(name, label, x, y, w, action, color=WHITE, hot=GOLD):
@@ -317,11 +383,25 @@ def cvarlist(cvar):
 
 ROW_H = 17
 
+# [QL] E113. A centred form: labels right-aligned so they END at the gutter,
+# controls starting just after it. Labels on the far left with values floating at
+# x=290 is two ragged columns with a gap between them that grows with the
+# shortest label; this meets at the page's centre line, which is where the eye
+# already is. LABEL_END and CTRL_X are relative to the page, whose centre is 280.
+LABEL_END = 270
+CTRL_X = 290
+# The engine draws a slider at a fixed SLIDER_WIDTH (ui_shared.h: 96), whatever
+# its rect says, so the rect is set to match and the value box goes after it.
+SLIDER_W = 96
+VALUE_X = CTRL_X + SLIDER_W + 12
+VALUE_W = 56
+
 
 def row_label(text, y):
-    return ('        itemDef { text "%s"  textscale .21  rect 24 %d 250 %d  textaligny 13\n'
+    return ('        itemDef { text "%s"  textscale .21  rect 24 %d %d %d  textaligny 13\n'
+            '                  textalign ITEM_ALIGN_RIGHT  textalignx %d\n'
             '                  forecolor %s  visible 1  decoration }\n'
-            % (text, y, ROW_H - 1, WHITE))
+            % (text, y, LABEL_END - 24, ROW_H - 1, LABEL_END - 24, WHITE))
 
 
 def row(kind, cvar, text, y, extra=None):
@@ -332,14 +412,31 @@ def row(kind, cvar, text, y, extra=None):
         dflt, lo, hi = extra
         out += ('        itemDef { name %s  type ITEM_TYPE_SLIDER  text ""\n'
                 '                  cvarFloat "%s" %s %s %s\n'
-                '                  rect 290 %d 200 %d  textscale .21  textaligny 13\n'
+                '                  rect %d %d %d %d  textscale .21  textaligny 13\n'
                 '                  forecolor 1 1 1 1  visible 1 }\n'
-                % (nm, cvar, dflt, lo, hi, y, ROW_H - 1))
+                % (nm, cvar, dflt, lo, hi, CTRL_X, y, SLIDER_W, ROW_H - 1))
+        # [QL] E113. The value, beside the slider, and typeable.
+        #
+        # A slider says where in its range it is and nothing about the number,
+        # and for sensitivity or FOV the number is the whole point - players
+        # carry them between configs. This box shows the cvar as it stands (the
+        # field re-reads it every frame, so it follows the thumb while dragging)
+        # and takes a typed value on Enter, including decimals and a leading
+        # minus since E113 taught ITEM_TYPE_NUMERICFIELD both. A typed value is
+        # not clamped to the slider's range; the cvar's own range check is the
+        # authority, same as typing it at the console.
+        out += ('        itemDef { name %sv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "%s"\n'
+                '                  maxchars 7  maxpaintchars 7\n'
+                '                  rect %d %d %d %d  textscale .19  textaligny 12  textalignx 4\n'
+                '                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55\n'
+                '                  border 1  bordersize 1  bordercolor .35 .3 .12 1\n'
+                '                  forecolor 1 1 1 1  visible 1 }\n'
+                % (nm, cvar, VALUE_X, y, VALUE_W, ROW_H - 1))
     elif kind == "yesno":
         out += ('        itemDef { name %s  type ITEM_TYPE_YESNO  text ""  cvar "%s"\n'
-                '                  rect 290 %d 70 %d  textscale .21  textaligny 13  textalignx 2\n'
+                '                  rect %d %d 70 %d  textscale .21  textaligny 13  textalignx 2\n'
                 '                  forecolor 1 1 1 1  visible 1 }\n'
-                % (nm, cvar, y, ROW_H - 1))
+                % (nm, cvar, CTRL_X, y, ROW_H - 1))
     else:
         vals = extra or cvarlist(cvar)
         if vals is None:
@@ -347,9 +444,9 @@ def row(kind, cvar, text, y, extra=None):
                              "docs/ql-cvar-semantics.txt or pass it explicitly" % cvar)
         out += ('        itemDef { name %s  type ITEM_TYPE_MULTI  text ""  cvar "%s"\n'
                 '                  cvarFloatList { %s }\n'
-                '                  rect 290 %d 250 %d  textscale .21  textaligny 13  textalignx 2\n'
+                '                  rect %d %d 250 %d  textscale .21  textaligny 13  textalignx 2\n'
                 '                  forecolor 1 1 1 1  visible 1 }\n'
-                % (nm, cvar, vals, y, ROW_H - 1))
+                % (nm, cvar, vals, CTRL_X, y, ROW_H - 1))
     return out
 
 
@@ -361,7 +458,9 @@ def rows_page(menu, title, subtitle, rows, footer=None, extra="", y0=40):
         b += row(r[0], r[1], r[2], y, r[3] if len(r) > 3 else None)
         y += ROW_H
     if footer:
-        b += label(footer, 24, y + 6, 500, ".17")
+        b += ('        itemDef { text "%s"  textscale .17  rect 24 %d 512 16  textaligny 12\n'
+              '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
+              '                  forecolor %s  visible 1  decoration }\n' % (footer, y + 6, DIM))
     return page(menu, title, b + extra, subtitle)
 
 
@@ -495,24 +594,28 @@ def page_settings():
     have the Apply this page would otherwise need. Putting a latched setting
     next to eight live ones is how "I changed it and nothing happened" starts.
     """
-    b = label("Player model", 24, 44, 250, ".21", WHITE)
-    # LISTBOX_IMAGE over FEEDER_Q3HEADS is how Quake Live's own basic page does
-    # the model picker; both it and UI_PLAYERMODEL are implemented in ui_main.c.
+    # Model block: preview in the left column, the picker in the control column,
+    # the label ending at the same gutter as every row below it.
+    b = ('        itemDef { text "Player model"  textscale .21  rect 190 57 80 16  textaligny 13\n'
+         '                  textalign ITEM_ALIGN_RIGHT  textalignx 80\n'
+         '                  forecolor %s  visible 1  decoration }\n' % WHITE)
+    # LISTBOX_IMAGE over FEEDER_Q3HEADS with horizontalscroll is how Quake
+    # Live's own basic page builds it - 210 wide at 26 per head is eight across.
     b += """        itemDef {
-            name ig_models  rect 24 64 210 43  type ITEM_TYPE_LISTBOX
+            name ig_models  rect %d 44 210 43  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 26  elementheight 26
             elementtype LISTBOX_IMAGE  feeder FEEDER_Q3HEADS
             horizontalscroll
             border 1  bordercolor .35 .3 .12 1  visible 1
         }
         itemDef { name ig_modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
-                  rect 420 40 120 86  visible 1 }
-"""
+                  rect 60 42 120 86  visible 1 }
+""" % CTRL_X
     y = 132
     for kind, cvar, text, extra in [
         ("slider", "sensitivity",   "Mouse sensitivity", ("5", "1", "30")),
         ("slider", "cg_fov",        "Field of view",     ("100", "75", "130")),
-        ("slider", "r_gamma",       "Brightness",        ("1.3", "1", "3")),
+        ("slider", "r_gamma",       "Brightness",        ("1", "0.5", "3")),
         ("slider", "s_volume",      "Master volume",     ("0.8", "0", "1")),
         ("slider", "s_musicvolume", "Music",             ("0.25", "0", "1")),
     ]:
@@ -522,12 +625,15 @@ def page_settings():
     # own slot rather than being squeezed into one and drawn over its neighbours.
     b += row_label("Crosshair", y + 4)
     b += ('        itemDef { name ig_xhair  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR\n'
-          '                  rect 290 %d 20 20  visible 1 }\n' % (y + 2))
+          '                  rect %d %d 20 20  visible 1 }\n' % (CTRL_X, y + 2))
     y += 26
-    b += row("multi", "cg_crosshairSize", "Crosshair size", y)
+    b += row("slider", "cg_crosshairSize", "Crosshair size", y, ("32", "8", "64"))
     y += ROW_H - 1
-    b += label("Resolution, texture detail and everything else Quake Live keeps on its", 24, y, 520, ".17")
-    b += label("advanced page are under the Advanced tab - and on the render menu.", 24, y + 17, 520, ".17")
+    for i, t in enumerate(["Resolution, texture detail and everything else Quake Live keeps on its",
+                           "advanced page are under the Advanced tab - and on the render menu."]):
+        b += ('        itemDef { text "%s"  textscale .17  rect 24 %d 512 16  textaligny 12\n'
+              '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
+              '                  forecolor %s  visible 1  decoration }\n' % (t, y + i * 17, DIM))
     return page("io_ig_settings", "SETTINGS", b,
                 "The common ones, applied as you change them.")
 
@@ -595,10 +701,9 @@ SUBPAGES = [
         ("yesno",  "r_fastsky",                 "Fast sky"),
     ], None),
     ("io_ig_light", "LIGHTING", "Brightness, shadows and the overall tone.", [
-        ("slider", "r_gamma",             "Brightness",     ("1.3", "1", "3")),
+        ("slider", "r_gamma",             "Brightness",     ("1", "0.5", "3")),
         ("multi",  "r_overbrightBits",    "Overbright"),
         ("multi",  "r_mapOverbrightBits", "Map overbright"),
-        ("multi",  "r_ambientScale",      "Ambient light"),
         ("yesno",  "r_dynamicLight",      "Dynamic lights"),
         ("multi",  "cg_shadows",          "Shadows",
                    '"Off" 0 "Blob" 1 "Simple" 2 "Stencil" 3'),
@@ -616,15 +721,15 @@ SUBPAGES = [
         ("yesno",  "r_enableColorCorrect",   "Colour correction"),
     ], "The Vulkan renderer has its own effects under Render Options."),
     ("io_ig_crosshair", "CROSSHAIR", "Size, brightness and what it reacts to.", [
-        ("multi",  "cg_crosshairSize",       "Size"),
-        ("multi",  "cg_crosshairBrightness", "Brightness"),
+        ("slider", "cg_crosshairSize",       "Size",       ("32", "8", "64")),
+        ("slider", "cg_crosshairBrightness", "Brightness", ("1", "0", "1")),
         ("yesno",  "cg_crosshairPulse",      "Pulse on pickup"),
         ("yesno",  "cg_crosshairHealth",     "Colour by health"),
         ("multi",  "cg_drawCrosshairNames",  "Show player names"),
     ], "The crosshair shape itself is on the Settings tab, beside its preview."),
     ("io_ig_hud", "HUD", "What is drawn on screen while you play.", [
         ("slider", "cg_fov",                 "Field of view",      ("100", "75", "130")),
-        ("slider", "cg_zoomfov",             "Zoom field of view", ("22.5", "10", "90")),
+        ("slider", "cg_zoomfov",             "Zoom field of view", ("30", "10", "90")),
         ("multi",  "cg_drawGun",             "Draw gun"),
         ("multi",  "cg_guny",                "Gun height"),
         ("yesno",  "cg_drawFPS",             "Show FPS"),
@@ -641,27 +746,27 @@ SUBPAGES = [
         ("yesno",  "cg_switchOnEmpty",   "Switch when empty"),
         ("yesno",  "cg_switchToEmpty",   "Allow switch to empty"),
         ("yesno",  "cg_muzzleFlash",     "Muzzle flash"),
-        ("multi",  "cg_brassTime",       "Ejected brass"),
+        ("slider", "cg_brassTime",       "Brass time (ms)",  ("2500", "0", "5000")),
         ("multi",  "cg_trueLightning",   "True lightning"),
         ("multi",  "cg_lightningStyle",  "Lightning style"),
         ("yesno",  "cg_lightningImpact", "Lightning impact"),
         ("multi",  "cg_plasmaStyle",     "Plasma style"),
         ("multi",  "cg_rocketStyle",     "Rocket style"),
-        ("multi",  "cg_railTrailTime",   "Rail trail time"),
-        ("multi",  "r_railWidth",        "Rail width"),
-        ("multi",  "r_railCoreWidth",    "Rail core width"),
+        ("slider", "cg_railTrailTime",   "Rail trail (ms)",  ("400", "0", "2000")),
+        ("slider", "r_railWidth",        "Rail width",       ("16", "0", "64")),
+        ("slider", "r_railCoreWidth",    "Rail core width",  ("6", "0", "24")),
     ], None),
     ("io_ig_effects", "EFFECTS", "Impacts, smoke and world detail.", [
-        ("multi",  "r_railSegmentLength",     "Rail segments"),
+        ("slider", "r_railSegmentLength",     "Rail segment length", ("32", "1", "128")),
         ("yesno",  "cg_simpleItems",          "Simple items"),
-        ("multi",  "cg_impactSparksVelocity", "Impact sparks"),
+        ("slider", "cg_impactSparksVelocity", "Impact spark speed",  ("128", "-128", "128")),
         ("yesno",  "cg_bubbleTrail",          "Underwater bubbles"),
         ("yesno",  "cg_damagePlum",           "Damage numbers"),
-        ("multi",  "cg_smokeRadius_RL",       "Rocket smoke"),
-        ("multi",  "cg_smokeRadius_GL",       "Grenade smoke"),
-        ("multi",  "cg_smokeRadius_NG",       "Nailgun smoke"),
+        ("slider", "cg_smokeRadius_RL",       "Rocket smoke",        ("32", "0", "64")),
+        ("slider", "cg_smokeRadius_GL",       "Grenade smoke",       ("64", "0", "64")),
+        ("slider", "cg_smokeRadius_NG",       "Nailgun smoke",       ("16", "0", "32")),
         ("yesno",  "cg_smoke_SG",             "Shotgun smoke"),
-        ("multi",  "cg_kickScale",            "View kick"),
+        ("slider", "cg_kickScale",            "View kick",           ("0.25", "0", "1")),
         ("yesno",  "cg_waterWarp",            "Underwater warp"),
         ("multi",  "cg_flagStyle",            "Flag style"),
     ], None),
@@ -684,7 +789,7 @@ SUBPAGES = [
         ("yesno",  "cg_forceTeamModel",    "Force team model"),
         ("yesno",  "cg_followKiller",      "Follow killer"),
         ("multi",  "cg_followPowerup",     "Follow powerup"),
-        ("slider", "cg_specFov",           "Spectator FOV", ("100", "75", "130")),
+        ("yesno",  "cg_specFov",           "Use followed player FOV"),
         ("yesno",  "cl_allowConsoleChat",  "Console chat"),
         ("multi",  "cl_demoRecordMessage", "Demo record message"),
     ], None),
@@ -699,13 +804,15 @@ def advanced_subpages():
         # Every sub-page carries its own way back: it opens OVER the Advanced
         # page rather than replacing it in the tab bar, so the bar still reads
         # Advanced and there is nothing up there to click to return.
-        extra = button("bk_" + menu, "BACK", 400, 264, 140,
-                       "close %s ; open io_ig_advanced" % menu)
+        # Boxed and centred on the page's centre line, like the rows above.
+        back = "close %s ; open io_ig_advanced" % menu
         if menu == "io_ig_video":
             # Resolution, fullscreen and colour depth are latched by the
-            # renderer; without this the page looks like it did nothing.
-            extra += button("ap_" + menu, "APPLY (restarts renderer)", 24, 264, 250,
-                            'exec "vid_restart"')
+            # renderer; without Apply the page looks like it did nothing.
+            extra = boxbutton("ap_" + menu, "APPLY", 150, 266, 120, 'exec "vid_restart"')
+            extra += boxbutton("bk_" + menu, "BACK", 290, 266, 120, back)
+        else:
+            extra = boxbutton("bk_" + menu, "BACK", 220, 266, 120, back)
         out += rows_page(menu, title, sub, rows, footer, extra)
     return out
 

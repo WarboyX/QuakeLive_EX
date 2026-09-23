@@ -6083,6 +6083,72 @@ panel is still the only thing that can.
 
 ---
 
+### E113. Layout, a real RESUME button, and sliders you can read and type — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+**Tab bar.** Eight equal 70px tabs put *Current Match* - ~65px at `textscale
+.18` - in a 70px cell, centred, so it sat about two pixels from the frame's left
+border: no padding, and visibly further left than every other tab. Equal widths
+only look even when the labels are. Each tab is now its label plus 14px either
+side, inside a bar inset 6px from both frame edges. The per-character width was
+measured off the built menu's screenshot, not assumed.
+
+**RESUME** was bare text floating under the panel with nothing around it. It is
+now a boxed button centred in a footer bar the width of the frame, in Quake
+Live's own button language - the dark red fill and light edge of the Apply button
+on its player options page. Sub-page actions (Apply, Back) use the same box.
+
+**Centred form.** Labels are right-aligned to end at a gutter just left of the
+page's centre line, controls start just right of it, and titles, subtitles and
+footnotes are centred. Before, labels hugged the left edge and values floated at
+x=290: two ragged columns with a gap that grew with the shortest label.
+
+**Sliders, with the number.** Continuous quantities presented as a few stops were
+wrong the same way sensitivity was in E111. Converted to sliders: crosshair size
+and brightness, brass time, rail trail time, rail width, rail core width, rail
+segment length, the three smoke radii, impact spark speed and view kick - 14 rows.
+Kept as lists on purpose: resolution, texture detail, model detail, curve detail,
+refresh rate, lagometer and the other genuinely discrete choices, where a
+position between two stops means nothing.
+
+Every slider now has a **value box** beside it: an `ITEM_TYPE_NUMERICFIELD` bound
+to the same cvar. The field re-reads its cvar every frame, so it follows the thumb
+while dragging, and it takes a typed value on Enter. That needed an engine change:
+**stock `NUMERICFIELD` accepted digits only**, so it could not hold 4.5, 1.2 or
+-96 - the values the slider beside it was showing. It now takes one decimal point
+and a leading minus. No menu used `NUMERICFIELD` before this, so nothing relying on
+digits-only is affected. It is used rather than `EDITFIELD` because an editfield
+accepts anything, and a letter typed into `sensitivity` reaches the cvar as 0.
+
+**Three rows that were lying, found while choosing what to convert:**
+
+- `cg_specFov` is a **boolean** - use the followed player's FOV (`cg_view.c:491`)
+  - and E111 had made it a 75-130 slider that could never turn it off. Now yes/no.
+- `r_ambientScale` is **`CVAR_CHEAT`**. Outside `sv_cheats 1` the engine refuses
+  the write. Removed from Lighting. The same slider in Surface Detail stays -
+  cheat-protection is right, since it lifts models in shadow - but is relabelled
+  *Ambient (devmap only)*, which is where the test maps are judged.
+- **Quake Live's `r_ambientScale` labels are 1 / 10 / 100; ours is a 0-2 scale
+  with default 0.6.** Same name, different meaning. A row built from Quake Live's
+  list would have set 100. `docs/ql-cvar-semantics.txt` is authoritative about
+  what Quake Live's values mean, not about what ours do - worth remembering for
+  every renderer cvar the two do not share an implementation of.
+
+Also corrected defaults that were wrong in E111: `r_gamma` is 1 with a 0.5-3
+range, not 1.3 over 1-3; `cg_zoomfov` defaults to 30, not 22.5.
+
+**Cheat and latch flags are a failure class the manifest check does not see.**
+`docs/cvar-manifest.txt` answers "does our code read it"; it cannot answer "will
+the engine let a menu write it". All 92 cvars in the generated menu were audited
+for `CVAR_CHEAT` / `CVAR_ROM` / `CVAR_INIT` / `CVAR_LATCH`: one cheat (above),
+seven latched, and all seven sit on the Video page beside its Apply. Worth making
+a check-menus gate rather than a one-off audit.
+
+**Unverified:** not run. Typing into a value box and pressing Enter is the check
+most likely to surprise.
+
+---
+
 ### E112. The model grid, and two menus drawn on top of each other — FIXED (verify)
 **Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
 

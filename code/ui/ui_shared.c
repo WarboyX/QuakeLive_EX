@@ -2564,7 +2564,30 @@ qboolean Item_TextField_HandleKey(itemDef_t* item, int key) {
             }
 
             if (item->type == ITEM_TYPE_NUMERICFIELD) {
-                if (key < '0' || key > '9') {
+                /*
+                [QL] E113. Digits, plus ONE decimal point and a LEADING minus.
+
+                Stock Q3 took digits only, which makes this field useless for
+                most of the numbers a player would want to type: sensitivity 4.5,
+                r_gamma 1.2, a smoke radius, cg_impactSparksVelocity -96. The
+                in-game menu puts one of these beside every slider so the value
+                can be read and typed, and a box that refuses "." cannot hold
+                the value the slider next to it is showing.
+
+                Changed here rather than switching those boxes to EDITFIELD,
+                because an editfield accepts anything and a letter typed into
+                sensitivity reaches the cvar as 0. No menu used NUMERICFIELD
+                before this, so nothing that relied on digits-only is affected.
+                */
+                if (key == '.') {
+                    if (strchr(buff, '.')) {
+                        return qfalse;
+                    }
+                } else if (key == '-') {
+                    if (item->cursorPos != 0 || buff[0] == '-') {
+                        return qfalse;
+                    }
+                } else if (key < '0' || key > '9') {
                     return qfalse;
                 }
             }
