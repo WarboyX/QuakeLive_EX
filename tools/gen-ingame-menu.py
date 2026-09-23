@@ -60,8 +60,6 @@ BTN_EDGE = ".35 .3 .12 1"
 BTN_EDGE_HOT = GOLD
 
 FRAME_W = 560
-NTABS = 8
-TAB_W = FRAME_W // NTABS      # 70
 TAB_Y = 64
 TAB_H = 16
 
@@ -74,10 +72,11 @@ TABS = [
     ("controls", "Controls",      "io_ig_controls"),
     ("settings", "Settings",      "io_ig_settings"),
     ("advanced", "Advanced",      "io_ig_advanced"),
-    ("leave",    "Leave",         "io_ig_leave"),
+    # E117: no Leave tab. Leaving is on the Current Match page, which asks first.
 ]
 
 PAGES = [t[2] for t in TABS]
+NTABS = len(TABS)
 
 
 def close_all_pages(exclude=None, indent="                "):
@@ -271,7 +270,7 @@ def frame():
 PAGE_W, PAGE_H = 560, 292
 
 
-def page(name, title, body, subtitle=None):
+def page(name, title, body, subtitle=None, onopen=None):
     sub = ""
     if subtitle:
         sub = ('        itemDef { text "%s"  textscale .19  rect 20 26 520 14  textaligny 11\n'
@@ -289,7 +288,7 @@ def page(name, title, body, subtitle=None):
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
         onESC { uiScript closeingame }
-
+%s
         // [QL] E113. Centred, like everything else on the page. The rows form a
         // two-column layout that meets at the page's centre line, and a title
         // hard against the left edge sat over nothing.
@@ -299,7 +298,9 @@ def page(name, title, body, subtitle=None):
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
 %s%s    }
-""" % (name, PAGE_W, PAGE_H, GOLD, title, GOLD, sub, body)
+""" % (name, PAGE_W, PAGE_H, GOLD,
+       ("        onOpen { %s }\n" % onopen) if onopen else "",
+       title, GOLD, sub, body)
 
 
 def boxbutton(name, label, x, y, w, action):
@@ -318,7 +319,7 @@ def boxbutton(name, label, x, y, w, action):
        name, BTN_BACK, name, WHITE, name, BTN_EDGE)
 
 
-def button(name, label, x, y, w, action):
+def button(name, label, x, y, w, action, hidden=False):
     """
     Every button in the menu, boxed. There used to be two styles - boxed actions
     and bare-text buttons - side by side on the same pages, which reads as
@@ -331,12 +332,12 @@ def button(name, label, x, y, w, action):
             name %s  text "%s"  type ITEM_TYPE_BUTTON  textscale .22
             rect %d %d %d 24  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
-            forecolor %s  visible 1
+            forecolor %s  visible %d
             action { play "sound/misc/menu1.wav" ; %s }
             mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
             mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
         }
-""" % (name, label, x, y, w, w // 2, BTN_BACK, BTN_EDGE, WHITE, action,
+""" % (name, label, x, y, w, w // 2, BTN_BACK, BTN_EDGE, WHITE, 0 if hidden else 1, action,
        name, BTN_HOT, name, GOLD, name, BTN_EDGE_HOT,
        name, BTN_BACK, name, WHITE, name, BTN_EDGE)
 
@@ -529,8 +530,32 @@ def page_match():
         b += ('        itemDef { text "%s"  textscale .17  rect 300 %d 240 16  textaligny 12\n'
               '                  textalign ITEM_ALIGN_CENTER  textalignx 120\n'
               '                  forecolor %s  visible 1  decoration }\n' % (t, 184 + i * 17, DIM))
+    # [QL] E117. Leave lives here now, not on a tab of its own.
+    #
+    # It still asks first. The Leave page existed because disconnecting has no
+    # undo, and moving the button must not quietly drop that. Instead of a page,
+    # the button turns into a confirm/cancel pair in place: `hide` and `show`
+    # act on items in this menu by name, and the page's onOpen puts the plain
+    # button back - `open` runs onOpen on every tab switch, so a half-confirmed
+    # Leave never survives leaving the page.
+    #
+    # The question replaces the button IN PLACE and the confirm pair appears on
+    # the row BELOW it. Put CONFIRM where LEAVE MATCH was and a double-click
+    # lands its second click on CONFIRM - disconnecting through the very step
+    # meant to stop it. Here the second click hits plain text and does nothing.
+    b += button("ig_leave", "LEAVE MATCH", 300, 236, 240,
+                "hide ig_leave ; show ig_leaveyes ; show ig_leaveno ; show ig_leaveask")
+    b += ('        itemDef { name ig_leaveask  text "Disconnect from this server?"  textscale .19\n'
+          '                  rect 300 240 240 16  textaligny 12\n'
+          '                  textalign ITEM_ALIGN_CENTER  textalignx 120\n'
+          '                  forecolor %s  visible 0  decoration }\n' % WHITE)
+    b += button("ig_leaveyes", "CONFIRM", 300, 262, 116, "uiScript Leave", hidden=True)
+    b += button("ig_leaveno", "CANCEL", 424, 262, 116,
+                "hide ig_leaveyes ; hide ig_leaveno ; hide ig_leaveask ; show ig_leave",
+                hidden=True)
     return page("io_ig_match", "CURRENT MATCH", b,
-                "Who is here, and which side you are on.")
+                "Who is here, and which side you are on.",
+                onopen="show ig_leave ; hide ig_leaveyes ; hide ig_leaveno ; hide ig_leaveask")
 
 
 # --- Call Vote ---------------------------------------------------------------
@@ -887,26 +912,6 @@ def advanced_subpages():
     return out
 
 
-# --- Leave -------------------------------------------------------------------
-# A page rather than a tab that acts immediately: Leave sits in the same row as
-# seven navigation tabs, and a tab that disconnects on click is a misclick with
-# no undo.
-def page_leave():
-    # Centred and in the same button language as everything else. It had a pink
-    # "danger" text colour of its own - a third red on one screen. The page
-    # already asks first, which is the actual safeguard; colour was not doing
-    # that job, only clashing with the header.
-    b = ""
-    for i, t in enumerate(["Leaving drops you back to the main menu. If this is a server you",
-                           "joined, you will have to find it again to come back."]):
-        b += ('        itemDef { text "%s"  textscale .21  rect 24 %d 512 16  textaligny 12\n'
-              '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
-              '                  forecolor %s  visible 1  decoration }\n' % (t, 60 + i * 20, WHITE))
-    b += boxbutton("ig_leaveyes", "LEAVE MATCH", 150, 124, 120, "uiScript Leave")
-    b += boxbutton("ig_leaveno", "STAY", 290, 124, 120, "uiScript closeingame")
-    return page("io_ig_leave", "LEAVE MATCH", b, "This one asks first.")
-
-
 # ---------------------------------------------------------------- fit --------
 # [QL] E116. Every label must fit inside its own rect.
 #
@@ -970,7 +975,7 @@ def main():
     block = (BEGIN
              + frame()
              + page_match() + page_vote() + page_admin() + page_addbot()
-             + page_controls() + page_settings() + page_advanced() + page_leave()
+             + page_controls() + page_settings() + page_advanced()
              + advanced_subpages()
              + END)
 

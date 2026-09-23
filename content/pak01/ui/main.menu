@@ -110,7 +110,6 @@
                 setitemcolor ignav5t forecolor 1 1 1 1
                 setitemcolor ignav6t forecolor 1 1 1 1
                 setitemcolor ignav7t forecolor 1 1 1 1
-                setitemcolor ignav8t forecolor 1 1 1 1
                 setitemcolor ignav1o backcolor 0 0 0 0.9
                 setitemcolor ignav2o backcolor 1 1 1 0
                 setitemcolor ignav3o backcolor 1 1 1 0
@@ -118,7 +117,6 @@
                 setitemcolor ignav5o backcolor 1 1 1 0
                 setitemcolor ignav6o backcolor 1 1 1 0
                 setitemcolor ignav7o backcolor 1 1 1 0
-                setitemcolor ignav8o backcolor 1 1 1 0
                 setitemcolor ignav1u backcolor 0.964 0.815 0 1
                 setitemcolor ignav2u backcolor 1 1 1 0
                 setitemcolor ignav3u backcolor 1 1 1 0
@@ -126,7 +124,6 @@
                 setitemcolor ignav5u backcolor 1 1 1 0
                 setitemcolor ignav6u backcolor 1 1 1 0
                 setitemcolor ignav7u backcolor 1 1 1 0
-                setitemcolor ignav8u backcolor 1 1 1 0
         }
 
         itemDef { name ig_dim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -163,7 +160,7 @@
         // --- tab 1: Current Match ---
         itemDef {
             name ignav1
-            rect 6 64 94 16
+            rect 6 64 101 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -175,7 +172,6 @@
                 close io_ig_controls
                 close io_ig_settings
                 close io_ig_advanced
-                close io_ig_leave
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
@@ -192,7 +188,6 @@
                 setitemcolor ignav5t forecolor 1 1 1 1
                 setitemcolor ignav6t forecolor 1 1 1 1
                 setitemcolor ignav7t forecolor 1 1 1 1
-                setitemcolor ignav8t forecolor 1 1 1 1
                 setitemcolor ignav1o backcolor 0 0 0 0.9
                 setitemcolor ignav2o backcolor 1 1 1 0
                 setitemcolor ignav3o backcolor 1 1 1 0
@@ -200,7 +195,6 @@
                 setitemcolor ignav5o backcolor 1 1 1 0
                 setitemcolor ignav6o backcolor 1 1 1 0
                 setitemcolor ignav7o backcolor 1 1 1 0
-                setitemcolor ignav8o backcolor 1 1 1 0
                 setitemcolor ignav1u backcolor 0.964 0.815 0 1
                 setitemcolor ignav2u backcolor 1 1 1 0
                 setitemcolor ignav3u backcolor 1 1 1 0
@@ -208,22 +202,21 @@
                 setitemcolor ignav5u backcolor 1 1 1 0
                 setitemcolor ignav6u backcolor 1 1 1 0
                 setitemcolor ignav7u backcolor 1 1 1 0
-                setitemcolor ignav8u backcolor 1 1 1 0
                 open io_ig_match
             }
         }
-        itemDef { name ignav1o  rect 8 64 90 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav1o  rect 8 64 97 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name ignav1u  rect 8 80 90 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav1u  rect 8 80 97 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name ignav1t  rect 6 64 94 16  text "Current Match"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 47  textaligny 13
+        itemDef { name ignav1t  rect 6 64 101 16  text "Current Match"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 50  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
 
         // --- tab 2: Call Vote ---
         itemDef {
             name ignav2
-            rect 100 64 74 16
+            rect 107 64 81 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -235,7 +228,6 @@
                 close io_ig_controls
                 close io_ig_settings
                 close io_ig_advanced
-                close io_ig_leave
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
@@ -252,7 +244,6 @@
                 setitemcolor ignav5t forecolor 1 1 1 1
                 setitemcolor ignav6t forecolor 1 1 1 1
                 setitemcolor ignav7t forecolor 1 1 1 1
-                setitemcolor ignav8t forecolor 1 1 1 1
                 setitemcolor ignav1o backcolor 1 1 1 0
                 setitemcolor ignav2o backcolor 0 0 0 0.9
                 setitemcolor ignav3o backcolor 1 1 1 0
@@ -260,7 +251,6 @@
                 setitemcolor ignav5o backcolor 1 1 1 0
                 setitemcolor ignav6o backcolor 1 1 1 0
                 setitemcolor ignav7o backcolor 1 1 1 0
-                setitemcolor ignav8o backcolor 1 1 1 0
                 setitemcolor ignav1u backcolor 1 1 1 0
                 setitemcolor ignav2u backcolor 0.964 0.815 0 1
                 setitemcolor ignav3u backcolor 1 1 1 0
@@ -268,22 +258,21 @@
                 setitemcolor ignav5u backcolor 1 1 1 0
                 setitemcolor ignav6u backcolor 1 1 1 0
                 setitemcolor ignav7u backcolor 1 1 1 0
-                setitemcolor ignav8u backcolor 1 1 1 0
                 open io_ig_vote
             }
         }
-        itemDef { name ignav2o  rect 102 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav2o  rect 109 64 77 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav2u  rect 102 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav2u  rect 109 80 77 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav2t  rect 100 64 74 16  text "Call Vote"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
+        itemDef { name ignav2t  rect 107 64 81 16  text "Call Vote"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 40  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 3: Admin ---
         itemDef {
             name ignav3
-            rect 174 64 54 16
+            rect 188 64 61 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -295,7 +284,6 @@
                 close io_ig_controls
                 close io_ig_settings
                 close io_ig_advanced
-                close io_ig_leave
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
@@ -312,7 +300,6 @@
                 setitemcolor ignav5t forecolor 1 1 1 1
                 setitemcolor ignav6t forecolor 1 1 1 1
                 setitemcolor ignav7t forecolor 1 1 1 1
-                setitemcolor ignav8t forecolor 1 1 1 1
                 setitemcolor ignav1o backcolor 1 1 1 0
                 setitemcolor ignav2o backcolor 1 1 1 0
                 setitemcolor ignav3o backcolor 0 0 0 0.9
@@ -320,7 +307,6 @@
                 setitemcolor ignav5o backcolor 1 1 1 0
                 setitemcolor ignav6o backcolor 1 1 1 0
                 setitemcolor ignav7o backcolor 1 1 1 0
-                setitemcolor ignav8o backcolor 1 1 1 0
                 setitemcolor ignav1u backcolor 1 1 1 0
                 setitemcolor ignav2u backcolor 1 1 1 0
                 setitemcolor ignav3u backcolor 0.964 0.815 0 1
@@ -328,22 +314,21 @@
                 setitemcolor ignav5u backcolor 1 1 1 0
                 setitemcolor ignav6u backcolor 1 1 1 0
                 setitemcolor ignav7u backcolor 1 1 1 0
-                setitemcolor ignav8u backcolor 1 1 1 0
                 open io_ig_admin
             }
         }
-        itemDef { name ignav3o  rect 176 64 50 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav3o  rect 190 64 57 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav3u  rect 176 80 50 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav3u  rect 190 80 57 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav3t  rect 174 64 54 16  text "Admin"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 27  textaligny 13
+        itemDef { name ignav3t  rect 188 64 61 16  text "Admin"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 30  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 4: Add Bot ---
         itemDef {
             name ignav4
-            rect 228 64 64 16
+            rect 249 64 71 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -355,7 +340,6 @@
                 close io_ig_controls
                 close io_ig_settings
                 close io_ig_advanced
-                close io_ig_leave
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
@@ -372,7 +356,6 @@
                 setitemcolor ignav5t forecolor 1 1 1 1
                 setitemcolor ignav6t forecolor 1 1 1 1
                 setitemcolor ignav7t forecolor 1 1 1 1
-                setitemcolor ignav8t forecolor 1 1 1 1
                 setitemcolor ignav1o backcolor 1 1 1 0
                 setitemcolor ignav2o backcolor 1 1 1 0
                 setitemcolor ignav3o backcolor 1 1 1 0
@@ -380,7 +363,6 @@
                 setitemcolor ignav5o backcolor 1 1 1 0
                 setitemcolor ignav6o backcolor 1 1 1 0
                 setitemcolor ignav7o backcolor 1 1 1 0
-                setitemcolor ignav8o backcolor 1 1 1 0
                 setitemcolor ignav1u backcolor 1 1 1 0
                 setitemcolor ignav2u backcolor 1 1 1 0
                 setitemcolor ignav3u backcolor 1 1 1 0
@@ -388,22 +370,21 @@
                 setitemcolor ignav5u backcolor 1 1 1 0
                 setitemcolor ignav6u backcolor 1 1 1 0
                 setitemcolor ignav7u backcolor 1 1 1 0
-                setitemcolor ignav8u backcolor 1 1 1 0
                 open io_ig_addbot
             }
         }
-        itemDef { name ignav4o  rect 230 64 60 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav4o  rect 251 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav4u  rect 230 80 60 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav4u  rect 251 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav4t  rect 228 64 64 16  text "Add Bot"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 32  textaligny 13
+        itemDef { name ignav4t  rect 249 64 71 16  text "Add Bot"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 5: Controls ---
         itemDef {
             name ignav5
-            rect 292 64 69 16
+            rect 320 64 76 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -415,7 +396,6 @@
                 close io_ig_addbot
                 close io_ig_settings
                 close io_ig_advanced
-                close io_ig_leave
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
@@ -432,7 +412,6 @@
                 setitemcolor ignav5t forecolor 0.964 0.815 0 1
                 setitemcolor ignav6t forecolor 1 1 1 1
                 setitemcolor ignav7t forecolor 1 1 1 1
-                setitemcolor ignav8t forecolor 1 1 1 1
                 setitemcolor ignav1o backcolor 1 1 1 0
                 setitemcolor ignav2o backcolor 1 1 1 0
                 setitemcolor ignav3o backcolor 1 1 1 0
@@ -440,7 +419,6 @@
                 setitemcolor ignav5o backcolor 0 0 0 0.9
                 setitemcolor ignav6o backcolor 1 1 1 0
                 setitemcolor ignav7o backcolor 1 1 1 0
-                setitemcolor ignav8o backcolor 1 1 1 0
                 setitemcolor ignav1u backcolor 1 1 1 0
                 setitemcolor ignav2u backcolor 1 1 1 0
                 setitemcolor ignav3u backcolor 1 1 1 0
@@ -448,22 +426,21 @@
                 setitemcolor ignav5u backcolor 0.964 0.815 0 1
                 setitemcolor ignav6u backcolor 1 1 1 0
                 setitemcolor ignav7u backcolor 1 1 1 0
-                setitemcolor ignav8u backcolor 1 1 1 0
                 open io_ig_controls
             }
         }
-        itemDef { name ignav5o  rect 294 64 65 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav5o  rect 322 64 72 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav5u  rect 294 80 65 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav5u  rect 322 80 72 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav5t  rect 292 64 69 16  text "Controls"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 34  textaligny 13
+        itemDef { name ignav5t  rect 320 64 76 16  text "Controls"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 38  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 6: Settings ---
         itemDef {
             name ignav6
-            rect 361 64 69 16
+            rect 396 64 76 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -475,7 +452,6 @@
                 close io_ig_addbot
                 close io_ig_controls
                 close io_ig_advanced
-                close io_ig_leave
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
@@ -492,7 +468,6 @@
                 setitemcolor ignav5t forecolor 1 1 1 1
                 setitemcolor ignav6t forecolor 0.964 0.815 0 1
                 setitemcolor ignav7t forecolor 1 1 1 1
-                setitemcolor ignav8t forecolor 1 1 1 1
                 setitemcolor ignav1o backcolor 1 1 1 0
                 setitemcolor ignav2o backcolor 1 1 1 0
                 setitemcolor ignav3o backcolor 1 1 1 0
@@ -500,7 +475,6 @@
                 setitemcolor ignav5o backcolor 1 1 1 0
                 setitemcolor ignav6o backcolor 0 0 0 0.9
                 setitemcolor ignav7o backcolor 1 1 1 0
-                setitemcolor ignav8o backcolor 1 1 1 0
                 setitemcolor ignav1u backcolor 1 1 1 0
                 setitemcolor ignav2u backcolor 1 1 1 0
                 setitemcolor ignav3u backcolor 1 1 1 0
@@ -508,22 +482,21 @@
                 setitemcolor ignav5u backcolor 1 1 1 0
                 setitemcolor ignav6u backcolor 0.964 0.815 0 1
                 setitemcolor ignav7u backcolor 1 1 1 0
-                setitemcolor ignav8u backcolor 1 1 1 0
                 open io_ig_settings
             }
         }
-        itemDef { name ignav6o  rect 363 64 65 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav6o  rect 398 64 72 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav6u  rect 363 80 65 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav6u  rect 398 80 72 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav6t  rect 361 64 69 16  text "Settings"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 34  textaligny 13
+        itemDef { name ignav6t  rect 396 64 76 16  text "Settings"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 38  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
 
         // --- tab 7: Advanced ---
         itemDef {
             name ignav7
-            rect 430 64 69 16
+            rect 472 64 76 16
             style WINDOW_STYLE_FILLED
             visible 1
             type ITEM_TYPE_BUTTON
@@ -535,7 +508,6 @@
                 close io_ig_addbot
                 close io_ig_controls
                 close io_ig_settings
-                close io_ig_leave
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
@@ -552,7 +524,6 @@
                 setitemcolor ignav5t forecolor 1 1 1 1
                 setitemcolor ignav6t forecolor 1 1 1 1
                 setitemcolor ignav7t forecolor 0.964 0.815 0 1
-                setitemcolor ignav8t forecolor 1 1 1 1
                 setitemcolor ignav1o backcolor 1 1 1 0
                 setitemcolor ignav2o backcolor 1 1 1 0
                 setitemcolor ignav3o backcolor 1 1 1 0
@@ -560,7 +531,6 @@
                 setitemcolor ignav5o backcolor 1 1 1 0
                 setitemcolor ignav6o backcolor 1 1 1 0
                 setitemcolor ignav7o backcolor 0 0 0 0.9
-                setitemcolor ignav8o backcolor 1 1 1 0
                 setitemcolor ignav1u backcolor 1 1 1 0
                 setitemcolor ignav2u backcolor 1 1 1 0
                 setitemcolor ignav3u backcolor 1 1 1 0
@@ -568,76 +538,15 @@
                 setitemcolor ignav5u backcolor 1 1 1 0
                 setitemcolor ignav6u backcolor 1 1 1 0
                 setitemcolor ignav7u backcolor 0.964 0.815 0 1
-                setitemcolor ignav8u backcolor 1 1 1 0
                 open io_ig_advanced
             }
         }
-        itemDef { name ignav7o  rect 432 64 65 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav7o  rect 474 64 72 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav7u  rect 432 80 65 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ignav7u  rect 474 80 72 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name ignav7t  rect 430 64 69 16  text "Advanced"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 34  textaligny 13
-                  forecolor 1 1 1 1  visible 1  decoration }
-
-        // --- tab 8: Leave ---
-        itemDef {
-            name ignav8
-            rect 499 64 54 16
-            style WINDOW_STYLE_FILLED
-            visible 1
-            type ITEM_TYPE_BUTTON
-            action {
-                play "sound/misc/menu1.wav"
-                close io_ig_match
-                close io_ig_vote
-                close io_ig_admin
-                close io_ig_addbot
-                close io_ig_controls
-                close io_ig_settings
-                close io_ig_advanced
-                close io_ig_video
-                close io_ig_light
-                close io_ig_bloom
-                close io_ig_crosshair
-                close io_ig_hud
-                close io_ig_weapons
-                close io_ig_effects
-                close io_ig_sound
-                close io_ig_game
-                setitemcolor ignav1t forecolor 1 1 1 1
-                setitemcolor ignav2t forecolor 1 1 1 1
-                setitemcolor ignav3t forecolor 1 1 1 1
-                setitemcolor ignav4t forecolor 1 1 1 1
-                setitemcolor ignav5t forecolor 1 1 1 1
-                setitemcolor ignav6t forecolor 1 1 1 1
-                setitemcolor ignav7t forecolor 1 1 1 1
-                setitemcolor ignav8t forecolor 0.964 0.815 0 1
-                setitemcolor ignav1o backcolor 1 1 1 0
-                setitemcolor ignav2o backcolor 1 1 1 0
-                setitemcolor ignav3o backcolor 1 1 1 0
-                setitemcolor ignav4o backcolor 1 1 1 0
-                setitemcolor ignav5o backcolor 1 1 1 0
-                setitemcolor ignav6o backcolor 1 1 1 0
-                setitemcolor ignav7o backcolor 1 1 1 0
-                setitemcolor ignav8o backcolor 0 0 0 0.9
-                setitemcolor ignav1u backcolor 1 1 1 0
-                setitemcolor ignav2u backcolor 1 1 1 0
-                setitemcolor ignav3u backcolor 1 1 1 0
-                setitemcolor ignav4u backcolor 1 1 1 0
-                setitemcolor ignav5u backcolor 1 1 1 0
-                setitemcolor ignav6u backcolor 1 1 1 0
-                setitemcolor ignav7u backcolor 1 1 1 0
-                setitemcolor ignav8u backcolor 0.964 0.815 0 1
-                open io_ig_leave
-            }
-        }
-        itemDef { name ignav8o  rect 501 64 50 17  style WINDOW_STYLE_FILLED  visible 1  decoration
-                  backcolor 1 1 1 0 }
-        itemDef { name ignav8u  rect 501 80 50 1  style WINDOW_STYLE_FILLED  visible 1  decoration
-                  backcolor 1 1 1 0 }
-        itemDef { name ignav8t  rect 499 64 54 16  text "Leave"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 27  textaligny 13
+        itemDef { name ignav7t  rect 472 64 76 16  text "Advanced"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 38  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
     }
 
@@ -652,6 +561,7 @@
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
         onESC { uiScript closeingame }
+        onOpen { show ig_leave ; hide ig_leaveyes ; hide ig_leaveno ; hide ig_leaveask }
 
         // [QL] E113. Centred, like everything else on the page. The rows form a
         // two-column layout that meets at the page's centre line, and a title
@@ -717,6 +627,37 @@
         itemDef { text "this page shows who is here."  textscale .17  rect 300 201 240 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 120
                   forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name ig_leave  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 236 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; hide ig_leave ; show ig_leaveyes ; show ig_leaveno ; show ig_leaveask }
+            mouseEnter { setitemcolor ig_leave backcolor 0 0 0 .9 ; setitemcolor ig_leave forecolor 0.964 0.815 0 1 ; setitemcolor ig_leave bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_leave backcolor 0 0 0 .6 ; setitemcolor ig_leave forecolor 1 1 1 1 ; setitemcolor ig_leave bordercolor .35 .3 .12 1 }
+        }
+        itemDef { name ig_leaveask  text "Disconnect from this server?"  textscale .19
+                  rect 300 240 240 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 120
+                  forecolor 1 1 1 1  visible 0  decoration }
+        itemDef {
+            name ig_leaveyes  text "CONFIRM"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 300 262 116 24  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 0
+            action { play "sound/misc/menu1.wav" ; uiScript Leave }
+            mouseEnter { setitemcolor ig_leaveyes backcolor 0 0 0 .9 ; setitemcolor ig_leaveyes forecolor 0.964 0.815 0 1 ; setitemcolor ig_leaveyes bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_leaveyes backcolor 0 0 0 .6 ; setitemcolor ig_leaveyes forecolor 1 1 1 1 ; setitemcolor ig_leaveyes bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name ig_leaveno  text "CANCEL"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 424 262 116 24  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 0
+            action { play "sound/misc/menu1.wav" ; hide ig_leaveyes ; hide ig_leaveno ; hide ig_leaveask ; show ig_leave }
+            mouseEnter { setitemcolor ig_leaveno backcolor 0 0 0 .9 ; setitemcolor ig_leaveno forecolor 0.964 0.815 0 1 ; setitemcolor ig_leaveno bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_leaveno backcolor 0 0 0 .6 ; setitemcolor ig_leaveno forecolor 1 1 1 1 ; setitemcolor ig_leaveno bordercolor .35 .3 .12 1 }
+        }
     }
 
     menuDef {
@@ -1375,55 +1316,6 @@
             action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
             mouseEnter { setitemcolor ig_advql backcolor 0 0 0 .9 ; setitemcolor ig_advql forecolor 0.964 0.815 0 1 ; setitemcolor ig_advql bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advql backcolor 0 0 0 .6 ; setitemcolor ig_advql forecolor 1 1 1 1 ; setitemcolor ig_advql bordercolor .35 .3 .12 1 }
-        }
-    }
-
-    menuDef {
-        name "io_ig_leave"
-        rect 40 99 560 292
-        visible MENU_FALSE
-        fullScreen 0
-        style WINDOW_STYLE_EMPTY
-        focusColor 0.964 0.815 0 1
-
-        // Pages never handle ESC themselves. The frame owns it, so one key
-        // closes the whole menu from any tab instead of walking back a level.
-        onESC { uiScript closeingame }
-
-        // [QL] E113. Centred, like everything else on the page. The rows form a
-        // two-column layout that meets at the page's centre line, and a title
-        // hard against the left edge sat over nothing.
-        itemDef { name pgtitle  text "LEAVE MATCH"  textscale .26  rect 20 0 520 24  textaligny 17
-                  textalign ITEM_ALIGN_CENTER  textalignx 260
-                  forecolor 0.964 0.815 0 1  visible 1  decoration }
-        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
-                  backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "This one asks first."  textscale .19  rect 20 26 520 14  textaligny 11
-                  textalign ITEM_ALIGN_CENTER  textalignx 260
-                  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Leaving drops you back to the main menu. If this is a server you"  textscale .21  rect 24 60 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { text "joined, you will have to find it again to come back."  textscale .21  rect 24 80 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef {
-            name ig_leaveyes  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 150 124 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
-            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
-            forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript Leave }
-            mouseEnter { setitemcolor ig_leaveyes backcolor 0 0 0 .9 ; setitemcolor ig_leaveyes forecolor 0.964 0.815 0 1 ; setitemcolor ig_leaveyes bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_leaveyes backcolor 0 0 0 .6 ; setitemcolor ig_leaveyes forecolor 1 1 1 1 ; setitemcolor ig_leaveyes bordercolor .35 .3 .12 1 }
-        }
-        itemDef {
-            name ig_leaveno  text "STAY"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 290 124 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
-            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
-            forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_leaveno backcolor 0 0 0 .9 ; setitemcolor ig_leaveno forecolor 0.964 0.815 0 1 ; setitemcolor ig_leaveno bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_leaveno backcolor 0 0 0 .6 ; setitemcolor ig_leaveno forecolor 1 1 1 1 ; setitemcolor ig_leaveno bordercolor .35 .3 .12 1 }
         }
     }
 
