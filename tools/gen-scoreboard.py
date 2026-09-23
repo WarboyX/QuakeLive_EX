@@ -216,6 +216,129 @@ def board_team(name, stats):
     return frame(name, b)
 
 
+# ---------------------------------------------------------------- popups -----
+# [QL] E120. The right-click menu and the stats panel. cgame positions the menu
+# beside the clicked row, paints both after the board, and runs every button's
+# "io_sbaction <verb>" against the player it was opened on (cg_newdraw.c).
+#
+# Rows are 18 tall on a 19px pitch. Kick and Ban do not act on the first click:
+# they reveal a confirm row at the BOTTOM of the menu, away from the button that
+# armed it, so a double-click cannot confirm through the safeguard (the same
+# reasoning as E117's Leave).
+
+CTX_W = 150
+
+
+def ctx_button(name, label, y, action, x=6, w=None):
+    return gim.button(name, label, x, y, w or CTX_W - 12, action).replace(
+        "rect %d %d %d 24" % (x, y, w or CTX_W - 12),
+        "rect %d %d %d 18" % (x, y, w or CTX_W - 12)).replace(
+        "textaligny 16", "textaligny 13").replace("textscale .22", "textscale .19")
+
+
+def cvar_text(name, cvar, x, y, w, h=16, scale=".19", align="ITEM_ALIGN_LEFT", color=None):
+    """A text item with no text of its own: Item_Text_Paint shows the cvar."""
+    ax = {"ITEM_ALIGN_LEFT": 0, "ITEM_ALIGN_CENTER": w // 2, "ITEM_ALIGN_RIGHT": w}[align]
+    return ('        itemDef { name %s  cvar "%s"  textscale %s  rect %d %d %d %d  textaligny %d\n'
+            '                  textalign %s  textalignx %d  forecolor %s  visible 1  decoration }\n'
+            % (name, cvar, scale, x, y, w, h, h - 4, align, ax, color or WHITE))
+
+
+def ctx_menu():
+    act = lambda verb: 'exec "io_sbaction %s"' % verb
+    arm = lambda what: ('show sbc_ask ; show sbc_yes ; show sbc_no ; exec "io_sbaction arm %s"' % what)
+    b = cvar_text("sbc_name", "io_sb_name", 6, 4, CTX_W - 12, 16, ".2", color=GOLD)
+    b += fill("sbc_rule", 6, 22, CTX_W - 12, 1, BTN_EDGE)
+    y = 27
+    for name, label, verb in [("sbc_stats", "VIEW STATS", "stats"),
+                              ("sbc_follow", "FOLLOW", "follow"),
+                              ("sbc_vote", "VOTE KICK", "votekick")]:
+        b += ctx_button(name, label, y, act(verb))
+        y += 19
+    b += deco("ADMIN", 6, y + 2, CTX_W - 12, 14, ".16", color=DIM)
+    y += 18
+    for name, label, action in [("sbc_mute", "MUTE", act("mute")),
+                                ("sbc_unmute", "UNMUTE", act("unmute")),
+                                ("sbc_kick", "KICK (THIS MATCH)", arm("tempban")),
+                                ("sbc_ban", "BAN", arm("ban"))]:
+        b += ctx_button(name, label, y, action)
+        y += 19
+    third = (CTX_W - 12 - 8) // 3
+    for i, (name, label, verb) in enumerate([("sbc_red", "RED", "red"),
+                                             ("sbc_blue", "BLUE", "blue"),
+                                             ("sbc_spec", "SPEC", "spec")]):
+        b += ctx_button(name, label, y, act(verb), x=6 + i * (third + 4), w=third)
+    y += 24
+    # confirm row, hidden until Kick or Ban arms it
+    ask = cvar_text("sbc_ask", "io_sb_pending", 6, y, CTX_W - 12, 16, ".17",
+                    "ITEM_ALIGN_CENTER").replace("visible 1", "visible 0")
+    b += ask
+    half = (CTX_W - 12 - 4) // 2
+    b += gim.button("sbc_yes", "CONFIRM", 6, y + 18, half, act("confirm"), hidden=True).replace(
+        "rect 6 %d %d 24" % (y + 18, half), "rect 6 %d %d 18" % (y + 18, half)).replace(
+        "textaligny 16", "textaligny 13").replace("textscale .22", "textscale .19")
+    b += gim.button("sbc_no", "CANCEL", 10 + half, y + 18, half,
+                    'hide sbc_ask ; hide sbc_yes ; hide sbc_no ; exec "io_sbaction disarm"',
+                    hidden=True).replace(
+        "rect %d %d %d 24" % (10 + half, y + 18, half),
+        "rect %d %d %d 18" % (10 + half, y + 18, half)).replace(
+        "textaligny 16", "textaligny 13").replace("textscale .22", "textscale .19")
+    h = y + 18 + 18 + 6
+    return """
+    menuDef {
+        name "io_score_ctx"
+        rect 0 0 %d %d
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_FILLED
+        backcolor 0 0 0 .9
+        border 1
+        bordersize 1
+        bordercolor %s
+        focusColor %s
+%s    }
+""" % (CTX_W, h, BTN_EDGE, GOLD, b)
+
+
+STATS_ROWS = [("Team", "io_sb_s_team"), ("Score", "io_sb_s_score"),
+              ("Kills", "io_sb_s_kills"), ("Deaths", "io_sb_s_deaths"),
+              ("K/D ratio", "io_sb_s_kd"), ("Net", "io_sb_s_net"),
+              ("Damage", "io_sb_s_damage"), ("Accuracy", "io_sb_s_acc"),
+              ("Time played", "io_sb_s_time"), ("Ping", "io_sb_s_ping")]
+
+
+def stats_menu():
+    w = 260
+    b = cvar_text("sss_name", "io_sb_s_name", 10, 8, w - 20, 20, ".26", "ITEM_ALIGN_CENTER", GOLD)
+    b += fill("sss_rule", 10, 30, w - 20, 1, BTN_EDGE)
+    y = 38
+    for label, cv in STATS_ROWS:
+        b += deco(label, 10, y, 112, 16, ".19", "ITEM_ALIGN_RIGHT", WHITE)
+        b += cvar_text("sss_" + cv[-6:].strip("_"), cv, 134, y, 116, 16, ".19")
+        y += 17
+    # Objective line gets the full width: "3 caps  2 assists  5 defends" does not
+    # fit a value column, and its length is not known until it is filled in.
+    b += deco("Objectives", 10, y + 2, w - 20, 16, ".19", "ITEM_ALIGN_CENTER", DIM)
+    b += cvar_text("sss_obj", "io_sb_s_obj", 10, y + 18, w - 20, 16, ".18", "ITEM_ALIGN_CENTER")
+    y += 42
+    b += gim.button("sss_close", "CLOSE", (w - 100) // 2, y, 100, "close io_score_stats")
+    h = y + 30
+    return """
+    menuDef {
+        name "io_score_stats"
+        rect %d %d %d %d
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_FILLED
+        backcolor 0 0 0 .92
+        border 1
+        bordersize 1
+        bordercolor %s
+        focusColor %s
+%s    }
+""" % (X + (W - w) // 2, Y + 80, w, h, BTN_EDGE, GOLD, b)
+
+
 def main():
     text = '#include "ui/menudef.h"\n\n'
     text += ("// GENERATED by tools/gen-scoreboard.py - edit that, not this.\n"
@@ -224,6 +347,9 @@ def main():
     body = board_ffa()
     for name, stats in TEAM_VARIANTS.items():
         body += board_team(name, stats)
+    # Popups after every board: Display_CaptureItem walks menus from the highest
+    # index down, so being defined last is what makes them take the click.
+    body += ctx_menu() + stats_menu()
     text += body + "}\n"
 
     overflow = gim.check_text_fit(body)

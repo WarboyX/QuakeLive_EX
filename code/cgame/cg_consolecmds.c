@@ -139,6 +139,9 @@ static void CG_ScoresUp_f(void) {
         cg.showScores = qfalse;
     }
 
+    // [QL] E120. The right-click menu and stats panel belong to the held board.
+    CG_ScoreboardPopupsClose();
+
     /* Only hand the mouse back if the scoreboard is why we have it. At
        intermission CG_ParseServerinfo holds the same catcher for the match
        summary, and releasing the key must not close that. */
@@ -1099,6 +1102,17 @@ typedef struct {
 } consoleCommand_t;
 
 // [QL] Command table - matches cgamex86.dll binary at 0x10078DC0 (57 entries)
+/*
+[QL] E120. Every button on the scoreboard's right-click menu runs this. Menu
+scripts are fixed strings and cannot carry a client number, so the button names
+a verb and cgame supplies the player it was opened on.
+*/
+static void CG_ScoreboardAction_f(void) {
+    char verb[32];
+    trap_Argv(1, verb, sizeof(verb));
+    CG_ScoreboardAction(verb);
+}
+
 static consoleCommand_t commands[] = {
     {"viewpos", CG_Viewpos_f},
     // [QL] why the first-person weapon is framed the way it is
@@ -1120,6 +1134,7 @@ static consoleCommand_t commands[] = {
     {"clientfriendinvite", CG_SteamOnlyCommand_f},
     {"+scores", CG_ScoresDown_f},
     {"-scores", CG_ScoresUp_f},
+    {"io_sbaction", CG_ScoreboardAction_f},   // [QL] E120
     {"+acc", CG_AccDown_f},
     {"-acc", CG_AccUp_f},
     {"+pstats", CG_PStatsDown_f},

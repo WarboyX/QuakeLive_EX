@@ -386,4 +386,217 @@
             border 1  bordersize 1  bordercolor .35 .3 .12 1  visible 1
         }
     }
+
+    menuDef {
+        name "io_score_ctx"
+        rect 0 0 150 244
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_FILLED
+        backcolor 0 0 0 .9
+        border 1
+        bordersize 1
+        bordercolor .35 .3 .12 1
+        focusColor 0.964 0.815 0 1
+        itemDef { name sbc_name  cvar "io_sb_name"  textscale .2  rect 6 4 138 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        // check-menus: overlap-ok - background layer; things are drawn on it
+        itemDef { name sbc_rule  rect 6 22 138 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor .35 .3 .12 1 }
+        itemDef {
+            name sbc_stats  text "VIEW STATS"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 27 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction stats" }
+            mouseEnter { setitemcolor sbc_stats backcolor 0 0 0 .9 ; setitemcolor sbc_stats forecolor 0.964 0.815 0 1 ; setitemcolor sbc_stats bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_stats backcolor 0 0 0 .6 ; setitemcolor sbc_stats forecolor 1 1 1 1 ; setitemcolor sbc_stats bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_follow  text "FOLLOW"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 46 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction follow" }
+            mouseEnter { setitemcolor sbc_follow backcolor 0 0 0 .9 ; setitemcolor sbc_follow forecolor 0.964 0.815 0 1 ; setitemcolor sbc_follow bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_follow backcolor 0 0 0 .6 ; setitemcolor sbc_follow forecolor 1 1 1 1 ; setitemcolor sbc_follow bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_vote  text "VOTE KICK"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 65 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction votekick" }
+            mouseEnter { setitemcolor sbc_vote backcolor 0 0 0 .9 ; setitemcolor sbc_vote forecolor 0.964 0.815 0 1 ; setitemcolor sbc_vote bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_vote backcolor 0 0 0 .6 ; setitemcolor sbc_vote forecolor 1 1 1 1 ; setitemcolor sbc_vote bordercolor .35 .3 .12 1 }
+        }
+        itemDef { text "ADMIN"  textscale .16  rect 6 86 138 14  textaligny 10
+                  textalign ITEM_ALIGN_LEFT  textalignx 0
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name sbc_mute  text "MUTE"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 102 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction mute" }
+            mouseEnter { setitemcolor sbc_mute backcolor 0 0 0 .9 ; setitemcolor sbc_mute forecolor 0.964 0.815 0 1 ; setitemcolor sbc_mute bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_mute backcolor 0 0 0 .6 ; setitemcolor sbc_mute forecolor 1 1 1 1 ; setitemcolor sbc_mute bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_unmute  text "UNMUTE"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 121 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction unmute" }
+            mouseEnter { setitemcolor sbc_unmute backcolor 0 0 0 .9 ; setitemcolor sbc_unmute forecolor 0.964 0.815 0 1 ; setitemcolor sbc_unmute bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_unmute backcolor 0 0 0 .6 ; setitemcolor sbc_unmute forecolor 1 1 1 1 ; setitemcolor sbc_unmute bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_kick  text "KICK (THIS MATCH)"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 140 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; show sbc_ask ; show sbc_yes ; show sbc_no ; exec "io_sbaction arm tempban" }
+            mouseEnter { setitemcolor sbc_kick backcolor 0 0 0 .9 ; setitemcolor sbc_kick forecolor 0.964 0.815 0 1 ; setitemcolor sbc_kick bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_kick backcolor 0 0 0 .6 ; setitemcolor sbc_kick forecolor 1 1 1 1 ; setitemcolor sbc_kick bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_ban  text "BAN"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 159 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; show sbc_ask ; show sbc_yes ; show sbc_no ; exec "io_sbaction arm ban" }
+            mouseEnter { setitemcolor sbc_ban backcolor 0 0 0 .9 ; setitemcolor sbc_ban forecolor 0.964 0.815 0 1 ; setitemcolor sbc_ban bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_ban backcolor 0 0 0 .6 ; setitemcolor sbc_ban forecolor 1 1 1 1 ; setitemcolor sbc_ban bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_red  text "RED"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 178 43 18  textalign ITEM_ALIGN_CENTER  textalignx 21  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction red" }
+            mouseEnter { setitemcolor sbc_red backcolor 0 0 0 .9 ; setitemcolor sbc_red forecolor 0.964 0.815 0 1 ; setitemcolor sbc_red bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_red backcolor 0 0 0 .6 ; setitemcolor sbc_red forecolor 1 1 1 1 ; setitemcolor sbc_red bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_blue  text "BLUE"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 53 178 43 18  textalign ITEM_ALIGN_CENTER  textalignx 21  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction blue" }
+            mouseEnter { setitemcolor sbc_blue backcolor 0 0 0 .9 ; setitemcolor sbc_blue forecolor 0.964 0.815 0 1 ; setitemcolor sbc_blue bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_blue backcolor 0 0 0 .6 ; setitemcolor sbc_blue forecolor 1 1 1 1 ; setitemcolor sbc_blue bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_spec  text "SPEC"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 100 178 43 18  textalign ITEM_ALIGN_CENTER  textalignx 21  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction spec" }
+            mouseEnter { setitemcolor sbc_spec backcolor 0 0 0 .9 ; setitemcolor sbc_spec forecolor 0.964 0.815 0 1 ; setitemcolor sbc_spec bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_spec backcolor 0 0 0 .6 ; setitemcolor sbc_spec forecolor 1 1 1 1 ; setitemcolor sbc_spec bordercolor .35 .3 .12 1 }
+        }
+        itemDef { name sbc_ask  cvar "io_sb_pending"  textscale .17  rect 6 202 138 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 69  forecolor 1 1 1 1  visible 0  decoration }
+        itemDef {
+            name sbc_yes  text "CONFIRM"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 6 220 67 18  textalign ITEM_ALIGN_CENTER  textalignx 33  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 0
+            action { play "sound/misc/menu1.wav" ; exec "io_sbaction confirm" }
+            mouseEnter { setitemcolor sbc_yes backcolor 0 0 0 .9 ; setitemcolor sbc_yes forecolor 0.964 0.815 0 1 ; setitemcolor sbc_yes bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_yes backcolor 0 0 0 .6 ; setitemcolor sbc_yes forecolor 1 1 1 1 ; setitemcolor sbc_yes bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name sbc_no  text "CANCEL"  type ITEM_TYPE_BUTTON  textscale .19
+            rect 77 220 67 18  textalign ITEM_ALIGN_CENTER  textalignx 33  textaligny 13
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 0
+            action { play "sound/misc/menu1.wav" ; hide sbc_ask ; hide sbc_yes ; hide sbc_no ; exec "io_sbaction disarm" }
+            mouseEnter { setitemcolor sbc_no backcolor 0 0 0 .9 ; setitemcolor sbc_no forecolor 0.964 0.815 0 1 ; setitemcolor sbc_no bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sbc_no backcolor 0 0 0 .6 ; setitemcolor sbc_no forecolor 1 1 1 1 ; setitemcolor sbc_no bordercolor .35 .3 .12 1 }
+        }
+    }
+
+    menuDef {
+        name "io_score_stats"
+        rect 190 116 260 280
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_FILLED
+        backcolor 0 0 0 .92
+        border 1
+        bordersize 1
+        bordercolor .35 .3 .12 1
+        focusColor 0.964 0.815 0 1
+        itemDef { name sss_name  cvar "io_sb_s_name"  textscale .26  rect 10 8 240 20  textaligny 16
+                  textalign ITEM_ALIGN_CENTER  textalignx 120  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        // check-menus: overlap-ok - background layer; things are drawn on it
+        itemDef { name sss_rule  rect 10 30 240 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor .35 .3 .12 1 }
+        itemDef { text "Team"  textscale .19  rect 10 38 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_s_team  cvar "io_sb_s_team"  textscale .19  rect 134 38 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Score"  textscale .19  rect 10 55 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_score  cvar "io_sb_s_score"  textscale .19  rect 134 55 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Kills"  textscale .19  rect 10 72 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_kills  cvar "io_sb_s_kills"  textscale .19  rect 134 72 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Deaths"  textscale .19  rect 10 89 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_deaths  cvar "io_sb_s_deaths"  textscale .19  rect 134 89 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "K/D ratio"  textscale .19  rect 10 106 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_b_s_kd  cvar "io_sb_s_kd"  textscale .19  rect 134 106 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Net"  textscale .19  rect 10 123 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_s_net  cvar "io_sb_s_net"  textscale .19  rect 134 123 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Damage"  textscale .19  rect 10 140 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_damage  cvar "io_sb_s_damage"  textscale .19  rect 134 140 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Accuracy"  textscale .19  rect 10 157 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_s_acc  cvar "io_sb_s_acc"  textscale .19  rect 134 157 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Time played"  textscale .19  rect 10 174 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_s_time  cvar "io_sb_s_time"  textscale .19  rect 134 174 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Ping"  textscale .19  rect 10 191 112 16  textaligny 12
+                  textalign ITEM_ALIGN_RIGHT  textalignx 112
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name sss_s_ping  cvar "io_sb_s_ping"  textscale .19  rect 134 191 116 16  textaligny 12
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Objectives"  textscale .19  rect 10 210 240 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 120
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name sss_obj  cvar "io_sb_s_obj"  textscale .18  rect 10 226 240 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 120  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name sss_close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 80 250 100 24  textalign ITEM_ALIGN_CENTER  textalignx 50  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_score_stats }
+            mouseEnter { setitemcolor sss_close backcolor 0 0 0 .9 ; setitemcolor sss_close forecolor 0.964 0.815 0 1 ; setitemcolor sss_close bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor sss_close backcolor 0 0 0 .6 ; setitemcolor sss_close forecolor 1 1 1 1 ; setitemcolor sss_close bordercolor .35 .3 .12 1 }
+        }
+    }
 }

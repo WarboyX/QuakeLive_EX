@@ -712,6 +712,12 @@ typedef struct {
     qboolean scoreboardScrolled;
     qboolean scoreboardSelected;    // [QL] a row was clicked; stop re-highlighting the local player
     int scoreboardSelectedFeeder;   // [QL] which list that click landed in
+    // [QL] E120. The replacement scoreboard's right-click menu. sbCtxClient is the
+    // player it was opened on (-1 when closed); sbStatsClient the player whose
+    // stats panel is up; sbPending the admin verb waiting for its confirm click.
+    int sbCtxClient;
+    int sbStatsClient;
+    char sbPending[16];
     qboolean scoreBoardShowing;
 
     // [QL] team-kill complaint prompt (server "complaint" verb). complaintClient is the
@@ -1869,6 +1875,10 @@ void CG_LoadMenus(const char* menuFile);
 void CG_ParseMenu(const char* menuFile);
 qboolean CG_InWarmup(void);  // [QL] cg.warmup is -1 when live, not 0 - never test it bare
 void CG_KeyEvent(int key, qboolean down);
+void CG_ScoreboardPopupsClose(void);        // [QL] E120
+void CG_ScoreboardPopupsPaint(void);        // [QL] E120
+void CG_ScoreboardAction(const char* verb); // [QL] E120
+int CG_ScoreboardClientAt(int feeder, int index);  // [QL] E120
 void CG_MouseEvent(int x, int y);
 void CG_EventHandling(int type);
 void CG_ScoreboardDebugDump(void);

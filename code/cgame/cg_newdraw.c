@@ -3900,6 +3900,281 @@ void CG_ScoreboardDebugDump(void) {
     }
 }
 
+/*
+===============================================================================
+[QL] E120. Right-click menu and stats panel for the replacement scoreboard.
+
+Right-click a player on an io_* board and a small menu opens beside their row:
+View Stats, Follow, Vote Kick, and an admin section (mute, unmute, kick for the
+match, ban, move to red/blue/spec). The admin commands are the server's own
+referee verbs - the same strings the ui module's admin scripts send - so the
+server decides who may use them, exactly as it does for the console.
+
+Buttons cannot carry a client number (menu scripts are fixed strings), so every
+button runs "io_sbaction <verb>" and this file supplies the player.
+
+Only on our boards: Quake Live's own board keeps its existing behaviour.
+===============================================================================
+*/
+void Menu_ShowItemByName(menuDef_t* menu, const char* p, qboolean bShow);
+
+#define SB_CTX "io_score_ctx"
+#define SB_STATS "io_score_stats"
+
+static qboolean CG_ScoreboardIsOurs(void) {
+    extern menuDef_t* menuScoreboard;
+    return menuScoreboard && menuScoreboard->window.name &&
+           !Q_stricmpn(menuScoreboard->window.name, "io_", 3);
+}
+
+static qboolean CG_MenuOpen(const char* name) {
+    menuDef_t* m = Menus_FindByName(name);
+    return m && (m->window.flags & WINDOW_VISIBLE);
+}
+
+static void CG_ScoreboardDisarm(void) {
+    menuDef_t* m = Menus_FindByName(SB_CTX);
+
+    cg.sbPending[0] = '\0';
+    if (m) {
+        Menu_ShowItemByName(m, "sbc_ask", qfalse);
+        Menu_ShowItemByName(m, "sbc_yes", qfalse);
+        Menu_ShowItemByName(m, "sbc_no", qfalse);
+    }
+}
+
+void CG_ScoreboardPopupsClose(void) {
+    CG_ScoreboardDisarm();
+    Menus_CloseByName(SB_CTX);
+    Menus_CloseByName(SB_STATS);
+    cg.sbCtxClient = -1;
+    cg.sbStatsClient = -1;
+}
+
+/*
+The listbox item carrying `feeder` on the scoreboard, so the row the list itself
+selected can be read back rather than recomputed from the cursor.
+*/
+static itemDef_t* CG_ScoreboardList(menuDef_t* menu, int feeder) {
+    int i;
+    if (!menu) {
+        return NULL;
+    }
+    for (i = 0; i < menu->itemCount; i++) {
+        if (menu->items[i]->type == ITEM_TYPE_LISTBOX && menu->items[i]->special == feeder) {
+            return menu->items[i];
+        }
+    }
+    return NULL;
+}
+
+/*
+Open the menu on the row under the cursor.
+
+The row is found by letting the list handle a left click first and reading back
+the row it selected. Menu_FeederAtPoint and the list's own hit test go through
+the widescreen transform and the scroll position; recomputing that here would
+be a second copy of it to fall out of step. It also highlights the row, which
+is what a right-click on a modern scoreboard does.
+
+The menu is anchored to that ROW rather than to the cursor, for the same reason:
+row geometry is in the board's own coordinates, while the cursor is in a
+different horizontal space on widescreen displays.
+*/
+static void CG_ScoreboardOpenContext(int x, int y) {
+    extern menuDef_t* menuScoreboard;
+    menuDef_t* ctx = Menus_FindByName(SB_CTX);
+    itemDef_t* list;
+    listBoxDef_t* lp;
+    int feeder, client;
+    float rowY;
+
+    /*
+    Close any open popup FIRST. The synthetic click below goes to the topmost
+    visible menu under the cursor, so with the menu still open, a right-click
+    landing on it would press whichever button was there - right-clicking over
+    BAN would arm a ban.
+    */
+    CG_ScoreboardPopupsClose();
+
+    feeder = Menu_FeederAtPoint(menuScoreboard, x, y);
+    if (feeder < 0 || !ctx) {
+        return;
+    }
+
+    Display_HandleKey(K_MOUSE1, qtrue, x, y);
+    cg.scoreboardSelected = qtrue;
+    cg.scoreboardSelectedFeeder = feeder;
+
+    list = CG_ScoreboardList(menuScoreboard, feeder);
+    lp = list ? (listBoxDef_t*)list->typeData : NULL;
+    if (!list || !lp || list->cursorPos < 0) {
+        CG_ScoreboardPopupsClose();
+        return;
+    }
+    client = CG_ScoreboardClientAt(feeder, list->cursorPos);
+    if (client < 0 || client >= MAX_CLIENTS || !cgs.clientinfo[client].infoValid) {
+        CG_ScoreboardPopupsClose();
+        return;
+    }
+
+    CG_ScoreboardDisarm();
+    Menus_CloseByName(SB_STATS);
+    cg.sbCtxClient = client;
+    trap_Cvar_Set("io_sb_name", cgs.clientinfo[client].name);
+
+    /* beside the name column, level with the row, kept on screen */
+    rowY = list->window.rect.y + 1 + (list->cursorPos - lp->startPos) * lp->elementHeight;
+    ctx->window.rect.x = list->window.rect.x + 128;
+    ctx->window.rect.y = rowY;
+    if (ctx->window.rect.x + ctx->window.rect.w > SCREEN_WIDTH - 4) {
+        ctx->window.rect.x = SCREEN_WIDTH - 4 - ctx->window.rect.w;
+    }
+    if (ctx->window.rect.y + ctx->window.rect.h > SCREEN_HEIGHT - 4) {
+        ctx->window.rect.y = SCREEN_HEIGHT - 4 - ctx->window.rect.h;
+    }
+    if (ctx->window.rect.y < 4) {
+        ctx->window.rect.y = 4;
+    }
+    Menu_UpdatePosition(ctx);
+    Menus_ActivateByName(SB_CTX);
+}
+
+/* Stats panel values, refreshed every frame it is up - scores move under it. */
+static void CG_ScoreboardStatsUpdate(void) {
+    const score_t* sp = NULL;
+    const clientInfo_t* ci;
+    int i, c = cg.sbStatsClient;
+    const char* team;
+
+    if (c < 0 || c >= MAX_CLIENTS || !cgs.clientinfo[c].infoValid) {
+        CG_ScoreboardPopupsClose();
+        return;
+    }
+    for (i = 0; i < cg.numScores; i++) {
+        if (cg.scores[i].client == c) {
+            sp = &cg.scores[i];
+            break;
+        }
+    }
+    ci = &cgs.clientinfo[c];
+    team = ci->team == TEAM_RED ? "Red" : ci->team == TEAM_BLUE ? "Blue" :
+           ci->team == TEAM_SPECTATOR ? "Spectator" : "Free";
+
+    trap_Cvar_Set("io_sb_s_name", ci->name);
+    trap_Cvar_Set("io_sb_s_team", team);
+    if (!sp) {
+        /* on the board a moment ago, not in this scores update */
+        trap_Cvar_Set("io_sb_s_score", "-");
+        return;
+    }
+    trap_Cvar_Set("io_sb_s_score", va("%d", sp->score));
+    trap_Cvar_Set("io_sb_s_kills", va("%d", sp->frags));
+    trap_Cvar_Set("io_sb_s_deaths", va("%d", sp->deaths));
+    trap_Cvar_Set("io_sb_s_kd", sp->deaths > 0 ? va("%.2f", (float)sp->frags / sp->deaths)
+                                                : va("%d.00", sp->frags));
+    trap_Cvar_Set("io_sb_s_net", va("%+d", sp->frags - sp->deaths));
+    trap_Cvar_Set("io_sb_s_damage", va("%d", sp->damageDone));
+    trap_Cvar_Set("io_sb_s_acc", va("%d%%", sp->accuracy));
+    trap_Cvar_Set("io_sb_s_time", va("%d min", sp->time));
+    trap_Cvar_Set("io_sb_s_ping", sp->ping < 0 ? "connecting" : va("%d ms", sp->ping));
+    if (cgs.gametype == GT_CTF || cgs.gametype == GT_1FCTF) {
+        trap_Cvar_Set("io_sb_s_obj", va("%d caps  %d assists  %d defends",
+                                        sp->captures, sp->assistCount, sp->defendCount));
+    } else if (cgs.gametype == GT_FREEZE) {
+        trap_Cvar_Set("io_sb_s_obj", va("%d thaws", sp->thaws));
+    } else {
+        trap_Cvar_Set("io_sb_s_obj", "-");
+    }
+}
+
+/*
+Painted here, after the board, rather than by Menu_PaintAll: cgame only runs
+Menu_PaintAll while the scoreboard is NOT up, so nothing else would draw them.
+*/
+void CG_ScoreboardPopupsPaint(void) {
+    menuDef_t* m;
+
+    if (!cg.showScores || !CG_ScoreboardIsOurs()) {
+        if (CG_MenuOpen(SB_CTX) || CG_MenuOpen(SB_STATS)) {
+            CG_ScoreboardPopupsClose();
+        }
+        return;
+    }
+    if ((m = Menus_FindByName(SB_STATS)) && (m->window.flags & WINDOW_VISIBLE)) {
+        CG_ScoreboardStatsUpdate();
+        Menu_Paint(m, qtrue);
+    }
+    if ((m = Menus_FindByName(SB_CTX)) && (m->window.flags & WINDOW_VISIBLE)) {
+        Menu_Paint(m, qtrue);
+    }
+}
+
+/*
+One entry point for every button. The context menu must actually be open: cg is
+zeroed at map load, so sbCtxClient reads as client 0 before any menu was opened.
+*/
+void CG_ScoreboardAction(const char* verb) {
+    int c = cg.sbCtxClient;
+    const char* cmd = NULL;
+
+    if (!CG_MenuOpen(SB_CTX) || c < 0 || c >= MAX_CLIENTS || !cgs.clientinfo[c].infoValid) {
+        CG_ScoreboardPopupsClose();
+        return;
+    }
+
+    if (!Q_stricmp(verb, "stats")) {
+        cg.sbStatsClient = c;
+        CG_ScoreboardDisarm();
+        Menus_CloseByName(SB_CTX);
+        Menus_ActivateByName(SB_STATS);
+        return;
+    }
+
+    /* Kick and ban arm first; the confirm row runs the pending verb. */
+    if (!Q_stricmp(verb, "arm")) {
+        char what[16];
+        trap_Argv(2, what, sizeof(what));
+        if (Q_stricmp(what, "tempban") && Q_stricmp(what, "ban")) {
+            return;
+        }
+        Q_strncpyz(cg.sbPending, what, sizeof(cg.sbPending));
+        trap_Cvar_Set("io_sb_pending", va("%s %s?", !Q_stricmp(what, "ban") ? "Ban" : "Kick",
+                                          cgs.clientinfo[c].name));
+        return;
+    }
+    if (!Q_stricmp(verb, "disarm")) {
+        CG_ScoreboardDisarm();
+        return;
+    }
+    if (!Q_stricmp(verb, "confirm")) {
+        if (!cg.sbPending[0]) {
+            return;
+        }
+        cmd = va("%s %d\n", cg.sbPending, c);
+    } else if (!Q_stricmp(verb, "follow")) {
+        cmd = va("follow %d\n", c);
+    } else if (!Q_stricmp(verb, "votekick")) {
+        /* by id, not name: names with spaces or colour codes do not survive */
+        cmd = va("callvote clientkick %d\n", c);
+    } else if (!Q_stricmp(verb, "mute")) {
+        cmd = va("mute %d\n", c);
+    } else if (!Q_stricmp(verb, "unmute")) {
+        cmd = va("unmute %d\n", c);
+    } else if (!Q_stricmp(verb, "red")) {
+        cmd = va("put %d r\n", c);
+    } else if (!Q_stricmp(verb, "blue")) {
+        cmd = va("put %d b\n", c);
+    } else if (!Q_stricmp(verb, "spec")) {
+        cmd = va("put %d s\n", c);
+    }
+
+    if (cmd) {
+        trap_SendConsoleCommand(cmd);
+    }
+    CG_ScoreboardPopupsClose();
+}
+
 void CG_KeyEvent(int key, qboolean down) {
     UI_SetInputTrace(cg_scoreboardDebug.integer);
 
@@ -3949,6 +4224,21 @@ void CG_KeyEvent(int key, qboolean down) {
             could be seen. Same shape as cg.scoreboardScrolled - once the player
             has said what they want to look at, stop moving it for them.
             */
+            /* [QL] E120. Right-click opens the player menu on our boards. It is
+               consumed here: MOUSE2 has no meaning to the list itself. */
+            if (key == K_MOUSE2 && CG_ScoreboardIsOurs()) {
+                CG_ScoreboardOpenContext(cgs.cursorX, cgs.cursorY);
+                return;
+            }
+            /* A left click anywhere but on an open popup closes it. */
+            if (key == K_MOUSE1 && CG_ScoreboardIsOurs() &&
+                (CG_MenuOpen(SB_CTX) || CG_MenuOpen(SB_STATS))) {
+                menuDef_t* under = (menuDef_t*)Display_CaptureItem(cgs.cursorX, cgs.cursorY);
+                if (under != Menus_FindByName(SB_CTX) && under != Menus_FindByName(SB_STATS)) {
+                    CG_ScoreboardPopupsClose();
+                }
+            }
+
             if (key == K_MOUSE1 && down) {
                 extern menuDef_t* menuScoreboard;
                 int feeder = Menu_FeederAtPoint(menuScoreboard, cgs.cursorX, cgs.cursorY);

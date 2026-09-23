@@ -2855,6 +2855,41 @@ static clientInfo_t* CG_InfoFromScoreIndex(int index, int team, int* scoreIndex)
 }
 
 // [QL] Format damage with "k" suffix for scoreboard display (binary-verified)
+/*
+[QL] E120. The client on row `index` of a scoreboard list, or -1.
+
+Not CG_InfoFromScoreIndex, deliberately: when a team row is not found that
+falls through to cg.scores[index] regardless of team, which on the blue list
+can name a red player. Harmless for drawing text, and exactly wrong for a menu
+whose options include kick and ban. This one returns -1 instead of guessing.
+*/
+int CG_ScoreboardClientAt(int feeder, int index) {
+    int i, count = 0, team;
+
+    if (index < 0 || index >= cg.numScores) {
+        return -1;
+    }
+    if (feeder == FEEDER_REDTEAM_LIST) {
+        team = TEAM_RED;
+    } else if (feeder == FEEDER_BLUETEAM_LIST) {
+        team = TEAM_BLUE;
+    } else if (feeder == FEEDER_SCOREBOARD) {
+        return cg.scores[index].client;
+    } else {
+        return -1;
+    }
+    for (i = 0; i < cg.numScores; i++) {
+        if (cg.scores[i].team != team) {
+            continue;
+        }
+        if (count == index) {
+            return cg.scores[i].client;
+        }
+        count++;
+    }
+    return -1;
+}
+
 static const char* CG_FormatDamage(int dmg) {
     if (dmg >= 10000) return va("%.0fk", (float)dmg / 1000.0f);
     if (dmg >= 1000) return va("%.1fk", (float)dmg / 1000.0f);

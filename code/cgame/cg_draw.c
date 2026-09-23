@@ -2519,6 +2519,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 			CG_ScoreboardPainted(activeMenu);
 			Menu_Paint(activeMenu, qtrue);
 			CG_DrawScoreboardHeadings(activeMenu);
+			CG_ScoreboardPopupsPaint();   // [QL] E120 - after the board, so on top of it
 		}
 	}
 
@@ -3085,6 +3086,9 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 		// don't draw any status if dead or the scoreboard is being explicitly shown
 		if (!cg.showScores && cg.snap->ps.stats[STAT_HEALTH] > 0) {
 			if (cg_drawStatus.integer) {
+				/* [QL] E120. The scoreboard is down, so this closes any popup left
+				   open - otherwise Menu_PaintAll would draw it over the HUD. */
+				CG_ScoreboardPopupsPaint();
 				Menu_PaintAll();
 				CG_DrawTimedMenus();
 			}
