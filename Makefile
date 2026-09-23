@@ -2216,6 +2216,16 @@ $(B)/$(SERVERBIN)$(FULLBINEXT): $(Q3DOBJ)
 ## BASEQ3 CGAME
 #############################################################################
 
+# [QL] E119. cgame links $(B)/$(BASEGAME)/ui/ui_shared.o - the object compiled
+# for the UI module, WITHOUT -DCGAME - and that is load-bearing, not a slip.
+#
+# ui_shared.c sizes its menu pools with #ifdef CGAME: 128 KB when CGAME is set,
+# 4 MB otherwise. Quake Live's HUD and scoreboard menus need about 2.9 MB, so a
+# cgame-specific ui_shared.o built with -DCGAME would run out a few menus in and
+# UI_Alloc would drop every item after that. Confirmed on the built binary:
+# cgamex86_64.so has a 0x400000 memoryPool. Those pool sizes are the only
+# CGAME conditionals in ui_shared.c/.h, so nothing else differs. Do not "fix"
+# this by giving cgame its own ui_shared.o.
 Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_main.o \
   $(B)/$(BASEGAME)/cgame/bg_misc.o \

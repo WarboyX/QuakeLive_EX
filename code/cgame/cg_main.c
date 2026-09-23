@@ -143,6 +143,7 @@ vmCvar_t cg_noPlayerAnims;
 vmCvar_t cg_showmiss;
 vmCvar_t cg_footsteps;
 vmCvar_t cg_waterRipples;   // [QL] R19
+vmCvar_t cg_ioScoreboard;   // [QL] E119 - see CG_SetEndScoreboardMenu
 vmCvar_t cg_addMarks;
 vmCvar_t cg_brassTime;
 vmCvar_t cg_viewsize;
@@ -665,6 +666,13 @@ static cvarTable_t cvarTable[] = {
        sets, which is what archive is for. The r_waterWave* tuning numbers are
        the other case and are archived only when changed. */
     {&cg_waterRipples, "cg_waterRipples", "1", CVAR_ARCHIVE},
+    /*
+    [QL] E119. The replacement scoreboard. Deliberately unadvertised: default 0,
+    no description, no menu row, and not archived - so it never lands in a
+    player's config and a release build shows Quake Live's own scoreboard with
+    nothing to clear. Test builds switch it on from the shipped autoexec.cfg.
+    */
+    {&cg_ioScoreboard, "cg_ioScoreboard", "0", 0},
     {&cg_tracerChance, "cg_tracerchance", "0.4", CVAR_CHEAT},
     {&cg_tracerWidth, "cg_tracerwidth", "1", CVAR_CHEAT},
     {&cg_tracerLength, "cg_tracerlength", "100", CVAR_CHEAT},
@@ -3299,10 +3307,6 @@ void CG_LoadHudMenu(void) {
     CG_ParseMenu("ui/end_scoreboard_duel.menu");
     CG_ParseMenu("ui/end_scoreboard_race.menu");
 
-    // [QL] One line saying how many menus cgame ended up with. menuScoreboard
-    // resolving to NULL later is otherwise indistinguishable from the whole set
-    // having failed to parse.
-    Com_Printf("cgame: %i menus loaded\n", Menu_Count());
     CG_ParseMenu("ui/end_scoreboard_tdm.menu");
     CG_ParseMenu("ui/end_scoreboard_ca.menu");
     CG_ParseMenu("ui/end_scoreboard_ctf.menu");
@@ -3312,6 +3316,19 @@ void CG_LoadHudMenu(void) {
     CG_ParseMenu("ui/end_scoreboard_dom.menu");
     CG_ParseMenu("ui/end_scoreboard_ad.menu");
     CG_ParseMenu("ui/end_scoreboard_rr.menu");
+
+    // [QL] E119. Our scoreboards, used only while cg_ioScoreboard is set. Parsed
+    // unconditionally so the cvar can be flipped mid-game without a reload.
+    CG_ParseMenu("ui/io_scoreboard.menu");
+
+    // [QL] One line saying how many menus cgame ended up with. menuScoreboard
+    // resolving to NULL later is otherwise indistinguishable from the whole set
+    // having failed to parse.
+    //
+    // E119: moved to the end. It sat partway down this list, before the last
+    // nine files, so it undercounted every time - a diagnostic whose number was
+    // always wrong in the direction that looks like a partial load.
+    Com_Printf("cgame: %i menus loaded\n", Menu_Count());
 }
 
 void CG_AssetCache(void) {

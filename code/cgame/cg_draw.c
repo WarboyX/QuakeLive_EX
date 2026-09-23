@@ -1998,6 +1998,15 @@ static void CG_OffsetScoreboardList(menuDef_t *menu) {
 	if (!menu) {
 		return;
 	}
+	/*
+	[QL] E119. Not ours. This shifts a board's list down to clear the header
+	band Quake Live's art puts over its first row. The io_* boards are generated
+	with the list already below their headings, so shifting them would open a
+	gap and drop the last visible row.
+	*/
+	if (menu->window.name && !Q_stricmpn(menu->window.name, "io_", 3)) {
+		return;
+	}
 	for (i = 0; i < numAdjusted; i++) {
 		if (adjusted[i] == menu) {
 			return;
@@ -2109,6 +2118,48 @@ void CG_SetEndScoreboardMenu(void) {
 	case GT_DOMINATION: menuScoreboard = Menus_FindByName("teamscore_menu_dom");     menuEndScoreboard = Menus_FindByName("endteamscore_menu_dom"); break;
 	case GT_AD:         menuScoreboard = Menus_FindByName("teamscore_menu_ad");      menuEndScoreboard = Menus_FindByName("endteamscore_menu_ad"); break;
 	default:            menuScoreboard = Menus_FindByName("teamscore_menu");         menuEndScoreboard = Menus_FindByName("endteamscore_menu"); break;
+	}
+
+	/*
+	[QL] E119. The replacement scoreboard, in the in-game menu's style.
+
+	Gated on cg_ioScoreboard, which is unadvertised and off by default; test
+	builds turn it on from autoexec.cfg. It replaces the in-game (TAB) board
+	only - the end-of-game board stays Quake Live's, which carries awards and
+	per-weapon stats this one does not.
+
+	Mapped by which column set the feeder uses for each gametype (cg_main.c),
+	because a board shows the feeder's fields by index and a mismatch would put
+	captures under a DMG heading. Race has a layout of its own and Round Robin
+	its own rules, so both keep Quake Live's board. Falls back to Quake Live's
+	whenever ours is missing, so a failed parse degrades to the stock board
+	rather than to no board at all.
+	*/
+	if (cg_ioScoreboard.integer) {
+		const char *ours = NULL;
+		menuDef_t *m;
+
+		switch (cgs.gametype) {
+		case GT_FFA:
+		case GT_DUEL:       ours = "io_score_ffa"; break;
+		case GT_TEAM:
+		case GT_FREEZE:     ours = "io_score_tdm"; break;
+		case GT_CA:         ours = "io_score_ca";  break;
+		case GT_CTF:
+		case GT_1FCTF:
+		case GT_HARVESTER:
+		case GT_DOMINATION:
+		case GT_AD:         ours = "io_score_ctf"; break;
+		default:            break;
+		}
+		if (ours) {
+			m = Menus_FindByName(ours);
+			if (m) {
+				menuScoreboard = m;
+			} else {
+				Com_Printf(S_COLOR_YELLOW "cg_ioScoreboard: %s not loaded - using Quake Live's scoreboard\n", ours);
+			}
+		}
 	}
 
 	CG_OffsetScoreboardList(menuScoreboard);
@@ -2402,6 +2453,27 @@ static qboolean CG_DrawScoreboardMenu(void) {
 			cg.killerName[0] = 0;
 			firstTime = qtrue;
 			return qfalse;
+		}
+	}
+
+	/*
+	[QL] E119. Re-resolve when cg_ioScoreboard changes. The board is otherwise
+	chosen once and kept, so flipping the cvar would do nothing until the next
+	map - which makes it impossible to compare the two boards in one sitting.
+	*/
+	{
+		static int ioScoreboardMod = -1;
+		if (cg_ioScoreboard.modificationCount != ioScoreboardMod) {
+			ioScoreboardMod = cg_ioScoreboard.modificationCount;
+			/*
+			Hide the outgoing board before forgetting it. Menu_PaintAll paints
+			every menu whose visible flag is set (cg_draw.c runs it for the HUD),
+			and once menuScoreboard points elsewhere nothing would ever clear the
+			old board's flag - it would keep drawing under the new one, the same
+			double draw E112 fixed in the in-game menu.
+			*/
+			CG_ScoreboardSetVisible(menuScoreboard, qfalse);
+			menuScoreboard = NULL;
 		}
 	}
 

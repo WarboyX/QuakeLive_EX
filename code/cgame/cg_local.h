@@ -1681,6 +1681,7 @@ extern vmCvar_t cg_noPlayerAnims;
 extern vmCvar_t cg_showmiss;
 extern vmCvar_t cg_footsteps;
 extern vmCvar_t cg_waterRipples;   // [QL] R19
+extern vmCvar_t cg_ioScoreboard;   // [QL] E119
 extern vmCvar_t cg_addMarks;
 extern vmCvar_t cg_brassTime;
 extern vmCvar_t cg_gun_frame;

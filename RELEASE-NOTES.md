@@ -405,6 +405,12 @@ never sticks in a config and there is nothing for a tester to clear).
 `cg_scoreboardDebug` and `ui_inputDebug` both default to `0` and are no longer a
 release concern; the scaffolding behind them is inert until set.
 
+The replacement scoreboard is switched on by one line in the shipped
+`autoexec.cfg` (`set cg_ioScoreboard 1`). The cvar defaults to `0` in code and is
+not archived, so **removing that line is the whole switch** - a release build
+then shows Quake Live's own scoreboard, and no player's config holds a value that
+would override it.
+
 ## Credits
 
 id Software for Quake III Arena and Quake Live; the engine was released under the
