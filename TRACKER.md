@@ -6083,6 +6083,35 @@ panel is still the only thing that can.
 
 ---
 
+### E114. One palette, and button text that sits in the middle — DONE (verify)
+**Lives in:** our **client** (pak01) · **Seen by:** our client only
+
+**Text sat low in every box.** Measured off the screenshot rather than guessed
+again: the engine draws a label's baseline about **1.2px below** its
+`textaligny`, so the values E113 chose put Apply/Back 2px low in a 22px box and
+Resume 2px low in a 26px one. Now 14 and 17, which centre the cap height, and 16
+for the 24px buttons.
+
+**Three reds on one screen.** E113 gave its buttons a dark red copied from
+Quake Live's Apply button, under a header that is a different, lighter red; the
+Leave page added a pink "danger" text colour. Nearly-matching reds read as a
+mistake, not a scheme. The only red now is the header art.
+
+Everything else uses the vocabulary the frame already had: translucent black, the
+muted gold of the page rules, and full gold for "this one" - which is exactly
+how the selected tab is drawn. Idle buttons are the nav bar's black with a muted
+gold edge; hover is the selected tab's black with a gold edge and gold text.
+`setitemcolor ... bordercolor` is supported, so the edge lights on hover too.
+
+**One button style.** Boxed Apply/Back/Resume sat beside bare-text buttons on the
+other pages - two styles on one screen reads as unfinished. Every button in the
+generated menu is now the same box, text centred. The Leave page's safeguard is
+that it asks first; the colour was not doing that job, only clashing.
+
+**Unverified:** not run.
+
+---
+
 ### E113. Layout, a real RESUME button, and sliders you can read and type — DONE (verify)
 **Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
 

@@ -41,11 +41,23 @@ WHITE = "1 1 1 1"
 DIM = ".72 .72 .72 1"
 SEL_BACK = "0 0 0 0.9"
 OFF_BACK = "1 1 1 0"
-# Boxed buttons: Quake Live's Apply button on its player options page is a dark
-# red fill with a lighter edge. Matched rather than invented.
-BTN_BACK = ".42 .07 .05 .9"
-BTN_HOT = ".62 .12 .08 .95"
-BTN_EDGE = ".72 .55 .2 1"
+# [QL] E114. Boxed buttons speak the same language as the rest of the frame.
+#
+# E113 gave them a dark red fill, copied from the Apply button on Quake Live's
+# player options page. On screen it sat under Quake Live's header, which is a
+# different, lighter red, and the two reds fought: two reds that are nearly the
+# same read as a mistake rather than as a scheme. The only red that belongs here
+# is the header art.
+#
+# Everything else in this menu already uses one vocabulary - translucent black,
+# a muted gold rule, and full gold for "this one": the selected tab is black at
+# 0.9 with a gold underline. Buttons now use exactly that. Idle is the nav bar's
+# black with the page rule's gold edge; hover is the selected tab's black with a
+# gold edge and gold text.
+BTN_BACK = "0 0 0 .6"
+BTN_HOT = "0 0 0 .9"
+BTN_EDGE = ".35 .3 .12 1"
+BTN_EDGE_HOT = GOLD
 
 FRAME_W = 560
 NTABS = 8
@@ -221,22 +233,23 @@ def frame():
         // [QL] E113. A footer bar the width of the frame, with RESUME as a real
         // button in it. It was bare text floating below the panel with nothing
         // around it - it did not read as part of the menu, or as clickable.
-        // The box is Quake Live's own button language: the dark red fill and
-        // gold edge of the Apply button on its player options page.
+        // Styled like every other button in the menu - see BTN_BACK - rather
+        // than in a red of its own, which fought the header.
         itemDef { name ig_foot  rect 0 396 %d 36  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
             name ig_resume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect %d 401 160 26  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 19
+            rect %d 401 160 26  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
             forecolor %s  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s }
-            mouseExit  { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s }
+            mouseEnter { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s ; setitemcolor ig_resume bordercolor %s }
+            mouseExit  { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s ; setitemcolor ig_resume bordercolor %s }
         }
 %s    }
 """ % (FRAME_W, GOLD, FRAME_W, FRAME_W, FRAME_W, FRAME_W,
-       (FRAME_W - 160) // 2, BTN_BACK, BTN_EDGE, WHITE, BTN_HOT, GOLD, BTN_BACK, WHITE,
+       (FRAME_W - 160) // 2, BTN_BACK, BTN_EDGE, WHITE,
+       BTN_HOT, GOLD, BTN_EDGE_HOT, BTN_BACK, WHITE, BTN_EDGE,
        nav_items())
 
 
@@ -281,26 +294,39 @@ def boxbutton(name, label, x, y, w, action):
     """A button with a visible box, for actions rather than navigation."""
     return """        itemDef {
             name %s  text "%s"  type ITEM_TYPE_BUTTON  textscale .21
-            rect %d %d %d 22  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 16
+            rect %d %d %d 22  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
             forecolor %s  visible 1
             action { play "sound/misc/menu1.wav" ; %s }
-            mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s }
-            mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s }
+            mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
+            mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
         }
 """ % (name, label, x, y, w, w // 2, BTN_BACK, BTN_EDGE, WHITE, action,
-       name, BTN_HOT, name, GOLD, name, BTN_BACK, name, WHITE)
+       name, BTN_HOT, name, GOLD, name, BTN_EDGE_HOT,
+       name, BTN_BACK, name, WHITE, name, BTN_EDGE)
 
 
-def button(name, label, x, y, w, action, color=WHITE, hot=GOLD):
+def button(name, label, x, y, w, action):
+    """
+    Every button in the menu, boxed. There used to be two styles - boxed actions
+    and bare-text buttons - side by side on the same pages, which reads as
+    unfinished rather than as a hierarchy. One style, the frame's palette.
+
+    24 tall with the text centred: at textscale .22 the cap height is ~10 and
+    the engine draws the baseline ~1.2 below textaligny, so 16 centres it.
+    """
     return """        itemDef {
             name %s  text "%s"  type ITEM_TYPE_BUTTON  textscale .22
-            rect %d %d %d 24  textaligny 17  textalignx 8  forecolor %s  visible 1
+            rect %d %d %d 24  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
+            forecolor %s  visible 1
             action { play "sound/misc/menu1.wav" ; %s }
-            mouseEnter { setitemcolor %s forecolor %s }
-            mouseExit  { setitemcolor %s forecolor %s }
+            mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
+            mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
         }
-""" % (name, label, x, y, w, color, action, name, hot, name, color)
+""" % (name, label, x, y, w, w // 2, BTN_BACK, BTN_EDGE, WHITE, action,
+       name, BTN_HOT, name, GOLD, name, BTN_EDGE_HOT,
+       name, BTN_BACK, name, WHITE, name, BTN_EDGE)
 
 
 def listbox(name, x, y, w, h, feeder, action=None):
@@ -822,11 +848,18 @@ def advanced_subpages():
 # seven navigation tabs, and a tab that disconnects on click is a misclick with
 # no undo.
 def page_leave():
-    b = label("Leaving drops you back to the main menu. If this is a server you", 24, 60, 500, ".21", WHITE)
-    b += label("joined, you will have to find it again to come back.", 24, 82, 500, ".21", WHITE)
-    b += button("ig_leaveyes", "LEAVE MATCH", 24, 130, 220, "uiScript Leave",
-                color=".85 .55 .55 1", hot="1 .4 .4 1")
-    b += button("ig_leaveno", "STAY", 264, 130, 220, "uiScript closeingame")
+    # Centred and in the same button language as everything else. It had a pink
+    # "danger" text colour of its own - a third red on one screen. The page
+    # already asks first, which is the actual safeguard; colour was not doing
+    # that job, only clashing with the header.
+    b = ""
+    for i, t in enumerate(["Leaving drops you back to the main menu. If this is a server you",
+                           "joined, you will have to find it again to come back."]):
+        b += ('        itemDef { text "%s"  textscale .21  rect 24 %d 512 16  textaligny 12\n'
+              '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
+              '                  forecolor %s  visible 1  decoration }\n' % (t, 60 + i * 20, WHITE))
+    b += boxbutton("ig_leaveyes", "LEAVE MATCH", 150, 124, 120, "uiScript Leave")
+    b += boxbutton("ig_leaveno", "STAY", 290, 124, 120, "uiScript closeingame")
     return page("io_ig_leave", "LEAVE MATCH", b, "This one asks first.")
 
 

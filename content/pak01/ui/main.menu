@@ -110,18 +110,18 @@
         // [QL] E113. A footer bar the width of the frame, with RESUME as a real
         // button in it. It was bare text floating below the panel with nothing
         // around it - it did not read as part of the menu, or as clickable.
-        // The box is Quake Live's own button language: the dark red fill and
-        // gold edge of the Apply button on its player options page.
+        // Styled like every other button in the menu - see BTN_BACK - rather
+        // than in a red of its own, which fought the header.
         itemDef { name ig_foot  rect 0 396 560 36  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
             name ig_resume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 200 401 160 26  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 19
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 200 401 160 26  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 17
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_resume backcolor .62 .12 .08 .95 ; setitemcolor ig_resume forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_resume backcolor .42 .07 .05 .9 ; setitemcolor ig_resume forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_resume backcolor 0 0 0 .9 ; setitemcolor ig_resume forecolor 0.964 0.815 0 1 ; setitemcolor ig_resume bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_resume backcolor 0 0 0 .6 ; setitemcolor ig_resume forecolor 1 1 1 1 ; setitemcolor ig_resume bordercolor .35 .3 .12 1 }
         }
 
         // --- tab 1: Current Match ---
@@ -641,31 +641,39 @@
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_join  text "JOIN GAME"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 64 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 64 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd team free" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_join forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_join forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_join backcolor 0 0 0 .9 ; setitemcolor ig_join forecolor 0.964 0.815 0 1 ; setitemcolor ig_join bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_join backcolor 0 0 0 .6 ; setitemcolor ig_join forecolor 1 1 1 1 ; setitemcolor ig_join bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_spec  text "SPECTATE"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 92 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 92 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd team s" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_spec forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_spec forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_spec backcolor 0 0 0 .9 ; setitemcolor ig_spec forecolor 0.964 0.815 0 1 ; setitemcolor ig_spec bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_spec backcolor 0 0 0 .6 ; setitemcolor ig_spec forecolor 1 1 1 1 ; setitemcolor ig_spec bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_red  text "JOIN RED"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 120 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 120 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd team red" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_red forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_red forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_red backcolor 0 0 0 .9 ; setitemcolor ig_red forecolor 0.964 0.815 0 1 ; setitemcolor ig_red bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_red backcolor 0 0 0 .6 ; setitemcolor ig_red forecolor 1 1 1 1 ; setitemcolor ig_red bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_blue  text "JOIN BLUE"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 148 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 148 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd team blue" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_blue forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_blue forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_blue backcolor 0 0 0 .9 ; setitemcolor ig_blue forecolor 0.964 0.815 0 1 ; setitemcolor ig_blue bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_blue backcolor 0 0 0 .6 ; setitemcolor ig_blue forecolor 1 1 1 1 ; setitemcolor ig_blue bordercolor .35 .3 .12 1 }
         }
         itemDef { text "Scoreboard and match detail stay on the HUD - TAB shows them"  textscale .17  rect 300 184 240 16  textaligny 12
                   forecolor .72 .72 .72 1  visible 1  decoration }
@@ -707,10 +715,12 @@
         }
         itemDef {
             name ig_votemap  text "CALL VOTE: MAP"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 20 222 260 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 20 222 260 24  textalign ITEM_ALIGN_CENTER  textalignx 130  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript voteMap }
-            mouseEnter { setitemcolor ig_votemap forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_votemap forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_votemap backcolor 0 0 0 .9 ; setitemcolor ig_votemap forecolor 0.964 0.815 0 1 ; setitemcolor ig_votemap bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_votemap backcolor 0 0 0 .6 ; setitemcolor ig_votemap forecolor 1 1 1 1 ; setitemcolor ig_votemap bordercolor .35 .3 .12 1 }
         }
         itemDef { text "Player"  textscale .21  rect 300 44 240 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
@@ -723,26 +733,32 @@
         }
         itemDef {
             name ig_votekick  text "CALL VOTE: KICK"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 160 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 160 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript voteKick }
-            mouseEnter { setitemcolor ig_votekick forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_votekick forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_votekick backcolor 0 0 0 .9 ; setitemcolor ig_votekick forecolor 0.964 0.815 0 1 ; setitemcolor ig_votekick bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_votekick backcolor 0 0 0 .6 ; setitemcolor ig_votekick forecolor 1 1 1 1 ; setitemcolor ig_votekick bordercolor .35 .3 .12 1 }
         }
         itemDef { text "Quick votes"  textscale .21  rect 300 192 240 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_voterestart  text "RESTART MATCH"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 212 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 212 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd callvote restart" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_voterestart forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_voterestart forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_voterestart backcolor 0 0 0 .9 ; setitemcolor ig_voterestart forecolor 0.964 0.815 0 1 ; setitemcolor ig_voterestart bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_voterestart backcolor 0 0 0 .6 ; setitemcolor ig_voterestart forecolor 1 1 1 1 ; setitemcolor ig_voterestart bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_voteshuffle  text "SHUFFLE TEAMS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 240 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 240 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "cmd callvote shuffle" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_voteshuffle forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_voteshuffle forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_voteshuffle backcolor 0 0 0 .9 ; setitemcolor ig_voteshuffle forecolor 0.964 0.815 0 1 ; setitemcolor ig_voteshuffle bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_voteshuffle backcolor 0 0 0 .6 ; setitemcolor ig_voteshuffle forecolor 1 1 1 1 ; setitemcolor ig_voteshuffle bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -780,59 +796,75 @@
         }
         itemDef {
             name ig_akick  text "KICK"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 64 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 64 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript kickPlayer }
-            mouseEnter { setitemcolor ig_akick forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_akick forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_akick backcolor 0 0 0 .9 ; setitemcolor ig_akick forecolor 0.964 0.815 0 1 ; setitemcolor ig_akick bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_akick backcolor 0 0 0 .6 ; setitemcolor ig_akick forecolor 1 1 1 1 ; setitemcolor ig_akick bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_atban  text "TEMP BAN"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 92 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 92 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript tempbanPlayer }
-            mouseEnter { setitemcolor ig_atban forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_atban forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_atban backcolor 0 0 0 .9 ; setitemcolor ig_atban forecolor 0.964 0.815 0 1 ; setitemcolor ig_atban bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_atban backcolor 0 0 0 .6 ; setitemcolor ig_atban forecolor 1 1 1 1 ; setitemcolor ig_atban bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_aban  text "BAN"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 120 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 120 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript banPlayer }
-            mouseEnter { setitemcolor ig_aban forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_aban forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_aban backcolor 0 0 0 .9 ; setitemcolor ig_aban forecolor 0.964 0.815 0 1 ; setitemcolor ig_aban bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_aban backcolor 0 0 0 .6 ; setitemcolor ig_aban forecolor 1 1 1 1 ; setitemcolor ig_aban bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_amute  text "MUTE"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 148 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 148 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript mutePlayer }
-            mouseEnter { setitemcolor ig_amute forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_amute forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_amute backcolor 0 0 0 .9 ; setitemcolor ig_amute forecolor 0.964 0.815 0 1 ; setitemcolor ig_amute bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_amute backcolor 0 0 0 .6 ; setitemcolor ig_amute forecolor 1 1 1 1 ; setitemcolor ig_amute bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_aunmute  text "UNMUTE"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 176 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 176 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript unmutePlayer }
-            mouseEnter { setitemcolor ig_aunmute forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_aunmute forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_aunmute backcolor 0 0 0 .9 ; setitemcolor ig_aunmute forecolor 0.964 0.815 0 1 ; setitemcolor ig_aunmute bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_aunmute backcolor 0 0 0 .6 ; setitemcolor ig_aunmute forecolor 1 1 1 1 ; setitemcolor ig_aunmute bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_ared  text "PUT ON RED"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 204 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 204 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript putred }
-            mouseEnter { setitemcolor ig_ared forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_ared forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_ared backcolor 0 0 0 .9 ; setitemcolor ig_ared forecolor 0.964 0.815 0 1 ; setitemcolor ig_ared bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ared backcolor 0 0 0 .6 ; setitemcolor ig_ared forecolor 1 1 1 1 ; setitemcolor ig_ared bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_ablue  text "PUT ON BLUE"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 232 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 232 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript putblue }
-            mouseEnter { setitemcolor ig_ablue forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_ablue forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_ablue backcolor 0 0 0 .9 ; setitemcolor ig_ablue forecolor 0.964 0.815 0 1 ; setitemcolor ig_ablue bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ablue backcolor 0 0 0 .6 ; setitemcolor ig_ablue forecolor 1 1 1 1 ; setitemcolor ig_ablue bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_aspec  text "PUT TO SPEC"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 300 260 240 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 300 260 240 24  textalign ITEM_ALIGN_CENTER  textalignx 120  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript putspec }
-            mouseEnter { setitemcolor ig_aspec forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_aspec forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_aspec backcolor 0 0 0 .9 ; setitemcolor ig_aspec forecolor 0.964 0.815 0 1 ; setitemcolor ig_aspec bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_aspec backcolor 0 0 0 .6 ; setitemcolor ig_aspec forecolor 1 1 1 1 ; setitemcolor ig_aspec bordercolor .35 .3 .12 1 }
         }
         itemDef { text "These need referee or admin rights"  textscale .17  rect 20 258 260 16  textaligny 12
                   forecolor .72 .72 .72 1  visible 1  decoration }
@@ -880,10 +912,12 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name ig_addbot  text "ADD BOT"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 176 200 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 176 200 24  textalign ITEM_ALIGN_CENTER  textalignx 100  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript addBot }
-            mouseEnter { setitemcolor ig_addbot forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_addbot forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_addbot backcolor 0 0 0 .9 ; setitemcolor ig_addbot forecolor 0.964 0.815 0 1 ; setitemcolor ig_addbot bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_addbot backcolor 0 0 0 .6 ; setitemcolor ig_addbot forecolor 1 1 1 1 ; setitemcolor ig_addbot bordercolor .35 .3 .12 1 }
         }
         itemDef { text "Team only applies in a team gametype; elsewhere the bot joins the"  textscale .17  rect 24 214 500 16  textaligny 12
                   forecolor .72 .72 .72 1  visible 1  decoration }
@@ -976,17 +1010,21 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name ig_ctlsave  text "SAVE"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 256 120 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 256 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript saveControls }
-            mouseEnter { setitemcolor ig_ctlsave forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_ctlsave forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_ctlsave backcolor 0 0 0 .9 ; setitemcolor ig_ctlsave forecolor 0.964 0.815 0 1 ; setitemcolor ig_ctlsave bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ctlsave backcolor 0 0 0 .6 ; setitemcolor ig_ctlsave forecolor 1 1 1 1 ; setitemcolor ig_ctlsave bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_ctlreload  text "RELOAD"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 154 256 120 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 154 256 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript loadControls }
-            mouseEnter { setitemcolor ig_ctlreload forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_ctlreload forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_ctlreload backcolor 0 0 0 .9 ; setitemcolor ig_ctlreload forecolor 0.964 0.815 0 1 ; setitemcolor ig_ctlreload bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ctlreload backcolor 0 0 0 .6 ; setitemcolor ig_ctlreload forecolor 1 1 1 1 ; setitemcolor ig_ctlreload bordercolor .35 .3 .12 1 }
         }
         itemDef { text "Click a binding, then press the key you want."  textscale .17  rect 290 260 250 16  textaligny 12
                   forecolor .72 .72 .72 1  visible 1  decoration }
@@ -1145,110 +1183,140 @@
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef {
             name adv_io_ig_video  text "VIDEO"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 68 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_video }
-            mouseEnter { setitemcolor adv_io_ig_video forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_video forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_video backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_video forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_video bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_video backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_video forecolor 1 1 1 1 ; setitemcolor adv_io_ig_video bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name adv_io_ig_light  text "LIGHTING"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 196 68 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_light }
-            mouseEnter { setitemcolor adv_io_ig_light forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_light forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_light backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_light forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_light bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_light backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_light forecolor 1 1 1 1 ; setitemcolor adv_io_ig_light bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name adv_io_ig_bloom  text "BLOOM & POST"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 68 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 368 68 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_bloom }
-            mouseEnter { setitemcolor adv_io_ig_bloom forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_bloom forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_bloom backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_bloom forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_bloom bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_bloom backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_bloom forecolor 1 1 1 1 ; setitemcolor adv_io_ig_bloom bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name adv_io_ig_crosshair  text "CROSSHAIR"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 96 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_crosshair }
-            mouseEnter { setitemcolor adv_io_ig_crosshair forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_crosshair forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_crosshair backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_crosshair forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_crosshair bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_crosshair backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_crosshair forecolor 1 1 1 1 ; setitemcolor adv_io_ig_crosshair bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name adv_io_ig_hud  text "HUD"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 196 96 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_hud }
-            mouseEnter { setitemcolor adv_io_ig_hud forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_hud forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_hud backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_hud forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_hud bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_hud backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_hud forecolor 1 1 1 1 ; setitemcolor adv_io_ig_hud bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name adv_io_ig_weapons  text "WEAPONS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 96 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 368 96 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_weapons }
-            mouseEnter { setitemcolor adv_io_ig_weapons forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_weapons forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_weapons backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_weapons forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_weapons bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_weapons backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_weapons forecolor 1 1 1 1 ; setitemcolor adv_io_ig_weapons bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name adv_io_ig_effects  text "EFFECTS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 124 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_effects }
-            mouseEnter { setitemcolor adv_io_ig_effects forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_effects forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_effects backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_effects forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_effects bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_effects backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_effects forecolor 1 1 1 1 ; setitemcolor adv_io_ig_effects bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name adv_io_ig_sound  text "SOUND"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 196 124 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_sound }
-            mouseEnter { setitemcolor adv_io_ig_sound forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_sound forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_sound backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_sound forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_sound bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_sound backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_sound forecolor 1 1 1 1 ; setitemcolor adv_io_ig_sound bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name adv_io_ig_game  text "GAME"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 124 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 368 124 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_game }
-            mouseEnter { setitemcolor adv_io_ig_game forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_game forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor adv_io_ig_game backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_game forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_game bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor adv_io_ig_game backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_game forecolor 1 1 1 1 ; setitemcolor adv_io_ig_game bordercolor .35 .3 .12 1 }
         }
         itemDef { text "Ours, not Quake Live's"  textscale .21  rect 24 186 300 16  textaligny 12
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_advrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 206 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 206 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_renderoptions }
-            mouseEnter { setitemcolor ig_advrender forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advrender forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_advrender backcolor 0 0 0 .9 ; setitemcolor ig_advrender forecolor 0.964 0.815 0 1 ; setitemcolor ig_advrender bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advrender backcolor 0 0 0 .6 ; setitemcolor ig_advrender forecolor 1 1 1 1 ; setitemcolor ig_advrender bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_advwater  text "WATER"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 206 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 196 206 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_water }
-            mouseEnter { setitemcolor ig_advwater forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advwater forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_advwater backcolor 0 0 0 .9 ; setitemcolor ig_advwater forecolor 0.964 0.815 0 1 ; setitemcolor ig_advwater bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advwater backcolor 0 0 0 .6 ; setitemcolor ig_advwater forecolor 1 1 1 1 ; setitemcolor ig_advwater bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_advrt  text "RAY TRACING"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 206 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 368 206 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_raytracing }
-            mouseEnter { setitemcolor ig_advrt forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advrt forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_advrt backcolor 0 0 0 .9 ; setitemcolor ig_advrt forecolor 0.964 0.815 0 1 ; setitemcolor ig_advrt bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advrt backcolor 0 0 0 .6 ; setitemcolor ig_advrt forecolor 1 1 1 1 ; setitemcolor ig_advrt bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_advsurf  text "SURFACE DETAIL"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 234 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 24 234 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_surfacedetail }
-            mouseEnter { setitemcolor ig_advsurf forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advsurf forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_advsurf backcolor 0 0 0 .9 ; setitemcolor ig_advsurf forecolor 0.964 0.815 0 1 ; setitemcolor ig_advsurf bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advsurf backcolor 0 0 0 .6 ; setitemcolor ig_advsurf forecolor 1 1 1 1 ; setitemcolor ig_advsurf bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_advplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 234 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 196 234 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_playersetup }
-            mouseEnter { setitemcolor ig_advplayer forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advplayer forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_advplayer backcolor 0 0 0 .9 ; setitemcolor ig_advplayer forecolor 0.964 0.815 0 1 ; setitemcolor ig_advplayer bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advplayer backcolor 0 0 0 .6 ; setitemcolor ig_advplayer forecolor 1 1 1 1 ; setitemcolor ig_advplayer bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name ig_advql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 234 160 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            rect 368 234 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
-            mouseEnter { setitemcolor ig_advql forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advql forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_advql backcolor 0 0 0 .9 ; setitemcolor ig_advql forecolor 0.964 0.815 0 1 ; setitemcolor ig_advql bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_advql backcolor 0 0 0 .6 ; setitemcolor ig_advql forecolor 1 1 1 1 ; setitemcolor ig_advql bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -1275,23 +1343,29 @@
         itemDef { text "This one asks first."  textscale .19  rect 20 26 520 14  textaligny 11
                   textalign ITEM_ALIGN_CENTER  textalignx 260
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Leaving drops you back to the main menu. If this is a server you"  textscale .21  rect 24 60 500 16  textaligny 12
+        itemDef { text "Leaving drops you back to the main menu. If this is a server you"  textscale .21  rect 24 60 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { text "joined, you will have to find it again to come back."  textscale .21  rect 24 82 500 16  textaligny 12
+        itemDef { text "joined, you will have to find it again to come back."  textscale .21  rect 24 80 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name ig_leaveyes  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 130 220 24  textaligny 17  textalignx 8  forecolor .85 .55 .55 1  visible 1
+            name ig_leaveyes  text "LEAVE MATCH"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 124 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript Leave }
-            mouseEnter { setitemcolor ig_leaveyes forecolor 1 .4 .4 1 }
-            mouseExit  { setitemcolor ig_leaveyes forecolor .85 .55 .55 1 }
+            mouseEnter { setitemcolor ig_leaveyes backcolor 0 0 0 .9 ; setitemcolor ig_leaveyes forecolor 0.964 0.815 0 1 ; setitemcolor ig_leaveyes bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_leaveyes backcolor 0 0 0 .6 ; setitemcolor ig_leaveyes forecolor 1 1 1 1 ; setitemcolor ig_leaveyes bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name ig_leaveno  text "STAY"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 264 130 220 24  textaligny 17  textalignx 8  forecolor 1 1 1 1  visible 1
+            name ig_leaveno  text "STAY"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 290 124 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript closeingame }
-            mouseEnter { setitemcolor ig_leaveno forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_leaveno forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ig_leaveno backcolor 0 0 0 .9 ; setitemcolor ig_leaveno forecolor 0.964 0.815 0 1 ; setitemcolor ig_leaveno bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_leaveno backcolor 0 0 0 .6 ; setitemcolor ig_leaveno forecolor 1 1 1 1 ; setitemcolor ig_leaveno bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -1394,21 +1468,21 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name ap_io_ig_video  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
-            mouseEnter { setitemcolor ap_io_ig_video backcolor .62 .12 .08 .95 ; setitemcolor ap_io_ig_video forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ap_io_ig_video backcolor .42 .07 .05 .9 ; setitemcolor ap_io_ig_video forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor ap_io_ig_video backcolor 0 0 0 .9 ; setitemcolor ap_io_ig_video forecolor 0.964 0.815 0 1 ; setitemcolor ap_io_ig_video bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ap_io_ig_video backcolor 0 0 0 .6 ; setitemcolor ap_io_ig_video forecolor 1 1 1 1 ; setitemcolor ap_io_ig_video bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name bk_io_ig_video  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_video ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_video backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_video forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_video backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_video forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_video backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_video forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_video bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_video backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_video forecolor 1 1 1 1 ; setitemcolor bk_io_ig_video bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -1489,12 +1563,12 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name bk_io_ig_light  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_light ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_light backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_light forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_light backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_light forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_light backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_light forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_light bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_light backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_light forecolor 1 1 1 1 ; setitemcolor bk_io_ig_light bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -1610,12 +1684,12 @@
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef {
             name bk_io_ig_bloom  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_bloom ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_bloom backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_bloom forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_bloom backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_bloom forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_bloom backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_bloom forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_bloom bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_bloom backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_bloom forecolor 1 1 1 1 ; setitemcolor bk_io_ig_bloom bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -1692,12 +1766,12 @@
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef {
             name bk_io_ig_crosshair  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_crosshair ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_crosshair backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_crosshair forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_crosshair backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_crosshair forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_crosshair backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_crosshair forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_crosshair bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_crosshair backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_crosshair forecolor 1 1 1 1 ; setitemcolor bk_io_ig_crosshair bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -1820,12 +1894,12 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name bk_io_ig_hud  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_hud ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_hud backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_hud forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_hud backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_hud forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_hud backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_hud forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_hud bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_hud backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_hud forecolor 1 1 1 1 ; setitemcolor bk_io_ig_hud bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -1964,12 +2038,12 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name bk_io_ig_weapons  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_weapons ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_weapons backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_weapons forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_weapons backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_weapons forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_weapons backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_weapons forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_weapons bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_weapons backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_weapons forecolor 1 1 1 1 ; setitemcolor bk_io_ig_weapons bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -2113,12 +2187,12 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name bk_io_ig_effects  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_effects ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_effects backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_effects forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_effects backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_effects forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_effects backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_effects forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_effects bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_effects backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_effects forecolor 1 1 1 1 ; setitemcolor bk_io_ig_effects bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -2212,12 +2286,12 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name bk_io_ig_sound  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_sound ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_sound backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_sound forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_sound backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_sound forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_sound backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_sound forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_sound bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_sound backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_sound forecolor 1 1 1 1 ; setitemcolor bk_io_ig_sound bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -2322,12 +2396,12 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name bk_io_ig_game  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor .42 .07 .05 .9  border 1  bordersize 1  bordercolor .72 .55 .2 1
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_game ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_game backcolor .62 .12 .08 .95 ; setitemcolor bk_io_ig_game forecolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_game backcolor .42 .07 .05 .9 ; setitemcolor bk_io_ig_game forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor bk_io_ig_game backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_game forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_game bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor bk_io_ig_game backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_game forecolor 1 1 1 1 ; setitemcolor bk_io_ig_game bordercolor .35 .3 .12 1 }
         }
     }
     // <<< GENERATED io_ingame END
