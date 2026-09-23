@@ -93,6 +93,42 @@
 
         onESC { uiScript closeingame }
 
+        // [QL] E115. Put the tab bar back to Current Match every time this
+        // opens. setitemcolor changes persist on the item, so the bar kept
+        // whatever the last tab click left - while _UI_SetActiveMenu always
+        // opens the Current Match PAGE. Reopening the menu showed one page
+        // under another tab's highlight.
+        //
+        // onOpen rather than Quake Live's onClose: Menus_ActivateByName runs
+        // onOpen on every way back in, including after Leave, which disconnects
+        // without ever closing this frame through a path that runs onClose.
+        onOpen {
+                setitemcolor ignav1t forecolor 0.964 0.815 0 1
+                setitemcolor ignav2t forecolor 1 1 1 1
+                setitemcolor ignav3t forecolor 1 1 1 1
+                setitemcolor ignav4t forecolor 1 1 1 1
+                setitemcolor ignav5t forecolor 1 1 1 1
+                setitemcolor ignav6t forecolor 1 1 1 1
+                setitemcolor ignav7t forecolor 1 1 1 1
+                setitemcolor ignav8t forecolor 1 1 1 1
+                setitemcolor ignav1o backcolor 0 0 0 0.9
+                setitemcolor ignav2o backcolor 1 1 1 0
+                setitemcolor ignav3o backcolor 1 1 1 0
+                setitemcolor ignav4o backcolor 1 1 1 0
+                setitemcolor ignav5o backcolor 1 1 1 0
+                setitemcolor ignav6o backcolor 1 1 1 0
+                setitemcolor ignav7o backcolor 1 1 1 0
+                setitemcolor ignav8o backcolor 1 1 1 0
+                setitemcolor ignav1u backcolor 0.964 0.815 0 1
+                setitemcolor ignav2u backcolor 1 1 1 0
+                setitemcolor ignav3u backcolor 1 1 1 0
+                setitemcolor ignav4u backcolor 1 1 1 0
+                setitemcolor ignav5u backcolor 1 1 1 0
+                setitemcolor ignav6u backcolor 1 1 1 0
+                setitemcolor ignav7u backcolor 1 1 1 0
+                setitemcolor ignav8u backcolor 1 1 1 0
+        }
+
         itemDef { name ig_dim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.55 }
         itemDef { name ig_header  rect 0 0 560 64  background "ui/assets/main_menu/header.tga"
@@ -1179,11 +1215,12 @@
         itemDef { text "Grouped the way Quake Live groups them."  textscale .19  rect 20 26 520 14  textaligny 11
                   textalign ITEM_ALIGN_CENTER  textalignx 260
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Quake Live's advanced options, minus the ones our code does not read."  textscale .19  rect 24 44 500 16  textaligny 12
-                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Quake Live's options - minus the ones our code does not read"  textscale .21  rect 24 44 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name adv_io_ig_video  text "VIDEO"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 68 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 28 64 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_video }
@@ -1192,7 +1229,7 @@
         }
         itemDef {
             name adv_io_ig_light  text "LIGHTING"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 68 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 200 64 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_light }
@@ -1201,7 +1238,7 @@
         }
         itemDef {
             name adv_io_ig_bloom  text "BLOOM & POST"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 68 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 372 64 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_bloom }
@@ -1210,7 +1247,7 @@
         }
         itemDef {
             name adv_io_ig_crosshair  text "CROSSHAIR"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 96 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 28 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_crosshair }
@@ -1219,7 +1256,7 @@
         }
         itemDef {
             name adv_io_ig_hud  text "HUD"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 96 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 200 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_hud }
@@ -1228,7 +1265,7 @@
         }
         itemDef {
             name adv_io_ig_weapons  text "WEAPONS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 96 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 372 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_weapons }
@@ -1237,7 +1274,7 @@
         }
         itemDef {
             name adv_io_ig_effects  text "EFFECTS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 124 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 28 120 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_effects }
@@ -1246,7 +1283,7 @@
         }
         itemDef {
             name adv_io_ig_sound  text "SOUND"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 124 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 200 120 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_sound }
@@ -1255,18 +1292,19 @@
         }
         itemDef {
             name adv_io_ig_game  text "GAME"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 124 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 372 120 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_game }
             mouseEnter { setitemcolor adv_io_ig_game backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_game forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_game bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor adv_io_ig_game backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_game forecolor 1 1 1 1 ; setitemcolor adv_io_ig_game bordercolor .35 .3 .12 1 }
         }
-        itemDef { text "Ours, not Quake Live's"  textscale .21  rect 24 186 300 16  textaligny 12
+        itemDef { text "This port's own pages"  textscale .21  rect 24 156 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_advrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 206 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 28 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_renderoptions }
@@ -1275,7 +1313,7 @@
         }
         itemDef {
             name ig_advwater  text "WATER"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 206 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 200 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_water }
@@ -1284,7 +1322,7 @@
         }
         itemDef {
             name ig_advrt  text "RAY TRACING"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 206 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 372 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_raytracing }
@@ -1293,7 +1331,7 @@
         }
         itemDef {
             name ig_advsurf  text "SURFACE DETAIL"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 234 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 114 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_surfacedetail }
@@ -1302,16 +1340,19 @@
         }
         itemDef {
             name ig_advplayer  text "PLAYER SETUP"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 196 234 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 286 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open io_playersetup }
             mouseEnter { setitemcolor ig_advplayer backcolor 0 0 0 .9 ; setitemcolor ig_advplayer forecolor 0.964 0.815 0 1 ; setitemcolor ig_advplayer bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_advplayer backcolor 0 0 0 .6 ; setitemcolor ig_advplayer forecolor 1 1 1 1 ; setitemcolor ig_advplayer bordercolor .35 .3 .12 1 }
         }
+        itemDef { text "Quake Live's own in-game menu"  textscale .21  rect 24 240 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_advql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 368 234 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 200 260 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }

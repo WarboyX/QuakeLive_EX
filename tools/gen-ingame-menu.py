@@ -216,6 +216,18 @@ def frame():
 
         onESC { uiScript closeingame }
 
+        // [QL] E115. Put the tab bar back to Current Match every time this
+        // opens. setitemcolor changes persist on the item, so the bar kept
+        // whatever the last tab click left - while _UI_SetActiveMenu always
+        // opens the Current Match PAGE. Reopening the menu showed one page
+        // under another tab's highlight.
+        //
+        // onOpen rather than Quake Live's onClose: Menus_ActivateByName runs
+        // onOpen on every way back in, including after Leave, which disconnects
+        // without ever closing this frame through a path that runs onClose.
+        onOpen {
+%s        }
+
         itemDef { name ig_dim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.55 }
         itemDef { name ig_header  rect 0 0 %d 64  background "ui/assets/main_menu/header.tga"
@@ -247,7 +259,7 @@ def frame():
             mouseExit  { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s ; setitemcolor ig_resume bordercolor %s }
         }
 %s    }
-""" % (FRAME_W, GOLD, FRAME_W, FRAME_W, FRAME_W, FRAME_W,
+""" % (FRAME_W, GOLD, select_tab(0), FRAME_W, FRAME_W, FRAME_W, FRAME_W,
        (FRAME_W - 160) // 2, BTN_BACK, BTN_EDGE, WHITE,
        BTN_HOT, GOLD, BTN_EDGE_HOT, BTN_BACK, WHITE, BTN_EDGE,
        nav_items())
@@ -668,31 +680,41 @@ def page_settings():
 # A hub rather than a page of its own settings: the render menus already exist,
 # are already organised, and duplicating their rows here would be two places to
 # change one setting.
+def heading(text, y):
+    """A centred group heading, for pages built from groups of buttons."""
+    return ('        itemDef { text "%s"  textscale .21  rect 24 %d 512 16  textaligny 12\n'
+            '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
+            '                  forecolor %s  visible 1  decoration }\n' % (text, y, WHITE))
+
+
 def page_advanced():
-    """A hub. The sub-pages hold the rows; this only has to reach them."""
-    b = label("Quake Live's advanced options, minus the ones our code does not read.",
-              24, 44, 500, ".19")
-    x, y = 24, 68
+    """
+    A hub. The sub-pages hold the rows; this only has to reach them.
+
+    [QL] E115. Three groups, each named for what is actually in it. The second
+    heading used to read "Ours, not Quake Live's" over a row that ended in a
+    QUAKE LIVE MENU button - the one thing on the page that is Quake Live's and
+    not ours. Now Quake Live's options, this port's own pages, and Quake Live's
+    own menu are three separate headings, and nothing sits under the wrong one.
+    Button grids are centred on the page like every other page since E113.
+    """
+    cols = [28, 200, 372]           # three 160-wide buttons, 12 apart, centred
+    b = heading("Quake Live's options - minus the ones our code does not read", 44)
     for i, (menu, title) in enumerate(SUBPAGE_INDEX):
-        b += button("adv_" + menu, title, x, y, 160,
+        b += button("adv_" + menu, title, cols[i % 3], 64 + (i // 3) * 28, 160,
                     "close io_ig_advanced ; open %s" % menu)
-        x += 172
-        if x > 380:
-            x = 24
-            y += 28
-    y += 34
-    b += label("Ours, not Quake Live's", 24, y, 300, ".21", WHITE)
-    y += 20
-    b += button("ig_advrender", "RENDER OPTIONS", 24, y, 160, "open io_renderoptions")
-    b += button("ig_advwater", "WATER", 196, y, 160, "open io_water")
-    b += button("ig_advrt", "RAY TRACING", 368, y, 160, "open io_raytracing")
-    y += 28
-    b += button("ig_advsurf", "SURFACE DETAIL", 24, y, 160, "open io_surfacedetail")
-    b += button("ig_advplayer", "PLAYER SETUP", 196, y, 160, "open io_playersetup")
-    b += button("ig_advql", "QUAKE LIVE MENU", 368, y, 160,
+    # These are full-size menus that cover this page, so they leave it open
+    # underneath - closing them is what brings you back here (see E112).
+    b += heading("This port's own pages", 156)
+    b += button("ig_advrender", "RENDER OPTIONS", cols[0], 176, 160, "open io_renderoptions")
+    b += button("ig_advwater", "WATER", cols[1], 176, 160, "open io_water")
+    b += button("ig_advrt", "RAY TRACING", cols[2], 176, 160, "open io_raytracing")
+    b += button("ig_advsurf", "SURFACE DETAIL", 114, 204, 160, "open io_surfacedetail")
+    b += button("ig_advplayer", "PLAYER SETUP", 286, 204, 160, "open io_playersetup")
+    b += heading("Quake Live's own in-game menu", 240)
+    b += button("ig_advql", "QUAKE LIVE MENU", 200, 260, 160,
                 "open ingame ; open ingame_about")
     return page("io_ig_advanced", "ADVANCED", b, "Grouped the way Quake Live groups them.")
-
 
 
 # --- Advanced sub-pages ------------------------------------------------------
