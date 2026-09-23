@@ -386,6 +386,29 @@ void CL_SystemInfoChanged(void) {
         // Cvar_Set - no cvar flag and no "server is not allowed to set" gating. QL has no
         // CVAR_SERVER_CREATED flag. The fs_game guard above is a deliberate security exception
         // to the raw binary behaviour.
+        //
+        // And not the only one. Cvar_Set forces, which walks straight through
+        // ROM, INIT and PROTECTED, so the raw behaviour let any server we joined
+        // move fs_homepath/fs_basepath - and CL_ParseGamestate restarts the
+        // filesystem moments later - or archive cl_allowDownload 1 into the
+        // player's config. Refused here:
+        //   - anything PROTECTED, systeminfo or not (the filesystem roots);
+        //   - an ENGINE cvar the server does not own (no SYSTEMINFO) that is
+        //     archived, init, read-only, latched or cheat-protected.
+        // Unknown names and cvars a VM registered still apply, which is every
+        // key a QL server actually sends: sv_* ids, pak lists, timescale,
+        // sv_cheats, g_training and the like.
+        {
+            int flags = Cvar_Flags(key);
+
+            if (flags != CVAR_NONEXISTENT &&
+                ((flags & CVAR_PROTECTED) ||
+                 (!(flags & (CVAR_SYSTEMINFO | CVAR_VM_CREATED | CVAR_USER_CREATED)) &&
+                  (flags & (CVAR_ARCHIVE | CVAR_INIT | CVAR_ROM | CVAR_LATCH | CVAR_CHEAT))))) {
+                Com_Printf(S_COLOR_YELLOW "WARNING: server is not allowed to set %s=%s\n", key, value);
+                continue;
+            }
+        }
         Cvar_Set(key, value);
     }
     // if game folder should not be set and it is set at the client side

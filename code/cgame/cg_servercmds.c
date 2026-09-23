@@ -145,7 +145,9 @@ static void CG_ParseScores_Ffa(void) {
     int i, idx;
     int count = atoi(CG_Argv(1));
 
-    if (count > MAX_CLIENTS) {
+    if (count < 0) {
+        count = 0;  // a negative count reaches every consumer of numScores
+    } else if (count > MAX_CLIENTS) {
         count = MAX_CLIENTS;
     }
     cg.numScores = count;
@@ -671,7 +673,9 @@ static void CG_ParseScores(void) {
     int i, idx;
 
     cg.numScores = atoi(CG_Argv(1));
-    if (cg.numScores > MAX_CLIENTS) {
+    if (cg.numScores < 0) {
+        cg.numScores = 0;
+    } else if (cg.numScores > MAX_CLIENTS) {
         cg.numScores = MAX_CLIENTS;
     }
     cg.teamScores[0] = atoi(CG_Argv(2));
@@ -2054,7 +2058,9 @@ void CG_ParseDuelScores(void) {
     int slot;
 
     cg.numScores = atoi(CG_Argv(1));
-    if (cg.numScores > MAX_CLIENTS) {
+    if (cg.numScores < 0) {
+        cg.numScores = 0;
+    } else if (cg.numScores > MAX_CLIENTS) {
         cg.numScores = MAX_CLIENTS;
     }
 

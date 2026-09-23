@@ -5937,6 +5937,52 @@ Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
 
 ## Engine / server
 
+### E121. Code review: a server could set any cvar on our client
+**Lives in:** our **client** (client engine, `cl_parse.c`) · **Seen by:** our client only
+
+Found in the whole-tree review. `CL_SystemInfoChanged` had been changed to apply
+every systeminfo key with `Cvar_Set`, to match the Quake Live binary. `Cvar_Set`
+forces, which walks through ROM, INIT and **PROTECTED**. So any server we joined
+could send `fs_homepath` or `fs_basepath`, and `CL_ParseGamestate` restarts the
+filesystem right after, rooting downloads, logs and extracted modules wherever
+the server chose. It could also archive `cl_allowDownload 1` into the player's
+config.
+
+The fix does not restore ioquake3's allow-list, because that refuses VM-registered
+cvars and QL servers rely on those. It refuses two classes instead:
+
+- anything PROTECTED, systeminfo or not;
+- an engine cvar the server does not own (no SYSTEMINFO, not created by a VM or by
+  `set`) that is archive, init, ROM, latch or cheat.
+
+Everything a QL server actually sends (sv_* ids, pak lists, timescale, sv_cheats,
+fs_game through its own guard, g_training) still applies. A refused key prints
+`server is not allowed to set`. **Not yet seen against a stock server:** if that
+line ever appears for a key that matters, the key needs SYSTEMINFO on our side,
+not a looser rule.
+
+The same pass fixed two small bugs:
+
+- **Medkit-use fade** (`cg_players.c`, stock Team Arena): `(t - 1000)` put 1275–1785
+  into a byte colour channel over the effect's last 100 ms. That is undefined
+  behaviour, and on x86 the value wrapped and flickered.
+- **Negative score counts** from a server are now clamped to 0 in the three
+  parsers that kept the raw count.
+
+Checked and **not** bugs, so nobody re-reads them:
+
+- cppcheck's 101 findings. Every index error at a network boundary already has an
+  `Error` guard; cppcheck does not know `Com_Error` and `CG_Error` never return.
+- `snd_codec.c` returns `rtn`, not the local buffer.
+- `ColorBytes3` and `ColorBytes4` write every byte they return.
+- The ping-list slot is guaranteed by `CL_GetPingQueueCount`.
+- The console `width < 1` branch is dead now that width is clamped to at least 1.
+  The first-resize path through `else` has `oldtotallines` = 0, so it copies
+  nothing and does not divide.
+- Callvote injection is closed: `;`, `\n` and `\r` are filtered on both arguments,
+  later arguments are never used, and unknown vote names are refused.
+- `botsay` is bot-only.
+
 ### R25b. The static bump pass, first run — the ratio was the wrong shape
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

@@ -3394,7 +3394,10 @@ void CG_Player(centity_t* cent) {
         VectorCopy(cent->lerpOrigin, powerup.origin);
         powerup.origin[2] += -24 + (float)t * 80 / 500;
         if (t > 400) {
-            c = (float)(t - 1000) * 0xff / 100;
+            // fade out over the last 100ms. Stock TA wrote (t - 1000), which
+            // is -1530..-1275 here and put 1275..1785 into a byte channel:
+            // undefined, and on x86 a wrapped value that flickered.
+            c = (float)(t - 400) * 0xff / 100;
             powerup.shaderRGBA[0] = 0xff - c;
             powerup.shaderRGBA[1] = 0xff - c;
             powerup.shaderRGBA[2] = 0xff - c;
