@@ -3437,6 +3437,95 @@ static qboolean FS_FindSteamQLPath(char *qlPath, int pathSize) {
 FS_CopyFileWithProgress - Copy a file with console progress display.
 Returns qtrue on success.
 */
+/*
+===================
+FS_StripImportedLightingCvars
+
+[QL] A config copied from Quake Live carries Quake Live's r_gamma, and the
+number does not mean the same thing here. Quake Live applied it as a hardware
+gamma ramp together with r_overBrightBits/r_mapOverBrightBits; this renderer
+forces overbright off (E81) and applies r_gamma in its own pass, so Quake Live's
+1.3 came out washed out - reported on a fresh laptop install, where this copy is
+what set it, and archived from then on. Same trap as r_ambientScale (E111):
+same name, different scale. Drop those lines; our defaults apply instead.
+===================
+*/
+static void FS_StripImportedLightingCvars(const char *path) {
+	static const char *const drop[] = {
+		"r_gamma", "r_overBrightBits", "r_mapOverBrightBits", "r_intensity"
+	};
+	FILE *f;
+	char *buf, *out, *line, *next;
+	long len;
+	int removed = 0;
+	size_t o = 0, i;
+
+	f = fopen(path, "rb");
+	if (!f) {
+		return;
+	}
+	fseek(f, 0, SEEK_END);
+	len = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	if (len <= 0 || len > 4 * 1024 * 1024) {
+		fclose(f);
+		return;
+	}
+	buf = malloc((size_t)len + 1);
+	out = malloc((size_t)len + 1);
+	if (!buf || !out || fread(buf, 1, (size_t)len, f) != (size_t)len) {
+		fclose(f);
+		free(buf);
+		free(out);
+		return;
+	}
+	fclose(f);
+	buf[len] = '\0';
+
+	for (line = buf; *line; line = next) {
+		const char *p = line;
+		qboolean skip = qfalse;
+		size_t n;
+
+		next = strchr(line, '\n');
+		next = next ? next + 1 : line + strlen(line);
+
+		// "seta r_gamma ..." / "set r_gamma ..." / "r_gamma ..."
+		while (*p == ' ' || *p == '\t') p++;
+		if (!Q_stricmpn(p, "seta ", 5) || !Q_stricmpn(p, "sets ", 5) || !Q_stricmpn(p, "setu ", 5)) {
+			p += 5;
+		} else if (!Q_stricmpn(p, "set ", 4)) {
+			p += 4;
+		}
+		while (*p == ' ' || *p == '\t') p++;
+		for (i = 0; i < ARRAY_LEN(drop); i++) {
+			n = strlen(drop[i]);
+			if (!Q_stricmpn(p, drop[i], n) && (p[n] == ' ' || p[n] == '\t' || p[n] == '"')) {
+				skip = qtrue;
+				break;
+			}
+		}
+		if (skip) {
+			removed++;
+			continue;
+		}
+		memcpy(out + o, line, (size_t)(next - line));
+		o += (size_t)(next - line);
+	}
+
+	if (removed) {
+		f = fopen(path, "wb");
+		if (f) {
+			fwrite(out, 1, o, f);
+			fclose(f);
+			Com_Printf("  %s: left out %d Quake Live lighting setting(s) (r_gamma and friends) - "
+			           "they do not mean the same thing in this renderer\n", path, removed);
+		}
+	}
+	free(buf);
+	free(out);
+}
+
 static qboolean FS_CopyFileWithProgress(const char *src, const char *dst,
                                          const char *displayName) {
 	FILE *fin, *fout;
@@ -3796,6 +3885,7 @@ static void FS_CopyFromSteam(void) {
 			Com_sprintf(dest, sizeof(dest), "%s\\%s", homeDir, filename);
 			if (FS_CopyFileWithProgress(configFiles[i], dest, filename)) {
 				Com_Printf("  Copied %s\n", filename);
+				FS_StripImportedLightingCvars(dest);
 			} else {
 				Com_Printf("  WARNING: Failed to copy %s\n", filename);
 			}

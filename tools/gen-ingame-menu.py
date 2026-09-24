@@ -927,9 +927,13 @@ def advanced_subpages():
         # Advanced and there is nothing up there to click to return.
         # Boxed and centred on the page's centre line, like the rows above.
         back = "close %s ; open io_ig_advanced" % menu
-        if menu == "io_ig_video":
+        if any(r[1].startswith("r_") for r in rows):
             # Resolution, fullscreen and colour depth are latched by the
             # renderer; without Apply the page looks like it did nothing.
+            # Lighting and Bloom are the same kind of page: brightness and
+            # overbright only take effect on vid_restart, and those pages had
+            # a Back and no Apply, so a change there did nothing until the
+            # next map or restart. Any page with a renderer row gets the pair.
             extra = boxbutton("ap_" + menu, "APPLY", 150, 266, 120, 'exec "vid_restart"')
             extra += boxbutton("bk_" + menu, "BACK", 290, 266, 120, back)
         else:

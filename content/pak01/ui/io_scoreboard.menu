@@ -24,11 +24,11 @@
         // check-menus: overlap-ok - background layer; things are drawn on it
         itemDef { name sb_info  rect 0 43 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordersize 1  bordercolor 0 0 0 0.5 }
-        itemDef { name sb_map  ownerdraw CG_MAP_NAME  rect 10 45 170 14  textscale .18
+        itemDef { name sb_map  ownerdraw CG_MAP_NAME  rect 10 56 170 3  textscale .18
                   align 0  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 45 180 14  textscale .18
+        itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 56 180 3  textscale .18
                   align 1  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 45 80 14  textscale .18
+        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 56 80 3  textscale .18
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 62 560 346
@@ -88,11 +88,11 @@
         // check-menus: overlap-ok - background layer; things are drawn on it
         itemDef { name sb_info  rect 0 43 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordersize 1  bordercolor 0 0 0 0.5 }
-        itemDef { name sb_map  ownerdraw CG_MAP_NAME  rect 10 45 170 14  textscale .18
+        itemDef { name sb_map  ownerdraw CG_MAP_NAME  rect 10 56 170 3  textscale .18
                   align 0  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 45 180 14  textscale .18
+        itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 56 180 3  textscale .18
                   align 1  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 45 80 14  textscale .18
+        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 56 80 3  textscale .18
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 62 560 346
@@ -108,7 +108,7 @@
         itemDef { text "RED"  textscale .24  rect 16 75 120 18  textaligny 14
                   textalign ITEM_ALIGN_LEFT  textalignx 0
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_score0  ownerdraw CG_RED_SCORE  rect 186 73 82 22  textscale .32
+        itemDef { name sb_score0  ownerdraw CG_RED_SCORE  rect 186 90 82 5  textscale .32
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { text "PLAYER"  textscale .17  rect 44 104 88 14  textaligny 10
                   textalign ITEM_ALIGN_LEFT  textalignx 0
@@ -145,7 +145,7 @@
         itemDef { text "BLUE"  textscale .24  rect 292 75 120 18  textaligny 14
                   textalign ITEM_ALIGN_LEFT  textalignx 0
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_score1  ownerdraw CG_BLUE_SCORE  rect 462 73 82 22  textscale .32
+        itemDef { name sb_score1  ownerdraw CG_BLUE_SCORE  rect 462 90 82 5  textscale .32
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { text "PLAYER"  textscale .17  rect 320 104 88 14  textaligny 10
                   textalign ITEM_ALIGN_LEFT  textalignx 0
@@ -194,11 +194,11 @@
         // check-menus: overlap-ok - background layer; things are drawn on it
         itemDef { name sb_info  rect 0 43 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordersize 1  bordercolor 0 0 0 0.5 }
-        itemDef { name sb_map  ownerdraw CG_MAP_NAME  rect 10 45 170 14  textscale .18
+        itemDef { name sb_map  ownerdraw CG_MAP_NAME  rect 10 56 170 3  textscale .18
                   align 0  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 45 180 14  textscale .18
+        itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 56 180 3  textscale .18
                   align 1  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 45 80 14  textscale .18
+        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 56 80 3  textscale .18
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 62 560 346
@@ -214,7 +214,7 @@
         itemDef { text "RED"  textscale .24  rect 16 75 120 18  textaligny 14
                   textalign ITEM_ALIGN_LEFT  textalignx 0
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_score0  ownerdraw CG_RED_SCORE  rect 186 73 82 22  textscale .32
+        itemDef { name sb_score0  ownerdraw CG_RED_SCORE  rect 186 90 82 5  textscale .32
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { text "PLAYER"  textscale .17  rect 44 104 88 14  textaligny 10
                   textalign ITEM_ALIGN_LEFT  textalignx 0
@@ -251,7 +251,7 @@
         itemDef { text "BLUE"  textscale .24  rect 292 75 120 18  textaligny 14
                   textalign ITEM_ALIGN_LEFT  textalignx 0
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_score1  ownerdraw CG_BLUE_SCORE  rect 462 73 82 22  textscale .32
+        itemDef { name sb_score1  ownerdraw CG_BLUE_SCORE  rect 462 90 82 5  textscale .32
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { text "PLAYER"  textscale .17  rect 320 104 88 14  textaligny 10
                   textalign ITEM_ALIGN_LEFT  textalignx 0
@@ -300,11 +300,11 @@
         // check-menus: overlap-ok - background layer; things are drawn on it
         itemDef { name sb_info  rect 0 43 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordersize 1  bordercolor 0 0 0 0.5 }
-        itemDef { name sb_map  ownerdraw CG_MAP_NAME  rect 10 45 170 14  textscale .18
+        itemDef { name sb_map  ownerdraw CG_MAP_NAME  rect 10 56 170 3  textscale .18
                   align 0  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 45 180 14  textscale .18
+        itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 56 180 3  textscale .18
                   align 1  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 45 80 14  textscale .18
+        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 56 80 3  textscale .18
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 62 560 346
@@ -320,7 +320,7 @@
         itemDef { text "RED"  textscale .24  rect 16 75 120 18  textaligny 14
                   textalign ITEM_ALIGN_LEFT  textalignx 0
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_score0  ownerdraw CG_RED_SCORE  rect 186 73 82 22  textscale .32
+        itemDef { name sb_score0  ownerdraw CG_RED_SCORE  rect 186 90 82 5  textscale .32
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { text "PLAYER"  textscale .17  rect 44 104 88 14  textaligny 10
                   textalign ITEM_ALIGN_LEFT  textalignx 0
@@ -357,7 +357,7 @@
         itemDef { text "BLUE"  textscale .24  rect 292 75 120 18  textaligny 14
                   textalign ITEM_ALIGN_LEFT  textalignx 0
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_score1  ownerdraw CG_BLUE_SCORE  rect 462 73 82 22  textscale .32
+        itemDef { name sb_score1  ownerdraw CG_BLUE_SCORE  rect 462 90 82 5  textscale .32
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { text "PLAYER"  textscale .17  rect 320 104 88 14  textaligny 10
                   textalign ITEM_ALIGN_LEFT  textalignx 0

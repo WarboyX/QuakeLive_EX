@@ -989,6 +989,8 @@ void Freeze_InstaKill(gentity_t *self, int mode);  // [QL] .so Freeze_InstaKill 
 void Freeze_Think(void);
 void Freeze_ClientThawCheck(gentity_t *ent, int msec);  // [QL] msec = clamped pmove frame delta from ClientThink_real (binary 0x1004cdc0)
 void Freeze_InitRoundState(void);
+void CA_InitRoundState(void);
+void AD_InitRoundState(void);
 void Freeze_PlayerFrozen(gentity_t *self);
 void Freeze_AutoThaw(int team);   // [QL] 0x1004cca0 (twin of CA_PlayerKilled; last-man-standing announce)
 void G_ThrowFlag(gentity_t *self, vec3_t point);        // [QL] 0x10051420 (gauntlet flag toss, g_dropFlag)

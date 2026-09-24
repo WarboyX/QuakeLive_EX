@@ -850,8 +850,12 @@ qboolean CG_OwnerDrawVisible(int flags, int flags2) {
         }
     }
 
+    // A tie counts as red first. hud.menu draws each team frame twice, once
+    // under each of these two flags, so exactly one of them has to hold: with a
+    // strict > on both, a tied score (every CA/CTF/TDM start) drew no team frame,
+    // no flag status and no players-remaining count at all.
     if (flags & CG_SHOW_IF_RED_IS_FIRST_PLACE) {
-        if (cgs.scores1 > cgs.scores2) {
+        if (cgs.scores1 >= cgs.scores2) {
             return qtrue;
         }
     }

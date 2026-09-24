@@ -93,9 +93,20 @@ def fill(name, x, y, w, h, back, border=None):
 def ownerdraw(name, od, x, y, w, h, scale, align):
     # "align" rather than "textalign": cgame's ownerdraws take item->alignment,
     # which is what Quake Live's own scoreboards set (ingame_scoreboard_tdm.menu).
+    #
+    # x, y, w, h here describe the BOX the text should sit in, like every other
+    # item. A text ownerdraw does not use it that way: CG_DrawText draws with
+    # its y as the text BASELINE (fontstash FONS_ALIGN_BASELINE), and
+    # textaligny does not apply to ownerdraws. Passing the box top put the map
+    # name, gametype and clock above the info strip, straddling the header's
+    # bottom edge - reported from a 2000x1250 laptop, but it is the same at
+    # every resolution. So the emitted rect starts at the baseline: the box
+    # bottom less a descender's worth of the box (a fifth of its height), and
+    # runs only to the box bottom, so check-menus still sees it inside its box.
+    base = y + h - (h + 4) // 5
     return ('        itemDef { name %s  ownerdraw %s  rect %d %d %d %d  textscale %s\n'
             '                  align %d  forecolor %s  visible 1  decoration }\n'
-            % (name, od, x, y, w, h, scale, align, WHITE))
+            % (name, od, x, base, w, y + h - base, scale, align, WHITE))
 
 
 def listbox(name, feeder, x, y, w, h, cols):

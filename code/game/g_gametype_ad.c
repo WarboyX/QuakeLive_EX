@@ -241,6 +241,20 @@ qboolean AD_CheckRoundEnd(int redAlive, int blueAlive) {
 // ============================================================================
 // AD_RoundStateTransition - two-turn round state machine
 // ============================================================================
+/*
+============================================================================
+AD_InitRoundState
+
+[QL] Start the Attack & Defend round machine. Same gap as CA_InitRoundState:
+G_InitGame never started it, so it sat in RS_WARMUP.
+============================================================================
+*/
+void AD_InitRoundState(void) {
+    level.roundState.tNext = 0;
+    level.roundState.eCurrent = (level.warmupTime == 0) ? RS_COUNTDOWN : RS_WARMUP;
+    AD_RoundStateTransition();
+}
+
 void AD_RoundStateTransition(void) {
     int i;
     int winTeam = 0;

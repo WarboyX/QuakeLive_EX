@@ -83,6 +83,29 @@ int CA_GetRoundState(void) {
 //   RS_WARMUP(0), RS_COUNTDOWN(1), RS_PLAYING(3), RS_ROUND_OVER(4), RS_EXIT(5)
 //   State 2 is unused and causes an error.
 // ============================================================================
+/*
+============================================================================
+CA_InitRoundState
+
+[QL] Start the Clan Arena round machine, as Freeze_InitRoundState does for
+Freeze Tag.
+
+Nothing did. G_InitGame's round switch had cases for RR and FT only, so a CA
+level kept its zero-initialised roundState: RS_WARMUP with no pending timer.
+Every CA_RoundStateTransition call is reachable only once the machine is
+already turning, and CA_Think returns unless the state is RS_PLAYING, so it
+never turned. Seen on screen in the visual pass: blue eliminated, no round
+over, no point, the round clock running on. Nobody froze for the countdown
+either, and because CA's exit rules belong to the round logic, a CA match
+could not end.
+============================================================================
+*/
+void CA_InitRoundState(void) {
+    level.roundState.tNext = 0;
+    level.roundState.eCurrent = (level.warmupTime == 0) ? RS_COUNTDOWN : RS_WARMUP;
+    CA_RoundStateTransition();
+}
+
 void CA_RoundStateTransition(void) {
     int i;
     int winTeam = 0;

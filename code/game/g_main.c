@@ -2016,6 +2016,13 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
         // state machine was never started and nobody ever froze.
         Freeze_InitRoundState();
         break;
+    case GT_CA:
+        // [QL] and neither did CA or A&D - same symptom, rounds never ended
+        CA_InitRoundState();
+        break;
+    case GT_AD:
+        AD_InitRoundState();
+        break;
     default:
         break;
     }

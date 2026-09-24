@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `██████████░░░░░░░░░░  13/27` | E104: per-material convention + our first deployment into a stock QL map; E103 fixed the inverted green |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `████████████████░░░░  78/101` | E122 whole-project review, 26 fixes; E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
-| **Overall** | `███████████████░░░░░  134/184` | by binary: 69 server · 98 client · 11 both |
+| **Engine / server** (E) | `████████████████░░░░  79/102` | E123 CA rounds, SIGTERM hang, imported gamma; E122 whole-project review, 26 fixes; E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
+| **Overall** | `███████████████░░░░░  135/185` | by binary: 69 server · 98 client · 12 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6024,6 +6024,29 @@ Open for a decision, not changed:
 - **C5.** The muzzle point uses the viewer's crouch state for other players.
 - **C6.** `CVAR_ARCHIVE_ND` is aliased to `CVAR_ARCHIVE`, so the `r_rtao*`/`r_ssr*`/`r_water*` defaults get archived.
 - **C7.** `cl_autoTimeNudge` latches its first value for the whole session.
+
+### E123. Clan Arena rounds never ended, the washed-out laptop, and six smaller fixes — DONE (verify)
+**Lives in:** both — see each row · **Seen by:** see each row
+
+Found by running the client headless (Xvfb and lavapipe) and reading the console
+and a few screenshots, plus two reports from a 2560x1600 laptop.
+
+| # | Lives in | Seen by | Fix |
+|---|---|---|---|
+| F27 | server (`g_gametype_ca.c`, `g_gametype_ad.c`, `g_main.c`) | every client | **Clan Arena and Attack & Defend rounds never ended.** `G_InitGame`'s round switch started RR and FT only. CA/AD sat in `RS_WARMUP`: no countdown freeze, no round over when a team died, and no match end, since CA's exit rules belong to the round logic. The FT fix (Freeze_InitRoundState) had missed the other two. Seen headless: blue eliminated, round clock kept running. After the fix: "RED TEAM WINS", 1-0, next countdown. |
+| F28 | client (cgame) | our client | A tied team score hid every team frame on the HUD. hud.menu draws each frame under `CG_SHOW_IF_RED_IS_FIRST_PLACE` or `..._BLUE_...`, and both were a strict `>`. So at 0-0 (every CA/CTF/TDM start) the CA/FT players-remaining counts, the team bars and the CTF flag status all vanished. A tie now counts as red first. |
+| F29 | client + server (`sys_main.c`) | — | **`kill` / Ctrl+C could hang the game.** The SIGTERM/SIGINT handler ran the whole shutdown inside the signal handler, on top of whatever the interrupted frame held. The Vulkan driver deadlocked in its own teardown (seen with lavapipe, in `pthread_cond_destroy`), and only SIGKILL removed it. Now the handler sets a flag and the main loop shuts down; a second signal exits at once. Crash signals and the Windows console handler (`Sys_SigShutdown`) keep the old path. |
+| F30 | client (`files.c`, Windows) | our client | **Washed-out image on a fresh install.** The first-run copy from Steam brings over Quake Live's qzconfig.cfg, including its `r_gamma` (1.3 on the reporting laptop). Quake Live applied that as a hardware ramp together with overbright; here overbright is off (E81) and gamma is our own pass, so 1.3 washes out, and it is archived from then on. The copy now leaves out `r_gamma`, `r_overBrightBits`, `r_mapOverBrightBits` and `r_intensity`. **Already-affected installs keep 1.3: `r_gamma 1` once.** |
+| F31 | client (pak01, `gen-scoreboard.py`) | our client | The scoreboard's map name, gametype and clock sat above their info strip, on the red header's edge (reported at 2560x1600, but the same at any resolution). Text ownerdraws draw at the rect's y as the BASELINE; the generator gave them the box top. Team scores had the same offset. |
+| F32 | client (pak01, `gen-ingame-menu.py`) | our client | In-game Lighting and Bloom pages had no Apply, so brightness and overbright changes did nothing until a restart. Every in-game sub-page with an `r_` row now has Apply (`vid_restart`) + Back, like Video. |
+| F33 | client (pak01) | our client | Render > Water showed blank "Trace steps" and "Thickness" rows: both cvars default to 24, and the lists offered 16/32/64/128 and 4/8/16/32 with "(default)" on the wrong values. The engine's own console warning ("not one of its listed values") said so. 24 added and labelled as the default. |
+| F34 | client (pak01) | our client | Credits line "…icculus, and many more" ran past the panel edge; shortened. |
+
+Open, not changed:
+
+- **C8.** With `g_doWarmup 0`, an empty match forfeits at map start ("Game has been forfeited", scores -999). No shipped config uses it.
+- **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
+- **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
 ### R25b. The static bump pass, first run — the ratio was the wrong shape
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only

@@ -1519,8 +1519,17 @@
                   rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name ap_io_ig_light  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
+            mouseEnter { setitemcolor ap_io_ig_light backcolor 0 0 0 .9 ; setitemcolor ap_io_ig_light forecolor 0.964 0.815 0 1 ; setitemcolor ap_io_ig_light bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ap_io_ig_light backcolor 0 0 0 .6 ; setitemcolor ap_io_ig_light forecolor 1 1 1 1 ; setitemcolor ap_io_ig_light bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name bk_io_ig_light  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_light ; open io_ig_advanced }
@@ -1640,8 +1649,17 @@
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef {
+            name ap_io_ig_bloom  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
+            mouseEnter { setitemcolor ap_io_ig_bloom backcolor 0 0 0 .9 ; setitemcolor ap_io_ig_bloom forecolor 0.964 0.815 0 1 ; setitemcolor ap_io_ig_bloom bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ap_io_ig_bloom backcolor 0 0 0 .6 ; setitemcolor ap_io_ig_bloom forecolor 1 1 1 1 ; setitemcolor ap_io_ig_bloom bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name bk_io_ig_bloom  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_bloom ; open io_ig_advanced }
@@ -1994,8 +2012,17 @@
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name ap_io_ig_weapons  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
+            mouseEnter { setitemcolor ap_io_ig_weapons backcolor 0 0 0 .9 ; setitemcolor ap_io_ig_weapons forecolor 0.964 0.815 0 1 ; setitemcolor ap_io_ig_weapons bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ap_io_ig_weapons backcolor 0 0 0 .6 ; setitemcolor ap_io_ig_weapons forecolor 1 1 1 1 ; setitemcolor ap_io_ig_weapons bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name bk_io_ig_weapons  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_weapons ; open io_ig_advanced }
@@ -2143,8 +2170,17 @@
                   rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name ap_io_ig_effects  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
+            mouseEnter { setitemcolor ap_io_ig_effects backcolor 0 0 0 .9 ; setitemcolor ap_io_ig_effects forecolor 0.964 0.815 0 1 ; setitemcolor ap_io_ig_effects bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ap_io_ig_effects backcolor 0 0 0 .6 ; setitemcolor ap_io_ig_effects forecolor 1 1 1 1 ; setitemcolor ap_io_ig_effects bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name bk_io_ig_effects  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_effects ; open io_ig_advanced }
@@ -4076,10 +4112,10 @@
                   cvarFloatList { "512 (near)" 512 "1024" 1024 "2048 (default)" 2048 "4096 (far)" 4096 }  rect 216 84 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Trace steps:"  textscale .22  rect 24 105 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name ssrsteps  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrSteps"
-                  cvarFloatList { "16 (fastest)" 16 "32 (default)" 32 "64" 64 "128 (sharpest)" 128 }  rect 216 105 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+                  cvarFloatList { "16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128 }  rect 216 105 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Thickness:"  textscale .22  rect 24 126 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name ssrthick  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrThickness"
-                  cvarFloatList { "4 (thin)" 4 "8 (default)" 8 "16" 16 "32 (forgiving)" 32 }  rect 216 126 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+                  cvarFloatList { "4 (thin)" 4 "8" 8 "16" 16 "24 (default)" 24 "32 (forgiving)" 32 }  rect 216 126 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Debug view:"  textscale .22  rect 24 147 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name ssrdebug  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDebug"
                   cvarFloatList { "Off" 0 "1 mask" 1 "2 ray hit" 2 "3 reflection" 3 "4 waves" 4 "5 ripples + foam" 5 }  rect 216 147 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
@@ -4367,8 +4403,10 @@
             rect 282 186 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
         itemDef {
-            text "Ryan C. Gordon - icculus, and many more"  textscale .2
-            rect 282 202 230 16  textaligny 12  forecolor .6 .6 .6 1  visible 1  decoration
+            // "and many more" was here and ran past the panel's right edge (the
+            // visual pass photographed it); the contributors link below says it.
+            text "Ryan C. Gordon - icculus"  textscale .2
+            rect 282 202 230 16  textaligny 12  forecolor .85 .85 .85 1  visible 1  decoration
         }
 
         itemDef {

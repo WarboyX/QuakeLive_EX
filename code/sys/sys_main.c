@@ -693,7 +693,39 @@ char* Sys_ParseProtocolUri(const char* uri) {
 Sys_SigHandler
 =================
 */
+/*
+SIGTERM and SIGINT only record the request; the main loop shuts down from the
+main thread. Shutting down inside the handler ran CL_Shutdown on top of whatever
+the interrupted frame was holding, and a Vulkan driver interrupted mid-frame
+deadlocks in its own teardown: the client hung on "kill" (seen with lavapipe,
+stuck in pthread_cond_destroy) and could only be removed with SIGKILL. A second
+signal exits at once, so a main loop that is itself stuck can still be stopped.
+*/
+static volatile sig_atomic_t sys_quitSignal = 0;
+
 void Sys_SigHandler(int signal) {
+    if (signal == SIGTERM || signal == SIGINT) {
+        if (sys_quitSignal) {
+            _Exit(1);
+        }
+        sys_quitSignal = signal;
+        return;
+    }
+
+    Sys_SigShutdown(signal);
+}
+
+/*
+=================
+Sys_SigShutdown
+
+Shut down right here, on whatever thread is running. Used for the crash
+signals, where the interrupted frame cannot be trusted to finish, and by the
+Windows console control handler, which Windows follows with termination
+shortly after it returns.
+=================
+*/
+void Sys_SigShutdown(int signal) {
     static qboolean signalcaught = qfalse;
 
     if (signalcaught) {
@@ -867,6 +899,18 @@ int main(int argc, char** argv) {
 #else
     while (1) {
         Com_Frame();
+
+        if (sys_quitSignal) {
+            char reason[64];
+
+            Com_sprintf(reason, sizeof(reason), "Received signal %d", (int)sys_quitSignal);
+            Com_Printf("%s, quitting\n", reason);
+#ifndef DEDICATED
+            CL_Shutdown(reason, qtrue, qtrue);
+#endif
+            SV_Shutdown(reason);
+            Sys_Exit(1);
+        }
     }
 #endif
 
