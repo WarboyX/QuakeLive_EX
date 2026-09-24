@@ -846,6 +846,13 @@ default values.
 // Exact semantics unverified, but the pattern (only on CVAR_ARCHIVE cvars, in cgame only) suggests
 // it marks cvars that get persisted to a per-user save file (Steam cloud profile, etc).
 #define CVAR_USERSAVE        0x080000
+// [QL] Quake3e's CVAR_ARCHIVE_ND: archived only once it differs from its
+// default. The renderer registered its cvars with ARCHIVE_ND and this engine
+// aliased that to plain ARCHIVE, so every default was written into qzconfig.cfg
+// on first run and a later change of default never reached an existing
+// install (r_dlightMode, con_scale, and the water splash defaults). Engine-side
+// only; no VM or Quake Live flag uses this bit.
+#define CVAR_NODEFAULT       0x200000
 // These flags are only returned by the Cvar_Flags() function
 #define CVAR_MODIFIED 0x40000000     // Cvar was modified
 #define CVAR_NONEXISTENT 0x80000000  // Cvar doesn't exist.

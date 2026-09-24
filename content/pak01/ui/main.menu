@@ -3156,7 +3156,7 @@
 
         // Round Limit
         itemDef { group grpRules  text "Round Limit:"  textscale .2  rect 20 70 120 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
-        itemDef { group grpRules  type ITEM_TYPE_MULTI  text ""  cvar "roundlimit"  cvarFloatList { "None" 0 "3" 3 "5" 5 "7" 7 "9" 9 "11" 11 "15" 15 }  rect 150 70 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
+        itemDef { group grpRules  type ITEM_TYPE_MULTI  text ""  cvar "roundlimit"  cvarFloatList { "None" 0 "3" 3 "5" 5 "7" 7 "9" 9 "10 (default)" 10 "11" 11 "15" 15 }  rect 150 70 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
 
         // Team Size
         itemDef { group grpRules  text "Team Size:"  textscale .2  rect 20 90 120 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
@@ -3176,7 +3176,7 @@
 
         // Item Height
         itemDef { group grpRules  text "Item Height:"  textscale .2  rect 20 170 120 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
-        itemDef { group grpRules  type ITEM_TYPE_MULTI  text ""  cvar "g_itemHeight"  cvarFloatList { "Ground" 0 "Floating" 36 }  rect 150 170 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
+        itemDef { group grpRules  type ITEM_TYPE_MULTI  text ""  cvar "g_itemHeight"  cvarFloatList { "Ground" 0 "Floating" 35 }  rect 150 170 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
 
         // Weapon Respawn
         itemDef { group grpRules  text "Weapon Respawn:"  textscale .2  rect 20 190 120 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
@@ -3264,7 +3264,7 @@
         }
 
         itemDef { group grpPhysics  text "Jump Velocity:"  textscale .2  rect 20 215 140 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
-        itemDef { group grpPhysics  type ITEM_TYPE_MULTI  text ""  cvar "pmove_JumpVelocity"  cvarFloatList { "252 (Q3)" 252 "270 (QL)" 270 "290" 290 "310" 310 }  rect 170 215 100 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
+        itemDef { group grpPhysics  type ITEM_TYPE_MULTI  text ""  cvar "pmove_JumpVelocity"  cvarFloatList { "252" 252 "270 (Q3)" 270 "275 (QL, default)" 275 "290" 290 "310" 310 }  rect 170 215 100 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
 
         itemDef { group grpPhysics  text "Walk Speed:"  textscale .2  rect 20 235 140 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
         itemDef { group grpPhysics  type ITEM_TYPE_MULTI  text ""  cvar "pmove_WishSpeed"  cvarFloatList { "320 (Q3)" 320 "400 (QL)" 400 "450" 450 "500" 500 }  rect 170 235 100 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
@@ -4109,7 +4109,7 @@
                   cvarFloatList { "Off (default)" 0 "Subtle" 0.35 "Half" 0.5 "Full" 1 }  rect 216 63 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Trace distance:"  textscale .22  rect 24 84 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name ssrdist  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDistance"
-                  cvarFloatList { "512 (near)" 512 "1024" 1024 "2048 (default)" 2048 "4096 (far)" 4096 }  rect 216 84 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+                  cvarFloatList { "512 (near)" 512 "1024 (default)" 1024 "2048" 2048 "4096 (far)" 4096 }  rect 216 84 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Trace steps:"  textscale .22  rect 24 105 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name ssrsteps  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrSteps"
                   cvarFloatList { "16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128 }  rect 216 105 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
@@ -4160,10 +4160,10 @@
         itemDef { name "" text "IMPACTS (SPLASHES)"  textscale .24  rect 20 294 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
         itemDef { text "Splash size:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name ripplesize  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleSize"
-                  cvarFloatList { "0.5 (small)" 0.5 "1 (default)" 1 "2 (wide)" 2 "4 (huge)" 4 }  rect 216 315 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+                  cvarFloatList { "1 (small)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (wide)" 8 "12" 12 "16 (huge)" 16 }  rect 216 315 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Splash strength:"  textscale .22  rect 24 336 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name rippleheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleHeight"
-                  cvarFloatList { "0 (none)" 0 "0.5 (soft)" 0.5 "1 (default)" 1 "2 (hard)" 2 "4 (violent)" 4 }  rect 216 336 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+                  cvarFloatList { "0 (none)" 0 "1 (soft)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (hard)" 8 "12" 12 "16 (violent)" 16 }  rect 216 336 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Ripple rings:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name ripplewaves  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleWaves"
                   cvarFloatList { "2 (few, fat)" 2 "5 (default)" 5 "8" 8 "12 (fine)" 12 }  rect 216 357 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
@@ -4172,12 +4172,12 @@
                   cvarFloatList { "1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6 }  rect 216 378 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
         itemDef { text "Foam:"  textscale .22  rect 24 399 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
         itemDef { name foam  type ITEM_TYPE_MULTI  text ""  cvar "r_waterFoam"
-                  cvarFloatList { "Off" 0 "Subtle" 0.5 "On (default)" 1 "Heavy" 2 }  rect 216 399 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
+                  cvarFloatList { "Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2 }  rect 216 399 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
 
         itemDef {
             name resetwater  text "RESET WATER"  type ITEM_TYPE_BUTTON  textscale .25
             rect 24 434 150 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "set r_ssr 0 ; set r_ssrDistance 2048 ; set r_ssrSteps 32 ; set r_ssrThickness 8 ; set r_ssrDebug 0 ; set r_waterWaves 1 ; set r_waterWaveSteepness 0.08 ; set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; set r_waterFoam 1 ; set r_waterRippleSize 1 ; set r_waterRippleHeight 1 ; set r_waterRippleWaves 5 ; set r_waterRippleLife 2.2" }
+            action { play "sound/misc/menu1.wav" ; exec "set r_ssr 0 ; set r_ssrDistance 1024 ; set r_ssrSteps 24 ; set r_ssrThickness 24 ; set r_ssrDebug 0 ; set r_waterWaves 1 ; set r_waterWaveSteepness 0.08 ; set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; set r_waterFoam 0 ; set r_waterRippleSize 4 ; set r_waterRippleHeight 4 ; set r_waterRippleWaves 5 ; set r_waterRippleLife 2.2" }
             mouseEnter { setitemcolor resetwater forecolor 1 .75 0 1 }
             mouseExit  { setitemcolor resetwater forecolor 1 1 1 1 }
         }

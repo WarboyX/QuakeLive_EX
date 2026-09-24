@@ -2271,7 +2271,7 @@ static void R_Register( void )
 	changes vkCreateDevice, and a device that fails to create is not a missing
 	effect, it is no renderer.
 	*/
-	r_rt = ri.Cvar_Get( "r_rt", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_rt = ri.Cvar_Get( "r_rt", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_rt, "Enable Vulkan ray query support on the device. "
 		"Requires r_rtAvailable 1 and a vid_restart. No visible effect yet - "
 		"this is the device plumbing the AO pass will be built on." );
@@ -2298,10 +2298,10 @@ static void R_Register( void )
 	it would have persisted in everyone's config after the code behind it left.
 	*/
 
-	r_rtao = ri.Cvar_Get( "r_rtao", "0", CVAR_ARCHIVE );
+	r_rtao = ri.Cvar_Get( "r_rtao", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_rtao, "Ray-traced ambient occlusion. Requires r_rtActive 1." );
 
-	r_rtaoRadius = ri.Cvar_Get( "r_rtaoRadius", "64", CVAR_ARCHIVE );
+	r_rtaoRadius = ri.Cvar_Get( "r_rtaoRadius", "64", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoRadius, "8", "4096", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtaoRadius, "How far ambient occlusion rays travel, in world units. "
 		"Larger darkens broader spaces and costs more to trace - the cost is per ray and grows "
@@ -2309,11 +2309,11 @@ static void R_Register( void )
 		"\\r_rtaoSamples" S_COLOR_WHITE " and with resolution. Occlusion also falls off linearly "
 		"over the radius, so a large value both reaches further and darkens near hits harder." );
 
-	r_rtaoIntensity = ri.Cvar_Get( "r_rtaoIntensity", "0.8", CVAR_ARCHIVE );
+	r_rtaoIntensity = ri.Cvar_Get( "r_rtaoIntensity", "0.8", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoIntensity, "0", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtaoIntensity, "How dark fully occluded areas become. 0 is no effect." );
 
-	r_rtaoSamples = ri.Cvar_Get( "r_rtaoSamples", "4", CVAR_ARCHIVE | CVAR_LATCH );
+	r_rtaoSamples = ri.Cvar_Get( "r_rtaoSamples", "4", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_rtaoSamples, "1", "32", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtaoSamples, "Rays per pixel. Baked into the pipeline, so this "
 		"needs a vid_restart." );
@@ -2329,13 +2329,13 @@ static void R_Register( void )
 	[QL] Live, not latched: the structures exist either way and the cvar only
 	decides whether entity instances go into the one built this frame.
 	*/
-	r_rtDynamic = ri.Cvar_Get( "r_rtDynamic", "1", CVAR_ARCHIVE );
+	r_rtDynamic = ri.Cvar_Get( "r_rtDynamic", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_rtDynamic, "Let players, items and movers cast ambient occlusion, "
 		"not just the map. They are traced as a box at their bounds rather than as their real "
 		"mesh - occlusion this soft cannot tell the difference, and an exact one would mean "
 		"rebuilding an acceleration structure per entity per frame." );
 
-	r_rtaoNormals = ri.Cvar_Get( "r_rtaoNormals", "1", CVAR_ARCHIVE );
+	r_rtaoNormals = ri.Cvar_Get( "r_rtaoNormals", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoNormals, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtaoNormals, "Where the occlusion normal comes from:\n"
 		" 0 - the screen-space derivatives of position, which is exact on a flat surface "
@@ -2344,7 +2344,7 @@ static void R_Register( void )
 		"silhouettes\n"
 		"Live, so the two can be compared in a frame." );
 
-	r_rtaoWeapon = ri.Cvar_Get( "r_rtaoWeapon", "1", CVAR_ARCHIVE );
+	r_rtaoWeapon = ri.Cvar_Get( "r_rtaoWeapon", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoWeapon, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtaoWeapon, "Occlude the first person weapon.\n"
 		" 0 - leave it alone, as every build before this one did\n"
@@ -2353,7 +2353,7 @@ static void R_Register( void )
 		"itself, because the view model is deliberately not an occluder: a box around "
 		"the camera would black out the whole screen from inside.\nLive." );
 
-	r_rtaoLights = ri.Cvar_Get( "r_rtaoLights", "1", CVAR_ARCHIVE );
+	r_rtaoLights = ri.Cvar_Get( "r_rtaoLights", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoLights, "0", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtaoLights, "How much a dynamic light clears ambient occlusion "
 		"inside the area it lights.\n"
@@ -2372,7 +2372,7 @@ static void R_Register( void )
 	buffer, so all of it takes effect immediately - there is no pipeline to
 	rebuild and nothing to restart.
 	*/
-	r_ssr = ri.Cvar_Get( "r_ssr", "0", CVAR_ARCHIVE );
+	r_ssr = ri.Cvar_Get( "r_ssr", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_ssr, "0", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_ssr, "Reflect the scene in the map's water, by marching the depth "
 		"buffer.\n"
@@ -2384,20 +2384,20 @@ static void R_Register( void )
 		"rather than ending at them, which is where that shows.\n"
 		"Needs a map with a water plane - the count is printed at load." );
 
-	r_ssrDistance = ri.Cvar_Get( "r_ssrDistance", "1024", CVAR_ARCHIVE );
+	r_ssrDistance = ri.Cvar_Get( "r_ssrDistance", "1024", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_ssrDistance, "64", "8192", CV_FLOAT );
 	ri.Cvar_SetDescription( r_ssrDistance, "How far a reflected ray travels before giving up, in "
 		"world units. Larger reaches further across a pool and spends the same number of steps "
 		"doing it, so each step is coarser and thin geometry is more likely to be stepped over." );
 
-	r_ssrSteps = ri.Cvar_Get( "r_ssrSteps", "24", CVAR_ARCHIVE );
+	r_ssrSteps = ri.Cvar_Get( "r_ssrSteps", "24", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_ssrSteps, "4", "128", CV_INTEGER );
 	ri.Cvar_SetDescription( r_ssrSteps, "How many samples a reflected ray takes over "
 		S_COLOR_CYAN "\\r_ssrDistance" S_COLOR_WHITE ". This is the quality control and the "
 		"cost: it is taken per water pixel on screen, so it only costs anything where water is "
 		"visible." );
 
-	r_ssrThickness = ri.Cvar_Get( "r_ssrThickness", "24", CVAR_ARCHIVE );
+	r_ssrThickness = ri.Cvar_Get( "r_ssrThickness", "24", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_ssrThickness, "1", "512", CV_FLOAT );
 	ri.Cvar_SetDescription( r_ssrThickness, "How far behind a surface a ray may pass and still "
 		"count as having hit it, in world units.\n"
@@ -2489,7 +2489,8 @@ static void R_Register( void )
 		"about 0.2 the reflection starts sampling wildly different parts of the screen from "
 		"one pixel to the next and reads as noise rather than water." );
 
-	r_waterFoam = ri.Cvar_Get( "r_waterFoam", "1", CVAR_ARCHIVE_ND );
+	// [QL] default 0: splashes read better without it at the 4/4 splash defaults below
+	r_waterFoam = ri.Cvar_Get( "r_waterFoam", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_waterFoam, "0", "2", CV_FLOAT );
 	ri.Cvar_SetDescription( r_waterFoam, "How white the water goes where something has just "
 		"hit it. 0 turns it off.\n"
@@ -2523,8 +2524,10 @@ static void R_Register( void )
 	asked for rather than absolute sizes, so the per-weapon differences that
 	cg_weapons.c sets up - a rocket against a pellet - survive being scaled.
 	*/
-	r_waterRippleSize = ri.Cvar_Get( "r_waterRippleSize", "1", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_waterRippleSize, "0.1", "8", CV_FLOAT );
+	// [QL] default 4 and range to 16: 1 was too small to read in play (tuned on a
+	// laptop, 4/4 with foam off); the menu offers larger from there.
+	r_waterRippleSize = ri.Cvar_Get( "r_waterRippleSize", "4", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleSize, "0.1", "16", CV_FLOAT );
 	ri.Cvar_SetDescription( r_waterRippleSize, "How far an impact's rings spread, as a "
 		"multiple of what the weapon asked for. 2 makes every splash reach twice as far.\n"
 		"A multiplier and not a size, so a rocket stays bigger than a shotgun pellet.\n"
@@ -2532,8 +2535,8 @@ static void R_Register( void )
 		"front travel outward faster - see " S_COLOR_CYAN "\\r_waterRippleLife"
 		S_COLOR_WHITE " to slow it back down." );
 
-	r_waterRippleHeight = ri.Cvar_Get( "r_waterRippleHeight", "1", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_waterRippleHeight, "0", "8", CV_FLOAT );
+	r_waterRippleHeight = ri.Cvar_Get( "r_waterRippleHeight", "4", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleHeight, "0", "16", CV_FLOAT );
 	ri.Cvar_SetDescription( r_waterRippleHeight, "How hard an impact hits the water, as a "
 		"multiple of the weapon's own strength. 0 leaves the chop but kills every splash.\n"
 		"Drives both how far the surface moves and how far its normal tilts, so this is the "
@@ -2560,7 +2563,7 @@ static void R_Register( void )
 		"dropped first, so a long life plus a busy fight means earlier splashes get evicted "
 		"before they fade." );
 
-	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE );
+	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtaoDenoise, "Denoise the occlusion term:\n"
 		" 0 - off, shows the raw per-pixel trace\n"

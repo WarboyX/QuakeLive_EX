@@ -895,6 +895,13 @@ void Cvar_WriteVariables(fileHandle_t f_hw, fileHandle_t f_rep, int clientOnly) 
         // write the latched value, even if it hasn't taken effect yet
         value = var->latchedString ? var->latchedString : var->string;
 
+        // [QL] CVAR_NODEFAULT (ARCHIVE_ND): a value still at its default is not
+        // a choice anyone made, so leave it out and let a new default apply.
+        if ((var->flags & CVAR_NODEFAULT) && var->resetString &&
+            !Q_stricmp(value, var->resetString)) {
+            continue;
+        }
+
         if (strlen(var->name) + strlen(value) + 10 > sizeof(buffer)) {
             Com_Printf(S_COLOR_YELLOW
                        "WARNING: value of variable "

@@ -65,6 +65,13 @@ python3 tools/dead-cvars.py
 # registered under a Quake 3 name the paks have never contained.
 python3 tools/check-assets.py
 
+# And for menu rows. A multi-choice row draws blank when its cvar holds a value
+# the row does not list, and a "(default)" label on the wrong value sends every
+# reset somewhere else. r_ssrSteps/r_ssrThickness shipped blank on every
+# install; roundlimit and g_itemHeight did too. This compares every row with
+# the default the code registers.
+python3 tools/check-menu-defaults.py
+
 echo "building $REV"
 
 # Stamp the loaded pak01 with the revision. Menu fixes live in pak01.pk3 and

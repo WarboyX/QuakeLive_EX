@@ -129,15 +129,20 @@ Quake3e: code/qcommon/qcommon.h — size of the BSP visibility lump header
 
 /*
 Quake3e: code/qcommon/q_shared.h — cvar flags and groups this tree lacks.
-CVAR_NODEFAULT does not exist here either, so ARCHIVE_ND degrades to plain
-CVAR_ARCHIVE: the "no default" half only affects config writing, which is
-engine-side and unchanged by the renderer.
+ARCHIVE_ND used to degrade to plain CVAR_ARCHIVE here, which wrote every
+renderer default into qzconfig.cfg and froze it there. q_shared.h now has
+CVAR_NODEFAULT and Cvar_WriteVariables skips such a cvar while it is at its
+default, as Quake3e does.
+
+CVAR_DEVELOPER's 0x10000 is the engine's CVAR_GAMERULE_MODEL bit. Nothing on
+the engine side tests that bit, so it is inert today; do not start testing it
+engine-side without moving this one.
 */
 #ifndef CVAR_DEVELOPER
 #define CVAR_DEVELOPER 0x10000
 #endif
 #ifndef CVAR_ARCHIVE_ND
-#define CVAR_ARCHIVE_ND CVAR_ARCHIVE
+#define CVAR_ARCHIVE_ND (CVAR_ARCHIVE | CVAR_NODEFAULT)
 #endif
 
 typedef enum { CV_NONE = 0, CV_FLOAT, CV_INTEGER } cvarValidator_t;
