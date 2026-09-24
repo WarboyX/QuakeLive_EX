@@ -215,17 +215,11 @@ def frame():
 
         onESC { uiScript closeingame }
 
-        // [QL] E115. Put the tab bar back to Current Match every time this
-        // opens. setitemcolor changes persist on the item, so the bar kept
-        // whatever the last tab click left - while _UI_SetActiveMenu always
-        // opens the Current Match PAGE. Reopening the menu showed one page
-        // under another tab's highlight.
-        //
-        // onOpen rather than Quake Live's onClose: Menus_ActivateByName runs
-        // onOpen on every way back in, including after Leave, which disconnects
-        // without ever closing this frame through a path that runs onClose.
-        onOpen {
-%s        }
+        // [QL] E115/E125. No onOpen tab reset here. The bar has to show
+        // Current Match whenever ESC brings this menu up, and _UI_SetActiveMenu
+        // does that by running tab 1's own action. It used to be this frame's
+        // onOpen, which also fired when a render page's BACK reopened the
+        // frame - and put Advanced's page under the Current Match tab.
 
         itemDef { name ig_dim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.55 }
@@ -236,7 +230,7 @@ def frame():
                   style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
         itemDef { name ig_bar  rect 0 63 %d 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
-        itemDef { name ig_page  rect 0 82 %d 310
+        itemDef { name ig_page  rect 0 82 %d 358
                   background "ui/assets/main_menu/content_background.tga"
                   style WINDOW_STYLE_FILLED  visible 1  decoration
                   forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
@@ -246,11 +240,11 @@ def frame():
         // around it - it did not read as part of the menu, or as clickable.
         // Styled like every other button in the menu - see BTN_BACK - rather
         // than in a red of its own, which fought the header.
-        itemDef { name ig_foot  rect 0 396 %d 36  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name ig_foot  rect 0 444 %d 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
             name ig_resume  text "RESUME"  type ITEM_TYPE_BUTTON  textscale .25
-            rect %d 401 160 26  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 17
+            rect %d 448 160 26  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
             forecolor %s  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript closeingame }
@@ -258,7 +252,7 @@ def frame():
             mouseExit  { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s ; setitemcolor ig_resume bordercolor %s }
         }
 %s    }
-""" % (FRAME_W, GOLD, select_tab(0), FRAME_W, FRAME_W, FRAME_W, FRAME_W,
+""" % (FRAME_W, GOLD, FRAME_W, FRAME_W, FRAME_W, FRAME_W,
        (FRAME_W - 160) // 2, BTN_BACK, BTN_EDGE, WHITE,
        BTN_HOT, GOLD, BTN_EDGE_HOT, BTN_BACK, WHITE, BTN_EDGE,
        nav_items())
@@ -267,7 +261,10 @@ def frame():
 # ---------------------------------------------------------------- pages -----
 # Every page is the same shell: a title, a rule, then its own body. Written
 # here rather than repeated so a change to the shell is one change.
-PAGE_W, PAGE_H = 560, 292
+# [QL] E125. The panel runs to 440 and the footer sits at 444-478, the same
+# frame geometry as the render pages (tools/gen-render-menu.py), so moving
+# between them does not change the menu's shape.
+PAGE_W, PAGE_H = 560, 340
 
 
 def page(name, title, body, subtitle=None, onopen=None):
@@ -780,10 +777,14 @@ def page_advanced():
     # E118: Player Setup is gone from here - its name, handicap and model picker
     # are all on the Player tab now. It stays on the main menu, which has no
     # Player tab. The four that remain are the renderer's, as a centred 2x2.
-    b += button("ig_advrender", "RENDER OPTIONS", 114, 176, 160, "open io_renderoptions")
-    b += button("ig_advwater", "WATER", 286, 176, 160, "open io_water")
-    b += button("ig_advrt", "RAY TRACING", 114, 204, 160, "open io_raytracing")
-    b += button("ig_advsurf", "SURFACE DETAIL", 286, 204, 160, "open io_surfacedetail")
+    # E125: the in-game copies (io_igr_*). They REPLACE this frame rather than
+    # opening over it - one dim, one tab bar, the same height - and their BACK
+    # reopens this frame and page with the Advanced tab still lit.
+    go = "close io_ig_advanced ; close io_ingame ; open %s"
+    b += button("ig_advrender", "RENDER OPTIONS", 114, 176, 160, go % "io_igr_renderoptions")
+    b += button("ig_advwater", "WATER", 286, 176, 160, go % "io_igr_water")
+    b += button("ig_advrt", "RAY TRACING", 114, 204, 160, go % "io_igr_raytracing")
+    b += button("ig_advsurf", "SURFACE DETAIL", 286, 204, 160, go % "io_igr_surfacedetail")
     b += heading("Original Menu", 240)
     b += button("ig_advql", "QUAKE LIVE MENU", 200, 260, 160,
                 "open ingame ; open ingame_about")

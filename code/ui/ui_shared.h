@@ -470,6 +470,7 @@ qboolean Display_KeyBindPending(void);
 void Menus_OpenByName(const char* p);
 void Item_RunScript(itemDef_t* item, const char* s);
 menuDef_t* Menus_FindByName(const char* p);
+itemDef_t* Menu_FindItemByName(menuDef_t* menu, const char* p);
 void Menus_ShowByName(const char* p);
 void Menus_CloseByName(const char* p);
 void Display_HandleKey(int key, qboolean down, int x, int y);

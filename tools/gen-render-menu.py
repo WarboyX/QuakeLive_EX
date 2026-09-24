@@ -52,19 +52,45 @@ ROWS_Y = PANEL_Y + 32
 VK = ('cvarTest "cl_renderer"  showCvar { "vulkan" }')
 GL = ('cvarTest "cl_renderer"  hideCvar { "vulkan" }')
 
+# The four pages, by suffix. Each is generated twice (E125):
+#   main   io_<suffix>     from the main menu's RENDER entry. CLOSE closes it and
+#                          the main menu is underneath.
+#   ingame io_igr_<suffix> from the in-game Advanced page. It REPLACES the
+#                          in-game frame (Advanced closes io_ingame before opening
+#                          it), so there is one dim and one tab bar, not two
+#                          stacked; BACK reopens io_ingame and io_ig_advanced.
+#                          The frame no longer resets its tabs on open, so
+#                          Advanced is still the lit tab when you come back.
 TABS = [
-    ("io_renderoptions", "Render Options"),
-    ("io_raytracing",    "Lighting & Ray Tracing"),
-    ("io_water",         "Water"),
-    ("io_surfacedetail", "Surface Detail"),
+    ("renderoptions", "Render Options"),
+    ("raytracing",    "Lighting & Ray Tracing"),
+    ("water",         "Water"),
+    ("surfacedetail", "Surface Detail"),
 ]
-PAGES = [t[0] for t in TABS]
 
-APPLY = 'exec "vid_restart"'
+VARIANTS = {
+    "main":   {"prefix": "io_"},
+    "ingame": {"prefix": "io_igr_"},
+}
+V = VARIANTS["main"]    # the variant being generated; set by main()
+
+
+def name(suffix):
+    return V["prefix"] + suffix
 
 
 def close_all():
-    return " ; ".join("close %s" % p for p in PAGES)
+    return " ; ".join("close %s" % name(t[0]) for t in TABS)
+
+
+def leave_action():
+    """What BACK/CLOSE does, and what ESC does, for the current variant."""
+    if V is VARIANTS["ingame"]:
+        return (close_all() + " ; open io_ingame ; open io_ig_advanced",
+                close_all() + " ; uiScript closeingame")
+    return close_all(), close_all()
+
+APPLY = 'exec "vid_restart"'
 
 
 # ---------------------------------------------------------------- frame ------
@@ -84,7 +110,8 @@ def tab_layout():
 def tabs(current):
     """The tab bar with `current` lit. Static per page - each page is its own menu."""
     out = []
-    for i, ((menu, label), (x, w)) in enumerate(zip(TABS, tab_layout())):
+    for i, ((suffix, label), (x, w)) in enumerate(zip(TABS, tab_layout())):
+        menu = name(suffix)
         on = menu == current
         out.append("""        itemDef {
             name rtab%d  rect %d %d %d %d  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
@@ -124,6 +151,8 @@ def framed(menu, title, body, buttons):
 
         onESC { %s }
 
+        // One dim, the same as io_ingame's ig_dim. In a game this page stands
+        // in for that frame rather than sitting on it, so this is the only one.
         itemDef { name rdim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.55 }
         itemDef { name rheader  rect 0 0 %d 64  background "ui/assets/main_menu/header.tga"
@@ -145,18 +174,37 @@ def framed(menu, title, body, buttons):
 %s        itemDef { name rfoot  rect 0 %d %d 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
 %s    }
-""" % (menu, W, GOLD, close_all(), W, W, tabs(menu),
+""" % (menu, W, GOLD, leave_action()[1], W, W, tabs(menu),
        PANEL_Y, W, PANEL_BOTTOM - PANEL_Y,
        title, TITLE_Y, GOLD, TITLE_Y + 24, body, FOOT_Y, W, footer(buttons))
 
 
+def footbutton(nm, label, x, w, action):
+    """The in-game frame's RESUME button, exactly: 26 tall, textscale .25."""
+    return """        itemDef {
+            name %s  text "%s"  type ITEM_TYPE_BUTTON  textscale .25
+            rect %d %d %d 26  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 17
+            style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
+            forecolor %s  visible 1
+            action { play "sound/misc/menu1.wav" ; %s }
+            mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
+            mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
+        }
+""" % (nm, label, x, FOOT_Y + 4, w, w // 2, ig.BTN_BACK, ig.BTN_EDGE, WHITE, action,
+       nm, ig.BTN_HOT, nm, GOLD, nm, ig.BTN_EDGE_HOT, nm, ig.BTN_BACK, nm, WHITE, nm, ig.BTN_EDGE)
+
+
 def footer(buttons):
-    """Boxed buttons centred in the footer bar, 12 apart."""
+    """Footer buttons centred in the bar, 12 apart, sized like RESUME."""
+    buttons = [b if b != "leave" else
+               (("rback", "BACK", 120, leave_action()[0]) if V is VARIANTS["ingame"]
+                else ("rclose", "CLOSE", 120, leave_action()[0]))
+               for b in buttons]
     total = sum(w for _, _, w, _ in buttons) + 12 * (len(buttons) - 1)
     x = (W - total) // 2
     out = ""
-    for name, label, w, action in buttons:
-        out += ig.boxbutton(name, label, x, FOOT_Y + 6, w, action)
+    for nm, label, w, action in buttons:
+        out += footbutton(nm, label, x, w, action)
         x += w + 12
     return out
 
@@ -293,8 +341,8 @@ def page(menu, title, spec, buttons):
 
 
 # ---------------------------------------------------------------- pages ------
-CLOSE = ("rclose", "CLOSE", 110, close_all())
-APPLY_BTN = ("rapply", "APPLY (restart video)", 190, APPLY)
+CLOSE = "leave"          # BACK in a game, CLOSE on the main menu - see footer()
+APPLY_BTN = ("rapply", "APPLY (restart video)", 210, APPLY)
 
 
 def render_options():
@@ -343,7 +391,7 @@ def render_options():
          [("yesno", "r_hdr", "HDR framebuffer", None, "gl"),
           ("yesno", "r_toneMap", "Tonemapping", None, "gl")]),
     ]
-    return page("io_renderoptions", "RENDER OPTIONS", spec, [APPLY_BTN, CLOSE])
+    return page(name("renderoptions"), "RENDER OPTIONS", spec, [APPLY_BTN, CLOSE])
 
 
 def raytracing():
@@ -383,7 +431,7 @@ def raytracing():
     reset = ("raoreset", "RESET AO", 120,
              'exec "set r_rtao 0 ; set r_rtaoRadius 64 ; set r_rtaoIntensity 0.8 ; '
              'set r_rtaoSamples 4 ; set r_rtaoDenoise 1 ; set r_rtaoLights 1"')
-    return page("io_raytracing", "LIGHTING & RAY TRACING", spec, [reset, APPLY_BTN, CLOSE])
+    return page(name("raytracing"), "LIGHTING & RAY TRACING", spec, [reset, APPLY_BTN, CLOSE])
 
 
 def water():
@@ -428,7 +476,7 @@ def water():
              'set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; '
              'set r_waterFoam 0 ; set r_waterRippleSize 4 ; set r_waterRippleHeight 4 ; '
              'set r_waterRippleWaves 5 ; set r_waterRippleLife 2.2"')
-    return page("io_water", "WATER", spec, [reset, CLOSE])
+    return page(name("water"), "WATER", spec, [reset, CLOSE])
 
 
 def surface_detail():
@@ -484,13 +532,18 @@ def surface_detail():
         # it works on a /devmap, where the test maps are judged, and says so.
         ("slider", "r_ambientScale", "Ambient (devmap only)", ("0.6", "0", "2")),
     ]
-    return page("io_surfacedetail", "SURFACE DETAIL", spec, [APPLY_BTN, CLOSE])
+    return page(name("surfacedetail"), "SURFACE DETAIL", spec, [APPLY_BTN, CLOSE])
 
 
 def main():
+    global V
+    pages = ""
+    for key in ("main", "ingame"):
+        V = VARIANTS[key]
+        pages += render_options() + raytracing() + water() + surface_detail()
     block = (BEGIN
              + "    // Generated - edit tools/gen-render-menu.py, not this block.\n"
-             + render_options() + raytracing() + water() + surface_detail()
+             + pages
              + END)
 
     overflow = ig.check_text_fit(block)
@@ -503,7 +556,8 @@ def main():
     start = text.index(BEGIN)
     end = text.index(END) + len(END)
     MENU.write_text(text[:start] + block + text[end:])
-    print("gen-render-menu: wrote %d pages into %s" % (len(TABS), MENU.name))
+    print("gen-render-menu: wrote %d pages x %d variants into %s"
+          % (len(TABS), len(VARIANTS), MENU.name))
     print("gen-render-menu: now run tools/check-menus.py and tools/check-menu-defaults.py")
 
 

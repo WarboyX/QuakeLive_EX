@@ -5339,8 +5339,26 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 panel, so the first tab's page opens with it - and the nav bar's
                 first tab is defined already highlighted to match.
                 */
+                /*
+                [QL] E125. ESC always lands on Current Match with its tab lit,
+                by running that tab's own action: it closes every page, sets the
+                tab colours and opens io_ig_match. That reset used to be the
+                frame's onOpen, which also ran whenever anything reopened the
+                frame - so coming BACK from a render page to Advanced showed the
+                Advanced page under the Current Match tab. Here it runs only on
+                the way in from the game.
+                */
                 Menus_ActivateByName("io_ingame");
-                Menus_ActivateByName("io_ig_match");
+                {
+                    menuDef_t* frame = Menus_FindByName("io_ingame");
+                    itemDef_t* first = frame ? Menu_FindItemByName(frame, "ignav1") : NULL;
+
+                    if (first && first->action) {
+                        Item_RunScript(first, first->action);
+                    } else {
+                        Menus_ActivateByName("io_ig_match");
+                    }
+                }
                 return;
         }
     }

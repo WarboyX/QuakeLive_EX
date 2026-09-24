@@ -6048,6 +6048,18 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E125. One menu shape: the in-game frame and the render pages flow into each other — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Reported with two screenshots. Opened from the in-game Advanced page, a render page sat **on top of** the in-game frame instead of replacing it:
+- the in-game tabs showed through its tab bar ("Cur", "Call Vote", "Add Bot") and the Advanced page showed through its panel;
+- the game was dimmed twice;
+- the render footer sat lower than the in-game footer, because the two frames were different heights.
+
+- **One geometry.** Both frames now use header 0-64, tab bar 63-81, panel 82-440 and footer 444-478. The RESUME and render footer buttons are the same size.
+- **Replace, don't stack.** Each render page is generated twice. `io_*` is the main-menu copy; CLOSE shows the main menu. `io_igr_*` is the in-game copy: Advanced closes `io_ingame` before opening it, and its BACK reopens `io_ingame` and `io_ig_advanced`. There is one dim and one tab bar at any moment. ESC from a render page in a game resumes play, like every other in-game page.
+- **The tab highlight survives the round trip.** The frame's onOpen reset the tabs to Current Match every time the frame opened, including on BACK. `_UI_SetActiveMenu` now runs tab 1's own action on ESC-in instead, and nothing else resets the tabs.
+
 ### E124. Render pages in the in-game menu's style; renderer settings that never applied live — DONE (verify)
 **Lives in:** our **client** (client engine, ui/pak01) · **Seen by:** our client only
 
