@@ -2507,9 +2507,74 @@ need a manual vid_restart. Keeping that behaviour for Vulkan is consistent;
 implementing groups would be a change to the OpenGL renderer's behaviour too,
 and belongs in its own piece of work rather than smuggled in with the port.
 */
-static void CL_RefCvarSetGroup(cvar_t* cv, int group) {}
-static int CL_RefCvarCheckGroup(int group) { return 0; }
-static void CL_RefCvarResetGroup(int group, qboolean resetModifiedFlags) {}
+/*
+[QL] Quake3e's cvar groups: the renderer tags the cvars it can apply without a
+restart (r_gamma, r_textureMode, r_greyscale, r_dither, the bloom settings) and
+asks once a frame whether any of them changed.
+
+These were stubs, and CheckGroup always said no. So none of those settings
+applied live on the Vulkan renderer - brightness only changed on vid_restart,
+which is what "we need vid_restart to apply brightness" was. The note above
+CL_PostProcessRestart_f counts this path as the third way post-process
+pipelines get rebuilt; it had never run.
+
+Tracked here rather than in cvar_t: only the renderer uses groups, and a
+modificationCount snapshot per member is all a check needs.
+*/
+#define REF_GROUP_MAX 128
+static struct {
+    cvar_t* cv;
+    int group;
+    int seen;   // modificationCount at the last reset
+} refGroup[REF_GROUP_MAX];
+static int refGroupCount;
+
+static void CL_RefCvarSetGroup(cvar_t* cv, int group) {
+    int i;
+
+    if (!cv) {
+        return;
+    }
+    for (i = 0; i < refGroupCount; i++) {
+        if (refGroup[i].cv == cv) {
+            refGroup[i].group = group;
+            refGroup[i].seen = cv->modificationCount;
+            return;
+        }
+    }
+    if (refGroupCount == REF_GROUP_MAX) {
+        Com_Printf(S_COLOR_YELLOW "WARNING: renderer cvar group full, %s will need vid_restart\n", cv->name);
+        return;
+    }
+    refGroup[refGroupCount].cv = cv;
+    refGroup[refGroupCount].group = group;
+    refGroup[refGroupCount].seen = cv->modificationCount;
+    refGroupCount++;
+}
+
+static int CL_RefCvarCheckGroup(int group) {
+    int i;
+
+    for (i = 0; i < refGroupCount; i++) {
+        if (refGroup[i].group == group && refGroup[i].cv->modificationCount != refGroup[i].seen) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void CL_RefCvarResetGroup(int group, qboolean resetModifiedFlags) {
+    int i;
+
+    for (i = 0; i < refGroupCount; i++) {
+        if (refGroup[i].group == group) {
+            refGroup[i].seen = refGroup[i].cv->modificationCount;
+            if (resetModifiedFlags) {
+                refGroup[i].cv->modified = qfalse;
+            }
+        }
+    }
+}
 
 /*
 Quake3e's Cvar_CheckRange takes string bounds and a validator enum where this

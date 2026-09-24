@@ -87,7 +87,11 @@ menu with the wrong items in it, or a button that opens nothing. Nothing says so
 on screen; it is loud in the console and silent where you are looking. Run
 `tools/check-menus.py` after touching any `.menu` file. It needs nothing else:
 `docs/ql-menu-names.txt` is checked in, so open/close targets that live in
-pak00 resolve. It checks our files only. Pass a directory of Quake Live's `ui/`
+pak00 resolve. It checks our files only. The in-game menu and the four render pages are generated
+(`tools/gen-ingame-menu.py`, `tools/gen-render-menu.py`); edit the generator,
+not the block between its markers. `tools/check-menu-defaults.py` fails on a
+multi row whose "(default)" is not the registered default, or whose default is
+not in its list (such a row draws blank). Pass a directory of Quake Live's `ui/`
 to check against the real files, and `--dump-names <dir>` to regenerate that
 list after a game patch.
 

@@ -3826,498 +3826,878 @@
     // out of rows. If a page fills up, split it; do not shrink the pitch.
     // =============================================
 
+    // >>> GENERATED io_render BEGIN - tools/gen-render-menu.py
+    // Generated - edit tools/gen-render-menu.py, not this block.
+
+    // check-menus: overlap-ok - layered like io_ingame: the backdrop under
+    // everything and overhanging the frame, the logo overhanging it left, each
+    // tab four items on one rect, and rows gated on cl_renderer sharing a y.
     menuDef {
         name "io_renderoptions"
-        rect 60 8 520 468
+        rect 40 0 560 480
         visible MENU_FALSE
-        focusColor 1 .75 0 1
-        style WINDOW_STYLE_FILLED
-        backcolor 0.04 0.04 0.07 1
-        border 1
-        bordersize 1
-        bordercolor .45 .45 .5 1
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        disableColor .5 .5 .5 1
 
-        onESC { close io_renderoptions }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
 
-        itemDef { name title  text "RENDER OPTIONS"  textscale .3
-                  rect 0 6 520 26  textalign ITEM_ALIGN_CENTER  textalignx 260  textaligny 19
-                  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { name titlerule  text ""  rect 24 36 472 1  visible 1  decoration
-                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
-
-        // ---- presets ----------------------------------------------------
-        itemDef { text "Presets:"  textscale .22  rect 24 42 80 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
+        itemDef { name rdim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.55 }
+        itemDef { name rheader  rect 0 0 560 64  background "ui/assets/main_menu/header.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rlogo  rect -20 0 256 64  background "ui/assets/main_menu/ql_logo.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
+        itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name pclassic  text "CLASSIC"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 108 39 92 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name rtab0  rect 6 64 138 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_renderoptions }
+        }
+        itemDef { name rtab0o  rect 8 64 134 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.9 }
+        itemDef { name rtab0u  rect 8 80 134 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0.964 0.815 0 1 }
+        itemDef { name rtab0t  rect 6 64 138 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef {
+            name rtab1  rect 144 64 178 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_raytracing }
+        }
+        itemDef { name rtab1o  rect 146 64 174 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1u  rect 146 80 174 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1t  rect 144 64 178 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 89  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab2  rect 322 64 93 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_water }
+        }
+        itemDef { name rtab2o  rect 324 64 89 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2u  rect 324 80 89 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2t  rect 322 64 93 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 46  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab3  rect 415 64 138 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_surfacedetail }
+        }
+        itemDef { name rtab3o  rect 417 64 134 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3u  rect 417 80 134 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3t  rect 415 64 138 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name rpage  rect 0 82 560 358
+                  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rtitle  text "RENDER OPTIONS"  textscale .26  rect 20 86 520 24  textaligny 17
+                  textalign ITEM_ALIGN_CENTER  textalignx 260
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rrule  text ""  rect 20 110 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef {
+            name pclassic  text "CLASSIC"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 57 112 104 22  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "exec classic.cfg" }
-            mouseEnter { setitemcolor pclassic forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor pclassic forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor pclassic backcolor 0 0 0 .9 ; setitemcolor pclassic forecolor 0.964 0.815 0 1 ; setitemcolor pclassic bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor pclassic backcolor 0 0 0 .6 ; setitemcolor pclassic forecolor 1 1 1 1 ; setitemcolor pclassic bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name pgloss  text "GLOSS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 206 39 92 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name pgloss  text "GLOSS"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 171 112 104 22  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "exec gloss.cfg" }
-            mouseEnter { setitemcolor pgloss forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor pgloss forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor pgloss backcolor 0 0 0 .9 ; setitemcolor pgloss forecolor 0.964 0.815 0 1 ; setitemcolor pgloss bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor pgloss backcolor 0 0 0 .6 ; setitemcolor pgloss forecolor 1 1 1 1 ; setitemcolor pgloss bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name pvoodoo  text "VOODOO"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 304 39 92 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name pvoodoo  text "VOODOO"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 285 112 104 22  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "exec voodoo.cfg" }
-            mouseEnter { setitemcolor pvoodoo forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor pvoodoo forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor pvoodoo backcolor 0 0 0 .9 ; setitemcolor pvoodoo forecolor 0.964 0.815 0 1 ; setitemcolor pvoodoo bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor pvoodoo backcolor 0 0 0 .6 ; setitemcolor pvoodoo forecolor 1 1 1 1 ; setitemcolor pvoodoo bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name pmodern  text "DEFAULTS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 402 39 92 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name pmodern  text "DEFAULTS"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 399 112 104 22  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "exec modern.cfg" }
-            mouseEnter { setitemcolor pmodern forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor pmodern forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor pmodern backcolor 0 0 0 .9 ; setitemcolor pmodern forecolor 0.964 0.815 0 1 ; setitemcolor pmodern bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor pmodern backcolor 0 0 0 .6 ; setitemcolor pmodern forecolor 1 1 1 1 ; setitemcolor pmodern bordercolor .35 .3 .12 1 }
         }
-
-        itemDef { name "" text "OUTPUT"  textscale .24  rect 20 84 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "Renderer:"  textscale .22  rect 24 105 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name renderer  type ITEM_TYPE_MULTI  text ""  cvar "cl_renderer"
-                  cvarStrList { "OpenGL 2", "opengl2", "Vulkan", "vulkan" }  rect 216 105 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Colour depth:"  textscale .22  rect 24 126 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name colorbits  type ITEM_TYPE_MULTI  text ""  cvar "r_colorbits"
-                  cvarFloatList { "Driver default" 0 "16-bit (3dfx look)" 16 "10-bit per channel" 30 }  rect 216 126 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Dither:"  textscale .22  rect 24 147 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name dither  type ITEM_TYPE_MULTI  text ""  cvar "r_dither"
-                  cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2 }  rect 216 147 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        // [QL] E111. Resolution and fullscreen, which this menu did not have at
-        // all - "no resolution options under render menu" was exactly right.
-        // The APPLY button at the bottom of this page already runs vid_restart,
-        // which is what both of these need, so they belong here rather than
-        // somewhere with an Apply of its own.
-        //
-        // The value list is Quake Live's own, out of docs/ql-cvar-semantics.txt
-        // rather than invented: r_mode -2 is Native Desktop, -1 is Custom, and
-        // 0..27 are its fixed modes. Guessing that mapping and calling it Quake
-        // Live's is the thing that file exists to prevent.
-        itemDef { text "Fullscreen:"  textscale .22  rect 24 168 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name fullscreen  type ITEM_TYPE_YESNO  text ""  cvar "r_fullscreen"  rect 216 168 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Resolution:"  textscale .22  rect 24 189 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name resolution  type ITEM_TYPE_MULTI  text ""  cvar "r_mode"
-                  cvarFloatList { "Native Desktop" -2 "Custom" -1 "640x480 (4:3)" 5 "800x600 (4:3)" 9 "1024x768 (4:3)" 12 "1152x864 (4:3)" 13 "1280x720 (16:9)" 14 "1280x800 (16:10)" 16 "1280x1024 (5:4)" 17 "1440x900 (16:10)" 18 "1600x900 (16:9)" 19 "1680x1050 (16:10)" 21 "1600x1200 (4:3)" 22 "1920x1080 (16:9)" 23 "1920x1200 (16:10)" 24 "2048x1536 (4:3)" 26 "2560x1600 (16:10)" 27 }  rect 216 189 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { name "" text "IMAGE"  textscale .24  rect 20 210 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "Antialiasing:"  textscale .22  rect 24 231 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name msaa  type ITEM_TYPE_MULTI  text ""  cvar "r_ext_multisample"
-                  cvarFloatList { "Off" 0 "2x MSAA" 2 "4x MSAA" 4 "8x MSAA" 8 }  rect 216 231 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Texture filter:"  textscale .22  rect 24 252 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name texmode  type ITEM_TYPE_MULTI  text ""  cvar "r_textureMode"
-                  cvarStrList { "Trilinear", "GL_LINEAR_MIPMAP_LINEAR", "Bilinear", "GL_LINEAR_MIPMAP_NEAREST", "Nearest", "GL_NEAREST" }  rect 216 252 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        // [QL] The action is not decoration. Anisotropy is gated on a second
-        // cvar, r_ext_texture_filter_anisotropic, and classic.cfg sets that to
-        // 0 on purpose - so on a machine that has ever pressed CLASSIC this
-        // control could read 16x and do nothing at all, with the startup line
-        // saying "anisotropic filtering disabled". Setting it here turns the
-        // gate back on so the row means what it says.
-        itemDef { text "Anisotropic filter:"  textscale .22  rect 24 273 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name aniso  type ITEM_TYPE_MULTI  text ""  cvar "r_ext_max_anisotropy"
+        itemDef { text "OUTPUT"  textscale .2  rect 24 139 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Renderer"  textscale .21  rect 24 156 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_clrenderer  type ITEM_TYPE_MULTI  text ""  cvar "cl_renderer"
+                  cvarStrList { "OpenGL 2", "opengl2", "Vulkan", "vulkan" }
+                  rect 290 156 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Resolution"  textscale .21  rect 24 173 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rmode  type ITEM_TYPE_MULTI  text ""  cvar "r_mode"
+                  cvarFloatList { "Native Desktop" -2 "Custom" -1 "640x480 (4:3)" 5 "800x600 (4:3)" 9 "1024x768 (4:3)" 12 "1152x864 (4:3)" 13 "1280x720 (16:9)" 14 "1280x800 (16:10)" 16 "1280x1024 (5:4)" 17 "1440x900 (16:10)" 18 "1600x900 (16:9)" 19 "1680x1050 (16:10)" 21 "1600x1200 (4:3)" 22 "1920x1080 (16:9)" 23 "1920x1200 (16:10)" 24 "2048x1536 (4:3)" 26 "2560x1600 (16:10)" 27 }
+                  rect 290 173 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Fullscreen"  textscale .21  rect 24 190 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rfullscreen  type ITEM_TYPE_YESNO  text ""  cvar "r_fullscreen"
+                  rect 290 190 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Colour depth"  textscale .21  rect 24 207 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rcolorbits  type ITEM_TYPE_MULTI  text ""  cvar "r_colorbits"
+                  cvarFloatList { "Driver default" 0 "16-bit (3dfx look)" 16 "10-bit per channel" 30 }
+                  rect 290 207 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Dither"  textscale .21  rect 24 224 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rdither  type ITEM_TYPE_MULTI  text ""  cvar "r_dither"
+                  cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2 }
+                  rect 290 224 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "IMAGE"  textscale .2  rect 24 241 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Brightness"  textscale .21  rect 24 258 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rgamma  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_gamma" 1 0.5 3
+                  rect 290 258 96 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name c_rgammav  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_gamma"
+                  maxchars 7  maxpaintchars 7
+                  rect 398 258 56 16  textscale .19  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Antialiasing"  textscale .21  rect 24 275 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rextmultisample  type ITEM_TYPE_MULTI  text ""  cvar "r_ext_multisample"
+                  cvarFloatList { "Off" 0 "2x MSAA" 2 "4x MSAA" 4 "8x MSAA" 8 }
+                  rect 290 275 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Texture filter"  textscale .21  rect 24 292 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rtexturemode  type ITEM_TYPE_MULTI  text ""  cvar "r_textureMode"
+                  cvarStrList { "Trilinear", "GL_LINEAR_MIPMAP_LINEAR", "Bilinear", "GL_LINEAR_MIPMAP_NEAREST", "Nearest", "GL_NEAREST" }
+                  rect 290 292 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Anisotropic filter"  textscale .21  rect 24 309 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rextmaxanisotropy  type ITEM_TYPE_MULTI  text ""  cvar "r_ext_max_anisotropy"
                   cvarFloatList { "Off" 1 "2x" 2 "4x" 4 "8x" 8 "16x" 16 }
-                  rect 216 273 140 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1
-                  action { exec "r_ext_texture_filter_anisotropic 1" }
-                  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Bloom:"  textscale .22  rect 24 294 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name bloom  type ITEM_TYPE_YESNO  text ""  cvar "r_bloom"  rect 216 294 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Lens flares:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name flares  type ITEM_TYPE_YESNO  text ""  cvar "r_flares"  rect 216 315 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { name "" text "POST PROCESSING"  textscale .24  rect 20 336 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "HDR framebuffer:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { name hdr  type ITEM_TYPE_YESNO  text ""  cvar "r_hdr"  rect 216 357 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Real-time shading:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name rts  type ITEM_TYPE_MULTI  text ""  cvar "r_rts"
-                  cvarFloatList { "Off (default)" 0 "On, float target" 1 "On, packed float" 2 }  rect 216 357 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Tonemapping:"  textscale .22  rect 24 378 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { name tonemap  type ITEM_TYPE_YESNO  text ""  cvar "r_toneMap"  rect 216 378 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Post processing:"  textscale .22  rect 24 378 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name postproc  type ITEM_TYPE_YESNO  text ""  cvar "r_postProcess"  rect 216 378 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-
-        // ---- sub-pages --------------------------------------------------
-        // [QL] Each of these is a page of its own because the renderer keeps
-        // gaining controls and this page ran out of rows once already - that
-        // is R24, and it is the whole reason for the grid at the top.
+                  rect 290 309 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1
+                  action { exec "r_ext_texture_filter_anisotropic 1" }  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Bloom"  textscale .21  rect 24 326 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rbloom  type ITEM_TYPE_YESNO  text ""  cvar "r_bloom"
+                  rect 290 326 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Lens flares"  textscale .21  rect 24 343 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rflares  type ITEM_TYPE_YESNO  text ""  cvar "r_flares"
+                  rect 290 343 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "POST PROCESSING"  textscale .2  rect 24 360 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Real-time shading"  textscale .21  rect 24 377 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rrts  type ITEM_TYPE_MULTI  text ""  cvar "r_rts"
+                  cvarFloatList { "Off (default)" 0 "On, float target" 1 "On, packed float" 2 }
+                  rect 290 377 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Post processing"  textscale .21  rect 24 394 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rpostprocess  type ITEM_TYPE_YESNO  text ""  cvar "r_postProcess"
+                  rect 290 394 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "HDR framebuffer"  textscale .21  rect 24 377 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name c_rhdr  type ITEM_TYPE_YESNO  text ""  cvar "r_hdr"
+                  rect 290 377 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { text "Tonemapping"  textscale .21  rect 24 394 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name c_rtonemap  type ITEM_TYPE_YESNO  text ""  cvar "r_toneMap"
+                  rect 290 394 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name pglight  text "LIGHTING >"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 24 399 148 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; open io_raytracing }
-            mouseEnter { setitemcolor pglight forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor pglight forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name pgwater  text "WATER >"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 182 399 148 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; open io_water }
-            mouseEnter { setitemcolor pgwater forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor pgwater forecolor 1 1 1 1 }
-        }
-        itemDef {
-            name pgsurf  text "SURFACE DETAIL >"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 340 399 156 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; open io_surfacedetail }
-            mouseEnter { setitemcolor pgsurf forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor pgsurf forecolor 1 1 1 1 }
-        }
-
-        itemDef {
-            name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 434 230 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name rapply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 124 450 190 22  textalign ITEM_ALIGN_CENTER  textalignx 95  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
-            mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor rapply backcolor 0 0 0 .9 ; setitemcolor rapply forecolor 0.964 0.815 0 1 ; setitemcolor rapply bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rapply backcolor 0 0 0 .6 ; setitemcolor rapply forecolor 1 1 1 1 ; setitemcolor rapply bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name close  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 386 434 110 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions }
-            mouseEnter { setitemcolor close forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor close forecolor 1 1 1 1 }
+            name rclose  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 326 450 110 22  textalign ITEM_ALIGN_CENTER  textalignx 55  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
+            mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
     }
 
+    // check-menus: overlap-ok - layered like io_ingame: the backdrop under
+    // everything and overhanging the frame, the logo overhanging it left, each
+    // tab four items on one rect, and rows gated on cl_renderer sharing a y.
     menuDef {
         name "io_raytracing"
-        rect 60 8 520 468
+        rect 40 0 560 480
         visible MENU_FALSE
-        focusColor 1 .75 0 1
-        style WINDOW_STYLE_FILLED
-        backcolor 0.04 0.04 0.07 1
-        border 1
-        bordersize 1
-        bordercolor .45 .45 .5 1
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        disableColor .5 .5 .5 1
 
-        onESC { close io_raytracing ; open io_renderoptions }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
 
-        itemDef { name title  text "LIGHTING & RAY TRACING"  textscale .3
-                  rect 0 6 520 26  textalign ITEM_ALIGN_CENTER  textalignx 260  textaligny 19
-                  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { name titlerule  text ""  rect 24 36 472 1  visible 1  decoration
-                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
-
-        // ---- status -----------------------------------------------------
-        // [QL] Two rows, one cvar each, two mutually exclusive variants per
-        // row. One line per *outcome* does not work: cvarTest takes a single
-        // cvar and "supported but not active" is a condition on two of them,
-        // so both lines drew at the same y on a machine that had neither.
-        // Split by cvar instead and four items give four readable states.
-        itemDef { name "" text "STATUS"  textscale .24  rect 20 42 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "This GPU:"  textscale .22  rect 24 63 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { text "supports ray queries"  textscale .22  rect 216 63 280 18  textaligny 14  forecolor .4 1 .4 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "1" } }
-        itemDef { text "does not support ray queries"  textscale .22  rect 216 63 280 18  textaligny 14  forecolor 1 .4 .4 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "0" } }
-        itemDef { text "This run:"  textscale .22  rect 24 84 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { text "ACTIVE"  textscale .22  rect 216 84 280 18  textaligny 14  forecolor .4 1 .4 1  visible 1  decoration  cvarTest "r_rtActive"  showCvar { "1" } }
-        itemDef { text "not active"  textscale .22  rect 216 84 280 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration  cvarTest "r_rtActive"  showCvar { "0" } }
-        itemDef { text "If this says not active, turn it on below and APPLY."  textscale .2  rect 24 105 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "1" } }
-        itemDef { text "Needs acceleration structure, ray query, deferred host operations,"  textscale .2  rect 24 105 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "0" } }
-        itemDef { text "buffer device address, and a Vulkan 1.1 loader."  textscale .2  rect 24 126 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "0" } }
-        itemDef { name "" text "DEVICE"  textscale .24  rect 20 168 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "Enable ray query:"  textscale .22  rect 24 189 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name rtenable  type ITEM_TYPE_YESNO  text ""  cvar "r_rt"  rect 216 189 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Latched. Enables the device features and builds the world acceleration"  textscale .2  rect 24 210 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration }
-        itemDef { text "structure at map load; no visible change on its own. Needs APPLY."  textscale .2  rect 24 231 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration }
-
-        // ---- ambient occlusion ------------------------------------------
-        // [QL] Not gated on r_rtActive: cvarTest takes one cvar and these
-        // each need their own. A control that is present but inert until ray
-        // query is on is better than one that vanishes with no explanation;
-        // the STATUS rows above are what say whether it can work.
-        //
-        // Lists rather than sliders, because a slider here drew a bar and no
-        // number - no way to see the value, no way to tell what a nudge had
-        // changed it to, no default marked, no way back. The console still
-        // takes any value for anyone who wants one.
-        itemDef { name "" text "AMBIENT OCCLUSION"  textscale .24  rect 20 273 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "Ambient occlusion:"  textscale .22  rect 24 294 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name aoenable  type ITEM_TYPE_MULTI  text ""  cvar "r_rtao"
-                  cvarFloatList { "Off" 0 "On" 1 "Debug (show occlusion)" 2 }  rect 216 294 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Radius:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name aoradius  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoRadius"
-                  cvarFloatList { "16 (tight creases)" 16 "32" 32 "64 (default)" 64 "128" 128 "256 (wide)" 256 "512" 512 "1024" 1024 "2048" 2048 "4096 (whole rooms)" 4096 }  rect 216 315 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Strength:"  textscale .22  rect 24 336 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name aostrength  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoIntensity"
-                  cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.8 (default)" 0.8 "1.0 (full)" 1 }  rect 216 336 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        // [QL] "16 (best)" is what this row used to say and it is not a fair
-        // description. The trace is full-resolution and the sample count is
-        // unrolled into the shader, so cost is width x height x samples ray
-        // queries in one draw call - at 4K, 16 rays is 133 million, past what
-        // a driver watchdog allows to finish. Labelled by what it costs.
-        itemDef { text "Rays per pixel:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name aosamples  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoSamples"
-                  cvarFloatList { "2 (fastest)" 2 "4 (default)" 4 "8 (heavy)" 8 "16 (very heavy)" 16 }  rect 216 357 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Denoise:"  textscale .22  rect 24 378 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name aodenoise  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoDenoise"
-                  cvarFloatList { "Off (raw, grainy)" 0 "On (default)" 1 "Wide (smoothest)" 2 }  rect 216 378 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        // [QL] Occlusion is an ambient term. Where a rocket is the light, the
-        // ambient part is small and its contact shadow should stop being
-        // drawn - left in it reads as dirt on a lit surface. The area cleared
-        // is the light's own falloff, so it matches what the light lit.
-        itemDef { text "Lights clear AO:"  textscale .22  rect 24 399 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name aolights  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoLights"
-                  cvarFloatList { "Off" 0 "Half" 0.5 "Full (default)" 1 }  rect 216 399 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-
+        itemDef { name rdim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.55 }
+        itemDef { name rheader  rect 0 0 560 64  background "ui/assets/main_menu/header.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rlogo  rect -20 0 256 64  background "ui/assets/main_menu/ql_logo.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
+        itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name aodefaults  text "RESET AO"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 434 130 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name rtab0  rect 6 64 138 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_renderoptions }
+        }
+        itemDef { name rtab0o  rect 8 64 134 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0u  rect 8 80 134 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0t  rect 6 64 138 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab1  rect 144 64 178 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_raytracing }
+        }
+        itemDef { name rtab1o  rect 146 64 174 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.9 }
+        itemDef { name rtab1u  rect 146 80 174 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0.964 0.815 0 1 }
+        itemDef { name rtab1t  rect 144 64 178 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 89  textaligny 13
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef {
+            name rtab2  rect 322 64 93 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_water }
+        }
+        itemDef { name rtab2o  rect 324 64 89 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2u  rect 324 80 89 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2t  rect 322 64 93 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 46  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab3  rect 415 64 138 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_surfacedetail }
+        }
+        itemDef { name rtab3o  rect 417 64 134 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3u  rect 417 80 134 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3t  rect 415 64 138 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name rpage  rect 0 82 560 358
+                  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rtitle  text "LIGHTING & RAY TRACING"  textscale .26  rect 20 86 520 24  textaligny 17
+                  textalign ITEM_ALIGN_CENTER  textalignx 260
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rrule  text ""  rect 20 110 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "STATUS"  textscale .2  rect 24 114 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "This GPU"  textscale .21  rect 24 131 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "supports ray queries"  textscale .21  rect 290 131 250 16  textaligny 13
+                  forecolor .4 1 .4 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "1" } }
+        itemDef { text "does not support ray queries"  textscale .21  rect 290 131 250 16  textaligny 13
+                  forecolor 1 .4 .4 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "0" } }
+        itemDef { text "This run"  textscale .21  rect 24 148 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "active"  textscale .21  rect 290 148 250 16  textaligny 13
+                  forecolor .4 1 .4 1  visible 1  decoration  cvarTest "r_rtActive"  showCvar { "1" } }
+        itemDef { text "not active - turn it on below and APPLY"  textscale .21  rect 290 148 250 16  textaligny 13
+                  forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "r_rtActive"  showCvar { "0" } }
+        itemDef { text "Needs acceleration structure, ray query, deferred host operations,"  textscale .17  rect 24 165 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "0" } }
+        itemDef { text "buffer device address and a Vulkan 1.1 loader."  textscale .17  rect 24 182 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_rtAvailable"  showCvar { "0" } }
+        itemDef { text "DEVICE"  textscale .2  rect 24 199 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Enable ray query"  textscale .21  rect 24 216 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrt  type ITEM_TYPE_YESNO  text ""  cvar "r_rt"
+                  rect 290 216 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Latched: builds the world acceleration structure at map load. Needs APPLY."  textscale .17  rect 24 233 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "AMBIENT OCCLUSION"  textscale .2  rect 24 250 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Ambient occlusion"  textscale .21  rect 24 267 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtao  type ITEM_TYPE_MULTI  text ""  cvar "r_rtao"
+                  cvarFloatList { "Off" 0 "On" 1 "Debug (show occlusion)" 2 }
+                  rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Radius"  textscale .21  rect 24 284 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtaoradius  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoRadius"
+                  cvarFloatList { "16 (tight creases)" 16 "32" 32 "64 (default)" 64 "128" 128 "256 (wide)" 256 "512" 512 "1024" 1024 "2048" 2048 "4096 (whole rooms)" 4096 }
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Strength"  textscale .21  rect 24 301 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtaointensity  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoIntensity"
+                  cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.8 (default)" 0.8 "1.0 (full)" 1 }
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Rays per pixel"  textscale .21  rect 24 318 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtaosamples  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoSamples"
+                  cvarFloatList { "2 (fastest)" 2 "4 (default)" 4 "8 (heavy)" 8 "16 (very heavy)" 16 }
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Denoise"  textscale .21  rect 24 335 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtaodenoise  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoDenoise"
+                  cvarFloatList { "Off (raw, grainy)" 0 "On (default)" 1 "Wide (smoothest)" 2 }
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Lights clear AO"  textscale .21  rect 24 352 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtaolights  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoLights"
+                  cvarFloatList { "Off" 0 "Half" 0.5 "Full (default)" 1 }
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
+        itemDef {
+            name raoreset  text "RESET AO"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 58 450 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "set r_rtao 0 ; set r_rtaoRadius 64 ; set r_rtaoIntensity 0.8 ; set r_rtaoSamples 4 ; set r_rtaoDenoise 1 ; set r_rtaoLights 1" }
-            mouseEnter { setitemcolor aodefaults forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor aodefaults forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor raoreset backcolor 0 0 0 .9 ; setitemcolor raoreset forecolor 0.964 0.815 0 1 ; setitemcolor raoreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor raoreset backcolor 0 0 0 .6 ; setitemcolor raoreset forecolor 1 1 1 1 ; setitemcolor raoreset bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 164 434 210 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name rapply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 190 450 190 22  textalign ITEM_ALIGN_CENTER  textalignx 95  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
-            mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor rapply backcolor 0 0 0 .9 ; setitemcolor rapply forecolor 0.964 0.815 0 1 ; setitemcolor rapply bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rapply backcolor 0 0 0 .6 ; setitemcolor rapply forecolor 1 1 1 1 ; setitemcolor rapply bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name back  text "BACK"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 396 434 100 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_raytracing ; open io_renderoptions }
-            mouseEnter { setitemcolor back forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor back forecolor 1 1 1 1 }
+            name rclose  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 392 450 110 22  textalign ITEM_ALIGN_CENTER  textalignx 55  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
+            mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
     }
 
+    // check-menus: overlap-ok - layered like io_ingame: the backdrop under
+    // everything and overhanging the frame, the logo overhanging it left, each
+    // tab four items on one rect, and rows gated on cl_renderer sharing a y.
     menuDef {
         name "io_water"
-        rect 60 8 520 468
+        rect 40 0 560 480
         visible MENU_FALSE
-        focusColor 1 .75 0 1
-        style WINDOW_STYLE_FILLED
-        backcolor 0.04 0.04 0.07 1
-        border 1
-        bordersize 1
-        bordercolor .45 .45 .5 1
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        disableColor .5 .5 .5 1
 
-        onESC { close io_water ; open io_renderoptions }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
 
-        itemDef { name title  text "WATER"  textscale .3
-                  rect 0 6 520 26  textalign ITEM_ALIGN_CENTER  textalignx 260  textaligny 19
-                  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { name titlerule  text ""  rect 24 36 472 1  visible 1  decoration
-                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
-
-        // [QL] R19. Screen space: only what is on screen can be reflected, so
-        // a wall behind you never appears in the water. The trace fades
-        // toward the edges rather than stopping at them, which is where that
-        // limitation shows up rather than being pretended away.
-        itemDef { name "" text "REFLECTION"  textscale .24  rect 20 42 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "Water reflections:"  textscale .22  rect 24 63 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ssr  type ITEM_TYPE_MULTI  text ""  cvar "r_ssr"
-                  cvarFloatList { "Off (default)" 0 "Subtle" 0.35 "Half" 0.5 "Full" 1 }  rect 216 63 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace distance:"  textscale .22  rect 24 84 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ssrdist  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDistance"
-                  cvarFloatList { "512 (near)" 512 "1024 (default)" 1024 "2048" 2048 "4096 (far)" 4096 }  rect 216 84 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace steps:"  textscale .22  rect 24 105 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ssrsteps  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrSteps"
-                  cvarFloatList { "16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128 }  rect 216 105 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Thickness:"  textscale .22  rect 24 126 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ssrthick  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrThickness"
-                  cvarFloatList { "4 (thin)" 4 "8" 8 "16" 16 "24 (default)" 24 "32 (forgiving)" 32 }  rect 216 126 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Debug view:"  textscale .22  rect 24 147 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ssrdebug  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDebug"
-                  cvarFloatList { "Off" 0 "1 mask" 1 "2 ray hit" 2 "3 reflection" 3 "4 waves" 4 "5 ripples + foam" 5 }  rect 216 147 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { name "" text "WAVES (WIND CHOP)"  textscale .24  rect 20 168 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        // [QL] The surface never moves a vertex - Quake Live's water is
-        // subdivided at map compile time and cannot be retessellated at
-        // runtime. What ripples is the normal, and the reflected direction is
-        // reflect(V, N), so tilting N is what sells it. Steepness is the true
-        // maximum slope, not an arbitrary scale, because the three waves'
-        // amplitudes sum to 1.
-        itemDef { text "Waves:"  textscale .22  rect 24 189 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name waves  type ITEM_TYPE_YESNO  text ""  cvar "r_waterWaves"  rect 216 189 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Steepness:"  textscale .22  rect 24 210 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name wavesteep  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSteepness"
-                  cvarFloatList { "0.02 (glassy)" 0.02 "0.05" 0.05 "0.08 (default)" 0.08 "0.12" 0.12 "0.2 (choppy)" 0.2 }  rect 216 210 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Height:"  textscale .22  rect 24 231 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name waveheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveHeight"
-                  cvarFloatList { "0 (flat)" 0 "1" 1 "2 (default)" 2 "4" 4 "8 (swell)" 8 }  rect 216 231 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Wavelength:"  textscale .22  rect 24 252 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name wavescale  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveScale"
-                  cvarFloatList { "48 (fine)" 48 "96 (default)" 96 "192" 192 "384 (broad)" 384 }  rect 216 252 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Speed:"  textscale .22  rect 24 273 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name wavespeed  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSpeed"
-                  cvarFloatList { "0 (frozen)" 0 "0.5 (slow)" 0.5 "1 (default)" 1 "2 (fast)" 2 }  rect 216 273 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        // [QL] R28. The other half of the water, and the half that had no
-        // controls at all until now: what a rocket or a pellet does to it.
-        //
-        // These are a separate system from the waves above and share no
-        // setting with them, which is worth making visible in the menu rather
-        // than only true in the code - "the water is too calm" and "the
-        // splashes are too small" were both leading people to the WAVES rows,
-        // where only the first of them has an answer.
-        //
-        // Foam lives under this heading and not its own, because foam is
-        // driven off impact energy alone: ordinary chop never whitens, only a
-        // splash does. It was under a FOAM heading of its own, next to the
-        // waves, which put it with the one thing that cannot cause it.
-        //
-        // Every value here is a MULTIPLIER on what the weapon asked for, so
-        // the per-weapon differences survive being scaled and a rocket stays
-        // bigger than a shotgun pellet.
-        itemDef { name "" text "IMPACTS (SPLASHES)"  textscale .24  rect 20 294 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "Splash size:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ripplesize  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleSize"
-                  cvarFloatList { "1 (small)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (wide)" 8 "12" 12 "16 (huge)" 16 }  rect 216 315 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Splash strength:"  textscale .22  rect 24 336 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name rippleheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleHeight"
-                  cvarFloatList { "0 (none)" 0 "1 (soft)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (hard)" 8 "12" 12 "16 (violent)" 16 }  rect 216 336 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Ripple rings:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ripplewaves  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleWaves"
-                  cvarFloatList { "2 (few, fat)" 2 "5 (default)" 5 "8" 8 "12 (fine)" 12 }  rect 216 357 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Ripple lifetime:"  textscale .22  rect 24 378 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ripplelife  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleLife"
-                  cvarFloatList { "1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6 }  rect 216 378 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Foam:"  textscale .22  rect 24 399 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name foam  type ITEM_TYPE_MULTI  text ""  cvar "r_waterFoam"
-                  cvarFloatList { "Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2 }  rect 216 399 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-
+        itemDef { name rdim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.55 }
+        itemDef { name rheader  rect 0 0 560 64  background "ui/assets/main_menu/header.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rlogo  rect -20 0 256 64  background "ui/assets/main_menu/ql_logo.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
+        itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name resetwater  text "RESET WATER"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 434 150 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name rtab0  rect 6 64 138 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_renderoptions }
+        }
+        itemDef { name rtab0o  rect 8 64 134 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0u  rect 8 80 134 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0t  rect 6 64 138 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab1  rect 144 64 178 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_raytracing }
+        }
+        itemDef { name rtab1o  rect 146 64 174 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1u  rect 146 80 174 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1t  rect 144 64 178 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 89  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab2  rect 322 64 93 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_water }
+        }
+        itemDef { name rtab2o  rect 324 64 89 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.9 }
+        itemDef { name rtab2u  rect 324 80 89 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0.964 0.815 0 1 }
+        itemDef { name rtab2t  rect 322 64 93 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 46  textaligny 13
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef {
+            name rtab3  rect 415 64 138 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_surfacedetail }
+        }
+        itemDef { name rtab3o  rect 417 64 134 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3u  rect 417 80 134 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3t  rect 415 64 138 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name rpage  rect 0 82 560 358
+                  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rtitle  text "WATER"  textscale .26  rect 20 86 520 24  textaligny 17
+                  textalign ITEM_ALIGN_CENTER  textalignx 260
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rrule  text ""  rect 20 110 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "REFLECTION"  textscale .2  rect 24 114 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Water reflections"  textscale .21  rect 24 131 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rssr  type ITEM_TYPE_MULTI  text ""  cvar "r_ssr"
+                  cvarFloatList { "Off (default)" 0 "Subtle" 0.35 "Half" 0.5 "Full" 1 }
+                  rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Trace distance"  textscale .21  rect 24 148 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rssrdistance  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDistance"
+                  cvarFloatList { "512 (near)" 512 "1024 (default)" 1024 "2048" 2048 "4096 (far)" 4096 }
+                  rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Trace steps"  textscale .21  rect 24 165 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rssrsteps  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrSteps"
+                  cvarFloatList { "16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128 }
+                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Thickness"  textscale .21  rect 24 182 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rssrthickness  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrThickness"
+                  cvarFloatList { "4 (thin)" 4 "8" 8 "16" 16 "24 (default)" 24 "32 (forgiving)" 32 }
+                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Debug view"  textscale .21  rect 24 199 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rssrdebug  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDebug"
+                  cvarFloatList { "Off" 0 "1 mask" 1 "2 ray hit" 2 "3 reflection" 3 "4 waves" 4 "5 ripples + foam" 5 }
+                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "WAVES (WIND CHOP)"  textscale .2  rect 24 216 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Waves"  textscale .21  rect 24 233 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterwaves  type ITEM_TYPE_YESNO  text ""  cvar "r_waterWaves"
+                  rect 290 233 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Steepness"  textscale .21  rect 24 250 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterwavesteepness  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSteepness"
+                  cvarFloatList { "0.02 (glassy)" 0.02 "0.05" 0.05 "0.08 (default)" 0.08 "0.12" 0.12 "0.2 (choppy)" 0.2 }
+                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Height"  textscale .21  rect 24 267 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterwaveheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveHeight"
+                  cvarFloatList { "0 (flat)" 0 "1" 1 "2 (default)" 2 "4" 4 "8 (swell)" 8 }
+                  rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Wavelength"  textscale .21  rect 24 284 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterwavescale  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveScale"
+                  cvarFloatList { "48 (fine)" 48 "96 (default)" 96 "192" 192 "384 (broad)" 384 }
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Speed"  textscale .21  rect 24 301 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterwavespeed  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSpeed"
+                  cvarFloatList { "0 (frozen)" 0 "0.5 (slow)" 0.5 "1 (default)" 1 "2 (fast)" 2 }
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "IMPACTS (SPLASHES)"  textscale .2  rect 24 318 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Splash size"  textscale .21  rect 24 335 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterripplesize  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleSize"
+                  cvarFloatList { "1 (small)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (wide)" 8 "12" 12 "16 (huge)" 16 }
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Splash strength"  textscale .21  rect 24 352 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterrippleheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleHeight"
+                  cvarFloatList { "0 (none)" 0 "1 (soft)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (hard)" 8 "12" 12 "16 (violent)" 16 }
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Ripple rings"  textscale .21  rect 24 369 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterripplewaves  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleWaves"
+                  cvarFloatList { "2 (few, fat)" 2 "5 (default)" 5 "8" 8 "12 (fine)" 12 }
+                  rect 290 369 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Ripple lifetime"  textscale .21  rect 24 386 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterripplelife  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleLife"
+                  cvarFloatList { "1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6 }
+                  rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Foam"  textscale .21  rect 24 403 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterfoam  type ITEM_TYPE_MULTI  text ""  cvar "r_waterFoam"
+                  cvarFloatList { "Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2 }
+                  rect 290 403 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
+        itemDef {
+            name rwreset  text "RESET WATER"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 154 450 130 22  textalign ITEM_ALIGN_CENTER  textalignx 65  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "set r_ssr 0 ; set r_ssrDistance 1024 ; set r_ssrSteps 24 ; set r_ssrThickness 24 ; set r_ssrDebug 0 ; set r_waterWaves 1 ; set r_waterWaveSteepness 0.08 ; set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; set r_waterFoam 0 ; set r_waterRippleSize 4 ; set r_waterRippleHeight 4 ; set r_waterRippleWaves 5 ; set r_waterRippleLife 2.2" }
-            mouseEnter { setitemcolor resetwater forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor resetwater forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor rwreset backcolor 0 0 0 .9 ; setitemcolor rwreset forecolor 0.964 0.815 0 1 ; setitemcolor rwreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rwreset backcolor 0 0 0 .6 ; setitemcolor rwreset forecolor 1 1 1 1 ; setitemcolor rwreset bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name back  text "BACK"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 396 434 100 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_water ; open io_renderoptions }
-            mouseEnter { setitemcolor back forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor back forecolor 1 1 1 1 }
+            name rclose  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 296 450 110 22  textalign ITEM_ALIGN_CENTER  textalignx 55  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
+            mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
     }
 
+    // check-menus: overlap-ok - layered like io_ingame: the backdrop under
+    // everything and overhanging the frame, the logo overhanging it left, each
+    // tab four items on one rect, and rows gated on cl_renderer sharing a y.
     menuDef {
         name "io_surfacedetail"
-        rect 60 8 520 468
+        rect 40 0 560 480
         visible MENU_FALSE
-        focusColor 1 .75 0 1
-        style WINDOW_STYLE_FILLED
-        backcolor 0.04 0.04 0.07 1
-        border 1
-        bordersize 1
-        bordercolor .45 .45 .5 1
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        disableColor .5 .5 .5 1
 
-        onESC { close io_surfacedetail ; open io_renderoptions }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
 
-        itemDef { name title  text "SURFACE DETAIL"  textscale .3
-                  rect 0 6 520 26  textalign ITEM_ALIGN_CENTER  textalignx 260  textaligny 19
-                  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { name titlerule  text ""  rect 24 36 472 1  visible 1  decoration
-                  style WINDOW_STYLE_FILLED  backcolor .35 .3 .12 1 }
-
-        itemDef { name "" text "DYNAMIC LIGHTS"  textscale .24  rect 20 42 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration }
-        itemDef { text "Dynamic lights:"  textscale .22  rect 24 63 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name dlight  type ITEM_TYPE_MULTI  text ""  cvar "r_dlightMode"
-                  cvarFloatList { "Off surfaces" 0 "On surfaces" 1 "With shadows" 2 }  rect 216 63 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Beam weapon lights:"  textscale .22  rect 24 84 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name beamlights  type ITEM_TYPE_YESNO  text ""  cvar "cg_beamLights"  rect 216 84 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "A rail or lightning beam lights the corridor it crosses."  textscale .2  rect 24 105 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration }
-
-        // [QL] R20 Stage A. Derives a normal map from each dynamically lit
-        // surface's own texture and perturbs the normal the light pass
-        // shades with. A still scene is unchanged: the sunlight on those
-        // surfaces is a baked lightmap and this does not touch it.
-        //
-        // Both are latched because the strength is baked into image bytes at
-        // shader-parse time - a change means nothing until the shaders are
-        // re-parsed, and latching is the engine saying so rather than the
-        // value appearing to take and doing nothing.
-        itemDef { name "" text "DERIVED NORMAL MAPS"  textscale .24  rect 20 147 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Normal perturbation:"  textscale .22  rect 24 168 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name qlnm  type ITEM_TYPE_YESNO  text ""  cvar "r_qlNormalMaps"  rect 216 168 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Strength:"  textscale .22  rect 24 189 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name qlnmscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalScale"
-                  cvarFloatList { "0.25 (subtle)" 0.25 "0.5 (default)" 0.5 "1.0" 1 "1.5" 1.5 "2.0 (hard)" 2 }  rect 216 189 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Max edge tilt:"  textscale .22  rect 24 210 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name qlnmtilt  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalMaxTilt"
-                  cvarFloatList { "8 (flattest)" 8 "12" 12 "15 (default)" 15 "22" 22 "30 (bands on grazing light)" 30 }  rect 216 210 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Strength shapes gradients, max tilt caps painted edges. Both latched - APPLY."  textscale .2  rect 24 231 472 16  textaligny 13  forecolor .62 .62 .62 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-
-        // [QL] R25. Authored normal maps under STATIC light. Needs a map
-        // compiled with q3map2 -deluxe: a lightmap says how much light
-        // reached a texel and not which way it came from, so without the
-        // deluxemap there is nothing for a normal to be dotted against and
-        // no normal map changes a still scene at all. Quake Live's own maps
-        // carry none and never can, so this is our maps only.
-        //
-        // Live, not latched - both are specialization constants, so a change
-        // allocates a pipeline and takes effect at once.
-        itemDef { name "" text "STATIC BUMP (deluxemaps)"  textscale .24  rect 20 273 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Deluxemap shading:"  textscale .22  rect 24 294 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name dlx  type ITEM_TYPE_MULTI  text ""  cvar "r_deluxeMapping"
-                  cvarFloatList { "Off" 0 "On (default)" 1 "Debug: light direction" 2 "Debug: perturbed normal" 3 "Debug: modulation only" 4 "Debug: the normal map itself" 5 "Debug: parallax offset" 6 }  rect 216 294 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Static bump strength:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name dlxscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpScale"
-                  cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1 }  rect 216 315 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        // [QL] The two that make a normal map read as depth rather than as
-        // paint, and neither is its strength. Parallax marches the view ray
-        // through the height in the map's alpha, so a brick hides the mortar
-        // behind it - self-occlusion a normal map structurally cannot do.
-        // Specular is a highlight that MOVES with the view, which a lightmap
-        // baked from someone else's viewpoint can never produce.
-        itemDef { text "Parallax depth:"  textscale .22  rect 24 336 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name plx  type ITEM_TYPE_MULTI  text ""  cvar "r_qlParallax"
-                  cvarFloatList { "Off" 0 "0.02 (shallow)" 0.02 "0.04 (default)" 0.04 "0.08" 0.08 "0.12 (deep)" 0.12 }  rect 216 336 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Bump specular:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name bspec  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpSpecular"
-                  cvarFloatList { "Off" 0 "0.25" 0.25 "0.5 (default)" 0.5 "1.0" 1 "2.0 (wet)" 2 }  rect 216 357 180 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        // [QL] R27. Stochastic hex-tiling - the same idea as Minecraft's
-        // "natural textures", done the way a continuous surface needs it.
-        // One row, not three: r_qlNaturalRotate and r_qlNaturalContrast are
-        // tuning knobs for whoever is looking at the screen, and a menu entry
-        // for each would be two more things nobody touches. Latched, because
-        // the generic pipelines are built once at map load.
-        //
-        // "Force on all" is deliberately labelled as debug. It hex-tiles every
-        // world diffuse stage, which costs three texture fetches per surface
-        // and wrecks anything with structure in it - a sign becomes three
-        // overlapping signs.
-        itemDef { text "Natural textures:"  textscale .22  rect 24 378 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { name nattex  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNaturalTextures"
-                  cvarFloatList { "Off" 0 "Shaders that ask (default)" 1 "Debug: force on all" 2 }  rect 216 378 280 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-
-        // [QL] renderergl2 material maps. Vulkan has no consumer for these,
-        // so they are hidden there rather than offered and ignored.
-        itemDef { name "" text "MATERIAL MAPS"  textscale .24  rect 20 294 300 18  textaligny 14  forecolor 1 .75 0 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Cubemap reflections:"  textscale .22  rect 24 315 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { name cubemap  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"  rect 216 315 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Cubemap size:"  textscale .22  rect 24 336 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { name cubesize  type ITEM_TYPE_MULTI  text ""  cvar "r_cubemapSize"
-                  cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }  rect 216 336 140 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Specular mapping:"  textscale .22  rect 24 357 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { name specular  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"  rect 216 357 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Normal mapping:"  textscale .22  rect 24 378 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { name normalmap  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"  rect 216 378 70 18  textscale .22  textaligny 14  textalignx 2  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-
-        // [QL] E113. r_ambientScale is CVAR_CHEAT, and rightly: it lifts models
-        // standing in shadow, which is a competitive advantage. So outside
-        // sv_cheats 1 the engine refuses the write and this slider moves while
-        // the game ignores it - a row that lies. It stays because it works on a
-        // /devmap, which is exactly where the test maps are judged, and it says
-        // so rather than pretending to be an ordinary setting.
-        itemDef { text "Ambient (devmap only):"  textscale .22  rect 24 399 186 18  textaligny 14  forecolor .8 .8 .8 1  visible 1  decoration }
-        itemDef { name ambient  type ITEM_TYPE_SLIDER  text ""  cvarFloat "r_ambientScale" 0.6 0 2
-                  rect 216 399 180 18  textscale .22  textaligny 14  forecolor 1 1 1 1  visible 1 }
-
+        itemDef { name rdim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.55 }
+        itemDef { name rheader  rect 0 0 560 64  background "ui/assets/main_menu/header.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rlogo  rect -20 0 256 64  background "ui/assets/main_menu/ql_logo.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
+        itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name apply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 24 434 230 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
+            name rtab0  rect 6 64 138 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_renderoptions }
+        }
+        itemDef { name rtab0o  rect 8 64 134 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0u  rect 8 80 134 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0t  rect 6 64 138 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab1  rect 144 64 178 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_raytracing }
+        }
+        itemDef { name rtab1o  rect 146 64 174 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1u  rect 146 80 174 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1t  rect 144 64 178 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 89  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab2  rect 322 64 93 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_water }
+        }
+        itemDef { name rtab2o  rect 324 64 89 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2u  rect 324 80 89 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2t  rect 322 64 93 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 46  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab3  rect 415 64 138 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail ; open io_surfacedetail }
+        }
+        itemDef { name rtab3o  rect 417 64 134 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.9 }
+        itemDef { name rtab3u  rect 417 80 134 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0.964 0.815 0 1 }
+        itemDef { name rtab3t  rect 415 64 138 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rpage  rect 0 82 560 358
+                  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rtitle  text "SURFACE DETAIL"  textscale .26  rect 20 86 520 24  textaligny 17
+                  textalign ITEM_ALIGN_CENTER  textalignx 260
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rrule  text ""  rect 20 110 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "DYNAMIC LIGHTS"  textscale .2  rect 24 114 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Dynamic lights"  textscale .21  rect 24 131 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rdlightmode  type ITEM_TYPE_MULTI  text ""  cvar "r_dlightMode"
+                  cvarFloatList { "Off surfaces" 0 "On surfaces" 1 "With shadows" 2 }
+                  rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Beam weapon lights"  textscale .21  rect 24 148 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_cgbeamlights  type ITEM_TYPE_YESNO  text ""  cvar "cg_beamLights"
+                  rect 290 148 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "A rail or lightning beam lights the corridor it crosses."  textscale .17  rect 24 165 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "DERIVED NORMAL MAPS"  textscale .2  rect 24 182 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Normal perturbation"  textscale .21  rect 24 199 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rqlnormalmaps  type ITEM_TYPE_YESNO  text ""  cvar "r_qlNormalMaps"
+                  rect 290 199 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Strength"  textscale .21  rect 24 216 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rqlnormalscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalScale"
+                  cvarFloatList { "0.25 (subtle)" 0.25 "0.5 (default)" 0.5 "1.0" 1 "1.5" 1.5 "2.0 (hard)" 2 }
+                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Max edge tilt"  textscale .21  rect 24 233 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rqlnormalmaxtilt  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalMaxTilt"
+                  cvarFloatList { "8 (flattest)" 8 "12" 12 "15 (default)" 15 "22" 22 "30 (bands on grazing light)" 30 }
+                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Strength shapes gradients, max tilt caps painted edges. Both need APPLY."  textscale .17  rect 24 250 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "STATIC BUMP (deluxemaps)"  textscale .2  rect 24 267 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Deluxemap shading"  textscale .21  rect 24 284 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rdeluxemapping  type ITEM_TYPE_MULTI  text ""  cvar "r_deluxeMapping"
+                  cvarFloatList { "Off" 0 "On (default)" 1 "Debug: light direction" 2 "Debug: perturbed normal" 3 "Debug: modulation only" 4 "Debug: the normal map itself" 5 "Debug: parallax offset" 6 }
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Static bump strength"  textscale .21  rect 24 301 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rqlbumpscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpScale"
+                  cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1 }
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Parallax depth"  textscale .21  rect 24 318 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rqlparallax  type ITEM_TYPE_MULTI  text ""  cvar "r_qlParallax"
+                  cvarFloatList { "Off" 0 "0.02 (shallow)" 0.02 "0.04 (default)" 0.04 "0.08" 0.08 "0.12 (deep)" 0.12 }
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Bump specular"  textscale .21  rect 24 335 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rqlbumpspecular  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpSpecular"
+                  cvarFloatList { "Off" 0 "0.25" 0.25 "0.5 (default)" 0.5 "1.0" 1 "2.0 (wet)" 2 }
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "Natural textures"  textscale .21  rect 24 352 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { name c_rqlnaturaltextures  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNaturalTextures"
+                  cvarFloatList { "Off" 0 "Shaders that ask (default)" 1 "Debug: force on all" 2 }
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
+        itemDef { text "MATERIAL MAPS"  textscale .2  rect 24 182 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { text "Cubemap reflections"  textscale .21  rect 24 199 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name c_rcubemapping  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"
+                  rect 290 199 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { text "Cubemap size"  textscale .21  rect 24 216 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name c_rcubemapsize  type ITEM_TYPE_MULTI  text ""  cvar "r_cubemapSize"
+                  cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }
+                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { text "Specular mapping"  textscale .21  rect 24 233 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name c_rspecularmapping  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"
+                  rect 290 233 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { text "Normal mapping"  textscale .21  rect 24 250 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { name c_rnormalmapping  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"
+                  rect 290 250 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
+        itemDef { text "Ambient (devmap only)"  textscale .21  rect 24 369 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rambientscale  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_ambientScale" 0.6 0 2
+                  rect 290 369 96 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name c_rambientscalev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_ambientScale"
+                  maxchars 7  maxpaintchars 7
+                  rect 398 369 56 16  textscale .19  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
+        itemDef {
+            name rapply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 124 450 190 22  textalign ITEM_ALIGN_CENTER  textalignx 95  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
-            mouseEnter { setitemcolor apply forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor apply forecolor 1 1 1 1 }
+            mouseEnter { setitemcolor rapply backcolor 0 0 0 .9 ; setitemcolor rapply forecolor 0.964 0.815 0 1 ; setitemcolor rapply bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rapply backcolor 0 0 0 .6 ; setitemcolor rapply forecolor 1 1 1 1 ; setitemcolor rapply bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name back  text "BACK"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 396 434 100 26  textaligny 19  textalignx 8  forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_surfacedetail ; open io_renderoptions }
-            mouseEnter { setitemcolor back forecolor 1 .75 0 1 }
-            mouseExit  { setitemcolor back forecolor 1 1 1 1 }
+            name rclose  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 326 450 110 22  textalign ITEM_ALIGN_CENTER  textalignx 55  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
+            mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
     }
+    // <<< GENERATED io_render END
 
     // =============================================
     menuDef {
