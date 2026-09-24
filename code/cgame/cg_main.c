@@ -1312,7 +1312,7 @@ void CG_CacheCountryFlags(void) {
             }
             code[0] = '\0';
             p = code;
-        } else {
+        } else if (p < code + 31) {  // a line longer than the name slot would run into the path scratch
             *p++ = c;
         }
     }

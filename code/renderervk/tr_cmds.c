@@ -314,6 +314,7 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 #ifdef USE_VULKAN
 	backEnd.doneBloom = qfalse;
 	backEnd.doneRTAO = qfalse;	// [QL] R13, same lifetime as bloom
+	backEnd.doneSSR = qfalse;	// [QL] R19 - was missing here, reset only at swap
 #endif
 
 	backEnd.color2D.u32 = ~0U;

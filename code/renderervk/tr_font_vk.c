@@ -467,8 +467,19 @@ void RE_TextBounds(const char *text, int start, int limit, float scale, int font
     fonsSetSpacing(fontContext, 0.0f);
     fonsSetBlur(fontContext, 0.0f);
 
-    str = text + (start > 0 ? start : 0);
-    end = (limit > 0) ? str + limit : NULL;
+    /*
+    fontstash walks str..end without stopping at the terminator, and callers pass
+    limits longer than the text (a maxChars, or a cursor clamp in 640 space). Both
+    ends are clamped to the string, or the measurement ran off into whatever
+    followed it.
+    */
+    {
+        int len = (int)strlen(text);
+
+        str = text + ((start > 0) ? ((start < len) ? start : len) : 0);
+        len = (int)strlen(str);
+        end = (limit > 0 && limit < len) ? str + limit : NULL;
+    }
 
     fonsTextBounds(fontContext, 0.0f, 0.0f, str, end, bounds);
 

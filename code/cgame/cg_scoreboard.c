@@ -531,11 +531,28 @@ TDM / FT extended stats. Wire: "tdmstats <client> <selfKills> <teamKills>
 =================
 */
 // Address: 0x10046610
+/*
+The slot is a client number from the server, used straight as an index into
+cg.teamStats[MAX_CLIENTS]. A bad or hostile server could otherwise write
+anywhere past the array.
+*/
+static int CG_TeamStatsSlot(void) {
+    int slot = atoi(CG_Argv(1));
+
+    if (slot < 0 || slot >= (int)ARRAY_LEN(cg.teamStats)) {
+        return -1;
+    }
+    return slot;
+}
+
 void CG_ParseTeamStats_TDM(void) {
     int slot;
     int* row;
 
-    slot = atoi(CG_Argv(1));
+    slot = CG_TeamStatsSlot();
+    if (slot < 0) {
+        return;
+    }
     row = cg.teamStats[slot].fields;
 
     row[0] = atoi(CG_Argv(2));    // 0x00 selfKills
@@ -569,7 +586,10 @@ void CG_ParseTeamStats_CA(void) {
     int* row;
     int k;
 
-    slot = atoi(CG_Argv(1));
+    slot = CG_TeamStatsSlot();
+    if (slot < 0) {
+        return;
+    }
     row = cg.teamStats[slot].fields;
 
     row[7] = atoi(CG_Argv(2));  // 0x1c damageDone
@@ -596,7 +616,10 @@ void CG_ParseTeamStats_CTF(void) {
     int slot;
     int* row;
 
-    slot = atoi(CG_Argv(1));
+    slot = CG_TeamStatsSlot();
+    if (slot < 0) {
+        return;
+    }
     row = cg.teamStats[slot].fields;
 
     row[0] = atoi(CG_Argv(2));    // 0x00 selfKills

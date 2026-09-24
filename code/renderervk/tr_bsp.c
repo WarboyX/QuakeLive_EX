@@ -2412,6 +2412,7 @@ void RE_LoadWorldMap( const char *name ) {
 	int			numLumps;
 	int32_t		size;
 	dheader_t	*header;
+	dheader_t	q3Header;	// [QL] BSP 46 header with an empty 18th lump, see below
 	union {
 		byte *b;
 		void *v;
@@ -2494,8 +2495,17 @@ void RE_LoadWorldMap( const char *name ) {
 	that does not exist, and R_LoadAdvertisements would read entity text as
 	geometry. Zeroing it says "empty", which is the truth.
 	*/
+	/*
+	E122: and for exactly that reason it must not be zeroed *there*. Those eight
+	bytes are the first bytes of the first lump in the file (q3map2 writes the
+	shaders lump first), so the memset that used to be here blanked the start of
+	the first shader's name on every Quake 3 map. The header is copied out and
+	the copy gets the empty lump instead; the file is left as it was read.
+	*/
 	if ( header->version == BSP_VERSION_Q3 ) {
-		Com_Memset( &header->lumps[LUMP_ADVERTISEMENTS], 0, sizeof( lump_t ) );
+		Com_Memcpy( &q3Header, header, (size_t)( (byte *)&header->lumps[HEADER_LUMPS_Q3] - (byte *)header ) );
+		Com_Memset( &q3Header.lumps[LUMP_ADVERTISEMENTS], 0, sizeof( lump_t ) );
+		header = &q3Header;
 		ri.Printf( PRINT_ALL, "%s: Quake 3 map (BSP 46), no advertisements lump\n", name );
 	}
 

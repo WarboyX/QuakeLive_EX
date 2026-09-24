@@ -762,16 +762,21 @@ void BotAddAvoidSpot(int movestate, vec3_t origin, float radius, int type) {
 //===========================================================================
 static int BotRouteJitter(int routeseed, int reachnum) {
     unsigned int h;
+    int spread = (int)bot_routespread->value;
 
-    if (!routeseed) {
+    // a negative spread would wrap to a huge unsigned multiplier
+    if (!routeseed || spread <= 0) {
         return 0;
+    }
+    if (spread > 10000) {
+        spread = 10000;
     }
     h = (unsigned int)routeseed * 2654435761u;
     h ^= (unsigned int)reachnum * 2246822519u;
     h ^= h >> 13;
     h *= 3266489917u;
     h ^= h >> 16;
-    return (int)((h & 0xffff) * (unsigned int)bot_routespread->value / 0xffff);
+    return (int)((h & 0xffff) * (unsigned int)spread / 0xffff);
 }
 
 int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, int lastareanum, int* avoidreach, float* avoidreachtimes, int* avoidreachtries, bot_goal_t* goal, int travelflags, struct bot_avoidspot_s* avoidspots, int numavoidspots, int* flags, int routeseed) {

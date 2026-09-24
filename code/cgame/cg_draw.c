@@ -231,9 +231,31 @@ float CG_TextHeight_DC(const char* text, float scale, int limit, int fontIndex) 
 
 void CG_DrawTextWithCursor_DC(float x, float y, float scale, vec4_t color, const char* text,
 							  int cursorPos, char cursor, int limit, int style, int fontIndex) {
-	(void)cursorPos;
-	(void)cursor;
+	// this used to drop cursorPos and cursor, so a text field being edited drew no
+	// caret (same fix as UI_DrawTextWithCursor_DC)
+	if (!text) {
+		return;
+	}
 	CG_PaintText(x, y, fontIndex, scale, color, text, limit, style);
+
+	if (!((trap_Milliseconds() / BLINK_DIVISOR) & 1)) {
+		int w640 = 0;
+		int cp = cursorPos;
+		int tl = (int)strlen(text);
+		char cbuf[2];
+
+		if (cp < 0) {
+			cp = 0;
+		} else if (cp > tl) {
+			cp = tl;
+		}
+		if (cp > 0) {
+			CG_MeasureText(text, scale, fontIndex, cp, &w640, NULL);
+		}
+		cbuf[0] = cursor;
+		cbuf[1] = '\0';
+		CG_PaintText(x + (float)w640, y, fontIndex, scale, color, cbuf, 1, style);
+	}
 }
 
 // [QL] CG_DrawText - matching binary's 0x10008440 in cgamex86.dll. Renders text

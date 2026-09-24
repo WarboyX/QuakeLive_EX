@@ -1118,7 +1118,7 @@ void BotTacticsReport(void) {
     */
     {
         char where[64];
-        const char* names[MAX_CLIENTS];
+        char names[MAX_CLIENTS][64];  // not G_NewString: that is the level pool, never freed
         int counts[MAX_CLIENTS];
         int numrooms = 0;
         int j;
@@ -1144,7 +1144,7 @@ void BotTacticsReport(void) {
                 /* the configstring the message came from is static for the map,
                    so keeping the pointer is safe until the map ends - and this
                    only runs when the map ends */
-                names[numrooms] = G_NewString(where);
+                Q_strncpyz(names[numrooms], where, sizeof(names[numrooms]));
                 counts[numrooms] = 1;
                 numrooms++;
             }

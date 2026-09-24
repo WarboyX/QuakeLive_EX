@@ -862,6 +862,15 @@ void RB_TakeScreenshot( int x, int y, int width, int height, const char *fileNam
 RB_TakeScreenshotJPEG
 ==================
 */
+/*
+[QL] The encoder is renderercommon/tr_image_jpg.c, which this renderer already
+links. Quake3e moved it into the engine and calls out through ri.CL_SaveJPG; the
+engine side of that here is a stub that only prints a warning, so screenshotJPEG
+and motion-JPEG video recorded nothing - while the backend still printed "Wrote".
+*/
+void RE_SaveJPG( char *filename, int quality, int image_width, int image_height, byte *image_buffer, int padding );
+size_t RE_SaveJPGToBuffer( byte *buffer, size_t bufSize, int quality, int image_width, int image_height, byte *image_buffer, int padding );
+
 void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fileName )
 {
 	byte *buffer;
@@ -874,7 +883,7 @@ void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fil
 	// gamma correction
 	R_GammaCorrect( buffer + offset, memcount );
 
-	ri.CL_SaveJPG( fileName, r_screenshotJpegQuality->integer, width, height, buffer + offset, padlen );
+	RE_SaveJPG( (char *)fileName, r_screenshotJpegQuality->integer, width, height, buffer + offset, padlen );
 	ri.Hunk_FreeTempMemory( buffer );
 }
 
@@ -1219,7 +1228,7 @@ const void *RB_TakeVideoFrameCmd( const void *data )
 
 	if ( cmd->motionJpeg )
 	{
-		memcount = ri.CL_SaveJPGToBuffer( cmd->encodeBuffer, linelen * cmd->height,
+		memcount = RE_SaveJPGToBuffer( cmd->encodeBuffer, linelen * cmd->height,
 			r_aviMotionJpegQuality->integer,
 			cmd->width, cmd->height, cBuf, padlen );
 		ri.CL_WriteAVIVideoFrame(cmd->encodeBuffer, memcount);

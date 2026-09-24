@@ -1772,8 +1772,14 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
             gun.shaderRGBA[0] = 0;
             gun.shaderRGBA[1] = 255;
             gun.shaderRGBA[2] = 0;
-        } else if (ps->weaponstate == WEAPON_FIRING) {
+        } else if (ps->weaponstate == WEAPON_FIRING && cg_railReloadTime.integer > 0) {
+            // cg_railReloadTime 0 divided by zero; its byte casts of inf/NaN are undefined
             float fscale = (1.0f - (float)ps->weaponTime / (float)cg_railReloadTime.integer) * 255.0f;
+            if (fscale < 0.0f) {
+                fscale = 0.0f;
+            } else if (fscale > 255.0f) {
+                fscale = 255.0f;
+            }
             gun.shaderRGBA[0] = (byte)(tint[0] * fscale);
             gun.shaderRGBA[1] = (byte)(tint[1] * fscale);
             gun.shaderRGBA[2] = (byte)(tint[2] * fscale);

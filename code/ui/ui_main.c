@@ -31,6 +31,17 @@ static char* netnames[] = {
 
 static int gamecodetoui[] = {4, 2, 3, 0, 5, 1, 6};
 
+// color1 indexes a seven-entry table, and Quake Live's color1 runs well past 7;
+// stock TA read gamecodetoui[color1 - 1] unchecked on every main-menu open.
+static int UI_EffectsColorFromCvar(void) {
+    int c = (int)trap_Cvar_VariableValue("color1") - 1;
+
+    if (c < 0 || c >= (int)ARRAY_LEN(gamecodetoui)) {
+        return 0;
+    }
+    return gamecodetoui[c];
+}
+
 static const char *skillLevels[] = {
     "I Can Win",
     "Bring It On",
@@ -347,7 +358,8 @@ void Text_Paint(float x, float y, float scale, vec4_t color, const char* text, f
     UI_PaintText(x, y, 0, scale, color, text, limit, style);
 }
 
-void Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const char* text, int cursorPos, char cursor, int limit, int style) {
+static void UI_PaintTextWithCursor(float x, float y, int fontIndex, float scale, vec4_t color, const char* text,
+                                   int cursorPos, char cursor, int limit, int style) {
     // [QL] Draw the text through the engine glyph atlas, then draw the blinking
     // cursor glyph at the measured pen position (cursorPos chars into the text).
     char cbuf[2];
@@ -355,7 +367,7 @@ void Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const cha
     if (!text)
         return;
 
-    UI_PaintText(x, y, 0, scale, color, text, limit, style);
+    UI_PaintText(x, y, fontIndex, scale, color, text, limit, style);
 
     if (!((uiInfo.uiDC.realTime / BLINK_DIVISOR) & 1)) {
         int w640 = 0;
@@ -366,11 +378,15 @@ void Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const cha
         if (cp > tl)
             cp = tl;
         if (cp > 0)
-            UI_MeasureText(text, scale, 0, cp, &w640, NULL);
+            UI_MeasureText(text, scale, fontIndex, cp, &w640, NULL);
         cbuf[0] = cursor;
         cbuf[1] = '\0';
-        UI_PaintText(x + (float)w640, y, 0, scale, color, cbuf, 1, style);
+        UI_PaintText(x + (float)w640, y, fontIndex, scale, color, cbuf, 1, style);
     }
+}
+
+void Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const char* text, int cursorPos, char cursor, int limit, int style) {
+    UI_PaintTextWithCursor(x, y, 0, scale, color, text, cursorPos, cursor, limit, style);
 }
 
 static void Text_Paint_Limit(float* maxX, float x, float y, float scale, vec4_t color, const char* text, float adjust, int limit) {
@@ -418,9 +434,8 @@ static float UI_TextHeight_DC(const char* text, float scale, int limit, int font
 
 static void UI_DrawTextWithCursor_DC(float x, float y, float scale, vec4_t color, const char* text,
                                      int cursorPos, char cursor, int limit, int style, int fontIndex) {
-    (void)cursorPos;
-    (void)cursor;
-    UI_PaintText(x, y, fontIndex, scale, color, text, limit, style);
+    // this used to drop cursorPos and cursor, so a text field being edited drew no caret
+    UI_PaintTextWithCursor(x, y, fontIndex, scale, color, text, cursorPos, cursor, limit, style);
 }
 
 static void UI_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, float scale, vec4_t color, qhandle_t shader, int textStyle);
@@ -929,20 +944,27 @@ static void UI_SetCapFragLimits(qboolean uiVars) {
 }
 // ui_gameType assumes gametype 0 is -1 ALL and will not show
 static void UI_DrawGameType(rectDef_t* rect, float scale, vec4_t color, int textStyle) {
+    if (ui_gameType.integer < 0 || ui_gameType.integer >= uiInfo.numGameTypes) {
+        return;  // unchecked index in stock TA
+    }
     Text_Paint(rect->x, rect->y, scale, color, uiInfo.gameTypes[ui_gameType.integer].gameType, 0, 0, textStyle);
 }
 
 static void UI_DrawNetGameType(rectDef_t* rect, float scale, vec4_t color, int textStyle) {
-    if (ui_netGameType.integer < 0 || ui_netGameType.integer > uiInfo.numGameTypes) {
+    // Stock TA tested > rather than >=, and resetting the cvar does not change
+    // .integer until the next update, so the index below was read out of range anyway.
+    if (ui_netGameType.integer < 0 || ui_netGameType.integer >= uiInfo.numGameTypes) {
         trap_Cvar_Set("ui_netGametype", "0");
         trap_Cvar_Set("ui_actualNetGametype", "0");
+        ui_netGameType.integer = 0;
     }
     Text_Paint(rect->x, rect->y, scale, color, uiInfo.gameTypes[ui_netGameType.integer].gameType, 0, 0, textStyle);
 }
 
 static void UI_DrawJoinGameType(rectDef_t* rect, float scale, vec4_t color, int textStyle) {
-    if (ui_joinGameType.integer < 0 || ui_joinGameType.integer > uiInfo.numJoinGameTypes) {
+    if (ui_joinGameType.integer < 0 || ui_joinGameType.integer >= uiInfo.numJoinGameTypes) {
         trap_Cvar_Set("ui_joinGametype", "0");
+        ui_joinGameType.integer = 0;  // see UI_DrawNetGameType
     }
     Text_Paint(rect->x, rect->y, scale, color, uiInfo.joinGameTypes[ui_joinGameType.integer].gameType, 0, 0, textStyle);
 }
@@ -1000,7 +1022,7 @@ static void UI_DrawPreviewCinematic(rectDef_t* rect, float scale, vec4_t color) 
 
 static void UI_DrawMapPreview(rectDef_t* rect, float scale, vec4_t color, qboolean net) {
     int map = (net) ? ui_currentNetMap.integer : ui_currentMap.integer;
-    if (map < 0 || map > uiInfo.mapCount) {
+    if (map < 0 || map >= uiInfo.mapCount) {
         if (net) {
             ui_currentNetMap.integer = 0;
             trap_Cvar_Set("ui_currentNetMap", "0");
@@ -1039,7 +1061,7 @@ static void UI_DrawMapTimeToBeat(rectDef_t* rect, float scale, vec4_t color, int
 
 static void UI_DrawMapCinematic(rectDef_t* rect, float scale, vec4_t color, qboolean net) {
     int map = (net) ? ui_currentNetMap.integer : ui_currentMap.integer;
-    if (map < 0 || map > uiInfo.mapCount) {
+    if (map < 0 || map >= uiInfo.mapCount) {
         if (net) {
             ui_currentNetMap.integer = 0;
             trap_Cvar_Set("ui_currentNetMap", "0");
@@ -1325,7 +1347,7 @@ static void UI_DrawNetSource(rectDef_t *rect, float scale, vec4_t color, int tex
 // UI_DrawServerFilter @0x100066d0: reset ui_serverFilterType to 0 when outside 0..7, then
 // draw "Filter: <description>".
 static void UI_DrawServerFilter(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    if (ui_serverFilterType.integer < 0 || ui_serverFilterType.integer > 7) {
+    if (ui_serverFilterType.integer < 0 || ui_serverFilterType.integer >= (int)ARRAY_LEN(serverFilters)) {  // was > 7: seven entries
         ui_serverFilterType.integer = 0;
     }
     Text_Paint(rect->x, rect->y, scale, color,
@@ -1960,7 +1982,11 @@ static void UI_DrawCrosshairColor(rectDef_t* rect, vec4_t color) {
         trap_R_SetColor(dim);
     }
     UI_DrawHandlePic(rect->x, rect->y - 14, 128, 8, uiInfo.uiDC.Assets.fxBasePic);
-    UI_DrawHandlePic(rect->x + (colorIndex << 4) + 8, rect->y - 16, 16, 12, uiInfo.uiDC.Assets.fxPic[colorIndex]);
+    // Only the first seven values have a swatch. The binary reads whatever handle sits
+    // past fxPic[] for the rest; here that is other fields of the Assets struct.
+    if (colorIndex < (int)ARRAY_LEN(uiInfo.uiDC.Assets.fxPic)) {
+        UI_DrawHandlePic(rect->x + (colorIndex << 4) + 8, rect->y - 16, 16, 12, uiInfo.uiDC.Assets.fxPic[colorIndex]);
+    }
     if (health) {
         trap_R_SetColor(color);
     }
@@ -3087,22 +3113,28 @@ static void UI_RunMenuScript(char** args) {
             g = (int)trap_Cvar_VariableValue("g_gametype");
             for (i = 1; i <= 5; i++) {
                 v = (int)trap_Cvar_VariableValue(va("ui_blueteam%i", i));
+                botBuff[0] = '\0';
                 if (v > 1) {
                     if (g < GT_TEAM) {
                         Com_sprintf(botBuff, sizeof(botBuff), "addbot %s %f \n", UI_GetBotNameByNumber(v - 2), skill);
-                    } else {
+                    } else if (v < uiInfo.characterCount) {  // the slot value is a cvar, unchecked before
                         Com_sprintf(botBuff, sizeof(botBuff), "addbot %s %f %s\n", uiInfo.characterList[v].base, skill, "Blue");
                     }
-                    trap_Cmd_ExecuteText(EXEC_APPEND, botBuff);
+                    if (botBuff[0]) {
+                        trap_Cmd_ExecuteText(EXEC_APPEND, botBuff);
+                    }
                 }
                 v = (int)trap_Cvar_VariableValue(va("ui_redteam%i", i));
+                botBuff[0] = '\0';
                 if (v > 1) {
                     if (g < GT_TEAM) {
                         Com_sprintf(botBuff, sizeof(botBuff), "addbot %s %f \n", UI_GetBotNameByNumber(v - 2), skill);
-                    } else {
+                    } else if (v < uiInfo.characterCount) {
                         Com_sprintf(botBuff, sizeof(botBuff), "addbot %s %f %s\n", uiInfo.characterList[v].base, skill, "Red");
                     }
-                    trap_Cmd_ExecuteText(EXEC_APPEND, botBuff);
+                    if (botBuff[0]) {
+                        trap_Cmd_ExecuteText(EXEC_APPEND, botBuff);
+                    }
                 }
             }
         } else if (Q_stricmp(name, "resetDefaults") == 0) {
@@ -3582,6 +3614,11 @@ static void UI_InsertServerIntoDisplayList(int num, int position) {
     int i;
 
     if (position < 0 || position > uiInfo.serverStatus.numDisplayServers) {
+        return;
+    }
+    // The shift below writes one slot past the new count, and the engine lists up to
+    // MAX_GLOBAL_SERVERS (4096) against 2048 display slots. Stock TA had no check.
+    if (uiInfo.serverStatus.numDisplayServers >= MAX_DISPLAY_SERVERS - 1) {
         return;
     }
     uiInfo.serverStatus.numDisplayServers++;
@@ -5120,7 +5157,7 @@ void _UI_Init(qboolean inGameLoad) {
     UI_LoadBots();
 
     // sets defaults for ui temp cvars
-    uiInfo.effectsColor = gamecodetoui[(int)trap_Cvar_VariableValue("color1") - 1];
+    uiInfo.effectsColor = UI_EffectsColorFromCvar();
     uiInfo.currentCrosshair = (int)trap_Cvar_VariableValue("cg_drawCrosshair") % NUM_CROSSHAIRS;
     if (uiInfo.currentCrosshair < 0) {
         uiInfo.currentCrosshair = 0;
@@ -5230,7 +5267,7 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 // fine, which is what made this look like it came and went.
                 trap_Cvar_Set("ui_mainmenu", "1");
                 // [QL] Update UI state from cvars (binary-verified)
-                uiInfo.effectsColor = gamecodetoui[(int)trap_Cvar_VariableValue("color1") - 1];
+                uiInfo.effectsColor = UI_EffectsColorFromCvar();
                 uiInfo.currentCrosshair = (int)trap_Cvar_VariableValue("cg_drawCrosshair");
                 if (uiInfo.inGameLoad) {
                     UI_LoadNonIngame();
@@ -5267,7 +5304,7 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 return;
             case UIMENU_INGAME:
                 // [QL] Update UI state from cvars (binary-verified)
-                uiInfo.effectsColor = gamecodetoui[(int)trap_Cvar_VariableValue("color1") - 1];
+                uiInfo.effectsColor = UI_EffectsColorFromCvar();
                 uiInfo.currentCrosshair = (int)trap_Cvar_VariableValue("cg_drawCrosshair");
                 trap_Cvar_Set("ui_mousePitch", (trap_Cvar_VariableValue("m_pitch") >= 0) ? "0" : "1");
                 trap_Cvar_Set("ui_cvGameType", "-1");

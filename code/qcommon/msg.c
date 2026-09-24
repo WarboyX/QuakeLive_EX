@@ -1155,6 +1155,41 @@ netField_t playerStateFields[] =
 };
 
 /*
+[QL] Three of those fields are not ints. forwardmove, rightmove and upmove are
+chars at +476..+478, and the delta loops reached every field through an int
+pointer - so each of them read and wrote FOUR bytes. On the receive side
+upmove's store ran into ps.ping (+480) and zeroed its low bytes; on the send side
+the change test for rightmove and upmove included ping, so a ping change marked
+them changed and the whole field list went out again. UBSan caught it as a
+misaligned int load at +477.
+
+The wire does not change: a field is still sent as its low 8 bits, and a byte
+read back into a char has the same bit pattern the int store left in its low
+byte.
+*/
+static qboolean MSG_PSFieldIsChar(const netField_t* field) {
+    return field->offset >= (int)offsetof(playerState_t, forwardmove) &&
+           field->offset <= (int)offsetof(playerState_t, upmove);
+}
+
+static int MSG_PSFieldGet(const playerState_t* ps, const netField_t* field) {
+    const byte* p = (const byte*)ps + field->offset;
+    if (MSG_PSFieldIsChar(field)) {
+        return *(const signed char*)p;
+    }
+    return *(const int*)p;
+}
+
+static void MSG_PSFieldSet(playerState_t* ps, const netField_t* field, int value) {
+    byte* p = (byte*)ps + field->offset;
+    if (MSG_PSFieldIsChar(field)) {
+        *(signed char*)p = (signed char)value;
+    } else {
+        *(int*)p = value;
+    }
+}
+
+/*
 =============
 MSG_WriteDeltaPlayerstate
 
@@ -1169,7 +1204,7 @@ void MSG_WriteDeltaPlayerstate(msg_t* msg, struct playerState_s* from, struct pl
     int powerupbits;
     int numFields;
     netField_t* field;
-    int *fromF, *toF;
+    int* toF;
     float fullFloat;
     int trunc, lc;
 
@@ -1182,9 +1217,7 @@ void MSG_WriteDeltaPlayerstate(msg_t* msg, struct playerState_s* from, struct pl
 
     lc = 0;
     for (i = 0, field = playerStateFields; i < numFields; i++, field++) {
-        fromF = (int*)((byte*)from + field->offset);
-        toF = (int*)((byte*)to + field->offset);
-        if (*fromF != *toF) {
+        if (MSG_PSFieldGet(from, field) != MSG_PSFieldGet(to, field)) {
             lc = i + 1;
         }
     }
@@ -1194,10 +1227,9 @@ void MSG_WriteDeltaPlayerstate(msg_t* msg, struct playerState_s* from, struct pl
     oldsize += numFields - lc;
 
     for (i = 0, field = playerStateFields; i < lc; i++, field++) {
-        fromF = (int*)((byte*)from + field->offset);
         toF = (int*)((byte*)to + field->offset);
 
-        if (*fromF == *toF) {
+        if (MSG_PSFieldGet(from, field) == MSG_PSFieldGet(to, field)) {
             MSG_WriteBits(msg, 0, 1);  // no change
             continue;
         }
@@ -1222,7 +1254,7 @@ void MSG_WriteDeltaPlayerstate(msg_t* msg, struct playerState_s* from, struct pl
             }
         } else {
             // integer
-            MSG_WriteBits(msg, *toF, field->bits);
+            MSG_WriteBits(msg, MSG_PSFieldGet(to, field), field->bits);
         }
     }
 
@@ -1314,7 +1346,7 @@ void MSG_ReadDeltaPlayerstate(msg_t* msg, playerState_t* from, playerState_t* to
     int numFields;
     int startBit, endBit;
     int print;
-    int *fromF, *toF;
+    int* toF;
     int trunc;
     playerState_t dummy;
 
@@ -1347,12 +1379,11 @@ void MSG_ReadDeltaPlayerstate(msg_t* msg, playerState_t* from, playerState_t* to
     }
 
     for (i = 0, field = playerStateFields; i < lc; i++, field++) {
-        fromF = (int*)((byte*)from + field->offset);
         toF = (int*)((byte*)to + field->offset);
 
         if (!MSG_ReadBits(msg, 1)) {
             // no change
-            *toF = *fromF;
+            MSG_PSFieldSet(to, field, MSG_PSFieldGet(from, field));
         } else {
             if (field->bits == 0) {
                 // float
@@ -1374,18 +1405,16 @@ void MSG_ReadDeltaPlayerstate(msg_t* msg, playerState_t* from, playerState_t* to
                 }
             } else {
                 // integer
-                *toF = MSG_ReadBits(msg, field->bits);
+                MSG_PSFieldSet(to, field, MSG_ReadBits(msg, field->bits));
                 if (print) {
-                    Com_Printf("%s:%i ", field->name, *toF);
+                    Com_Printf("%s:%i ", field->name, MSG_PSFieldGet(to, field));
                 }
             }
         }
     }
     for (i = lc, field = &playerStateFields[lc]; i < numFields; i++, field++) {
-        fromF = (int*)((byte*)from + field->offset);
-        toF = (int*)((byte*)to + field->offset);
         // no change
-        *toF = *fromF;
+        MSG_PSFieldSet(to, field, MSG_PSFieldGet(from, field));
     }
 
     // read the arrays

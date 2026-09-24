@@ -2645,10 +2645,12 @@ static void CG_DrawWinCondition(rectDef_t *rect, float scale, vec4_t color, int 
     CG_DrawText(rect->x, rect->y, 0, scale, color, s, 0, 0, textStyle);
 }
 
-// [QL] CG_DrawTeamAliveCount - per-team alive count for DOM/AD overlay
+// [QL] CG_DrawTeamAliveCount - control points held, for the DOM/AD overlay
 // Address: 0x100337a0  (binary guard: gametype == GT_DOMINATION || GT_AD)
+// Despite the name it draws CS_DOM_OWNED_RED/BLUE. Until E122 nothing ever wrote
+// the array it read, so Domination's "owned" counter sat at 0 all match.
 static void CG_DrawTeamAliveCount(rectDef_t *rect, int team, float scale, vec4_t color, int textStyle) {
-    const char *s = va("%d", cgs.teamAliveCount[team]);
+    const char *s = va("%d", cgs.domOwnedPoints[team]);
     CG_DrawText(rect->x, rect->y, 0, scale, color, s, 0, 0, textStyle);
 }
 
@@ -3092,21 +3094,38 @@ static void CG_DrawEndGameResult(rectDef_t *rect, float scale, vec4_t color, int
     CG_OwnerDrawText(rect->x, rect->y, scale, color, s, 0, 0, textStyle);
 }
 
-// [QL] CG_DrawOpponentScore (0x64/0x65, round-based only). 0x64 draws your team's
-// round score, 0x65 the opposing team's.
-static void CG_DrawOpponentScore(int useOwnTeam, rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    int team = cg.snap->ps.persistant[PERS_TEAM];
-    int score;
+/*
+[QL] Players still alive this round, for the "remaining" slots: CG_TEAM_PLYR_COUNT
+and CG_ENEMY_PLYR_COUNT (Red Rover's rr_remaining_team / rr_remaining_enemy icons)
+and CG_RED_CLAN_PLYRS / CG_BLUE_CLAN_PLYRS (CA and Freeze Tag, under
+CG_SHOW_PLAYERS_REMAINING). The names say player count and hud.menu draws the
+team scores separately through CG_1ST_PLACE_SCORE / CG_2ND_PLACE_SCORE.
 
-    if (!useOwnTeam) {
-        if (team == TEAM_RED) {
-            team = TEAM_BLUE;
-        } else if (team == TEAM_BLUE) {
-            team = TEAM_RED;
-        }
+These slots used to draw the team scores. The red clan slot even showed the blue
+score, because CG_DrawTeamScore picks scores1 only for CG_RED_SCORE and was passed
+1. The server has always sent the alive counts (CS_TEAMCOUNT_RED/BLUE,
+G_FlushTeamCountConfigstrings, round-based gametypes only). Nothing drew them.
+*/
+static void CG_DrawTeamRemaining(int team, rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
+    const char *s;
+
+    if (team != TEAM_RED && team != TEAM_BLUE) {
+        return;
     }
-    score = (team == TEAM_RED) ? cgs.scores1 : cgs.scores2;
-    CG_OwnerDrawText(rect->x, rect->y, scale, color, va("%i", score), 0, 0, textStyle);
+    s = va("%i", team == TEAM_RED ? cgs.teamCountRed : cgs.teamCountBlue);
+    CG_OwnerDrawText(CG_OwnerDrawAlignX(rect, s, scale, align), rect->y, scale, color, s, 0, 0, textStyle);
+}
+
+static void CG_DrawOwnEnemyRemaining(qboolean own, rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
+    int team = cg.snap->ps.persistant[PERS_TEAM];
+
+    if (team != TEAM_RED && team != TEAM_BLUE) {
+        return;  // a spectator has neither an own nor an enemy team
+    }
+    if (!own) {
+        team = (team == TEAM_RED) ? TEAM_BLUE : TEAM_RED;
+    }
+    CG_DrawTeamRemaining(team, rect, scale, color, textStyle, align);
 }
 
 /*
@@ -3164,7 +3183,7 @@ static void CG_DrawPlaceScore(qboolean firstPlace, rectDef_t *rect, float scale,
     CG_OwnerDrawText(rect->x, rect->y, scale, color, va("%i", score), 0, 0, textStyle);
 }
 
-// [QL] CG_DrawTeamScore (0x11c/0x138/0x122/0x13d). Numeric team score.
+// [QL] CG_DrawTeamScore (0x11c/0x138). Numeric team score.
 // Binary shows scores1 only for id 0x11c (CG_RED_SCORE); every other selector
 // shows scores2. -9999/-999 draw nothing.
 static void CG_DrawTeamScore(int which, rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
@@ -3460,16 +3479,16 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
         case CG_TEAM_COLORIZED:             // 0x63
             CG_DrawTeamColorized(&rect, color, shader);
             break;
-        case CG_TEAM_PLYR_COUNT:            // 0x64  CG_DrawOpponentScore (round-based only)
+        case CG_TEAM_PLYR_COUNT:            // 0x64  own team, alive this round
             if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE ||
                 cgs.gametype == GT_AD || cgs.gametype == GT_RR) {
-                CG_DrawOpponentScore(1, &rect, scale, color, textStyle);
+                CG_DrawOwnEnemyRemaining(qtrue, &rect, scale, color, textStyle, align);
             }
             break;
         case CG_ENEMY_PLYR_COUNT:           // 0x65
             if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE ||
                 cgs.gametype == GT_AD || cgs.gametype == GT_RR) {
-                CG_DrawOpponentScore(0, &rect, scale, color, textStyle);
+                CG_DrawOwnEnemyRemaining(qfalse, &rect, scale, color, textStyle, align);
             }
             break;
         case CG_1STPLACE_PLYR_MODEL_ACTIVE: // 0x66  no binary handler
@@ -3630,16 +3649,16 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
         case CG_BLUE_PLAYER_COUNT:
             CG_DrawPlayerCount2(&rect, TEAM_BLUE, scale, color, textStyle, align);
             break;
-        case CG_RED_CLAN_PLYRS:             // 0x122  CG_DrawTeamScore(1) (round-based)
+        case CG_RED_CLAN_PLYRS:             // 0x122  red alive this round
             if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE ||
                 cgs.gametype == GT_AD || cgs.gametype == GT_RR) {
-                CG_DrawTeamScore(1, &rect, scale, color, textStyle, align);
+                CG_DrawTeamRemaining(TEAM_RED, &rect, scale, color, textStyle, align);
             }
             break;
-        case CG_BLUE_CLAN_PLYRS:            // 0x13d  CG_DrawTeamScore(2)
+        case CG_BLUE_CLAN_PLYRS:            // 0x13d  blue alive this round
             if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE ||
                 cgs.gametype == GT_AD || cgs.gametype == GT_RR) {
-                CG_DrawTeamScore(2, &rect, scale, color, textStyle, align);
+                CG_DrawTeamRemaining(TEAM_BLUE, &rect, scale, color, textStyle, align);
             }
             break;
         case CG_RED_TIMEOUT_COUNT:          // 0x123  CG_DrawTimeoutCount

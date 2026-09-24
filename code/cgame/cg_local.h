@@ -1598,7 +1598,7 @@ typedef struct {
     float dmgThroughDepth;
 
     // [QL] per-team alive count for CG_DrawTeamAliveCount (CA/FT). Binary indexes int array base DAT_10a404c8.
-    int teamAliveCount[TEAM_NUM_TEAMS];
+    int domOwnedPoints[TEAM_NUM_TEAMS];  // CS_DOM_OWNED_RED/BLUE, Domination only
 
     // [QL] freeze/timeout end time (DAT_10a403e0). Used by CG_GetOvertimeCount /
     // CG_GetLevelTimerMsec; 0 means "use cg.time".

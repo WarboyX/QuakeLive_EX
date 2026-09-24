@@ -88,6 +88,13 @@ void DuelScoreboardMessage(gentity_t *ent) {
         level.clientNum2ndPlayer = player2;
     }
 
+    // [QL] Nobody playing: player1 is -1, and building its entry read
+    // level.clients[-1] - every TAB on an empty duel server. Nothing built
+    // below is sent in that case anyway, so go straight to the send.
+    if (player1 < 0) {
+        goto sendScores;
+    }
+
     // Build scoreboard for player 1
     cl = &level.clients[player1];
     {
@@ -309,6 +316,7 @@ void DuelScoreboardMessage(gentity_t *ent) {
         }
     }
 
+sendScores:
     numPlayers = level.numPlayingClients < 2 ? level.numPlayingClients : 2;
 
     // Send the scores

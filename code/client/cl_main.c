@@ -2543,6 +2543,9 @@ renderer, and renderervk links its own copy. These two exist because the
 vendored screenshot path calls out through ri. rather than calling its own
 encoder, so wiring them to nothing would silently produce empty screenshots.
 Say so instead.
+
+renderervk no longer calls either: its screenshot and AVI paths use the linked
+RE_SaveJPG directly. They stay filled in so the ri table has no NULL slots.
 */
 static void CL_RefSaveJPG(const char* filename, int quality, int image_width, int image_height, byte* image_buffer, int padding) {
     Com_Printf("^3WARNING:^7 JPEG screenshots are not wired up for this renderer - "

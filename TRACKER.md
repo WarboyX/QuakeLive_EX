@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `██████████░░░░░░░░░░  13/27` | E104: per-material convention + our first deployment into a stock QL map; E103 fixed the inverted green |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `████████████████░░░░  77/100` | E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
-| **Overall** | `███████████████░░░░░  133/183` | by binary: 69 server · 98 client · 10 both |
+| **Engine / server** (E) | `████████████████░░░░  78/101` | E122 whole-project review, 26 fixes; E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
+| **Overall** | `███████████████░░░░░  134/184` | by binary: 69 server · 98 client · 11 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -5982,6 +5982,48 @@ Checked and **not** bugs, so nobody re-reads them:
 - Callvote injection is closed: `;`, `\n` and `\r` are filtered on both arguments,
   later arguments are never used, and unknown vote names are refused.
 - `botsay` is bot-only.
+
+### E122. Whole-project review, second pass — DONE (verify)
+**Lives in:** both — see each row · **Seen by:** see each row
+
+A second full read of every file we changed against the fork base (ce9c927), plus
+an ASan/UBSan build of the client and bots through every gametype. Each row is
+fixed. The HUD rows are the ones to look at in game.
+
+| # | Lives in | Seen by | Fix |
+|---|---|---|---|
+| F1 | both (`msg.c`) | every client | Playerstate move chars were read and written as ints. That clobbered `ping` on receive and resent a spurious tail. |
+| F2 | both (`files.c`) | — | An empty path read `path[-1]` (reached from `UI_LoadTeams`). |
+| F3 | both (`files.c`) | — | `qsort(NULL, 0)` on an empty game directory. |
+| F4 | client (renderervk) | our client | `screenshotJPEG` and AVI motion-JPEG wrote nothing but printed "Wrote". They now use the linked `RE_SaveJPG`. |
+| F5 | server (`ai_tactics.c`) | — | `BotTacticsReport` leaked the level pool on every call. Repeated rcon `bots` ended in a fatal `G_Alloc`. |
+| F6 | server (`g_active.c`) | every client | `g_regenHealthRate`/`g_regenArmorRate` of 0 or less looped forever and hung the server. |
+| F7 | server (`g_team.c`) | every client | `g_obeliskHealth 0` divided by zero. |
+| F8 | server (duel) | every client | Spectator TAB on an empty duel server read `level.clients[-1]`. |
+| F9 | client (cgame) | our client | CA/FT/RR "players remaining" slots drew team **scores**, and the red slot drew the blue score. They now draw `CS_TEAMCOUNT_RED/BLUE`, which the server always sent and nothing read. |
+| F10 | both | our client | The Domination owned-points counter read a field nothing wrote, so it always showed 0. It now reads CS 700/701, which are now named `CS_DOM_OWNED_RED/BLUE`. |
+| F11 | client (cgame) | our client | Team-stats parsers used the server-sent slot as an unchecked index. A hostile server could write client memory. |
+| F12 | client (cgame) | our client | The voice-chat ring walked off its end. The path is currently dead. |
+| F13 | client (cgame) | our client | Rail tint divided by zero at `cg_railReloadTime 0`, and cast out-of-range floats to bytes. |
+| F14 | client (cgame) | our client | A `country.txt` line over 31 characters overran its buffer. |
+| F15 | client (ui + cgame) | our client | Text fields drew no caret while editing. |
+| F16–F21 | client (ui) | our client | Off-by-one and unchecked indexes: server filter, crosshair colour, net/join gametype, map preview, `color1` effects, StartServer bot slots (plus a skipped slot re-ran the previous bot), and server list capacity. |
+| F22 | client (both renderers) | our client | Text measuring read past the end of the string. |
+| F23 | client (both renderers) | our client | Loading a BSP 46 (Quake 3) map zeroed 8 bytes of the first lump's data in the file buffer. |
+| F24 | client (renderervk) | our client | The SSR done-flag was never reset, so SSR ran once per session. |
+| F25 | client + server (Windows) | — | The crash log could write past its own buffer. |
+| F26 | server (botlib) | every client | A negative `bot_routespread` became a huge route jitter. |
+
+Open for a decision, not changed:
+
+- **S2.** The Steam ID in `getchallenge` is trusted, because `SV_ValidateSteamAuth` is a stub. That allows admin impersonation and ban evasion.
+- **C1.** `team_dom_point` radius has no default.
+- **C2.** `g_matchStartGrace` is `CVAR_ARCHIVE` (the archive trap).
+- **C3.** Duel forfeit's `clientNum` defaults to 0, not -1.
+- **C4.** Scoreboard award heads read CS 692–699 by raw number, and that doesn't match what the server writes.
+- **C5.** The muzzle point uses the viewer's crouch state for other players.
+- **C6.** `CVAR_ARCHIVE_ND` is aliased to `CVAR_ARCHIVE`, so the `r_rtao*`/`r_ssr*`/`r_water*` defaults get archived.
+- **C7.** `cl_autoTimeNudge` latches its first value for the whole session.
 
 ### R25b. The static bump pass, first run — the ratio was the wrong shape
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only

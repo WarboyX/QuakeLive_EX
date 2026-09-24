@@ -1559,7 +1559,7 @@ static void ObeliskRegen(gentity_t* self) {
         self->health = g_obeliskHealth.integer;
     }
 
-    self->activator->s.modelindex2 = self->health * 0xff / g_obeliskHealth.integer;
+    self->activator->s.modelindex2 = self->health * 0xff / (g_obeliskHealth.integer > 0 ? g_obeliskHealth.integer : 1);  // [QL] 0 was an integer divide by zero
     self->activator->s.frame = 0;
 }
 
@@ -1644,7 +1644,7 @@ static void ObeliskPain(gentity_t* self, gentity_t* attacker, int damage) {
     if (actualDamage <= 0) {
         actualDamage = 1;
     }
-    self->activator->s.modelindex2 = self->health * 0xff / g_obeliskHealth.integer;
+    self->activator->s.modelindex2 = self->health * 0xff / (g_obeliskHealth.integer > 0 ? g_obeliskHealth.integer : 1);  // [QL] 0 was an integer divide by zero
     if (!self->activator->s.frame) {
         G_AddEvent(self, EV_OBELISKPAIN, 0);
     }

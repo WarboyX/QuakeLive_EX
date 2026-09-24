@@ -592,7 +592,9 @@ void ClientTimerActions(gentity_t* ent, int msec) {
             g_regenHealth.integer < level.time - client->lasthurt_time[0]) {
             client->timeResidualHealth += msec;
         }
-        while (client->timeResidualHealth >= g_regenHealthRate.integer) {
+        // [QL] a rate of 0 or less never drains the residual: the loop would spin
+        // forever and hang the server. Nothing clamps the cvar, so this does.
+        while (g_regenHealthRate.integer > 0 && client->timeResidualHealth >= g_regenHealthRate.integer) {
             ent->health += 1;
             client->timeResidualHealth -= g_regenHealthRate.integer;
         }
@@ -620,7 +622,9 @@ void ClientTimerActions(gentity_t* ent, int msec) {
              ent->health >= client->ps.stats[STAT_MAX_HEALTH])) {
             client->timeResidualArmor += msec;
         }
-        while (client->timeResidualArmor >= g_regenArmorRate.integer) {
+        // [QL] a rate of 0 or less never drains the residual: the loop would spin
+        // forever and hang the server. Nothing clamps the cvar, so this does.
+        while (g_regenArmorRate.integer > 0 && client->timeResidualArmor >= g_regenArmorRate.integer) {
             client->ps.stats[STAT_ARMOR] += 1;
             ent->s.armor = client->ps.stats[STAT_ARMOR];
             client->timeResidualArmor -= g_regenArmorRate.integer;

@@ -174,6 +174,11 @@ typedef enum {
 #define CS_GENERIC_COUNT_BLUE 699
 #define CS_AD_SCORES 700
 #define CS_ROUND_WINNER 701
+// [QL] Domination publishes the control points each team holds on the same two
+// indices (DOM_CheckPlayers). Nothing in either module uses the AD/round-winner
+// meanings, so the numbers do not collide in practice.
+#define CS_DOM_OWNED_RED 700
+#define CS_DOM_OWNED_BLUE 701
 // [QL] g_customSettings publishes to CS 704 (binary G_UpdateCvars sets 0x2c0; wolfcam's
 // CS91_CUSTOM_SETTINGS = 704). The old 702 was wrong, nothing read it. End-map vote data
 // sits at 705/706: BeginIntermission fills 0x2c1 with the map options and 0x2c2 with the

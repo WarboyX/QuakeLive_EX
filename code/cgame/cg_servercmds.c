@@ -1196,6 +1196,14 @@ void CG_SetConfigValues(void) {
     // here by the binary (they arrive later via CG_ConfigStringModified).
     cgs.practice = atoi(CG_ConfigString(CS_PRACTICE));
     cgs.freecam = atoi(CG_ConfigString(CS_FREECAM));
+    // alive counts and held points change only on an event, so a client that joins
+    // between events would otherwise show 0 until the next one
+    cgs.teamCountRed = atoi(CG_ConfigString(CS_TEAMCOUNT_RED));
+    cgs.teamCountBlue = atoi(CG_ConfigString(CS_TEAMCOUNT_BLUE));
+    if (cgs.gametype == GT_DOMINATION) {
+        cgs.domOwnedPoints[TEAM_RED] = atoi(CG_ConfigString(CS_DOM_OWNED_RED));
+        cgs.domOwnedPoints[TEAM_BLUE] = atoi(CG_ConfigString(CS_DOM_OWNED_BLUE));
+    }
 
     // [QL] parse pmove parameters for client-side prediction
     CG_ParsePmoveParams();
@@ -1391,6 +1399,8 @@ static void CG_ConfigStringModified(void) {
         cgs.teamCountRed = atoi(str);
     } else if (num == CS_TEAMCOUNT_BLUE) {
         cgs.teamCountBlue = atoi(str);
+    } else if ((num == CS_DOM_OWNED_RED || num == CS_DOM_OWNED_BLUE) && cgs.gametype == GT_DOMINATION) {
+        cgs.domOwnedPoints[num == CS_DOM_OWNED_RED ? TEAM_RED : TEAM_BLUE] = atoi(str);
     } else if (num == CS_ARMORINFO) {
         CG_ParseArmorTiered();
     } else if (num == CS_PLAYERINFO) {
@@ -1836,7 +1846,7 @@ void CG_AddBufferedVoiceChat(bufferedVoiceChat_t* vchat) {
 
     if (cg.voiceChatBufferIn == cg.voiceChatBufferOut) {
         CG_PlayVoiceChat(&voiceChatBuffer[cg.voiceChatBufferOut]);
-        cg.voiceChatBufferOut++;
+        cg.voiceChatBufferOut = (cg.voiceChatBufferOut + 1) % MAX_VOICECHATBUFFER;  // was a bare ++ (stock Q3), which walks off the ring
     }
 }
 

@@ -1017,6 +1017,11 @@ static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
         Q_strncpyz(path, "crashlog.txt", sizeof(path));
     }
 
+    // Com_sprintf returns the untruncated length, so len can overshoot text[]
+    if (len < 0 || len >= (int)sizeof(text)) {
+        len = (int)strlen(text);
+    }
+
     f = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f != INVALID_HANDLE_VALUE) {
         WriteFile(f, text, len, &written, NULL);

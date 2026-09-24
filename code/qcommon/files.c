@@ -2163,7 +2163,8 @@ char** FS_ListFilteredFiles(const char* path, const char* extension, char* filte
 	}
 
 	pathLength = strlen(path);
-	if (path[pathLength - 1] == '\\' || path[pathLength - 1] == '/') {
+	// [QL] "" is a real argument - UI_LoadTeams lists the root - and read path[-1]
+	if (pathLength && (path[pathLength - 1] == '\\' || path[pathLength - 1] == '/')) {
 		pathLength--;
 	}
 	extensionLength = strlen(extension);
@@ -2836,7 +2837,9 @@ void FS_AddGameDirectory(const char* path, const char* dir) {
 		// Get top level directories (we'll filter them later since the Sys_ListFiles filtering is terrible)
 		pakdirs = Sys_ListFiles(curpath, "/", NULL, &numdirs, qfalse);
 
-		qsort(pakdirs, numdirs, sizeof(char*), paksort);
+		if (pakdirs) {  // NULL for an empty directory; qsort's argument is nonnull
+			qsort(pakdirs, numdirs, sizeof(char*), paksort);
+		}
 	}
 
 	pakfilesi = 0;

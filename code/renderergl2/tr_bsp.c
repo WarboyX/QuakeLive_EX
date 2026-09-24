@@ -2716,6 +2716,7 @@ Called directly from cgame
 =================
 */
 void RE_LoadWorldMap(const char* name) {
+    dheader_t q3Header;  // [QL] BSP 46 header with an empty 18th lump
     int bsp_version;
     int i;
     dheader_t* header;
@@ -2793,8 +2794,13 @@ void RE_LoadWorldMap(const char* name) {
         for (i = 0; i < numLumps * (int)(sizeof(lump_t) / 4); i++) {
             ((int*)header->lumps)[i] = LittleLong(((int*)header->lumps)[i]);
         }
+        // E122: not in place - in a BSP 46 file lumps[17] is the first 8 bytes of
+        // the first lump's data (the shaders lump, as q3map2 writes it). Copy the
+        // header out and give the copy the empty lump.
         if (bsp_version == BSP_VERSION_Q3) {
-            Com_Memset(&header->lumps[LUMP_ADVERTISEMENTS], 0, sizeof(lump_t));
+            Com_Memcpy(&q3Header, header, (size_t)((byte*)&header->lumps[HEADER_LUMPS_Q3] - (byte*)header));
+            Com_Memset(&q3Header.lumps[LUMP_ADVERTISEMENTS], 0, sizeof(lump_t));
+            header = &q3Header;
         }
     }
 
