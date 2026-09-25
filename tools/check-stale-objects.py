@@ -99,6 +99,12 @@ def parse_depfile(path):
     if colon < 0:
         return []
     text = text[colon + 1:]
+    # -MP (E127) appends one empty rule per header - "code/x.h:" - after the
+    # object's own rule. Continuations are already joined, so the object's
+    # rule is the first line; everything after it is those phony rules.
+    end = text.find('\n')
+    if end >= 0:
+        text = text[:end]
 
     prereqs = []
     token = ''
