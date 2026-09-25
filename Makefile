@@ -1649,6 +1649,7 @@ Q3OBJ = \
   \
   $(B)/client/sdl_input.o \
   $(B)/client/sdl_snd.o \
+  $(B)/client/sdl_vkprobe.o \
   \
   $(B)/client/con_log.o \
   $(B)/client/sys_autoupdater.o \

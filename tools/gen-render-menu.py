@@ -535,6 +535,113 @@ def surface_detail():
     return page(name("surfacedetail"), "SURFACE DETAIL", spec, [APPLY_BTN, CLOSE])
 
 
+# ---------------------------------------------------------------- prompt -----
+# [QL] E126. The hardware prompt. OpenGL 2 stays the default for low-end
+# machines; CL_CheckHardwarePrompt (cl_main.c) probes Vulkan once from the main
+# menu and opens io_hwprompt on a discrete GPU or one with ray query. The GPU's
+# name comes from ui_hwGpuName - an item with a cvar and no text paints the
+# cvar, the same trick as the main menu's build stamp.
+PW, PH = 440, 200
+
+
+def popup(menu, title, lines, buttons, esc):
+    """A centred dialog in the frame's palette: dim, title bar, panel, buttons."""
+    x0, y0 = (640 - PW) // 2, 130
+    body = ""
+    y = 44
+    for ln in lines:
+        text, color, extra = ln[0], ln[1], (ln[2] if len(ln) > 2 else "")
+        if text is None:        # the GPU name, painted from its cvar
+            body += ('        itemDef { name hwgpu  cvar "ui_hwGpuName"  textscale .22  rect 20 %d %d 18\n'
+                     '                  textaligny 14  textalign ITEM_ALIGN_CENTER  textalignx %d\n'
+                     '                  forecolor %s  visible 1  decoration }\n'
+                     % (y, PW - 40, (PW - 40) // 2, GOLD))
+        else:
+            body += ('        itemDef { text "%s"  textscale .2  rect 20 %d %d 18  textaligny 14\n'
+                     '                  textalign ITEM_ALIGN_CENTER  textalignx %d\n'
+                     '                  forecolor %s  visible 1  decoration%s }\n'
+                     % (text, y, PW - 40, (PW - 40) // 2, color, extra))
+        if not (len(ln) > 3 and ln[3] == "same"):
+            y += 18
+    # A slot is a button (name, label, width, action), or a list of gated
+    # variants of one button - (name, label, width, action, gate) with gates
+    # that exclude each other - drawn on the same spot, exactly one visible.
+    slots = [b if isinstance(b, list) else [b] for b in buttons]
+    total = sum(v[0][2] for v in slots) + 16 * (len(slots) - 1)
+    bx = (PW - total) // 2
+    for variants in slots:
+        for v in variants:
+            nm, label, w, action = v[:4]
+            btn = ig.boxbutton(nm, label, bx, PH - 34, w, action)
+            if len(v) > 4:
+                btn = btn.replace("            forecolor 1 1 1 1  visible 1\n",
+                                  "            forecolor 1 1 1 1  visible 1  " + v[4] + "\n", 1)
+            body += btn
+        bx += variants[0][2] + 16
+    return """
+    // check-menus: overlap-ok - a dialog: the dim deliberately overhangs the
+    // frame to cover the whole screen, and the title bar and panel are layers.
+    menuDef {
+        name "%s"
+        rect %d %d %d %d
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor %s
+        popup
+
+        onESC { %s }
+
+        itemDef { name hwdim  rect %d %d 1280 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.6 }
+        itemDef { name hwpanel  rect 0 0 %d %d  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor .35 .3 .12 1 }
+        itemDef { name hwbar  rect 0 0 %d 30  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75 }
+        itemDef { name hwtitle  text "%s"  textscale .24  rect 0 0 %d 30  textaligny 20
+                  textalign ITEM_ALIGN_CENTER  textalignx %d  forecolor %s  visible 1  decoration }
+        itemDef { name hwrule  rect 20 30 %d 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor .35 .3 .12 1 }
+%s    }
+""" % (menu, x0, y0, PW, PH, GOLD, esc, -x0 - 320, -y0, PW, PH, PW, title, PW, PW // 2, GOLD,
+       PW - 40, body)
+
+
+def hw_prompts():
+    done = 'exec "seta cl_hwPrompt 1"'
+    step1 = popup(
+        "io_hwprompt", "HIGH-END HARDWARE DETECTED",
+        [("We found a graphics card that can run the Vulkan renderer:", WHITE),
+         (None, None),
+         ("Switch to Vulkan? It is faster on this card and unlocks", WHITE),
+         ("the advanced effects. OpenGL 2 stays under Render Options.", DIM)],
+        [("hwyes", "YES", 120, done + ' ; exec "seta cl_renderer vulkan" ; '
+                                    'close io_hwprompt ; open io_hwprompt2'),
+         ("hwno", "NO", 120, done + " ; close io_hwprompt")],
+        done + " ; close io_hwprompt")
+    # Two YES buttons on one spot, gated on ray query: the plain one leaves
+    # ray-traced AO out, which needs VK_KHR_ray_query and would only print
+    # "not available" on a card without it.
+    rq = 'cvarTest "ui_hwRayQuery"  showCvar { "1" }'
+    norq = 'cvarTest "ui_hwRayQuery"  showCvar { "0" }'
+    step2 = popup(
+        "io_hwprompt2", "ADVANCED RENDERING",
+        [("Turn on the advanced rendering as well?", WHITE),
+         ("Ray-traced ambient occlusion, water reflections and waves.", GOLD, "  " + rq, "same"),
+         ("Water reflections and waves (no ray query on this card).", GOLD, "  " + norq),
+         ("Each one can be changed or turned off under Render Options.", DIM),
+         ("The game restarts its video to apply this.", DIM)],
+        # YES is two buttons on one slot: advanced.cfg where the card has ray
+        # query, advanced_norq.cfg (no ray-traced AO) where it does not.
+        [[("hw2yes", "YES", 120, 'close io_hwprompt2 ; exec "exec advanced.cfg ; vid_restart"', rq),
+          ("hw2yesb", "YES", 120, 'close io_hwprompt2 ; exec "exec advanced_norq.cfg ; vid_restart"',
+           norq)],
+         ("hw2no", "NO", 120, 'close io_hwprompt2 ; exec "vid_restart"')],
+        'close io_hwprompt2 ; exec "vid_restart"')
+    return step1 + step2
+
+
 def main():
     global V
     pages = ""
@@ -544,6 +651,7 @@ def main():
     block = (BEGIN
              + "    // Generated - edit tools/gen-render-menu.py, not this block.\n"
              + pages
+             + hw_prompts()
              + END)
 
     overflow = ig.check_text_fit(block)

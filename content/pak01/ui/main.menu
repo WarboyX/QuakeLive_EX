@@ -5555,6 +5555,130 @@
             mouseExit  { setitemcolor rback backcolor 0 0 0 .6 ; setitemcolor rback forecolor 1 1 1 1 ; setitemcolor rback bordercolor .35 .3 .12 1 }
         }
     }
+
+    // check-menus: overlap-ok - a dialog: the dim deliberately overhangs the
+    // frame to cover the whole screen, and the title bar and panel are layers.
+    menuDef {
+        name "io_hwprompt"
+        rect 100 130 440 200
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        popup
+
+        onESC { exec "seta cl_hwPrompt 1" ; close io_hwprompt }
+
+        itemDef { name hwdim  rect -420 -130 1280 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.6 }
+        itemDef { name hwpanel  rect 0 0 440 200  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor .35 .3 .12 1 }
+        itemDef { name hwbar  rect 0 0 440 30  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75 }
+        itemDef { name hwtitle  text "HIGH-END HARDWARE DETECTED"  textscale .24  rect 0 0 440 30  textaligny 20
+                  textalign ITEM_ALIGN_CENTER  textalignx 220  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name hwrule  rect 20 30 400 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor .35 .3 .12 1 }
+        itemDef { text "We found a graphics card that can run the Vulkan renderer:"  textscale .2  rect 20 44 400 18  textaligny 14
+                  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name hwgpu  cvar "ui_hwGpuName"  textscale .22  rect 20 62 400 18
+                  textaligny 14  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Switch to Vulkan? It is faster on this card and unlocks"  textscale .2  rect 20 80 400 18  textaligny 14
+                  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "the advanced effects. OpenGL 2 stays under Render Options."  textscale .2  rect 20 98 400 18  textaligny 14
+                  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name hwyes  text "YES"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 92 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "seta cl_hwPrompt 1" ; exec "seta cl_renderer vulkan" ; close io_hwprompt ; open io_hwprompt2 }
+            mouseEnter { setitemcolor hwyes backcolor 0 0 0 .9 ; setitemcolor hwyes forecolor 0.964 0.815 0 1 ; setitemcolor hwyes bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor hwyes backcolor 0 0 0 .6 ; setitemcolor hwyes forecolor 1 1 1 1 ; setitemcolor hwyes bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name hwno  text "NO"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 228 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "seta cl_hwPrompt 1" ; close io_hwprompt }
+            mouseEnter { setitemcolor hwno backcolor 0 0 0 .9 ; setitemcolor hwno forecolor 0.964 0.815 0 1 ; setitemcolor hwno bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor hwno backcolor 0 0 0 .6 ; setitemcolor hwno forecolor 1 1 1 1 ; setitemcolor hwno bordercolor .35 .3 .12 1 }
+        }
+    }
+
+    // check-menus: overlap-ok - a dialog: the dim deliberately overhangs the
+    // frame to cover the whole screen, and the title bar and panel are layers.
+    menuDef {
+        name "io_hwprompt2"
+        rect 100 130 440 200
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        popup
+
+        onESC { close io_hwprompt2 ; exec "vid_restart" }
+
+        itemDef { name hwdim  rect -420 -130 1280 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.6 }
+        itemDef { name hwpanel  rect 0 0 440 200  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor .35 .3 .12 1 }
+        itemDef { name hwbar  rect 0 0 440 30  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75 }
+        itemDef { name hwtitle  text "ADVANCED RENDERING"  textscale .24  rect 0 0 440 30  textaligny 20
+                  textalign ITEM_ALIGN_CENTER  textalignx 220  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name hwrule  rect 20 30 400 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor .35 .3 .12 1 }
+        itemDef { text "Turn on the advanced rendering as well?"  textscale .2  rect 20 44 400 18  textaligny 14
+                  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { text "Ray-traced ambient occlusion, water reflections and waves."  textscale .2  rect 20 62 400 18  textaligny 14
+                  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "ui_hwRayQuery"  showCvar { "1" } }
+        itemDef { text "Water reflections and waves (no ray query on this card)."  textscale .2  rect 20 62 400 18  textaligny 14
+                  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "ui_hwRayQuery"  showCvar { "0" } }
+        itemDef { text "Each one can be changed or turned off under Render Options."  textscale .2  rect 20 80 400 18  textaligny 14
+                  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "The game restarts its video to apply this."  textscale .2  rect 20 98 400 18  textaligny 14
+                  textalign ITEM_ALIGN_CENTER  textalignx 200
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name hw2yes  text "YES"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 92 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1  cvarTest "ui_hwRayQuery"  showCvar { "1" }
+            action { play "sound/misc/menu1.wav" ; close io_hwprompt2 ; exec "exec advanced.cfg ; vid_restart" }
+            mouseEnter { setitemcolor hw2yes backcolor 0 0 0 .9 ; setitemcolor hw2yes forecolor 0.964 0.815 0 1 ; setitemcolor hw2yes bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor hw2yes backcolor 0 0 0 .6 ; setitemcolor hw2yes forecolor 1 1 1 1 ; setitemcolor hw2yes bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name hw2yesb  text "YES"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 92 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1  cvarTest "ui_hwRayQuery"  showCvar { "0" }
+            action { play "sound/misc/menu1.wav" ; close io_hwprompt2 ; exec "exec advanced_norq.cfg ; vid_restart" }
+            mouseEnter { setitemcolor hw2yesb backcolor 0 0 0 .9 ; setitemcolor hw2yesb forecolor 0.964 0.815 0 1 ; setitemcolor hw2yesb bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor hw2yesb backcolor 0 0 0 .6 ; setitemcolor hw2yesb forecolor 1 1 1 1 ; setitemcolor hw2yesb bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name hw2no  text "NO"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 228 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_hwprompt2 ; exec "vid_restart" }
+            mouseEnter { setitemcolor hw2no backcolor 0 0 0 .9 ; setitemcolor hw2no forecolor 0.964 0.815 0 1 ; setitemcolor hw2no bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor hw2no backcolor 0 0 0 .6 ; setitemcolor hw2no forecolor 1 1 1 1 ; setitemcolor hw2no bordercolor .35 .3 .12 1 }
+        }
+    }
     // <<< GENERATED io_render END
 
     // =============================================

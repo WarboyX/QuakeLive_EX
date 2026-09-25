@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cl_main.c  -- client main loop
 
 #include "client.h"
+#include "../sdl/sdl_vkprobe.h"
 #include <limits.h>
 #include <float.h>
 
@@ -30,6 +31,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef USE_RENDERER_DLOPEN
 cvar_t* cl_renderer;
+cvar_t* cl_hwPrompt;    // [QL] E126 - CL_CheckHardwarePrompt
 #endif
 
 cvar_t* cl_nodelta;
@@ -2206,6 +2208,69 @@ void CL_CheckUserinfo(void) {
 
 /*
 ==================
+CL_CheckHardwarePrompt
+
+[QL] E126. OpenGL 2 is the default renderer so a low-end machine starts on
+something it can run. A machine that can do better is asked, once, from the
+main menu: switch to Vulkan? and if so, turn on the advanced rendering too?
+(ui: io_hwprompt, io_hwprompt2 - tools/gen-render-menu.py).
+
+Asked only when all of these hold:
+  - cl_hwPrompt is 0: nobody has answered yet. Either answer sets it to 1 and
+    it is archived, because it is the player's answer and not our default;
+  - cl_renderer is still opengl2 - anyone already on Vulkan chose it;
+  - the main menu is up, not connected, no local server, for 1.5 s, so the
+    question does not arrive under a loading screen or a +connect;
+  - Sys_ProbeVulkan finds a real GPU with Vulkan 1.1+ that is either a
+    discrete card or can do ray queries. An integrated GPU without ray query
+    is the machine the OpenGL default exists for, so it is not asked.
+
+A machine that does not qualify is not marked answered: the probe is cheap and
+runs once per launch, so a new graphics card gets asked about.
+==================
+*/
+static void CL_CheckHardwarePrompt(void) {
+    static qboolean done;
+    static int since;
+    vkProbe_t probe;
+
+    if (done || !uivm || !cl_hwPrompt || cl_hwPrompt->integer) {
+        return;
+    }
+    if (clc.state != CA_DISCONNECTED || com_sv_running->integer || !(Key_GetCatcher() & KEYCATCH_UI)) {
+        since = 0;
+        return;
+    }
+    if (!since) {
+        since = cls.realtime ? cls.realtime : 1;
+        return;
+    }
+    if (cls.realtime - since < 1500) {
+        return;
+    }
+    done = qtrue;
+
+    if (Q_stricmp(cl_renderer->string, "opengl2")) {
+        return;
+    }
+    if (!Sys_ProbeVulkan(&probe)) {
+        Com_Printf("Hardware check: no Vulkan-capable GPU found - staying on OpenGL 2.\n");
+        return;
+    }
+    Com_Printf("Hardware check: %s (%s%s)\n", probe.name,
+               probe.discrete ? "discrete" : "integrated",
+               probe.rayQuery ? ", ray query" : "");
+    if (!probe.discrete && !probe.rayQuery) {
+        return;
+    }
+
+    Cvar_Set("ui_hwGpuName", probe.name);
+    Cvar_Set("ui_hwRayQuery", probe.rayQuery ? "1" : "0");
+    Cbuf_AddText("menu_open io_hwprompt\n");
+}
+
+/*
+==================
 CL_Frame
 
 ==================
@@ -2239,6 +2304,8 @@ void CL_Frame(int msec) {
         S_StopAllSounds();
         VM_Call(uivm, UI_SET_ACTIVE_MENU, UIMENU_MAIN);
     }
+
+    CL_CheckHardwarePrompt();
 
     // if recording an avi, lock to a fixed fps
     if (CL_VideoRecording() && cl_aviFrameRate->integer && msec) {
@@ -2638,6 +2705,11 @@ void CL_InitRef(void) {
 
 #ifdef USE_RENDERER_DLOPEN
     cl_renderer = Cvar_Get("cl_renderer", "opengl2", CVAR_ARCHIVE | CVAR_LATCH);
+    // [QL] E126. Archived on purpose: it records the player's answer to the
+    // hardware prompt, not a default of ours (see CL_CheckHardwarePrompt).
+    cl_hwPrompt = Cvar_Get("cl_hwPrompt", "0", CVAR_ARCHIVE);
+    Cvar_Get("ui_hwGpuName", "", CVAR_ROM);
+    Cvar_Get("ui_hwRayQuery", "0", CVAR_ROM);
 
     Com_sprintf(dllName, sizeof(dllName), "%s" ARCH_STRING DLL_EXT, cl_renderer->string);
 

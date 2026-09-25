@@ -15,8 +15,8 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 | **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
 | **Renderer** (R) | `██████████░░░░░░░░░░  13/27` | E104: per-material convention + our first deployment into a stock QL map; E103 fixed the inverted green |
 | **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
-| **Engine / server** (E) | `████████████████░░░░  80/103` | E124 render pages, live video cvars; E123 CA rounds, SIGTERM hang, imported gamma; E122 whole-project review, 26 fixes; E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
-| **Overall** | `███████████████░░░░░  136/186` | by binary: 69 server · 99 client · 12 both |
+| **Engine / server** (E) | `████████████████░░░░  81/104` | E126 hardware prompt; E124 render pages, live video cvars; E123 CA rounds, SIGTERM hang, imported gamma; E122 whole-project review, 26 fixes; E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
+| **Overall** | `███████████████░░░░░  137/187` | by binary: 69 server · 100 client · 12 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -6047,6 +6047,19 @@ Open, not changed:
 - **C8.** With `g_doWarmup 0`, an empty match forfeits at map start ("Game has been forfeited", scores -999). No shipped config uses it.
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
+
+### E126. OpenGL 2 stays the default; high-end machines are offered Vulkan once — DONE (verify)
+**Lives in:** our **client** (client engine, ui + pak01) · **Seen by:** our client only
+
+Decision: `cl_renderer` stays `opengl2`, to be friendly to low-end systems. Instead, the first time the main menu is up on a capable machine, the player is asked:
+
+1. **"High-end hardware detected: switch to Vulkan?"** The dialog shows the GPU's name. NO: nothing changes. YES: `cl_renderer vulkan`, then question 2.
+2. **"Advanced rendering as well?"** This means ray-traced AO, water reflections and waves. YES runs `advanced.cfg`, or `advanced_norq.cfg` (no ray-traced AO) on a card without ray query; NO keeps the defaults. Either answer runs `vid_restart`. If Vulkan fails to start, the renderer's existing fallback puts `cl_renderer` back to opengl2.
+
+- **Detection:** `code/sdl/sdl_vkprobe.c` asks the Vulkan loader directly, through SDL, without loading the Vulkan renderer. It creates a bare instance, reads each GPU's type, API version and extensions, and tears it all down. "High-end" means a real GPU with Vulkan 1.1+ that is **discrete, or has ray query**. CPU implementations (llvmpipe, SwiftShader) never qualify, and neither do integrated GPUs without ray query: those are the machines the OpenGL default is for.
+- **Asked once:** `cl_hwPrompt` is archived because it is the player's answer, and either answer sets it. A machine that doesn't qualify is not marked, so a new graphics card is asked about on the next launch. Nobody already on Vulkan is asked.
+- **Timing:** once per launch, 1.5 s after the main menu comes up with nothing connected and no local server running.
+- **Checked headless:** on a machine with only lavapipe, the probe correctly declined ("no Vulkan-capable GPU found - staying on OpenGL 2"), and both dialogs open without menu errors. **Not seen on a real GPU,** which is the path that asks.
 
 ### E125. One menu shape: the in-game frame and the render pages flow into each other — DONE (verify)
 **Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
