@@ -22,7 +22,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cl_main.c  -- client main loop
 
 #include "client.h"
-#include "../sdl/sdl_vkprobe.h"
 #include <limits.h>
 #include <float.h>
 
@@ -2208,6 +2207,90 @@ void CL_CheckUserinfo(void) {
 
 /*
 ==================
+CL_GuessGPU
+
+[QL] E126/E127. What the GPU is, read from the strings the running OpenGL
+renderer already reports - no Vulkan, no driver calls, nothing loaded.
+
+E126 asked the Vulkan loader directly. That is the one thing a low-end or
+badly-driven machine should never be made to do just to be asked a question:
+a broken Vulkan ICD can crash in vkCreateInstance, and that crash would hit
+every launch on exactly the machines OpenGL is the default for. The OpenGL
+strings are already in cls.glconfig from renderer start-up, so this is pure
+string matching and cannot crash anything.
+
+The cost is that it is a guess from a name, not a capability query:
+  - software:  llvmpipe, softpipe, SwiftShader, "GDI Generic", "Microsoft
+               Basic Render" - never high-end;
+  - discrete:  NVIDIA (bar Tegra and the GT/MX/NVS entry lines), AMD/ATI with an RX / Pro / FirePro / R9 /
+               Vega 56/64 name, Intel Arc;
+  - ray query: NVIDIA RTX, AMD RX 6000/7000/9000, Radeon 6x0M-8x0M
+               integrated (RDNA2+), Intel Arc;
+and OpenGL 4.5 or newer, which every Vulkan-class desktop GPU reports.
+A wrong ray-query guess costs nothing: advanced.cfg's r_rt 1 on a card
+without it just reports "not available" in the Lighting page's status rows.
+==================
+*/
+typedef struct {
+    qboolean software, discrete, rayQuery, glModern;
+} gpuGuess_t;
+
+static qboolean CL_NameHas(const char* hay, const char* needle) {
+    return Q_stristr(hay, needle) != NULL;
+}
+
+static void CL_GuessGPU(const glconfig_t* gl, gpuGuess_t* g) {
+    const char* r = gl->renderer_string;
+    const char* v = gl->vendor_string;
+    int major = 0, minor = 0;
+    const char* p;
+    int i;
+
+    Com_Memset(g, 0, sizeof(*g));
+
+    g->software = CL_NameHas(r, "llvmpipe") || CL_NameHas(r, "softpipe") ||
+                  CL_NameHas(r, "SwiftShader") || CL_NameHas(r, "GDI Generic") ||
+                  CL_NameHas(r, "Basic Render") || CL_NameHas(r, "Software Rasterizer");
+
+    // "4.6.0 NVIDIA 551.23", "4.6 (Compatibility Profile) Mesa 24.0"
+    for (p = gl->version_string; *p && !(*p >= '0' && *p <= '9'); p++) {
+    }
+    if (sscanf(p, "%d.%d", &major, &minor) == 2) {
+        g->glModern = (major > 4 || (major == 4 && minor >= 5));
+    }
+
+    if (CL_NameHas(v, "NVIDIA") || CL_NameHas(r, "GeForce") || CL_NameHas(r, "Quadro")) {
+        // Discrete, bar Tegra - and bar the entry lines (GT 710, MX 450, NVS),
+        // which are discrete cards but not what "high-end" is asking about.
+        g->discrete = !CL_NameHas(r, "Tegra") && !CL_NameHas(r, " GT ") &&
+                      !CL_NameHas(r, " MX") && !CL_NameHas(r, "NVS ");
+        g->rayQuery = CL_NameHas(r, "RTX");
+    } else if (CL_NameHas(v, "AMD") || CL_NameHas(v, "ATI") || CL_NameHas(r, "Radeon")) {
+        g->discrete = CL_NameHas(r, "RX ") || CL_NameHas(r, "Radeon Pro") || CL_NameHas(r, "FirePro") ||
+                      CL_NameHas(r, " R9 ") || CL_NameHas(r, "Vega 56") || CL_NameHas(r, "Vega 64");
+        // RX 6xxx / 7xxx / 9xxx desktop, and RDNA2+ integrated (660M..890M)
+        for (i = 6; i <= 9 && !g->rayQuery; i++) {
+            if (i == 8) {
+                continue;   // there is no RX 8000 desktop series
+            }
+            g->rayQuery = CL_NameHas(r, va("RX %d", i));
+        }
+        // "Radeon 680M": RDNA2+ integrated, three digits starting 6-8 then M
+        if (!g->rayQuery && (p = Q_stristr(r, "Radeon ")) != NULL) {
+            p += 7;
+            if (p[0] >= '6' && p[0] <= '8' && p[1] >= '0' && p[1] <= '9' &&
+                p[2] >= '0' && p[2] <= '9' && (p[3] == 'M' || p[3] == 'm')) {
+                g->rayQuery = qtrue;
+            }
+        }
+    } else if (CL_NameHas(v, "Intel") || CL_NameHas(r, "Intel")) {
+        g->discrete = CL_NameHas(r, "Arc");
+        g->rayQuery = CL_NameHas(r, "Arc");
+    }
+}
+
+/*
+==================
 CL_CheckHardwarePrompt
 
 [QL] E126. OpenGL 2 is the default renderer so a low-end machine starts on
@@ -2221,18 +2304,18 @@ Asked only when all of these hold:
   - cl_renderer is still opengl2 - anyone already on Vulkan chose it;
   - the main menu is up, not connected, no local server, for 1.5 s, so the
     question does not arrive under a loading screen or a +connect;
-  - Sys_ProbeVulkan finds a real GPU with Vulkan 1.1+ that is either a
-    discrete card or can do ray queries. An integrated GPU without ray query
-    is the machine the OpenGL default exists for, so it is not asked.
+  - CL_GuessGPU calls it a hardware GPU with OpenGL 4.5+ that is a discrete
+    card or can do ray queries. Integrated graphics without ray query is the
+    machine the OpenGL default exists for, so it is not asked.
 
-A machine that does not qualify is not marked answered: the probe is cheap and
-runs once per launch, so a new graphics card gets asked about.
+A machine that does not qualify is not marked answered, so a new graphics
+card gets asked about on the next launch.
 ==================
 */
 static void CL_CheckHardwarePrompt(void) {
     static qboolean done;
     static int since;
-    vkProbe_t probe;
+    gpuGuess_t g;
 
     if (done || !uivm || !cl_hwPrompt || cl_hwPrompt->integer) {
         return;
@@ -2250,22 +2333,29 @@ static void CL_CheckHardwarePrompt(void) {
     }
     done = qtrue;
 
-    if (Q_stricmp(cl_renderer->string, "opengl2")) {
+    if (Q_stricmp(cl_renderer->string, "opengl2") || !cls.glconfig.renderer_string[0]) {
         return;
     }
-    if (!Sys_ProbeVulkan(&probe)) {
-        Com_Printf("Hardware check: no Vulkan-capable GPU found - staying on OpenGL 2.\n");
-        return;
-    }
-    Com_Printf("Hardware check: %s (%s%s)\n", probe.name,
-               probe.discrete ? "discrete" : "integrated",
-               probe.rayQuery ? ", ray query" : "");
-    if (!probe.discrete && !probe.rayQuery) {
+    CL_GuessGPU(&cls.glconfig, &g);
+    Com_Printf("Hardware check: %s - %s%s%s\n", cls.glconfig.renderer_string,
+               g.software ? "software renderer" : (g.discrete ? "discrete" : "integrated"),
+               g.rayQuery ? ", ray tracing" : "", g.glModern ? "" : ", OpenGL below 4.5");
+    if (g.software || !g.glModern || !(g.discrete || g.rayQuery)) {
         return;
     }
 
-    Cvar_Set("ui_hwGpuName", probe.name);
-    Cvar_Set("ui_hwRayQuery", probe.rayQuery ? "1" : "0");
+    {
+        // "NVIDIA GeForce RTX 3060 Laptop GPU/PCIe/SSE2" and "AMD Radeon RX 6600M
+        // (radeonsi, navi23, LLVM 17.0.6, DRM 3.54)" - the dialog wants the name.
+        char name[128];
+        char* cut;
+
+        Q_strncpyz(name, cls.glconfig.renderer_string, sizeof(name));
+        if ((cut = strchr(name, '/')) != NULL) *cut = '\0';
+        if ((cut = strstr(name, " (")) != NULL) *cut = '\0';
+        Cvar_Set("ui_hwGpuName", name);
+    }
+    Cvar_Set("ui_hwRayQuery", g.rayQuery ? "1" : "0");
     Cbuf_AddText("menu_open io_hwprompt\n");
 }
 

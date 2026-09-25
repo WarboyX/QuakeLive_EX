@@ -1273,7 +1273,7 @@ ifeq ($(BUILD_STANDALONE),1)
 endif
 
 ifeq ($(GENERATE_DEPENDENCIES),1)
-  DEPEND_CFLAGS = -MMD
+  DEPEND_CFLAGS = -MMD -MP   # -MP: a phony rule per header, so deleting a header cannot break an incremental build
 else
   DEPEND_CFLAGS =
 endif
@@ -1540,7 +1540,7 @@ TOOLS_LIBS =
 TOOLS_LDFLAGS =
 
 ifeq ($(GENERATE_DEPENDENCIES),1)
-  TOOLS_CFLAGS += -MMD
+  TOOLS_CFLAGS += -MMD -MP
 endif
 
 STRINGIFY   = $(B)/tools/stringify$(TOOLS_BINEXT)
@@ -1649,7 +1649,6 @@ Q3OBJ = \
   \
   $(B)/client/sdl_input.o \
   $(B)/client/sdl_snd.o \
-  $(B)/client/sdl_vkprobe.o \
   \
   $(B)/client/con_log.o \
   $(B)/client/sys_autoupdater.o \

@@ -35,8 +35,11 @@ What it checks
   2. No prerequisite listed in a .d is newer than the .o that depends on it.
      That is the stale object: it exists, it links, and it disagrees with every
      other object about what the structs look like.
-  3. Prerequisites that no longer exist are reported. -MMD is used without -MP,
-     so a deleted header leaves a rule make cannot satisfy.
+  3. Prerequisites that no longer exist are reported. The Makefile now passes
+     -MP (E127), so a .d written since then carries a phony rule per header and
+     a deleted header no longer stops make; a .d from before still can, and
+     this names it. (E127 hit exactly that: removing sdl_vkprobe.h left
+     cl_main.d pointing at it, and make refused to build.)
 
 A clean build passes trivially - everything was just written. That is fine and
 expected: the bug only exists in incremental builds, which is what everyone
@@ -237,7 +240,8 @@ def main():
         print()
         print('MISSING HEADERS: %d prerequisite(s) no longer exist.'
               % len(all_missing))
-        print('-MMD is used without -MP, so make cannot satisfy these rules.')
+        print('A .d written before the Makefile gained -MP lists them, and make')
+        print('cannot satisfy that. Delete the named objects and their .d files.')
         print('Usually means a header was renamed or deleted. Delete build/.')
         for o, p in all_missing[:20]:
             print('  %s needs %s' % (os.path.relpath(o, REPO), p))

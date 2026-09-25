@@ -6048,6 +6048,16 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E127. The hardware prompt no longer touches Vulkan — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+E126 detected the GPU by loading the Vulkan loader and creating an instance. A broken Vulkan driver can crash right there, and it would do so on every launch, on exactly the low-end machines OpenGL 2 is the default for. **Removed.** `CL_GuessGPU` now reads the vendor, renderer and version strings the running OpenGL renderer already reported (`cls.glconfig`). It's pure string matching, with nothing loaded and no driver calls.
+
+- **Asked:** OpenGL 4.5+, not a software renderer, and either a discrete card or ray-tracing capable. Discrete means NVIDIA (except Tegra and the GT/MX/NVS entry lines), AMD RX/Pro/FirePro/R9/Vega 56/64, or Intel Arc. Ray tracing means RTX, RX 6000/7000/9000, Radeon 6x0M–8x0M integrated, or Arc.
+- **Checked:** against 15 real renderer strings in a test harness: RTX 3060 Laptop, GTX 1060, RX 6600M, RX 580, Radeon 680M and Arc A770 are asked. GT 710, MX450, Vega 8, Radeon(TM) Graphics, UHD 620, HD 4000, Tegra, llvmpipe and GDI Generic are not. Headless on llvmpipe: "software renderer", no prompt, nothing Vulkan in the log.
+- **It's a guess from a name, not a capability query.** A wrong ray-tracing guess costs nothing: `r_rt 1` on a card without it just reports "not available".
+- **Build fix found on the way:** the Makefile used `-MMD` without `-MP`, so removing a header broke every incremental build that had included it ("No rule to make target sdl_vkprobe.h"). `-MP` added.
+
 ### E126. OpenGL 2 stays the default; high-end machines are offered Vulkan once — DONE (verify)
 **Lives in:** our **client** (client engine, ui + pak01) · **Seen by:** our client only
 
