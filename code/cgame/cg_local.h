@@ -1675,6 +1675,7 @@ extern vmCvar_t cg_crosshairPulse;
 extern vmCvar_t cg_waterWarp;
 extern vmCvar_t cg_lowAmmoWarningSound;
 extern vmCvar_t cg_crosshairHealth;
+extern vmCvar_t cg_crosshairColor;
 extern vmCvar_t cg_drawStatus;
 extern vmCvar_t cg_draw2D;
 extern vmCvar_t cg_animSpeed;

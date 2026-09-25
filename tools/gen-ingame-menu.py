@@ -478,6 +478,18 @@ def row(kind, cvar, text, y, extra=None):
                 % (nm, cvar, styles, CTRL_X, y, ROW_H - 1,
                    nm, CTRL_X + 120, y + ROW_H - 1, ROW_H - 1, ROW_H - 1))
         return out
+    if kind == "colour":
+        # [QL] E131. Quake Live's own control for cg_crosshairColor: the fx_base
+        # colour bar with a thumb, integer 1..26 (ingame_options_basic.menu).
+        # Greyed while colour-by-health is on, which overrides it - as in QL.
+        dflt, lo, hi = extra
+        out += ('        itemDef { name %s  type ITEM_TYPE_SLIDER_COLOR  text ""\n'
+                '                  cvarInt "%s" %s %s %s\n'
+                '                  cvarTest "cg_crosshairHealth"  disableCvar { "1" }\n'
+                '                  rect %d %d %d %d  textscale .21  textaligny 13\n'
+                '                  forecolor 1 1 1 1  visible 1 }\n'
+                % (nm, cvar, dflt, lo, hi, CTRL_X, y, SLIDER_W, ROW_H - 1))
+        return out
     if kind == "slider":
         dflt, lo, hi = extra
         out += ('        itemDef { name %s  type ITEM_TYPE_SLIDER  text ""\n'
@@ -685,6 +697,7 @@ def page_controls():
 
 # --- Settings (basic) --------------------------------------------------------
 def page_settings():
+    global ROW_H
     """
     [QL] E111. Quake Live's BASIC options page, as near as our code allows.
 
@@ -754,18 +767,39 @@ def page_settings():
     ]:
         b += row(kind, cvar, text, y, extra)
         y += ROW_H
-    # [QL] E130. The crosshair rows moved to Advanced > Crosshair: the style and
-    # size were here AND there, two places to change one setting.
-    y += 4
-    for i, t in enumerate(["Crosshair, resolution, texture detail and the rest of Quake Live's",
-                           "advanced page are under the Advanced tab - and on the render menu."]):
-        b += ('        itemDef { text "%s"  textscale .17  rect 24 %d 512 16  textaligny 12\n'
-              '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
-              '                  forecolor %s  visible 1  decoration }\n' % (t, y + i * 17, DIM))
+    # [QL] E131. Every crosshair option lives here and only here (the Advanced
+    # CROSSHAIR sub-page is gone). Only the ones our cgame actually reads: the
+    # hit colour/style/time and teammate health are registered for Quake Live's
+    # sake and drawn by nothing yet, so a row for them would take a value and
+    # change nothing (docs/cvar-manifest.txt). A 16 pitch rather than 17 - the
+    # slider is 16 tall, so this is as tight as the rows go.
+    saved = ROW_H
+    ROW_H = 16
+    for kind, cvar, text, extra in [
+        ("crosshair", "cg_drawCrosshair",      "Crosshair",         None),
+        ("slider",    "cg_crosshairSize",      "Crosshair size",    ("32", "8", "64")),
+        ("slider",    "cg_crosshairBrightness", "Crosshair brightness", ("1", "0", "1")),
+        ("yesno",     "cg_crosshairPulse",     "Pulse on pickup",   None),
+        ("yesno",     "cg_crosshairHealth",    "Colour by health",  None),
+        ("colour",    "cg_crosshairColor",     "Crosshair colour",  ("25", "1", "26")),
+        ("multi",     "cg_drawCrosshairNames", "Show player names", None),
+    ]:
+        if cvar == "cg_crosshairHealth":
+            reset_y = y
+        b += row(kind, cvar, text, y, extra)
+        y += ROW_H
+    ROW_H = saved
     # [QL] E130. RESET puts the sliders back. Name, model and handicap are who
     # you are, not settings, and are never touched by it.
-    b += button("ig_setreset", "RESET", 220, y + 44, 120,
-                reset_action(["sensitivity", "cg_fov", "r_gamma", "s_volume", "s_musicvolume"]))
+    #
+    # E131. At the right edge rather than under the rows: with the crosshair
+    # block a button below would hang past the panel. The controls beside it
+    # (yes/no, the colour bar) all end by x 386, so it covers nothing.
+    b += button("ig_setreset", "RESET", 440, reset_y + 4, 96,
+                reset_action(["sensitivity", "cg_fov", "r_gamma", "s_volume", "s_musicvolume",
+                              "cg_drawCrosshair", "cg_crosshairSize", "cg_crosshairBrightness",
+                              "cg_crosshairPulse", "cg_crosshairHealth", "cg_crosshairColor",
+                              "cg_drawCrosshairNames"]))
     return page("io_ig_settings", "PLAYER", b,
                 "Who you are, and the settings you change most.")
 
@@ -798,8 +832,13 @@ def page_advanced():
     """
     cols = [28, 200, 372]           # three 160-wide buttons, 12 apart, centred
     b = heading("Normal Options", 44)
+    n = len(SUBPAGE_INDEX)
     for i, (menu, title) in enumerate(SUBPAGE_INDEX):
-        b += button("adv_" + menu, title, cols[i % 3], 64 + (i // 3) * 28, 160,
+        x = cols[i % 3]
+        left = n - (i - i % 3)      # buttons in this button's row
+        if left < 3:                # a short last row is centred, not left-hung
+            x = (560 - (left * 160 + (left - 1) * 12)) // 2 + (i % 3) * 172
+        b += button("adv_" + menu, title, x, 64 + (i // 3) * 28, 160,
                     "close io_ig_advanced ; open %s" % menu)
     # These are full-size menus that cover this page, so they leave it open
     # underneath - closing them is what brings you back here (see E112).
@@ -872,14 +911,8 @@ SUBPAGES = [
         ("yesno",  "r_enablePostProcess",    "Post processing"),
         ("yesno",  "r_enableColorCorrect",   "Colour correction"),
     ], "The Vulkan renderer has its own effects under Render Options."),
-    ("io_ig_crosshair", "CROSSHAIR", "Style, size, brightness and what it reacts to.", [
-        ("crosshair", "cg_drawCrosshair",    "Crosshair"),
-        ("slider", "cg_crosshairSize",       "Size",       ("32", "8", "64")),
-        ("slider", "cg_crosshairBrightness", "Brightness", ("1", "0", "1")),
-        ("yesno",  "cg_crosshairPulse",      "Pulse on pickup"),
-        ("yesno",  "cg_crosshairHealth",     "Colour by health"),
-        ("multi",  "cg_drawCrosshairNames",  "Show player names"),
-    ], None),   # E130: the shape is the first row now, not on the Player tab
+    # E131: no CROSSHAIR sub-page. Every crosshair option is on the Player tab
+    # (page_settings), which is the one place to change it.
     ("io_ig_hud", "HUD", "What is drawn on screen while you play.", [
         ("slider", "cg_fov",                 "Field of view",      ("100", "75", "130")),
         ("slider", "cg_zoomfov",             "Zoom field of view", ("30", "10", "90")),
@@ -945,6 +978,10 @@ SUBPAGES = [
         ("yesno",  "cg_specFov",           "Use followed player FOV"),
         ("yesno",  "cl_allowConsoleChat",  "Console chat"),
         ("multi",  "cl_demoRecordMessage", "Demo record message"),
+        # [QL] E131. Our TAB scoreboard (E119) or Quake Live's own. The
+        # replacement is the default now; this is the way back to the original.
+        ("multi",  "cg_ioScoreboard",        "Scoreboard",
+                   '"Replacement (default)" 1 "Quake Live original" 0'),
     ], None),
 ]
 

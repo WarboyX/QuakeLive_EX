@@ -148,7 +148,6 @@
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
-                close io_ig_crosshair
                 close io_ig_hud
                 close io_ig_weapons
                 close io_ig_effects
@@ -204,7 +203,6 @@
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
-                close io_ig_crosshair
                 close io_ig_hud
                 close io_ig_weapons
                 close io_ig_effects
@@ -260,7 +258,6 @@
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
-                close io_ig_crosshair
                 close io_ig_hud
                 close io_ig_weapons
                 close io_ig_effects
@@ -316,7 +313,6 @@
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
-                close io_ig_crosshair
                 close io_ig_hud
                 close io_ig_weapons
                 close io_ig_effects
@@ -372,7 +368,6 @@
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
-                close io_ig_crosshair
                 close io_ig_hud
                 close io_ig_weapons
                 close io_ig_effects
@@ -428,7 +423,6 @@
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
-                close io_ig_crosshair
                 close io_ig_hud
                 close io_ig_weapons
                 close io_ig_effects
@@ -484,7 +478,6 @@
                 close io_ig_video
                 close io_ig_light
                 close io_ig_bloom
-                close io_ig_crosshair
                 close io_ig_hud
                 close io_ig_weapons
                 close io_ig_effects
@@ -1122,18 +1115,75 @@
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Crosshair, resolution, texture detail and the rest of Quake Live's"  textscale .17  rect 24 221 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "advanced page are under the Advanced tab - and on the render menu."  textscale .17  rect 24 238 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "Crosshair"  textscale .21  rect 24 217 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawcrosshair  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshair"
+                  cvarFloatList { "Off" 0 "Style 1" 1 "Style 2 (default)" 2 "Style 3" 3 "Style 4" 4 "Style 5" 5 "Style 6" 6 "Style 7" 7 "Style 8" 8 "Style 9" 9 "Style 10" 10 "Style 11" 11 "Style 12" 12 "Style 13" 13 "Style 14" 14 "Style 15" 15 "Style 16" 16 "Style 17" 17 "Style 18" 18 "Style 19" 19 "Style 20" 20 "Style 21" 21 "Style 22" 22 "Style 23" 23 "Style 24" 24 "Style 25" 25 "Style 26" 26 "Style 27" 27 "Style 28" 28 "Style 29" 29 }
+                  rect 290 217 110 15  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        // check-menus: overlap-ok - drawn one row up from its rect (UI_DrawCrosshair)
+        itemDef { name r_cgdrawcrosshairp  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR
+                  rect 410 232 15 15  visible 1  decoration }
+        itemDef { text "Crosshair size"  textscale .21  rect 24 233 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairsize  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_crosshairSize" 32 8 64
+                  rect 290 233 96 15  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name r_cgcrosshairsizev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairSize"
+                  maxchars 7  maxpaintchars 7
+                  rect 398 233 56 15  textscale .19  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Crosshair brightness"  textscale .21  rect 24 249 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairbrightness  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_crosshairBrightness" 1 0 1
+                  rect 290 249 96 15  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name r_cgcrosshairbrightnessv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairBrightness"
+                  maxchars 7  maxpaintchars 7
+                  rect 398 249 56 15  textscale .19  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Pulse on pickup"  textscale .21  rect 24 265 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairpulse  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairPulse"
+                  rect 290 265 70 15  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Colour by health"  textscale .21  rect 24 281 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairhealth  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairHealth"
+                  rect 290 281 70 15  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Crosshair colour"  textscale .21  rect 24 297 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshaircolor  type ITEM_TYPE_SLIDER_COLOR  text ""
+                  cvarInt "cg_crosshairColor" 25 1 26
+                  cvarTest "cg_crosshairHealth"  disableCvar { "1" }
+                  rect 290 297 96 15  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Show player names"  textscale .21  rect 24 313 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawcrosshairnames  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshairNames"
+                  cvarFloatList { "No" 0 "Yes" 1 "Teammates Only" 2 }
+                  rect 290 313 250 15  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
         itemDef {
             name ig_setreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 220 265 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
+            rect 440 285 96 24  textalign ITEM_ALIGN_CENTER  textalignx 48  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset sensitivity ; reset cg_fov ; reset r_gamma ; reset s_volume ; reset s_musicvolume" }
+            action { play "sound/misc/menu1.wav" ; exec "reset sensitivity ; reset cg_fov ; reset r_gamma ; reset s_volume ; reset s_musicvolume ; reset cg_drawCrosshair ; reset cg_crosshairSize ; reset cg_crosshairBrightness ; reset cg_crosshairPulse ; reset cg_crosshairHealth ; reset cg_crosshairColor ; reset cg_drawCrosshairNames" }
             mouseEnter { setitemcolor ig_setreset backcolor 0 0 0 .9 ; setitemcolor ig_setreset forecolor 0.964 0.815 0 1 ; setitemcolor ig_setreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_setreset backcolor 0 0 0 .6 ; setitemcolor ig_setreset forecolor 1 1 1 1 ; setitemcolor ig_setreset bordercolor .35 .3 .12 1 }
         }
@@ -1193,17 +1243,8 @@
             mouseExit  { setitemcolor adv_io_ig_bloom backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_bloom forecolor 1 1 1 1 ; setitemcolor adv_io_ig_bloom bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name adv_io_ig_crosshair  text "CROSSHAIR"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 28 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
-            forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_crosshair }
-            mouseEnter { setitemcolor adv_io_ig_crosshair backcolor 0 0 0 .9 ; setitemcolor adv_io_ig_crosshair forecolor 0.964 0.815 0 1 ; setitemcolor adv_io_ig_crosshair bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor adv_io_ig_crosshair backcolor 0 0 0 .6 ; setitemcolor adv_io_ig_crosshair forecolor 1 1 1 1 ; setitemcolor adv_io_ig_crosshair bordercolor .35 .3 .12 1 }
-        }
-        itemDef {
             name adv_io_ig_hud  text "HUD"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 200 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 28 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_hud }
@@ -1212,7 +1253,7 @@
         }
         itemDef {
             name adv_io_ig_weapons  text "WEAPONS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 372 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 200 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_weapons }
@@ -1221,7 +1262,7 @@
         }
         itemDef {
             name adv_io_ig_effects  text "EFFECTS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 28 120 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 372 92 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_effects }
@@ -1230,7 +1271,7 @@
         }
         itemDef {
             name adv_io_ig_sound  text "SOUND"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 200 120 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 114 120 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_sound }
@@ -1239,7 +1280,7 @@
         }
         itemDef {
             name adv_io_ig_game  text "GAME"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 372 120 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 286 120 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; open io_ig_game }
@@ -1665,104 +1706,6 @@
             action { play "sound/misc/menu1.wav" ; close io_ig_bloom ; open io_ig_advanced }
             mouseEnter { setitemcolor bk_io_ig_bloom backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_bloom forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_bloom bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor bk_io_ig_bloom backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_bloom forecolor 1 1 1 1 ; setitemcolor bk_io_ig_bloom bordercolor .35 .3 .12 1 }
-        }
-    }
-
-    menuDef {
-        name "io_ig_crosshair"
-        rect 40 99 560 340
-        visible MENU_FALSE
-        fullScreen 0
-        style WINDOW_STYLE_EMPTY
-        focusColor 0.964 0.815 0 1
-
-        // Pages never handle ESC themselves. The frame owns it, so one key
-        // closes the whole menu from any tab instead of walking back a level.
-        onESC { uiScript closeingame }
-
-        // [QL] E113. Centred, like everything else on the page. The rows form a
-        // two-column layout that meets at the page's centre line, and a title
-        // hard against the left edge sat over nothing.
-        itemDef { name pgtitle  text "CROSSHAIR"  textscale .26  rect 20 0 520 24  textaligny 17
-                  textalign ITEM_ALIGN_CENTER  textalignx 260
-                  forecolor 0.964 0.815 0 1  visible 1  decoration }
-        itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
-                  backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "Style, size, brightness and what it reacts to."  textscale .19  rect 20 26 520 14  textaligny 11
-                  textalign ITEM_ALIGN_CENTER  textalignx 260
-                  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Crosshair"  textscale .21  rect 24 40 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgdrawcrosshair  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshair"
-                  cvarFloatList { "Off" 0 "Style 1" 1 "Style 2 (default)" 2 "Style 3" 3 "Style 4" 4 "Style 5" 5 "Style 6" 6 "Style 7" 7 "Style 8" 8 "Style 9" 9 "Style 10" 10 "Style 11" 11 "Style 12" 12 "Style 13" 13 "Style 14" 14 "Style 15" 15 "Style 16" 16 "Style 17" 17 "Style 18" 18 "Style 19" 19 "Style 20" 20 "Style 21" 21 "Style 22" 22 "Style 23" 23 "Style 24" 24 "Style 25" 25 "Style 26" 26 "Style 27" 27 "Style 28" 28 "Style 29" 29 }
-                  rect 290 40 110 16  textscale .21  textaligny 13  textalignx 2
-                  forecolor 1 1 1 1  visible 1 }
-        // check-menus: overlap-ok - drawn one row up from its rect (UI_DrawCrosshair)
-        itemDef { name r_cgdrawcrosshairp  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR
-                  rect 410 56 16 16  visible 1  decoration }
-        itemDef { text "Size"  textscale .21  rect 24 57 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgcrosshairsize  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "cg_crosshairSize" 32 8 64
-                  rect 290 57 96 16  textscale .21  textaligny 13
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_cgcrosshairsizev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairSize"
-                  maxchars 7  maxpaintchars 7
-                  rect 398 57 56 16  textscale .19  textaligny 12  textalignx 4
-                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
-                  border 1  bordersize 1  bordercolor .35 .3 .12 1
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Brightness"  textscale .21  rect 24 74 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgcrosshairbrightness  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "cg_crosshairBrightness" 1 0 1
-                  rect 290 74 96 16  textscale .21  textaligny 13
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_cgcrosshairbrightnessv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairBrightness"
-                  maxchars 7  maxpaintchars 7
-                  rect 398 74 56 16  textscale .19  textaligny 12  textalignx 4
-                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
-                  border 1  bordersize 1  bordercolor .35 .3 .12 1
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Pulse on pickup"  textscale .21  rect 24 91 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgcrosshairpulse  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairPulse"
-                  rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Colour by health"  textscale .21  rect 24 108 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgcrosshairhealth  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairHealth"
-                  rect 290 108 70 16  textscale .21  textaligny 13  textalignx 2
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Show player names"  textscale .21  rect 24 125 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgdrawcrosshairnames  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshairNames"
-                  cvarFloatList { "No" 0 "Yes" 1 "Teammates Only" 2 }
-                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef {
-            name rs_io_ig_crosshair  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
-            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
-            forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset cg_drawCrosshair ; reset cg_crosshairSize ; reset cg_crosshairBrightness ; reset cg_crosshairPulse ; reset cg_crosshairHealth ; reset cg_drawCrosshairNames" }
-            mouseEnter { setitemcolor rs_io_ig_crosshair backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_crosshair forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_crosshair bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor rs_io_ig_crosshair backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_crosshair forecolor 1 1 1 1 ; setitemcolor rs_io_ig_crosshair bordercolor .35 .3 .12 1 }
-        }
-        itemDef {
-            name bk_io_ig_crosshair  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
-            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
-            forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_ig_crosshair ; open io_ig_advanced }
-            mouseEnter { setitemcolor bk_io_ig_crosshair backcolor 0 0 0 .9 ; setitemcolor bk_io_ig_crosshair forecolor 0.964 0.815 0 1 ; setitemcolor bk_io_ig_crosshair bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor bk_io_ig_crosshair backcolor 0 0 0 .6 ; setitemcolor bk_io_ig_crosshair forecolor 1 1 1 1 ; setitemcolor bk_io_ig_crosshair bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -2439,12 +2382,19 @@
                   cvarFloatList { "No" 0 "Yes (Verbose)" 1 "Yes (Small)" 2 }
                   rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Scoreboard"  textscale .21  rect 24 244 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgioscoreboard  type ITEM_TYPE_MULTI  text ""  cvar "cg_ioScoreboard"
+                  cvarFloatList { "Replacement (default)" 1 "Quake Live original" 0 }
+                  rect 290 244 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_game  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset cg_allowTaunt ; reset cg_zoomToggle ; reset cg_zoomScaling ; reset cg_useItemMessage ; reset cg_useItemWarning ; reset cg_forceEnemyModel ; reset cg_forceTeamModel ; reset cg_followKiller ; reset cg_followPowerup ; reset cg_specFov ; reset cl_allowConsoleChat ; reset cl_demoRecordMessage" }
+            action { play "sound/misc/menu1.wav" ; exec "reset cg_allowTaunt ; reset cg_zoomToggle ; reset cg_zoomScaling ; reset cg_useItemMessage ; reset cg_useItemWarning ; reset cg_forceEnemyModel ; reset cg_forceTeamModel ; reset cg_followKiller ; reset cg_followPowerup ; reset cg_specFov ; reset cl_allowConsoleChat ; reset cl_demoRecordMessage ; reset cg_ioScoreboard" }
             mouseEnter { setitemcolor rs_io_ig_game backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_game forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_game bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_game backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_game forecolor 1 1 1 1 ; setitemcolor rs_io_ig_game bordercolor .35 .3 .12 1 }
         }

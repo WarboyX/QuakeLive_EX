@@ -666,13 +666,11 @@ static cvarTable_t cvarTable[] = {
        sets, which is what archive is for. The r_waterWave* tuning numbers are
        the other case and are archived only when changed. */
     {&cg_waterRipples, "cg_waterRipples", "1", CVAR_ARCHIVE},
-    /*
-    [QL] E119. The replacement scoreboard. Deliberately unadvertised: default 0,
-    no description, no menu row, and not archived - so it never lands in a
-    player's config and a release build shows Quake Live's own scoreboard with
-    nothing to clear. Test builds switch it on from the shipped autoexec.cfg.
-    */
-    {&cg_ioScoreboard, "cg_ioScoreboard", "0", 0},
+    // [QL] E119's replacement scoreboard. E131: now the default, with the
+    // switch back to Quake Live's own on Advanced > HUD. Saved once changed
+    // (NODEFAULT), so the player's choice sticks and a changed default still
+    // reaches everyone else. Was "0" and unsaved, on only via autoexec.cfg.
+    {&cg_ioScoreboard, "cg_ioScoreboard", "1", CVAR_ARCHIVE | CVAR_NODEFAULT},
     {&cg_tracerChance, "cg_tracerchance", "0.4", CVAR_CHEAT},
     {&cg_tracerWidth, "cg_tracerwidth", "1", CVAR_CHEAT},
     {&cg_tracerLength, "cg_tracerlength", "100", CVAR_CHEAT},
