@@ -341,6 +341,27 @@ def page(menu, title, spec, buttons):
 
 
 # ---------------------------------------------------------------- pages ------
+def page_cvars(spec):
+    """Every cvar a page's rows set, walking into alt blocks."""
+    out = []
+    for e in spec:
+        if e[0] == "alt":
+            out += [c for c in page_cvars(e[1]) + page_cvars(e[2]) if c not in out]
+        elif e[0] in ("multi", "str", "yesno", "slider") and e[1] not in out:
+            out.append(e[1])
+    return out
+
+
+def reset_button(spec):
+    """
+    [QL] E130. RESET for a page, generated from its own rows: the engine's
+    "reset" per cvar, which restores the default the code registered. The
+    hand-written RESET WATER carried values of its own and had already drifted
+    from the code once (it reset SSR to 2048/32/8 against 1024/24/24).
+    """
+    return ("rreset", "RESET", 120, ig.reset_action(page_cvars(spec)))
+
+
 CLOSE = "leave"          # BACK in a game, CLOSE on the main menu - see footer()
 APPLY_BTN = ("rapply", "APPLY (restart video)", 210, APPLY)
 
@@ -428,9 +449,7 @@ def raytracing():
         # contact shadow reads as dirt. Cleared over the light's own falloff.
         ("multi", "r_rtaoLights", "Lights clear AO", '"Off" 0 "Half" 0.5 "Full (default)" 1'),
     ]
-    reset = ("raoreset", "RESET AO", 120,
-             'exec "set r_rtao 0 ; set r_rtaoRadius 64 ; set r_rtaoIntensity 0.8 ; '
-             'set r_rtaoSamples 4 ; set r_rtaoDenoise 1 ; set r_rtaoLights 1"')
+    reset = reset_button(spec)
     return page(name("raytracing"), "LIGHTING & RAY TRACING", spec, [reset, APPLY_BTN, CLOSE])
 
 
@@ -470,12 +489,7 @@ def water():
         ("multi", "r_waterRippleLife", "Ripple lifetime", '"1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6'),
         ("multi", "r_waterFoam", "Foam", '"Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2'),
     ]
-    reset = ("rwreset", "RESET WATER", 130,
-             'exec "set r_ssr 0 ; set r_ssrDistance 1024 ; set r_ssrSteps 24 ; set r_ssrThickness 24 ; '
-             'set r_ssrDebug 0 ; set r_waterWaves 1 ; set r_waterWaveSteepness 0.08 ; '
-             'set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; '
-             'set r_waterFoam 0 ; set r_waterRippleSize 4 ; set r_waterRippleHeight 4 ; '
-             'set r_waterRippleWaves 5 ; set r_waterRippleLife 2.2"')
+    reset = reset_button(spec)
     return page(name("water"), "WATER", spec, [reset, CLOSE])
 
 
@@ -532,7 +546,7 @@ def surface_detail():
         # it works on a /devmap, where the test maps are judged, and says so.
         ("slider", "r_ambientScale", "Ambient (devmap only)", ("0.6", "0", "2")),
     ]
-    return page(name("surfacedetail"), "SURFACE DETAIL", spec, [APPLY_BTN, CLOSE])
+    return page(name("surfacedetail"), "SURFACE DETAIL", spec, [reset_button(spec), APPLY_BTN, CLOSE])
 
 
 # ---------------------------------------------------------------- prompt -----

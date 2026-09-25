@@ -446,10 +446,38 @@ def row_label(text, y):
             % (text, y, LABEL_END - 24, ROW_H - 1, LABEL_END - 24, WHITE))
 
 
+def reset_action(cvars):
+    """
+    [QL] E130. A RESET button's action: the engine's own "reset" per cvar, which
+    puts each back to the default the code registered. No value is written here,
+    so a default that changes in the code can never leave a RESET behind it.
+    """
+    return 'exec "%s"' % " ; ".join("reset %s" % c for c in cvars)
+
+
 def row(kind, cvar, text, y, extra=None):
     """One settings row: the label on the left, the control at x=290."""
     nm = "r_" + re.sub(r"[^a-z0-9]", "", cvar.lower())
     out = row_label(text, y)
+    if kind == "crosshair":
+        # [QL] E130. The style as a value that cycles on click like every other
+        # row, and the picture beside it. UI_DrawCrosshair paints at rect.y -
+        # rect.h (Team Arena's convention, which Quake Live's own menus are
+        # laid out for), so the preview's rect sits one row low to land level
+        # with its label - and is a decoration, so that low rect never takes a
+        # click meant for the row beneath it.
+        styles = '"Off" 0 ' + " ".join(
+            '"Style %d%s" %d' % (i, " (default)" if i == 2 else "", i) for i in range(1, 30))
+        out += ('        itemDef { name %s  type ITEM_TYPE_MULTI  text ""  cvar "%s"\n'
+                '                  cvarFloatList { %s }\n'
+                '                  rect %d %d 110 %d  textscale .21  textaligny 13  textalignx 2\n'
+                '                  forecolor 1 1 1 1  visible 1 }\n'
+                '        // check-menus: overlap-ok - drawn one row up from its rect (UI_DrawCrosshair)\n'
+                '        itemDef { name %sp  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR\n'
+                '                  rect %d %d %d %d  visible 1  decoration }\n'
+                % (nm, cvar, styles, CTRL_X, y, ROW_H - 1,
+                   nm, CTRL_X + 120, y + ROW_H - 1, ROW_H - 1, ROW_H - 1))
+        return out
     if kind == "slider":
         dflt, lo, hi = extra
         out += ('        itemDef { name %s  type ITEM_TYPE_SLIDER  text ""\n'
@@ -646,8 +674,11 @@ def page_controls():
     # Centred pair, like Apply/Back. The hint moved up into the subtitle: there
     # is no room for it under the buttons, and beside them it was the one piece
     # of text on the page that did not line up with anything.
-    b += button("ig_ctlsave", "SAVE", 150, y + 8, 120, "uiScript saveControls")
-    b += button("ig_ctlreload", "RELOAD", 290, y + 8, 120, "uiScript loadControls")
+    b += button("ig_ctlsave", "SAVE", 80, y + 8, 120, "uiScript saveControls")
+    b += button("ig_ctlreload", "RELOAD", 220, y + 8, 120, "uiScript loadControls")
+    # [QL] E130. Quake Live's default.cfg is exactly "unbindall" and its 60
+    # default binds, so running it is "reset controls" and nothing else.
+    b += button("ig_ctlreset", "RESET", 360, y + 8, 120, 'exec "exec default.cfg"')
     return page("io_ig_controls", "CONTROLS", b,
                 "Click a binding, then press the key you want to use.")
 
@@ -723,19 +754,18 @@ def page_settings():
     ]:
         b += row(kind, cvar, text, y, extra)
         y += ROW_H
-    # The crosshair preview is 20 square against a 16-tall row, so it gets its
-    # own slot rather than being squeezed into one and drawn over its neighbours.
-    b += row_label("Crosshair", y + 4)
-    b += ('        itemDef { name ig_xhair  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR\n'
-          '                  rect %d %d 20 20  visible 1 }\n' % (CTRL_X, y + 2))
-    y += 26
-    b += row("slider", "cg_crosshairSize", "Crosshair size", y, ("32", "8", "64"))
-    y += ROW_H - 1
-    for i, t in enumerate(["Resolution, texture detail and everything else Quake Live keeps on its",
+    # [QL] E130. The crosshair rows moved to Advanced > Crosshair: the style and
+    # size were here AND there, two places to change one setting.
+    y += 4
+    for i, t in enumerate(["Crosshair, resolution, texture detail and the rest of Quake Live's",
                            "advanced page are under the Advanced tab - and on the render menu."]):
         b += ('        itemDef { text "%s"  textscale .17  rect 24 %d 512 16  textaligny 12\n'
               '                  textalign ITEM_ALIGN_CENTER  textalignx 256\n'
               '                  forecolor %s  visible 1  decoration }\n' % (t, y + i * 17, DIM))
+    # [QL] E130. RESET puts the sliders back. Name, model and handicap are who
+    # you are, not settings, and are never touched by it.
+    b += button("ig_setreset", "RESET", 220, y + 44, 120,
+                reset_action(["sensitivity", "cg_fov", "r_gamma", "s_volume", "s_musicvolume"]))
     return page("io_ig_settings", "PLAYER", b,
                 "Who you are, and the settings you change most.")
 
@@ -842,13 +872,14 @@ SUBPAGES = [
         ("yesno",  "r_enablePostProcess",    "Post processing"),
         ("yesno",  "r_enableColorCorrect",   "Colour correction"),
     ], "The Vulkan renderer has its own effects under Render Options."),
-    ("io_ig_crosshair", "CROSSHAIR", "Size, brightness and what it reacts to.", [
+    ("io_ig_crosshair", "CROSSHAIR", "Style, size, brightness and what it reacts to.", [
+        ("crosshair", "cg_drawCrosshair",    "Crosshair"),
         ("slider", "cg_crosshairSize",       "Size",       ("32", "8", "64")),
         ("slider", "cg_crosshairBrightness", "Brightness", ("1", "0", "1")),
         ("yesno",  "cg_crosshairPulse",      "Pulse on pickup"),
         ("yesno",  "cg_crosshairHealth",     "Colour by health"),
         ("multi",  "cg_drawCrosshairNames",  "Show player names"),
-    ], "The crosshair shape itself is on the Settings tab, beside its preview."),
+    ], None),   # E130: the shape is the first row now, not on the Player tab
     ("io_ig_hud", "HUD", "What is drawn on screen while you play.", [
         ("slider", "cg_fov",                 "Field of view",      ("100", "75", "130")),
         ("slider", "cg_zoomfov",             "Zoom field of view", ("30", "10", "90")),
@@ -928,6 +959,7 @@ def advanced_subpages():
         # Advanced and there is nothing up there to click to return.
         # Boxed and centred on the page's centre line, like the rows above.
         back = "close %s ; open io_ig_advanced" % menu
+        reset = reset_action([r[1] for r in rows])
         if any(r[1].startswith("r_") for r in rows):
             # Resolution, fullscreen and colour depth are latched by the
             # renderer; without Apply the page looks like it did nothing.
@@ -935,10 +967,12 @@ def advanced_subpages():
             # overbright only take effect on vid_restart, and those pages had
             # a Back and no Apply, so a change there did nothing until the
             # next map or restart. Any page with a renderer row gets the pair.
-            extra = boxbutton("ap_" + menu, "APPLY", 150, 266, 120, 'exec "vid_restart"')
-            extra += boxbutton("bk_" + menu, "BACK", 290, 266, 120, back)
+            extra = boxbutton("rs_" + menu, "RESET", 80, 266, 120, reset)
+            extra += boxbutton("ap_" + menu, "APPLY", 220, 266, 120, 'exec "vid_restart"')
+            extra += boxbutton("bk_" + menu, "BACK", 360, 266, 120, back)
         else:
-            extra = boxbutton("bk_" + menu, "BACK", 220, 266, 120, back)
+            extra = boxbutton("rs_" + menu, "RESET", 150, 266, 120, reset)
+            extra += boxbutton("bk_" + menu, "BACK", 290, 266, 120, back)
         out += rows_page(menu, title, sub, rows, footer, extra)
     return out
 

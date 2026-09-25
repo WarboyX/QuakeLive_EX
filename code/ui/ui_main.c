@@ -1293,6 +1293,15 @@ static void UI_DrawRedBlue(rectDef_t* rect, float scale, vec4_t color, int textS
 }
 
 static void UI_DrawCrosshair(rectDef_t* rect, float scale, vec4_t color) {
+    // [QL] E130. Follow the cvar every frame. currentCrosshair was only read
+    // when the in-game menu opened, and the Crosshair page now changes
+    // cg_drawCrosshair from an ordinary value row, which would have left this
+    // preview showing the old style.
+    {
+        int c = (int)trap_Cvar_VariableValue("cg_drawCrosshair");
+
+        uiInfo.currentCrosshair = (c < 0 || c >= NUM_CROSSHAIRS) ? 0 : c;
+    }
     if (!uiInfo.currentCrosshair) {
         return;
     }

@@ -979,7 +979,7 @@
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name ig_ctlsave  text "SAVE"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 150 256 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
+            rect 80 256 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript saveControls }
@@ -988,12 +988,21 @@
         }
         itemDef {
             name ig_ctlreload  text "RELOAD"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 290 256 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
+            rect 220 256 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; uiScript loadControls }
             mouseEnter { setitemcolor ig_ctlreload backcolor 0 0 0 .9 ; setitemcolor ig_ctlreload forecolor 0.964 0.815 0 1 ; setitemcolor ig_ctlreload bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_ctlreload backcolor 0 0 0 .6 ; setitemcolor ig_ctlreload forecolor 1 1 1 1 ; setitemcolor ig_ctlreload bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name ig_ctlreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 360 256 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "exec default.cfg" }
+            mouseEnter { setitemcolor ig_ctlreset backcolor 0 0 0 .9 ; setitemcolor ig_ctlreset forecolor 0.964 0.815 0 1 ; setitemcolor ig_ctlreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_ctlreset backcolor 0 0 0 .6 ; setitemcolor ig_ctlreset forecolor 1 1 1 1 ; setitemcolor ig_ctlreset bordercolor .35 .3 .12 1 }
         }
     }
 
@@ -1113,30 +1122,21 @@
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Crosshair"  textscale .21  rect 24 221 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name ig_xhair  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR
-                  rect 290 219 20 20  visible 1 }
-        itemDef { text "Crosshair size"  textscale .21  rect 24 243 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgcrosshairsize  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "cg_crosshairSize" 32 8 64
-                  rect 290 243 96 16  textscale .21  textaligny 13
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_cgcrosshairsizev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairSize"
-                  maxchars 7  maxpaintchars 7
-                  rect 398 243 56 16  textscale .19  textaligny 12  textalignx 4
-                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
-                  border 1  bordersize 1  bordercolor .35 .3 .12 1
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Resolution, texture detail and everything else Quake Live keeps on its"  textscale .17  rect 24 259 512 16  textaligny 12
+        itemDef { text "Crosshair, resolution, texture detail and the rest of Quake Live's"  textscale .17  rect 24 221 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "advanced page are under the Advanced tab - and on the render menu."  textscale .17  rect 24 276 512 16  textaligny 12
+        itemDef { text "advanced page are under the Advanced tab - and on the render menu."  textscale .17  rect 24 238 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name ig_setreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 220 265 120 24  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset sensitivity ; reset cg_fov ; reset r_gamma ; reset s_volume ; reset s_musicvolume" }
+            mouseEnter { setitemcolor ig_setreset backcolor 0 0 0 .9 ; setitemcolor ig_setreset forecolor 0.964 0.815 0 1 ; setitemcolor ig_setreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_setreset backcolor 0 0 0 .6 ; setitemcolor ig_setreset forecolor 1 1 1 1 ; setitemcolor ig_setreset bordercolor .35 .3 .12 1 }
+        }
     }
 
     menuDef {
@@ -1397,8 +1397,17 @@
                   rect 290 210 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name rs_io_ig_video  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset r_mode ; reset r_fullscreen ; reset r_windowedMode ; reset r_displayRefresh ; reset r_swapInterval ; reset r_picmip ; reset r_texturebits ; reset r_ext_compressed_textures ; reset r_subdivisions ; reset r_lodbias ; reset r_fastsky" }
+            mouseEnter { setitemcolor rs_io_ig_video backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_video forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_video bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_video backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_video forecolor 1 1 1 1 ; setitemcolor rs_io_ig_video bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name ap_io_ig_video  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
@@ -1407,7 +1416,7 @@
         }
         itemDef {
             name bk_io_ig_video  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 360 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_video ; open io_ig_advanced }
@@ -1492,8 +1501,17 @@
                   rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name rs_io_ig_light  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset r_gamma ; reset r_overbrightBits ; reset r_mapOverbrightBits ; reset r_dynamicLight ; reset cg_shadows ; reset cg_deadBodyDarken ; reset cg_vignette" }
+            mouseEnter { setitemcolor rs_io_ig_light backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_light forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_light bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_light backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_light forecolor 1 1 1 1 ; setitemcolor rs_io_ig_light bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name ap_io_ig_light  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
@@ -1502,7 +1520,7 @@
         }
         itemDef {
             name bk_io_ig_light  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 360 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_light ; open io_ig_advanced }
@@ -1622,8 +1640,17 @@
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef {
+            name rs_io_ig_bloom  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset r_enableBloom ; reset r_bloomIntensity ; reset r_bloomBrightThreshold ; reset r_bloomSaturation ; reset r_bloomSceneIntensity ; reset r_bloomSceneSaturation ; reset r_enablePostProcess ; reset r_enableColorCorrect" }
+            mouseEnter { setitemcolor rs_io_ig_bloom backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_bloom forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_bloom bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_bloom backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_bloom forecolor 1 1 1 1 ; setitemcolor rs_io_ig_bloom bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name ap_io_ig_bloom  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
@@ -1632,7 +1659,7 @@
         }
         itemDef {
             name bk_io_ig_bloom  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 360 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_bloom ; open io_ig_advanced }
@@ -1661,60 +1688,76 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "Size, brightness and what it reacts to."  textscale .19  rect 20 26 520 14  textaligny 11
+        itemDef { text "Style, size, brightness and what it reacts to."  textscale .19  rect 20 26 520 14  textaligny 11
                   textalign ITEM_ALIGN_CENTER  textalignx 260
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Size"  textscale .21  rect 24 40 246 16  textaligny 13
+        itemDef { text "Crosshair"  textscale .21  rect 24 40 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgdrawcrosshair  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshair"
+                  cvarFloatList { "Off" 0 "Style 1" 1 "Style 2 (default)" 2 "Style 3" 3 "Style 4" 4 "Style 5" 5 "Style 6" 6 "Style 7" 7 "Style 8" 8 "Style 9" 9 "Style 10" 10 "Style 11" 11 "Style 12" 12 "Style 13" 13 "Style 14" 14 "Style 15" 15 "Style 16" 16 "Style 17" 17 "Style 18" 18 "Style 19" 19 "Style 20" 20 "Style 21" 21 "Style 22" 22 "Style 23" 23 "Style 24" 24 "Style 25" 25 "Style 26" 26 "Style 27" 27 "Style 28" 28 "Style 29" 29 }
+                  rect 290 40 110 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        // check-menus: overlap-ok - drawn one row up from its rect (UI_DrawCrosshair)
+        itemDef { name r_cgdrawcrosshairp  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR
+                  rect 410 56 16 16  visible 1  decoration }
+        itemDef { text "Size"  textscale .21  rect 24 57 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgcrosshairsize  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "cg_crosshairSize" 32 8 64
-                  rect 290 40 96 16  textscale .21  textaligny 13
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_cgcrosshairsizev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairSize"
-                  maxchars 7  maxpaintchars 7
-                  rect 398 40 56 16  textscale .19  textaligny 12  textalignx 4
-                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
-                  border 1  bordersize 1  bordercolor .35 .3 .12 1
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Brightness"  textscale .21  rect 24 57 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgcrosshairbrightness  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "cg_crosshairBrightness" 1 0 1
                   rect 290 57 96 16  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_cgcrosshairbrightnessv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairBrightness"
+        itemDef { name r_cgcrosshairsizev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairSize"
                   maxchars 7  maxpaintchars 7
                   rect 398 57 56 16  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Pulse on pickup"  textscale .21  rect 24 74 246 16  textaligny 13
+        itemDef { text "Brightness"  textscale .21  rect 24 74 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairbrightness  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_crosshairBrightness" 1 0 1
+                  rect 290 74 96 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name r_cgcrosshairbrightnessv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairBrightness"
+                  maxchars 7  maxpaintchars 7
+                  rect 398 74 56 16  textscale .19  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Pulse on pickup"  textscale .21  rect 24 91 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgcrosshairpulse  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairPulse"
-                  rect 290 74 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Colour by health"  textscale .21  rect 24 91 246 16  textaligny 13
+        itemDef { text "Colour by health"  textscale .21  rect 24 108 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgcrosshairhealth  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairHealth"
-                  rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 108 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Show player names"  textscale .21  rect 24 108 246 16  textaligny 13
+        itemDef { text "Show player names"  textscale .21  rect 24 125 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgdrawcrosshairnames  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshairNames"
                   cvarFloatList { "No" 0 "Yes" 1 "Teammates Only" 2 }
-                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "The crosshair shape itself is on the Settings tab, beside its preview."  textscale .17  rect 24 131 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef {
+            name rs_io_ig_crosshair  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset cg_drawCrosshair ; reset cg_crosshairSize ; reset cg_crosshairBrightness ; reset cg_crosshairPulse ; reset cg_crosshairHealth ; reset cg_drawCrosshairNames" }
+            mouseEnter { setitemcolor rs_io_ig_crosshair backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_crosshair forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_crosshair bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_crosshair backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_crosshair forecolor 1 1 1 1 ; setitemcolor rs_io_ig_crosshair bordercolor .35 .3 .12 1 }
+        }
         itemDef {
             name bk_io_ig_crosshair  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_crosshair ; open io_ig_advanced }
@@ -1841,8 +1884,17 @@
                   rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name rs_io_ig_hud  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset cg_fov ; reset cg_zoomfov ; reset cg_drawGun ; reset cg_guny ; reset cg_drawFPS ; reset cg_lagometer ; reset cg_speedometer ; reset cg_drawAttacker ; reset cg_drawTeamOverlay ; reset cg_weaponBar ; reset cg_drawFullWeaponBar ; reset cg_leveltimerdirection" }
+            mouseEnter { setitemcolor rs_io_ig_hud backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_hud forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_hud bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_hud backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_hud forecolor 1 1 1 1 ; setitemcolor rs_io_ig_hud bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name bk_io_ig_hud  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_hud ; open io_ig_advanced }
@@ -1985,8 +2037,17 @@
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name rs_io_ig_weapons  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset cg_autoSwitch ; reset cg_switchOnEmpty ; reset cg_switchToEmpty ; reset cg_muzzleFlash ; reset cg_brassTime ; reset cg_trueLightning ; reset cg_lightningStyle ; reset cg_lightningImpact ; reset cg_plasmaStyle ; reset cg_rocketStyle ; reset cg_railTrailTime ; reset r_railWidth ; reset r_railCoreWidth" }
+            mouseEnter { setitemcolor rs_io_ig_weapons backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_weapons forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_weapons bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_weapons backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_weapons forecolor 1 1 1 1 ; setitemcolor rs_io_ig_weapons bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name ap_io_ig_weapons  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
@@ -1995,7 +2056,7 @@
         }
         itemDef {
             name bk_io_ig_weapons  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 360 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_weapons ; open io_ig_advanced }
@@ -2143,8 +2204,17 @@
                   rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name rs_io_ig_effects  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset r_railSegmentLength ; reset cg_simpleItems ; reset cg_impactSparksVelocity ; reset cg_bubbleTrail ; reset cg_damagePlum ; reset cg_smokeRadius_RL ; reset cg_smokeRadius_GL ; reset cg_smokeRadius_NG ; reset cg_smoke_SG ; reset cg_kickScale ; reset cg_waterWarp ; reset cg_flagStyle" }
+            mouseEnter { setitemcolor rs_io_ig_effects backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_effects forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_effects bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_effects backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_effects forecolor 1 1 1 1 ; setitemcolor rs_io_ig_effects bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name ap_io_ig_effects  text "APPLY"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
@@ -2153,7 +2223,7 @@
         }
         itemDef {
             name bk_io_ig_effects  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 360 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_effects ; open io_ig_advanced }
@@ -2251,8 +2321,17 @@
                   rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name rs_io_ig_sound  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset s_volume ; reset s_musicvolume ; reset s_voiceVolume ; reset s_doppler ; reset cg_announcer ; reset cg_chatbeep ; reset cg_hitbeep" }
+            mouseEnter { setitemcolor rs_io_ig_sound backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_sound forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_sound bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_sound backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_sound forecolor 1 1 1 1 ; setitemcolor rs_io_ig_sound bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name bk_io_ig_sound  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_sound ; open io_ig_advanced }
@@ -2361,8 +2440,17 @@
                   rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
+            name rs_io_ig_game  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
+            rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset cg_allowTaunt ; reset cg_zoomToggle ; reset cg_zoomScaling ; reset cg_useItemMessage ; reset cg_useItemWarning ; reset cg_forceEnemyModel ; reset cg_forceTeamModel ; reset cg_followKiller ; reset cg_followPowerup ; reset cg_specFov ; reset cl_allowConsoleChat ; reset cl_demoRecordMessage" }
+            mouseEnter { setitemcolor rs_io_ig_game backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_game forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_game bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rs_io_ig_game backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_game forecolor 1 1 1 1 ; setitemcolor rs_io_ig_game bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name bk_io_ig_game  text "BACK"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 220 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 290 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_game ; open io_ig_advanced }
@@ -4214,13 +4302,13 @@
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name raoreset  text "RESET AO"  type ITEM_TYPE_BUTTON  textscale .25
+            name rreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .25
             rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "set r_rtao 0 ; set r_rtaoRadius 64 ; set r_rtaoIntensity 0.8 ; set r_rtaoSamples 4 ; set r_rtaoDenoise 1 ; set r_rtaoLights 1" }
-            mouseEnter { setitemcolor raoreset backcolor 0 0 0 .9 ; setitemcolor raoreset forecolor 0.964 0.815 0 1 ; setitemcolor raoreset bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor raoreset backcolor 0 0 0 .6 ; setitemcolor raoreset forecolor 1 1 1 1 ; setitemcolor raoreset bordercolor .35 .3 .12 1 }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rt ; reset r_rtao ; reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
+            mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name rapply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
@@ -4436,17 +4524,17 @@
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rwreset  text "RESET WATER"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 149 448 130 26  textalign ITEM_ALIGN_CENTER  textalignx 65  textaligny 17
+            name rreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "set r_ssr 0 ; set r_ssrDistance 1024 ; set r_ssrSteps 24 ; set r_ssrThickness 24 ; set r_ssrDebug 0 ; set r_waterWaves 1 ; set r_waterWaveSteepness 0.08 ; set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; set r_waterFoam 0 ; set r_waterRippleSize 4 ; set r_waterRippleHeight 4 ; set r_waterRippleWaves 5 ; set r_waterRippleLife 2.2" }
-            mouseEnter { setitemcolor rwreset backcolor 0 0 0 .9 ; setitemcolor rwreset forecolor 0.964 0.815 0 1 ; setitemcolor rwreset bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor rwreset backcolor 0 0 0 .6 ; setitemcolor rwreset forecolor 1 1 1 1 ; setitemcolor rwreset bordercolor .35 .3 .12 1 }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_ssr ; reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed ; reset r_waterRippleSize ; reset r_waterRippleHeight ; reset r_waterRippleWaves ; reset r_waterRippleLife ; reset r_waterFoam" }
+            mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name rclose  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 291 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            rect 286 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
@@ -4660,8 +4748,17 @@
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
+            name rreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset r_dlightMode ; reset cg_beamLights ; reset r_qlNormalMaps ; reset r_qlNormalScale ; reset r_qlNormalMaxTilt ; reset r_deluxeMapping ; reset r_qlBumpScale ; reset r_qlParallax ; reset r_qlBumpSpecular ; reset r_qlNaturalTextures ; reset r_cubeMapping ; reset r_cubemapSize ; reset r_specularMapping ; reset r_normalMapping ; reset r_ambientScale" }
+            mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name rapply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 109 448 210 26  textalign ITEM_ALIGN_CENTER  textalignx 105  textaligny 17
+            rect 175 448 210 26  textalign ITEM_ALIGN_CENTER  textalignx 105  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
@@ -4670,7 +4767,7 @@
         }
         itemDef {
             name rclose  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 331 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            rect 397 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_surfacedetail }
@@ -5091,13 +5188,13 @@
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name raoreset  text "RESET AO"  type ITEM_TYPE_BUTTON  textscale .25
+            name rreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .25
             rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "set r_rtao 0 ; set r_rtaoRadius 64 ; set r_rtaoIntensity 0.8 ; set r_rtaoSamples 4 ; set r_rtaoDenoise 1 ; set r_rtaoLights 1" }
-            mouseEnter { setitemcolor raoreset backcolor 0 0 0 .9 ; setitemcolor raoreset forecolor 0.964 0.815 0 1 ; setitemcolor raoreset bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor raoreset backcolor 0 0 0 .6 ; setitemcolor raoreset forecolor 1 1 1 1 ; setitemcolor raoreset bordercolor .35 .3 .12 1 }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rt ; reset r_rtao ; reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
+            mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name rapply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
@@ -5313,17 +5410,17 @@
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rwreset  text "RESET WATER"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 149 448 130 26  textalign ITEM_ALIGN_CENTER  textalignx 65  textaligny 17
+            name rreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "set r_ssr 0 ; set r_ssrDistance 1024 ; set r_ssrSteps 24 ; set r_ssrThickness 24 ; set r_ssrDebug 0 ; set r_waterWaves 1 ; set r_waterWaveSteepness 0.08 ; set r_waterWaveHeight 2 ; set r_waterWaveScale 96 ; set r_waterWaveSpeed 1 ; set r_waterFoam 0 ; set r_waterRippleSize 4 ; set r_waterRippleHeight 4 ; set r_waterRippleWaves 5 ; set r_waterRippleLife 2.2" }
-            mouseEnter { setitemcolor rwreset backcolor 0 0 0 .9 ; setitemcolor rwreset forecolor 0.964 0.815 0 1 ; setitemcolor rwreset bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor rwreset backcolor 0 0 0 .6 ; setitemcolor rwreset forecolor 1 1 1 1 ; setitemcolor rwreset bordercolor .35 .3 .12 1 }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_ssr ; reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed ; reset r_waterRippleSize ; reset r_waterRippleHeight ; reset r_waterRippleWaves ; reset r_waterRippleLife ; reset r_waterFoam" }
+            mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
         itemDef {
             name rback  text "BACK"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 291 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            rect 286 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_surfacedetail ; open io_ingame ; open io_ig_advanced }
@@ -5537,8 +5634,17 @@
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
+            name rreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset r_dlightMode ; reset cg_beamLights ; reset r_qlNormalMaps ; reset r_qlNormalScale ; reset r_qlNormalMaxTilt ; reset r_deluxeMapping ; reset r_qlBumpScale ; reset r_qlParallax ; reset r_qlBumpSpecular ; reset r_qlNaturalTextures ; reset r_cubeMapping ; reset r_cubemapSize ; reset r_specularMapping ; reset r_normalMapping ; reset r_ambientScale" }
+            mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
             name rapply  text "APPLY (restart video)"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 109 448 210 26  textalign ITEM_ALIGN_CENTER  textalignx 105  textaligny 17
+            rect 175 448 210 26  textalign ITEM_ALIGN_CENTER  textalignx 105  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "vid_restart" }
@@ -5547,7 +5653,7 @@
         }
         itemDef {
             name rback  text "BACK"  type ITEM_TYPE_BUTTON  textscale .25
-            rect 331 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            rect 397 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_surfacedetail ; open io_ingame ; open io_ig_advanced }

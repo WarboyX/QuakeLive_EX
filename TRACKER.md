@@ -6048,6 +6048,22 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E130. Crosshair row lined up and in one place; RESET on the settings pages — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Reported from the in-game Player page.
+
+- **The crosshair preview drew one row above its label**, over the Music slider. `UI_DrawCrosshair` paints at `rect.y - rect.h`, Team Arena's convention, and Quake Live's own menus are laid out for it, so the engine stays as it is. The crosshair row is now an ordinary value ("Style 1–29", "Off") that cycles on click like every other row, with the preview as a decoration beside it, placed for that offset. The preview also follows `cg_drawCrosshair` every frame; it used to be read only when the menu opened.
+- **Crosshair settings were in two places.** Style and size were on Player *and* Advanced > Crosshair. Everything crosshair is now on Advanced > Crosshair, and the Player page's footnote says so.
+- **RESET buttons:**
+  - every Advanced sub-page (Video, Lighting, Bloom, Crosshair, HUD, Weapons, Effects, Sound, Game);
+  - Player (sliders only; name, model and handicap are never touched);
+  - Controls (runs Quake Live's `default.cfg`, which is exactly `unbindall` plus its default binds);
+  - the Lighting & Ray Tracing, Water and Surface Detail render pages.
+
+  Each one runs the engine's own `reset` for the cvars on that page, which restores the default the code registered, and is **generated** from the page's rows. No value is written in any menu, so a RESET can't drift from the code, as RESET WATER had (it reset SSR to 2048/32/8 against the code's 1024/24/24). Render Options keeps its presets rather than a reset, because a reset there would also switch the renderer and resolution back.
+- **Checked:** `reset cg_fov` from 120 gave "100, the default". Both pages were photographed in a game: the preview is level with its row, and the RESET buttons are placed.
+
 ### E129. The hardware prompt decides by PCI ID, from a real GPU list — DONE (verify)
 **Lives in:** our **client** (client engine) · **Seen by:** our client only
 
