@@ -738,7 +738,8 @@ void BotAddAvoidSpot(int movestate, vec3_t origin, float radius, int type) {
 //===========================================================================
 int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, int lastareanum, int* avoidreach, float* avoidreachtimes, int* avoidreachtries, bot_goal_t* goal, int travelflags, struct bot_avoidspot_s* avoidspots, int numavoidspots, int* flags) {
     int i, t, besttime, bestreachnum, reachnum;
-    aas_reachability_t reach;
+    int nextreachnum, backtime = 0, backreachnum = 0;  // [QL] E135
+    aas_reachability_t reach, nextreach;
 
     // if not in a valid area
     if (!areanum)
@@ -779,7 +780,8 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         if (!BotValidTravel(origin, &reach, travelflags))
             continue;
         // get the travel time
-        t = AAS_AreaTravelTimeToGoalArea(reach.areanum, reach.end, goal->areanum, travelflags);
+        if (!AAS_AreaRouteToGoalArea(reach.areanum, reach.end, goal->areanum, travelflags, &t, &nextreachnum))
+            t = 0;
         // if the goal area isn't reachable from the reachable area
         if (!t)
             continue;
@@ -792,6 +794,25 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         }
         // add the travel time towards the area
         t += reach.traveltime;  // + AAS_AreaTravelTime(areanum, origin, reach.start);
+        // [QL] E135. a route that steps into the next area only to come
+        // straight back into this one is not a way on. Travel times are
+        // measured between reachability points, so a step over a boundary
+        // and back can come out a few hundredths cheaper than walking on;
+        // the bot takes it, is then barred from going back ("don't return to
+        // the previous area" above), and picks the next-best way, and three
+        // areas make a circle - 3864/3866/3831 in japanesecastles' Blue
+        // Garden Hall, walked for ten seconds at a time. Kept only as a last
+        // resort, for an area with no other way out.
+        if (nextreachnum > 0) {
+            AAS_ReachabilityFromNum(nextreachnum, &nextreach);
+        }
+        if (nextreachnum > 0 && nextreach.areanum == areanum) {
+            if (!backtime || t < backtime) {
+                backtime = t;
+                backreachnum = reachnum;
+            }
+            continue;
+        }
         // if the travel time is better than the ones already found
         if (!besttime || t < besttime) {
             besttime = t;
@@ -799,7 +820,7 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         }  // end if
     }  // end for
     //
-    return bestreachnum;
+    return bestreachnum ? bestreachnum : backreachnum;
 }  // end of the function BotGetReachabilityToGoal
 //===========================================================================
 //

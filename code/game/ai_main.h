@@ -158,6 +158,8 @@ typedef struct bot_tactics_s {
     int reportedstuck;       // this stuck episode has already been reported
     float roleredecide_time;
     int defendpost;           // [QL] E134: guard post index, -1 the flag itself
+    int defendleg;            // [QL] E135: 0 the post, 1 out along its hall toward the next room
+    float defendleg_time;     // [QL] E135: when to walk the other end of the lane
     float defendpost_time;    // when to reconsider it  // [QL] CTF role may not be reconsidered before this
     float reroute_time;       // [QL] and the route may not be reconsidered before this
     /* [QL] E87: the job the role picker last handed this bot, and when.
@@ -354,6 +356,8 @@ typedef struct bot_state_s {
         float travel, speed, stalled, fight;
         int loops;
         int bumps;         // blocked by another player's body
+        int movegoalarea;  // the goal the last movement was towards (E135)
+        int traveltype;    // and how it was travelling
         float bumped_time;
     } mstat;
     int mstat_track_next;  // [QL] E133, bot_debugTrack

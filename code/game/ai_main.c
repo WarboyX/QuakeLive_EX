@@ -1876,7 +1876,7 @@ void BotMoveStatsSample(bot_state_t* bs, float thinktime) {
 game time, for tools/bot-harness/render-tracks.py to draw over an overhead view
 of the map:
 
-  bottrack <ms> <client> <team> <x> <y> <z> <speed> <state> <ltg> <goalarea> <name>
+  bottrack <ms> <client> <team> <x> <y> <z> <speed> <state> <ltg> <goalarea> <name> tt<traveltype>
 
 state is s(eek) or f(ight) or d(ead). The map picture shows where movement
 goes wrong - a doorway every bot stalls in, a loop that always happens in the
@@ -1898,13 +1898,16 @@ void BotTrackSample(bot_state_t* bs) {
     } else {
         state = 'f';
     }
-    if (trap_BotGetTopGoal(bs->gs, &goal)) {
+    // the goal the bot last moved towards, which is its real destination -
+    // the top of the goal stack is empty for most jobs (E135)
+    goalarea = bs->mstat.movegoalarea;
+    if (!goalarea && trap_BotGetTopGoal(bs->gs, &goal)) {
         goalarea = goal.areanum;
     }
-    G_Printf("bottrack %d %d %d %.0f %.0f %.0f %.0f %c %d %d %s\n", level.time, bs->client, BotTeam(bs),
+    G_Printf("bottrack %d %d %d %.0f %.0f %.0f %.0f %c %d %d %s tt%d\n", level.time, bs->client, BotTeam(bs),
              bs->origin[0], bs->origin[1], bs->origin[2],
              sqrt(bs->cur_ps.velocity[0] * bs->cur_ps.velocity[0] + bs->cur_ps.velocity[1] * bs->cur_ps.velocity[1]),
-             state, bs->ltgtype, goalarea, g_entities[bs->client].client->pers.netname);
+             state, bs->ltgtype, goalarea, g_entities[bs->client].client->pers.netname, bs->mstat.traveltype);
 }
 
 static void BotMoveStatsReport(void) {

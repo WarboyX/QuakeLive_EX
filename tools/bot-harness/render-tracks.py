@@ -151,7 +151,7 @@ def floors(tris):
 def read_tracks(path, t0, t1):
     tr = {}
     for line in open(path, errors="replace"):
-        m = re.match(r"bottrack (\d+) (\d+) (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+) (\w) (\d+) (\d+) (.*)", line)
+        m = re.match(r"bottrack (\d+) (\d+) (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+) (\w) (\d+) (\d+) (.*?)(?: tt(\d+))?\s*$", line)
         if not m:
             continue
         ms = int(m.group(1)) / 1000.0
@@ -160,7 +160,7 @@ def read_tracks(path, t0, t1):
         cl = int(m.group(2))
         tr.setdefault(cl, {"team": int(m.group(3)), "name": re.sub(r"\^.", "", m.group(11).strip()), "pts": []})
         tr[cl]["pts"].append((ms, int(m.group(4)), int(m.group(5)), int(m.group(6)), int(m.group(7)),
-                              m.group(8), int(m.group(9)), int(m.group(10))))
+                              m.group(8), int(m.group(9)), int(m.group(10)), int(m.group(12) or 0)))
     return tr
 
 

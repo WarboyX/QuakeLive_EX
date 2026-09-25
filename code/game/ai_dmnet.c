@@ -1854,6 +1854,9 @@ int AINode_Seek_NBG(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -2051,6 +2054,9 @@ int AINode_Seek_LTG(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -2411,6 +2417,9 @@ int AINode_Battle_Chase(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -2604,6 +2613,9 @@ int AINode_Battle_Retreat(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -2744,6 +2756,9 @@ int AINode_Battle_NBG(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -3010,6 +3025,9 @@ int AINode_InstaGib(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the target
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     if (moveresult.failure) {
         // reset the avoid reach and just face the target this frame
         trap_BotResetAvoidReach(bs->ms);

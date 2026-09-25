@@ -1459,6 +1459,10 @@ void AAS_UpdatePortalRoutingCache(aas_routingcache_t* portalcache) {
             if (!portalcache->traveltimes[portalnum] ||
                 portalcache->traveltimes[portalnum] > t) {
                 portalcache->traveltimes[portalnum] = t;
+                // [QL] E135. which side of the portal the goal lies on: 1 front,
+                // 2 back. Portal caches never used this array; see
+                // AAS_ClusterRouteViaPortals
+                portalcache->reachabilities[portalnum] = portal->frontcluster == curupdate->cluster ? 1 : 2;
                 nextupdate = &aasworld.portalupdate[portalnum];
                 if (portal->frontcluster == curupdate->cluster) {
                     nextupdate->cluster = portal->backcluster;
@@ -1527,14 +1531,91 @@ aas_routingcache_t* AAS_GetPortalRoutingCache(int clusternum, int areanum, int t
     return cache;
 }  // end of the function AAS_GetPortalRoutingCache
 //===========================================================================
+// [QL] E135. The route from an area of one cluster out through that
+// cluster's portals - the body of AAS_AreaRouteToGoalArea, split out so a
+// portal area can be routed through each cluster it belongs to.
+//===========================================================================
+static int AAS_ClusterRouteViaPortals(int clusternum, int areanum, vec3_t origin, aas_routingcache_t* portalcache,
+                                      int travelflags, int* traveltime, int* reachnum) {
+    int portalnum, i, clusterareanum, bestreachnum;
+    unsigned short int t, besttime;
+    aas_portal_t* portal;
+    aas_cluster_t* cluster;
+    aas_routingcache_t* areacache;
+    aas_reachability_t* reach;
+
+    besttime = 0;
+    bestreachnum = -1;
+    // the cluster the area is in
+    cluster = &aasworld.clusters[clusternum];
+    // find the portal of the area cluster leading towards the goal area
+    for (i = 0; i < cluster->numportals; i++) {
+        portalnum = aasworld.portalindex[cluster->firstportal + i];
+        // if the goal area isn't reachable from the portal
+        if (!portalcache->traveltimes[portalnum])
+            continue;
+        //
+        portal = &aasworld.portals[portalnum];
+        // [QL] E135. leaving by the portal we stand in is the other cluster's route
+        if (portal->areanum == areanum)
+            continue;
+        // [QL] E135. and a portal whose route to the goal runs back through
+        // this cluster is not a way out of it. Stock took it anyway: the areas
+        // near a portal saw "into the portal, then back past here" come out a
+        // little cheaper than going there directly, walked into it, and found
+        // from inside that it led back where they came from
+        if (portalcache->reachabilities[portalnum] &&
+            (portalcache->reachabilities[portalnum] == 1 ? portal->frontcluster : portal->backcluster) == clusternum)
+            continue;
+        // get the cache of the portal area
+        areacache = AAS_GetAreaRoutingCache(clusternum, portal->areanum, travelflags);
+        // current area inside the current cluster
+        clusterareanum = AAS_ClusterAreaNum(clusternum, areanum);
+        // if the area is NOT a reachability area
+        if (clusterareanum >= cluster->numreachabilityareas)
+            continue;
+        // if the portal is NOT reachable from this area
+        if (!areacache->traveltimes[clusterareanum])
+            continue;
+        // total travel time is the travel time the portal area is from
+        // the goal area plus the travel time towards the portal area
+        t = portalcache->traveltimes[portalnum] + areacache->traveltimes[clusterareanum];
+        // FIXME: add the exact travel time through the actual portal area
+        // NOTE: for now we just add the largest travel time through the portal area
+        //		because we can't directly calculate the exact travel time
+        //		to be more specific we don't know which reachability was used to travel
+        //		into the portal area
+        t += aasworld.portalmaxtraveltimes[portalnum];
+        //
+        if (origin) {
+            *reachnum = aasworld.areasettings[areanum].firstreachablearea +
+                        areacache->reachabilities[clusterareanum];
+            reach = aasworld.reachability + *reachnum;
+            t += AAS_AreaTravelTime(areanum, origin, reach->start);
+        }  // end if
+        // if the time is better than the one already found
+        if (!besttime || t < besttime) {
+            bestreachnum = *reachnum;
+            besttime = t;
+        }  // end if
+    }  // end for
+    if (bestreachnum < 0) {
+        return qfalse;
+    }
+    *reachnum = bestreachnum;
+    *traveltime = besttime;
+    return qtrue;
+}
+
+//===========================================================================
 //
 // Parameter:			-
 // Returns:				-
 // Changes Globals:		-
 //===========================================================================
 int AAS_AreaRouteToGoalArea(int areanum, vec3_t origin, int goalareanum, int travelflags, int* traveltime, int* reachnum) {
-    int clusternum, goalclusternum, portalnum, i, clusterareanum, bestreachnum;
-    unsigned short int t, besttime;
+    int clusternum, goalclusternum, i, clusterareanum, bestreachnum;
+    unsigned short int besttime;
     aas_portal_t* portal;
     aas_cluster_t* cluster;
     aas_routingcache_t *areacache, *portalcache;
@@ -1640,64 +1721,39 @@ int AAS_AreaRouteToGoalArea(int areanum, vec3_t origin, int goalareanum, int tra
     }  // end if
     // get the portal routing cache
     portalcache = AAS_GetPortalRoutingCache(goalclusternum, goalareanum, travelflags);
-    // if the area is a cluster portal, read directly from the portal cache
+    // [QL] E135. A cluster portal is routed like an area of each cluster it
+    // joins, and the better of the two wins. Stock read the portal cache
+    // directly, but that holds the time from the portal's far edge - the
+    // crossing is only ever added for the NEXT portal (portalmaxtraveltimes)
+    // - and portalcache->reachabilities is never filled in, so the exit was
+    // simply the area's first reachability. A portal therefore looked up to a
+    // portal crossing nearer the goal than any of its own exits: neighbours
+    // routed into it, and a bot inside found every way on dearer than going
+    // back, with "don't return to the last area" turning that into a circle.
+    // On japanesecastles that circle was Blue Garden Hall (TRACKER E135).
     if (clusternum < 0) {
-        *traveltime = portalcache->traveltimes[-clusternum];
-        *reachnum = aasworld.areasettings[areanum].firstreachablearea +
-                    portalcache->reachabilities[-clusternum];
+        portal = &aasworld.portals[-clusternum];
+        besttime = 0;
+        bestreachnum = -1;
+        for (i = 0; i < 2; i++) {
+            int ct, cr = 0;
+            if (!AAS_ClusterRouteViaPortals(i ? portal->backcluster : portal->frontcluster, areanum, origin,
+                                            portalcache, travelflags, &ct, &cr)) {
+                continue;
+            }
+            if (bestreachnum < 0 || ct < besttime) {
+                besttime = ct;
+                bestreachnum = cr;
+            }
+        }
+        if (bestreachnum < 0) {
+            return qfalse;
+        }
+        *traveltime = besttime;
+        *reachnum = bestreachnum;
         return qtrue;
     }  // end if
-    //
-    besttime = 0;
-    bestreachnum = -1;
-    // the cluster the area is in
-    cluster = &aasworld.clusters[clusternum];
-    // find the portal of the area cluster leading towards the goal area
-    for (i = 0; i < cluster->numportals; i++) {
-        portalnum = aasworld.portalindex[cluster->firstportal + i];
-        // if the goal area isn't reachable from the portal
-        if (!portalcache->traveltimes[portalnum])
-            continue;
-        //
-        portal = &aasworld.portals[portalnum];
-        // get the cache of the portal area
-        areacache = AAS_GetAreaRoutingCache(clusternum, portal->areanum, travelflags);
-        // current area inside the current cluster
-        clusterareanum = AAS_ClusterAreaNum(clusternum, areanum);
-        // if the area is NOT a reachability area
-        if (clusterareanum >= cluster->numreachabilityareas)
-            continue;
-        // if the portal is NOT reachable from this area
-        if (!areacache->traveltimes[clusterareanum])
-            continue;
-        // total travel time is the travel time the portal area is from
-        // the goal area plus the travel time towards the portal area
-        t = portalcache->traveltimes[portalnum] + areacache->traveltimes[clusterareanum];
-        // FIXME: add the exact travel time through the actual portal area
-        // NOTE: for now we just add the largest travel time through the portal area
-        //		because we can't directly calculate the exact travel time
-        //		to be more specific we don't know which reachability was used to travel
-        //		into the portal area
-        t += aasworld.portalmaxtraveltimes[portalnum];
-        //
-        if (origin) {
-            *reachnum = aasworld.areasettings[areanum].firstreachablearea +
-                        areacache->reachabilities[clusterareanum];
-            reach = aasworld.reachability + *reachnum;
-            t += AAS_AreaTravelTime(areanum, origin, reach->start);
-        }  // end if
-        // if the time is better than the one already found
-        if (!besttime || t < besttime) {
-            bestreachnum = *reachnum;
-            besttime = t;
-        }  // end if
-    }  // end for
-    if (bestreachnum < 0) {
-        return qfalse;
-    }
-    *reachnum = bestreachnum;
-    *traveltime = besttime;
-    return qtrue;
+    return AAS_ClusterRouteViaPortals(clusternum, areanum, origin, portalcache, travelflags, traveltime, reachnum);
 }  // end of the function AAS_AreaRouteToGoalArea
 //===========================================================================
 //
@@ -1774,7 +1830,7 @@ int AAS_PredictRoute(struct aas_predictroute_s* route, int areanum, vec3_t origi
                 route->endcontents = aasworld.areasettings[reach->areanum].contents;
                 route->endtravelflags = AAS_AreaContentsTravelFlags_inline(reach->areanum);
                 VectorCopy(reach->end, route->endpos);
-                route->time += AAS_AreaTravelTime(areanum, origin, reach->start);
+                route->time += AAS_AreaTravelTime(curareanum, curorigin, reach->start);
                 route->time += reach->traveltime;
                 return qtrue;
             }  // end if
@@ -1791,7 +1847,7 @@ int AAS_PredictRoute(struct aas_predictroute_s* route, int areanum, vec3_t origi
                     route->endarea = testareanum;
                     route->endcontents = aasworld.areasettings[testareanum].contents;
                     VectorCopy(reach->end, route->endpos);
-                    route->time += AAS_AreaTravelTime(areanum, origin, reach->start);
+                    route->time += AAS_AreaTravelTime(curareanum, curorigin, reach->start);
                     route->time += reach->traveltime;
                     return qtrue;
                 }  // end if
@@ -1807,7 +1863,10 @@ int AAS_PredictRoute(struct aas_predictroute_s* route, int areanum, vec3_t origi
             }  // end if
         }  // end for
 
-        route->time += AAS_AreaTravelTime(areanum, origin, reach->start);
+        // [QL] E135. from where this step starts; stock measured every step
+        // from the route's origin, so the time grew with the square of the
+        // distance and a route "1 second ahead" stopped a few rooms short
+        route->time += AAS_AreaTravelTime(curareanum, curorigin, reach->start);
         route->time += reach->traveltime;
         route->endarea = reach->areanum;
         route->endcontents = aasworld.areasettings[reach->areanum].contents;

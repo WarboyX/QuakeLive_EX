@@ -6048,6 +6048,65 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E135. Chokepoints: three botlib routing bugs, defender lanes, carrier exits — DONE (verify)
+**Lives in:** our **server** (botlib + qagame) · **Seen by:** every client
+
+*"Work on the narrow passage chokepoints next."* Also: about 30% of bots should path through the gardens over time. Carriers should come home the lower-risk way. A good share of defenders should check the flagroom-to-garden halls.
+
+Measured as before: japanesecastles, 30 a side, `a2m-instagib-ctf.cfg`, Quake Live's own AAS and botfiles (local only), 600 s, `bot_debugTrack 500`.
+
+#### Blue Garden Hall: bots walking a circle for ten seconds at a time
+In the baseline, Blue Garden Hall (E) had **356 of the map's 532 loops and 526 of its 3,864 bumps**, while its mirror, Red Garden Hall, had 9 loops. Almost every bot in it was a blue attacker. Each one kept the same movement goal the whole time, a waypoint in the red base, and walked at 300 ups.
+
+`bottrack` now reports the goal the bot is actually moving to and the travel type (`tt`). A temporary botlib trace of each reachability chosen showed a three-area circle: **3864 → 3866 → 3831 → 3864**. All three are plain walks, on the same goal.
+
+There were three causes, all in stock botlib:
+
+1. **A portal area was routed with the crossing left out** (`AAS_AreaRouteToGoalArea`).
+   - 3866 is a cluster portal. For a portal area, stock read the portal cache directly. That cache holds the time from the portal's *far edge*: the crossing is only ever added for the *next* portal. It also used `portalcache->reachabilities`, which is never filled in, so the exit was just the area's first reachability.
+   - The portal therefore looked up to one crossing nearer the goal than any of its own exits.
+   - Now a portal area is routed as an area of each cluster it joins (`AAS_ClusterRouteViaPortals`, split out of the same function), and the better of the two wins.
+   - The portal cache also records which side the goal lies on (in the array it never used). A portal whose route runs back through the cluster being routed is not a way out of that cluster.
+2. **A step over a boundary and back looked cheaper than walking on** (`BotGetReachabilityToGoal`).
+   - Travel times are measured between reachability points, so stepping into the next area and straight back could come out a few hundredths cheaper.
+   - The bot took that step. It was then barred from going back ("don't return to the previous area"), and took the next best. Three areas make a circle.
+   - Now a candidate whose route turns straight back into the bot's own area is skipped. It is kept as a last resort, for an area with no other way out.
+3. **`AAS_PredictRoute` measured every step from the route's origin** instead of from where that step starts. The time grew with the square of the distance, so a route "1 s ahead" stopped a few rooms short.
+   - E134's guard posts were tuned against that, so their constants are rescaled: 350/150 → 160/100. The posts are the same doorways as before.
+   - The only other caller, mover prediction, now looks as far ahead as its comment says.
+
+Fixes 1 and 2 were measured in turn over 240 s: hall loops **979 → 586 → 0**.
+
+#### Defenders check the halls
+Each guard post is now one end of a lane: the same route, followed out to 4.5 s.
+- A post's defender walks to the far end, holds 4–8 s, then walks back.
+- On japanesecastles the lanes run to the top of the Main Stairway, and down Back Hall toward the Garden.
+- A 5.5 s lane was tried first. It ended inside Main Entrance and doubled the stalls there (7% → 15%).
+
+#### Carriers leave by the emptier exit
+A carrier picking its way out of the enemy base now counts **enemies** in each candidate's room (`BotRoomEnemies`). Before, like every other bot, it counted teammates.
+
+#### Result (600 s, 30v30)
+| | before (E134) | after |
+|---|---|---|
+| loops, whole map | 532 | **59** |
+| bumps, whole map | 3,864 | **2,963** |
+| Blue Garden Hall: loops / bumps | 356 / 526 | **0 / 26** |
+| Blue Garden Hall fight % (Red Garden Hall) | 32% (54%) | **58% (59%)** |
+| attack runs through Garden or Balcony | 37% | 36% |
+| defender time in the flag rooms | 71% | **47%** |
+| defender time in Back Hall | ~1% | **9%** |
+
+The garden share was already above the 30% asked for, and stays there.
+
+Before/after overhead maps come from `render-tracks.py` (`--mode paths|fight|defend`). **`tools/bot-harness/zone-report.py`** (new) gives, by the map's own place names, samples, fight %, stall %, loops and bumps. `--via REGEX` gives the share of attack and carrier runs that pass a place.
+
+#### Still open
+- **Carriers still never reach a garden.** In instagib against 30 defenders, every carrier in both runs died within 8 s of the grab: 16 and 17 runs.
+  - The exit choice shows only in which door they die at (Back Hall 2 of 17, against 1 of 13).
+  - A fair test of "comes home through the garden" needs a non-instagib config or fewer defenders.
+- **Back Hall stall % is 21–35%.** That is almost entirely defenders holding their lane end (522 of 572 slow samples), not a jam.
+
 ### E134. Scoreboard counts and spectator ticker; defenders hold both ways in — DONE (verify)
 **Lives in:** our **client** (cgame + pak01) and our **server** (qagame) · **Seen by:** our client only (scoreboard); every client (bots)
 

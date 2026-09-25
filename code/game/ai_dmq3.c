@@ -5339,9 +5339,24 @@ void BotAIBlocked(bot_state_t* bs, bot_moveresult_t* moveresult, int activate) {
         bs->mstat.bumped_time < FloatTime() - 0.5f) {
         bs->mstat.bumps++;
         if (bot_debugTrack.integer > 0) {
-            // for render-tracks.py: where bodies meet
-            G_Printf("botbump %d %d %.0f %.0f %.0f %d\n", level.time, bs->client,
-                     bs->origin[0], bs->origin[1], bs->origin[2], bs->ainode == AINode_Seek_LTG || bs->ainode == AINode_Seek_NBG);
+            // for render-tracks.py: where bodies meet, and what with - a team
+            // mate or an enemy, going our way (+) or coming at us (-)
+            gentity_t* other = &g_entities[moveresult->blockentity];
+            float heading = 0;
+
+            if (other->client) {
+                vec3_t a, b;
+
+                VectorCopy(bs->cur_ps.velocity, a);
+                VectorCopy(other->client->ps.velocity, b);
+                a[2] = b[2] = 0;
+                if (VectorNormalize(a) > 50 && VectorNormalize(b) > 50) {
+                    heading = DotProduct(a, b);
+                }
+            }
+            G_Printf("botbump %d %d %.0f %.0f %.0f %d %d %.2f\n", level.time, bs->client,
+                     bs->origin[0], bs->origin[1], bs->origin[2], bs->ainode == AINode_Seek_LTG || bs->ainode == AINode_Seek_NBG,
+                     other->client && OnSameTeam(&g_entities[bs->client], other), heading);
         }
     }
     if (moveresult->blockentity >= 0 && moveresult->blockentity < MAX_CLIENTS) {
@@ -6048,12 +6063,20 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
 
     The random pick is kept as the tie-break, so identical candidates still
     scatter and a map where every route is equally busy behaves as it used to.
+
+    [QL] E135. A flag carrier asks a different question - which way out has
+    the fewest of THEM in it - and counts the enemy in each candidate's room
+    instead. Its team there is cover, not a queue. On japanesecastles that
+    sends it out through Back Hall and the Garden when the defence is holding
+    the Main Stairway, and the other way round.
     */
     {
         int best = -1, bestcrowd = 0, ties = 0, i;
+        qboolean carrier = BotCTFCarryingFlag(bs);
 
         for (i = 0; i < numaltroutegoals; i++) {
-            int crowd = BotRoomCrowding(bs, altroutegoals[i].origin);
+            int crowd = carrier ? BotRoomEnemies(bs, altroutegoals[i].origin)
+                                : BotRoomCrowding(bs, altroutegoals[i].origin);
 
             if (best < 0 || crowd < bestcrowd) {
                 best = i;
@@ -6093,6 +6116,25 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
 BotSetupAlternateRouteGoals
 ==================
 */
+/*
+[QL] E135. Where each alternative route goal is, under bot_debugTactics:
+"altroute <toward> <x> <y> <z> <start tt> <goal tt> <extra tt>", for
+tools/bot-harness to put on the map. A waypoint is a place every bot given it
+walks to, so one in the wrong place is a traffic jam made to order.
+*/
+static void BotAltRoutesDump(aas_altroutegoal_t* g, int n, const char* what) {
+    int i;
+
+    if (!bot_debugTactics.integer) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        G_Printf("altroute %s %.0f %.0f %.0f %d %d %d\n", strstr(what, "red") ? "red" : "blue",
+                 g[i].origin[0], g[i].origin[1], g[i].origin[2],
+                 g[i].starttraveltime, g[i].goaltraveltime, g[i].extratraveltime);
+    }
+}
+
 /*
 ==================
 BotAltRoutes
@@ -6163,11 +6205,13 @@ static int BotAltRoutes(vec3_t start, int startarea, vec3_t goal, int goalarea,
                                        ALTROUTEGOAL_CLUSTERPORTALS | ALTROUTEGOAL_VIEWPORTALS);
     if (n > 0) {
         G_Printf("alternate routes %s: %i (from the map's portals)\n", what, n);
+        BotAltRoutesDump(out, n, what);
         return n;
     }
     n = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
                                        out, MAX_ALTROUTEGOALS, ALTROUTEGOAL_ALL);
     G_Printf("alternate routes %s: %i (no portals on this map, using open areas)\n", what, n);
+    BotAltRoutesDump(out, n, what);
     return n;
 }
 

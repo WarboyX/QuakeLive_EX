@@ -1388,6 +1388,36 @@ int BotRoomCrowding(bot_state_t* bs, vec3_t origin) {
 
 /*
 ==================
+BotRoomEnemies
+
+[QL] E135. How many of the other team are in the room at origin right now -
+what a flag carrier choosing its way out of their base wants to know. Its own
+team's traffic, which BotRoomCrowding counts, is escort to a carrier, not risk.
+==================
+*/
+int BotRoomEnemies(bot_state_t* bs, vec3_t origin) {
+    int room, team;
+
+    if (!BotTacticsEnabled()) {
+        return 0;
+    }
+    BotRoomCensus();
+    if (!numRooms) {
+        return 0;
+    }
+    team = g_entities[bs->client].client->sess.sessionTeam;
+    if (team != TEAM_RED && team != TEAM_BLUE) {
+        return 0;
+    }
+    room = BotRoomAt(origin);
+    if (room < 0) {
+        return 0;
+    }
+    return roomHere[room][team == TEAM_RED ? TEAM_BLUE : TEAM_RED];
+}
+
+/*
+==================
 [QL] E134. Guard posts: a CTF defender holds a way INTO the flag room.
 
 "Defense bots aren't protecting the right hall of the flagroom, only the left
@@ -1407,17 +1437,31 @@ Defenders are spread over the flag and the posts, whichever has the fewest
 defenders on it, re-balanced every DEFENDPOST_REDECIDE so a team that loses
 its post holders refills them. A defender at its post holds it instead of
 wandering away. bot_tactics 0 keeps stock defending.
+
+[QL] E135. A post is one end of a lane. The same route is followed on to
+DEFENDLANE_TIME, and a post's defender walks out to that far end - into the
+hall between the flag room and the next room, which on japanesecastles is
+Back Hall toward the Garden and the Main Stairway toward the Main Entrance -
+looks, and comes back, spending DEFENDLANE_HOLD at each end. Before this, 62%
+of defender time was in the flag rooms and 2% in Back Hall, so an attacker
+who got as far as the hall met nobody until the flag.
 ==================
 */
 #define MAX_DEFENDPOSTS 8
-#define DEFENDPOST_TIME 350       // hundredths of a second of travel out from the flag
-#define DEFENDPOST_MIN 150        // a stop nearer the flag than this is still the flag room
+// [QL] E135. these were 350 and 150 while AAS_PredictRoute over-counted time
+// (see there); the posts are the same flag room doorways as before
+#define DEFENDPOST_TIME 160       // hundredths of a second of travel out from the flag
+#define DEFENDPOST_MIN 100        // a stop nearer the flag than this is still the flag room
 #define DEFENDPOST_MERGE 300.0f
 #define DEFENDPOST_REDECIDE 20.0f
+#define DEFENDLANE_TIME 450        // hundredths: the far end of a post's lane
+#define DEFENDLANE_MIN 300.0f      // a far end nearer its post than this is no lane
+#define DEFENDLANE_HOLD 4.0f       // seconds at each end, plus up to as much again
 
 typedef struct {
     int computed, num;
     bot_goal_t post[MAX_DEFENDPOSTS];
+    bot_goal_t lane[MAX_DEFENDPOSTS];  // [QL] E135: far end; areanum 0 for none
 } defendposts_t;
 
 static defendposts_t defendposts[2];  // red, blue
@@ -1460,14 +1504,25 @@ static defendposts_t* BotDefendPosts(int team) {
         dp->post[dp->num].areanum = route.endarea;
         VectorSet(dp->post[dp->num].mins, -8, -8, -8);
         VectorSet(dp->post[dp->num].maxs, 8, 8, 8);
+        // [QL] E135. the same way on, to the far end of the lane
+        memset(&dp->lane[dp->num], 0, sizeof(bot_goal_t));
+        trap_AAS_PredictRoute(&route, flag->areanum, flag->origin, alt[i].areanum, TFL_DEFAULT,
+                              200, DEFENDLANE_TIME, RSE_NONE, 0, 0, 0);
+        if (route.endarea && Distance(route.endpos, dp->post[dp->num].origin) > DEFENDLANE_MIN) {
+            VectorCopy(route.endpos, dp->lane[dp->num].origin);
+            dp->lane[dp->num].areanum = route.endarea;
+            VectorSet(dp->lane[dp->num].mins, -8, -8, -8);
+            VectorSet(dp->lane[dp->num].maxs, 8, 8, 8);
+        }
         dp->num++;
     }
     if (bot_debugTactics.integer) {
         BotAI_Print(PRT_MESSAGE, "%s defend posts: %d (flag room plus each way in)\n",
                     team == TEAM_RED ? "red" : "blue", dp->num);
         for (j = 0; j < dp->num; j++) {
-            BotAI_Print(PRT_MESSAGE, "  post %d at %.0f %.0f %.0f, area %d\n", j,
-                        dp->post[j].origin[0], dp->post[j].origin[1], dp->post[j].origin[2], dp->post[j].areanum);
+            BotAI_Print(PRT_MESSAGE, "  post %d at %.0f %.0f %.0f, area %d; lane to %.0f %.0f %.0f, area %d\n", j,
+                        dp->post[j].origin[0], dp->post[j].origin[1], dp->post[j].origin[2], dp->post[j].areanum,
+                        dp->lane[j].origin[0], dp->lane[j].origin[1], dp->lane[j].origin[2], dp->lane[j].areanum);
         }
     }
     return dp;
@@ -1509,13 +1564,31 @@ int BotDefendPostGoal(bot_state_t* bs, bot_goal_t* goal) {
                 best = i;
             }
         }
+        if (bs->tac.defendpost != best - 1) {
+            bs->tac.defendleg = 0;
+            bs->tac.defendleg_time = 0;
+        }
         bs->tac.defendpost = best - 1;
         bs->tac.defendpost_time = FloatTime() + DEFENDPOST_REDECIDE + random() * 5;
     }
     if (bs->tac.defendpost < 0) {
         return qfalse;  // this one guards the flag itself - stock behaviour
     }
-    memcpy(goal, &dp->post[bs->tac.defendpost], sizeof(bot_goal_t));
+    i = bs->tac.defendpost;
+    if (bs->tac.defendleg && !dp->lane[i].areanum) {
+        bs->tac.defendleg = 0;
+    }
+    // [QL] E135. walk the lane: hold one end a while, then go to the other
+    if (dp->lane[i].areanum) {
+        bot_goal_t* at = bs->tac.defendleg ? &dp->lane[i] : &dp->post[i];
+        if (!bs->tac.defendleg_time && DistanceSquared(bs->origin, at->origin) < Square(96)) {
+            bs->tac.defendleg_time = FloatTime() + DEFENDLANE_HOLD * (1 + random());
+        } else if (bs->tac.defendleg_time && bs->tac.defendleg_time < FloatTime()) {
+            bs->tac.defendleg ^= 1;
+            bs->tac.defendleg_time = 0;
+        }
+    }
+    memcpy(goal, bs->tac.defendleg ? &dp->lane[i] : &dp->post[i], sizeof(bot_goal_t));
     return qtrue;
 }
 

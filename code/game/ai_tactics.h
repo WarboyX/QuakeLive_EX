@@ -80,6 +80,7 @@ int BotCTFRoleCrowded(struct bot_state_s* bs, int role);
 int BotAutoDefendGoal(struct bot_state_s* bs);
 // how many of this bot's team are in, or heading for, the room containing a point
 int BotRoomCrowding(struct bot_state_s* bs, vec3_t origin);
+int BotRoomEnemies(struct bot_state_s* bs, vec3_t origin);  // [QL] E135
 // forget the room list on a map change
 void BotRoomsReset(void);
 // qtrue when the flag this bot wants to capture is still on its stand
