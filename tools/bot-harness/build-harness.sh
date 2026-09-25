@@ -17,12 +17,17 @@
 # default.cfg   Quake Live's, from pak00. The dedicated server refuses to start
 #               without a pak00.pk3; this makes a local stub holding only it.
 #
+# A real map instead of the generated one: put its .bsp and the .aas the game
+# ships for it in $H/pk/maps before the zip step (or add them to the pak after),
+# and pass MAP=<name> to run-match.sh. A shipped AAS is what the bots should
+# use; bspc on a Quake Live BSP builds an incomplete one.
+#
 # Tools (built once, anywhere):
 #   map compiler  github.com/id-tech-3-tools/map-compiler  (cmake)  -> $MAPCOMPILER
 #   bspc          github.com/TTimo/bspc                     (make)   -> $BSPC
 set -e
 zip_in=$1; botfiles=$2; defcfg=$3
-[ -f "$zip_in" ] && [ -d "$botfiles" ] && [ -f "$defcfg" ] || { sed -n 2,26p "$0"; exit 1; }
+[ -f "$zip_in" ] && [ -d "$botfiles" ] && [ -f "$defcfg" ] || { sed -n 2,27p "$0"; exit 1; }
 here=$(cd "$(dirname "$0")" && pwd)
 H=${H:-$(pwd)/harness}
 MAPCOMPILER=${MAPCOMPILER:-mapcompiler}

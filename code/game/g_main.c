@@ -120,6 +120,9 @@ vmCvar_t bot_showTourPoints;
 vmCvar_t bot_aimDrift;
 vmCvar_t bot_aimSweep;
 vmCvar_t bot_debugTactics;
+vmCvar_t bot_debugMovement;
+vmCvar_t bot_debugTrack;
+vmCvar_t bot_crowdsteer;
 vmCvar_t bot_targetCommit;
 vmCvar_t bot_viewSmooth;
 vmCvar_t bot_dodge;
@@ -1142,6 +1145,12 @@ static cvarTable_t gameCvarTable[] = {
     {&bot_aimDrift, "bot_aimDrift", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_aimSweep, "bot_aimSweep", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_debugTactics, "bot_debugTactics", "0", 0, 0, NULL},
+    // [QL] E133. Seconds between bot movement reports; 0 is off (ai_main.c)
+    {&bot_debugMovement, "bot_debugMovement", "0", 0, 0, NULL},
+    // [QL] E133. Milliseconds between bot position lines ("bottrack"); 0 is off
+    {&bot_debugTrack, "bot_debugTrack", "0", 0, 0, NULL},
+    // [QL] E133. Bots steer round each other before colliding (botlib BotCrowdSteer)
+    {&bot_crowdsteer, "bot_crowdsteer", "1", 0, 0, NULL},
     {&bot_targetCommit, "bot_targetCommit", "2500", CVAR_GAMERULE, 0, NULL},
     {&bot_viewSmooth, "bot_viewSmooth", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_dodge, "bot_dodge", "1", CVAR_GAMERULE, 0, NULL},

@@ -6048,6 +6048,68 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E133. Bots went in circles: the router, then real crowd steering — DONE (verify)
+**Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
+
+*"Bot movement still feels like the problem, it's clunky, slow, they go in circles till they have a path."*
+
+Measured, not guessed, on **japanesecastles at 30 a side** (`a2m-instagib-ctf.cfg`, Quake Live's own botfiles and AAS, all local only) with the E132 harness and three new tools.
+
+#### Seeing it
+- **`bot_debugMovement <s>`** prints, per bot and in total:
+  - **speed**: mean speed while travelling (not fighting);
+  - **stalled**: travelling time under 100 ups;
+  - **loops**: back within 96 u of where it was 4–10 s earlier, having been 256 u away, on the same goal. Defend, camp and patrol are excluded, because they circle a spot by design.
+  - **bumps**: walked into a player's body.
+- **`bot_debugTrack <ms>`** logs every bot's position, speed, state and job (`bottrack` lines), and each bump (`botbump`).
+- **`tools/bot-harness/render-tracks.py`** draws those over an overhead map built from the AAS: every grounded area at its floor height, on every level. It works on a game's shipped, optimized AAS, which has no face geometry. Team-coloured paths, yellow stalls, magenta loops, cyan bumps.
+
+#### Cause 1: E75's per-bot route preference
+The overhead view showed each team circling in the corridors outside its own base, and **no flag grabs in five minutes of 30v30**. Every travelling bot had the job "get the enemy flag".
+
+- A/B'd, each piece switched off alone: the alternative-route waypoints made no difference (loops 3.3 vs 3.3 per bot-minute). **`BotRouteJitter`** took loops from 3.5 to 1.0 on its own.
+- Why: it added a per-bot bonus to the **first step** of a route and not the rest. So in area A a bot chose door B for its bonus, and from B the way back through A looked cheaper. An inconsistent cost is a loop generator.
+- The crowd cost (`AVOID_COST`, same first-step-only shape, and changing every think as the crowd moved) was A/B'd over ten minutes: removing it too was better (0.98 vs 1.29 loops per bot-minute, more grabs).
+- **Both removed.** `be_ai_move.c/.h` are back to the fork base, and `BotAvoidCrowdedRoute` is gone.
+- Found on the way: `be_interface.c` declared `BotGetReachabilityToGoal` with the old 12-parameter signature while the definition took 13. Calls through it passed a register's leftover value as the route seed. Gone with the rest.
+
+#### Cause 2: no crowd steering at all
+Quake 3's only answer to a body in the way came after contact: a full-speed sidestep at 90°. At 30 a side that is every bot, every few seconds.
+
+**`BotCrowdSteer`** (botlib) is local avoidance in the spirit of DetourCrowd's (zlib; nothing copied):
+- For each player within 200 u on the same level, the relative velocity predicts the closest approach in the next 1.5 s. Closer than 64 u between centres, the bot steers away from that point, weighted by how soon and how close.
+- Bodies already within 40 u are pushed straight apart.
+- Head on, each passes on its own right. The maths is symmetric, so two bots always steer apart, never into each other.
+- It never fights the route: at most 60° off, less near a doorway or item, and never into a wall (the steered line is traced first).
+- It is applied to route walking, to walking inside the goal area, and to `BotWalkInDirection`: fight strafes and the blocked sidestep. That path checks ledges and gaps before committing, so an unsafe steer is simply refused.
+
+`BotAIBlocked` also no longer sidesteps out of a **moving queue**. A body running our way is the column, not an obstacle.
+
+`bot_crowdsteer` (default 1; 0 is stock), live-switchable for A/B.
+
+#### Results (30v30, five minutes, same measure throughout)
+
+| build | travel time | stalled | loop samples / bot-minute |
+|---|---|---|---|
+| 60ffa60 | 178 bot-min | 8.8% | 23.2 |
+| router fix | 106 bot-min | 8.3% | 5.0 |
+| router fix + crowd steering | 110 bot-min | 7.2% | 2.8 |
+
+**Circling down about 88%.** Travel time dropped because bots now reach the fight instead of wandering behind their own lines.
+
+Steering on vs off, same build: speed 279 vs 273, stalled 7.5% vs 8.4%, loops 0.63 vs 0.88, bumps 17.2 vs 22.0 per bot-minute.
+
+#### Still open
+The bump map shows where bodies still meet:
+- **the narrow north passage off the centre**, which carries two-way traffic and is where most remaining loops are too;
+- the base gates;
+- the corridors out of each base.
+
+Steering needs room to steer. A narrow two-way passage needs a rule for who gives way, and that is the next piece. Bump counts also still include harmless contact inside a moving queue.
+
+#### Correction to E132
+Quake Live's own `botfiles/inv.h` uses Quake Live's numbering (red flag 35) and matches ours exactly (`fix-inv.py --check`: no differences). The flag swap was only ever in the harness's OpenArena botfiles. The bug in our own code (holdables read by Quake 3's numbers) was real and stays fixed.
+
 ### E132. Crosshair hit styles; three scoreboard bugs; bots measured in a headless CTF harness — DONE (verify)
 **Lives in:** our **client** (cgame, ui + pak01) and our **server** (qagame) · **Seen by:** our client only (crosshair, scoreboard); every client (bots)
 

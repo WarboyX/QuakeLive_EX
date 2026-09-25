@@ -55,7 +55,6 @@ static int BotTacticsEnabled(void) {
 }
 
 // [QL] defined further down, next to the room census it reads
-static void BotAvoidCrowdedRoute(bot_state_t* bs);
 
 /*
 ==================
@@ -445,8 +444,11 @@ void BotTacticsUpdate(bot_state_t* bs) {
     walk any of it is how a bot oscillates between two corridors and arrives on
     neither.
     */
-    // [QL] refuse the crowded door; see BotAvoidCrowdedRoute
-    BotAvoidCrowdedRoute(bs);
+    /* [QL] E133. BotAvoidCrowdedRoute used to run here, marking the crowd ahead
+       as a costly spot for the router. Measured on japanesecastles at 30 a
+       side it did nothing for flow and made bots dither - the cost only
+       applied to the first step of a route, and the crowd moved every think.
+       Crowds are now steered round locally instead (BotCrowdSteer, botlib). */
 
     if (BotTacticsEnabled() && gametype == GT_CTF &&
         bs->tac.reroute_time < FloatTime() &&
@@ -1382,149 +1384,6 @@ int BotRoomCrowding(bot_state_t* bs, vec3_t origin) {
         return 0;
     }
     return roomHere[room][team] + roomBound[room][team];
-}
-
-/*
-==================
-BotAvoidCrowdedRoute
-
-[QL] Make the router itself refuse the door everyone else is using.
-
-Alternative route goals could not fix "most still exit the left path", and it is
-worth being clear why: an alt route goal only changes the *middle* of a journey.
-The leg from the flag room to that goal is still the cheapest reachability chain,
-and out of one room to anywhere on the far side of the map that is the same door
-for every bot. Diversity has to be injected where the door is chosen, which is
-BotGetReachabilityToGoal.
-
-That function already has the hook. It walks the reachabilities out of the
-current area, takes the cheapest that survives its filters, and one of the
-filters is BotAvoidSpots - a per-movestate list of places this bot will not route
-through. It is what the prox mine code uses. A spot on the crowd queued in a
-doorway makes that doorway's reachability fail the filter, and the bot takes the
-next cheapest way out instead: the right-hand path.
-
-Per bot, so the team does not move as one - and because BotCheckSnapshot clears
-the avoid list every think and this runs immediately after it, the decision is
-remade from scratch several times a second and can never go stale.
-
-Three guards, and they exist because refusing every exit leaves a bot with no
-reachability at all, which is worse than a queue:
-
-  - the crowd must be *ahead*. A centroid behind or on top of the bot would
-    reject the reachabilities leading away from it as readily as the ones
-    leading into it.
-  - not while fighting. BotAttackMove owns the movement then.
-  - and if the bot has not moved for two seconds, stop avoiding. If going round
-    were working it would be moving; standing still politely is not better than
-    taking the crowded door.
-==================
-*/
-#define CROWD_AVOID_MIN 4        // bodies ahead before it is a queue
-#define CROWD_AVOID_RANGE 400.0f  // how far ahead to look
-#define CROWD_AVOID_RADIUS 100.0f  // and how much of the map to refuse
-#define CROWD_AVOID_NEAR 64.0f     // a crowd closer than this is not "ahead"
-
-static void BotAvoidCrowdedRoute(bot_state_t* bs) {
-    vec3_t fwd, dir, centre;
-    float dist, speed, weight, total;
-    int i, count, team, carrier, radius;
-
-    if (!BotTacticsEnabled() || !bs->ltgtype) {
-        return;
-    }
-    /*
-    [QL] A carrier keeps avoiding with an enemy in sight; everyone else stops.
-
-    "the bots still exit on the left side, even after they get the enemy flag.
-    instead of going through the right side and pathing to avoid combat heavy
-    areas." Both halves of that were structural here: this counted only team
-    mates, and it switched itself off the moment an enemy appeared - so the one
-    bot that most needs to route away from a fight was the one guaranteed not
-    to. A carrier should not be trading at all; going round *is* its job.
-    */
-    carrier = BotCTFCarryingFlag(bs) || Bot1FCTFCarryingFlag(bs) ||
-              BotHarvesterCarryingCubes(bs);
-    if (bs->enemy >= 0 && !carrier) {
-        return;
-    }
-    /*
-    Five seconds, not two. Two was shorter than it takes a bot to get out of a
-    queue even when it has somewhere better to go: a field log has 18 stuck
-    episodes in one area with 11 to 13 allies around, and the reports fire at
-    three seconds - by which point avoidance had been off for a second and the
-    bot was back in the same doorway. Long enough to actually try the other way,
-    and it still gives up rather than standing still forever.
-    */
-    if (FloatTime() - bs->tac.moved_time > 5.0f) {
-        return;
-    }
-    // which way is the bot actually going
-    VectorCopy(bs->cur_ps.velocity, fwd);
-    fwd[2] = 0;
-    speed = VectorNormalize(fwd);
-    if (speed < 20.0f) {
-        AngleVectors(bs->viewangles, fwd, NULL, NULL);
-        fwd[2] = 0;
-        if (VectorNormalize(fwd) < 0.1f) {
-            return;
-        }
-    }
-
-    VectorClear(centre);
-    count = 0;
-    total = 0.0f;
-    team = g_entities[bs->client].client->sess.sessionTeam;
-    for (i = 0; i < level.maxclients; i++) {
-        if (i == bs->client || !g_entities[i].inuse || !g_entities[i].client) {
-            continue;
-        }
-        if (g_entities[i].client->sess.sessionTeam == TEAM_SPECTATOR) {
-            continue;
-        }
-        if (g_entities[i].client->ps.stats[STAT_HEALTH] <= 0) {
-            continue;
-        }
-        /*
-        [QL] Enemies count, and count for more.
-
-        A team mate in the way is a queue. An enemy in the way is a fight, and
-        for a bot carrying the objective a fight is the thing it is trying not
-        to have. Three to one, so two enemies ahead are worth going round for on
-        their own where it takes four team mates.
-        */
-        weight = (g_entities[i].client->sess.sessionTeam == team) ? 1.0f : 3.0f;
-        VectorSubtract(g_entities[i].r.currentOrigin, bs->origin, dir);
-        dir[2] = 0;
-        dist = VectorLength(dir);
-        if (dist < CROWD_AVOID_NEAR || dist > CROWD_AVOID_RANGE) {
-            continue;
-        }
-        VectorScale(dir, 1.0f / dist, dir);
-        if (DotProduct(dir, fwd) < 0.5f) {
-            continue;  // not in the way
-        }
-        VectorMA(centre, weight, g_entities[i].r.currentOrigin, centre);
-        total += weight;
-        count++;
-    }
-    if (total < (float)CROWD_AVOID_MIN) {
-        return;
-    }
-    VectorScale(centre, 1.0f / total, centre);
-    // and it has to still be ahead once averaged
-    VectorSubtract(centre, bs->origin, dir);
-    dir[2] = 0;
-    if (VectorNormalize(dir) < CROWD_AVOID_NEAR || DotProduct(dir, fwd) < 0.5f) {
-        return;
-    }
-    // a carrier gives it a wider berth - it cannot afford the fight at all
-    radius = carrier ? (int)(CROWD_AVOID_RADIUS * 1.6f) : (int)CROWD_AVOID_RADIUS;
-    /* [QL] AVOID_COST, not AVOID_ALWAYS - see BotGetReachabilityToGoal. A refusal
-       leaves a bot with no route when every exit passes the same crowd, and it
-       waits in the doorway instead; a cost leaves it a route it would simply
-       rather not take. */
-    trap_BotAddAvoidSpot(bs->ms, centre, (float)radius, AVOID_COST);
 }
 
 /*

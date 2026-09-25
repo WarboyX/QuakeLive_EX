@@ -1422,6 +1422,12 @@ int BotAI(int client, float thinktime) {
     bs->areanum = BotPointAreaNum(bs->origin);
     // the real AI
     BotDeathmatchAI(bs, thinktime);
+    if (bs->inuse && bot_debugMovement.value > 0) {
+        BotMoveStatsSample(bs, thinktime);
+    }
+    if (bs->inuse && bot_debugTrack.integer > 0) {
+        BotTrackSample(bs);
+    }
     /*
     [QL] The think can end with the bot gone - it can remove itself, and until
     the engine deferred overflow drops out of the game module it could also be
@@ -1762,6 +1768,191 @@ int BotAILoadMap(int restart) {
 void ProximityMine_Trigger(gentity_t* trigger, gentity_t* other, trace_t* trace);
 
 /*
+==============
+[QL] E133. bot_debugMovement: how well bots MOVE, measured rather than watched.
+
+"Clunky, slow, they go in circles till they have a path" is three claims, and
+each is a number:
+
+  speed    mean horizontal speed while travelling - that is, in a seek node,
+           not fighting. A running player is at 320; strafe-jumping is more.
+  stalled  share of travelling time below 100 ups: standing, dithering, or
+           walking into a wall.
+  bumps    walked into another player's body (BotAIBlocked with a client in
+           the way) - what crowd steering exists to prevent
+  loops    came back to within 96 units of where it was 4-10 seconds earlier,
+           having been at least 256 away in between, while chasing the SAME
+           goal the whole time. A bot that fetched an item and came back has
+           changed goal; one that went round in a circle has not. Defending,
+           camping and patrolling are not counted: they circle a spot by design.
+
+Set bot_debugMovement to the report interval in seconds. Every report covers
+the interval since the last and prints one line per bot and a total.
+==============
+*/
+#define MSTAT_RING 24
+#define MSTAT_STEP 0.5f
+
+static float movestats_next;
+
+static int BotMoveStatsGoal(bot_state_t* bs) {
+    bot_goal_t goal;
+
+    if (trap_BotGetTopGoal(bs->gs, &goal)) {
+        return goal.areanum * 32 + bs->ltgtype;
+    }
+    return -1 - bs->ltgtype;
+}
+
+void BotMoveStatsSample(bot_state_t* bs, float thinktime) {
+    float now = FloatTime(), speed;
+    int travelling, goal, i, j, k, idx, jdx;
+
+    if (bs->cur_ps.pm_type != PM_NORMAL || bs->cur_ps.stats[STAT_HEALTH] <= 0) {
+        bs->mstat.n = 0;  // a respawn is not a loop
+        return;
+    }
+    travelling = bs->ainode == AINode_Seek_LTG || bs->ainode == AINode_Seek_NBG;
+    speed = sqrt(bs->cur_ps.velocity[0] * bs->cur_ps.velocity[0] +
+                 bs->cur_ps.velocity[1] * bs->cur_ps.velocity[1]);
+    if (!travelling) {
+        bs->mstat.fight += thinktime;
+        bs->mstat.n = 0;
+        return;
+    }
+    bs->mstat.travel += thinktime;
+    bs->mstat.speed += speed * thinktime;
+    if (speed < 100) {
+        bs->mstat.stalled += thinktime;
+    }
+    if (now < bs->mstat.next_sample) {
+        return;
+    }
+    bs->mstat.next_sample = now + MSTAT_STEP;
+    goal = BotMoveStatsGoal(bs);
+    // defending, camping and patrolling move round a spot on purpose
+    if (bs->ltgtype == LTG_DEFENDKEYAREA || bs->ltgtype == LTG_CAMP ||
+        bs->ltgtype == LTG_CAMPORDER || bs->ltgtype == LTG_PATROL) {
+        bs->mstat.n = 0;
+        return;
+    }
+    // a loop: some sample 4-10s back is close to here, every sample since has
+    // the same goal, and one of them was far from that spot
+    for (i = 0; i < bs->mstat.n; i++) {
+        idx = (bs->mstat.head - 1 - i + MSTAT_RING) % MSTAT_RING;
+        if (bs->mstat.goal[idx] != goal) {
+            break;
+        }
+        if (now - bs->mstat.t[idx] < 4 || now - bs->mstat.t[idx] > 10) {
+            continue;
+        }
+        if (Distance(bs->mstat.pos[idx], bs->origin) > 96) {
+            continue;
+        }
+        for (j = 0; j < i; j++) {
+            jdx = (bs->mstat.head - 1 - j + MSTAT_RING) % MSTAT_RING;
+            if (Distance(bs->mstat.pos[jdx], bs->mstat.pos[idx]) > 256) {
+                break;
+            }
+        }
+        if (j < i) {
+            bs->mstat.loops++;
+            bs->mstat.n = 0;
+            break;
+        }
+    }
+    k = bs->mstat.head;
+    VectorCopy(bs->origin, bs->mstat.pos[k]);
+    bs->mstat.t[k] = now;
+    bs->mstat.goal[k] = goal;
+    bs->mstat.head = (k + 1) % MSTAT_RING;
+    if (bs->mstat.n < MSTAT_RING) {
+        bs->mstat.n++;
+    }
+}
+
+/*
+[QL] E133. bot_debugTrack: one "bottrack" line per bot every N milliseconds of
+game time, for tools/bot-harness/render-tracks.py to draw over an overhead view
+of the map:
+
+  bottrack <ms> <client> <team> <x> <y> <z> <speed> <state> <ltg> <goalarea> <name>
+
+state is s(eek) or f(ight) or d(ead). The map picture shows where movement
+goes wrong - a doorway every bot stalls in, a loop that always happens in the
+same room - which a total cannot.
+*/
+void BotTrackSample(bot_state_t* bs) {
+    bot_goal_t goal;
+    char state;
+    int goalarea = 0;
+
+    if (level.time < bs->mstat_track_next) {
+        return;
+    }
+    bs->mstat_track_next = level.time + bot_debugTrack.integer;
+    if (bs->cur_ps.pm_type != PM_NORMAL || bs->cur_ps.stats[STAT_HEALTH] <= 0) {
+        state = 'd';
+    } else if (bs->ainode == AINode_Seek_LTG || bs->ainode == AINode_Seek_NBG) {
+        state = 's';
+    } else {
+        state = 'f';
+    }
+    if (trap_BotGetTopGoal(bs->gs, &goal)) {
+        goalarea = goal.areanum;
+    }
+    G_Printf("bottrack %d %d %d %.0f %.0f %.0f %.0f %c %d %d %s\n", level.time, bs->client, BotTeam(bs),
+             bs->origin[0], bs->origin[1], bs->origin[2],
+             sqrt(bs->cur_ps.velocity[0] * bs->cur_ps.velocity[0] + bs->cur_ps.velocity[1] * bs->cur_ps.velocity[1]),
+             state, bs->ltgtype, goalarea, g_entities[bs->client].client->pers.netname);
+}
+
+static void BotMoveStatsReport(void) {
+    float now = FloatTime(), travel = 0, speed = 0, stalled = 0, fight = 0;
+    int i, loops = 0, bumps = 0, bots = 0;
+    bot_state_t* bs;
+
+    if (bot_debugMovement.value <= 0) {
+        movestats_next = 0;
+        return;
+    }
+    if (!movestats_next) {
+        movestats_next = now + bot_debugMovement.value;
+        return;
+    }
+    if (now < movestats_next) {
+        return;
+    }
+    movestats_next = now + bot_debugMovement.value;
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        bs = botstates[i];
+        if (!bs || !bs->inuse) {
+            continue;
+        }
+        if (bs->mstat.travel > 0) {
+            BotAI_Print(PRT_MESSAGE, "movestats %-16s travel %5.1fs  speed %3.0f  stalled %3.0f%%  loops %d  bumps %d  fight %5.1fs\n",
+                        g_entities[i].client ? g_entities[i].client->pers.netname : "?",
+                        bs->mstat.travel, bs->mstat.speed / bs->mstat.travel,
+                        100 * bs->mstat.stalled / bs->mstat.travel, bs->mstat.loops, bs->mstat.bumps, bs->mstat.fight);
+        }
+        travel += bs->mstat.travel;
+        speed += bs->mstat.speed;
+        stalled += bs->mstat.stalled;
+        fight += bs->mstat.fight;
+        loops += bs->mstat.loops;
+        bumps += bs->mstat.bumps;
+        bots++;
+        bs->mstat.travel = bs->mstat.speed = bs->mstat.stalled = bs->mstat.fight = 0;
+        bs->mstat.loops = bs->mstat.bumps = 0;
+    }
+    if (travel > 0) {
+        BotAI_Print(PRT_MESSAGE, "movestats TOTAL %d bots  travel %.0fs  speed %.0f  stalled %.1f%%  loops %d (%.2f per bot-minute)  bumps %d (%.2f per bot-minute)  fight %.0fs\n",
+                    bots, travel, speed / travel, 100 * stalled / travel, loops, loops * 60 / travel,
+                    bumps, bumps * 60 / travel, fight);
+    }
+}
+
+/*
 ==================
 BotAIStartFrame
 ==================
@@ -1841,6 +2032,18 @@ int BotAIStartFrame(int time) {
 
     elapsed_time = time - local_time;
     local_time = time;
+
+    BotMoveStatsReport();  // [QL] E133, bot_debugMovement
+    {
+        // [QL] E133. botlib reads its own copy; keep it in step so it can be
+        // switched mid-match for an A/B
+        static int crowdsteer_mod = -1;
+
+        if (bot_crowdsteer.modificationCount != crowdsteer_mod) {
+            crowdsteer_mod = bot_crowdsteer.modificationCount;
+            trap_BotLibVarSet("bot_crowdsteer", bot_crowdsteer.string);
+        }
+    }
 
     botlib_residual += elapsed_time;
 
@@ -2031,6 +2234,7 @@ int BotInitLibrary(void) {
     trap_BotLibVarSet("g_gametype", buf);
     // bot developer mode and log file
     trap_BotLibVarSet("bot_developer", bot_developer.string);
+    trap_BotLibVarSet("bot_crowdsteer", bot_crowdsteer.string);  // [QL] E133
     trap_Cvar_VariableStringBuffer("logfile", buf, sizeof(buf));
     trap_BotLibVarSet("log", buf);
     // no chatting

@@ -341,6 +341,20 @@ typedef struct bot_state_s {
     int patrolflags;                 // patrol flags
 
     bot_tactics_t tac;  // [QL] see ai_tactics.c
+
+    /* [QL] E133. bot_debugMovement - how well this bot is moving (ai_main.c) */
+    struct {
+        float next_sample;
+        vec3_t pos[24];
+        float t[24];
+        int goal[24];
+        int n, head;
+        float travel, speed, stalled, fight;
+        int loops;
+        int bumps;         // blocked by another player's body
+        float bumped_time;
+    } mstat;
+    int mstat_track_next;  // [QL] E133, bot_debugTrack
 } bot_state_t;
 
 // the bot states, indexed by client number; NULL for a client that is not a bot
@@ -364,3 +378,5 @@ int BotAI_GetClientState(int clientNum, playerState_t* state);
 int BotAI_GetEntityState(int entityNum, entityState_t* state);
 int BotAI_GetSnapshotEntity(int clientNum, int sequence, entityState_t* state);
 int BotTeamLeader(bot_state_t* bs);
+void BotMoveStatsSample(bot_state_t* bs, float thinktime);  // [QL] E133
+void BotTrackSample(bot_state_t* bs);                       // [QL] E133

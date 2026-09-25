@@ -5320,6 +5320,20 @@ void BotAIBlocked(bot_state_t* bs, bot_moveresult_t* moveresult, int activate) {
         //
         return;
     }
+    // [QL] E133. bot_debugMovement counts bumps into bodies - once per contact,
+    // not once per think spent pressed against it
+    if (moveresult->blockentity >= 0 && moveresult->blockentity < MAX_CLIENTS &&
+        bs->mstat.bumped_time < FloatTime() - 0.5f) {
+        bs->mstat.bumps++;
+        if (bot_debugTrack.integer > 0) {
+            // for render-tracks.py: where bodies meet
+            G_Printf("botbump %d %d %.0f %.0f %.0f %d\n", level.time, bs->client,
+                     bs->origin[0], bs->origin[1], bs->origin[2], bs->ainode == AINode_Seek_LTG || bs->ainode == AINode_Seek_NBG);
+        }
+    }
+    if (moveresult->blockentity >= 0 && moveresult->blockentity < MAX_CLIENTS) {
+        bs->mstat.bumped_time = FloatTime();
+    }
     // get info for the entity that is blocking the bot
     BotEntityInfo(moveresult->blockentity, &entinfo);
 #ifdef OBSTACLEDEBUG
@@ -5358,6 +5372,29 @@ void BotAIBlocked(bot_state_t* bs, bot_moveresult_t* moveresult, int activate) {
     if (VectorNormalize(hordir) < 0.1) {
         VectorSet(angles, 0, 360 * random(), 0);
         AngleVectors(angles, hordir, NULL, NULL);
+    }
+    /*
+    [QL] E133. A body going our way is the queue, not an obstacle.
+
+    Blocked means pressed against a body three units ahead, and in a column of
+    thirty running bots the one behind is always pressed against the one in
+    front. Stock answered every such contact with a full-speed sidestep at
+    right angles - out of the column and into whoever runs beside it, which
+    blocks them in turn: the zig-zag every bot in a crowd was doing. If the
+    one in front is running the way we are, keep following; the sidestep is
+    for bodies that are standing still or coming the other way. BotCrowdSteer
+    (botlib) already bends the path round the queue where there is room.
+    */
+    if (bot_crowdsteer.integer && moveresult->blockentity >= 0 && moveresult->blockentity < MAX_CLIENTS &&
+        entinfo.update_time > 0.001f) {
+        vec3_t vel;
+
+        VectorSubtract(entinfo.origin, entinfo.lastvisorigin, vel);
+        VectorScale(vel, 1.0f / entinfo.update_time, vel);
+        vel[2] = 0;
+        if (DotProduct(vel, hordir) > 150) {
+            return;
+        }
     }
     //
     // if (moveresult->flags & MOVERESULT_ONTOPOFOBSTACLE) movetype = MOVE_JUMP;
@@ -5972,6 +6009,7 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     aas_altroutegoal_t* altroutegoals;
     bot_goal_t* goal;
     int numaltroutegoals, rnd;
+
 
     if (base == TEAM_RED) {
         altroutegoals = red_altroutegoals;
