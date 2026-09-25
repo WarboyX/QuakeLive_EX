@@ -131,9 +131,6 @@ QL-ASSET	cg_bob	cgame, referenced by Quake Live's own pak00 menus or configs - c
 QL-ASSET	cg_buzzerSound	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
 QL-FEATURE	cg_cameraSmartMode	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_cameraThirdPersonSmartMode	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
-QL-ASSET	cg_crosshairHitColor	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred.
-QL-ASSET	cg_crosshairHitStyle	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 0=No, 1=Damage Color, 2=Color Flash, 6=Pulse, 7=Damage Pulse, 8=Color Pulse.
-QL-ASSET	cg_crosshairHitTime	cgame, referenced by Quake Live's own pak00 menus or configs - confirmed against a real install, not inferred. Values: 100=Short, 200=Normal, 500=Long.
 QL-FEATURE	cg_currentSelectedPlayerName	cgame, 0 - cgame registers it and nothing acts on it
 QL-FEATURE	cg_debugFlags	cgame, CVAR_CHEAT - cheat-protected debug switch for an unported feature
 QL-FEATURE	cg_drawCrosshairTeamHealth	cgame, CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE - player setting, persisted to config; cgame never reads it

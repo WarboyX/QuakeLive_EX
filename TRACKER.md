@@ -6048,6 +6048,61 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E132. Crosshair hit styles; three scoreboard bugs; bots measured in a headless CTF harness — DONE (verify)
+**Lives in:** our **client** (cgame, ui + pak01) and our **server** (qagame) · **Seen by:** our client only (crosshair, scoreboard); every client (bots)
+
+#### Crosshair hit reaction (`cg_crosshairHitStyle`, `cg_crosshairHitTime`, `cg_crosshairHitColor`)
+Quake Live's own menu answers what the values mean. It lists 0 No, 1 Damage Color, 2 Color Flash, 6 Pulse, 7 Damage Pulse, 8 Color Pulse, and enables the hit-colour slider only for styles 2, 5 and 8. So the value is two fields, not a list:
+- `style % 3`: 0 = no colour, 1 = colour by damage, 2 = `cg_crosshairHitColor`;
+- `style / 3 == 2`: pulse.
+- 3–5 are never offered by QL's menu and are drawn as colour only.
+
+On each enemy hit, the colour starts full and blends back to normal over the hit time. The pulse starts at 1.5× size and settles the same way.
+
+"By damage" uses the tier the server already sends with every hit: the top two bits of `ps.generic1`, which QL's binary notes are "for the crosshair hit-marker". So it works on stock servers too. The colours match the damage numbers: blue under 25, then yellow, orange, and red from 75.
+
+The Player page gains **On hit / Hit time / Hit colour**, greyed exactly as QL greys them. To fit the shared 560×340 frame, short controls now pair two to a line (pulse with colour-by-health, hit style with hit time), and RESET moved to the right edge. Pages now set a `disableColor`; unset, a greyed row vanished instead of greying.
+
+#### Scoreboard
+- **"O", "B", "4" over the head icons:** the first digits of CTF/CA damage and accuracy. A list asks its feeder for field *j* by column index, so `io_scoreboard` declares every field up to the last shown and gives the unused ones `0 0 0`. The painter drew those anyway, at the row's left edge with no length limit, under the icon. Zero-width columns are now skipped; no Quake Live menu declares one.
+- **Scroll thumb could not be dragged**, for two reasons:
+  - The drag's per-frame update ran only from `Menu_PaintAll`, which cgame deliberately does not call while the board is up.
+  - cgame's key handler dropped key-ups, so a drag was never released and the next click was spent releasing it.
+
+  `Display_RunCapture` now runs from the board's paint, and `Display_ReleaseCapture` runs on mouse-up. The thumb drag also no longer "clicks" the list on a timer; that Team Arena leftover paged or selected whatever the cursor drifted over.
+- **Click / right-click selected a row but showed nothing:** the lists had no `outlinecolor`, so the selection fill was all zero. Now gold at 28%.
+
+#### Bots: a harness, then a root cause
+"Scrap the AI" was a question the code could not answer by reading it, so this built something that could: **`tools/bot-harness/`**.
+- A generated symmetric three-lane CTF map (`gen-ctf-map.py`, with a `swap` mode that mirrors the bases).
+- Its AAS from `bspc`.
+- A script that runs a 4v4 headless match at timescale 8 and counts grabs, captures and carrier frags (`run-match.sh`).
+- A setup script (`build-harness.sh`).
+
+Botfiles are supplied locally: Quake Live's from your own pak00, or OpenArena's (GPLv2+). Nothing from either is committed.
+
+**First result: one team attacked all match and the other never did** (flag grabs 25 vs 1), with 0–3 captures in 15 minutes. It followed the *team*, not the base side (swap), and not the bots (swapped personalities). It also appeared with `bot_tactics 0` and with **the original ioquakelive AI built in**, so it was not in anything this branch wrote.
+
+Traced to the item list:
+- Quake Live inserts `item_armor_jacket` at index 4 of `bg_itemlist`, so every later item is one higher than Quake 3's numbering (red flag 35, not 34).
+- `botfiles/inv.h` carried Quake 3's numbers. botlib ties map entities to item definitions by that number, so **the red flag entity was read as the "Blue Flag"**. Red attackers walked to their own flag, touched it, concluded the blue flag was gone, and dropped their job for the rest of the match.
+- **Our own code had the same mistake:** `ai_dmq3.c` identified a bot's holdable item and persistent powerup against `MODELINDEX_*`, so a medkit read as a teleporter, a kamikaze as a medkit, Guard as Scout. It now asks the item list for `giTag`, which cannot drift, and `code/game/inv.h` carries QL's numbers.
+
+**With the numbering corrected** (15 game-minutes, 4v4):
+
+| variant | grabs | caps | caps red/blue |
+|---|---|---|---|
+| ours, tactics on | 42 | 11 | 5/6 |
+| ours, tactics on, bots swapped | 38 | 14 | 7/7 |
+| ours, tactics off (stock behaviour) | 56 | 12 | 8/4 |
+| original ioquakelive AI | 55 | 14 | 6/8 |
+
+Balanced, and roughly 4× the captures. The four are within the noise of one run each. **On this map, the tactics layer is neither measurably better nor worse than the original.** That is the honest verdict on it so far, and the harness is how to settle the rest.
+
+**Also fixed:** two stock Quake 3 orders whose *voice* message went to a different bot than the text named (`BotCTFOrders_FlagNotAtBase`'s getflag, 1FCTF's second defender). `BotSayTeamOrder` discards text ("voice chats only"), so the voice order is the only one. With four or more on a team whose flag was stolen, no attacker was ever told to attack.
+
+**Open: does Quake Live's own `botfiles/inv.h` in pak00 use Quake Live's numbering?** If it uses Quake 3's, the real game has this exact flag swap, and it is the likeliest reason for 0 captures in a 15-minute CTF match. `tools/bot-harness/fix-inv.py --check <its inv.h>` answers it in one line.
+
 ### E131. Crosshair back on Player only; crosshair colour works; scoreboard switch — DONE (verify)
 **Lives in:** our **client** (cgame, ui + pak01) · **Seen by:** our client only
 

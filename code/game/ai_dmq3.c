@@ -2238,21 +2238,42 @@ void BotUpdateInventory(bot_state_t* bs) {
     }
     // powerups
     bs->inventory[INVENTORY_HEALTH] = bs->cur_ps.stats[STAT_HEALTH];
-    bs->inventory[INVENTORY_TELEPORTER] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_TELEPORTER;
-    bs->inventory[INVENTORY_MEDKIT] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_MEDKIT;
-    bs->inventory[INVENTORY_KAMIKAZE] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_KAMIKAZE;
-    bs->inventory[INVENTORY_PORTAL] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_PORTAL;
-    bs->inventory[INVENTORY_INVULNERABILITY] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_INVULNERABILITY;
+    /*
+    [QL] E132. By what the item IS, not by a hard-coded list position.
+
+    STAT_HOLDABLE_ITEM and STAT_PERSISTANT_POWERUP hold an index into
+    bg_itemlist (g_items.c), and these compared it against inv.h's
+    MODELINDEX_* numbers - Quake 3's. Quake Live inserted item_armor_jacket
+    at index 4, so from there on every Q3 number is one short: a bot holding
+    a medkit read as holding a teleporter, a kamikaze as a medkit, Guard as
+    Scout. Asking the list for the item's giTag cannot drift that way.
+    */
+    {
+        int hi = bs->cur_ps.stats[STAT_HOLDABLE_ITEM];
+        int tag = (hi > 0 && hi < bg_numItems && bg_itemlist[hi].giType == IT_HOLDABLE) ? bg_itemlist[hi].giTag : HI_NONE;
+
+        bs->inventory[INVENTORY_TELEPORTER] = tag == HI_TELEPORTER;
+        bs->inventory[INVENTORY_MEDKIT] = tag == HI_MEDKIT;
+        bs->inventory[INVENTORY_KAMIKAZE] = tag == HI_KAMIKAZE;
+        bs->inventory[INVENTORY_PORTAL] = tag == HI_PORTAL;
+        bs->inventory[INVENTORY_INVULNERABILITY] = tag == HI_INVULNERABILITY;
+    }
     bs->inventory[INVENTORY_QUAD] = bs->cur_ps.powerups[PW_QUAD] != 0;
     bs->inventory[INVENTORY_ENVIRONMENTSUIT] = bs->cur_ps.powerups[PW_BATTLESUIT] != 0;
     bs->inventory[INVENTORY_HASTE] = bs->cur_ps.powerups[PW_HASTE] != 0;
     bs->inventory[INVENTORY_INVISIBILITY] = bs->cur_ps.powerups[PW_INVIS] != 0;
     bs->inventory[INVENTORY_REGEN] = bs->cur_ps.powerups[PW_REGEN] != 0;
     bs->inventory[INVENTORY_FLIGHT] = bs->cur_ps.powerups[PW_FLIGHT] != 0;
-    bs->inventory[INVENTORY_SCOUT] = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP] == MODELINDEX_SCOUT;
-    bs->inventory[INVENTORY_GUARD] = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP] == MODELINDEX_GUARD;
-    bs->inventory[INVENTORY_DOUBLER] = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP] == MODELINDEX_DOUBLER;
-    bs->inventory[INVENTORY_AMMOREGEN] = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP] == MODELINDEX_AMMOREGEN;
+    {
+        // [QL] E132. Same as the holdables above: by giTag, not list position.
+        int pi = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP];
+        int tag = (pi > 0 && pi < bg_numItems && bg_itemlist[pi].giType == IT_PERSISTANT_POWERUP) ? bg_itemlist[pi].giTag : -1;
+
+        bs->inventory[INVENTORY_SCOUT] = tag == PW_SCOUT;
+        bs->inventory[INVENTORY_GUARD] = tag == PW_GUARD;
+        bs->inventory[INVENTORY_DOUBLER] = tag == PW_DOUBLER;
+        bs->inventory[INVENTORY_AMMOREGEN] = tag == PW_AMMOREGEN;
+    }
     bs->inventory[INVENTORY_REDFLAG] = bs->cur_ps.powerups[PW_REDFLAG] != 0;
     bs->inventory[INVENTORY_BLUEFLAG] = bs->cur_ps.powerups[PW_BLUEFLAG] != 0;
     bs->inventory[INVENTORY_NEUTRALFLAG] = bs->cur_ps.powerups[PW_NEUTRALFLAG] != 0;

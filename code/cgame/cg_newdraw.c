@@ -4202,6 +4202,10 @@ void CG_KeyEvent(int key, qboolean down) {
     UI_SetInputTrace(cg_scoreboardDebug.integer);
 
     if (!down) {
+        /* [QL] E132. A mouse button coming up ends any drag it started. */
+        if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3) {
+            Display_ReleaseCapture();
+        }
         return;
     }
 

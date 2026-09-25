@@ -495,7 +495,22 @@ void BotCTFOrders_FlagNotAtBase(bot_state_t* bs) {
                     ClientName(teammates[numteammates - i - 1], name, sizeof(name));
                     BotAI_BotInitialChat(bs, "cmd_getflag", name, NULL);
                     BotSayTeamOrder(bs, teammates[numteammates - i - 1]);
-                    BotSayVoiceTeamOrder(bs, teammates[0], VOICECHAT_GETFLAG);
+                    /*
+                    [QL] E132. To the attacker, not to teammates[0].
+
+                    Stock Q3 sent this voice order to teammates[0] - the bot the
+                    loop above had just told to defend - and BotSayTeamOrder is
+                    "voice chats only" (it discards the text), so the voice
+                    order is the ONLY order. With four or more on a team whose
+                    flag had been stolen, the attackers were never told to
+                    attack and the defender was turned into an attacker. A team
+                    that lost its flag stopped going for the other one, so the
+                    other team was never under pressure and kept stealing: one
+                    team attacking all match and the other defending, whichever
+                    side lost its flag first. Measured on a symmetric test map,
+                    the same shape on either side and with either set of bots.
+                    */
+                    BotSayVoiceTeamOrder(bs, teammates[numteammates - i - 1], VOICECHAT_GETFLAG);
                 }
                 //
                 break;
@@ -970,7 +985,9 @@ void Bot1FCTFOrders_FlagAtCenter(bot_state_t* bs) {
                 ClientName(teammates[1], name, sizeof(name));
                 BotAI_BotInitialChat(bs, "cmd_defendbase", name, NULL);
                 BotSayTeamOrder(bs, teammates[1]);
-                BotSayVoiceTeamOrder(bs, teammates[0], VOICECHAT_DEFEND);
+                // [QL] E132. teammates[1], as the text says; stock sent it to [0]
+                // twice and [1] never got an order (see BotCTFOrders_FlagNotAtBase)
+                BotSayVoiceTeamOrder(bs, teammates[1], VOICECHAT_DEFEND);
                 // the other will get the flag
                 ClientName(teammates[2], name, sizeof(name));
                 BotAI_BotInitialChat(bs, "cmd_getflag", name, NULL);

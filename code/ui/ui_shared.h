@@ -455,6 +455,8 @@ menuDef_t* Menu_GetByIndex(int index);
 void Menu_UpdatePosition(menuDef_t* menu);
 void Menu_New(int handle);
 void Menu_PaintAll(void);
+void Display_RunCapture(void);      // [QL] E132
+void Display_ReleaseCapture(void);  // [QL] E132
 menuDef_t* Menus_ActivateByName(const char* p);
 void Menu_Reset(void);
 qboolean Menus_AnyFullScreenVisible(void);

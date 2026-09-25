@@ -523,6 +523,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -633,6 +636,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -714,6 +720,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -824,6 +833,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -882,6 +894,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -1006,6 +1021,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -1034,156 +1052,179 @@
         }
         itemDef { name ig_modelpreview  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_PLAYERMODEL
                   rect 60 42 120 86  visible 1 }
-        itemDef { text "Name"  textscale .21  rect 190 94 80 16  textaligny 13
+        itemDef { text "Name"  textscale .21  rect 190 92 80 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 80
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { text "Handicap"  textscale .21  rect 190 112 80 16  textaligny 13
+        itemDef { text "Handicap"  textscale .21  rect 190 110 80 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 80
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name ig_name  type ITEM_TYPE_EDITFIELD  text ""  cvar "name"
                   maxchars 36  maxpaintchars 22
-                  rect 290 94 246 16  textscale .2  textaligny 12  textalignx 4
+                  rect 290 92 246 16  textscale .2  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name ig_handicap  type ITEM_TYPE_MULTI  text ""  cvar "handicap"
                   cvarFloatList { "None" 100 "90" 90 "80" 80 "70" 70 "60" 60 "50" 50 "40" 40 "30" 30 "20" 20 "10" 10 }
-                  rect 290 112 200 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 110 200 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Mouse sensitivity"  textscale .21  rect 24 132 246 16  textaligny 13
+        itemDef { text "Mouse sensitivity"  textscale .21  rect 24 128 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_sensitivity  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "sensitivity" 5 1 30
-                  rect 290 132 96 16  textscale .21  textaligny 13
+                  rect 290 128 96 15  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name r_sensitivityv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "sensitivity"
                   maxchars 7  maxpaintchars 7
-                  rect 398 132 56 16  textscale .19  textaligny 12  textalignx 4
+                  rect 398 128 56 15  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Field of view"  textscale .21  rect 24 149 246 16  textaligny 13
+        itemDef { text "Field of view"  textscale .21  rect 24 144 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgfov  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "cg_fov" 100 75 130
-                  rect 290 149 96 16  textscale .21  textaligny 13
+                  rect 290 144 96 15  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name r_cgfovv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_fov"
                   maxchars 7  maxpaintchars 7
-                  rect 398 149 56 16  textscale .19  textaligny 12  textalignx 4
+                  rect 398 144 56 15  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Brightness"  textscale .21  rect 24 166 246 16  textaligny 13
+        itemDef { text "Brightness"  textscale .21  rect 24 160 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rgamma  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "r_gamma" 1 0.5 3
-                  rect 290 166 96 16  textscale .21  textaligny 13
+                  rect 290 160 96 15  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name r_rgammav  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_gamma"
                   maxchars 7  maxpaintchars 7
-                  rect 398 166 56 16  textscale .19  textaligny 12  textalignx 4
+                  rect 398 160 56 15  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Master volume"  textscale .21  rect 24 183 246 16  textaligny 13
+        itemDef { text "Master volume"  textscale .21  rect 24 176 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_svolume  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "s_volume" 0.8 0 1
-                  rect 290 183 96 16  textscale .21  textaligny 13
+                  rect 290 176 96 15  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name r_svolumev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "s_volume"
                   maxchars 7  maxpaintchars 7
-                  rect 398 183 56 16  textscale .19  textaligny 12  textalignx 4
+                  rect 398 176 56 15  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Music"  textscale .21  rect 24 200 246 16  textaligny 13
+        itemDef { text "Music"  textscale .21  rect 24 192 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_smusicvolume  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "s_musicvolume" 0.25 0 1
-                  rect 290 200 96 16  textscale .21  textaligny 13
+                  rect 290 192 96 15  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name r_smusicvolumev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "s_musicvolume"
                   maxchars 7  maxpaintchars 7
-                  rect 398 200 56 16  textscale .19  textaligny 12  textalignx 4
+                  rect 398 192 56 15  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Crosshair"  textscale .21  rect 24 217 246 15  textaligny 13
+        itemDef { text "Crosshair"  textscale .21  rect 24 208 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgdrawcrosshair  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshair"
                   cvarFloatList { "Off" 0 "Style 1" 1 "Style 2 (default)" 2 "Style 3" 3 "Style 4" 4 "Style 5" 5 "Style 6" 6 "Style 7" 7 "Style 8" 8 "Style 9" 9 "Style 10" 10 "Style 11" 11 "Style 12" 12 "Style 13" 13 "Style 14" 14 "Style 15" 15 "Style 16" 16 "Style 17" 17 "Style 18" 18 "Style 19" 19 "Style 20" 20 "Style 21" 21 "Style 22" 22 "Style 23" 23 "Style 24" 24 "Style 25" 25 "Style 26" 26 "Style 27" 27 "Style 28" 28 "Style 29" 29 }
-                  rect 290 217 110 15  textscale .21  textaligny 13  textalignx 2
+                  rect 290 208 110 15  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         // check-menus: overlap-ok - drawn one row up from its rect (UI_DrawCrosshair)
         itemDef { name r_cgdrawcrosshairp  type ITEM_TYPE_OWNERDRAW  ownerdraw UI_CROSSHAIR
-                  rect 410 232 15 15  visible 1  decoration }
-        itemDef { text "Crosshair size"  textscale .21  rect 24 233 246 15  textaligny 13
+                  rect 410 223 15 15  visible 1  decoration }
+        itemDef { text "Crosshair size"  textscale .21  rect 24 224 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgcrosshairsize  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "cg_crosshairSize" 32 8 64
-                  rect 290 233 96 15  textscale .21  textaligny 13
+                  rect 290 224 96 15  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name r_cgcrosshairsizev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairSize"
                   maxchars 7  maxpaintchars 7
-                  rect 398 233 56 15  textscale .19  textaligny 12  textalignx 4
+                  rect 398 224 56 15  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Crosshair brightness"  textscale .21  rect 24 249 246 15  textaligny 13
+        itemDef { text "Crosshair brightness"  textscale .21  rect 24 240 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgcrosshairbrightness  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "cg_crosshairBrightness" 1 0 1
-                  rect 290 249 96 15  textscale .21  textaligny 13
+                  rect 290 240 96 15  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name r_cgcrosshairbrightnessv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_crosshairBrightness"
                   maxchars 7  maxpaintchars 7
-                  rect 398 249 56 15  textscale .19  textaligny 12  textalignx 4
+                  rect 398 240 56 15  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Pulse on pickup"  textscale .21  rect 24 265 246 15  textaligny 13
+        itemDef { text "Pulse on pickup"  textscale .21  rect 24 256 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgcrosshairpulse  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairPulse"
-                  rect 290 265 70 15  textscale .21  textaligny 13  textalignx 2
+                  rect 290 256 50 15  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Colour by health"  textscale .21  rect 24 281 246 15  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+        itemDef { text "Colour by health"  textscale .21  rect 360 256 110 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 110
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgcrosshairhealth  type ITEM_TYPE_YESNO  text ""  cvar "cg_crosshairHealth"
-                  rect 290 281 70 15  textscale .21  textaligny 13  textalignx 2
+                  rect 480 256 50 15  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Crosshair colour"  textscale .21  rect 24 297 246 15  textaligny 13
+        itemDef { text "Crosshair colour"  textscale .21  rect 24 272 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgcrosshaircolor  type ITEM_TYPE_SLIDER_COLOR  text ""
                   cvarInt "cg_crosshairColor" 25 1 26
                   cvarTest "cg_crosshairHealth"  disableCvar { "1" }
-                  rect 290 297 96 15  textscale .21  textaligny 13
+                  rect 290 272 96 15  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Show player names"  textscale .21  rect 24 313 246 15  textaligny 13
+        itemDef { text "On hit"  textscale .21  rect 24 288 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairhitstyle  type ITEM_TYPE_MULTI  text ""  cvar "cg_crosshairHitStyle"
+                  cvarFloatList { "No" 0 "Damage Color" 1 "Color Flash" 2 "Pulse" 6 "Damage Pulse" 7 "Color Pulse" 8 }
+                  rect 290 288 110 15  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Hit time"  textscale .21  rect 410 288 60 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 60
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairhittime  type ITEM_TYPE_MULTI  text ""  cvar "cg_crosshairHitTime"
+                  cvarFloatList { "Short" 100 "Normal" 200 "Long" 500 }
+                  cvarTest "cg_crosshairHitStyle"  disableCvar { "0" }
+                  rect 480 288 60 15  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Hit colour"  textscale .21  rect 24 304 246 15  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgcrosshairhitcolor  type ITEM_TYPE_SLIDER_COLOR  text ""
+                  cvarInt "cg_crosshairHitColor" 1 1 26
+                  cvarTest "cg_crosshairHitStyle"  disableCvar { "0" ; "1" ; "3" ; "4" ; "6" ; "7" }
+                  rect 290 304 96 15  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Show player names"  textscale .21  rect 24 320 246 15  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgdrawcrosshairnames  type ITEM_TYPE_MULTI  text ""  cvar "cg_drawCrosshairNames"
                   cvarFloatList { "No" 0 "Yes" 1 "Teammates Only" 2 }
-                  rect 290 313 250 15  textscale .21  textaligny 13  textalignx 2
+                  rect 290 320 130 15  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name ig_setreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 440 285 96 24  textalign ITEM_ALIGN_CENTER  textalignx 48  textaligny 16
+            rect 440 308 96 24  textalign ITEM_ALIGN_CENTER  textalignx 48  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset sensitivity ; reset cg_fov ; reset r_gamma ; reset s_volume ; reset s_musicvolume ; reset cg_drawCrosshair ; reset cg_crosshairSize ; reset cg_crosshairBrightness ; reset cg_crosshairPulse ; reset cg_crosshairHealth ; reset cg_crosshairColor ; reset cg_drawCrosshairNames" }
+            action { play "sound/misc/menu1.wav" ; exec "reset sensitivity ; reset cg_fov ; reset r_gamma ; reset s_volume ; reset s_musicvolume ; reset cg_drawCrosshair ; reset cg_crosshairSize ; reset cg_crosshairBrightness ; reset cg_crosshairPulse ; reset cg_crosshairHealth ; reset cg_crosshairColor ; reset cg_crosshairHitStyle ; reset cg_crosshairHitTime ; reset cg_crosshairHitColor ; reset cg_drawCrosshairNames" }
             mouseEnter { setitemcolor ig_setreset backcolor 0 0 0 .9 ; setitemcolor ig_setreset forecolor 0.964 0.815 0 1 ; setitemcolor ig_setreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor ig_setreset backcolor 0 0 0 .6 ; setitemcolor ig_setreset forecolor 1 1 1 1 ; setitemcolor ig_setreset bordercolor .35 .3 .12 1 }
         }
@@ -1196,6 +1237,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -1347,6 +1391,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -1473,6 +1520,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -1577,6 +1627,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -1716,6 +1769,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -1860,6 +1916,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -2022,6 +2081,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -2189,6 +2251,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -2297,6 +2362,9 @@
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor 0.964 0.815 0 1
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.

@@ -808,6 +808,8 @@ typedef struct {
     int itemPickup;
     int itemPickupTime;
     int itemPickupBlendTime;  // the pulse around the crosshair is timed separately
+    int crosshairHitTime;     // [QL] E132. last enemy hit, for cg_crosshairHitStyle
+    int crosshairHitTier;     // [QL] E132. its damage tier 0..3 (top bits of ps.generic1)
 
     int weaponSelectTime;
     int weaponAnimation;
@@ -1676,6 +1678,9 @@ extern vmCvar_t cg_waterWarp;
 extern vmCvar_t cg_lowAmmoWarningSound;
 extern vmCvar_t cg_crosshairHealth;
 extern vmCvar_t cg_crosshairColor;
+extern vmCvar_t cg_crosshairHitColor;
+extern vmCvar_t cg_crosshairHitStyle;
+extern vmCvar_t cg_crosshairHitTime;
 extern vmCvar_t cg_drawStatus;
 extern vmCvar_t cg_draw2D;
 extern vmCvar_t cg_animSpeed;

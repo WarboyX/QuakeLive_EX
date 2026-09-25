@@ -1466,6 +1466,13 @@ CROSSHAIR
 ================================================================================
 */
 
+// [QL] E132. Moves color toward to by k (0 = unchanged, 1 = to).
+static void CG_CrosshairBlend(vec4_t color, const vec3_t to, float k) {
+	color[0] += (to[0] - color[0]) * k;
+	color[1] += (to[1] - color[1]) * k;
+	color[2] += (to[2] - color[2]) * k;
+}
+
 /*
 =================
 CG_DrawCrosshair
@@ -1477,6 +1484,7 @@ static void CG_DrawCrosshair(void) {
 	float f;
 	float x, y;
 	int ca;
+	float hitScale = 1.0f;
 
 	if (!cg_drawCrosshair.integer) {
 		return;
@@ -1536,6 +1544,55 @@ static void CG_DrawCrosshair(void) {
 			VectorCopy(cg_crosshairColors[c - 1], color);
 			color[3] = 1.0f;
 		}
+		/* [QL] E132. cg_crosshairHitStyle: what the crosshair does when you
+		   land a hit, for cg_crosshairHitTime ms.
+
+		   Quake Live's menu lists 0 "No", 1 "Damage Color", 2 "Color Flash",
+		   6 "Pulse", 7 "Damage Pulse", 8 "Color Pulse", and enables the hit
+		   colour slider only for 2, 5 and 8 (docs/ql-cvar-semantics.txt, its
+		   disableCvar list). So the value is two fields, not a list:
+		     style % 3   0 no colour, 1 by damage, 2 cg_crosshairHitColor
+		     style / 3   2 = pulse; 1 (3..5) is never offered by QL's menu
+		                 and is drawn as colour only.
+		   The colour starts at full and blends back to the normal crosshair
+		   over the hit time; the pulse starts 1.5x and settles the same way.
+		   "By damage" uses the tier the server sends with each hit and the
+		   same four colours as the damage numbers (CG_DamagePlum style 2):
+		   blue under 25, yellow, orange, red from 75. */
+		{
+			int style = cg_crosshairHitStyle.integer;
+			int len = cg_crosshairHitTime.integer;
+			int t = cg.time - cg.crosshairHitTime;
+
+			if (style > 0 && cg.crosshairHitTime && len > 0 && t >= 0 && t < len) {
+				float k = 1.0f - (float)t / (float)len;
+				vec3_t hit;
+				int c;
+
+				switch (style % 3) {
+				case 1:
+					switch (cg.crosshairHitTier) {
+					case 3:  VectorSet(hit, 1.0f, 0.0f, 0.0f); break;
+					case 2:  VectorSet(hit, 1.0f, 0.5f, 0.0f); break;
+					case 1:  VectorSet(hit, 1.0f, 1.0f, 0.0f); break;
+					default: VectorSet(hit, 0.25f, 0.5f, 1.0f); break;
+					}
+					CG_CrosshairBlend(color, hit, k);
+					break;
+				case 2:
+					c = cg_crosshairHitColor.integer;
+					if (c < 1 || c > CROSSHAIR_COLORS) {
+						c = 1;
+					}
+					CG_CrosshairBlend(color, cg_crosshairColors[c - 1], k);
+					break;
+				}
+				if (style / 3 == 2) {
+					hitScale = 1.0f + 0.5f * k;
+				}
+			}
+		}
+
 		color[0] *= bright;
 		color[1] *= bright;
 		color[2] *= bright;
@@ -1543,7 +1600,7 @@ static void CG_DrawCrosshair(void) {
 		trap_R_SetColor(color);
 	}
 
-	w = h = cg_crosshairSize.value;
+	w = h = cg_crosshairSize.value * hitScale;
 
 	// pulse the size of the crosshair when picking up items
 	//
@@ -2549,6 +2606,7 @@ static qboolean CG_DrawScoreboardMenu(void) {
 			CG_SetScoreSelection(NULL);
 			CG_TrackLocalPlayerOnScoreboard(activeMenu);
 			CG_ScoreboardPainted(activeMenu);
+			Display_RunCapture();   // [QL] E132 - a dragged scroll thumb
 			Menu_Paint(activeMenu, qtrue);
 			CG_DrawScoreboardHeadings(activeMenu);
 			CG_ScoreboardPopupsPaint();   // [QL] E120 - after the board, so on top of it

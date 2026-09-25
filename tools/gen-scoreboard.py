@@ -113,7 +113,12 @@ def listbox(name, feeder, x, y, w, h, cols):
     """
     cols is a list of (feeder field, pos, width, maxchars) for the fields shown;
     every other field up to the highest one is declared with zero width, because
-    the list asks the feeder for field j by its column index j.
+    the list asks the feeder for field j by its column index j. The list painter
+    skips zero-width columns (E132); it used to draw their text at the row's
+    left edge, under the head icons.
+
+    outlinecolor is the selected row's fill (Item_ListBox_Paint). It was unset,
+    so all zero: a click or right-click selected the row and nothing showed it.
     """
     n = max(c[0] for c in cols) + 1
     table = {c[0]: c[1:] for c in cols}
@@ -124,6 +129,7 @@ def listbox(name, feeder, x, y, w, h, cols):
             elementtype LISTBOX_TEXT  feeder %s
             columns %d  %s
             textscale .2  forecolor 1 1 1 1  backcolor 0 0 0 .35
+            outlinecolor 0.964 0.815 0 .28
             border 1  bordersize 1  bordercolor %s  visible 1
         }
 """ % (name, x, y, w, h, w, feeder, n, spec, BTN_EDGE)

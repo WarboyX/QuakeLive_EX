@@ -349,6 +349,16 @@ void CG_CheckLocalSounds(playerState_t* ps, playerState_t* ops) {
     implemented. Every non-zero value behaves as it does today. The manifest row
     records the rest as still open.
     */
+    // [QL] E132. The crosshair's hit reaction (cg_crosshairHitStyle) keys off
+    // the same counter, whatever cg_hitBeep says. The server writes the hit's
+    // damage tier into the top two bits of generic1 in the same frame
+    // (DamageTier in g_combat.c; Quake Live's own binary notes it is "for the
+    // crosshair hit-marker"), so stock servers send it too.
+    if (ps->persistant[PERS_HITS] > ops->persistant[PERS_HITS]) {
+        cg.crosshairHitTime = cg.time;
+        cg.crosshairHitTier = (ps->generic1 >> 6) & 3;
+    }
+
     if (cg_hitBeep.integer) {
         if (ps->persistant[PERS_HITS] > ops->persistant[PERS_HITS]) {
             armor = ps->persistant[PERS_ATTACKEE_ARMOR] & 0xff;

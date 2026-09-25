@@ -281,6 +281,9 @@ def page(name, title, body, subtitle=None, onopen=None):
         fullScreen 0
         style WINDOW_STYLE_EMPTY
         focusColor %s
+        // [QL] E132. What a disabled row's value is drawn in. Unset, it is all
+        // zero, and a greyed-out row vanished instead of greying.
+        disableColor .5 .5 .5 1
 
         // Pages never handle ESC themselves. The frame owns it, so one key
         // closes the whole menu from any tab instead of walking back a level.
@@ -455,6 +458,49 @@ def reset_action(cvars):
     return 'exec "%s"' % " ; ".join("reset %s" % c for c in cvars)
 
 
+def disable_when(test, vals):
+    """[QL] E132. Greys a control out (and refuses it focus) while cvar `test`
+    holds one of `vals` - Quake Live's own cvarTest/disableCvar pair."""
+    return 'cvarTest "%s"  disableCvar { %s }' % (test, " ; ".join('"%s"' % v for v in vals))
+
+
+def half_row(side, kind, cvar, text, y, vals=None, w=None, disable=None, label_w=110):
+    """
+    [QL] E132. Half a row, for pairing two short controls on one line. The
+    Player page has more crosshair settings than lines: every tab shares one
+    560 x 340 frame. Left half is the normal label gutter and control column;
+    the right half puts its label right-aligned to 470 and its control at 480.
+    """
+    nm = "r_" + re.sub(r"[^a-z0-9]", "", cvar.lower())
+    if side == "left":
+        out = row_label(text, y)
+        x = CTRL_X
+    else:
+        # label_w: narrower where the left half's control is wide, so the
+        # label's box stops short of it (the text is right-aligned either way).
+        out = ('        itemDef { text "%s"  textscale .21  rect %d %d %d %d  textaligny 13\n'
+               '                  textalign ITEM_ALIGN_RIGHT  textalignx %d\n'
+               '                  forecolor %s  visible 1  decoration }\n'
+               % (text, 470 - label_w, y, label_w, ROW_H - 1, label_w, WHITE))
+        x = 480
+    dis = ("                  %s\n" % disable_when(*disable)) if disable else ""
+    if kind == "yesno":
+        out += ('        itemDef { name %s  type ITEM_TYPE_YESNO  text ""  cvar "%s"\n'
+                '%s'
+                '                  rect %d %d %d %d  textscale .21  textaligny 13  textalignx 2\n'
+                '                  forecolor 1 1 1 1  visible 1 }\n'
+                % (nm, cvar, dis, x, y, w or 50, ROW_H - 1))
+    else:
+        vals = vals or cvarlist(cvar)
+        out += ('        itemDef { name %s  type ITEM_TYPE_MULTI  text ""  cvar "%s"\n'
+                '                  cvarFloatList { %s }\n'
+                '%s'
+                '                  rect %d %d %d %d  textscale .21  textaligny 13  textalignx 2\n'
+                '                  forecolor 1 1 1 1  visible 1 }\n'
+                % (nm, cvar, vals, dis, x, y, w or 60, ROW_H - 1))
+    return out
+
+
 def row(kind, cvar, text, y, extra=None):
     """One settings row: the label on the left, the control at x=290."""
     nm = "r_" + re.sub(r"[^a-z0-9]", "", cvar.lower())
@@ -482,13 +528,14 @@ def row(kind, cvar, text, y, extra=None):
         # [QL] E131. Quake Live's own control for cg_crosshairColor: the fx_base
         # colour bar with a thumb, integer 1..26 (ingame_options_basic.menu).
         # Greyed while colour-by-health is on, which overrides it - as in QL.
-        dflt, lo, hi = extra
+        dflt, lo, hi, (test, vals) = extra
         out += ('        itemDef { name %s  type ITEM_TYPE_SLIDER_COLOR  text ""\n'
                 '                  cvarInt "%s" %s %s %s\n'
-                '                  cvarTest "cg_crosshairHealth"  disableCvar { "1" }\n'
+                '                  %s\n'
                 '                  rect %d %d %d %d  textscale .21  textaligny 13\n'
                 '                  forecolor 1 1 1 1  visible 1 }\n'
-                % (nm, cvar, dflt, lo, hi, CTRL_X, y, SLIDER_W, ROW_H - 1))
+                % (nm, cvar, dflt, lo, hi, disable_when(test, vals),
+                   CTRL_X, y, SLIDER_W, ROW_H - 1))
         return out
     if kind == "slider":
         dflt, lo, hi = extra
@@ -742,22 +789,26 @@ def page_settings():
     # io_playersetup does it, so it applies as you type. Routing it through
     # ui_Name and ui_SetName was an earlier bug: the field showed nothing and
     # APPLY never wrote the name through.
-    for lb, y in (("Name", 94), ("Handicap", 112)):
+    for lb, y in (("Name", 92), ("Handicap", 110)):
         b += ('        itemDef { text "%s"  textscale .21  rect 190 %d 80 16  textaligny 13\n'
               '                  textalign ITEM_ALIGN_RIGHT  textalignx 80\n'
               '                  forecolor %s  visible 1  decoration }\n' % (lb, y, WHITE))
     b += ('        itemDef { name ig_name  type ITEM_TYPE_EDITFIELD  text ""  cvar "name"\n'
           '                  maxchars 36  maxpaintchars 22\n'
-          '                  rect %d 94 246 16  textscale .2  textaligny 12  textalignx 4\n'
+          '                  rect %d 92 246 16  textscale .2  textaligny 12  textalignx 4\n'
           '                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55\n'
           '                  border 1  bordersize 1  bordercolor .35 .3 .12 1\n'
           '                  forecolor 1 1 1 1  visible 1 }\n' % CTRL_X)
     # Player Setup's own list, copied rather than rebuilt so both menus agree.
     b += ('        itemDef { name ig_handicap  type ITEM_TYPE_MULTI  text ""  cvar "handicap"\n'
           '                  cvarFloatList { "None" 100 "90" 90 "80" 80 "70" 70 "60" 60 "50" 50 "40" 40 "30" 30 "20" 20 "10" 10 }\n'
-          '                  rect %d 112 200 16  textscale .21  textaligny 13  textalignx 2\n'
+          '                  rect %d 110 200 16  textscale .21  textaligny 13  textalignx 2\n'
           '                  forecolor 1 1 1 1  visible 1 }\n' % CTRL_X)
-    y = 132
+    # [QL] E132. 16 pitch throughout: the slider is 16 tall, so this is as
+    # tight as a row goes, and the page needs every unit of it.
+    saved = ROW_H
+    ROW_H = 16
+    y = 128
     for kind, cvar, text, extra in [
         ("slider", "sensitivity",   "Mouse sensitivity", ("5", "1", "30")),
         ("slider", "cg_fov",        "Field of view",     ("100", "75", "130")),
@@ -767,38 +818,39 @@ def page_settings():
     ]:
         b += row(kind, cvar, text, y, extra)
         y += ROW_H
-    # [QL] E131. Every crosshair option lives here and only here (the Advanced
-    # CROSSHAIR sub-page is gone). Only the ones our cgame actually reads: the
-    # hit colour/style/time and teammate health are registered for Quake Live's
-    # sake and drawn by nothing yet, so a row for them would take a value and
-    # change nothing (docs/cvar-manifest.txt). A 16 pitch rather than 17 - the
-    # slider is 16 tall, so this is as tight as the rows go.
-    saved = ROW_H
-    ROW_H = 16
-    for kind, cvar, text, extra in [
-        ("crosshair", "cg_drawCrosshair",      "Crosshair",         None),
-        ("slider",    "cg_crosshairSize",      "Crosshair size",    ("32", "8", "64")),
-        ("slider",    "cg_crosshairBrightness", "Crosshair brightness", ("1", "0", "1")),
-        ("yesno",     "cg_crosshairPulse",     "Pulse on pickup",   None),
-        ("yesno",     "cg_crosshairHealth",    "Colour by health",  None),
-        ("colour",    "cg_crosshairColor",     "Crosshair colour",  ("25", "1", "26")),
-        ("multi",     "cg_drawCrosshairNames", "Show player names", None),
-    ]:
-        if cvar == "cg_crosshairHealth":
-            reset_y = y
-        b += row(kind, cvar, text, y, extra)
-        y += ROW_H
+    # [QL] E131/E132. Every crosshair option lives here and only here. The
+    # short ones are paired two to a line so the lot fits the shared frame.
+    # Still no rows for teammate health and the name options: registered for
+    # Quake Live's sake, drawn by nothing (docs/cvar-manifest.txt).
+    b += row("crosshair", "cg_drawCrosshair", "Crosshair", y); y += ROW_H
+    b += row("slider", "cg_crosshairSize", "Crosshair size", y, ("32", "8", "64")); y += ROW_H
+    b += row("slider", "cg_crosshairBrightness", "Crosshair brightness", y, ("1", "0", "1")); y += ROW_H
+    b += half_row("left", "yesno", "cg_crosshairPulse", "Pulse on pickup", y)
+    b += half_row("right", "yesno", "cg_crosshairHealth", "Colour by health", y)
+    y += ROW_H
+    b += row("colour", "cg_crosshairColor", "Crosshair colour", y,
+             ("25", "1", "26", ("cg_crosshairHealth", ["1"]))); y += ROW_H
+    # Quake Live's hit rows, with its own greying: time is off while the style
+    # is "No", and the hit colour is used only by styles 2, 5 and 8.
+    b += half_row("left", "multi", "cg_crosshairHitStyle", "On hit", y, w=110)
+    b += half_row("right", "multi", "cg_crosshairHitTime", "Hit time", y,
+                  disable=("cg_crosshairHitStyle", ["0"]), label_w=60)
+    y += ROW_H
+    b += row("colour", "cg_crosshairHitColor", "Hit colour", y,
+             ("1", "1", "26", ("cg_crosshairHitStyle", ["0", "1", "3", "4", "6", "7"])))
+    reset_y = y
+    y += ROW_H
+    b += half_row("left", "multi", "cg_drawCrosshairNames", "Show player names", y, w=130)
     ROW_H = saved
-    # [QL] E130. RESET puts the sliders back. Name, model and handicap are who
-    # you are, not settings, and are never touched by it.
-    #
-    # E131. At the right edge rather than under the rows: with the crosshair
-    # block a button below would hang past the panel. The controls beside it
-    # (yes/no, the colour bar) all end by x 386, so it covers nothing.
+    # [QL] E130. RESET puts the settings back. Name, model and handicap are who
+    # you are, not settings, and are never touched by it. At the right edge,
+    # beside the two colour bars' last row and the names row, whose controls
+    # end by x 420: a button below the rows would hang past the panel.
     b += button("ig_setreset", "RESET", 440, reset_y + 4, 96,
                 reset_action(["sensitivity", "cg_fov", "r_gamma", "s_volume", "s_musicvolume",
                               "cg_drawCrosshair", "cg_crosshairSize", "cg_crosshairBrightness",
                               "cg_crosshairPulse", "cg_crosshairHealth", "cg_crosshairColor",
+                              "cg_crosshairHitStyle", "cg_crosshairHitTime", "cg_crosshairHitColor",
                               "cg_drawCrosshairNames"]))
     return page("io_ig_settings", "PLAYER", b,
                 "Who you are, and the settings you change most.")

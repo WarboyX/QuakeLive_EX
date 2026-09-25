@@ -2749,20 +2749,12 @@ static void Scroll_ListBox_ThumbFunc(void* p) {
         si->yStart = DC->cursory;
     }
 
-    if (DC->realTime > si->nextScrollTime) {
-        // need to scroll which is done by simulating a click to the item
-        // this is done a bit sideways as the autoscroll "knows" that the item is a listbox
-        // so it calls it directly
-        Item_ListBox_HandleKey(si->item, si->scrollKey, qtrue, qfalse);
-        si->nextScrollTime = DC->realTime + si->adjustValue;
-    }
-
-    if (DC->realTime > si->nextAdjustTime) {
-        si->nextAdjustTime = DC->realTime + SCROLL_TIME_ADJUST;
-        if (si->adjustValue > SCROLL_TIME_FLOOR) {
-            si->adjustValue -= SCROLL_TIME_ADJUSTOFFSET;
-        }
-    }
+    /* [QL] E132. The thumb follows the cursor and nothing else. Team Arena
+       also "clicked" the list on a timer here (copied from the arrow handler),
+       and that click lands on whatever the cursor has drifted over: off the
+       thumb onto the bar it paged, onto a row it selected it - fighting the
+       drag. nextScrollTime was never even set for a thumb capture, so the
+       first of those fired the moment the drag began. */
 }
 
 static void Scroll_Slider_ThumbFunc(void* p) {
@@ -4625,6 +4617,17 @@ void Item_ListBox_Paint(itemDef_t* item) {
                 if (listPtr->numColumns > 0) {
                     int j;
                     for (j = 0; j < listPtr->numColumns; j++) {
+                        // [QL] E132. A zero-width column is a placeholder: a
+                        // list asks its feeder for field j by column index, so
+                        // io_scoreboard declares every field up to the last one
+                        // it shows and gives the rest "0 0 0". Painted anyway,
+                        // their text landed at the row's left edge with no
+                        // length limit - the first digit of CTF/CA damage and
+                        // accuracy, half under each head icon ("O", "B", "4").
+                        // No Quake Live menu declares a zero-width column.
+                        if (listPtr->columnInfo[j].width <= 0) {
+                            continue;
+                        }
                         text = DC->feederItemText(item->special, i, j, &optionalImage);
                         if (optionalImage >= 0) {
                             // [QL] icon vertically centered with slight downward nudge
@@ -7481,6 +7484,32 @@ menuDef_t* Menu_GetByIndex(int index) {
 
 int Menu_Count(void) {
     return menuCount;
+}
+
+/*
+[QL] E132. The capture (a dragged list thumb or slider) for a caller that does
+not run Menu_PaintAll. cgame paints its scoreboard itself and deliberately not
+through Menu_PaintAll, so a drag on the scoreboard's scroll bar started and was
+then never advanced: the thumb could not be dragged, only the arrows clicked.
+*/
+void Display_RunCapture(void) {
+    if (captureFunc) {
+        captureFunc(captureData);
+    }
+}
+
+/*
+[QL] E132. Ends a capture on the button coming up. Item_HandleKey only ends one
+on the NEXT key event, which assumes key-ups arrive there; cgame's handler takes
+downs only, so a drag was never let go and the next click was spent ending it.
+*/
+void Display_ReleaseCapture(void) {
+    if (itemCapture) {
+        Item_StopCapture(itemCapture);
+        itemCapture = NULL;
+        captureFunc = 0;
+        captureData = NULL;
+    }
 }
 
 void Menu_PaintAll(void) {
