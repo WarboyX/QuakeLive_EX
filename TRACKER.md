@@ -6048,6 +6048,23 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E129. The hardware prompt decides by PCI ID, from a real GPU list — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+E127's name rules couldn't see through AMD's generic OpenGL name. On Windows, most AMD integrated GPUs report "AMD Radeon(TM) Graphics", so a 780M (ray tracing) and a Vega 8 read identically.
+
+- **The list:** `tools/gen-gpu-list.py` classifies every NVIDIA, AMD and Intel GPU in the PCI ID database (pci.ids, the one `lspci` uses; this copy is dated 2026-09-25) by **chip generation**. It writes `code/client/cl_gpulist.h` (compiled in) and **`docs/gpu-list.txt`** (the reviewable list). 335 GPUs are "rt", 263 "vulkan", 1709 "none", each "none" with a reason.
+  - **rt:** NVIDIA Turing RTX, Ampere, Ada, Blackwell; AMD RDNA2/3/4 (Navi 2x–4x, plus the 680M, 780M, 880M/890M, 8060S, 840M/860M and Steam Deck integrated parts); Intel Arc.
+  - **vulkan:** NVIDIA GTX 16, Pascal, Maxwell 2, Volta; AMD RDNA1, Vega (including Radeon VII), Polaris, GCN3.
+  - **none:** NVIDIA GT/MX/NVS/Tegra, Kepler and older; AMD Vega-based integrated, the 2-CU RDNA2 integrated parts (610M), Lexa, GCN1–2.
+- **Runtime:** `code/client/cl_gpuid.c` reads the PCI IDs without Vulkan or OpenGL: sysfs on Linux, DXGI's adapter list on Windows (software adapters skipped). The best-tier GPU in the machine decides, since the Vulkan renderer picks the discrete one (`r_device -1`). Name rules are used only when no ID is known (macOS, or a GPU newer than the list).
+- **The dialog's label:** the driver's own name when it means something; otherwise the list's (e.g. "AMD Radeon 740M / 760M / 780M (Phoenix)").
+- **Checked end to end** in the real client, with a shim faking both the OpenGL strings and the sysfs IDs:
+  - 780M behind "AMD Radeon(TM) Graphics": asked, with ray tracing;
+  - Vega 8 behind the identical name: not asked;
+  - GTX 1650: asked, Vulkan only.
+- **Refresh the list after new GPUs ship:** fetch pci.ids and run `tools/gen-gpu-list.py` (instructions in its header).
+
 ### E128. Hardware prompt: a lost first click, and the empty band — DONE (verify)
 **Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
 

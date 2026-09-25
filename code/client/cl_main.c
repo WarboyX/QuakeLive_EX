@@ -22,6 +22,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cl_main.c  -- client main loop
 
 #include "client.h"
+#include "cl_gpuid.h"
+#include "cl_gpulist.h"
 #include <limits.h>
 #include <float.h>
 
@@ -2304,18 +2306,46 @@ Asked only when all of these hold:
   - cl_renderer is still opengl2 - anyone already on Vulkan chose it;
   - the main menu is up, not connected, no local server, for 1.5 s, so the
     question does not arrive under a loading screen or a +connect;
-  - CL_GuessGPU calls it a hardware GPU with OpenGL 4.5+ that is a discrete
-    card or can do ray queries. Integrated graphics without ray query is the
-    machine the OpenGL default exists for, so it is not asked.
+  - the machine has a GPU worth it. E129: decided by PCI ID against
+    docs/gpu-list.txt (cl_gpuid.c, cl_gpulist.h) - tier rt or vulkan asks,
+    none does not. Only when no ID is known does CL_GuessGPU guess from the
+    OpenGL name: OpenGL 4.5+, not software, discrete or ray-query capable.
 
 A machine that does not qualify is not marked answered, so a new graphics
 card gets asked about on the next launch.
 ==================
 */
+static const gpuListEntry_t* CL_FindGpu(unsigned vendor, unsigned device) {
+    int i;
+
+    for (i = 0; i < (int)ARRAY_LEN(gpuList); i++) {
+        if (gpuList[i].vendor == vendor && gpuList[i].device == device) {
+            return &gpuList[i];
+        }
+    }
+    return NULL;
+}
+
+/*
+AMD's generic OpenGL name for an integrated GPU says nothing; the list's name
+does. Anything else the driver reports is the better label - it is what the
+player's own system calls the card.
+*/
+static qboolean CL_GenericGLName(const char* r) {
+    return Q_stristr(r, "Radeon(TM) Graphics") || !Q_stricmp(r, "AMD Radeon Graphics") ||
+           Q_stristr(r, "Radeon Graphics (");
+}
+
 static void CL_CheckHardwarePrompt(void) {
     static qboolean done;
     static int since;
     gpuGuess_t g;
+    gpuId_t ids[8];
+    const gpuListEntry_t* best = NULL;
+    int nids, i;
+    qboolean ask, rayQuery;
+    char name[128];
+    char* cut;
 
     if (done || !uivm || !cl_hwPrompt || cl_hwPrompt->integer) {
         return;
@@ -2333,29 +2363,65 @@ static void CL_CheckHardwarePrompt(void) {
     }
     done = qtrue;
 
-    if (Q_stricmp(cl_renderer->string, "opengl2") || !cls.glconfig.renderer_string[0]) {
-        return;
-    }
-    CL_GuessGPU(&cls.glconfig, &g);
-    Com_Printf("Hardware check: %s - %s%s%s\n", cls.glconfig.renderer_string,
-               g.software ? "software renderer" : (g.discrete ? "discrete" : "integrated"),
-               g.rayQuery ? ", ray tracing" : "", g.glModern ? "" : ", OpenGL below 4.5");
-    if (g.software || !g.glModern || !(g.discrete || g.rayQuery)) {
+    if (Q_stricmp(cl_renderer->string, "opengl2")) {
         return;
     }
 
-    {
-        // "NVIDIA GeForce RTX 3060 Laptop GPU/PCIe/SSE2" and "AMD Radeon RX 6600M
-        // (radeonsi, navi23, LLVM 17.0.6, DRM 3.54)" - the dialog wants the name.
-        char name[128];
-        char* cut;
+    Q_strncpyz(name, cls.glconfig.renderer_string, sizeof(name));
+    if ((cut = strchr(name, '/')) != NULL) *cut = '\0';
+    if ((cut = strstr(name, " (")) != NULL) *cut = '\0';
 
-        Q_strncpyz(name, cls.glconfig.renderer_string, sizeof(name));
-        if ((cut = strchr(name, '/')) != NULL) *cut = '\0';
-        if ((cut = strstr(name, " (")) != NULL) *cut = '\0';
-        Cvar_Set("ui_hwGpuName", name);
+    /*
+    [QL] E129. The PCI IDs decide when the list knows one of them (cl_gpuid.c,
+    tools/gen-gpu-list.py): the best-tier GPU in the machine wins, since the
+    Vulkan renderer picks the discrete one on a hybrid laptop. Only when no ID
+    is known - macOS, or a GPU newer than the list - do the name rules guess.
+    */
+    nids = CL_ReadGpuIds(ids, ARRAY_LEN(ids));
+    for (i = 0; i < nids; i++) {
+        const gpuListEntry_t* e = CL_FindGpu(ids[i].vendor, ids[i].device);
+
+        Com_Printf("Hardware check: GPU %04x:%04x - %s\n", ids[i].vendor, ids[i].device,
+                   e ? e->name : "not in the list");
+        if (e && (!best || e->tier > best->tier)) {
+            best = e;
+        }
     }
-    Cvar_Set("ui_hwRayQuery", g.rayQuery ? "1" : "0");
+
+    if (best) {
+        ask = (best->tier != GPU_TIER_NONE);
+        rayQuery = (best->tier == GPU_TIER_RT);
+        // Label: the driver's own name for this card when OpenGL is running
+        // on it and the name says something; otherwise the list's.
+        if (!(cls.glconfig.renderer_string[0] && !CL_GenericGLName(name) &&
+              ((best->vendor == 0x10de && Q_stristr(name, "NVIDIA")) ||
+               (best->vendor == 0x1002 && (Q_stristr(name, "AMD") || Q_stristr(name, "Radeon"))) ||
+               (best->vendor == 0x8086 && Q_stristr(name, "Intel"))))) {
+            Com_sprintf(name, sizeof(name), "%s%s",
+                        best->vendor == 0x10de ? "NVIDIA " : best->vendor == 0x1002 ? "AMD " : "Intel ",
+                        best->name);
+        }
+        Com_Printf("Hardware check: best known GPU is %s - %s\n", best->name,
+                   best->tier == GPU_TIER_RT ? "Vulkan, ray tracing"
+                   : best->tier == GPU_TIER_VULKAN ? "Vulkan" : "not offered");
+    } else {
+        if (!cls.glconfig.renderer_string[0]) {
+            return;
+        }
+        CL_GuessGPU(&cls.glconfig, &g);
+        Com_Printf("Hardware check: %s - %s%s%s (by name; no known GPU ID)\n",
+                   cls.glconfig.renderer_string,
+                   g.software ? "software renderer" : (g.discrete ? "discrete" : "integrated"),
+                   g.rayQuery ? ", ray tracing" : "", g.glModern ? "" : ", OpenGL below 4.5");
+        ask = !g.software && g.glModern && (g.discrete || g.rayQuery);
+        rayQuery = g.rayQuery;
+    }
+    if (!ask) {
+        return;
+    }
+
+    Cvar_Set("ui_hwGpuName", name);
+    Cvar_Set("ui_hwRayQuery", rayQuery ? "1" : "0");
     Cbuf_AddText("menu_open io_hwprompt\n");
 }
 
