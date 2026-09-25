@@ -90,3 +90,7 @@ void BotTeamSpacing(struct bot_state_s* bs);
 int BotRoomToMove(struct bot_state_s* bs, vec3_t dir, float dist);
 // the "bots" console command: every bot, every gametype, with its posture
 void BotTacticsReport(void);
+// a CTF defender's guard post - a way into its flag room - in place of the flag
+int BotDefendPostGoal(struct bot_state_s* bs, bot_goal_t* goal);
+// forget the guard posts on a map change
+void BotDefendPostsReset(void);

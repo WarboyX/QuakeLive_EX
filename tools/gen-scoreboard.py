@@ -109,6 +109,38 @@ def ownerdraw(name, od, x, y, w, h, scale, align):
             % (name, od, x, base, w, y + h - base, scale, align, WHITE))
 
 
+def cvartext(name, cvar, x, y, w, h, scale, align, color):
+    """
+    [QL] E134. Text the board reads from a cvar cgame keeps current (the player
+    counts, CG_ScoreboardCounts). An item with a cvar and no text paints the
+    cvar's value - Item_Text_Paint - so no ownerdraw is needed.
+    """
+    ax = {"ITEM_ALIGN_LEFT": 0, "ITEM_ALIGN_CENTER": w // 2, "ITEM_ALIGN_RIGHT": w}[align]
+    return ('        itemDef { name %s  cvar "%s"  textscale %s  rect %d %d %d %d  textaligny %d\n'
+            '                  textalign %s  textalignx %d  forecolor %s  visible 1  decoration }\n'
+            % (name, cvar, scale, x, y, w, h, h - 4, align, ax, color))
+
+
+TICKER_H = 18
+
+
+def ticker(y):
+    """
+    [QL] E134. Spectators, as a news ticker across the foot of the board.
+
+    CG_SPECTATORS is Team Arena's scrolling spectator line, still in our cgame
+    (CG_DrawTeamSpectators, fed by CG_BuildSpectatorString on every join and
+    team change) - it only needed placing. Quake Live also routes its scrolling
+    notices through the same ownerdraw, and those take the line while they run.
+    It paints its baseline at the rect's bottom less 3, so the rect is the box.
+    """
+    return (fill("sb_tick", 8, y, W - 16, TICKER_H, "0 0 0 .55", BTN_EDGE) +
+            deco("SPECTATORS", 14, y + 1, 78, TICKER_H - 2, ".15") +
+            '        itemDef { name sb_ticker  ownerdraw CG_SPECTATORS  rect 96 %d %d %d  textscale .17\n'
+            '                  forecolor %s  visible 1  decoration }\n'
+            % (y + 1, W - 16 - 92, TICKER_H - 2, WHITE))
+
+
 def listbox(name, feeder, x, y, w, h, cols):
     """
     cols is a list of (feeder field, pos, width, maxchars) for the fields shown;
@@ -154,7 +186,7 @@ def frame(name, body):
         // real overlap on the board.
         itemDef { name sb_logo  rect 0 0 176 44  background "ui/assets/main_menu/ql_logo.tga"
                   style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
-%s%s%s%s        // check-menus: overlap-ok - background layer; the whole board sits on it
+%s%s%s%s%s        // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 %d %d %d
                   background "ui/assets/main_menu/content_background.tga"
                   style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -163,7 +195,9 @@ def frame(name, body):
 """ % (name, X, Y, W, H, W,
        fill("sb_info", 0, INFO_Y, W, 18, "0 0 0 0.75", "0 0 0 0.5"),
        ownerdraw("sb_map", "CG_MAP_NAME", 10, INFO_Y + 2, 170, 14, ".18", 0),
-       ownerdraw("sb_type", "CG_GAME_TYPE", 190, INFO_Y + 2, 180, 14, ".18", 1),
+       ownerdraw("sb_type", "CG_GAME_TYPE", 190, INFO_Y + 2, 150, 14, ".18", 1),
+       # [QL] E134. Everyone on the server against the slots, spectators apart
+       cvartext("sb_total", "io_sb_total", 345, INFO_Y + 2, 120, 14, ".16", "ITEM_ALIGN_RIGHT", DIM),
        ownerdraw("sb_time", "CG_LEVELTIMER", 470, INFO_Y + 2, 80, 14, ".18", 2),
        PANEL_Y, W, H - PANEL_Y, body)
 
@@ -186,8 +220,10 @@ def board_ffa():
         if field in FFA_HEAD:
             b += deco(FFA_HEAD[field], lx + pos, PANEL_Y + 10, w, 16, ".2")
     b += fill("sb_rule", 10, PANEL_Y + 28, 540, 1, BTN_EDGE)
-    b += listbox("sb_list", "FEEDER_SCOREBOARD", lx, PANEL_Y + 32, 540, H - PANEL_Y - 44,
+    # one row shorter than it was, for the spectator ticker under it
+    b += listbox("sb_list", "FEEDER_SCOREBOARD", lx, PANEL_Y + 32, 540, H - PANEL_Y - 44 - TICKER_H - 4,
                  FFA_COLS)
+    b += ticker(H - 12 - TICKER_H)
     return frame("io_score_ffa", b)
 
 
@@ -217,7 +253,10 @@ def board_team(name, stats):
         top = PANEL_Y + 8
         b += fill("sb_band%d" % side, lx, top, TEAM_LIST_W, 26, "0 0 0 .55")
         b += fill("sb_team%d" % side, lx, top + 26, TEAM_LIST_W, 2, rule)
-        b += deco(label, lx + 8, top + 5, 120, 18, ".24", color=WHITE)
+        b += deco(label, lx + 8, top + 5, 60, 18, ".24", color=WHITE)
+        # [QL] E134. How many are on this side, beside the name
+        b += cvartext("sb_count%d" % side, "io_sb_%scount" % label.lower(), lx + 70, top + 7, 90, 16,
+                      ".16", "ITEM_ALIGN_LEFT", DIM)
         b += ownerdraw("sb_score%d" % side, score_od, lx + TEAM_LIST_W - 90, top + 3,
                        82, 22, ".32", 2)
         cols = [(0, 4, 14, 1), (3, 20, 12, 1), (5, 36, 88, 10)]
@@ -228,8 +267,10 @@ def board_team(name, stats):
         for text, pos, w in head:
             b += deco(text, lx + pos, top + 34, w, 14, ".17")
         b += fill("sb_rule%d" % side, lx, top + 50, TEAM_LIST_W, 1, BTN_EDGE)
+        # one row shorter than it was, for the spectator ticker under both
         b += listbox("sb_list%d" % side, feeder, lx, top + 54, TEAM_LIST_W,
-                     H - PANEL_Y - 74, cols)
+                     H - PANEL_Y - 74 - TICKER_H - 4, cols)
+    b += ticker(H - 12 - TICKER_H)
     return frame(name, b)
 
 

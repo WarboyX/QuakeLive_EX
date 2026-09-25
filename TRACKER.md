@@ -6048,6 +6048,39 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E134. Scoreboard counts and spectator ticker; defenders hold both ways in — DONE (verify)
+**Lives in:** our **client** (cgame + pak01) and our **server** (qagame) · **Seen by:** our client only (scoreboard); every client (bots)
+
+#### Scoreboard
+- **Player counts.** Each team banner reads "29 players". The info strip reads **"63/64 (59 + 4 spec)"**: everyone against the slots, spectators apart. Without spectators it is "59/64 players". Counted from client info, not the score list (which lags up to two seconds), and written to `io_sb_redcount`, `io_sb_bluecount` and `io_sb_total` only when they change. The board shows them as cvar text.
+- **Spectator ticker.** A strip across the foot of every board, under both lists, reading SPECTATORS followed by the names scrolling. It is Team Arena's `CG_SPECTATORS` ownerdraw, still in our cgame and fed on every join and team change; it only needed placing. Quake Live's scrolling notices use the same line while they run. The lists are one row shorter to make room.
+- Checked on screen with 9 players and 4 spectators: "5 players" / "4 players", "13/64 (9 + 4 spec)", and the names scrolling.
+
+#### Defenders held only the Main Stairway
+*"Defense bots aren't protecting the right hall of the flagroom, only the left hall stairway."*
+
+Measured with `render-tracks.py --mode defend --bsp` (new: the map's own `target_location` names on the picture) at 30 a side on japanesecastles. Defender time near the Back Hall end of each flag room was **42 samples to the Main Stairway's 678**, and the same on both teams.
+
+There were two causes:
+
+1. **Nothing sends a defender to a door.** Stock defending walks to the flag, then within 70 units "goes away for some time" to wander, so defenders pile into the room and the nearest corridor.
+   - Now **guard posts** (`BotDefendPostGoal`, `ai_tactics.c`), computed per map: from our flag, the route toward each alternative-route goal (they lie on the different routes from the enemy flag) is followed out 3.5 s, and each place it stops, merged within 300 u, is a post.
+   - On japanesecastles that is two per team, one at each way into the flag room.
+   - Defenders spread over the flag and the posts, fewest defenders first, re-balanced every 20–25 s, and hold their post rather than wandering.
+2. **Defenders were being stripped within seconds.** A defend job lasted a **median 2.6 s**, and blue ended a match with **0 defenders of 20 wanted**.
+   - Traced: `BotCTFEnforceOffense` kept a defend job only for bots the role picker had labelled defenders. But defend jobs also come from `BotAutoDefendGoal` and the flag-status branches of `BotCTFSeekGoals`, and those bots were still labelled roam.
+   - 54 of 89 strips were exactly that, with defence not full. Now a held defend job with room on defence adopts the role.
+
+**After** (same measure): Main Stairway post 1,522 / Back Hall post **861** (red); 1,081 / **611** (blue). Total defender time is about twice what it was.
+
+A bot team leader's CTF orders were also A/B'd: turning them off gave *less* defence. They stay.
+
+#### "More combat in one garden than the other"
+That was the build before E133. Garden fights north/south were **392 / 1,164** with the old router, and are **943 / 1,082** now. The one-sided routing E133 removed was sending the traffic, and so the fighting, down one side.
+
+#### Still open
+A human on a team becomes its leader and gives no orders, so a team with a human runs on the role mix alone, while an all-bot team also gets its leader's orders. With the fixes above both paths hold defenders, but they are still two paths.
+
 ### E133. Bots went in circles: the router, then real crowd steering — DONE (verify)
 **Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
 

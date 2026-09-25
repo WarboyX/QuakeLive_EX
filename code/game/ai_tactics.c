@@ -1388,6 +1388,139 @@ int BotRoomCrowding(bot_state_t* bs, vec3_t origin) {
 
 /*
 ==================
+[QL] E134. Guard posts: a CTF defender holds a way INTO the flag room.
+
+"Defense bots aren't protecting the right hall of the flagroom, only the left
+hall stairway." Measured on japanesecastles at 30 a side: red defenders spent
+1261 samples in the flag room, 303 on the Main Stairway and 40 in Back Hall;
+blue the mirror image. Stock defending walks to the flag, and within 70 units
+"goes away for some time" to wander - so defenders pile into the room and the
+nearest corridor, and nothing ever sends one to the other way in.
+
+The ways in are where the routes from the enemy flag arrive. The alternative
+route goals toward each base already lie on those different routes, so from
+our flag the route towards each one is followed out for DEFENDPOST_TIME of
+travel, and where it stops is a guard post: one at the top of each stairway,
+one along each hall. Points closer than DEFENDPOST_MERGE are one post.
+
+Defenders are spread over the flag and the posts, whichever has the fewest
+defenders on it, re-balanced every DEFENDPOST_REDECIDE so a team that loses
+its post holders refills them. A defender at its post holds it instead of
+wandering away. bot_tactics 0 keeps stock defending.
+==================
+*/
+#define MAX_DEFENDPOSTS 8
+#define DEFENDPOST_TIME 350       // hundredths of a second of travel out from the flag
+#define DEFENDPOST_MIN 150        // a stop nearer the flag than this is still the flag room
+#define DEFENDPOST_MERGE 300.0f
+#define DEFENDPOST_REDECIDE 20.0f
+
+typedef struct {
+    int computed, num;
+    bot_goal_t post[MAX_DEFENDPOSTS];
+} defendposts_t;
+
+static defendposts_t defendposts[2];  // red, blue
+
+extern aas_altroutegoal_t red_altroutegoals[], blue_altroutegoals[];
+extern int red_numaltroutegoals, blue_numaltroutegoals;
+
+void BotDefendPostsReset(void) {
+    memset(defendposts, 0, sizeof(defendposts));
+}
+
+static defendposts_t* BotDefendPosts(int team) {
+    defendposts_t* dp = &defendposts[team == TEAM_RED ? 0 : 1];
+    bot_goal_t* flag = team == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+    aas_altroutegoal_t* alt = team == TEAM_RED ? red_altroutegoals : blue_altroutegoals;
+    int numalt = team == TEAM_RED ? red_numaltroutegoals : blue_numaltroutegoals;
+    aas_predictroute_t route;
+    int i, j;
+
+    if (dp->computed || !numalt || !flag->areanum) {
+        return dp;
+    }
+    dp->computed = qtrue;
+    for (i = 0; i < numalt && dp->num < MAX_DEFENDPOSTS; i++) {
+        trap_AAS_PredictRoute(&route, flag->areanum, flag->origin, alt[i].areanum, TFL_DEFAULT,
+                              100, DEFENDPOST_TIME, RSE_NONE, 0, 0, 0);
+        if (route.time < DEFENDPOST_MIN || !route.endarea) {
+            continue;
+        }
+        for (j = 0; j < dp->num; j++) {
+            if (Distance(dp->post[j].origin, route.endpos) < DEFENDPOST_MERGE) {
+                break;
+            }
+        }
+        if (j < dp->num) {
+            continue;
+        }
+        memset(&dp->post[dp->num], 0, sizeof(bot_goal_t));
+        VectorCopy(route.endpos, dp->post[dp->num].origin);
+        dp->post[dp->num].areanum = route.endarea;
+        VectorSet(dp->post[dp->num].mins, -8, -8, -8);
+        VectorSet(dp->post[dp->num].maxs, 8, 8, 8);
+        dp->num++;
+    }
+    if (bot_debugTactics.integer) {
+        BotAI_Print(PRT_MESSAGE, "%s defend posts: %d (flag room plus each way in)\n",
+                    team == TEAM_RED ? "red" : "blue", dp->num);
+        for (j = 0; j < dp->num; j++) {
+            BotAI_Print(PRT_MESSAGE, "  post %d at %.0f %.0f %.0f, area %d\n", j,
+                        dp->post[j].origin[0], dp->post[j].origin[1], dp->post[j].origin[2], dp->post[j].areanum);
+        }
+    }
+    return dp;
+}
+
+int BotDefendPostGoal(bot_state_t* bs, bot_goal_t* goal) {
+    defendposts_t* dp;
+    bot_goal_t* flag;
+    int team = BotTeam(bs), count[MAX_DEFENDPOSTS + 1], i, best;
+    bot_state_t* other;
+
+    if (!bot_tactics.integer || gametype != GT_CTF) {
+        return qfalse;
+    }
+    flag = team == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+    if (bs->teamgoal.areanum != flag->areanum) {
+        return qfalse;  // defending something other than our own flag
+    }
+    dp = BotDefendPosts(team);
+    if (!dp->num) {
+        return qfalse;
+    }
+    if (bs->tac.defendpost_time < FloatTime() || bs->tac.defendpost >= dp->num) {
+        // fewest defenders first; slot 0 is the flag itself, 1.. the posts
+        memset(count, 0, sizeof(count));
+        for (i = 0; i < MAX_CLIENTS; i++) {
+            other = botstates[i];
+            if (!other || !other->inuse || other == bs || BotTeam(other) != team ||
+                other->ltgtype != LTG_DEFENDKEYAREA || other->tac.defendpost_time <= 0) {
+                continue;
+            }
+            if (other->tac.defendpost >= -1 && other->tac.defendpost < dp->num) {
+                count[other->tac.defendpost + 1]++;
+            }
+        }
+        best = 0;
+        for (i = 1; i <= dp->num; i++) {
+            if (count[i] < count[best]) {
+                best = i;
+            }
+        }
+        bs->tac.defendpost = best - 1;
+        bs->tac.defendpost_time = FloatTime() + DEFENDPOST_REDECIDE + random() * 5;
+    }
+    if (bs->tac.defendpost < 0) {
+        return qfalse;  // this one guards the flag itself - stock behaviour
+    }
+    memcpy(goal, &dp->post[bs->tac.defendpost], sizeof(bot_goal_t));
+    return qtrue;
+}
+
+/*
+==================
 BotEnemyFlagAtBase
 
 [QL] qtrue when the flag this bot is trying to capture is still on its stand.

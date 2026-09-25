@@ -573,6 +573,12 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
             trap_BotEnterChat(bs->cs, 0, CHAT_TEAM);
             bs->ltgtype = 0;
         }
+        /* [QL] E134. A way into the flag room rather than the flag itself, held
+           rather than wandered away from - see BotDefendPostGoal. The defenders
+           left on the flag keep the stock behaviour below. */
+        if (BotDefendPostGoal(bs, goal)) {
+            return qtrue;
+        }
         // if very close... go away for some time
         VectorSubtract(goal->origin, bs->origin, dir);
         if (VectorLengthSquared(dir) < Square(70)) {

@@ -156,7 +156,9 @@ typedef struct bot_tactics_s {
     int reportedposture;     // last posture bot_debugTactics printed, so it can
                              // print changes rather than every refresh
     int reportedstuck;       // this stuck episode has already been reported
-    float roleredecide_time;  // [QL] CTF role may not be reconsidered before this
+    float roleredecide_time;
+    int defendpost;           // [QL] E134: guard post index, -1 the flag itself
+    float defendpost_time;    // when to reconsider it  // [QL] CTF role may not be reconsidered before this
     float reroute_time;       // [QL] and the route may not be reconsidered before this
     /* [QL] E87: the job the role picker last handed this bot, and when.
        BotCTFEnforceOffense clears every goal that points at the bot's own base

@@ -1767,10 +1767,23 @@ static void BotCTFEnforceOffense(bot_state_t* bs) {
     flag that nobody needs there.
     */
     if (bot_tactics.integer) {
-        if (bs->tac.assignedrole == CTFROLE_DEFEND &&
-            bs->ltgtype == LTG_DEFENDKEYAREA &&
+        /*
+        [QL] E134. Holding the base while the team still wants defenders is
+        defending, whoever handed out the job.
+
+        This used to require the role picker's own assignment. But defend jobs
+        also come from BotAutoDefendGoal ("nobody is holding the base") and
+        the flag-status branches of BotCTFSeekGoals, and those bots carry the
+        role they had before - usually roam. Traced at 30 a side: of 89 defend
+        jobs stripped here, 54 were roamers with defence NOT full, stripped
+        for their label. A defender lasted a median 2.6 s, and blue ended a
+        match with 0 defenders of 20 wanted. Now the job is kept and the
+        role follows it.
+        */
+        if (bs->ltgtype == LTG_DEFENDKEYAREA && bs->teamgoal.number == ownflag->number &&
             !BotCTFRoleCrowded(bs, CTFROLE_DEFEND)) {
-            return;   // asked to hold the base, holding it, and still wanted there
+            bs->tac.assignedrole = CTFROLE_DEFEND;
+            return;   // holding the base, and still wanted there
         }
         if (bs->tac.assignedrole == CTFROLE_ROAM && bs->ltgtype == 0 &&
             !BotCTFRoleCrowded(bs, CTFROLE_ROAM)) {
@@ -6585,6 +6598,7 @@ BotSetupDeathmatchAI
 void BotSetupDeathmatchAI(void) {
     // [QL] the room table holds pointers into the level's entities
     BotRoomsReset();
+    BotDefendPostsReset();  // [QL] E134
     int ent, modelnum;
     char model[128];
 

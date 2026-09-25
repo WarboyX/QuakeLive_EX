@@ -2371,6 +2371,56 @@ static void CG_PublishScoreboardState(qboolean showing) {
 }
 
 /*
+[QL] E134. Who is on the server: players per team, and all of it against the
+slot count with spectators broken out - "29 players" under each banner and
+"63/64 (59 + 4 spec)" in the info strip. The board shows them as cvar text
+(io_sb_redcount, io_sb_bluecount, io_sb_total), written only when they change.
+
+Counted from the client info, not the score list: the scores arrive every two
+seconds and leave out whoever connected since, while a configstring is there
+the moment someone joins. Anyone with valid info counts, bots included.
+*/
+static void CG_SetIfChanged(const char* name, const char* value) {
+	char cur[64];
+
+	trap_Cvar_VariableStringBuffer(name, cur, sizeof(cur));
+	if (strcmp(cur, value)) {
+		trap_Cvar_Set(name, value);
+	}
+}
+
+static void CG_ScoreboardCounts(void) {
+	int i, red = 0, blue = 0, spec = 0, play = 0;
+
+	for (i = 0; i < MAX_CLIENTS; i++) {
+		if (!cgs.clientinfo[i].infoValid) {
+			continue;
+		}
+		switch (cgs.clientinfo[i].team) {
+			case TEAM_RED:
+				red++;
+				break;
+			case TEAM_BLUE:
+				blue++;
+				break;
+			case TEAM_SPECTATOR:
+				spec++;
+				continue;
+			default:
+				break;
+		}
+		play++;
+	}
+	CG_SetIfChanged("io_sb_redcount", va("%d player%s", red, red == 1 ? "" : "s"));
+	CG_SetIfChanged("io_sb_bluecount", va("%d player%s", blue, blue == 1 ? "" : "s"));
+	if (spec) {
+		CG_SetIfChanged("io_sb_total", va("%d/%d  (%d + %d spec)", play + spec, cgs.maxclients, play, spec));
+	} else {
+		CG_SetIfChanged("io_sb_total", va("%d/%d players", play, cgs.maxclients));
+	}
+}
+
+/*
 [QL] Ask the server for scores again while the board is being held.
 
 CG_ScoresDown_f sends "score" on the key press and nothing after it, so a
@@ -2383,7 +2433,10 @@ than tapping TAB does - it just stops the display freezing while the key is down
 */
 #define SCOREBOARD_REFRESH_TIME 2000
 
+static void CG_ScoreboardCounts(void);
+
 static void CG_RefreshScoreboard(void) {
+	CG_ScoreboardCounts();
 	if (cg.predictedPlayerState.pm_type == PM_INTERMISSION) {
 		return;   // the final scores are not going to change
 	}

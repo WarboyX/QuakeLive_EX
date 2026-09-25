@@ -3,6 +3,15 @@
 [QL] E133. An overhead picture of a map with the bots' movement drawn on it.
 
     render-tracks.py <map.aas|map.bsp> <server log> <out.png> [--from S] [--to S] [--scale U]
+                     [--bsp map.bsp] [--mode paths|fight|defend]
+
+--bsp labels the picture with the map's own place names (its target_location
+entities - what the team overlay calls "Red Garden Hall") and marks the flags,
+so a report can say where rather than "the left corridor".
+
+--mode fight   one dot per sample of a bot FIGHTING, red or blue by team
+--mode defend  one dot per sample of a bot whose job is defending (LTG 3)
+Both answer "where does this happen" at a glance; paths is the default.
 
 The log is a dedicated server's console output with bot_debugTrack set (lines
 "bottrack <ms> <client> <team> <x> <y> <z> <speed> <state> <ltg> <goalarea>
@@ -78,6 +87,23 @@ def load_bsp(path):
                     c, e = verts[fv + (y + 1) * pw + x], verts[fv + (y + 1) * pw + x + 1]
                     tris += [(a, b, e), (a, e, c)]
     return tris
+
+
+def load_entities(path):
+    """(classname, origin, message) for every entity in a BSP's entity lump."""
+    d = open(path, "rb").read()
+    off, ln = struct.unpack_from("<ii", d, 8)
+    text = d[off:off + ln].decode("latin1", "replace")
+    out = []
+    for block in re.findall(r"\{([^{}]*)\}", text):
+        kv = dict(re.findall(r'"([^"]*)"\s+"([^"]*)"', block))
+        if "origin" in kv:
+            try:
+                o = tuple(float(x) for x in kv["origin"].split()[:3])
+            except ValueError:
+                continue
+            out.append((kv.get("classname", ""), o, kv.get("message", "")))
+    return out
 
 
 def load_aas_floors(path):
@@ -164,12 +190,13 @@ def find_loops(pts):
 
 def main():
     args = sys.argv[1:]
-    opt = {"--from": 0.0, "--to": 1e9, "--scale": 0.0}
+    opt = {"--from": 0.0, "--to": 1e9, "--scale": 0.0, "--bsp": "", "--mode": "paths"}
     pos = []
     while args:
         a = args.pop(0)
         if a in opt:
-            opt[a] = float(args.pop(0))
+            v = args.pop(0)
+            opt[a] = v if a in ("--bsp", "--mode") else float(v)
         else:
             pos.append(a)
     if len(pos) != 3:
@@ -200,9 +227,17 @@ def main():
     stalls_img = base.copy()
     sd = ImageDraw.Draw(stalls_img)
     nstall = nloop = 0
+    mode = opt["--mode"]
     for cl, t in tracks.items():
         col = (255, 60, 60, 70) if t["team"] == 1 else (70, 130, 255, 70)
         pts = t["pts"]
+        if mode in ("fight", "defend"):
+            dot = (255, 70, 70, 110) if t["team"] == 1 else (90, 150, 255, 110)
+            for p in pts:
+                if (mode == "fight" and p[5] == "f") or (mode == "defend" and p[5] == "s" and p[6] == 3):
+                    x, y = px(p[1], p[2])
+                    ld.ellipse([x - 2, y - 2, x + 2, y + 2], fill=dot)
+            continue
         for a, b in zip(pts, pts[1:]):
             # a respawn or teleport is a jump, not a path
             if a[5] == "d" or b[5] == "d" or math.hypot(a[1] - b[1], a[2] - b[2]) > 400:
@@ -226,6 +261,22 @@ def main():
             x, y = px(int(m.group(3)), int(m.group(4)))
             ld.ellipse([x - 2, y - 2, x + 2, y + 2], fill=(40, 240, 255, 170))
     img.paste(lay, (0, 0), lay)
+    if opt["--bsp"]:
+        from PIL import ImageFont
+        try:
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", 15)
+        except OSError:
+            font = ImageFont.load_default()
+        d2 = ImageDraw.Draw(img)
+        for cls, o, msg in load_entities(opt["--bsp"]):
+            x, y = px(o[0], o[1])
+            if cls == "target_location" and msg:
+                label = re.sub(r"\^.", "", msg)
+                d2.text((x + 1, y + 1), label, fill=(0, 0, 0), font=font, anchor="mm")
+                d2.text((x, y), label, fill=(255, 255, 160), font=font, anchor="mm")
+            elif cls in ("team_CTF_redflag", "team_CTF_blueflag"):
+                c = (255, 40, 40) if "red" in cls else (60, 120, 255)
+                d2.rectangle([x - 7, y - 7, x + 7, y + 7], fill=c, outline=(255, 255, 255), width=2)
     img.save(out)
     stalls_out = re.sub(r"(\.\w+)?$", r"-stalls\1", out, count=1)
     stalls_img.save(stalls_out)
