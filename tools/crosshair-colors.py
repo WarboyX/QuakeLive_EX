@@ -4,7 +4,7 @@
 
     python3 tools/crosshair-colors.py <path to menu/art/fx_base.png from pak00>
 
-Prints the table that goes in code/cgame/cg_draw.c (cg_crosshairColors). The
+Prints the table that goes in code/cgame/cg_crosshaircolors.h. The
 image is in pak00 and is never committed; only the numbers are.
 
 The menu's colour slider draws fx_base across its whole width and puts the
@@ -12,7 +12,7 @@ thumb for value v at (v-1)/25 of that width, so v is sampled at that column,
 clamped inside the bar's border, averaged over 3 columns of the two brightest
 rows. The bar is shaded, so each hue is scaled to full brightness. The grey
 tail has no hue: 25 is white and 26 black, by hand (see the comment in
-cg_draw.c). Needs Pillow.
+cg_crosshaircolors.h). Needs Pillow.
 """
 import sys
 from PIL import Image

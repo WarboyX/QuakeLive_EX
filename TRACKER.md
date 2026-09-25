@@ -6055,9 +6055,15 @@ E130 read the report the wrong way round: it moved the crosshair settings *to* A
 
 - **Advanced > Crosshair is gone.** Every crosshair option is on the **Player** tab: style (with the preview beside it), size, brightness, pulse on pickup, colour by health, **crosshair colour**, and player names. RESET there covers them all. The Advanced grid centres its now-partial last row.
 - **`cg_crosshairColor` works.** Before this, only the menu's slider read it and every crosshair drew white. It is Quake Live's own control, a colour bar (`ITEM_TYPE_SLIDER_COLOR`, 1..26, default 25) drawn over `menu/art/fx_base`, and it is greyed out while colour-by-health is on, as in QL. cgame now colours the crosshair from a 26-entry table sampled from that bar at the thumb's position for each value (`tools/crosshair-colors.py`). Only the numbers are checked in, never the image. Brightness still dims it.
+  - The **style preview** beside the Crosshair row now draws in that colour and brightness, so it shows what the game will draw. The table is in `code/cgame/cg_crosshaircolors.h`, which cgame and ui both include.
+  - While colour-by-health is on, the bar is **dimmed** as well as locked. The item already refused focus, but the painter drew the bar at full colour, so it looked live.
   - The bar is shaded (bright in the middle, dim at both ends), so each hue is taken at full strength.
   - The bar's grey tail has no hue to measure, so **25 (default) = white, 26 = black** are set by hand from the bar's shape. If Quake Live draws 26 differently, only that row changes.
-- **Scoreboard switch** on Advanced > HUD: "Replacement (default)" or "Quake Live original" (`cg_ioScoreboard`). The replacement is now the default in code; it used to be 0 and turned on only by the shipped `autoexec.cfg`, which no longer sets it (it would undo the player's choice every launch). Saved only once changed (`CVAR_NODEFAULT`).
+- **Scoreboard switch** on Advanced > HUD (last row): "Replacement (default)" or "Quake Live original" (`cg_ioScoreboard`). The replacement is now the default in code; it used to be 0 and turned on only by the shipped `autoexec.cfg`, which no longer sets it (it would undo the player's choice every launch). Saved only once changed (`CVAR_NODEFAULT`).
+- **Checked in a game,** from the packaged build, with a local-only test pak holding a plain white crosshair of our own:
+  - values 14/5/25/21 draw blue, yellow, white and magenta;
+  - the Player page fits its panel with every row;
+  - the HUD page has the Scoreboard row.
 - **Still not implemented, so still no rows:** hit colour/style/time (`cg_crosshairHit*`), teammate health (`cg_drawCrosshairTeamHealth*`), teammate/enemy name options, `cg_forceDrawCrosshair`. Registered for Quake Live's sake and drawn by nothing.
 
 ### E130. Crosshair row lined up and in one place; RESET on the settings pages — DONE (verify)

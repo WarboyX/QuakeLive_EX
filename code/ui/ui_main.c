@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 #include "ui_local.h"
+#include "../cgame/cg_crosshaircolors.h"
 
 uiInfo_t uiInfo;
 
@@ -1305,7 +1306,28 @@ static void UI_DrawCrosshair(rectDef_t* rect, float scale, vec4_t color) {
     if (!uiInfo.currentCrosshair) {
         return;
     }
-    trap_R_SetColor(color);
+    // [QL] E131. In the crosshair's own colour and brightness, so the preview
+    // is what the game will draw. Colour-by-health has no health to show here,
+    // so it keeps the item's colour.
+    if (!trap_Cvar_VariableValue("cg_crosshairHealth")) {
+        vec4_t tint;
+        int c = (int)trap_Cvar_VariableValue("cg_crosshairColor");
+        float bright = trap_Cvar_VariableValue("cg_crosshairBrightness");
+
+        if (c < 1 || c > CROSSHAIR_COLORS) {
+            c = CROSSHAIR_DEFAULT_COLOR;
+        }
+        if (bright < 0.0f) {
+            bright = 0.0f;
+        } else if (bright > 1.0f) {
+            bright = 1.0f;
+        }
+        VectorScale(cg_crosshairColors[c - 1], bright, tint);
+        tint[3] = color[3];
+        trap_R_SetColor(tint);
+    } else {
+        trap_R_SetColor(color);
+    }
     UI_DrawHandlePic(rect->x, rect->y - rect->h, rect->w, rect->h, uiInfo.uiDC.Assets.crosshairShader[uiInfo.currentCrosshair]);
     trap_R_SetColor(NULL);
 }

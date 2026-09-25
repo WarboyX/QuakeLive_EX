@@ -1826,12 +1826,19 @@
                   cvarFloatList { "Count down" 1 "Count up" 0 }
                   rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Scoreboard"  textscale .21  rect 24 244 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgioscoreboard  type ITEM_TYPE_MULTI  text ""  cvar "cg_ioScoreboard"
+                  cvarFloatList { "Replacement (default)" 1 "Quake Live original" 0 }
+                  rect 290 244 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_hud  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset cg_fov ; reset cg_zoomfov ; reset cg_drawGun ; reset cg_guny ; reset cg_drawFPS ; reset cg_lagometer ; reset cg_speedometer ; reset cg_drawAttacker ; reset cg_drawTeamOverlay ; reset cg_weaponBar ; reset cg_drawFullWeaponBar ; reset cg_leveltimerdirection" }
+            action { play "sound/misc/menu1.wav" ; exec "reset cg_fov ; reset cg_zoomfov ; reset cg_drawGun ; reset cg_guny ; reset cg_drawFPS ; reset cg_lagometer ; reset cg_speedometer ; reset cg_drawAttacker ; reset cg_drawTeamOverlay ; reset cg_weaponBar ; reset cg_drawFullWeaponBar ; reset cg_leveltimerdirection ; reset cg_ioScoreboard" }
             mouseEnter { setitemcolor rs_io_ig_hud backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_hud forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_hud bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_hud backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_hud forecolor 1 1 1 1 ; setitemcolor rs_io_ig_hud bordercolor .35 .3 .12 1 }
         }
@@ -2382,19 +2389,12 @@
                   cvarFloatList { "No" 0 "Yes (Verbose)" 1 "Yes (Small)" 2 }
                   rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Scoreboard"  textscale .21  rect 24 244 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cgioscoreboard  type ITEM_TYPE_MULTI  text ""  cvar "cg_ioScoreboard"
-                  cvarFloatList { "Replacement (default)" 1 "Quake Live original" 0 }
-                  rect 290 244 250 16  textscale .21  textaligny 13  textalignx 2
-                  forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_game  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset cg_allowTaunt ; reset cg_zoomToggle ; reset cg_zoomScaling ; reset cg_useItemMessage ; reset cg_useItemWarning ; reset cg_forceEnemyModel ; reset cg_forceTeamModel ; reset cg_followKiller ; reset cg_followPowerup ; reset cg_specFov ; reset cl_allowConsoleChat ; reset cl_demoRecordMessage ; reset cg_ioScoreboard" }
+            action { play "sound/misc/menu1.wav" ; exec "reset cg_allowTaunt ; reset cg_zoomToggle ; reset cg_zoomScaling ; reset cg_useItemMessage ; reset cg_useItemWarning ; reset cg_forceEnemyModel ; reset cg_forceTeamModel ; reset cg_followKiller ; reset cg_followPowerup ; reset cg_specFov ; reset cl_allowConsoleChat ; reset cl_demoRecordMessage" }
             mouseEnter { setitemcolor rs_io_ig_game backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_game forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_game bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_game backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_game forecolor 1 1 1 1 ; setitemcolor rs_io_ig_game bordercolor .35 .3 .12 1 }
         }

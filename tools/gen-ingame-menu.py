@@ -926,6 +926,10 @@ SUBPAGES = [
         ("multi",  "cg_weaponBar",           "Weapon bar"),
         ("multi",  "cg_drawFullWeaponBar",   "Weapon bar shows"),
         ("multi",  "cg_leveltimerdirection", "Match timer"),
+        # [QL] E131. Our TAB scoreboard (E119) or Quake Live's own. The
+        # replacement is the default now; this is the way back to the original.
+        ("multi",  "cg_ioScoreboard",        "Scoreboard",
+                   '"Replacement (default)" 1 "Quake Live original" 0'),
     ], None),
     ("io_ig_weapons", "WEAPONS", "Switching, and how each weapon looks.", [
         ("yesno",  "cg_autoSwitch",      "Auto switch on pickup"),
@@ -978,10 +982,6 @@ SUBPAGES = [
         ("yesno",  "cg_specFov",           "Use followed player FOV"),
         ("yesno",  "cl_allowConsoleChat",  "Console chat"),
         ("multi",  "cl_demoRecordMessage", "Demo record message"),
-        # [QL] E131. Our TAB scoreboard (E119) or Quake Live's own. The
-        # replacement is the default now; this is the way back to the original.
-        ("multi",  "cg_ioScoreboard",        "Scoreboard",
-                   '"Replacement (default)" 1 "Quake Live original" 0'),
     ], None),
 ]
 

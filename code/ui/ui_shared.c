@@ -4142,7 +4142,21 @@ void Item_SliderColor_Paint(itemDef_t* item) {
     } else {
         x = item->window.rect.x;
     }
-    DC->setColor(NULL);  // 0x1001b5c0 draws the colour bar in white
+    // [QL] E131. Dimmed while its disableCvar holds (cg_crosshairColor is
+    // greyed while colour-by-health overrides it). The item already refused
+    // focus then, but the bar drew at full colour and looked live.
+    if (item->enableCvar && *item->enableCvar && item->cvarTest && *item->cvarTest &&
+        (item->cvarFlags & (CVAR_ENABLE | CVAR_DISABLE)) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
+        // Fixed greys, not parent->disableColor: a menu that never sets one
+        // leaves it all zero, which would hide the thumb outright.
+        vec4_t dim = {0.35f, 0.35f, 0.35f, 0.6f};
+
+        DC->setColor(dim);
+        VectorSet(newColor, 0.5f, 0.5f, 0.5f);
+        newColor[3] = 1.0f;
+    } else {
+        DC->setColor(NULL);  // 0x1001b5c0 draws the colour bar in white
+    }
     DC->drawHandlePic(x, y, SLIDER_WIDTH, SLIDER_HEIGHT, DC->Assets.fxBasePic);
 
     x = Item_Slider_ThumbPosition(item);
