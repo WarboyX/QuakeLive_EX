@@ -5560,7 +5560,7 @@
     // frame to cover the whole screen, and the title bar and panel are layers.
     menuDef {
         name "io_hwprompt"
-        rect 100 130 440 200
+        rect 100 159 440 162
         visible MENU_FALSE
         fullScreen 0
         style WINDOW_STYLE_EMPTY
@@ -5569,9 +5569,9 @@
 
         onESC { exec "seta cl_hwPrompt 1" ; close io_hwprompt }
 
-        itemDef { name hwdim  rect -420 -130 1280 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name hwdim  rect -420 -159 1280 480  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.6 }
-        itemDef { name hwpanel  rect 0 0 440 200  background "ui/assets/main_menu/content_background.tga"
+        itemDef { name hwpanel  rect 0 0 440 162  background "ui/assets/main_menu/content_background.tga"
                   style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
                   border 1  bordercolor .35 .3 .12 1 }
         itemDef { name hwbar  rect 0 0 440 30  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -5594,7 +5594,7 @@
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef {
             name hwyes  text "YES"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 92 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 92 128 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "seta cl_hwPrompt 1" ; exec "seta cl_renderer vulkan" ; close io_hwprompt ; open io_hwprompt2 }
@@ -5603,7 +5603,7 @@
         }
         itemDef {
             name hwno  text "NO"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 228 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 228 128 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; exec "seta cl_hwPrompt 1" ; close io_hwprompt }
@@ -5616,7 +5616,7 @@
     // frame to cover the whole screen, and the title bar and panel are layers.
     menuDef {
         name "io_hwprompt2"
-        rect 100 130 440 200
+        rect 100 159 440 162
         visible MENU_FALSE
         fullScreen 0
         style WINDOW_STYLE_EMPTY
@@ -5625,9 +5625,9 @@
 
         onESC { close io_hwprompt2 ; exec "vid_restart" }
 
-        itemDef { name hwdim  rect -420 -130 1280 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name hwdim  rect -420 -159 1280 480  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.6 }
-        itemDef { name hwpanel  rect 0 0 440 200  background "ui/assets/main_menu/content_background.tga"
+        itemDef { name hwpanel  rect 0 0 440 162  background "ui/assets/main_menu/content_background.tga"
                   style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
                   border 1  bordercolor .35 .3 .12 1 }
         itemDef { name hwbar  rect 0 0 440 30  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -5653,7 +5653,7 @@
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef {
             name hw2yes  text "YES"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 92 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 92 128 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1  cvarTest "ui_hwRayQuery"  showCvar { "1" }
             action { play "sound/misc/menu1.wav" ; close io_hwprompt2 ; exec "exec advanced.cfg ; vid_restart" }
@@ -5662,7 +5662,7 @@
         }
         itemDef {
             name hw2yesb  text "YES"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 92 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 92 128 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1  cvarTest "ui_hwRayQuery"  showCvar { "0" }
             action { play "sound/misc/menu1.wav" ; close io_hwprompt2 ; exec "exec advanced_norq.cfg ; vid_restart" }
@@ -5671,7 +5671,7 @@
         }
         itemDef {
             name hw2no  text "NO"  type ITEM_TYPE_BUTTON  textscale .21
-            rect 228 166 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
+            rect 228 128 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_hwprompt2 ; exec "vid_restart" }

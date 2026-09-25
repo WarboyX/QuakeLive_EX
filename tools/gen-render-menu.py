@@ -541,12 +541,17 @@ def surface_detail():
 # menu and opens io_hwprompt on a discrete GPU or one with ray query. The GPU's
 # name comes from ui_hwGpuName - an item with a cvar and no text paints the
 # cvar, the same trick as the main menu's build stamp.
-PW, PH = 440, 200
+PW = 440
 
 
 def popup(menu, title, lines, buttons, esc):
     """A centred dialog in the frame's palette: dim, title bar, panel, buttons."""
-    x0, y0 = (640 - PW) // 2, 130
+    # [QL] E128. Height follows the text: 12 below the last line, then the
+    # buttons, then 12. It was a fixed 200, which left an empty band between
+    # the text and the buttons on both dialogs. Centred on the screen.
+    shown = sum(1 for ln in lines if not (len(ln) > 3 and ln[3] == "same"))
+    PH = 44 + 18 * shown + 12 + 22 + 12
+    x0, y0 = (640 - PW) // 2, (480 - PH) // 2
     body = ""
     y = 44
     for ln in lines:

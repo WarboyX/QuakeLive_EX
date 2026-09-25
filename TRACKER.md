@@ -6048,6 +6048,14 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E128. Hardware prompt: a lost first click, and the empty band — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Found in the E127 visual check, with a shim making the OpenGL driver report an RTX 3060 so the real detection path ran.
+
+- **A click on a just-opened menu could be lost.** Hover focus was only set from mouse movement, so the second dialog opened under a still cursor with its YES unfocused, and the first click did nothing. `Menus_ActivateByName` now gives a newly opened menu the item under the cursor straight away. Checked: YES is highlighted on opening, and a click without moving runs `advanced.cfg` and restarts on Vulkan.
+- **Empty band between text and buttons:** the dialogs were a fixed 200 tall. The height now follows the text (162) and the dialog is centred.
+
 ### E127. The hardware prompt no longer touches Vulkan — DONE (verify)
 **Lives in:** our **client** (client engine) · **Seen by:** our client only
 

@@ -5166,6 +5166,17 @@ menuDef_t* Menus_ActivateByName(const char* p) {
             Menus[i].window.flags &= ~WINDOW_HASFOCUS;
         }
     }
+    /*
+    [QL] E128. Give the new menu the item under the cursor now, as if the
+    mouse had moved. Hover focus is only ever set from mouse movement, so a
+    menu that opens under a cursor that has not moved - a dialog opening in
+    the place the previous button was, like the hardware prompt's second
+    question under the first one's YES - had nothing focused, and the first
+    click on the button right under the pointer did nothing.
+    */
+    if (m) {
+        Menu_HandleMouseMove(m, DC->cursorx, DC->cursory);
+    }
     Display_CloseCinematics();
     return m;
 }
