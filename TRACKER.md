@@ -6048,6 +6048,64 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E136. Hall bias between the courtyards; carriers on real CTF; 50-match heat maps — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"There seems to be a happy bias for which hall they take connecting the courtyards."* Also: test carriers with a non-instagib config, and run 50 matches mixed instagib and regular, at 5x, tracking bots and kills, with heat maps.
+
+#### How it was measured
+- **50 matches on japanesecastles, 30v30, timescale 5, 300 s each,** alternating `a2m-instagib-ctf.cfg` and `ctf64.cfg` (standard weapons). Every match reached its full game time.
+- **Kills are now logged with positions.** Under `bot_debugTrack`, `g_combat.c` prints a `botkill` line: the victim's position, the killer's position, both teams, and the flag the victim carried.
+- **`tools/bot-harness/render-heat.py`** (new) draws heat maps over the AAS overhead view, from any number of logs, of where bots are, where they die, where kills are made from, and where carriers die. Telefrags and team changes are left out.
+- The Center Room is for non-objective modes, and no CTF route crossed it in any match. So the courtyards join by the north hall (Blue Garden Hall) or the south hall (Red Garden Hall).
+
+#### The bias
+Share of courtyard crossings by attackers heading for the enemy flag:
+
+| | instagib | standard |
+|---|---|---|
+| red, heading east: north / south | 7% / 92% | 32% / 67% |
+| blue, heading west: north / south | 72% / 27% | 41% / 58% |
+
+Each team took the hall on its own side.
+
+#### Causes (all in the alternative-route waypoints)
+1. **The waypoint list was the first 32 areas the AAS numbers, not 32 places.** `AAS_AlternativeRouteGoals` walks the areas in number order and stops at the limit. With portals, every portal area is a "cluster" of its own.
+   - The south garden's eight portal areas took 8 of both teams' 32 slots.
+   - The list ran out before the north garden's area numbers came up.
+   - Now `BotAltRoutesMerge` fetches all of them (55 and 65 here), ranks them by detour, and keeps one per place within 500 u. That leaves 15 and 18.
+   - A goal on the direct route comes back with a negative detour, which the unsigned field wraps to ~65530. It is now treated as 0.
+2. **Most waypoints don't choose a way across.** A waypoint in our base or at their door is reached by the shortest route, and that route is the same for a whole team.
+   - Each waypoint now carries the side of the map its whole route crosses the middle on (`BotAltRouteSide`). The route is walked from our flag, through the waypoint, to theirs. The side is left or right of the flag-to-flag line, where the route passes the plane half way between the flags.
+   - This comes from the routing, not from place names, so it works the same on any two-flag map.
+   - An attacker takes the side fewer of its team are on, then the emptiest waypoint on that side.
+3. **A waypoint steered only the first life of an attack.** It was chosen when the job began. In instagib a life is seconds long, so most runs went the direct way.
+   - Now it is chosen again on every respawn.
+   - A waypoint the bot has already passed is never offered, since the choice is called from eleven places, some of them half way to the flag. With nothing left ahead, the bot goes straight on.
+
+#### Measured and rejected (12 matches each)
+| variant | problem |
+|---|---|
+| Middle-of-map waypoints only | The halls came out even, but flag grabs halved. Everyone went direct from the middle and met the defence at one door. |
+| A middle waypoint, then a door waypoint | Grabs 2.8 and 8 per match. When re-rolled, bots were sent back to the middle. |
+| Detour cost doubled | Grabs 0.5 and 5.3 per match. |
+
+#### Result (25 instagib + 25 standard matches, before and after)
+| | instagib before | after | standard before | after |
+|---|---|---|---|---|
+| red east: north / south | 7 / 92 | **37 / 62** | 32 / 67 | **50 / 49** |
+| blue west: north / south | 72 / 27 | **52 / 47** | 41 / 58 | 37 / 62 |
+| flag grabs | 230 | 245 | 266 | **463** |
+| captures | 1 | 0 | 4 | **9** |
+| attack runs through a garden | 35% | 36% | 33% | 29% |
+| attack runs reaching their flag room | 3% | 3% | 4% | **6%** |
+
+#### Carriers on standard CTF (900 s, 30v30, E134 vs E135 build)
+- Carriers live longer than in instagib: up to 38 s.
+- 28% and 33% of carrier runs go through a garden, and fewer carriers die in the flag room (8 → 3).
+- **They still almost never get home.** Most die 3,000 u or more from their own flag, still in the enemy half.
+- A lone carrier does not outlive 30 defenders, and nothing escorts it. That is the next thing to look at, not the route.
+
 ### E135. Chokepoints: three botlib routing bugs, defender lanes, carrier exits — DONE (verify)
 **Lives in:** our **server** (botlib + qagame) · **Seen by:** every client
 

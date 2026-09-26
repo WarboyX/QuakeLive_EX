@@ -1393,6 +1393,13 @@ int AINode_Respawn(bot_state_t* bs) {
     // if waiting for the actual respawn
     if (bs->respawn_wait) {
         if (!BotIsDead(bs)) {
+            /* [QL] E136. a new life on an attack is a new way across. The
+               waypoint was chosen once, when the job began, and once reached
+               every later life went the direct way - in instagib, where a
+               life is seconds long, that was nearly every run */
+            if (gametype == GT_CTF && bs->ltgtype == LTG_GETFLAG) {
+                BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+            }
             AIEnter_Seek_LTG(bs, "respawn: respawned");
         } else {
             trap_EA_Respawn(bs->client);

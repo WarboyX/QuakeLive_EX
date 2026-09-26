@@ -714,6 +714,17 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
     G_LogPrintf("Kill: %i %i %i: %s killed %s by %s\n",
                 killer, self->s.number, meansOfDeath, killerName,
                 self->client->pers.netname, obit);
+    // [QL] E136. where it happened, for tools/bot-harness/render-heat.py: the
+    // victim, then the killer (the victim's own spot for world and suicide),
+    // then both teams and the flag the victim carried (0 none, 1 red, 2 blue)
+    if (bot_debugTrack.integer > 0) {
+        gentity_t* k = (killer >= 0 && killer < MAX_CLIENTS) ? &g_entities[killer] : self;
+        G_Printf("botkill %d %d %d %d %.0f %.0f %.0f %.0f %.0f %.0f %d %d %d\n", level.time, killer, self->s.number,
+                 meansOfDeath, self->r.currentOrigin[0], self->r.currentOrigin[1], self->r.currentOrigin[2],
+                 k->r.currentOrigin[0], k->r.currentOrigin[1], k->r.currentOrigin[2],
+                 k->client ? k->client->sess.sessionTeam : 0, self->client->sess.sessionTeam,
+                 self->client->ps.powerups[PW_REDFLAG] ? 1 : self->client->ps.powerups[PW_BLUEFLAG] ? 2 : 0);
+    }
 
     // 12. EV_OBITUARY (gated on !scoringDisabled)
     if (!level.scoringDisabled) {

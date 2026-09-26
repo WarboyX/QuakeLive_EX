@@ -294,6 +294,7 @@ typedef struct bot_state_s {
     bot_goal_t teamgoal;             // the team goal
     bot_goal_t altroutegoal;         // alternative route goal
     float reachedaltroutegoal_time;  // time the bot reached the alt route goal
+    int altrouteside;                // [QL] E136: side of the map its waypoint crosses on, -1/0/+1
     float teammessage_time;          // time to message team mates what the bot is doing
     float teamgoal_time;             // time to stop helping team mate
     float teammatevisible_time;      // last time the team mate was NOT visible

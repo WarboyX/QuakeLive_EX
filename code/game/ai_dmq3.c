@@ -102,6 +102,8 @@ aas_altroutegoal_t red_altroutegoals[MAX_ALTROUTEGOALS];
 int red_numaltroutegoals;
 aas_altroutegoal_t blue_altroutegoals[MAX_ALTROUTEGOALS];
 int blue_numaltroutegoals;
+// [QL] E136: the side of the map each one's route crosses the middle on, -1/0/+1
+static int red_altroutesides[MAX_ALTROUTEGOALS], blue_altroutesides[MAX_ALTROUTEGOALS];
 
 /*
 ==================
@@ -6033,18 +6035,22 @@ bot_goal_t* BotAlternateRoute(bot_state_t* bs, bot_goal_t* goal) {
 BotGetAlternateRouteGoal
 ==================
 */
+
 int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     aas_altroutegoal_t* altroutegoals;
     bot_goal_t* goal;
+    int* sides;
     int numaltroutegoals, rnd;
 
 
     if (base == TEAM_RED) {
         altroutegoals = red_altroutegoals;
         numaltroutegoals = red_numaltroutegoals;
+        sides = red_altroutesides;
     } else {
         altroutegoals = blue_altroutegoals;
         numaltroutegoals = blue_numaltroutegoals;
+        sides = blue_altroutesides;
     }
     if (!numaltroutegoals)
         return qfalse;
@@ -6069,28 +6075,76 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     instead. Its team there is cover, not a queue. On japanesecastles that
     sends it out through Back Hall and the Garden when the defence is holding
     the Main Stairway, and the other way round.
+
+    [QL] E136. And an attacker first picks a side of the map, then a waypoint
+    on it. Most waypoints do not choose a way across: one in their base or at
+    their door is reached by the shortest route, and the shortest route is the
+    same for a whole team - on japanesecastles red crossed between the
+    courtyards by the south hall 92% of the time in instagib, blue by the north
+    72%. So each waypoint carries the side of the map its whole route crosses
+    the middle on (BotAltRouteSide), and an attacker takes the side fewer of its
+    team are on, then the emptiest waypoint there. Two narrower fixes were
+    measured and lost: waypoints from the middle of the map only (the halls
+    evened out, but the door choice went, and flag grabs halved), and a middle
+    waypoint then a door waypoint (worse again).
+
+    It never offers a waypoint the bot has already passed - this is called from
+    eleven places, some of them half way to the flag - and when nothing is left
+    ahead the bot goes straight on. It is also asked again on every respawn
+    (AINode_Respawn): in instagib a life is seconds long, and a waypoint chosen
+    once per attack job steered only the first one.
     */
     {
-        int best = -1, bestcrowd = 0, ties = 0, i;
+        int best = -1, bestcrowd = 0, ties = 0, i, pass, togo = 0, want = 0;
         qboolean carrier = BotCTFCarryingFlag(bs);
+        bot_goal_t* target = base == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
 
-        for (i = 0; i < numaltroutegoals; i++) {
-            int crowd = carrier ? BotRoomEnemies(bs, altroutegoals[i].origin)
+        if (!carrier && gametype == GT_CTF) {
+            int count[3] = {0, 0, 0};
+
+            if (bs->areanum && target->areanum) {
+                togo = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, target->areanum, bs->tfl);
+            }
+            for (i = 0; i < MAX_CLIENTS; i++) {
+                bot_state_t* other = botstates[i];
+
+                if (other && other->inuse && other != bs && BotTeam(other) == BotTeam(bs) &&
+                    other->ltgtype == LTG_GETFLAG && other->altroutegoal.areanum) {
+                    count[other->altrouteside + 1]++;
+                }
+            }
+            want = count[0] < count[2] ? -1 : count[2] < count[0] ? 1 : (random() < 0.5f ? -1 : 1);
+        }
+        for (pass = want ? 0 : 1; pass < 2 && best < 0; pass++) {
+            for (i = 0; i < numaltroutegoals; i++) {
+                int crowd;
+
+                if (!pass && sides[i] != want) {
+                    continue;
+                }
+                if (togo && altroutegoals[i].goaltraveltime >= togo) {
+                    continue;  // behind us
+                }
+                crowd = carrier ? BotRoomEnemies(bs, altroutegoals[i].origin)
                                 : BotRoomCrowding(bs, altroutegoals[i].origin);
-
-            if (best < 0 || crowd < bestcrowd) {
-                best = i;
-                bestcrowd = crowd;
-                ties = 1;
-            } else if (crowd == bestcrowd) {
-                ties++;
-                // reservoir sample, so ties are picked from evenly
-                if (random() * ties < 1.0f) {
+                if (best < 0 || crowd < bestcrowd) {
                     best = i;
+                    bestcrowd = crowd;
+                    ties = 1;
+                } else if (crowd == bestcrowd) {
+                    ties++;
+                    // reservoir sample, so ties are picked from evenly
+                    if (random() * ties < 1.0f) {
+                        best = i;
+                    }
                 }
             }
         }
         rnd = best;
+        if (rnd < 0 && togo) {
+            bs->altroutegoal.areanum = 0;
+            return qfalse;  // nothing left ahead: straight on
+        }
     }
     if (rnd < 0 || rnd >= numaltroutegoals) {
         rnd = (float)random() * numaltroutegoals;
@@ -6106,6 +6160,7 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     goal->iteminfo = 0;
     goal->number = 0;
     goal->flags = 0;
+    bs->altrouteside = sides[rnd];
     //
     bs->reachedaltroutegoal_time = 0;
     return qtrue;
@@ -6159,9 +6214,68 @@ but this runs once, at map load, and a map with no portals otherwise gets no
 alternative routes at all for the whole match.
 ==================
 */
+/*
+==================
+BotAltRoutesMerge
+
+[QL] E136. The ways round, not the first 32 areas the AAS numbers.
+
+AAS_AlternativeRouteGoals walks the areas in number order and stops at the
+limit, and with portals every portal area is a "cluster" of its own - a room
+with eight portal areas in it is eight entries. On japanesecastles the south
+garden by Red Garden Hall filled 8 of both teams' 32 slots, and the list ran
+out before the areas numbered after it, which is where the north garden is.
+An attacker picks the emptiest waypoint, so a quarter of the choices were one
+room: red attackers crossed the courtyards by the south hall 80% of the time.
+
+So ask for all of them, rank by the detour each costs, and keep one per place
+- nothing within ALTROUTE_MERGE of one already kept. A goal on the direct route
+comes back with a negative detour, which the unsigned field wraps to ~65530;
+that is a detour of 0, not the longest on the map.
+==================
+*/
+#define ALTROUTE_ALL 512
+#define ALTROUTE_MERGE 500.0f
+
+static int BotAltRoutesMerge(aas_altroutegoal_t* all, int n, aas_altroutegoal_t* out) {
+    int i, j, k, best, kept = 0;
+    static qboolean used[ALTROUTE_ALL];
+
+    memset(used, 0, sizeof(used));
+    for (k = 0; k < n && kept < MAX_ALTROUTEGOALS; k++) {
+        best = -1;
+        for (i = 0; i < n; i++) {
+            int extra, bestextra;
+
+            if (used[i]) {
+                continue;
+            }
+            extra = all[i].extratraveltime >= 32768 ? 0 : all[i].extratraveltime;
+            bestextra = best < 0 ? 0 : (all[best].extratraveltime >= 32768 ? 0 : all[best].extratraveltime);
+            if (best < 0 || extra < bestextra) {
+                best = i;
+            }
+        }
+        if (best < 0) {
+            break;
+        }
+        used[best] = qtrue;
+        for (j = 0; j < kept; j++) {
+            if (Distance(out[j].origin, all[best].origin) < ALTROUTE_MERGE) {
+                break;
+            }
+        }
+        if (j == kept) {
+            out[kept++] = all[best];
+        }
+    }
+    return kept;
+}
+
 static int BotAltRoutes(vec3_t start, int startarea, vec3_t goal, int goalarea,
                         aas_altroutegoal_t* out, const char* what) {
-    int n, pointarea;
+    int n, found, pointarea;
+    static aas_altroutegoal_t all[ALTROUTE_ALL];
 
     /*
     [QL] Route from the floor the flag stands on, not from the flag's item area.
@@ -6200,19 +6314,83 @@ static int BotAltRoutes(vec3_t start, int startarea, vec3_t goal, int goalarea,
                  what, startarea, goalarea);
         return 0;
     }
-    n = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
-                                       out, MAX_ALTROUTEGOALS,
-                                       ALTROUTEGOAL_CLUSTERPORTALS | ALTROUTEGOAL_VIEWPORTALS);
-    if (n > 0) {
-        G_Printf("alternate routes %s: %i (from the map's portals)\n", what, n);
+    found = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
+                                           all, ALTROUTE_ALL,
+                                           ALTROUTEGOAL_CLUSTERPORTALS | ALTROUTEGOAL_VIEWPORTALS);
+    if (found > 0) {
+        n = BotAltRoutesMerge(all, found, out);
+        G_Printf("alternate routes %s: %i places of %i (from the map's portals)\n", what, n, found);
         BotAltRoutesDump(out, n, what);
         return n;
     }
-    n = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
-                                       out, MAX_ALTROUTEGOALS, ALTROUTEGOAL_ALL);
-    G_Printf("alternate routes %s: %i (no portals on this map, using open areas)\n", what, n);
+    found = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
+                                           all, ALTROUTE_ALL, ALTROUTEGOAL_ALL);
+    n = BotAltRoutesMerge(all, found, out);
+    G_Printf("alternate routes %s: %i places of %i (no portals on this map, using open areas)\n", what, n, found);
     BotAltRoutesDump(out, n, what);
     return n;
+}
+
+/*
+==================
+BotAltRouteSide
+
+[QL] E136. Which side of the map a route through a waypoint crosses the middle
+on: -1 or +1, 0 if it never crosses. The middle is the plane half way between
+the flags, square to the line joining them, and the side is which side of that
+line the route is on where it goes through the plane - left or right, seen
+from our flag. On a two-flag map with a north and a south way between the
+bases, that is which one the route takes, found from the routing itself rather
+than from any named place, so it is the same on any map.
+
+Our flag to the waypoint, then the waypoint to theirs, walked one area at a
+time with AAS_PredictRoute. It runs at map load, for each waypoint, once.
+==================
+*/
+static int BotAltRouteSide(bot_goal_t* from, bot_goal_t* to, aas_altroutegoal_t* via) {
+    vec3_t axis, mid, pos, rel;
+    int leg, step, area, goalarea;
+    float last = 0;
+    aas_predictroute_t route;
+
+    VectorSubtract(to->origin, from->origin, axis);
+    axis[2] = 0;
+    VectorAdd(to->origin, from->origin, mid);
+    VectorScale(mid, 0.5f, mid);
+    VectorCopy(from->origin, pos);
+    area = BotPointAreaNum(from->origin);
+    if (!area) {
+        area = from->areanum;
+    }
+    for (leg = 0; leg < 2; leg++) {
+        goalarea = leg ? to->areanum : via->areanum;
+        for (step = 0; step < 1024 && area && area != goalarea; step++) {
+            float d;
+
+            if (!trap_AAS_PredictRoute(&route, area, pos, goalarea, TFL_DEFAULT, 1, 0, RSE_NONE, 0, 0, 0) &&
+                route.stopevent == RSE_NOROUTE) {
+                return 0;
+            }
+            if (!route.endarea || route.endarea == area) {
+                break;
+            }
+            area = route.endarea;
+            VectorCopy(route.endpos, pos);
+            VectorSubtract(pos, mid, rel);
+            d = rel[0] * axis[0] + rel[1] * axis[1];
+            if (last < 0 && d >= 0) {
+                // through the middle: left or right of the flag line
+                VectorSubtract(pos, from->origin, rel);
+                return axis[0] * rel[1] - axis[1] * rel[0] > 0 ? 1 : -1;
+            }
+            last = d;
+        }
+        if (!leg) {
+            VectorCopy(via->origin, pos);
+            area = via->areanum;
+        }
+    }
+    return 0;
 }
 
 void BotSetupAlternativeRouteGoals(void) {
@@ -6304,6 +6482,31 @@ void BotSetupAlternativeRouteGoals(void) {
             ctf_redflag.origin, ctf_redflag.areanum,
             ctf_blueflag.origin, ctf_blueflag.areanum,
             blue_altroutegoals, "toward the blue base");
+        {
+            // [QL] E136. which side of the map each one takes you across
+            int i, n[2][3];
+
+            memset(n, 0, sizeof(n));
+            for (i = 0; i < red_numaltroutegoals; i++) {
+                red_altroutesides[i] = BotAltRouteSide(&ctf_blueflag, &ctf_redflag, &red_altroutegoals[i]);
+                n[0][red_altroutesides[i] + 1]++;
+            }
+            for (i = 0; i < blue_numaltroutegoals; i++) {
+                blue_altroutesides[i] = BotAltRouteSide(&ctf_redflag, &ctf_blueflag, &blue_altroutegoals[i]);
+                n[1][blue_altroutesides[i] + 1]++;
+            }
+            G_Printf("alternate routes by side of the map: toward red %d left, %d right, %d unknown; "
+                     "toward blue %d left, %d right, %d unknown\n",
+                     n[0][2], n[0][0], n[0][1], n[1][2], n[1][0], n[1][1]);
+            if (bot_debugTactics.integer) {
+                for (i = 0; i < red_numaltroutegoals; i++) {
+                    G_Printf("altside red %.0f %.0f %d\n", red_altroutegoals[i].origin[0], red_altroutegoals[i].origin[1], red_altroutesides[i]);
+                }
+                for (i = 0; i < blue_numaltroutegoals; i++) {
+                    G_Printf("altside blue %.0f %.0f %d\n", blue_altroutegoals[i].origin[0], blue_altroutegoals[i].origin[1], blue_altroutesides[i]);
+                }
+            }
+        }
         /*
         [QL] And do not latch a failure. If the flag areas were not resolved
         there is nothing to remember, and the next bot to finish setting up
