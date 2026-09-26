@@ -95,6 +95,7 @@ bot_goal_t blueobelisk;
 bot_goal_t neutralobelisk;
 
 #define MAX_ALTROUTEGOALS 32
+#define ESCORT_NEAR 1000  // [QL] E137: a bot this close to our carrier escorts it past the quota
 
 int altroutegoals_setup;
 int altroutegoals_retry;  // [QL] next time it is worth trying again
@@ -675,7 +676,17 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 this falls through to the role picker below instead, which is
                 where the bot finds out the team would rather it defended.
                 */
-                if (c >= 0 && BotCTFRoleCrowded(bs, CTFROLE_ESCORT)) {
+                /*
+                [QL] E137. Except a bot already beside the carrier. The quota
+                fills with bots the role picker sent from across the map, so the
+                attackers who went into their base with the carrier - the only
+                team mates near it when it grabs, where most carriers die (the
+                median carrier never gets within 3,400 u of home) - were refused
+                and went on attacking a flag that had gone. Within
+                ESCORT_NEAR the cap does not apply: those are the cover it has.
+                */
+                if (c >= 0 && BotCTFRoleCrowded(bs, CTFROLE_ESCORT) &&
+                    DistanceSquared(bs->origin, g_entities[c].r.currentOrigin) > Square(ESCORT_NEAR)) {
                     c = -1;
                 }
                 if (c >= 0 &&
@@ -2882,6 +2893,16 @@ static int BotWantsToRetreatRaw(bot_state_t* bs) {
     }
     // if the bot is getting the flag
     if (bs->ltgtype == LTG_GETFLAG)
+        return qtrue;
+    /* [QL] E137. And a flag carrier's escort: "retreat" is the node that
+       fights while still moving to the long term goal, and the others stand
+       and trade shots where they are. Escorts spent three quarters of their
+       time fighting, a median 2,400 u from the carrier they were meant to be
+       covering - pinned in the middle of the map by whoever they saw first. */
+    if (gametype == GT_CTF && bs->ltgtype == LTG_TEAMACCOMPANY && !bs->ordered &&
+        bs->teammate >= 0 && bs->teammate < MAX_CLIENTS && g_entities[bs->teammate].client &&
+        (g_entities[bs->teammate].client->ps.powerups[PW_REDFLAG] ||
+         g_entities[bs->teammate].client->ps.powerups[PW_BLUEFLAG]))
         return qtrue;
     //
     if (BotAggression(bs) < 50)
@@ -6095,9 +6116,20 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     once per attack job steered only the first one.
     */
     {
-        int best = -1, bestcrowd = 0, ties = 0, i, pass, togo = 0, want = 0;
+        int best = -1, bestcrowd = 0, ties = 0, i, pass, togo = 0, want = 0, tohome = 0;
         qboolean carrier = BotCTFCarryingFlag(bs);
         bot_goal_t* target = base == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+        bot_goal_t* home = base == TEAM_RED ? &ctf_blueflag : &ctf_redflag;
+
+        /* [QL] E137. The same for a carrier, measured the other way: the list
+           runs from its home flag to theirs, so starttraveltime is how far a
+           waypoint is from home, and one further from home than the carrier is
+           sends it back into their base. The stuck and crowded-room re-rolls
+           ask on the way home too, and a traced carrier spent 27 s turning
+           round in the south garden, twice, before it died there. */
+        if (carrier && gametype == GT_CTF && bs->areanum && home->areanum) {
+            tohome = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, home->areanum, bs->tfl);
+        }
 
         if (!carrier && gametype == GT_CTF) {
             int count[3] = {0, 0, 0};
@@ -6125,6 +6157,9 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
                 if (togo && altroutegoals[i].goaltraveltime >= togo) {
                     continue;  // behind us
                 }
+                if (tohome && altroutegoals[i].starttraveltime >= tohome) {
+                    continue;  // back toward their base
+                }
                 crowd = carrier ? BotRoomEnemies(bs, altroutegoals[i].origin)
                                 : BotRoomCrowding(bs, altroutegoals[i].origin);
                 if (best < 0 || crowd < bestcrowd) {
@@ -6141,7 +6176,7 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
             }
         }
         rnd = best;
-        if (rnd < 0 && togo) {
+        if (rnd < 0 && (togo || tohome)) {
             bs->altroutegoal.areanum = 0;
             return qfalse;  // nothing left ahead: straight on
         }

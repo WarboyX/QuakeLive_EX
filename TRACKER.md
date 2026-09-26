@@ -6048,6 +6048,64 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E137. Carrier escorts; attackers and escorts that stood still — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"Work on carrier escorts next"*, *"and try to make the bots smarter"*.
+
+Measured as in E136: japanesecastles, 30v30, timescale 5, 300 s matches alternating instagib and standard weapons, with kill positions logged. Final figures are 50 matches against E136's 50.
+
+#### What escorts were doing
+In standard CTF, **6.3 of the carrier's team were on the escort job on average, and 0.8 of them were within 600 u of it.** Carrier kills came from both directions: 45% from ahead of the carrier (between it and home) and 34% from behind.
+
+1. **Chasing.** Stock escorting walks to where the carrier is now. The carrier walks away at the same speed, so an escort that starts behind never catches up.
+   - Now `BotEscortGoal` walks the carrier's route home (`AAS_PredictRoute`, once per carrier per 0.5 s).
+   - Each escort takes the first point on that route it can reach before the carrier does, at least 0.8 s ahead: a screen on the way it is going. The point is found by binary search, a handful of route queries rather than one per area.
+   - An escort that cannot get ahead anywhere follows, as before; that is the rear guard.
+2. **Escorting nobody.** Half of all escort time had no live carrier on the team. The release check only ran on some paths.
+   - The escort job now checks the teammate's flag and health itself.
+   - It also ends when the carrier is back on our stand, waiting for our flag.
+3. **Pinned in fights.** Escorts fought 76% of the time, a median of 2,400 u from the carrier. The stock fight nodes stand and trade shots.
+   - An escort of a live carrier now uses the retreat node, which fights while still moving to its goal.
+4. **The escort quota turned away the bots beside the carrier.** The quota is 4, filled by bots the role picker sent from across the map. So the attackers who went into the base with the carrier were refused, and carried on attacking a flag that had gone.
+   - A bot within 1,000 u of the carrier now escorts past the quota.
+
+#### Carriers
+- **Turning back.** The stuck and crowded-room re-rolls could hand a carrier a waypoint back in the enemy base. A traced carrier turned round in the south garden twice in 27 s.
+  - A carrier is now only offered waypoints nearer home than it is.
+  - Carriers turning back more than 800 u: 6% → 2%.
+- **Re-planning.** The way home was chosen once, at the grab. Now it is chosen again every 3 s, from the waypoints still ahead, by fewest enemies in the room. Past the middle, that decides which door of our own base to come in by.
+
+#### Bots standing still
+**13.5% of all bot time in standard CTF was spent jobless, not fighting, at speed 0.** An instrumented run found the cause: 16,068 of 16,095 such samples entered the seek node holding the get-flag job, and left with no goal.
+
+This one was ours. The earlier fix "the flag is already gone, do not walk over there" cancels the job and returns no goal, and the team logic hands the same job back on the next frame. The attacker stood there for as long as the enemy flag was away from its stand.
+
+Now an attacker whose flag has gone does one of three things:
+- **Our carrier is still out:** it escorts the carrier, within the quota, or past it if already beside the carrier.
+- **Our carrier is waiting at home for our flag:** it goes to get our flag back. The first attempt skipped this case, and twenty escorts stood round a waiting carrier while nobody went for our flag.
+- **Otherwise:** it patrols (`BotRoamWaypoint`). A jobless bot with no item it wants does the same, walking between the route waypoints instead of standing where it is.
+
+Two ideas were tested first and made no difference: skipping the 5 s decision cooldown for jobless bots, and the patrol fallback on its own.
+
+#### Result (25 + 25 matches each)
+| | instagib E136 | E137 | standard E136 | E137 |
+|---|---|---|---|---|
+| captures | 0 | 2 | 9 | **19** |
+| flag grabs | 245 | 260 | 463 | 357 |
+| kills | 18,559 | 19,021 | 9,288 | **12,061** |
+| standing still, share of bot time | 0.2% | 0.2% | 13.5% | **0.4%** |
+| escorts within 600 u of the carrier | 0.2 | **1.0** | 0.8 | **2.2** |
+| carriers turning back > 800 u | 2% | 1% | 6% | 2% |
+
+- The halls between the courtyards stay as E136 left them.
+- Standard CTF grabs fewer flags and captures twice as many: fewer attackers, but carriers have cover.
+
+#### Still open
+- **Carriers still die mostly on the way out of the enemy base.** The median carrier still never gets within about 3,400 u of home (the flags are ~4,500 u apart).
+- **Instagib captures are rare.** At railgun range a carrier lives seconds.
+- The next lever is probably grabbing together: the attack arriving as a group, so that the carrier has cover at the stand rather than meeting it later.
+
 ### E136. Hallway bias between the courtyards; carriers on real CTF; 50-match heat maps — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

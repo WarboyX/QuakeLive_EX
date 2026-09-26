@@ -93,5 +93,7 @@ int BotRoomToMove(struct bot_state_s* bs, vec3_t dir, float dist);
 void BotTacticsReport(void);
 // a CTF defender's guard post - a way into its flag room - in place of the flag
 int BotDefendPostGoal(struct bot_state_s* bs, bot_goal_t* goal);
+int BotEscortGoal(struct bot_state_s* bs, bot_goal_t* goal);  // [QL] E137
+int BotRoamWaypoint(struct bot_state_s* bs, bot_goal_t* goal);  // [QL] E137
 // forget the guard posts on a map change
 void BotDefendPostsReset(void);

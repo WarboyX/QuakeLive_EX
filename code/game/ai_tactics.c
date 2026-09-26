@@ -1594,6 +1594,183 @@ int BotDefendPostGoal(bot_state_t* bs, bot_goal_t* goal) {
 
 /*
 ==================
+BotEscortGoal
+
+[QL] E137. Where a flag carrier's escort should be: ahead of it, on its way
+home, if it can get there first; otherwise with it.
+
+Measured over 25 standard-weapon matches at 30 a side on japanesecastles: on
+average 6.3 of the carrier's team were on the accompany job, and 0.8 of them
+were within 600 u of it. Stock accompanying walks to where the carrier is now,
+and the carrier walks away at the same speed, so an escort that starts behind
+never arrives; only the ones that happened to be between it and home ever met
+it. And the carrier dies both ways - of 417 carrier kills, 45% came from
+ahead of it (between it and home) and 34% from behind.
+
+So once every ESCORT_REPLAN the carrier's route home is walked out
+(AAS_PredictRoute, one area at a time, all the way), and each escort
+takes the first point on it that it can reach before the carrier does, at
+least ESCORT_LEAD ahead of the carrier: a screen on the way it is going. An
+escort that cannot get ahead of it anywhere returns qfalse and follows it as
+before, which is the rear guard. Teammate positions are what Quake Live's
+team overlay shows every player, so nothing here is hidden knowledge.
+==================
+*/
+#define ESCORT_POINTS 256   // the whole way home, one AAS area a point
+#define ESCORT_LEAD 80      // an escort point at least this far ahead of the carrier
+#define ESCORT_REPLAN 0.5f
+
+typedef struct {
+    float time;
+    int num;
+    int area[ESCORT_POINTS];
+    int eta[ESCORT_POINTS];  // hundredths for the carrier to get there
+    vec3_t pos[ESCORT_POINTS];
+} escortroute_t;
+
+static escortroute_t escortroutes[MAX_CLIENTS];
+
+static escortroute_t* BotCarrierRoute(int carrier, int team) {
+    escortroute_t* r = &escortroutes[carrier];
+    bot_goal_t* home = team == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+    gentity_t* ent = &g_entities[carrier];
+    aas_predictroute_t route;
+    vec3_t pos;
+    int area, t = 0;
+
+    if (r->time > FloatTime() - ESCORT_REPLAN && r->time <= FloatTime()) {
+        return r;
+    }
+    r->time = FloatTime();
+    r->num = 0;
+    if (!ent->client || !home->areanum) {
+        return r;
+    }
+    VectorCopy(ent->r.currentOrigin, pos);
+    area = BotPointAreaNum(pos);
+    while (area && area != home->areanum && r->num < ESCORT_POINTS) {
+        trap_AAS_PredictRoute(&route, area, pos, home->areanum, TFL_DEFAULT, 1, 0, RSE_NONE, 0, 0, 0);
+        if (!route.endarea || route.endarea == area || route.time <= 0) {
+            break;
+        }
+        t += route.time;
+        area = route.endarea;
+        VectorCopy(route.endpos, pos);
+        r->area[r->num] = area;
+        r->eta[r->num] = t;
+        VectorCopy(pos, r->pos[r->num]);
+        r->num++;
+    }
+    return r;
+}
+
+int BotEscortGoal(bot_state_t* bs, bot_goal_t* goal) {
+    escortroute_t* r;
+    int lo, hi, mid, first, te;
+
+    if (!bot_tactics.integer || gametype != GT_CTF || !bs->areanum ||
+        bs->teammate < 0 || bs->teammate >= MAX_CLIENTS) {
+        return qfalse;
+    }
+    // the answer holds for ESCORT_REPLAN, like the route it comes from
+    if (bs->tac.escort_time > FloatTime() - ESCORT_REPLAN && bs->tac.escort_time <= FloatTime()) {
+        if (!bs->tac.escortgoal.areanum) {
+            return qfalse;
+        }
+        memcpy(goal, &bs->tac.escortgoal, sizeof(bot_goal_t));
+        return qtrue;
+    }
+    bs->tac.escort_time = FloatTime();
+    bs->tac.escortgoal.areanum = 0;
+    r = BotCarrierRoute(bs->teammate, BotTeam(bs));
+    // first point at least ESCORT_LEAD out
+    for (first = 0; first < r->num && r->eta[first] < ESCORT_LEAD; first++) {
+    }
+    if (first >= r->num) {
+        return qfalse;
+    }
+    /* The escort's lead over the carrier grows along the route when it is
+       ahead of it (the carrier's time keeps rising, the escort's falls), so
+       where it can first get there first is a binary search, not a scan - a
+       handful of route queries instead of one per area. The last point is
+       home: if it cannot beat the carrier even there, it is behind it. */
+    te = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, r->area[r->num - 1], bs->tfl);
+    if (!te || te >= r->eta[r->num - 1]) {
+        return qfalse;
+    }
+    lo = first;
+    hi = r->num - 1;
+    while (lo < hi) {
+        mid = (lo + hi) / 2;
+        te = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, r->area[mid], bs->tfl);
+        if (te && te < r->eta[mid]) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    memset(&bs->tac.escortgoal, 0, sizeof(bot_goal_t));
+    VectorCopy(r->pos[lo], bs->tac.escortgoal.origin);
+    bs->tac.escortgoal.areanum = r->area[lo];
+    VectorSet(bs->tac.escortgoal.mins, -8, -8, -8);
+    VectorSet(bs->tac.escortgoal.maxs, 8, 8, 8);
+    bs->tac.escortgoal.entitynum = -1;
+    memcpy(goal, &bs->tac.escortgoal, sizeof(bot_goal_t));
+    return qtrue;
+}
+
+/*
+==================
+BotRoamWaypoint
+
+[QL] E137. Somewhere to go for a bot with no job and no item it wants.
+
+BotGetItemLongTermGoal gives a jobless bot an item to fetch. When there is
+none it wants - a bot with full health, armour and ammo wants nothing on most
+maps - it returns no goal, and the seek node then does not move at all. Over
+25 standard-weapon matches at 30 a side, 13.5% of all bot time was spent that
+way: jobless, not fighting, and standing at speed 0, in the middle of the
+enemy garden as often as anywhere. (Instagib never showed it: there an idle
+bot drops into the hunting node instead.)
+
+So it walks the map's routes instead: a random alternative-route waypoint -
+the ways between the two bases - held until it gets there or ROAMWAYPOINT_TIME
+passes, then another. That is patrolling, and it keeps a spare bot where the
+traffic is rather than parked in a corner.
+==================
+*/
+#define ROAMWAYPOINT_TIME 20.0f
+
+extern aas_altroutegoal_t red_altroutegoals[], blue_altroutegoals[];
+extern int red_numaltroutegoals, blue_numaltroutegoals;
+
+int BotRoamWaypoint(bot_state_t* bs, bot_goal_t* goal) {
+    int n = red_numaltroutegoals + blue_numaltroutegoals, i;
+    aas_altroutegoal_t* g;
+
+    if (!bot_tactics.integer || gametype != GT_CTF || !n) {
+        return qfalse;
+    }
+    if (bs->tac.roam_time < FloatTime() || !bs->tac.roamgoal.areanum ||
+        DistanceSquared(bs->origin, bs->tac.roamgoal.origin) < Square(96)) {
+        i = (int)(random() * n);
+        if (i >= n) {
+            i = n - 1;
+        }
+        g = i < red_numaltroutegoals ? &red_altroutegoals[i] : &blue_altroutegoals[i - red_numaltroutegoals];
+        memset(&bs->tac.roamgoal, 0, sizeof(bot_goal_t));
+        VectorCopy(g->origin, bs->tac.roamgoal.origin);
+        bs->tac.roamgoal.areanum = g->areanum;
+        VectorSet(bs->tac.roamgoal.mins, -8, -8, -8);
+        VectorSet(bs->tac.roamgoal.maxs, 8, 8, 8);
+        bs->tac.roam_time = FloatTime() + ROAMWAYPOINT_TIME;
+    }
+    memcpy(goal, &bs->tac.roamgoal, sizeof(bot_goal_t));
+    return qtrue;
+}
+
+/*
+==================
 BotEnemyFlagAtBase
 
 [QL] qtrue when the flag this bot is trying to capture is still on its stand.

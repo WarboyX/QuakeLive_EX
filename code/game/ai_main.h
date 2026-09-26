@@ -158,6 +158,11 @@ typedef struct bot_tactics_s {
     int reportedstuck;       // this stuck episode has already been reported
     float roleredecide_time;
     int defendpost;           // [QL] E134: guard post index, -1 the flag itself
+    float escort_time;        // [QL] E137: when escortgoal was worked out
+    float carrierplan_time;   // [QL] E137: when a flag carrier next picks its way home
+    float roam_time;          // [QL] E137: when a jobless bot next picks where to patrol
+    bot_goal_t roamgoal;      // [QL] E137: where it is patrolling to
+    bot_goal_t escortgoal;    // [QL] E137: where to screen the carrier from; areanum 0 = follow it
     int defendleg;            // [QL] E135: 0 the post, 1 out along its hall toward the next room
     float defendleg_time;     // [QL] E135: when to walk the other end of the lane
     float defendpost_time;    // when to reconsider it  // [QL] CTF role may not be reconsidered before this

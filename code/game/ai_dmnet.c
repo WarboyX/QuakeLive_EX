@@ -45,6 +45,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "ai_chat.h"
 #include "ai_cmd.h"
 #include "ai_dmnet.h"
+
+#define CARRIER_REPLAN 3.0f  // [QL] E137: seconds between a carrier's choices of way home
 #include "ai_team.h"
 // data file headers
 #include "chars.h"  //characteristics
@@ -298,6 +300,12 @@ BotGetItemLongTermGoal
 ==================
 */
 int BotGetItemLongTermGoal(bot_state_t* bs, int tfl, bot_goal_t* goal) {
+    // [QL] E137. already patrolling for want of an item: carry on until the
+    // next item choice (ltg_time) rather than re-asking every frame
+    if (bs->tac.roam_time > FloatTime() && bs->ltg_time > FloatTime() && !trap_BotGetTopGoal(bs->gs, goal) &&
+        BotRoamWaypoint(bs, goal)) {
+        return qtrue;
+    }
     // if the bot has no goal
     if (!trap_BotGetTopGoal(bs->gs, goal)) {
         // BotAI_Print(PRT_MESSAGE, "no ltg on stack\n");
@@ -337,7 +345,16 @@ int BotGetItemLongTermGoal(bot_state_t* bs, int tfl, bot_goal_t* goal) {
             trap_BotResetAvoidReach(bs->ms);
         }
         // get the goal at the top of the stack
-        return trap_BotGetTopGoal(bs->gs, goal);
+        if (trap_BotGetTopGoal(bs->gs, goal)) {
+            return qtrue;
+        }
+        // [QL] E137. no item it wants: patrol rather than stand (BotRoamWaypoint),
+        // and look for an item again in a few seconds
+        if (BotRoamWaypoint(bs, goal)) {
+            bs->ltg_time = FloatTime() + 5;
+            return qtrue;
+        }
+        return qfalse;
     }
     return qtrue;
 }
@@ -404,7 +421,8 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
         return qtrue;
     }
     // if the bot accompanies someone
-    if (bs->ltgtype == LTG_TEAMACCOMPANY && !retreat) {
+    // [QL] E137: a flag escort keeps its goal while fighting its way there
+    if (bs->ltgtype == LTG_TEAMACCOMPANY && (!retreat || (gametype == GT_CTF && !bs->ordered))) {
         // check for bot typing status message
         if (bs->teammessage_time && bs->teammessage_time < FloatTime()) {
             BotAI_BotInitialChat(bs, "accompany_start", EasyClientName(bs->teammate, netname, sizeof(netname)), NULL);
@@ -421,6 +439,34 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
         }
         // get entity information of the companion
         BotEntityInfo(bs->teammate, &entinfo);
+        /* [QL] E137. An escort whose carrier has died, capped or dropped the
+           flag has no job. BotCTFSeekGoals releases it, but only on the paths
+           that reach that check, and half of all escort time in a 30-a-side
+           match was spent escorting nobody. Ordered follows (a human's "follow
+           me") are not flag escorts and keep the stock behaviour. */
+        if (gametype == GT_CTF && !bs->ordered) {
+            gclient_t* mate = (bs->teammate >= 0 && bs->teammate < MAX_CLIENTS) ? g_entities[bs->teammate].client : NULL;
+
+            if (!mate || mate->ps.stats[STAT_HEALTH] <= 0 ||
+                !(mate->ps.powerups[PW_REDFLAG] || mate->ps.powerups[PW_BLUEFLAG])) {
+                bs->ltgtype = 0;
+                return qfalse;
+            }
+            /* home, and waiting on our stand for our flag: it needs our flag
+               back, which the base's defenders and the recovery job see to,
+               not a ring of escorts standing round it */
+            if (DistanceSquared(g_entities[bs->teammate].r.currentOrigin,
+                                (BotTeam(bs) == TEAM_RED ? ctf_redflag : ctf_blueflag).origin) < Square(600)) {
+                bs->ltgtype = 0;
+                return qfalse;
+            }
+            /* a flag carrier's escort gets ahead of it on its way home when it
+               can, and follows it (below) when it cannot */
+            if (BotEscortGoal(bs, goal)) {
+                bs->teammatevisible_time = FloatTime();
+                return qtrue;
+            }
+        }
         // if the companion is visible
         if (BotEntityVisible(bs->entitynum, bs->eye, bs->viewangles, 360, bs->teammate)) {
             // update visible time
@@ -803,8 +849,55 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
             BotCTFSeekGoals; this handler simply never asked.
             */
             if (bot_tactics.integer && !BotEnemyFlagAtBase(bs)) {
+                /*
+                [QL] E137. But not for nothing. Returning no goal here is the
+                seek node's cue to stand still, and the team logic hands the
+                same bot the same get-flag job again on the next frame - so an
+                attacker whose target had been taken stood where it was, frame
+                after frame, for as long as the flag was away. Over 25
+                standard-weapon matches at 30 a side that was 13.5% of all bot
+                time, at speed 0.
+
+                So an attacker without a flag to attack goes where the flag is:
+                with our carrier if one of us has it - the escort it needs - and
+                otherwise out along the routes (the flag is on the floor
+                somewhere, and a dropped flag within reach is picked up as a
+                nearby goal on the way).
+                */
+                int carrier = BotTeamFlagCarrier(bs);
+                bot_goal_t* ourflag = BotTeam(bs) == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+                qboolean ourflagout = BotTeam(bs) == TEAM_RED ? bs->redflagstatus != 0 : bs->blueflagstatus != 0;
+                qboolean carrierhome = carrier >= 0 &&
+                                       DistanceSquared(g_entities[carrier].r.currentOrigin, ourflag->origin) < Square(600);
+
+                /* our carrier is on our stand waiting for our flag: the job is
+                   getting ours back, not standing round the carrier - tried,
+                   and twenty escorts stood at home while nobody went for it */
+                if (ourflagout && (carrier < 0 || carrierhome)) {
+                    bs->ltgtype = LTG_RETURNFLAG;
+                    bs->teamgoal_time = FloatTime() + CTF_RETURNFLAG_TIME;
+                    bs->decisionmaker = bs->client;
+                    bs->ordered = qfalse;
+                    BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+                    return BotGetLongTermGoal(bs, tfl, retreat, goal);
+                }
+                // escort a carrier still on its way - within the escort
+                // quota, or past it when already beside the carrier
+                if (carrier >= 0 && carrier != bs->client && !carrierhome &&
+                    (!BotCTFRoleCrowded(bs, CTFROLE_ESCORT) ||
+                     DistanceSquared(bs->origin, g_entities[carrier].r.currentOrigin) < Square(1000))) {
+                    bs->ltgtype = LTG_TEAMACCOMPANY;
+                    bs->teammate = carrier;
+                    bs->teammatevisible_time = FloatTime();
+                    bs->teamgoal_time = FloatTime() + TEAM_ACCOMPANY_TIME;
+                    bs->formation_dist = 112 + (bs->client % 4) * 56;
+                    bs->arrive_time = 1;
+                    bs->decisionmaker = bs->client;
+                    bs->ordered = qfalse;
+                    return BotGetLongTermGoal(bs, tfl, retreat, goal);
+                }
                 bs->ltgtype = 0;
-                return qfalse;
+                return BotRoamWaypoint(bs, goal);
             }
             // check for bot typing status message
             if (bs->teammessage_time && bs->teammessage_time < FloatTime()) {
@@ -897,6 +990,19 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
                 } else {
                     bs->ltgtype = 0;
                 }
+            }
+            /* [QL] E137. The way home is chosen again as it goes, not once at
+               the grab. Every CARRIER_REPLAN the carrier takes the waypoint
+               still ahead of it (nearer home than it is) with the fewest
+               enemies in its room - past the middle, that is which door of
+               our own base to come in by. Chosen once, the carrier took its
+               shortest way home whatever was standing in it: carrier deaths
+               over 25 matches lie along the Main Stairway and through Main
+               Entrance, and the median carrier never got within 3,400 u of
+               home. With nothing left ahead it goes straight for the stand. */
+            if (bot_tactics.integer && bs->tac.carrierplan_time < FloatTime()) {
+                bs->tac.carrierplan_time = FloatTime() + CARRIER_REPLAN;
+                BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
             }
             BotAlternateRoute(bs, goal);
             return qtrue;
