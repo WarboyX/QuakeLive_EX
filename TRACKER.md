@@ -6048,10 +6048,10 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
-### E136. Hall bias between the courtyards; carriers on real CTF; 50-match heat maps — DONE (verify)
+### E136. Hallway bias between the courtyards; carriers on real CTF; 50-match heat maps — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
-*"There seems to be a happy bias for which hall they take connecting the courtyards."* Also: test carriers with a non-instagib config, and run 50 matches mixed instagib and regular, at 5x, tracking bots and kills, with heat maps.
+*"There seems to be a hallway bias for which hall they take connecting the courtyards."* Also: test carriers with a non-instagib config, and run 50 matches mixed instagib and regular, at 5x, tracking bots and kills, with heat maps.
 
 #### How it was measured
 - **50 matches on japanesecastles, 30v30, timescale 5, 300 s each,** alternating `a2m-instagib-ctf.cfg` and `ctf64.cfg` (standard weapons). Every match reached its full game time.
