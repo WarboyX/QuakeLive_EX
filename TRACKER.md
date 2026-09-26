@@ -6048,6 +6048,33 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E138. Grabbing together (a staging line before their base) — MEASURED, REJECTED
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"Work on grabbing together next."*
+
+**The premise.** Over E137's 50 matches, half of the grabs at the enemy stand were made with at most one team mate within 1,000 u, against a median 6-8 defenders.
+
+**What was built.** An attacker stopped about 5 s of travel short of their flag and held there, fighting whatever it saw. When 4 attackers had gathered within 900 u, or the first had waited 10 s, all of them were released together, and not held again until their next life.
+
+**It worked as built:** 20-27 waves per match, most of them gathering the full 4. More grabs came with 4+ team mates close by.
+
+**It made the game worse** (24 matches, against E137's 50):
+
+| per match | E137 | grab waves |
+|---|---|---|
+| standard: grabs | 14.2 | 11.7 |
+| standard: captures | 0.76 | 0.33 |
+| instagib: grabs | 10.4 | 7.7 |
+| instagib: captures | 0.08 | 0 |
+
+**Why.**
+- The number of team mates at the grab barely predicts whether the carrier gets home. In E137, among grabs at the stand, 9% of carriers with 0-1 team mates nearby got within 2,000 u of home, and 12% of those with 7+.
+- A group of four does not change a fight against six to eight defenders.
+- The wait costs the attack its time, and gives the defence time to regroup.
+
+Reverted. The number to move is the defence at the stand, not the size of the group arriving there. At 30 a side the role mix asks for 10-18 defenders.
+
 ### E137. Carrier escorts; attackers and escorts that stood still — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
