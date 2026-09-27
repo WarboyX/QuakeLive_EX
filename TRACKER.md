@@ -6048,6 +6048,29 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E148. Every splash bounces; small pools tighten their rings instead of shrinking the ripple — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+*"I've tried HMG, rocket, shotgun, grenade, none bounce on my screen"*, *"I see a bounce on the garden water area, but not in the flagroom area"*, *"a ripple bounce should happen even on low power guns if the ripple takes place near the edge."*
+
+**E147's cap was the wrong knob.**
+- It shrank a ripple's reach to fit its water. The envelope fades to zero at the reach, and an echo travels at least twice the distance to the wall, so in the flag pool an echo arrived at about a seventh of the ring that caused it.
+- Garden ponds are too big to be capped, which is exactly the split reported: a bounce in the garden, none in the flag room.
+- The flag pool itself is one shallow 288 x 136 rectangle (floor -376, water -356, rim -348); the square and strips in it are floor decals. The 4 walls found are its real edges.
+
+**Now (`vk.c` ripple packing, `ssr.tmpl` `rippleRing`):**
+- **Reach untouched.** The envelope, the speed and where the ripple stops are left as they were.
+- **Rings tightened.** Only the spacing changes: a new per-ripple `ripple6.x` multiplies the wavenumber until the ring pattern fits 1.5 x the distance to the far corner of the water. Strength is divided by the same factor, so the visible slope (strength x wavenumber) is what the height settings make it. Large water is unaffected.
+- **No bounce threshold.** `RIPPLE_REFLECT_MIN` (1.2) is gone, so every splash bounces. Distance is the limit: a wall must be within half the splash's reach. A bullet (reach 160-240) echoes only when it lands within 80-120 units of a wall - near the edge, as a real one does.
+
+**Checked:**
+- Python replica on the real BSP, at the real settings (size 4, 5 rings):
+  - a rocket mid-pool fills the flag pool with the crossing pattern of echoes off all four walls;
+  - a rocket near the west wall shows a strong echo off it;
+  - a bullet 30 units from the wall shows its ring coming back off the wall.
+- Validation layer clean (0 errors) with a rocket-sized and a bullet-sized splash on the flag pool.
+- Not seen in the client here: no water art in the visual pass, and the `r_ssrDebug 5` view did not show in the attempt.
+
 ### E147. Post-processing (r_fbo) in the menu; ripple bounce made visible — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
@@ -6066,7 +6089,7 @@ Open, not changed:
 
 So the E144 data reaches the shader correctly. The trouble is scale. At the default `r_waterRippleSize 4` a rocket ring reaches 880 units, with rings about 176 apart, and the pool is 288 x 136. One ring was wider than the pool, so the echo lay almost exactly on the outgoing wave and the pool only heaved as a whole (simulated from the real map at real settings: no visible echo).
 
-**Fix (`vk.c`, where ripples are packed):**
+**Fix (`vk.c`, where ripples are packed) - replaced by E148, which keeps the reach and tightens the rings instead:**
 - A ripple now reaches at most 1.5 x the distance from the splash to the far corner of its water's footprint.
 - When capped, its strength is scaled by the same factor. The visible slope goes as strength / reach, so the ripple height settings mean what they did.
 - The rings become tight enough to cross the pool, hit a wall and come back. The simulation shows echoes off all four walls crossing inside the pool.

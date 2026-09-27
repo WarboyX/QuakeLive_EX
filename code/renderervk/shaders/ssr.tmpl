@@ -101,6 +101,7 @@ layout(set = 0, binding = 2) uniform SSR {
 	vec4 ripple3[SSR_MAX_RIPPLES];   // [QL] E144: mirror images 0, 1 (xy xy)
 	vec4 ripple4[SSR_MAX_RIPPLES];   // [QL] E144: mirror images 2, 3
 	vec4 ripple5[SSR_MAX_RIPPLES];   // [QL] E144: how much each sends back
+	vec4 ripple6[SSR_MAX_RIPPLES];   // [QL] E148: x ring tightening (>= 1)
 	/*
 	[QL] R19: the frame's dynamic lights, so emitters reflect. planeCount.z says
 	how many.
@@ -255,7 +256,7 @@ across it: the distance to the image is the path out to the wall and back, so
 the bounced ring arrives late by exactly the right amount, with the right
 curvature, and nothing is needed but a second source.
 */
-void rippleRing(vec2 p, vec2 c, float age, float reach, float strength,
+void rippleRing(vec2 p, vec2 c, float age, float reach, float strength, float tighten,
                 inout float h, inout vec2 grad, inout float energy) {
 	float d = distance(p, c);
 	if (d > reach) {
@@ -297,7 +298,9 @@ void rippleRing(vec2 p, vec2 c, float age, float reach, float strength,
 	float trail = exp( -(front - d) * (3.0 / reach) );
 	float amp = strength * rippleTune.z * fade * falloff * falloff * trail;
 
-	float k = RIPPLE_WAVES * 6.2831853 / reach;
+	/* [QL] E148: tighten > 1 packs the rings closer in water smaller than
+	   the ripple - see where vk.c sets ripple6 */
+	float k = RIPPLE_WAVES * 6.2831853 / reach * tighten;
 	float x = d / reach;
 	/* the phase runs in u, halved so RIPPLE_WAVES rings still span the
 	   ripple (u covers 0 to 2); the slope below needs du/dd = 1 + 2x */
@@ -363,12 +366,13 @@ vec4 rippleSurface(vec2 p, int planeIdx) {
 		vec2 c = ripple[i].xy;
 		float strength = ripple2[i].x;
 
-		rippleRing(p, c, age, reach, strength, h, grad, energy);
+		float tighten = ripple6[i].x;
+		rippleRing(p, c, age, reach, strength, tighten, h, grad, energy);
 
 		/*
 		[QL] E142, E144. And off the sides of the pool, for a big enough wave:
-		ripple2.z is how much bounces (r_waterRippleReflect, 0 for anything
-		below RIPPLE_REFLECT_MIN), ripple2.w how many walls it bounces off.
+		ripple2.z is how much bounces (r_waterRippleReflect - every splash
+		since E148), ripple2.w how many walls it bounces off.
 		Each wall is a mirror image of the impact across a real face of the
 		map at the water's edge (vk_ripple_walls), weighted by how steep that
 		face is - a sloping bank sends less back than a sheer wall. Single
@@ -378,10 +382,10 @@ vec4 rippleSurface(vec2 p, int planeIdx) {
 		int walls = int(ripple2[i].w);
 		if (bounce > 0.0 && walls > 0) {
 			float s = strength * bounce;
-			rippleRing(p, ripple3[i].xy, age, reach, s * ripple5[i].x, h, grad, energy);
-			if (walls > 1) rippleRing(p, ripple3[i].zw, age, reach, s * ripple5[i].y, h, grad, energy);
-			if (walls > 2) rippleRing(p, ripple4[i].xy, age, reach, s * ripple5[i].z, h, grad, energy);
-			if (walls > 3) rippleRing(p, ripple4[i].zw, age, reach, s * ripple5[i].w, h, grad, energy);
+			rippleRing(p, ripple3[i].xy, age, reach, s * ripple5[i].x, tighten, h, grad, energy);
+			if (walls > 1) rippleRing(p, ripple3[i].zw, age, reach, s * ripple5[i].y, tighten, h, grad, energy);
+			if (walls > 2) rippleRing(p, ripple4[i].xy, age, reach, s * ripple5[i].z, tighten, h, grad, energy);
+			if (walls > 3) rippleRing(p, ripple4[i].zw, age, reach, s * ripple5[i].w, tighten, h, grad, energy);
 		}
 	}
 

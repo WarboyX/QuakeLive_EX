@@ -12632,11 +12632,12 @@ renderer alone.
 
 #define SSR_MAX_PLANES VK_MAX_WATER_PLANES
 #define SSR_MAX_RIPPLES MAX_WATER_RIPPLES   /* [QL] R19, and the shader's copy */
-/* [QL] E142. The weakest splash whose rings bounce off the pool's sides, in
-   the strength the cgame asks for (CG_WaterImpactSize, CG_WaterRipple):
-   explosions 3.4-5, a rail 1.8 and somebody jumping in 1.4 bounce; bullets,
-   plasma, footsteps and swimming (0.4-1.0) do not. */
-#define RIPPLE_REFLECT_MIN 1.2f
+/* [QL] E148: RIPPLE_REFLECT_MIN is gone. Only splashes of strength 1.2 or
+   more used to bounce, so a bullet landing beside a wall never echoed - and
+   physically a wave's size has nothing to do with whether a wall returns it.
+   Every splash bounces now; what limits it is distance, in vk_ripple_walls
+   (a wall within half the splash's reach), so a small splash echoes only
+   when it lands near the edge, as a real one does. */
 
 /* [QL] R28: SSR_RIPPLE_LIFE was 2.2f here and RIPPLE_LIFE 2.2 in ssr.tmpl, with
    a comment on each telling the next person to keep them equal. They are now one
@@ -12662,6 +12663,7 @@ typedef struct {
 	float ripple3[SSR_MAX_RIPPLES][4];   // [QL] E144: mirror images 0 and 1, xy xy
 	float ripple4[SSR_MAX_RIPPLES][4];   // [QL] E144: mirror images 2 and 3
 	float ripple5[SSR_MAX_RIPPLES][4];   // [QL] E144: how much each image sends back
+	float ripple6[SSR_MAX_RIPPLES][4];   // [QL] E148: x ring tightening; yzw spare
 	float emitter[SSR_MAX_LIGHTS][4];    // xyz world, w radius
 	float emitter2[SSR_MAX_LIGHTS][4];   // rgb colour, a intensity
 } ssrUniform_t;
@@ -13452,41 +13454,44 @@ qboolean vk_ssr( void )
 			u->ripple2[count][0] = rp->strength;
 
 			/*
-			[QL] E147. No further than the water it landed in.
+			[QL] E148. Rings no wider than the water they are in.
 
-			A rocket's ring reaches 880 units at the default size, and the flag
-			room pools are 288 x 136: one ring was wider than the whole pool,
-			so a bounce could only make the pool heave as one - the wall's echo
-			lay almost exactly on top of the wave that made it, and E144's
-			walls, while correct, had nothing visible to show. Everything past
-			the water's edge is never drawn anyway.
+			A rocket's ring reaches 880 units at the default size and its rings
+			are about 176 apart; the flag room pools are 288 x 136, so one ring
+			spanned the whole pool and a wall's echo lay on top of the wave
+			that made it - the pool heaved and nothing visibly came back.
 
-			So a ripple reaches at most 1.5 times the distance to the far corner
-			of its water's footprint, and its strength is scaled down by the
-			same factor. The slope - which is what you see - goes as strength
-			over reach, so it stays exactly what the ripple height settings
-			make it; what changes is that the rings are tight enough to cross
-			the pool, hit a wall and come back. Large water is untouched: the
-			garden ponds' footprints already exceed a rocket's reach. Whether a
-			wave is big enough to bounce is still judged on what cgame asked
-			for, not on the scaled figure.
+			E147 answered that by capping the reach, which was the wrong knob:
+			the envelope fades to nothing at the reach, an echo has at least
+			twice the distance to the wall to travel, and in the flag pool it
+			arrived at about a seventh of the ring that caused it. Garden ponds
+			are too big to be capped, which is why a bounce showed there and
+			not in the flag room.
+
+			So the reach - envelope, speed, where it stops - is left alone, and
+			only the spacing of the rings is tightened (ripple6.x multiplies
+			the wavenumber) until the ring pattern fits 1.5 times the distance
+			to the far corner of the water. Strength is divided by the same
+			factor, because the visible slope goes as strength times
+			wavenumber; the ripple height settings mean what they did. Large
+			water is unaffected.
 			*/
 			{
 				const vkWaterPlane_t *wp = &vk.waterPlanes[ best ];
 				float fx = MAX( fabsf( rp->origin[0] - wp->mins[0] ), fabsf( rp->origin[0] - wp->maxs[0] ) );
 				float fy = MAX( fabsf( rp->origin[1] - wp->mins[1] ), fabsf( rp->origin[1] - wp->maxs[1] ) );
-				float limit = MAX( 1.5f * sqrtf( fx * fx + fy * fy ), 32.0f );
+				float fit = MAX( 1.5f * sqrtf( fx * fx + fy * fy ), 32.0f );
+				float tighten = MAX( 1.0f, u->ripple[count][3] / fit );
 
-				if ( u->ripple[count][3] > limit ) {
-					u->ripple2[count][0] *= limit / u->ripple[count][3];
-					u->ripple[count][3] = limit;
-				}
+				u->ripple6[count][0] = tighten;
+				u->ripple6[count][1] = u->ripple6[count][2] = u->ripple6[count][3] = 0.0f;
+				u->ripple2[count][0] /= tighten;
 			}
 
 			u->ripple2[count][1] = (float)best;
-			/* [QL] E142: how much of it bounces off the pool's sides - only a
-			   big wave does (RIPPLE_REFLECT_MIN), see rippleSurface */
-			u->ripple2[count][2] = rp->strength >= RIPPLE_REFLECT_MIN ? r_waterRippleReflect->value : 0.0f;
+			/* [QL] E142, E148: how much of it bounces off the pool's sides -
+			   every splash, see RIPPLE_REFLECT_MIN's note and rippleSurface */
+			u->ripple2[count][2] = r_waterRippleReflect->value;
 			u->ripple2[count][3] = 0.0f;
 			if ( u->ripple2[count][2] > 0.0f ) {
 				vk_ripple_walls( rp->origin, u->ripple[count][3], best, u, count );
