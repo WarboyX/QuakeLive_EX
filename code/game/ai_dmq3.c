@@ -4563,6 +4563,24 @@ void BotCheckAttack(bot_state_t* bs) {
             // FIXME: check if a teammate gets radial damage
         }
     }
+    /*
+    [QL] E139. And the case stock left out: the shot hits the enemy, but so
+    close that the blast takes the bot too. Over 25 standard-weapon matches
+    at 30 a side, 5.5% of all deaths were bots killing themselves - 522 of
+    them with their own rocket splash, 82 grenade, 38 plasma. Splash falls
+    off with distance from the blast (G_RadiusDamage) and is halved on
+    yourself (G_Damage); a shot whose splash would take everything the bot
+    has left is not fired. It still trades rockets at point blank when it
+    can take it, as a person would.
+    */
+    if (bot_tactics.integer && (wi.proj.damagetype & DAMAGETYPE_RADIAL) && wi.proj.radius > 0) {
+        float impact = trace.fraction * 1000;
+
+        if (impact < wi.proj.radius &&
+            wi.proj.damage * (1.0f - impact / wi.proj.radius) * 0.5f >= bs->inventory[INVENTORY_HEALTH]) {
+            return;
+        }
+    }
     // if fire has to be release to activate weapon
     if (wi.flags & WFL_FIRERELEASED) {
         if (bs->flags & BFL_ATTACKED) {

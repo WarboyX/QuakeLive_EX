@@ -284,6 +284,50 @@ int G_SelectRandomBotInfo(int team) {
 
 /*
 ===============
+Bot skill: 1-10, rolled on a D10
+
+[QL] E139. Our bot skill runs 1 to 10. A bot added without one rolls a D10
+(or takes bot_skill, when that is set to 1-10), so a server full of bots is a
+spread of players rather than thirty copies of one. With every bot equal, a
+flag should almost never be capped; with a spread, a strong attacker meets a
+weak defender now and then and gets through, which is what a real server
+looks like.
+
+botlib and the character files know skills 1 to 5 - each bot file holds skill
+1, 4 and 5 and everything between is interpolated (be_ai_char.c) - so 1-10
+maps evenly onto 1.0-5.0: 1 is stock "I Can Win", 10 is "Nightmare". Ten
+steps, not twenty: three real levels interpolated leave little to tell apart
+at a twentieth, and every distinct skill of a bot is one more cached
+character that is never freed.
+
+"addbot <name> <skill>" takes the 1-10 scale (fractions allowed). Quake
+Live's own menus and g_spSkill are 1-5; ui_main.c converts them.
+===============
+*/
+#define BOT_SKILL_SIDES 10
+
+static float G_BotSkillToLib(float skill10) {
+    if (skill10 < 1) {
+        skill10 = 1;
+    } else if (skill10 > BOT_SKILL_SIDES) {
+        skill10 = BOT_SKILL_SIDES;
+    }
+    return 1.0f + (skill10 - 1.0f) * 4.0f / (BOT_SKILL_SIDES - 1);
+}
+
+static float G_BotSkillDefault(const char* name) {
+    int roll;
+
+    if (bot_skill.value >= 1 && bot_skill.value <= BOT_SKILL_SIDES) {
+        return bot_skill.value;
+    }
+    roll = 1 + rand() % BOT_SKILL_SIDES;
+    G_Printf("%s rolls a D%d: skill %d\n", name, BOT_SKILL_SIDES, roll);
+    return (float)roll;
+}
+
+/*
+===============
 G_AddRandomBot
 ===============
 */
@@ -291,7 +335,7 @@ void G_AddRandomBot(int team) {
     char* teamstr;
     float skill;
 
-    skill = trap_Cvar_VariableValue("g_spSkill");
+    skill = G_BotSkillDefault("random bot");  // [QL] E139: on our 1-10 scale
     if (team == TEAM_RED)
         teamstr = "red";
     else if (team == TEAM_BLUE)
@@ -1063,19 +1107,22 @@ void Svcmd_AddBot_f(void) {
     // name
     trap_Argv(1, name, sizeof(name));
     if (!name[0]) {
-        trap_Print("Usage: Addbot <botname> [skill 1-5] [team] [msec delay] [altname]\n");
+        trap_Print("Usage: Addbot <botname> [skill 1-10, 0 or none to roll a D10] [team] [msec delay] [altname]\n");
         return;
     }
 
     // skill
     // [QL] default skill comes from g_spSkill (not a hardcoded 4), and the
     // supplied value is NOT clamped here - the binary just atof()s it. (0x10037a10)
+    /* [QL] E139: our 1-10 scale, a D10 when none is given (G_BotSkillToLib);
+       what goes into the userinfo, and on to botlib, is its 1-5 equivalent */
     trap_Argv(2, string, sizeof(string));
-    if (!string[0]) {
-        skill = trap_Cvar_VariableValue("g_spSkill");
+    if (!string[0] || !Q_stricmp(string, "random") || atof(string) <= 0) {
+        skill = G_BotSkillDefault(name);  // none given, or 0/"random" to roll and still name a team
     } else {
         skill = atof(string);
     }
+    skill = G_BotSkillToLib(skill);
 
     // team
     trap_Argv(3, team, sizeof(team));

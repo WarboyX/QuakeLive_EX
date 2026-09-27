@@ -123,6 +123,8 @@ vmCvar_t bot_debugTactics;
 vmCvar_t bot_debugMovement;
 vmCvar_t bot_debugTrack;
 vmCvar_t bot_crowdsteer;
+vmCvar_t bot_chatlimit;  // [QL] E139, see G_BotChatReachesHumans
+vmCvar_t bot_skill;      // [QL] E139: 0 rolls a D10 per bot, 1-10 fixes it (g_bot.c)
 vmCvar_t bot_targetCommit;
 vmCvar_t bot_viewSmooth;
 vmCvar_t bot_dodge;
@@ -1151,6 +1153,8 @@ static cvarTable_t gameCvarTable[] = {
     {&bot_debugTrack, "bot_debugTrack", "0", 0, 0, NULL},
     // [QL] E133. Bots steer round each other before colliding (botlib BotCrowdSteer)
     {&bot_crowdsteer, "bot_crowdsteer", "1", 0, 0, NULL},
+    {&bot_chatlimit, "bot_chatlimit", "1", 0, 0, NULL},
+    {&bot_skill, "bot_skill", "0", 0, 0, NULL},
     {&bot_targetCommit, "bot_targetCommit", "2500", CVAR_GAMERULE, 0, NULL},
     {&bot_viewSmooth, "bot_viewSmooth", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_dodge, "bot_dodge", "1", CVAR_GAMERULE, 0, NULL},

@@ -903,6 +903,65 @@ G_Say
 ==================
 */
 
+/*
+==================
+G_BotChatReachesHumans
+
+[QL] E139. Whether a bot's broadcast chat or voice line goes to the human
+players, or to the bots only.
+
+Measured at 30 a side, 300 s of standard CTF with chat on: 471 team chat lines
+and 413 team voice lines - three a second on every human's screen, nearly all
+of it "I'm going to get the enemy flag" and "is there a team leader". But the
+bots read each other's team chat (leadership, orders), so dropping lines
+would change what they do. So nothing is dropped: past the budget a line
+still goes to every bot, and is only withheld from people.
+
+The budget is per channel (each team's chat, and all-chat), one line every
+BOTCHAT_INTERVAL ms per four bots on it, so a small game is untouched and a
+thirty-bot team says something about every eleven seconds. A carrier's "I
+have the flag" always gets through. bot_chatlimit 0 turns it off.
+==================
+*/
+#define BOTCHAT_INTERVAL 1500
+
+static int botChatNext[TEAM_NUM_TEAMS];
+
+static qboolean G_BotChatReachesHumans(gentity_t* ent, int mode, const char* voiceid) {
+    int channel, bots = 0, i, interval;
+
+    if (!(ent->r.svFlags & SVF_BOT) || !bot_chatlimit.integer || mode == SAY_TELL) {
+        return qtrue;
+    }
+    if (voiceid && !Q_stricmp(voiceid, "ihaveflag")) {
+        return qtrue;
+    }
+    channel = mode == SAY_TEAM ? ent->client->sess.sessionTeam : TEAM_FREE;
+    if (channel < 0 || channel >= TEAM_NUM_TEAMS) {
+        channel = TEAM_FREE;
+    }
+    for (i = 0; i < level.maxclients; i++) {
+        gentity_t* other = &g_entities[i];
+
+        if (other->inuse && other->client && (other->r.svFlags & SVF_BOT) &&
+            (mode != SAY_TEAM || other->client->sess.sessionTeam == channel)) {
+            bots++;
+        }
+    }
+    interval = BOTCHAT_INTERVAL * (bots > 4 ? bots : 4) / 4;
+    if (botChatNext[channel] > level.time + interval) {
+        botChatNext[channel] = 0;  // a map restart took level.time back
+    }
+    if (level.time < botChatNext[channel]) {
+        return qfalse;
+    }
+    botChatNext[channel] = level.time + interval;
+    if (bot_debugTactics.integer) {
+        G_Printf("botchat to humans: channel %d, every %d ms\n", channel, interval);
+    }
+    return qtrue;
+}
+
 static void G_SayTo(gentity_t* ent, gentity_t* other, int mode, int color, const char* name, const char* message) {
     if (!other) {
         return;
@@ -991,9 +1050,16 @@ void G_Say(gentity_t* ent, gentity_t* target, int mode, const char* chatText) {
     }
 
     // send it to all the appropriate clients
-    for (j = 0; j < level.maxclients; j++) {
-        other = &g_entities[j];
-        G_SayTo(ent, other, mode, color, name, text);
+    {
+        qboolean humans = G_BotChatReachesHumans(ent, mode, NULL);  // [QL] E139
+
+        for (j = 0; j < level.maxclients; j++) {
+            other = &g_entities[j];
+            if (!humans && !(other->r.svFlags & SVF_BOT)) {
+                continue;
+            }
+            G_SayTo(ent, other, mode, color, name, text);
+        }
     }
 }
 
@@ -1124,9 +1190,16 @@ void G_Voice(gentity_t* ent, gentity_t* target, int mode, const char* id, qboole
     }
 
     // send it to all the appropriate clients
-    for (j = 0; j < level.maxclients; j++) {
-        other = &g_entities[j];
-        G_VoiceTo(ent, other, mode, id, voiceonly);
+    {
+        qboolean humans = G_BotChatReachesHumans(ent, mode, id);  // [QL] E139
+
+        for (j = 0; j < level.maxclients; j++) {
+            other = &g_entities[j];
+            if (!humans && !(other->r.svFlags & SVF_BOT)) {
+                continue;
+            }
+            G_VoiceTo(ent, other, mode, id, voiceonly);
+        }
     }
 }
 

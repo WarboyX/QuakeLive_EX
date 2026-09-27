@@ -52,6 +52,24 @@ static const char *skillLevels[] = {
 };
 static const int numSkillLevels = ARRAY_LEN(skillLevels);
 
+/* [QL] E139. The add-bot picker on our 1-10 bot skill scale (g_bot.c), with a
+   D10 roll first and the default. Quake Live's five names sit where their
+   1-5 skill lands on the new scale. */
+static const char *botSkillLevels[] = {
+    "Random (roll a D10)",
+    "1 - I Can Win",
+    "2",
+    "3 - Bring It On",
+    "4",
+    "5",
+    "6 - Hurt Me Plenty",
+    "7",
+    "8 - Hardcore",
+    "9",
+    "10 - Nightmare"
+};
+static const int numBotSkillLevels = ARRAY_LEN(botSkillLevels);
+
 static void UI_FeederSelection(float feederID, int index);
 static const char* UI_GetGameTypeString(int gametype);
 static int UI_MapCountByGameType(qboolean singlePlayer);
@@ -1334,8 +1352,8 @@ static void UI_DrawCrosshair(rectDef_t* rect, float scale, vec4_t color) {
 
 // [QL] Bot skill level display
 static void UI_DrawBotSkill(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    if (uiInfo.skillIndex >= 0 && uiInfo.skillIndex < numSkillLevels) {
-        Text_Paint(rect->x, rect->y, scale, color, skillLevels[uiInfo.skillIndex], 0, 0, textStyle);
+    if (uiInfo.skillIndex >= 0 && uiInfo.skillIndex < numBotSkillLevels) {
+        Text_Paint(rect->x, rect->y, scale, color, botSkillLevels[uiInfo.skillIndex], 0, 0, textStyle);
     }
 }
 
@@ -1357,7 +1375,7 @@ static void UI_DrawVoteString(rectDef_t *rect, float scale, vec4_t color, int te
 // indexes a 1-based table @0x1002ae20; skillLevels[] here is 0-based so subtract 1.
 static void UI_DrawSkill(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     int skill = (int)trap_Cvar_VariableValue("g_spSkill");
-    if (skill < 1 || skill > 5) {
+    if (skill < 1 || skill > numSkillLevels) {
         skill = 1;
     }
     Text_Paint(rect->x, rect->y, scale, color, skillLevels[skill - 1], 0, 0, textStyle);
@@ -2883,10 +2901,10 @@ static qboolean UI_OwnerDrawHandleKey(int ownerDraw, int flags, float* special, 
             int select = UI_SelectForKey(key);
             if (select != 0) {
                 uiInfo.skillIndex += select;
-                if (uiInfo.skillIndex >= numSkillLevels) {
+                if (uiInfo.skillIndex >= numBotSkillLevels) {
                     uiInfo.skillIndex = 0;
                 } else if (uiInfo.skillIndex < 0) {
-                    uiInfo.skillIndex = numSkillLevels - 1;
+                    uiInfo.skillIndex = numBotSkillLevels - 1;
                 }
                 return qtrue;
             }
@@ -3118,7 +3136,8 @@ static void UI_RunMenuScript(char** args) {
             trap_Cvar_Set("g_redTeam", UI_Cvar_VariableString("ui_teamName"));
             trap_Cvar_Set("g_blueTeam", UI_Cvar_VariableString("ui_opponentName"));
             trap_Cmd_ExecuteText(EXEC_APPEND, va("wait ; wait ; map %s\n", uiInfo.mapList[ui_currentNetMap.integer].mapLoadName));
-            skill = trap_Cvar_VariableValue("g_spSkill");
+            // [QL] E139: g_spSkill is Quake Live's 1-5; addbot takes our 1-10
+            skill = 1.0f + (trap_Cvar_VariableValue("g_spSkill") - 1.0f) * 9.0f / 4.0f;
             // [QL] raise sv_maxclients to fit the occupied bot slots, then addbot each one.
             // Matches uix86.dll StartServer @0x1000b0e0: count non-empty ui_blueteam%i /
             // ui_redteam%i slots (i=1..5), sv_maxclients = max(count|8, current).
@@ -3371,9 +3390,9 @@ static void UI_RunMenuScript(char** args) {
             if (trap_Cvar_VariableValue("g_gametype") >= GT_TEAM) {
                 // [QL] .base holds the model name (see Character_Parse); .name is
                 // now the skin, so use base as the bot character identifier.
-                trap_Cmd_ExecuteText(EXEC_APPEND, va("addbot %s %i %s\n", uiInfo.characterList[uiInfo.botIndex].base, uiInfo.skillIndex + 1, (uiInfo.redBlue == 0) ? "Red" : "Blue"));
+                trap_Cmd_ExecuteText(EXEC_APPEND, va("addbot %s %i %s\n", uiInfo.characterList[uiInfo.botIndex].base, uiInfo.skillIndex, (uiInfo.redBlue == 0) ? "Red" : "Blue"));
             } else {
-                trap_Cmd_ExecuteText(EXEC_APPEND, va("addbot %s %i %s\n", UI_GetBotNameByNumber(uiInfo.botIndex), uiInfo.skillIndex + 1, (uiInfo.redBlue == 0) ? "Red" : "Blue"));
+                trap_Cmd_ExecuteText(EXEC_APPEND, va("addbot %s %i %s\n", UI_GetBotNameByNumber(uiInfo.botIndex), uiInfo.skillIndex, (uiInfo.redBlue == 0) ? "Red" : "Blue"));
             }
         } else if (Q_stricmp(name, "orders") == 0) {
             const char* orders;

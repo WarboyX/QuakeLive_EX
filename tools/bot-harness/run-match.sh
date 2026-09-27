@@ -19,6 +19,8 @@
 #          loses to an exec'd config)
 #   TS     timescale (default 8; 2 keeps up with sixty bots on four cores)
 #   QLENV  extra environment for the server, e.g. a trace switch
+#   SKILL  bot skill on our 1-10 scale (default 7.75, stock skill 4);
+#          0 rolls a D10 per bot
 #
 # Game time is simulated, so the counts do not depend on machine speed - but
 # a CPU too busy to keep up at timescale 8 plays fewer seconds than asked.
@@ -46,7 +48,7 @@ timeout 5 sh -c "cat \"$D/cmds\" > \"$D/in\"" || { echo "$label: server died"; t
 # one bot every 0.25 s: sixty in one burst overflow each other's reliable
 # command queues with connect messages and get dropped
 for n in ${BOTS:-Angelyss Dark Murielle Nekoyss Tanisha Rai Arachna Forlorna}; do
-  timeout 5 sh -c "echo 'addbot $n 4' > \"$D/in\"" || break
+  timeout 5 sh -c "echo 'addbot $n ${SKILL:-7.75}' > \"$D/in\"" || break
   sleep 0.25
 done
 sleep 4

@@ -1489,6 +1489,8 @@ extern vmCvar_t bot_debugTactics;
 extern vmCvar_t bot_debugMovement;
 extern vmCvar_t bot_debugTrack;
 extern vmCvar_t bot_crowdsteer;
+extern vmCvar_t bot_chatlimit;
+extern vmCvar_t bot_skill;
 extern vmCvar_t bot_targetCommit;
 extern vmCvar_t bot_viewSmooth;
 extern vmCvar_t bot_dodge;

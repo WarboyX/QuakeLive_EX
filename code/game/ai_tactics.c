@@ -46,6 +46,16 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "inv.h"    // indexes into the inventory
 
 /*
+[QL] E139. And defence the same way. The mix asks for 30-60% of the team, which
+at thirty a side is 9 to 18 bodies in and around one flag room - two guard
+posts and the stand (E134) - and the attack cannot outgrow that: the E138
+waves of four made no difference against six to eight at the stand. Past
+eight the extra defenders are only a thicker crowd in the same room, so the
+ceiling is eight and the rest go where the mix sends its surplus.
+*/
+#define CTF_MAX_DEFENDERS 8
+
+/*
 ==================
 BotTacticsEnabled
 ==================
@@ -912,6 +922,9 @@ int BotAutoDefendGoal(bot_state_t* bs) {
     wanted = teammates / 4;
     if (wanted < 1) {
         wanted = 1;
+    }
+    if (gametype == GT_CTF && wanted > CTF_MAX_DEFENDERS) {
+        wanted = CTF_MAX_DEFENDERS;  // [QL] E139
     }
     if (defenders >= wanted) {
         return qfalse;
@@ -2090,6 +2103,10 @@ static void BotCTFRoleWanted(bot_state_t* bs, int teamsize, float* want) {
     }
     if (want[CTFROLE_ESCORT] > (float)CTF_MAX_ESCORTS) {
         want[CTFROLE_ESCORT] = (float)CTF_MAX_ESCORTS;
+    }
+    if (want[CTFROLE_DEFEND] > (float)CTF_MAX_DEFENDERS) {
+        want[CTFROLE_ATTACK] += want[CTFROLE_DEFEND] - (float)CTF_MAX_DEFENDERS;
+        want[CTFROLE_DEFEND] = (float)CTF_MAX_DEFENDERS;
     }
 }
 

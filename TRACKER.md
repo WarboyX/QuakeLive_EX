@@ -6048,6 +6048,57 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E139. Bot skill 1-10 on a D10; chat budget for humans; defender cap; self-splash — DONE (verify)
+**Lives in:** our **server** (qagame) and our **client** (ui) · **Seen by:** every client (bots, chat); our client only (add-bot menu)
+
+*"Try capping defenders next, work on making them less chatty in chat when we have that many... We should also have a set skill... make ours 1-20. Roll a D20 and that sets skill if none is manually assigned"* - then *"or do you think 1-10 is better? on a D10?"* - and *"if all bots skills are equal, no flags should ever be capped, but if we put them on a range, caps should happen."*
+
+All measurements below are japanesecastles, 30v30, timescale 5, 300 s matches, alternating instagib and standard CTF.
+
+#### Skill: 1-10, a D10 when none is given
+- **Why 10.** The character files hold skill 1, 4 and 5, and botlib interpolates between them. Twenty steps of that would be hard to tell apart. Every distinct skill of a bot is also another cached character that is never freed (`be_ai_char.c`).
+- **Mapping.** 1-10 maps evenly onto botlib's 1.0-5.0: 1 is stock "I Can Win", 10 is "Nightmare". `BOT_SKILL_SIDES` in `g_bot.c` is the one constant to change for a D20.
+- **`addbot <name> <skill>`** takes 1-10, fractions allowed. With no skill, or `0` / `random` (so a team can still be named), the bot rolls a D10, and the console says so: "Sarge rolls a D10: skill 7".
+- **`bot_skill`** (new, default 0) sets a fixed skill for bots added without one, 1-10.
+- `bot_minplayers` fill-ins roll too.
+- **Menus.** The add-bot picker reads "Random (roll a D10)" and then 1-10, with Quake Live's five names where they land. The skirmish setup converts Quake Live's 1-5 `g_spSkill`.
+- **The test harness** takes `SKILL`: default 7.75, the old skill 4; 0 rolls.
+
+The scale does something. Kills per death by rolled skill, 24 matches:
+
+| skill | 1 | 3 | 5 | 7 | 9 | 10 |
+|---|---|---|---|---|---|---|
+| instagib | 0.63 | 0.73 | 0.83 | 0.91 | 1.58 | 1.52 |
+| standard | 0.57 | 0.59 | 0.64 | 1.08 | 1.51 | 1.51 |
+
+On "a range should produce caps", 12 matches each against all bots at the old skill 4:
+- Captures per match: standard 1.08 → 1.16, instagib 0.08 → 0. Both within noise.
+- Carriers do get further: within 1,000 u of home 10% → 15% of carrier runs.
+- At 30 a side the number of bodies still dominates.
+
+#### Chat: a budget for people, not for bots
+One 300 s standard match with chat on produced 471 team chat lines and 413 team voice lines, three a second, nearly all "I'm going to get the enemy flag" and "is there a team leader".
+- **The bots read each other's team chat** (leadership, orders), so nothing is dropped. Past a budget, a bot's broadcast still goes to every bot and is only withheld from the human players (`G_BotChatReachesHumans`, `g_cmds.c`).
+- **The budget** is per channel: one line every 1.5 s per four bots on it. A small game is untouched; thirty bots on a team say something to people about every 11 s.
+- A carrier's "I have the flag" always gets through, as does a private message to a human.
+- **Measured:** about 22 lines per team reached people in the same 300 s, against ~440 before.
+- `bot_chatlimit 0` turns the budget off.
+
+#### Defenders: capped at 8
+Like escorts (E135's `CTF_MAX_ESCORTS`), with the surplus going to attack; auto-defend is held to the same ceiling.
+- **It barely binds.** Measured defenders were 6-7 per team already, not the 10-18 the role mix implies (the E138 estimate was wrong). The cap takes them to 5-6.
+- **Results (12 matches, against E137's 25):**
+  - standard: captures 0.76 → 1.08 per match, grabs 14.2 → 14.4;
+  - instagib: captures 0.08 → 0.08, grabs 10.4 → 12.5.
+- Small and within noise, not worse. Kept as a ceiling for bigger teams.
+
+#### Self-splash
+5.5% of standard-CTF deaths were bots killing themselves, mostly their own rocket (522 in 25 matches).
+- Stock only holds a splash shot that would miss the enemy and hit something close. It fires a point-blank rocket into an enemy in its face whatever its own health.
+- Now a shot whose blast (falloff from `G_RadiusDamage`, halved on yourself in `G_Damage`) would take everything the bot has left is not fired.
+- **Measured (24 matches):** self-kills 7.4% → 6.9% of deaths, own-rocket deaths 298 → 273.
+- A small gain. Most of the remaining suicides happen some other way; one guess is health dropping between the shot and the blast.
+
 ### E138. Grabbing together (a staging line before their base) — MEASURED, REJECTED
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 
