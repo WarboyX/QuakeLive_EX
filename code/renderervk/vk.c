@@ -12407,6 +12407,12 @@ renderer alone.
 
 #define SSR_MAX_PLANES VK_MAX_WATER_PLANES
 #define SSR_MAX_RIPPLES MAX_WATER_RIPPLES   /* [QL] R19, and the shader's copy */
+/* [QL] E142. The weakest splash whose rings bounce off the pool's sides, in
+   the strength the cgame asks for (CG_WaterImpactSize, CG_WaterRipple):
+   explosions 3.4-5, a rail 1.8 and somebody jumping in 1.4 bounce; bullets,
+   plasma, footsteps and swimming (0.4-1.0) do not. */
+#define RIPPLE_REFLECT_MIN 1.2f
+
 /* [QL] R28: SSR_RIPPLE_LIFE was 2.2f here and RIPPLE_LIFE 2.2 in ssr.tmpl, with
    a comment on each telling the next person to keep them equal. They are now one
    value, r_waterRippleLife, sent in rippleTune.x - so the comment is unnecessary
@@ -13147,7 +13153,10 @@ qboolean vk_ssr( void )
 
 			u->ripple2[count][0] = rp->strength;
 			u->ripple2[count][1] = (float)best;
-			u->ripple2[count][2] = u->ripple2[count][3] = 0.0f;
+			/* [QL] E142: how much of it bounces off the pool's sides - only a
+			   big wave does (RIPPLE_REFLECT_MIN), see rippleSurface */
+			u->ripple2[count][2] = rp->strength >= RIPPLE_REFLECT_MIN ? r_waterRippleReflect->value : 0.0f;
+			u->ripple2[count][3] = 0.0f;
 			count++;
 		}
 

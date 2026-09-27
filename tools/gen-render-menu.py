@@ -487,6 +487,7 @@ def water():
          '"0 (none)" 0 "1 (soft)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (hard)" 8 "12" 12 "16 (violent)" 16'),
         ("multi", "r_waterRippleWaves", "Ripple rings", '"2 (few, fat)" 2 "5 (default)" 5 "8" 8 "12 (fine)" 12'),
         ("multi", "r_waterRippleLife", "Ripple lifetime", '"1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6'),
+        ("multi", "r_waterRippleReflect", "Bounce off sides", '"Off" 0 "0.25 (faint)" 0.25 "0.5 (default)" 0.5 "0.75" 0.75 "1 (full)" 1'),
         ("multi", "r_waterFoam", "Foam", '"Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2'),
     ]
     reset = reset_button(spec)

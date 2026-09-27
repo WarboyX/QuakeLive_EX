@@ -170,6 +170,7 @@ cvar_t	*r_waterRippleSize;      // [QL] R28
 cvar_t	*r_waterRippleHeight;
 cvar_t	*r_waterRippleWaves;
 cvar_t	*r_waterRippleLife;
+cvar_t	*r_waterRippleReflect;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -2563,6 +2564,15 @@ static void R_Register( void )
 		"Only " S_COLOR_CYAN "48" S_COLOR_WHITE " ripples exist at once and the oldest is "
 		"dropped first, so a long life plus a busy fight means earlier splashes get evicted "
 		"before they fade." );
+
+	r_waterRippleReflect = ri.Cvar_Get( "r_waterRippleReflect", "0.5", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleReflect, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleReflect, "How strongly a big splash's rings bounce "
+		"back off the sides of the pool, as a fraction of the wave that hit them. 0 turns "
+		"it off.\n"
+		"Only big waves bounce - explosions, rail hits, somebody jumping in - not footsteps "
+		"or bullets. The walls are the pool's bounding box, so a pool that is not a "
+		"rectangle reflects off its box rather than its exact edge." );
 
 	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );

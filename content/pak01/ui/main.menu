@@ -4532,12 +4532,19 @@
                   cvarFloatList { "1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6 }
                   rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Foam"  textscale .21  rect 24 403 246 16  textaligny 13
+        itemDef { text "Bounce off sides"  textscale .21  rect 24 403 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterripplereflect  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleReflect"
+                  cvarFloatList { "Off" 0 "0.25 (faint)" 0.25 "0.5 (default)" 0.5 "0.75" 0.75 "1 (full)" 1 }
+                  rect 290 403 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Foam"  textscale .21  rect 24 420 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterfoam  type ITEM_TYPE_MULTI  text ""  cvar "r_waterFoam"
                   cvarFloatList { "Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2 }
-                  rect 290 403 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 420 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
@@ -4546,7 +4553,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_ssr ; reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed ; reset r_waterRippleSize ; reset r_waterRippleHeight ; reset r_waterRippleWaves ; reset r_waterRippleLife ; reset r_waterFoam" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_ssr ; reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed ; reset r_waterRippleSize ; reset r_waterRippleHeight ; reset r_waterRippleWaves ; reset r_waterRippleLife ; reset r_waterRippleReflect ; reset r_waterFoam" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -5418,12 +5425,19 @@
                   cvarFloatList { "1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6 }
                   rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Foam"  textscale .21  rect 24 403 246 16  textaligny 13
+        itemDef { text "Bounce off sides"  textscale .21  rect 24 403 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rwaterripplereflect  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleReflect"
+                  cvarFloatList { "Off" 0 "0.25 (faint)" 0.25 "0.5 (default)" 0.5 "0.75" 0.75 "1 (full)" 1 }
+                  rect 290 403 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Foam"  textscale .21  rect 24 420 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterfoam  type ITEM_TYPE_MULTI  text ""  cvar "r_waterFoam"
                   cvarFloatList { "Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2 }
-                  rect 290 403 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 420 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
@@ -5432,7 +5446,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_ssr ; reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed ; reset r_waterRippleSize ; reset r_waterRippleHeight ; reset r_waterRippleWaves ; reset r_waterRippleLife ; reset r_waterFoam" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_ssr ; reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed ; reset r_waterRippleSize ; reset r_waterRippleHeight ; reset r_waterRippleWaves ; reset r_waterRippleLife ; reset r_waterRippleReflect ; reset r_waterFoam" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }

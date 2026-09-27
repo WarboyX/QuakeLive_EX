@@ -6048,6 +6048,28 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E142. Big ripples bounce off the sides of the pool — DONE (verify)
+**Lives in:** our **client** (Vulkan renderer, pak01) · **Seen by:** our client only
+
+*"Any chance we could add deflecting off the sides of the water pool if the wave is big enough?"*
+
+**How it works: mirror images.** A wave bouncing off a straight wall looks, on the near side of the wall, exactly like the same wave coming from the impact reflected across it. The distance to that image is the path out to the wall and back, so the bounced ring arrives late by the right amount and with the right curvature.
+- The ring maths moved into `rippleRing` (`ssr.tmpl`), called once for the impact.
+- For a big enough wave it is called again for each side of the pool's box within half the ripple's reach. Any further and nothing still alive comes back.
+- Single bounces only.
+
+**"Big enough"** is `RIPPLE_REFLECT_MIN` 1.2 (`vk.c`) on the strength the cgame asks for (`CG_WaterImpactSize`):
+- bounce: explosions 3.4-5, a rail 1.8, somebody jumping in 1.4;
+- don't: bullets, plasma, footsteps and swimming (0.4-1.0).
+
+**Amount:** `r_waterRippleReflect` (new, 0-1, default 0.5; 0 off), with a "Bounce off sides" row on the Water page.
+
+**Approximation.** The walls are the pool's axis-aligned bounds (`boundsMin`/`boundsMax`, which the shader already had). A rectangular pool is exact; any other shape reflects off its box.
+
+**Checked** by porting `rippleRing`/`rippleSurface` to Python and drawing the height field from above: a rocket in the red flag room pool (250 x 98 u), bounce off and at 0.5. From about 0.35 s the reflected rings come back off the long sides and cross the outgoing ones.
+
+**Not seen in the client yet.** The visual pass (lavapipe, no Quake Live art) finds no water surface to run the reflection pass on; `r_ssrDebug 5` stays blank there. That was already so for E141's ease-out.
+
 ### E141. Mid-range rocket self-kills; ripple ease-out; scoreboard count vs clock; bot skill on the board — DONE (verify)
 **Lives in:** our **server** (qagame) and our **client** (cgame, renderer, pak01) · **Seen by:** every client (bots); our client only (ripples, scoreboard)
 

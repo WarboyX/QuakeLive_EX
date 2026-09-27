@@ -1598,6 +1598,7 @@ extern	cvar_t	*r_waterRippleSize;				// [QL] R28: impact ripples, not the wind c
 extern	cvar_t	*r_waterRippleHeight;
 extern	cvar_t	*r_waterRippleWaves;
 extern	cvar_t	*r_waterRippleLife;
+extern	cvar_t	*r_waterRippleReflect;
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
 

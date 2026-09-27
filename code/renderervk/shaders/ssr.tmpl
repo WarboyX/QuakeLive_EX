@@ -241,6 +241,97 @@ only the reflection is invisible wherever the reflection itself is subtle - so
 "no ripples" and "ripples too faint to see" looked identical. They are not the
 same problem and they do not have the same fix.
 */
+/*
+[QL] E142: one ring, from a source at c - the impact itself, or its mirror
+image across a side of the pool. Adds its height, slope and energy.
+
+Split out of rippleSurface so the reflections are the same wave, not an
+imitation of it. A wave bouncing off a straight wall looks, on the near side
+of that wall, exactly like the same wave coming from the impact reflected
+across it: the distance to the image is the path out to the wall and back, so
+the bounced ring arrives late by exactly the right amount, with the right
+curvature, and nothing is needed but a second source.
+*/
+void rippleRing(vec2 p, vec2 c, float age, float reach, float strength,
+                inout float h, inout vec2 grad, inout float energy) {
+	float d = distance(p, c);
+	if (d > reach) {
+		return;                 // outside where this one ever gets to
+	}
+
+	/*
+	An expanding ring, not a standing wobble. The leading edge travels out
+	to `reach` over the ripple's life, and behind it the rings trail off:
+	nothing has happened yet ahead of the front, which is what makes an
+	impact read as an impact rather than as the water suddenly vibrating
+	everywhere at once.
+	*/
+	/* [QL] E141. Fast at first, slowing as it goes: an ease-out, not a
+	   constant speed. The front leaves the impact at three times its
+	   average speed and comes to rest at `reach` exactly at the end of its
+	   life, so r_waterRippleLife still means what it says. At a constant
+	   speed the rings crawled out of a fresh splash and then arrived at the
+	   edge as fast as they had started, which is not how water moves. */
+	float t = clamp(age / RIPPLE_LIFE, 0.0, 1.0);
+	float front = (1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t)) * reach;
+	if (d > front) {
+		return;                 // it has not arrived here yet
+	}
+
+	/* three ways it dies: with age, with distance from the impact, and
+	   behind the front - so the oldest rings at the centre are gone while
+	   the leading edge is still going */
+	float fade = 1.0 - age / RIPPLE_LIFE;
+	float falloff = 1.0 - d / reach;
+	float trail = exp( -(front - d) * (3.0 / reach) );
+	float amp = strength * rippleTune.z * fade * falloff * falloff * trail;
+
+	float k = RIPPLE_WAVES * 6.2831853 / reach;
+	float phase = (d - front) * k;
+
+	h += amp * sin(phase);
+
+	/*
+	The envelope, kept apart from the height on purpose.
+
+	h oscillates through zero - that is what a wave is - so anything driven
+	off it is only present where the sine happens to be near a peak, and
+	flickers as the ring travels. Foam did exactly that: thin arcs blinking
+	on and off instead of a splash, which reads as nothing at all.
+
+	This is how much disturbance is here regardless of which way the surface
+	happens to be moving at this instant. A splash is a patch of churn that
+	fades, not a set of alternating bands.
+	*/
+	energy += abs(amp);
+
+	if (d > 0.001) {
+		/*
+		Scaled down hard, and it is not a fudge. The wind waves put their
+		slope through r_waterWaveSteepness, which is about 0.08 - and a
+		ripple's own amp*k lands near 0.4 for a rocket, five times steeper
+		than the water it is disturbing. Left alone the impact does not read
+		as a splash on the surface, it reads as a hole in it, and most of it
+		is then eaten by the facing guard further down anyway.
+		*/
+		/*
+		[QL] R28: times rippleTune.w, which undoes what k already did.
+
+		k is RIPPLE_WAVES/reach, so widening a ripple with
+		r_waterRippleSize makes k smaller and the slope gentler in exact
+		proportion. That is correct for a real wave and wrong for a
+		setting called "size": asking for bigger splashes would quietly
+		hand back fainter ones, and the obvious response is to raise
+		r_waterRippleHeight to compensate, which is the fix for a problem
+		that should not exist.
+
+		So size changes size and height changes strength. At the default
+		of 1 this multiplies by 1 and nothing moves.
+		*/
+		grad += ((p - c) / d) * amp * k * cos(phase) * RIPPLE_SLOPE * rippleTune.w;
+	}
+}
+
 vec4 rippleSurface(vec2 p, int planeIdx) {
 	float h = 0.0;
 	float energy = 0.0;
@@ -255,82 +346,29 @@ vec4 rippleSurface(vec2 p, int planeIdx) {
 		float age = ripple[i].z;
 		float reach = ripple[i].w;
 		vec2 c = ripple[i].xy;
+		float strength = ripple2[i].x;
 
-		float d = distance(p, c);
-		if (d > reach) {
-			continue;               // outside where this one ever gets to
-		}
+		rippleRing(p, c, age, reach, strength, h, grad, energy);
 
 		/*
-		An expanding ring, not a standing wobble. The leading edge travels out
-		to `reach` over the ripple's life, and behind it the rings trail off:
-		nothing has happened yet ahead of the front, which is what makes an
-		impact read as an impact rather than as the water suddenly vibrating
-		everywhere at once.
+		[QL] E142. And off the sides of the pool, for a big enough wave:
+		ripple2.z is how much bounces (r_waterRippleReflect), 0 for anything
+		below RIPPLE_REFLECT_MIN in vk.c. One mirror image per side of the
+		pool's box, and only a side the wave can reach and come back from
+		within its own reach - a wall further than half of it never sends
+		anything back that is still alive. Single bounces only: a corner's
+		second reflection is a quarter of the strength of the first and not
+		worth four more rings per splash.
 		*/
-		/* [QL] E141. Fast at first, slowing as it goes: an ease-out, not a
-		   constant speed. The front leaves the impact at three times its
-		   average speed and comes to rest at `reach` exactly at the end of its
-		   life, so r_waterRippleLife still means what it says. At a constant
-		   speed the rings crawled out of a fresh splash and then arrived at the
-		   edge as fast as they had started, which is not how water moves. */
-		float t = clamp(age / RIPPLE_LIFE, 0.0, 1.0);
-		float front = (1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t)) * reach;
-		if (d > front) {
-			continue;               // it has not arrived here yet
-		}
-
-		/* three ways it dies: with age, with distance from the impact, and
-		   behind the front - so the oldest rings at the centre are gone while
-		   the leading edge is still going */
-		float fade = 1.0 - age / RIPPLE_LIFE;
-		float falloff = 1.0 - d / reach;
-		float trail = exp( -(front - d) * (3.0 / reach) );
-		float amp = ripple2[i].x * rippleTune.z * fade * falloff * falloff * trail;
-
-		float k = RIPPLE_WAVES * 6.2831853 / reach;
-		float phase = (d - front) * k;
-
-		h += amp * sin(phase);
-
-		/*
-		The envelope, kept apart from the height on purpose.
-
-		h oscillates through zero - that is what a wave is - so anything driven
-		off it is only present where the sine happens to be near a peak, and
-		flickers as the ring travels. Foam did exactly that: thin arcs blinking
-		on and off instead of a splash, which reads as nothing at all.
-
-		This is how much disturbance is here regardless of which way the surface
-		happens to be moving at this instant. A splash is a patch of churn that
-		fades, not a set of alternating bands.
-		*/
-		energy += abs(amp);
-
-		if (d > 0.001) {
-			/*
-			Scaled down hard, and it is not a fudge. The wind waves put their
-			slope through r_waterWaveSteepness, which is about 0.08 - and a
-			ripple's own amp*k lands near 0.4 for a rocket, five times steeper
-			than the water it is disturbing. Left alone the impact does not read
-			as a splash on the surface, it reads as a hole in it, and most of it
-			is then eaten by the facing guard further down anyway.
-			*/
-			/*
-			[QL] R28: times rippleTune.w, which undoes what k already did.
-
-			k is RIPPLE_WAVES/reach, so widening a ripple with
-			r_waterRippleSize makes k smaller and the slope gentler in exact
-			proportion. That is correct for a real wave and wrong for a
-			setting called "size": asking for bigger splashes would quietly
-			hand back fainter ones, and the obvious response is to raise
-			r_waterRippleHeight to compensate, which is the fix for a problem
-			that should not exist.
-
-			So size changes size and height changes strength. At the default
-			of 1 this multiplies by 1 and nothing moves.
-			*/
-			grad += ((p - c) / d) * amp * k * cos(phase) * RIPPLE_SLOPE * rippleTune.w;
+		float bounce = ripple2[i].z;
+		if (bounce > 0.0) {
+			vec2 lo = boundsMin[planeIdx].xy;
+			vec2 hi = boundsMax[planeIdx].xy;
+			float s = strength * bounce;
+			if (c.x - lo.x < reach * 0.5) rippleRing(p, vec2(2.0 * lo.x - c.x, c.y), age, reach, s, h, grad, energy);
+			if (hi.x - c.x < reach * 0.5) rippleRing(p, vec2(2.0 * hi.x - c.x, c.y), age, reach, s, h, grad, energy);
+			if (c.y - lo.y < reach * 0.5) rippleRing(p, vec2(c.x, 2.0 * lo.y - c.y), age, reach, s, h, grad, energy);
+			if (hi.y - c.y < reach * 0.5) rippleRing(p, vec2(c.x, 2.0 * hi.y - c.y), age, reach, s, h, grad, energy);
 		}
 	}
 
