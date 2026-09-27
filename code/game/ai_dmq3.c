@@ -2075,6 +2075,8 @@ it does not swap at the boundary every think.
 */
 #define CLOSEWEAPON_NEAR 250.0f
 #define CLOSEWEAPON_FAR 350.0f
+#define CLOSEWEAPON_HEALTH 60       // [QL] E141: below this health...
+#define CLOSEWEAPON_PERHEALTH 15.0f  // ...each point missing adds this much range
 
 static int BotCloseRangeWeapon(bot_state_t* bs, int chosen) {
     static const int order[][3] = {
@@ -2088,7 +2090,7 @@ static int BotCloseRangeWeapon(bot_state_t* bs, int chosen) {
         {WEAPONINDEX_RAILGUN, INVENTORY_RAILGUN, INVENTORY_SLUGS},
     };
     aas_entityinfo_t entinfo;
-    float dist;
+    float dist, near;
     int i;
 
     if (!bot_tactics.integer) {
@@ -2109,7 +2111,18 @@ static int BotCloseRangeWeapon(bot_state_t* bs, int chosen) {
         return chosen;
     }
     dist = Distance(bs->origin, entinfo.origin);
-    if (dist > (bs->tac.closeweapon ? CLOSEWEAPON_FAR : CLOSEWEAPON_NEAR)) {
+    /* [QL] E141. and further out the less health it has. Instrumented at
+       30 a side: of 57 bots killed by their own rocket, 51 fired along a
+       line the check saw clear for 120 to 750 u, and the rocket went off
+       0-100 u from them 125-250 ms later - a body stepped into its path,
+       which no check at the trigger can see. Every one of them had 1-35
+       health, where a glancing 20 points is the end. So below
+       CLOSEWEAPON_HEALTH the launcher waits for a target further away. */
+    near = CLOSEWEAPON_NEAR;
+    if (bs->inventory[INVENTORY_HEALTH] < CLOSEWEAPON_HEALTH) {
+        near += (CLOSEWEAPON_HEALTH - bs->inventory[INVENTORY_HEALTH]) * CLOSEWEAPON_PERHEALTH;
+    }
+    if (dist > (bs->tac.closeweapon ? near + (CLOSEWEAPON_FAR - CLOSEWEAPON_NEAR) : near)) {
         bs->tac.closeweapon = qfalse;
         return chosen;
     }

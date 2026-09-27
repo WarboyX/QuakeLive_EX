@@ -447,6 +447,7 @@ typedef struct {
     uint64_t steamId;  // steam id for this client
 
     int botSkill;  // 0 = not bot, 1-5 = bot
+    float botSkill10;  // [QL] E141: our 1-10 bot skill (g_bot.c), 0 = not a bot
 
     vec3_t color1;
     vec3_t color2;

@@ -197,8 +197,13 @@ def frame(name, body):
        ownerdraw("sb_map", "CG_MAP_NAME", 10, INFO_Y + 2, 170, 14, ".18", 0),
        ownerdraw("sb_type", "CG_GAME_TYPE", 190, INFO_Y + 2, 150, 14, ".18", 1),
        # [QL] E134. Everyone on the server against the slots, spectators apart
-       cvartext("sb_total", "io_sb_total", 345, INFO_Y + 2, 120, 14, ".16", "ITEM_ALIGN_RIGHT", DIM),
-       ownerdraw("sb_time", "CG_LEVELTIMER", 470, INFO_Y + 2, 80, 14, ".18", 2),
+       # [QL] E141. Left-aligned, and the clock moved right to make room. It was
+       # right-aligned against the clock, but a cvar item's text width is
+       # measured when the board opens, so a count that grew after that
+       # ("63/64 (62 + 1 spec)" from "0/64") was placed for its old width and ran
+       # into the clock - seen on a full FFA server. Left alignment needs no width.
+       cvartext("sb_total", "io_sb_total", 345, INFO_Y + 2, 135, 14, ".16", "ITEM_ALIGN_LEFT", DIM),
+       ownerdraw("sb_time", "CG_LEVELTIMER", 490, INFO_Y + 2, 60, 14, ".18", 2),
        PANEL_Y, W, H - PANEL_Y, body)
 
 

@@ -6048,6 +6048,51 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E141. Mid-range rocket self-kills; ripple ease-out; scoreboard count vs clock; bot skill on the board — DONE (verify)
+**Lives in:** our **server** (qagame) and our **client** (cgame, renderer, pak01) · **Seen by:** every client (bots); our client only (ripples, scoreboard)
+
+#### Mid-range rocket self-kills
+*"Work on the mid-range rocket self-kills next."*
+
+**Instrumented first.** Four standard matches at 30 a side logged every bot rocket fired and every self-splash (both radius-damage paths).
+- Of 57 bots killed by their own rocket, 51 had fired along a line the pre-fire check saw clear for 120 to 750 u.
+- The rocket then went off 0-100 u from them 125-250 ms later: a body stepped into its path, which no check at the trigger can see.
+- **Every one of them had 1-35 health**, where a glancing 20 points is the end.
+- A through-wall path exists in `G_RadiusDamageThrough`, but none of these went through it.
+
+**The change.** E140's close-range switch now scales with health: below 60 health, each missing point adds 15 u to the range inside which the launcher is swapped for a gun (700 u at 30 health, 1,000 at 10).
+
+**Result** (standard CTF, 12 matches each, D10 skills):
+
+| | E140 | E141 |
+|---|---|---|
+| bots killing themselves | 4.1% of deaths | **2.6%** |
+| own-rocket deaths | 108 | **48** |
+| own-grenade deaths | 34 | 14 |
+| grabs per match | 15.2 | 17.5 |
+| captures per match | 0.58 | 1.08 |
+
+The two instrumentation lines were removed afterwards.
+
+#### Water ripples: fast, then slowing
+*"We should have a gradient on the water ripple lifetime, fast initial, then slows as it moves further away. Right now it's fixed."*
+- The leading edge was `(age / life) * reach`, a constant speed. It is now an ease-out, `(1 - (1 - t)^3) * reach` (`ssr.tmpl`).
+- It leaves the impact at three times its average speed and comes to rest at the full reach exactly at the end of its life, so `r_waterRippleLife` keeps its meaning.
+- The compiled blob (`spirv/shader_data.c`) is rebuilt and committed.
+- Not yet watched in motion; the visual pass takes stills.
+
+#### Scoreboard: the player count ran into the clock
+*Reported on a full FFA server: "63/64 (62 + 1 ..." over the clock.*
+- The count was right-aligned against the clock. A cvar item's text width is measured when the board opens, so a count that grew afterwards was placed for its old width and ran right.
+- Now it is left-aligned, which needs no width, and the clock is moved right (`gen-scoreboard.py`; every board, not only FFA).
+- Photographed with 60 bots and a spectator: "61/64 (60 + 1 spec)" sits clear of the clock.
+
+#### Bot skill on the scoreboard, with developer 1
+*"If developer 1 is enabled, our scoreboard can also display the bot's skill level in the row."*
+- With `developer` set, a bot's name on every board reads "Slash [7]": our 1-10 skill (E139), converted back from botlib's 1-5 in the player config string.
+- In that mode the name is shown without its colour codes. The name column's character limit counts them, and "Anarki [" was cut off mid-tag.
+- Photographed both ways.
+
 ### E140. Close range: a gun, not a launcher — DONE (verify)
 **Lives in:** our **server** (qagame) · **Seen by:** every client
 

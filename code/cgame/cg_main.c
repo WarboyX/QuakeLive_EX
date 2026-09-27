@@ -2991,6 +2991,30 @@ static const char* CG_FeederColumnsCtf(score_t* sp, clientInfo_t* info, int colu
 }
 
 // [QL] Race scoreboard columns 0-6 (7 total, different layout) - binary FUN_10027c40
+/*
+[QL] E141. A bot's name on the scoreboard, with its skill after it when
+developer is set: "Slash ^3[7]". The skill is our 1-10 (a D10 roll unless
+the server fixed it) - the number that explains a row, which is what a
+developer is looking at the board for.
+*/
+static const char* CG_ScoreboardName(clientInfo_t* info) {
+    char dev[8];
+    char clean[MAX_QPATH];
+
+    if (info->botSkill10 <= 0) {
+        return info->name;
+    }
+    trap_Cvar_VariableStringBuffer("developer", dev, sizeof(dev));
+    if (atoi(dev) <= 0) {
+        return info->name;
+    }
+    /* without its colour codes: the name column's character limit counts
+       them, and a colourful name plus the tag was cut off mid-tag */
+    Q_strncpyz(clean, info->name, sizeof(clean));
+    Q_CleanStr(clean);
+    return va("%s ^3[%d]", clean, (int)(info->botSkill10 + 0.5f));
+}
+
 static const char* CG_FeederItemTextRace(clientInfo_t* info, score_t* sp, int column, qhandle_t* handle) {
     switch (column) {
         case 0:
@@ -3006,7 +3030,7 @@ static const char* CG_FeederItemTextRace(clientInfo_t* info, score_t* sp, int co
             }
             return "";
         case 3:
-            return info->name;
+            return CG_ScoreboardName(info);
         case 4:
             if (sp->score > 0 && sp->score != 0x7FFFFFFF)
                 return va("%d:%02d.%03d", sp->score / 60000, (sp->score / 1000) % 60, sp->score % 1000);
@@ -3034,7 +3058,7 @@ static const char* CG_FeederItemTextStats(float feederID, int index, int column,
         case GT_CA:
             // CA stats: 17 columns
             switch (column) {
-                case 0: return info->name;
+                case 0: return CG_ScoreboardName(info);
                 case 1: return va("%d", sp->score);
                 case 2: return va("%d", sp->frags);
                 case 3: return va("%d", sp->deaths);
@@ -3048,7 +3072,7 @@ static const char* CG_FeederItemTextStats(float feederID, int index, int column,
         case GT_FREEZE:
             // TDM/FT stats: 18 columns
             switch (column) {
-                case 0: return info->name;
+                case 0: return CG_ScoreboardName(info);
                 case 1: return va("%d", sp->score);
                 case 2: return va("%d", sp->frags);
                 case 3: return va("%d", sp->deaths);
@@ -3065,7 +3089,7 @@ static const char* CG_FeederItemTextStats(float feederID, int index, int column,
         default:
             // CTF/etc stats: 19 columns
             switch (column) {
-                case 0: return info->name;
+                case 0: return CG_ScoreboardName(info);
                 case 1: return va("%d", sp->score);
                 case 2: return va("%d", sp->frags);
                 case 3: return va("%d", sp->deaths);
@@ -3134,7 +3158,7 @@ static const char* CG_FeederItemText(float feederID, int index, int column, qhan
         case 4:
             return "";
         case 5:
-            return info->name;
+            return CG_ScoreboardName(info);
     }
 
     // Gametype-specific columns 6+ for team feeders

@@ -1155,6 +1155,8 @@ void CG_NewClientInfo(int clientNum) {
     // bot skill
     v = Info_ValueForKey(configstring, "skill");
     newInfo.botSkill = atoi(v);
+    // [QL] E141: the server sends botlib's 1-5; ours is 1-10 (g_bot.c G_BotSkillToLib)
+    newInfo.botSkill10 = v[0] ? 1.0f + (atof(v) - 1.0f) * 9.0f / 4.0f : 0.0f;
 
     // handicap
     v = Info_ValueForKey(configstring, "hc");

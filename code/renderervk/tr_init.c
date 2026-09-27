@@ -2556,7 +2556,8 @@ static void R_Register( void )
 	r_waterRippleLife = ri.Cvar_Get( "r_waterRippleLife", "2.2", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_waterRippleLife, "0.25", "10", CV_FLOAT );
 	ri.Cvar_SetDescription( r_waterRippleLife, "Seconds from impact to gone.\n"
-		"A ripple's leading edge reaches its full spread exactly at the end of its life, so "
+		"A ripple's leading edge reaches its full spread exactly at the end of its life - "
+		"fast from the impact, slowing as it spreads - so "
 		"this sets how fast the rings travel as well as how long they last. Longer means "
 		"slower and more lingering, not merely more of the same.\n"
 		"Only " S_COLOR_CYAN "48" S_COLOR_WHITE " ripples exist at once and the oldest is "

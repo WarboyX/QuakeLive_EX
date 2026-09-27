@@ -268,7 +268,14 @@ vec4 rippleSurface(vec2 p, int planeIdx) {
 		impact read as an impact rather than as the water suddenly vibrating
 		everywhere at once.
 		*/
-		float front = (age / RIPPLE_LIFE) * reach;
+		/* [QL] E141. Fast at first, slowing as it goes: an ease-out, not a
+		   constant speed. The front leaves the impact at three times its
+		   average speed and comes to rest at `reach` exactly at the end of its
+		   life, so r_waterRippleLife still means what it says. At a constant
+		   speed the rings crawled out of a fresh splash and then arrived at the
+		   edge as fast as they had started, which is not how water moves. */
+		float t = clamp(age / RIPPLE_LIFE, 0.0, 1.0);
+		float front = (1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t)) * reach;
 		if (d > front) {
 			continue;               // it has not arrived here yet
 		}

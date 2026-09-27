@@ -28,9 +28,9 @@
                   align 0  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 56 150 3  textscale .18
                   align 1  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_total  cvar "io_sb_total"  textscale .16  rect 345 45 120 14  textaligny 10
-                  textalign ITEM_ALIGN_RIGHT  textalignx 120  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 56 80 3  textscale .18
+        itemDef { name sb_total  cvar "io_sb_total"  textscale .16  rect 345 45 135 14  textaligny 10
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 490 56 60 3  textscale .18
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 62 560 346
@@ -103,9 +103,9 @@
                   align 0  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 56 150 3  textscale .18
                   align 1  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_total  cvar "io_sb_total"  textscale .16  rect 345 45 120 14  textaligny 10
-                  textalign ITEM_ALIGN_RIGHT  textalignx 120  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 56 80 3  textscale .18
+        itemDef { name sb_total  cvar "io_sb_total"  textscale .16  rect 345 45 135 14  textaligny 10
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 490 56 60 3  textscale .18
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 62 560 346
@@ -225,9 +225,9 @@
                   align 0  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 56 150 3  textscale .18
                   align 1  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_total  cvar "io_sb_total"  textscale .16  rect 345 45 120 14  textaligny 10
-                  textalign ITEM_ALIGN_RIGHT  textalignx 120  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 56 80 3  textscale .18
+        itemDef { name sb_total  cvar "io_sb_total"  textscale .16  rect 345 45 135 14  textaligny 10
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 490 56 60 3  textscale .18
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 62 560 346
@@ -347,9 +347,9 @@
                   align 0  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name sb_type  ownerdraw CG_GAME_TYPE  rect 190 56 150 3  textscale .18
                   align 1  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name sb_total  cvar "io_sb_total"  textscale .16  rect 345 45 120 14  textaligny 10
-                  textalign ITEM_ALIGN_RIGHT  textalignx 120  forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 470 56 80 3  textscale .18
+        itemDef { name sb_total  cvar "io_sb_total"  textscale .16  rect 345 45 135 14  textaligny 10
+                  textalign ITEM_ALIGN_LEFT  textalignx 0  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name sb_time  ownerdraw CG_LEVELTIMER  rect 490 56 60 3  textscale .18
                   align 2  forecolor 1 1 1 1  visible 1  decoration }
         // check-menus: overlap-ok - background layer; the whole board sits on it
         itemDef { name sb_panel  rect 0 62 560 346
