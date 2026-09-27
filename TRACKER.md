@@ -6048,6 +6048,75 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E145. Tester crash on NVIDIA with RT AO + bloom; vignette drew a grey box — DONE (verify)
+**Lives in:** our **client** (Vulkan renderer; cgame for the vignette) · **Seen by:** our client only
+
+A tester's crash log (RTX 4080, driver 617.14, build 7cca354 = E140): access violation in `nvoglv64.dll` reading 0xf0. The run had 4x MSAA, RT AO on, bloom on, on campgrounds (no water, so SSR was off), and crashed with the in-game menu open.
+
+**Where.** The Windows build of 7cca354 was rebuilt here and the offsets resolved against it:
+- `vulkanx86_64.dll+0xc738` returns from `RB_ExecuteRenderCommands`.
+- `+0x3d25` returns from `vk_bloom`.
+- `+0x5b8d7` returns from bloom's first `vkCmdBeginRenderPass` (the extract pass), issued right after bloom ended the RT AO composite pass.
+- The addresses at +0x19xxxx are in `.bss` (the `vk` global). They are data the stack scanner picked up, not code.
+
+**Why.** Running the same frame on lavapipe under the Khronos validation layer (MSAA 4, RT AO, SSR, bloom, the menu opened over the game) gave 1,752 errors from the tester's revision in three classes, all real:
+1. **`VUID-VkRenderPassBeginInfo-renderPass-00904`** (702).
+   - `render_pass.rtao` had three subpass dependencies of its own; `render_pass.main` has two (one without FBO).
+   - Render passes that differ in anything except layouts and load/store ops are incompatible.
+   - The AO/SSR composite pass is begun on `framebuffers.main`, and the rest of the frame is drawn in it with pipelines built for `main`, so both uses were undefined behaviour.
+   - Mesa tolerates it. The NVIDIA driver faulted on the next render-pass transition, which is bloom's.
+   - **Fix:** the pass now keeps the caller's dependencies unchanged. What they said (the main pass's depth writes are visible before AO/SSR sample depth; colour writes land before the pass loads and blends into them) is now a global `vkCmdPipelineBarrier` in `vk_begin_rtao_render_pass`, recorded before the pass begins.
+2. **`VUID-vkCmdBindDescriptorSets-pDescriptorSets-06563` / `-dynamicOffsetCount-00359`** (693 + 342).
+   - `vk_rt_ao` and `vk_ssr` repair their layout clobbering by marking descriptor slots 0-4 dirty.
+   - `vk_bind_descriptor_sets` only gap-filled the slots strictly between start and end, so a null uniform or fog slot at either end was bound as `VK_NULL_HANDLE`, with a dynamic offset for a set that was not there.
+   - **Fix:** empty end slots are trimmed off the range before binding.
+3. **`VUID-vkCreateDevice-ppEnabledExtensionNames-01387`**, plus every ray-query shader rejected as SPIR-V 1.4 on a 1.1 device.
+   - `VK_KHR_ray_query` needs `VK_KHR_spirv_1_4` (which needs `VK_KHR_shader_float_controls`); `VK_KHR_acceleration_structure` needs `VK_EXT_descriptor_indexing`.
+   - All three are core only from 1.2, and the instance asks for 1.1.
+   - **Fix:** they are now detected, required for `vk.rayQuery`, and enabled with the RT extensions.
+
+After the fixes, the same run gives **0** validation errors.
+
+Not proven on NVIDIA hardware, which this environment does not have. Evidence for the cause:
+- the crash address is the first render-pass transition after the incompatible pass;
+- the incompatibility is on every frame with RT AO on;
+- the tester's settings are exactly the ones that leave that pass open.
+
+**Vignette.** *"Enabling Vignette is borked"* (screenshot: a blurred dark rectangle inside a light frame covering the whole screen).
+- `cg_vignette` drew `cgs.media.vignetteShader`, which nothing ever registered. It was 0, the renderer's default shader, stretched over the screen opaque.
+- **Fix:** it now registers Quake Live's own `gfx/misc/vignette` (gfx.shader: one `blendfunc blend` stage; pak00 ships the image as .png).
+- Another registered-but-never-wired case: a field in the media struct that nothing registered, drawn as if it had been.
+
+### E144. Ripples bounce off the pool's real shore, sloped banks included — DONE (verify)
+**Lives in:** our **client** (Vulkan renderer) · **Seen by:** our client only
+
+*"I dont see the water shader ripple deflecting off the sides of the container"*, *"the size of the pool exceeds the size of the container normally"*, *"japanese castles has the garden's area which the water pool has some slopes around it"*, *"water physics should still echo off the sides even with slopes"*.
+
+**This corrects E142.** E142 reflected off the water brush's axis-aligned box. The brush runs on under decking and into walls, so its box is not where the water stops, and in the gardens it is nowhere near the shore.
+
+**Now.** At map load `vk_find_water_walls` takes the level geometry that crosses each water plane's height beside it: every drawn, solid face no flatter than about 15°, sheer or sloped.
+- The shoreline is cut where each triangle of the face crosses the water height. It works per triangle, not round the face's outline, because q3map2 `-meta` faces are unordered triangle batches. Walking their vertices as a polygon found only fragments of the sloped banks.
+- Pieces on one line that touch are merged into one wall.
+- Anything under 24 units (posts, rocks standing in the pond) is dropped: an obstacle that small scatters a wave, it does not mirror it.
+
+Per ripple, `vk_ripple_walls` picks up to 4 nearest walls that meet all of these:
+- the splash is on the wall's water side;
+- the wall is within half the ripple's reach;
+- the foot of the perpendicular from the splash lands on that wall's shoreline segment.
+
+The shader adds one mirror-image ring for each (`ripple3`-`ripple5`), weighted 1 for a sheer wall down to 0.6 for a 15° bank.
+
+**japanesecastles:** 4 walls per flag-room pool, 16 per garden pond. At first the ponds showed 64 faces each, mostly posts; the per-triangle cut then found the whole west bank.
+
+**Checked:**
+- A Python replica of the wall finder and `rippleRing`, run on the map's BSP, gives the same counts as the engine.
+- Top-down height-field frames show the direct and bounced rings:
+  - red flag pool: north, south and west walls at 56/72/80 u; the east wall at 204 u is correctly out of reach;
+  - garden: the sloped west bank (weight 0.7) and the south bank.
+- The in-engine screenshots cannot show it: without pak00 art the visual pass draws no water surface.
+
+**Note:** all of the water work (SSR, ripples, bounces) runs only with ray tracing on (`r_rt 1`, `r_fbo 1`). `vk_ssr` needs `vk.rtDepthSampled`, set only when RT is active, and composites in the RT AO render pass. On a GPU without ray query there are no water effects at all.
+
 ### E143. Ripples slow with radius, not with age — DONE (verify)
 **Lives in:** our **client** (Vulkan renderer) · **Seen by:** our client only
 
@@ -6083,7 +6152,7 @@ Not yet watched in the client, for the reason E142 gives.
 
 **Amount:** `r_waterRippleReflect` (new, 0-1, default 0.5; 0 off), with a "Bounce off sides" row on the Water page.
 
-**Approximation.** The walls are the pool's axis-aligned bounds (`boundsMin`/`boundsMax`, which the shader already had). A rectangular pool is exact; any other shape reflects off its box.
+**Superseded by E144**, which reflects off the real shore. **Approximation (as first shipped).** The walls were the pool's axis-aligned bounds (`boundsMin`/`boundsMax`, which the shader already had). A rectangular pool is exact; any other shape reflects off its box.
 
 **Checked** by porting `rippleRing`/`rippleSurface` to Python and drawing the height field from above: a rocket in the red flag room pool (250 x 98 u), bounce off and at 0.5. From about 0.35 s the reflected rings come back off the long sides and cross the outgoing ones.
 

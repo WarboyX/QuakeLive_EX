@@ -98,6 +98,9 @@ layout(set = 0, binding = 2) uniform SSR {
 	*/
 	vec4 ripple[SSR_MAX_RIPPLES];
 	vec4 ripple2[SSR_MAX_RIPPLES];
+	vec4 ripple3[SSR_MAX_RIPPLES];   // [QL] E144: mirror images 0, 1 (xy xy)
+	vec4 ripple4[SSR_MAX_RIPPLES];   // [QL] E144: mirror images 2, 3
+	vec4 ripple5[SSR_MAX_RIPPLES];   // [QL] E144: how much each sends back
 	/*
 	[QL] R19: the frame's dynamic lights, so emitters reflect. planeCount.z says
 	how many.
@@ -363,24 +366,22 @@ vec4 rippleSurface(vec2 p, int planeIdx) {
 		rippleRing(p, c, age, reach, strength, h, grad, energy);
 
 		/*
-		[QL] E142. And off the sides of the pool, for a big enough wave:
-		ripple2.z is how much bounces (r_waterRippleReflect), 0 for anything
-		below RIPPLE_REFLECT_MIN in vk.c. One mirror image per side of the
-		pool's box, and only a side the wave can reach and come back from
-		within its own reach - a wall further than half of it never sends
-		anything back that is still alive. Single bounces only: a corner's
-		second reflection is a quarter of the strength of the first and not
-		worth four more rings per splash.
+		[QL] E142, E144. And off the sides of the pool, for a big enough wave:
+		ripple2.z is how much bounces (r_waterRippleReflect, 0 for anything
+		below RIPPLE_REFLECT_MIN), ripple2.w how many walls it bounces off.
+		Each wall is a mirror image of the impact across a real face of the
+		map at the water's edge (vk_ripple_walls), weighted by how steep that
+		face is - a sloping bank sends less back than a sheer wall. Single
+		bounces only.
 		*/
 		float bounce = ripple2[i].z;
-		if (bounce > 0.0) {
-			vec2 lo = boundsMin[planeIdx].xy;
-			vec2 hi = boundsMax[planeIdx].xy;
+		int walls = int(ripple2[i].w);
+		if (bounce > 0.0 && walls > 0) {
 			float s = strength * bounce;
-			if (c.x - lo.x < reach * 0.5) rippleRing(p, vec2(2.0 * lo.x - c.x, c.y), age, reach, s, h, grad, energy);
-			if (hi.x - c.x < reach * 0.5) rippleRing(p, vec2(2.0 * hi.x - c.x, c.y), age, reach, s, h, grad, energy);
-			if (c.y - lo.y < reach * 0.5) rippleRing(p, vec2(c.x, 2.0 * lo.y - c.y), age, reach, s, h, grad, energy);
-			if (hi.y - c.y < reach * 0.5) rippleRing(p, vec2(c.x, 2.0 * hi.y - c.y), age, reach, s, h, grad, energy);
+			rippleRing(p, ripple3[i].xy, age, reach, s * ripple5[i].x, h, grad, energy);
+			if (walls > 1) rippleRing(p, ripple3[i].zw, age, reach, s * ripple5[i].y, h, grad, energy);
+			if (walls > 2) rippleRing(p, ripple4[i].xy, age, reach, s * ripple5[i].z, h, grad, energy);
+			if (walls > 3) rippleRing(p, ripple4[i].zw, age, reach, s * ripple5[i].w, h, grad, energy);
 		}
 	}
 

@@ -753,10 +753,6 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	const VkImageLayout savedDepthFinal = attachments[1].finalLayout;
 	VkAttachmentLoadOp savedMsaaLoad = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	VkAttachmentStoreOp savedMsaaStore = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	VkSubpassDependency deps[3];
-	uint32_t savedDepCount;
-	const VkSubpassDependency *savedDeps;
-
 	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // whatever the scene drew
 	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // the depth we are about to read
 	attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -817,60 +813,27 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 	/*
-	[QL] This pass needs its own dependencies, and the depth one is the point.
+	[QL] This pass needs synchronisation of its own, and the depth one is the
+	point - see vk_begin_rtao_render_pass, which is where it now lives.
 
-	Every dependency the caller has set up describes the colour attachment,
-	because no pass before this one ever read depth - it was written, tested
-	against, and never looked at again. This pass samples it, and a layout
-	transition is not synchronisation: without an explicit dependency the AO
-	pass may sample depth before the main pass's depth writes are visible.
+	It used to live here as three subpass dependencies of this pass's own. That
+	made the pass *incompatible* with the main one: two render passes are
+	compatible only if they are identical apart from layouts and load/store
+	ops, and a different dependency list is a difference. This pass is begun on
+	framebuffers.main and draws the rest of the frame with pipelines built
+	against render_pass.main, so both of those were undefined behaviour. Mesa
+	does not care; NVIDIA's driver faulted reading address 0xf0 in the
+	vkCmdEndRenderPass that vk_bloom issues to close this pass (tester's crash
+	log, E145). The validation layer says it in plain words -
+	VUID-VkRenderPassBeginInfo-renderPass-00904 - on every frame.
 
-	What that looks like is not a wrong image. It is a *patch* of wrong image -
-	a tile or two of stale depth in whatever corner lost the race, drawn as
-	noise, in a fixed place on screen that does not move with anything in the
-	world. Which is exactly what was reported: corruption in the bottom right
-	that does not follow the weapon when it bobs.
-
-	Not BY_REGION even though this shader happens to sample only its own pixel.
-	The flag is a promise about every future version of the shader, and the
-	first thing a denoise pass will do is read its neighbours.
+	So the caller's dependencies stay exactly as they are, and what this pass
+	needs on top of them is a pipeline barrier recorded just before it begins,
+	which says the same thing without changing what the pass is.
 	*/
-	deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-	deps[0].dstSubpass = 0;
-	deps[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-	deps[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-	deps[0].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	deps[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	deps[0].dependencyFlags = 0;
-
-	/* and the colour we are about to load and blend into */
-	deps[1].srcSubpass = VK_SUBPASS_EXTERNAL;
-	deps[1].dstSubpass = 0;
-	deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	deps[1].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	deps[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	deps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-	/* and let what follows read the colour this wrote */
-	deps[2].srcSubpass = 0;
-	deps[2].dstSubpass = VK_SUBPASS_EXTERNAL;
-	deps[2].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	deps[2].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-	deps[2].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	deps[2].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	deps[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-	savedDepCount = desc->dependencyCount;
-	savedDeps = desc->pDependencies;
-	desc->dependencyCount = 3;
-	desc->pDependencies = deps;
-
 	VK_CHECK( qvkCreateRenderPass( device, desc, NULL, &vk.render_pass.rtao ) );
 	SET_OBJECT_NAME( vk.render_pass.rtao, "render pass - rtao", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 
-	desc->dependencyCount = savedDepCount;
-	desc->pDependencies = savedDeps;
 	depthRef->layout = savedDepthLayout;
 	attachments[0].loadOp = savedColorLoad;
 	attachments[1].loadOp = savedDepthLoad;
@@ -2221,6 +2184,7 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		qboolean rayQuery = qfalse;
 		qboolean deferredHostOps = qfalse;
 		qboolean bufferDeviceAddress = qfalse;
+		qboolean spirv14 = qfalse, floatControls = qfalse, descriptorIndexing = qfalse;
 		/* [QL] R13: the three feature structs a ray query needs chained onto
 		   device creation, and the request that turns the whole thing on. */
 		VkPhysicalDeviceAccelerationStructureFeaturesKHR accel_features;
@@ -2269,6 +2233,13 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 				deferredHostOps = qtrue;
 			} else if ( strcmp( ext, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME ) == 0 ) {
 				bufferDeviceAddress = qtrue;
+			/* [QL] E145: what those two require in turn - see where they are enabled */
+			} else if ( strcmp( ext, VK_KHR_SPIRV_1_4_EXTENSION_NAME ) == 0 ) {
+				spirv14 = qtrue;
+			} else if ( strcmp( ext, VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME ) == 0 ) {
+				floatControls = qtrue;
+			} else if ( strcmp( ext, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME ) == 0 ) {
+				descriptorIndexing = qtrue;
 #ifdef _DEBUG
 			} else if ( strcmp( ext, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME ) == 0 ) {
 				timelineSemaphore = qtrue;
@@ -2310,7 +2281,8 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		vk.dedicatedAllocation = qfalse;
 #endif
 
-		vk.rayQuery = ( accelStructure && rayQuery && deferredHostOps && bufferDeviceAddress ) ? qtrue : qfalse;
+		vk.rayQuery = ( accelStructure && rayQuery && deferredHostOps && bufferDeviceAddress &&
+			spirv14 && floatControls && descriptorIndexing ) ? qtrue : qfalse;
 
 		/*
 		[QL] R13 step 1: actually enable it, when asked and when possible.
@@ -2427,6 +2399,20 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 			device_extension_list[ device_extension_count++ ] = VK_KHR_RAY_QUERY_EXTENSION_NAME;
 			device_extension_list[ device_extension_count++ ] = VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME;
 			device_extension_list[ device_extension_count++ ] = VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME;
+			/*
+			[QL] E145. And what those require, which was never enabled:
+			VK_KHR_ray_query needs VK_KHR_spirv_1_4 (which needs
+			VK_KHR_shader_float_controls), VK_KHR_acceleration_structure needs
+			VK_EXT_descriptor_indexing. All three are core from Vulkan 1.2, and
+			this instance asks for 1.1, so here they are extensions and have to
+			be named. Without spirv_1_4 the ray query shaders - SPIR-V 1.4, as
+			ray query requires - are not valid on this device at all; the
+			validation layer rejects every one of them. A driver that accepts
+			them anyway is being generous, not correct.
+			*/
+			device_extension_list[ device_extension_count++ ] = VK_KHR_SPIRV_1_4_EXTENSION_NAME;
+			device_extension_list[ device_extension_count++ ] = VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME;
+			device_extension_list[ device_extension_count++ ] = VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
 		}
 
 		if ( vk.dedicatedAllocation ) {
@@ -3718,6 +3704,188 @@ caulk makes whole rooms wrong.
 */
 /*
 =================
+vk_find_water_walls
+
+[QL] E144. The faces a ripple bounces off - see vkWaterWall_t.
+
+For each water plane: every face that is drawn and solid (not liquid, fog,
+sky or nodraw), no flatter than about 15 degrees - a sheer wall or a sloping
+bank - that reaches from below the water's height to above it (give or take a
+couple of units, for a lip that stops exactly at the surface) beside the
+water's box. What is kept is where the face cuts that height: a segment of
+shoreline, not the face's box, which for a long sloping bank reaches far past
+the water line in xy. Faces only, like the planes: a curved patch wall has no
+single line to reflect across.
+
+Then panels of one wall - same line, touching - become one segment, and
+anything shorter than VK_WATER_WALL_MIN is dropped (vkWaterWall_t says why).
+=================
+*/
+static void vk_find_water_walls( const world_t *world )
+{
+	const int skip = CONTENTS_WATER | CONTENTS_SLIME | CONTENTS_LAVA | CONTENTS_FOG;
+	int i, j, k, merged, perPlane[ VK_MAX_WATER_PLANES ];
+	qboolean full = qfalse;
+
+	vk.numWaterWalls = 0;
+
+	for ( i = 0; i < world->numsurfaces; i++ ) {
+		const msurface_t *surf = &world->surfaces[i];
+		const srfSurfaceFace_t *face;
+		vec3_t mins, maxs;
+		float len;
+
+		if ( surf->data == NULL || surf->shader == NULL || *surf->data != SF_FACE ) {
+			continue;
+		}
+		if ( ( surf->shader->contentFlags & skip ) ||
+			 ( surf->shader->surfaceFlags & ( SURF_SKY | SURF_NODRAW ) ) ) {
+			continue;
+		}
+		face = (const srfSurfaceFace_t *)surf->data;
+		len = sqrtf( face->plane.normal[0] * face->plane.normal[0] + face->plane.normal[1] * face->plane.normal[1] );
+		if ( len < 0.26f ) {
+			continue;   // flatter than about 15 degrees: a floor, not a shore
+		}
+		ClearBounds( mins, maxs );
+		for ( k = 0; k < face->numPoints; k++ ) {
+			AddPointToBounds( face->points[k], mins, maxs );
+		}
+
+		for ( j = 0; j < vk.numWaterPlanes; j++ ) {
+			const vkWaterPlane_t *wp = &vk.waterPlanes[j];
+			const float h = wp->dist;   // up-facing planes: the height
+			float nx, ny;
+
+			if ( mins[2] > h + 2.0f || maxs[2] < h - 2.0f ) {
+				continue;   // does not cross this water's height
+			}
+			if ( maxs[0] < wp->mins[0] - 8.0f || mins[0] > wp->maxs[0] + 8.0f ||
+				 maxs[1] < wp->mins[1] - 8.0f || mins[1] > wp->maxs[1] + 8.0f ) {
+				continue;   // nowhere near it
+			}
+			nx = face->plane.normal[0] / len;
+			ny = face->plane.normal[1] / len;
+
+			/*
+			Triangle by triangle, not round the face's outline: the points of a
+			face are its draw vertices, and a q3map2 -meta face is a batch of
+			coplanar triangles whose vertices are in no particular order and
+			whose outline need not even be convex. Walking them as a polygon
+			produced a few segments per pond and lost most of the sloped bank.
+			Each triangle that crosses the water gives one short piece of
+			shoreline; the merge below joins the pieces of one face (same line)
+			back into the wall they were cut from.
+			*/
+			{
+				const unsigned *ind = (const unsigned *)( (const byte *)face + face->ofsIndices );
+				int t;
+
+				for ( t = 0; t + 2 < face->numIndices; t += 3 ) {
+					float lo = 1e9f, hi = -1e9f;
+					vkWaterWall_t *w;
+					int e;
+
+					for ( e = 0; e < 3; e++ ) {
+						const float *p0 = face->points[ ind[ t + e ] ];
+						const float *p1 = face->points[ ind[ t + ( e + 1 ) % 3 ] ];
+						float u;
+
+						/* where the triangle meets the water: its edges crossing
+						   h, and any corner within the couple of units allowed
+						   for a lip, measured along the line (tangent -ny, nx) */
+						if ( fabsf( p0[2] - h ) <= 2.0f ) {
+							u = -ny * p0[0] + nx * p0[1];
+							lo = MIN( lo, u ); hi = MAX( hi, u );
+						}
+						if ( ( p0[2] - h ) * ( p1[2] - h ) < 0.0f ) {
+							float f = ( h - p0[2] ) / ( p1[2] - p0[2] );
+							u = -ny * ( p0[0] + ( p1[0] - p0[0] ) * f ) + nx * ( p0[1] + ( p1[1] - p0[1] ) * f );
+							lo = MIN( lo, u ); hi = MAX( hi, u );
+						}
+					}
+					if ( lo > hi ) {
+						continue;   // this triangle is all above or all below
+					}
+					if ( vk.numWaterWalls >= VK_MAX_WATER_WALLS ) {
+						full = qtrue;
+						break;
+					}
+
+					w = &vk.waterWalls[ vk.numWaterWalls++ ];
+					w->n[0] = nx;
+					w->n[1] = ny;
+					// the face's plane cut at the water's height, as a line in xy
+					w->d = ( face->plane.dist - face->plane.normal[2] * h ) / len;
+					w->a[0] = nx * w->d - ny * lo; w->a[1] = ny * w->d + nx * lo;
+					w->b[0] = nx * w->d - ny * hi; w->b[1] = ny * w->d + nx * hi;
+					/* a sloping bank still echoes the wave, a little less than a
+					   sheer wall - part of it runs up the slope - so the weight
+					   goes from 1 at vertical to 0.6 at the flattest bank taken,
+					   about 15 degrees */
+					w->weight = 0.6f + 0.4f * ( len - 0.26f ) / ( 1.0f - 0.26f );
+					w->plane = j;
+				}
+			}
+		}
+	}
+
+	/* one wall built from several panels is one wall: same plane of water,
+	   same line, segments touching - join them, until nothing more joins */
+	do {
+		merged = 0;
+		for ( i = 0; i < vk.numWaterWalls; i++ ) {
+			vkWaterWall_t *w = &vk.waterWalls[i];
+			const float tx = -w->n[1], ty = w->n[0];
+
+			for ( j = i + 1; j < vk.numWaterWalls; j++ ) {
+				vkWaterWall_t *o = &vk.waterWalls[j];
+				float wa, wb, oa, ob, lo, hi;
+
+				if ( o->plane != w->plane || w->n[0] * o->n[0] + w->n[1] * o->n[1] < 0.999f ||
+					 fabsf( o->d - w->d ) > 1.0f ) {
+					continue;
+				}
+				wa = tx * w->a[0] + ty * w->a[1]; wb = tx * w->b[0] + ty * w->b[1];
+				oa = tx * o->a[0] + ty * o->a[1]; ob = tx * o->b[0] + ty * o->b[1];
+				if ( MIN( oa, ob ) > MAX( wa, wb ) + 2.0f || MAX( oa, ob ) < MIN( wa, wb ) - 2.0f ) {
+					continue;   // same line, but a gap between them
+				}
+				lo = MIN( MIN( wa, wb ), MIN( oa, ob ) );
+				hi = MAX( MAX( wa, wb ), MAX( oa, ob ) );
+				w->a[0] = w->n[0] * w->d + tx * lo; w->a[1] = w->n[1] * w->d + ty * lo;
+				w->b[0] = w->n[0] * w->d + tx * hi; w->b[1] = w->n[1] * w->d + ty * hi;
+				w->weight = MIN( w->weight, o->weight );
+				*o = vk.waterWalls[ --vk.numWaterWalls ];
+				j--;
+				merged++;
+			}
+		}
+	} while ( merged );
+
+	Com_Memset( perPlane, 0, sizeof( perPlane ) );
+	for ( i = 0; i < vk.numWaterWalls; ) {
+		const vkWaterWall_t *w = &vk.waterWalls[i];
+		if ( hypotf( w->b[0] - w->a[0], w->b[1] - w->a[1] ) < VK_WATER_WALL_MIN ) {
+			vk.waterWalls[i] = vk.waterWalls[ --vk.numWaterWalls ];   // a post, not a shore
+			continue;
+		}
+		perPlane[ w->plane ]++;
+		i++;
+	}
+
+	for ( j = 0; j < vk.numWaterPlanes; j++ ) {
+		ri.Printf( PRINT_ALL, "  %2i: %i wall(s) for ripples to bounce off\n", j, perPlane[j] );
+	}
+	if ( full ) {
+		ri.Printf( PRINT_WARNING, "Water: hit the ceiling of %i wall faces - some ripples will not "
+			"bounce\n", VK_MAX_WATER_WALLS );
+	}
+}
+
+
+/*
+=================
 vk_find_water_planes
 
 [QL] The distinct liquid planes in the map, collected once at load.
@@ -3861,6 +4029,8 @@ void vk_find_water_planes( const world_t *world )
 		ri.Printf( PRINT_WARNING, "Water: hit the ceiling of %i planes - some water will not "
 			"reflect\n", VK_MAX_WATER_PLANES );
 	}
+
+	vk_find_water_walls( world );
 }
 
 
@@ -11067,6 +11237,33 @@ void vk_bind_descriptor_sets( void )
 
 	end = vk.cmd->descriptor_set.end;
 
+	/*
+	[QL] E145. Never hand the driver a null set at either end of the range.
+
+	The gap fill below only ever covered the slots strictly between start and
+	end, which was enough while the range grew only from real updates - a slot
+	joined it by being given a set. vk_rt_ao and vk_ssr mark the whole range
+	dirty to repair what their own layouts clobbered, and then an end slot is
+	whatever it happens to hold: the fog slot is empty for most of a frame and
+	the uniform slot is reset per frame. The validation layer counted 216
+	bindings of VK_NULL_HANDLE in a two-minute run (VUID-vkCmdBindDescriptorSets
+	-pDescriptorSets-06563), plus a dynamic offset for a uniform set that was
+	not there (-dynamicOffsetCount-00359). Mesa shrugs; a null handle is
+	exactly the kind of thing a stricter driver dereferences.
+
+	An empty slot has nothing to restore, so trim it off rather than invent a
+	binding for it.
+	*/
+	while ( start <= end && vk.cmd->descriptor_set.current[ start ] == VK_NULL_HANDLE )
+		start++;
+	while ( end > start && vk.cmd->descriptor_set.current[ end ] == VK_NULL_HANDLE )
+		end--;
+	if ( start > end ) {
+		vk.cmd->descriptor_set.end = 0;
+		vk.cmd->descriptor_set.start = ~0U;
+		return;
+	}
+
 	offset_count = 0;
 	if ( /*start == VK_DESC_STORAGE || */ start == VK_DESC_UNIFORM ) { // uniform offset or storage offset
 		offsets[ offset_count++ ] = vk.cmd->descriptor_set.offset[ start ];
@@ -11247,6 +11444,34 @@ can use vk.framebuffers.main despite referencing depth read-only.
 static void vk_begin_rtao_render_pass( void )
 {
 	VkFramebuffer frameBuffer = vk.framebuffers.main[ vk.cmd->swapchain_image_index ];
+	VkMemoryBarrier barrier;
+
+	/*
+	[QL] E145. What this pass's own subpass dependencies used to say - see
+	vk_create_rtao_render_pass for why they could not stay there.
+
+	Depth: the main pass's depth writes must be visible before the composite
+	samples depth. A layout transition is not synchronisation; without this a
+	tile or two of stale depth shows as noise in a fixed corner of the screen,
+	which is how it was found the first time.
+
+	Colour: what the scene and the offscreen passes wrote must land before this
+	pass loads, blends into, or samples it. Not by-region, for the same reason
+	as before - a denoise reads its neighbours.
+
+	Outside any render pass, so a plain global barrier and no layout change;
+	the images are in the layouts their passes left them in.
+	*/
+	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	barrier.pNext = NULL;
+	barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	qvkCmdPipelineBarrier( vk.cmd->command_buffer,
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		0, 1, &barrier, 0, NULL, 0, NULL );
 
 	/* Deliberately not setting vk.renderPassIndex: that selects which cached
 	   pipeline variant the generic geometry path binds, and this pass binds one
@@ -12433,10 +12658,84 @@ typedef struct {
 	float wave2[4];       // height in units, foam; z..w spare
 	float rippleTune[4];  // [QL] R28: life, waves, height scale, size scale
 	float ripple[SSR_MAX_RIPPLES][4];    // xy where, z age, w reach
-	float ripple2[SSR_MAX_RIPPLES][4];   // x strength, y plane index
+	float ripple2[SSR_MAX_RIPPLES][4];   // x strength, y plane index, z bounce, w walls
+	float ripple3[SSR_MAX_RIPPLES][4];   // [QL] E144: mirror images 0 and 1, xy xy
+	float ripple4[SSR_MAX_RIPPLES][4];   // [QL] E144: mirror images 2 and 3
+	float ripple5[SSR_MAX_RIPPLES][4];   // [QL] E144: how much each image sends back
 	float emitter[SSR_MAX_LIGHTS][4];    // xyz world, w radius
 	float emitter2[SSR_MAX_LIGHTS][4];   // rgb colour, a intensity
 } ssrUniform_t;
+
+/*
+[QL] E144. The walls a ripple bounces off, as mirror images of its centre.
+
+Up to VK_MAX_RIPPLE_WALLS of its water's wall faces (vk_find_water_walls),
+nearest first, that it faces (the impact on the water side of the wall), that
+its rings can reach and come back from (within half its reach), and that are
+really there opposite it - the foot of the perpendicular from the impact
+lands on the wall's shoreline segment. A wall section beside the pool but not across
+from the splash is not what the wave hits. Two faces on the same line (a wall
+split into panels) are one wall.
+*/
+static void vk_ripple_walls( const float *c, float reach, int plane, ssrUniform_t *u, int slot )
+{
+	float best[ VK_MAX_RIPPLE_WALLS ][4];   // s, image x, image y, weight
+	int n = 0, i, j, k;
+
+	for ( i = 0; i < vk.numWaterWalls; i++ ) {
+		const vkWaterWall_t *w = &vk.waterWalls[i];
+		float s, fx, fy;
+
+		if ( w->plane != plane ) {
+			continue;
+		}
+		s = w->n[0] * c[0] + w->n[1] * c[1] - w->d;
+		if ( s <= 0.5f || s > reach * 0.5f ) {
+			continue;   // behind it, or too far for anything to come back
+		}
+		/* where the perpendicular from the splash lands, along the wall's
+		   segment - on it, or within a few units of an end */
+		fx = -w->n[1] * ( c[0] - w->a[0] ) + w->n[0] * ( c[1] - w->a[1] );
+		fy = -w->n[1] * ( w->b[0] - w->a[0] ) + w->n[0] * ( w->b[1] - w->a[1] );
+		if ( fx < MIN( 0.0f, fy ) - 8.0f || fx > MAX( 0.0f, fy ) + 8.0f ) {
+			continue;   // not the stretch of shore across from the splash
+		}
+		for ( j = 0; j < n; j++ ) {
+			if ( fabsf( best[j][0] - s ) < 4.0f &&
+				 fabsf( best[j][1] - ( c[0] - 2.0f * s * w->n[0] ) ) < 4.0f &&
+				 fabsf( best[j][2] - ( c[1] - 2.0f * s * w->n[1] ) ) < 4.0f ) {
+				break;  // the same wall again
+			}
+		}
+		if ( j < n ) {
+			continue;
+		}
+		if ( n < VK_MAX_RIPPLE_WALLS ) {
+			j = n++;
+		} else {
+			j = 0;
+			for ( k = 1; k < n; k++ ) {
+				if ( best[k][0] > best[j][0] ) {
+					j = k;
+				}
+			}
+			if ( best[j][0] <= s ) {
+				continue;
+			}
+		}
+		best[j][0] = s;
+		best[j][1] = c[0] - 2.0f * s * w->n[0];
+		best[j][2] = c[1] - 2.0f * s * w->n[1];
+		best[j][3] = w->weight;
+	}
+	for ( i = 0; i < n; i++ ) {
+		float *dst = i < 2 ? u->ripple3[slot] : u->ripple4[slot];
+		dst[( i & 1 ) * 2 + 0] = best[i][1];
+		dst[( i & 1 ) * 2 + 1] = best[i][2];
+		u->ripple5[slot][i] = best[i][3];
+	}
+	u->ripple2[slot][3] = (float)n;
+}
 
 static qboolean ssrReported = qfalse;
 static int ssrRippleReport = 0;   /* [QL] rate limit for the drop report below */
@@ -13157,6 +13456,9 @@ qboolean vk_ssr( void )
 			   big wave does (RIPPLE_REFLECT_MIN), see rippleSurface */
 			u->ripple2[count][2] = rp->strength >= RIPPLE_REFLECT_MIN ? r_waterRippleReflect->value : 0.0f;
 			u->ripple2[count][3] = 0.0f;
+			if ( u->ripple2[count][2] > 0.0f ) {
+				vk_ripple_walls( rp->origin, u->ripple[count][3], best, u, count );
+			}
 			count++;
 		}
 

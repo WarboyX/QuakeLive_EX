@@ -1917,6 +1917,14 @@ static void CG_RegisterGraphics(void) {
 
     cgs.media.deferShader = trap_R_RegisterShaderNoMip("gfx/2d/defer.png");
 
+    /* [QL] E145. cg_vignette drew this handle and nothing ever registered it,
+       so it was 0 - the renderer's default shader, the small grey square with a
+       light border, stretched over the whole screen opaque. That was the
+       tester's "enabling vignette is borked". gfx/misc/vignette is Quake
+       Live's own script shader (gfx.shader: one stage, blendfunc blend over
+       gfx/misc/vignette, which pak00 ships as .png). */
+    cgs.media.vignetteShader = trap_R_RegisterShaderNoMip("gfx/misc/vignette");
+
     /* [QL] menu/tab/{name,ping,score,time}.tga were the Quake 3 scoreboard's
        column headings. Quake Live has no menu/tab/ at all, and the only code
        that drew them is CG_DrawOldScoreboard, which nothing has called since the

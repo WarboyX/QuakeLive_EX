@@ -346,6 +346,34 @@ typedef struct {
 	float maxs[3];
 } vkWaterPlane_t;
 
+/*
+[QL] E144. The sides of the pools, from the level geometry.
+
+A water brush is usually bigger than the pool it fills - it runs on under the
+decking and into the walls - so its bounds are not where the water stops. The
+walls are: every drawn, solid face of the map, a sheer wall or a sloping bank,
+that crosses a water surface's height beside it. Each is kept as a line in the
+water's plane (n.x*x + n.y*y = d, n pointing out of the wall into the water)
+and the segment of it that is actually there - where the face cuts the water's
+height - so a ripple bounces off the stretch of shore that is opposite it and
+not off the far end of a long face's box. Panels of one wall are merged into
+one segment, and anything shorter than VK_WATER_WALL_MIN after that - a post,
+a rock standing in the pond - is dropped: an obstacle that small scatters a
+wave, it does not mirror it.
+*/
+#define VK_MAX_WATER_WALLS 4096
+#define VK_MAX_RIPPLE_WALLS 4
+#define VK_WATER_WALL_MIN 24.0f
+
+typedef struct {
+	float n[2];
+	float d;
+	float a[2];     // the shoreline segment, a to b
+	float b[2];
+	float weight;   // how much of a wave it sends back: 1 a sheer wall, less a sloping bank
+	int plane;
+} vkWaterWall_t;
+
 /* The function is declared next to vk_rt_build_world, below the forward
    declaration of struct world_s. Declaring it here would put the tag in this
    prototype's own scope, which makes it a different type from the real one and
@@ -840,6 +868,8 @@ typedef struct {
 	/* [QL] the map's water planes - see vk_find_water_planes */
 	vkWaterPlane_t	waterPlanes[ VK_MAX_WATER_PLANES ];
 	int				numWaterPlanes;
+	vkWaterWall_t	waterWalls[ VK_MAX_WATER_WALLS ];	// [QL] E144
+	int				numWaterWalls;
 
 	/*
 	[QL] R19: screen-space reflections on those planes.
