@@ -52,7 +52,7 @@ ROWS_Y = PANEL_Y + 32
 VK = ('cvarTest "cl_renderer"  showCvar { "vulkan" }')
 GL = ('cvarTest "cl_renderer"  hideCvar { "vulkan" }')
 
-# The four pages, by suffix. Each is generated twice (E125):
+# The five pages, by suffix. Each is generated twice (E125):
 #   main   io_<suffix>     from the main menu's RENDER entry. CLOSE closes it and
 #                          the main menu is underneath.
 #   ingame io_igr_<suffix> from the in-game Advanced page. It REPLACES the
@@ -65,6 +65,7 @@ TABS = [
     ("renderoptions", "Render Options"),
     ("raytracing",    "Lighting & Ray Tracing"),
     ("water",         "Water"),
+    ("splashes",      "Splashes"),   # [QL] E147: IMPACTS, split off Water
     ("surfacedetail", "Surface Detail"),
 ]
 
@@ -405,10 +406,16 @@ def render_options():
         ("yesno", "r_bloom", "Bloom", None, "vk"),
         ("yesno", "r_flares", "Lens flares", None),
         ("h", "POST PROCESSING"),
+        # [QL] E147. r_fbo had no row anywhere and defaults to 0, so bloom and
+        # the whole water pass were off for anyone who had not found it in the
+        # console. It takes the slot of a "Post processing" row bound to
+        # r_postProcess, which nothing registers or reads - that switch did
+        # nothing. What it is for goes in the label: the page has no room for
+        # a help line (the generator stops at the panel's edge).
         ("alt",
-         [("multi", "r_rts", "Real-time shading",
-           '"Off (default)" 0 "On, float target" 1 "On, packed float" 2', "vk"),
-          ("yesno", "r_postProcess", "Post processing", None, "vk")],
+         [("yesno", "r_fbo", "Post-processing (bloom, water)", None, "vk"),
+          ("multi", "r_rts", "Real-time shading",
+           '"Off (default)" 0 "On, float target" 1 "On, packed float" 2', "vk")],
          [("yesno", "r_hdr", "HDR framebuffer", None, "gl"),
           ("yesno", "r_toneMap", "Tonemapping", None, "gl")]),
     ]
@@ -453,6 +460,16 @@ def raytracing():
     return page(name("raytracing"), "LIGHTING & RAY TRACING", spec, [reset, APPLY_BTN, CLOSE])
 
 
+# [QL] E147. Water reflections, waves and splashes are all the one reflection
+# pass, and it runs only with r_fbo on and ray query active. Neither was said
+# anywhere near these settings, so every row did nothing and nothing explained
+# why - r_fbo had no menu row at all. Shown only while one of them is off.
+WATER_NEEDS = [
+    ("help", "Off: needs Post-processing (Render Options) on. Needs APPLY.", None, ("r_fbo", "0")),
+    ("help", "Off: needs ray query (Lighting & Ray Tracing) active.", None, ("r_rtActive", "0")),
+]
+
+
 def water():
     # [QL] R19. Screen space: only what is on screen can be reflected, so a wall
     # behind you never appears in the water. The trace fades toward the screen
@@ -465,6 +482,7 @@ def water():
     # bigger than a pellet. E124: 4/4 with foam off is the baseline.
     spec = [
         ("h", "REFLECTION"),
+        *WATER_NEEDS,
         ("multi", "r_ssr", "Water reflections", '"Off (default)" 0 "Subtle" 0.35 "Half" 0.5 "Full" 1'),
         ("multi", "r_ssrDistance", "Trace distance", '"512 (near)" 512 "1024 (default)" 1024 "2048" 2048 "4096 (far)" 4096'),
         ("multi", "r_ssrSteps", "Trace steps", '"16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128'),
@@ -480,6 +498,18 @@ def water():
         ("multi", "r_waterWaveHeight", "Height", '"0 (flat)" 0 "1" 1 "2 (default)" 2 "4" 4 "8 (swell)" 8'),
         ("multi", "r_waterWaveScale", "Wavelength", '"48 (fine)" 48 "96 (default)" 96 "192" 192 "384 (broad)" 384'),
         ("multi", "r_waterWaveSpeed", "Speed", '"0 (frozen)" 0 "0.5 (slow)" 0.5 "1 (default)" 1 "2 (fast)" 2'),
+    ]
+    reset = reset_button(spec)
+    return page(name("water"), "WATER", spec, [reset, CLOSE])
+
+
+def splashes():
+    # [QL] E147. IMPACTS moved here from Water: the requirement notes need two
+    # lines at the top of both, and Water had no room left (the generator stops
+    # at the panel's edge). Every impact value is still a multiplier on what
+    # the weapon asked for - see water().
+    spec = [
+        *WATER_NEEDS,
         ("h", "IMPACTS (SPLASHES)"),
         ("multi", "r_waterRippleSize", "Splash size",
          '"1 (small)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (wide)" 8 "12" 12 "16 (huge)" 16'),
@@ -491,7 +521,7 @@ def water():
         ("multi", "r_waterFoam", "Foam", '"Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2'),
     ]
     reset = reset_button(spec)
-    return page(name("water"), "WATER", spec, [reset, CLOSE])
+    return page(name("splashes"), "SPLASHES", spec, [reset, CLOSE])
 
 
 def surface_detail():
@@ -670,7 +700,7 @@ def main():
     pages = ""
     for key in ("main", "ingame"):
         V = VARIANTS[key]
-        pages += render_options() + raytracing() + water() + surface_detail()
+        pages += render_options() + raytracing() + water() + splashes() + surface_detail()
     block = (BEGIN
              + "    // Generated - edit tools/gen-render-menu.py, not this block.\n"
              + pages

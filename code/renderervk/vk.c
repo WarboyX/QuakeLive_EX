@@ -13449,8 +13449,40 @@ qboolean vk_ssr( void )
 			/* [QL] R28: scaled here rather than in the shader so the reach the
 			   shader tests against and the reach it draws are the same number */
 			u->ripple[count][3] = rp->radius * rippleSize;
-
 			u->ripple2[count][0] = rp->strength;
+
+			/*
+			[QL] E147. No further than the water it landed in.
+
+			A rocket's ring reaches 880 units at the default size, and the flag
+			room pools are 288 x 136: one ring was wider than the whole pool,
+			so a bounce could only make the pool heave as one - the wall's echo
+			lay almost exactly on top of the wave that made it, and E144's
+			walls, while correct, had nothing visible to show. Everything past
+			the water's edge is never drawn anyway.
+
+			So a ripple reaches at most 1.5 times the distance to the far corner
+			of its water's footprint, and its strength is scaled down by the
+			same factor. The slope - which is what you see - goes as strength
+			over reach, so it stays exactly what the ripple height settings
+			make it; what changes is that the rings are tight enough to cross
+			the pool, hit a wall and come back. Large water is untouched: the
+			garden ponds' footprints already exceed a rocket's reach. Whether a
+			wave is big enough to bounce is still judged on what cgame asked
+			for, not on the scaled figure.
+			*/
+			{
+				const vkWaterPlane_t *wp = &vk.waterPlanes[ best ];
+				float fx = MAX( fabsf( rp->origin[0] - wp->mins[0] ), fabsf( rp->origin[0] - wp->maxs[0] ) );
+				float fy = MAX( fabsf( rp->origin[1] - wp->mins[1] ), fabsf( rp->origin[1] - wp->maxs[1] ) );
+				float limit = MAX( 1.5f * sqrtf( fx * fx + fy * fy ), 32.0f );
+
+				if ( u->ripple[count][3] > limit ) {
+					u->ripple2[count][0] *= limit / u->ripple[count][3];
+					u->ripple[count][3] = limit;
+				}
+			}
+
 			u->ripple2[count][1] = (float)best;
 			/* [QL] E142: how much of it bounces off the pool's sides - only a
 			   big wave does (RIPPLE_REFLECT_MIN), see rippleSurface */

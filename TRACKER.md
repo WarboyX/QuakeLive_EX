@@ -6048,6 +6048,33 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E147. Post-processing (r_fbo) in the menu; ripple bounce made visible — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+*"r_ssrdebug does literally nothing"* → *"water shader works after changing fbo to 1, but we need a clear menu option for it"* → *"the water ripple deflection doesnt seem to be working still, I tried flag room and garden areas."*
+
+**r_fbo had no menu row.** It defaults to 0 and latches. The whole water pass (reflection, waves, splashes, bounce) and bloom need it, so for anyone who had not set it in the console every water row and the Bloom row did nothing, with nothing saying why. `r_ssrDebug 3`/`4`, which paint the whole screen when the pass runs, were the proof that it was not running.
+- **New row:** "Post-processing (bloom, water)", Render Options → POST PROCESSING, latched (APPLY).
+- **Dead row removed:** it takes the slot of a "Post processing" row bound to `r_postProcess`, which nothing registers or reads - a switch that did nothing.
+- **Status notes:** Water and the new Splashes page open with a gold note shown only while `r_fbo` is 0 ("needs Post-processing (Render Options) on"), and another while ray query is not active.
+- **Water split:** its IMPACTS section is now the **Splashes** tab. Water had no room for the notes; the generator stops at the panel's edge.
+- Checked by screenshot of all three pages, with the note showing at `r_fbo 0`.
+
+**The bounce was working and could not be seen.** Traced with a test splash of rocket size in the red flag pool:
+- the splash arrives at strength 4.0, qualifies to bounce, and finds all 4 walls;
+- the first mirror image lands exactly across the east wall.
+
+So the E144 data reaches the shader correctly. The trouble is scale. At the default `r_waterRippleSize 4` a rocket ring reaches 880 units, with rings about 176 apart, and the pool is 288 x 136. One ring was wider than the pool, so the echo lay almost exactly on the outgoing wave and the pool only heaved as a whole (simulated from the real map at real settings: no visible echo).
+
+**Fix (`vk.c`, where ripples are packed):**
+- A ripple now reaches at most 1.5 x the distance from the splash to the far corner of its water's footprint.
+- When capped, its strength is scaled by the same factor. The visible slope goes as strength / reach, so the ripple height settings mean what they did.
+- The rings become tight enough to cross the pool, hit a wall and come back. The simulation shows echoes off all four walls crossing inside the pool.
+- Large water is unaffected: a garden pond's footprint already exceeds a rocket's reach.
+- Whether a wave may bounce is still judged on the strength cgame asked for.
+
+Not seen in the client here: the visual pass has no water art.
+
 ### E146. "Simple" shadows did nothing; muzzle-flash light slider — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus, cgame) · **Seen by:** our client only
 
