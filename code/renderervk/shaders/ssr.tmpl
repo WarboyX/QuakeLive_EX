@@ -266,14 +266,22 @@ void rippleRing(vec2 p, vec2 c, float age, float reach, float strength,
 	impact read as an impact rather than as the water suddenly vibrating
 	everywhere at once.
 	*/
-	/* [QL] E141. Fast at first, slowing as it goes: an ease-out, not a
-	   constant speed. The front leaves the impact at three times its
-	   average speed and comes to rest at `reach` exactly at the end of its
-	   life, so r_waterRippleLife still means what it says. At a constant
-	   speed the rings crawled out of a fresh splash and then arrived at the
-	   edge as fast as they had started, which is not how water moves. */
+	/* [QL] E142. Each ring slows as its own radius grows - not the whole
+	   pattern slowing with age. E141 eased the front out over the ripple's
+	   life, which moved every ring together, so a fresh ring near the centre
+	   slowed as much as the leading edge and the animation simply ran down
+	   after a cycle or two.
+
+	   Instead the wave travels at a steady rate through a stretched distance,
+	   u = x + x*x with x = d / reach (0 to 2 over the ripple). Where a ring
+	   is, dd/dt is proportional to 1 / (1 + 2x): full speed at the impact, a
+	   third of it at the edge, whatever the ripple's age - and rings bunch up
+	   as they slow, as real ones do. The front crosses u at a steady rate and
+	   reaches `reach` exactly at the end of its life, so r_waterRippleLife
+	   still means what it says. */
 	float t = clamp(age / RIPPLE_LIFE, 0.0, 1.0);
-	float front = (1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t)) * reach;
+	float xf = (sqrt(1.0 + 8.0 * t) - 1.0) * 0.5;     // u(xf) = 2t
+	float front = xf * reach;
 	if (d > front) {
 		return;                 // it has not arrived here yet
 	}
@@ -287,7 +295,11 @@ void rippleRing(vec2 p, vec2 c, float age, float reach, float strength,
 	float amp = strength * rippleTune.z * fade * falloff * falloff * trail;
 
 	float k = RIPPLE_WAVES * 6.2831853 / reach;
-	float phase = (d - front) * k;
+	float x = d / reach;
+	/* the phase runs in u, halved so RIPPLE_WAVES rings still span the
+	   ripple (u covers 0 to 2); the slope below needs du/dd = 1 + 2x */
+	float phase = ((x + x * x) - (xf + xf * xf)) * reach * k * 0.5;
+	float dudd = (1.0 + 2.0 * x) * 0.5;
 
 	h += amp * sin(phase);
 
@@ -328,7 +340,7 @@ void rippleRing(vec2 p, vec2 c, float age, float reach, float strength,
 		So size changes size and height changes strength. At the default
 		of 1 this multiplies by 1 and nothing moves.
 		*/
-		grad += ((p - c) / d) * amp * k * cos(phase) * RIPPLE_SLOPE * rippleTune.w;
+		grad += ((p - c) / d) * amp * k * dudd * cos(phase) * RIPPLE_SLOPE * rippleTune.w;
 	}
 }
 

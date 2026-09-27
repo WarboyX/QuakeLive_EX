@@ -6048,6 +6048,25 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E143. Ripples slow with radius, not with age — DONE (verify)
+**Lives in:** our **client** (Vulkan renderer) · **Seen by:** our client only
+
+*"The ripple gradient... is not working as intended. It slows the animation after a few cycle repeats. Not on the rings themselves"* and *"as the radius of a single ripple gets bigger, it should also slow."*
+
+**The bug.** E141 eased the front out over the ripple's life, and the rings are locked to the front. So every ring slowed together with age: a fresh ring beside the impact slowed as much as the leading edge, and late in a ripple's life the inner rings stood still. That was the animation running down.
+
+**The fix.** The wave now travels at a steady rate through a stretched distance, u = x + x² with x = d / reach (`rippleRing`, `ssr.tmpl`).
+- Wherever a ring is, its speed goes as 1 / (1 + 2x): full at the impact, a third at the edge, at any age. Rings bunch up as they slow.
+- The phase runs in u, so each ring keeps its own speed rather than borrowing the front's.
+- The slope carries du/dd.
+- The front still reaches `reach` exactly at the end of the ripple's life.
+
+**Checked** with a space-time plot of a Python port of both versions (radius across, time down):
+- before: the crests near the centre turn vertical, i.e. stationary, late in the ripple;
+- after: every crest keeps moving, shallow (fast) near the impact and steepening (slower) outwards.
+
+Not yet watched in the client, for the reason E142 gives.
+
 ### E142. Big ripples bounce off the sides of the pool — DONE (verify)
 **Lives in:** our **client** (Vulkan renderer, pak01) · **Seen by:** our client only
 
