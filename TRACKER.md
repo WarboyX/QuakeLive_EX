@@ -6048,6 +6048,31 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E140. Close range: a gun, not a launcher — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"If the bot wants to fire but it's close range, switch to a close range weapon. Something to reduce self kills."*
+
+**The problem.** E139's check held a splash shot that would kill the bot, but own-rocket deaths only fell from 298 to 273. The rest come from shooting a launcher at close range at all, where every miss lands at the bot's feet. The fuzzy weapon weights do not look at range.
+
+**The change.** `BotCloseRangeWeapon`, applied to every fight-weapon choice:
+- If the enemy is within 250 u and the choice is a rocket, grenade, BFG or proximity launcher, the bot takes the best close-range gun it has ammo for.
+- The order is shotgun, lightning gun, chaingun, machine gun, plasma, nailgun, railgun.
+- It goes back to the weights' choice only once the enemy is past 350 u, so it does not swap at the boundary every think.
+
+**Result** (standard CTF, 12 matches each, D10 skills):
+
+| | E139 | E140 |
+|---|---|---|
+| bots killing themselves | 6.9% of deaths | **4.1%** |
+| own-rocket deaths | 273 | **108** |
+| shotgun kills | 652 | 909 |
+| rocket-splash kills (all) | 1,556 | 900 |
+| grabs per match | 15.1 | 15.2 |
+
+- Captures went 0.75 → 0.58 per match, within noise at twelve.
+- Instagib is untouched: the railgun is the only weapon.
+
 ### E139. Bot skill 1-10 on a D10; chat budget for humans; defender cap; self-splash — DONE (verify)
 **Lives in:** our **server** (qagame) and our **client** (ui) · **Seen by:** every client (bots, chat); our client only (add-bot menu)
 

@@ -2054,6 +2054,74 @@ int BotSynonymContext(bot_state_t* bs) {
 BotChooseWeapon
 ==================
 */
+/*
+==================
+BotCloseRangeWeapon
+
+[QL] E140. Not a splash weapon with the enemy in its face.
+
+5.5% of all deaths in standard CTF at 30 a side were bots killing
+themselves, most with their own rocket. E139 held a shot whose blast would
+kill the bot, which took own-rocket deaths from 298 to 273 - the rest come
+from shooting a launcher at close range at all, where every miss lands at
+the bot's feet. The fuzzy weapon weights do not look at range, so a bot with
+a rocket launcher keeps it for a fight at arm's length.
+
+So: enemy within CLOSEWEAPON_NEAR and the choice is a rocket, grenade, BFG or
+proximity launcher - take the best close-range gun it has ammo for, in the
+order below. It goes back to the weights' choice only past CLOSEWEAPON_FAR, so
+it does not swap at the boundary every think.
+==================
+*/
+#define CLOSEWEAPON_NEAR 250.0f
+#define CLOSEWEAPON_FAR 350.0f
+
+static int BotCloseRangeWeapon(bot_state_t* bs, int chosen) {
+    static const int order[][3] = {
+        // weapon, inventory weapon, inventory ammo
+        {WEAPONINDEX_SHOTGUN, INVENTORY_SHOTGUN, INVENTORY_SHELLS},
+        {WEAPONINDEX_LIGHTNING, INVENTORY_LIGHTNING, INVENTORY_LIGHTNINGAMMO},
+        {WEAPONINDEX_CHAINGUN, INVENTORY_CHAINGUN, INVENTORY_BELT},
+        {WEAPONINDEX_MACHINEGUN, INVENTORY_MACHINEGUN, INVENTORY_BULLETS},
+        {WEAPONINDEX_PLASMAGUN, INVENTORY_PLASMAGUN, INVENTORY_CELLS},
+        {WEAPONINDEX_NAILGUN, INVENTORY_NAILGUN, INVENTORY_NAILS},
+        {WEAPONINDEX_RAILGUN, INVENTORY_RAILGUN, INVENTORY_SLUGS},
+    };
+    aas_entityinfo_t entinfo;
+    float dist;
+    int i;
+
+    if (!bot_tactics.integer) {
+        return chosen;
+    }
+    if (chosen != WEAPONINDEX_ROCKET_LAUNCHER && chosen != WEAPONINDEX_GRENADE_LAUNCHER &&
+        chosen != WEAPONINDEX_BFG && chosen != WEAPONINDEX_PROXLAUNCHER) {
+        bs->tac.closeweapon = qfalse;
+        return chosen;
+    }
+    if (bs->enemy < 0 || bs->enemy >= MAX_CLIENTS) {
+        bs->tac.closeweapon = qfalse;
+        return chosen;
+    }
+    BotEntityInfo(bs->enemy, &entinfo);
+    if (!entinfo.valid) {
+        bs->tac.closeweapon = qfalse;
+        return chosen;
+    }
+    dist = Distance(bs->origin, entinfo.origin);
+    if (dist > (bs->tac.closeweapon ? CLOSEWEAPON_FAR : CLOSEWEAPON_NEAR)) {
+        bs->tac.closeweapon = qfalse;
+        return chosen;
+    }
+    for (i = 0; i < (int)ARRAY_LEN(order); i++) {
+        if (bs->inventory[order[i][1]] > 0 && bs->inventory[order[i][2]] > 0) {
+            bs->tac.closeweapon = qtrue;
+            return order[i][0];
+        }
+    }
+    return chosen;  // nothing else to use
+}
+
 void BotChooseWeapon(bot_state_t* bs) {
     int newweaponnum;
 
@@ -2062,6 +2130,7 @@ void BotChooseWeapon(bot_state_t* bs) {
         trap_EA_SelectWeapon(bs->client, bs->weaponnum);
     } else {
         newweaponnum = trap_BotChooseBestFightWeapon(bs->ws, bs->inventory);
+        newweaponnum = BotCloseRangeWeapon(bs, newweaponnum);
         if (bs->weaponnum != newweaponnum)
             bs->weaponchange_time = FloatTime();
         bs->weaponnum = newweaponnum;
