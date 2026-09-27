@@ -948,8 +948,14 @@ SUBPAGES = [
         ("multi",  "r_overbrightBits",    "Overbright"),
         ("multi",  "r_mapOverbrightBits", "Map overbright"),
         ("yesno",  "r_dynamicLight",      "Dynamic lights"),
+        # E146: MG / HMG / PG muzzle-flash light brightness, ours
+        ("slider", "cg_muzzleFlashLight", "Rapid-fire flash light", ("1", "0", "1")),
+        # E146: the values are the renderer's, not an order of quality -
+        # 2 is the stencil volume path (tr_shadows.c RB_ShadowTessEnd) and 3
+        # the flat projection (deformVertexes projectionShadow). The labels
+        # had 2 and 3 swapped, so "Simple" chose stencil.
         ("multi",  "cg_shadows",          "Shadows",
-                   '"Off" 0 "Blob" 1 "Simple" 2 "Stencil" 3'),
+                   '"Off" 0 "Blob" 1 "Stencil" 2 "Simple" 3'),
         ("yesno",  "cg_deadBodyDarken",   "Darken dead bodies"),
         ("yesno",  "cg_vignette",         "Vignette"),
     ], None),

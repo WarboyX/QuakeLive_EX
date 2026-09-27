@@ -6048,6 +6048,33 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E146. "Simple" shadows did nothing; muzzle-flash light slider — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus, cgame) · **Seen by:** our client only
+
+*"Simple shadows do not work (predates previous builds)"* / *"theres 3 shadow options in game, blob, stencil, and simple"*
+
+**Two bugs, one on top of the other.**
+1. **The menu labels were swapped.** Our Shadows row read `"Off" 0 "Blob" 1 "Simple" 2 "Stencil" 3`, but in the renderer 2 is Quake 3's stencil-volume path and 3 is the flat projected shadow (`projectionShadow`, which pak00 ships in gfx.shader). So "Simple" selected stencil, and "Stencil" was the projection, which worked. Now `"Stencil" 2 "Simple" 3` (`tools/gen-ingame-menu.py`, regenerated).
+2. **Stencil could never have worked on Vulkan.**
+   - `VKimp_Init` never filled in `colorBits`/`depthBits`/`stencilBits`; the GL path gets them from SDL. Every log reads `PIXELFORMAT: color(0-bits) Z(0-bit) stencil(0-bits)`, the tester's included.
+   - With `stencilBits` 0, `get_depth_format` chose a depth format without stencil, stencil clears were skipped, and `RB_ShadowTessEnd`/`RB_ShadowFinish` both returned at `stencilBits < 4`.
+   - **Fix:** they are now set to 32/24/8, which is what `get_depth_format` asks for first (D24S8, then D32S8).
+   - The depth view that RT AO and SSR sample is created depth-aspect only, so a stencil-bearing format is safe there.
+
+Not seen drawn here: without Quake Live's player models nothing casts a shadow in the visual pass. Checked:
+- the labels against the renderer's own tests (`r_shadows == 2` stencil, `== 3` projection);
+- `markShadow` and `projectionShadow` both exist in pak00's gfx.shader;
+- the stencil gate now passes.
+
+**Muzzle-flash light.** *"a slider with cvar for the dynamic lighting muzzle flashes for the machine gun / heavy machinegun / plasma gun"*
+- New `cg_muzzleFlashLight`, ours, 0 to 1, default 1 (unchanged), `CVAR_ARCHIVE | CVAR_NODEFAULT` so the default is not stamped into configs.
+- It scales the brightness of the flash dlight (not its radius) for `WP_MACHINEGUN`, `WP_HMG` and `WP_PLASMAGUN`, for every player's flashes. At 0 no light is added.
+- Other weapons are untouched. `cg_muzzleFlash 0` still turns the local player's flash light off entirely, as in Quake Live.
+- Slider "Rapid-fire flash light" on the in-game LIGHTING tab and the render options' DYNAMIC LIGHTS section.
+- The plasma **ball's** own travelling light (`missileDlight` 100) is not a muzzle flash and is not affected.
+
+Not seen in the client: the flash light is placed on the weapon model's `tag_flash`, and without pak00's models the weapon is never drawn in the visual pass.
+
 ### E145. Tester crash on NVIDIA with RT AO + bloom; vignette drew a grey box — DONE (verify)
 **Lives in:** our **client** (Vulkan renderer; cgame for the vignette) · **Seen by:** our client only
 

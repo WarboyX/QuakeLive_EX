@@ -541,6 +541,9 @@ def surface_detail():
         ("multi", "r_dlightMode", "Dynamic lights", '"Off surfaces" 0 "On surfaces" 1 "With shadows" 2'),
         ("yesno", "cg_beamLights", "Beam weapon lights", None),
         ("help", "A rail or lightning beam lights the corridor it crosses."),
+        # [QL] E146. cg_muzzleFlashLight, ours: 0 none, 1 as before.
+        ("slider", "cg_muzzleFlashLight", "Rapid-fire flash light", ("1", "0", "1")),
+        ("help", "Machine gun, heavy MG and plasma muzzle-flash light."),
         ("alt", vk_rows, gl_rows),
         # [QL] E113. r_ambientScale is CVAR_CHEAT - it lifts models standing in
         # shadow - so outside sv_cheats 1 the write is refused. It stays because

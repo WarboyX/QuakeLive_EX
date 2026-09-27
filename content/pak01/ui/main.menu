@@ -1572,31 +1572,44 @@
         itemDef { name r_rdynamiclight  type ITEM_TYPE_YESNO  text ""  cvar "r_dynamicLight"
                   rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Shadows"  textscale .21  rect 24 108 246 16  textaligny 13
+        itemDef { text "Rapid-fire flash light"  textscale .21  rect 24 108 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_cgmuzzleflashlight  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_muzzleFlashLight" 1 0 1
+                  rect 290 108 96 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name r_cgmuzzleflashlightv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_muzzleFlashLight"
+                  maxchars 7  maxpaintchars 7
+                  rect 398 108 56 16  textscale .19  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Shadows"  textscale .21  rect 24 125 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgshadows  type ITEM_TYPE_MULTI  text ""  cvar "cg_shadows"
-                  cvarFloatList { "Off" 0 "Blob" 1 "Simple" 2 "Stencil" 3 }
-                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  cvarFloatList { "Off" 0 "Blob" 1 "Stencil" 2 "Simple" 3 }
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Darken dead bodies"  textscale .21  rect 24 125 246 16  textaligny 13
+        itemDef { text "Darken dead bodies"  textscale .21  rect 24 142 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgdeadbodydarken  type ITEM_TYPE_YESNO  text ""  cvar "cg_deadBodyDarken"
-                  rect 290 125 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Vignette"  textscale .21  rect 24 142 246 16  textaligny 13
+        itemDef { text "Vignette"  textscale .21  rect 24 159 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgvignette  type ITEM_TYPE_YESNO  text ""  cvar "cg_vignette"
-                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_light  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_gamma ; reset r_overbrightBits ; reset r_mapOverbrightBits ; reset r_dynamicLight ; reset cg_shadows ; reset cg_deadBodyDarken ; reset cg_vignette" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_gamma ; reset r_overbrightBits ; reset r_mapOverbrightBits ; reset r_dynamicLight ; reset cg_muzzleFlashLight ; reset cg_shadows ; reset cg_deadBodyDarken ; reset cg_vignette" }
             mouseEnter { setitemcolor rs_io_ig_light backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_light forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_light bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_light backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_light forecolor 1 1 1 1 ; setitemcolor rs_io_ig_light bordercolor .35 .3 .12 1 }
         }
@@ -4665,108 +4678,124 @@
         itemDef { text "A rail or lightning beam lights the corridor it crosses."  textscale .17  rect 24 165 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "DERIVED NORMAL MAPS"  textscale .2  rect 24 182 512 16  textaligny 13
+        itemDef { text "Rapid-fire flash light"  textscale .21  rect 24 182 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_cgmuzzleflashlight  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_muzzleFlashLight" 1 0 1
+                  rect 290 182 96 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name c_cgmuzzleflashlightv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_muzzleFlashLight"
+                  maxchars 7  maxpaintchars 7
+                  rect 398 182 56 16  textscale .19  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Machine gun, heavy MG and plasma muzzle-flash light."  textscale .17  rect 24 199 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "DERIVED NORMAL MAPS"  textscale .2  rect 24 216 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Normal perturbation"  textscale .21  rect 24 199 246 16  textaligny 13
+        itemDef { text "Normal perturbation"  textscale .21  rect 24 233 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlnormalmaps  type ITEM_TYPE_YESNO  text ""  cvar "r_qlNormalMaps"
-                  rect 290 199 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 233 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Strength"  textscale .21  rect 24 216 246 16  textaligny 13
+        itemDef { text "Strength"  textscale .21  rect 24 250 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlnormalscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalScale"
                   cvarFloatList { "0.25 (subtle)" 0.25 "0.5 (default)" 0.5 "1.0" 1 "1.5" 1.5 "2.0 (hard)" 2 }
-                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Max edge tilt"  textscale .21  rect 24 233 246 16  textaligny 13
+        itemDef { text "Max edge tilt"  textscale .21  rect 24 267 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlnormalmaxtilt  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalMaxTilt"
                   cvarFloatList { "8 (flattest)" 8 "12" 12 "15 (default)" 15 "22" 22 "30 (bands on grazing light)" 30 }
-                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Strength shapes gradients, max tilt caps painted edges. Both need APPLY."  textscale .17  rect 24 250 512 16  textaligny 12
+        itemDef { text "Strength shapes gradients, max tilt caps painted edges. Both need APPLY."  textscale .17  rect 24 284 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "STATIC BUMP (deluxemaps)"  textscale .2  rect 24 267 512 16  textaligny 13
+        itemDef { text "STATIC BUMP (deluxemaps)"  textscale .2  rect 24 301 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Deluxemap shading"  textscale .21  rect 24 284 246 16  textaligny 13
+        itemDef { text "Deluxemap shading"  textscale .21  rect 24 318 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rdeluxemapping  type ITEM_TYPE_MULTI  text ""  cvar "r_deluxeMapping"
                   cvarFloatList { "Off" 0 "On (default)" 1 "Debug: light direction" 2 "Debug: perturbed normal" 3 "Debug: modulation only" 4 "Debug: the normal map itself" 5 "Debug: parallax offset" 6 }
-                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Static bump strength"  textscale .21  rect 24 301 246 16  textaligny 13
+        itemDef { text "Static bump strength"  textscale .21  rect 24 335 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlbumpscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpScale"
                   cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1 }
-                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Parallax depth"  textscale .21  rect 24 318 246 16  textaligny 13
+        itemDef { text "Parallax depth"  textscale .21  rect 24 352 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlparallax  type ITEM_TYPE_MULTI  text ""  cvar "r_qlParallax"
                   cvarFloatList { "Off" 0 "0.02 (shallow)" 0.02 "0.04 (default)" 0.04 "0.08" 0.08 "0.12 (deep)" 0.12 }
-                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Bump specular"  textscale .21  rect 24 335 246 16  textaligny 13
+        itemDef { text "Bump specular"  textscale .21  rect 24 369 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlbumpspecular  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpSpecular"
                   cvarFloatList { "Off" 0 "0.25" 0.25 "0.5 (default)" 0.5 "1.0" 1 "2.0 (wet)" 2 }
-                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 369 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Natural textures"  textscale .21  rect 24 352 246 16  textaligny 13
+        itemDef { text "Natural textures"  textscale .21  rect 24 386 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlnaturaltextures  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNaturalTextures"
                   cvarFloatList { "Off" 0 "Shaders that ask (default)" 1 "Debug: force on all" 2 }
-                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "MATERIAL MAPS"  textscale .2  rect 24 182 512 16  textaligny 13
+        itemDef { text "MATERIAL MAPS"  textscale .2  rect 24 216 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Cubemap reflections"  textscale .21  rect 24 199 246 16  textaligny 13
+        itemDef { text "Cubemap reflections"  textscale .21  rect 24 233 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef { name c_rcubemapping  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"
-                  rect 290 199 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 233 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Cubemap size"  textscale .21  rect 24 216 246 16  textaligny 13
+        itemDef { text "Cubemap size"  textscale .21  rect 24 250 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef { name c_rcubemapsize  type ITEM_TYPE_MULTI  text ""  cvar "r_cubemapSize"
                   cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }
-                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Specular mapping"  textscale .21  rect 24 233 246 16  textaligny 13
+        itemDef { text "Specular mapping"  textscale .21  rect 24 267 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef { name c_rspecularmapping  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"
-                  rect 290 233 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 267 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Normal mapping"  textscale .21  rect 24 250 246 16  textaligny 13
+        itemDef { text "Normal mapping"  textscale .21  rect 24 284 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef { name c_rnormalmapping  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"
-                  rect 290 250 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 284 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Ambient (devmap only)"  textscale .21  rect 24 369 246 16  textaligny 13
+        itemDef { text "Ambient (devmap only)"  textscale .21  rect 24 403 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rambientscale  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "r_ambientScale" 0.6 0 2
-                  rect 290 369 96 16  textscale .21  textaligny 13
+                  rect 290 403 96 16  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name c_rambientscalev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_ambientScale"
                   maxchars 7  maxpaintchars 7
-                  rect 398 369 56 16  textscale .19  textaligny 12  textalignx 4
+                  rect 398 403 56 16  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
@@ -4777,7 +4806,7 @@
             rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_dlightMode ; reset cg_beamLights ; reset r_qlNormalMaps ; reset r_qlNormalScale ; reset r_qlNormalMaxTilt ; reset r_deluxeMapping ; reset r_qlBumpScale ; reset r_qlParallax ; reset r_qlBumpSpecular ; reset r_qlNaturalTextures ; reset r_cubeMapping ; reset r_cubemapSize ; reset r_specularMapping ; reset r_normalMapping ; reset r_ambientScale" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_dlightMode ; reset cg_beamLights ; reset cg_muzzleFlashLight ; reset r_qlNormalMaps ; reset r_qlNormalScale ; reset r_qlNormalMaxTilt ; reset r_deluxeMapping ; reset r_qlBumpScale ; reset r_qlParallax ; reset r_qlBumpSpecular ; reset r_qlNaturalTextures ; reset r_cubeMapping ; reset r_cubemapSize ; reset r_specularMapping ; reset r_normalMapping ; reset r_ambientScale" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -5558,108 +5587,124 @@
         itemDef { text "A rail or lightning beam lights the corridor it crosses."  textscale .17  rect 24 165 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "DERIVED NORMAL MAPS"  textscale .2  rect 24 182 512 16  textaligny 13
+        itemDef { text "Rapid-fire flash light"  textscale .21  rect 24 182 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_cgmuzzleflashlight  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "cg_muzzleFlashLight" 1 0 1
+                  rect 290 182 96 16  textscale .21  textaligny 13
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { name c_cgmuzzleflashlightv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "cg_muzzleFlashLight"
+                  maxchars 7  maxpaintchars 7
+                  rect 398 182 56 16  textscale .19  textaligny 12  textalignx 4
+                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
+                  border 1  bordersize 1  bordercolor .35 .3 .12 1
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Machine gun, heavy MG and plasma muzzle-flash light."  textscale .17  rect 24 199 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "DERIVED NORMAL MAPS"  textscale .2  rect 24 216 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Normal perturbation"  textscale .21  rect 24 199 246 16  textaligny 13
+        itemDef { text "Normal perturbation"  textscale .21  rect 24 233 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlnormalmaps  type ITEM_TYPE_YESNO  text ""  cvar "r_qlNormalMaps"
-                  rect 290 199 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 233 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Strength"  textscale .21  rect 24 216 246 16  textaligny 13
+        itemDef { text "Strength"  textscale .21  rect 24 250 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlnormalscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalScale"
                   cvarFloatList { "0.25 (subtle)" 0.25 "0.5 (default)" 0.5 "1.0" 1 "1.5" 1.5 "2.0 (hard)" 2 }
-                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Max edge tilt"  textscale .21  rect 24 233 246 16  textaligny 13
+        itemDef { text "Max edge tilt"  textscale .21  rect 24 267 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlnormalmaxtilt  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNormalMaxTilt"
                   cvarFloatList { "8 (flattest)" 8 "12" 12 "15 (default)" 15 "22" 22 "30 (bands on grazing light)" 30 }
-                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Strength shapes gradients, max tilt caps painted edges. Both need APPLY."  textscale .17  rect 24 250 512 16  textaligny 12
+        itemDef { text "Strength shapes gradients, max tilt caps painted edges. Both need APPLY."  textscale .17  rect 24 284 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "STATIC BUMP (deluxemaps)"  textscale .2  rect 24 267 512 16  textaligny 13
+        itemDef { text "STATIC BUMP (deluxemaps)"  textscale .2  rect 24 301 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Deluxemap shading"  textscale .21  rect 24 284 246 16  textaligny 13
+        itemDef { text "Deluxemap shading"  textscale .21  rect 24 318 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rdeluxemapping  type ITEM_TYPE_MULTI  text ""  cvar "r_deluxeMapping"
                   cvarFloatList { "Off" 0 "On (default)" 1 "Debug: light direction" 2 "Debug: perturbed normal" 3 "Debug: modulation only" 4 "Debug: the normal map itself" 5 "Debug: parallax offset" 6 }
-                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Static bump strength"  textscale .21  rect 24 301 246 16  textaligny 13
+        itemDef { text "Static bump strength"  textscale .21  rect 24 335 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlbumpscale  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpScale"
                   cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1 }
-                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Parallax depth"  textscale .21  rect 24 318 246 16  textaligny 13
+        itemDef { text "Parallax depth"  textscale .21  rect 24 352 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlparallax  type ITEM_TYPE_MULTI  text ""  cvar "r_qlParallax"
                   cvarFloatList { "Off" 0 "0.02 (shallow)" 0.02 "0.04 (default)" 0.04 "0.08" 0.08 "0.12 (deep)" 0.12 }
-                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Bump specular"  textscale .21  rect 24 335 246 16  textaligny 13
+        itemDef { text "Bump specular"  textscale .21  rect 24 369 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlbumpspecular  type ITEM_TYPE_MULTI  text ""  cvar "r_qlBumpSpecular"
                   cvarFloatList { "Off" 0 "0.25" 0.25 "0.5 (default)" 0.5 "1.0" 1 "2.0 (wet)" 2 }
-                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 369 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "Natural textures"  textscale .21  rect 24 352 246 16  textaligny 13
+        itemDef { text "Natural textures"  textscale .21  rect 24 386 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  showCvar { "vulkan" } }
         itemDef { name c_rqlnaturaltextures  type ITEM_TYPE_MULTI  text ""  cvar "r_qlNaturalTextures"
                   cvarFloatList { "Off" 0 "Shaders that ask (default)" 1 "Debug: force on all" 2 }
-                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  showCvar { "vulkan" } }
-        itemDef { text "MATERIAL MAPS"  textscale .2  rect 24 182 512 16  textaligny 13
+        itemDef { text "MATERIAL MAPS"  textscale .2  rect 24 216 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Cubemap reflections"  textscale .21  rect 24 199 246 16  textaligny 13
+        itemDef { text "Cubemap reflections"  textscale .21  rect 24 233 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef { name c_rcubemapping  type ITEM_TYPE_YESNO  text ""  cvar "r_cubeMapping"
-                  rect 290 199 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 233 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Cubemap size"  textscale .21  rect 24 216 246 16  textaligny 13
+        itemDef { text "Cubemap size"  textscale .21  rect 24 250 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef { name c_rcubemapsize  type ITEM_TYPE_MULTI  text ""  cvar "r_cubemapSize"
                   cvarFloatList { "64" 64 "128" 128 "256" 256 "512" 512 }
-                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Specular mapping"  textscale .21  rect 24 233 246 16  textaligny 13
+        itemDef { text "Specular mapping"  textscale .21  rect 24 267 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef { name c_rspecularmapping  type ITEM_TYPE_YESNO  text ""  cvar "r_specularMapping"
-                  rect 290 233 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 267 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Normal mapping"  textscale .21  rect 24 250 246 16  textaligny 13
+        itemDef { text "Normal mapping"  textscale .21  rect 24 284 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
         itemDef { name c_rnormalmapping  type ITEM_TYPE_YESNO  text ""  cvar "r_normalMapping"
-                  rect 290 250 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 284 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1  cvarTest "cl_renderer"  hideCvar { "vulkan" } }
-        itemDef { text "Ambient (devmap only)"  textscale .21  rect 24 369 246 16  textaligny 13
+        itemDef { text "Ambient (devmap only)"  textscale .21  rect 24 403 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rambientscale  type ITEM_TYPE_SLIDER  text ""
                   cvarFloat "r_ambientScale" 0.6 0 2
-                  rect 290 369 96 16  textscale .21  textaligny 13
+                  rect 290 403 96 16  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name c_rambientscalev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_ambientScale"
                   maxchars 7  maxpaintchars 7
-                  rect 398 369 56 16  textscale .19  textaligny 12  textalignx 4
+                  rect 398 403 56 16  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
@@ -5670,7 +5715,7 @@
             rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_dlightMode ; reset cg_beamLights ; reset r_qlNormalMaps ; reset r_qlNormalScale ; reset r_qlNormalMaxTilt ; reset r_deluxeMapping ; reset r_qlBumpScale ; reset r_qlParallax ; reset r_qlBumpSpecular ; reset r_qlNaturalTextures ; reset r_cubeMapping ; reset r_cubemapSize ; reset r_specularMapping ; reset r_normalMapping ; reset r_ambientScale" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_dlightMode ; reset cg_beamLights ; reset cg_muzzleFlashLight ; reset r_qlNormalMaps ; reset r_qlNormalScale ; reset r_qlNormalMaxTilt ; reset r_deluxeMapping ; reset r_qlBumpScale ; reset r_qlParallax ; reset r_qlBumpSpecular ; reset r_qlNaturalTextures ; reset r_cubeMapping ; reset r_cubemapSize ; reset r_specularMapping ; reset r_normalMapping ; reset r_ambientScale" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }

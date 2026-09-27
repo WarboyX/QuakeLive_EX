@@ -1963,8 +1963,25 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
         // QL binary: cg_muzzleFlash.integer also gates the dlight
         if ((!ps || cg_muzzleFlash.integer) &&
             (weapon->flashDlightColor[0] || weapon->flashDlightColor[1] || weapon->flashDlightColor[2])) {
-            trap_R_AddLightToScene(flash.origin, 300 + (rand() & 31), weapon->flashDlightColor[0],
-                                   weapon->flashDlightColor[1], weapon->flashDlightColor[2]);
+            /* [QL] E146: cg_muzzleFlashLight scales the rapid-fire guns' flash
+               light - its brightness, not its radius, so the pool of light
+               stays the same size and just dims. Everyone's flashes, not only
+               our own: the strobing comes as much from a teammate firing
+               beside you. Zero adds no light at all rather than a black one. */
+            float scale = 1.0f;
+
+            if (weaponNum == WP_MACHINEGUN || weaponNum == WP_HMG || weaponNum == WP_PLASMAGUN) {
+                scale = cg_muzzleFlashLight.value;
+                if (scale < 0.0f) {
+                    scale = 0.0f;
+                } else if (scale > 1.0f) {
+                    scale = 1.0f;
+                }
+            }
+            if (scale > 0.0f) {
+                trap_R_AddLightToScene(flash.origin, 300 + (rand() & 31), weapon->flashDlightColor[0] * scale,
+                                       weapon->flashDlightColor[1] * scale, weapon->flashDlightColor[2] * scale);
+            }
         }
     }
 }

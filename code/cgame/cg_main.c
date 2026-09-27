@@ -262,6 +262,7 @@ vmCvar_t cg_railReloadTime;
 vmCvar_t cg_lowAmmoWarningPercentile;
 vmCvar_t cg_lowAmmoWarningSound;
 vmCvar_t cg_muzzleFlash;
+vmCvar_t cg_muzzleFlashLight;   // [QL] E146: ours, 0-1
 vmCvar_t cg_obituaryRowSize;
 vmCvar_t cg_playerLean;
 vmCvar_t cg_plasmaStyle;
@@ -786,6 +787,13 @@ static cvarTable_t cvarTable[] = {
     {&cg_lowAmmoWarningPercentile, "cg_lowAmmoWarningPercentile", "0.20", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lowAmmoWarningSound, "cg_lowAmmoWarningSound", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_muzzleFlash, "cg_muzzleFlash", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    /* [QL] E146: how bright the dynamic light of a machine gun, heavy machine
+       gun or plasma gun muzzle flash is, 0 (none) to 1 (as it was). Ours, not
+       Quake Live's. Those three fire ten or more times a second, so their
+       flash light strobes the whole room; the other weapons' flashes are one
+       per shot and are left alone. NODEFAULT (ARCHIVE_ND): the default is
+       ours to change, so it is saved only once someone moves it. */
+    {&cg_muzzleFlashLight, "cg_muzzleFlashLight", "1", CVAR_ARCHIVE | CVAR_NODEFAULT},
     {&cg_obituaryRowSize, "cg_obituaryRowSize", "5", CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_playerLean, "cg_playerLean", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_ARCHIVE},
     {&cg_plasmaStyle, "cg_plasmaStyle", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},

@@ -389,6 +389,20 @@ void VKimp_Init(glconfig_t *config) {
         }
     }
 
+    /*
+    [QL] E146. The Vulkan renderer creates its own depth buffer, so these say
+    what it is going to create - and nothing said it before. The GL path gets
+    them from SDL's context attributes; this path never set them, so all three
+    stayed 0 ("PIXELFORMAT: color(0-bits) Z(0-bit) stencil(0-bits)" in every
+    log). stencilBits 0 made get_depth_format pick a format with no stencil,
+    skipped every stencil clear, and returned early from both halves of the
+    stencil shadow path - cg_shadows 2 drew nothing, on every machine. 24/8 is
+    what get_depth_format asks for first (D24S8, then D32S8).
+    */
+    config->colorBits = 32;
+    config->depthBits = 24;
+    config->stencilBits = 8;
+
     // These force the UI to disable driver selection, as the GL path does.
     config->driverType = GLDRV_ICD;
     config->hardwareType = GLHW_GENERIC;

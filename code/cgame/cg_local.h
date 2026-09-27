@@ -1838,6 +1838,7 @@ extern vmCvar_t cg_impactSparksLifetime;
 extern vmCvar_t cg_impactSparksSize;
 extern vmCvar_t cg_impactSparksVelocity;
 extern vmCvar_t cg_muzzleFlash;
+extern vmCvar_t cg_muzzleFlashLight;
 extern vmCvar_t cg_plasmaStyle;
 extern vmCvar_t cg_railStyle;
 extern vmCvar_t cg_rocketStyle;
