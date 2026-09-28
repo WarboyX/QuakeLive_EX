@@ -6048,6 +6048,20 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E151. Water reflection at half resolution (option); E150's half-size AO pipelines got the wrong constants — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+**P4, `r_ssrResolution`** (1 full, the default; 2 half). Menu: Water → Reflection → "Trace resolution". **Live**, changeable in-game with no restart.
+- The march draws a half-size area of its target through a half-size pipeline and reads depth at the full-resolution pixel each texel stands for (`ssr.tmpl`, scale in the spare `wave2.z`).
+- The composite reads the top-left quarter through its own pipelines (normal and debug), using a specialization constant `uvScale`. It uses id 20, because these pipelines are also handed the gamma shader's block, which maps ids 0-11.
+- Bilinear filtering is the upsample. The sample point is clamped inside the quarter so it never blends in texels an earlier full-resolution frame left there.
+- Result: a quarter of the traces and a slightly softer reflection.
+- Checked: `r_ssrDebug 2` and the normal view at both settings put the reflection over the pool in the same place; 0 validation errors.
+
+**A bug in E150, found writing this.** Specialization constants in `vk_create_post_process_pipeline` are chosen by program index, and the AO branch covered 4-7 only. E150's half-size AO trace and denoise (11, 12) were handed the gamma/bloom block, so their constant 0 - the trace's sample count and the denoise's radius, both ints - held a float's bit pattern.
+- The half-resolution test passed only because lavapipe evidently did not act on it; a real GPU could have run a loop in the billions.
+- **Fix:** 11 and 12 now take the AO block (the trace its sample count, the denoise its radius). **E150's build must not be used with `r_rtaoResolution 2`.**
+
 ### E150. RT AO at half resolution (option); the HUD drew into read-only depth after AO/water — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

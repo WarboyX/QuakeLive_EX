@@ -154,6 +154,7 @@ cvar_t	*r_rtaoWeapon;
 cvar_t	*r_rts;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_rtaoResolution;   // [QL] E150
+cvar_t	*r_ssrResolution;    // [QL] E151
 cvar_t	*r_rtaoLights;
 cvar_t	*r_ssr;
 cvar_t	*r_ssrDistance;
@@ -2391,6 +2392,14 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_ssrDistance, "How far a reflected ray travels before giving up, in "
 		"world units. Larger reaches further across a pool and spends the same number of steps "
 		"doing it, so each step is coarser and thin geometry is more likely to be stepped over." );
+
+	/* [QL] E151. Live: both sets of pipelines exist and this picks one. */
+	r_ssrResolution = ri.Cvar_Get( "r_ssrResolution", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrResolution, "1", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssrResolution, "Resolution the water reflection is traced at:\n"
+		" 1 - full (default)\n"
+		" 2 - half: a quarter of the traces, filtered up to the screen - a slightly softer "
+		"reflection. Takes effect immediately." );
 
 	r_ssrSteps = ri.Cvar_Get( "r_ssrSteps", "24", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_ssrSteps, "4", "128", CV_INTEGER );

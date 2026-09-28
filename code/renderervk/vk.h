@@ -921,6 +921,11 @@ typedef struct {
 		VkPipelineLayout		composite_pipeline_layout;
 		VkPipeline				trace_pipeline;
 		VkPipeline				composite_pipeline;
+		/* [QL] E151: the same at half resolution (r_ssrResolution 2) - a
+		   half-size viewport for the trace, a quarter-reading composite */
+		VkPipeline				trace_pipeline_half;
+		VkPipeline				composite_pipeline_half;
+		VkPipeline				debug_pipeline_half;
 		/*
 		[QL] R19: the same composite with blending switched off, used whenever
 		r_ssrDebug is on.

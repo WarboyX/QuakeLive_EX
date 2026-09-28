@@ -432,7 +432,10 @@ vec3 project(vec3 world) {
 
 void main() {
 	ivec2 size = depthSize();
-	ivec2 pix = clamp(ivec2(gl_FragCoord.xy), ivec2(0), size - ivec2(1));
+	/* [QL] E151: wave2.z is r_ssrResolution's scale - full-resolution pixels
+	   per traced texel, 1 or 2 (0 from an older caller reads as 1). */
+	int traceScale = max(int(wave2.z + 0.5), 1);
+	ivec2 pix = clamp(ivec2(gl_FragCoord.xy) * traceScale, ivec2(0), size - ivec2(1));
 	vec2 invSize = 1.0 / vec2(size);
 
 	float depth = fetchDepth(pix);

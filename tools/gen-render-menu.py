@@ -488,6 +488,8 @@ def water():
         ("multi", "r_ssr", "Water reflections", '"Off (default)" 0 "Subtle" 0.35 "Half" 0.5 "Full" 1'),
         ("multi", "r_ssrDistance", "Trace distance", '"512 (near)" 512 "1024 (default)" 1024 "2048" 2048 "4096 (far)" 4096'),
         ("multi", "r_ssrSteps", "Trace steps", '"16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128'),
+        # [QL] E151. Live - both sets of pipelines exist; a quarter of the traces.
+        ("multi", "r_ssrResolution", "Trace resolution", '"Full (default)" 1 "Half (faster)" 2'),
         ("multi", "r_ssrThickness", "Thickness", '"4 (thin)" 4 "8" 8 "16" 16 "24 (default)" 24 "32 (forgiving)" 32'),
         ("multi", "r_ssrDebug", "Debug view",
          '"Off" 0 "1 mask" 1 "2 ray hit" 2 "3 reflection" 3 "4 waves" 4 "5 ripples + foam" 5'),

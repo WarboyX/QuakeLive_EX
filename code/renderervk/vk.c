@@ -9162,6 +9162,43 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			blend = qfalse;
 			alphaBlend = qfalse;
 			break;
+		case 13: // [QL] E151 the reflection march at half resolution - case 8 with a half-size viewport
+			pipeline = &vk.ssr.trace_pipeline_half;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.ssr_ms_fs : vk.modules.ssr_fs;
+			renderpass = vk.ssr.offscreen_pass;
+			layout = vk.ssr.trace_pipeline_layout;
+			/* The reflection is resolved once per pixel and blended over all of
+			   that pixel's samples, the same as the occlusion term. */
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "ssr pipeline (march, half resolution)";
+			blend = qfalse;
+			break;
+		case 14: // [QL] E151 the composite reading the half-resolution trace - case 9, uvScale 0.5
+			pipeline = &vk.ssr.composite_pipeline_half;
+			fsmodule = vk.modules.ssr_composite_fs;
+			/* Borrowed: same attachments, formats and sample count as the pass
+			   the occlusion composite uses, so it is render-pass compatible and
+			   needs none of its own. */
+			renderpass = vk.render_pass.rtao;
+			layout = vk.ssr.composite_pipeline_layout;
+			samples = vkSamples;
+			pipeline_name = "ssr pipeline (composite, half resolution)";
+			blend = qfalse;
+			alphaBlend = qtrue;
+			break;
+		case 15: // [QL] E151 the debug composite likewise - case 10, uvScale 0.5
+			pipeline = &vk.ssr.debug_pipeline_half;
+			fsmodule = vk.modules.ssr_composite_fs;
+			renderpass = vk.render_pass.rtao;
+			layout = vk.ssr.composite_pipeline_layout;
+			samples = vkSamples;
+			pipeline_name = "ssr pipeline (debug composite, half resolution)";
+			/* Neither: blendEnable stays false, so what the trace wrote is what
+			   lands on screen. The shader's discard still spares every pixel it
+			   did not claim, so the scene is intact around the water. */
+			blend = qfalse;
+			alphaBlend = qfalse;
+			break;
 		default: // gamma correction
 			pipeline = &vk.gamma_pipeline;
 			fsmodule = vk.modules.gamma_fs;
@@ -9273,6 +9310,22 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 
 	shader_stages[1].pSpecializationInfo = &frag_spec_info;
 
+	/* [QL] E151: the half-resolution reflection composites read the top-left
+	   quarter - their own constant, id 20, which nothing else maps. */
+	if ( program_index == 14 || program_index == 15 ) {
+		static const float halfScale = 0.5f;
+		static VkSpecializationMapEntry uv_entry;
+		static VkSpecializationInfo uv_info;
+		uv_entry.constantID = 20;
+		uv_entry.offset = 0;
+		uv_entry.size = sizeof( halfScale );
+		uv_info.mapEntryCount = 1;
+		uv_info.pMapEntries = &uv_entry;
+		uv_info.dataSize = sizeof( halfScale );
+		uv_info.pData = &halfScale;
+		shader_stages[1].pSpecializationInfo = &uv_info;
+	}
+
 	/*
 	[QL] R13: the AO shader gets its own specialization block.
 
@@ -9282,8 +9335,11 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	and asks for a sample count in the millions. Different shader, different
 	constants - only the ids a shader actually declares may be supplied.
 	*/
-	if ( program_index >= 4 && program_index <= 7 ) {
-		if ( program_index == 4 ) {
+	/* [QL] E150: 11 and 12 are 4 and 5 at half resolution and declare the same
+	   constants - handing them the gamma block would be exactly the mistake
+	   described above. */
+	if ( ( program_index >= 4 && program_index <= 7 ) || program_index == 11 || program_index == 12 ) {
+		if ( program_index == 4 || program_index == 11 ) {
 			ao_sample_count = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
 			if ( ao_sample_count < 1 ) {
 				ao_sample_count = 4;
@@ -12885,6 +12941,19 @@ void vk_ssr_destroy( void )
 		qvkDestroyPipeline( vk.device, vk.ssr.debug_pipeline, NULL );
 		vk.ssr.debug_pipeline = VK_NULL_HANDLE;
 	}
+	/* [QL] E151 */
+	if ( vk.ssr.trace_pipeline_half != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.ssr.trace_pipeline_half, NULL );
+		vk.ssr.trace_pipeline_half = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.composite_pipeline_half != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.ssr.composite_pipeline_half, NULL );
+		vk.ssr.composite_pipeline_half = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.debug_pipeline_half != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.ssr.debug_pipeline_half, NULL );
+		vk.ssr.debug_pipeline_half = VK_NULL_HANDLE;
+	}
 	if ( vk.ssr.trace_pipeline_layout != VK_NULL_HANDLE ) {
 		qvkDestroyPipelineLayout( vk.device, vk.ssr.trace_pipeline_layout, NULL );
 		vk.ssr.trace_pipeline_layout = VK_NULL_HANDLE;
@@ -13339,6 +13408,11 @@ void vk_ssr_create( void )
 	vk_create_post_process_pipeline( 8, glConfig.vidWidth, glConfig.vidHeight );   // trace
 	vk_create_post_process_pipeline( 9, glConfig.vidWidth, glConfig.vidHeight );   // composite
 	vk_create_post_process_pipeline( 10, glConfig.vidWidth, glConfig.vidHeight );  // debug composite
+	/* [QL] E151: r_ssrResolution 2. Not fatal if they fail - the setting then
+	   just traces at full resolution. */
+	vk_create_post_process_pipeline( 13, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
+	vk_create_post_process_pipeline( 14, glConfig.vidWidth, glConfig.vidHeight );
+	vk_create_post_process_pipeline( 15, glConfig.vidWidth, glConfig.vidHeight );
 
 	if ( vk.ssr.trace_pipeline == VK_NULL_HANDLE || vk.ssr.composite_pipeline == VK_NULL_HANDLE ) {
 		ri.Printf( PRINT_WARNING, "SSR: pipelines were not created - disabling\n" );
@@ -13355,6 +13429,10 @@ qboolean vk_ssr( void )
 	ssrUniform_t *u;
 	float proj[16];
 	int i;
+	/* [QL] E151: r_ssrResolution, and only if every half-size pipeline exists */
+	const int ssrScale = ( r_ssrResolution && r_ssrResolution->integer >= 2 &&
+		vk.ssr.trace_pipeline_half != VK_NULL_HANDLE && vk.ssr.composite_pipeline_half != VK_NULL_HANDLE &&
+		vk.ssr.debug_pipeline_half != VK_NULL_HANDLE ) ? 2 : 1;
 
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return qfalse;
@@ -13475,7 +13553,8 @@ qboolean vk_ssr( void )
 	time, because the disturbance field never depended on the wind either.
 	*/
 	u->wave2[1] = r_waterFoam->value;
-	u->wave2[2] = u->wave2[3] = 0.0f;
+	u->wave2[2] = (float)ssrScale;   /* [QL] E151: the trace's pixel scale */
+	u->wave2[3] = 0.0f;
 
 	/*
 	[QL] R19: the disturbances, matched to the plane each one belongs to.
@@ -13780,8 +13859,10 @@ qboolean vk_ssr( void )
 		0, 0 );
 
 	/* ---- pass 1: march, into the offscreen target ---- */
-	vk.renderWidth = glConfig.vidWidth;
-	vk.renderHeight = glConfig.vidHeight;
+	/* [QL] E151: r_ssrResolution 2 marches a half-size area - the render
+	   area below and the half-size pipeline agree on it */
+	vk.renderWidth = ( glConfig.vidWidth + ssrScale - 1 ) / ssrScale;
+	vk.renderHeight = ( glConfig.vidHeight + ssrScale - 1 ) / ssrScale;
 	vk.renderScaleX = vk.renderScaleY = 1.0f;
 	/*
 	[QL] Begun by hand rather than through vk_begin_render_pass, because that
@@ -13813,7 +13894,8 @@ qboolean vk_ssr( void )
 		vk.cmd->depth_range = DEPTH_RANGE_COUNT;
 	}
 
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.ssr.trace_pipeline );
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		ssrScale > 1 ? vk.ssr.trace_pipeline_half : vk.ssr.trace_pipeline );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vk.ssr.trace_pipeline_layout, 0, 1, &vk.ssr.trace_descriptor[ vk.cmd_index ], 0, NULL );
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
@@ -13840,9 +13922,15 @@ qboolean vk_ssr( void )
 	/* [QL] A debug view goes on unblended - see vk.ssr.debug_pipeline. Falls
 	   back to the blending one if that pipeline was not created, which is worth
 	   nothing but is better than binding a null handle. */
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		( r_ssrDebug->integer != 0 && vk.ssr.debug_pipeline != VK_NULL_HANDLE )
-			? vk.ssr.debug_pipeline : vk.ssr.composite_pipeline );
+	if ( ssrScale > 1 ) {   /* [QL] E151: the ones that read the half-size trace */
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			( r_ssrDebug->integer != 0 && vk.ssr.debug_pipeline_half != VK_NULL_HANDLE )
+				? vk.ssr.debug_pipeline_half : vk.ssr.composite_pipeline_half );
+	} else {
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			( r_ssrDebug->integer != 0 && vk.ssr.debug_pipeline != VK_NULL_HANDLE )
+				? vk.ssr.debug_pipeline : vk.ssr.composite_pipeline );
+	}
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vk.ssr.composite_pipeline_layout, 0, 1, &vk.ssr.composite_descriptor, 0, NULL );
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
