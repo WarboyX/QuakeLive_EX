@@ -5180,17 +5180,37 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name rrule  text ""  rect 20 110 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "PERFORMANCE"  textscale .2  rect 24 114 512 16  textaligny 13
+        itemDef { text "ANTI-ALIASING & SHARPNESS"  textscale .2  rect 24 114 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
-        itemDef { text "Pipeline cache"  textscale .21  rect 24 131 246 16  textaligny 13
+        itemDef { text "FXAA"  textscale .21  rect 24 131 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rfxaa  type ITEM_TYPE_MULTI  text ""  cvar "r_fxaa"
+                  cvarFloatList { "Off (default)" 0 "On" 1 }
+                  rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Sharpening (CAS)"  textscale .21  rect 24 148 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rsharpen  type ITEM_TYPE_MULTI  text ""  cvar "r_sharpen"
+                  cvarFloatList { "Off (default)" 0 "Light" 0.25 "Medium" 0.5 "Strong" 0.75 "Strongest" 1 }
+                  rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "FXAA smooths edges when multisampling is off. Sharpening restores detail."  textscale .17  rect 24 165 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "PERFORMANCE"  textscale .2  rect 24 182 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Pipeline cache"  textscale .21  rect 24 199 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rpipelinecache  type ITEM_TYPE_MULTI  text ""  cvar "r_pipelineCache"
                   cvarFloatList { "Off" 0 "Save between runs (default)" 1 "Save + build on load" 2 }
-                  rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Keeps compiled pipelines in vkpipelines.cache. Build on load: fewer hitches."  textscale .17  rect 24 148 512 16  textaligny 12
+        itemDef { text "Keeps compiled pipelines in vkpipelines.cache. Build on load: fewer hitches."  textscale .17  rect 24 216 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -5200,7 +5220,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_pipelineCache" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_fxaa ; reset r_sharpen ; reset r_pipelineCache" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -6468,17 +6488,37 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name rrule  text ""  rect 20 110 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "PERFORMANCE"  textscale .2  rect 24 114 512 16  textaligny 13
+        itemDef { text "ANTI-ALIASING & SHARPNESS"  textscale .2  rect 24 114 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
-        itemDef { text "Pipeline cache"  textscale .21  rect 24 131 246 16  textaligny 13
+        itemDef { text "FXAA"  textscale .21  rect 24 131 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rfxaa  type ITEM_TYPE_MULTI  text ""  cvar "r_fxaa"
+                  cvarFloatList { "Off (default)" 0 "On" 1 }
+                  rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Sharpening (CAS)"  textscale .21  rect 24 148 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rsharpen  type ITEM_TYPE_MULTI  text ""  cvar "r_sharpen"
+                  cvarFloatList { "Off (default)" 0 "Light" 0.25 "Medium" 0.5 "Strong" 0.75 "Strongest" 1 }
+                  rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "FXAA smooths edges when multisampling is off. Sharpening restores detail."  textscale .17  rect 24 165 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { text "PERFORMANCE"  textscale .2  rect 24 182 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Pipeline cache"  textscale .21  rect 24 199 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rpipelinecache  type ITEM_TYPE_MULTI  text ""  cvar "r_pipelineCache"
                   cvarFloatList { "Off" 0 "Save between runs (default)" 1 "Save + build on load" 2 }
-                  rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Keeps compiled pipelines in vkpipelines.cache. Build on load: fewer hitches."  textscale .17  rect 24 148 512 16  textaligny 12
+        itemDef { text "Keeps compiled pipelines in vkpipelines.cache. Build on load: fewer hitches."  textscale .17  rect 24 216 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -6488,7 +6528,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_pipelineCache" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_fxaa ; reset r_sharpen ; reset r_pipelineCache" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }

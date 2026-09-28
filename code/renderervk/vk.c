@@ -9325,7 +9325,7 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	VkGraphicsPipelineCreateInfo create_info;
 	VkViewport viewport;
 	VkRect2D scissor;
-	VkSpecializationMapEntry spec_entries[12];
+	VkSpecializationMapEntry spec_entries[14];
 	VkSpecializationInfo frag_spec_info;
 	VkPipeline *pipeline;
 	VkShaderModule fsmodule;
@@ -9357,6 +9357,8 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 		int depth_g;
 		int depth_b;
 		int toneMap;
+		int fxaa;       // [QL] E157
+		float sharpen;  // [QL] E157
 	} frag_spec_data;
 
 	switch ( program_index ) {
@@ -9636,6 +9638,10 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	look decision.
 	*/
 	frag_spec_data.toneMap = r_rts->integer;
+	/* [QL] E157: anti-aliasing and sharpening in the present pass. Live - both
+	   cvars are in CVG_RENDERER, which rebuilds this pipeline. */
+	frag_spec_data.fxaa = r_fxaa->integer;
+	frag_spec_data.sharpen = r_sharpen->value;
 
 	if ( !vk_surface_format_color_depth( vk.present_format.format, &frag_spec_data.depth_r, &frag_spec_data.depth_g, &frag_spec_data.depth_b ) )
 		ri.Printf( PRINT_ALL, "Format %s not recognized, dither to assume 8bpc\n", vk_format_string( vk.base_format.format ) );
@@ -9688,7 +9694,15 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	spec_entries[11].offset = offsetof( struct FragSpecData, toneMap );
 	spec_entries[11].size = sizeof( frag_spec_data.toneMap );
 
-	frag_spec_info.mapEntryCount = 12;
+	spec_entries[12].constantID = 12;
+	spec_entries[12].offset = offsetof( struct FragSpecData, fxaa );
+	spec_entries[12].size = sizeof( frag_spec_data.fxaa );
+
+	spec_entries[13].constantID = 13;
+	spec_entries[13].offset = offsetof( struct FragSpecData, sharpen );
+	spec_entries[13].size = sizeof( frag_spec_data.sharpen );
+
+	frag_spec_info.mapEntryCount = 14;
 	frag_spec_info.pMapEntries = spec_entries;
 	frag_spec_info.dataSize = sizeof( frag_spec_data );
 	frag_spec_info.pData = &frag_spec_data;

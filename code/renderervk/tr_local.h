@@ -1624,6 +1624,8 @@ extern	cvar_t	*r_skipBackEnd;
 
 extern	cvar_t	*r_greyscale;
 extern	cvar_t	*r_dither;
+extern	cvar_t	*r_fxaa;				// [QL] E157: FXAA in the present pass (live)
+extern	cvar_t	*r_sharpen;			// [QL] E157: CAS strength 0..1 (live)
 extern	cvar_t	*r_presentBits;
 
 extern	cvar_t	*r_ignoreGLErrors;

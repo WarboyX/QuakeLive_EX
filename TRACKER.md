@@ -6048,6 +6048,25 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E157. FXAA and contrast-adaptive sharpening (`r_fxaa`, `r_sharpen`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G4). With MSAA off there was no anti-aliasing at all, and `r_renderScale` upscaled with a plain filter.
+
+**`r_fxaa`** (0 off, the default; 1 on) and **`r_sharpen`** (0 off, the default, up to 1). Menu: Render → Image → "Anti-aliasing & sharpness". **Live**, since both are in `CVG_RENDERER`, which rebuilds the present pipeline. Both need `r_fbo 1`, like the rest of the post-processing.
+
+**How:** both run in `gamma.frag`, the present pass. That pass is also the upscaler, so offsets are in the source image's texels, which is where the edges are. Both are specialization constants (ids 12 and 13), so with both off the shader compiles to what it was. Screenshots go through the same pass and include them.
+- FXAA is the 3.11 quality algorithm: an edge-end search plus sub-pixel blending. The first, compact variant turned one-pixel lines into dashes.
+- The blend taps are filtered by hand because this pass's sampler is *nearest* at 1:1 (`vk.blitFilter`). Through a nearest sampler, FXAA's between-texel taps snap to one side, which also dotted thin lines.
+- Sharpening is a CAS-style cross, weighted down where local contrast is already high, so soft areas sharpen and hard edges do not ring. Values above 1.0 (the float target) are left alone.
+
+**Known limitation:** FXAA runs on the finished frame, so the HUD's text edges soften slightly too. There is no pass between 3D and 2D to put it in.
+
+**Checked:** the same view with FXAA off/on, sharpening 1, and FXAA + sharpening 0.5, compared in 3x crops.
+- Stair-stepped diagonals are smoothed, and one-pixel lines stay continuous.
+- Sharpening adds visible detail in the lit panels.
+- 0 validation errors.
+
 ### E156. Water reflection: ray-traced fallback where the screen march misses (`r_ssrRayTrace`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

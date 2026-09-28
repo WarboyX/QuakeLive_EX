@@ -541,6 +541,12 @@ def image():
     # [QL] E152. Settings about the finished image and about how the renderer
     # spends its time, which fit no other page - and the other pages are full.
     spec = [
+        # [QL] E157. Live: the present pass is rebuilt when either changes.
+        ("h", "ANTI-ALIASING & SHARPNESS"),
+        ("multi", "r_fxaa", "FXAA", '"Off (default)" 0 "On" 1'),
+        ("multi", "r_sharpen", "Sharpening (CAS)",
+         '"Off (default)" 0 "Light" 0.25 "Medium" 0.5 "Strong" 0.75 "Strongest" 1'),
+        ("help", "FXAA smooths edges when multisampling is off. Sharpening restores detail."),
         ("h", "PERFORMANCE"),
         ("multi", "r_pipelineCache", "Pipeline cache",
          '"Off" 0 "Save between runs (default)" 1 "Save + build on load" 2'),

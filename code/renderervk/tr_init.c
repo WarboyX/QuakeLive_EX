@@ -61,6 +61,8 @@ cvar_t	*r_skipBackEnd;
 
 cvar_t	*r_greyscale;
 cvar_t	*r_dither;
+cvar_t	*r_fxaa;     // [QL] E157
+cvar_t	*r_sharpen;  // [QL] E157
 cvar_t	*r_presentBits;
 
 static cvar_t *r_ignorehwgamma;
@@ -2088,6 +2090,24 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_greyscale, "-1", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_greyscale, "Desaturate rendered frame, requires \\r_fbo 1." );
 	ri.Cvar_SetGroup( r_greyscale, CVG_RENDERER );
+
+	/* [QL] E157. Both off by default - they change every pixel of the image.
+	   Live: the present pass is rebuilt when either changes. */
+	r_fxaa = ri.Cvar_Get( "r_fxaa", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_fxaa, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_fxaa, "Fast approximate anti-aliasing on the finished frame - smooths "
+		"jagged edges for almost no cost, for when multisampling (" S_COLOR_CYAN "\\r_ext_multisample"
+		S_COLOR_WHITE ") is off. Softens the image, and the HUD's text edges, a little; "
+		S_COLOR_CYAN "\\r_sharpen" S_COLOR_WHITE " puts detail back. Requires " S_COLOR_CYAN "\\r_fbo 1." );
+	ri.Cvar_SetGroup( r_fxaa, CVG_RENDERER );
+
+	r_sharpen = ri.Cvar_Get( "r_sharpen", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_sharpen, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_sharpen, "Contrast-adaptive sharpening of the finished frame, 0 (off) to 1 "
+		"(strongest). Sharpens soft areas more than hard edges, so it does not ring. For "
+		S_COLOR_CYAN "\\r_renderScale" S_COLOR_WHITE " upscaling and " S_COLOR_CYAN "\\r_fxaa"
+		S_COLOR_WHITE ". Requires " S_COLOR_CYAN "\\r_fbo 1." );
+	ri.Cvar_SetGroup( r_sharpen, CVG_RENDERER );
 
 	r_dither = ri.Cvar_Get( "r_dither", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_dither, "0", "1", CV_INTEGER );
