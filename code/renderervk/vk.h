@@ -833,6 +833,9 @@ typedef struct {
 	qboolean active;
 	qboolean wideLines;
 	qboolean samplerAnisotropy;
+	/* [QL] E159: depthClamp is enabled - the stencil shadow volumes use it, and
+	   depth-fail counting (own-player shadow) is only offered with it */
+	qboolean depthClamp;
 	qboolean fragmentStores;
 	qboolean dedicatedAllocation;
 	/* [QL] R13 ray query state. Three separate facts, deliberately not one:

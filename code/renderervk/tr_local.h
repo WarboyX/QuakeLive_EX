@@ -1581,6 +1581,14 @@ extern	cvar_t	*r_rtaoNormals;					// [QL] R13: where the AO normal comes from
 extern	cvar_t	*r_rtaoWeapon;					// [QL] R13: occlude the first person weapon
 extern	cvar_t	*r_rts;							// [QL] real time shading: float target + tone curve
 extern	cvar_t	*r_stencilSelfShadow;			// [QL] E155
+/* [QL] E159: the own-player stencil shadow needs depth-fail, and depth-fail
+   needs the device's depth clamp (see SHADOW_EDGES) - the cvar alone is not
+   enough to cast it correctly */
+#ifdef USE_VULKAN
+#define R_STENCIL_SELF_SHADOW ( r_stencilSelfShadow->integer && vk.depthClamp )
+#else
+#define R_STENCIL_SELF_SHADOW 0
+#endif
 extern	cvar_t	*r_ssao;						// [QL] E154: 0 off, 1 on, 2 debug
 extern	cvar_t	*r_pipelineCache;				// [QL] E152: 0 off, 1 disk, 2 disk + pre-build
 extern	cvar_t	*r_ssrResolution;				// [QL] E151: 1 full, 2 half (live)

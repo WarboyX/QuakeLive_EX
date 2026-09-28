@@ -6048,6 +6048,31 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E159. Stencil shadows: black columns through walls and speckled self-shadow (E155 regression) — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported with a screenshot: stencil shadows drew incorrectly on floating weapons, sometimes, during the weapon bob. They were also wrong on your own player under some lighting. The screenshot shows a black column from the ceiling to the floor of a doorway, through the wall.
+
+**Cause 1, the column:** E155's depth-fail counting only balances if every face of a volume is drawn, *including the far cap* (up to 512 units past the model).
+- Quake's far plane is sized to the visible world. In a small room an item's or the player's far cap crossed it and was clipped.
+- The uncancelled side faces then painted the volume's whole screen projection black, through walls.
+- An item bobbing moves its volume back and forth across the plane, hence "sometimes".
+- Depth-pass (Quake 3's method) never needed the far cap, so this is new with E155.
+
+**Fix:** the shadow-volume pipelines use depth **clamp**. The device feature is now enabled when present, which is every desktop GPU. A face beyond the far plane lands on it instead of vanishing, and still fails the depth test where it should.
+
+**Cause 2, the self-player speckle:** the near cap is the model's own triangles, at exactly the depth the model wrote. Whether it fails the depth test was down to rounding, so the side away from the light speckled in and out of shadow.
+
+**Fix:** the near end of the volume is lifted one unit away from the light, where it always passes.
+
+**Without depth clamp** (no known desktop GPU): the pipelines fall back to Quake 3's depth-pass with no caps, and your own shadow is not cast (`R_STENCIL_SELF_SHADOW`), rather than drawing the columns.
+
+**Checked:** reproduced with a local test cube and a temporarily forced short far plane (a test-only hook, removed before commit).
+- Without the clamp, a dark column streaks down from the cube across the stairs.
+- With it, only the cube's own shadow.
+- The E155 checks still hold: the shadow is cast from outside, and the frame is unchanged from inside the volume.
+- 0 validation errors.
+
 ### E158. Tone curve choice (`r_toneMap`) and HDR bloom (`r_bloomHDR`); two leaked shader modules — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

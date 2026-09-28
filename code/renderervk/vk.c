@@ -2525,6 +2525,12 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 			vk.samplerAnisotropy = qtrue;
 		}
 
+		/* [QL] E159: see SHADOW_EDGES in vk_create_pipeline */
+		if ( device_features.depthClamp ) {
+			features.depthClamp = VK_TRUE;
+			vk.depthClamp = qtrue;
+		}
+
 		device_desc.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 		device_desc.pNext = NULL;
 		device_desc.flags = 0;
@@ -10967,7 +10973,19 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	rasterization_state.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterization_state.pNext = NULL;
 	rasterization_state.flags = 0;
-	rasterization_state.depthClampEnable = VK_FALSE;
+	/*
+	[QL] E159: the shadow volumes are clamped to the depth range, not clipped.
+
+	Depth-fail counts the volume faces behind the visible surface, and that only
+	adds up if every one of them is drawn - including the far cap, which sits up
+	to 512 units past the model. Quake's far plane is sized to the visible
+	world, so in a small room the far cap of an item or the player crossed it,
+	was clipped away, and the uncancelled side faces painted the volume's whole
+	projection black - through walls, and on and off as an item bobbed across
+	the plane. Clamped, a face beyond the far plane lands on it and still
+	fails the depth test where it should.
+	*/
+	rasterization_state.depthClampEnable = ( def->shadow_phase == SHADOW_EDGES && vk.depthClamp ) ? VK_TRUE : VK_FALSE;
 	rasterization_state.rasterizerDiscardEnable = VK_FALSE;
 	if ( def->shader_type == TYPE_DOT ) {
 		rasterization_state.polygonMode = VK_POLYGON_MODE_POINT;
@@ -11058,8 +11076,16 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		clamping, so the order of the two passes cannot lose a count.
 		*/
 		depth_stencil_state.front.failOp = VK_STENCIL_OP_KEEP;
-		depth_stencil_state.front.passOp = VK_STENCIL_OP_KEEP;
-		depth_stencil_state.front.depthFailOp = (def->face_culling == CT_FRONT_SIDED) ? VK_STENCIL_OP_DECREMENT_AND_WRAP : VK_STENCIL_OP_INCREMENT_AND_WRAP;
+		if ( vk.depthClamp ) {
+			depth_stencil_state.front.passOp = VK_STENCIL_OP_KEEP;
+			depth_stencil_state.front.depthFailOp = (def->face_culling == CT_FRONT_SIDED) ? VK_STENCIL_OP_DECREMENT_AND_WRAP : VK_STENCIL_OP_INCREMENT_AND_WRAP;
+		} else {
+			/* [QL] E159: without depth clamp the far cap cannot be kept, so
+			   depth-fail would leak - Quake 3's depth-pass, and no own shadow
+			   (R_STENCIL_SELF_SHADOW) */
+			depth_stencil_state.front.passOp = (def->face_culling == CT_FRONT_SIDED) ? VK_STENCIL_OP_INCREMENT_AND_CLAMP : VK_STENCIL_OP_DECREMENT_AND_CLAMP;
+			depth_stencil_state.front.depthFailOp = VK_STENCIL_OP_KEEP;
+		}
 		depth_stencil_state.front.compareOp = VK_COMPARE_OP_ALWAYS;
 		depth_stencil_state.front.compareMask = 255;
 		depth_stencil_state.front.writeMask = 255;

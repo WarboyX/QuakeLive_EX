@@ -132,7 +132,9 @@ static void R_CalcShadowEdges( void ) {
 	the Vulkan reverse of the GL build's order, so the near cap is the facing
 	triangle reversed, (a, c, b), and the far cap is (a', b', c').
 	*/
-	for ( i = 0; i < numCapTris; i++ ) {
+	/* [QL] E159: only for depth-fail (see SHADOW_EDGES). Depth-pass does not
+	   need caps, and the near one would z-fight with the model. */
+	for ( i = 0; i < numCapTris && vk.depthClamp; i++ ) {
 		const int a = capTris[i][0], b = capTris[i][1], c = capTris[i][2];
 
 		if ( tess.numIndexes > ARRAY_LEN( tess.indexes ) - 6 ) {
@@ -201,6 +203,29 @@ void RB_ShadowTessEnd( void ) {
 	for ( i = 0; i < tess.numVertexes; i++ ) {
 		VectorMA( tess.xyz[i], -512, lightDir, tess.xyz[i+tess.numVertexes] );
 	}
+
+#ifdef USE_VULKAN
+	/*
+	[QL] E159: lift the near end of the volume one unit off the model.
+
+	The near cap is the model's own triangles, so it sits at exactly the depth
+	the model wrote. Depth-fail counts it when it fails the depth test - and at
+	equal depth whether it does is down to rounding, so the model's side away
+	from the light speckled in and out of its own shadow as the light angle
+	changed ("self-player under the right lighting"). One unit away from the
+	light puts the cap in front of that surface, where it always passes. After
+	the far vertices are made, so the volume's length is untouched.
+	*/
+	if ( vk.depthClamp ) {
+		vec3_t away;
+		VectorCopy( lightDir, away );
+		if ( VectorNormalize( away ) > 0.0f ) {
+			for ( i = 0; i < tess.numVertexes; i++ ) {
+				VectorMA( tess.xyz[i], -1.0f, away, tess.xyz[i] );
+			}
+		}
+	}
+#endif
 
 	// decide which triangles face the light
 	Com_Memset( numEdgeDefs, 0, tess.numVertexes * sizeof( numEdgeDefs[0] ) );
