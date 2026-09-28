@@ -834,6 +834,31 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	VK_CHECK( qvkCreateRenderPass( device, desc, NULL, &vk.render_pass.rtao ) );
 	SET_OBJECT_NAME( vk.render_pass.rtao, "render pass - rtao", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 
+	/*
+	[QL] E150. And the pass the frame carries on in after a composite.
+
+	The composite pass holds depth read-only, because the composite samples it.
+	It used to be left open for the rest of the frame, and the rest of the frame
+	is mostly the 2D HUD - drawn with ordinary pipelines, and a Quake 3 stage
+	without a blend writes depth by default. So every opaque HUD image, the
+	fonts and "white" among them, drew with depth writes on into a read-only
+	depth attachment: VUID-vkCmdDrawIndexed-None-06886, on every frame with AO
+	or water reflections. Undefined behaviour, and the same kind of undefined
+	behaviour as E145's crash - tolerated here, not promised anywhere.
+
+	This pass is the composite pass with depth writable again: everything
+	loaded and kept (colour, depth, stencil, the multisampled image), depth
+	arriving in ATTACHMENT_OPTIMAL - the composite pass's final layout - and
+	the same dependencies as main, so every pipeline built for main is
+	compatible with it. vk_rt_ao and vk_ssr end their composite pass after the
+	one draw and continue in this.
+	*/
+	depthRef->layout = savedDepthLayout;
+	attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	VK_CHECK( qvkCreateRenderPass( device, desc, NULL, &vk.render_pass.after_composite ) );
+	SET_OBJECT_NAME( vk.render_pass.after_composite, "render pass - after composite", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
+
 	depthRef->layout = savedDepthLayout;
 	attachments[0].loadOp = savedColorLoad;
 	attachments[1].loadOp = savedDepthLoad;
@@ -4374,6 +4399,7 @@ typedef struct {
 	float eye[4];
 	float params[4];      // radius, intensity, frame, bias
 	float depthInfo[4];   // cleared depth, weapon band start, sign, unused
+	float res[4];         // [QL] E150: x = trace scale (1 full, 2 half); 112 bytes in all
 } rtaoPush_t;
 
 /*
@@ -4386,7 +4412,7 @@ shader the gamma shader's specialization constants, which cost a round already.
 */
 typedef struct {
 	float step[4];         // xy = texel step along the axis being blurred
-	float depthLinear[4];  // proj[10], proj[14], depth tolerance, unused
+	float depthLinear[4];  // proj[10], proj[14], depth tolerance, [QL] E150 occlusion scale
 } rtaoBlurPush_t;
 
 /*
@@ -4450,6 +4476,14 @@ static void vk_rt_destroy_ao( void )
 	if ( vk.rt.pipeline_blur != VK_NULL_HANDLE ) {
 		qvkDestroyPipeline( vk.device, vk.rt.pipeline_blur, NULL );
 		vk.rt.pipeline_blur = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.pipeline_gen_half != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_gen_half, NULL );
+		vk.rt.pipeline_gen_half = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.pipeline_blur_half != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_blur_half, NULL );
+		vk.rt.pipeline_blur_half = VK_NULL_HANDLE;
 	}
 	if ( vk.rt.pipeline != VK_NULL_HANDLE ) {
 		qvkDestroyPipeline( vk.device, vk.rt.pipeline, NULL );
@@ -4837,6 +4871,10 @@ static void vk_rt_create_ao( void )
 	vk_create_post_process_pipeline( 5, glConfig.vidWidth, glConfig.vidHeight );
 	vk_create_post_process_pipeline( 6, glConfig.vidWidth, glConfig.vidHeight );
 	vk_create_post_process_pipeline( 7, glConfig.vidWidth, glConfig.vidHeight );
+	/* [QL] E150: half-resolution trace and horizontal denoise. Not fatal if
+	   they fail - r_rtaoResolution 2 then just runs at full resolution. */
+	vk_create_post_process_pipeline( 11, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
+	vk_create_post_process_pipeline( 12, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
 	if ( vk.rt.pipeline_gen == VK_NULL_HANDLE || vk.rt.pipeline_blur == VK_NULL_HANDLE ||
 		vk.rt.pipeline == VK_NULL_HANDLE || vk.rt.pipeline_debug == VK_NULL_HANDLE ) {
 		ri.Printf( PRINT_WARNING, "RT AO: pipeline failed\n" );
@@ -8237,6 +8275,10 @@ static void vk_destroy_render_passes( void )
 		vk.render_pass.post_bloom = VK_NULL_HANDLE;
 	}
 
+	if ( vk.render_pass.after_composite != VK_NULL_HANDLE ) {   // [QL] E150
+		qvkDestroyRenderPass( vk.device, vk.render_pass.after_composite, NULL );
+		vk.render_pass.after_composite = VK_NULL_HANDLE;
+	}
 	if ( vk.render_pass.rtao != VK_NULL_HANDLE ) {   // [QL] R13
 		qvkDestroyRenderPass( vk.device, vk.render_pass.rtao, NULL );
 		vk.render_pass.rtao = VK_NULL_HANDLE;
@@ -9055,6 +9097,33 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			pipeline_name = "rt ambient occlusion pipeline (debug view)";
 			blend = qfalse;
 			multiply = qfalse;   // write the occlusion term straight out
+			break;
+		case 11: // [QL] E150 the AO trace at half resolution - case 4 with a half-size viewport
+			pipeline = &vk.rt.pipeline_gen_half;
+			/* The multisampled build reads depth with sampler2DMS. Chosen by
+			   vkSamples and not by a cvar, because it has to match the depth
+			   attachment that actually exists. */
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_ms_fs : vk.modules.rtao_fs;
+			renderpass = vk.render_pass.rtao_offscreen;
+			layout = vk.rt.pipeline_layout;
+			/* One sample, whatever the scene is doing. The target is the
+			   single-channel occlusion image, not the framebuffer - AO is
+			   computed once per pixel and applied to all of that pixel's
+			   samples when the composite pass multiplies it in. */
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "rt ambient occlusion pipeline (trace, half resolution)";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
+		case 12: // [QL] E150 the horizontal denoise at half resolution - case 5 likewise
+			pipeline = &vk.rt.pipeline_blur_half;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_blur_ms_fs : vk.modules.rtao_blur_fs;
+			renderpass = vk.render_pass.rtao_offscreen;
+			layout = vk.rt.blur_pipeline_layout;
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "rt ambient occlusion pipeline (denoise, half resolution)";
+			blend = qfalse;
+			multiply = qfalse;
 			break;
 		case 8: // [QL] R19 screen-space reflection - the march
 			pipeline = &vk.ssr.trace_pipeline;
@@ -11441,6 +11510,24 @@ void vk_begin_post_bloom_render_pass( void )
 attachment count, formats and sample counts, not layouts, so vk.render_pass.rtao
 can use vk.framebuffers.main despite referencing depth read-only.
 */
+/*
+[QL] E150. Close a composite pass (vk_begin_rtao_render_pass) and carry the
+frame on with depth writable - see vk.render_pass.after_composite. Same
+framebuffer, same pipelines; renderPassIndex stays what the frame had.
+*/
+static void vk_end_composite_render_pass( void )
+{
+	vk_end_render_pass();
+
+	vk.renderWidth = glConfig.vidWidth;
+	vk.renderHeight = glConfig.vidHeight;
+	vk.renderScaleX = vk.renderScaleY = 1.0f;
+
+	vk_begin_render_pass( vk.render_pass.after_composite,
+		vk.framebuffers.main[ vk.cmd->swapchain_image_index ], qfalse, vk.renderWidth, vk.renderHeight );
+}
+
+
 static void vk_begin_rtao_render_pass( void )
 {
 	VkFramebuffer frameBuffer = vk.framebuffers.main[ vk.cmd->swapchain_image_index ];
@@ -11489,10 +11576,12 @@ static void vk_begin_rtao_render_pass( void )
 [QL] R13 step 3c. The trace and the horizontal denoise, which differ only in
 which of the two occlusion targets they write into.
 */
-static void vk_begin_rtao_offscreen_render_pass( int target )
+static void vk_begin_rtao_offscreen_render_pass( int target, int scale )
 {
-	vk.renderWidth = glConfig.vidWidth;
-	vk.renderHeight = glConfig.vidHeight;
+	/* [QL] E150: scale 2 draws the top-left quarter of the full-size target
+	   (r_rtaoResolution 2); the render area matches the half-size pipelines. */
+	vk.renderWidth = ( glConfig.vidWidth + scale - 1 ) / scale;
+	vk.renderHeight = ( glConfig.vidHeight + scale - 1 ) / scale;
 	vk.renderScaleX = vk.renderScaleY = 1.0f;
 
 	vk_begin_render_pass( vk.render_pass.rtao_offscreen, vk.framebuffers.rtao[ target ],
@@ -12249,6 +12338,9 @@ qboolean vk_rt_ao( void )
 	float vp[16];
 	float proj[16];
 	int denoise;
+	/* [QL] E150: r_rtaoResolution, and only if both half-size pipelines exist */
+	int aoScale = ( r_rtaoResolution && r_rtaoResolution->integer >= 2 &&
+		vk.rt.pipeline_gen_half != VK_NULL_HANDLE && vk.rt.pipeline_blur_half != VK_NULL_HANDLE ) ? 2 : 1;
 
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return qfalse;   // the little world-in-a-portal view, not the scene
@@ -12290,9 +12382,19 @@ qboolean vk_rt_ao( void )
 
 	/* The other half of the same problem: when it does run, say so once, so a
 	   log can tell "drew" from "was ready to draw". */
+	{
+		/* [QL] E150: r_rtaoResolution is live, so say it again when it moves */
+		static int reportedScale = 0;
+		if ( aoScale != reportedScale ) {
+			reportedScale = aoScale;
+			rtaoOnReported = qfalse;
+		}
+	}
 	if ( !rtaoOnReported ) {
 		const int aoSamples = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
-		const double rays = (double)glConfig.vidWidth * (double)glConfig.vidHeight * (double)aoSamples;
+		const int traceW = ( glConfig.vidWidth + aoScale - 1 ) / aoScale;
+		const int traceH = ( glConfig.vidHeight + aoScale - 1 ) / aoScale;
+		const double rays = (double)traceW * (double)traceH * (double)aoSamples;
 
 		rtaoOnReported = qtrue;
 		ri.Printf( PRINT_ALL, "RT AO: tracing%s - %i rays/pixel, radius %g, strength %g, denoise %s\n",
@@ -12320,8 +12422,8 @@ qboolean vk_rt_ao( void )
 		Every input to that number was already on the line above. None of them
 		meant anything without being multiplied together, so multiply them.
 		*/
-		ri.Printf( PRINT_ALL, "RT AO: %.1fM rays/frame at %ix%i\n",
-			rays / 1000000.0, glConfig.vidWidth, glConfig.vidHeight );
+		ri.Printf( PRINT_ALL, "RT AO: %.1fM rays/frame at %ix%i%s\n",
+			rays / 1000000.0, traceW, traceH, aoScale > 1 ? " (half resolution)" : "" );
 
 		if ( rays > 32000000.0 ) {
 			ri.Printf( PRINT_WARNING, "RT AO: that is a very large trace for one draw call. If the "
@@ -12374,6 +12476,8 @@ qboolean vk_rt_ao( void )
 	   uses - after a few hours of uptime. */
 	push.params[2] = (float)( vk.frame_count & 255 );
 	push.params[3] = 1.5f;   // surface bias, in world units
+	push.res[0] = (float)aoScale;   // [QL] E150
+	push.res[1] = push.res[2] = push.res[3] = 0.0f;
 
 	/*
 	[QL] Which depth values are not surfaces, taken from the engine's own
@@ -12425,7 +12529,7 @@ qboolean vk_rt_ao( void )
 	blur.depthLinear[0] = proj[10];
 	blur.depthLinear[1] = proj[14];
 	blur.depthLinear[2] = 0.05f;   // taps within 5% of the centre's distance
-	blur.depthLinear[3] = 0.0f;
+	blur.depthLinear[3] = (float)aoScale;   // [QL] E150
 
 	denoise = ( r_rtaoDenoise->integer != 0 );
 
@@ -12515,9 +12619,10 @@ qboolean vk_rt_ao( void )
 		0, 0 );
 
 	// ---- pass 1: trace, into ao_image[0] ----
-	vk_begin_rtao_offscreen_render_pass( 0 );
+	vk_begin_rtao_offscreen_render_pass( 0, aoScale );
 
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline_gen );
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		aoScale > 1 ? vk.rt.pipeline_gen_half : vk.rt.pipeline_gen );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor[ vk.cmd_index ], 0, NULL );
 	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.pipeline_layout,
@@ -12536,11 +12641,12 @@ qboolean vk_rt_ao( void )
 		blur.step[0] = 1.0f;
 		blur.step[1] = 0.0f;
 		blur.step[2] = 1.0f;   // intermediate pass: no output scaling
-		blur.step[3] = 0.0f;
+		blur.step[3] = 0.0f;   // [QL] E150: writes at the occlusion's own resolution
 
-		vk_begin_rtao_offscreen_render_pass( 1 );
+		vk_begin_rtao_offscreen_render_pass( 1, aoScale );
 
-		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline_blur );
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			aoScale > 1 ? vk.rt.pipeline_blur_half : vk.rt.pipeline_blur );
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[0], 0, NULL );
 		qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
@@ -12571,7 +12677,7 @@ qboolean vk_rt_ao( void )
 	blur.step[2] = ( r_rtao->integer >= 2 && tr.overbrightBits > 0 )
 		? 1.0f / (float)( 1 << tr.overbrightBits )
 		: 1.0f;
-	blur.step[3] = 0.0f;
+	blur.step[3] = 1.0f;   // [QL] E150: writes at full resolution (the upsample)
 
 	vk_begin_rtao_render_pass();
 
@@ -12585,6 +12691,8 @@ qboolean vk_rt_ao( void )
 	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
 		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+
+	vk_end_composite_render_pass();   // [QL] E150: depth writable for the rest of the frame
 
 	/*
 	Put back what the pass clobbered. This is what ate the HUD.
@@ -13738,6 +13846,8 @@ qboolean vk_ssr( void )
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vk.ssr.composite_pipeline_layout, 0, 1, &vk.ssr.composite_descriptor, 0, NULL );
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+
+	vk_end_composite_render_pass();   // [QL] E150: depth writable for the rest of the frame
 
 	/*
 	Put back what these passes clobbered - the same repair the occlusion pass

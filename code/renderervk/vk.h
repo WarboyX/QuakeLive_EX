@@ -567,6 +567,9 @@ typedef struct {
 		   also write is a feedback loop and is not allowed; read-only is the
 		   exception that makes depth-as-texture legal. */
 		VkRenderPass rtao;
+		/* [QL] E150: rtao with depth writable again - where the frame goes on
+		   after a composite, so the HUD does not draw into read-only depth */
+		VkRenderPass after_composite;
 		/* [QL] R13: one single-channel colour attachment and nothing else -
 		   the target the trace writes and the horizontal denoise pass writes.
 		   One render pass for both, because they differ only in which
@@ -1142,6 +1145,10 @@ typedef struct {
 
 		VkPipeline				pipeline_gen;	// trace        -> ao_image[0]
 		VkPipeline				pipeline_blur;	// ao_image[0]  -> ao_image[1]
+		/* [QL] E150: the same two at half resolution - their viewport is baked
+		   into the pipeline, so r_rtaoResolution picks between two pairs */
+		VkPipeline				pipeline_gen_half;
+		VkPipeline				pipeline_blur_half;
 		VkPipeline				pipeline;		// ao_image[1]  -> scene, multiply
 		/* [QL] Same shader as pipeline, replace instead of multiply, so
 		   r_rtao 2 shows the occlusion term rather than its effect on the

@@ -448,6 +448,8 @@ def raytracing():
          '"16 (tight creases)" 16 "32" 32 "64 (default)" 64 "128" 128 "256 (wide)" 256 '
          '"512" 512 "1024" 1024 "2048" 2048 "4096 (whole rooms)" 4096'),
         ("multi", "r_rtaoIntensity", "Strength", '"0.25 (subtle)" 0.25 "0.5" 0.5 "0.8 (default)" 0.8 "1.0 (full)" 1'),
+        # [QL] E150. Live - both pipeline pairs exist; a quarter of the rays.
+        ("multi", "r_rtaoResolution", "Trace resolution", '"Full (default)" 1 "Half (faster)" 2'),
         # [QL] Labelled by cost: the trace is full resolution, so 16 rays at 4K
         # is 133 million ray queries in one draw - past a driver watchdog.
         ("multi", "r_rtaoSamples", "Rays per pixel", '"2 (fastest)" 2 "4 (default)" 4 "8 (heavy)" 8 "16 (very heavy)" 16'),

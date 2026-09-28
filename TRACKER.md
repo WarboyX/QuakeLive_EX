@@ -6048,6 +6048,22 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E150. RT AO at half resolution (option); the HUD drew into read-only depth after AO/water — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+**P2, `r_rtaoResolution`** (1 full, the default; 2 half). Menu: Lighting & Ray Tracing → Ambient occlusion → "Trace resolution". **Live**, no restart.
+- The trace and the horizontal denoise draw into the top-left quarter of the full-size occlusion images. They have their own half-size pipelines, because the viewport is baked into a pipeline, and both pairs are created up front.
+- The trace reads depth at the full-resolution pixel each texel stands for (`rtao.tmpl`, new `res` push constant, 112 bytes).
+- The composite is also the upsample. Every occlusion tap, the centre included, is weighted by how close the depth it was traced at is to the full-resolution pixel's depth, so a half-size texel straddling an edge does not bleed a wall's occlusion onto the floor in front of it (`rtao_blur.tmpl`, using the two unused push fields).
+- Result: a quarter of the rays. The console reports it: "3.7M rays/frame at 1280x720" becomes "0.9M ... at 640x360 (half resolution)", printed again when the setting changes.
+- Side by side in the AO debug view, the two are near-identical; edges stay sharp and the half version's noise is slightly smoother.
+
+**Found while validating it - predates this build (reproduced on E148).** After the AO or water composite, the frame carried on inside the composite pass, which holds depth **read-only** because the composite samples it. The rest of the frame is mostly the HUD, and a Quake 3 stage without a blend writes depth, so every opaque HUD image drew with depth writes into read-only depth: `VUID-vkCmdDrawIndexed-None-06886`, on every frame with AO or water. That is undefined behaviour of the same kind as E145's crash.
+- **Fix:** a new `after_composite` render pass - the composite pass with depth writable again, everything loaded and kept, the same dependencies as main so every pipeline is compatible.
+- AO and the water pass end their composite pass after the one draw and continue in it.
+
+**Checked:** the Vulkan validation layer reports 0 errors both in the AO debug scene switching full → half → full, and in the full scene (4x MSAA, AO, water, bloom, HUD).
+
 ### E149. Water ripples evaluated once per pixel; AO and water ran only if something drew in 2D; dynamic-light labels — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

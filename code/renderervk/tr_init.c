@@ -153,6 +153,7 @@ cvar_t	*r_rtaoNormals;
 cvar_t	*r_rtaoWeapon;
 cvar_t	*r_rts;
 cvar_t	*r_rtaoDenoise;
+cvar_t	*r_rtaoResolution;   // [QL] E150
 cvar_t	*r_rtaoLights;
 cvar_t	*r_ssr;
 cvar_t	*r_ssrDistance;
@@ -2581,6 +2582,14 @@ static void R_Register( void )
 		" 1 - on\n"
 		" 2 - wide (smoother, softer contact shadows)\n"
 		"The width needs a vid_restart; off and on do not." );
+
+	/* [QL] E150. Live: both pipelines exist, and this picks one per frame. */
+	r_rtaoResolution = ri.Cvar_Get( "r_rtaoResolution", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoResolution, "1", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoResolution, "Resolution the occlusion is traced at:\n"
+		" 1 - full (default)\n"
+		" 2 - half: a quarter of the rays, upsampled against the full-resolution "
+		"depth so edges stay sharp. Takes effect immediately." );
 
 	r_device = ri.Cvar_Get( "r_device", "-1", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_device, "-2", NULL, CV_INTEGER );

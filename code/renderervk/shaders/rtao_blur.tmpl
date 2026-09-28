@@ -104,7 +104,28 @@ float linearise(float d) {
 }
 
 void main() {
-	ivec2 c = ivec2(gl_FragCoord.xy);
+	/*
+	[QL] E150, r_rtaoResolution. The trace can run at half resolution, into the
+	top-left quarter of the occlusion images. Two figures say how this pass
+	relates to that:
+
+	  depthLinear.w  aoScale - full-resolution pixels per occlusion texel,
+	                 1 or 2 (0 from an older caller reads as 1)
+	  step.w         1 when this pass writes at full resolution (the
+	                 composite), 0 when it writes at the occlusion's own
+	                 resolution (the horizontal denoise)
+
+	At aoScale 1 both are the same pass as before. At 2 the composite is also
+	the upsample: every occlusion tap is weighted by how close the depth it
+	was traced at is to this full-resolution pixel's depth, the centre tap
+	included, so a half-resolution texel straddling an edge does not bleed a
+	wall's occlusion onto the floor in front of it.
+	*/
+	int aoScale = max(int(pc.depthLinear.w + 0.5), 1);
+	bool fullOut = pc.step.w > 0.5;
+	ivec2 frag = ivec2(gl_FragCoord.xy);
+	ivec2 c = fullOut ? frag / aoScale : frag;       // occlusion texel
+	ivec2 cd = fullOut ? frag : frag * aoScale;      // depth texel for the centre
 
 	/*
 	r_rtaoDenoise 0. Returning the raw trace here rather than building a
@@ -117,10 +138,11 @@ void main() {
 		return;
 	}
 
-	ivec2 size = textureSize(aoMap, 0);
+	/* the part of the occlusion image the trace wrote */
+	ivec2 size = textureSize(aoMap, 0) / aoScale;
 	ivec2 dir = ivec2(pc.step.xy);
 
-	float centerDepth = linearise(fetchDepth(c));
+	float centerDepth = linearise(fetchDepth(cd));
 	/*
 	Absolute tolerance in world units, scaled by how far away the centre is. A
 	fixed fraction of distance is the right shape: a wall seen from across the
@@ -133,8 +155,14 @@ void main() {
 	*/
 	float tolerance = pc.depthLinear.z * centerDepth + 1.0;
 
-	float sum = texelFetch(aoMap, c, 0).r;
-	float weightSum = 1.0;
+	/* the centre tap: full weight unless it is an upsample across an edge */
+	float centerW = 1.0;
+	if (aoScale > 1 && fullOut) {
+		float d0 = linearise(fetchDepth(c * aoScale));
+		centerW = max(0.05, 1.0 - abs(d0 - centerDepth) / tolerance);
+	}
+	float sum = texelFetch(aoMap, c, 0).r * centerW;
+	float weightSum = centerW;
 
 	/*
 	Gaussian falloff chosen so the outermost tap still carries about 10% of the
@@ -155,7 +183,8 @@ void main() {
 			*/
 			ivec2 p = clamp(c + dir * (i * s), ivec2(0), size - ivec2(1));
 
-			float d = linearise(fetchDepth(p));
+			/* the depth this occlusion texel was traced at */
+			float d = linearise(fetchDepth(p * aoScale));
 			float range = max(0.0, 1.0 - abs(d - centerDepth) / tolerance);
 			float w = spatial * range;
 
