@@ -155,6 +155,7 @@ cvar_t	*r_rts;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_rtaoResolution;   // [QL] E150
 cvar_t	*r_ssrResolution;    // [QL] E151
+cvar_t	*r_pipelineCache;    // [QL] E152
 cvar_t	*r_rtaoLights;
 cvar_t	*r_ssr;
 cvar_t	*r_ssrDistance;
@@ -2593,6 +2594,16 @@ static void R_Register( void )
 		"The width needs a vid_restart; off and on do not." );
 
 	/* [QL] E150. Live: both pipelines exist, and this picks one per frame. */
+	/* [QL] E152. 1 is a pure saving - it only stops work being repeated - so
+	   it is the default; 0 is there to rule it out when chasing a driver bug. */
+	r_pipelineCache = ri.Cvar_Get( "r_pipelineCache", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_pipelineCache, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_pipelineCache, "Keep compiled pipelines between runs:\n"
+		" 0 - off: every pipeline is built the first time it is drawn\n"
+		" 1 - save them to vkpipelines.cache and reuse them next run (default)\n"
+		" 2 - as 1, and build all of a map's pipelines while it loads instead of on "
+		"first use in a frame - fewer hitches, a slightly longer load" );
+
 	r_rtaoResolution = ri.Cvar_Get( "r_rtaoResolution", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoResolution, "1", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtaoResolution, "Resolution the occlusion is traced at:\n"
@@ -2868,6 +2879,8 @@ Touch all images to make sure they are resident
 =============
 */
 static void RE_EndRegistration( void ) {
+	vk_prewarm_pipelines();   // [QL] E152: r_pipelineCache 2
+
 	/*
 	[QL] What the material maps came to, counted here and not at world load.
 

@@ -104,6 +104,7 @@ static PFN_vkDestroyImage								qvkDestroyImage;
 static PFN_vkDestroyImageView							qvkDestroyImageView;
 static PFN_vkDestroyPipeline							qvkDestroyPipeline;
 static PFN_vkDestroyPipelineCache						qvkDestroyPipelineCache;
+static PFN_vkGetPipelineCacheData						qvkGetPipelineCacheData;   // [QL] E152
 static PFN_vkDestroyPipelineLayout						qvkDestroyPipelineLayout;
 static PFN_vkDestroyRenderPass							qvkDestroyRenderPass;
 static PFN_vkDestroySampler								qvkDestroySampler;
@@ -154,6 +155,7 @@ static PFN_vkGetBufferDeviceAddressKHR					qvkGetBufferDeviceAddressKHR;
 
 // forward declaration
 VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassIndex, uint32_t def_index );
+static qboolean vk_pipeline_cache_usable( const void *data, long len );   // [QL] E152
 
 static uint32_t find_memory_type( uint32_t memory_type_bits, VkMemoryPropertyFlags properties ) {
 	VkPhysicalDeviceMemoryProperties memory_properties;
@@ -2842,6 +2844,7 @@ static void init_vulkan_library( void )
 	INIT_DEVICE_FUNCTION(vkDestroyImageView)
 	INIT_DEVICE_FUNCTION(vkDestroyPipeline)
 	INIT_DEVICE_FUNCTION(vkDestroyPipelineCache)
+	INIT_DEVICE_FUNCTION(vkGetPipelineCacheData)
 	INIT_DEVICE_FUNCTION(vkDestroyPipelineLayout)
 	INIT_DEVICE_FUNCTION(vkDestroyRenderPass)
 	INIT_DEVICE_FUNCTION(vkDestroySampler)
@@ -2999,6 +3002,7 @@ static void deinit_device_functions( void )
 	qvkDestroyImageView							= NULL;
 	qvkDestroyPipeline							= NULL;
 	qvkDestroyPipelineCache						= NULL;
+	qvkGetPipelineCacheData						= NULL;
 	qvkDestroyPipelineLayout					= NULL;
 	qvkDestroyRenderPass						= NULL;
 	qvkDestroySampler							= NULL;
@@ -8116,9 +8120,32 @@ void vk_initialize( void )
 
 	{
 		VkPipelineCacheCreateInfo ci;
+		void *data = NULL;
+		long len = 0;
+
 		Com_Memset( &ci, 0, sizeof( ci ) );
 		ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-		VK_CHECK( qvkCreatePipelineCache( vk.device, &ci, NULL, &vk.pipelineCache ) );
+
+		/* [QL] E152: r_pipelineCache - start from what the last run built */
+		if ( r_pipelineCache->integer >= 1 ) {
+			len = ri.FS_ReadFile( VK_PIPELINE_CACHE_FILE, &data );
+			if ( data != NULL && vk_pipeline_cache_usable( data, len ) ) {
+				ci.initialDataSize = (size_t)len;
+				ci.pInitialData = data;
+			}
+		}
+
+		if ( qvkCreatePipelineCache( vk.device, &ci, NULL, &vk.pipelineCache ) != VK_SUCCESS ) {
+			/* a driver may still refuse data it wrote itself - start empty */
+			ci.initialDataSize = 0;
+			ci.pInitialData = NULL;
+			VK_CHECK( qvkCreatePipelineCache( vk.device, &ci, NULL, &vk.pipelineCache ) );
+		} else if ( ci.pInitialData != NULL ) {
+			ri.Printf( PRINT_ALL, "Pipeline cache: loaded %i KiB from %s\n", (int)( len / 1024 ), VK_PIPELINE_CACHE_FILE );
+		}
+		if ( data != NULL ) {
+			ri.FS_FreeFile( data );
+		}
 	}
 
 	vk.renderPassIndex = RENDER_PASS_MAIN; // default render pass
@@ -8378,6 +8405,8 @@ void vk_shutdown( refShutdownCode_t code )
 
 	vk_destroy_swapchain();
 
+	vk_save_pipeline_cache();   // [QL] E152
+
 	if ( vk.pipelineCache != VK_NULL_HANDLE ) {
 		qvkDestroyPipelineCache( vk.device, vk.pipelineCache, NULL );
 		vk.pipelineCache = VK_NULL_HANDLE;
@@ -8513,6 +8542,101 @@ __cleanup:
 	if ( code != REF_KEEP_CONTEXT ) {
 		vk_destroy_instance();
 		deinit_instance_functions();
+	}
+}
+
+
+/*
+=================
+[QL] E152. The pipeline cache, kept across runs - r_pipelineCache.
+
+Every pipeline this renderer uses is built the first time something needs it,
+which is in the middle of a frame: the first explosion of a kind, the first
+time a shader is seen. With an empty cache that is a shader compile on the
+spot, and it shows as a hitch. The driver's own disk cache hides much of that
+on some GPUs and none of it on others. A VkPipelineCache written at shutdown
+and handed back at start-up is the portable version.
+
+The header is checked here before the driver sees it - vendor, device and the
+cache UUID, which changes with the driver - because the specification leaves
+what a driver does with someone else's cache to the driver. A mismatch is
+not an error: it is a new GPU or a driver update, and the cache starts empty.
+=================
+*/
+static qboolean vk_pipeline_cache_usable( const void *data, long len )
+{
+	VkPhysicalDeviceProperties props;
+	const byte *b = (const byte *)data;
+	uint32_t headerLen, version, vendor, device;
+
+	if ( len < 32 ) {
+		return qfalse;
+	}
+	Com_Memcpy( &headerLen, b + 0, 4 );
+	Com_Memcpy( &version, b + 4, 4 );
+	Com_Memcpy( &vendor, b + 8, 4 );
+	Com_Memcpy( &device, b + 12, 4 );
+
+	qvkGetPhysicalDeviceProperties( vk.physical_device, &props );
+
+	if ( headerLen < 32 || version != VK_PIPELINE_CACHE_HEADER_VERSION_ONE ||
+		 vendor != props.vendorID || device != props.deviceID ||
+		 memcmp( b + 16, props.pipelineCacheUUID, VK_UUID_SIZE ) != 0 ) {
+		ri.Printf( PRINT_ALL, "Pipeline cache: %s is from another GPU or driver - starting empty\n",
+			VK_PIPELINE_CACHE_FILE );
+		return qfalse;
+	}
+	return qtrue;
+}
+
+
+void vk_save_pipeline_cache( void )
+{
+	size_t size = 0;
+	void *data;
+
+	if ( vk.pipelineCache == VK_NULL_HANDLE || qvkGetPipelineCacheData == NULL ||
+		 !r_pipelineCache || r_pipelineCache->integer < 1 ) {
+		return;
+	}
+	if ( qvkGetPipelineCacheData( vk.device, vk.pipelineCache, &size, NULL ) != VK_SUCCESS || size == 0 ) {
+		return;
+	}
+	data = ri.Hunk_AllocateTempMemory( (int)size );
+	if ( qvkGetPipelineCacheData( vk.device, vk.pipelineCache, &size, data ) == VK_SUCCESS ) {
+		ri.FS_WriteFile( VK_PIPELINE_CACHE_FILE, data, (int)size );
+		ri.Printf( PRINT_DEVELOPER, "Pipeline cache: saved %i KiB\n", (int)( size / 1024 ) );
+	}
+	ri.Hunk_FreeTempMemory( data );
+}
+
+
+/*
+[QL] E152. r_pipelineCache 2: build every pipeline the registered shaders have
+asked for now, at the end of registration, instead of on first use in a frame.
+Main render pass only - the one nearly everything draws in. With the disk cache
+warm this is quick; the first run after a driver update pays the compile here,
+behind the loading screen, rather than in the first fight.
+*/
+void vk_prewarm_pipelines( void )
+{
+	uint32_t i, built = 0;
+	int start;
+
+	if ( !r_pipelineCache || r_pipelineCache->integer < 2 || vk.device == VK_NULL_HANDLE ) {
+		return;
+	}
+	start = ri.Milliseconds();
+	for ( i = 0; i < vk.pipelines_count; i++ ) {
+		VK_Pipeline_t *pipeline = vk.pipelines + i;
+		if ( pipeline->handle[ RENDER_PASS_MAIN ] == VK_NULL_HANDLE ) {
+			pipeline->handle[ RENDER_PASS_MAIN ] = create_pipeline( &pipeline->def, RENDER_PASS_MAIN, i );
+			built++;
+		}
+	}
+	ri.Printf( PRINT_ALL, "Pipeline cache: pre-built %u pipeline(s) in %i ms\n", built, ri.Milliseconds() - start );
+	if ( built ) {
+		vk_save_pipeline_cache();
 	}
 }
 

@@ -52,7 +52,7 @@ ROWS_Y = PANEL_Y + 32
 VK = ('cvarTest "cl_renderer"  showCvar { "vulkan" }')
 GL = ('cvarTest "cl_renderer"  hideCvar { "vulkan" }')
 
-# The five pages, by suffix. Each is generated twice (E125):
+# The six pages, by suffix. Each is generated twice (E125):
 #   main   io_<suffix>     from the main menu's RENDER entry. CLOSE closes it and
 #                          the main menu is underneath.
 #   ingame io_igr_<suffix> from the in-game Advanced page. It REPLACES the
@@ -67,6 +67,7 @@ TABS = [
     ("water",         "Water"),
     ("splashes",      "Splashes"),   # [QL] E147: IMPACTS, split off Water
     ("surfacedetail", "Surface Detail"),
+    ("image",         "Image"),          # [QL] E152: post effects and performance
 ]
 
 VARIANTS = {
@@ -528,6 +529,18 @@ def splashes():
     return page(name("splashes"), "SPLASHES", spec, [reset, CLOSE])
 
 
+def image():
+    # [QL] E152. Settings about the finished image and about how the renderer
+    # spends its time, which fit no other page - and the other pages are full.
+    spec = [
+        ("h", "PERFORMANCE"),
+        ("multi", "r_pipelineCache", "Pipeline cache",
+         '"Off" 0 "Save between runs (default)" 1 "Save + build on load" 2'),
+        ("help", "Keeps compiled pipelines in vkpipelines.cache. Build on load: fewer hitches."),
+    ]
+    return page(name("image"), "IMAGE", spec, [reset_button(spec), CLOSE])
+
+
 def surface_detail():
     # [QL] R20 Stage A: a normal map derived from each dynamically lit
     # surface's own texture. Latched, because the strength is baked into image
@@ -707,7 +720,7 @@ def main():
     pages = ""
     for key in ("main", "ingame"):
         V = VARIANTS[key]
-        pages += render_options() + raytracing() + water() + splashes() + surface_detail()
+        pages += render_options() + raytracing() + water() + splashes() + surface_detail() + image()
     block = (BEGIN
              + "    // Generated - edit tools/gen-render-menu.py, not this block.\n"
              + pages

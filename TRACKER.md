@@ -6048,6 +6048,22 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E152. Pipeline cache kept between runs, optional build-on-load (`r_pipelineCache`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (P3). Every pipeline is built the first time something draws with it, mid-frame, and the `VkPipelineCache` lived only in memory, so each run started cold. The first explosion of a kind, or the first time a shader appeared, compiled on the spot and could hitch. NVIDIA's own driver disk cache hides much of this; not every driver has one.
+
+**`r_pipelineCache`** (menu: the new **Image** tab → Performance):
+- **0:** off - build on first use, as before.
+- **1** (default - it only saves work): load `vkpipelines.cache` at start-up and write it at shutdown.
+- **2:** as 1, plus build every pipeline the loaded shaders registered at the end of registration (`RE_EndRegistration`), main render pass only. The compile happens behind the loading screen instead of in the first fight.
+
+Before the driver sees a loaded cache, its header is checked: vendor, device, and the cache UUID, which changes with the driver. A mismatch (new GPU, driver update) starts the cache empty and says so.
+
+**Checked:** two runs sharing one home folder. Run 1 pre-built 93 pipelines in 227 ms and wrote the file on quit; run 2 loaded it and passed the header check. On lavapipe the file is only its 32-byte header - that driver does not store compiled pipelines in the cache - so the saving itself shows only on real GPU drivers.
+
+**New Image tab.** The Render Options and Surface Detail pages are full, so settings about the finished image and about performance go here. The coming anti-aliasing, sharpening and tone-mapping rows (G4, G5) belong on it too.
+
 ### E151. Water reflection at half resolution (option); E150's half-size AO pipelines got the wrong constants — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

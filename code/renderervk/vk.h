@@ -448,6 +448,10 @@ void vk_find_water_planes( const struct world_s *world );
 /* [QL] R19: reflect the scene in them. A no-op unless r_ssr is on, the map has
    a water plane, and the pass was created. */
 qboolean vk_ssr( void );
+/* [QL] E152: r_pipelineCache */
+#define VK_PIPELINE_CACHE_FILE "vkpipelines.cache"
+void vk_save_pipeline_cache( void );
+void vk_prewarm_pipelines( void );
 void vk_rt_destroy_world( void );
 /* [QL] R13 step 3: the ambient occlusion pass. Returns qtrue when it ran and
    therefore left its own render pass open in place of the main one. */

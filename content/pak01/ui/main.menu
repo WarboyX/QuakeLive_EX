@@ -3933,7 +3933,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -3947,59 +3947,70 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
@@ -4177,7 +4188,7 @@
             rect 331 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
             mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
@@ -4195,7 +4206,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -4209,59 +4220,70 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
@@ -4384,7 +4406,7 @@
             rect 397 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
             mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
@@ -4402,7 +4424,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -4416,59 +4438,70 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
@@ -4583,7 +4616,7 @@
             rect 286 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
             mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
@@ -4601,7 +4634,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -4615,59 +4648,70 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
@@ -4745,7 +4789,7 @@
             rect 286 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
             mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
@@ -4763,7 +4807,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -4777,60 +4821,71 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; open io_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
                   style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -5005,7 +5060,142 @@
             rect 397 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail }
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
+            mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
+        }
+    }
+
+    // check-menus: overlap-ok - layered like io_ingame: the backdrop under
+    // everything and overhanging the frame, the logo overhanging it left, each
+    // tab four items on one rect, and rows gated on cl_renderer sharing a y.
+    menuDef {
+        name "io_image"
+        rect 40 0 560 480
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        disableColor .5 .5 .5 1
+
+        onESC { close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
+
+        // One dim, the same as io_ingame's ig_dim. In a game this page stands
+        // in for that frame rather than sitting on it, so this is the only one.
+        itemDef { name rdim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.55 }
+        itemDef { name rheader  rect 0 0 560 64  background "ui/assets/main_menu/header.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rlogo  rect -20 0 256 64  background "ui/assets/main_menu/ql_logo.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
+        itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
+        itemDef {
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_renderoptions }
+        }
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_raytracing }
+        }
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_water }
+        }
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_splashes }
+        }
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_surfacedetail }
+        }
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image ; open io_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.9 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0.964 0.815 0 1 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rpage  rect 0 82 560 358
+                  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rtitle  text "IMAGE"  textscale .26  rect 20 86 520 24  textaligny 17
+                  textalign ITEM_ALIGN_CENTER  textalignx 260
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rrule  text ""  rect 20 110 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "PERFORMANCE"  textscale .2  rect 24 114 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Pipeline cache"  textscale .21  rect 24 131 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rpipelinecache  type ITEM_TYPE_MULTI  text ""  cvar "r_pipelineCache"
+                  cvarFloatList { "Off" 0 "Save between runs (default)" 1 "Save + build on load" 2 }
+                  rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Keeps compiled pipelines in vkpipelines.cache. Build on load: fewer hitches."  textscale .17  rect 24 148 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
+        itemDef {
+            name rreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset r_pipelineCache" }
+            mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name rclose  text "CLOSE"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 286 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_renderoptions ; close io_raytracing ; close io_water ; close io_splashes ; close io_surfacedetail ; close io_image }
             mouseEnter { setitemcolor rclose backcolor 0 0 0 .9 ; setitemcolor rclose forecolor 0.964 0.815 0 1 ; setitemcolor rclose bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rclose backcolor 0 0 0 .6 ; setitemcolor rclose forecolor 1 1 1 1 ; setitemcolor rclose bordercolor .35 .3 .12 1 }
         }
@@ -5023,7 +5213,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; uiScript closeingame }
+        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; uiScript closeingame }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -5037,59 +5227,70 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
@@ -5267,7 +5468,7 @@
             rect 331 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_ingame ; open io_ig_advanced }
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_ingame ; open io_ig_advanced }
             mouseEnter { setitemcolor rback backcolor 0 0 0 .9 ; setitemcolor rback forecolor 0.964 0.815 0 1 ; setitemcolor rback bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rback backcolor 0 0 0 .6 ; setitemcolor rback forecolor 1 1 1 1 ; setitemcolor rback bordercolor .35 .3 .12 1 }
         }
@@ -5285,7 +5486,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; uiScript closeingame }
+        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; uiScript closeingame }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -5299,59 +5500,70 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
@@ -5474,7 +5686,7 @@
             rect 397 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_ingame ; open io_ig_advanced }
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_ingame ; open io_ig_advanced }
             mouseEnter { setitemcolor rback backcolor 0 0 0 .9 ; setitemcolor rback forecolor 0.964 0.815 0 1 ; setitemcolor rback bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rback backcolor 0 0 0 .6 ; setitemcolor rback forecolor 1 1 1 1 ; setitemcolor rback bordercolor .35 .3 .12 1 }
         }
@@ -5492,7 +5704,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; uiScript closeingame }
+        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; uiScript closeingame }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -5506,59 +5718,70 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
@@ -5673,7 +5896,7 @@
             rect 286 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_ingame ; open io_ig_advanced }
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_ingame ; open io_ig_advanced }
             mouseEnter { setitemcolor rback backcolor 0 0 0 .9 ; setitemcolor rback forecolor 0.964 0.815 0 1 ; setitemcolor rback bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rback backcolor 0 0 0 .6 ; setitemcolor rback forecolor 1 1 1 1 ; setitemcolor rback bordercolor .35 .3 .12 1 }
         }
@@ -5691,7 +5914,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; uiScript closeingame }
+        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; uiScript closeingame }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -5705,59 +5928,70 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
@@ -5835,7 +6069,7 @@
             rect 286 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_ingame ; open io_ig_advanced }
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_ingame ; open io_ig_advanced }
             mouseEnter { setitemcolor rback backcolor 0 0 0 .9 ; setitemcolor rback forecolor 0.964 0.815 0 1 ; setitemcolor rback bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rback backcolor 0 0 0 .6 ; setitemcolor rback forecolor 1 1 1 1 ; setitemcolor rback bordercolor .35 .3 .12 1 }
         }
@@ -5853,7 +6087,7 @@
         focusColor 0.964 0.815 0 1
         disableColor .5 .5 .5 1
 
-        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; uiScript closeingame }
+        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; uiScript closeingame }
 
         // One dim, the same as io_ingame's ig_dim. In a game this page stands
         // in for that frame rather than sitting on it, so this is the only one.
@@ -5867,60 +6101,71 @@
         itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
         itemDef {
-            name rtab0  rect 6 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_renderoptions }
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_renderoptions }
         }
-        itemDef { name rtab0o  rect 8 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0u  rect 8 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab0t  rect 6 64 116 16  text "Render Options"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab1  rect 122 64 156 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_raytracing }
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_raytracing }
         }
-        itemDef { name rtab1o  rect 124 64 152 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1u  rect 124 80 152 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab1t  rect 122 64 156 16  text "Lighting & Ray Tracing"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 78  textaligny 13
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab2  rect 278 64 71 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_water }
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_water }
         }
-        itemDef { name rtab2o  rect 280 64 67 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2u  rect 280 80 67 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab2t  rect 278 64 71 16  text "Water"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 35  textaligny 13
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab3  rect 349 64 86 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_splashes }
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_splashes }
         }
-        itemDef { name rtab3o  rect 351 64 82 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3u  rect 351 80 82 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 1 1 1 0 }
-        itemDef { name rtab3t  rect 349 64 86 16  text "Splashes"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 43  textaligny 13
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name rtab4  rect 435 64 116 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_igr_surfacedetail }
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_surfacedetail }
         }
-        itemDef { name rtab4o  rect 437 64 112 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.9 }
-        itemDef { name rtab4u  rect 437 80 112 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0.964 0.815 0 1 }
-        itemDef { name rtab4t  rect 435 64 116 16  text "Surface Detail"  textscale .18
-                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 58  textaligny 13
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name rpage  rect 0 82 560 358
                   background "ui/assets/main_menu/content_background.tga"
                   style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -6095,7 +6340,142 @@
             rect 397 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; open io_ingame ; open io_ig_advanced }
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_ingame ; open io_ig_advanced }
+            mouseEnter { setitemcolor rback backcolor 0 0 0 .9 ; setitemcolor rback forecolor 0.964 0.815 0 1 ; setitemcolor rback bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rback backcolor 0 0 0 .6 ; setitemcolor rback forecolor 1 1 1 1 ; setitemcolor rback bordercolor .35 .3 .12 1 }
+        }
+    }
+
+    // check-menus: overlap-ok - layered like io_ingame: the backdrop under
+    // everything and overhanging the frame, the logo overhanging it left, each
+    // tab four items on one rect, and rows gated on cl_renderer sharing a y.
+    menuDef {
+        name "io_igr_image"
+        rect 40 0 560 480
+        visible MENU_FALSE
+        fullScreen 0
+        style WINDOW_STYLE_EMPTY
+        focusColor 0.964 0.815 0 1
+        disableColor .5 .5 .5 1
+
+        onESC { close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; uiScript closeingame }
+
+        // One dim, the same as io_ingame's ig_dim. In a game this page stands
+        // in for that frame rather than sitting on it, so this is the only one.
+        itemDef { name rdim  rect -220 0 1080 480  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.55 }
+        itemDef { name rheader  rect 0 0 560 64  background "ui/assets/main_menu/header.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1
+                  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rlogo  rect -20 0 256 64  background "ui/assets/main_menu/ql_logo.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration  backcolor 1 1 1 1 }
+        itemDef { name rbar  rect 0 63 560 18  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
+        itemDef {
+            name rtab0  rect 6 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_renderoptions }
+        }
+        itemDef { name rtab0o  rect 8 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0u  rect 8 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab0t  rect 6 64 104 16  text "Render Options"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab1  rect 110 64 144 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_raytracing }
+        }
+        itemDef { name rtab1o  rect 112 64 140 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1u  rect 112 80 140 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab1t  rect 110 64 144 16  text "Lighting & Ray Tracing"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 72  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab2  rect 254 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_water }
+        }
+        itemDef { name rtab2o  rect 256 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2u  rect 256 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab2t  rect 254 64 59 16  text "Water"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab3  rect 313 64 74 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_splashes }
+        }
+        itemDef { name rtab3o  rect 315 64 70 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3u  rect 315 80 70 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab3t  rect 313 64 74 16  text "Splashes"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 37  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab4  rect 387 64 104 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_surfacedetail }
+        }
+        itemDef { name rtab4o  rect 389 64 100 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab4u  rect 389 80 100 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 1 1 1 0 }
+        itemDef { name rtab4t  rect 387 64 104 16  text "Surface Detail"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 52  textaligny 13
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef {
+            name rtab5  rect 491 64 59 16  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_igr_image }
+        }
+        itemDef { name rtab5o  rect 493 64 55 17  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.9 }
+        itemDef { name rtab5u  rect 493 80 55 1  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0.964 0.815 0 1 }
+        itemDef { name rtab5t  rect 491 64 59 16  text "Image"  textscale .18
+                  style WINDOW_STYLE_EMPTY  textalign ITEM_ALIGN_CENTER  textalignx 29  textaligny 13
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rpage  rect 0 82 560 358
+                  background "ui/assets/main_menu/content_background.tga"
+                  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  forecolor 1 1 1 1  backcolor 1 1 1 1  border 1  bordercolor 0 0 0 0.5 }
+        itemDef { name rtitle  text "IMAGE"  textscale .26  rect 20 86 520 24  textaligny 17
+                  textalign ITEM_ALIGN_CENTER  textalignx 260
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { name rrule  text ""  rect 20 110 520 1  style WINDOW_STYLE_FILLED
+                  backcolor .35 .3 .12 1  visible 1  decoration }
+        itemDef { text "PERFORMANCE"  textscale .2  rect 24 114 512 16  textaligny 13
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor 0.964 0.815 0 1  visible 1  decoration }
+        itemDef { text "Pipeline cache"  textscale .21  rect 24 131 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rpipelinecache  type ITEM_TYPE_MULTI  text ""  cvar "r_pipelineCache"
+                  cvarFloatList { "Off" 0 "Save between runs (default)" 1 "Save + build on load" 2 }
+                  rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Keeps compiled pipelines in vkpipelines.cache. Build on load: fewer hitches."  textscale .17  rect 24 148 512 16  textaligny 12
+                  textalign ITEM_ALIGN_CENTER  textalignx 256
+                  forecolor .72 .72 .72 1  visible 1  decoration }
+        itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
+                  backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
+        itemDef {
+            name rreset  text "RESET"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; exec "reset r_pipelineCache" }
+            mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name rback  text "BACK"  type ITEM_TYPE_BUTTON  textscale .25
+            rect 286 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_igr_renderoptions ; close io_igr_raytracing ; close io_igr_water ; close io_igr_splashes ; close io_igr_surfacedetail ; close io_igr_image ; open io_ingame ; open io_ig_advanced }
             mouseEnter { setitemcolor rback backcolor 0 0 0 .9 ; setitemcolor rback forecolor 0.964 0.815 0 1 ; setitemcolor rback bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rback backcolor 0 0 0 .6 ; setitemcolor rback forecolor 1 1 1 1 ; setitemcolor rback bordercolor .35 .3 .12 1 }
         }
