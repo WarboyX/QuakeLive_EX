@@ -6048,14 +6048,14 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
-### E159. Stencil shadows: black columns through walls and speckled self-shadow (E155 regression) — DONE (verify)
+### E159. Stencil shadows: black spike through the floor under items, speckled self-shadow (E155 regression) — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
-Reported with a screenshot: stencil shadows drew incorrectly on floating weapons, sometimes, during the weapon bob. They were also wrong on your own player under some lighting. The screenshot shows a black column from the ceiling to the floor of a doorway, through the wall.
+Reported with a screenshot: stencil shadows drew incorrectly on floating weapons, sometimes, during the weapon bob. They were also wrong on your own player under some lighting. The symptom is a thin black spike running down from the floating weapon, through the floor under its pad. (A first reading of the screenshot took the dark doorway beside it for the artifact; that is level geometry.)
 
-**Cause 1, the column:** E155's depth-fail counting only balances if every face of a volume is drawn, *including the far cap* (up to 512 units past the model).
+**Cause 1, the spike (most likely - not yet confirmed on the real model):** E155's depth-fail counting only balances if every face of a volume is drawn, *including the far cap* (up to 512 units past the model).
 - Quake's far plane is sized to the visible world. In a small room an item's or the player's far cap crossed it and was clipped.
-- The uncancelled side faces then painted the volume's whole screen projection black, through walls.
+- The uncancelled side faces then painted the volume black wherever something was in front of it - here the part of the weapon's volume below the floor, seen through the floor.
 - An item bobbing moves its volume back and forth across the plane, hence "sometimes".
 - Depth-pass (Quake 3's method) never needed the far cap, so this is new with E155.
 
@@ -6068,7 +6068,7 @@ Reported with a screenshot: stencil shadows drew incorrectly on floating weapons
 **Without depth clamp** (no known desktop GPU): the pipelines fall back to Quake 3's depth-pass with no caps, and your own shadow is not cast (`R_STENCIL_SELF_SHADOW`), rather than drawing the columns.
 
 **Checked:** reproduced with a local test cube and a temporarily forced short far plane (a test-only hook, removed before commit).
-- Without the clamp, a dark column streaks down from the cube across the stairs.
+- Without the clamp, a dark streak runs down from the cube across the stairs - the same shape as the reported spike.
 - With it, only the cube's own shadow.
 - The E155 checks still hold: the shadow is cast from outside, and the frame is unchanged from inside the volume.
 - 0 validation errors.
