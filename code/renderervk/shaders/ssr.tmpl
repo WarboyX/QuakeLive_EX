@@ -125,7 +125,7 @@ layout(set = 0, binding = 2) uniform SSR {
    than a taste setting, and r_waterRippleHeight already scales both together. */
 #define RIPPLE_LIFE  rippleTune.x
 #define RIPPLE_WAVES rippleTune.y
-#define RIPPLE_SLOPE 0.35   /* see waterSurface - keeps a splash near the chop */
+#define RIPPLE_SLOPE 0.35   /* see windSurface - keeps a splash near the chop */
 
 layout(location = 0) in vec2 frag_tex_coord;
 layout(location = 0) out vec4 out_color;
@@ -400,8 +400,15 @@ function and computing them apart is how they drift out of step. The wind waves
 scale the two independently (r_waterWaveHeight and r_waterWaveSteepness are
 separate controls) but they share the phases, so crests stay where the slope is
 zero however the two are set.
+
+[QL] E149. The wind waves only. The splash field (rippleSurface) is evaluated
+once per pixel by main and added there. It used to be added here, and this was
+called four times per water pixel - two height refinements, the normal, and the
+foam/debug read - each one summing every live ripple and, since E144/E148, up
+to four wall echoes of each: 48 ripples was up to 960 ring evaluations per
+pixel, and one shotgun volley is 20 ripples.
 */
-vec3 waterSurface(vec2 p, int planeIdx) {
+vec3 windSurface(vec2 p) {
 	vec3 ph = wavePhase(p);
 
 	float h = wave2.x * ( 0.55 * sin(ph.x) + 0.30 * sin(ph.y) + 0.15 * sin(ph.z) );
@@ -410,15 +417,7 @@ vec3 waterSurface(vec2 p, int planeIdx) {
 	            + WAVE_D1 * 0.30 * cos(ph.y)
 	            + WAVE_D2 * 0.15 * cos(ph.z) ) * wave.x;
 
-	return vec3(h, grad) + rippleSurface(p, planeIdx).xyz;
-}
-
-float waveHeight(vec2 p, int planeIdx) {
-	return waterSurface(p, planeIdx).x;
-}
-
-vec3 waveNormal(vec2 p, int planeIdx) {
-	return normalize(vec3(-waterSurface(p, planeIdx).yz, 1.0));
+	return vec3(h, grad);
 }
 
 /* clip -> screen uv, and the depth that came with it */
@@ -690,14 +689,21 @@ void main() {
 	*/
 	float flatT = bestT;
 
+	/* [QL] E149: the splash field, once, on the flat surface (see flatT).
+	   The refinement below and the shading normal take their ripple height
+	   and slope from this one evaluation - over the few units the refinement
+	   moves the point the difference cannot be seen, and it was three more
+	   full sums. */
+	vec4 rip = rippleSurface((eye.xyz + dir * flatT).xy, bestIdx);
+
 	if (bestIdx >= 0) {
 		float dn = dot(dir, N);
 		if (dn < -0.02) {
 			float t2 = bestT;
 			float eyeN = dot(eye.xyz, N);
 
-			t2 = (bestW + waveHeight((eye.xyz + dir * t2).xy, bestIdx) - eyeN) / dn;
-			t2 = (bestW + waveHeight((eye.xyz + dir * t2).xy, bestIdx) - eyeN) / dn;
+			t2 = (bestW + windSurface((eye.xyz + dir * t2).xy).x + rip.x - eyeN) / dn;
+			t2 = (bestW + windSurface((eye.xyz + dir * t2).xy).x + rip.x - eyeN) / dn;
 
 			if (t2 > 0.0 && t2 < sceneDist - 8.0) {
 				vec3 hp = eye.xyz + dir * t2;
@@ -751,7 +757,7 @@ void main() {
 	*/
 	/* the disturbances alone, for the foam and for r_ssrDebug 5 */
 	/* on the flat surface, so it stays put - see flatT above */
-	vec4 rip = rippleSurface((eye.xyz + dir * flatT).xy, bestIdx);
+	/* (rip: computed once, above the refinement) */
 
 	/*
 	[QL] r_ssrDebug 5: where the disturbances are, and nothing else.
@@ -772,7 +778,7 @@ void main() {
 		return;
 	}
 
-	N = waveNormal(P.xy, bestIdx);
+	N = normalize(vec3(-(windSurface(P.xy).yz + rip.yz), 1.0));
 	if (dot(N, -V) <= 0.02) {
 		N = normalize(N - V * (dot(N, V) + 0.02));
 	}

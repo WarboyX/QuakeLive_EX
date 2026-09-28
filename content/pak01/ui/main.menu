@@ -4833,7 +4833,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rdlightmode  type ITEM_TYPE_MULTI  text ""  cvar "r_dlightMode"
-                  cvarFloatList { "Off surfaces" 0 "On surfaces" 1 "With shadows" 2 }
+                  cvarFloatList { "Classic" 0 "Per-pixel (default)" 1 "Per-pixel + models" 2 }
                   rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Beam weapon lights"  textscale .21  rect 24 148 246 16  textaligny 13
@@ -5909,7 +5909,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rdlightmode  type ITEM_TYPE_MULTI  text ""  cvar "r_dlightMode"
-                  cvarFloatList { "Off surfaces" 0 "On surfaces" 1 "With shadows" 2 }
+                  cvarFloatList { "Classic" 0 "Per-pixel (default)" 1 "Per-pixel + models" 2 }
                   rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Beam weapon lights"  textscale .21  rect 24 148 246 16  textaligny 13

@@ -11751,6 +11751,22 @@ void vk_end_frame( void )
 	{
 		vk.cmd->last_pipeline = VK_NULL_HANDLE; // do not restore clobbered descriptors in vk_bloom()
 
+		/*
+		[QL] E149. Occlusion and water reflections are started by the first 2D
+		draw of the frame (RB_SetGL2D's callers) or by RB_FinishBloom - and a
+		frame can have neither. With the HUD off (cg_draw2d 0), no console
+		text and bloom off, nothing drew in 2D, so both passes simply never ran:
+		the water lost its reflections and ripples and the world its occlusion
+		whenever the HUD was hidden - screenshots, demo capture, a clean view.
+		r_ssrDebug 3 painting nothing was how it showed.
+
+		So they run here too, in the same order as everywhere else (AO, then
+		the reflection, then bloom). Each guards itself - doneRTAO/doneSSR, and
+		no 3D yet - so a frame where they already ran is untouched.
+		*/
+		vk_rt_ao();
+		vk_ssr();
+
 		if ( r_bloom->integer )
 		{
 			vk_bloom();

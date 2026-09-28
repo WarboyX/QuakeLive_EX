@@ -6048,6 +6048,26 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E149. Water ripples evaluated once per pixel; AO and water ran only if something drew in 2D; dynamic-light labels — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (P1), and two things found while checking it.
+
+**P1, ripple cost (`ssr.tmpl`).** The water shader built the whole splash field four times per water pixel: two height refinements, the shading normal, and the foam/debug read. Each sum covers up to 48 ripples, and since E144/E148 up to four wall echoes each - up to about 960 ring evaluations per pixel, and a shotgun volley is 20 ripples.
+- The field is now evaluated **once**, on the flat surface point.
+- The height refinements use the wind waves plus that one ripple height, and the normal uses the wind slope plus the same ripple slope.
+- Visually the same: the refinement moves the point by a few units at most. No setting is involved.
+
+**AO and water vanished with the HUD off (`vk.c` `vk_end_frame`).** Both passes start at the first 2D draw of the frame (or at `RB_FinishBloom`). A frame with no 2D - `cg_draw2d 0`, no console text, bloom off - never ran them, so screenshots, demo capture or a clean view had no reflections, ripples or occlusion.
+- Found because `r_ssrDebug 3` painted nothing in the harness, and did as soon as a debug print put text on screen.
+- They now also run at the end of the frame. Each skips itself if it already ran.
+
+**Dynamic lights labels.** `r_dlightMode` 2 was labelled "With shadows" and casts none. The renderer's own description: 0 Quake 3's vertex lights, 1 per-pixel on the world, 2 per-pixel on models too. Now "Classic / Per-pixel (default) / Per-pixel + models".
+
+**Checked:**
+- `r_ssrDebug` 1/3/5 with the HUD off draw the water mask, the depth classes and the ripple view.
+- The Vulkan validation layer reports 0 errors with the HUD on and off, with RT AO and the water pass running.
+
 ### E148. Every splash bounces; small pools tighten their rings instead of shrinking the ripple — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

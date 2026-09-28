@@ -568,7 +568,10 @@ def surface_detail():
     ]
     spec = [
         ("h", "DYNAMIC LIGHTS"),
-        ("multi", "r_dlightMode", "Dynamic lights", '"Off surfaces" 0 "On surfaces" 1 "With shadows" 2'),
+        # [QL] E149. The labels described something else: 2 was "With shadows"
+        # and casts none - tr_init.c's own description is 0 Quake 3's vertex
+        # lights, 1 per-pixel on the world, 2 per-pixel on models too.
+        ("multi", "r_dlightMode", "Dynamic lights", '"Classic" 0 "Per-pixel (default)" 1 "Per-pixel + models" 2'),
         ("yesno", "cg_beamLights", "Beam weapon lights", None),
         ("help", "A rail or lightning beam lights the corridor it crosses."),
         # [QL] E146. cg_muzzleFlashLight, ours: 0 none, 1 as before.
