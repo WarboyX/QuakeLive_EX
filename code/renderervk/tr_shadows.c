@@ -44,6 +44,10 @@ typedef struct {
 static	edgeDef_t	edgeDefs[SHADER_MAX_VERTEXES][MAX_EDGE_DEFS];
 static	int			numEdgeDefs[SHADER_MAX_VERTEXES];
 static	int			facing[SHADER_MAX_INDEXES/3];
+/* [QL] E155: the light-facing triangles, kept for the caps - R_CalcShadowEdges
+   overwrites tess.indexes with the volume */
+static	int			capTris[SHADER_MAX_INDEXES/3][3];
+static	int			numCapTris;
 
 static void R_AddEdgeDef( int i1, int i2, int f ) {
 	int		c;
@@ -118,6 +122,31 @@ static void R_CalcShadowEdges( void ) {
 	}
 
 #ifdef USE_VULKAN
+	/*
+	[QL] E155. Close the volume - depth-fail counting needs it closed.
+
+	The sides above are the silhouette pushed away from the light. Every
+	light-facing triangle then caps it twice: where it is (the near cap) and
+	where the push took it (the far cap). Windings chosen to face out of the
+	volume in the same sense the sides do: the sides here are (a, b, a'),
+	the Vulkan reverse of the GL build's order, so the near cap is the facing
+	triangle reversed, (a, c, b), and the far cap is (a', b', c').
+	*/
+	for ( i = 0; i < numCapTris; i++ ) {
+		const int a = capTris[i][0], b = capTris[i][1], c = capTris[i][2];
+
+		if ( tess.numIndexes > ARRAY_LEN( tess.indexes ) - 6 ) {
+			break;   // an incomplete cap leaves a leak in one shadow, not a crash
+		}
+		tess.indexes[ tess.numIndexes + 0 ] = a;
+		tess.indexes[ tess.numIndexes + 1 ] = c;
+		tess.indexes[ tess.numIndexes + 2 ] = b;
+		tess.indexes[ tess.numIndexes + 3 ] = a + tess.numVertexes;
+		tess.indexes[ tess.numIndexes + 4 ] = b + tess.numVertexes;
+		tess.indexes[ tess.numIndexes + 5 ] = c + tess.numVertexes;
+		tess.numIndexes += 6;
+	}
+
 	tess.numVertexes *= 2;
 
 	colors = &tess.svars.colors[0][0]; // we need at least 2x SHADER_MAX_VERTEXES there
@@ -175,6 +204,7 @@ void RB_ShadowTessEnd( void ) {
 
 	// decide which triangles face the light
 	Com_Memset( numEdgeDefs, 0, tess.numVertexes * sizeof( numEdgeDefs[0] ) );
+	numCapTris = 0;   // [QL] E155
 
 	numTris = tess.numIndexes / 3;
 	for ( i = 0 ; i < numTris ; i++ ) {
@@ -200,6 +230,13 @@ void RB_ShadowTessEnd( void ) {
 			facing[ i ] = 1;
 		} else {
 			facing[ i ] = 0;
+		}
+
+		if ( facing[ i ] ) {   // [QL] E155: a cap triangle
+			capTris[ numCapTris ][0] = i1;
+			capTris[ numCapTris ][1] = i2;
+			capTris[ numCapTris ][2] = i3;
+			numCapTris++;
 		}
 
 		// create the edges

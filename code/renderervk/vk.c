@@ -10942,9 +10942,23 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	depth_stencil_state.stencilTestEnable = (def->shadow_phase != SHADOW_DISABLED) ? VK_TRUE : VK_FALSE;
 
 	if (def->shadow_phase == SHADOW_EDGES) {
+		/*
+		[QL] E155. Depth-fail ("Carmack's reverse") instead of depth-pass.
+
+		Depth-pass counts the volume faces in front of the visible surface, and
+		is right only when the eye is outside every volume - Quake 3's reason
+		for never casting the player's own shadow in first person, and wrong
+		whenever the eye stands in anyone's shadow. Depth-fail counts the faces
+		*behind* it, which does not care where the eye is, at the price of
+		needing closed volumes (tr_shadows.c now adds the caps).
+
+		The face drawn with CT_FRONT_SIDED is the one depth-pass incremented;
+		depth-fail decrements it and increments the other side. Wrapping, not
+		clamping, so the order of the two passes cannot lose a count.
+		*/
 		depth_stencil_state.front.failOp = VK_STENCIL_OP_KEEP;
-		depth_stencil_state.front.passOp = (def->face_culling == CT_FRONT_SIDED) ? VK_STENCIL_OP_INCREMENT_AND_CLAMP : VK_STENCIL_OP_DECREMENT_AND_CLAMP;
-		depth_stencil_state.front.depthFailOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.passOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.depthFailOp = (def->face_culling == CT_FRONT_SIDED) ? VK_STENCIL_OP_DECREMENT_AND_WRAP : VK_STENCIL_OP_INCREMENT_AND_WRAP;
 		depth_stencil_state.front.compareOp = VK_COMPARE_OP_ALWAYS;
 		depth_stencil_state.front.compareMask = 255;
 		depth_stencil_state.front.writeMask = 255;

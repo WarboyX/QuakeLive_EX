@@ -157,6 +157,7 @@ cvar_t	*r_rtaoResolution;   // [QL] E150
 cvar_t	*r_ssrResolution;    // [QL] E151
 cvar_t	*r_pipelineCache;    // [QL] E152
 cvar_t	*r_ssao;             // [QL] E154
+cvar_t	*r_stencilSelfShadow;   // [QL] E155
 cvar_t	*r_rtaoLights;
 cvar_t	*r_ssr;
 cvar_t	*r_ssrDistance;
@@ -2593,6 +2594,13 @@ static void R_Register( void )
 		" 1 - on\n"
 		" 2 - wide (smoother, softer contact shadows)\n"
 		"The width needs a vid_restart; off and on do not." );
+
+	/* [QL] E155. Your own player's stencil shadow (cg_shadows 2). */
+	r_stencilSelfShadow = ri.Cvar_Get( "r_stencilSelfShadow", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_stencilSelfShadow, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_stencilSelfShadow, "With stencil shadows (cg_shadows 2), also cast "
+		"your own player's shadow in first person. 0 is Quake 3's behaviour, which could not "
+		"because the eye is inside that shadow's volume." );
 
 	/* [QL] E154. Off by default - it changes the look of every scene, and that
 	   is the player's call. Live. */

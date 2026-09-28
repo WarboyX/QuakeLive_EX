@@ -1592,24 +1592,30 @@
                   cvarFloatList { "Off" 0 "Blob" 1 "Stencil" 2 "Simple" 3 }
                   rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Darken dead bodies"  textscale .21  rect 24 142 246 16  textaligny 13
+        itemDef { text "Own stencil shadow"  textscale .21  rect 24 142 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rstencilselfshadow  type ITEM_TYPE_YESNO  text ""  cvar "r_stencilSelfShadow"
+                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Darken dead bodies"  textscale .21  rect 24 159 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgdeadbodydarken  type ITEM_TYPE_YESNO  text ""  cvar "cg_deadBodyDarken"
-                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Vignette"  textscale .21  rect 24 159 246 16  textaligny 13
+        itemDef { text "Vignette"  textscale .21  rect 24 176 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgvignette  type ITEM_TYPE_YESNO  text ""  cvar "cg_vignette"
-                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 176 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_light  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_gamma ; reset r_overbrightBits ; reset r_mapOverbrightBits ; reset r_dynamicLight ; reset cg_muzzleFlashLight ; reset cg_shadows ; reset cg_deadBodyDarken ; reset cg_vignette" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_gamma ; reset r_overbrightBits ; reset r_mapOverbrightBits ; reset r_dynamicLight ; reset cg_muzzleFlashLight ; reset cg_shadows ; reset r_stencilSelfShadow ; reset cg_deadBodyDarken ; reset cg_vignette" }
             mouseEnter { setitemcolor rs_io_ig_light backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_light forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_light bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_light backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_light forecolor 1 1 1 1 ; setitemcolor rs_io_ig_light bordercolor .35 .3 .12 1 }
         }

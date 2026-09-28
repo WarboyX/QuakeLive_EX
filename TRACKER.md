@@ -6048,6 +6048,29 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E155. Stencil shadows on your own player: depth-fail volumes (`r_stencilSelfShadow`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G2). Reported: "stencil shadows aren't drawn on our own player, only on other players."
+
+**Cause:** that was Quake 3's own exclusion, not a bug. `R_AddMD3Surfaces` (and the MDR/IQM equivalents) skipped `personalModel` for `r_shadows 2` ("stencil shadows can't do personal models unless I polyhedron clip").
+- The volumes were counted depth-pass: +1 entering a front face and -1 leaving a back face, in front of the scene.
+- With the eye inside a volume, the entry face is behind the eye, so the count is wrong everywhere. A first-person player's eye is always inside their own shadow's volume.
+
+**Fix:** depth-fail (Carmack's reverse), which counts behind the scene instead and does not care where the eye is.
+- `tr_shadows.c` now also closes each volume, with a near cap (the light-facing triangles) and a far cap (the same triangles pushed along the light). Depth-fail needs closed volumes.
+- The edge pipelines count on depth fail, back faces +1 and front faces -1, with WRAP ops.
+- Same two passes, same darkening quad, same menu value.
+
+**`r_stencilSelfShadow`** (1 on, the default; 0 is Quake 3's exclusion, back as it was). Menu: in-game Settings → Lighting → "Own stencil shadow". Live. Applies only with Shadows = Stencil.
+
+**Checked:**
+- A throwaway 48-unit cube model (local only, deleted after) with `testmodel`, compared at `cg_shadows 0` and `2`.
+- From outside the volume, the shadow is cast.
+- With the camera inside the volume, the frame is unchanged apart from the shadow itself (1373 differing pixels, no whole-screen darkening). That is the case depth-pass got wrong.
+- 0 validation errors with the Khronos layer.
+- Not checked: the harness has no player models (pak00 is not here), so the shadow on the actual player model needs your eyes.
+
 ### E154. Screen-space ambient occlusion for GPUs without ray tracing (`r_ssao`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

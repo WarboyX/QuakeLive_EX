@@ -1579,6 +1579,7 @@ extern	cvar_t	*r_rtDynamic;					// [QL] R13: entities occlude, not just the map
 extern	cvar_t	*r_rtaoNormals;					// [QL] R13: where the AO normal comes from
 extern	cvar_t	*r_rtaoWeapon;					// [QL] R13: occlude the first person weapon
 extern	cvar_t	*r_rts;							// [QL] real time shading: float target + tone curve
+extern	cvar_t	*r_stencilSelfShadow;			// [QL] E155
 extern	cvar_t	*r_ssao;						// [QL] E154: 0 off, 1 on, 2 debug
 extern	cvar_t	*r_pipelineCache;				// [QL] E152: 0 off, 1 disk, 2 disk + pre-build
 extern	cvar_t	*r_ssrResolution;				// [QL] E151: 1 full, 2 half (live)

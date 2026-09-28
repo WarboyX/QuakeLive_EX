@@ -956,7 +956,9 @@ SUBPAGES = [
         # had 2 and 3 swapped, so "Simple" chose stencil.
         ("multi",  "cg_shadows",          "Shadows",
                    '"Off" 0 "Blob" 1 "Stencil" 2 "Simple" 3'),
-        ("yesno",  "cg_deadBodyDarken",   "Darken dead bodies"),
+        # E155: own player's stencil shadow in first person (depth-fail volumes)
+        ("yesno",  "r_stencilSelfShadow", "Own stencil shadow"),
+        ("yesno",  "cg_deadBodyDarken",  "Darken dead bodies"),
         ("yesno",  "cg_vignette",         "Vignette"),
     ], None),
     ("io_ig_bloom", "BLOOM & POST", "Drawn by the OpenGL2 renderer.", [
