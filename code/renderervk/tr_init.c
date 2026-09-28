@@ -155,6 +155,7 @@ cvar_t	*r_rts;
 cvar_t	*r_rtaoDenoise;
 cvar_t	*r_rtaoResolution;   // [QL] E150
 cvar_t	*r_ssrResolution;    // [QL] E151
+cvar_t	*r_ssrRayTrace;      // [QL] E156
 cvar_t	*r_pipelineCache;    // [QL] E152
 cvar_t	*r_ssao;             // [QL] E154
 cvar_t	*r_stencilSelfShadow;   // [QL] E155
@@ -2404,6 +2405,18 @@ static void R_Register( void )
 		" 2 - half: a quarter of the traces, filtered up to the screen - a slightly softer "
 		"reflection. Takes effect immediately." );
 
+	/* [QL] E156. Off by default: it changes what the water shows, and that is
+	   the player's call. Live. */
+	r_ssrRayTrace = ri.Cvar_Get( "r_ssrRayTrace", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrRayTrace, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssrRayTrace, "Where the water reflection's screen march finds "
+		"nothing (the ray left the screen, went behind your weapon, or ran out of steps), trace "
+		"it through the world instead. Needs ray tracing (" S_COLOR_CYAN "\\r_rt" S_COLOR_WHITE ").\n"
+		" 0 - off (default): the march only\n"
+		" 1 - use the hit when it is on screen and unobstructed - an exact reflection the march missed\n"
+		" 2 - also the hits that are not, lit from the map's light grid: the right brightness, "
+		"no texture. Removes the hard edge between reflecting and non-reflecting water." );
+
 	r_ssrSteps = ri.Cvar_Get( "r_ssrSteps", "24", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_ssrSteps, "4", "128", CV_INTEGER );
 	ri.Cvar_SetDescription( r_ssrSteps, "How many samples a reflected ray takes over "
@@ -2420,7 +2433,7 @@ static void R_Register( void )
 		"pillars; too large and a ray reflects the empty space in front of a distant wall." );
 
 	r_ssrDebug = ri.Cvar_Get( "r_ssrDebug", "0", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_ssrDebug, "0", "5", CV_INTEGER );
+	ri.Cvar_CheckRange( r_ssrDebug, "0", "6", CV_INTEGER );
 	ri.Cvar_SetDescription( r_ssrDebug, "Show what the reflection pass is doing instead of its "
 		"result.\n"
 		" 0 - off\n"
@@ -2444,6 +2457,9 @@ static void R_Register( void )
 		" 5 - where the impacts are: red a crest, blue a trough, black undisturbed. The "
 		"console printing a ripple event proves cgame called; this proves the ripple reached "
 		"the surface, landed on the right plane and is where the splash was\n"
+		" 6 - where each reflection came from: green the screen march, blue a ray-traced hit "
+		"that is on screen, yellow the light-grid estimate, red nothing (see "
+		S_COLOR_CYAN "\\r_ssrRayTrace" S_COLOR_WHITE ")\n"
 		"Needs " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " above 0 - this changes what the pass "
 		"draws, it does not turn it on." );
 

@@ -495,9 +495,13 @@ def water():
         ("multi", "r_ssrSteps", "Trace steps", '"16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128'),
         # [QL] E151. Live - both sets of pipelines exist; a quarter of the traces.
         ("multi", "r_ssrResolution", "Trace resolution", '"Full (default)" 1 "Half (faster)" 2'),
+        # [QL] E156. Live; needs ray tracing. Where the screen march misses.
+        ("multi", "r_ssrRayTrace", "Ray-traced misses",
+         '"Off (default)" 0 "On-screen hits" 1 "All hits (lit estimate)" 2'),
         ("multi", "r_ssrThickness", "Thickness", '"4 (thin)" 4 "8" 8 "16" 16 "24 (default)" 24 "32 (forgiving)" 32'),
         ("multi", "r_ssrDebug", "Debug view",
-         '"Off" 0 "1 mask" 1 "2 ray hit" 2 "3 reflection" 3 "4 waves" 4 "5 ripples + foam" 5'),
+         '"Off" 0 "1 water mask" 1 "2 raw reflection" 2 "3 depth classes" 3 "4 depth buffer" 4 '
+         '"5 ripples + foam" 5 "6 reflection source" 6'),
         # [QL] The surface never moves a vertex - Quake Live's water is
         # subdivided at compile time. What ripples is the normal.
         ("h", "WAVES (WIND CHOP)"),

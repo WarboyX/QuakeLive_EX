@@ -1868,6 +1868,7 @@ static const void *RB_SwapBuffers( const void *data ) {
 	backEnd.doneBloom = qfalse;
 	backEnd.doneRTAO = qfalse;	// [QL] R13, same lifetime as bloom
 	backEnd.doneSSR = qfalse;	// [QL] R19
+	backEnd.doneRTDynamic = qfalse;	// [QL] E156
 #endif
 
 	return (const void *)(cmd + 1);

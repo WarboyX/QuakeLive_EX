@@ -4469,6 +4469,7 @@ static qboolean rtDynRoundReported = qfalse;
 /* Defined below, called from vk_rt_create_ao above it. Declared rather than
    reordered because create/destroy belong next to each other. */
 static void vk_rt_update_ao_descriptor( void );
+void vk_ssr_update_rt_descriptor( void );   /* [QL] E156, with the reflection pass */
 
 
 static void vk_rt_destroy_ao( void )
@@ -5673,6 +5674,7 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	if ( !vk.rt.world.dynReady ) {
 		return qfalse;
 	}
+	backEnd.doneRTDynamic = qtrue;   /* [QL] E156: so the reflection pass need not build it again */
 
 	inst = (VkAccelerationStructureInstanceKHR *)vk.rt.world.dyn_instance_ptr[idx];
 	if ( inst == NULL ) {
@@ -5932,6 +5934,14 @@ void vk_rt_destroy_world( void )
 		qvkFreeMemory( vk.device, vk.rt.world.index_memory, NULL );
 	}
 	vk_rt_destroy_dynamic();   // [QL] R13 step 4, before the clear below zeroes its handles
+	/* [QL] E156: the reflection's sets name the structure and the grid - stop
+	   binding them before either goes */
+	vk.ssr.rtReady = qfalse;
+	if ( vk.rt.world.grid_buffer != VK_NULL_HANDLE ) {
+		qvkUnmapMemory( vk.device, vk.rt.world.grid_memory );
+		qvkDestroyBuffer( vk.device, vk.rt.world.grid_buffer, NULL );
+		qvkFreeMemory( vk.device, vk.rt.world.grid_memory, NULL );
+	}
 	/*
 	[QL] The map's half of vk.rt, and only that half.
 
@@ -6243,11 +6253,36 @@ void vk_rt_build_world( const world_t *world )
 		vk_rt_create_dynamic();
 	}
 
+	/*
+	[QL] E156: the light grid, for the reflection's ray-traced fallback to
+	light what it hits. Copied as the BSP stores it, eight bytes a point, and
+	read by the shader directly. A map without a grid still gets a buffer - a
+	binding has to name something - and haveGrid says not to read it.
+	*/
+	{
+		const int points = world->lightGridData
+			? world->lightGridBounds[0] * world->lightGridBounds[1] * world->lightGridBounds[2] : 0;
+		const VkDeviceSize bytes = points > 0 ? (VkDeviceSize)points * 8 : 16;
+
+		if ( rt_create_host_buffer( bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				&vk.rt.world.grid_buffer, &vk.rt.world.grid_memory, &vk.rt.world.grid_ptr ) ) {
+			if ( points > 0 ) {
+				Com_Memcpy( vk.rt.world.grid_ptr, world->lightGridData, (size_t)bytes );
+				vk.rt.world.haveGrid = qtrue;
+			} else {
+				Com_Memset( vk.rt.world.grid_ptr, 0, (size_t)bytes );
+			}
+		} else {
+			ri.Printf( PRINT_WARNING, "RT: no light grid buffer - reflections will not ray trace\n" );
+		}
+	}
+
 	/* The AO descriptor names this TLAS, so it has to be rewritten whenever the
 	   structure is rebuilt - which is every map load. Pointing at the destroyed
 	   one from the previous map is a use-after-free the validation layers catch
 	   and a driver may not. */
 	vk_rt_update_ao_descriptor();
+	vk_ssr_update_rt_descriptor();   /* [QL] E156, the same for the reflection */
 
 	ri.Printf( PRINT_ALL, "RT: world acceleration structure ready%s\n",
 		vk.rt.world.dynReady ? " (+ dynamic entities)" : "" );
@@ -6498,6 +6533,15 @@ static void vk_create_shader_modules( void )
 	vk.modules.ssr_ms_fs = SHADER_MODULE( ssr_frag_ms_spv );
 	vk.modules.ssr_composite_fs = SHADER_MODULE( ssr_composite_frag_spv );
 	SET_OBJECT_NAME( vk.modules.ssr_fs, "ssr trace module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+
+	/* [QL] E156: the march with the ray-traced fallback - SPIR-V 1.4 with
+	   ray query, so only where it is on, like rtao above */
+	if ( vk.rtActive ) {
+		vk.modules.ssr_rt_fs = SHADER_MODULE( ssr_rt_frag_spv );
+		vk.modules.ssr_rt_ms_fs = SHADER_MODULE( ssr_rt_frag_ms_spv );
+		SET_OBJECT_NAME( vk.modules.ssr_rt_fs, "ssr ray-traced trace module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+		SET_OBJECT_NAME( vk.modules.ssr_rt_ms_fs, "ssr ray-traced trace module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+	}
 
 	/* [QL] E154: screen-space AO - SPIR-V 1.0, no rays */
 	vk.modules.ssao_fs = SHADER_MODULE( ssao_frag_spv );
@@ -8690,7 +8734,8 @@ void vk_shutdown( refShutdownCode_t code )
 			&vk.modules.rtao_fs, &vk.modules.rtao_ms_fs,
 			&vk.modules.rtao_blur_fs, &vk.modules.rtao_blur_ms_fs,
 			&vk.modules.ssr_fs, &vk.modules.ssr_ms_fs, &vk.modules.ssr_composite_fs,
-			&vk.modules.ssao_fs, &vk.modules.ssao_ms_fs
+			&vk.modules.ssao_fs, &vk.modules.ssao_ms_fs,
+			&vk.modules.ssr_rt_fs, &vk.modules.ssr_rt_ms_fs
 		};
 		for ( i = 0; i < ARRAY_LEN( mods ); i++ ) {
 			if ( *mods[i] != VK_NULL_HANDLE ) {
@@ -9527,6 +9572,17 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			pipeline_name = "screen-space ambient occlusion pipeline (half resolution)";
 			blend = qfalse;
 			multiply = qfalse;
+			break;
+		case 18: // [QL] E156 the reflection march with the ray-traced fallback - case 8's twin
+		case 19: // and at half resolution - case 13's
+			pipeline = ( program_index == 18 ) ? &vk.ssr.rt_trace_pipeline : &vk.ssr.rt_trace_pipeline_half;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.ssr_rt_ms_fs : vk.modules.ssr_rt_fs;
+			renderpass = vk.ssr.offscreen_pass;
+			layout = vk.ssr.rt_pipeline_layout;
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = ( program_index == 18 ) ? "ssr pipeline (march + rays)"
+				: "ssr pipeline (march + rays, half resolution)";
+			blend = qfalse;
 			break;
 		default: // gamma correction
 			pipeline = &vk.gamma_pipeline;
@@ -13219,6 +13275,10 @@ typedef struct {
 	float ripple6[SSR_MAX_RIPPLES][4];   // [QL] E148: x ring tightening; yzw spare
 	float emitter[SSR_MAX_LIGHTS][4];    // xyz world, w radius
 	float emitter2[SSR_MAX_LIGHTS][4];   // rgb colour, a intensity
+	float rtInfo[4];      // [QL] E156: r_ssrRayTrace, ray length, albedo; w spare
+	float gridOrigin[4];  // [QL] E156: light grid origin, w 1 if there is one
+	float gridInvSize[4]; // [QL] E156: 1 / spacing
+	float gridBounds[4];  // [QL] E156: points per axis
 } ssrUniform_t;
 
 /*
@@ -13327,6 +13387,30 @@ void vk_ssr_destroy( void )
 		qvkDestroyPipeline( vk.device, vk.ssr.debug_pipeline_half, NULL );
 		vk.ssr.debug_pipeline_half = VK_NULL_HANDLE;
 	}
+	/* [QL] E156: the ray-traced variant's own pieces */
+	vk.ssr.rtReady = qfalse;
+	if ( vk.ssr.rt_trace_pipeline != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.ssr.rt_trace_pipeline, NULL );
+		vk.ssr.rt_trace_pipeline = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.rt_trace_pipeline_half != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.ssr.rt_trace_pipeline_half, NULL );
+		vk.ssr.rt_trace_pipeline_half = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.rt_pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.ssr.rt_pipeline_layout, NULL );
+		vk.ssr.rt_pipeline_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.ssr.rt_pool != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorPool( vk.device, vk.ssr.rt_pool, NULL );
+		vk.ssr.rt_pool = VK_NULL_HANDLE;
+		Com_Memset( vk.ssr.rt_descriptor, 0, sizeof( vk.ssr.rt_descriptor ) );
+	}
+	if ( vk.ssr.rt_set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.ssr.rt_set_layout, NULL );
+		vk.ssr.rt_set_layout = VK_NULL_HANDLE;
+	}
+
 	if ( vk.ssr.trace_pipeline_layout != VK_NULL_HANDLE ) {
 		qvkDestroyPipelineLayout( vk.device, vk.ssr.trace_pipeline_layout, NULL );
 		vk.ssr.trace_pipeline_layout = VK_NULL_HANDLE;
@@ -13506,6 +13590,204 @@ void vk_ssr_create_render_pass( VkDevice device )
 
 	VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.ssr.offscreen_pass ) );
 	SET_OBJECT_NAME( vk.ssr.offscreen_pass, "render pass - ssr offscreen", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
+}
+
+
+/*
+[QL] E156: point the ray-traced sets at this map's acceleration structure and
+light grid. Called at world build, and at the end of vk_ssr_create for a
+vid_restart with a map already loaded; either may come first.
+*/
+void vk_ssr_update_rt_descriptor( void )
+{
+	uint32_t n;
+
+	vk.ssr.rtReady = qfalse;
+
+	if ( vk.ssr.rt_pool == VK_NULL_HANDLE || !vk.rt.world.worldBuilt ||
+		vk.rt.world.tlas == VK_NULL_HANDLE || vk.rt.world.grid_buffer == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	for ( n = 0; n < ARRAY_LEN( vk.ssr.rt_descriptor ); n++ ) {
+		VkAccelerationStructureKHR as = vk.rt.world.dynReady
+			? vk.rt.world.dyn_tlas[n] : vk.rt.world.tlas;
+		VkWriteDescriptorSetAccelerationStructureKHR as_info;
+		VkDescriptorBufferInfo grid_info;
+		VkWriteDescriptorSet writes[2];
+
+		if ( as == VK_NULL_HANDLE ) {
+			return;
+		}
+
+		Com_Memset( &as_info, 0, sizeof( as_info ) );
+		as_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+		as_info.accelerationStructureCount = 1;
+		as_info.pAccelerationStructures = &as;
+
+		Com_Memset( &grid_info, 0, sizeof( grid_info ) );
+		grid_info.buffer = vk.rt.world.grid_buffer;
+		grid_info.range = VK_WHOLE_SIZE;
+
+		Com_Memset( writes, 0, sizeof( writes ) );
+		/* see vk_rt_update_ao_descriptor: the structure rides in pNext */
+		writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[0].pNext = &as_info;
+		writes[0].dstSet = vk.ssr.rt_descriptor[n];
+		writes[0].dstBinding = 3;
+		writes[0].descriptorCount = 1;
+		writes[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+
+		writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[1].dstSet = vk.ssr.rt_descriptor[n];
+		writes[1].dstBinding = 4;
+		writes[1].descriptorCount = 1;
+		writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writes[1].pBufferInfo = &grid_info;
+
+		qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
+	}
+
+	vk.ssr.rtReady = qtrue;
+	ri.Printf( PRINT_ALL, "SSR: ray-traced fallback ready (%s)\n",
+		vk.rt.world.haveGrid ? "light grid for off-screen hits" : "no light grid - on-screen hits only" );
+}
+
+
+/*
+[QL] E156: the ray-traced variant of the trace, on top of a working pass.
+Failure here only loses r_ssrRayTrace - the plain march keeps running.
+*/
+static void vk_ssr_create_rt( void )
+{
+	VkDescriptorSetLayoutBinding bindings[5];
+	VkDescriptorSetLayoutCreateInfo layout_desc;
+	VkDescriptorPoolSize pool_sizes[4];
+	VkDescriptorPoolCreateInfo pool_desc;
+	VkDescriptorSetAllocateInfo set_alloc;
+	VkPipelineLayoutCreateInfo pl_desc;
+	VkResult res;
+	uint32_t i;
+
+	if ( !vk.rtActive || vk.modules.ssr_rt_fs == VK_NULL_HANDLE || vk.modules.ssr_rt_ms_fs == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	/* 0-2 exactly as the plain trace's, then the structure and the grid */
+	Com_Memset( bindings, 0, sizeof( bindings ) );
+	for ( i = 0; i < 5; i++ ) {
+		bindings[i].binding = i;
+		bindings[i].descriptorCount = 1;
+		bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+
+	Com_Memset( &layout_desc, 0, sizeof( layout_desc ) );
+	layout_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layout_desc.bindingCount = 5;
+	layout_desc.pBindings = bindings;
+
+	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.ssr.rt_set_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: ray-traced set layout failed (%s) - march only\n", vk_result_string( res ) );
+		return;
+	}
+
+	Com_Memset( pool_sizes, 0, sizeof( pool_sizes ) );
+	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	pool_sizes[0].descriptorCount = 2 * NUM_COMMAND_BUFFERS;
+	pool_sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	pool_sizes[1].descriptorCount = NUM_COMMAND_BUFFERS;
+	pool_sizes[2].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	pool_sizes[2].descriptorCount = NUM_COMMAND_BUFFERS;
+	pool_sizes[3].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	pool_sizes[3].descriptorCount = NUM_COMMAND_BUFFERS;
+
+	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
+	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_desc.maxSets = NUM_COMMAND_BUFFERS;
+	pool_desc.poolSizeCount = 4;
+	pool_desc.pPoolSizes = pool_sizes;
+
+	res = qvkCreateDescriptorPool( vk.device, &pool_desc, NULL, &vk.ssr.rt_pool );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: ray-traced descriptor pool failed (%s) - march only\n", vk_result_string( res ) );
+		return;
+	}
+
+	Com_Memset( &set_alloc, 0, sizeof( set_alloc ) );
+	set_alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	set_alloc.descriptorPool = vk.ssr.rt_pool;
+	set_alloc.descriptorSetCount = 1;
+	set_alloc.pSetLayouts = &vk.ssr.rt_set_layout;
+
+	for ( i = 0; i < ARRAY_LEN( vk.ssr.rt_descriptor ); i++ ) {
+		VkDescriptorImageInfo image_info[2];
+		VkDescriptorBufferInfo buffer_info;
+		VkWriteDescriptorSet writes[3];
+
+		res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.ssr.rt_descriptor[i] );
+		if ( res < 0 ) {
+			ri.Printf( PRINT_WARNING, "SSR: ray-traced set %i failed (%s) - march only\n", i, vk_result_string( res ) );
+			return;
+		}
+
+		/* the same three the plain trace set carries - see there for the
+		   layouts, which are the whole of two old bugs */
+		Com_Memset( image_info, 0, sizeof( image_info ) );
+		image_info[0].sampler = vk.rt.depth_sampler;
+		image_info[0].imageView = vk.rt.depth_view;
+		image_info[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		image_info[1].sampler = vk.ssr.sampler;
+		image_info[1].imageView = vk.color_image_view;
+		image_info[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		Com_Memset( &buffer_info, 0, sizeof( buffer_info ) );
+		buffer_info.buffer = vk.ssr.uniform_buffer[i];
+		buffer_info.range = sizeof( ssrUniform_t );
+
+		Com_Memset( writes, 0, sizeof( writes ) );
+		writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[0].dstSet = vk.ssr.rt_descriptor[i];
+		writes[0].dstBinding = 0;
+		writes[0].descriptorCount = 1;
+		writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[0].pImageInfo = &image_info[0];
+
+		writes[1] = writes[0];
+		writes[1].dstBinding = 1;
+		writes[1].pImageInfo = &image_info[1];
+
+		writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[2].dstSet = vk.ssr.rt_descriptor[i];
+		writes[2].dstBinding = 2;
+		writes[2].descriptorCount = 1;
+		writes[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writes[2].pBufferInfo = &buffer_info;
+
+		qvkUpdateDescriptorSets( vk.device, 3, writes, 0, NULL );
+	}
+
+	Com_Memset( &pl_desc, 0, sizeof( pl_desc ) );
+	pl_desc.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl_desc.setLayoutCount = 1;
+	pl_desc.pSetLayouts = &vk.ssr.rt_set_layout;
+
+	res = qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.ssr.rt_pipeline_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "SSR: ray-traced pipeline layout failed (%s) - march only\n", vk_result_string( res ) );
+		return;
+	}
+
+	vk_create_post_process_pipeline( 18, glConfig.vidWidth, glConfig.vidHeight );
+	vk_create_post_process_pipeline( 19, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
+
+	/* a map already loaded (vid_restart mid-match): point at it now */
+	vk_ssr_update_rt_descriptor();
 }
 
 
@@ -13794,6 +14076,8 @@ void vk_ssr_create( void )
 	}
 
 	vk.ssr.ready = qtrue;
+
+	vk_ssr_create_rt();   /* [QL] E156 */
 }
 
 
@@ -13806,6 +14090,10 @@ qboolean vk_ssr( void )
 	const int ssrScale = ( r_ssrResolution && r_ssrResolution->integer >= 2 &&
 		vk.ssr.trace_pipeline_half != VK_NULL_HANDLE && vk.ssr.composite_pipeline_half != VK_NULL_HANDLE &&
 		vk.ssr.debug_pipeline_half != VK_NULL_HANDLE ) ? 2 : 1;
+	/* [QL] E156: r_ssrRayTrace, and only with this map's sets written and the
+	   pipeline for the chosen resolution built */
+	const qboolean useRT = ( r_ssrRayTrace && r_ssrRayTrace->integer > 0 && vk.ssr.rtReady &&
+		( ssrScale > 1 ? vk.ssr.rt_trace_pipeline_half : vk.ssr.rt_trace_pipeline ) != VK_NULL_HANDLE );
 
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return qfalse;
@@ -13928,6 +14216,24 @@ qboolean vk_ssr( void )
 	u->wave2[1] = r_waterFoam->value;
 	u->wave2[2] = (float)ssrScale;   /* [QL] E151: the trace's pixel scale */
 	u->wave2[3] = 0.0f;
+
+	/* [QL] E156: r_ssrRayTrace - 0 whenever the ray-traced pipeline will not be
+	   the one bound, so the shader's test and the binding cannot disagree */
+	u->rtInfo[0] = useRT ? (float)r_ssrRayTrace->integer : 0.0f;
+	u->rtInfo[1] = 8192.0f;   // past anything a pool can see across
+	u->rtInfo[2] = 0.5f;      // a mid albedo: the grid gives the light, not the texture
+	u->rtInfo[3] = 0.0f;
+	if ( useRT && vk.rt.world.haveGrid && tr.world ) {
+		VectorCopy( tr.world->lightGridOrigin, u->gridOrigin );
+		VectorCopy( tr.world->lightGridInverseSize, u->gridInvSize );
+		u->gridBounds[0] = (float)tr.world->lightGridBounds[0];
+		u->gridBounds[1] = (float)tr.world->lightGridBounds[1];
+		u->gridBounds[2] = (float)tr.world->lightGridBounds[2];
+		u->gridOrigin[3] = 1.0f;
+	} else {
+		u->gridOrigin[3] = 0.0f;
+	}
+	u->gridInvSize[3] = u->gridBounds[3] = 0.0f;
 
 	/*
 	[QL] R19: the disturbances, matched to the plane each one belongs to.
@@ -14201,6 +14507,16 @@ qboolean vk_ssr( void )
 	vk_end_render_pass();   // end main
 
 	/*
+	[QL] E156: the rays trace this frame's top level structure, and only the
+	occlusion pass builds it - with r_rtao off nobody had, and every ray came
+	back empty against a structure that was never filled. Built here instead
+	when the occlusion pass did not, in the same gap outside a render pass.
+	*/
+	if ( useRT && !backEnd.doneRTDynamic ) {
+		vk_rt_build_dynamic_tlas();
+	}
+
+	/*
 	[QL] R19: depth becomes a texture here, and the layout it becomes is the
 	whole of this bug.
 
@@ -14267,10 +14583,29 @@ qboolean vk_ssr( void )
 		vk.cmd->depth_range = DEPTH_RANGE_COUNT;
 	}
 
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		ssrScale > 1 ? vk.ssr.trace_pipeline_half : vk.ssr.trace_pipeline );
-	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		vk.ssr.trace_pipeline_layout, 0, 1, &vk.ssr.trace_descriptor[ vk.cmd_index ], 0, NULL );
+	/* [QL] E156: say which trace is running whenever that changes - a toggle
+	   that silently did nothing is the failure this has to rule out */
+	{
+		static int lastRT = -1;
+		const int nowRT = useRT ? 1 : 0;
+		if ( nowRT != lastRT ) {
+			lastRT = nowRT;
+			ri.Printf( PRINT_ALL, "SSR: %s (r_ssrRayTrace %i, fallback %s)\n",
+				useRT ? "march + ray-traced fallback" : "march only",
+				r_ssrRayTrace->integer, vk.ssr.rtReady ? "ready" : "not available" );
+		}
+	}
+	if ( useRT ) {   /* [QL] E156 */
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			ssrScale > 1 ? vk.ssr.rt_trace_pipeline_half : vk.ssr.rt_trace_pipeline );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.ssr.rt_pipeline_layout, 0, 1, &vk.ssr.rt_descriptor[ vk.cmd_index ], 0, NULL );
+	} else {
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			ssrScale > 1 ? vk.ssr.trace_pipeline_half : vk.ssr.trace_pipeline );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.ssr.trace_pipeline_layout, 0, 1, &vk.ssr.trace_descriptor[ vk.cmd_index ], 0, NULL );
+	}
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	vk_end_render_pass();

@@ -734,6 +734,8 @@ typedef struct {
 		VkShaderModule ssr_fs;
 		VkShaderModule ssr_ms_fs;
 		VkShaderModule ssr_composite_fs;
+		VkShaderModule ssr_rt_fs;    // [QL] E156: the march + ray-traced fallback
+		VkShaderModule ssr_rt_ms_fs;
 		VkShaderModule ssao_fs;      // [QL] E154: screen-space AO trace
 		VkShaderModule ssao_ms_fs;
 	} modules;
@@ -951,6 +953,23 @@ typedef struct {
 		VkBuffer				uniform_buffer[ NUM_COMMAND_BUFFERS ];
 		VkDeviceMemory			uniform_memory[ NUM_COMMAND_BUFFERS ];
 		void					*uniform_ptr[ NUM_COMMAND_BUFFERS ];
+
+		/*
+		[QL] E156: r_ssrRayTrace. The same march with the world's acceleration
+		structure and light grid added (bindings 3 and 4), so a set, a layout
+		and two pipelines of its own. Made only with ray query.
+
+		rtReady says bindings 3 and 4 have been written for the current map.
+		They name per-map objects, so they are written at world build and
+		cleared at world teardown, and the pipeline is not bound without them.
+		*/
+		VkDescriptorSetLayout	rt_set_layout;
+		VkDescriptorPool		rt_pool;
+		VkDescriptorSet			rt_descriptor[ NUM_COMMAND_BUFFERS ];
+		VkPipelineLayout		rt_pipeline_layout;
+		VkPipeline				rt_trace_pipeline;
+		VkPipeline				rt_trace_pipeline_half;
+		qboolean				rtReady;
 	} ssr;
 	qboolean blitEnabled;
 	qboolean msaaActive;
@@ -1092,6 +1111,13 @@ typedef struct {
 
 			uint32_t		dyn_maxInstances;
 			qboolean		dynReady;
+
+			/* [QL] E156: the map's light grid, as the BSP stores it, for the
+			   reflection's ray-traced fallback to light what it hits. */
+			VkBuffer		grid_buffer;
+			VkDeviceMemory	grid_memory;
+			void			*grid_ptr;
+			qboolean		haveGrid;   // false: a stand-in word, nothing to read
 		} world;
 
 		/* ---- the ambient occlusion pass ---- */

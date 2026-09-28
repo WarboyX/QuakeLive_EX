@@ -6048,6 +6048,32 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E156. Water reflection: ray-traced fallback where the screen march misses (`r_ssrRayTrace`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G3). Probably also the "awkward cutoff" of the muzzle flash on water. The `r_ssr 0` / `cg_muzzleFlashLight 0` test is still unanswered, so that link is unconfirmed.
+
+**The gap:** the water reflection marches the depth buffer, so it can only reflect what is on screen. A pixel whose reflected ray leaves the screen, passes behind the view weapon, or runs out of steps gets nothing. Its neighbour gets a reflection, and the border is a hard, stepped edge.
+
+**`r_ssrRayTrace`** (0 off, the default; 1; 2). Menu: Render → Water → "Ray-traced misses". **Live.** Needs ray tracing (`r_rt`); without it the row does nothing and the log says "fallback not available".
+- **1:** where the march misses, one ray goes through the world's acceleration structure. If what it hits is on screen and nothing is in front of it, its colour comes from the scene image. That is an exact reflection the march missed.
+- **2:** also the hits that are off-screen or hidden, shaded from the map's light grid (the same data entities are lit by) with a mid-grey albedo. The brightness is right but there is no texture, since the structure holds positions only. It blends into the on-screen colour near the screen edge, so the two sources meet without a line.
+- The rest (fades, Fresnel, emitters, foam, the half-resolution option) is the march's own.
+
+**How:** `ssr.tmpl` gains a `USE_RT` variant (SPIR-V 1.4, ray query; the file moved to GLSL 460 for it, and the plain variants are still 1.0). It has its own set with the TLAS at binding 3 and the light grid as a storage buffer at binding 4, uploaded per map as the BSP stores it. Pipelines are program indices 18 and 19 (full and half).
+
+**Bug found and fixed on the way:** the per-frame top-level structure (world plus entities) was only rebuilt by the ambient-occlusion pass. With `r_rtao 0` the reflection's rays traced a structure that had never been filled and hit nothing. The reflection pass now builds it when AO has not that frame (`backEnd.doneRTDynamic`), and not twice when both run.
+
+**Menu fix:** the water Debug view labels were wrong for 2-4 ("ray hit", "reflection", "waves"). They are the raw reflection, the depth classes and the depth buffer, as the cvar's own description says. The labels now match, plus **6 "reflection source"**: green the march, blue an on-screen ray hit, yellow the light-grid estimate, red nothing.
+
+**Checked** (llvmpipe with ray query, Khronos validation layer: 0 errors):
+- Flag-room pool looking down: mode 0 all red (nothing reflected). Mode 2 is yellow under the roof beams, blue along the far edge, and red only where the ray goes out through the open roof to the sky.
+- The garden pool gains hits where the march missed.
+- Mode 1 shows only the blue band.
+- Half resolution works, and so does `r_rtao 1` alongside it.
+- The raw reflection view shows mid-grey estimates that follow the waves, with no step against the on-screen hits.
+- Not checked: the look with real textures (pak00 is not here). The albedo (0.5) is a guess to tune by eye.
+
 ### E155. Stencil shadows on your own player: depth-fail volumes (`r_stencilSelfShadow`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

@@ -315,6 +315,7 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 	backEnd.doneBloom = qfalse;
 	backEnd.doneRTAO = qfalse;	// [QL] R13, same lifetime as bloom
 	backEnd.doneSSR = qfalse;	// [QL] R19 - was missing here, reset only at swap
+	backEnd.doneRTDynamic = qfalse;	// [QL] E156
 #endif
 
 	backEnd.color2D.u32 = ~0U;

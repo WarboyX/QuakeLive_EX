@@ -134,6 +134,11 @@ emit_rt frag rtao_frag_ms_spv rtao.tmpl -DUSE_MSAA
 emit frag ssr_frag_spv    ssr.tmpl
 emit frag ssr_frag_ms_spv ssr.tmpl -DUSE_MSAA
 
+# [QL] E156: the same march with a ray-traced fallback where it misses
+# (r_ssrRayTrace). This one does fire rays, so emit_rt and 1.4.
+emit_rt frag ssr_rt_frag_spv    ssr.tmpl -DUSE_RT
+emit_rt frag ssr_rt_frag_ms_spv ssr.tmpl -DUSE_RT -DUSE_MSAA
+
 # [QL] E154: screen-space AO. rtao.tmpl's code with the ray query replaced by a
 # depth-buffer test, so plain emit - it fires no rays and has no reason to
 # carry rtao's SPIR-V 1.4 requirement. Two variants for the multisampled depth.

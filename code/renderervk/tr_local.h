@@ -1237,6 +1237,7 @@ typedef struct {
 	   transition it hangs off can be reached more than once in a frame. */
 	qboolean doneRTAO;
 	qboolean doneSSR;			// [QL] R19, same lifetime as the two above
+	qboolean doneRTDynamic;		// [QL] E156: the entities' TLAS was rebuilt this frame
 
 } backEndState_t;
 
@@ -1583,6 +1584,7 @@ extern	cvar_t	*r_stencilSelfShadow;			// [QL] E155
 extern	cvar_t	*r_ssao;						// [QL] E154: 0 off, 1 on, 2 debug
 extern	cvar_t	*r_pipelineCache;				// [QL] E152: 0 off, 1 disk, 2 disk + pre-build
 extern	cvar_t	*r_ssrResolution;				// [QL] E151: 1 full, 2 half (live)
+extern	cvar_t	*r_ssrRayTrace;				// [QL] E156: 0 off, 1 on-screen hits, 2 + estimates (live)
 extern	cvar_t	*r_rtaoResolution;				// [QL] E150: 1 full, 2 half (live)
 extern	cvar_t	*r_rtaoDenoise;					// [QL] R13: bilateral denoise width (latched)
 extern	cvar_t	*r_rtaoLights;					// [QL] dynamic lights clear occlusion where they reach
