@@ -1024,7 +1024,7 @@ static void vk_create_render_passes( void )
 	/* [QL] R13: independent of r_fbo and of everything below - it has its own
 	   attachment and its own framebuffers. Created first so vk_rt_create_ao can
 	   test for it the same way it tests for the composite pass. */
-	if ( vk.rtActive && vk.rtDepthSampled ) {
+	if ( vk.rtDepthSampled ) {   // [QL] E154: screen-space AO uses it too
 		vk_create_rtao_offscreen_render_pass( device );
 	}
 
@@ -4489,6 +4489,24 @@ static void vk_rt_destroy_ao( void )
 		qvkDestroyPipeline( vk.device, vk.rt.pipeline_blur_half, NULL );
 		vk.rt.pipeline_blur_half = VK_NULL_HANDLE;
 	}
+	/* [QL] E154 */
+	if ( vk.rt.pipeline_ssao != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_ssao, NULL );
+		vk.rt.pipeline_ssao = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.pipeline_ssao_half != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_ssao_half, NULL );
+		vk.rt.pipeline_ssao_half = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.ssao_pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.rt.ssao_pipeline_layout, NULL );
+		vk.rt.ssao_pipeline_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.ssao_set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.rt.ssao_set_layout, NULL );
+		vk.rt.ssao_set_layout = VK_NULL_HANDLE;
+	}
+	vk.rt.ssao_descriptor = VK_NULL_HANDLE;   // freed with the pool below
 	if ( vk.rt.pipeline != VK_NULL_HANDLE ) {
 		qvkDestroyPipeline( vk.device, vk.rt.pipeline, NULL );
 		vk.rt.pipeline = VK_NULL_HANDLE;
@@ -4652,7 +4670,9 @@ static void vk_rt_create_ao( void )
 
 	vk_rt_destroy_ao();
 
-	if ( !vk.rtActive || !vk.rtDepthSampled || vk.depth_image == VK_NULL_HANDLE ) {
+	/* [QL] E154: ray query is no longer required here - without it the pass
+	   is built for screen-space AO, and every RT-only piece below is skipped */
+	if ( !vk.rtDepthSampled || vk.depth_image == VK_NULL_HANDLE ) {
 		return;
 	}
 
@@ -4723,35 +4743,43 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
-	// ---- descriptor set layout ----
-	Com_Memset( bindings, 0, sizeof( bindings ) );
-	bindings[0].binding = 0;
-	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindings[0].descriptorCount = 1;
-	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	bindings[1].binding = 1;
-	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-	bindings[1].descriptorCount = 1;
-	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	/* [QL] the frame's dynamic lights - see rtaoLights_t */
-	bindings[2].binding = 2;
-	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	bindings[2].descriptorCount = 1;
-	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	bindings[2].pImmutableSamplers = NULL;
-
+	/* [QL] E154: set up outside the RT-only block below - the denoise and
+	   screen-space layouts after it reuse this struct, and without ray query
+	   the block does not run. */
 	Com_Memset( &layout_desc, 0, sizeof( layout_desc ) );
 	layout_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layout_desc.bindingCount = 3;
-	layout_desc.pBindings = bindings;
 
-	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.rt.set_layout );
-	if ( res < 0 ) {
-		ri.Printf( PRINT_WARNING, "RT AO: descriptor set layout failed (%s)\n", vk_result_string( res ) );
-		vk_rt_destroy_ao();
-		return;
+	if ( vk.rtActive ) {   // [QL] E154: the trace's set - depth, the acceleration structure, the lights
+		// ---- descriptor set layout ----
+		Com_Memset( bindings, 0, sizeof( bindings ) );
+		bindings[0].binding = 0;
+		bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		bindings[0].descriptorCount = 1;
+		bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+		bindings[1].binding = 1;
+		bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		bindings[1].descriptorCount = 1;
+		bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+		/* [QL] the frame's dynamic lights - see rtaoLights_t */
+		bindings[2].binding = 2;
+		bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		bindings[2].descriptorCount = 1;
+		bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		bindings[2].pImmutableSamplers = NULL;
+
+		Com_Memset( &layout_desc, 0, sizeof( layout_desc ) );
+		layout_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layout_desc.bindingCount = 3;
+		layout_desc.pBindings = bindings;
+
+		res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.rt.set_layout );
+		if ( res < 0 ) {
+			ri.Printf( PRINT_WARNING, "RT AO: descriptor set layout failed (%s)\n", vk_result_string( res ) );
+			vk_rt_destroy_ao();
+			return;
+		}
 	}
 
 	/*
@@ -4782,6 +4810,15 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
+	/* [QL] E154: screen-space AO's trace set - depth alone */
+	layout_desc.bindingCount = 1;
+	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.rt.ssao_set_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "AO: screen-space set layout failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
 	/*
 	[QL] One light list per command buffer, host visible and written each frame.
 
@@ -4792,7 +4829,7 @@ static void vk_rt_create_ao( void )
 	heavy-handed for a list of lights, but the alternative is a descriptor set
 	with an unbound binding that the shader still reads.
 	*/
-	for ( i = 0; i < ARRAY_LEN( vk.rt.light_buffer ); i++ ) {
+	for ( i = 0; vk.rtActive && i < ARRAY_LEN( vk.rt.light_buffer ); i++ ) {   // [QL] E154: RT only
 		if ( !rt_create_host_buffer( sizeof( rtaoLights_t ), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 				&vk.rt.light_buffer[i], &vk.rt.light_memory[i], &vk.rt.light_ptr[i] ) ) {
 			ri.Printf( PRINT_WARNING, "RT AO: could not create the light list - disabling\n" );
@@ -4806,7 +4843,7 @@ static void vk_rt_create_ao( void )
 	/* Three sets: the trace's, and one per occlusion target for the denoise. */
 	Com_Memset( pool_sizes, 0, sizeof( pool_sizes ) );
 	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	pool_sizes[0].descriptorCount = 6;   // trace: depth x2. denoise: 2 x (ao + depth)
+	pool_sizes[0].descriptorCount = 7;   // trace: depth x2. denoise: 2 x (ao + depth). E154: SSAO depth
 	pool_sizes[1].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 	pool_sizes[1].descriptorCount = 2;   // one per command buffer
 	pool_sizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -4814,8 +4851,10 @@ static void vk_rt_create_ao( void )
 
 	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
 	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	pool_desc.maxSets = 4;   // two trace sets, two denoise sets
-	pool_desc.poolSizeCount = 3;
+	pool_desc.maxSets = 5;   // two trace sets, two denoise sets, [QL] E154 the screen-space set
+	/* [QL] E154: without ray query there is no acceleration structure or light
+	   list to pool for - only the first entry, the samplers */
+	pool_desc.poolSizeCount = vk.rtActive ? 3 : 1;
 	pool_desc.pPoolSizes = pool_sizes;
 
 	res = qvkCreateDescriptorPool( vk.device, &pool_desc, NULL, &vk.rt.pool );
@@ -4831,7 +4870,7 @@ static void vk_rt_create_ao( void )
 	set_alloc.descriptorSetCount = 1;
 	set_alloc.pSetLayouts = &vk.rt.set_layout;
 
-	for ( i = 0; i < ARRAY_LEN( vk.rt.descriptor ); i++ ) {
+	for ( i = 0; vk.rtActive && i < ARRAY_LEN( vk.rt.descriptor ); i++ ) {   // [QL] E154: RT only
 		res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.rt.descriptor[i] );
 		if ( res < 0 ) {
 			ri.Printf( PRINT_WARNING, "RT AO: descriptor set %i failed (%s)\n", i, vk_result_string( res ) );
@@ -4848,6 +4887,34 @@ static void vk_rt_create_ao( void )
 			vk_rt_destroy_ao();
 			return;
 		}
+	}
+
+	/* [QL] E154: the screen-space set. Depth only, and depth does not change
+	   under it, so it is written once here. */
+	set_alloc.pSetLayouts = &vk.rt.ssao_set_layout;
+	res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.rt.ssao_descriptor );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "AO: screen-space set failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+	{
+		VkDescriptorImageInfo depth_info;
+		VkWriteDescriptorSet depth_write;
+
+		Com_Memset( &depth_info, 0, sizeof( depth_info ) );
+		depth_info.sampler = vk.rt.depth_sampler;
+		depth_info.imageView = vk.rt.depth_view;
+		depth_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+		Com_Memset( &depth_write, 0, sizeof( depth_write ) );
+		depth_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		depth_write.dstSet = vk.rt.ssao_descriptor;
+		depth_write.dstBinding = 0;
+		depth_write.descriptorCount = 1;
+		depth_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		depth_write.pImageInfo = &depth_info;
+		qvkUpdateDescriptorSets( vk.device, 1, &depth_write, 0, NULL );
 	}
 
 	/*
@@ -4903,7 +4970,17 @@ static void vk_rt_create_ao( void )
 	pl_desc.pushConstantRangeCount = 1;
 	pl_desc.pPushConstantRanges = &push_range;
 
-	res = qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.rt.pipeline_layout );
+	/* [QL] E154: the screen-space trace takes the same push constants */
+	pl_desc.pSetLayouts = &vk.rt.ssao_set_layout;
+	res = qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.rt.ssao_pipeline_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "AO: screen-space pipeline layout failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+	pl_desc.pSetLayouts = &vk.rt.set_layout;
+
+	res = vk.rtActive ? qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.rt.pipeline_layout ) : VK_SUCCESS;
 	if ( res < 0 ) {
 		ri.Printf( PRINT_WARNING, "RT AO: pipeline layout failed (%s)\n", vk_result_string( res ) );
 		vk_rt_destroy_ao();
@@ -4920,15 +4997,21 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
-	vk_create_post_process_pipeline( 4, glConfig.vidWidth, glConfig.vidHeight );
+	if ( vk.rtActive ) {   // [QL] E154: the ray-traced trace, full and half
+		vk_create_post_process_pipeline( 4, glConfig.vidWidth, glConfig.vidHeight );
+		vk_create_post_process_pipeline( 11, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
+	}
+	/* [QL] E154: the screen-space trace, full and half */
+	vk_create_post_process_pipeline( 16, glConfig.vidWidth, glConfig.vidHeight );
+	vk_create_post_process_pipeline( 17, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
 	vk_create_post_process_pipeline( 5, glConfig.vidWidth, glConfig.vidHeight );
 	vk_create_post_process_pipeline( 6, glConfig.vidWidth, glConfig.vidHeight );
 	vk_create_post_process_pipeline( 7, glConfig.vidWidth, glConfig.vidHeight );
 	/* [QL] E150: half-resolution trace and horizontal denoise. Not fatal if
 	   they fail - r_rtaoResolution 2 then just runs at full resolution. */
-	vk_create_post_process_pipeline( 11, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
 	vk_create_post_process_pipeline( 12, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
-	if ( vk.rt.pipeline_gen == VK_NULL_HANDLE || vk.rt.pipeline_blur == VK_NULL_HANDLE ||
+	if ( ( vk.rt.pipeline_gen == VK_NULL_HANDLE && vk.rt.pipeline_ssao == VK_NULL_HANDLE ) ||
+		vk.rt.pipeline_blur == VK_NULL_HANDLE ||
 		vk.rt.pipeline == VK_NULL_HANDLE || vk.rt.pipeline_debug == VK_NULL_HANDLE ) {
 		ri.Printf( PRINT_WARNING, "RT AO: pipeline failed\n" );
 		vk_rt_destroy_ao();
@@ -4942,8 +5025,9 @@ static void vk_rt_create_ao( void )
 	   the world build does it instead. */
 	vk_rt_update_ao_descriptor();
 
-	ri.Printf( PRINT_ALL, "RT AO: pass ready (%s depth)\n",
-		vkSamples != VK_SAMPLE_COUNT_1_BIT ? "multisampled" : "single-sample" );
+	ri.Printf( PRINT_ALL, "AO: pass ready (%s depth; %s)\n",
+		vkSamples != VK_SAMPLE_COUNT_1_BIT ? "multisampled" : "single-sample",
+		vk.rt.pipeline_gen != VK_NULL_HANDLE ? "ray-traced and screen-space" : "screen-space only - no ray query" );
 }
 
 
@@ -6414,6 +6498,11 @@ static void vk_create_shader_modules( void )
 	vk.modules.ssr_ms_fs = SHADER_MODULE( ssr_frag_ms_spv );
 	vk.modules.ssr_composite_fs = SHADER_MODULE( ssr_composite_frag_spv );
 	SET_OBJECT_NAME( vk.modules.ssr_fs, "ssr trace module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+
+	/* [QL] E154: screen-space AO - SPIR-V 1.0, no rays */
+	vk.modules.ssao_fs = SHADER_MODULE( ssao_frag_spv );
+	vk.modules.ssao_ms_fs = SHADER_MODULE( ssao_frag_ms_spv );
+	SET_OBJECT_NAME( vk.modules.ssao_fs, "screen-space AO module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	SET_OBJECT_NAME( vk.modules.ssr_composite_fs, "ssr composite module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 }
 
@@ -7116,7 +7205,7 @@ static void vk_create_attachments( void )
 	Two of them because the denoise is separable and the horizontal pass cannot
 	write into the image the vertical one still has to read.
 	*/
-	if ( vk.rtActive && vk.rtDepthSampled ) {
+	if ( vk.rtDepthSampled ) {   // [QL] E154: and screen-space AO
 		VkImageUsageFlags aoUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
 		vk.rt.ao_format = VK_FORMAT_R8_UNORM;
@@ -8600,7 +8689,8 @@ void vk_shutdown( refShutdownCode_t code )
 		VkShaderModule *mods[] = {
 			&vk.modules.rtao_fs, &vk.modules.rtao_ms_fs,
 			&vk.modules.rtao_blur_fs, &vk.modules.rtao_blur_ms_fs,
-			&vk.modules.ssr_fs, &vk.modules.ssr_ms_fs, &vk.modules.ssr_composite_fs
+			&vk.modules.ssr_fs, &vk.modules.ssr_ms_fs, &vk.modules.ssr_composite_fs,
+			&vk.modules.ssao_fs, &vk.modules.ssao_ms_fs
 		};
 		for ( i = 0; i < ARRAY_LEN( mods ); i++ ) {
 			if ( *mods[i] != VK_NULL_HANDLE ) {
@@ -9404,6 +9494,40 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			blend = qfalse;
 			alphaBlend = qfalse;
 			break;
+		case 16: // [QL] E154 screen-space AO trace - case 4 with the depth-only shader and layout
+			pipeline = &vk.rt.pipeline_ssao;
+			/* The multisampled build reads depth with sampler2DMS. Chosen by
+			   vkSamples and not by a cvar, because it has to match the depth
+			   attachment that actually exists. */
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.ssao_ms_fs : vk.modules.ssao_fs;
+			renderpass = vk.render_pass.rtao_offscreen;
+			layout = vk.rt.ssao_pipeline_layout;
+			/* One sample, whatever the scene is doing. The target is the
+			   single-channel occlusion image, not the framebuffer - AO is
+			   computed once per pixel and applied to all of that pixel's
+			   samples when the composite pass multiplies it in. */
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "screen-space ambient occlusion pipeline";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
+		case 17: // [QL] E154 the same at half resolution
+			pipeline = &vk.rt.pipeline_ssao_half;
+			/* The multisampled build reads depth with sampler2DMS. Chosen by
+			   vkSamples and not by a cvar, because it has to match the depth
+			   attachment that actually exists. */
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.ssao_ms_fs : vk.modules.ssao_fs;
+			renderpass = vk.render_pass.rtao_offscreen;
+			layout = vk.rt.ssao_pipeline_layout;
+			/* One sample, whatever the scene is doing. The target is the
+			   single-channel occlusion image, not the framebuffer - AO is
+			   computed once per pixel and applied to all of that pixel's
+			   samples when the composite pass multiplies it in. */
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "screen-space ambient occlusion pipeline (half resolution)";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
 		default: // gamma correction
 			pipeline = &vk.gamma_pipeline;
 			fsmodule = vk.modules.gamma_fs;
@@ -9543,8 +9667,13 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	/* [QL] E150: 11 and 12 are 4 and 5 at half resolution and declare the same
 	   constants - handing them the gamma block would be exactly the mistake
 	   described above. */
-	if ( ( program_index >= 4 && program_index <= 7 ) || program_index == 11 || program_index == 12 ) {
-		if ( program_index == 4 || program_index == 11 ) {
+	if ( ( program_index >= 4 && program_index <= 7 ) || program_index == 11 || program_index == 12 ||
+		 program_index == 16 || program_index == 17 ) {
+		if ( program_index == 16 || program_index == 17 ) {
+			/* [QL] E154: screen-space samples cost a texel fetch, not a ray -
+			   more of them, fixed, and the denoise does the rest */
+			ao_sample_count = 12;
+		} else if ( program_index == 4 || program_index == 11 ) {
 			ao_sample_count = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
 			if ( ao_sample_count < 1 ) {
 				ao_sample_count = 4;
@@ -12599,9 +12728,19 @@ qboolean vk_rt_ao( void )
 	float vp[16];
 	float proj[16];
 	int denoise;
+	/* [QL] E154: which AO runs this frame. Ray-traced when it is ready and on;
+	   otherwise screen-space when r_ssao asks for it - so a player with ray
+	   query can still choose screen-space by turning ray-traced AO off. */
+	const qboolean rtReady = vk.rt.aoReady && vk.rt.pipeline_gen != VK_NULL_HANDLE &&
+		vk.rt.world.worldBuilt && vk.rt.world.tlas != VK_NULL_HANDLE;
+	const qboolean useRT = rtReady && r_rtao && r_rtao->integer > 0;
+	const qboolean useSSAO = !useRT && vk.rt.aoReady && vk.rt.pipeline_ssao != VK_NULL_HANDLE &&
+		r_ssao && r_ssao->integer > 0;
+	const qboolean debugView = useRT ? ( r_rtao->integer >= 2 ) : ( useSSAO && r_ssao->integer >= 2 );
 	/* [QL] E150: r_rtaoResolution, and only if both half-size pipelines exist */
 	int aoScale = ( r_rtaoResolution && r_rtaoResolution->integer >= 2 &&
-		vk.rt.pipeline_gen_half != VK_NULL_HANDLE && vk.rt.pipeline_blur_half != VK_NULL_HANDLE ) ? 2 : 1;
+		( useSSAO ? vk.rt.pipeline_ssao_half : vk.rt.pipeline_gen_half ) != VK_NULL_HANDLE &&
+		vk.rt.pipeline_blur_half != VK_NULL_HANDLE ) ? 2 : 1;
 
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return qfalse;   // the little world-in-a-portal view, not the scene
@@ -12624,19 +12763,18 @@ qboolean vk_rt_ao( void )
 	One condition per message, because the fix differs for each and a single
 	"not running" tells nobody which one to go and change.
 	*/
-	if ( !vk.rt.aoReady || !vk.rt.world.worldBuilt || vk.rt.world.tlas == VK_NULL_HANDLE ) {
+	if ( !useRT && !useSSAO ) {
 		if ( !rtaoOffReported ) {
 			rtaoOffReported = qtrue;
-			ri.Printf( PRINT_ALL, "RT AO: not running - %s\n",
-				!vk.rt.aoReady ? "the pass was not created (see the Ray query lines above)"
-				               : "no acceleration structure for this map" );
-		}
-		return qfalse;
-	}
-	if ( r_rtao == NULL || r_rtao->integer == 0 ) {
-		if ( !rtaoOffReported ) {
-			rtaoOffReported = qtrue;
-			ri.Printf( PRINT_ALL, "RT AO: not running - r_rtao is 0. Everything else is ready.\n" );
+			if ( !vk.rt.aoReady ) {
+				ri.Printf( PRINT_ALL, "AO: not running - the pass was not created (see the Depth sampling lines above)\n" );
+			} else if ( r_rtao && r_rtao->integer > 0 && !rtReady ) {
+				ri.Printf( PRINT_ALL, "RT AO: not running - %s. r_ssao 1 gives screen-space AO instead.\n",
+					vk.rt.pipeline_gen == VK_NULL_HANDLE ? "no ray query on this device"
+					                                     : "no acceleration structure for this map" );
+			} else {
+				ri.Printf( PRINT_ALL, "AO: not running - r_rtao and r_ssao are both 0. Everything else is ready.\n" );
+			}
 		}
 		return qfalse;
 	}
@@ -12650,6 +12788,13 @@ qboolean vk_rt_ao( void )
 			reportedScale = aoScale;
 			rtaoOnReported = qfalse;
 		}
+	}
+	if ( !rtaoOnReported && useSSAO ) {
+		rtaoOnReported = qtrue;
+		ri.Printf( PRINT_ALL, "SSAO: running%s - 12 samples/pixel at %ix%i%s, radius %g, strength %g\n",
+			debugView ? " (DEBUG VIEW: showing occlusion)" : "",
+			( glConfig.vidWidth + aoScale - 1 ) / aoScale, ( glConfig.vidHeight + aoScale - 1 ) / aoScale,
+			aoScale > 1 ? " (half resolution)" : "", r_rtaoRadius->value, r_rtaoIntensity->value );
 	}
 	if ( !rtaoOnReported ) {
 		const int aoSamples = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
@@ -12882,12 +13027,21 @@ qboolean vk_rt_ao( void )
 	// ---- pass 1: trace, into ao_image[0] ----
 	vk_begin_rtao_offscreen_render_pass( 0, aoScale );
 
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		aoScale > 1 ? vk.rt.pipeline_gen_half : vk.rt.pipeline_gen );
-	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor[ vk.cmd_index ], 0, NULL );
-	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.pipeline_layout,
-		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+	if ( useSSAO ) {   /* [QL] E154: the depth-only trace */
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			aoScale > 1 ? vk.rt.pipeline_ssao_half : vk.rt.pipeline_ssao );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.rt.ssao_pipeline_layout, 0, 1, &vk.rt.ssao_descriptor, 0, NULL );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.ssao_pipeline_layout,
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+	} else {
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			aoScale > 1 ? vk.rt.pipeline_gen_half : vk.rt.pipeline_gen );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.rt.pipeline_layout, 0, 1, &vk.rt.descriptor[ vk.cmd_index ], 0, NULL );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.pipeline_layout,
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+	}
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	vk_end_render_pass();
@@ -12935,7 +13089,7 @@ qboolean vk_rt_ao( void )
 	the value the trace produced. The composite keeps 1.0, because there this
 	value is the blend source and scaling it would scale the occlusion itself.
 	*/
-	blur.step[2] = ( r_rtao->integer >= 2 && tr.overbrightBits > 0 )
+	blur.step[2] = ( debugView && tr.overbrightBits > 0 )
 		? 1.0f / (float)( 1 << tr.overbrightBits )
 		: 1.0f;
 	blur.step[3] = 1.0f;   // [QL] E150: writes at full resolution (the upsample)
@@ -12946,7 +13100,7 @@ qboolean vk_rt_ao( void )
 	   dark creases means it is working; flat white means every ray is missing;
 	   an unchanged scene means the pass never drew. */
 	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		r_rtao->integer >= 2 ? vk.rt.pipeline_debug : vk.rt.pipeline );
+		debugView ? vk.rt.pipeline_debug : vk.rt.pipeline );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[ denoise ? 1 : 0 ], 0, NULL );
 	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,

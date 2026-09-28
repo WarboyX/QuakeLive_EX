@@ -445,6 +445,9 @@ def raytracing():
         # value and the default are both visible.
         ("h", "AMBIENT OCCLUSION"),
         ("multi", "r_rtao", "Ambient occlusion", '"Off" 0 "On" 1 "Debug (show occlusion)" 2'),
+        # [QL] E154. No ray query needed; runs when the row above is off or
+        # cannot run. Shares radius, strength, denoise and trace resolution.
+        ("multi", "r_ssao", "Screen-space AO", '"Off (default)" 0 "On" 1 "Debug (show occlusion)" 2'),
         ("multi", "r_rtaoRadius", "Radius",
          '"16 (tight creases)" 16 "32" 32 "64 (default)" 64 "128" 128 "256 (wide)" 256 '
          '"512" 512 "1024" 1024 "2048" 2048 "4096 (whole rooms)" 4096'),

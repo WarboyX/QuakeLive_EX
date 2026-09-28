@@ -734,6 +734,8 @@ typedef struct {
 		VkShaderModule ssr_fs;
 		VkShaderModule ssr_ms_fs;
 		VkShaderModule ssr_composite_fs;
+		VkShaderModule ssao_fs;      // [QL] E154: screen-space AO trace
+		VkShaderModule ssao_ms_fs;
 	} modules;
 
 	VkPipelineCache pipelineCache;
@@ -1158,6 +1160,14 @@ typedef struct {
 		   into the pipeline, so r_rtaoResolution picks between two pairs */
 		VkPipeline				pipeline_gen_half;
 		VkPipeline				pipeline_blur_half;
+		/* [QL] E154: screen-space AO's trace - its own set (depth only, no
+		   acceleration structure) and layout; everything after the trace is
+		   shared with the ray-traced one */
+		VkDescriptorSetLayout	ssao_set_layout;
+		VkPipelineLayout		ssao_pipeline_layout;
+		VkDescriptorSet			ssao_descriptor;
+		VkPipeline				pipeline_ssao;
+		VkPipeline				pipeline_ssao_half;
 		VkPipeline				pipeline;		// ao_image[1]  -> scene, multiply
 		/* [QL] Same shader as pipeline, replace instead of multiply, so
 		   r_rtao 2 shows the occlusion term rather than its effect on the

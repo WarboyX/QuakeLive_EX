@@ -134,6 +134,12 @@ emit_rt frag rtao_frag_ms_spv rtao.tmpl -DUSE_MSAA
 emit frag ssr_frag_spv    ssr.tmpl
 emit frag ssr_frag_ms_spv ssr.tmpl -DUSE_MSAA
 
+# [QL] E154: screen-space AO. rtao.tmpl's code with the ray query replaced by a
+# depth-buffer test, so plain emit - it fires no rays and has no reason to
+# carry rtao's SPIR-V 1.4 requirement. Two variants for the multisampled depth.
+emit frag ssao_frag_spv    ssao.tmpl
+emit frag ssao_frag_ms_spv ssao.tmpl -DUSE_MSAA
+
 # The denoiser fires no rays - it reads the target the trace wrote - so it goes
 # through the ordinary emit and the default SPIR-V target. Deliberately not
 # emit_rt: asking for 1.4 where 1.0 will do costs nothing here but would put a

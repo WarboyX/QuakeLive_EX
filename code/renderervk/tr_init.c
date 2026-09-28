@@ -156,6 +156,7 @@ cvar_t	*r_rtaoDenoise;
 cvar_t	*r_rtaoResolution;   // [QL] E150
 cvar_t	*r_ssrResolution;    // [QL] E151
 cvar_t	*r_pipelineCache;    // [QL] E152
+cvar_t	*r_ssao;             // [QL] E154
 cvar_t	*r_rtaoLights;
 cvar_t	*r_ssr;
 cvar_t	*r_ssrDistance;
@@ -2592,6 +2593,18 @@ static void R_Register( void )
 		" 1 - on\n"
 		" 2 - wide (smoother, softer contact shadows)\n"
 		"The width needs a vid_restart; off and on do not." );
+
+	/* [QL] E154. Off by default - it changes the look of every scene, and that
+	   is the player's call. Live. */
+	r_ssao = ri.Cvar_Get( "r_ssao", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssao, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssao, "Screen-space ambient occlusion - darkens creases and contact "
+		"from the depth buffer, with no ray tracing:\n"
+		" 0 - off (default)\n"
+		" 1 - on\n"
+		" 2 - debug: show the occlusion term instead of the scene\n"
+		"Used when ray-traced AO is off or unavailable; shares its radius, strength, "
+		"denoise and resolution settings. Needs Post-processing (r_fbo 1)." );
 
 	/* [QL] E150. Live: both pipelines exist, and this picks one per frame. */
 	/* [QL] E152. 1 is a pure saving - it only stops work being repeated - so

@@ -6048,6 +6048,30 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E154. Screen-space ambient occlusion for GPUs without ray tracing (`r_ssao`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G1, second half).
+
+**`r_ssao`** (0 off - the default, since it changes the look of every scene; 1 on; 2 debug view). Menu: Lighting & Ray Tracing → Ambient occlusion → "Screen-space AO". **Live.**
+- It runs when ray-traced AO is off or unavailable, so a player with ray query can still choose it by turning `r_rtao` off.
+- It shares the ray-traced AO's radius, strength, denoise and **trace resolution** (half works too).
+
+**How:** `ssao.tmpl` is `rtao.tmpl`'s code - depth reconstruction, the neighbour normal, the weapon band, the hemisphere, the output - with the ray query replaced by the screen-space test:
+- project each sample point back into the frame and read the depth buffer there;
+- count occlusion if that surface is nearer the eye than the sample point (by more than depth precision allows at that distance), weighted by the usual view-depth range check so a wall far behind a thin pole does not darken the floor under it.
+
+It is SPIR-V 1.0 with 12 samples, and its descriptor set is depth alone, so it runs on any GPU that can sample depth. Everything after the trace (denoise, depth-aware upsample, composite, debug view) is the ray-traced path's.
+
+**Restructured `vk_rt_create_ao`:** RT-only pieces (the TLAS set, the light list, the ray-traced trace pipelines) are made only with ray query. The occlusion targets and their render pass are now made whenever depth is sampleable.
+
+**Checked:**
+- `r_rt 0`: "AO: pass ready (... screen-space only - no ray query)"; the debug view at full and half resolution; on/off live; 0 validation errors.
+- Side by side with the ray-traced debug view from the same spot, it matches along floor-wall and corridor corners.
+- It is weaker where the occluder's depth extent is off-screen or unknown (a pillar edge in front of a wall). That is the screen-space limitation, not a fault.
+- A first version was far weaker (a squared sample spread and a fixed 2-unit same-surface allowance swallowed the close samples, and a 3D-distance weight shrank corner occlusion); tuned against the ray-traced view.
+- Found by the validation layer while writing this: the shared descriptor-layout struct was set up inside the RT-only block, so without ray query the denoise layout was built from an uninitialised struct. Fixed before commit.
+
 ### E153. Water reflections without ray tracing; shared depth view; three leaks and misuses on the non-RT path — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
