@@ -464,12 +464,13 @@ def raytracing():
 
 
 # [QL] E147. Water reflections, waves and splashes are all the one reflection
-# pass, and it runs only with r_fbo on and ray query active. Neither was said
+# pass, and it runs only with r_fbo on (and, until E153, ray query active). Neither was said
 # anywhere near these settings, so every row did nothing and nothing explained
 # why - r_fbo had no menu row at all. Shown only while one of them is off.
 WATER_NEEDS = [
     ("help", "Off: needs Post-processing (Render Options) on. Needs APPLY.", None, ("r_fbo", "0")),
-    ("help", "Off: needs ray query (Lighting & Ray Tracing) active.", None, ("r_rtActive", "0")),
+    # E153: the ray-query note is gone - the water fires no rays and now runs
+    # without it.
 ]
 
 

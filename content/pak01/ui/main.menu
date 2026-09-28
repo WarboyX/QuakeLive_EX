@@ -4518,87 +4518,84 @@
         itemDef { text "Off: needs Post-processing (Render Options) on. Needs APPLY."  textscale .17  rect 24 131 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_fbo"  showCvar { "0" } }
-        itemDef { text "Off: needs ray query (Lighting & Ray Tracing) active."  textscale .17  rect 24 148 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_rtActive"  showCvar { "0" } }
-        itemDef { text "Water reflections"  textscale .21  rect 24 165 246 16  textaligny 13
+        itemDef { text "Water reflections"  textscale .21  rect 24 148 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssr  type ITEM_TYPE_MULTI  text ""  cvar "r_ssr"
                   cvarFloatList { "Off (default)" 0 "Subtle" 0.35 "Half" 0.5 "Full" 1 }
-                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace distance"  textscale .21  rect 24 182 246 16  textaligny 13
+        itemDef { text "Trace distance"  textscale .21  rect 24 165 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrdistance  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDistance"
                   cvarFloatList { "512 (near)" 512 "1024 (default)" 1024 "2048" 2048 "4096 (far)" 4096 }
-                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace steps"  textscale .21  rect 24 199 246 16  textaligny 13
+        itemDef { text "Trace steps"  textscale .21  rect 24 182 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrsteps  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrSteps"
                   cvarFloatList { "16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128 }
-                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace resolution"  textscale .21  rect 24 216 246 16  textaligny 13
+        itemDef { text "Trace resolution"  textscale .21  rect 24 199 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrresolution  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrResolution"
                   cvarFloatList { "Full (default)" 1 "Half (faster)" 2 }
-                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Thickness"  textscale .21  rect 24 233 246 16  textaligny 13
+        itemDef { text "Thickness"  textscale .21  rect 24 216 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrthickness  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrThickness"
                   cvarFloatList { "4 (thin)" 4 "8" 8 "16" 16 "24 (default)" 24 "32 (forgiving)" 32 }
-                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Debug view"  textscale .21  rect 24 250 246 16  textaligny 13
+        itemDef { text "Debug view"  textscale .21  rect 24 233 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrdebug  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDebug"
                   cvarFloatList { "Off" 0 "1 mask" 1 "2 ray hit" 2 "3 reflection" 3 "4 waves" 4 "5 ripples + foam" 5 }
-                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "WAVES (WIND CHOP)"  textscale .2  rect 24 267 512 16  textaligny 13
+        itemDef { text "WAVES (WIND CHOP)"  textscale .2  rect 24 250 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
-        itemDef { text "Waves"  textscale .21  rect 24 284 246 16  textaligny 13
+        itemDef { text "Waves"  textscale .21  rect 24 267 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwaves  type ITEM_TYPE_YESNO  text ""  cvar "r_waterWaves"
-                  rect 290 284 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 267 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Steepness"  textscale .21  rect 24 301 246 16  textaligny 13
+        itemDef { text "Steepness"  textscale .21  rect 24 284 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwavesteepness  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSteepness"
                   cvarFloatList { "0.02 (glassy)" 0.02 "0.05" 0.05 "0.08 (default)" 0.08 "0.12" 0.12 "0.2 (choppy)" 0.2 }
-                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Height"  textscale .21  rect 24 318 246 16  textaligny 13
+        itemDef { text "Height"  textscale .21  rect 24 301 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwaveheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveHeight"
                   cvarFloatList { "0 (flat)" 0 "1" 1 "2 (default)" 2 "4" 4 "8 (swell)" 8 }
-                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Wavelength"  textscale .21  rect 24 335 246 16  textaligny 13
+        itemDef { text "Wavelength"  textscale .21  rect 24 318 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwavescale  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveScale"
                   cvarFloatList { "48 (fine)" 48 "96 (default)" 96 "192" 192 "384 (broad)" 384 }
-                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Speed"  textscale .21  rect 24 352 246 16  textaligny 13
+        itemDef { text "Speed"  textscale .21  rect 24 335 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwavespeed  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSpeed"
                   cvarFloatList { "0 (frozen)" 0 "0.5 (slow)" 0.5 "1 (default)" 1 "2 (fast)" 2 }
-                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
@@ -4725,53 +4722,50 @@
         itemDef { text "Off: needs Post-processing (Render Options) on. Needs APPLY."  textscale .17  rect 24 114 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_fbo"  showCvar { "0" } }
-        itemDef { text "Off: needs ray query (Lighting & Ray Tracing) active."  textscale .17  rect 24 131 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_rtActive"  showCvar { "0" } }
-        itemDef { text "IMPACTS (SPLASHES)"  textscale .2  rect 24 148 512 16  textaligny 13
+        itemDef { text "IMPACTS (SPLASHES)"  textscale .2  rect 24 131 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
-        itemDef { text "Splash size"  textscale .21  rect 24 165 246 16  textaligny 13
+        itemDef { text "Splash size"  textscale .21  rect 24 148 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterripplesize  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleSize"
                   cvarFloatList { "1 (small)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (wide)" 8 "12" 12 "16 (huge)" 16 }
-                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Splash strength"  textscale .21  rect 24 182 246 16  textaligny 13
+        itemDef { text "Splash strength"  textscale .21  rect 24 165 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterrippleheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleHeight"
                   cvarFloatList { "0 (none)" 0 "1 (soft)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (hard)" 8 "12" 12 "16 (violent)" 16 }
-                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Ripple rings"  textscale .21  rect 24 199 246 16  textaligny 13
+        itemDef { text "Ripple rings"  textscale .21  rect 24 182 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterripplewaves  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleWaves"
                   cvarFloatList { "2 (few, fat)" 2 "5 (default)" 5 "8" 8 "12 (fine)" 12 }
-                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Ripple lifetime"  textscale .21  rect 24 216 246 16  textaligny 13
+        itemDef { text "Ripple lifetime"  textscale .21  rect 24 199 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterripplelife  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleLife"
                   cvarFloatList { "1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6 }
-                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Bounce off sides"  textscale .21  rect 24 233 246 16  textaligny 13
+        itemDef { text "Bounce off sides"  textscale .21  rect 24 216 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterripplereflect  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleReflect"
                   cvarFloatList { "Off" 0 "0.25 (faint)" 0.25 "0.5 (default)" 0.5 "0.75" 0.75 "1 (full)" 1 }
-                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Foam"  textscale .21  rect 24 250 246 16  textaligny 13
+        itemDef { text "Foam"  textscale .21  rect 24 233 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterfoam  type ITEM_TYPE_MULTI  text ""  cvar "r_waterFoam"
                   cvarFloatList { "Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2 }
-                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
@@ -5798,87 +5792,84 @@
         itemDef { text "Off: needs Post-processing (Render Options) on. Needs APPLY."  textscale .17  rect 24 131 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_fbo"  showCvar { "0" } }
-        itemDef { text "Off: needs ray query (Lighting & Ray Tracing) active."  textscale .17  rect 24 148 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_rtActive"  showCvar { "0" } }
-        itemDef { text "Water reflections"  textscale .21  rect 24 165 246 16  textaligny 13
+        itemDef { text "Water reflections"  textscale .21  rect 24 148 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssr  type ITEM_TYPE_MULTI  text ""  cvar "r_ssr"
                   cvarFloatList { "Off (default)" 0 "Subtle" 0.35 "Half" 0.5 "Full" 1 }
-                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace distance"  textscale .21  rect 24 182 246 16  textaligny 13
+        itemDef { text "Trace distance"  textscale .21  rect 24 165 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrdistance  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDistance"
                   cvarFloatList { "512 (near)" 512 "1024 (default)" 1024 "2048" 2048 "4096 (far)" 4096 }
-                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace steps"  textscale .21  rect 24 199 246 16  textaligny 13
+        itemDef { text "Trace steps"  textscale .21  rect 24 182 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrsteps  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrSteps"
                   cvarFloatList { "16 (fastest)" 16 "24 (default)" 24 "32" 32 "64" 64 "128 (sharpest)" 128 }
-                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace resolution"  textscale .21  rect 24 216 246 16  textaligny 13
+        itemDef { text "Trace resolution"  textscale .21  rect 24 199 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrresolution  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrResolution"
                   cvarFloatList { "Full (default)" 1 "Half (faster)" 2 }
-                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Thickness"  textscale .21  rect 24 233 246 16  textaligny 13
+        itemDef { text "Thickness"  textscale .21  rect 24 216 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrthickness  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrThickness"
                   cvarFloatList { "4 (thin)" 4 "8" 8 "16" 16 "24 (default)" 24 "32 (forgiving)" 32 }
-                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Debug view"  textscale .21  rect 24 250 246 16  textaligny 13
+        itemDef { text "Debug view"  textscale .21  rect 24 233 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssrdebug  type ITEM_TYPE_MULTI  text ""  cvar "r_ssrDebug"
                   cvarFloatList { "Off" 0 "1 mask" 1 "2 ray hit" 2 "3 reflection" 3 "4 waves" 4 "5 ripples + foam" 5 }
-                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "WAVES (WIND CHOP)"  textscale .2  rect 24 267 512 16  textaligny 13
+        itemDef { text "WAVES (WIND CHOP)"  textscale .2  rect 24 250 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
-        itemDef { text "Waves"  textscale .21  rect 24 284 246 16  textaligny 13
+        itemDef { text "Waves"  textscale .21  rect 24 267 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwaves  type ITEM_TYPE_YESNO  text ""  cvar "r_waterWaves"
-                  rect 290 284 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 267 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Steepness"  textscale .21  rect 24 301 246 16  textaligny 13
+        itemDef { text "Steepness"  textscale .21  rect 24 284 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwavesteepness  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSteepness"
                   cvarFloatList { "0.02 (glassy)" 0.02 "0.05" 0.05 "0.08 (default)" 0.08 "0.12" 0.12 "0.2 (choppy)" 0.2 }
-                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Height"  textscale .21  rect 24 318 246 16  textaligny 13
+        itemDef { text "Height"  textscale .21  rect 24 301 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwaveheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveHeight"
                   cvarFloatList { "0 (flat)" 0 "1" 1 "2 (default)" 2 "4" 4 "8 (swell)" 8 }
-                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Wavelength"  textscale .21  rect 24 335 246 16  textaligny 13
+        itemDef { text "Wavelength"  textscale .21  rect 24 318 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwavescale  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveScale"
                   cvarFloatList { "48 (fine)" 48 "96 (default)" 96 "192" 192 "384 (broad)" 384 }
-                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Speed"  textscale .21  rect 24 352 246 16  textaligny 13
+        itemDef { text "Speed"  textscale .21  rect 24 335 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterwavespeed  type ITEM_TYPE_MULTI  text ""  cvar "r_waterWaveSpeed"
                   cvarFloatList { "0 (frozen)" 0 "0.5 (slow)" 0.5 "1 (default)" 1 "2 (fast)" 2 }
-                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
@@ -6005,53 +5996,50 @@
         itemDef { text "Off: needs Post-processing (Render Options) on. Needs APPLY."  textscale .17  rect 24 114 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_fbo"  showCvar { "0" } }
-        itemDef { text "Off: needs ray query (Lighting & Ray Tracing) active."  textscale .17  rect 24 131 512 16  textaligny 12
-                  textalign ITEM_ALIGN_CENTER  textalignx 256
-                  forecolor .72 .72 .72 1  visible 1  decoration  cvarTest "r_rtActive"  showCvar { "0" } }
-        itemDef { text "IMPACTS (SPLASHES)"  textscale .2  rect 24 148 512 16  textaligny 13
+        itemDef { text "IMPACTS (SPLASHES)"  textscale .2  rect 24 131 512 16  textaligny 13
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
-        itemDef { text "Splash size"  textscale .21  rect 24 165 246 16  textaligny 13
+        itemDef { text "Splash size"  textscale .21  rect 24 148 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterripplesize  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleSize"
                   cvarFloatList { "1 (small)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (wide)" 8 "12" 12 "16 (huge)" 16 }
-                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Splash strength"  textscale .21  rect 24 182 246 16  textaligny 13
+        itemDef { text "Splash strength"  textscale .21  rect 24 165 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterrippleheight  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleHeight"
                   cvarFloatList { "0 (none)" 0 "1 (soft)" 1 "2" 2 "4 (default)" 4 "6" 6 "8 (hard)" 8 "12" 12 "16 (violent)" 16 }
-                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Ripple rings"  textscale .21  rect 24 199 246 16  textaligny 13
+        itemDef { text "Ripple rings"  textscale .21  rect 24 182 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterripplewaves  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleWaves"
                   cvarFloatList { "2 (few, fat)" 2 "5 (default)" 5 "8" 8 "12 (fine)" 12 }
-                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Ripple lifetime"  textscale .21  rect 24 216 246 16  textaligny 13
+        itemDef { text "Ripple lifetime"  textscale .21  rect 24 199 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterripplelife  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleLife"
                   cvarFloatList { "1 (brief)" 1 "2.2 (default)" 2.2 "4 (slow)" 4 "6 (lingering)" 6 }
-                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Bounce off sides"  textscale .21  rect 24 233 246 16  textaligny 13
+        itemDef { text "Bounce off sides"  textscale .21  rect 24 216 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterripplereflect  type ITEM_TYPE_MULTI  text ""  cvar "r_waterRippleReflect"
                   cvarFloatList { "Off" 0 "0.25 (faint)" 0.25 "0.5 (default)" 0.5 "0.75" 0.75 "1 (full)" 1 }
-                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 216 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Foam"  textscale .21  rect 24 250 246 16  textaligny 13
+        itemDef { text "Foam"  textscale .21  rect 24 233 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rwaterfoam  type ITEM_TYPE_MULTI  text ""  cvar "r_waterFoam"
                   cvarFloatList { "Off (default)" 0 "Subtle" 0.5 "On" 1 "Heavy" 2 }
-                  rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }

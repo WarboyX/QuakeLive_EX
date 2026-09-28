@@ -1095,7 +1095,7 @@ static void vk_create_render_passes( void )
 	depth lazily is entitled to hand back garbage for some of it, and "some of
 	it" is a patch of a few tiles that differs frame to frame.
 	*/
-	if ( r_bloom->integer || vk.rtActive ) {
+	if ( r_bloom->integer || vk.rtActive || vk.rtDepthSampled ) {   // [QL] E153: + water / SSAO
 		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // keep it for post-bloom / AO pass
 		attachments[1].stencilStoreOp = glConfig.stencilBits ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	} else {
@@ -1147,7 +1147,7 @@ static void vk_create_render_passes( void )
 		loads undefined contents, multiplies them by the occlusion term and
 		resolves that to the screen.
 		*/
-		if ( r_bloom->integer || vk.rtActive ) {
+		if ( r_bloom->integer || vk.rtActive || vk.rtDepthSampled ) {   // [QL] E153
 			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // keep it for post-bloom / AO pass
 		} else {
 			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // Intermediate storage (not written)
@@ -4540,6 +4540,24 @@ static void vk_rt_destroy_ao( void )
 		qvkDestroySampler( vk.device, vk.rt.ao_sampler, NULL );
 		vk.rt.ao_sampler = VK_NULL_HANDLE;
 	}
+	vk.rt.aoReady = qfalse;
+}
+
+
+/*
+=================
+[QL] E153. The depth view and sampler, shared by everything that reads depth.
+
+They lived inside the ray-traced AO setup, so the water reflection - which
+reads depth and fires no rays - borrowed them from a pass it has nothing to do
+with. On a GPU without ray query they never existed and the water had no depth
+to read; with it, an AO setup that disabled itself on any error destroyed the
+view the water was still using. Their own create/destroy, run whenever depth
+is sampleable, fixes both.
+=================
+*/
+static void vk_depth_sampling_destroy( void )
+{
 	if ( vk.rt.depth_sampler != VK_NULL_HANDLE ) {
 		qvkDestroySampler( vk.device, vk.rt.depth_sampler, NULL );
 		vk.rt.depth_sampler = VK_NULL_HANDLE;
@@ -4548,7 +4566,65 @@ static void vk_rt_destroy_ao( void )
 		qvkDestroyImageView( vk.device, vk.rt.depth_view, NULL );
 		vk.rt.depth_view = VK_NULL_HANDLE;
 	}
-	vk.rt.aoReady = qfalse;
+}
+
+
+static void vk_depth_sampling_create( void )
+{
+	VkImageViewCreateInfo view_desc;
+	VkSamplerCreateInfo sampler_desc;
+	VkResult res;
+
+	vk_depth_sampling_destroy();
+
+	if ( !vk.rtDepthSampled || vk.depth_image == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	/* depth aspect only: a combined image sampler must name exactly one aspect,
+	   and vk.depth_image_view carries DEPTH|STENCIL where there is stencil */
+	Com_Memset( &view_desc, 0, sizeof( view_desc ) );
+	view_desc.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	view_desc.image = vk.depth_image;
+	view_desc.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	view_desc.format = vk.depth_format;
+	view_desc.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	view_desc.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	view_desc.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	view_desc.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	view_desc.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	view_desc.subresourceRange.baseMipLevel = 0;
+	view_desc.subresourceRange.levelCount = 1;
+	view_desc.subresourceRange.baseArrayLayer = 0;
+	view_desc.subresourceRange.layerCount = 1;
+
+	res = qvkCreateImageView( vk.device, &view_desc, NULL, &vk.rt.depth_view );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "Depth sampling: view failed (%s) - AO and water reflections "
+			"will not run\n", vk_result_string( res ) );
+		vk.rt.depth_view = VK_NULL_HANDLE;
+		return;
+	}
+
+	/* nearest and clamped: depth must never be filtered - see vk_rt_create_ao */
+	Com_Memset( &sampler_desc, 0, sizeof( sampler_desc ) );
+	sampler_desc.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sampler_desc.magFilter = VK_FILTER_NEAREST;
+	sampler_desc.minFilter = VK_FILTER_NEAREST;
+	sampler_desc.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	sampler_desc.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_desc.maxAnisotropy = 1.0f;
+	sampler_desc.minLod = 0.0f;
+	sampler_desc.maxLod = 0.0f;
+	sampler_desc.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+
+	res = qvkCreateSampler( vk.device, &sampler_desc, NULL, &vk.rt.depth_sampler );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "Depth sampling: sampler failed (%s)\n", vk_result_string( res ) );
+		vk_depth_sampling_destroy();
+	}
 }
 
 
@@ -4570,7 +4646,6 @@ static void vk_rt_create_ao( void )
 	VkDescriptorSetAllocateInfo set_alloc;
 	VkPushConstantRange push_range;
 	VkPipelineLayoutCreateInfo pl_desc;
-	VkImageViewCreateInfo view_desc;
 	VkSamplerCreateInfo sampler_desc;
 	VkResult res;
 	uint32_t i;
@@ -4604,29 +4679,9 @@ static void vk_rt_create_ao( void )
 		return;
 	}
 
-	/*
-	A depth-aspect-only view. vk.depth_image_view carries DEPTH|STENCIL where
-	the format has stencil, and a combined image sampler must name exactly one
-	aspect - so this is a second view of the same image rather than a reuse.
-	*/
-	Com_Memset( &view_desc, 0, sizeof( view_desc ) );
-	view_desc.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	view_desc.image = vk.depth_image;
-	view_desc.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	view_desc.format = vk.depth_format;
-	view_desc.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-	view_desc.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-	view_desc.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-	view_desc.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-	view_desc.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-	view_desc.subresourceRange.baseMipLevel = 0;
-	view_desc.subresourceRange.levelCount = 1;
-	view_desc.subresourceRange.baseArrayLayer = 0;
-	view_desc.subresourceRange.layerCount = 1;
-
-	res = qvkCreateImageView( vk.device, &view_desc, NULL, &vk.rt.depth_view );
-	if ( res < 0 ) {
-		ri.Printf( PRINT_WARNING, "RT AO: depth view failed (%s)\n", vk_result_string( res ) );
+	/* [QL] E153: the depth view and sampler are vk_depth_sampling_create's now */
+	if ( vk.rt.depth_view == VK_NULL_HANDLE || vk.rt.depth_sampler == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "RT AO: no depth view to read - disabling\n" );
 		vk_rt_destroy_ao();
 		return;
 	}
@@ -4652,12 +4707,6 @@ static void vk_rt_create_ao( void )
 	sampler_desc.maxLod = 0.0f;
 	sampler_desc.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 
-	res = qvkCreateSampler( vk.device, &sampler_desc, NULL, &vk.rt.depth_sampler );
-	if ( res < 0 ) {
-		ri.Printf( PRINT_WARNING, "RT AO: sampler failed (%s)\n", vk_result_string( res ) );
-		vk_rt_destroy_ao();
-		return;
-	}
 
 	/*
 	[QL] And one for the occlusion targets. Also NEAREST, and for a related
@@ -5025,7 +5074,9 @@ static qboolean rt_create_host_buffer( VkDeviceSize size, VkBufferUsageFlags usa
 	Com_Memset( &desc, 0, sizeof( desc ) );
 	desc.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	desc.size = size;
-	desc.usage = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	/* [QL] E153: an address only when ray query enabled bufferDeviceAddress -
+	   the water pass's uniform buffer comes through here and runs without it */
+	desc.usage = usage | ( vk.rtActive ? VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT : 0 );
 	desc.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	res = qvkCreateBuffer( vk.device, &desc, NULL, buffer );
@@ -5042,7 +5093,7 @@ static qboolean rt_create_host_buffer( VkDeviceSize size, VkBufferUsageFlags usa
 
 	Com_Memset( &alloc_info, 0, sizeof( alloc_info ) );
 	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	alloc_info.pNext = &flags_info;
+	alloc_info.pNext = vk.rtActive ? &flags_info : NULL;
 	alloc_info.allocationSize = reqs.size;
 	alloc_info.memoryTypeIndex = find_memory_type( reqs.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
@@ -6341,21 +6392,29 @@ static void vk_create_shader_modules( void )
 	if ( vk.rtActive ) {
 		vk.modules.rtao_fs = SHADER_MODULE( rtao_frag_spv );
 		vk.modules.rtao_ms_fs = SHADER_MODULE( rtao_frag_ms_spv );
-		vk.modules.rtao_blur_fs = SHADER_MODULE( rtao_blur_frag_spv );
-		vk.modules.rtao_blur_ms_fs = SHADER_MODULE( rtao_blur_frag_ms_spv );
 
 		SET_OBJECT_NAME( vk.modules.rtao_fs, "rt ambient occlusion fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 		SET_OBJECT_NAME( vk.modules.rtao_ms_fs, "rt ambient occlusion fragment module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
-		SET_OBJECT_NAME( vk.modules.rtao_blur_fs, "rt ambient occlusion denoise module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
-
-		/* [QL] R19 */
-		vk.modules.ssr_fs = SHADER_MODULE( ssr_frag_spv );
-		vk.modules.ssr_ms_fs = SHADER_MODULE( ssr_frag_ms_spv );
-		vk.modules.ssr_composite_fs = SHADER_MODULE( ssr_composite_frag_spv );
-		SET_OBJECT_NAME( vk.modules.ssr_fs, "ssr trace module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
-		SET_OBJECT_NAME( vk.modules.ssr_composite_fs, "ssr composite module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
-		SET_OBJECT_NAME( vk.modules.rtao_blur_ms_fs, "rt ambient occlusion denoise module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	}
+
+	/*
+	[QL] E153. Always: these are ordinary SPIR-V 1.0 and fire no rays - the
+	water march and composite read depth and colour, and the denoise reads
+	the occlusion target. They sat inside the ray-query block above, so on a
+	GPU without it the water had no shaders at all; screen-space AO uses the
+	denoise too.
+	*/
+	vk.modules.rtao_blur_fs = SHADER_MODULE( rtao_blur_frag_spv );
+	vk.modules.rtao_blur_ms_fs = SHADER_MODULE( rtao_blur_frag_ms_spv );
+	SET_OBJECT_NAME( vk.modules.rtao_blur_fs, "ambient occlusion denoise module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+	SET_OBJECT_NAME( vk.modules.rtao_blur_ms_fs, "ambient occlusion denoise module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+
+	/* [QL] R19 */
+	vk.modules.ssr_fs = SHADER_MODULE( ssr_frag_spv );
+	vk.modules.ssr_ms_fs = SHADER_MODULE( ssr_frag_ms_spv );
+	vk.modules.ssr_composite_fs = SHADER_MODULE( ssr_composite_frag_spv );
+	SET_OBJECT_NAME( vk.modules.ssr_fs, "ssr trace module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+	SET_OBJECT_NAME( vk.modules.ssr_composite_fs, "ssr composite module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 }
 
 
@@ -7549,6 +7608,7 @@ static void vk_restart_swapchain( const char *funcname, VkResult res )
 	   so the AO view, descriptor and pipeline all refer to destroyed objects.
 	   Rebuilt rather than patched - this path is a window resize, not a hot
 	   loop. */
+	vk_depth_sampling_create();   // [QL] E153: before either of the passes that read it
 	vk_rt_create_ao();
 	vk_ssr_create();
 }
@@ -7896,7 +7956,10 @@ void vk_initialize( void )
 	create_depth_attachment act on the result rather than guess.
 	*/
 	vk.rtDepthSampled = qfalse;
-	if ( vk.rtActive ) {
+	/* [QL] E153: whenever depth can be read after the main pass - with ray
+	   query, or with the offscreen target (r_fbo / r_rts). The water
+	   reflection and screen-space AO need it and fire no rays. */
+	if ( vk.rtActive || vk_fbo_wanted() ) {
 		PFN_vkGetPhysicalDeviceImageFormatProperties qvkGetImageFormatProps =
 			(PFN_vkGetPhysicalDeviceImageFormatProperties)ri.VK_GetInstanceProcAddr(
 				vk_instance, "vkGetPhysicalDeviceImageFormatProperties" );
@@ -7905,10 +7968,10 @@ void vk_initialize( void )
 		qvkGetPhysicalDeviceFormatProperties( vk.physical_device, vk.depth_format, &fmtProps );
 
 		if ( !( fmtProps.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT ) ) {
-			ri.Printf( PRINT_WARNING, "Ray query: depth format cannot be sampled on this device - "
+			ri.Printf( PRINT_WARNING, "Depth sampling: this depth format cannot be sampled on this device - "
 				"ambient occlusion will not be available\n" );
 		} else if ( qvkGetImageFormatProps == NULL ) {
-			ri.Printf( PRINT_WARNING, "Ray query: vkGetPhysicalDeviceImageFormatProperties is "
+			ri.Printf( PRINT_WARNING, "Depth sampling: vkGetPhysicalDeviceImageFormatProperties is "
 				"missing - not making depth sampleable\n" );
 		} else {
 			VkImageFormatProperties imgProps;
@@ -7921,16 +7984,16 @@ void vk_initialize( void )
 				0, &imgProps );
 
 			if ( res != VK_SUCCESS ) {
-				ri.Printf( PRINT_WARNING, "Ray query: depth cannot be both an attachment and "
+				ri.Printf( PRINT_WARNING, "Depth sampling: depth cannot be both an attachment and "
 					"sampled on this device (%s) - ambient occlusion will not be available\n",
 					vk_result_string( res ) );
 			} else if ( !( imgProps.sampleCounts & vkSamples ) ) {
-				ri.Printf( PRINT_WARNING, "Ray query: a sampleable depth attachment does not "
+				ri.Printf( PRINT_WARNING, "Depth sampling: a sampleable depth attachment does not "
 					"support %ix multisampling on this device. Lower r_ext_multisample for "
 					"RT ambient occlusion.\n", (int)vkSamples );
 			} else {
 				vk.rtDepthSampled = qtrue;
-				ri.Printf( PRINT_ALL, "Ray query: depth is sampleable%s\n",
+				ri.Printf( PRINT_ALL, "Depth sampling: depth is sampleable%s\n",
 					vkSamples != VK_SAMPLE_COUNT_1_BIT ? " (multisampled - AO uses the MS shader)" : "" );
 			}
 		}
@@ -8172,6 +8235,7 @@ void vk_initialize( void )
 	in vk_create_device - the attachments do not exist that early. A no-op
 	unless ray query is enabled and the device agreed depth could be sampled.
 	*/
+	vk_depth_sampling_create();   // [QL] E153: before either of the passes that read it
 	vk_rt_create_ao();
 	vk_ssr_create();
 
@@ -8434,6 +8498,7 @@ void vk_shutdown( refShutdownCode_t code )
 	   then free them against a destroyed device on the next vid_restart. */
 	vk_rt_destroy_ao();
 	vk_ssr_destroy();
+	vk_depth_sampling_destroy();   // [QL] E153
 	vk_rt_destroy_world();
 
 	vk_clean_staging_buffer();
@@ -8528,6 +8593,22 @@ void vk_shutdown( refShutdownCode_t code )
 
 	qvkDestroyShaderModule(vk.device, vk.modules.gamma_vs, NULL);
 	qvkDestroyShaderModule(vk.device, vk.modules.gamma_fs, NULL);
+
+	/* [QL] E153. The occlusion and reflection modules were never destroyed -
+	   the validation layer lists them as leaked on every vid_restart. */
+	{
+		VkShaderModule *mods[] = {
+			&vk.modules.rtao_fs, &vk.modules.rtao_ms_fs,
+			&vk.modules.rtao_blur_fs, &vk.modules.rtao_blur_ms_fs,
+			&vk.modules.ssr_fs, &vk.modules.ssr_ms_fs, &vk.modules.ssr_composite_fs
+		};
+		for ( i = 0; i < ARRAY_LEN( mods ); i++ ) {
+			if ( *mods[i] != VK_NULL_HANDLE ) {
+				qvkDestroyShaderModule( vk.device, *mods[i], NULL );
+				*mods[i] = VK_NULL_HANDLE;
+			}
+		}
+	}
 
 __cleanup:
 	if ( vk.device != VK_NULL_HANDLE ) {

@@ -6048,6 +6048,25 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E153. Water reflections without ray tracing; shared depth view; three leaks and misuses on the non-RT path — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G1, first half). The water pass reads depth and colour and fires no rays, but it could only run with ray query active. On a GPU without it there were no reflections, waves or splashes at all. Four things tied it to ray tracing:
+1. **Depth sampleability** was only worked out when ray query was active. Now it is also worked out with the offscreen target (`r_fbo` / `r_rts`).
+2. **The depth view and sampler** were created and destroyed inside the ray-traced AO setup, and the water borrowed them. Worse, an AO setup that disabled itself on any error destroyed the view the water was still using. They now have their own `vk_depth_sampling_create/destroy`, run before either pass.
+3. **The water and AO-denoise shader modules** were created inside the ray-query block, although only the AO trace is SPIR-V 1.4. With RT off, the first water pipeline was built from a null module: a fatal `VK_ERROR_UNKNOWN` at start-up, which is what the first no-RT test produced. They are now created always.
+4. **The main pass's depth and MSAA colour** were kept only for bloom or ray tracing. They are now also kept when depth is sampleable, which is what the water reads.
+
+**Found on the way (pre-existing):**
+- The water's uniform buffer came from the RT host-buffer helper, which always asked for a device address - invalid without the `bufferDeviceAddress` feature, which only ray query enables (`VUID-VkMemoryAllocateInfo-flags-03331`). It now asks only with ray query.
+- The AO and water shader modules were never destroyed: leaked on every `vid_restart` (`VUID-vkDestroyDevice-device-05137`).
+
+**Menu:** the Water/Splashes "needs ray query" note is removed; the Post-processing note stays.
+
+**Checked with the Vulkan validation layer:**
+- `r_rt 0`: the water pass starts, and `r_ssrDebug` 1/3/2 show the mask, the depth classes and the reflection over the pool; 0 errors.
+- `r_rt 1`: the full scene (MSAA, AO, water, bloom) and the AO scene both have 0 errors.
+
 ### E152. Pipeline cache kept between runs, optional build-on-load (`r_pipelineCache`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
