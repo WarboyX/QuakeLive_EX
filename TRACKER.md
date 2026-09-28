@@ -6048,6 +6048,27 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E160. Stencil shadows: a black line through the floor from the floating shotgun (stray volume faces) — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported on E159 with two screenshots: a thin black line runs from the floating shotgun down through the floor past its spawn pad. It is part of the shotgun's stencil shadow.
+
+**Cause:** Quake 3 finds silhouette edges by pairing. Each vertex keeps up to 32 edge records (`MAX_EDGE_DEFS`), and an edge is a silhouette when no light-facing triangle runs along it the other way.
+- A vertex shared by more than 32 triangles silently dropped the rest, so interior edges lost their partner.
+- An edge shared by three or more triangles ("overfanned", the old comment's word) also went unpaired.
+- Either way a single stray face was extruded from an interior edge: a blade, not a closed volume.
+- Depth-pass, Quake 3's counting, only sees such a blade in front of the visible surface. Depth-fail (E155) also counts what is behind it, so a blade under the floor became a line across it. Quake Live's denser models (the shotgun, the pad) hit this where Quake 3's did not.
+
+**Fix:** silhouette edges by signed count.
+- Each light-facing triangle adds +1 to its edges walked one way and -1 walked the other, in a hash keyed on the vertex pair.
+- Interior edges cancel whatever the mesh looks like. What remains is the silhouette: the sign gives the direction, the magnitude how many sides it needs.
+- There is no per-vertex limit, and the volume closes on any mesh, open or overfanned.
+- Only light-facing triangles are looked at now. The others never produced anything.
+
+**Checked:**
+- A local 48-segment coin, whose centre vertex is in 48 triangles: the E159 code draws a dark wedge below it (12,647 pixels change with shadows on), the new code does not (145).
+- The cube test from E155/E159 is unchanged: the shadow is cast from outside, the frame is unchanged from inside the volume, and the Khronos layer reports 0 validation errors.
+
 ### E159. Stencil shadows: black spike through the floor under items, speckled self-shadow (E155 regression) — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
