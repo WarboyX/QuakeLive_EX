@@ -6048,6 +6048,30 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E158. Tone curve choice (`r_toneMap`) and HDR bloom (`r_bloomHDR`); two leaked shader modules — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G5).
+
+**`r_toneMap`** (live). Menu: Render → Image → "Tone & bloom".
+- 0 automatic (the default, the old rule): the soft knee with `r_rts`, plain clip without.
+- 1 clip.
+- 2 soft knee: identical below 80%, the top rolled off instead of cut.
+- 3 filmic, Narkowicz's ACES fit. It reshapes the whole range and also tints the HUD and menus, which share the frame; the description and menu help say so.
+
+**Latent bug fixed with it:** the curve was chosen as `toneMap = r_rts`, and the shader only knows 1 as the knee. So `r_rts 2`, documented as "the same" as 1 on another format, got the plain clip and never rolled off. Automatic now gives the knee for both.
+
+**`r_bloomHDR`** (0 off, the default; latched, APPLY).
+- The bloom targets were always the swapchain's 8-bit format, so with `r_rts` everything above full brightness was cut to 1.0 on extraction. A rocket's core and a lit wall bloomed the same.
+- On, the bloom targets use the scene's floating-point format. It needs `r_rts` and says so in the log if that is off.
+- The Image page gained an APPLY button for it.
+
+**Shader-module leak (older than all of this):** `bump_vs`/`bump_fs` were created and never destroyed. That is two validation errors on every `vid_restart`, with or without any of these options. Found while validating this, and added to E153's cleanup list.
+
+**Checked** (Khronos validation layer, 0 errors including across `vid_restart`):
+- All four curves compared on the same view: auto matches the knee under `r_rts 1`, clip blows out the bright floor, and filmic compresses toward grey.
+- HDR bloom toggled in one session: the log reads "Bloom: floating-point targets", and the bloom around the brightest panels changes (about 52k pixels differ at 1% fuzz).
+
 ### E157. FXAA and contrast-adaptive sharpening (`r_fxaa`, `r_sharpen`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

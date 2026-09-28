@@ -1626,6 +1626,8 @@ extern	cvar_t	*r_greyscale;
 extern	cvar_t	*r_dither;
 extern	cvar_t	*r_fxaa;				// [QL] E157: FXAA in the present pass (live)
 extern	cvar_t	*r_sharpen;			// [QL] E157: CAS strength 0..1 (live)
+extern	cvar_t	*r_toneMap;			// [QL] E158: 0 auto, 1 clip, 2 knee, 3 filmic (live)
+extern	cvar_t	*r_bloomHDR;			// [QL] E158: bloom in the float format with r_rts (latched)
 extern	cvar_t	*r_presentBits;
 
 extern	cvar_t	*r_ignoreGLErrors;

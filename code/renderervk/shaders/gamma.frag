@@ -14,7 +14,7 @@ layout(constant_id = 7) const int ditherMode = 0; // 0 - disabled, 1 - ordered
 layout(constant_id = 8) const int depth_r = 255;
 layout(constant_id = 9) const int depth_g = 255;
 layout(constant_id = 10) const int depth_b = 255;
-layout(constant_id = 11) const int toneMap = 0; // 0 - clip, 1 - roll off
+layout(constant_id = 11) const int toneMap = 0; // 0 - clip, 1 - roll off, 2 - filmic (E158)
 layout(constant_id = 12) const int fxaaMode = 0;      // [QL] E157 r_fxaa: 0 off, 1 on
 layout(constant_id = 13) const float sharpen = 0.0;   // [QL] E157 r_sharpen: 0 off .. 1 strongest
 
@@ -252,7 +252,20 @@ void main() {
 	the property that lets this be turned on without the picture changing except
 	where it used to clip.
 	*/
-	if ( toneMap == 1 )
+	/*
+	[QL] E158: toneMap 2 is a filmic curve - Narkowicz's fit of the ACES
+	reference transform. Unlike the knee it reshapes the whole range, not only
+	the top: shadows lift a little, midtones gain contrast, and full white comes
+	down to about 0.8 with the highlights above it rolled in rather than cut.
+	That is the look, and it is why it is an option and not the default - it
+	also applies to the HUD and menus, which are drawn into the same frame.
+	*/
+	if ( toneMap == 2 )
+	{
+		vec3 c = max(base * obScale, vec3(0.0));
+		out_color = vec4(clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0), 1);
+	}
+	else if ( toneMap == 1 )
 	{
 		const float knee = 0.8;
 		vec3 c = max(base * obScale, vec3(0.0));

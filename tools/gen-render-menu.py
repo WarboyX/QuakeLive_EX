@@ -547,12 +547,18 @@ def image():
         ("multi", "r_sharpen", "Sharpening (CAS)",
          '"Off (default)" 0 "Light" 0.25 "Medium" 0.5 "Strong" 0.75 "Strongest" 1'),
         ("help", "FXAA smooths edges when multisampling is off. Sharpening restores detail."),
+        # [QL] E158. The curve is live; HDR bloom is latched (bloom targets).
+        ("h", "TONE & BLOOM"),
+        ("multi", "r_toneMap", "Tone curve",
+         '"Automatic (default)" 0 "Clip" 1 "Soft knee" 2 "Filmic (ACES)" 3'),
+        ("multi", "r_bloomHDR", "HDR bloom", '"Off (default)" 0 "On" 1'),
+        ("help", "Filmic also tints the HUD. HDR bloom needs Real-time shading + bloom, APPLY."),
         ("h", "PERFORMANCE"),
         ("multi", "r_pipelineCache", "Pipeline cache",
          '"Off" 0 "Save between runs (default)" 1 "Save + build on load" 2'),
         ("help", "Keeps compiled pipelines in vkpipelines.cache. Build on load: fewer hitches."),
     ]
-    return page(name("image"), "IMAGE", spec, [reset_button(spec), CLOSE])
+    return page(name("image"), "IMAGE", spec, [reset_button(spec), APPLY_BTN, CLOSE])
 
 
 def surface_detail():

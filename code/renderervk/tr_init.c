@@ -63,6 +63,8 @@ cvar_t	*r_greyscale;
 cvar_t	*r_dither;
 cvar_t	*r_fxaa;     // [QL] E157
 cvar_t	*r_sharpen;  // [QL] E157
+cvar_t	*r_toneMap;  // [QL] E158
+cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
 
 static cvar_t *r_ignorehwgamma;
@@ -2109,6 +2111,20 @@ static void R_Register( void )
 		S_COLOR_WHITE ". Requires " S_COLOR_CYAN "\\r_fbo 1." );
 	ri.Cvar_SetGroup( r_sharpen, CVG_RENDERER );
 
+	/* [QL] E158. 0 keeps what there was. Live. */
+	r_toneMap = ri.Cvar_Get( "r_toneMap", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_toneMap, "0", "3", CV_INTEGER );
+	ri.Cvar_SetDescription( r_toneMap, "The response curve applied to the finished frame:\n"
+		" 0 - automatic (default): the soft knee with " S_COLOR_CYAN "\\r_rts" S_COLOR_WHITE
+		", the plain clip without\n"
+		" 1 - clip: multiply by the overbright factor and cut at full brightness\n"
+		" 2 - soft knee: identical below 80%, the top rolled off instead of cut\n"
+		" 3 - filmic (ACES fit): reshapes the whole range - more contrast, softer highlights, "
+		"white slightly grey. Also applies to the HUD and menus\n"
+		"Most useful with " S_COLOR_CYAN "\\r_rts" S_COLOR_WHITE ", which keeps what is above "
+		"full brightness for the curve to work with. Requires " S_COLOR_CYAN "\\r_fbo 1." );
+	ri.Cvar_SetGroup( r_toneMap, CVG_RENDERER );
+
 	r_dither = ri.Cvar_Get( "r_dither", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_dither, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription(r_dither, "Set dithering mode:\n 0 - disabled\n 1 - ordered\nRequires " S_COLOR_CYAN "\\r_fbo 1." );
@@ -2705,6 +2721,15 @@ static void R_Register( void )
 	r_bloom = ri.Cvar_Get( "r_bloom", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_bloom, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription(r_bloom, "Enables bloom post-processing effect. Requires \\r_fbo 1.");
+
+	/* [QL] E158. Off by default; needs vid_restart - the bloom targets are
+	   created with the attachments. */
+	r_bloomHDR = ri.Cvar_Get( "r_bloomHDR", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_bloomHDR, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_bloomHDR, "Bloom in the scene's floating-point format, so a highlight "
+		"blooms in proportion to how bright it is instead of everything above full brightness "
+		"blooming the same. Needs " S_COLOR_CYAN "\\r_rts" S_COLOR_WHITE " (which provides the format) and "
+		S_COLOR_CYAN "\\r_bloom" S_COLOR_WHITE ". Takes effect after vid_restart." );
 
 	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_ext_multisample, "0", "64", CV_INTEGER );

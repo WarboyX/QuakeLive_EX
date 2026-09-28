@@ -2104,7 +2104,22 @@ static void setup_surface_formats( VkPhysicalDevice physical_device )
 
 	vk.capture_format = VK_FORMAT_R8G8B8A8_UNORM;
 
-	vk.bloom_format = vk.base_format.format;
+	/*
+	[QL] E158: r_bloomHDR - bloom in the scene's own floating-point format.
+
+	The bloom targets were always the swapchain's 8-bit format, so with r_rts
+	on, everything the float target kept above full brightness was cut back to
+	1.0 the moment it was extracted: a rocket's core and a lit wall bloomed the
+	same. In the scene's format a highlight blooms in proportion to how bright
+	it is. Only with r_rts, which is what provides the format (and what this
+	decision comes after, so a fallback to 0 has already happened).
+	*/
+	vk.bloom_format = ( r_bloomHDR->integer && r_rts->integer ) ? vk.color_format : vk.base_format.format;
+	if ( r_bloomHDR->integer && r_bloom->integer ) {
+		ri.Printf( PRINT_ALL, "Bloom: %s\n", r_rts->integer
+			? "floating-point targets (r_bloomHDR)"
+			: "r_bloomHDR needs r_rts - staying on the 8-bit targets" );
+	}
 
 	vk.blitEnabled = vk_blit_enabled( physical_device, vk.color_format, vk.capture_format );
 
@@ -8735,7 +8750,10 @@ void vk_shutdown( refShutdownCode_t code )
 			&vk.modules.rtao_blur_fs, &vk.modules.rtao_blur_ms_fs,
 			&vk.modules.ssr_fs, &vk.modules.ssr_ms_fs, &vk.modules.ssr_composite_fs,
 			&vk.modules.ssao_fs, &vk.modules.ssao_ms_fs,
-			&vk.modules.ssr_rt_fs, &vk.modules.ssr_rt_ms_fs
+			&vk.modules.ssr_rt_fs, &vk.modules.ssr_rt_ms_fs,
+			/* [QL] E158: the bump pass's pair were never destroyed either -
+			   the validation layer's two leaked modules on every vid_restart */
+			&vk.modules.bump_vs, &vk.modules.bump_fs
 		};
 		for ( i = 0; i < ARRAY_LEN( mods ); i++ ) {
 			if ( *mods[i] != VK_NULL_HANDLE ) {
@@ -9637,7 +9655,20 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 	Off by default, because it changes every pixel of the image and that is a
 	look decision.
 	*/
-	frag_spec_data.toneMap = r_rts->integer;
+	/*
+	[QL] E158: r_toneMap chooses the curve; 0 keeps the old rule, the knee with
+	r_rts and the plain clip without.
+
+	The old rule was toneMap = r_rts->integer, and the shader only knows 1 as
+	the knee - so r_rts 2, documented as "the same" on another format, got
+	the plain clip and never rolled off. Auto now means the knee for both.
+	*/
+	switch ( r_toneMap->integer ) {
+		case 1:  frag_spec_data.toneMap = 0; break;   // clip
+		case 2:  frag_spec_data.toneMap = 1; break;   // soft knee
+		case 3:  frag_spec_data.toneMap = 2; break;   // filmic
+		default: frag_spec_data.toneMap = r_rts->integer ? 1 : 0; break;
+	}
 	/* [QL] E157: anti-aliasing and sharpening in the present pass. Live - both
 	   cvars are in CVG_RENDERER, which rebuilds this pipeline. */
 	frag_spec_data.fxaa = r_fxaa->integer;
