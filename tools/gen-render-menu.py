@@ -64,6 +64,7 @@ GL = ('cvarTest "cl_renderer"  hideCvar { "vulkan" }')
 TABS = [
     ("renderoptions", "Render Options"),
     ("raytracing",    "Lighting & Ray Tracing"),
+    ("shadows",       "Shadows"),        # [QL] E161: ray-traced shadows cast by the level
     ("water",         "Water"),
     ("splashes",      "Splashes"),   # [QL] E147: IMPACTS, split off Water
     ("surfacedetail", "Surface Detail"),
@@ -466,6 +467,35 @@ def raytracing():
     return page(name("raytracing"), "LIGHTING & RAY TRACING", spec, [reset, APPLY_BTN, CLOSE])
 
 
+def shadows():
+    # [QL] E161. Ray-traced shadows cast by the level. Its own page because the
+    # ray tracing page is full; same rule as there - present but inert until
+    # ray query is on, and the STATUS rows over there say whether it can work.
+    spec = [
+        # [QL] E161. Shadows cast by the level, through its acceleration
+        # structure - the level only, not players, items or doors. All live.
+        ("h", "LEVEL SHADOWS ON LIGHTS"),
+        ("yesno", "r_rtDlightShadows", "Dynamic light shadows", None),
+        ("multi", "r_rtDlightShadowStrength", "Strength",
+         '"0.25" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1'),
+        ("multi", "r_rtDlightShadowSoftness", "Softness",
+         '"Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16 (very soft)" 16'),
+        ("multi", "r_rtDlightShadowRays", "Rays", '"1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8'),
+        ("h", "LEVEL SHADOWS ON MODELS"),
+        ("multi", "r_rtModelShadows", "Model shadows", '"Off (default)" 0 "On" 1 "Debug (tint)" 2'),
+        ("multi", "r_rtModelShadowStrength", "Strength",
+         '"0.25" 0.25 "0.5" 0.5 "0.85 (default)" 0.85 "1.0" 1'),
+        ("multi", "r_rtModelShadowSoftness", "Softness",
+         '"Sharp (default)" 0 "0.03" 0.03 "0.06" 0.06 "0.12" 0.12 "0.25 (very soft)" 0.25'),
+        ("multi", "r_rtModelShadowRays", "Rays", '"1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8'),
+        ("multi", "r_rtModelShadowDistance", "Reach",
+         '"256" 256 "512" 512 "1024 (default)" 1024 "2048" 2048 "4096" 4096'),
+        ("help", "Soft edges need more rays. Cast by the level only, not players or doors."),
+    ]
+    reset = reset_button(spec)
+    return page(name("shadows"), "RAY-TRACED SHADOWS", spec, [reset, CLOSE])
+
+
 # [QL] E147. Water reflections, waves and splashes are all the one reflection
 # pass, and it runs only with r_fbo on (and, until E153, ray query active). Neither was said
 # anywhere near these settings, so every row did nothing and nothing explained
@@ -740,7 +770,7 @@ def main():
     pages = ""
     for key in ("main", "ingame"):
         V = VARIANTS[key]
-        pages += render_options() + raytracing() + water() + splashes() + surface_detail() + image()
+        pages += render_options() + raytracing() + shadows() + water() + splashes() + surface_detail() + image()
     block = (BEGIN
              + "    // Generated - edit tools/gen-render-menu.py, not this block.\n"
              + pages

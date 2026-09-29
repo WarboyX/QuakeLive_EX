@@ -4491,6 +4491,7 @@ static qboolean rtDynRoundReported = qfalse;
    reordered because create/destroy belong next to each other. */
 static void vk_rt_update_ao_descriptor( void );
 void vk_ssr_update_rt_descriptor( void );   /* [QL] E156, with the reflection pass */
+static void vk_rt_update_main_descriptor( void );   /* [QL] E161 */
 
 
 static void vk_rt_destroy_ao( void )
@@ -5138,6 +5139,50 @@ static void vk_rt_update_ao_descriptor( void )
 
 		qvkUpdateDescriptorSets( vk.device, 3, writes, 0, NULL );
 	}
+}
+
+
+/*
+[QL] E161: binding 1 of every command buffer's uniform set names this map's
+static structure, for the shadow rays in the main pass.
+
+The static one, not the per-frame one with the entities in it: that is rebuilt
+after the main pass, in the same command buffer, so the main pass would read a
+structure a frame or two old that a later command then rewrites under it. The
+level is what these shadows are for, and the static structure is exactly the
+level - fixed for the whole map, nothing to synchronise.
+*/
+static void vk_rt_update_main_descriptor( void )
+{
+	uint32_t n;
+
+	vk.rt.world.mainTlasWritten = qfalse;
+	if ( !vk.rtActive || vk.rt.world.tlas == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	for ( n = 0; n < NUM_COMMAND_BUFFERS; n++ ) {
+		VkWriteDescriptorSetAccelerationStructureKHR as_info;
+		VkWriteDescriptorSet write;
+
+		if ( vk.tess[n].uniform_descriptor == VK_NULL_HANDLE ) {
+			return;
+		}
+		Com_Memset( &as_info, 0, sizeof( as_info ) );
+		as_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+		as_info.accelerationStructureCount = 1;
+		as_info.pAccelerationStructures = &vk.rt.world.tlas;
+
+		Com_Memset( &write, 0, sizeof( write ) );
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.pNext = &as_info;
+		write.dstSet = vk.tess[n].uniform_descriptor;
+		write.dstBinding = 1;
+		write.descriptorCount = 1;
+		write.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		qvkUpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
+	}
+	vk.rt.world.mainTlasWritten = qtrue;
 }
 
 
@@ -6304,6 +6349,7 @@ void vk_rt_build_world( const world_t *world )
 	   and a driver may not. */
 	vk_rt_update_ao_descriptor();
 	vk_ssr_update_rt_descriptor();   /* [QL] E156, the same for the reflection */
+	vk_rt_update_main_descriptor();  /* [QL] E161, and for the main pass's shadow rays */
 
 	ri.Printf( PRINT_ALL, "RT: world acceleration structure ready%s\n",
 		vk.rt.world.dynReady ? " (+ dynamic entities)" : "" );
@@ -6482,6 +6528,15 @@ static void vk_create_shader_modules( void )
 	SET_OBJECT_NAME( vk.modules.frag.light[0][1], "light fog fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	SET_OBJECT_NAME( vk.modules.frag.light[1][0], "linear light fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	SET_OBJECT_NAME( vk.modules.frag.light[1][1], "linear light fog fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+
+	/* [QL] E161: ray-query variants, only where ray query is on (SPIR-V 1.4) */
+	if ( vk.rtActive ) {
+		vk.modules.frag.light_rt[0][0] = SHADER_MODULE( frag_light_rt );
+		vk.modules.frag.light_rt[0][1] = SHADER_MODULE( frag_light_rt_fog );
+		vk.modules.frag.light_rt[1][0] = SHADER_MODULE( frag_light_rt_line );
+		vk.modules.frag.light_rt[1][1] = SHADER_MODULE( frag_light_rt_line_fog );
+		vk.modules.frag.rt_model_shadow = SHADER_MODULE( rtshadow_frag_spv );
+	}
 
 	vk.modules.color_fs = SHADER_MODULE( color_frag_spv );
 	vk.modules.color_vs = SHADER_MODULE( color_vert_spv );
@@ -6686,7 +6741,30 @@ static void vk_alloc_persistent_pipelines( void )
 						vk.dlight_pipelines_x[i][j][k][l] = vk_find_pipeline_ext( 0, &def, qfalse );
 						def.shader_type = TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR;
 						vk.dlight1_pipelines_x[i][j][k][l] = vk_find_pipeline_ext( 0, &def, qfalse );
+						/* [QL] E161: the ray-traced twins */
+						if ( vk.rtActive ) {
+							def.rt_shadow = 1;
+							def.shader_type = TYPE_SIGNLE_TEXTURE_LIGHTING;
+							vk.dlight_rt_pipelines_x[i][j][k][l] = vk_find_pipeline_ext( 0, &def, qfalse );
+							def.shader_type = TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR;
+							vk.dlight1_rt_pipelines_x[i][j][k][l] = vk_find_pipeline_ext( 0, &def, qfalse );
+							def.rt_shadow = 0;
+						}
 					}
+				}
+			}
+		}
+
+		/* [QL] E161: the model-shadow pass - multiplies what the model drew */
+		if ( vk.rtActive ) {
+			Com_Memset( &def, 0, sizeof( def ) );
+			def.shader_type = TYPE_RT_MODEL_SHADOW;
+			def.state_bits = GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO | GLS_DEPTHFUNC_EQUAL;
+			for ( i = 0; i < 3; i++ ) {
+				def.face_culling = i;
+				for ( j = 0; j < 2; j++ ) {
+					def.polygon_offset = polygon_offset[j];
+					vk.rt_model_shadow_pipelines[i][j] = vk_find_pipeline_ext( 0, &def, qfalse );
 				}
 			}
 		}
@@ -8223,9 +8301,9 @@ void vk_initialize( void )
 	// Descriptor pool.
 	//
 	{
-		VkDescriptorPoolSize pool_size[3];
+		VkDescriptorPoolSize pool_size[4];
 		VkDescriptorPoolCreateInfo desc;
-		uint32_t i, maxSets;
+		uint32_t i, maxSets, numSizes;
 
 		pool_size[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		pool_size[0].descriptorCount = MAX_DRAWIMAGES + 1 + 1 + 1 + VK_NUM_BLOOM_PASSES * 2; // color, screenmap, bloom descriptors
@@ -8239,7 +8317,16 @@ void vk_initialize( void )
 		pool_size[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
 		pool_size[2].descriptorCount = 1;
 
-		for ( i = 0, maxSets = 0; i < ARRAY_LEN( pool_size ); i++ ) {
+		/* [QL] E161: the level's acceleration structure beside each uniform
+		   buffer - a type that only exists with the extension on */
+		numSizes = 3;
+		if ( vk.rtActive ) {
+			pool_size[3].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+			pool_size[3].descriptorCount = NUM_COMMAND_BUFFERS;
+			numSizes = 4;
+		}
+
+		for ( i = 0, maxSets = 0; i < 3; i++ ) {
 			maxSets += pool_size[i].descriptorCount;
 		}
 
@@ -8247,7 +8334,7 @@ void vk_initialize( void )
 		desc.pNext = NULL;
 		desc.flags = 0;
 		desc.maxSets = maxSets;
-		desc.poolSizeCount = ARRAY_LEN( pool_size );
+		desc.poolSizeCount = numSizes;
 		desc.pPoolSizes = pool_size;
 
 		VK_CHECK( qvkCreateDescriptorPool( vk.device, &desc, NULL, &vk.descriptor_pool ) );
@@ -8257,7 +8344,37 @@ void vk_initialize( void )
 	// Descriptor set layout.
 	//
 	vk_create_layout_binding( 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, &vk.set_layout_sampler );
-	vk_create_layout_binding( 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT, &vk.set_layout_uniform );
+	if ( vk.rtActive ) {
+		/*
+		[QL] E161: with ray query, binding 1 of the uniform set is the level's
+		acceleration structure, for the shadow rays of the light and
+		model-shadow passes. In this set because every main-pass pipeline
+		already binds it - no new set, no new layout for any other pipeline,
+		and shaders that do not declare binding 1 do not care that it is there.
+		It is written per map (vk_rt_update_main_descriptor) and only the
+		pipelines that read it check that it has been.
+		*/
+		VkDescriptorSetLayoutBinding bind[2];
+		VkDescriptorSetLayoutCreateInfo ldesc;
+
+		Com_Memset( bind, 0, sizeof( bind ) );
+		bind[0].binding = 0;
+		bind[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		bind[0].descriptorCount = 1;
+		bind[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+		bind[1].binding = 1;
+		bind[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		bind[1].descriptorCount = 1;
+		bind[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+		Com_Memset( &ldesc, 0, sizeof( ldesc ) );
+		ldesc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		ldesc.bindingCount = 2;
+		ldesc.pBindings = bind;
+		VK_CHECK( qvkCreateDescriptorSetLayout( vk.device, &ldesc, NULL, &vk.set_layout_uniform ) );
+	} else {
+		vk_create_layout_binding( 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT, &vk.set_layout_uniform );
+	}
 	vk_create_layout_binding( 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT, &vk.set_layout_storage );
 	//vk_create_layout_binding( 0, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VK_SHADER_STAGE_FRAGMENT_BIT, &vk.set_layout_input );
 
@@ -8698,6 +8815,10 @@ void vk_shutdown( refShutdownCode_t code )
 				qvkDestroyShaderModule( vk.device, vk.modules.frag.light[i][j], NULL );
 				vk.modules.frag.light[i][j] = VK_NULL_HANDLE;
 			}
+			if ( vk.modules.frag.light_rt[i][j] != VK_NULL_HANDLE ) {   // [QL] E161
+				qvkDestroyShaderModule( vk.device, vk.modules.frag.light_rt[i][j], NULL );
+				vk.modules.frag.light_rt[i][j] = VK_NULL_HANDLE;
+			}
 		}
 	}
 
@@ -8759,7 +8880,8 @@ void vk_shutdown( refShutdownCode_t code )
 			&vk.modules.ssr_rt_fs, &vk.modules.ssr_rt_ms_fs,
 			/* [QL] E158: the bump pass's pair were never destroyed either -
 			   the validation layer's two leaked modules on every vid_restart */
-			&vk.modules.bump_vs, &vk.modules.bump_fs
+			&vk.modules.bump_vs, &vk.modules.bump_fs,
+			&vk.modules.frag.rt_model_shadow   /* [QL] E161 */
 		};
 		for ( i = 0; i < ARRAY_LEN( mods ); i++ ) {
 			if ( *mods[i] != VK_NULL_HANDLE ) {
@@ -10191,12 +10313,17 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 
 		case TYPE_SIGNLE_TEXTURE_LIGHTING:
 			vs_module = &vk.modules.vert.light[0];
-			fs_module = &vk.modules.frag.light[0][0];
+			fs_module = def->rt_shadow ? &vk.modules.frag.light_rt[0][0] : &vk.modules.frag.light[0][0];
 			break;
 
 		case TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR:
 			vs_module = &vk.modules.vert.light[0];
-			fs_module = &vk.modules.frag.light[1][0];
+			fs_module = def->rt_shadow ? &vk.modules.frag.light_rt[1][0] : &vk.modules.frag.light[1][0];
+			break;
+
+		case TYPE_RT_MODEL_SHADOW:   // [QL] E161: light_vert for position and normal
+			vs_module = &vk.modules.vert.light[0];
+			fs_module = &vk.modules.frag.rt_model_shadow;
 			break;
 
 		case TYPE_SIGNLE_TEXTURE_DF:
@@ -10375,6 +10502,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		switch ( def->shader_type ) {
 			case TYPE_FOG_ONLY:
 			case TYPE_DOT:
+			case TYPE_RT_MODEL_SHADOW:   // [QL] E161: one module, no fog variant
 			case TYPE_SIGNLE_TEXTURE_DF:
 			case TYPE_COLOR_BLACK:
 			case TYPE_COLOR_WHITE:
@@ -10731,6 +10859,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 
 		case TYPE_SIGNLE_TEXTURE_LIGHTING:
 		case TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR:
+		case TYPE_RT_MODEL_SHADOW:   // [QL] E161: bound with vk_bind_lighting
 			push_bind( 0, sizeof( vec4_t ) );					// xyz array
 			push_bind( 1, sizeof( vec2_t ) );					// st0 array
 			push_bind( 2, sizeof( vec4_t ) );					// normals array

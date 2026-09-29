@@ -168,6 +168,14 @@ emit frag frag_light_fog      light_frag.tmpl -DUSE_FOG
 emit frag frag_light_line     light_frag.tmpl -DUSE_LINE
 emit frag frag_light_line_fog light_frag.tmpl -DUSE_LINE -DUSE_FOG
 
+# [QL] E161: the same four with a ray toward the light (r_rtDlightShadows), and
+# the model-shadow pass (r_rtModelShadows). Ray query, so emit_rt and 1.4.
+emit_rt frag frag_light_rt          light_frag.tmpl -DUSE_RT
+emit_rt frag frag_light_rt_fog      light_frag.tmpl -DUSE_RT -DUSE_FOG
+emit_rt frag frag_light_rt_line     light_frag.tmpl -DUSE_RT -DUSE_LINE
+emit_rt frag frag_light_rt_line_fog light_frag.tmpl -DUSE_RT -DUSE_LINE -DUSE_FOG
+emit_rt frag rtshadow_frag_spv      rtshadow_frag.tmpl
+
 # ---------------------------------------------------------------------------
 # generic vertex variations
 # ---------------------------------------------------------------------------

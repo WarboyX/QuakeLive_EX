@@ -6048,6 +6048,41 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E161. Ray-traced shadows cast by the level: on dynamic lights and on models (`r_rtDlightShadows`, `r_rtModelShadows`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for after E160: "we need to come up with a way for the level geometry to cast shadows". Your own stencil shadow looked out of place, because it was the only dynamic shadow in a level whose shadows are all baked. Options 1 and 2 of the three proposed.
+
+**New tab: Render → Shadows.** Everything is live. Everything needs ray tracing (`r_rt 1`) and is inert without it; the Lighting & Ray Tracing tab's STATUS rows say whether it can run. Off by default.
+
+**Level shadows on lights** (`r_rtDlightShadows`, with Strength, Softness and Rays):
+- Muzzle flashes, rockets, plasma and explosions no longer light through walls and pillars.
+- The per-pixel light shader gained ray-query variants (`light_frag.tmpl -DUSE_RT`, four of them). Each lit fragment traces to the light and loses the light if the level is in the way.
+- Softness gives the light a size in world units, and rays sample over it.
+- The ray stops 8 units short of the light, so what a light sits against (a rocket touching a wall) does not shadow it.
+- Needs per-pixel dynamic lights (`r_dlightMode` 1 or 2). With mode 2, models are shadowed from dynamic lights too.
+
+**Level shadows on models** (`r_rtModelShadows`, with Strength, Softness, Rays and Reach, plus 2 = a debug tint):
+- Models are lit per vertex from the light grid: ambient plus a directed term along the grid's light direction. The grid is coarse (about 64 units), so a model under an overhang or half through a doorway was lit as if nothing were there.
+- A new multiplicative pass after each opaque, light-grid-lit entity traces a ray per pixel toward the grid's light. It removes the directed term where the level blocks it: exactly (a + d·N·L·vis) / (a + d·N·L) of what was drawn.
+- Pixels facing away had no directed term to lose and are untouched.
+- Covers players, the view weapon and items. Translucent and additive shaders are left alone.
+- Reach stands in for the distance to the light, which the grid does not have.
+- Debug (2) tints models red where the level blocks their light and blue where they face away from it.
+
+**Cast by the level only, not players, items or doors.** The rays trace the static world structure, not the per-frame one with entity proxies in it. That one is rebuilt later in the same command buffer, so the main pass would read a stale structure that a later command then rewrites. The level is what was asked for, and the static structure is exactly the level.
+
+**How:**
+- The structure is binding 1 of the uniform set every main-pass pipeline already binds. There is no new set and no layout change for anything else; shaders that do not declare binding 1 are unaffected. It is written per map (`vk_rt_update_main_descriptor`), and the ray-traced pipelines are used only once it has been (`mainTlasWritten`).
+- The object-to-world transform and the settings ride in `vkUniform_t` after the fog block, at fixed offsets 128+ in the shaders, so the layout matches with or without fog.
+- Model-shadow pipelines: `TYPE_RT_MODEL_SHADOW`, `[cull][polygonOffset]`, blend DST_COLOR·ZERO, depth EQUAL.
+
+**Checked** (llvmpipe with ray query, Khronos validation layer, 0 errors in every run including `r_rt 0` with both options on). Local test assets only: a grey test cube, and a temporary injected dynamic light (a test-only hook, removed).
+- A light just behind the flag room's east wall: without shadows its warm light leaks onto the floor and far wall inside the room; with them, none.
+- The cube under the corridor ceiling: the debug view tints the face toward the light red and the face away blue. With the effect on, that face darkens (0.338 → 0.194). Softness gives partial visibility.
+- `r_rt 0`: both options inert and the game unchanged.
+- Not checked: the look on real player models and art (pak00 is not here), and performance on a real GPU.
+
 ### E160. Stencil shadows: a black line through the floor from the floating shotgun (stray volume faces) — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

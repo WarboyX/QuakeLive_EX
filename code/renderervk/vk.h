@@ -95,6 +95,10 @@ typedef enum {
 	*/
 	TYPE_BUMP,
 
+	/* [QL] E161: the level's shadow on a model (r_rtModelShadows) - a
+	   multiplicative pass with a ray toward the light grid's direction */
+	TYPE_RT_MODEL_SHADOW,
+
 	TYPE_GENERIC_BEGIN, // start of non-env/env shader pairs
 	TYPE_SIGNLE_TEXTURE = TYPE_GENERIC_BEGIN,
 	TYPE_SIGNLE_TEXTURE_ENV,
@@ -256,6 +260,9 @@ typedef struct {
 	// [QL] E104. Effective green flip for this draw: the global cvar XORed with
 	// the stage's qlNormalFlipG. TYPE_BUMP only.
 	int bump_flip_green;
+	// [QL] E161: TYPE_SIGNLE_TEXTURE_LIGHTING(_LINEAR) with the ray-query light
+	// shader (r_rtDlightShadows)
+	int rt_shadow;
 } Vk_Pipeline_Def;
 
 typedef struct VK_Pipeline {
@@ -282,6 +289,12 @@ typedef struct vkUniform_s {
 	vec4_t fogDepthVector;		// vertex
 	vec4_t fogEyeT;				// vertex
 	vec4_t fogColor;			// fragment
+	/* [QL] E161: ray-traced shadows - read only by the USE_RT light shaders and
+	   the model-shadow pass, at offsets 128.. in their uniform blocks */
+	vec4_t rtOrigin;			// object-to-world origin
+	vec4_t rtAxis[3];			// object-to-world axes (w: model pass ambient/directed)
+	vec4_t rtLight;				// model pass: object-space light direction, w reach
+	vec4_t rtParams;			// strength, rays, softness, stop short of light
 } vkUniform_t;
 
 #define TESS_XYZ   (1)
@@ -693,6 +706,8 @@ typedef struct {
 			VkShaderModule fixed[2][2];  // tx[0,1], fog[0,1]
 			VkShaderModule ent[1][2];    // tx[0], fog[0,1]
 			VkShaderModule light[2][2];  // linear[0,1] fog[0,1]
+			VkShaderModule light_rt[2][2];  // [QL] E161: the same with a shadow ray
+			VkShaderModule rt_model_shadow; // [QL] E161
 		} frag;
 
 		VkShaderModule color_fs;
@@ -804,6 +819,11 @@ typedef struct {
 	*/
 	uint32_t bump_pipelines[2][4];
 	uint32_t dlight1_pipelines_x[3][2][2][2];
+	/* [QL] E161: the same with a shadow ray toward the light, and the
+	   model-shadow pass [cull][polygonOffset]. Only with ray query. */
+	uint32_t dlight_rt_pipelines_x[3][2][2][2];
+	uint32_t dlight1_rt_pipelines_x[3][2][2][2];
+	uint32_t rt_model_shadow_pipelines[3][2];
 #endif
 
 	// debug visualization pipelines
@@ -1117,6 +1137,9 @@ typedef struct {
 
 			/* [QL] E156: the map's light grid, as the BSP stores it, for the
 			   reflection's ray-traced fallback to light what it hits. */
+			/* [QL] E161: the main pass's uniform sets name this map's static
+			   structure (binding 1), so the shadow rays may be traced */
+			qboolean		mainTlasWritten;
 			VkBuffer		grid_buffer;
 			VkDeviceMemory	grid_memory;
 			void			*grid_ptr;

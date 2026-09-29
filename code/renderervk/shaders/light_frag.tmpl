@@ -1,4 +1,9 @@
-#version 450
+#version 460
+
+#ifdef USE_RT
+/* [QL] E161: the ray-traced variants (r_rtDlightShadows) - SPIR-V 1.4 */
+#extension GL_EXT_ray_query : require
+#endif
 
 layout(set = 0, binding = 0) uniform UBO {
 	// light/env parameters:
@@ -13,7 +18,30 @@ layout(set = 0, binding = 0) uniform UBO {
 	vec4 fogEyeT;				// vertex
 	vec4 fogColor;				// fragment
 #endif
+#ifdef USE_RT
+	/*
+	[QL] E161. After the fog block at fixed offsets, so the layout matches
+	vkUniform_t whether or not this variant declares fog.
+
+	  rtOrigin, rtAxis0..2  the draw's object-to-world transform (the entity's
+	                        orientation, or identity for the world)
+	  rtParams              x strength 0..1, y rays per pixel, z light size in
+	                        world units (soft edge), w how far short of the
+	                        light the ray stops
+	*/
+	layout(offset = 128) vec4 rtOrigin;
+	layout(offset = 144) vec4 rtAxis0;
+	layout(offset = 160) vec4 rtAxis1;
+	layout(offset = 176) vec4 rtAxis2;
+	layout(offset = 192) vec4 rtLight;
+	layout(offset = 208) vec4 rtParams;
+#endif
 };
+
+#ifdef USE_RT
+/* the level's acceleration structure - the static one, see vk_rt_update_main_descriptor */
+layout(set = 0, binding = 1) uniform accelerationStructureEXT topLevel;
+#endif
 
 layout(set = 1, binding = 0) uniform sampler2D texture0;
 #ifdef USE_FOG
@@ -104,6 +132,63 @@ there.
 The bump pass does use a spec constant for the same value, because its pipeline
 is built per draw and can afford to.
 */
+
+#ifdef USE_RT
+vec3 rtToWorld(vec3 v) {
+	return rtAxis0.xyz * v.x + rtAxis1.xyz * v.y + rtAxis2.xyz * v.z;
+}
+
+float rtHash(vec2 p, float n) {
+	return fract(sin(dot(p, vec2(12.9898, 78.233)) + n * 37.719) * 43758.5453);
+}
+
+/*
+[QL] E161: how much of the light reaches this fragment, 0..1.
+
+One ray per sample from the surface to the light, against the level. A point
+light is one point; with a size (rtParams.z) the samples spread over a sphere
+that big around it and the shadow edge softens by as much. The ray stops
+rtParams.w short of the light so the geometry the light sits against - a
+rocket touching a wall, a muzzle flash in a doorway - does not shadow it.
+*/
+float rtLightVisibility(vec3 Pobj, vec3 Nobj, vec3 Lobj) {
+	vec3 wP = rtOrigin.xyz + rtToWorld(Pobj);
+	vec3 wL = wP + rtToWorld(Lobj);
+	vec3 wN = normalize(rtToWorld(Nobj));
+	if (dot(wN, wL - wP) < 0.0) {
+		wN = -wN;                   // two-sided surfaces: leave from the lit side
+	}
+	vec3 O = wP + wN * 1.0;
+
+	int samples = clamp(int(rtParams.y), 1, 8);
+	float occluded = 0.0;
+	for (int i = 0; i < samples; i++) {
+		vec3 target = wL;
+		if (rtParams.z > 0.0) {
+			vec3 r = vec3(rtHash(gl_FragCoord.xy, float(i)), rtHash(gl_FragCoord.yx, float(i) + 3.1),
+			              rtHash(gl_FragCoord.xy * 1.7, float(i) + 7.3)) * 2.0 - 1.0;
+			target += r * rtParams.z;
+		}
+		vec3 d = target - O;
+		float dist = length(d);
+		float tmax = dist - rtParams.w;
+		if (tmax <= 1.0) {
+			continue;               // close enough that nothing fits between
+		}
+		d /= dist;
+
+		rayQueryEXT rq;
+		rayQueryInitializeEXT(rq, topLevel,
+			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+			0xFF, O, 0.0, d, tmax);
+		while (rayQueryProceedEXT(rq)) {}
+		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+			occluded += 1.0;
+		}
+	}
+	return 1.0 - occluded / float(samples);
+}
+#endif
 
 float CorrectAlpha(float threshold, float alpha, vec2 tc)
 {
@@ -273,6 +358,19 @@ void main() {
 	*/
 	diffuse = max( diffuse, 0.0 );
 	specFactor = max( specFactor, 0.0 );
+
+#ifdef USE_RT
+	/* [QL] E161: the level stands between this fragment and the light */
+	if (rtParams.x > 0.0 && (diffuse > 0.0 || specFactor > 0.0)) {
+#ifdef USE_LINE
+		vec3 Lobj = LL.xyz;
+#else
+		vec3 Lobj = L.xyz;
+#endif
+		float vis = rtLightVisibility(P, N, Lobj);
+		intens *= 1.0 - clamp(rtParams.x, 0.0, 1.0) * (1.0 - vis);
+	}
+#endif
 
 	//float spec = pow(specFactor, 8.0) * 0.25;
 	vec4 spec = vec4(pow(specFactor, 10.0)*0.25) * base * 0.8;

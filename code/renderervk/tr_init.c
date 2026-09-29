@@ -64,6 +64,15 @@ cvar_t	*r_dither;
 cvar_t	*r_fxaa;     // [QL] E157
 cvar_t	*r_sharpen;  // [QL] E157
 cvar_t	*r_toneMap;  // [QL] E158
+cvar_t	*r_rtDlightShadows;        // [QL] E161
+cvar_t	*r_rtDlightShadowStrength;
+cvar_t	*r_rtDlightShadowSoftness;
+cvar_t	*r_rtDlightShadowRays;
+cvar_t	*r_rtModelShadows;
+cvar_t	*r_rtModelShadowStrength;
+cvar_t	*r_rtModelShadowSoftness;
+cvar_t	*r_rtModelShadowRays;
+cvar_t	*r_rtModelShadowDistance;
 cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
 
@@ -2653,6 +2662,56 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_stencilSelfShadow, "With stencil shadows (cg_shadows 2), also cast "
 		"your own player's shadow in first person. 0 is Quake 3's behaviour, which could not "
 		"because the eye is inside that shadow's volume." );
+
+	/*
+	[QL] E161. Ray-traced shadows cast by the level. Both off by default - they
+	change the look of every scene - and all live. Both need r_rt: the rays go
+	through the level's acceleration structure. The level only: players, items
+	and doors (movers) cast none of these.
+	*/
+	r_rtDlightShadows = ri.Cvar_Get( "r_rtDlightShadows", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDlightShadows, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtDlightShadows, "Dynamic lights (muzzle flashes, rockets, plasma, "
+		"explosions) are blocked by the level instead of lighting through walls and pillars. Needs "
+		S_COLOR_CYAN "\\r_rt" S_COLOR_WHITE " and per-pixel dynamic lights (" S_COLOR_CYAN "\\r_dlightMode"
+		S_COLOR_WHITE " 1 or 2)." );
+	r_rtDlightShadowStrength = ri.Cvar_Get( "r_rtDlightShadowStrength", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDlightShadowStrength, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtDlightShadowStrength, "How much of a blocked dynamic light is removed, "
+		"0 (none) to 1 (all)." );
+	r_rtDlightShadowSoftness = ri.Cvar_Get( "r_rtDlightShadowSoftness", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDlightShadowSoftness, "0", "32", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtDlightShadowSoftness, "Size of a dynamic light in world units, for soft "
+		"shadow edges. 0 is a point (hard edges). Pair with more " S_COLOR_CYAN "\\r_rtDlightShadowRays"
+		S_COLOR_WHITE ", or the edge is grainy." );
+	r_rtDlightShadowRays = ri.Cvar_Get( "r_rtDlightShadowRays", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDlightShadowRays, "1", "8", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtDlightShadowRays, "Rays per lit pixel per dynamic light. 1 is enough for "
+		"hard shadows; soft ones want 4 or more. Cost scales with it." );
+
+	r_rtModelShadows = ri.Cvar_Get( "r_rtModelShadows", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadows, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtModelShadows, "The level casts shadows on players, weapons and items: "
+		"where a wall or roof blocks the map's light, a model loses that light, with a sharp edge instead "
+		"of the light grid's gradual fade. Needs " S_COLOR_CYAN "\\r_rt.\n"
+		" 0 - off (default)\n 1 - on\n 2 - debug: tint models red where the level blocks their light, "
+		"blue where they face away from it" );
+	r_rtModelShadowStrength = ri.Cvar_Get( "r_rtModelShadowStrength", "0.85", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadowStrength, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtModelShadowStrength, "How much of the blocked light a model loses, 0 to 1." );
+	r_rtModelShadowSoftness = ri.Cvar_Get( "r_rtModelShadowSoftness", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadowSoftness, "0", "0.3", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtModelShadowSoftness, "Spread of the shadow rays in radians, for soft "
+		"edges on models. 0 is sharp. Pair with more " S_COLOR_CYAN "\\r_rtModelShadowRays" S_COLOR_WHITE "." );
+	r_rtModelShadowRays = ri.Cvar_Get( "r_rtModelShadowRays", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadowRays, "1", "8", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtModelShadowRays, "Rays per model pixel. 1 for sharp shadows, 4 or more "
+		"for soft ones." );
+	r_rtModelShadowDistance = ri.Cvar_Get( "r_rtModelShadowDistance", "1024", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadowDistance, "64", "8192", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtModelShadowDistance, "How far toward the light a model looks for "
+		"something in the way, in world units. The light grid has no distance to its light, so this "
+		"stands in for one: short keeps only nearby overhangs, long lets distant walls shadow too." );
 
 	/* [QL] E154. Off by default - it changes the look of every scene, and that
 	   is the player's call. Live. */

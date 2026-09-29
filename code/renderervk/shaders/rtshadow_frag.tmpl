@@ -1,0 +1,109 @@
+#version 460
+#extension GL_EXT_ray_query : require
+
+/*
+[QL] E161: the level's shadow on a model, r_rtModelShadows.
+
+Models are lit per vertex from the light grid (RB_CalcDiffuseColor): an ambient
+term plus a directed one along the grid's light direction. The grid is sampled
+every 64 units or so, so a player half in a doorway's shadow is lit evenly and
+walking into shade is a fade across a cell rather than an edge.
+
+This pass runs after the model is drawn and multiplies it. Per pixel, a ray
+goes toward the grid's light; where the level blocks it the directed term is
+taken back out, which is exactly
+	(ambient + directed * N.L * visible) / (ambient + directed * N.L)
+of what was drawn. Pixels facing away from the light had no directed term to
+lose and come out 1.
+
+Vertex stage: light_vert, for the object-space position and normal. Nothing is
+sampled here, so no texture set is declared.
+*/
+
+layout(set = 0, binding = 0) uniform UBO {
+	vec4 eyePos;
+	vec4 lightPos;
+	vec4 lightColor;
+	vec4 lightVector;
+	/*
+	  rtOrigin, rtAxis0..2  object-to-world; rtAxis0.w ambient and rtAxis1.w
+	                        directed brightness (luminance, 0..255)
+	  rtLight               xyz the grid's light direction in object space,
+	                        w how far to look for something in the way
+	  rtParams              x strength 0..1, y rays per pixel, z softness
+	                        (spread of the rays, radians), w 1 for the debug
+	                        view (r_rtModelShadows 2)
+	*/
+	layout(offset = 128) vec4 rtOrigin;
+	layout(offset = 144) vec4 rtAxis0;
+	layout(offset = 160) vec4 rtAxis1;
+	layout(offset = 176) vec4 rtAxis2;
+	layout(offset = 192) vec4 rtLight;
+	layout(offset = 208) vec4 rtParams;
+};
+
+layout(set = 0, binding = 1) uniform accelerationStructureEXT topLevel;
+
+layout(location = 1) in vec3 N;
+layout(location = 5) in vec3 P;
+
+layout(location = 0) out vec4 out_color;
+
+vec3 rtToWorld(vec3 v) {
+	return rtAxis0.xyz * v.x + rtAxis1.xyz * v.y + rtAxis2.xyz * v.z;
+}
+
+float rtHash(vec2 p, float n) {
+	return fract(sin(dot(p, vec2(12.9898, 78.233)) + n * 37.719) * 43758.5453);
+}
+
+void main() {
+	vec3 wN = normalize(rtToWorld(N));
+	vec3 dir = normalize(rtToWorld(rtLight.xyz));
+	float ndl = dot(wN, dir);
+	float ambient = rtAxis0.w;
+	float directed = rtAxis1.w * max(ndl, 0.0);
+
+	if (directed <= 0.0 || rtParams.x <= 0.0) {
+		/* debug view: blue where the grid's light never reached anyway */
+		out_color = rtParams.w > 0.0 ? vec4(0.6, 0.6, 1.0, 1.0) : vec4(1.0);
+		return;
+	}
+
+	vec3 wP = rtOrigin.xyz + rtToWorld(P);
+	vec3 O = wP + wN * 1.0;
+
+	/* a basis around the light direction for the soft spread */
+	vec3 up = abs(dir.z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 t1 = normalize(cross(up, dir));
+	vec3 t2 = cross(dir, t1);
+
+	int samples = clamp(int(rtParams.y), 1, 8);
+	float occluded = 0.0;
+	for (int i = 0; i < samples; i++) {
+		vec3 d = dir;
+		if (rtParams.z > 0.0) {
+			float a = rtHash(gl_FragCoord.xy, float(i)) * 6.2831853;
+			float r = sqrt(rtHash(gl_FragCoord.yx, float(i) + 5.1)) * rtParams.z;
+			d = normalize(dir + (t1 * cos(a) + t2 * sin(a)) * r);
+		}
+		rayQueryEXT rq;
+		rayQueryInitializeEXT(rq, topLevel,
+			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+			0xFF, O, 0.0, d, rtLight.w);
+		while (rayQueryProceedEXT(rq)) {}
+		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+			occluded += 1.0;
+		}
+	}
+	float visible = 1.0 - occluded / float(samples);
+
+	/* debug view: red where the level blocks the light, untouched where not */
+	if (rtParams.w > 0.0) {
+		out_color = vec4(1.0, visible, visible, 1.0);
+		return;
+	}
+
+	float factor = (ambient + directed * visible) / max(ambient + directed, 1.0);
+	out_color = vec4(vec3(mix(1.0, factor, clamp(rtParams.x, 0.0, 1.0))), 1.0);
+}

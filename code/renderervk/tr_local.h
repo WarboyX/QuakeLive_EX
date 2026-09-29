@@ -1635,6 +1635,15 @@ extern	cvar_t	*r_dither;
 extern	cvar_t	*r_fxaa;				// [QL] E157: FXAA in the present pass (live)
 extern	cvar_t	*r_sharpen;			// [QL] E157: CAS strength 0..1 (live)
 extern	cvar_t	*r_toneMap;			// [QL] E158: 0 auto, 1 clip, 2 knee, 3 filmic (live)
+extern	cvar_t	*r_rtDlightShadows;		// [QL] E161: the level shadows dynamic lights (live)
+extern	cvar_t	*r_rtDlightShadowStrength;
+extern	cvar_t	*r_rtDlightShadowSoftness;
+extern	cvar_t	*r_rtDlightShadowRays;
+extern	cvar_t	*r_rtModelShadows;		// [QL] E161: the level shadows models (live)
+extern	cvar_t	*r_rtModelShadowStrength;
+extern	cvar_t	*r_rtModelShadowSoftness;
+extern	cvar_t	*r_rtModelShadowRays;
+extern	cvar_t	*r_rtModelShadowDistance;
 extern	cvar_t	*r_bloomHDR;			// [QL] E158: bloom in the float format with r_rts (latched)
 extern	cvar_t	*r_presentBits;
 

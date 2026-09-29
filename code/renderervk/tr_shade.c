@@ -1122,6 +1122,25 @@ void VK_SetFogParams( vkUniform_t *uniform, int *fogStage )
 }
 
 
+/*
+[QL] E161: object-to-world for the shadow rays, from the current orientation -
+the entity's for a model, identity for the world. The ray-traced shaders work
+in object space like the rest of the light pass and bring the result into the
+world, where the acceleration structure is.
+*/
+static void VK_SetRTTransform( vkUniform_t *uniform )
+{
+	int i;
+
+	VectorCopy( backEnd.or.origin, uniform->rtOrigin );
+	uniform->rtOrigin[3] = 0.0f;
+	for ( i = 0; i < 3; i++ ) {
+		VectorCopy( backEnd.or.axis[i], uniform->rtAxis[i] );
+		uniform->rtAxis[i][3] = 0.0f;
+	}
+}
+
+
 #ifdef USE_PMLIGHT
 static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 	float radius;
@@ -1163,6 +1182,15 @@ static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 		ab[3] = 1.0f / DotProduct( ab, ab );
 		Vector4Copy( ab, uniform->light.vector );
 	}
+
+	/* [QL] E161: for the shadow ray - where this draw is in the world, and
+	   the r_rtDlightShadows settings. Harmless to the plain light shader,
+	   which does not declare them. */
+	VK_SetRTTransform( uniform );
+	uniform->rtParams[0] = r_rtDlightShadows->integer ? r_rtDlightShadowStrength->value : 0.0f;
+	uniform->rtParams[1] = (float)r_rtDlightShadowRays->integer;
+	uniform->rtParams[2] = r_rtDlightShadowSoftness->value;
+	uniform->rtParams[3] = 8.0f;   // stop short of the light: what it sits against must not shadow it
 }
 #endif
 
@@ -1235,6 +1263,17 @@ void VK_LightingPass( void )
 	else
 		pipeline = vk.dlight_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light];
 
+	/* [QL] E161: the ray-traced twin, when asked for and the level's structure
+	   is bound for this map */
+	if ( r_rtDlightShadows->integer && vk.rt.world.mainTlasWritten ) {
+		const uint32_t rt = tess.light->linear
+			? vk.dlight1_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light]
+			: vk.dlight_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light];
+		if ( rt ) {
+			pipeline = rt;
+		}
+	}
+
 	GL_SelectTexture( 0 );
 	R_BindAnimatedImage( &pStage->bundle[ tess.shader->lightingBundle ] );
 
@@ -1269,6 +1308,97 @@ void VK_LightingPass( void )
 	vk_bind_lighting( tess.shader->lightingStage, tess.shader->lightingBundle );
 	vk_draw_geometry( tess.depthRange, qtrue );
 }
+
+/*
+===============
+VK_ModelShadowPass
+
+[QL] E161, r_rtModelShadows: the level's shadow on a model.
+
+Models are lit per vertex from the light grid - ambient plus a directed term
+along the grid's light direction (RB_CalcDiffuseColor). The grid is coarse, so
+a model under an overhang or half through a doorway is lit as if nothing were
+there, or fades over a whole cell. This pass redraws the model multiplying it
+by how much of that directed term actually arrives, found with a ray per pixel
+toward the light through the level's acceleration structure. See
+rtshadow_frag.tmpl for the arithmetic.
+
+Opaque shaders with a lightingDiffuse stage on entities only: the world has
+lightmaps, and multiplying a translucent or additive model would darken what
+is behind it.
+===============
+*/
+static void VK_ModelShadowPass( void )
+{
+	static vkUniform_t su;
+	const trRefEntity_t *ent = backEnd.currentEntity;
+	const shaderStage_t *pStage;
+	cullType_t cull;
+	uint32_t pipeline, offset;
+	int i, lit;
+
+	if ( !r_rtModelShadows->integer || !vk.rt.world.mainTlasWritten ) {
+		return;
+	}
+	if ( ent == NULL || ent == &tr.worldEntity || tess.shader->sort != SS_OPAQUE ) {
+		return;
+	}
+	if ( tess.shader->lightingStage < 0 ) {
+		return;
+	}
+	for ( i = 0, lit = 0; i < MAX_SHADER_STAGES && tess.xstages[i]; i++ ) {
+		if ( tess.xstages[i]->bundle[0].rgbGen == CGEN_LIGHTING_DIFFUSE ) {
+			lit = 1;
+			break;
+		}
+	}
+	if ( !lit ) {
+		return;
+	}
+
+	cull = tess.shader->cullType;
+	if ( backEnd.viewParms.portalView == PV_MIRROR ) {
+		if ( cull == CT_FRONT_SIDED ) cull = CT_BACK_SIDED;
+		else if ( cull == CT_BACK_SIDED ) cull = CT_FRONT_SIDED;
+	}
+	pipeline = vk.rt_model_shadow_pipelines[cull][tess.shader->polygonOffset];
+	if ( pipeline == 0 ) {
+		return;
+	}
+
+	Com_Memset( &su, 0, sizeof( su ) );
+	VK_SetRTTransform( &su );
+	/* luminance of what RB_CalcDiffuseColor adds: ambient + directed * N.L */
+	su.rtAxis[0][3] = 0.299f * ent->ambientLight[0] + 0.587f * ent->ambientLight[1] + 0.114f * ent->ambientLight[2];
+	su.rtAxis[1][3] = 0.299f * ent->directedLight[0] + 0.587f * ent->directedLight[1] + 0.114f * ent->directedLight[2];
+	VectorCopy( ent->lightDir, su.rtLight );   // entity space, as RB_CalcDiffuseColor uses it
+	su.rtLight[3] = r_rtModelShadowDistance->value;
+	su.rtParams[0] = r_rtModelShadowStrength->value;
+	su.rtParams[1] = (float)r_rtModelShadowRays->integer;
+	su.rtParams[2] = r_rtModelShadowSoftness->value;
+	su.rtParams[3] = r_rtModelShadows->integer >= 2 ? 1.0f : 0.0f;   // debug tint
+
+	offset = VK_PushUniform( &su );
+	if ( offset == ~0U ) {
+		return;
+	}
+	/* the light pass pushes its own uniform when it next runs */
+	tess.dlightUpdateParams = qtrue;
+
+	pStage = tess.xstages[ tess.shader->lightingStage ];
+#ifdef USE_VBO
+	if ( tess.vboIndex == 0 )
+#endif
+	{
+		R_ComputeTexCoords( tess.shader->lightingBundle, &pStage->bundle[ tess.shader->lightingBundle ] );
+	}
+
+	vk_bind_pipeline( pipeline );
+	vk_bind_index();
+	vk_bind_lighting( tess.shader->lightingStage, tess.shader->lightingBundle );
+	vk_draw_geometry( tess.depthRange, qtrue );
+}
+
 
 /*
 ===============
@@ -1486,6 +1616,9 @@ void RB_StageIteratorGeneric( void )
 	// [QL] R25: normal-map shading from the deluxemap, before dlights and fog
 	// so those still sit on top of the result rather than under it.
 	VK_BumpPass();
+
+	// [QL] E161: the level's shadow on a model, likewise before dlights and fog
+	VK_ModelShadowPass();
 
 	// now do any dynamic lighting needed
 #ifdef USE_LEGACY_DLIGHTS
