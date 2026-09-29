@@ -1664,6 +1664,10 @@ extern	cvar_t	*r_rtModelShadowDistance;
 extern	cvar_t	*r_rtShadowCasters;		// [QL] E165: 0 the level and movers, 1 + players and items
 extern	cvar_t	*r_rtActorShadows;		// [QL] E166: players and items cast traced shadows on the level
 extern	cvar_t	*r_rtActorShadowStrength;
+extern	cvar_t	*r_rtActorShadowLength;		// [QL] E167: how far a player's shadow reaches
+extern	cvar_t	*r_rtActorShadowSoftness;		// [QL] E167: light size for the shadows on the level
+extern	cvar_t	*r_rtActorShadowRays;
+extern	cvar_t	*r_rtLevelShadows;			// [QL] E167: the level's traced shadows on the level
 void R_RTShadowReport( qboolean force );   // [QL] E162, tr_shade.c
 extern	cvar_t	*r_bloomHDR;			// [QL] E158: bloom in the float format with r_rts (latched)
 extern	cvar_t	*r_presentBits;

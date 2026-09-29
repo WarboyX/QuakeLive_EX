@@ -76,6 +76,10 @@ cvar_t	*r_rtModelShadowDistance;
 cvar_t	*r_rtShadowCasters;   // [QL] E165
 cvar_t	*r_rtActorShadows;    // [QL] E166
 cvar_t	*r_rtActorShadowStrength;
+cvar_t	*r_rtActorShadowLength;   // [QL] E167
+cvar_t	*r_rtActorShadowSoftness;
+cvar_t	*r_rtActorShadowRays;
+cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
 
@@ -2730,6 +2734,27 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_rtActorShadowStrength, "0", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtActorShadowStrength, "How dark a player's traced shadow is: the share of "
 		"the map's light it removes where it falls, 0 to 1." );
+	r_rtActorShadowLength = ri.Cvar_Get( "r_rtActorShadowLength", "512", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowLength, "64", "2048", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtActorShadowLength, "The furthest the traced shadows on the level look for "
+		"something in the way, in world units. The ray also stops at the light itself, where the "
+		"light grid lets its position be estimated." );
+	r_rtActorShadowSoftness = ri.Cvar_Get( "r_rtActorShadowSoftness", "8", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowSoftness, "0", "64", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtActorShadowSoftness, "Size of the light the traced shadows on the level "
+		"come from, in world units: 0 is hard edges, larger is softer, and the edge softens more the "
+		"further the shadow falls from what casts it. Needs " S_COLOR_CYAN "\\r_rtActorShadowRays"
+		S_COLOR_WHITE " above 1 to look smooth." );
+	r_rtActorShadowRays = ri.Cvar_Get( "r_rtActorShadowRays", "4", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowRays, "1", "16", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorShadowRays, "Rays per pixel for the traced shadows on the level. "
+		"More makes soft edges smoother and costs more." );
+	r_rtLevelShadows = ri.Cvar_Get( "r_rtLevelShadows", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtLevelShadows, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtLevelShadows, "The level casts ray-traced shadows on itself - ledges, "
+		"beams and pillars from the same light the players' shadows use, so the two agree. The map's "
+		"own baked shadows are coarse; this adds sharp edges where they blur. Needs " S_COLOR_CYAN
+		"\\r_rt.\n 0 - off (default)\n 1 - on\n 2 - debug: shadowed pixels red" );
 
 	/* [QL] E165. What blocks the traced shadows' rays. Live. */
 	r_rtShadowCasters = ri.Cvar_Get( "r_rtShadowCasters", "0", CVAR_ARCHIVE_ND );

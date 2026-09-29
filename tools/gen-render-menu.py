@@ -62,9 +62,10 @@ GL = ('cvarTest "cl_renderer"  hideCvar { "vulkan" }')
 #                          The frame no longer resets its tabs on open, so
 #                          Advanced is still the lit tab when you come back.
 TABS = [
-    ("renderoptions", "Render Options"),
-    ("raytracing",    "Lighting & Ray Tracing"),
+    ("renderoptions", "Render"),         # [QL] E167: shortened to fit an eighth tab
+    ("raytracing",    "Lighting & RT"),    # [QL] E167: shortened to fit an eighth tab
     ("shadows",       "Shadows"),        # [QL] E161: ray-traced shadows cast by the level
+    ("castshadows",   "Cast Shadows"),   # [QL] E167: shadows falling on the level
     ("water",         "Water"),
     ("splashes",      "Splashes"),   # [QL] E147: IMPACTS, split off Water
     ("surfacedetail", "Surface Detail"),
@@ -490,22 +491,39 @@ def shadows():
         ("multi", "r_rtModelShadowRays", "Rays", '"1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8'),
         ("multi", "r_rtModelShadowDistance", "Reach",
          '"256" 256 "512" 512 "1024 (default)" 1024 "2048" 2048 "4096" 4096'),
-        # [QL] E166. Players and items cast onto the level with their real
-        # shapes - the traced replacement for Quake's stencil shadows.
-        ("h", "PLAYER SHADOWS ON THE LEVEL"),
-        ("multi", "r_rtActorShadows", "Player shadows",
-         '"Off (default)" 0 "On" 1 "Debug (shadow red)" 2'),
-        ("multi", "r_rtActorShadowStrength", "Strength",
-         '"0.25" 0.25 "0.5" 0.5 "0.7 (default)" 0.7 "0.85" 0.85 "1.0" 1'),
-        # [QL] E165/E166. Doors and lifts always cast; players and items by shape.
-        ("multi", "r_rtShadowCasters", "Players block lights",
-         '"No (default)" 0 "Yes" 1'),
         ("help", "Soft edges need more rays. Doors and lifts always cast."),
-        ("help", "Console: rtshadows says what both passes did last frame, and why not."),
-        ("help", "Lighting > Shadows: Traced turns both on in place of Quake's shadows."),
+        ("help", "Console: rtshadows says what the passes did last frame, and why not."),
     ]
     reset = reset_button(spec)
     return page(name("shadows"), "RAY-TRACED SHADOWS", spec, [reset, CLOSE])
+
+
+def cast_shadows():
+    # [QL] E167. Split off Shadows when it ran past the panel: the shadows that
+    # fall ON the level - cast by players, items and the level itself.
+    spec = [
+        # [QL] E166. Players and items cast onto the level with their real
+        # shapes - the traced replacement for Quake's stencil shadows.
+        # [QL] E167. Players, items and the level itself, from one estimated
+        # light, so the players' shadows agree with the ledges'.
+        ("h", "SHADOWS ON THE LEVEL"),
+        ("multi", "r_rtActorShadows", "Player shadows",
+         '"Off (default)" 0 "On" 1 "Debug (shadow red)" 2'),
+        ("multi", "r_rtLevelShadows", "Level shadows",
+         '"Off (default)" 0 "On" 1 "Debug (shadow red)" 2'),
+        ("multi", "r_rtActorShadowStrength", "Strength",
+         '"0.25" 0.25 "0.5" 0.5 "0.7 (default)" 0.7 "0.85" 0.85 "1.0" 1'),
+        ("multi", "r_rtActorShadowSoftness", "Softness",
+         '"Hard" 0 "4" 4 "8 (default)" 8 "16" 16 "32 (very soft)" 32'),
+        ("multi", "r_rtActorShadowRays", "Rays", '"1" 1 "2" 2 "4 (default)" 4 "8" 8 "16 (heavy)" 16'),
+        # [QL] E165/E166. Doors and lifts always cast; players and items by shape.
+        ("multi", "r_rtShadowCasters", "Players block lights",
+         '"No (default)" 0 "Yes" 1'),
+        ("help", "One light for players and ledges, so their shadows agree."),
+        ("help", "Lighting > Shadows: Traced turns all of these on."),
+    ]
+    reset = reset_button(spec)
+    return page(name("castshadows"), "CAST SHADOWS", spec, [reset, CLOSE])
 
 
 # [QL] E147. Water reflections, waves and splashes are all the one reflection
@@ -782,7 +800,7 @@ def main():
     pages = ""
     for key in ("main", "ingame"):
         V = VARIANTS[key]
-        pages += render_options() + raytracing() + shadows() + water() + splashes() + surface_detail() + image()
+        pages += render_options() + raytracing() + shadows() + cast_shadows() + water() + splashes() + surface_detail() + image()
     block = (BEGIN
              + "    // Generated - edit tools/gen-render-menu.py, not this block.\n"
              + pages

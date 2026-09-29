@@ -34,6 +34,7 @@ layout(set = 0, binding = 2) uniform ActorShadow {
 	vec4 gridOrigin;    // w 1 if the map has a light grid
 	vec4 gridInvSize;
 	vec4 gridBounds;
+	vec4 soft;          // [QL] E167: x light size in world units, y rays per pixel
 };
 
 layout(set = 0, binding = 3, std430) readonly buffer LightGrid {
@@ -63,8 +64,9 @@ vec3 worldAt(ivec2 p, vec2 invSize) {
 }
 
 /* ambient and directed brightness (0..1) and direction at p, trilinear over
-   the grid points outside solid - as ssr.tmpl's gridLight */
-void gridAt(vec3 p, out float ambient, out float directed, out vec3 dir) {
+   the grid points outside solid - as ssr.tmpl's gridLight. Returns false
+   where every surrounding point is inside solid. */
+bool gridAt(vec3 p, out float ambient, out float directed, out vec3 dir) {
 	vec3 v = (p - gridOrigin.xyz) * gridInvSize.xyz;
 	vec3 f = fract(v);
 	ivec3 i0 = ivec3(floor(v));
@@ -102,6 +104,54 @@ void gridAt(vec3 p, out float ambient, out float directed, out vec3 dir) {
 	}
 	float dl = length(dir);
 	dir = dl > 0.0 ? dir / dl : vec3(0.0, 0.0, 1.0);
+	return total > 0.0 && dl > 0.0;
+}
+
+float hash(vec2 p, float n) {
+	return fract(sin(dot(p, vec2(12.9898, 78.233)) + n * 37.719) * 43758.5453);
+}
+
+/*
+[QL] E167: how far along d0 the light is, from where the grid's directions
+converge.
+
+The grid gives a direction toward the dominant light at every point, and
+nothing about how far away it is. E166 treated it as sunlight - parallel and
+unbounded - so a ceiling above a lamp looked down past the lamp and caught the
+shadow of whatever hung below it. Two more samples a little to either side
+point at the same light from slightly different places; where their lines
+come closest to the first is the light. The ray then stops there, as a ray to
+a lamp must.
+
+Where the lines are near parallel (a light far away, or several blended) or
+cross behind the surface, there is nothing to find and the answer is the
+maximum reach.
+*/
+float lightDistance(vec3 Q0, vec3 d0, float reach) {
+	vec3 up = abs(d0.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 t1 = normalize(cross(d0, up));
+	vec3 t2 = cross(d0, t1);
+	float sum = 0.0, n = 0.0;
+	for (int k = 0; k < 2; k++) {
+		vec3 Qi = Q0 + (k == 0 ? t1 : t2) * 48.0;
+		float a, dd;
+		vec3 di;
+		if (!gridAt(Qi, a, dd, di)) {
+			continue;
+		}
+		float b = dot(d0, di);
+		float denom = 1.0 - b * b;
+		if (denom < 0.004) {
+			continue;               // parallel: too far to locate
+		}
+		vec3 w = Q0 - Qi;
+		float s0 = (b * dot(di, w) - dot(d0, w)) / denom;
+		if (s0 > 16.0) {
+			sum += s0;
+			n += 1.0;
+		}
+	}
+	return n > 0.0 ? min(sum / n, reach) : reach;
 }
 
 void main() {
@@ -140,23 +190,51 @@ void main() {
 
 	float ambient, directed;
 	vec3 L;
-	gridAt(P + N * 4.0, ambient, directed, L);   // off the surface: grid points inside walls are dark
+	vec3 Q0 = P + N * 4.0;          // off the surface: grid points inside walls are dark
+	if (!gridAt(Q0, ambient, directed, L)) {
+		return;
+	}
 	float ndl = dot(N, L);
 	if (ndl <= 0.02 || directed <= 0.0) {
 		return;                     // this light never reached here to be blocked
 	}
 
-	rayQueryEXT rq;
-	rayQueryInitializeEXT(rq, topLevel,
-		gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-		uint(params.z), P + N * 2.0, 0.0, L, params.y);
-	while (rayQueryProceedEXT(rq)) {}
-	if (rayQueryGetIntersectionTypeEXT(rq, true) == gl_RayQueryCommittedIntersectionNoneEXT) {
+	/* [QL] E167: to the light's estimated position, not along a direction
+	   forever - and, with a size, from a spread of points on it (softness) */
+	float dist = lightDistance(Q0, L, params.y);
+	vec3 lightPos = Q0 + L * dist;
+	vec3 O = P + N * 2.0;
+	int rays = clamp(int(soft.y), 1, 16);
+	float blocked = 0.0;
+	for (int i = 0; i < rays; i++) {
+		vec3 target = lightPos;
+		if (soft.x > 0.0) {
+			vec3 r = vec3(hash(gl_FragCoord.xy, float(i)), hash(gl_FragCoord.yx, float(i) + 3.1),
+			              hash(gl_FragCoord.xy * 1.7, float(i) + 7.3)) * 2.0 - 1.0;
+			target += r * soft.x;
+		}
+		vec3 d = target - O;
+		float len = length(d);
+		float tmax = len - 8.0;     // stop short of the light and what it sits in
+		if (tmax <= 1.0) {
+			continue;
+		}
+		rayQueryEXT rq;
+		rayQueryInitializeEXT(rq, topLevel,
+			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+			uint(params.z), O, 0.0, d / len, tmax);
+		while (rayQueryProceedEXT(rq)) {}
+		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+			blocked += 1.0;
+		}
+	}
+	blocked /= float(rays);
+	if (blocked <= 0.0) {
 		return;
 	}
 
 	float lost = directed * ndl / max(ambient + directed * ndl, 1e-3);
-	lost *= clamp(params.x, 0.0, 1.0);
-	out_color = params.w > 0.0 ? vec4(1.0, 0.25, 0.25, 1.0)     // debug: shadowed pixels red
+	lost *= clamp(params.x, 0.0, 1.0) * blocked;
+	out_color = params.w > 0.0 ? vec4(1.0, 1.0 - 0.75 * blocked, 1.0 - 0.75 * blocked, 1.0)   // debug: red
 	                           : vec4(vec3(1.0 - lost), 1.0);
 }

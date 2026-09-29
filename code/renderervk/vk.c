@@ -6310,7 +6310,7 @@ void vk_rt_prebuild_dynamic( void )
 		return;
 	}
 	if ( !( r_rtModelShadows->integer || r_rtDlightShadows->integer || R_SHADOWS_TRACED ||
-			r_rtActorShadows->integer ) ) {
+			r_rtActorShadows->integer || r_rtLevelShadows->integer ) ) {
 		return;
 	}
 
@@ -13963,6 +13963,7 @@ typedef struct {
 	float gridOrigin[4];
 	float gridInvSize[4];
 	float gridBounds[4];
+	float soft[4];        // [QL] E167: x light size (world units), y rays
 } actorShadowUniform_t;
 
 void vk_actor_shadow_destroy( void )
@@ -14170,11 +14171,16 @@ qboolean vk_actor_shadows( void )
 	actorShadowUniform_t *u;
 	float proj[16], vp[16];
 
-	if ( !( r_rtActorShadows->integer || R_SHADOWS_TRACED ) ) {
+	/* [QL] E167: one pass for both - players and items (silhouettes) and the
+	   level itself, traced toward the same estimated light */
+	const qboolean actors = ( r_rtActorShadows->integer || R_SHADOWS_TRACED ) &&
+		vk.rt.world.actorReady && vk.rt.world.actorTris > 0;
+	const qboolean level = ( r_rtLevelShadows->integer || R_SHADOWS_TRACED ) ? qtrue : qfalse;
+
+	if ( !actors && !level ) {
 		return qfalse;
 	}
-	if ( !vk.actorShadow.ready || !vk.rt.world.actorReady || !backEnd.doneRTDynamic ||
-		vk.rt.world.actorTris == 0 || vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
+	if ( !vk.actorShadow.ready || !backEnd.doneRTDynamic || vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return qfalse;
 	}
 	u = (actorShadowUniform_t *)vk.actorShadow.uniform_ptr[ vk.cmd_index ];
@@ -14198,9 +14204,12 @@ qboolean vk_actor_shadows( void )
 #endif
 	u->depthInfo[3] = 0.0f;
 	u->params[0] = r_rtActorShadowStrength->value;
-	u->params[1] = r_rtModelShadowDistance->value;
-	u->params[2] = (float)RT_MASK_SILHOUETTE;
-	u->params[3] = r_rtActorShadows->integer >= 2 ? 1.0f : 0.0f;
+	u->params[1] = r_rtActorShadowLength->value;
+	u->params[2] = (float)( ( actors ? RT_MASK_SILHOUETTE : 0 ) | ( level ? RT_MASK_LEVEL : 0 ) );
+	u->params[3] = ( r_rtActorShadows->integer >= 2 || r_rtLevelShadows->integer >= 2 ) ? 1.0f : 0.0f;
+	u->soft[0] = r_rtActorShadowSoftness->value;
+	u->soft[1] = (float)r_rtActorShadowRays->integer;
+	u->soft[2] = u->soft[3] = 0.0f;
 	if ( vk.rt.world.haveGrid && tr.world ) {
 		VectorCopy( tr.world->lightGridOrigin, u->gridOrigin );
 		VectorCopy( tr.world->lightGridInverseSize, u->gridInvSize );

@@ -6048,6 +6048,50 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E167. Traced shadows on the level: cast from where the light is, by the level too, and soft (`r_rtLevelShadows`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported on E166, with screenshots from the hallway and the mega health room:
+- shadows land in the wrong places: long streaks, high on walls, and on the mega health room's ceiling. The ceiling one is cast by the **item**, not the player;
+- softness does nothing;
+- the level casts no shadows, e.g. the hallway drop-off onto the floor below. "My shadow should match the shadow it should be casting."
+
+**Why the E166 shadows were wrong:** E166 treated the light grid's direction at each pixel as sunlight. It traced parallel rays 1024 units toward it, whatever the real light's distance. Two problems:
+- A ceiling lit by a lamp below it has a grid direction pointing down. The ray went down past the lamp and found the mega health sitting on the floor, so the item shadowed the ceiling.
+- Every short-range light threw shadows up to 1024 units long.
+
+**Fix: estimate where the light is, and stop there** (`actorshadow.tmpl`, `lightDistance`).
+- The grid gives a direction but no distance. The pass samples the grid at two points 48 units either side of the pixel, across the light direction.
+- It then takes the closest approach of the three direction lines. Where they converge is the light.
+- Where they don't converge (parallel, i.e. a distant or sky light), it falls back to `r_rtActorShadowLength`. That is the new cap, default 512 (was the shared 1024).
+- Rays now end 8 units short of that point. A lamp below the ceiling is behind nothing, and a shadow is only as long as the light's geometry makes it.
+
+**Level shadows** (`r_rtLevelShadows` 0/1/2, default 0):
+- The same rays, from the same estimated light, also test the level's own geometry (mask 0x01, which includes doors and lifts).
+- So a ledge or a beam shadows the floor below it, and the player's shadow and the ledge's shadow come from the same place and agree.
+- The map's baked lighting already has coarse shadows. This adds the sharp edges it blurs, and it darkens only the grid's directed share, the same as the players' shadows, so a spot already in baked shadow does not go darker twice.
+
+**Softness:**
+- `r_rtActorShadowSoftness` (8) is the light's size in world units. Each ray aims at a jittered point on it.
+- `r_rtActorShadowRays` (4) is rays per pixel, averaged.
+- 0 is hard. The penumbra grows with the distance from caster to receiver, as a real one does.
+
+**Menu:** a new **Cast Shadows** tab (Render → Cast Shadows). It holds:
+- Player shadows, Level shadows, Strength, Softness, Rays;
+- "Players block lights" (`r_rtShadowCasters`), moved from the Shadows tab.
+
+To make room for the tab, "Render Options" is now "Render" and "Ray Tracing" is now "Lighting & RT". **Shadows: Traced** (`cg_shadows 4`) turns on both players and level. Everything is live.
+
+**Checked** (the tester's settings, lavapipe, 0 validation errors, local test cube as the caster):
+- The cube on the stairs casts a short shadow right behind and below it, not E166's long streak up the steps.
+- Softness 32 with 16 rays blurs its edge.
+- Level shadows, debug view, in the stair hall and the flag room: the ceiling pipes and beams shadow the floor and the walls, and open floor stays unshadowed.
+
+**Not checked:**
+- Real player and item models, and the mega health room itself. Those need pak00's models; please look at the ceiling there.
+- How good the light-position estimate is under every light in the map. Where two lights overlap, the grid's direction is their blend, and the estimate lands between them.
+- Known: a model can be darkened by both the model pass (`r_rtModelShadows`) and this pass. If a player looks too dark in shadow, lower one strength.
+
 ### E166. Players and items cast traced shadows on the level, with their real shapes (`r_rtActorShadows`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
