@@ -6048,6 +6048,25 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E164. "Traced" shadows offered only while ray tracing is active — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for: the fourth Shadows option "should only be visible when ray tracing is enabled".
+
+**Menu:** a multi cannot hide one of its own values, so the Lighting page's Shadows row is now two controls in the same place.
+- The five-value list (with Traced) is shown while `r_rtActive` is 1.
+- The four-value list (without it) is shown otherwise.
+- New generator row kind `multi_gated` in `gen-ingame-menu.py`. check-menus already treats a `showCvar`/`hideCvar` pair on one cvar as exclusive, so the overlap needs no waiver.
+- `r_rtActive` is the renderer's own read-only "ray query is enabled this run", not `r_rt`, which only asks for it.
+
+**A leftover 4:** a `cg_shadows 4` saved from a run with ray tracing would draw a blank row in the list that does not offer it. So at renderer start, without ray tracing, it becomes 2 (Stencil) with a warning. Stencil is what Traced was falling back to anyway.
+
+**Checked:**
+- `r_rt 0` with `cg_shadows 4`: "Shadows: Traced needs ray tracing ... switched to Stencil", and `cg_shadows` reads 2.
+- `r_rt 1`: stays 4.
+- check-menus and check-menu-defaults pass.
+- Not looked at on screen: the swap is the same cvarTest mechanism the render pages' status rows use.
+
 ### E163. Lighting > Shadows: a fourth option, "Traced" (`cg_shadows 4`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

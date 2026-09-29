@@ -8235,6 +8235,19 @@ void vk_initialize( void )
 	ri.Cvar_Set( "r_rtAvailable", vk.rayQuery ? "1" : "0" );
 	ri.Cvar_Set( "r_rtActive", vk.rtActive ? "1" : "0" );
 
+	/*
+	[QL] E164. Shadows "Traced" (cg_shadows 4) is offered only while ray
+	tracing is active - the menu shows it only when r_rtActive is 1. A value
+	of 4 left over from a run that had it would draw a blank row in the list
+	that does not offer it, so it becomes Stencil, which is what it was
+	falling back to anyway, and says so.
+	*/
+	if ( !vk.rtActive && r_shadows && r_shadows->integer == 4 ) {
+		ri.Printf( PRINT_WARNING, "Shadows: Traced needs ray tracing (r_rt 1 and a GPU that supports it) - "
+			"switched to Stencil\n" );
+		ri.Cvar_Set( "cg_shadows", "2" );
+	}
+
 	Q_strncpyz( glConfig.vendor_string, vendor_name, sizeof( glConfig.vendor_string ) );
 	Q_strncpyz( glConfig.renderer_string, renderer_name( &props ), sizeof( glConfig.renderer_string ) );
 
