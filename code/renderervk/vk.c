@@ -10110,6 +10110,16 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			blend = qfalse;
 			multiply = qtrue;
 			break;
+		case 21: // [QL] E169 the same, written into the occlusion target for AO's denoise to smooth
+			pipeline = &vk.actorShadow.pipeline_offscreen;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.actor_shadow_ms_fs : vk.modules.actor_shadow_fs;
+			renderpass = vk.render_pass.rtao_offscreen;
+			layout = vk.actorShadow.pipeline_layout;
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "actor shadow pipeline (to denoise)";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
 		case 18: // [QL] E156 the reflection march with the ray-traced fallback - case 8's twin
 		case 19: // and at half resolution - case 13's
 			pipeline = ( program_index == 18 ) ? &vk.ssr.rt_trace_pipeline : &vk.ssr.rt_trace_pipeline_half;
@@ -13975,6 +13985,10 @@ void vk_actor_shadow_destroy( void )
 		qvkDestroyPipeline( vk.device, vk.actorShadow.pipeline, NULL );
 		vk.actorShadow.pipeline = VK_NULL_HANDLE;
 	}
+	if ( vk.actorShadow.pipeline_offscreen != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.actorShadow.pipeline_offscreen, NULL );
+		vk.actorShadow.pipeline_offscreen = VK_NULL_HANDLE;
+	}
 	if ( vk.actorShadow.pipeline_layout != VK_NULL_HANDLE ) {
 		qvkDestroyPipelineLayout( vk.device, vk.actorShadow.pipeline_layout, NULL );
 		vk.actorShadow.pipeline_layout = VK_NULL_HANDLE;
@@ -14153,6 +14167,11 @@ void vk_actor_shadow_create( void )
 	if ( vk.actorShadow.pipeline == VK_NULL_HANDLE ) {
 		goto fail;
 	}
+	/* [QL] E169: only where AO's targets and denoise exist to hand it to;
+	   without them soft shadows are drawn straight in, as before */
+	if ( vk.rt.aoReady && vk.render_pass.rtao_offscreen != VK_NULL_HANDLE ) {
+		vk_create_post_process_pipeline( 21, glConfig.vidWidth, glConfig.vidHeight );
+	}
 
 	vk_actor_shadow_update_descriptor();   /* a map already loaded (vid_restart) */
 	return;
@@ -14170,6 +14189,7 @@ qboolean vk_actor_shadows( void )
 {
 	actorShadowUniform_t *u;
 	float proj[16], vp[16];
+	qboolean denoise;
 
 	/* [QL] E167: one pass for both - players and items (silhouettes) and the
 	   level itself, traced toward the same estimated light */
@@ -14207,7 +14227,10 @@ qboolean vk_actor_shadows( void )
 	u->params[1] = r_rtActorShadowLength->value;
 	u->params[2] = (float)( ( actors ? RT_MASK_SILHOUETTE : 0 ) | ( level ? RT_MASK_LEVEL : 0 ) );
 	u->params[3] = ( r_rtActorShadows->integer >= 2 || r_rtLevelShadows->integer >= 2 ) ? 1.0f : 0.0f;
-	u->soft[0] = r_rtActorShadowSoftness->value;
+	/* [QL] E169 */
+	denoise = ( u->soft[0] = r_rtActorShadowSoftness->value ) > 0.0f && u->params[3] == 0.0f &&
+		r_rtActorShadowDenoise->integer && vk.actorShadow.pipeline_offscreen != VK_NULL_HANDLE &&
+		vk.rt.aoReady && vk.rt.pipeline_blur != VK_NULL_HANDLE && vk.rt.pipeline != VK_NULL_HANDLE;
 	u->soft[1] = (float)r_rtActorShadowRays->integer;
 	u->soft[2] = u->soft[3] = 0.0f;
 	if ( vk.rt.world.haveGrid && tr.world ) {
@@ -14227,12 +14250,62 @@ qboolean vk_actor_shadows( void )
 		glConfig.stencilBits ? ( VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT ) : VK_IMAGE_ASPECT_DEPTH_BIT,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 		0, 0 );
-	vk_begin_rtao_render_pass();
 
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pipeline );
-	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		vk.actorShadow.pipeline_layout, 0, 1, &vk.actorShadow.descriptor[ vk.cmd_index ], 0, NULL );
-	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+	/*
+	[QL] E169: soft edges through AO's denoise.
+
+	A soft shadow is a handful of rays at different points on the light, and
+	four rays is five shades of grey: without smoothing the penumbra is a
+	speckle, which is how "softness does not work" looked on screen. AO has the
+	same problem and already solves it - a two-pass blur that stops at depth
+	edges, so a shadow does not bleed off a step onto the wall behind it. The
+	AO pass is finished with its two targets by now, so the shadow borrows
+	them: traced into target 0, blurred across into 1, blurred down and
+	multiplied into the scene by AO's own composite.
+
+	Not for hard shadows (nothing to smooth, and the blur would soften them),
+	nor for the debug view (the targets hold one channel and the view is red).
+	*/
+	if ( denoise ) {
+		rtaoBlurPush_t blur;
+
+		blur.depthLinear[0] = proj[10];
+		blur.depthLinear[1] = proj[14];
+		blur.depthLinear[2] = 0.05f;
+		blur.depthLinear[3] = 1.0f;
+
+		vk_begin_rtao_offscreen_render_pass( 0, 1 );
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pipeline_offscreen );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.actorShadow.pipeline_layout, 0, 1, &vk.actorShadow.descriptor[ vk.cmd_index ], 0, NULL );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+		vk_end_render_pass();
+
+		blur.step[0] = 1.0f; blur.step[1] = 0.0f; blur.step[2] = 1.0f; blur.step[3] = 0.0f;
+		vk_begin_rtao_offscreen_render_pass( 1, 1 );
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline_blur );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[0], 0, NULL );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+		vk_end_render_pass();
+
+		blur.step[0] = 0.0f; blur.step[1] = 1.0f; blur.step[2] = 1.0f; blur.step[3] = 1.0f;
+		vk_begin_rtao_render_pass();
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[1], 0, NULL );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+	} else {
+		vk_begin_rtao_render_pass();
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pipeline );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.actorShadow.pipeline_layout, 0, 1, &vk.actorShadow.descriptor[ vk.cmd_index ], 0, NULL );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+	}
 
 	vk_end_composite_render_pass();
 

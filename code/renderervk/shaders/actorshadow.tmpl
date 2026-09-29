@@ -109,8 +109,11 @@ bool gridAt(vec3 p, out float ambient, out float directed, out vec3 dir) {
 	return total > 0.0 && dl > 0.0;
 }
 
-float hash(vec2 p, float n) {
-	return fract(sin(dot(p, vec2(12.9898, 78.233)) + n * 37.719) * 43758.5453);
+/* [QL] E169: interleaved gradient noise (Jimenez 2014) - a fixed per-pixel
+   value in 0..1 whose neighbours differ as much as possible, which is what a
+   blur averages away best */
+float ign(vec2 p) {
+	return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
 
 /*
@@ -222,13 +225,25 @@ void main() {
 	   past the lamp and finds the far wall. */
 	uint actorMask = mask & ~uint(RT_MASK_LEVEL_BIT);
 	uint levelMask = found ? (mask & uint(RT_MASK_LEVEL_BIT)) : 0u;
+	/* [QL] E169: the points on the light, spread evenly over a disc facing
+	   this pixel rather than scattered through a cube (half of whose spread
+	   ran along the ray and did nothing). A golden-angle spiral covers the disc
+	   evenly at any ray count, and each pixel turns it by a fixed amount from
+	   interleaved gradient noise, so neighbours sample different points and
+	   the denoise has an average to find - the old per-pixel hash gave
+	   clumps, and clumps survive a blur. */
+	vec3 Lc = normalize(lightPos - O);
+	vec3 sUp = abs(Lc.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 s1 = normalize(cross(Lc, sUp));
+	vec3 s2 = cross(Lc, s1);
+	float spin = ign(gl_FragCoord.xy) * 6.2831853;
 	float blocked = 0.0;
 	for (int i = 0; i < rays; i++) {
 		vec3 target = lightPos;
 		if (soft.x > 0.0) {
-			vec3 r = vec3(hash(gl_FragCoord.xy, float(i)), hash(gl_FragCoord.yx, float(i) + 3.1),
-			              hash(gl_FragCoord.xy * 1.7, float(i) + 7.3)) * 2.0 - 1.0;
-			target += r * soft.x;
+			float rr = sqrt((float(i) + 0.5) / float(rays)) * soft.x;
+			float a = float(i) * 2.3999632 + spin;
+			target += (s1 * cos(a) + s2 * sin(a)) * rr;
 		}
 		vec3 d = target - O;
 		float len = length(d);

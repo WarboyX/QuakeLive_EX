@@ -139,8 +139,8 @@ vec3 rtToWorld(vec3 v) {
 	return rtAxis0.xyz * v.x + rtAxis1.xyz * v.y + rtAxis2.xyz * v.z;
 }
 
-float rtHash(vec2 p, float n) {
-	return fract(sin(dot(p, vec2(12.9898, 78.233)) + n * 37.719) * 43758.5453);
+float rtIgn(vec2 p) {
+	return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
 
 /*
@@ -162,13 +162,21 @@ float rtLightVisibility(vec3 Pobj, vec3 Nobj, vec3 Lobj) {
 	vec3 O = wP + wN * 1.0;
 
 	int samples = clamp(int(rtParams.y), 1, 8);
+	/* [QL] E169: points on a disc facing the surface, in a golden-angle
+	   spiral turned per pixel by interleaved gradient noise - even coverage
+	   instead of random clumps through a cube (see actorshadow.tmpl) */
+	vec3 Lc = normalize(wL - O);
+	vec3 sUp = abs(Lc.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 s1 = normalize(cross(Lc, sUp));
+	vec3 s2 = cross(Lc, s1);
+	float spin = rtIgn(gl_FragCoord.xy) * 6.2831853;
 	float occluded = 0.0;
 	for (int i = 0; i < samples; i++) {
 		vec3 target = wL;
 		if (rtParams.z > 0.0) {
-			vec3 r = vec3(rtHash(gl_FragCoord.xy, float(i)), rtHash(gl_FragCoord.yx, float(i) + 3.1),
-			              rtHash(gl_FragCoord.xy * 1.7, float(i) + 7.3)) * 2.0 - 1.0;
-			target += r * rtParams.z;
+			float rr = sqrt((float(i) + 0.5) / float(samples)) * rtParams.z;
+			float a = float(i) * 2.3999632 + spin;
+			target += (s1 * cos(a) + s2 * sin(a)) * rr;
 		}
 		vec3 d = target - O;
 		float dist = length(d);

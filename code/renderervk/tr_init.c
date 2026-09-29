@@ -79,6 +79,7 @@ cvar_t	*r_rtActorShadowStrength;
 cvar_t	*r_rtActorShadowLength;   // [QL] E167
 cvar_t	*r_rtActorShadowSoftness;
 cvar_t	*r_rtActorShadowRays;
+cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
 cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
@@ -2749,6 +2750,12 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_rtActorShadowRays, "1", "16", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtActorShadowRays, "Rays per pixel for the traced shadows on the level. "
 		"More makes soft edges smoother and costs more." );
+	r_rtActorShadowDenoise = ri.Cvar_Get( "r_rtActorShadowDenoise", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowDenoise, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorShadowDenoise, "Smooths the soft edges of the traced shadows on the "
+		"level with the ambient occlusion's edge-aware blur, so a few rays make a gradient instead of "
+		"speckle. Only while " S_COLOR_CYAN "\\r_rtActorShadowSoftness" S_COLOR_WHITE " is above 0, and not "
+		"in the debug view.\n 0 - off: the raw rays\n 1 - on (default)" );
 	r_rtLevelShadows = ri.Cvar_Get( "r_rtLevelShadows", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtLevelShadows, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtLevelShadows, "The level casts ray-traced shadows on itself - ledges, "

@@ -1024,6 +1024,7 @@ typedef struct {
 		VkDescriptorSet			descriptor[ NUM_COMMAND_BUFFERS ];
 		VkPipelineLayout		pipeline_layout;
 		VkPipeline				pipeline;
+		VkPipeline				pipeline_offscreen;	/* [QL] E169: into the occlusion target, for the denoise */
 		VkBuffer				uniform_buffer[ NUM_COMMAND_BUFFERS ];
 		VkDeviceMemory			uniform_memory[ NUM_COMMAND_BUFFERS ];
 		void					*uniform_ptr[ NUM_COMMAND_BUFFERS ];

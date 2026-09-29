@@ -6048,6 +6048,36 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E169. Soft traced shadows: smooth instead of speckled (`r_rtActorShadowDenoise`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported: "What about shadow softness? Because they didn't seem to be working like it should on the previous build."
+
+**What was wrong:** softness was implemented, but at the ray counts anyone runs it looked broken.
+- A soft shadow is a few rays aimed at different points on the light. With 4 rays each pixel is one of five shades, and each pixel picked its points with a random hash. So the penumbra was a speckle, not a gradient: raw 4-ray softness 16, zoomed, is a cross-hatched dither.
+- The points were scattered through a cube around the light, so part of every spread ran along the ray and softened nothing.
+
+**Fix:**
+- **Players/items/level (`actorshadow.tmpl`):**
+  - The points now lie on a disc facing the pixel, in a golden-angle spiral (even coverage at any ray count). Each pixel turns the spiral by interleaved gradient noise, so neighbouring pixels sample different points.
+  - With softness above 0, the pass then goes through the ambient-occlusion denoise, which stops at depth edges. It is drawn into AO's first target, blurred across into the second, then blurred down and multiplied into the scene by AO's composite. AO has finished with both targets by then.
+  - It runs whether AO is on or off, and costs two fullscreen passes. Hard shadows (softness 0) and the debug views are drawn straight in, as before.
+- **Dynamic-light and model shadows (`light_frag.tmpl`, `rtshadow_frag.tmpl`):** same spiral and noise. They are drawn per surface, so they cannot take the fullscreen denoise. The speckle is finer and more even, but still a dither at 4 rays.
+
+**Option:** `r_rtActorShadowDenoise` 0/1 (default 1), Render → Cast Shadows → "Soft edge denoise". 0 shows the raw rays, for comparison.
+
+**Checked** (the tester's settings, including RT AO at half resolution with its wide denoise; 0 validation errors; six-cube cluster):
+- Courtyard spawn point:
+  - softness 0 gives sharp shadows, 16 gives soft;
+  - 16 with 4 rays: raw is cross-hatched, denoised is a smooth gradient about as clean as 16 raw rays;
+  - 32 is softer again;
+  - with AO off, the denoise still runs.
+- Flag room: the level's shadows soften the same way.
+- Dynamic lights, three coloured lights around the cluster: softness 16 at 4 rays softens and 32 more.
+  - A first run seemed to show 16 at 4 rays as hard as 0. With the order changed it did not repeat: the shot had been taken before the cvar took effect.
+
+**Seen, not fixed:** small sharp specks and thin streaks on the flag room's floor, the same at every softness and at 16 rays. They were already in E168's frames. They look like grazing light catching the floor's seams. That is a separate item: needs a look with the debug view on the real textures.
+
 ### E168. Traced level shadows: no false shadows on lit walls; tested with several casters and several lights — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
