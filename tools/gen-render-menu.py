@@ -475,7 +475,7 @@ def shadows():
         # [QL] E161. Shadows cast by the level, through its acceleration
         # structure - the level only, not players, items or doors. All live.
         ("h", "LEVEL SHADOWS ON LIGHTS"),
-        ("yesno", "r_rtDlightShadows", "Dynamic light shadows", None),
+        ("multi", "r_rtDlightShadows", "Dynamic light shadows", '"Off (default)" 0 "On" 1 "Debug (blocked light red)" 2'),
         ("multi", "r_rtDlightShadowStrength", "Strength",
          '"0.25" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1'),
         ("multi", "r_rtDlightShadowSoftness", "Softness",
@@ -491,6 +491,7 @@ def shadows():
         ("multi", "r_rtModelShadowDistance", "Reach",
          '"256" 256 "512" 512 "1024 (default)" 1024 "2048" 2048 "4096" 4096'),
         ("help", "Soft edges need more rays. Cast by the level only, not players or doors."),
+        ("help", "Console: rtshadows says what both passes did last frame, and why not."),
     ]
     reset = reset_button(spec)
     return page(name("shadows"), "RAY-TRACED SHADOWS", spec, [reset, CLOSE])

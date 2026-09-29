@@ -1750,6 +1750,12 @@ static void R_MapLights_f( void ) {
 
 
 
+/* [QL] E162: what the ray-traced shadow passes did last frame */
+static void R_RTShadows_f( void ) {
+	R_RTShadowReport( qtrue );
+}
+
+
 static void R_Register( void )
 {
 	// make sure all the commands added here are also removed in R_Shutdown
@@ -1765,6 +1771,7 @@ static void R_Register( void )
 #ifdef USE_VULKAN
 	ri.Cmd_AddCommand( "vkinfo", VkInfo_f );
 	ri.Cmd_AddCommand( "rtao_instances", R_RTAOInstances_f );
+	ri.Cmd_AddCommand( "rtshadows", R_RTShadows_f );   // [QL] E162
 #endif
 
 	//
@@ -2670,11 +2677,13 @@ static void R_Register( void )
 	and doors (movers) cast none of these.
 	*/
 	r_rtDlightShadows = ri.Cvar_Get( "r_rtDlightShadows", "0", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_rtDlightShadows, "0", "1", CV_INTEGER );
+	ri.Cvar_CheckRange( r_rtDlightShadows, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtDlightShadows, "Dynamic lights (muzzle flashes, rockets, plasma, "
 		"explosions) are blocked by the level instead of lighting through walls and pillars. Needs "
 		S_COLOR_CYAN "\\r_rt" S_COLOR_WHITE " and per-pixel dynamic lights (" S_COLOR_CYAN "\\r_dlightMode"
-		S_COLOR_WHITE " 1 or 2)." );
+		S_COLOR_WHITE " 1 or 2).\n 0 - off (default)\n 1 - on\n 2 - debug: blocked light shows red instead "
+		"of going away\nThe console command " S_COLOR_CYAN "rtshadows" S_COLOR_WHITE " says what both "
+		"shadow passes did last frame." );
 	r_rtDlightShadowStrength = ri.Cvar_Get( "r_rtDlightShadowStrength", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtDlightShadowStrength, "0", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtDlightShadowStrength, "How much of a blocked dynamic light is removed, "
@@ -2949,6 +2958,7 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	ri.Cmd_RemoveCommand( "shaderstate" );
 #ifdef USE_VULKAN
 	ri.Cmd_RemoveCommand( "rtao_instances" );
+	ri.Cmd_RemoveCommand( "rtshadows" );
 	ri.Cmd_RemoveCommand( "vkinfo" );
 #endif
 

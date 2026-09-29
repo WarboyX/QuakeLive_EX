@@ -27,7 +27,8 @@ layout(set = 0, binding = 0) uniform UBO {
 	                        orientation, or identity for the world)
 	  rtParams              x strength 0..1, y rays per pixel, z light size in
 	                        world units (soft edge), w how far short of the
-	                        light the ray stops
+	                        light the ray stops; rtLight.w 1 for the debug
+	                        tint (r_rtDlightShadows 2)
 	*/
 	layout(offset = 128) vec4 rtOrigin;
 	layout(offset = 144) vec4 rtAxis0;
@@ -368,7 +369,15 @@ void main() {
 		vec3 Lobj = L.xyz;
 #endif
 		float vis = rtLightVisibility(P, N, Lobj);
-		intens *= 1.0 - clamp(rtParams.x, 0.0, 1.0) * (1.0 - vis);
+		float lost = clamp(rtParams.x, 0.0, 1.0) * (1.0 - vis);
+		if (rtLight.w > 0.0) {
+			/* [QL] E162 debug (r_rtDlightShadows 2): the blocked light turns
+			   red instead of going away, so it is obvious where it acts */
+			float i0 = max(max(intens.r, intens.g), intens.b);
+			intens = intens * (1.0 - lost) + vec3(i0 * lost, 0.0, 0.0);
+		} else {
+			intens *= 1.0 - lost;
+		}
 	}
 #endif
 

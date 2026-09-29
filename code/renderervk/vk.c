@@ -5183,6 +5183,8 @@ static void vk_rt_update_main_descriptor( void )
 		qvkUpdateDescriptorSets( vk.device, 1, &write, 0, NULL );
 	}
 	vk.rt.world.mainTlasWritten = qtrue;
+	ri.Printf( PRINT_ALL, "RT shadows: level structure bound - model and dynamic light shadows can run "
+		"(r_rtModelShadows %i, r_rtDlightShadows %i)\n", r_rtModelShadows->integer, r_rtDlightShadows->integer );
 }
 
 

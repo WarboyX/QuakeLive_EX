@@ -1123,6 +1123,95 @@ void VK_SetFogParams( vkUniform_t *uniform, int *fogStage )
 
 
 /*
+[QL] E162: what the ray-traced shadow passes did, per frame, and why not.
+
+E161 printed nothing, so "I see no shadows" could not be told apart from "the
+pass never ran" or "it ran and found nothing in the way" - on a machine that is
+not this one, from a log. rtShadowStats counts the current frame; the previous
+frame's numbers are what the report and the rtshadows command print.
+*/
+typedef struct {
+	int modelDrawn;            // model surfaces the shadow pass ran on
+	int modelNotEntity;        // world surfaces (lightmapped - nothing to do)
+	int modelTranslucent;      // first stage blends, so multiplying would darken what is behind
+	int modelNoGrid;           // no rgbGen lightingDiffuse stage - not lit from the light grid
+	int dlightTraced;          // dynamic-lit surfaces drawn with the shadow ray
+	int dlightPlain;           // ... drawn without it (feature off / not ready)
+} rtShadowStats_t;
+
+static rtShadowStats_t rtStatsCur, rtStatsLast;
+static int rtStatsFrame = -1;
+static int rtReportDue = -1;                  // frame at which a toggle gets reported
+
+static void RT_StatsFrame( void )
+{
+	if ( rtStatsFrame != tr.frameCount ) {
+		const qboolean first = ( rtStatsFrame < 0 );
+		rtStatsLast = rtStatsCur;
+		Com_Memset( &rtStatsCur, 0, sizeof( rtStatsCur ) );
+		rtStatsFrame = tr.frameCount;
+		if ( !first ) {
+			R_RTShadowReport( qfalse );   // says so once, the frame after a toggle
+		}
+	}
+}
+
+void R_RTShadowReport( qboolean force );
+
+static const char *RT_NotReadyReason( void )
+{
+	if ( !vk.rtActive ) {
+		return "ray query is not active (r_rt 1 and vid_restart, and a GPU that supports it)";
+	}
+	if ( !vk.rt.world.mainTlasWritten ) {
+		return "the level's acceleration structure is not bound (no map loaded, or it failed to build - see the RT: lines at map load)";
+	}
+	return NULL;
+}
+
+void R_RTShadowReport( qboolean force )
+{
+	const char *why = RT_NotReadyReason();
+	const rtShadowStats_t *s = &rtStatsLast;
+	const int modelOn = r_rtModelShadows->integer ? 1 : 0;
+	const int dlOn = r_rtDlightShadows->integer ? 1 : 0;
+
+	if ( !force ) {
+		const int state = r_rtModelShadows->integer * 4 + r_rtDlightShadows->integer;
+		static int lastState = 0;
+		if ( state != lastState ) {
+			/* a toggle is reported two frames on, so "last frame" is one that
+			   was drawn with the new setting from start to finish */
+			lastState = state;
+			rtReportDue = tr.frameCount + 2;
+			return;
+		}
+		if ( rtReportDue < 0 || tr.frameCount < rtReportDue ) {
+			return;
+		}
+		rtReportDue = -1;
+	}
+
+	ri.Printf( PRINT_ALL, "RT shadows: model %s, dynamic light %s%s%s\n",
+		modelOn ? ( r_rtModelShadows->integer >= 2 ? "debug" : "on" ) : "off",
+		dlOn ? ( r_rtDlightShadows->integer >= 2 ? "debug" : "on" ) : "off",
+		why ? " - NOT RUNNING: " : "", why ? why : "" );
+	if ( modelOn ) {
+		ri.Printf( PRINT_ALL, "  models last frame: %i surface(s) shadowed; skipped %i translucent, "
+			"%i not lit from the light grid\n", s->modelDrawn, s->modelTranslucent, s->modelNoGrid );
+	}
+	if ( dlOn ) {
+		if ( r_dlightMode->integer == 0 ) {
+			ri.Printf( PRINT_ALL, "  dynamic lights: r_dlightMode is 0 (classic) - these shadows need "
+				"per-pixel dynamic lights, r_dlightMode 1 or 2\n" );
+		} else {
+			ri.Printf( PRINT_ALL, "  dynamic lights last frame: %i lit surface(s) ray-traced, %i without "
+				"(0 lit surfaces means no dynamic light was touching anything)\n", s->dlightTraced, s->dlightPlain );
+		}
+	}
+}
+
+/*
 [QL] E161: object-to-world for the shadow rays, from the current orientation -
 the entity's for a model, identity for the world. The ray-traced shaders work
 in object space like the rest of the light pass and bring the result into the
@@ -1191,6 +1280,7 @@ static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 	uniform->rtParams[1] = (float)r_rtDlightShadowRays->integer;
 	uniform->rtParams[2] = r_rtDlightShadowSoftness->value;
 	uniform->rtParams[3] = 8.0f;   // stop short of the light: what it sits against must not shadow it
+	uniform->rtLight[3] = r_rtDlightShadows->integer >= 2 ? 1.0f : 0.0f;   // [QL] E162: debug tint
 }
 #endif
 
@@ -1265,13 +1355,19 @@ void VK_LightingPass( void )
 
 	/* [QL] E161: the ray-traced twin, when asked for and the level's structure
 	   is bound for this map */
+	RT_StatsFrame();
 	if ( r_rtDlightShadows->integer && vk.rt.world.mainTlasWritten ) {
 		const uint32_t rt = tess.light->linear
 			? vk.dlight1_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light]
 			: vk.dlight_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light];
 		if ( rt ) {
 			pipeline = rt;
+			rtStatsCur.dlightTraced++;
+		} else {
+			rtStatsCur.dlightPlain++;
 		}
+	} else {
+		rtStatsCur.dlightPlain++;
 	}
 
 	GL_SelectTexture( 0 );
@@ -1337,22 +1433,36 @@ static void VK_ModelShadowPass( void )
 	uint32_t pipeline, offset;
 	int i, lit;
 
+	RT_StatsFrame();
 	if ( !r_rtModelShadows->integer || !vk.rt.world.mainTlasWritten ) {
 		return;
 	}
-	if ( ent == NULL || ent == &tr.worldEntity || tess.shader->sort != SS_OPAQUE ) {
+	if ( ent == NULL || ent == &tr.worldEntity ) {
+		rtStatsCur.modelNotEntity++;
 		return;
 	}
-	if ( tess.shader->lightingStage < 0 ) {
+	/*
+	[QL] E162: opaque judged by the first stage, not by the shader's sort. The
+	sort is a draw-order hint a script can set for its own reasons; what matters
+	here is whether the surface covers what is behind it, which is whether its
+	first stage blends.
+	*/
+	if ( tess.xstages[0] == NULL || ( tess.xstages[0]->stateBits & GLS_BLEND_BITS ) ) {
+		rtStatsCur.modelTranslucent++;
 		return;
 	}
-	for ( i = 0, lit = 0; i < MAX_SHADER_STAGES && tess.xstages[i]; i++ ) {
-		if ( tess.xstages[i]->bundle[0].rgbGen == CGEN_LIGHTING_DIFFUSE ) {
-			lit = 1;
-			break;
+	/* any bundle of any stage lit from the grid */
+	for ( i = 0, lit = 0; i < MAX_SHADER_STAGES && tess.xstages[i] && !lit; i++ ) {
+		int b;
+		for ( b = 0; b < NUM_TEXTURE_BUNDLES; b++ ) {
+			if ( tess.xstages[i]->bundle[b].rgbGen == CGEN_LIGHTING_DIFFUSE ) {
+				lit = 1;
+				break;
+			}
 		}
 	}
 	if ( !lit ) {
+		rtStatsCur.modelNoGrid++;
 		return;
 	}
 
@@ -1385,18 +1495,29 @@ static void VK_ModelShadowPass( void )
 	/* the light pass pushes its own uniform when it next runs */
 	tess.dlightUpdateParams = qtrue;
 
-	pStage = tess.xstages[ tess.shader->lightingStage ];
-#ifdef USE_VBO
-	if ( tess.vboIndex == 0 )
-#endif
+	/*
+	[QL] E162: texture coordinates are bound because the vertex layout has
+	them, not because this shader reads them. The lighting stage's when there
+	is one; the first stage's otherwise - E161 required a lighting stage and
+	skipped any model without one.
+	*/
 	{
-		R_ComputeTexCoords( tess.shader->lightingBundle, &pStage->bundle[ tess.shader->lightingBundle ] );
-	}
+		const int st = tess.shader->lightingStage >= 0 ? tess.shader->lightingStage : 0;
+		const int bn = tess.shader->lightingStage >= 0 ? tess.shader->lightingBundle : 0;
+		pStage = tess.xstages[ st ];
+#ifdef USE_VBO
+		if ( tess.vboIndex == 0 )
+#endif
+		{
+			R_ComputeTexCoords( bn, &pStage->bundle[ bn ] );
+		}
 
-	vk_bind_pipeline( pipeline );
-	vk_bind_index();
-	vk_bind_lighting( tess.shader->lightingStage, tess.shader->lightingBundle );
-	vk_draw_geometry( tess.depthRange, qtrue );
+		vk_bind_pipeline( pipeline );
+		vk_bind_index();
+		vk_bind_lighting( st, bn );
+		vk_draw_geometry( tess.depthRange, qtrue );
+	}
+	rtStatsCur.modelDrawn++;
 }
 
 

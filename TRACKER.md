@@ -6048,6 +6048,37 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E162. Ray-traced shadows report what they did; debug view for light shadows; looser model conditions — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported on E161 (5476555) with a console log from the RTX 5080 laptop: "I don't see level shadows or model shadows."
+
+**What the log showed:** ray query enabled, and the level's structures built after both the map load and the vid_restart. It could not show anything else, because neither pass printed a line. That is the failure this entry fixes first.
+
+**Reproduction attempt:** the log's own settings (MSAA, float target, HDR bloom, RT AO at half resolution with 8 rays, ray-traced water fallback) in the harness, with 4x MSAA since llvmpipe has no 2x.
+- Both features work there: the debug tint shows, and a light behind a wall stops leaking through it when dynamic-light shadows are on.
+- Two early "reproductions" were harness mistakes. The command line was too long and dropped the map. `+exec` set the latched `r_rt` too late, so ray query was off. Recorded so neither is trusted again.
+- So the cause is not visible from here. These changes make it visible from there.
+
+**Changes:**
+- **At map load:** "RT shadows: level structure bound - model and dynamic light shadows can run", or nothing if it is not.
+- **Two frames after either option changes** (so the counted frame was fully drawn with the new setting): a report of what each pass did.
+  - Models: surfaces shadowed, and skipped as translucent or as not lit from the light grid.
+  - Dynamic lights: lit surfaces ray-traced or not, or that `r_dlightMode` is 0.
+  - Or NOT RUNNING, with the reason (ray query off, structure not bound).
+- **Console command `rtshadows`:** the same report on demand.
+- **`r_rtDlightShadows 2`:** a debug view where blocked light turns red instead of going away, like the model tint. Menu rows for both debug modes.
+- **Model pass conditions loosened:**
+  - Opaque is judged by whether the first stage blends, not by the shader's sort, which is a draw-order hint a script may set for its own reasons.
+  - A grid-lit stage is looked for in every bundle.
+  - A lighting stage is no longer required (texture coordinates come from the first stage when there is none).
+  - Each of those, in E161, could silently exclude Quake Live's own models.
+
+**Checked** (harness, the log's settings, 0 validation errors):
+- The report reads right, e.g. "models last frame: 1 surface(s) shadowed; skipped 11 translucent, 7 not lit from the light grid" and "13 lit surface(s) ray-traced, 0 without".
+- The dynamic-light debug turns the leaked light red.
+- **Open:** the actual cause on the 5080 laptop. Next step is the report lines from that machine.
+
 ### E161. Ray-traced shadows cast by the level: on dynamic lights and on models (`r_rtDlightShadows`, `r_rtModelShadows`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
