@@ -492,6 +492,7 @@ def shadows():
          '"256" 256 "512" 512 "1024 (default)" 1024 "2048" 2048 "4096" 4096'),
         ("help", "Soft edges need more rays. Cast by the level only, not players or doors."),
         ("help", "Console: rtshadows says what both passes did last frame, and why not."),
+        ("help", "Lighting > Shadows: Traced turns both on in place of Quake's shadows."),
     ]
     reset = reset_button(spec)
     return page(name("shadows"), "RAY-TRACED SHADOWS", spec, [reset, CLOSE])

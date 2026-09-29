@@ -954,8 +954,10 @@ SUBPAGES = [
         # 2 is the stencil volume path (tr_shadows.c RB_ShadowTessEnd) and 3
         # the flat projection (deformVertexes projectionShadow). The labels
         # had 2 and 3 swapped, so "Simple" chose stencil.
+        # E163: 4 is ours - the ray-traced level shadows (Render > Shadows)
+        # in place of Quake's; falls back to stencil without ray tracing.
         ("multi",  "cg_shadows",          "Shadows",
-                   '"Off" 0 "Blob" 1 "Stencil" 2 "Simple" 3'),
+                   '"Off" 0 "Blob" 1 "Stencil" 2 "Simple" 3 "Traced" 4'),
         # E155: own player's stencil shadow in first person (depth-fail volumes)
         ("yesno",  "r_stencilSelfShadow", "Own stencil shadow"),
         ("yesno",  "cg_deadBodyDarken",  "Darken dead bodies"),

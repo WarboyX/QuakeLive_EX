@@ -1589,6 +1589,23 @@ extern	cvar_t	*r_stencilSelfShadow;			// [QL] E155
 #else
 #define R_STENCIL_SELF_SHADOW 0
 #endif
+/*
+[QL] E163: cg_shadows 4, "Traced" - the ray-traced shadows (E161) in place of
+Quake's. Both ray-traced passes on, whatever their own toggles say (their
+strength, softness, rays, reach and debug settings still apply), and none of
+blob, stencil or projection.
+
+Without ray tracing - no ray query, or no level structure bound - it falls
+back to stencil rather than to no shadows at all, which is why every stencil
+test goes through R_STENCIL_SHADOWS instead of comparing r_shadows with 2.
+*/
+#ifdef USE_VULKAN
+#define R_RT_SHADOWS_READY ( vk.rt.world.mainTlasWritten )
+#else
+#define R_RT_SHADOWS_READY 0
+#endif
+#define R_SHADOWS_TRACED ( r_shadows->integer == 4 )
+#define R_STENCIL_SHADOWS ( r_shadows->integer == 2 || ( R_SHADOWS_TRACED && !R_RT_SHADOWS_READY ) )
 extern	cvar_t	*r_ssao;						// [QL] E154: 0 off, 1 on, 2 debug
 extern	cvar_t	*r_pipelineCache;				// [QL] E152: 0 off, 1 disk, 2 disk + pre-build
 extern	cvar_t	*r_ssrResolution;				// [QL] E151: 1 full, 2 half (live)

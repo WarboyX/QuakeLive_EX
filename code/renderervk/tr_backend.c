@@ -547,7 +547,7 @@ static void RB_BeginDrawingView( void ) {
 	// clear relevant buffers
 	clearBits = GL_DEPTH_BUFFER_BIT;
 
-	if ( r_shadows->integer == 2 )
+	if ( R_STENCIL_SHADOWS )
 	{
 		clearBits |= GL_STENCIL_BUFFER_BIT;
 	}
@@ -1727,7 +1727,7 @@ static const void *RB_ClearDepth( const void *data )
 	RB_EndSurface();
 
 #ifdef USE_VULKAN
-	vk_clear_depth( r_shadows->integer == 2 ? qtrue : qfalse );
+	vk_clear_depth( R_STENCIL_SHADOWS ? qtrue : qfalse );
 #else
 	qglClear( GL_DEPTH_BUFFER_BIT );
 #endif

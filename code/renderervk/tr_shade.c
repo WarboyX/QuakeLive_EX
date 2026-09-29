@@ -1173,11 +1173,11 @@ void R_RTShadowReport( qboolean force )
 {
 	const char *why = RT_NotReadyReason();
 	const rtShadowStats_t *s = &rtStatsLast;
-	const int modelOn = r_rtModelShadows->integer ? 1 : 0;
-	const int dlOn = r_rtDlightShadows->integer ? 1 : 0;
+	const int modelOn = ( r_rtModelShadows->integer || R_SHADOWS_TRACED ) ? 1 : 0;
+	const int dlOn = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? 1 : 0;
 
 	if ( !force ) {
-		const int state = r_rtModelShadows->integer * 4 + r_rtDlightShadows->integer;
+		const int state = r_rtModelShadows->integer * 16 + r_rtDlightShadows->integer * 4 + ( R_SHADOWS_TRACED ? 1 : 0 );
 		static int lastState = 0;
 		if ( state != lastState ) {
 			/* a toggle is reported two frames on, so "last frame" is one that
@@ -1192,10 +1192,14 @@ void R_RTShadowReport( qboolean force )
 		rtReportDue = -1;
 	}
 
-	ri.Printf( PRINT_ALL, "RT shadows: model %s, dynamic light %s%s%s\n",
+	ri.Printf( PRINT_ALL, "RT shadows%s: model %s, dynamic light %s%s%s\n",
+		R_SHADOWS_TRACED ? " (Shadows: Traced)" : "",
 		modelOn ? ( r_rtModelShadows->integer >= 2 ? "debug" : "on" ) : "off",
 		dlOn ? ( r_rtDlightShadows->integer >= 2 ? "debug" : "on" ) : "off",
 		why ? " - NOT RUNNING: " : "", why ? why : "" );
+	if ( why && R_SHADOWS_TRACED ) {
+		ri.Printf( PRINT_ALL, "  Shadows: Traced is drawing Quake's stencil shadows instead until ray tracing can run\n" );
+	}
 	if ( modelOn ) {
 		ri.Printf( PRINT_ALL, "  models last frame: %i surface(s) shadowed; skipped %i translucent, "
 			"%i not lit from the light grid\n", s->modelDrawn, s->modelTranslucent, s->modelNoGrid );
@@ -1276,7 +1280,7 @@ static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 	   the r_rtDlightShadows settings. Harmless to the plain light shader,
 	   which does not declare them. */
 	VK_SetRTTransform( uniform );
-	uniform->rtParams[0] = r_rtDlightShadows->integer ? r_rtDlightShadowStrength->value : 0.0f;
+	uniform->rtParams[0] = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? r_rtDlightShadowStrength->value : 0.0f;
 	uniform->rtParams[1] = (float)r_rtDlightShadowRays->integer;
 	uniform->rtParams[2] = r_rtDlightShadowSoftness->value;
 	uniform->rtParams[3] = 8.0f;   // stop short of the light: what it sits against must not shadow it
@@ -1356,7 +1360,7 @@ void VK_LightingPass( void )
 	/* [QL] E161: the ray-traced twin, when asked for and the level's structure
 	   is bound for this map */
 	RT_StatsFrame();
-	if ( r_rtDlightShadows->integer && vk.rt.world.mainTlasWritten ) {
+	if ( ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) && vk.rt.world.mainTlasWritten ) {
 		const uint32_t rt = tess.light->linear
 			? vk.dlight1_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light]
 			: vk.dlight_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light];
@@ -1434,7 +1438,7 @@ static void VK_ModelShadowPass( void )
 	int i, lit;
 
 	RT_StatsFrame();
-	if ( !r_rtModelShadows->integer || !vk.rt.world.mainTlasWritten ) {
+	if ( !( r_rtModelShadows->integer || R_SHADOWS_TRACED ) || !vk.rt.world.mainTlasWritten ) {
 		return;
 	}
 	if ( ent == NULL || ent == &tr.worldEntity ) {

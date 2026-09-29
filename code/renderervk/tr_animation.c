@@ -279,7 +279,7 @@ void R_MDRAddAnimSurfaces( trRefEntity_t *ent ) {
 		// depth-fail (tr_shadows.c), which is right with the eye inside one.
 		// r_stencilSelfShadow 0 puts the old exclusion back.
 		if ( ( !personalModel || R_STENCIL_SELF_SHADOW )
-		        && r_shadows->integer == 2
+		        && R_STENCIL_SHADOWS
 			&& fogNum == 0
 			&& !(ent->e.renderfx & ( RF_NOSHADOW | RF_DEPTHHACK ) )
 			&& shader->sort == SS_OPAQUE )

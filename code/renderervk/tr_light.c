@@ -342,7 +342,7 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 		// only direct lights
 		// but we need to deal with shadow light direction
 		VectorCopy( lightDir, shadowLightDir );
-		if ( r_shadows->integer == 2 ) {
+		if ( R_STENCIL_SHADOWS ) {
 			for ( i = 0 ; i < refdef->num_dlights ; i++ ) {
 				dl = &refdef->dlights[i];
 				if ( dl->linear ) // no support for linear lights atm
@@ -356,7 +356,7 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 				d = power / ( d * d );
 				VectorMA( shadowLightDir, d, dir, shadowLightDir );
 			}
-		} // if ( r_shadows->integer == 2 )
+		} // if ( R_STENCIL_SHADOWS )
 	}  // if ( r_dlightMode->integer == 2 )
 	else
 #endif
@@ -427,7 +427,7 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 	ent->lightDir[2] = DotProduct( lightDir, ent->e.axis[2] );
 
 #ifdef USE_PMLIGHT
-	if ( r_shadows->integer == 2 && r_dlightMode->integer == 2 ) {
+	if ( R_STENCIL_SHADOWS && r_dlightMode->integer == 2 ) {
 		VectorNormalize( shadowLightDir );
 		ent->shadowLightDir[0] = DotProduct( shadowLightDir, ent->e.axis[0] );
 		ent->shadowLightDir[1] = DotProduct( shadowLightDir, ent->e.axis[1] );

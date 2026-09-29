@@ -6048,6 +6048,26 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E163. Lighting > Shadows: a fourth option, "Traced" (`cg_shadows 4`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for: "Our shadows should supersede Quake's default ones, so we should add a 4th option 'traced'". Two shadow settings on two pages had been confusing: Lighting > Shadows (Quake's shadows cast by models) and Render > Shadows (ours, cast by the level).
+
+**`cg_shadows 4` "Traced":**
+- None of Quake's shadows: blob, stencil and simple all test for exactly 1, 2 or 3.
+- Both ray-traced passes (E161) on, whatever their own toggles say. Their strength, softness, rays, reach and debug settings still apply.
+- **Without ray tracing** (no ray query, or no level structure bound), it draws stencil shadows rather than none, and the report says so.
+- The renderer reads `cg_shadows` as its `r_shadows`, so this needed no cgame change. cgame's own checks (blob for 1, projection for 3) already draw nothing for 4.
+- Every stencil test in the renderer, 11 of them, goes through `R_STENCIL_SHADOWS` instead of comparing with 2, which is what makes the fallback work.
+
+**Menu:** in-game Settings → Lighting → Shadows gains "Traced". The Render → Shadows tab's help says Traced turns both passes on.
+
+**What Traced does not do yet:** players and items do not cast ray-traced shadows onto the level, so in Traced your own ground shadow is gone. That needs the per-frame structure (which has player stand-ins) built before the main pass.
+
+**Checked** (test cube, Khronos validation layer, 0 errors):
+- With ray tracing, Traced draws no stencil shadow and the model pass runs: the report reads "RT shadows (Shadows: Traced): model on, dynamic light on - 1 surface(s) shadowed".
+- With `r_rt 0`, Traced draws the same stencil shadow as Stencil; the only pixel difference is the report text.
+
 ### E162. Ray-traced shadows report what they did; debug view for light shadows; looser model conditions — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
