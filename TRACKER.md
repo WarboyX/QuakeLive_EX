@@ -6048,6 +6048,35 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E165. Traced shadows see doors, lifts and (optionally) players; AO and water reflections respect them — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for ("do all that next"), following the review of how the traced shadows interact with AO and water. This entry is step one; players casting onto the level is E166.
+
+**1. The per-frame structure is built before the 3D:** `vk_rt_prebuild_dynamic`.
+- The shadow rays traced the static level only. The structure with doors, lifts and players in it was built later in the frame, by AO or the water, in the same command buffer. Reading it earlier would have read a stale one that a later command rewrote.
+- Now, when any traced shadow is on, the main pass is paused before the view is cleared. The structure is built, and the frame continues in the after-composite pass, which is identical to main except that it loads.
+- AO and the water find it built (`backEnd.doneRTDynamic`) and do not build it again.
+- The main pass's shadow binding names the per-frame structure.
+- The shadow rays now cull back faces like AO's, so a ray leaving a model's own proxy box gets out.
+
+**Instance masks:** 0x01 is the level and its movers (brush models: doors, lifts, platforms); 0x02 is players and items. AO and the water still trace 0xFF.
+
+**`r_rtShadowCasters`** (Render → Shadows → "Cast by"; live):
+- 0 = the level, doors and lifts (the default).
+- 1 = also players and items, as the rough boxes AO uses. Blocky up close, hence opt-in.
+
+**2. AO's "Lights clear AO" respects the shadows.** With light shadows on, a light clears occlusion only where one ray reaches it, the same test the light shader makes. Before, a rocket behind a wall still brightened the corner on this side.
+
+**3. Water glow respects them.** The water's reflected glow of a dynamic light is tested for line of sight from the water surface. The ray-traced water variant is used for this whenever light shadows are on, even with `r_ssrRayTrace 0`; `rtInfo.x` still says whether the fallback itself runs.
+
+**Checked** (harness, the tester's settings: MSAA, float target, HDR bloom, RT AO at half resolution, ray-traced water; 0 validation errors):
+- A light behind a wall leaks with shadows off, and not with them on, in both caster modes.
+- The AO debug view changes (94k pixels) when light shadows change. By eye the difference is slight, so treat it as measured rather than seen.
+- The model debug tint still shows.
+- Traced shows no leak.
+- Not checked in the harness: a door in the way (none in the test view), and the water glow test (needs a visible light over water).
+
 ### E164. "Traced" shadows offered only while ray tracing is active — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

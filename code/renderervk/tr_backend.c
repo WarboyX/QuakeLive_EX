@@ -1411,6 +1411,12 @@ static const void *RB_DrawSurfs( const void *data ) {
 	VBO_UnBind();
 #endif
 
+#ifdef USE_VULKAN
+	// [QL] E165: the ray-tracing structure the shadow rays trace, built outside
+	// the render pass and before the view is cleared - see the function
+	vk_rt_prebuild_dynamic();
+#endif
+
 	// clear the z buffer, set the modelview, etc
 	RB_BeginDrawingView();
 

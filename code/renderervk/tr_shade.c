@@ -1226,7 +1226,9 @@ static void VK_SetRTTransform( vkUniform_t *uniform )
 	int i;
 
 	VectorCopy( backEnd.or.origin, uniform->rtOrigin );
-	uniform->rtOrigin[3] = 0.0f;
+	/* [QL] E165: which instances cast - the level and its movers always,
+	   players and items with r_rtShadowCasters 1 */
+	uniform->rtOrigin[3] = (float)( RT_MASK_LEVEL | ( r_rtShadowCasters->integer ? RT_MASK_ACTORS : 0 ) );
 	for ( i = 0; i < 3; i++ ) {
 		VectorCopy( backEnd.or.axis[i], uniform->rtAxis[i] );
 		uniform->rtAxis[i][3] = 0.0f;

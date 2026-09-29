@@ -130,6 +130,8 @@ layout(set = 0, binding = 2) uniform SSR {
 	                  an estimate for the ones that are not
 	               y  how far the ray may go, world units
 	               z  the albedo assumed for an estimated hit
+	               w  [QL] E165: nonzero when dynamic lights cast ray-traced
+	                  shadows - the instance mask to test emitters against
 	  gridOrigin   xyz the light grid's first point, w 1 if the map has one
 	  gridInvSize  xyz 1 / spacing
 	  gridBounds   xyz points per axis
@@ -1064,6 +1066,26 @@ void main() {
 			if (perp2 >= rad * rad) {
 				continue;           // the ray misses it
 			}
+#ifdef USE_RT
+			/* [QL] E165: with the lights casting ray-traced shadows (rtInfo.w
+			   is their instance mask), a light the water cannot see does not
+			   glow in it - a rocket in the next room stays in the next room */
+			if (rtInfo.w > 0.0) {
+				float dist = length(toLight);
+				float tmax = dist - 8.0;
+				if (tmax > 1.0) {
+					rayQueryEXT eq;
+					rayQueryInitializeEXT(eq, topLevel,
+						gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT |
+						gl_RayFlagsCullBackFacingTrianglesEXT,
+						uint(rtInfo.w), P + N * 0.5, 0.0, toLight / dist, tmax);
+					while (rayQueryProceedEXT(eq)) {}
+					if (rayQueryGetIntersectionTypeEXT(eq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+						continue;
+					}
+				}
+			}
+#endif
 
 			/* squared so the centre is bright and the rim falls away, and faded
 			   along the ray on the same terms the march's own hits are */

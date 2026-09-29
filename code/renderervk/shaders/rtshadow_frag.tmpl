@@ -88,9 +88,12 @@ void main() {
 			d = normalize(dir + (t1 * cos(a) + t2 * sin(a)) * r);
 		}
 		rayQueryEXT rq;
+		/* [QL] E165: cull back faces so a ray leaving a model's own proxy box
+		   gets out (see rtao.tmpl); rtOrigin.w picks the casters - the level
+		   and its movers, and with r_rtShadowCasters 1 players and items */
 		rayQueryInitializeEXT(rq, topLevel,
-			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-			0xFF, O, 0.0, d, rtLight.w);
+			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsCullBackFacingTrianglesEXT,
+			uint(rtOrigin.w), O, 0.0, d, rtLight.w);
 		while (rayQueryProceedEXT(rq)) {}
 		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
 			occluded += 1.0;

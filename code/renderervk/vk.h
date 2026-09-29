@@ -270,6 +270,10 @@ typedef struct VK_Pipeline {
 	VkPipeline handle[ RENDER_PASS_COUNT ];
 } VK_Pipeline_t;
 
+/* [QL] E165: ray-tracing instance masks, see vk_rt_build_dynamic_tlas */
+#define RT_MASK_LEVEL	0x01
+#define RT_MASK_ACTORS	0x02
+
 // this structure must be in sync with shader uniforms!
 typedef struct vkUniform_s {
 	// light/env parameters:
@@ -461,6 +465,7 @@ void vk_find_water_planes( const struct world_s *world );
 /* [QL] R19: reflect the scene in them. A no-op unless r_ssr is on, the map has
    a water plane, and the pass was created. */
 qboolean vk_ssr( void );
+void vk_rt_prebuild_dynamic( void );   /* [QL] E165: before the 3D, for the shadow rays */
 /* [QL] E152: r_pipelineCache */
 #define VK_PIPELINE_CACHE_FILE "vkpipelines.cache"
 void vk_save_pipeline_cache( void );

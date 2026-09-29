@@ -179,9 +179,12 @@ float rtLightVisibility(vec3 Pobj, vec3 Nobj, vec3 Lobj) {
 		d /= dist;
 
 		rayQueryEXT rq;
+		/* [QL] E165: cull back faces so a ray leaving a model's own proxy box
+		   gets out (see rtao.tmpl); rtOrigin.w picks the casters - the level
+		   and its movers, and with r_rtShadowCasters 1 players and items */
 		rayQueryInitializeEXT(rq, topLevel,
-			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-			0xFF, O, 0.0, d, tmax);
+			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsCullBackFacingTrianglesEXT,
+			uint(rtOrigin.w), O, 0.0, d, tmax);
 		while (rayQueryProceedEXT(rq)) {}
 		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
 			occluded += 1.0;

@@ -68,6 +68,12 @@ occlusion fades in is exactly the region the light lit, with nothing to tune to
 make the two agree.
 
 lightParams.x is how many are filled, .y is r_rtaoLights.
+
+[QL] E165: .z is 1 when the dynamic lights cast ray-traced shadows
+(r_rtDlightShadows or Shadows: Traced), and .w the instance mask they use.
+Then a light clears occlusion only where it actually arrives - one ray to it,
+the same test the light shader makes - instead of through the wall it is
+behind, which brightened corners the light no longer reached.
 */
 #define RT_MAX_AO_LIGHTS 32
 
@@ -419,7 +425,23 @@ void main() {
 
 		for ( li = 0; li < lightCount; li++ ) {
 			vec3 d = lights[li].xyz - P;
-			lit += max( 0.0, 1.0 - dot(d, d) * lights[li].w );
+			float f = max( 0.0, 1.0 - dot(d, d) * lights[li].w );
+			if ( f > 0.0 && lightParams.z > 0.0 ) {
+				float dist = length( d );
+				float tmax = dist - 8.0;   // stop short, as the light shader does
+				if ( tmax > 1.0 ) {
+					rayQueryEXT lq;
+					rayQueryInitializeEXT( lq, topLevel,
+						gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT |
+						gl_RayFlagsCullBackFacingTrianglesEXT,
+						uint(lightParams.w), P + N * 1.0, 0.0, d / dist, tmax );
+					while ( rayQueryProceedEXT( lq ) ) {}
+					if ( rayQueryGetIntersectionTypeEXT( lq, true ) != gl_RayQueryCommittedIntersectionNoneEXT ) {
+						f = 0.0;   // behind something: this light is not here
+					}
+				}
+			}
+			lit += f;
 		}
 
 		ao = mix( ao, 1.0, clamp( lit * lightParams.y, 0.0, 1.0 ) );

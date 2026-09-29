@@ -73,6 +73,7 @@ cvar_t	*r_rtModelShadowStrength;
 cvar_t	*r_rtModelShadowSoftness;
 cvar_t	*r_rtModelShadowRays;
 cvar_t	*r_rtModelShadowDistance;
+cvar_t	*r_rtShadowCasters;   // [QL] E165
 cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
 
@@ -2716,6 +2717,14 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_rtModelShadowRays, "1", "8", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtModelShadowRays, "Rays per model pixel. 1 for sharp shadows, 4 or more "
 		"for soft ones." );
+	/* [QL] E165. What blocks the traced shadows' rays. Live. */
+	r_rtShadowCasters = ri.Cvar_Get( "r_rtShadowCasters", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtShadowCasters, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtShadowCasters, "What casts the ray-traced shadows:\n"
+		" 0 - the level, including doors, lifts and platforms (default)\n"
+		" 1 - also players and items, as rough boxes (the shapes ray-traced occlusion uses) - "
+		"a box is not a player's silhouette, so this is blocky up close" );
+
 	r_rtModelShadowDistance = ri.Cvar_Get( "r_rtModelShadowDistance", "1024", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtModelShadowDistance, "64", "8192", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtModelShadowDistance, "How far toward the light a model looks for "

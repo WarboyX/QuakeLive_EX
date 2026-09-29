@@ -490,7 +490,11 @@ def shadows():
         ("multi", "r_rtModelShadowRays", "Rays", '"1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8'),
         ("multi", "r_rtModelShadowDistance", "Reach",
          '"256" 256 "512" 512 "1024 (default)" 1024 "2048" 2048 "4096" 4096'),
-        ("help", "Soft edges need more rays. Cast by the level only, not players or doors."),
+        # [QL] E165. Doors and lifts always cast; players and items as boxes.
+        ("h", "CASTERS"),
+        ("multi", "r_rtShadowCasters", "Cast by",
+         '"Level, doors, lifts (default)" 0 "+ players and items (boxes)" 1'),
+        ("help", "Soft edges need more rays. Players and items cast as rough boxes."),
         ("help", "Console: rtshadows says what both passes did last frame, and why not."),
         ("help", "Lighting > Shadows: Traced turns both on in place of Quake's shadows."),
     ]

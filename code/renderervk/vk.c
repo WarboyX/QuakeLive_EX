@@ -5164,6 +5164,11 @@ static void vk_rt_update_main_descriptor( void )
 	for ( n = 0; n < NUM_COMMAND_BUFFERS; n++ ) {
 		VkWriteDescriptorSetAccelerationStructureKHR as_info;
 		VkWriteDescriptorSet write;
+		/* [QL] E165: the per-frame structure (level, doors and lifts, players
+		   and items) when there is one - vk_rt_prebuild_dynamic builds it
+		   before the main pass reads it - else the static level */
+		VkAccelerationStructureKHR as = ( vk.rt.world.dynReady && vk.rt.world.dyn_tlas[n] != VK_NULL_HANDLE )
+			? vk.rt.world.dyn_tlas[n] : vk.rt.world.tlas;
 
 		if ( vk.tess[n].uniform_descriptor == VK_NULL_HANDLE ) {
 			return;
@@ -5171,7 +5176,7 @@ static void vk_rt_update_main_descriptor( void )
 		Com_Memset( &as_info, 0, sizeof( as_info ) );
 		as_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
 		as_info.accelerationStructureCount = 1;
-		as_info.pAccelerationStructures = &vk.rt.world.tlas;
+		as_info.pAccelerationStructures = &as;
 
 		Com_Memset( &write, 0, sizeof( write ) );
 		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -5765,7 +5770,10 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	inst[0].transform.matrix[0][0] = 1.0f;
 	inst[0].transform.matrix[1][1] = 1.0f;
 	inst[0].transform.matrix[2][2] = 1.0f;
-	inst[0].mask = 0xFF;
+	/* [QL] E165: instance masks - 0x01 the level (the map and its movers),
+	   0x02 players and items. Occlusion and the reflections trace 0xFF and
+	   see both, as before; the shadow rays pick (r_rtShadowCasters). */
+	inst[0].mask = RT_MASK_LEVEL;
 	inst[0].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 	inst[0].accelerationStructureReference = worldRef;
 	count = 1;
@@ -5838,7 +5846,12 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 				+ ent->e.axis[1][j] * centre[1]
 				+ ent->e.axis[2][j] * centre[2];
 		}
-		inst[count].mask = 0xFF;
+		{
+			/* a door, a lift, a platform - brush models are the level moving */
+			const model_t *mod = R_GetModelByHandle( ent->e.hModel );
+			inst[count].mask = ( ent->e.reType == RT_MODEL && mod && mod->type == MOD_BRUSH )
+				? RT_MASK_LEVEL : RT_MASK_ACTORS;
+		}
 		/*
 		[QL] Back faces cull on these, and that is what stops an entity's box
 		from occluding the entity.
@@ -5967,6 +5980,53 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 
 	return qtrue;
 }
+
+/*
+=================
+vk_rt_prebuild_dynamic
+
+[QL] E165. Build this frame's structure before the 3D is drawn, when the shadow
+rays in the main pass will trace it.
+
+It used to be built only by the occlusion pass, part-way through the 3D (and by
+the reflection pass after it), because an acceleration structure cannot be
+built inside a render pass and that was the first gap in one. The shadow rays
+run earlier - the model-shadow pass during the opaque surfaces - so reading it
+there meant a structure a frame or two old, which the later build in the same
+command buffer then rewrote under the reads.
+
+So when they need it, the main pass is paused here, before the view is cleared,
+the structure is built, and the frame carries on in the after-composite pass -
+the one occlusion and reflections already continue in, identical to main
+except that it loads what is there. Occlusion and reflections find it built
+(backEnd.doneRTDynamic) and do not build it again, so nothing rewrites it after
+the main pass has read it.
+=================
+*/
+static void vk_begin_render_pass( VkRenderPass renderPass, VkFramebuffer frameBuffer, qboolean clearValues, uint32_t width, uint32_t height );
+
+void vk_rt_prebuild_dynamic( void )
+{
+	if ( !vk.rtActive || !vk.rt.world.dynReady || !vk.rt.world.mainTlasWritten || backEnd.doneRTDynamic ) {
+		return;
+	}
+	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
+		return;
+	}
+	if ( !( r_rtModelShadows->integer || r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ) {
+		return;
+	}
+
+	vk_end_render_pass();
+	vk_rt_build_dynamic_tlas();
+
+	vk.renderWidth = glConfig.vidWidth;
+	vk.renderHeight = glConfig.vidHeight;
+	vk.renderScaleX = vk.renderScaleY = 1.0f;
+	vk_begin_render_pass( vk.render_pass.after_composite,
+		vk.framebuffers.main[ vk.cmd->swapchain_image_index ], qfalse, vk.renderWidth, vk.renderHeight );
+}
+
 
 void vk_rt_destroy_world( void )
 {
@@ -13268,8 +13328,10 @@ qboolean vk_rt_ao( void )
 
 		lights->params[0] = (float)count;
 		lights->params[1] = strength;
-		lights->params[2] = 0.0f;
-		lights->params[3] = 0.0f;
+		/* [QL] E165: lights clear occlusion only where they arrive, when they
+		   cast shadows - see rtao.tmpl */
+		lights->params[2] = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? 1.0f : 0.0f;
+		lights->params[3] = (float)( RT_MASK_LEVEL | ( r_rtShadowCasters->integer ? RT_MASK_ACTORS : 0 ) );
 	}
 
 	vk_end_render_pass();   // end main
@@ -14307,7 +14369,10 @@ qboolean vk_ssr( void )
 		vk.ssr.debug_pipeline_half != VK_NULL_HANDLE ) ? 2 : 1;
 	/* [QL] E156: r_ssrRayTrace, and only with this map's sets written and the
 	   pipeline for the chosen resolution built */
-	const qboolean useRT = ( r_ssrRayTrace && r_ssrRayTrace->integer > 0 && vk.ssr.rtReady &&
+	/* [QL] E165: also when the lights cast ray-traced shadows, for the emitter
+	   visibility test - rtInfo.x still says whether the fallback itself runs */
+	const qboolean lightShadows = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? qtrue : qfalse;
+	const qboolean useRT = ( r_ssrRayTrace && ( r_ssrRayTrace->integer > 0 || lightShadows ) && vk.ssr.rtReady &&
 		( ssrScale > 1 ? vk.ssr.rt_trace_pipeline_half : vk.ssr.rt_trace_pipeline ) != VK_NULL_HANDLE );
 
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
@@ -14437,7 +14502,8 @@ qboolean vk_ssr( void )
 	u->rtInfo[0] = useRT ? (float)r_ssrRayTrace->integer : 0.0f;
 	u->rtInfo[1] = 8192.0f;   // past anything a pool can see across
 	u->rtInfo[2] = 0.5f;      // a mid albedo: the grid gives the light, not the texture
-	u->rtInfo[3] = 0.0f;
+	u->rtInfo[3] = ( useRT && lightShadows )
+		? (float)( RT_MASK_LEVEL | ( r_rtShadowCasters->integer ? RT_MASK_ACTORS : 0 ) ) : 0.0f;
 	if ( useRT && vk.rt.world.haveGrid && tr.world ) {
 		VectorCopy( tr.world->lightGridOrigin, u->gridOrigin );
 		VectorCopy( tr.world->lightGridInverseSize, u->gridInvSize );
