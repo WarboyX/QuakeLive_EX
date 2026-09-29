@@ -1,0 +1,113 @@
+#version 450
+
+/*
+[QL] E171: soft shadows by projection, not by sampling (r_rtShadowSoftMode 1).
+
+A light with a size casts a shadow whose edge is a gradient, and how wide that
+gradient is follows from three distances. With the light's radius R, the
+blocker t from the lit point and the light len from it, the edge's half-width
+on the surface is
+
+	R * t / (len - t)
+
+- nothing where the blocker touches the surface (a foot on the floor), wide
+where the blocker is far from it and near the light (a head's shadow thrown
+across a room). The sampled soft shadows (r_rtShadowSoftMode 0) find the same
+thing by aiming a few rays at points on the light and counting, which with four
+rays is five shades of grey and reads as speckle. This computes it instead:
+actorshadow.tmpl with USE_PEN fires one ray at the light's centre - a clean
+hard shadow and the two distances - and three passes here turn that into the
+gradient.
+
+  mode 0  the search. A lit pixel near a shadow has no blocker of its own, but
+          the edge has to spread onto it too, so each pixel looks around it for
+          blocked neighbours on its own surface and takes the edge width from
+          theirs. Writes (occlusion, width in pixels, light lost, 0).
+  mode 1  across: a weighted average of the occlusion over that width.
+  mode 2  down, and multiplied into the scene as 1 - lost * occlusion.
+
+The weights are strongest at the centre and fall to nothing at the edge,
+1 - |x| / (r + 1): full at the pixel, half way out at half, weakest at the
+rim. Across then down, that is the soft edge of a light brighter in the middle
+than at its rim, like a lantern's glow.
+
+Every tap is also weighted by how close its depth is to the centre's, as the
+AO denoise does, so an edge does not bleed off a step onto the wall behind it.
+*/
+
+layout(set = 0, binding = 0) uniform sampler2D penMap;
+#ifdef USE_MSAA
+layout(set = 0, binding = 1) uniform sampler2DMS depthMap;
+#else
+layout(set = 0, binding = 1) uniform sampler2D depthMap;
+#endif
+
+layout(location = 0) in vec2 frag_tex_coord;
+layout(location = 0) out vec4 out_color;
+
+layout(push_constant) uniform Push {
+	vec4 mode;          // x mode 0/1/2, y light radius (world units), z widest edge (pixels), w pixels per unit at distance 1
+	vec4 depthLinear;   // x proj[10], y proj[14], z depth tolerance (fraction of distance)
+} pc;
+
+float viewDist(ivec2 p) {
+	return abs(pc.depthLinear.y / (texelFetch(depthMap, p, 0).r + pc.depthLinear.x));
+}
+
+float depthWeight(float zc, ivec2 p) {
+	return max(0.0, 1.0 - abs(viewDist(p) - zc) / (pc.depthLinear.z * zc + 1.0));
+}
+
+void main() {
+	ivec2 size = textureSize(penMap, 0);
+	ivec2 c = ivec2(gl_FragCoord.xy);
+	vec4 centre = texelFetch(penMap, c, 0);
+	float zc = viewDist(c);
+	int mode = int(pc.mode.x + 0.5);
+
+	if (mode == 0) {
+		float pxPerUnit = pc.mode.w / max(zc, 1.0);
+		/* the widest an edge can be, from a blocker as far out as 4/5 of the
+		   way to the light, bounds how far to look */
+		float reach = min(pc.mode.y * 4.0 * pxPerUnit, pc.mode.z);
+		float sum = 0.0, n = 0.0;
+		if (reach >= 1.0) {
+			for (int j = -3; j <= 3; j++) {
+				for (int i = -3; i <= 3; i++) {
+					ivec2 p = clamp(c + ivec2(round(vec2(i, j) * (reach / 3.0))), ivec2(0), size - ivec2(1));
+					vec4 v = texelFetch(penMap, p, 0);
+					if (v.x > 0.0 && depthWeight(zc, p) > 0.0) {
+						sum += min(v.y / max(v.z - v.y, 1.0), 4.0);
+						n += 1.0;
+					}
+				}
+			}
+		}
+		float width = n > 0.0 ? min(pc.mode.y * (sum / n) * pxPerUnit, pc.mode.z) : 0.0;
+		out_color = vec4(centre.x, width, centre.w, 0.0);
+		return;
+	}
+
+	/* modes 1 and 2: the centre-weighted average across the edge's width */
+	float r = centre.y;
+	float occ = centre.x;
+	if (r >= 0.5) {
+		ivec2 dir = mode == 1 ? ivec2(1, 0) : ivec2(0, 1);
+		int n = int(min(ceil(r), 12.0));
+		float stepPx = r / float(n);
+		float sum = 0.0, wsum = 0.0;
+		for (int i = -n; i <= n; i++) {
+			ivec2 p = clamp(c + dir * int(round(float(i) * stepPx)), ivec2(0), size - ivec2(1));
+			float w = (1.0 - abs(float(i)) / float(n + 1)) * (i == 0 ? 1.0 : depthWeight(zc, p));
+			sum += texelFetch(penMap, p, 0).x * w;
+			wsum += w;
+		}
+		occ = sum / max(wsum, 1e-4);
+	}
+
+	if (mode == 1) {
+		out_color = vec4(occ, r, centre.z, 0.0);
+	} else {
+		out_color = vec4(vec3(1.0 - centre.z * occ), 1.0);
+	}
+}

@@ -898,7 +898,16 @@ texture, transitioned once by a barrier beforehand, keeps the target at one
 sample whatever the scene is doing.
 ================
 */
+static void vk_create_offscreen_pass( VkDevice device, VkFormat format, VkRenderPass *out, const char *name );
+
 static void vk_create_rtao_offscreen_render_pass( VkDevice device )
+{
+	vk_create_offscreen_pass( device, vk.rt.ao_format, &vk.render_pass.rtao_offscreen, "render pass - rtao offscreen" );
+}
+
+/* [QL] E171: the same single-attachment pass for any format - the projected
+   soft shadows' RGBA16F targets use it too */
+static void vk_create_offscreen_pass( VkDevice device, VkFormat format, VkRenderPass *out, const char *name )
 {
 	VkAttachmentDescription attachment;
 	VkAttachmentReference colorRef;
@@ -907,7 +916,7 @@ static void vk_create_rtao_offscreen_render_pass( VkDevice device )
 	VkRenderPassCreateInfo desc;
 
 	Com_Memset( &attachment, 0, sizeof( attachment ) );
-	attachment.format = vk.rt.ao_format;
+	attachment.format = format;
 	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
 	/* Every pixel is written by the fullscreen quad, so there is nothing to
 	   preserve and nothing to clear. */
@@ -962,8 +971,8 @@ static void vk_create_rtao_offscreen_render_pass( VkDevice device )
 	desc.dependencyCount = 2;
 	desc.pDependencies = deps;
 
-	VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.rtao_offscreen ) );
-	SET_OBJECT_NAME( vk.render_pass.rtao_offscreen, "render pass - rtao offscreen", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
+	VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, out ) );
+	SET_OBJECT_NAME( *out, name, VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 }
 
 
@@ -1026,6 +1035,11 @@ static void vk_create_render_passes( void )
 	   test for it the same way it tests for the composite pass. */
 	if ( vk.rtDepthSampled ) {   // [QL] E154: screen-space AO uses it too
 		vk_create_rtao_offscreen_render_pass( device );
+	}
+	/* [QL] E171: the projected soft shadows' targets, when they were made */
+	if ( vk.actorShadow.pen_format != VK_FORMAT_UNDEFINED ) {
+		vk_create_offscreen_pass( device, vk.actorShadow.pen_format, &vk.actorShadow.pen_pass,
+			"render pass - projected soft shadows" );
 	}
 
 	/* [QL] R19: independent of ray tracing - the march reads depth and colour
@@ -6898,6 +6912,10 @@ static void vk_create_shader_modules( void )
 		vk.modules.frag.rt_model_shadow = SHADER_MODULE( rtshadow_frag_spv );
 		vk.modules.actor_shadow_fs = SHADER_MODULE( actorshadow_frag_spv );       /* [QL] E166 */
 		vk.modules.actor_shadow_ms_fs = SHADER_MODULE( actorshadow_frag_ms_spv );
+		vk.modules.actor_shadow_pen_fs = SHADER_MODULE( actorshadow_pen_frag_spv );       /* [QL] E171 */
+		vk.modules.actor_shadow_pen_ms_fs = SHADER_MODULE( actorshadow_pen_frag_ms_spv );
+		vk.modules.penumbra_fs = SHADER_MODULE( penumbra_frag_spv );
+		vk.modules.penumbra_ms_fs = SHADER_MODULE( penumbra_frag_ms_spv );
 	}
 
 	vk.modules.color_fs = SHADER_MODULE( color_frag_spv );
@@ -7723,6 +7741,30 @@ static void vk_create_attachments( void )
 	}
 
 	/*
+	[QL] E171: the projected soft shadows' two targets. Four channels at half
+	float: occlusion, blocker distance, light distance (world units, which
+	R8 cannot hold) and the light lost. Only with ray query - nothing else
+	fills them - and only where the format can be rendered and sampled.
+	*/
+	vk.actorShadow.pen_format = VK_FORMAT_UNDEFINED;
+	if ( vk.rtDepthSampled && vk.rtActive ) {
+		const VkFormat penFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+		const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+		VkFormatProperties props;
+
+		qvkGetPhysicalDeviceFormatProperties( vk.physical_device, penFormat, &props );
+		if ( ( props.optimalTilingFeatures & need ) == need ) {
+			vk.actorShadow.pen_format = penFormat;
+			for ( i = 0; i < ARRAY_LEN( vk.actorShadow.pen_image ); i++ ) {
+				create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT,
+					penFormat, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					&vk.actorShadow.pen_image[i], &vk.actorShadow.pen_view[i],
+					VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, qfalse );
+			}
+		}
+	}
+
+	/*
 	[QL] R19: where the reflection is resolved before it is blended in.
 
 	vk.color_format, not a format of its own: it holds scene colour sampled out
@@ -7887,6 +7929,23 @@ static void vk_create_framebuffers( void )
 			attachments[0] = vk.rt.ao_image_view[k];
 			VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.rtao[k] ) );
 			SET_OBJECT_NAME( vk.framebuffers.rtao[k], va( "framebuffer - rtao %i", k ), VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
+		}
+	}
+
+	/* [QL] E171: the projected soft shadows' two targets */
+	if ( vk.actorShadow.pen_pass != VK_NULL_HANDLE && vk.actorShadow.pen_view[0] != VK_NULL_HANDLE )
+	{
+		uint32_t k;
+
+		desc.renderPass = vk.actorShadow.pen_pass;
+		desc.attachmentCount = 1;
+		desc.width = glConfig.vidWidth;
+		desc.height = glConfig.vidHeight;
+
+		for ( k = 0; k < ARRAY_LEN( vk.actorShadow.pen_fb ); k++ ) {
+			attachments[0] = vk.actorShadow.pen_view[k];
+			VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.actorShadow.pen_fb[k] ) );
+			SET_OBJECT_NAME( vk.actorShadow.pen_fb[k], va( "framebuffer - soft shadow %i", k ), VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 		}
 	}
 
@@ -8127,6 +8186,12 @@ static void vk_destroy_framebuffers( void ) {
 		if ( vk.framebuffers.rtao[n] != VK_NULL_HANDLE ) {
 			qvkDestroyFramebuffer( vk.device, vk.framebuffers.rtao[n], NULL );
 			vk.framebuffers.rtao[n] = VK_NULL_HANDLE;
+		}
+	}
+	for ( n = 0; n < ARRAY_LEN( vk.actorShadow.pen_fb ); n++ ) {   // [QL] E171
+		if ( vk.actorShadow.pen_fb[n] != VK_NULL_HANDLE ) {
+			qvkDestroyFramebuffer( vk.device, vk.actorShadow.pen_fb[n], NULL );
+			vk.actorShadow.pen_fb[n] = VK_NULL_HANDLE;
 		}
 	}
 
@@ -8972,6 +9037,14 @@ static void vk_destroy_attachments( void )
 			vk.rt.ao_image_view[i] = VK_NULL_HANDLE;
 		}
 	}
+	for ( i = 0; i < ARRAY_LEN( vk.actorShadow.pen_image ); i++ ) {   // [QL] E171
+		if ( vk.actorShadow.pen_image[i] ) {
+			qvkDestroyImage( vk.device, vk.actorShadow.pen_image[i], NULL );
+			qvkDestroyImageView( vk.device, vk.actorShadow.pen_view[i], NULL );
+			vk.actorShadow.pen_image[i] = VK_NULL_HANDLE;
+			vk.actorShadow.pen_view[i] = VK_NULL_HANDLE;
+		}
+	}
 
 	if ( vk.ssr.image != VK_NULL_HANDLE ) {   // [QL] R19
 		qvkDestroyImage( vk.device, vk.ssr.image, NULL );
@@ -9031,6 +9104,10 @@ static void vk_destroy_render_passes( void )
 	if ( vk.render_pass.rtao_offscreen != VK_NULL_HANDLE ) {   // [QL] R13
 		qvkDestroyRenderPass( vk.device, vk.render_pass.rtao_offscreen, NULL );
 		vk.render_pass.rtao_offscreen = VK_NULL_HANDLE;
+	}
+	if ( vk.actorShadow.pen_pass != VK_NULL_HANDLE ) {   // [QL] E171
+		qvkDestroyRenderPass( vk.device, vk.actorShadow.pen_pass, NULL );
+		vk.actorShadow.pen_pass = VK_NULL_HANDLE;
 	}
 
 	if ( vk.render_pass.screenmap != VK_NULL_HANDLE ) {
@@ -9260,7 +9337,9 @@ void vk_shutdown( refShutdownCode_t code )
 			   the validation layer's two leaked modules on every vid_restart */
 			&vk.modules.bump_vs, &vk.modules.bump_fs,
 			&vk.modules.frag.rt_model_shadow,  /* [QL] E161 */
-			&vk.modules.actor_shadow_fs, &vk.modules.actor_shadow_ms_fs   /* [QL] E166 */
+			&vk.modules.actor_shadow_fs, &vk.modules.actor_shadow_ms_fs,  /* [QL] E166 */
+			&vk.modules.actor_shadow_pen_fs, &vk.modules.actor_shadow_pen_ms_fs,   /* [QL] E171 */
+			&vk.modules.penumbra_fs, &vk.modules.penumbra_ms_fs
 		};
 		for ( i = 0; i < ARRAY_LEN( mods ); i++ ) {
 			if ( *mods[i] != VK_NULL_HANDLE ) {
@@ -10107,6 +10186,36 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			layout = vk.actorShadow.pipeline_layout;
 			samples = vkSamples;
 			pipeline_name = "actor shadow pipeline";
+			blend = qfalse;
+			multiply = qtrue;
+			break;
+		case 22: // [QL] E171 one ray at the light's centre, into the soft-edge target
+			pipeline = &vk.actorShadow.pen_trace;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.actor_shadow_pen_ms_fs : vk.modules.actor_shadow_pen_fs;
+			renderpass = vk.actorShadow.pen_pass;
+			layout = vk.actorShadow.pipeline_layout;
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "soft shadow pipeline (centre ray)";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
+		case 23: // [QL] E171 the soft edge's search and horizontal pass
+			pipeline = &vk.actorShadow.pen_filter;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.penumbra_ms_fs : vk.modules.penumbra_fs;
+			renderpass = vk.actorShadow.pen_pass;
+			layout = vk.actorShadow.pen_pipeline_layout;
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = "soft shadow pipeline (edge)";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
+		case 24: // [QL] E171 the vertical pass, multiplied into the scene like the AO composite
+			pipeline = &vk.actorShadow.pen_composite;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.penumbra_ms_fs : vk.modules.penumbra_fs;
+			renderpass = vk.render_pass.rtao;
+			layout = vk.actorShadow.pen_pipeline_layout;
+			samples = vkSamples;
+			pipeline_name = "soft shadow pipeline (composite)";
 			blend = qfalse;
 			multiply = qtrue;
 			break;
@@ -13989,6 +14098,29 @@ void vk_actor_shadow_destroy( void )
 		qvkDestroyPipeline( vk.device, vk.actorShadow.pipeline_offscreen, NULL );
 		vk.actorShadow.pipeline_offscreen = VK_NULL_HANDLE;
 	}
+	/* [QL] E171 */
+	{
+		VkPipeline *pens[] = { &vk.actorShadow.pen_trace, &vk.actorShadow.pen_filter, &vk.actorShadow.pen_composite };
+		for ( i = 0; i < ARRAY_LEN( pens ); i++ ) {
+			if ( *pens[i] != VK_NULL_HANDLE ) {
+				qvkDestroyPipeline( vk.device, *pens[i], NULL );
+				*pens[i] = VK_NULL_HANDLE;
+			}
+		}
+	}
+	if ( vk.actorShadow.pen_pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.actorShadow.pen_pipeline_layout, NULL );
+		vk.actorShadow.pen_pipeline_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.actorShadow.pen_pool != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorPool( vk.device, vk.actorShadow.pen_pool, NULL );
+		vk.actorShadow.pen_pool = VK_NULL_HANDLE;
+		Com_Memset( vk.actorShadow.pen_descriptor, 0, sizeof( vk.actorShadow.pen_descriptor ) );
+	}
+	if ( vk.actorShadow.pen_set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.actorShadow.pen_set_layout, NULL );
+		vk.actorShadow.pen_set_layout = VK_NULL_HANDLE;
+	}
 	if ( vk.actorShadow.pipeline_layout != VK_NULL_HANDLE ) {
 		qvkDestroyPipelineLayout( vk.device, vk.actorShadow.pipeline_layout, NULL );
 		vk.actorShadow.pipeline_layout = VK_NULL_HANDLE;
@@ -14057,6 +14189,136 @@ void vk_actor_shadow_update_descriptor( void )
 		qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
 	}
 	vk.actorShadow.ready = ( vk.actorShadow.pipeline != VK_NULL_HANDLE ) ? qtrue : qfalse;
+}
+
+/*
+[QL] E171: the projected soft edge's set layout, sets, layout and pipelines.
+
+The sets never change after this: [i] reads target i and depth, both of which
+live as long as the attachments, and this is rebuilt with them. Everything is
+optional - without it r_rtShadowSoftMode 1 falls back to the sampled edge.
+*/
+static void vk_pen_create( void )
+{
+	VkDescriptorSetLayoutBinding bindings[2];
+	VkDescriptorSetLayoutCreateInfo layout_desc;
+	VkDescriptorPoolSize pool_size;
+	VkDescriptorPoolCreateInfo pool_desc;
+	VkDescriptorSetAllocateInfo set_alloc;
+	VkPipelineLayoutCreateInfo pl_desc;
+	VkPushConstantRange push_range;
+	uint32_t i;
+
+	if ( vk.actorShadow.pen_pass == VK_NULL_HANDLE || vk.actorShadow.pen_fb[1] == VK_NULL_HANDLE ||
+		vk.modules.penumbra_fs == VK_NULL_HANDLE || vk.modules.actor_shadow_pen_fs == VK_NULL_HANDLE ||
+		vk.rt.ao_sampler == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	Com_Memset( bindings, 0, sizeof( bindings ) );
+	for ( i = 0; i < 2; i++ ) {
+		bindings[i].binding = i;
+		bindings[i].descriptorCount = 1;
+		bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	}
+	Com_Memset( &layout_desc, 0, sizeof( layout_desc ) );
+	layout_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layout_desc.bindingCount = 2;
+	layout_desc.pBindings = bindings;
+	if ( qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.actorShadow.pen_set_layout ) < 0 ) {
+		goto fail;
+	}
+
+	pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	pool_size.descriptorCount = 2 * ARRAY_LEN( vk.actorShadow.pen_descriptor );
+	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
+	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_desc.maxSets = ARRAY_LEN( vk.actorShadow.pen_descriptor );
+	pool_desc.poolSizeCount = 1;
+	pool_desc.pPoolSizes = &pool_size;
+	if ( qvkCreateDescriptorPool( vk.device, &pool_desc, NULL, &vk.actorShadow.pen_pool ) < 0 ) {
+		goto fail;
+	}
+
+	Com_Memset( &set_alloc, 0, sizeof( set_alloc ) );
+	set_alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	set_alloc.descriptorPool = vk.actorShadow.pen_pool;
+	set_alloc.descriptorSetCount = 1;
+	set_alloc.pSetLayouts = &vk.actorShadow.pen_set_layout;
+	for ( i = 0; i < ARRAY_LEN( vk.actorShadow.pen_descriptor ); i++ ) {
+		VkDescriptorImageInfo info[2];
+		VkWriteDescriptorSet writes[2];
+		uint32_t k;
+
+		if ( qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.actorShadow.pen_descriptor[i] ) < 0 ) {
+			goto fail;
+		}
+		Com_Memset( info, 0, sizeof( info ) );
+		info[0].sampler = vk.rt.ao_sampler;
+		info[0].imageView = vk.actorShadow.pen_view[i];
+		info[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		info[1].sampler = vk.rt.depth_sampler;
+		info[1].imageView = vk.rt.depth_view;
+		info[1].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		Com_Memset( writes, 0, sizeof( writes ) );
+		for ( k = 0; k < 2; k++ ) {
+			writes[k].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writes[k].dstSet = vk.actorShadow.pen_descriptor[i];
+			writes[k].dstBinding = k;
+			writes[k].descriptorCount = 1;
+			writes[k].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			writes[k].pImageInfo = &info[k];
+		}
+		qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
+	}
+
+	Com_Memset( &push_range, 0, sizeof( push_range ) );
+	push_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	push_range.size = sizeof( float ) * 8;
+	Com_Memset( &pl_desc, 0, sizeof( pl_desc ) );
+	pl_desc.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl_desc.setLayoutCount = 1;
+	pl_desc.pSetLayouts = &vk.actorShadow.pen_set_layout;
+	pl_desc.pushConstantRangeCount = 1;
+	pl_desc.pPushConstantRanges = &push_range;
+	if ( qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.actorShadow.pen_pipeline_layout ) < 0 ) {
+		goto fail;
+	}
+
+	vk_create_post_process_pipeline( 22, glConfig.vidWidth, glConfig.vidHeight );
+	vk_create_post_process_pipeline( 23, glConfig.vidWidth, glConfig.vidHeight );
+	vk_create_post_process_pipeline( 24, glConfig.vidWidth, glConfig.vidHeight );
+	if ( vk.actorShadow.pen_trace == VK_NULL_HANDLE || vk.actorShadow.pen_filter == VK_NULL_HANDLE ||
+		vk.actorShadow.pen_composite == VK_NULL_HANDLE ) {
+		goto fail;
+	}
+	return;
+
+fail:
+	ri.Printf( PRINT_WARNING, "RT: projected soft shadows not created - soft edges stay sampled\n" );
+	/* the pipelines, layout, pool and set layout; vk_actor_shadow_destroy frees the same */
+	{
+		VkPipeline *pens[] = { &vk.actorShadow.pen_trace, &vk.actorShadow.pen_filter, &vk.actorShadow.pen_composite };
+		for ( i = 0; i < ARRAY_LEN( pens ); i++ ) {
+			if ( *pens[i] != VK_NULL_HANDLE ) {
+				qvkDestroyPipeline( vk.device, *pens[i], NULL );
+				*pens[i] = VK_NULL_HANDLE;
+			}
+		}
+	}
+	if ( vk.actorShadow.pen_pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.actorShadow.pen_pipeline_layout, NULL );
+		vk.actorShadow.pen_pipeline_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.actorShadow.pen_pool != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorPool( vk.device, vk.actorShadow.pen_pool, NULL );
+		vk.actorShadow.pen_pool = VK_NULL_HANDLE;
+	}
+	if ( vk.actorShadow.pen_set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.actorShadow.pen_set_layout, NULL );
+		vk.actorShadow.pen_set_layout = VK_NULL_HANDLE;
+	}
 }
 
 /* the per-device half: set layout, sets (depth and parameters written), pipeline */
@@ -14172,6 +14434,7 @@ void vk_actor_shadow_create( void )
 	if ( vk.rt.aoReady && vk.render_pass.rtao_offscreen != VK_NULL_HANDLE ) {
 		vk_create_post_process_pipeline( 21, glConfig.vidWidth, glConfig.vidHeight );
 	}
+	vk_pen_create();   /* [QL] E171: not fatal - the sampled soft edge stays */
 
 	vk_actor_shadow_update_descriptor();   /* a map already loaded (vid_restart) */
 	return;
@@ -14189,7 +14452,7 @@ qboolean vk_actor_shadows( void )
 {
 	actorShadowUniform_t *u;
 	float proj[16], vp[16];
-	qboolean denoise;
+	qboolean denoise, projected;
 
 	/* [QL] E167: one pass for both - players and items (silhouettes) and the
 	   level itself, traced toward the same estimated light */
@@ -14231,6 +14494,9 @@ qboolean vk_actor_shadows( void )
 	denoise = ( u->soft[0] = r_rtActorShadowSoftness->value ) > 0.0f && u->params[3] == 0.0f &&
 		r_rtActorShadowDenoise->integer && vk.actorShadow.pipeline_offscreen != VK_NULL_HANDLE &&
 		vk.rt.aoReady && vk.rt.pipeline_blur != VK_NULL_HANDLE && vk.rt.pipeline != VK_NULL_HANDLE;
+	/* [QL] E171: or projected, which needs neither AO nor the ray count */
+	projected = u->soft[0] > 0.0f && u->params[3] == 0.0f && r_rtActorShadowSoftMode->integer == 1 &&
+		vk.actorShadow.pen_composite != VK_NULL_HANDLE;
 	u->soft[1] = (float)r_rtActorShadowRays->integer;
 	u->soft[2] = u->soft[3] = 0.0f;
 	if ( vk.rt.world.haveGrid && tr.world ) {
@@ -14266,7 +14532,59 @@ qboolean vk_actor_shadows( void )
 	Not for hard shadows (nothing to smooth, and the blur would soften them),
 	nor for the debug view (the targets hold one channel and the view is red).
 	*/
-	if ( denoise ) {
+	if ( projected ) {
+		/* [QL] E171: centre ray -> search -> across -> down and in. See
+		   penumbra.tmpl for the geometry. */
+		float push[8];
+
+		push[1] = r_rtActorShadowSoftness->value;
+		push[2] = 64.0f;                                         // widest edge, pixels
+		push[3] = proj[0] * (float)glConfig.vidWidth * 0.5f;     // pixels per unit at distance 1
+		push[4] = proj[10];
+		push[5] = proj[14];
+		push[6] = 0.05f;
+		push[7] = 0.0f;
+
+		vk.renderWidth = glConfig.vidWidth;
+		vk.renderHeight = glConfig.vidHeight;
+		vk.renderScaleX = vk.renderScaleY = 1.0f;
+
+		vk_begin_render_pass( vk.actorShadow.pen_pass, vk.actorShadow.pen_fb[0], qfalse, vk.renderWidth, vk.renderHeight );
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pen_trace );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.actorShadow.pipeline_layout, 0, 1, &vk.actorShadow.descriptor[ vk.cmd_index ], 0, NULL );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+		vk_end_render_pass();
+
+		push[0] = 0.0f;   // search: target 0 -> 1
+		vk_begin_render_pass( vk.actorShadow.pen_pass, vk.actorShadow.pen_fb[1], qfalse, vk.renderWidth, vk.renderHeight );
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pen_filter );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.actorShadow.pen_pipeline_layout, 0, 1, &vk.actorShadow.pen_descriptor[0], 0, NULL );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.actorShadow.pen_pipeline_layout,
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), push );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+		vk_end_render_pass();
+
+		push[0] = 1.0f;   // across: target 1 -> 0
+		vk_begin_render_pass( vk.actorShadow.pen_pass, vk.actorShadow.pen_fb[0], qfalse, vk.renderWidth, vk.renderHeight );
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pen_filter );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.actorShadow.pen_pipeline_layout, 0, 1, &vk.actorShadow.pen_descriptor[1], 0, NULL );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.actorShadow.pen_pipeline_layout,
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), push );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+		vk_end_render_pass();
+
+		push[0] = 2.0f;   // down, into the scene: target 0
+		vk_begin_rtao_render_pass();
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pen_composite );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.actorShadow.pen_pipeline_layout, 0, 1, &vk.actorShadow.pen_descriptor[0], 0, NULL );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.actorShadow.pen_pipeline_layout,
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), push );
+		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+	} else if ( denoise ) {
 		rtaoBlurPush_t blur;
 
 		blur.depthLinear[0] = proj[10];

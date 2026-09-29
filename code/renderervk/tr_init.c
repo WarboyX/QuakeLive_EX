@@ -80,6 +80,7 @@ cvar_t	*r_rtActorShadowLength;   // [QL] E167
 cvar_t	*r_rtActorShadowSoftness;
 cvar_t	*r_rtActorShadowRays;
 cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
+cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
 cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
@@ -2756,6 +2757,15 @@ static void R_Register( void )
 		"level with the ambient occlusion's edge-aware blur, so a few rays make a gradient instead of "
 		"speckle. Only while " S_COLOR_CYAN "\\r_rtActorShadowSoftness" S_COLOR_WHITE " is above 0, and not "
 		"in the debug view.\n 0 - off: the raw rays\n 1 - on (default)" );
+	r_rtActorShadowSoftMode = ri.Cvar_Get( "r_rtActorShadowSoftMode", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowSoftMode, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorShadowSoftMode, "How the soft edges of the traced shadows on the level "
+		"are made, while " S_COLOR_CYAN "\\r_rtActorShadowSoftness" S_COLOR_WHITE " is above 0.\n"
+		" 0 - sampled (default): several rays at points on the light, counted, then smoothed\n"
+		" 1 - projected: one ray at the light's centre, and the edge's width worked out from how far "
+		"the blocker is from the surface and from the light - sharp where it touches, wide where it is far, "
+		"strongest at the centre of the edge and fading out. No speckle; " S_COLOR_CYAN "\\r_rtActorShadowRays"
+		S_COLOR_WHITE " does not apply." );
 	r_rtLevelShadows = ri.Cvar_Get( "r_rtLevelShadows", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtLevelShadows, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtLevelShadows, "The level casts ray-traced shadows on itself - ledges, "

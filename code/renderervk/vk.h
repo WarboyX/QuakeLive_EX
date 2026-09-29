@@ -60,6 +60,7 @@ into a total.
 	1 +                          /* capture (r_ext_supersample)       */ \
 	2 +                          /* rt ambient occlusion targets      */ \
 	1 +                          /* screen-space reflection target    */ \
+	2 +                          /* [QL] E171 projected soft shadows  */ \
 	1 )                          /* depth                             */
 
 #define VK_DESC_STORAGE      0
@@ -764,6 +765,10 @@ typedef struct {
 		VkShaderModule ssr_composite_fs;
 		VkShaderModule actor_shadow_fs;     // [QL] E166: players' traced shadows on the level
 		VkShaderModule actor_shadow_ms_fs;
+		VkShaderModule actor_shadow_pen_fs;   // [QL] E171: one ray at the light's centre
+		VkShaderModule actor_shadow_pen_ms_fs;
+		VkShaderModule penumbra_fs;           // [QL] E171: the projected soft edge
+		VkShaderModule penumbra_ms_fs;
 		VkShaderModule ssr_rt_fs;    // [QL] E156: the march + ray-traced fallback
 		VkShaderModule ssr_rt_ms_fs;
 		VkShaderModule ssao_fs;      // [QL] E154: screen-space AO trace
@@ -1025,6 +1030,22 @@ typedef struct {
 		VkPipelineLayout		pipeline_layout;
 		VkPipeline				pipeline;
 		VkPipeline				pipeline_offscreen;	/* [QL] E169: into the occlusion target, for the denoise */
+		/* [QL] E171: projected soft edges (r_rtShadowSoftMode 1). Two RGBA16F
+		   targets - occlusion, blocker distance, light distance, light lost -
+		   ping-ponged by the search and the two filter passes. The images and
+		   framebuffers live with the attachments; the rest with this pass. */
+		VkFormat				pen_format;
+		VkImage					pen_image[2];
+		VkImageView				pen_view[2];
+		VkRenderPass			pen_pass;
+		VkFramebuffer			pen_fb[2];
+		VkDescriptorSetLayout	pen_set_layout;
+		VkDescriptorPool		pen_pool;
+		VkDescriptorSet			pen_descriptor[2];	/* [i] reads pen_image[i] (and depth) */
+		VkPipelineLayout		pen_pipeline_layout;
+		VkPipeline				pen_trace;			/* actorshadow USE_PEN, into pen_image[0] */
+		VkPipeline				pen_filter;			/* penumbra modes 0 and 1, offscreen */
+		VkPipeline				pen_composite;		/* penumbra mode 2, multiplied into the scene */
 		VkBuffer				uniform_buffer[ NUM_COMMAND_BUFFERS ];
 		VkDeviceMemory			uniform_memory[ NUM_COMMAND_BUFFERS ];
 		void					*uniform_ptr[ NUM_COMMAND_BUFFERS ];

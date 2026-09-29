@@ -178,6 +178,11 @@ emit_rt frag rtshadow_frag_spv      rtshadow_frag.tmpl
 # [QL] E166: players' and items' traced shadows on the level
 emit_rt frag actorshadow_frag_spv    actorshadow.tmpl
 emit_rt frag actorshadow_frag_ms_spv actorshadow.tmpl -DUSE_MSAA
+# [QL] E171: one ray at the light's centre, and the passes that project its soft edge
+emit_rt frag actorshadow_pen_frag_spv    actorshadow.tmpl -DUSE_PEN
+emit_rt frag actorshadow_pen_frag_ms_spv actorshadow.tmpl -DUSE_PEN -DUSE_MSAA
+emit frag penumbra_frag_spv    penumbra.tmpl
+emit frag penumbra_frag_ms_spv penumbra.tmpl -DUSE_MSAA
 
 # ---------------------------------------------------------------------------
 # generic vertex variations

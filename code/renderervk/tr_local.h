@@ -1668,6 +1668,7 @@ extern	cvar_t	*r_rtActorShadowLength;		// [QL] E167: how far a player's shadow r
 extern	cvar_t	*r_rtActorShadowSoftness;		// [QL] E167: light size for the shadows on the level
 extern	cvar_t	*r_rtActorShadowRays;
 extern	cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
+extern	cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
 extern	cvar_t	*r_rtLevelShadows;			// [QL] E167: the level's traced shadows on the level
 void R_RTShadowReport( qboolean force );   // [QL] E162, tr_shade.c
 extern	cvar_t	*r_bloomHDR;			// [QL] E158: bloom in the float format with r_rts (latched)
@@ -1968,6 +1969,7 @@ void R_DlightBmodel( bmodel_t *bmodel );
 void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent );
 void R_TransformDlights( int count, dlight_t *dl, orientationr_t *or );
 int R_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir );
+float R_ShadowRayReach( const vec3_t origin, const vec3_t dir, float reach );   // [QL] E172
 
 #ifdef USE_PMLIGHT
 void VK_LightingPass( void );

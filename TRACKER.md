@@ -6048,6 +6048,52 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E172. Model shadows stop short of the light and the room around it — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The shadow the level casts on a player or item (`r_rtModelShadows`) still did what E167 removed from the pass that draws shadows on the level: it traced along the grid's direction as if the light were the sun, the full `r_rtModelShadowDistance` (1024). A player under a lantern could be darkened by the ceiling above it.
+
+**Fix:** `R_ShadowRayReach` (`tr_light.c`) runs once per model draw, on the CPU. The model pass has no light grid on the GPU, and the renderer has CPU access to it through `R_LightForPoint`. It applies the same rules as E170:
+- **Where four grid samples around the model locate the light:** the ray gets 55% of the way there, less 16 units.
+- **Otherwise:** march toward the light through the grid. The ray stops 32 units before the first point that is solid all round (the room's shell), or at 80% of the first point whose direction points back (past the light).
+- In both cases it is capped by `r_rtModelShadowDistance`.
+
+**Checked** (0 validation errors), the six-cube cluster given a grid-lit shader:
+- **The engine's own numbers** (temporary print) matched the CPU replica for the flag room: origin (-2443,77,-269), direction (0.03,-0.17,0.99), reach 640 by the "room's shell" rule. Above that spot the roof is open, so the light is the sky.
+- **Debug view with "Players block lights" off:** one cube stays red. A beam 150 units above it (`wood_planks_02`, found by tracing the map) sits between it and the sky, so that shadow is real.
+- **With "Players block lights" on:** the cubes also shadow each other, as that setting asks.
+- **Not checked:** a real player standing under a lantern. That needs pak00's player models.
+
+### E171. Soft shadows by projection: one ray, the edge worked out from the distances (`r_rtActorShadowSoftMode`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for (the "option A" discussion): instead of approximating a light with a size by a few random rays, treat it as a radius and project the gradient. The light is strongest at the centre, half way out at half, and weakest at the rim.
+
+**How** (`r_rtActorShadowSoftMode 1`, Cast Shadows → "Soft edges: Projected"; the sampled edge stays the default):
+1. `actorshadow.tmpl` with `USE_PEN`: **one ray at the light's centre.** It uses E170's rules (level at 55%, fittings rejected, no player through a wall). It writes four values to an RGBA16F target: occlusion, the blocker's distance t, the light's distance len, and the light the pixel loses if shadowed.
+2. `penumbra.tmpl` mode 0, **the search:** each pixel looks round it (7×7 taps) for blocked pixels on its own surface. It takes the edge's half-width from theirs, R·t/(len−t), in pixels at that depth. This spreads the edge onto lit pixels too, which have no blocker of their own.
+3. Mode 1, **across:** a weighted average over that width. Weights run 1 − |x|/(r+1): full at the centre, half at half, least at the rim.
+4. Mode 2, **down:** the same average, multiplied into the scene as 1 − lost·occlusion.
+
+Every tap is also weighted by depth agreement, like the AO denoise.
+
+**Result:** the edge is sharp where the blocker touches the surface and wide where it is far from it. There is no speckle, and it costs one ray per pixel instead of 4–16.
+- **New objects:** two RGBA16F attachments, a single-attachment render pass (the AO offscreen pass, generalised), their framebuffers, a descriptor set per target, and three pipelines (22–24).
+- **Optional:** if any of it fails, the sampled edge stays.
+
+**Found on the way:** the renderer's fixed table of buffer memory (`MAX_ATTACHMENTS_IN_POOL`) had no room for the two new targets. The client stopped at start-up with "Attachments array overflow", and the test harness sat waiting for a map that never loaded. The limit now counts them.
+
+**Checked** (the tester's settings, 0 validation errors, six-cube cluster, courtyard and flag room):
+- hard, sampled at 16, projected at 16, projected at 32, and 16 raw rays as reference;
+- projected at 16 is smooth and close to the 16-ray reference;
+- 32 is wider;
+- the edge is narrow where a cube is near the floor.
+
+**Limits:**
+- **Thin shadows:** the search's taps are up to 64/3 pixels apart, so a very thin shadow can be missed and keep a hard outer edge.
+- **Overlapping shadows** from blockers at different distances share one width.
+- **The screen edge:** the edge is cut off there.
+
 ### E170. Specks and streaks on the flag room floor: false level shadows from the lamps' own fittings — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

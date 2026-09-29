@@ -518,6 +518,8 @@ def cast_shadows():
         ("multi", "r_rtActorShadowRays", "Rays", '"1" 1 "2" 2 "4 (default)" 4 "8" 8 "16 (heavy)" 16'),
         # [QL] E169. Soft edges through AO's edge-aware blur.
         ("multi", "r_rtActorShadowDenoise", "Soft edge denoise", '"Off" 0 "On (default)" 1'),
+        # [QL] E171. Soft edges worked out from the distances, from one ray.
+        ("multi", "r_rtActorShadowSoftMode", "Soft edges", '"Sampled (default)" 0 "Projected" 1'),
         # [QL] E165/E166. Doors and lifts always cast; players and items by shape.
         ("multi", "r_rtShadowCasters", "Players block lights",
          '"No (default)" 0 "Yes" 1'),

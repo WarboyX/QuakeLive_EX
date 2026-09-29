@@ -458,3 +458,94 @@ int R_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directedLight, ve
 
 	return qtrue;
 }
+
+
+/*
+=================
+R_ShadowRayReach
+
+[QL] E172. How far a model's shadow ray toward the
+grid's light may run before what it meets is more likely the light's own
+surroundings than something in front of it.
+
+The same two rules the traced shadows on the level use (actorshadow.tmpl),
+done here on the CPU because the model pass has no light grid on the GPU:
+
+- Where neighbouring grid points' directions converge, that is the light; the
+  ray gets 55% of the way there less 16 units, since the estimate runs a
+  median 37% long (E170, measured against the lightmap).
+- Where they do not, march toward the light through the grid and stop before
+  the ray leaves open space (every sample around it inside a wall - the
+  room's shell) or passes the light (the direction there points back).
+
+origin and dir are world space; the answer is at most reach.
+=================
+*/
+static qboolean R_GridDirAt( const vec3_t p, vec3_t dir )
+{
+	vec3_t amb, dl;
+
+	if ( !R_LightForPoint( (float *)p, amb, dl, dir ) ) {
+		return qfalse;
+	}
+	if ( amb[0] + amb[1] + amb[2] + dl[0] + dl[1] + dl[2] <= 0.0f ) {
+		return qfalse;   // every surrounding point inside a wall
+	}
+	return VectorNormalize( dir ) > 0.0f ? qtrue : qfalse;
+}
+
+float R_ShadowRayReach( const vec3_t origin, const vec3_t dir, float reach )
+{
+	vec3_t up, t1, t2, q, d;
+	float sum = 0.0f, s;
+	int k, n = 0;
+
+	if ( tr.world == NULL || tr.world->lightGridData == NULL ) {
+		return reach;
+	}
+
+	VectorSet( up, 0, 0, 1 );
+	if ( fabsf( dir[2] ) >= 0.9f ) {
+		VectorSet( up, 1, 0, 0 );
+	}
+	CrossProduct( dir, up, t1 );
+	VectorNormalize( t1 );
+	CrossProduct( dir, t1, t2 );
+
+	for ( k = 0; k < 4; k++ ) {
+		const float *t = ( k & 1 ) ? t2 : t1;
+		vec3_t w;
+		float b, denom, s0;
+
+		VectorMA( origin, ( k & 2 ) ? -48.0f : 48.0f, t, q );
+		if ( !R_GridDirAt( q, d ) ) {
+			continue;
+		}
+		b = DotProduct( dir, d );
+		denom = 1.0f - b * b;
+		if ( denom < 0.004f ) {
+			continue;
+		}
+		VectorSubtract( origin, q, w );
+		s0 = ( b * DotProduct( d, w ) - DotProduct( dir, w ) ) / denom;
+		if ( s0 > 16.0f && s0 < 2.0f * reach ) {
+			sum += s0;
+			n++;
+		}
+	}
+	if ( n >= 2 && sum / n < reach ) {
+		s = ( sum / n ) * 0.55f - 16.0f;
+		return s < 16.0f ? 16.0f : s;
+	}
+
+	for ( s = 32.0f; s <= reach; s += 32.0f ) {
+		VectorMA( origin, s, dir, q );
+		if ( !R_GridDirAt( q, d ) ) {
+			return s - 32.0f < 16.0f ? 16.0f : s - 32.0f;   // into the room's shell
+		}
+		if ( DotProduct( d, dir ) < 0.0f ) {
+			return s * 0.8f;                               // past the light
+		}
+	}
+	return reach;
+}

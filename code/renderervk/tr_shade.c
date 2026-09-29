@@ -1494,7 +1494,18 @@ static void VK_ModelShadowPass( void )
 	su.rtAxis[0][3] = 0.299f * ent->ambientLight[0] + 0.587f * ent->ambientLight[1] + 0.114f * ent->ambientLight[2];
 	su.rtAxis[1][3] = 0.299f * ent->directedLight[0] + 0.587f * ent->directedLight[1] + 0.114f * ent->directedLight[2];
 	VectorCopy( ent->lightDir, su.rtLight );   // entity space, as RB_CalcDiffuseColor uses it
-	su.rtLight[3] = r_rtModelShadowDistance->value;
+	/* [QL] E172: stop short of the light and the room around it, not a fixed
+	   distance along it forever - see R_ShadowRayReach. The grid's direction
+	   back into the world: lightDir[i] is its dot with axis[i]. */
+	{
+		vec3_t worldDir, lightOrigin;
+		VectorScale( ent->e.axis[0], ent->lightDir[0], worldDir );
+		VectorMA( worldDir, ent->lightDir[1], ent->e.axis[1], worldDir );
+		VectorMA( worldDir, ent->lightDir[2], ent->e.axis[2], worldDir );
+		VectorNormalize( worldDir );
+		VectorCopy( ( ent->e.renderfx & RF_LIGHTING_ORIGIN ) ? ent->e.lightingOrigin : ent->e.origin, lightOrigin );
+		su.rtLight[3] = R_ShadowRayReach( lightOrigin, worldDir, r_rtModelShadowDistance->value );
+	}
 	su.rtParams[0] = r_rtModelShadowStrength->value;
 	su.rtParams[1] = (float)r_rtModelShadowRays->integer;
 	su.rtParams[2] = r_rtModelShadowSoftness->value;

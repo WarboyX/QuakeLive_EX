@@ -209,7 +209,11 @@ void main() {
 	ivec2 pix = ivec2(gl_FragCoord.xy);
 	float d = fetchDepth(pix);
 
+#ifdef USE_PEN
+	out_color = vec4(0.0, 0.0, 1.0, 0.0);   // unshadowed, nothing to lose
+#else
 	out_color = vec4(1.0);
+#endif
 	if (depthInfo.z * (d - depthInfo.x) <= 0.0 ||      // sky
 	    depthInfo.z * (d - depthInfo.y) >= 0.0 ||      // the view weapon
 	    gridOrigin.w <= 0.0) {
@@ -254,7 +258,14 @@ void main() {
 	float dist = lightDistance(Q0, L, params.y, found);
 	vec3 lightPos = Q0 + L * dist;
 	vec3 O = P + N * 2.0;
+#ifdef USE_PEN
+	/* [QL] E171: one ray, at the centre of the light. The softness comes
+	   afterwards, from the distances this ray finds (penumbra.tmpl). */
+	const int rays = 1;
+	float hitT = 0.0, lenC = 1.0;
+#else
 	int rays = clamp(int(soft.y), 1, 16);
+#endif
 	uint mask = uint(params.z);
 	/* [QL] E168: the level is only traced toward a light that was located.
 	   Where the grid cannot say where it is, a ray run to the full reach goes
@@ -276,7 +287,11 @@ void main() {
 	float blocked = 0.0;
 	for (int i = 0; i < rays; i++) {
 		vec3 target = lightPos;
+#ifdef USE_PEN
+		if (false) {
+#else
 		if (soft.x > 0.0) {
+#endif
 			float rr = sqrt((float(i) + 0.5) / float(rays)) * soft.x;
 			float a = float(i) * 2.3999632 + spin;
 			target += (s1 * cos(a) + s2 * sin(a)) * rr;
@@ -301,6 +316,9 @@ void main() {
 				   without this a player upstairs, above a lantern, shadowed
 				   the floor below it through the ceiling. */
 				hit = !levelBetween(O, dir, rayQueryGetIntersectionTEXT(rq, true));
+#ifdef USE_PEN
+				hitT = rayQueryGetIntersectionTEXT(rq, true);
+#endif
 			}
 		}
 		/* [QL] E168/E170: the level is traced to a little over half the way,
@@ -320,13 +338,27 @@ void main() {
 			while (rayQueryProceedEXT(rq)) {}
 			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
 				hit = occluderHides(O, dir, rayQueryGetIntersectionTEXT(rq, true));
+#ifdef USE_PEN
+				hitT = rayQueryGetIntersectionTEXT(rq, true);
+#endif
 			}
 		}
 		if (hit) {
 			blocked += 1.0;
 		}
+#ifdef USE_PEN
+		lenC = len;
+#endif
 	}
 	blocked /= float(rays);
+#ifdef USE_PEN
+	/* occlusion, how far from the pixel the blocker is, how far the light is,
+	   and how much light this pixel loses if it is shadowed - the last for
+	   every lit-facing pixel, since the soft edge spreads into lit ones */
+	float lostFull = directed * ndl / max(ambient + directed * ndl, 1e-3) * clamp(params.x, 0.0, 1.0);
+	out_color = vec4(blocked, blocked > 0.0 ? hitT : 0.0, lenC, lostFull);
+	return;
+#endif
 	if (blocked <= 0.0) {
 		return;
 	}
