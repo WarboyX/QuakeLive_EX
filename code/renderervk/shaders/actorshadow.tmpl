@@ -41,6 +41,8 @@ layout(set = 0, binding = 3, std430) readonly buffer LightGrid {
 	uint gridData[];
 };
 
+#define RT_MASK_LEVEL_BIT 1u
+
 layout(location = 0) in vec2 frag_tex_coord;
 layout(location = 0) out vec4 out_color;
 
@@ -123,17 +125,22 @@ point at the same light from slightly different places; where their lines
 come closest to the first is the light. The ray then stops there, as a ray to
 a lamp must.
 
+[QL] E168: four samples, one on each side, not two - the estimate from two
+wandered from pixel to pixel and showed as blotches. `found` is false where
+fewer than two of them locate a light, or where it is beyond the reach.
+
 Where the lines are near parallel (a light far away, or several blended) or
 cross behind the surface, there is nothing to find and the answer is the
 maximum reach.
 */
-float lightDistance(vec3 Q0, vec3 d0, float reach) {
+float lightDistance(vec3 Q0, vec3 d0, float reach, out bool found) {
 	vec3 up = abs(d0.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
 	vec3 t1 = normalize(cross(d0, up));
 	vec3 t2 = cross(d0, t1);
 	float sum = 0.0, n = 0.0;
-	for (int k = 0; k < 2; k++) {
-		vec3 Qi = Q0 + (k == 0 ? t1 : t2) * 48.0;
+	for (int k = 0; k < 4; k++) {
+		vec3 t = (k & 1) == 0 ? t1 : t2;
+		vec3 Qi = Q0 + t * ((k & 2) == 0 ? 48.0 : -48.0);
 		float a, dd;
 		vec3 di;
 		if (!gridAt(Qi, a, dd, di)) {
@@ -146,11 +153,14 @@ float lightDistance(vec3 Q0, vec3 d0, float reach) {
 		}
 		vec3 w = Q0 - Qi;
 		float s0 = (b * dot(di, w) - dot(d0, w)) / denom;
-		if (s0 > 16.0) {
+		if (s0 > 16.0 && s0 < 2.0 * reach) {
 			sum += s0;
 			n += 1.0;
 		}
 	}
+	/* [QL] E168: at least two of the four must agree that there is a light to
+	   find, or the answer is a guess */
+	found = n >= 2.0 && sum / n < reach;
 	return n > 0.0 ? min(sum / n, reach) : reach;
 }
 
@@ -201,10 +211,17 @@ void main() {
 
 	/* [QL] E167: to the light's estimated position, not along a direction
 	   forever - and, with a size, from a spread of points on it (softness) */
-	float dist = lightDistance(Q0, L, params.y);
+	bool found;
+	float dist = lightDistance(Q0, L, params.y, found);
 	vec3 lightPos = Q0 + L * dist;
 	vec3 O = P + N * 2.0;
 	int rays = clamp(int(soft.y), 1, 16);
+	uint mask = uint(params.z);
+	/* [QL] E168: the level is only traced toward a light that was located.
+	   Where the grid cannot say where it is, a ray run to the full reach goes
+	   past the lamp and finds the far wall. */
+	uint actorMask = mask & ~uint(RT_MASK_LEVEL_BIT);
+	uint levelMask = found ? (mask & uint(RT_MASK_LEVEL_BIT)) : 0u;
 	float blocked = 0.0;
 	for (int i = 0; i < rays; i++) {
 		vec3 target = lightPos;
@@ -219,12 +236,33 @@ void main() {
 		if (tmax <= 1.0) {
 			continue;
 		}
-		rayQueryEXT rq;
-		rayQueryInitializeEXT(rq, topLevel,
-			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-			uint(params.z), O, 0.0, d / len, tmax);
-		while (rayQueryProceedEXT(rq)) {}
-		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+		bool hit = false;
+		if (actorMask != 0u) {
+			rayQueryEXT rq;
+			rayQueryInitializeEXT(rq, topLevel,
+				gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+				actorMask, O, 0.0, d / len, tmax);
+			while (rayQueryProceedEXT(rq)) {}
+			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+				hit = true;
+			}
+		}
+		/* [QL] E168: the level stops well short of the light. This map's
+		   lights are lanterns, torches and lit panels - part of the level -
+		   so a ray that reaches one ends on its fitting, and the estimate is
+		   only good to a fraction of the distance. */
+		float levelMax = len * 0.75 - 16.0;
+		if (!hit && levelMask != 0u && levelMax > 1.0) {
+			rayQueryEXT rq;
+			rayQueryInitializeEXT(rq, topLevel,
+				gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+				levelMask, O, 0.0, d / len, levelMax);
+			while (rayQueryProceedEXT(rq)) {}
+			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+				hit = true;
+			}
+		}
+		if (hit) {
 			blocked += 1.0;
 		}
 	}

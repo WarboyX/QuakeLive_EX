@@ -6048,6 +6048,36 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E168. Traced level shadows: no false shadows on lit walls; tested with several casters and several lights — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Asked for: "Your test should use multiple cubes and light sources. Along with 4 rays at least". E167's test used one cube, one light and one spot, and that hid a real bug.
+
+**The test** (scratch harness, lavapipe, the tester's settings, 0 validation errors):
+- **Casters:** one test model holding six cubes of different sizes, from the floor up to 150 units above it. They shadow the level and each other.
+- **Seven spots, each under different lights:** the stair hall, and six of the map's deathmatch spawn points (courtyards, the flag room, the side rooms), so the view faces open space.
+- **Rays:** 4 for every traced shadow (players/level, model, dynamic light), plus 8 for the softness shot.
+- **Views:** each spot shot with shadows off, player debug, and players plus level on.
+- **Dynamic lights:** a second run puts three coloured lights around the cluster (a temporary test-only hook, not in the build), with `r_rtDlightShadows` 0/2/1, softness 16, and everything on.
+
+**The bug it found:** with level shadows in debug view, the stair hall's lit wall came out mostly red, in blotches. A temporary view coloured each blocked ray by how far along it hit, and showed the hits all at the end of the ray.
+- This map's lights are lanterns, torches, round wall lights and the sky; its point-light entities are compiled out.
+- A ray aimed at the estimated light ends on the fitting the light sits in, and E167 counted that as a shadow.
+- Where the grid could not locate a light, the ray ran the full 512 units, passed the lamp, and found the far wall.
+
+**Fix** (`actorshadow.tmpl`):
+- **Level rays stop at 75% of the way to the light, less 16 units.** Player and item rays still go almost the whole way: a player cannot be the lamp.
+- **The level is traced only toward a light that was located.** The estimate now samples the grid on four sides, not two; at least two of the four must agree, and within the reach. Where they don't, players still cast shadows but the level does not.
+- The blotches were also the two-sample estimate wandering from pixel to pixel. Four samples settle it.
+
+**After the fix:**
+- The walls are clean.
+- At every spot each cube casts its own shadow, and at each spot they fall in one consistent direction.
+- The cubes shadow each other, and the player's own body shadows the floor in front of the camera.
+- With the three coloured lights, each cube casts a shadow per light. Where one light is blocked, the other two colour the shadow, and softness blurs the edges.
+
+**Not checked:** real player and item models (pak00), and the mega health room. Outdoors under sun, the grid cannot place the sun, so there are no level shadows there. The map's baked lightmap already has those.
+
 ### E167. Traced shadows on the level: cast from where the light is, by the level too, and soft (`r_rtLevelShadows`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
