@@ -991,7 +991,7 @@ void main() {
 		   out of it. The world instance is not culled. */
 		rayQueryInitializeEXT(rq, topLevel,
 			gl_RayFlagsOpaqueEXT | gl_RayFlagsCullBackFacingTrianglesEXT,
-			0xFF, O, 0.5, R, rtInfo.y);
+			0x03, O, 0.5, R, rtInfo.y);   /* [QL] E166: RT_MASK_OCCLUSION */
 		while (rayQueryProceedEXT(rq)) {}
 
 		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {

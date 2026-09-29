@@ -272,7 +272,12 @@ typedef struct VK_Pipeline {
 
 /* [QL] E165: ray-tracing instance masks, see vk_rt_build_dynamic_tlas */
 #define RT_MASK_LEVEL	0x01
-#define RT_MASK_ACTORS	0x02
+#define RT_MASK_ACTORS	0x02	/* players and items as proxy boxes/balls - occlusion, reflections */
+#define RT_MASK_SILHOUETTE	0x04	/* [QL] E166: players and items as their real triangles - shadows */
+#define RT_MASK_OCCLUSION	( RT_MASK_LEVEL | RT_MASK_ACTORS )
+/* what the traced shadows' rays stop at: the level and its movers, and with
+   r_rtShadowCasters 1 the players' and items' silhouettes */
+#define RT_SHADOW_MASK		( RT_MASK_LEVEL | ( r_rtShadowCasters->integer ? RT_MASK_SILHOUETTE : 0 ) )
 
 // this structure must be in sync with shader uniforms!
 typedef struct vkUniform_s {
@@ -466,6 +471,9 @@ void vk_find_water_planes( const struct world_s *world );
    a water plane, and the pass was created. */
 qboolean vk_ssr( void );
 void vk_rt_prebuild_dynamic( void );   /* [QL] E165: before the 3D, for the shadow rays */
+qboolean vk_actor_shadows( void );     /* [QL] E166: players' traced shadows on the level */
+void vk_actor_shadow_create( void );
+void vk_actor_shadow_destroy( void );
 /* [QL] E152: r_pipelineCache */
 #define VK_PIPELINE_CACHE_FILE "vkpipelines.cache"
 void vk_save_pipeline_cache( void );
@@ -754,6 +762,8 @@ typedef struct {
 		VkShaderModule ssr_fs;
 		VkShaderModule ssr_ms_fs;
 		VkShaderModule ssr_composite_fs;
+		VkShaderModule actor_shadow_fs;     // [QL] E166: players' traced shadows on the level
+		VkShaderModule actor_shadow_ms_fs;
 		VkShaderModule ssr_rt_fs;    // [QL] E156: the march + ray-traced fallback
 		VkShaderModule ssr_rt_ms_fs;
 		VkShaderModule ssao_fs;      // [QL] E154: screen-space AO trace
@@ -999,6 +1009,26 @@ typedef struct {
 		VkPipeline				rt_trace_pipeline_half;
 		qboolean				rtReady;
 	} ssr;
+
+	/*
+	[QL] E166: players' and items' traced shadows on the level (r_rtActorShadows).
+	A fullscreen multiply over the scene in the occlusion composite pass: from
+	each pixel, one ray toward the light grid's light against the players' and
+	items' real triangles. The set names depth, the per-frame structure, this
+	pass's parameters and the light grid; the last two change per map
+	(vk_rt_update_actor_descriptor) and ready says they have been written.
+	*/
+	struct {
+		VkDescriptorSetLayout	set_layout;
+		VkDescriptorPool		pool;
+		VkDescriptorSet			descriptor[ NUM_COMMAND_BUFFERS ];
+		VkPipelineLayout		pipeline_layout;
+		VkPipeline				pipeline;
+		VkBuffer				uniform_buffer[ NUM_COMMAND_BUFFERS ];
+		VkDeviceMemory			uniform_memory[ NUM_COMMAND_BUFFERS ];
+		void					*uniform_ptr[ NUM_COMMAND_BUFFERS ];
+		qboolean				ready;
+	} actorShadow;
 	qboolean blitEnabled;
 	qboolean msaaActive;
 
@@ -1139,6 +1169,29 @@ typedef struct {
 
 			uint32_t		dyn_maxInstances;
 			qboolean		dynReady;
+
+			/*
+			[QL] E166: players and items as their real, animated triangles, in
+			one bottom-level structure per command buffer rebuilt each frame
+			(RT_MASK_SILHOUETTE) - what they cast traced shadows with. Their
+			vertices are lerped and put into the world on the CPU, the same
+			lerp RB_SurfaceMesh draws them with.
+			*/
+			VkBuffer		actor_vertex_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	actor_vertex_memory[ NUM_COMMAND_BUFFERS ];
+			void			*actor_vertex_ptr[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		actor_index_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	actor_index_memory[ NUM_COMMAND_BUFFERS ];
+			void			*actor_index_ptr[ NUM_COMMAND_BUFFERS ];
+			VkAccelerationStructureKHR actor_blas[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		actor_blas_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	actor_blas_memory[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		actor_scratch_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	actor_scratch_memory[ NUM_COMMAND_BUFFERS ];
+			VkDeviceAddress	actor_scratch_address[ NUM_COMMAND_BUFFERS ];
+			qboolean		actorReady;
+			uint32_t		actorTris;		// in this frame's structure
+			uint32_t		actorEntities;
 
 			/* [QL] E156: the map's light grid, as the BSP stores it, for the
 			   reflection's ray-traced fallback to light what it hits. */

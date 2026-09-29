@@ -175,6 +175,9 @@ emit_rt frag frag_light_rt_fog      light_frag.tmpl -DUSE_RT -DUSE_FOG
 emit_rt frag frag_light_rt_line     light_frag.tmpl -DUSE_RT -DUSE_LINE
 emit_rt frag frag_light_rt_line_fog light_frag.tmpl -DUSE_RT -DUSE_LINE -DUSE_FOG
 emit_rt frag rtshadow_frag_spv      rtshadow_frag.tmpl
+# [QL] E166: players' and items' traced shadows on the level
+emit_rt frag actorshadow_frag_spv    actorshadow.tmpl
+emit_rt frag actorshadow_frag_ms_spv actorshadow.tmpl -DUSE_MSAA
 
 # ---------------------------------------------------------------------------
 # generic vertex variations

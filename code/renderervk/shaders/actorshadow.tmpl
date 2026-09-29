@@ -1,0 +1,162 @@
+#version 460
+#extension GL_EXT_ray_query : require
+
+/*
+[QL] E166: players' and items' traced shadows on the level (r_rtActorShadows,
+and Shadows: Traced).
+
+The level's own shadows are baked into its lightmaps; what they cannot hold is
+anything that moves. This puts it back: a fullscreen pass, multiplied into the
+scene with the opaque surfaces drawn, where each pixel sends one ray toward the
+light grid's light against the players' and items' real triangles
+(RT_MASK_SILHOUETTE - see rt_build_actor_mesh). Where one is in the way, the
+pixel loses the share of its light that the grid says comes from that
+direction:
+	directed * N.L / (ambient + directed * N.L)
+The grid only approximates a lightmapped surface's light, but it is the same
+light the model shadows use, so the two agree with each other.
+
+Your own body is in the structure, so this is also your own shadow.
+*/
+
+#ifdef USE_MSAA
+layout(set = 0, binding = 0) uniform sampler2DMS depthMap;
+#else
+layout(set = 0, binding = 0) uniform sampler2D depthMap;
+#endif
+layout(set = 0, binding = 1) uniform accelerationStructureEXT topLevel;
+
+layout(set = 0, binding = 2) uniform ActorShadow {
+	mat4 invViewProj;
+	vec4 eye;
+	vec4 depthInfo;     // x cleared depth, y weapon band, z +1 reversed depth / -1 not
+	vec4 params;        // x strength, y reach, z instance mask, w 1 = debug tint
+	vec4 gridOrigin;    // w 1 if the map has a light grid
+	vec4 gridInvSize;
+	vec4 gridBounds;
+};
+
+layout(set = 0, binding = 3, std430) readonly buffer LightGrid {
+	uint gridData[];
+};
+
+layout(location = 0) in vec2 frag_tex_coord;
+layout(location = 0) out vec4 out_color;
+
+ivec2 depthSize() {
+#ifdef USE_MSAA
+	return textureSize(depthMap);
+#else
+	return textureSize(depthMap, 0);
+#endif
+}
+
+float fetchDepth(ivec2 p) {
+	return texelFetch(depthMap, p, 0).r;
+}
+
+vec3 worldAt(ivec2 p, vec2 invSize) {
+	float d = fetchDepth(p);
+	vec2 uv = (vec2(p) + 0.5) * invSize;
+	vec4 w = invViewProj * vec4(uv * 2.0 - 1.0, d, 1.0);
+	return w.xyz / w.w;
+}
+
+/* ambient and directed brightness (0..1) and direction at p, trilinear over
+   the grid points outside solid - as ssr.tmpl's gridLight */
+void gridAt(vec3 p, out float ambient, out float directed, out vec3 dir) {
+	vec3 v = (p - gridOrigin.xyz) * gridInvSize.xyz;
+	vec3 f = fract(v);
+	ivec3 i0 = ivec3(floor(v));
+	ivec3 b = ivec3(gridBounds.xyz);
+	float total = 0.0;
+	ambient = 0.0;
+	directed = 0.0;
+	dir = vec3(0.0);
+
+	for (int k = 0; k < 8; k++) {
+		ivec3 o = ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+		ivec3 c = clamp(i0 + o, ivec3(0), b - ivec3(1));
+		int idx = c.x + c.y * b.x + c.z * b.x * b.y;
+		uint w0 = gridData[idx * 2];
+		uint w1 = gridData[idx * 2 + 1];
+		vec3 amb = vec3(float(w0 & 255u), float((w0 >> 8) & 255u), float((w0 >> 16) & 255u));
+		vec3 dl = vec3(float(w0 >> 24), float(w1 & 255u), float((w1 >> 8) & 255u));
+		if (amb.r + amb.g + amb.b + dl.r + dl.g + dl.b <= 0.0) {
+			continue;               // inside a wall
+		}
+		float lng = float((w1 >> 16) & 255u) * (6.2831853 / 256.0);
+		float lat = float(w1 >> 24) * (6.2831853 / 256.0);
+		vec3 ld = vec3(cos(lat) * sin(lng), sin(lat) * sin(lng), cos(lng));
+		vec3 ww = mix(vec3(1.0) - f, f, vec3(o));
+		float w = ww.x * ww.y * ww.z;
+		float dlum = dot(dl, vec3(0.299, 0.587, 0.114));
+		ambient += w * dot(amb, vec3(0.299, 0.587, 0.114));
+		directed += w * dlum;
+		dir += ld * (w * dlum);
+		total += w;
+	}
+	if (total > 0.0) {
+		ambient /= total * 255.0;
+		directed /= total * 255.0;
+	}
+	float dl = length(dir);
+	dir = dl > 0.0 ? dir / dl : vec3(0.0, 0.0, 1.0);
+}
+
+void main() {
+	ivec2 size = depthSize();
+	vec2 invSize = 1.0 / vec2(size);
+	ivec2 pix = ivec2(gl_FragCoord.xy);
+	float d = fetchDepth(pix);
+
+	out_color = vec4(1.0);
+	if (depthInfo.z * (d - depthInfo.x) <= 0.0 ||      // sky
+	    depthInfo.z * (d - depthInfo.y) >= 0.0 ||      // the view weapon
+	    gridOrigin.w <= 0.0) {
+		return;
+	}
+
+	vec3 P = worldAt(pix, invSize);
+
+	/* the surface normal from the neighbours, the closer one on each axis so a
+	   silhouette edge does not bend it (rtao.tmpl does the same) */
+	ivec2 lo = ivec2(0), hi = size - ivec2(1);
+	vec3 Pl = worldAt(clamp(pix + ivec2(-1, 0), lo, hi), invSize);
+	vec3 Pr = worldAt(clamp(pix + ivec2( 1, 0), lo, hi), invSize);
+	vec3 Pd = worldAt(clamp(pix + ivec2( 0,-1), lo, hi), invSize);
+	vec3 Pu = worldAt(clamp(pix + ivec2( 0, 1), lo, hi), invSize);
+	vec3 dx = (dot(Pr - P, Pr - P) < dot(P - Pl, P - Pl)) ? (Pr - P) : (P - Pl);
+	vec3 dy = (dot(Pu - P, Pu - P) < dot(P - Pd, P - Pd)) ? (Pu - P) : (P - Pd);
+	vec3 N = cross(dx, dy);
+	float nl = length(N);
+	if (nl <= 0.0) {
+		return;
+	}
+	N /= nl;
+	if (dot(N, eye.xyz - P) < 0.0) {
+		N = -N;
+	}
+
+	float ambient, directed;
+	vec3 L;
+	gridAt(P + N * 4.0, ambient, directed, L);   // off the surface: grid points inside walls are dark
+	float ndl = dot(N, L);
+	if (ndl <= 0.02 || directed <= 0.0) {
+		return;                     // this light never reached here to be blocked
+	}
+
+	rayQueryEXT rq;
+	rayQueryInitializeEXT(rq, topLevel,
+		gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+		uint(params.z), P + N * 2.0, 0.0, L, params.y);
+	while (rayQueryProceedEXT(rq)) {}
+	if (rayQueryGetIntersectionTypeEXT(rq, true) == gl_RayQueryCommittedIntersectionNoneEXT) {
+		return;
+	}
+
+	float lost = directed * ndl / max(ambient + directed * ndl, 1e-3);
+	lost *= clamp(params.x, 0.0, 1.0);
+	out_color = params.w > 0.0 ? vec4(1.0, 0.25, 0.25, 1.0)     // debug: shadowed pixels red
+	                           : vec4(vec3(1.0 - lost), 1.0);
+}

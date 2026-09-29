@@ -384,7 +384,7 @@ void main() {
 		rayQueryInitializeEXT(rq, topLevel,
 			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT |
 			gl_RayFlagsCullBackFacingTrianglesEXT,
-			0xFF, P + N * bias, bias, dir, radius);
+			0x03, P + N * bias, bias, dir, radius);   /* [QL] E166: level + proxies (RT_MASK_OCCLUSION), not the silhouettes */
 
 		/*
 		No candidate handling. Every geometry in the structure was built with

@@ -1495,6 +1495,10 @@ static const void *RB_DrawSurfs( const void *data ) {
 	*/
 	if ( backEnd.viewParms.portalView == PV_NONE ) {
 		vk_rt_ao();
+		/* [QL] E166: players' and items' traced shadows on the level, into the
+		   lightmapped scene like AO and before the dynamic lights for the same
+		   reason - they block the map's light, not a rocket's */
+		vk_actor_shadows();
 	}
 #endif
 

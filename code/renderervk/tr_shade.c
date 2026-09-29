@@ -1177,7 +1177,8 @@ void R_RTShadowReport( qboolean force )
 	const int dlOn = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? 1 : 0;
 
 	if ( !force ) {
-		const int state = r_rtModelShadows->integer * 16 + r_rtDlightShadows->integer * 4 + ( R_SHADOWS_TRACED ? 1 : 0 );
+		const int state = r_rtActorShadows->integer * 64 + r_rtModelShadows->integer * 16 +
+			r_rtDlightShadows->integer * 4 + ( R_SHADOWS_TRACED ? 1 : 0 );
 		static int lastState = 0;
 		if ( state != lastState ) {
 			/* a toggle is reported two frames on, so "last frame" is one that
@@ -1204,6 +1205,11 @@ void R_RTShadowReport( qboolean force )
 		ri.Printf( PRINT_ALL, "  models last frame: %i surface(s) shadowed; skipped %i translucent, "
 			"%i not lit from the light grid\n", s->modelDrawn, s->modelTranslucent, s->modelNoGrid );
 	}
+	if ( r_rtActorShadows->integer || R_SHADOWS_TRACED ) {
+		ri.Printf( PRINT_ALL, "  players/items on the level: %u triangle(s) from %u model(s) in the silhouette "
+			"structure%s\n", vk.rt.world.actorTris, vk.rt.world.actorEntities,
+			vk.rt.world.actorReady ? "" : " - NOT AVAILABLE (see the RT: lines at map load)" );
+	}
 	if ( dlOn ) {
 		if ( r_dlightMode->integer == 0 ) {
 			ri.Printf( PRINT_ALL, "  dynamic lights: r_dlightMode is 0 (classic) - these shadows need "
@@ -1228,7 +1234,7 @@ static void VK_SetRTTransform( vkUniform_t *uniform )
 	VectorCopy( backEnd.or.origin, uniform->rtOrigin );
 	/* [QL] E165: which instances cast - the level and its movers always,
 	   players and items with r_rtShadowCasters 1 */
-	uniform->rtOrigin[3] = (float)( RT_MASK_LEVEL | ( r_rtShadowCasters->integer ? RT_MASK_ACTORS : 0 ) );
+	uniform->rtOrigin[3] = (float)( RT_SHADOW_MASK );
 	for ( i = 0; i < 3; i++ ) {
 		VectorCopy( backEnd.or.axis[i], uniform->rtAxis[i] );
 		uniform->rtAxis[i][3] = 0.0f;

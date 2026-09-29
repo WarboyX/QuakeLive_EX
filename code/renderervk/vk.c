@@ -4492,6 +4492,7 @@ static qboolean rtDynRoundReported = qfalse;
 static void vk_rt_update_ao_descriptor( void );
 void vk_ssr_update_rt_descriptor( void );   /* [QL] E156, with the reflection pass */
 static void vk_rt_update_main_descriptor( void );   /* [QL] E161 */
+void vk_actor_shadow_update_descriptor( void );     /* [QL] E166 */
 
 
 static void vk_rt_destroy_ao( void )
@@ -5533,8 +5534,287 @@ static void vk_rt_destroy_dynamic( void )
 	rt_destroy_proxy( &vk.rt.world.proxy_box );
 	rt_destroy_proxy( &vk.rt.world.proxy_ball );
 
+	/* [QL] E166: the actor meshes */
+	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
+		if ( vk.rt.world.actor_blas[i] != VK_NULL_HANDLE ) {
+			qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.world.actor_blas[i], NULL );
+			vk.rt.world.actor_blas[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.rt.world.actor_blas_buffer[i] != VK_NULL_HANDLE ) {
+			qvkDestroyBuffer( vk.device, vk.rt.world.actor_blas_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.rt.world.actor_blas_memory[i], NULL );
+			vk.rt.world.actor_blas_buffer[i] = VK_NULL_HANDLE;
+			vk.rt.world.actor_blas_memory[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.rt.world.actor_scratch_buffer[i] != VK_NULL_HANDLE ) {
+			qvkDestroyBuffer( vk.device, vk.rt.world.actor_scratch_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.rt.world.actor_scratch_memory[i], NULL );
+			vk.rt.world.actor_scratch_buffer[i] = VK_NULL_HANDLE;
+			vk.rt.world.actor_scratch_memory[i] = VK_NULL_HANDLE;
+		}
+		if ( vk.rt.world.actor_vertex_buffer[i] != VK_NULL_HANDLE ) {
+			qvkUnmapMemory( vk.device, vk.rt.world.actor_vertex_memory[i] );
+			qvkDestroyBuffer( vk.device, vk.rt.world.actor_vertex_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.rt.world.actor_vertex_memory[i], NULL );
+			vk.rt.world.actor_vertex_buffer[i] = VK_NULL_HANDLE;
+			vk.rt.world.actor_vertex_memory[i] = VK_NULL_HANDLE;
+			vk.rt.world.actor_vertex_ptr[i] = NULL;
+		}
+		if ( vk.rt.world.actor_index_buffer[i] != VK_NULL_HANDLE ) {
+			qvkUnmapMemory( vk.device, vk.rt.world.actor_index_memory[i] );
+			qvkDestroyBuffer( vk.device, vk.rt.world.actor_index_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.rt.world.actor_index_memory[i], NULL );
+			vk.rt.world.actor_index_buffer[i] = VK_NULL_HANDLE;
+			vk.rt.world.actor_index_memory[i] = VK_NULL_HANDLE;
+			vk.rt.world.actor_index_ptr[i] = NULL;
+		}
+	}
+	vk.rt.world.actorReady = qfalse;
+
 	vk.rt.world.dynReady = qfalse;
 	vk.rt.world.dyn_maxInstances = 0;
+}
+
+
+/*
+=================
+rt_create_actor_mesh / rt_build_actor_mesh
+
+[QL] E166. Players and items as their real triangles, for the traced shadows
+they cast (r_rtActorShadows, and r_rtShadowCasters 1).
+
+The proxy boxes the occlusion pass uses are a player's bounds, not a player:
+fine for darkening the floor under someone, useless as a shadow, which is all
+silhouette. So each frame the visible MD3 models are lerped on the CPU - the
+same lerp RB_SurfaceMesh draws them with, so the shadow matches the frame on
+screen - put into the world, and built into one bottom-level structure per
+command buffer, sized once for the worst case.
+
+Your own body is in it (RF_THIRD_PERSON: not drawn in first person, but it
+casts); the view weapon is not (RF_FIRST_PERSON, drawn at the eye).
+=================
+*/
+#define RT_ACTOR_MAX_VERTS	( 192 * 1024 )
+#define RT_ACTOR_MAX_TRIS	( 256 * 1024 )
+
+static void rt_actor_geometry( VkAccelerationStructureGeometryKHR *geom, int idx, uint32_t numVerts )
+{
+	Com_Memset( geom, 0, sizeof( *geom ) );
+	geom->sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geom->geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+	geom->flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+	geom->geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+	geom->geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+	geom->geometry.triangles.vertexStride = sizeof( float ) * 3;
+	geom->geometry.triangles.maxVertex = numVerts > 0 ? numVerts - 1 : 0;
+	geom->geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+	if ( idx >= 0 ) {
+		geom->geometry.triangles.vertexData.deviceAddress = rt_buffer_address( vk.rt.world.actor_vertex_buffer[idx] );
+		geom->geometry.triangles.indexData.deviceAddress = rt_buffer_address( vk.rt.world.actor_index_buffer[idx] );
+	}
+}
+
+static void rt_create_actor_mesh( void )
+{
+	VkAccelerationStructureGeometryKHR geom;
+	VkAccelerationStructureBuildGeometryInfoKHR build_info;
+	VkAccelerationStructureBuildSizesInfoKHR sizes;
+	VkAccelerationStructureCreateInfoKHR create_info;
+	const uint32_t maxTris = RT_ACTOR_MAX_TRIS;
+	VkDeviceSize scratchAlign;
+	uint32_t i;
+
+	vk.rt.world.actorReady = qfalse;
+
+	rt_actor_geometry( &geom, -1, RT_ACTOR_MAX_VERTS );
+	Com_Memset( &build_info, 0, sizeof( build_info ) );
+	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
+	build_info.geometryCount = 1;
+	build_info.pGeometries = &geom;
+
+	Com_Memset( &sizes, 0, sizeof( sizes ) );
+	sizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+	qvkGetAccelerationStructureBuildSizesKHR( vk.device,
+		VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &build_info, &maxTris, &sizes );
+	if ( sizes.accelerationStructureSize == 0 ) {
+		goto fail;
+	}
+	scratchAlign = rt_scratch_alignment();
+
+	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
+		if ( !rt_create_host_buffer( (VkDeviceSize)RT_ACTOR_MAX_VERTS * sizeof( float ) * 3,
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+				&vk.rt.world.actor_vertex_buffer[i], &vk.rt.world.actor_vertex_memory[i],
+				&vk.rt.world.actor_vertex_ptr[i] ) ) {
+			goto fail;
+		}
+		if ( !rt_create_host_buffer( (VkDeviceSize)RT_ACTOR_MAX_TRIS * 3 * sizeof( uint32_t ),
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+				&vk.rt.world.actor_index_buffer[i], &vk.rt.world.actor_index_memory[i],
+				&vk.rt.world.actor_index_ptr[i] ) ) {
+			goto fail;
+		}
+		if ( !rt_create_buffer( sizes.accelerationStructureSize,
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR,
+				&vk.rt.world.actor_blas_buffer[i], &vk.rt.world.actor_blas_memory[i] ) ) {
+			goto fail;
+		}
+		Com_Memset( &create_info, 0, sizeof( create_info ) );
+		create_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+		create_info.buffer = vk.rt.world.actor_blas_buffer[i];
+		create_info.size = sizes.accelerationStructureSize;
+		create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+		if ( qvkCreateAccelerationStructureKHR( vk.device, &create_info, NULL, &vk.rt.world.actor_blas[i] ) < 0 ) {
+			vk.rt.world.actor_blas[i] = VK_NULL_HANDLE;
+			goto fail;
+		}
+		if ( !rt_create_buffer( sizes.buildScratchSize + scratchAlign,
+				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				&vk.rt.world.actor_scratch_buffer[i], &vk.rt.world.actor_scratch_memory[i] ) ) {
+			goto fail;
+		}
+		vk.rt.world.actor_scratch_address[i] =
+			( rt_buffer_address( vk.rt.world.actor_scratch_buffer[i] ) + scratchAlign - 1 ) & ~( scratchAlign - 1 );
+	}
+
+	vk.rt.world.actorReady = qtrue;
+	ri.Printf( PRINT_ALL, "RT: player/item silhouettes ready (up to %i triangles a frame, %i KiB structure)\n",
+		RT_ACTOR_MAX_TRIS, (int)( sizes.accelerationStructureSize / 1024 ) );
+	return;
+
+fail:
+	ri.Printf( PRINT_WARNING, "RT: could not create the player/item silhouette structures - "
+		"players and items will cast no traced shadows\n" );
+	/* the handles made so far are freed with the rest in vk_rt_destroy_dynamic */
+	vk.rt.world.actorReady = qfalse;
+}
+
+/* is anything this frame going to trace the silhouettes */
+static qboolean rt_actors_wanted( void )
+{
+	return ( r_rtActorShadows->integer || R_SHADOWS_TRACED || r_rtShadowCasters->integer ) ? qtrue : qfalse;
+}
+
+/*
+Fill this command buffer's actor mesh and record its build. Returns the
+triangle count; 0 means nothing was built and the instance must be left out.
+*/
+static uint32_t rt_build_actor_mesh( int idx )
+{
+	float *vout = (float *)vk.rt.world.actor_vertex_ptr[idx];
+	uint32_t *iout = (uint32_t *)vk.rt.world.actor_index_ptr[idx];
+	uint32_t nv = 0, nt = 0, nents = 0;
+	VkAccelerationStructureGeometryKHR geom;
+	VkAccelerationStructureBuildGeometryInfoKHR build_info;
+	VkAccelerationStructureBuildRangeInfoKHR range;
+	const VkAccelerationStructureBuildRangeInfoKHR *ranges[1];
+	VkMemoryBarrier barrier;
+	int e;
+
+	vk.rt.world.actorTris = 0;
+	vk.rt.world.actorEntities = 0;
+	if ( !vk.rt.world.actorReady || vout == NULL || iout == NULL ) {
+		return 0;
+	}
+
+	for ( e = 0; e < backEnd.refdef.num_entities; e++ ) {
+		const trRefEntity_t *ent = &backEnd.refdef.entities[e];
+		const model_t *mod;
+		const md3Header_t *header;
+		const md3Surface_t *surf;
+		int s, frame, oldframe;
+		float backlerp;
+
+		if ( ent->e.reType != RT_MODEL ) {
+			continue;
+		}
+		/* the view weapon, things made of light, things that cast nothing,
+		   and shells/effects drawn over another entity with a custom shader */
+		if ( ent->e.renderfx & ( RF_FIRST_PERSON | RF_DEPTHHACK | RF_NOOCCLUDE | RF_NOSHADOW ) ) {
+			continue;
+		}
+		if ( ent->e.customShader ) {
+			continue;
+		}
+		mod = R_GetModelByHandle( ent->e.hModel );
+		if ( mod == NULL || mod->type != MOD_MESH || mod->md3[0] == NULL ) {
+			continue;
+		}
+		header = mod->md3[0];
+		frame = ent->e.frame;
+		oldframe = ent->e.oldframe;
+		if ( frame < 0 || frame >= header->numFrames ) frame = 0;
+		if ( oldframe < 0 || oldframe >= header->numFrames ) oldframe = 0;
+		backlerp = ent->e.backlerp;
+
+		surf = (const md3Surface_t *)( (const byte *)header + header->ofsSurfaces );
+		for ( s = 0; s < header->numSurfaces; s++ ) {
+			const short *newXyz, *oldXyz;
+			const int *tris;
+			int v, t;
+
+			if ( nv + (uint32_t)surf->numVerts > RT_ACTOR_MAX_VERTS ||
+				 nt + (uint32_t)surf->numTriangles > RT_ACTOR_MAX_TRIS ) {
+				goto full;
+			}
+			newXyz = (const short *)( (const byte *)surf + surf->ofsXyzNormals ) + frame * surf->numVerts * 4;
+			oldXyz = (const short *)( (const byte *)surf + surf->ofsXyzNormals ) + oldframe * surf->numVerts * 4;
+			for ( v = 0; v < surf->numVerts; v++, newXyz += 4, oldXyz += 4 ) {
+				vec3_t l;
+				float *o = &vout[ ( nv + v ) * 3 ];
+				l[0] = ( newXyz[0] * ( 1.0f - backlerp ) + oldXyz[0] * backlerp ) * MD3_XYZ_SCALE;
+				l[1] = ( newXyz[1] * ( 1.0f - backlerp ) + oldXyz[1] * backlerp ) * MD3_XYZ_SCALE;
+				l[2] = ( newXyz[2] * ( 1.0f - backlerp ) + oldXyz[2] * backlerp ) * MD3_XYZ_SCALE;
+				o[0] = ent->e.origin[0] + ent->e.axis[0][0] * l[0] + ent->e.axis[1][0] * l[1] + ent->e.axis[2][0] * l[2];
+				o[1] = ent->e.origin[1] + ent->e.axis[0][1] * l[0] + ent->e.axis[1][1] * l[1] + ent->e.axis[2][1] * l[2];
+				o[2] = ent->e.origin[2] + ent->e.axis[0][2] * l[0] + ent->e.axis[1][2] * l[1] + ent->e.axis[2][2] * l[2];
+			}
+			tris = (const int *)( (const byte *)surf + surf->ofsTriangles );
+			for ( t = 0; t < surf->numTriangles * 3; t++ ) {
+				iout[ nt * 3 + t ] = nv + (uint32_t)tris[t];
+			}
+			nv += surf->numVerts;
+			nt += surf->numTriangles;
+			surf = (const md3Surface_t *)( (const byte *)surf + surf->ofsEnd );
+		}
+		nents++;
+	}
+full:
+	if ( nt == 0 ) {
+		return 0;
+	}
+
+	rt_actor_geometry( &geom, idx, nv );
+	Com_Memset( &build_info, 0, sizeof( build_info ) );
+	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
+	build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	build_info.dstAccelerationStructure = vk.rt.world.actor_blas[idx];
+	build_info.geometryCount = 1;
+	build_info.pGeometries = &geom;
+	build_info.scratchData.deviceAddress = vk.rt.world.actor_scratch_address[idx];
+
+	Com_Memset( &range, 0, sizeof( range ) );
+	range.primitiveCount = nt;
+	ranges[0] = &range;
+	qvkCmdBuildAccelerationStructuresKHR( vk.cmd->command_buffer, 1, &build_info, ranges );
+
+	/* the top level built next reads it */
+	Com_Memset( &barrier, 0, sizeof( barrier ) );
+	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	barrier.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+	barrier.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+	qvkCmdPipelineBarrier( vk.cmd->command_buffer,
+		VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+		VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+		0, 1, &barrier, 0, NULL, 0, NULL );
+
+	vk.rt.world.actorTris = nt;
+	vk.rt.world.actorEntities = nents;
+	return nt;
 }
 
 
@@ -5673,6 +5953,7 @@ static qboolean vk_rt_create_dynamic( void )
 
 	vk.rt.world.dyn_maxInstances = maxInstances;
 	vk.rt.world.dynReady = qtrue;
+	rt_create_actor_mesh();   /* [QL] E166: optional - failing loses only the silhouettes */
 	return qtrue;
 
 fail:
@@ -5777,6 +6058,21 @@ static qboolean vk_rt_build_dynamic_tlas( void )
 	inst[0].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 	inst[0].accelerationStructureReference = worldRef;
 	count = 1;
+
+	/* [QL] E166: the players' and items' real triangles, already in the world */
+	if ( rt_actors_wanted() && rt_build_actor_mesh( idx ) > 0 ) {
+		Com_Memset( &inst[count], 0, sizeof( inst[count] ) );
+		inst[count].transform.matrix[0][0] = 1.0f;
+		inst[count].transform.matrix[1][1] = 1.0f;
+		inst[count].transform.matrix[2][2] = 1.0f;
+		inst[count].mask = RT_MASK_SILHOUETTE;
+		/* both sides: a model is not always closed, and a shadow ray must stop
+		   at whichever face of an arm it meets */
+		inst[count].flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+		addr_info.accelerationStructure = vk.rt.world.actor_blas[idx];
+		inst[count].accelerationStructureReference = qvkGetAccelerationStructureDeviceAddressKHR( vk.device, &addr_info );
+		count++;
+	}
 
 	for ( i = 0; r_rtDynamic->integer && i < backEnd.refdef.num_entities &&
 			count < vk.rt.world.dyn_maxInstances; i++ ) {
@@ -6013,7 +6309,8 @@ void vk_rt_prebuild_dynamic( void )
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return;
 	}
-	if ( !( r_rtModelShadows->integer || r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ) {
+	if ( !( r_rtModelShadows->integer || r_rtDlightShadows->integer || R_SHADOWS_TRACED ||
+			r_rtActorShadows->integer ) ) {
 		return;
 	}
 
@@ -6412,6 +6709,7 @@ void vk_rt_build_world( const world_t *world )
 	vk_rt_update_ao_descriptor();
 	vk_ssr_update_rt_descriptor();   /* [QL] E156, the same for the reflection */
 	vk_rt_update_main_descriptor();  /* [QL] E161, and for the main pass's shadow rays */
+	vk_actor_shadow_update_descriptor();   /* [QL] E166 */
 
 	ri.Printf( PRINT_ALL, "RT: world acceleration structure ready%s\n",
 		vk.rt.world.dynReady ? " (+ dynamic entities)" : "" );
@@ -6598,6 +6896,8 @@ static void vk_create_shader_modules( void )
 		vk.modules.frag.light_rt[1][0] = SHADER_MODULE( frag_light_rt_line );
 		vk.modules.frag.light_rt[1][1] = SHADER_MODULE( frag_light_rt_line_fog );
 		vk.modules.frag.rt_model_shadow = SHADER_MODULE( rtshadow_frag_spv );
+		vk.modules.actor_shadow_fs = SHADER_MODULE( actorshadow_frag_spv );       /* [QL] E166 */
+		vk.modules.actor_shadow_ms_fs = SHADER_MODULE( actorshadow_frag_ms_spv );
 	}
 
 	vk.modules.color_fs = SHADER_MODULE( color_frag_spv );
@@ -7905,6 +8205,7 @@ static void vk_restart_swapchain( const char *funcname, VkResult res )
 	vk_depth_sampling_create();   // [QL] E153: before either of the passes that read it
 	vk_rt_create_ao();
 	vk_ssr_create();
+	vk_actor_shadow_create();     // [QL] E166
 }
 
 
@@ -8584,6 +8885,7 @@ void vk_initialize( void )
 	vk_depth_sampling_create();   // [QL] E153: before either of the passes that read it
 	vk_rt_create_ao();
 	vk_ssr_create();
+	vk_actor_shadow_create();     // [QL] E166
 
 	// preallocate staging buffer
 	if ( vk.defaults.staging_size == STAGING_BUFFER_SIZE_HI ) {
@@ -8844,6 +9146,7 @@ void vk_shutdown( refShutdownCode_t code )
 	   then free them against a destroyed device on the next vid_restart. */
 	vk_rt_destroy_ao();
 	vk_ssr_destroy();
+	vk_actor_shadow_destroy();     // [QL] E166
 	vk_depth_sampling_destroy();   // [QL] E153
 	vk_rt_destroy_world();
 
@@ -8956,7 +9259,8 @@ void vk_shutdown( refShutdownCode_t code )
 			/* [QL] E158: the bump pass's pair were never destroyed either -
 			   the validation layer's two leaked modules on every vid_restart */
 			&vk.modules.bump_vs, &vk.modules.bump_fs,
-			&vk.modules.frag.rt_model_shadow   /* [QL] E161 */
+			&vk.modules.frag.rt_model_shadow,  /* [QL] E161 */
+			&vk.modules.actor_shadow_fs, &vk.modules.actor_shadow_ms_fs   /* [QL] E166 */
 		};
 		for ( i = 0; i < ARRAY_LEN( mods ); i++ ) {
 			if ( *mods[i] != VK_NULL_HANDLE ) {
@@ -9795,6 +10099,16 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			pipeline_name = "screen-space ambient occlusion pipeline (half resolution)";
 			blend = qfalse;
 			multiply = qfalse;
+			break;
+		case 20: // [QL] E166 players' traced shadows on the level - multiplied in, like the AO composite
+			pipeline = &vk.actorShadow.pipeline;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.actor_shadow_ms_fs : vk.modules.actor_shadow_fs;
+			renderpass = vk.render_pass.rtao;
+			layout = vk.actorShadow.pipeline_layout;
+			samples = vkSamples;
+			pipeline_name = "actor shadow pipeline";
+			blend = qfalse;
+			multiply = qtrue;
 			break;
 		case 18: // [QL] E156 the reflection march with the ray-traced fallback - case 8's twin
 		case 19: // and at half resolution - case 13's
@@ -13331,7 +13645,7 @@ qboolean vk_rt_ao( void )
 		/* [QL] E165: lights clear occlusion only where they arrive, when they
 		   cast shadows - see rtao.tmpl */
 		lights->params[2] = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? 1.0f : 0.0f;
-		lights->params[3] = (float)( RT_MASK_LEVEL | ( r_rtShadowCasters->integer ? RT_MASK_ACTORS : 0 ) );
+		lights->params[3] = (float)( RT_SHADOW_MASK );
 	}
 
 	vk_end_render_pass();   // end main
@@ -13631,6 +13945,296 @@ static void vk_ripple_walls( const float *c, float reach, int plane, ssrUniform_
 
 static qboolean ssrReported = qfalse;
 static int ssrRippleReport = 0;   /* [QL] rate limit for the drop report below */
+
+
+/*
+=================
+vk_actor_shadow_*
+
+[QL] E166: players' and items' traced shadows on the level - see
+actorshadow.tmpl for what the pass computes and vk.actorShadow for its pieces.
+=================
+*/
+typedef struct {
+	float invViewProj[16];
+	float eye[4];
+	float depthInfo[4];
+	float params[4];
+	float gridOrigin[4];
+	float gridInvSize[4];
+	float gridBounds[4];
+} actorShadowUniform_t;
+
+void vk_actor_shadow_destroy( void )
+{
+	uint32_t i;
+
+	vk.actorShadow.ready = qfalse;
+	if ( vk.actorShadow.pipeline != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.actorShadow.pipeline, NULL );
+		vk.actorShadow.pipeline = VK_NULL_HANDLE;
+	}
+	if ( vk.actorShadow.pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.actorShadow.pipeline_layout, NULL );
+		vk.actorShadow.pipeline_layout = VK_NULL_HANDLE;
+	}
+	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
+		if ( vk.actorShadow.uniform_buffer[i] != VK_NULL_HANDLE ) {
+			qvkUnmapMemory( vk.device, vk.actorShadow.uniform_memory[i] );
+			qvkDestroyBuffer( vk.device, vk.actorShadow.uniform_buffer[i], NULL );
+			qvkFreeMemory( vk.device, vk.actorShadow.uniform_memory[i], NULL );
+			vk.actorShadow.uniform_buffer[i] = VK_NULL_HANDLE;
+			vk.actorShadow.uniform_memory[i] = VK_NULL_HANDLE;
+			vk.actorShadow.uniform_ptr[i] = NULL;
+		}
+	}
+	if ( vk.actorShadow.pool != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorPool( vk.device, vk.actorShadow.pool, NULL );
+		vk.actorShadow.pool = VK_NULL_HANDLE;
+		Com_Memset( vk.actorShadow.descriptor, 0, sizeof( vk.actorShadow.descriptor ) );
+	}
+	if ( vk.actorShadow.set_layout != VK_NULL_HANDLE ) {
+		qvkDestroyDescriptorSetLayout( vk.device, vk.actorShadow.set_layout, NULL );
+		vk.actorShadow.set_layout = VK_NULL_HANDLE;
+	}
+}
+
+/* the per-map half: this map's per-frame structures and light grid */
+void vk_actor_shadow_update_descriptor( void )
+{
+	uint32_t n;
+
+	vk.actorShadow.ready = qfalse;
+	if ( vk.actorShadow.pool == VK_NULL_HANDLE || !vk.rt.world.dynReady ||
+		vk.rt.world.grid_buffer == VK_NULL_HANDLE ) {
+		return;
+	}
+	for ( n = 0; n < NUM_COMMAND_BUFFERS; n++ ) {
+		VkWriteDescriptorSetAccelerationStructureKHR as_info;
+		VkDescriptorBufferInfo grid_info;
+		VkWriteDescriptorSet writes[2];
+
+		if ( vk.rt.world.dyn_tlas[n] == VK_NULL_HANDLE ) {
+			return;
+		}
+		Com_Memset( &as_info, 0, sizeof( as_info ) );
+		as_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+		as_info.accelerationStructureCount = 1;
+		as_info.pAccelerationStructures = &vk.rt.world.dyn_tlas[n];
+
+		Com_Memset( &grid_info, 0, sizeof( grid_info ) );
+		grid_info.buffer = vk.rt.world.grid_buffer;
+		grid_info.range = VK_WHOLE_SIZE;
+
+		Com_Memset( writes, 0, sizeof( writes ) );
+		writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[0].pNext = &as_info;
+		writes[0].dstSet = vk.actorShadow.descriptor[n];
+		writes[0].dstBinding = 1;
+		writes[0].descriptorCount = 1;
+		writes[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[1].dstSet = vk.actorShadow.descriptor[n];
+		writes[1].dstBinding = 3;
+		writes[1].descriptorCount = 1;
+		writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writes[1].pBufferInfo = &grid_info;
+		qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
+	}
+	vk.actorShadow.ready = ( vk.actorShadow.pipeline != VK_NULL_HANDLE ) ? qtrue : qfalse;
+}
+
+/* the per-device half: set layout, sets (depth and parameters written), pipeline */
+void vk_actor_shadow_create( void )
+{
+	VkDescriptorSetLayoutBinding bindings[4];
+	VkDescriptorSetLayoutCreateInfo layout_desc;
+	VkDescriptorPoolSize pool_sizes[4];
+	VkDescriptorPoolCreateInfo pool_desc;
+	VkDescriptorSetAllocateInfo set_alloc;
+	VkPipelineLayoutCreateInfo pl_desc;
+	uint32_t i;
+
+	vk_actor_shadow_destroy();
+
+	if ( !vk.rtActive || vk.render_pass.rtao == VK_NULL_HANDLE || vk.rt.depth_view == VK_NULL_HANDLE ||
+		vk.modules.actor_shadow_fs == VK_NULL_HANDLE ) {
+		return;
+	}
+
+	Com_Memset( bindings, 0, sizeof( bindings ) );
+	for ( i = 0; i < 4; i++ ) {
+		bindings[i].binding = i;
+		bindings[i].descriptorCount = 1;
+		bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+
+	Com_Memset( &layout_desc, 0, sizeof( layout_desc ) );
+	layout_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layout_desc.bindingCount = 4;
+	layout_desc.pBindings = bindings;
+	if ( qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.actorShadow.set_layout ) < 0 ) {
+		goto fail;
+	}
+
+	for ( i = 0; i < 4; i++ ) {
+		pool_sizes[i].type = bindings[i].descriptorType;
+		pool_sizes[i].descriptorCount = NUM_COMMAND_BUFFERS;
+	}
+	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
+	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_desc.maxSets = NUM_COMMAND_BUFFERS;
+	pool_desc.poolSizeCount = 4;
+	pool_desc.pPoolSizes = pool_sizes;
+	if ( qvkCreateDescriptorPool( vk.device, &pool_desc, NULL, &vk.actorShadow.pool ) < 0 ) {
+		goto fail;
+	}
+
+	Com_Memset( &set_alloc, 0, sizeof( set_alloc ) );
+	set_alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	set_alloc.descriptorPool = vk.actorShadow.pool;
+	set_alloc.descriptorSetCount = 1;
+	set_alloc.pSetLayouts = &vk.actorShadow.set_layout;
+
+	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
+		VkDescriptorImageInfo image_info;
+		VkDescriptorBufferInfo buffer_info;
+		VkWriteDescriptorSet writes[2];
+
+		if ( qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.actorShadow.descriptor[i] ) < 0 ) {
+			goto fail;
+		}
+		if ( !rt_create_host_buffer( sizeof( actorShadowUniform_t ), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				&vk.actorShadow.uniform_buffer[i], &vk.actorShadow.uniform_memory[i], &vk.actorShadow.uniform_ptr[i] ) ) {
+			goto fail;
+		}
+
+		/* depth as the occlusion composite reads it: still the pass's
+		   (read-only) depth attachment while it is sampled */
+		Com_Memset( &image_info, 0, sizeof( image_info ) );
+		image_info.sampler = vk.rt.depth_sampler;
+		image_info.imageView = vk.rt.depth_view;
+		image_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+		Com_Memset( &buffer_info, 0, sizeof( buffer_info ) );
+		buffer_info.buffer = vk.actorShadow.uniform_buffer[i];
+		buffer_info.range = sizeof( actorShadowUniform_t );
+
+		Com_Memset( writes, 0, sizeof( writes ) );
+		writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[0].dstSet = vk.actorShadow.descriptor[i];
+		writes[0].dstBinding = 0;
+		writes[0].descriptorCount = 1;
+		writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[0].pImageInfo = &image_info;
+		writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[1].dstSet = vk.actorShadow.descriptor[i];
+		writes[1].dstBinding = 2;
+		writes[1].descriptorCount = 1;
+		writes[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writes[1].pBufferInfo = &buffer_info;
+		qvkUpdateDescriptorSets( vk.device, 2, writes, 0, NULL );
+	}
+
+	Com_Memset( &pl_desc, 0, sizeof( pl_desc ) );
+	pl_desc.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl_desc.setLayoutCount = 1;
+	pl_desc.pSetLayouts = &vk.actorShadow.set_layout;
+	if ( qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.actorShadow.pipeline_layout ) < 0 ) {
+		goto fail;
+	}
+
+	vk_create_post_process_pipeline( 20, glConfig.vidWidth, glConfig.vidHeight );
+	if ( vk.actorShadow.pipeline == VK_NULL_HANDLE ) {
+		goto fail;
+	}
+
+	vk_actor_shadow_update_descriptor();   /* a map already loaded (vid_restart) */
+	return;
+
+fail:
+	ri.Printf( PRINT_WARNING, "RT: player/item shadow pass not created - players will cast no traced shadows\n" );
+	vk_actor_shadow_destroy();
+}
+
+static void vk_begin_rtao_render_pass( void );
+static void vk_end_composite_render_pass( void );
+
+/* per frame, after the opaque surfaces, main view only */
+qboolean vk_actor_shadows( void )
+{
+	actorShadowUniform_t *u;
+	float proj[16], vp[16];
+
+	if ( !( r_rtActorShadows->integer || R_SHADOWS_TRACED ) ) {
+		return qfalse;
+	}
+	if ( !vk.actorShadow.ready || !vk.rt.world.actorReady || !backEnd.doneRTDynamic ||
+		vk.rt.world.actorTris == 0 || vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
+		return qfalse;
+	}
+	u = (actorShadowUniform_t *)vk.actorShadow.uniform_ptr[ vk.cmd_index ];
+	if ( u == NULL ) {
+		return qfalse;
+	}
+
+	/* the clip the depth buffer was drawn with - see vk_ssr for the proj[5] flip */
+	Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof( proj ) );
+	proj[5] = -proj[5];
+	myGlMultMatrix( backEnd.viewParms.world.modelMatrix, proj, vp );
+	if ( !rt_invert_matrix( vp, u->invViewProj ) ) {
+		return qfalse;
+	}
+	VectorCopy( backEnd.viewParms.or.origin, u->eye );
+	u->eye[3] = 0.0f;
+#ifdef USE_REVERSED_DEPTH
+	u->depthInfo[0] = 0.0f; u->depthInfo[1] = 0.6f; u->depthInfo[2] = 1.0f;
+#else
+	u->depthInfo[0] = 1.0f; u->depthInfo[1] = 0.3f; u->depthInfo[2] = -1.0f;
+#endif
+	u->depthInfo[3] = 0.0f;
+	u->params[0] = r_rtActorShadowStrength->value;
+	u->params[1] = r_rtModelShadowDistance->value;
+	u->params[2] = (float)RT_MASK_SILHOUETTE;
+	u->params[3] = r_rtActorShadows->integer >= 2 ? 1.0f : 0.0f;
+	if ( vk.rt.world.haveGrid && tr.world ) {
+		VectorCopy( tr.world->lightGridOrigin, u->gridOrigin );
+		VectorCopy( tr.world->lightGridInverseSize, u->gridInvSize );
+		u->gridBounds[0] = (float)tr.world->lightGridBounds[0];
+		u->gridBounds[1] = (float)tr.world->lightGridBounds[1];
+		u->gridBounds[2] = (float)tr.world->lightGridBounds[2];
+		u->gridOrigin[3] = 1.0f;
+	} else {
+		u->gridOrigin[3] = 0.0f;
+	}
+	u->gridInvSize[3] = u->gridBounds[3] = 0.0f;
+
+	vk_end_render_pass();
+	record_image_layout_transition( vk.cmd->command_buffer, vk.depth_image,
+		glConfig.stencilBits ? ( VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT ) : VK_IMAGE_ASPECT_DEPTH_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		0, 0 );
+	vk_begin_rtao_render_pass();
+
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pipeline );
+	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vk.actorShadow.pipeline_layout, 0, 1, &vk.actorShadow.descriptor[ vk.cmd_index ], 0, NULL );
+	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+
+	vk_end_composite_render_pass();
+
+	/* what the AO pass says about the geometry path's bindings after a
+	   foreign layout applies here word for word - see the end of vk_rt_ao */
+	vk.cmd->descriptor_set.start = 0;
+	vk.cmd->descriptor_set.end = VK_DESC_COUNT - 1;
+	vk_update_mvp( NULL );
+	vk.cmd->depth_range = DEPTH_RANGE_COUNT;
+	return qtrue;
+}
 
 
 void vk_ssr_destroy( void )
@@ -14503,7 +15107,7 @@ qboolean vk_ssr( void )
 	u->rtInfo[1] = 8192.0f;   // past anything a pool can see across
 	u->rtInfo[2] = 0.5f;      // a mid albedo: the grid gives the light, not the texture
 	u->rtInfo[3] = ( useRT && lightShadows )
-		? (float)( RT_MASK_LEVEL | ( r_rtShadowCasters->integer ? RT_MASK_ACTORS : 0 ) ) : 0.0f;
+		? (float)( RT_SHADOW_MASK ) : 0.0f;
 	if ( useRT && vk.rt.world.haveGrid && tr.world ) {
 		VectorCopy( tr.world->lightGridOrigin, u->gridOrigin );
 		VectorCopy( tr.world->lightGridInverseSize, u->gridInvSize );

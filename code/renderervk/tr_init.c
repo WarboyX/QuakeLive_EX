@@ -74,6 +74,8 @@ cvar_t	*r_rtModelShadowSoftness;
 cvar_t	*r_rtModelShadowRays;
 cvar_t	*r_rtModelShadowDistance;
 cvar_t	*r_rtShadowCasters;   // [QL] E165
+cvar_t	*r_rtActorShadows;    // [QL] E166
+cvar_t	*r_rtActorShadowStrength;
 cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
 
@@ -2717,13 +2719,25 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_rtModelShadowRays, "1", "8", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtModelShadowRays, "Rays per model pixel. 1 for sharp shadows, 4 or more "
 		"for soft ones." );
+	/* [QL] E166. Live; Shadows: Traced turns it on too. */
+	r_rtActorShadows = ri.Cvar_Get( "r_rtActorShadows", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadows, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorShadows, "Players and items cast ray-traced shadows on the level, "
+		"from the map's light, with their real shapes - your own included. The ray-traced "
+		"replacement for Quake's stencil shadows (Lighting > Shadows: Traced turns this on). Needs "
+		S_COLOR_CYAN "\\r_rt.\n 0 - off (default)\n 1 - on\n 2 - debug: the shadowed pixels red" );
+	r_rtActorShadowStrength = ri.Cvar_Get( "r_rtActorShadowStrength", "0.7", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowStrength, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtActorShadowStrength, "How dark a player's traced shadow is: the share of "
+		"the map's light it removes where it falls, 0 to 1." );
+
 	/* [QL] E165. What blocks the traced shadows' rays. Live. */
 	r_rtShadowCasters = ri.Cvar_Get( "r_rtShadowCasters", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtShadowCasters, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtShadowCasters, "What casts the ray-traced shadows:\n"
 		" 0 - the level, including doors, lifts and platforms (default)\n"
-		" 1 - also players and items, as rough boxes (the shapes ray-traced occlusion uses) - "
-		"a box is not a player's silhouette, so this is blocky up close" );
+		" 1 - also players and items, with their real shapes (E166) - they block dynamic lights "
+		"and shadow each other" );
 
 	r_rtModelShadowDistance = ri.Cvar_Get( "r_rtModelShadowDistance", "1024", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtModelShadowDistance, "64", "8192", CV_FLOAT );

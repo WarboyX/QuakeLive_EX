@@ -6048,6 +6048,33 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E166. Players and items cast traced shadows on the level, with their real shapes (`r_rtActorShadows`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Step two of "do all that next": what Shadows: Traced was missing to replace Quake's stencil shadows. Players and items cast shadows onto the level.
+
+**Silhouettes, not boxes** (`rt_build_actor_mesh`):
+- Each frame, the visible MD3 models are lerped on the CPU (the same lerp `RB_SurfaceMesh` draws them with, so the shadow matches the frame on screen), put into world space, and built into one bottom-level structure per command buffer. It is sized once, for up to 262,144 triangles a frame.
+- It sits in the per-frame top level as mask 0x04 (`RT_MASK_SILHOUETTE`), both sides.
+- Your own body is in it: not drawn in first person, but it casts.
+- Left out: the view weapon, RF_NOOCCLUDE/RF_NOSHADOW, and custom-shader shells.
+- AO and the water keep tracing the level plus the boxes (0x03). The silhouettes add nothing inside the boxes but cost time.
+
+**The pass** (`actorshadow.tmpl`, `vk_actor_shadows`): a fullscreen multiply after the opaque surfaces, in the occlusion composite pass like AO and, like AO, before the dynamic lights.
+- From each pixel, one ray toward the light grid's light against the silhouettes. Where one is in the way, the pixel loses the grid's directed share of its light: directed·N·L / (ambient + directed·N·L).
+- It shares the model shadows' Reach.
+
+**Options** (Render → Shadows → "Player shadows on the level"; live):
+- `r_rtActorShadows` 0/1/2 (2 = debug, shadowed pixels red), and `r_rtActorShadowStrength` (0.7).
+- Shadows: Traced turns it on.
+- **`r_rtShadowCasters` 1** ("Players block lights") now uses the silhouettes instead of E165's boxes, so players block dynamic lights and shadow each other with their real shapes.
+- `rtshadows` reports the triangle and model counts.
+
+**Checked** (the tester's settings, 0 validation errors), with a local test cube as the "player", floating over the stairs:
+- Debug paints its shadow on the steps red. On darkens the same patch, and Traced does the same with the stencil shadow off.
+- The report says "12 triangle(s) from 1 model(s)".
+- Not checked: real player models (pak00 is not here), and the CPU cost of the lerp with 60 players. It is a few thousand vertices a model; watch the frame time with `r_rtActorShadows 1` in a full match.
+
 ### E165. Traced shadows see doors, lifts and (optionally) players; AO and water reflections respect them — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
