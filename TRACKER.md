@@ -6048,6 +6048,49 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E170. Specks and streaks on the flag room floor: false level shadows from the lamps' own fittings — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported in E169's check: small sharp specks and thin streaks on the flag room's floor, the same at every softness and with 16 rays. Asked for: "Deep dive that issue and figure it out."
+
+**How it was found:** the level-shadow calculation was rebuilt on the CPU against the map itself, and scored against the map's own baked lightmap. The lightmap was traced by the map compiler from the real lights, so it says where a shadow really is.
+- **Tools** (scratch): Python reads the BSP's triangles, patches, light grid and lightmaps. It does exactly what `actorshadow.tmpl` does, with a ray/triangle test against the map's geometry.
+- **Where the lights are:** the map's light entities are compiled out, but the fittings are not.
+  - Flag room: two paper lanterns (`rice_paper_lantern`), 235 units above the floor at (-2388,-28) and (-2756,-28), with the ceiling about 20 units above them.
+  - Torch cages (`gratetorch2`/`flame2`) along the walls.
+- **Result:** 81 floor points traced as shadowed, and the lightmap has 72% of them lit. Their blockers were:
+  - the paper lanterns (114 of the first pass's 329 hits), hit 180–290 units out;
+  - the ceiling planks just above the lanterns, hit at 255–340;
+  - short hits on 16-unit steps (real contact shadows) and on floor hidden under a platform (a sampling artefact, not on screen).
+
+**The cause: the light-distance estimate runs long.**
+- Where the grid clearly points at one lamp (within 10°), the four-sample convergence estimate overshoots the real distance by a median 37% (91 units), up to +49%.
+- A level ray cut at 75% of an estimate 37% long ends at about 103% of the real distance. That is inside the lantern's shade, or the ceiling above it.
+- Marching the grid for the point where its direction flips undershoots by 26% instead, but finds the flip only half the time: the grid is 128 units tall, and the lamp sits 20 units under the ceiling.
+
+**Fix** (`actorshadow.tmpl`):
+- **Level rays go 55% of the way, less 16 units** (was 75%).
+- **A level hit counts only if lit space continues behind it toward the light** (`occluderHides`). The first grid sample 16–96 units past the hit must still point onward.
+  - If it points back, the ray has passed the light, and the hit was the lamp's fitting.
+  - If it is solid for 96 units, the ray hit the room's shell, which a light inside the room is in front of.
+  - The level query now takes the closest hit, so it knows where the hit is.
+- **A player or item counts only if no level geometry is in front of it** (`levelBetween`). The rays aim past the light when the estimate runs long, and without this a player upstairs, above a lantern, would have shadowed the floor below through the ceiling.
+
+**Measured** (CPU, against the lightmap, hard shadows):
+
+| Area | Before | After |
+|---|---|---|
+| Flag room | 81 shadowed points, 72% false | 1, which the lightmap confirms dark |
+| Rocket-launcher room | 3, all real | the same 3 |
+| Courtyard | 18, mostly real | 16 |
+| Side room | nothing to shadow | nothing |
+
+The stair hall's lightmap coordinates did not read in the script, so it gives no verdict there.
+
+**GPU** (0 validation errors), level debug in the flag room: the floor is clean; a small patch remains on the wall screen. Player/item debug: the cubes shadow the floor as before. The courtyard's shadows remain.
+
+**What this means for level shadows:** on a lightmapped map the baked lightmap already has the level's shadows, traced from the real lights. Traced level shadows can only sharpen them, and only where the grid locates the light well. With these rules they are sparse, but a shadow they draw now agrees with the lightmap. Players' and items' shadows, which the lightmap cannot have, are unchanged apart from the wall check.
+
 ### E169. Soft traced shadows: smooth instead of speckled (`r_rtActorShadowDenoise`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

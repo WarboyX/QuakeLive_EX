@@ -167,6 +167,42 @@ float lightDistance(vec3 Q0, vec3 d0, float reach, out bool found) {
 	return n > 0.0 ? min(sum / n, reach) : reach;
 }
 
+/* [QL] E170: is there level geometry between O and t along dir? */
+bool levelBetween(vec3 O, vec3 dir, float t) {
+	if (t <= 1.0) {
+		return false;
+	}
+	rayQueryEXT rq;
+	rayQueryInitializeEXT(rq, topLevel,
+		gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+		uint(RT_MASK_LEVEL_BIT), O, 0.0, dir, t);
+	while (rayQueryProceedEXT(rq)) {}
+	return rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT;
+}
+
+/*
+[QL] E170: does the level surface hit at t stand between this pixel and the
+light, or is the light already behind the ray?
+
+The first grid sample past the surface decides. Still pointing onward along
+the ray: there is lit space beyond, with the light further on - a real
+occluder. Pointing back: the ray has passed the light, and what it hit is the
+lamp's own fitting (this map's lights sit inside paper lanterns and torch
+cages). Nothing but solid for 96 units: the ray has run into the room's own
+shell, which a light inside the room is in front of.
+*/
+bool occluderHides(vec3 O, vec3 dir, float t) {
+	const float extra[5] = float[5](16.0, 32.0, 48.0, 64.0, 96.0);
+	for (int k = 0; k < 5; k++) {
+		float a, dd;
+		vec3 g;
+		if (gridAt(O + dir * (t + extra[k]), a, dd, g)) {
+			return dot(g, dir) >= 0.0;
+		}
+	}
+	return false;
+}
+
 void main() {
 	ivec2 size = depthSize();
 	vec2 invSize = 1.0 / vec2(size);
@@ -252,29 +288,38 @@ void main() {
 			continue;
 		}
 		bool hit = false;
+		vec3 dir = d / len;
 		if (actorMask != 0u) {
 			rayQueryEXT rq;
 			rayQueryInitializeEXT(rq, topLevel,
 				gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-				actorMask, O, 0.0, d / len, tmax);
+				actorMask, O, 0.0, dir, tmax);
 			while (rayQueryProceedEXT(rq)) {}
 			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
-				hit = true;
+				/* [QL] E170: only if no wall is in front of it. The rays
+				   aim past the light when its distance is overestimated, and
+				   without this a player upstairs, above a lantern, shadowed
+				   the floor below it through the ceiling. */
+				hit = !levelBetween(O, dir, rayQueryGetIntersectionTEXT(rq, true));
 			}
 		}
-		/* [QL] E168: the level stops well short of the light. This map's
-		   lights are lanterns, torches and lit panels - part of the level -
-		   so a ray that reaches one ends on its fitting, and the estimate is
-		   only good to a fraction of the distance. */
-		float levelMax = len * 0.75 - 16.0;
+		/* [QL] E168/E170: the level is traced to a little over half the way,
+		   and a hit counts only where lit space continues behind it toward
+		   the light (occluderHides). Measured on this map against its own
+		   lightmap, the light-distance estimate runs a median 37% long where
+		   the light is plainly one lamp, so a ray run most of the way ends in
+		   the lamp's shade or the ceiling above it - the specks and streaks on
+		   the flag room's floor, 72% of whose traced shadows the lightmap had
+		   lit. With both rules that floor keeps one shadow, which the
+		   lightmap confirms; rooms with real shadows keep theirs. */
+		float levelMax = len * 0.55 - 16.0;
 		if (!hit && levelMask != 0u && levelMax > 1.0) {
 			rayQueryEXT rq;
-			rayQueryInitializeEXT(rq, topLevel,
-				gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-				levelMask, O, 0.0, d / len, levelMax);
+			rayQueryInitializeEXT(rq, topLevel, gl_RayFlagsOpaqueEXT,   // closest hit, for where it is
+				levelMask, O, 0.0, dir, levelMax);
 			while (rayQueryProceedEXT(rq)) {}
 			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
-				hit = true;
+				hit = occluderHides(O, dir, rayQueryGetIntersectionTEXT(rq, true));
 			}
 		}
 		if (hit) {
