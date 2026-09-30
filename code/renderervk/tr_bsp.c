@@ -2293,6 +2293,8 @@ static void R_LoadLightGrid( const lump_t *l ) {
 		R_ColorShiftLightingBytes( &w->lightGridData[i*8], &w->lightGridData[i*8], qfalse );
 		R_ColorShiftLightingBytes( &w->lightGridData[i*8+3], &w->lightGridData[i*8+3], qfalse );
 	}
+
+	R_BuildLightField( w );   // [QL] E176
 }
 
 

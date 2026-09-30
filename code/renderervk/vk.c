@@ -6752,12 +6752,22 @@ void vk_rt_build_world( const world_t *world )
 	{
 		const int points = world->lightGridData
 			? world->lightGridBounds[0] * world->lightGridBounds[1] * world->lightGridBounds[2] : 0;
-		const VkDeviceSize bytes = points > 0 ? (VkDeviceSize)points * 8 : 16;
+		/* [QL] E176: the light field (R_BuildLightField) rides after the grid
+		   in the same buffer, four floats a point - no new binding, and the
+		   reflection shader, which reads only the grid, never sees it */
+		const VkDeviceSize gridBytes = points > 0 ? (VkDeviceSize)points * 8 : 16;
+		const VkDeviceSize fieldBytes = ( points > 0 && world->lightField ) ? (VkDeviceSize)points * 16 : 0;
+		const VkDeviceSize bytes = gridBytes + fieldBytes;
 
+		vk.rt.world.haveLightField = qfalse;
 		if ( rt_create_host_buffer( bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 				&vk.rt.world.grid_buffer, &vk.rt.world.grid_memory, &vk.rt.world.grid_ptr ) ) {
 			if ( points > 0 ) {
-				Com_Memcpy( vk.rt.world.grid_ptr, world->lightGridData, (size_t)bytes );
+				Com_Memcpy( vk.rt.world.grid_ptr, world->lightGridData, (size_t)gridBytes );
+				if ( fieldBytes ) {
+					Com_Memcpy( (byte *)vk.rt.world.grid_ptr + gridBytes, world->lightField, (size_t)fieldBytes );
+					vk.rt.world.haveLightField = qtrue;
+				}
 				vk.rt.world.haveGrid = qtrue;
 			} else {
 				Com_Memset( vk.rt.world.grid_ptr, 0, (size_t)bytes );
@@ -14609,7 +14619,8 @@ qboolean vk_actor_shadows( void )
 	} else {
 		u->gridOrigin[3] = 0.0f;
 	}
-	u->gridInvSize[3] = u->gridBounds[3] = 0.0f;
+	u->gridInvSize[3] = 0.0f;
+	u->gridBounds[3] = ( vk.rt.world.haveLightField && r_rtLightField->integer ) ? 1.0f : 0.0f;   /* [QL] E176 */
 
 	vk_end_render_pass();
 	record_image_layout_transition( vk.cmd->command_buffer, vk.depth_image,

@@ -1225,6 +1225,7 @@ typedef struct {
 			VkDeviceMemory	grid_memory;
 			void			*grid_ptr;
 			qboolean		haveGrid;   // false: a stand-in word, nothing to read
+			qboolean		haveLightField;   // [QL] E176: R_BuildLightField's result after the grid
 		} world;
 
 		/* ---- the ambient occlusion pass ---- */

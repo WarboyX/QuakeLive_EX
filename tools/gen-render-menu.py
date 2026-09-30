@@ -522,6 +522,8 @@ def cast_shadows():
         ("multi", "r_rtActorShadowDenoise", "Soft edge denoise", '"Off" 0 "On (default)" 1'),
         # [QL] E171. Soft edges worked out from the distances, from one ray.
         ("multi", "r_rtActorShadowSoftMode", "Soft edges", '"Sampled (default)" 0 "Projected" 1'),
+        # [QL] E176. Where shadows are cast from: per pixel, or the map-load field.
+        ("multi", "r_rtLightField", "Light position", '"Per pixel" 0 "Light field (default)" 1'),
         # [QL] E165/E166. Doors and lifts always cast; players and items by shape.
         ("multi", "r_rtShadowCasters", "Players block lights",
          '"No (default)" 0 "Yes" 1'),

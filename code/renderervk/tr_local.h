@@ -1026,6 +1026,7 @@ typedef struct world_s {
 	vec3_t		lightGridInverseSize;
 	int			lightGridBounds[3];
 	byte		*lightGridData;
+	float		*lightField;	// [QL] E176: per grid point, where its light is (xyz) and 1, or 0 0 0 0 - R_BuildLightField
 
 
 	int			numClusters;
@@ -1671,6 +1672,7 @@ extern	cvar_t	*r_rtActorShadowRays;
 extern	cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
 extern	cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
 extern	cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
+extern	cvar_t	*r_rtLightField;           // [QL] E176
 extern	cvar_t	*r_rtLevelShadows;			// [QL] E167: the level's traced shadows on the level
 void R_RTShadowReport( qboolean force );   // [QL] E162, tr_shade.c
 extern	cvar_t	*r_bloomHDR;			// [QL] E158: bloom in the float format with r_rts (latched)
@@ -1972,6 +1974,8 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent );
 void R_TransformDlights( int count, dlight_t *dl, orientationr_t *or );
 int R_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir );
 float R_ShadowRayReach( const vec3_t origin, const vec3_t dir, float reach );   // [QL] E172
+void R_BuildLightField( world_t *w );   // [QL] E176
+qboolean R_LightFieldAt( const vec3_t p, vec3_t lightPos );   // [QL] E176
 
 #ifdef USE_PMLIGHT
 void VK_LightingPass( void );

@@ -33,7 +33,7 @@ layout(set = 0, binding = 2) uniform ActorShadow {
 	vec4 params;        // x strength, y reach, z instance mask, w 1 = debug tint
 	vec4 gridOrigin;    // w 1 if the map has a light grid
 	vec4 gridInvSize;
-	vec4 gridBounds;
+	vec4 gridBounds;    // w: 1 if the light field follows the grid in gridData (E176)
 	vec4 soft;          // [QL] E167: x light size in world units, y rays per pixel
 };
 
@@ -203,6 +203,43 @@ bool occluderHides(vec3 O, vec3 dir, float t) {
 	return false;
 }
 
+/*
+[QL] E176: where this point's light is, from the light field built at map
+load (R_BuildLightField) and stored after the grid - interpolated between
+grid points like the grid itself, so it moves smoothly across a surface
+instead of jumping from pixel to pixel as the per-pixel estimate did.
+*/
+bool lightFieldAt(vec3 p, out vec3 lightPos) {
+	lightPos = vec3(0.0);
+	if (gridBounds.w <= 0.0) {
+		return false;
+	}
+	ivec3 b = ivec3(gridBounds.xyz);
+	int fieldBase = b.x * b.y * b.z * 2;     // in uints: the grid is two a point
+	vec3 v = (p - gridOrigin.xyz) * gridInvSize.xyz;
+	vec3 f = fract(v);
+	ivec3 i0 = ivec3(floor(v));
+	float total = 0.0;
+	for (int k = 0; k < 8; k++) {
+		ivec3 o = ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+		ivec3 c = clamp(i0 + o, ivec3(0), b - ivec3(1));
+		int idx = fieldBase + (c.x + c.y * b.x + c.z * b.x * b.y) * 4;
+		if (uintBitsToFloat(gridData[idx + 3]) <= 0.0) {
+			continue;
+		}
+		vec3 ww = mix(vec3(1.0) - f, f, vec3(o));
+		float w = ww.x * ww.y * ww.z;
+		lightPos += w * vec3(uintBitsToFloat(gridData[idx]), uintBitsToFloat(gridData[idx + 1]),
+		                     uintBitsToFloat(gridData[idx + 2]));
+		total += w;
+	}
+	if (total <= 0.0) {
+		return false;
+	}
+	lightPos /= total;
+	return true;
+}
+
 void main() {
 	ivec2 size = depthSize();
 	vec2 invSize = 1.0 / vec2(size);
@@ -260,8 +297,17 @@ void main() {
 	/* [QL] E167: to the light's estimated position, not along a direction
 	   forever - and, with a size, from a spread of points on it (softness) */
 	bool found;
-	float dist = lightDistance(Q0, L, params.y, found);
-	vec3 lightPos = Q0 + L * dist;
+	vec3 lightPos;
+	/* [QL] E176: the map-load light field first; the per-pixel estimate only
+	   where there is none, or where the field's light is behind the surface
+	   or not where this point's own light direction says */
+	if (lightFieldAt(Q0, lightPos) && dot(lightPos - Q0, N) > 0.0 &&
+	    dot(normalize(lightPos - Q0), L) > 0.7 && distance(lightPos, Q0) < params.y) {
+		found = true;
+	} else {
+		float dist = lightDistance(Q0, L, params.y, found);
+		lightPos = Q0 + L * dist;
+	}
 	vec3 O = P + N * 2.0;
 #ifdef USE_PEN
 	/* [QL] E171: one ray, at the centre of the light. The softness comes

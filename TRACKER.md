@@ -6048,6 +6048,32 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E176. Shadows no longer tear apart: the light field, worked out once per map (`r_rtLightField`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported with screenshots over the last rounds: the player's shadow comes apart. It shows gaps between parts of one body, a smeared streak, and "some spots still break up the shadow unnaturally". This is also step 1 of the unification plan: work that every pixel repeated, done once.
+
+**Cause:** every pixel estimated its light's position for itself, from where four nearby grid directions crossed (E167). That answer jumped between neighbouring pixels: found here, not found a few pixels over, a different crossing past a grid cell boundary. One body's shadow was then cast from two or three light positions at once and came apart. It also cost about 40 buffer reads a pixel.
+
+**Fix:** `R_BuildLightField` (`tr_light.c`), run at map load after the grid.
+- **Per grid point:** the point nearest, in the least-squares sense, to its own direction line and those of its 26 neighbours that see the same light (within about 37°), each weighted by its directed light. A slight pull toward 512 units along its own line keeps a point whose neighbours are all parallel (a distant light) from running off. Then two rounds of averaging with like-directed neighbours.
+- **Stored after the grid in the same GPU buffer**, four floats a point, so there is no new binding and the water's reflection shader never sees it. `actorshadow.tmpl` interpolates it between grid points like the grid itself, so the light moves smoothly across a floor.
+- **Fallback:** the per-pixel estimate stays where the field has no answer, or its light is behind the surface or disagrees with the point's own direction by more than about 45°.
+- **The model-shadow rays** (`R_ShadowRayReach`) read the same field, so a player and the shadow they cast use one light.
+- Rays still stop at 55% of the way, and every E170 rule stays.
+
+**Measured, on the CPU against the map's lanterns and torches:**
+- median error −34 units (the four-sample estimate was +91), short of the lamp, which is the safe side;
+- neighbouring grid points agree to a median 24 units after smoothing (50 before);
+- in game, "Light field: 17107 of 120900 grid points locate their light" (the rest are inside walls or unlit).
+
+**Checked** (0 validation errors), a player-shaped test model (legs, torso, head, gun), `r_rtLightField` 0 against 1 at four spots:
+- on the lit floor, per pixel throws a long distorted smear, and the field a compact figure;
+- in the courtyard, per pixel is notched and the field is one piece;
+- the multi-cube test at seven spots is clean.
+
+**Option:** Cast Shadows → "Light position": Per pixel / Light field (default).
+
 ### E175. Coloured noise over the frame on the in-game Player page: the shadow pass ran for the UI's model view — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
