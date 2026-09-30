@@ -434,6 +434,13 @@ static void record_image_layout_transition( VkCommandBuffer command_buffer, VkIm
 			src_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			break;
+		/* [QL] E173: depth coming back from the composite pass, where it was
+		   sampled and depth-tested against: wait for both kinds of read */
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+			src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+				VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			barrier.srcAccessMask = VK_ACCESS_NONE;   // reads only: an execution dependency is enough
+			break;
 		default:
 			ri.Error( ERR_DROP, "unsupported old layout %i", old_layout );
 			src_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -447,8 +454,10 @@ static void record_image_layout_transition( VkCommandBuffer command_buffer, VkIm
 			barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			break;
 		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-			dst_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-			barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			/* [QL] E173: both test stages, reads and writes - the next pass
+			   loads depth and tests against it before it writes any */
+			dst_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			break;
 		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 			dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -473,7 +482,11 @@ static void record_image_layout_transition( VkCommandBuffer command_buffer, VkIm
 		layout - it is the exception that makes depth-as-texture work at all.
 		*/
 		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
-			dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			/* [QL] E173: the fragment tests too - the composite pass loads
+			   depth and tests against it, which the fragment shader stage
+			   alone did not cover (SYNC-HAZARD-READ-AFTER-WRITE at its begin) */
+			dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+				VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 			break;
 		default:
@@ -789,6 +802,21 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	*/
 	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+	/*
+	[QL] E173: and NONE where the device has it, which is what "keep it" means
+	for an attachment this pass never writes.
+
+	STORE is a write. The pass samples depth in its fragment shaders, and a
+	store at the end of the same subpass is a write after those reads with
+	nothing ordering the two - the synchronisation validation layer reports it
+	on every composite (SYNC-HAZARD-WRITE-AFTER-READ). NONE keeps the contents
+	and writes nothing. Load/store ops do not count for render pass
+	compatibility, so the pass stays compatible with main.
+	*/
+	if ( vk.storeOpNone ) {
+		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_NONE_KHR;
+		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_NONE_KHR;
+	}
 	if ( msaa ) {
 		savedMsaaLoad = attachments[2].loadOp;
 		savedMsaaStore = attachments[2].storeOp;
@@ -812,7 +840,13 @@ static void vk_create_rtao_render_pass( VkDevice device, VkRenderPassCreateInfo 
 	the 2D and the post-bloom pass inherit, and they expect it that way.
 	*/
 	attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	/* [QL] E173: leaves read-only too. The move back to ATTACHMENT_OPTIMAL
+	   was this pass's final layout transition, which ran after the pass's
+	   own reads with nothing ordering it against them (the pass may not carry
+	   dependencies of its own - see below); vk_end_composite_render_pass now
+	   does it with a barrier that names both sides. Final layouts do not
+	   count for compatibility either. */
+	attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
 	/*
 	[QL] This pass needs synchronisation of its own, and the depth one is the
@@ -2218,7 +2252,7 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		   adds four more, so this is sized with room rather than to fit: the
 		   array has no bounds check and overrunning it writes past the end of a
 		   stack array with a pointer the driver then reads. Sixteen is free. */
-		const char *device_extension_list[16];
+		const char *device_extension_list[20];   /* [QL] E173: +1, load_store_op_none */
 		uint32_t device_extension_count;
 		const char *ext, *end;
 		char *str;
@@ -2241,6 +2275,7 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		qboolean deferredHostOps = qfalse;
 		qboolean bufferDeviceAddress = qfalse;
 		qboolean spirv14 = qfalse, floatControls = qfalse, descriptorIndexing = qfalse;
+		const char *storeOpNoneExt = NULL;   /* [QL] E173 */
 		/* [QL] R13: the three feature structs a ray query needs chained onto
 		   device creation, and the request that turns the whole thing on. */
 		VkPhysicalDeviceAccelerationStructureFeaturesKHR accel_features;
@@ -2296,6 +2331,13 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 				floatControls = qtrue;
 			} else if ( strcmp( ext, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME ) == 0 ) {
 				descriptorIndexing = qtrue;
+			/* [QL] E173: either name gives STORE_OP_NONE (the same value). EXT
+			   preferred: it is the older of the two, and validation layers
+			   that predate the KHR promotion reject the token under KHR. */
+			} else if ( strcmp( ext, "VK_EXT_load_store_op_none" ) == 0 ) {
+				storeOpNoneExt = "VK_EXT_load_store_op_none";
+			} else if ( strcmp( ext, "VK_KHR_load_store_op_none" ) == 0 && storeOpNoneExt == NULL ) {
+				storeOpNoneExt = "VK_KHR_load_store_op_none";
 #ifdef _DEBUG
 			} else if ( strcmp( ext, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME ) == 0 ) {
 				timelineSemaphore = qtrue;
@@ -2479,6 +2521,14 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		if ( debugMarker ) {
 			device_extension_list[ device_extension_count++ ] = VK_EXT_DEBUG_MARKER_EXTENSION_NAME;
 			vk.debugMarkers = qtrue;
+		}
+
+		/* [QL] E173: see vk_create_rtao_render_pass - the composite pass holds
+		   depth read-only and must not "store" it */
+		vk.storeOpNone = qfalse;
+		if ( storeOpNoneExt != NULL ) {
+			device_extension_list[ device_extension_count++ ] = storeOpNoneExt;
+			vk.storeOpNone = qtrue;
 		}
 #ifdef _DEBUG
 		if ( timelineSemaphore ) {
@@ -8668,10 +8718,28 @@ void vk_initialize( void )
 	that does not offer it, so it becomes Stencil, which is what it was
 	falling back to anyway, and says so.
 	*/
-	if ( !vk.rtActive && r_shadows && r_shadows->integer == 4 ) {
-		ri.Printf( PRINT_WARNING, "Shadows: Traced needs ray tracing (r_rt 1 and a GPU that supports it) - "
-			"switched to Stencil\n" );
-		ri.Cvar_Set( "cg_shadows", "2" );
+	/*
+	[QL] E173: and put back when ray tracing is. Switching to Stencil used to
+	be for good - cg_shadows is archived - so one start without ray tracing
+	(a reset r_rt, a vid_restart before r_rt 1 was set again) lost Traced for
+	every start after it. r_shadowsWasTraced remembers that it was forced.
+	*/
+	{
+		cvar_t *wasTraced = ri.Cvar_Get( "r_shadowsWasTraced", "0", CVAR_ARCHIVE_ND );
+		ri.Cvar_SetDescription( wasTraced, "Internal. 1 when Shadows: Traced was switched to Stencil "
+			"because ray tracing was off; the next start with ray tracing on switches it back." );
+		if ( !vk.rtActive && r_shadows && r_shadows->integer == 4 ) {
+			ri.Printf( PRINT_WARNING, "Shadows: Traced needs ray tracing (r_rt 1 and a GPU that supports it) - "
+				"switched to Stencil until ray tracing is back\n" );
+			ri.Cvar_Set( "cg_shadows", "2" );
+			ri.Cvar_Set( "r_shadowsWasTraced", "1" );
+		} else if ( vk.rtActive && wasTraced->integer ) {
+			if ( r_shadows && r_shadows->integer == 2 ) {
+				ri.Printf( PRINT_ALL, "Shadows: ray tracing is back - Traced again\n" );
+				ri.Cvar_Set( "cg_shadows", "4" );
+			}
+			ri.Cvar_Set( "r_shadowsWasTraced", "0" );   /* chosen something else meanwhile: leave it */
+		}
 	}
 
 	Q_strncpyz( glConfig.vendor_string, vendor_name, sizeof( glConfig.vendor_string ) );
@@ -12686,6 +12754,12 @@ framebuffer, same pipelines; renderPassIndex stays what the frame had.
 static void vk_end_composite_render_pass( void )
 {
 	vk_end_render_pass();
+
+	/* [QL] E173: depth back to writable, after the composite's reads - the
+	   pass leaves it read-only (see vk_create_rtao_render_pass) */
+	record_image_layout_transition( vk.cmd->command_buffer, vk.depth_image,
+		glConfig.stencilBits ? ( VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT ) : VK_IMAGE_ASPECT_DEPTH_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0, 0 );
 
 	vk.renderWidth = glConfig.vidWidth;
 	vk.renderHeight = glConfig.vidHeight;

@@ -1621,7 +1621,7 @@
             rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_gamma ; reset r_overbrightBits ; reset r_mapOverbrightBits ; reset r_dynamicLight ; reset cg_muzzleFlashLight ; reset cg_shadows ; reset r_stencilSelfShadow ; reset cg_deadBodyDarken ; reset cg_vignette" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_gamma ; reset r_overbrightBits ; reset r_mapOverbrightBits ; reset r_dynamicLight ; reset cg_muzzleFlashLight ; reset r_stencilSelfShadow ; reset cg_deadBodyDarken ; reset cg_vignette" }
             mouseEnter { setitemcolor rs_io_ig_light backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_light forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_light bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_light backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_light forecolor 1 1 1 1 ; setitemcolor rs_io_ig_light bordercolor .35 .3 .12 1 }
         }
@@ -4451,7 +4451,7 @@
             rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rt ; reset r_rtao ; reset r_ssao ; reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoResolution ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoResolution ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -4679,7 +4679,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rtDlightShadows ; reset r_rtDlightShadowStrength ; reset r_rtDlightShadowSoftness ; reset r_rtDlightShadowRays ; reset r_rtModelShadows ; reset r_rtModelShadowStrength ; reset r_rtModelShadowSoftness ; reset r_rtModelShadowRays ; reset r_rtModelShadowDistance" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtDlightShadowStrength ; reset r_rtDlightShadowSoftness ; reset r_rtDlightShadowRays ; reset r_rtModelShadowStrength ; reset r_rtModelShadowSoftness ; reset r_rtModelShadowRays ; reset r_rtModelShadowDistance" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -4888,7 +4888,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rtActorShadows ; reset r_rtLevelShadows ; reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtActorShadowSoftMode ; reset r_rtShadowCasters" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtActorShadowSoftMode ; reset r_rtShadowCasters" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -5124,7 +5124,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_ssr ; reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrResolution ; reset r_ssrRayTrace ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrResolution ; reset r_ssrRayTrace ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -6348,7 +6348,7 @@
             rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rt ; reset r_rtao ; reset r_ssao ; reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoResolution ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoResolution ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -6576,7 +6576,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rtDlightShadows ; reset r_rtDlightShadowStrength ; reset r_rtDlightShadowSoftness ; reset r_rtDlightShadowRays ; reset r_rtModelShadows ; reset r_rtModelShadowStrength ; reset r_rtModelShadowSoftness ; reset r_rtModelShadowRays ; reset r_rtModelShadowDistance" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtDlightShadowStrength ; reset r_rtDlightShadowSoftness ; reset r_rtDlightShadowRays ; reset r_rtModelShadowStrength ; reset r_rtModelShadowSoftness ; reset r_rtModelShadowRays ; reset r_rtModelShadowDistance" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -6785,7 +6785,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rtActorShadows ; reset r_rtLevelShadows ; reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtActorShadowSoftMode ; reset r_rtShadowCasters" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtActorShadowSoftMode ; reset r_rtShadowCasters" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -7021,7 +7021,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_ssr ; reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrResolution ; reset r_ssrRayTrace ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_ssrDistance ; reset r_ssrSteps ; reset r_ssrResolution ; reset r_ssrRayTrace ; reset r_ssrThickness ; reset r_ssrDebug ; reset r_waterWaves ; reset r_waterWaveSteepness ; reset r_waterWaveHeight ; reset r_waterWaveScale ; reset r_waterWaveSpeed" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }

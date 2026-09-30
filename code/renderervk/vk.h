@@ -876,6 +876,7 @@ typedef struct {
 	/* [QL] E159: depthClamp is enabled - the stencil shadow volumes use it, and
 	   depth-fail counting (own-player shadow) is only offered with it */
 	qboolean depthClamp;
+	qboolean storeOpNone;   // [QL] E173: VK_KHR/EXT_load_store_op_none - read-only depth is not stored
 	qboolean fragmentStores;
 	qboolean dedicatedAllocation;
 	/* [QL] R13 ray query state. Three separate facts, deliberately not one:

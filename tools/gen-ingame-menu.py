@@ -449,13 +449,27 @@ def row_label(text, y):
             % (text, y, LABEL_END - 24, ROW_H - 1, LABEL_END - 24, WHITE))
 
 
+# [QL] E173. What RESET leaves alone: the switches that turn a feature on, as
+# opposed to the settings that tune it. Their defaults are Off, so resetting a
+# page to tune its strength also switched off ray tracing, AO and the water
+# reflections - and r_rt is latched, so the menu went on showing it on until the
+# next vid_restart turned it off. RESET restores how a feature looks, not
+# whether it runs.
+RESET_KEEPS = {
+    "r_rt", "r_rtao", "r_ssao", "r_ssr",
+    "cg_shadows", "r_rtActorShadows", "r_rtLevelShadows",
+    "r_rtDlightShadows", "r_rtModelShadows",
+}
+
+
 def reset_action(cvars):
     """
     [QL] E130. A RESET button's action: the engine's own "reset" per cvar, which
     puts each back to the default the code registered. No value is written here,
     so a default that changes in the code can never leave a RESET behind it.
+    E173: the on/off switches in RESET_KEEPS are left as they are.
     """
-    return 'exec "%s"' % " ; ".join("reset %s" % c for c in cvars)
+    return 'exec "%s"' % " ; ".join("reset %s" % c for c in cvars if c not in RESET_KEEPS)
 
 
 def disable_when(test, vals):

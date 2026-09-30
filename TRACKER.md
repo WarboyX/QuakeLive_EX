@@ -6048,6 +6048,35 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E173. Depth synchronisation around the composite pass; RESET no longer switches features off; Traced comes back — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Three reports from the tester (RTX 5080, 2x MSAA):
+- the whole 3D view turned to coloured per-pixel noise under the in-game menu on 1fd32fc, without a crash;
+- after using RESET in the menus, ray tracing, RT AO and the water reflections were off although the menus showed them on;
+- "Traced" was missing from Shadows, even with r_rt 1.
+
+**1. Synchronisation.** Your log had no errors. The run re-done with Vulkan's synchronisation validation (`VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT`) reported 1,151 hazards in about a minute. All were on depth, in the composite pass (`render_pass.rtao`, which AO, the water and the shadow passes use to multiply into the scene):
+- **READ_AFTER_WRITE at its begin.** The barrier before it named only the fragment-shader stage. The pass also loads depth and tests against it, in the fragment-test stages. Now all three.
+- **WRITE_AFTER_READ at its end.** Depth is read-only in this pass, but its store op was STORE, which counts as a write after the pass's own sampling. Now `STORE_OP_NONE` (`VK_EXT_load_store_op_none`, or KHR, enabled where present): keep the contents, write nothing.
+- **WRITE_AFTER_WRITE at its end.** Its final layout transition back to ATTACHMENT_OPTIMAL had nothing ordering it against the reads. The pass now leaves depth read-only, and `vk_end_composite_render_pass` makes the transition with a barrier that names both sides.
+
+The pass may carry no dependencies of its own (it must stay compatible with main, E145). Store ops and final layouts do not count for compatibility, so none of this changes that.
+
+**After:** 0 validation errors with synchronisation validation, the same run. The EXT name is preferred because this validation layer rejects the token under the KHR name.
+
+**Honest limit:** lavapipe runs commands in order and cannot show the noise itself. Races like these are the kind that a GPU running passes concurrently turns into garbage, but that this was the tester's noise is inferred, not seen.
+
+**2. RESET.** The Render → Lighting & RT page's RESET ran `reset r_rt ; reset r_rtao ; ...`, and the Water page's `reset r_ssr`. Their defaults are Off.
+- `r_rt` is latched, so the menu kept showing it on, while the next vid_restart turned ray tracing off.
+- RESET now leaves the on/off switches alone (`RESET_KEEPS` in `tools/gen-ingame-menu.py`, used by both generators): r_rt, r_rtao, r_ssao, r_ssr, cg_shadows, r_rtActorShadows, r_rtLevelShadows, r_rtDlightShadows, r_rtModelShadows.
+- It restores how a feature looks, not whether it runs.
+
+**3. Traced.** A start without ray tracing switched Traced to Stencil (E164), and cg_shadows is archived, so it stayed Stencil on every start after. The row with Traced in it shows only while r_rtActive is 1, which needs a vid_restart after r_rt 1.
+- The switch is now remembered (`r_shadowsWasTraced`). The next start with ray tracing puts Traced back and says so.
+- Checked: start with r_rt 0 and cg_shadows 4 gives "switched to Stencil until ray tracing is back", cg_shadows 2, r_shadowsWasTraced 1. Then `r_rt 1`, vid_restart gives "Shadows: ray tracing is back - Traced again", cg_shadows 4, r_rtActive 1.
+- **Not checked:** the menu row itself on screen. The harness's in-game menu shots failed this round, with keystrokes dropped under load.
+
 ### E172. Model shadows stop short of the light and the room around it — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
