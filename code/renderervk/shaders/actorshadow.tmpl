@@ -208,9 +208,17 @@ bool occluderHides(vec3 O, vec3 dir, float t) {
 load (R_BuildLightField) and stored after the grid - interpolated between
 grid points like the grid itself, so it moves smoothly across a surface
 instead of jumping from pixel to pixel as the per-pixel estimate did.
+
+[QL] E178: eight floats a point now (LF_Classify): the position, whether it
+means anything, whether the sun reaches the point, and how much of the point's
+light comes from the sky. A sky point's "position" is far out along its
+direction - read as a direction, not a place. sunVis comes from every open
+point, lit or not, so it is interpolated over its own set of corners.
 */
-bool lightFieldAt(vec3 p, out vec3 lightPos) {
+bool lightFieldAt(vec3 p, out vec3 lightPos, out float sky, out float sunVis) {
 	lightPos = vec3(0.0);
+	sky = 0.0;
+	sunVis = 0.0;
 	if (gridBounds.w <= 0.0) {
 		return false;
 	}
@@ -219,25 +227,134 @@ bool lightFieldAt(vec3 p, out vec3 lightPos) {
 	vec3 v = (p - gridOrigin.xyz) * gridInvSize.xyz;
 	vec3 f = fract(v);
 	ivec3 i0 = ivec3(floor(v));
-	float total = 0.0;
+	float total = 0.0, open = 0.0;
 	for (int k = 0; k < 8; k++) {
 		ivec3 o = ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
 		ivec3 c = clamp(i0 + o, ivec3(0), b - ivec3(1));
-		int idx = fieldBase + (c.x + c.y * b.x + c.z * b.x * b.y) * 4;
+		int idx = fieldBase + (c.x + c.y * b.x + c.z * b.x * b.y) * 8;
+		vec3 ww = mix(vec3(1.0) - f, f, vec3(o));
+		float w = ww.x * ww.y * ww.z;
+		if (uintBitsToFloat(gridData[idx + 7]) > 0.0) {
+			sunVis += w * uintBitsToFloat(gridData[idx + 4]);
+			open += w;
+		}
 		if (uintBitsToFloat(gridData[idx + 3]) <= 0.0) {
 			continue;
 		}
-		vec3 ww = mix(vec3(1.0) - f, f, vec3(o));
-		float w = ww.x * ww.y * ww.z;
 		lightPos += w * vec3(uintBitsToFloat(gridData[idx]), uintBitsToFloat(gridData[idx + 1]),
 		                     uintBitsToFloat(gridData[idx + 2]));
+		sky += w * uintBitsToFloat(gridData[idx + 5]);
 		total += w;
+	}
+	if (open > 0.0) {
+		sunVis /= open;
 	}
 	if (total <= 0.0) {
 		return false;
 	}
 	lightPos /= total;
+	sky /= total;
 	return true;
+}
+
+/* [QL] E178: the sun, after the last point - direction and directed
+   brightness 0..1, zero where the map has no q3map_sun */
+vec4 sunInfo() {
+	if (gridBounds.w <= 0.0) {
+		return vec4(0.0);
+	}
+	ivec3 b = ivec3(gridBounds.xyz);
+	int idx = b.x * b.y * b.z * 2 + b.x * b.y * b.z * 8;
+	return vec4(uintBitsToFloat(gridData[idx]), uintBitsToFloat(gridData[idx + 1]),
+	            uintBitsToFloat(gridData[idx + 2]), uintBitsToFloat(gridData[idx + 3]));
+}
+
+/*
+One light's share of the rays that something blocks. lightPos is the light's
+centre; for a directional light (sky, sun) it is reach units out along the
+direction, the disc of points on it is scaled so the spread is an angle - as
+wide as a light of size soft.x seen from 512 units - and the level is traced
+the whole way, since a sky light has nothing of its own for a ray to run into.
+*/
+float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint levelMask,
+                 int rays, float spin, out float hitT, out float lenC) {
+	vec3 Lc = normalize(lightPos - O);
+	vec3 sUp = abs(Lc.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 s1 = normalize(cross(Lc, sUp));
+	vec3 s2 = cross(Lc, s1);
+	float discScale = directional ? distance(lightPos, O) / 512.0 : 1.0;
+	float blocked = 0.0;
+	hitT = 0.0;
+	lenC = 1.0;
+	for (int i = 0; i < rays; i++) {
+		vec3 target = lightPos;
+#ifdef USE_PEN
+		if (false) {
+#else
+		if (soft.x > 0.0) {
+#endif
+			/* [QL] E174: an odd count puts ray 0 at the centre of the light and the
+			   rest on the disc around it, so 1 ray is exactly the hard shadow; the
+			   old spiral put ray 0 70% of the way out, turned per pixel, and 1 ray
+			   shredded the outline */
+			int ring = rays - (rays & 1);
+			int k = i - (rays & 1);
+			float rr = k < 0 ? 0.0 : sqrt((float(k) + 0.5) / float(max(ring, 1))) * soft.x * discScale;
+			float a = float(i) * 2.3999632 + spin;
+			target += (s1 * cos(a) + s2 * sin(a)) * rr;
+		}
+		vec3 d = target - O;
+		float len = length(d);
+		float tmax = directional ? len : len - 8.0;     // stop short of a lamp and what it sits in
+		if (tmax <= 1.0) {
+			continue;
+		}
+		bool hit = false;
+		vec3 dir = d / len;
+		if (actorMask != 0u) {
+			rayQueryEXT rq;
+			rayQueryInitializeEXT(rq, topLevel,
+				gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+				actorMask, O, 0.0, dir, tmax);
+			while (rayQueryProceedEXT(rq)) {}
+			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+				/* [QL] E170: only if no wall is in front of it. The rays
+				   aim past the light when its distance is overestimated, and
+				   without this a player upstairs, above a lantern, shadowed
+				   the floor below it through the ceiling. */
+				hit = !levelBetween(O, dir, rayQueryGetIntersectionTEXT(rq, true));
+				hitT = rayQueryGetIntersectionTEXT(rq, true);
+			}
+		}
+		/* [QL] E168/E170: toward a lamp the level is traced to a little over
+		   half the way, and a hit counts only where lit space continues behind
+		   it toward the light (occluderHides). Measured on this map against its
+		   own lightmap, the light-distance estimate runs a median 37% long
+		   where the light is plainly one lamp, so a ray run most of the way
+		   ends in the lamp's shade or the ceiling above it - the specks and
+		   streaks on the flag room's floor, 72% of whose traced shadows the
+		   lightmap had lit. With both rules that floor keeps one shadow, which
+		   the lightmap confirms; rooms with real shadows keep theirs.
+		   [QL] E178: toward the sun, the whole way - its direction is exact. */
+		float levelMax = directional ? tmax : len * 0.55 - 16.0;
+		if (!hit && levelMask != 0u && levelMax > 1.0) {
+			rayQueryEXT rq;
+			rayQueryInitializeEXT(rq, topLevel, gl_RayFlagsOpaqueEXT,   // closest hit, for where it is
+				levelMask, O, 0.0, dir, levelMax);
+			while (rayQueryProceedEXT(rq)) {}
+			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+				hit = occluderHides(O, dir, rayQueryGetIntersectionTEXT(rq, true));
+				hitT = rayQueryGetIntersectionTEXT(rq, true);
+			}
+		}
+		if (hit) {
+			blocked += 1.0;
+		}
+		/* the penumbra's width is R * t / (len - t): a directional light is as
+		   wide as its disc seen from 512 units, so its len is t + 512 */
+		lenC = directional ? hitT + 512.0 : len;
+	}
+	return blocked / float(max(rays, 1));
 }
 
 void main() {
@@ -290,30 +407,56 @@ void main() {
 		return;
 	}
 	float ndl = dot(N, L);
-	if (ndl <= 0.02 || directed <= 0.0) {
-		return;                     // this light never reached here to be blocked
+	/* this light never reached here to be blocked - but the sun may have
+	   (E178), so that is decided below */
+	bool firstLit = ndl > 0.02 && directed > 0.0;
+	if (!firstLit && soft.z <= 0.5) {
+		return;
 	}
+	ndl = max(ndl, 0.0);
 
 	/* [QL] E167: to the light's estimated position, not along a direction
 	   forever - and, with a size, from a spread of points on it (softness) */
-	bool found;
+	bool found = false;
+	bool directional = false, isSun = false;
 	vec3 lightPos;
-	/* [QL] E176: the map-load light field first; the per-pixel estimate only
-	   where there is none, or where the field's light is behind the surface
-	   or not where this point's own light direction says */
-	if (lightFieldAt(Q0, lightPos) && dot(lightPos - Q0, N) > 0.0 &&
-	    dot(normalize(lightPos - Q0), L) > 0.7 && distance(lightPos, Q0) < params.y) {
-		found = true;
-	} else {
-		float dist = lightDistance(Q0, L, params.y, found);
-		lightPos = Q0 + L * dist;
+	float sky, sunVis;
+	vec4 sun = sunInfo();
+	bool haveField = lightFieldAt(Q0, lightPos, sky, sunVis);
+	/* [QL] E178: sky light first. Parallel, from outside the level; toward
+	   the exact q3map_sun where it is within 20 degrees of it, and then the
+	   level is traced too, since that direction is not a blend of anything */
+	if (haveField && sky >= 0.5) {
+		vec3 Ld = normalize(lightPos - Q0);
+		if (dot(Ld, L) > 0.7) {
+			if (sun.w > 0.0 && dot(Ld, sun.xyz) > 0.94) {
+				Ld = sun.xyz;
+				isSun = true;
+			}
+			if (dot(Ld, N) > 0.02) {
+				directional = true;
+				found = isSun;
+				lightPos = Q0 + Ld * params.y;
+			}
+		}
+	}
+	/* [QL] E176: the map-load light field for a lamp; the per-pixel estimate
+	   only where there is none, or where the field's light is behind the
+	   surface or not where this point's own light direction says */
+	if (!directional) {
+		if (haveField && sky < 0.5 && dot(lightPos - Q0, N) > 0.0 &&
+		    dot(normalize(lightPos - Q0), L) > 0.7 && distance(lightPos, Q0) < params.y) {
+			found = true;
+		} else {
+			float dist = lightDistance(Q0, L, params.y, found);
+			lightPos = Q0 + L * dist;
+		}
 	}
 	vec3 O = P + N * 2.0;
 #ifdef USE_PEN
 	/* [QL] E171: one ray, at the centre of the light. The softness comes
 	   afterwards, from the distances this ray finds (penumbra.tmpl). */
 	const int rays = 1;
-	float hitT = 0.0, lenC = 1.0;
 #else
 	int rays = clamp(int(soft.y), 1, 16);
 #endif
@@ -330,98 +473,61 @@ void main() {
 	   interleaved gradient noise, so neighbours sample different points and
 	   the denoise has an average to find - the old per-pixel hash gave
 	   clumps, and clumps survive a blur. */
-	vec3 Lc = normalize(lightPos - O);
-	vec3 sUp = abs(Lc.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-	vec3 s1 = normalize(cross(Lc, sUp));
-	vec3 s2 = cross(Lc, s1);
 	float spin = ign(gl_FragCoord.xy) * 6.2831853;
+	float hitT, lenC;
 	float blocked = 0.0;
-	for (int i = 0; i < rays; i++) {
-		vec3 target = lightPos;
-#ifdef USE_PEN
-		if (false) {
-#else
-		if (soft.x > 0.0) {
-#endif
-			/* [QL] E174: an odd count puts ray 0 at the centre of the light and the
-			   rest on the disc around it, so 1 ray is exactly the hard shadow; the
-			   old spiral put ray 0 70% of the way out, turned per pixel, and 1 ray
-			   shredded the outline */
-			int ring = rays - (rays & 1);
-			int k = i - (rays & 1);
-			float rr = k < 0 ? 0.0 : sqrt((float(k) + 0.5) / float(max(ring, 1))) * soft.x;
-			float a = float(i) * 2.3999632 + spin;
-			target += (s1 * cos(a) + s2 * sin(a)) * rr;
-		}
-		vec3 d = target - O;
-		float len = length(d);
-		float tmax = len - 8.0;     // stop short of the light and what it sits in
-		if (tmax <= 1.0) {
-			continue;
-		}
-		bool hit = false;
-		vec3 dir = d / len;
-		if (actorMask != 0u) {
-			rayQueryEXT rq;
-			rayQueryInitializeEXT(rq, topLevel,
-				gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-				actorMask, O, 0.0, dir, tmax);
-			while (rayQueryProceedEXT(rq)) {}
-			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
-				/* [QL] E170: only if no wall is in front of it. The rays
-				   aim past the light when its distance is overestimated, and
-				   without this a player upstairs, above a lantern, shadowed
-				   the floor below it through the ceiling. */
-				hit = !levelBetween(O, dir, rayQueryGetIntersectionTEXT(rq, true));
-#ifdef USE_PEN
-				hitT = rayQueryGetIntersectionTEXT(rq, true);
-#endif
-			}
-		}
-		/* [QL] E168/E170: the level is traced to a little over half the way,
-		   and a hit counts only where lit space continues behind it toward
-		   the light (occluderHides). Measured on this map against its own
-		   lightmap, the light-distance estimate runs a median 37% long where
-		   the light is plainly one lamp, so a ray run most of the way ends in
-		   the lamp's shade or the ceiling above it - the specks and streaks on
-		   the flag room's floor, 72% of whose traced shadows the lightmap had
-		   lit. With both rules that floor keeps one shadow, which the
-		   lightmap confirms; rooms with real shadows keep theirs. */
-		float levelMax = len * 0.55 - 16.0;
-		if (!hit && levelMask != 0u && levelMax > 1.0) {
-			rayQueryEXT rq;
-			rayQueryInitializeEXT(rq, topLevel, gl_RayFlagsOpaqueEXT,   // closest hit, for where it is
-				levelMask, O, 0.0, dir, levelMax);
-			while (rayQueryProceedEXT(rq)) {}
-			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
-				hit = occluderHides(O, dir, rayQueryGetIntersectionTEXT(rq, true));
-#ifdef USE_PEN
-				hitT = rayQueryGetIntersectionTEXT(rq, true);
-#endif
-			}
-		}
-		if (hit) {
-			blocked += 1.0;
-		}
-#ifdef USE_PEN
-		lenC = len;
-#endif
+	hitT = 0.0;
+	lenC = 1.0;
+	if (firstLit) {
+		blocked = traceLight(O, lightPos, directional, actorMask, levelMask, rays, spin, hitT, lenC);
 	}
-	blocked /= float(rays);
+
+	float tot = max(ambient + directed * ndl, 1e-3);
+	float lost1 = directed * ndl / tot;
+
+	/*
+	[QL] E178: the sun as a second light (r_rtShadowSun). The grid keeps one
+	direction a point, so where a lantern out-shines the sun the sun's light
+	is counted in the grid's ambient and its shadow was never cast - "the
+	strongest light gets all the shadow". Where the map-load trace says the
+	sun reaches, and the first light is not the sun already, the sun gets its
+	own rays and its own share: its brightness where it dominates the grid
+	times N.L, taken out of the ambient, and never more than 80% of it, so a
+	point in both shadows still keeps some of its ambient - no shadow darker
+	than the darkest the level's own light allows.
+	*/
+	float blockedS = 0.0, lostS = 0.0, hitTS = 0.0, lenCS = 1.0;
+	float ndlS = dot(N, sun.xyz);
+	if (soft.z > 0.5 && sun.w > 0.0 && !isSun && sunVis > 0.5 && ndlS > 0.02) {
+		lostS = min(sun.w * ndlS, 0.8 * ambient) / tot;
+		if (lostS > 0.01) {
+			blockedS = traceLight(O, O + sun.xyz * params.y, true, actorMask, mask & uint(RT_MASK_LEVEL_BIT),
+			                      rays, spin + 1.3, hitTS, lenCS);
+		}
+	}
+
+	float strength = clamp(params.x, 0.0, 1.0);
 #ifdef USE_PEN
 	/* occlusion, how far from the pixel the blocker is, how far the light is,
 	   and how much light this pixel loses if it is shadowed - the last for
-	   every lit-facing pixel, since the soft edge spreads into lit ones */
-	float lostFull = directed * ndl / max(ambient + directed * ndl, 1e-3) * clamp(params.x, 0.0, 1.0);
-	out_color = vec4(blocked, blocked > 0.0 ? hitT : 0.0, lenC, lostFull);
+	   every lit-facing pixel, since the soft edge spreads into lit ones. One
+	   edge per pixel: with both lights blocked the first's edge, darkened by
+	   both; with only the sun's, the sun's. */
+	if (blocked > 0.0) {
+		out_color = vec4(blocked, hitT, lenC, (lost1 + lostS * blockedS) * strength);
+	} else if (blockedS > 0.0) {
+		out_color = vec4(blockedS, hitTS, lenCS, lostS * strength);
+	} else {
+		out_color = vec4(0.0, 0.0, lenC, lost1 * strength);
+	}
 	return;
 #endif
-	if (blocked <= 0.0) {
+	if (blocked <= 0.0 && blockedS <= 0.0) {
 		return;
 	}
 
-	float lost = directed * ndl / max(ambient + directed * ndl, 1e-3);
-	lost *= clamp(params.x, 0.0, 1.0) * blocked;
-	out_color = params.w > 0.0 ? vec4(1.0, 1.0 - 0.75 * blocked, 1.0 - 0.75 * blocked, 1.0)   // debug: red
+	float lost = (lost1 * blocked + lostS * blockedS) * strength;
+	float b = max(blocked, blockedS);
+	out_color = params.w > 0.0 ? vec4(1.0, 1.0 - 0.75 * b, 1.0 - 0.75 * b, 1.0)   // debug: red
 	                           : vec4(vec3(1.0 - lost), 1.0);
 }

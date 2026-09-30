@@ -6781,10 +6781,10 @@ void vk_rt_build_world( const world_t *world )
 		const int points = world->lightGridData
 			? world->lightGridBounds[0] * world->lightGridBounds[1] * world->lightGridBounds[2] : 0;
 		/* [QL] E176: the light field (R_BuildLightField) rides after the grid
-		   in the same buffer, four floats a point - no new binding, and the
+		   in the same buffer, LF_STRIDE floats a point - no new binding, and the
 		   reflection shader, which reads only the grid, never sees it */
 		const VkDeviceSize gridBytes = points > 0 ? (VkDeviceSize)points * 8 : 16;
-		const VkDeviceSize fieldBytes = ( points > 0 && world->lightField ) ? (VkDeviceSize)points * 16 : 0;
+		const VkDeviceSize fieldBytes = ( points > 0 && world->lightField ) ? ( (VkDeviceSize)points * LF_STRIDE + 4 ) * sizeof( float ) : 0;   /* E178: + the sun */
 		const VkDeviceSize bytes = gridBytes + fieldBytes;
 
 		vk.rt.world.haveLightField = qfalse;
@@ -14763,7 +14763,8 @@ qboolean vk_actor_shadows( void )
 	projected = u->soft[0] > 0.0f && u->params[3] == 0.0f && r_rtActorShadowSoftMode->integer == 1 &&
 		vk.actorShadow.pen_composite != VK_NULL_HANDLE;
 	u->soft[1] = (float)r_rtActorShadowRays->integer;
-	u->soft[2] = u->soft[3] = 0.0f;
+	u->soft[2] = r_rtShadowSun->integer ? 1.0f : 0.0f;   /* [QL] E178 */
+	u->soft[3] = 0.0f;
 	if ( vk.rt.world.haveGrid && tr.world ) {
 		VectorCopy( tr.world->lightGridOrigin, u->gridOrigin );
 		VectorCopy( tr.world->lightGridInverseSize, u->gridInvSize );

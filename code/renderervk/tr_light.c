@@ -507,8 +507,13 @@ float R_ShadowRayReach( const vec3_t origin, const vec3_t dir, float reach )
 	   agrees with the direction - the same light the shadows on the level use */
 	{
 		vec3_t lp, v;
-		float len;
-		if ( R_LightFieldAt( origin, lp ) ) {
+		float len, sky;
+		if ( R_LightFieldAt( origin, lp, &sky ) ) {
+			/* [QL] E178: sky or sun - parallel light from outside the level,
+			   with nothing of its own on the way for the ray to run into */
+			if ( sky >= 0.5f ) {
+				return reach;
+			}
 			VectorSubtract( lp, origin, v );
 			len = VectorLength( v );
 			if ( len > 1.0f && DotProduct( v, dir ) > 0.7f * len && len < reach ) {
@@ -591,8 +596,8 @@ Measured on japanesecastles against the lanterns and torches: median error -34
 units (the four-sample estimate was +91), and neighbouring points differ by a
 median 24 units after smoothing (50 before it).
 
-Stored as four floats a point: the light's position and 1, or zeros where the
-point is inside a wall or unlit.
+Stored as LF_STRIDE floats a point, with what LF_Classify (E178) adds - the
+layout is described there.
 =================
 */
 #define LF_REACH	512.0f
@@ -612,11 +617,471 @@ static void LF_Dir( const byte *g, vec3_t d, float *directed, qboolean *valid )
 	*valid = ( sum > 0 && *directed > 2.0f ) ? qtrue : qfalse;
 }
 
+/*
+=================
+LF_Classify
+
+[QL] E178: the lamp list's first half - whose light each grid point's is.
+
+The grid stores one direction per point and nothing about what kind of light
+is at the end of it, and the light field above answers as if it were always a
+lamp: the lines of neighbouring points meet somewhere, and that is the light.
+On japanesecastles that is wrong for most of the map. Traced against the level
+(explain2.py, a CPU replica), 65% of the grid's directed light leads out to
+open sky, 10% of it within 20 degrees of the sky shader's q3map_sun, 5% to
+glowing surfaces and 20% to nothing left in the map - the lanterns' point
+lights, compiled out. Sky light is parallel: there is no position to find,
+and a shadow cast from one 300 units overhead points the wrong way and stops
+short.
+
+So each point's own direction is traced here, once, against the same level the
+GPU traces - the opaque surfaces rt_surface_is_occluder keeps - plus the sky's
+surfaces, which the GPU structure leaves out and which are the answer here.
+Five rays, the direction and four about five degrees around it, so a point
+beside a window frame is not decided by one grazing ray; the share that reaches
+the sky is the point's sky fraction, then averaged once with like-directed
+neighbours. A lamp's point keeps its light field position, now clamped to no
+further than the first thing its direction runs into - the light cannot be
+behind the wall it is lighting this point through. A sky point's position goes
+LF_SKY units out along its direction, which the shaders read as a direction,
+not a place.
+
+Separately, for every open point, whether the exact q3map_sun direction reaches
+the sky from there. That is the second light (the sun alongside a lamp that
+out-shines it in the grid), and the sun's own directed brightness is the median
+of the grid where the sun dominates, from the map's own numbers rather than a
+guess at q3map2's units.
+
+Layout, LF_STRIDE floats a point:
+	[0..2] light position (lamp) or LF_SKY out along the direction (sky)
+	[3]    1 if [0..2] means something, else 0
+	[4]    1 if the sun reaches this point
+	[5]    sky fraction 0..1
+	[6]    0
+	[7]    1 if the point is open (not inside a wall)
+and after the last point, four floats: the sun's direction and its directed
+brightness 0..1 (all zero on a map with no q3map_sun).
+=================
+*/
+#define LF_SKY		4096.0f
+#define LF_SUN_COS	0.94f	/* cos 20 degrees: near enough the sun to be it */
+
+typedef struct {
+	vec3_t	v0, e1, e2;
+	int		sky;
+} lfTri_t;
+
+typedef struct {
+	vec3_t	mins, maxs;
+	int		first, count;	/* count > 0: a leaf over tris [first..]; else children first, first + 1 */
+} lfNode_t;
+
+typedef struct {
+	lfTri_t		*tris;
+	int			*order;
+	lfNode_t	*nodes;
+	int			numTris, numNodes;
+} lfBvh_t;
+
+static int LF_SurfaceKind( const msurface_t *surf )
+{
+	const shader_t *sh = surf->shader;
+	int i;
+
+	if ( surf->data == NULL || sh == NULL ) {
+		return 0;
+	}
+	if ( sh->isSky || ( sh->surfaceFlags & SURF_SKY ) ) {
+		return 2;
+	}
+	/* the same rules as vk.c's rt_surface_is_occluder, so this traces the
+	   level the GPU does */
+	if ( sh->sort != SS_OPAQUE || ( sh->surfaceFlags & ( SURF_NODRAW | SURF_NONSOLID ) ) ) {
+		return 0;
+	}
+	for ( i = 0; i < sh->numUnfoggedPasses; i++ ) {
+		const shaderStage_t *st = sh->stages[i];
+		if ( st && st->active && ( st->stateBits & GLS_ATEST_BITS ) ) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+/* the surface's triangles into tris (NULL: count only); returns how many */
+static int LF_SurfaceTris( const msurface_t *surf, int sky, lfTri_t *tris )
+{
+	const surfaceType_t *data = surf->data;
+	int n = 0, i, x, y;
+
+#define LF_ADD( A, B, C ) do { if ( tris ) { lfTri_t *lt_ = &tris[n]; VectorCopy( A, lt_->v0 ); \
+		VectorSubtract( B, A, lt_->e1 ); VectorSubtract( C, A, lt_->e2 ); lt_->sky = sky; } n++; } while ( 0 )
+
+	switch ( *data ) {
+	case SF_FACE: {
+		const srfSurfaceFace_t *f = (const srfSurfaceFace_t *)data;
+		const unsigned *ind = (const unsigned *)( (const byte *)f + f->ofsIndices );
+		for ( i = 0; i + 2 < f->numIndices; i += 3 ) {
+			LF_ADD( f->points[ind[i]], f->points[ind[i+1]], f->points[ind[i+2]] );
+		}
+		break;
+	}
+	case SF_TRIANGLES: {
+		const srfTriangles_t *t = (const srfTriangles_t *)data;
+		for ( i = 0; i + 2 < t->numIndexes; i += 3 ) {
+			LF_ADD( t->verts[t->indexes[i]].xyz, t->verts[t->indexes[i+1]].xyz, t->verts[t->indexes[i+2]].xyz );
+		}
+		break;
+	}
+	case SF_GRID: {
+		const srfGridMesh_t *g = (const srfGridMesh_t *)data;
+		for ( y = 0; y < g->height - 1; y++ ) {
+			for ( x = 0; x < g->width - 1; x++ ) {
+				const float *a = g->verts[y * g->width + x].xyz, *b = g->verts[y * g->width + x + 1].xyz;
+				const float *c = g->verts[( y + 1 ) * g->width + x].xyz, *d = g->verts[( y + 1 ) * g->width + x + 1].xyz;
+				LF_ADD( a, c, b );
+				LF_ADD( b, c, d );
+			}
+		}
+		break;
+	}
+	default:
+		break;
+	}
+#undef LF_ADD
+	return n;
+}
+
+static const lfTri_t *lfSortTris;
+static int lfSortAxis;
+
+static int LF_CompareTris( const void *a, const void *b )
+{
+	const lfTri_t *ta = &lfSortTris[*(const int *)a], *tb = &lfSortTris[*(const int *)b];
+	/* centroid * 3, less v0 * 3 - the same order */
+	const float ca = 3.0f * ta->v0[lfSortAxis] + ta->e1[lfSortAxis] + ta->e2[lfSortAxis];
+	const float cb = 3.0f * tb->v0[lfSortAxis] + tb->e1[lfSortAxis] + tb->e2[lfSortAxis];
+	return ca < cb ? -1 : ca > cb ? 1 : 0;
+}
+
+static void LF_TriBounds( const lfTri_t *t, vec3_t mins, vec3_t maxs )
+{
+	int k;
+	for ( k = 0; k < 3; k++ ) {
+		const float a = t->v0[k], b = a + t->e1[k], c = a + t->e2[k];
+		const float lo = a < b ? ( a < c ? a : c ) : ( b < c ? b : c );
+		const float hi = a > b ? ( a > c ? a : c ) : ( b > c ? b : c );
+		if ( lo < mins[k] ) mins[k] = lo;
+		if ( hi > maxs[k] ) maxs[k] = hi;
+	}
+}
+
+/* median split on the longest axis, four triangles a leaf */
+static qboolean LF_BuildBvh( lfBvh_t *b )
+{
+	int stack[128], sp = 0, i;
+
+	b->nodes = ri.Malloc( ( 2 * b->numTris + 1 ) * sizeof( lfNode_t ) );
+	b->order = ri.Malloc( b->numTris * sizeof( int ) );
+	if ( b->nodes == NULL || b->order == NULL ) {
+		return qfalse;
+	}
+	for ( i = 0; i < b->numTris; i++ ) {
+		b->order[i] = i;
+	}
+	b->numNodes = 1;
+	stack[sp++] = 0;
+	b->nodes[0].first = 0;
+	b->nodes[0].count = b->numTris;
+	lfSortTris = b->tris;
+
+	while ( sp > 0 ) {
+		lfNode_t *nd = &b->nodes[ stack[--sp] ];
+		const int first = nd->first, count = nd->count;
+		vec3_t ext;
+		int axis, half;
+
+		ClearBounds( nd->mins, nd->maxs );
+		for ( i = 0; i < count; i++ ) {
+			LF_TriBounds( &b->tris[ b->order[first + i] ], nd->mins, nd->maxs );
+		}
+		if ( count <= 4 || sp >= 126 ) {
+			continue;
+		}
+		VectorSubtract( nd->maxs, nd->mins, ext );
+		axis = ext[0] > ext[1] ? ( ext[0] > ext[2] ? 0 : 2 ) : ( ext[1] > ext[2] ? 1 : 2 );
+		lfSortAxis = axis;
+		qsort( b->order + first, count, sizeof( int ), LF_CompareTris );
+		half = count / 2;
+
+		nd->first = b->numNodes;
+		nd->count = 0;
+		b->nodes[b->numNodes].first = first;
+		b->nodes[b->numNodes].count = half;
+		b->nodes[b->numNodes + 1].first = first + half;
+		b->nodes[b->numNodes + 1].count = count - half;
+		stack[sp++] = b->numNodes;
+		stack[sp++] = b->numNodes + 1;
+		b->numNodes += 2;
+	}
+	return qtrue;
+}
+
+static qboolean LF_RayBox( const lfNode_t *nd, const vec3_t o, const vec3_t inv, float tmax )
+{
+	float t0 = 0.0f, t1 = tmax;
+	int k;
+	for ( k = 0; k < 3; k++ ) {
+		float a = ( nd->mins[k] - o[k] ) * inv[k];
+		float c = ( nd->maxs[k] - o[k] ) * inv[k];
+		if ( a > c ) { const float s = a; a = c; c = s; }
+		if ( a > t0 ) t0 = a;
+		if ( c < t1 ) t1 = c;
+		if ( t0 > t1 ) return qfalse;
+	}
+	return qtrue;
+}
+
+/* the nearest triangle along d from o within tmax: its distance, and whether
+   it is sky. Nothing hit - out through a leak, or a grid point outside the
+   hull - counts as sky too: nothing of the level is in the way. */
+static float LF_Trace( const lfBvh_t *b, const vec3_t o, const vec3_t d, float tmax, int *sky )
+{
+	int stack[64], sp = 0;
+	vec3_t inv;
+	float best = tmax;
+	int k;
+
+	*sky = 1;
+	for ( k = 0; k < 3; k++ ) {
+		inv[k] = fabsf( d[k] ) > 1e-8f ? 1.0f / d[k] : ( d[k] < 0.0f ? -1e8f : 1e8f );
+	}
+	stack[sp++] = 0;
+	while ( sp > 0 ) {
+		const lfNode_t *nd = &b->nodes[ stack[--sp] ];
+		if ( !LF_RayBox( nd, o, inv, best ) ) {
+			continue;
+		}
+		if ( nd->count == 0 ) {
+			if ( sp < 62 ) {
+				stack[sp++] = nd->first;
+				stack[sp++] = nd->first + 1;
+			}
+			continue;
+		}
+		for ( k = 0; k < nd->count; k++ ) {
+			const lfTri_t *t = &b->tris[ b->order[nd->first + k] ];
+			vec3_t p, s, q;
+			float det, inv_det, u, v, tt;
+			CrossProduct( d, t->e2, p );
+			det = DotProduct( t->e1, p );
+			if ( fabsf( det ) < 1e-9f ) continue;
+			inv_det = 1.0f / det;
+			VectorSubtract( o, t->v0, s );
+			u = DotProduct( s, p ) * inv_det;
+			if ( u < 0.0f || u > 1.0f ) continue;
+			CrossProduct( s, t->e1, q );
+			v = DotProduct( d, q ) * inv_det;
+			if ( v < 0.0f || u + v > 1.0f ) continue;
+			tt = DotProduct( t->e2, q ) * inv_det;
+			if ( tt > 0.5f && tt < best ) {
+				best = tt;
+				*sky = t->sky;
+			}
+		}
+	}
+	return best;
+}
+
+static int LF_CompareFloats( const void *a, const void *b )
+{
+	const float fa = *(const float *)a, fb = *(const float *)b;
+	return fa < fb ? -1 : fa > fb ? 1 : 0;
+}
+
+static void LF_Classify( const world_t *w, const float *dir, const float *wt, const byte *ok,
+	const float *field, float *out )
+{
+	const int bx = w->lightGridBounds[0], by = w->lightGridBounds[1], bz = w->lightGridBounds[2];
+	const int n = bx * by * bz;
+	const msurface_t *surfs = w->surfaces;
+	const qboolean haveSun = VectorLength( tr.sunLight ) > 0.0f ? qtrue : qfalse;
+	int numSurfs = w->numsurfaces, i, x, y, z, s;
+	int nSky = 0, nLamp = 0, nSunVis = 0, nClamped = 0, nSunPts = 0;
+	float *skyRaw, *sunSamples;
+	lfBvh_t b;
+	int start = ri.Milliseconds();
+
+	Com_Memset( out, 0, ( n * LF_STRIDE + 4 ) * sizeof( float ) );
+	Com_Memset( &b, 0, sizeof( b ) );
+
+	/* the static level, as vk.c builds it: submodel 0 */
+	if ( w->bmodels != NULL && w->bmodels[0].numSurfaces > 0 && w->bmodels[0].numSurfaces <= w->numsurfaces ) {
+		surfs = w->bmodels[0].firstSurface;
+		numSurfs = w->bmodels[0].numSurfaces;
+	}
+	for ( s = 0; s < numSurfs; s++ ) {
+		const int kind = LF_SurfaceKind( &surfs[s] );
+		if ( kind ) {
+			b.numTris += LF_SurfaceTris( &surfs[s], kind == 2, NULL );
+		}
+	}
+	skyRaw = ri.Malloc( n * sizeof( float ) );
+	sunSamples = ri.Malloc( n * sizeof( float ) );
+	if ( b.numTris > 0 ) {
+		b.tris = ri.Malloc( b.numTris * sizeof( lfTri_t ) );
+	}
+	if ( b.tris == NULL || skyRaw == NULL || sunSamples == NULL ) {
+		/* nothing to trace against: every located light stays a lamp, as in E176 */
+		for ( i = 0; i < n; i++ ) {
+			VectorCopy( field + i * 4, out + i * LF_STRIDE );
+			out[i * LF_STRIDE + 3] = field[i * 4 + 3];
+		}
+		goto done;
+	}
+	b.numTris = 0;
+	for ( s = 0; s < numSurfs; s++ ) {
+		const int kind = LF_SurfaceKind( &surfs[s] );
+		if ( kind ) {
+			b.numTris += LF_SurfaceTris( &surfs[s], kind == 2, b.tris + b.numTris );
+		}
+	}
+	if ( !LF_BuildBvh( &b ) ) {
+		for ( i = 0; i < n; i++ ) {
+			VectorCopy( field + i * 4, out + i * LF_STRIDE );
+			out[i * LF_STRIDE + 3] = field[i * 4 + 3];
+		}
+		goto done;
+	}
+
+#define LF_IDX( X, Y, Z ) ( ( Z ) * bx * by + ( Y ) * bx + ( X ) )
+	for ( z = 0; z < bz; z++ ) for ( y = 0; y < by; y++ ) for ( x = 0; x < bx; x++ ) {
+		const int c = LF_IDX( x, y, z );
+		const byte *g = w->lightGridData + c * 8;
+		float *o = out + c * LF_STRIDE;
+		vec3_t pc;
+		int sky, k;
+
+		skyRaw[c] = -1.0f;
+		if ( g[0] + g[1] + g[2] + g[3] + g[4] + g[5] == 0 ) {
+			continue;   /* inside a wall */
+		}
+		pc[0] = w->lightGridOrigin[0] + x * w->lightGridSize[0];
+		pc[1] = w->lightGridOrigin[1] + y * w->lightGridSize[1];
+		pc[2] = w->lightGridOrigin[2] + z * w->lightGridSize[2];
+		o[7] = 1.0f;
+
+		if ( haveSun ) {
+			LF_Trace( &b, pc, tr.sunDirection, 16384.0f, &sky );
+			if ( sky ) {
+				o[4] = 1.0f;
+				nSunVis++;
+			}
+		}
+		if ( !ok[c] ) {
+			continue;
+		}
+		{
+			const float *d = dir + c * 3;
+			vec3_t up, t1, t2, dd;
+			float hits = 0.0f, tc;
+			VectorSet( up, 0, 0, 1 );
+			if ( fabsf( d[2] ) >= 0.9f ) VectorSet( up, 1, 0, 0 );
+			CrossProduct( d, up, t1 );
+			VectorNormalize( t1 );
+			CrossProduct( d, t1, t2 );
+			tc = LF_Trace( &b, pc, d, 16384.0f, &sky );
+			hits += sky;
+			o[6] = sky ? 0.0f : tc;     /* scratch: the lamp's wall, until below */
+			for ( k = 0; k < 4; k++ ) {
+				VectorMA( d, ( k & 2 ) ? -0.09f : 0.09f, ( k & 1 ) ? t2 : t1, dd );
+				VectorNormalize( dd );
+				LF_Trace( &b, pc, dd, 16384.0f, &sky );
+				hits += sky;
+			}
+			skyRaw[c] = hits / 5.0f;
+		}
+	}
+
+	/* once around with like-directed neighbours, then decide */
+	for ( z = 0; z < bz; z++ ) for ( y = 0; y < by; y++ ) for ( x = 0; x < bx; x++ ) {
+		const int c = LF_IDX( x, y, z );
+		const float *d = dir + c * 3;
+		float *o = out + c * LF_STRIDE;
+		float acc = 0.0f, sw = 0.0f, sk;
+		int dx, dy, dz;
+		vec3_t pc;
+
+		if ( skyRaw[c] < 0.0f ) {
+			continue;
+		}
+		for ( dz = -1; dz <= 1; dz++ ) for ( dy = -1; dy <= 1; dy++ ) for ( dx = -1; dx <= 1; dx++ ) {
+			const int nx = x + dx, ny = y + dy, nz = z + dz;
+			int m;
+			float ww;
+			if ( nx < 0 || ny < 0 || nz < 0 || nx >= bx || ny >= by || nz >= bz ) continue;
+			m = LF_IDX( nx, ny, nz );
+			if ( skyRaw[m] < 0.0f || DotProduct( dir + m * 3, d ) < LF_SMOOTH ) continue;
+			ww = ( dx | dy | dz ) ? 1.0f : 2.0f;
+			acc += ww * skyRaw[m];
+			sw += ww;
+		}
+		sk = acc / sw;
+		o[5] = sk;
+		pc[0] = w->lightGridOrigin[0] + x * w->lightGridSize[0];
+		pc[1] = w->lightGridOrigin[1] + y * w->lightGridSize[1];
+		pc[2] = w->lightGridOrigin[2] + z * w->lightGridSize[2];
+
+		if ( sk >= 0.5f ) {
+			VectorMA( pc, LF_SKY, d, o );
+			o[3] = 1.0f;
+			nSky++;
+			if ( haveSun && o[4] > 0.0f && DotProduct( d, tr.sunDirection ) > LF_SUN_COS ) {
+				sunSamples[nSunPts++] = wt[c] / 255.0f;
+			}
+		} else if ( field[c * 4 + 3] > 0.0f ) {
+			/* the lamp is no further than the first thing its direction meets */
+			const float wall = o[6];
+			vec3_t v;
+			float along;
+			VectorCopy( field + c * 4, o );
+			VectorSubtract( o, pc, v );
+			along = DotProduct( v, d );
+			if ( wall > 0.0f && along > wall + 8.0f ) {
+				VectorMA( pc, ( wall + 8.0f ) / along, v, o );
+				nClamped++;
+			}
+			o[3] = 1.0f;
+			nLamp++;
+		}
+		o[6] = 0.0f;
+	}
+#undef LF_IDX
+
+	if ( nSunPts >= 32 ) {
+		float *tail = out + n * LF_STRIDE;
+		qsort( sunSamples, nSunPts, sizeof( float ), LF_CompareFloats );
+		VectorCopy( tr.sunDirection, tail );
+		tail[3] = sunSamples[nSunPts / 2];
+	}
+
+	ri.Printf( PRINT_ALL, "Light field: %i sky, %i lamp (%i moved in front of a wall), sun reaches %i points, "
+		"sun brightness %.2f from %i; %i triangles, %i ms\n",
+		nSky, nLamp, nClamped, nSunVis, out[n * LF_STRIDE + 3], nSunPts, b.numTris, ri.Milliseconds() - start );
+
+done:
+	if ( b.tris ) ri.Free( b.tris );
+	if ( b.nodes ) ri.Free( b.nodes );
+	if ( b.order ) ri.Free( b.order );
+	if ( skyRaw ) ri.Free( skyRaw );
+	if ( sunSamples ) ri.Free( sunSamples );
+}
+
 void R_BuildLightField( world_t *w )
 {
 	const int bx = w->lightGridBounds[0], by = w->lightGridBounds[1], bz = w->lightGridBounds[2];
 	const int n = bx * by * bz;
-	float *dir, *wt, *pos, *tmp;
+	float *dir, *wt, *pos, *tmp, *out;
 	byte *ok;
 	int x, y, z, i, it, found = 0;
 
@@ -629,7 +1094,7 @@ void R_BuildLightField( world_t *w )
 	wt = ri.Malloc( n * sizeof( float ) );
 	ok = ri.Malloc( n );
 	tmp = ri.Malloc( n * 4 * sizeof( float ) );
-	pos = ri.Hunk_Alloc( n * 4 * sizeof( float ), h_low );
+	pos = ri.Malloc( n * 4 * sizeof( float ) );
 
 	for ( i = 0; i < n; i++ ) {
 		qboolean v;
@@ -744,11 +1209,15 @@ void R_BuildLightField( world_t *w )
 			dst[c*4+3] = 1.0f;
 		}
 	}
-	/* after two rounds the result is in tmp: copy it into the kept array */
-	Com_Memcpy( pos, tmp, n * 4 * sizeof( float ) );
+	/* after two rounds the result is in tmp */
 	for ( i = 0; i < n; i++ ) {
-		if ( pos[i*4+3] > 0.0f ) found++;
+		if ( tmp[i*4+3] > 0.0f ) found++;
 	}
+	ri.Printf( PRINT_ALL, "Light field: %i of %i grid points locate their light\n", found, n );
+
+	/* [QL] E178: which of them is the sky's, and where the sun reaches */
+	out = ri.Hunk_Alloc( ( n * LF_STRIDE + 4 ) * sizeof( float ), h_low );
+	LF_Classify( w, dir, wt, ok, tmp, out );
 
 #undef LF_IDX
 #undef LF_POINT
@@ -757,20 +1226,23 @@ void R_BuildLightField( world_t *w )
 	ri.Free( wt );
 	ri.Free( ok );
 	ri.Free( tmp );
-	w->lightField = pos;
-	ri.Printf( PRINT_ALL, "Light field: %i of %i grid points locate their light\n", found, n );
+	ri.Free( pos );
+	w->lightField = out;
 }
 
 /* [QL] E176: the light field, interpolated at p like the grid itself -
    corners with no answer left out and the rest renormalised */
-qboolean R_LightFieldAt( const vec3_t p, vec3_t lightPos )
+qboolean R_LightFieldAt( const vec3_t p, vec3_t lightPos, float *sky )
 {
 	const world_t *w = tr.world;
 	vec3_t v;
 	int i0[3], k, i;
-	float f[3], total = 0.0f;
+	float f[3], total = 0.0f, skyAcc = 0.0f;
 
 	VectorClear( lightPos );
+	if ( sky ) {
+		*sky = 0.0f;
+	}
 	if ( w == NULL || w->lightField == NULL || !r_rtLightField->integer ) {
 		return qfalse;
 	}
@@ -792,14 +1264,18 @@ qboolean R_LightFieldAt( const vec3_t p, vec3_t lightPos )
 			ww *= o ? f[k] : 1.0f - f[k];
 		}
 		idx = c[2] * w->lightGridBounds[0] * w->lightGridBounds[1] + c[1] * w->lightGridBounds[0] + c[0];
-		lf = w->lightField + idx * 4;
+		lf = w->lightField + idx * LF_STRIDE;
 		if ( lf[3] <= 0.0f || ww <= 0.0f ) continue;
 		VectorMA( lightPos, ww, lf, lightPos );
+		skyAcc += ww * lf[5];
 		total += ww;
 	}
 	if ( total <= 0.0f ) {
 		return qfalse;
 	}
 	VectorScale( lightPos, 1.0f / total, lightPos );
+	if ( sky ) {
+		*sky = skyAcc / total;
+	}
 	return qtrue;
 }

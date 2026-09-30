@@ -6048,6 +6048,48 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E178. Multiple shadows, step 1: sky and sun told apart from lamps, and the sun casts its own shadow (`r_rtShadowSun`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported: "I haven't seen effective multiple shadows ... It seems like strongest shadow gets dominance/preference." That is exactly what the data allows. The light grid keeps **one** direction per point, a blend weighted toward the brightest light, so every traced shadow came from that one light, and a second light's shadow was never cast.
+
+**What the level's light actually is.** On a CPU copy of japanesecastles, each grid point's direction was traced against the level's triangles. Weighted by light:
+
+| Where the grid's light comes from | Share |
+|---|---|
+| Open sky | 65% |
+| The sky shader's `q3map_sun` (within 20°) | 10% |
+| Glowing surfaces (flames, portal) | 5% |
+| Nothing left in the map: the lanterns' point lights, compiled out | 20% |
+
+So most of the map is lit by parallel light. The light field (E176) treated all of it as a lamp: it found a "position" a few hundred units away and cast shadows from there, at the wrong angle and cut short.
+
+**The lamp list, first half: `LF_Classify` (`tr_light.c`), at map load.**
+- **Sky or lamp.** Every lit grid point traces its own direction, plus four rays about 5° around it, against the same opaque level the GPU traces, with the sky surfaces added (the GPU structure leaves them out). The share of rays that reach sky is the point's sky fraction, averaged once with like-directed neighbours.
+- **Sky points** (fraction ≥ 0.5) become directions. The shader traces them as parallel light, and snaps them to the exact `q3map_sun` direction within 20°. Only toward the exact sun is the level also traced (for `r_rtLevelShadows`), because only that direction is not a blend.
+- **Lamp points** keep their field position, clamped to no further than the first wall their direction hits (+8 units). A light cannot be behind the wall it lights the point through. This moved 2290 of 6961 lamp points.
+- **Sun reach.** Separately, every open point traces the exact sun direction to see whether the sun reaches it.
+- **Sun brightness** is the median of the grid's directed light where the sun dominates, taken from the map's own numbers rather than a guess at q3map2's units.
+- The field grows to 8 floats per point, plus the sun at the end, in the same buffer.
+- japanesecastles: 48,173 triangles, **399 ms** at load, 10,146 sky / 6,961 lamp points, and the sun reaches 8,170.
+
+**Second shadow: the sun, `r_rtShadowSun` (default 1, menu row "Sun shadow").** Where the sun reaches a point and its strongest light is something else (a lantern), the sun gets its own rays and its own share of the light. Its shadow is cast alongside the lamp's, not instead of it.
+- **Its share:** sun brightness × N·L, taken out of the grid's ambient (where a non-dominant light's contribution sits) and capped at 80% of the ambient.
+- **Floor:** a point in both shadows keeps at least a fifth of its ambient. That is the HDR floor rule applied here: no shadow darker than the level's own light allows.
+- **Faces away:** a surface facing away from the lamp but toward the sun now gets the sun's shadow. It used to return early.
+- **Projected soft mode:** carries one edge per pixel, the first light's if blocked, otherwise the sun's.
+- **`0`:** restores one shadow from the strongest light.
+- **Model shadows:** `R_ShadowRayReach` now gives a sky-lit point the full reach instead of stopping at an invented lamp.
+
+**Checked** (lavapipe, synthetic cube cluster, 7 sites, 5 rays, validation layer on: 0 errors):
+- **Site 1**, a corridor whose strongest light is a lamp behind the camera: with the sun off, the cubes cast **nothing**; with it on, they cast sun shadows. The debug view shows them red.
+- **Sites 2, 4, 7:** no change.
+- **Sites 5 and 6:** the pixel differences are the animated water, not shadows.
+
+**Not yet (the lamp list's second half):**
+- **Two lamps.** The grid cannot say where a second lamp is, and the lanterns' own lights were compiled out of the map. Recovering them needs the emitter surfaces (`q3map_surfacelight`, which the renderer does not parse yet) or fitting positions from the lightmap. That is the next step.
+- **Cost.** The sun's rays cost a second set where it applies. `r_rtTimings 1` will show it.
+
 ### E177. GPU time per ray-tracing pass (`r_rtTimings 1`) — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

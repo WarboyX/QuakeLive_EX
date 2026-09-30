@@ -83,6 +83,7 @@ cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
 cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
 cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
 cvar_t	*r_rtLightField;           // [QL] E176
+cvar_t	*r_rtShadowSun;            // [QL] E178
 cvar_t	*r_rtTimings;              // [QL] E177
 cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
@@ -2782,6 +2783,12 @@ static void R_Register( void )
 		" 0 - estimated per pixel from the light grid (E167): can jump between neighbouring pixels and "
 		"tear one shadow into pieces\n 1 - the light field, worked out once at map load and interpolated "
 		"(default)" );
+	r_rtShadowSun = ri.Cvar_Get( "r_rtShadowSun", "1", CVAR_ARCHIVE_ND );   // [QL] E178
+	ri.Cvar_CheckRange( r_rtShadowSun, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtShadowSun, "The sun casts its own traced shadow even where a nearer light "
+		"is brighter. The light grid keeps one light per place, so without this the strongest light gets "
+		"the only shadow. Maps with a q3map_sun only; costs a second set of rays where the sun reaches.\n"
+		" 0 - one shadow, from the strongest light\n 1 - also the sun's (default)" );
 	r_rtTimings = ri.Cvar_Get( "r_rtTimings", "0", CVAR_TEMP );
 	ri.Cvar_CheckRange( r_rtTimings, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtTimings, "Print the GPU time of each ray-tracing pass every two seconds: "
