@@ -5758,7 +5758,8 @@ fail:
 /* is anything this frame going to trace the silhouettes */
 static qboolean rt_actors_wanted( void )
 {
-	return ( r_rtActorShadows->integer || R_SHADOWS_TRACED || r_rtShadowCasters->integer ) ? qtrue : qfalse;
+	return ( r_rtActorShadows->integer || R_SHADOWS_TRACED || r_rtShadowCasters->integer ||
+		r_rtDynamic->integer == 2 ) ? qtrue : qfalse;   /* [QL] E174: AO by real shapes */
 }
 
 /*
@@ -13735,7 +13736,12 @@ qboolean vk_rt_ao( void )
 	push.params[2] = (float)( vk.frame_count & 255 );
 	push.params[3] = 1.5f;   // surface bias, in world units
 	push.res[0] = (float)aoScale;   // [QL] E150
-	push.res[1] = push.res[2] = push.res[3] = 0.0f;
+	/* [QL] E174: r_rtDynamic 2 - players and items occlude by their real
+	   triangles (RT_MASK_SILHOUETTE) instead of the proxy boxes and balls,
+	   which under an item drew a round blob that read as a second shadow */
+	push.res[1] = (float)( ( r_rtDynamic->integer == 2 && vk.rt.world.actorReady && vk.rt.world.actorTris > 0 )
+		? ( RT_MASK_LEVEL | RT_MASK_SILHOUETTE ) : RT_MASK_OCCLUSION );
+	push.res[2] = push.res[3] = 0.0f;
 
 	/*
 	[QL] Which depth values are not surfaces, taken from the engine's own

@@ -292,7 +292,13 @@ void main() {
 #else
 		if (soft.x > 0.0) {
 #endif
-			float rr = sqrt((float(i) + 0.5) / float(rays)) * soft.x;
+			/* [QL] E174: an odd count puts ray 0 at the centre of the light and the
+			   rest on the disc around it, so 1 ray is exactly the hard shadow; the
+			   old spiral put ray 0 70% of the way out, turned per pixel, and 1 ray
+			   shredded the outline */
+			int ring = rays - (rays & 1);
+			int k = i - (rays & 1);
+			float rr = k < 0 ? 0.0 : sqrt((float(k) + 0.5) / float(max(ring, 1))) * soft.x;
 			float a = float(i) * 2.3999632 + spin;
 			target += (s1 * cos(a) + s2 * sin(a)) * rr;
 		}

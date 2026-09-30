@@ -447,6 +447,8 @@ def raytracing():
         # value and the default are both visible.
         ("h", "AMBIENT OCCLUSION"),
         ("multi", "r_rtao", "Ambient occlusion", '"Off" 0 "On" 1 "Debug (show occlusion)" 2'),
+        # [QL] E174. Players and items in the AO: boxes drew a blob under items.
+        ("multi", "r_rtDynamic", "Players/items in AO", '"No" 0 "As boxes (default)" 1 "Real shapes" 2'),
         # [QL] E154. No ray query needed; runs when the row above is off or
         # cannot run. Shares radius, strength, denoise and trace resolution.
         ("multi", "r_ssao", "Screen-space AO", '"Off (default)" 0 "On" 1 "Debug (show occlusion)" 2'),
@@ -481,14 +483,14 @@ def shadows():
          '"0.25" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1'),
         ("multi", "r_rtDlightShadowSoftness", "Softness",
          '"Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16 (very soft)" 16'),
-        ("multi", "r_rtDlightShadowRays", "Rays", '"1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8'),
+        ("multi", "r_rtDlightShadowRays", "Rays", '"1 (default)" 1 "3" 3 "5" 5 "7 (heavy)" 7'),   # E174: odd - ray 0 at the light's centre
         ("h", "LEVEL SHADOWS ON MODELS"),
         ("multi", "r_rtModelShadows", "Model shadows", '"Off (default)" 0 "On" 1 "Debug (tint)" 2'),
         ("multi", "r_rtModelShadowStrength", "Strength",
          '"0.25" 0.25 "0.5" 0.5 "0.85 (default)" 0.85 "1.0" 1'),
         ("multi", "r_rtModelShadowSoftness", "Softness",
          '"Sharp (default)" 0 "0.03" 0.03 "0.06" 0.06 "0.12" 0.12 "0.25 (very soft)" 0.25'),
-        ("multi", "r_rtModelShadowRays", "Rays", '"1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8'),
+        ("multi", "r_rtModelShadowRays", "Rays", '"1 (default)" 1 "3" 3 "5" 5 "7 (heavy)" 7'),
         ("multi", "r_rtModelShadowDistance", "Reach",
          '"256" 256 "512" 512 "1024 (default)" 1024 "2048" 2048 "4096" 4096'),
         ("help", "Soft edges need more rays. Doors and lifts always cast."),
@@ -515,7 +517,7 @@ def cast_shadows():
          '"0.25" 0.25 "0.5" 0.5 "0.7 (default)" 0.7 "0.85" 0.85 "1.0" 1'),
         ("multi", "r_rtActorShadowSoftness", "Softness",
          '"Hard" 0 "4" 4 "8 (default)" 8 "16" 16 "32 (very soft)" 32'),
-        ("multi", "r_rtActorShadowRays", "Rays", '"1" 1 "2" 2 "4 (default)" 4 "8" 8 "16 (heavy)" 16'),
+        ("multi", "r_rtActorShadowRays", "Rays", '"1" 1 "3" 3 "5 (default)" 5 "9" 9 "15 (heavy)" 15'),
         # [QL] E169. Soft edges through AO's edge-aware blur.
         ("multi", "r_rtActorShadowDenoise", "Soft edge denoise", '"Off" 0 "On (default)" 1'),
         # [QL] E171. Soft edges worked out from the distances, from one ray.
@@ -523,6 +525,8 @@ def cast_shadows():
         # [QL] E165/E166. Doors and lifts always cast; players and items by shape.
         ("multi", "r_rtShadowCasters", "Players block lights",
          '"No (default)" 0 "Yes" 1'),
+        # [QL] E174. Your own body on your gun.
+        ("multi", "r_rtWeaponSelfShadow", "Players shadow your gun", '"No (default)" 0 "Yes" 1'),
         ("help", "One light for players and ledges, so their shadows agree."),
         ("help", "Lighting > Shadows: Traced turns all of these on."),
     ]

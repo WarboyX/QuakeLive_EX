@@ -6048,6 +6048,33 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E174. Own body off the gun; items' AO blob; 1 ray is a clean hard shadow — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Tester's reports:
+- awkward hard shadows on the first-person weapon, which the tester tested and confirmed is their own body;
+- items having "two shadows", the traced one plus a faded blob that follows the item as it bobs, which no shadow option changes;
+- with 1 ray, shadows' shapes are "really bad".
+
+**Own body on the gun:** `r_rtWeaponSelfShadow` 0/1, default 0 (Cast Shadows → "Players shadow your gun").
+- The first-person weapon sits inside your own body, which is in the silhouettes (E166).
+- With 0, the weapon's model and dynamic-light shadow rays trace the level only (`VK_SetRTTransform`, RF_FIRST_PERSON).
+- The silhouettes are one instance, so this also leaves out other players between your gun and a light. Splitting your own body into an instance of its own would allow the finer toggle; not done.
+
+**The item blob is ambient occlusion, not a shadow.** `r_rtDynamic 1` traces players and items as proxy boxes and balls. The ball under an item occludes the floor as a round blob that follows it, and no shadow option touches it.
+- New `r_rtDynamic 2` (Lighting & RT → "Players/items in AO: Real shapes") uses their real triangles (the silhouettes) instead.
+- The silhouettes are traced from both sides, so a second query starting 4 units out keeps a model from occluding itself.
+- AO takes the mask from a spare push-constant field. 1 stays the default.
+
+**1 ray:** the golden-angle spiral put ray 0 at √(0.5) of the light's radius, turned per pixel. With one ray, every pixel aimed at a different point on the light and the outline shredded.
+- Now an odd count puts ray 0 at the centre and the rest on the disc (the tester's rule): 1 ray is exactly the hard shadow.
+- Same in the shadows on the level, dynamic-light and model shadows.
+- Menus offer odd counts; `r_rtActorShadowRays` defaults to 5.
+
+**Checked** (0 validation errors): 1 ray is a clean hard shadow, 3 and 5 are soft. AO debug view: `r_rtDynamic 1` draws the blob under the cube cluster, and 2 does not.
+- **Correction to earlier rounds:** the test cube was wound counter-clockwise, and Quake 3 winds clockwise. The renderer drew the insides of its far faces, which is why the cubes' own faces read as shadowed or occluded in E167–E172's debug views. Rewound; real models are unaffected.
+- **Not checked:** the weapon toggle (the harness draws no gun).
+
 ### E173. Depth synchronisation around the composite pass; RESET no longer switches features off; Traced comes back — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

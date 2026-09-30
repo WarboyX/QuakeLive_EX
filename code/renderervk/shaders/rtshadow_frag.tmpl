@@ -85,7 +85,13 @@ void main() {
 		if (rtParams.z > 0.0) {
 			/* [QL] E169: golden-angle spiral, turned per pixel (see actorshadow.tmpl) */
 			float a = float(i) * 2.3999632 + rtIgn(gl_FragCoord.xy) * 6.2831853;
-			float r = sqrt((float(i) + 0.5) / float(samples)) * rtParams.z;
+			/* [QL] E174: an odd count puts ray 0 at the centre of the light and the
+			   rest on the disc around it, so 1 ray is exactly the hard shadow; the
+			   old spiral put ray 0 70% of the way out, turned per pixel, and 1 ray
+			   shredded the outline */
+			int ring = samples - (samples & 1);
+			int k = i - (samples & 1);
+			float r = k < 0 ? 0.0 : sqrt((float(k) + 0.5) / float(max(ring, 1))) * rtParams.z;
 			d = normalize(dir + (t1 * cos(a) + t2 * sin(a)) * r);
 		}
 		rayQueryEXT rq;

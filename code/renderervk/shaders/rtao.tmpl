@@ -218,6 +218,9 @@ void main() {
 	*/
 	ivec2 size = depthSize();
 	int traceScale = max(int(pc.res.x + 0.5), 1);
+	/* [QL] E174: what occludes - res.y carries the instance mask; 0 from an
+	   older caller reads as the level and the proxies (0x03) */
+	uint aoMask = pc.res.y > 0.5 ? uint(pc.res.y + 0.5) : 0x03u;
 	ivec2 pix = clamp(ivec2(gl_FragCoord.xy) * traceScale, ivec2(0), size - ivec2(1));
 	vec2 invSize = 1.0 / vec2(size);
 
@@ -384,7 +387,7 @@ void main() {
 		rayQueryInitializeEXT(rq, topLevel,
 			gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT |
 			gl_RayFlagsCullBackFacingTrianglesEXT,
-			0x03, P + N * bias, bias, dir, radius);   /* [QL] E166: level + proxies (RT_MASK_OCCLUSION), not the silhouettes */
+			aoMask & ~4u, P + N * bias, bias, dir, radius);   /* [QL] E166/E174: level + proxies; real shapes below */
 
 		/*
 		No candidate handling. Every geometry in the structure was built with
@@ -394,15 +397,36 @@ void main() {
 		*/
 		while (rayQueryProceedEXT(rq)) {}
 
-		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+		bool aoHit = rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT;
+		float aoT = aoHit ? rayQueryGetIntersectionTEXT(rq, true) : radius;
+		/*
+		[QL] E174: the real shapes (r_rtDynamic 2) separately, starting 4 units
+		out. They are traced from both sides (a model's winding cannot be
+		trusted), so from its own surface a ray hits the model it left and the
+		model turns dark - the cubes in the test went nearly black. Starting a
+		little out skips that face; a convex part cannot be hit again, and a
+		limb over a limb still is. The main query above leaves them out.
+		*/
+		if ((aoMask & 4u) != 0u) {
+			rayQueryEXT sq;
+			rayQueryInitializeEXT(sq, topLevel,
+				gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
+				4u, P + N * bias, max(bias, 4.0), dir, aoT);
+			while (rayQueryProceedEXT(sq)) {}
+			if (rayQueryGetIntersectionTypeEXT(sq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+				aoHit = true;
+				aoT = rayQueryGetIntersectionTEXT(sq, true);
+			}
+		}
+
+		if (aoHit) {
 			/*
 			Nearer occluders matter more. A wall at arm's length darkens a
 			corner; the same wall at the far end of the radius barely does.
 			Falling off with distance is what stops AO from painting a hard edge
 			exactly at the radius, which reads as a ring around the player.
 			*/
-			float t = rayQueryGetIntersectionTEXT(rq, true);
-			occluded += 1.0 - clamp(t / radius, 0.0, 1.0);
+			occluded += 1.0 - clamp(aoT / radius, 0.0, 1.0);
 		}
 	}
 

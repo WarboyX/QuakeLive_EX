@@ -1669,6 +1669,7 @@ extern	cvar_t	*r_rtActorShadowSoftness;		// [QL] E167: light size for the shadow
 extern	cvar_t	*r_rtActorShadowRays;
 extern	cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
 extern	cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
+extern	cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
 extern	cvar_t	*r_rtLevelShadows;			// [QL] E167: the level's traced shadows on the level
 void R_RTShadowReport( qboolean force );   // [QL] E162, tr_shade.c
 extern	cvar_t	*r_bloomHDR;			// [QL] E158: bloom in the float format with r_rts (latched)

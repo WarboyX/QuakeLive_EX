@@ -4395,54 +4395,61 @@
                   cvarFloatList { "Off" 0 "On" 1 "Debug (show occlusion)" 2 }
                   rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Screen-space AO"  textscale .21  rect 24 284 246 16  textaligny 13
+        itemDef { text "Players/items in AO"  textscale .21  rect 24 284 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtdynamic  type ITEM_TYPE_MULTI  text ""  cvar "r_rtDynamic"
+                  cvarFloatList { "No" 0 "As boxes (default)" 1 "Real shapes" 2 }
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Screen-space AO"  textscale .21  rect 24 301 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssao  type ITEM_TYPE_MULTI  text ""  cvar "r_ssao"
                   cvarFloatList { "Off (default)" 0 "On" 1 "Debug (show occlusion)" 2 }
-                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Radius"  textscale .21  rect 24 301 246 16  textaligny 13
+        itemDef { text "Radius"  textscale .21  rect 24 318 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaoradius  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoRadius"
                   cvarFloatList { "16 (tight creases)" 16 "32" 32 "64 (default)" 64 "128" 128 "256 (wide)" 256 "512" 512 "1024" 1024 "2048" 2048 "4096 (whole rooms)" 4096 }
-                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Strength"  textscale .21  rect 24 318 246 16  textaligny 13
+        itemDef { text "Strength"  textscale .21  rect 24 335 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaointensity  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoIntensity"
                   cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.8 (default)" 0.8 "1.0 (full)" 1 }
-                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace resolution"  textscale .21  rect 24 335 246 16  textaligny 13
+        itemDef { text "Trace resolution"  textscale .21  rect 24 352 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaoresolution  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoResolution"
                   cvarFloatList { "Full (default)" 1 "Half (faster)" 2 }
-                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Rays per pixel"  textscale .21  rect 24 352 246 16  textaligny 13
+        itemDef { text "Rays per pixel"  textscale .21  rect 24 369 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaosamples  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoSamples"
                   cvarFloatList { "2 (fastest)" 2 "4 (default)" 4 "8 (heavy)" 8 "16 (very heavy)" 16 }
-                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 369 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Denoise"  textscale .21  rect 24 369 246 16  textaligny 13
+        itemDef { text "Denoise"  textscale .21  rect 24 386 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaodenoise  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoDenoise"
                   cvarFloatList { "Off (raw, grainy)" 0 "On (default)" 1 "Wide (smoothest)" 2 }
-                  rect 290 369 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Lights clear AO"  textscale .21  rect 24 386 246 16  textaligny 13
+        itemDef { text "Lights clear AO"  textscale .21  rect 24 403 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaolights  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoLights"
                   cvarFloatList { "Off" 0 "Half" 0.5 "Full (default)" 1 }
-                  rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 403 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
@@ -4451,7 +4458,7 @@
             rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoResolution ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtDynamic ; reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoResolution ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -4625,7 +4632,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtdlightshadowrays  type ITEM_TYPE_MULTI  text ""  cvar "r_rtDlightShadowRays"
-                  cvarFloatList { "1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8 }
+                  cvarFloatList { "1 (default)" 1 "3" 3 "5" 5 "7 (heavy)" 7 }
                   rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "LEVEL SHADOWS ON MODELS"  textscale .2  rect 24 199 512 16  textaligny 13
@@ -4656,7 +4663,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtmodelshadowrays  type ITEM_TYPE_MULTI  text ""  cvar "r_rtModelShadowRays"
-                  cvarFloatList { "1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8 }
+                  cvarFloatList { "1 (default)" 1 "3" 3 "5" 5 "7 (heavy)" 7 }
                   rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Reach"  textscale .21  rect 24 284 246 16  textaligny 13
@@ -4851,7 +4858,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtactorshadowrays  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorShadowRays"
-                  cvarFloatList { "1" 1 "2" 2 "4 (default)" 4 "8" 8 "16 (heavy)" 16 }
+                  cvarFloatList { "1" 1 "3" 3 "5 (default)" 5 "9" 9 "15 (heavy)" 15 }
                   rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Soft edge denoise"  textscale .21  rect 24 216 246 16  textaligny 13
@@ -4875,10 +4882,17 @@
                   cvarFloatList { "No (default)" 0 "Yes" 1 }
                   rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "One light for players and ledges, so their shadows agree."  textscale .17  rect 24 267 512 16  textaligny 12
+        itemDef { text "Players shadow your gun"  textscale .21  rect 24 267 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtweaponselfshadow  type ITEM_TYPE_MULTI  text ""  cvar "r_rtWeaponSelfShadow"
+                  cvarFloatList { "No (default)" 0 "Yes" 1 }
+                  rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "One light for players and ledges, so their shadows agree."  textscale .17  rect 24 284 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Lighting > Shadows: Traced turns all of these on."  textscale .17  rect 24 284 512 16  textaligny 12
+        itemDef { text "Lighting > Shadows: Traced turns all of these on."  textscale .17  rect 24 301 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -4888,7 +4902,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtActorShadowSoftMode ; reset r_rtShadowCasters" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtActorShadowSoftMode ; reset r_rtShadowCasters ; reset r_rtWeaponSelfShadow" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -6292,54 +6306,61 @@
                   cvarFloatList { "Off" 0 "On" 1 "Debug (show occlusion)" 2 }
                   rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Screen-space AO"  textscale .21  rect 24 284 246 16  textaligny 13
+        itemDef { text "Players/items in AO"  textscale .21  rect 24 284 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtdynamic  type ITEM_TYPE_MULTI  text ""  cvar "r_rtDynamic"
+                  cvarFloatList { "No" 0 "As boxes (default)" 1 "Real shapes" 2 }
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Screen-space AO"  textscale .21  rect 24 301 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rssao  type ITEM_TYPE_MULTI  text ""  cvar "r_ssao"
                   cvarFloatList { "Off (default)" 0 "On" 1 "Debug (show occlusion)" 2 }
-                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Radius"  textscale .21  rect 24 301 246 16  textaligny 13
+        itemDef { text "Radius"  textscale .21  rect 24 318 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaoradius  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoRadius"
                   cvarFloatList { "16 (tight creases)" 16 "32" 32 "64 (default)" 64 "128" 128 "256 (wide)" 256 "512" 512 "1024" 1024 "2048" 2048 "4096 (whole rooms)" 4096 }
-                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Strength"  textscale .21  rect 24 318 246 16  textaligny 13
+        itemDef { text "Strength"  textscale .21  rect 24 335 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaointensity  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoIntensity"
                   cvarFloatList { "0.25 (subtle)" 0.25 "0.5" 0.5 "0.8 (default)" 0.8 "1.0 (full)" 1 }
-                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Trace resolution"  textscale .21  rect 24 335 246 16  textaligny 13
+        itemDef { text "Trace resolution"  textscale .21  rect 24 352 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaoresolution  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoResolution"
                   cvarFloatList { "Full (default)" 1 "Half (faster)" 2 }
-                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Rays per pixel"  textscale .21  rect 24 352 246 16  textaligny 13
+        itemDef { text "Rays per pixel"  textscale .21  rect 24 369 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaosamples  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoSamples"
                   cvarFloatList { "2 (fastest)" 2 "4 (default)" 4 "8 (heavy)" 8 "16 (very heavy)" 16 }
-                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 369 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Denoise"  textscale .21  rect 24 369 246 16  textaligny 13
+        itemDef { text "Denoise"  textscale .21  rect 24 386 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaodenoise  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoDenoise"
                   cvarFloatList { "Off (raw, grainy)" 0 "On (default)" 1 "Wide (smoothest)" 2 }
-                  rect 290 369 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Lights clear AO"  textscale .21  rect 24 386 246 16  textaligny 13
+        itemDef { text "Lights clear AO"  textscale .21  rect 24 403 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtaolights  type ITEM_TYPE_MULTI  text ""  cvar "r_rtaoLights"
                   cvarFloatList { "Off" 0 "Half" 0.5 "Full (default)" 1 }
-                  rect 290 386 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 403 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor 0 0 0 0.75  border 1  bordercolor 0 0 0 0.5 }
@@ -6348,7 +6369,7 @@
             rect 43 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoResolution ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtDynamic ; reset r_rtaoRadius ; reset r_rtaoIntensity ; reset r_rtaoResolution ; reset r_rtaoSamples ; reset r_rtaoDenoise ; reset r_rtaoLights" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -6522,7 +6543,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtdlightshadowrays  type ITEM_TYPE_MULTI  text ""  cvar "r_rtDlightShadowRays"
-                  cvarFloatList { "1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8 }
+                  cvarFloatList { "1 (default)" 1 "3" 3 "5" 5 "7 (heavy)" 7 }
                   rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "LEVEL SHADOWS ON MODELS"  textscale .2  rect 24 199 512 16  textaligny 13
@@ -6553,7 +6574,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtmodelshadowrays  type ITEM_TYPE_MULTI  text ""  cvar "r_rtModelShadowRays"
-                  cvarFloatList { "1 (default)" 1 "2" 2 "4" 4 "8 (heavy)" 8 }
+                  cvarFloatList { "1 (default)" 1 "3" 3 "5" 5 "7 (heavy)" 7 }
                   rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Reach"  textscale .21  rect 24 284 246 16  textaligny 13
@@ -6748,7 +6769,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtactorshadowrays  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorShadowRays"
-                  cvarFloatList { "1" 1 "2" 2 "4 (default)" 4 "8" 8 "16 (heavy)" 16 }
+                  cvarFloatList { "1" 1 "3" 3 "5 (default)" 5 "9" 9 "15 (heavy)" 15 }
                   rect 290 199 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Soft edge denoise"  textscale .21  rect 24 216 246 16  textaligny 13
@@ -6772,10 +6793,17 @@
                   cvarFloatList { "No (default)" 0 "Yes" 1 }
                   rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "One light for players and ledges, so their shadows agree."  textscale .17  rect 24 267 512 16  textaligny 12
+        itemDef { text "Players shadow your gun"  textscale .21  rect 24 267 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtweaponselfshadow  type ITEM_TYPE_MULTI  text ""  cvar "r_rtWeaponSelfShadow"
+                  cvarFloatList { "No (default)" 0 "Yes" 1 }
+                  rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "One light for players and ledges, so their shadows agree."  textscale .17  rect 24 284 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Lighting > Shadows: Traced turns all of these on."  textscale .17  rect 24 284 512 16  textaligny 12
+        itemDef { text "Lighting > Shadows: Traced turns all of these on."  textscale .17  rect 24 301 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -6785,7 +6813,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtActorShadowSoftMode ; reset r_rtShadowCasters" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtActorShadowSoftMode ; reset r_rtShadowCasters ; reset r_rtWeaponSelfShadow" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }

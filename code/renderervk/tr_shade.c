@@ -1235,6 +1235,15 @@ static void VK_SetRTTransform( vkUniform_t *uniform )
 	/* [QL] E165: which instances cast - the level and its movers always,
 	   players and items with r_rtShadowCasters 1 */
 	uniform->rtOrigin[3] = (float)( RT_SHADOW_MASK );
+	/* [QL] E174: the first-person weapon sits inside your own body, which is
+	   in the silhouettes - it shadowed the gun with hard patches (tester
+	   confirmed it is their own shadow). Unless r_rtWeaponSelfShadow 1, the
+	   weapon traces the level only. Silhouettes are one instance, so this also
+	   leaves out other players and items between the gun and a light. */
+	if ( backEnd.currentEntity && backEnd.currentEntity != &tr.worldEntity &&
+		( backEnd.currentEntity->e.renderfx & RF_FIRST_PERSON ) && !r_rtWeaponSelfShadow->integer ) {
+		uniform->rtOrigin[3] = (float)RT_MASK_LEVEL;
+	}
 	for ( i = 0; i < 3; i++ ) {
 		VectorCopy( backEnd.or.axis[i], uniform->rtAxis[i] );
 		uniform->rtAxis[i][3] = 0.0f;

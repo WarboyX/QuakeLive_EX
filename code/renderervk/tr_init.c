@@ -81,6 +81,7 @@ cvar_t	*r_rtActorShadowSoftness;
 cvar_t	*r_rtActorShadowRays;
 cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
 cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
+cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
 cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
@@ -2398,10 +2399,11 @@ static void R_Register( void )
 	decides whether entity instances go into the one built this frame.
 	*/
 	r_rtDynamic = ri.Cvar_Get( "r_rtDynamic", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDynamic, "0", "2", CV_INTEGER );   // [QL] E174: 2
 	ri.Cvar_SetDescription( r_rtDynamic, "Let players, items and movers cast ambient occlusion, "
-		"not just the map. They are traced as a box at their bounds rather than as their real "
-		"mesh - occlusion this soft cannot tell the difference, and an exact one would mean "
-		"rebuilding an acceleration structure per entity per frame." );
+		"not just the map.\n 0 - the map only\n 1 - as a box or ball at their bounds (default)\n"
+		" 2 - by their real shapes: no round blob under an item, which the box version draws "
+		"and which reads as a second shadow" );
 
 	r_rtaoNormals = ri.Cvar_Get( "r_rtaoNormals", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoNormals, "0", "1", CV_INTEGER );
@@ -2747,7 +2749,7 @@ static void R_Register( void )
 		"come from, in world units: 0 is hard edges, larger is softer, and the edge softens more the "
 		"further the shadow falls from what casts it. Needs " S_COLOR_CYAN "\\r_rtActorShadowRays"
 		S_COLOR_WHITE " above 1 to look smooth." );
-	r_rtActorShadowRays = ri.Cvar_Get( "r_rtActorShadowRays", "4", CVAR_ARCHIVE_ND );
+	r_rtActorShadowRays = ri.Cvar_Get( "r_rtActorShadowRays", "5", CVAR_ARCHIVE_ND );   // [QL] E174: odd - one at the centre
 	ri.Cvar_CheckRange( r_rtActorShadowRays, "1", "16", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtActorShadowRays, "Rays per pixel for the traced shadows on the level. "
 		"More makes soft edges smoother and costs more." );
@@ -2766,6 +2768,12 @@ static void R_Register( void )
 		"the blocker is from the surface and from the light - sharp where it touches, wide where it is far, "
 		"strongest at the centre of the edge and fading out. No speckle; " S_COLOR_CYAN "\\r_rtActorShadowRays"
 		S_COLOR_WHITE " does not apply." );
+	r_rtWeaponSelfShadow = ri.Cvar_Get( "r_rtWeaponSelfShadow", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtWeaponSelfShadow, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtWeaponSelfShadow, "Whether players and items - your own body first of all - "
+		"cast traced shadows on your first-person weapon (model and dynamic-light shadows).\n"
+		" 0 - no (default): the weapon is shadowed by the level only\n"
+		" 1 - yes: your body shadows the gun, which reads as hard patches on it" );
 	r_rtLevelShadows = ri.Cvar_Get( "r_rtLevelShadows", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtLevelShadows, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtLevelShadows, "The level casts ray-traced shadows on itself - ledges, "
