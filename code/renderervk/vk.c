@@ -13601,6 +13601,9 @@ qboolean vk_rt_ao( void )
 	if ( backEnd.doneRTAO || !backEnd.doneSurfaces ) {
 		return qfalse;   // already run this frame, or there is no 3D yet
 	}
+	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
+		return qfalse;   // [QL] E175: a UI model view - no world to occlude, see vk_actor_shadows
+	}
 
 	/*
 	[QL] Everything that can stop this, named individually, once per map.
@@ -14546,6 +14549,23 @@ qboolean vk_actor_shadows( void )
 	if ( !vk.actorShadow.ready || !backEnd.doneRTDynamic || vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return qfalse;
 	}
+	/*
+	[QL] E175: the world view only, once a frame.
+
+	A view with no world in it - the player model on the in-game menu's Player
+	page, drawn by the UI as a scene of its own after the world - came through
+	here too. This is a fullscreen pass: it ran with that view's camera over
+	the whole screen's world depth, reconstructing nonsense positions (NaN
+	among them) and multiplying them into the scene. In the float scene target
+	NaN goes through bloom and the tone curve as coloured speckle over the whole
+	frame, for as long as that page is open - the tester's "corrupted frame
+	buffer, only on the Player tab". AO and the water already ran once a frame;
+	this did not.
+	*/
+	if ( ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) || backEnd.doneActorShadows ) {
+		return qfalse;
+	}
+	backEnd.doneActorShadows = qtrue;
 	u = (actorShadowUniform_t *)vk.actorShadow.uniform_ptr[ vk.cmd_index ];
 	if ( u == NULL ) {
 		return qfalse;
@@ -15464,6 +15484,9 @@ qboolean vk_ssr( void )
 	}
 	if ( backEnd.doneSSR || !backEnd.doneSurfaces ) {
 		return qfalse;   // already run this frame, or there is no 3D yet
+	}
+	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
+		return qfalse;   // [QL] E175: a UI model view - see vk_actor_shadows
 	}
 	if ( r_ssr == NULL || r_ssr->value <= 0.0f ) {
 		return qfalse;

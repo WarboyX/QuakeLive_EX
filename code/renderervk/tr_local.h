@@ -1238,6 +1238,7 @@ typedef struct {
 	qboolean doneRTAO;
 	qboolean doneSSR;			// [QL] R19, same lifetime as the two above
 	qboolean doneRTDynamic;		// [QL] E156: the entities' TLAS was rebuilt this frame
+	qboolean doneActorShadows;	// [QL] E175: the traced shadows on the level, once per frame
 
 } backEndState_t;
 

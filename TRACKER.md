@@ -6048,6 +6048,25 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E175. Coloured noise over the frame on the in-game Player page: the shadow pass ran for the UI's model view — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported twice, with screenshots, on 1fd32fc and again on ccb85b4: the whole 3D view turns to coloured per-pixel noise under the in-game menu. On the second report the tester narrowed it down to the **Player tab only**; closing the menu clears it.
+
+**Cause:**
+- The Player tab has a player-model preview (`UI_PLAYERMODEL`), which the UI draws as a scene of its own, with no world (`RDF_NOWORLDMODEL`), after the world view.
+- `RB_DrawSurfs` runs once per view. AO and the water reflections return when they have already run this frame (`doneRTAO`, `doneSSR`), but `vk_actor_shadows` had no such flag.
+- It ran a second time, as a fullscreen pass, with the model view's camera over the whole screen's world depth. The positions it reconstructed were nonsense, NaN among them, and it multiplied them into the scene.
+- In the float scene target, NaN goes through bloom and the tone curve as exactly that speckle.
+- E173's depth hazards were real, and fixed, but they were not this.
+
+**Fix:**
+- `vk_actor_shadows` runs once a frame (`backEnd.doneActorShadows`) and never for a view without the world.
+- AO and the water also refuse a view without the world explicitly, and so do the model and dynamic-light shadow rays: a floating UI model has nothing to be shadowed by.
+- `actorshadow.tmpl` returns on a NaN or infinite reconstructed position, so a bad view cannot poison the frame again.
+
+**Not reproduced here:** the harness cannot open in-game menus this round, and the case needs the world and a model view in one frame. The cause is read from the code path; please confirm on the Player tab.
+
 ### E174. Own body off the gun; items' AO blob; 1 ray is a clean hard shadow — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

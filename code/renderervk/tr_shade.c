@@ -1377,7 +1377,8 @@ void VK_LightingPass( void )
 	/* [QL] E161: the ray-traced twin, when asked for and the level's structure
 	   is bound for this map */
 	RT_StatsFrame();
-	if ( ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) && vk.rt.world.mainTlasWritten ) {
+	if ( ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) && vk.rt.world.mainTlasWritten &&
+		!( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) ) {   /* [QL] E175: not a UI model view */
 		const uint32_t rt = tess.light->linear
 			? vk.dlight1_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light]
 			: vk.dlight_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light];
@@ -1457,6 +1458,9 @@ static void VK_ModelShadowPass( void )
 	RT_StatsFrame();
 	if ( !( r_rtModelShadows->integer || R_SHADOWS_TRACED ) || !vk.rt.world.mainTlasWritten ) {
 		return;
+	}
+	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
+		return;   /* [QL] E175: a UI model view floats in no world - nothing there to cast */
 	}
 	if ( ent == NULL || ent == &tr.worldEntity ) {
 		rtStatsCur.modelNotEntity++;

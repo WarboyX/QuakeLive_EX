@@ -221,6 +221,11 @@ void main() {
 	}
 
 	vec3 P = worldAt(pix, invSize);
+	/* [QL] E175: never let a bad reconstruction reach the scene - NaN
+	   multiplied into the float target spreads through bloom as speckle */
+	if (any(isnan(P)) || any(isinf(P))) {
+		return;
+	}
 
 	/* the surface normal from the neighbours, the closer one on each axis so a
 	   silhouette edge does not bend it (rtao.tmpl does the same) */
