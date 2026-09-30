@@ -6048,6 +6048,33 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E177. GPU time per ray-tracing pass (`r_rtTimings 1`) — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Unification step 1: measure. The tester reported the shadows costing a lot, and nothing could say how much or where.
+
+**What it does:** a timestamp query pool, two queries per section per command buffer, written at the start and end of each pass. The sections are the dynamic structure build, AO, the shadows on the level, the water reflections, the lit-surface pass (dynamic lights and their shadows) and the whole frame.
+- Each section is written at most once a frame, so a pass that runs twice is not double counted.
+- The queries are read back in `vk_begin_frame`, where that command buffer's fence has just been waited on, so no extra stall.
+- Averages print every two seconds: "RT timings (GPU ms/frame over N frames): ...".
+- The start-up log says whether the device has graphics-queue timestamps.
+- `r_rtTimings` is CVAR_TEMP: a diagnostic, never saved.
+
+**Found on the way:** reading the whole range at once returns VK_NOT_READY for all of it whenever one pass did not run that frame, because its queries were never written. It now reads section by section.
+
+**First numbers** (lavapipe, CPU-emulated, so only the proportions mean anything; the tester's settings plus Shadows: Traced): whole frame about 210–240 ms. Of that:
+
+| Pass | ms/frame |
+|---|---|
+| Shadows on the level | 74–99 |
+| AO | 69–71 |
+| Water reflections | 18–19 |
+| Structure build | 1.3 |
+
+The shadow pass costs at least as much as AO: 5 rays a pixel with up to three queries each, plus its own depth reconstruction and denoise. This is the pass the next unification steps target.
+
+**Please run** `r_rtTimings 1` on the RTX 5080 and send the lines. The real ratios decide what merges first.
+
 ### E176. Shadows no longer tear apart: the light field, worked out once per map (`r_rtLightField`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

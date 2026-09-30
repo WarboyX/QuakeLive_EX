@@ -83,6 +83,7 @@ cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
 cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
 cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
 cvar_t	*r_rtLightField;           // [QL] E176
+cvar_t	*r_rtTimings;              // [QL] E177
 cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
@@ -2781,6 +2782,11 @@ static void R_Register( void )
 		" 0 - estimated per pixel from the light grid (E167): can jump between neighbouring pixels and "
 		"tear one shadow into pieces\n 1 - the light field, worked out once at map load and interpolated "
 		"(default)" );
+	r_rtTimings = ri.Cvar_Get( "r_rtTimings", "0", CVAR_TEMP );
+	ri.Cvar_CheckRange( r_rtTimings, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtTimings, "Print the GPU time of each ray-tracing pass every two seconds: "
+		"the structure build, ambient occlusion, the shadows on the level, the water reflections, the lit "
+		"surfaces (dynamic lights and their shadows) and the whole frame, in milliseconds a frame." );
 	r_rtLevelShadows = ri.Cvar_Get( "r_rtLevelShadows", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtLevelShadows, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtLevelShadows, "The level casts ray-traced shadows on itself - ledges, "

@@ -1363,3 +1363,8 @@ typedef struct {
 
 extern Vk_Instance	vk;				// shouldn't be cleared during ref re-init
 extern Vk_World		vk_world;		// this data is cleared during ref re-init
+
+/* [QL] E177: GPU time per ray-tracing pass, r_rtTimings 1 */
+enum { RTT_FRAME, RTT_TLAS, RTT_AO, RTT_SHADOW, RTT_SSR, RTT_LIT, RTT_COUNT };
+void vk_timing_begin( int section );
+void vk_timing_end( int section );

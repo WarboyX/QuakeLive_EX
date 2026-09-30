@@ -1505,7 +1505,13 @@ static const void *RB_DrawSurfs( const void *data ) {
 #ifdef USE_PMLIGHT
 	if ( backEnd.refdef.numLitSurfs ) {
 		RB_BeginDrawingLitSurfs();
+#ifdef USE_VULKAN
+		vk_timing_begin( RTT_LIT );   /* [QL] E177 */
+#endif
 		RB_LightingPass();
+#ifdef USE_VULKAN
+		vk_timing_end( RTT_LIT );
+#endif
 	}
 #endif
 

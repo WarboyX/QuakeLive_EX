@@ -74,6 +74,13 @@ static PFN_vkCmdDrawIndexed								qvkCmdDrawIndexed;
 static PFN_vkCmdEndRenderPass							qvkCmdEndRenderPass;
 static PFN_vkCmdNextSubpass								qvkCmdNextSubpass;
 static PFN_vkCmdPipelineBarrier							qvkCmdPipelineBarrier;
+static PFN_vkCreateQueryPool							qvkCreateQueryPool;		/* [QL] E177 */
+static PFN_vkDestroyQueryPool							qvkDestroyQueryPool;
+static PFN_vkCmdResetQueryPool							qvkCmdResetQueryPool;
+static PFN_vkCmdWriteTimestamp							qvkCmdWriteTimestamp;
+static PFN_vkGetQueryPoolResults						qvkGetQueryPoolResults;
+static void vk_timing_create( const VkPhysicalDeviceProperties *props );	/* [QL] E177, below */
+static void vk_timing_destroy( void );
 static PFN_vkCmdPushConstants							qvkCmdPushConstants;
 static PFN_vkCmdSetDepthBias							qvkCmdSetDepthBias;
 static PFN_vkCmdSetScissor								qvkCmdSetScissor;
@@ -2900,6 +2907,11 @@ static void init_vulkan_library( void )
 	INIT_DEVICE_FUNCTION(vkCmdNextSubpass)
 	INIT_DEVICE_FUNCTION(vkCmdPipelineBarrier)
 	INIT_DEVICE_FUNCTION(vkCmdPushConstants)
+	INIT_DEVICE_FUNCTION(vkCreateQueryPool)		/* [QL] E177 */
+	INIT_DEVICE_FUNCTION(vkDestroyQueryPool)
+	INIT_DEVICE_FUNCTION(vkCmdResetQueryPool)
+	INIT_DEVICE_FUNCTION(vkCmdWriteTimestamp)
+	INIT_DEVICE_FUNCTION(vkGetQueryPoolResults)
 	INIT_DEVICE_FUNCTION(vkCmdSetDepthBias)
 	INIT_DEVICE_FUNCTION(vkCmdSetScissor)
 	INIT_DEVICE_FUNCTION(vkCmdSetViewport)
@@ -3057,6 +3069,11 @@ static void deinit_device_functions( void )
 	qvkCmdEndRenderPass							= NULL;
 	qvkCmdNextSubpass							= NULL;
 	qvkCmdPipelineBarrier						= NULL;
+	qvkCreateQueryPool							= NULL;	/* [QL] E177 */
+	qvkDestroyQueryPool							= NULL;
+	qvkCmdResetQueryPool						= NULL;
+	qvkCmdWriteTimestamp						= NULL;
+	qvkGetQueryPoolResults						= NULL;
 	qvkCmdPushConstants							= NULL;
 	qvkCmdSetDepthBias							= NULL;
 	qvkCmdSetScissor							= NULL;
@@ -6072,7 +6089,18 @@ static void rt_dump_entity( int index, const trRefEntity_t *ent, const char *wha
 }
 
 
+static qboolean vk_rt_build_dynamic_tlas_inner( void );
+/* [QL] E177: timed */
 static qboolean vk_rt_build_dynamic_tlas( void )
+{
+	qboolean r;
+	vk_timing_begin( RTT_TLAS );
+	r = vk_rt_build_dynamic_tlas_inner();
+	vk_timing_end( RTT_TLAS );
+	return r;
+}
+
+static qboolean vk_rt_build_dynamic_tlas_inner( void )
 {
 	VkAccelerationStructureInstanceKHR *inst;
 	VkAccelerationStructureDeviceAddressInfoKHR addr_info;
@@ -8393,6 +8421,7 @@ void vk_initialize( void )
 	qvkGetDeviceQueue( vk.device, vk.queue_family_index, 0, &vk.queue );
 
 	qvkGetPhysicalDeviceProperties( vk.physical_device, &props );
+	vk_timing_create( &props );   /* [QL] E177 */
 
 	vk.cmd = vk.tess + 0;
 	vk.uniform_alignment = props.limits.minUniformBufferOffsetAlignment;
@@ -9430,6 +9459,7 @@ void vk_shutdown( refShutdownCode_t code )
 
 __cleanup:
 	if ( vk.device != VK_NULL_HANDLE ) {
+		vk_timing_destroy();   /* [QL] E177 */
 		qvkDestroyDevice( vk.device, NULL );
 	}
 
@@ -12927,6 +12957,125 @@ static qboolean vk_find_screenmap_drawsurfs( void )
 #define UINT64_MAX 0xFFFFFFFFFFFFFFFFULL
 #endif
 
+/*
+=================
+[QL] E177. GPU time per ray-tracing pass (r_rtTimings 1).
+
+"The shadows cost a lot" had nothing to measure it with. A timestamp at the
+start and the end of each pass, per command buffer, read back when that
+command buffer's fence has been waited on anyway (vk_begin_frame), averaged
+and printed every two seconds. Each section is written at most once a frame -
+its first begin and its first end - so a pass that runs twice is not double
+counted and a query is never written twice without a reset.
+=================
+*/
+static const char *const rttNames[RTT_COUNT] = {
+	"whole frame", "structure build", "ambient occlusion", "shadows on the level",
+	"water reflections", "lit surfaces (dynamic lights)"
+};
+static VkQueryPool rttPool = VK_NULL_HANDLE;
+static float rttPeriodNs;
+static byte rttState[NUM_COMMAND_BUFFERS][RTT_COUNT];   /* bit 0 begun, bit 1 ended */
+static double rttSum[RTT_COUNT];
+static int rttFrames, rttLastPrint;
+
+static void vk_timing_create( const VkPhysicalDeviceProperties *props )
+{
+	VkQueryPoolCreateInfo desc;
+
+	rttPool = VK_NULL_HANDLE;
+	if ( !qvkCreateQueryPool || props->limits.timestampPeriod <= 0.0f || !props->limits.timestampComputeAndGraphics ) {
+		ri.Printf( PRINT_ALL, "RT timings: not available - this device has no graphics-queue timestamps\n" );
+		return;
+	}
+	Com_Memset( &desc, 0, sizeof( desc ) );
+	desc.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+	desc.queryType = VK_QUERY_TYPE_TIMESTAMP;
+	desc.queryCount = NUM_COMMAND_BUFFERS * RTT_COUNT * 2;
+	if ( qvkCreateQueryPool( vk.device, &desc, NULL, &rttPool ) != VK_SUCCESS ) {
+		rttPool = VK_NULL_HANDLE;
+		return;
+	}
+	rttPeriodNs = props->limits.timestampPeriod;
+	ri.Printf( PRINT_ALL, "RT timings: available (r_rtTimings 1 prints them)\n" );
+	Com_Memset( rttState, 0, sizeof( rttState ) );
+	Com_Memset( rttSum, 0, sizeof( rttSum ) );
+	rttFrames = 0;
+}
+
+static void vk_timing_destroy( void )
+{
+	if ( rttPool != VK_NULL_HANDLE ) {
+		qvkDestroyQueryPool( vk.device, rttPool, NULL );
+		rttPool = VK_NULL_HANDLE;
+	}
+}
+
+/* at the top of a frame's command buffer: collect what it measured last time, then reset */
+static void vk_timing_frame_start( void )
+{
+	const int base = vk.cmd_index * RTT_COUNT * 2;
+	int sct;
+
+	if ( rttPool == VK_NULL_HANDLE ) {
+		return;
+	}
+	if ( rttState[ vk.cmd_index ][ RTT_FRAME ] == 3 ) {
+		/* section by section: a pass that did not run left its two queries
+		   unwritten, and asking for the whole range would get VK_NOT_READY
+		   for all of it */
+		for ( sct = 0; sct < RTT_COUNT; sct++ ) {
+			uint64_t ts[2];
+			if ( rttState[ vk.cmd_index ][ sct ] != 3 ) {
+				continue;
+			}
+			if ( qvkGetQueryPoolResults( vk.device, rttPool, base + sct * 2, 2, sizeof( ts ), ts,
+					sizeof( uint64_t ), VK_QUERY_RESULT_64_BIT ) == VK_SUCCESS && ts[1] >= ts[0] ) {
+				rttSum[ sct ] += (double)( ts[1] - ts[0] ) * rttPeriodNs * 1e-6;
+			}
+		}
+		rttFrames++;
+	}
+	Com_Memset( rttState[ vk.cmd_index ], 0, sizeof( rttState[0] ) );
+	if ( !r_rtTimings->integer ) {
+		return;
+	}
+	qvkCmdResetQueryPool( vk.cmd->command_buffer, rttPool, base, RTT_COUNT * 2 );
+
+	if ( rttFrames > 0 && ri.Milliseconds() - rttLastPrint >= 2000 ) {
+		char line[512];
+		line[0] = '\0';
+		for ( sct = 0; sct < RTT_COUNT; sct++ ) {
+			Q_strcat( line, sizeof( line ), va( "%s%s %.2f", sct ? ", " : "", rttNames[ sct ], rttSum[ sct ] / rttFrames ) );
+		}
+		ri.Printf( PRINT_ALL, "RT timings (GPU ms/frame over %i frames): %s\n", rttFrames, line );
+		Com_Memset( rttSum, 0, sizeof( rttSum ) );
+		rttFrames = 0;
+		rttLastPrint = ri.Milliseconds();
+	}
+	vk_timing_begin( RTT_FRAME );
+}
+
+void vk_timing_begin( int section )
+{
+	if ( rttPool == VK_NULL_HANDLE || !r_rtTimings->integer || vk.cmd == NULL || rttState[ vk.cmd_index ][ section ] ) {
+		return;
+	}
+	qvkCmdWriteTimestamp( vk.cmd->command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, rttPool,
+		( vk.cmd_index * RTT_COUNT + section ) * 2 );
+	rttState[ vk.cmd_index ][ section ] = 1;
+}
+
+void vk_timing_end( int section )
+{
+	if ( rttPool == VK_NULL_HANDLE || !r_rtTimings->integer || vk.cmd == NULL || rttState[ vk.cmd_index ][ section ] != 1 ) {
+		return;
+	}
+	qvkCmdWriteTimestamp( vk.cmd->command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, rttPool,
+		( vk.cmd_index * RTT_COUNT + section ) * 2 + 1 );
+	rttState[ vk.cmd_index ][ section ] = 3;
+}
+
 void vk_begin_frame( void )
 {
 	VkCommandBufferBeginInfo begin_info;
@@ -12981,6 +13130,8 @@ _retry:
 	begin_info.pInheritanceInfo = NULL;
 
 	VK_CHECK( qvkBeginCommandBuffer( vk.cmd->command_buffer, &begin_info ) );
+
+	vk_timing_frame_start();   /* [QL] E177 */
 
 	if ( vk.swapchain_images_inited[ vk.cmd->swapchain_image_index ] == qfalse ) {
 		// perform initial swapchain image layout transition
@@ -13146,6 +13297,7 @@ void vk_end_frame( void )
 
 	vk_end_render_pass();
 
+	vk_timing_end( RTT_FRAME );   /* [QL] E177 */
 	VK_CHECK( qvkEndCommandBuffer( vk.cmd->command_buffer ) );
 
 	submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -13860,6 +14012,7 @@ qboolean vk_rt_ao( void )
 		lights->params[3] = (float)( RT_SHADOW_MASK );
 	}
 
+	vk_timing_begin( RTT_AO );   /* [QL] E177 */
 	vk_end_render_pass();   // end main
 
 	/*
@@ -13981,6 +14134,7 @@ qboolean vk_rt_ao( void )
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	vk_end_composite_render_pass();   // [QL] E150: depth writable for the rest of the frame
+	vk_timing_end( RTT_AO );   /* [QL] E177 */
 
 	/*
 	Put back what the pass clobbered. This is what ate the HUD.
@@ -14576,6 +14730,7 @@ qboolean vk_actor_shadows( void )
 		return qfalse;
 	}
 	backEnd.doneActorShadows = qtrue;
+	vk_timing_begin( RTT_SHADOW );   /* [QL] E177 */
 	u = (actorShadowUniform_t *)vk.actorShadow.uniform_ptr[ vk.cmd_index ];
 	if ( u == NULL ) {
 		return qfalse;
@@ -14737,6 +14892,8 @@ qboolean vk_actor_shadows( void )
 	}
 
 	vk_end_composite_render_pass();
+
+	vk_timing_end( RTT_SHADOW );   /* [QL] E177 */
 
 	/* what the AO pass says about the geometry path's bindings after a
 	   foreign layout applies here word for word - see the end of vk_rt_ao */
@@ -15903,6 +16060,7 @@ qboolean vk_ssr( void )
 				? "; debug views go on unblended" : "; no unblended debug pipeline" );
 	}
 
+	vk_timing_begin( RTT_SSR );   /* [QL] E177 */
 	vk_end_render_pass();   // end main
 
 	/*
@@ -16043,6 +16201,7 @@ qboolean vk_ssr( void )
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	vk_end_composite_render_pass();   // [QL] E150: depth writable for the rest of the frame
+	vk_timing_end( RTT_SSR );   /* [QL] E177 */
 
 	/*
 	Put back what these passes clobbered - the same repair the occlusion pass
