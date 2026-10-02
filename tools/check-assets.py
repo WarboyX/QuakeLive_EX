@@ -35,6 +35,7 @@ figure is honest rather than flattering.
 """
 
 import os
+import glob
 import re
 import sys
 
@@ -177,6 +178,21 @@ def main(argv):
                     (kind, name, path, line))
         for kind, pat in DYNAMIC.items():
             dynamic[kind] += len(re.findall(pat, text))
+
+    # [QL] E188. Our menus' sounds. Every button played sound/misc/menu2.wav,
+    # which Quake Live's paks have never contained - 285 places - so each
+    # click logged three warnings and played the engine's default sound. The
+    # C scan above cannot see .menu files, which is how it stayed.
+    for path in sorted(glob.glob("content/pak01/ui/*.menu")):
+        with open(path, errors="ignore") as fh:
+            text = fh.read()
+        for m in re.finditer(r'\bplay\s+"([^"]+)"', text):
+            name = m.group(1)
+            counted["sound"] = counted.get("sound", 0) + 1
+            if resolves(name, exact, stems):
+                continue
+            line = text[:m.start()].count("\n") + 1
+            missing.append(("sound", name, path, line))
 
     total = sum(counted.values())
     print("check-assets: %d literal registrations checked against %d pak names"

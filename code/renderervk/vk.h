@@ -1366,5 +1366,6 @@ extern Vk_World		vk_world;		// this data is cleared during ref re-init
 
 /* [QL] E177: GPU time per ray-tracing pass, r_rtTimings 1 */
 enum { RTT_FRAME, RTT_TLAS, RTT_AO, RTT_SHADOW, RTT_SSR, RTT_LIT, RTT_COUNT };
+void vk_rt_caps_reset( void );   // [QL] E188: RE_Shutdown, before ri.FreeAll
 void vk_timing_begin( int section );
 void vk_timing_end( int section );

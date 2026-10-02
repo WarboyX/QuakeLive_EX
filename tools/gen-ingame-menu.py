@@ -160,7 +160,7 @@ def nav_items():
             visible 1
             type ITEM_TYPE_BUTTON
             action {
-                play "sound/misc/menu1.wav"
+                play "sound/misc/menu2.wav"
 %s%s                open %s
             }
         }
@@ -247,7 +247,7 @@ def frame():
             rect %d 448 160 26  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
             forecolor %s  visible 1
-            action { play "sound/misc/menu1.wav" ; uiScript closeingame }
+            action { play "sound/misc/menu2.wav" ; uiScript closeingame }
             mouseEnter { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s ; setitemcolor ig_resume bordercolor %s }
             mouseExit  { setitemcolor ig_resume backcolor %s ; setitemcolor ig_resume forecolor %s ; setitemcolor ig_resume bordercolor %s }
         }
@@ -310,7 +310,7 @@ def boxbutton(name, label, x, y, w, action):
             rect %d %d %d 22  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
             forecolor %s  visible 1
-            action { play "sound/misc/menu1.wav" ; %s }
+            action { play "sound/misc/menu2.wav" ; %s }
             mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
             mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
         }
@@ -333,7 +333,7 @@ def button(name, label, x, y, w, action, hidden=False):
             rect %d %d %d 24  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
             forecolor %s  visible %d
-            action { play "sound/misc/menu1.wav" ; %s }
+            action { play "sound/misc/menu2.wav" ; %s }
             mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
             mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
         }

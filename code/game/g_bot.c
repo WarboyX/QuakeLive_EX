@@ -692,7 +692,13 @@ void G_CheckMinimumPlayers(void) {
         // so this clamp is usually hit because the new value has not taken effect
         // yet, and silently capping made that indistinguishable from a bot limit.
         if (minplayers >= level.maxclients) {
-            if (bot_minplayers.integer >= level.maxclients) {
+            /* [QL] E188: once per value, not on every check - one session's
+               log carried this line 369 times */
+            static int warnedFor = -1, warnedMax = -1;
+            if (bot_minplayers.integer >= level.maxclients &&
+                (bot_minplayers.integer != warnedFor || level.maxclients != warnedMax)) {
+                warnedFor = bot_minplayers.integer;
+                warnedMax = level.maxclients;
                 G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d: sv_maxclients is %d "
                          "(latched - a full 'map' command is needed after changing it)\n",
                          bot_minplayers.integer, level.maxclients - 1, level.maxclients);

@@ -6048,6 +6048,43 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E188. Crash on the second map load of a session; menu clicks played a missing sound; a bot warning repeated hundreds of times — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) and our **server** (qagame) · **Seen by:** our client only (crash, clicks); server log (bot warning)
+
+**1. Crash: "Z_Free: freed a pointer without ZONEID"** (tester: `devmap`, then `exec ffa`, then `devmap`; the crash log shows a fault in the NVIDIA driver).
+- E180/E184's model-holes cache (`rtCaps`) is a static table whose edge lists are renderer zone memory (`TAG_RENDERER`).
+- A map change is `RE_Shutdown( REF_KEEP_CONTEXT )`. That releases resources without destroying the ray-tracing world, so the cache was not cleared, and then `ri.FreeAll()` freed every `TAG_RENDERER` block.
+- On the next load, `vk_rt_build_world` cleared the cache and passed the freed pointers back to `Z_Free`.
+- **Second hazard on the same path:** the cache is keyed by model address, and after a map change a different model can sit at an old address and be capped with the wrong edges. That means out-of-range triangles in the structure, which is consistent with the driver fault.
+- **Fix:** `vk_rt_caps_reset()` empties the cache in `RE_Shutdown` just before `ri.FreeAll()`, while that memory can still be freed.
+- **Checked:** lavapipe, three `devmap`s in one session with the open two-surface tube in view, so the cache holds memory.
+  - **Unfixed build:** died at the second load. Only the first map's screenshot exists and the log was never written out.
+  - **Fixed build:** three loads, no fatal error, validation 0.
+  - The harness had never changed maps, and its closed cubes put nothing in the cache, which is how this got out.
+
+**2. Every menu click played a sound the paks do not contain.**
+- 285 `play "sound/misc/menu1.wav"` actions in our menus, generated and hand-written. Quake Live ships `menu2.wav`, not `menu1.wav`.
+- Each click logged three warnings (15 in one session) and played the engine's default sound.
+- Now `menu2.wav`, in the generators and in the hand-written menus.
+- **`tools/check-assets.py`** now scans our `.menu` files' `play` actions against the pak manifest, so a missing menu sound fails the build like a missing sound in C does.
+
+**3. "bot_minplayers N capped to M" printed on every bot check, 369 times in one session.** The team-game path already printed once per value; the FFA path now does the same.
+
+**Found in the same log review, not changed:**
+- **`sprites/foe2.png`:** registered by Quake Live's own `hud.menu` / `spectator.menu` in pak00, which do not ship it. Their gap, not ours.
+- **`ui/assets/selectcursor.png`:** already falls back to the arrow cursor (`cg_main.c`); the warning is cosmetic.
+- **The red "SSR ripples" text in screenshots:** developer output (`PRINT_DEVELOPER`), shown because `developer` is on.
+
+**Timings (tester, 5080, 2560×1440, 4× MSAA, japanesecastles):**
+
+| | Whole GPU frame | AO | Shadows on the level | Structure build | Water | Lit surfaces |
+|---|---|---|---|---|---|---|
+| Empty map | 3.2 ms | 1.21 | 1.02 | 0.37 | 0.10 | 0.00 |
+| 6 bots (`sv_maxclients 8` capped 30) | 3.1 ms | 1.21 | 0.84 | 0.42 | 0.09 | 0.00 |
+
+- About 2.7 ms of the 3.2 ms frame is ray tracing, and the frame rate (about 306–322 fps) matches the GPU time, so the game is GPU-bound at that point.
+- "Lit surfaces" reads 0.00 throughout, including with bots firing. Either no dynamic light reached the timed pass or the marker misses where they are drawn. To check before trusting that line.
+
 ### E187. The sun's shadow lost on "Per pixel" light position; level shadows darkened twice at their edges — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

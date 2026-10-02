@@ -114,7 +114,7 @@ def tabs(current):
         on = menu == current
         out.append("""        itemDef {
             name rtab%d  rect %d %d %d %d  style WINDOW_STYLE_FILLED  visible 1  type ITEM_TYPE_BUTTON
-            action { play "sound/misc/menu1.wav" ; %s ; open %s }
+            action { play "sound/misc/menu2.wav" ; %s ; open %s }
         }
         itemDef { name rtab%do  rect %d %d %d %d  style WINDOW_STYLE_FILLED  visible 1  decoration
                   backcolor %s }
@@ -185,7 +185,7 @@ def footbutton(nm, label, x, w, action):
             rect %d %d %d 26  textalign ITEM_ALIGN_CENTER  textalignx %d  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor %s  border 1  bordersize 1  bordercolor %s
             forecolor %s  visible 1
-            action { play "sound/misc/menu1.wav" ; %s }
+            action { play "sound/misc/menu2.wav" ; %s }
             mouseEnter { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
             mouseExit  { setitemcolor %s backcolor %s ; setitemcolor %s forecolor %s ; setitemcolor %s bordercolor %s }
         }

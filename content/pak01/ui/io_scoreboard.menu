@@ -467,7 +467,7 @@
             rect 6 27 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction stats" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction stats" }
             mouseEnter { setitemcolor sbc_stats backcolor 0 0 0 .9 ; setitemcolor sbc_stats forecolor 0.964 0.815 0 1 ; setitemcolor sbc_stats bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_stats backcolor 0 0 0 .6 ; setitemcolor sbc_stats forecolor 1 1 1 1 ; setitemcolor sbc_stats bordercolor .35 .3 .12 1 }
         }
@@ -476,7 +476,7 @@
             rect 6 46 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction follow" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction follow" }
             mouseEnter { setitemcolor sbc_follow backcolor 0 0 0 .9 ; setitemcolor sbc_follow forecolor 0.964 0.815 0 1 ; setitemcolor sbc_follow bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_follow backcolor 0 0 0 .6 ; setitemcolor sbc_follow forecolor 1 1 1 1 ; setitemcolor sbc_follow bordercolor .35 .3 .12 1 }
         }
@@ -485,7 +485,7 @@
             rect 6 65 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction votekick" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction votekick" }
             mouseEnter { setitemcolor sbc_vote backcolor 0 0 0 .9 ; setitemcolor sbc_vote forecolor 0.964 0.815 0 1 ; setitemcolor sbc_vote bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_vote backcolor 0 0 0 .6 ; setitemcolor sbc_vote forecolor 1 1 1 1 ; setitemcolor sbc_vote bordercolor .35 .3 .12 1 }
         }
@@ -497,7 +497,7 @@
             rect 6 102 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction mute" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction mute" }
             mouseEnter { setitemcolor sbc_mute backcolor 0 0 0 .9 ; setitemcolor sbc_mute forecolor 0.964 0.815 0 1 ; setitemcolor sbc_mute bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_mute backcolor 0 0 0 .6 ; setitemcolor sbc_mute forecolor 1 1 1 1 ; setitemcolor sbc_mute bordercolor .35 .3 .12 1 }
         }
@@ -506,7 +506,7 @@
             rect 6 121 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction unmute" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction unmute" }
             mouseEnter { setitemcolor sbc_unmute backcolor 0 0 0 .9 ; setitemcolor sbc_unmute forecolor 0.964 0.815 0 1 ; setitemcolor sbc_unmute bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_unmute backcolor 0 0 0 .6 ; setitemcolor sbc_unmute forecolor 1 1 1 1 ; setitemcolor sbc_unmute bordercolor .35 .3 .12 1 }
         }
@@ -515,7 +515,7 @@
             rect 6 140 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; show sbc_ask ; show sbc_yes ; show sbc_no ; exec "io_sbaction arm tempban" }
+            action { play "sound/misc/menu2.wav" ; show sbc_ask ; show sbc_yes ; show sbc_no ; exec "io_sbaction arm tempban" }
             mouseEnter { setitemcolor sbc_kick backcolor 0 0 0 .9 ; setitemcolor sbc_kick forecolor 0.964 0.815 0 1 ; setitemcolor sbc_kick bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_kick backcolor 0 0 0 .6 ; setitemcolor sbc_kick forecolor 1 1 1 1 ; setitemcolor sbc_kick bordercolor .35 .3 .12 1 }
         }
@@ -524,7 +524,7 @@
             rect 6 159 138 18  textalign ITEM_ALIGN_CENTER  textalignx 69  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; show sbc_ask ; show sbc_yes ; show sbc_no ; exec "io_sbaction arm ban" }
+            action { play "sound/misc/menu2.wav" ; show sbc_ask ; show sbc_yes ; show sbc_no ; exec "io_sbaction arm ban" }
             mouseEnter { setitemcolor sbc_ban backcolor 0 0 0 .9 ; setitemcolor sbc_ban forecolor 0.964 0.815 0 1 ; setitemcolor sbc_ban bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_ban backcolor 0 0 0 .6 ; setitemcolor sbc_ban forecolor 1 1 1 1 ; setitemcolor sbc_ban bordercolor .35 .3 .12 1 }
         }
@@ -533,7 +533,7 @@
             rect 6 178 43 18  textalign ITEM_ALIGN_CENTER  textalignx 21  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction red" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction red" }
             mouseEnter { setitemcolor sbc_red backcolor 0 0 0 .9 ; setitemcolor sbc_red forecolor 0.964 0.815 0 1 ; setitemcolor sbc_red bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_red backcolor 0 0 0 .6 ; setitemcolor sbc_red forecolor 1 1 1 1 ; setitemcolor sbc_red bordercolor .35 .3 .12 1 }
         }
@@ -542,7 +542,7 @@
             rect 53 178 43 18  textalign ITEM_ALIGN_CENTER  textalignx 21  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction blue" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction blue" }
             mouseEnter { setitemcolor sbc_blue backcolor 0 0 0 .9 ; setitemcolor sbc_blue forecolor 0.964 0.815 0 1 ; setitemcolor sbc_blue bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_blue backcolor 0 0 0 .6 ; setitemcolor sbc_blue forecolor 1 1 1 1 ; setitemcolor sbc_blue bordercolor .35 .3 .12 1 }
         }
@@ -551,7 +551,7 @@
             rect 100 178 43 18  textalign ITEM_ALIGN_CENTER  textalignx 21  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction spec" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction spec" }
             mouseEnter { setitemcolor sbc_spec backcolor 0 0 0 .9 ; setitemcolor sbc_spec forecolor 0.964 0.815 0 1 ; setitemcolor sbc_spec bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_spec backcolor 0 0 0 .6 ; setitemcolor sbc_spec forecolor 1 1 1 1 ; setitemcolor sbc_spec bordercolor .35 .3 .12 1 }
         }
@@ -562,7 +562,7 @@
             rect 6 220 67 18  textalign ITEM_ALIGN_CENTER  textalignx 33  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 0
-            action { play "sound/misc/menu1.wav" ; exec "io_sbaction confirm" }
+            action { play "sound/misc/menu2.wav" ; exec "io_sbaction confirm" }
             mouseEnter { setitemcolor sbc_yes backcolor 0 0 0 .9 ; setitemcolor sbc_yes forecolor 0.964 0.815 0 1 ; setitemcolor sbc_yes bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_yes backcolor 0 0 0 .6 ; setitemcolor sbc_yes forecolor 1 1 1 1 ; setitemcolor sbc_yes bordercolor .35 .3 .12 1 }
         }
@@ -571,7 +571,7 @@
             rect 77 220 67 18  textalign ITEM_ALIGN_CENTER  textalignx 33  textaligny 13
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 0
-            action { play "sound/misc/menu1.wav" ; hide sbc_ask ; hide sbc_yes ; hide sbc_no ; exec "io_sbaction disarm" }
+            action { play "sound/misc/menu2.wav" ; hide sbc_ask ; hide sbc_yes ; hide sbc_no ; exec "io_sbaction disarm" }
             mouseEnter { setitemcolor sbc_no backcolor 0 0 0 .9 ; setitemcolor sbc_no forecolor 0.964 0.815 0 1 ; setitemcolor sbc_no bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sbc_no backcolor 0 0 0 .6 ; setitemcolor sbc_no forecolor 1 1 1 1 ; setitemcolor sbc_no bordercolor .35 .3 .12 1 }
         }
@@ -653,7 +653,7 @@
             rect 80 250 100 24  textalign ITEM_ALIGN_CENTER  textalignx 50  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_score_stats }
+            action { play "sound/misc/menu2.wav" ; close io_score_stats }
             mouseEnter { setitemcolor sss_close backcolor 0 0 0 .9 ; setitemcolor sss_close forecolor 0.964 0.815 0 1 ; setitemcolor sss_close bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor sss_close backcolor 0 0 0 .6 ; setitemcolor sss_close forecolor 1 1 1 1 ; setitemcolor sss_close bordercolor .35 .3 .12 1 }
         }

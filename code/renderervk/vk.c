@@ -5844,6 +5844,24 @@ static void rt_caps_clear( void )
 	Com_Memset( rtCaps, 0, sizeof( rtCaps ) );
 }
 
+/*
+[QL] E188: called by RE_Shutdown just before ri.FreeAll().
+
+The table is a static and outlives a renderer restart - every map change is
+RE_Shutdown( REF_KEEP_CONTEXT ) then R_Init, with the DLL kept loaded - but
+its edge lists are zone memory tagged TAG_RENDERER, which ri.FreeAll() frees
+wholesale at the end of RE_Shutdown. The table then held pointers into freed
+memory, and the next map's vk_rt_destroy_dynamic handed them to Z_Free: the
+tester's crash, "Z_Free: freed a pointer without ZONEID", on the second map
+load of a session (exec ffa, devmap). The harness loads one map and never
+saw it. Emptying the table here, while the memory is still ours to free,
+leaves nothing behind.
+*/
+void vk_rt_caps_reset( void )
+{
+	rt_caps_clear();
+}
+
 static int rt_cap_edge_cmp( const void *a, const void *b )
 {
 	const int *x = (const int *)a, *y = (const int *)b;
