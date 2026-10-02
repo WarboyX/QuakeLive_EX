@@ -33,6 +33,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifdef USE_RENDERER_DLOPEN
 cvar_t* cl_renderer;
 cvar_t* com_qlex_firstlaunch;    // [QL] E126/E179 - CL_CheckHardwarePrompt
+cvar_t* com_qlex_lastgpu;        // [QL] E181 - the GPU the last launch ran on
 #endif
 
 cvar_t* cl_nodelta;
@@ -2321,6 +2322,15 @@ set by hand) is not asked to switch to it - the first launch goes straight to
 the second question, the advanced rendering. It used to skip the whole thing,
 which on a reinstall over an existing home directory looked like the first
 launch never happening.
+
+[QL] E181: every launch records the machine's GPU in com_qlex_lastgpu (its
+PCI ID, or the OpenGL renderer's name where no ID can be read), and compares
+it with the last launch's. A different GPU resets com_qlex_firstlaunch to 0, so
+the new card is asked about as on a first launch - including quitting with the
+question still open, which asks again next time. An empty record (a config
+from before this) is filled in without asking. A machine that changed to a GPU
+that is not offered Vulkan while still set to Vulkan gets a console warning,
+since the advanced rendering chosen for the old card may not run on it.
 ==================
 */
 static const gpuListEntry_t* CL_FindGpu(unsigned vendor, unsigned device) {
@@ -2354,8 +2364,10 @@ static void CL_CheckHardwarePrompt(void) {
     qboolean ask, rayQuery;
     char name[128];
     char* cut;
+    char key[96];
+    qboolean changed;
 
-    if (done || !uivm || !com_qlex_firstlaunch || com_qlex_firstlaunch->integer) {
+    if (done || !uivm || !com_qlex_firstlaunch || !com_qlex_lastgpu) {
         return;
     }
     if (clc.state != CA_DISCONNECTED || com_sv_running->integer || !(Key_GetCatcher() & KEYCATCH_UI)) {
@@ -2420,7 +2432,29 @@ static void CL_CheckHardwarePrompt(void) {
         ask = !g.software && g.glModern && (g.discrete || g.rayQuery);
         rayQuery = g.rayQuery;
     }
-    if (!ask) {
+    /* [QL] E181: which GPU this is, against the last launch's */
+    if (best) {
+        Com_sprintf(key, sizeof(key), "%04x:%04x", best->vendor, best->device);
+    } else if (nids > 0) {
+        Com_sprintf(key, sizeof(key), "%04x:%04x", ids[0].vendor, ids[0].device);
+    } else {
+        Q_strncpyz(key, cls.glconfig.renderer_string, sizeof(key));
+    }
+    changed = com_qlex_lastgpu->string[0] && Q_stricmp(com_qlex_lastgpu->string, key);
+    if (changed) {
+        Com_Printf("Hardware check: GPU changed since the last launch (%s, was %s)%s\n", key,
+                   com_qlex_lastgpu->string, ask ? " - asking again" : "");
+        Cvar_Set("com_qlex_firstlaunch", "0");
+        if (!ask && !Q_stricmp(cl_renderer->string, "vulkan")) {
+            Com_Printf(S_COLOR_YELLOW "WARNING: this GPU is not one the Vulkan renderer is offered on. "
+                       "If the game runs badly, set cl_renderer opengl2 under Render Options.\n");
+        }
+    } else if (!com_qlex_lastgpu->string[0]) {
+        Com_Printf("Hardware check: recording GPU %s\n", key);
+    }
+    Cvar_Set("com_qlex_lastgpu", key);
+
+    if (!ask || com_qlex_firstlaunch->integer) {
         return;
     }
 
@@ -2875,6 +2909,10 @@ void CL_InitRef(void) {
     Cvar_SetDescription(com_qlex_firstlaunch, "0 or missing: the first launch experience (the "
                         "renderer and advanced rendering questions) runs from the main menu. Set to 1 "
                         "once it has been answered; set it back to 0 to see it again.");
+    com_qlex_lastgpu = Cvar_Get("com_qlex_lastgpu", "", CVAR_ARCHIVE);   // [QL] E181
+    Cvar_SetDescription(com_qlex_lastgpu, "The GPU the last launch ran on (PCI vendor:device, or the "
+                        "OpenGL renderer's name). Recorded every launch; when it differs, the first launch "
+                        "experience runs again for the new card.");
     Cvar_Get("ui_hwGpuName", "", CVAR_ROM);
     Cvar_Get("ui_hwRayQuery", "0", CVAR_ROM);
 

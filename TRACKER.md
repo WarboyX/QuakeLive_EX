@@ -6048,6 +6048,24 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E181. The GPU is recorded every launch; a different one runs the first launch again (`com_qlex_lastgpu`) — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+Asked for: detect when the GPU differs from the last launch.
+
+**What it does:** every launch, once the main menu has been up 1.5 s, `CL_CheckHardwarePrompt` records the machine's GPU in `com_qlex_lastgpu` (archived).
+- **What is recorded:** the PCI `vendor:device` of the best GPU the list knows (the one the Vulkan renderer uses on a hybrid laptop). Failing that, the first PCI ID read, then the OpenGL renderer's name.
+- **Different from last time:** the console says "GPU changed since the last launch (new, was old)" and `com_qlex_firstlaunch` goes back to 0.
+  - If the new card qualifies, it is asked about as on a first launch.
+  - Quitting with the question open asks again next time.
+- **Empty record** (a config from before this): it is filled in without asking.
+- **Changed to a GPU that is not offered Vulkan while still on Vulkan:** a console warning, since the advanced rendering chosen for the old card may not run on the new one. Nothing is switched for the player.
+
+**Checked:** in the harness, a client started with `com_qlex_lastgpu 10de:2c59` and `com_qlex_firstlaunch 1` on lavapipe:
+- logged the change;
+- reset `com_qlex_firstlaunch` to 0 and recorded the new GPU;
+- printed the warning (the harness runs Vulkan on a software renderer).
+
 ### E180. Hollow shadows: the holes in player and item models closed for tracing (`r_rtActorCaps`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 
