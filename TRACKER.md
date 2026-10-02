@@ -6048,6 +6048,17 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E189. Test-only assets for the harness: pak00 textures and OpenArena players — NOTE (not shipped)
+**Lives in:** test harness only · **Seen by:** nobody
+
+So the visual harness can show japanesecastles as it really looks and test shadows against real multi-part player models. Neither is committed or packaged.
+- **`/home/user/qlref/zz_qltextures.pk3`**: pak00's `textures/` (3,743 files), supplied by the tester for internal testing only. Repacked from Deflate64, which the engine's zip reader cannot read, to plain Deflate.
+- **`/home/user/qlref/oa/zz_oaplayers.pk3`**: OpenArena 0.8.8's `pak2-players.pk3` (GPL v2), for testing only.
+  - `beret`'s parts have real open holes (head 32, legs 52, torso 64 open edges).
+  - `major` is fully closed, so the two make a test case and a control for the hole caps (E180/E184).
+
+Harness scripts link both into their temporary game directory with `ln -s`; nothing is copied. The menu click sound stays Quake Live's own `sound/misc/menu2.wav` from pak00 (E188); nothing of OpenArena's ships.
+
 ### E188. Crash on the second map load of a session; menu clicks played a missing sound; a bot warning repeated hundreds of times — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) and our **server** (qagame) · **Seen by:** our client only (crash, clicks); server log (bot warning)
 
