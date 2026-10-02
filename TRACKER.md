@@ -6048,6 +6048,32 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E187. The sun's shadow lost on "Per pixel" light position; level shadows darkened twice at their edges — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**1. `r_rtShadowSun` did nothing with Light position: Per pixel (`r_rtLightField 0`).** Found in the code review, and confirmed by the tester ("per pixel seems broken, but light field are projecting shadows from the sun").
+- One flag (`gridBounds.w`) gated both the light field's positions and everything else stored in the field, including the sun's direction and where it reaches. Turning the positions off turned the sun's shadow off with no sign.
+- **Fix:** the flag has three states: 0 no field, 1 field with positions, 2 field without positions (`lightFieldAt` still returns where the sun reaches; the light is estimated per pixel).
+
+**2. Hollow level shadows (railings, beams, pillars), round two.** The tester's guess that it is the darkness clamp was close.
+- A shadow's darkness comes from the light grid's directed light at the pixel. For the level shadowing itself, the grid already holds that shadow, baked like the lightmap, but as a point every 64 units, blended.
+- Inside a baked shadow the grid says there is nothing left to lose and the pixel is left alone, which is right.
+- In a band along the edge, the grid still reads partly lit over a lightmap that is already dark, so the edge was darkened twice: a dark outline about a grid cell wide round a normal interior.
+- **Fix:** a level hit now counts in full only where the grid at the pixel is about as lit as the grid just beyond the occluder (`occluderHides` now reports that value), which is where the baked shadow has not begun. It fades to nothing by half that value, where the lightmap's own edge stands.
+- **The sun's level hits** are weighted by how surely the sun reaches the pixel.
+- **Players and items** are not in the lightmap and count in full everywhere.
+
+**Checked:** lavapipe, the E186 level-debug run repeated, validation 0 errors.
+
+| Spot | Tinted pixels before | After |
+|---|---|---|
+| 2 | 3,255 | 891 |
+| 4 | 2,676 | 2,209 |
+| 6 | 63,763 | 34,904 |
+| 7 | 2,202 | 1,915 |
+
+The sun's level shadows at spot 6 now fade where the lightmap is already dark, and the cubes' shadows are unchanged.
+
 ### E186. Level shadows hollow (and holing the players' shadows), the sun's shadow hard, hallway shadow split — DONE (verify)
 **Lives in:** our **client** (renderervk shaders, pak01 menus) · **Seen by:** our client only
 

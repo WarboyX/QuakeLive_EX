@@ -191,7 +191,7 @@ lamp's own fitting (this map's lights sit inside paper lanterns and torch
 cages). Nothing but solid for 96 units: the ray has run into the room's own
 shell, which a light inside the room is in front of.
 */
-bool occluderHides(vec3 O, vec3 dir, float t) {
+bool occluderHides(vec3 O, vec3 dir, float t, out float dBeyond) {
 	/* [QL] E186: from the occluder's far side, not its near face. A pillar or a
 	   beam is solid for most of its depth, so the grid just past the face the
 	   ray hit was inside it for the whole 96 units, and the hit was thrown away
@@ -212,10 +212,12 @@ bool occluderHides(vec3 O, vec3 dir, float t) {
 		}
 	}
 	const float extra[5] = float[5](16.0, 32.0, 48.0, 64.0, 96.0);
+	dBeyond = 0.0;
 	for (int k = 0; k < 5; k++) {
 		float a, dd;
 		vec3 g;
 		if (gridAt(O + dir * (exitT + extra[k]), a, dd, g)) {
+			dBeyond = dd;   // E187: the light the occluder stands in, for traceLight
 			return dot(g, dir) >= 0.0;
 		}
 	}
@@ -268,7 +270,9 @@ bool lightFieldAt(vec3 p, out vec3 lightPos, out float sky, out float sunVis) {
 	if (open > 0.0) {
 		sunVis /= open;
 	}
-	if (total <= 0.0) {
+	/* [QL] E187: 2 - the field is there for the sun, its positions are off
+	   (r_rtLightField 0): the caller estimates the light per pixel */
+	if (total <= 0.0 || gridBounds.w > 1.5) {
 		return false;
 	}
 	lightPos /= total;
@@ -295,8 +299,24 @@ direction, the disc of points on it is scaled so the spread is an angle - as
 wide as a light of size soft.x seen from 512 units - and the level is traced
 the whole way, since a sky light has nothing of its own for a ray to run into.
 */
+/*
+[QL] E187: dHere is the grid's directed light at this pixel (0..1), or, when
+negative, a fixed weight for level hits (the sun's, from how surely it
+reaches here). A level hit is the level shadowing itself, which the lightmap
+already holds; the light grid that sizes the shadow's darkness holds it too,
+but a grid point every 64 units, blended. Inside a baked shadow the grid
+says there is no light left to lose, and the pixel is left alone - right.
+In a band along its edge the grid still reads partly lit over a lightmap
+that is already dark, so the edge was darkened twice: a dark outline round
+a normal interior, the "hollow" level shadows (railings, beams, pillars).
+A level hit now counts in full only where the grid here is about as lit as
+just beyond the occluder - where the baked shadow has not begun - and not
+at all where it is down to half: that is the band, and the lightmap's own
+edge stands there. Players and items are not in the lightmap and count in
+full everywhere.
+*/
 float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint levelMask,
-                 int rays, float spin, out float hitT, out float lenC) {
+                 int rays, float spin, float dHere, out float hitT, out float lenC) {
 	vec3 Lc = normalize(lightPos - O);
 	vec3 sUp = abs(Lc.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
 	vec3 s1 = normalize(cross(Lc, sUp));
@@ -343,6 +363,7 @@ float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint l
 		   shorter cut (levelMax), which is about the lamp's fitting. */
 		float actorMax = directional ? tmax : len * 1.25 + 32.0;
 		bool hit = false;
+		float levelW = 1.0;   // E187: a player or item counts in full
 		vec3 dir = d / len;
 		if (actorMask != 0u) {
 			rayQueryEXT rq;
@@ -376,12 +397,17 @@ float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint l
 				levelMask, O, 0.0, dir, levelMax);
 			while (rayQueryProceedEXT(rq)) {}
 			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
-				hit = occluderHides(O, dir, rayQueryGetIntersectionTEXT(rq, true));
+				float dBeyond;
+				if (occluderHides(O, dir, rayQueryGetIntersectionTEXT(rq, true), dBeyond)) {
+					levelW = dHere < 0.0 ? -dHere
+					                     : smoothstep(0.5, 0.85, dHere / max(dBeyond, 1e-3));
+					hit = levelW > 0.0;
+				}
 				hitT = rayQueryGetIntersectionTEXT(rq, true);
 			}
 		}
 		if (hit) {
-			blocked += 1.0;
+			blocked += levelW;
 		}
 		/* the penumbra's width is R * t / (len - t): a directional light is as
 		   wide as its disc seen from 128 units, so its len is t + 128 */
@@ -512,7 +538,7 @@ void main() {
 	hitT = 0.0;
 	lenC = 1.0;
 	if (firstLit) {
-		blocked = traceLight(O, lightPos, directional, actorMask, levelMask, rays, spin, hitT, lenC);
+		blocked = traceLight(O, lightPos, directional, actorMask, levelMask, rays, spin, directed, hitT, lenC);
 	}
 
 	float tot = max(ambient + directed * ndl, 1e-3);
@@ -535,7 +561,7 @@ void main() {
 		lostS = min(sun.w * ndlS, 0.8 * ambient) / tot;
 		if (lostS > 0.01) {
 			blockedS = traceLight(O, O + sun.xyz * params.y, true, actorMask, mask & uint(RT_MASK_LEVEL_BIT),
-			                      rays, spin + 1.3, hitTS, lenCS);
+			                      rays, spin + 1.3, -smoothstep(0.6, 0.95, sunVis), hitTS, lenCS);
 		}
 	}
 

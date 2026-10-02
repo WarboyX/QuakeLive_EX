@@ -15020,7 +15020,12 @@ qboolean vk_actor_shadows( void )
 		u->gridOrigin[3] = 0.0f;
 	}
 	u->gridInvSize[3] = 0.0f;
-	u->gridBounds[3] = ( vk.rt.world.haveLightField && r_rtLightField->integer ) ? 1.0f : 0.0f;   /* [QL] E176 */
+	/* [QL] E176/E187: 1 - the light field and its light positions; 2 - the field
+	   is there but r_rtLightField is off, so only what is not a position is
+	   read (the sun and where it reaches, for r_rtShadowSun); 0 - no field. It
+	   was 0 whenever r_rtLightField was off, and the sun's shadow went with it
+	   with nothing to say so. */
+	u->gridBounds[3] = !vk.rt.world.haveLightField ? 0.0f : ( r_rtLightField->integer ? 1.0f : 2.0f );
 
 	vk_end_render_pass();
 	record_image_layout_transition( vk.cmd->command_buffer, vk.depth_image,
