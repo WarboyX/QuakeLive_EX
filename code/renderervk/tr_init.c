@@ -2737,7 +2737,7 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_rtActorShadows, "Players and items cast ray-traced shadows on the level, "
 		"from the map's light, with their real shapes - your own included. The ray-traced "
 		"replacement for Quake's stencil shadows (Lighting > Shadows: Traced turns this on). Needs "
-		S_COLOR_CYAN "\\r_rt.\n 0 - off (default)\n 1 - on\n 2 - debug: the shadowed pixels red" );
+		S_COLOR_CYAN "\\r_rt.\n 0 - off (default)\n 1 - on\n 2 - debug: shadowed pixels red, the sun's blue (E186)" );
 	r_rtActorShadowStrength = ri.Cvar_Get( "r_rtActorShadowStrength", "0.7", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtActorShadowStrength, "0", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtActorShadowStrength, "How dark a player's traced shadow is: the share of "
@@ -2806,7 +2806,7 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_rtLevelShadows, "The level casts ray-traced shadows on itself - ledges, "
 		"beams and pillars from the same light the players' shadows use, so the two agree. The map's "
 		"own baked shadows are coarse; this adds sharp edges where they blur. Needs " S_COLOR_CYAN
-		"\\r_rt.\n 0 - off (default)\n 1 - on\n 2 - debug: shadowed pixels red" );
+		"\\r_rt.\n 0 - off (default)\n 1 - on\n 2 - debug: shadowed pixels red, the sun's blue (E186)" );
 
 	/* [QL] E165. What blocks the traced shadows' rays. Live. */
 	r_rtShadowCasters = ri.Cvar_Get( "r_rtShadowCasters", "0", CVAR_ARCHIVE_ND );

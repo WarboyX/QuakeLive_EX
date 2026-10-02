@@ -192,11 +192,30 @@ cages). Nothing but solid for 96 units: the ray has run into the room's own
 shell, which a light inside the room is in front of.
 */
 bool occluderHides(vec3 O, vec3 dir, float t) {
+	/* [QL] E186: from the occluder's far side, not its near face. A pillar or a
+	   beam is solid for most of its depth, so the grid just past the face the
+	   ray hit was inside it for the whole 96 units, and the hit was thrown away
+	   as "the room's shell" - except where a ray clipped a thin edge. The level's
+	   traced shadows came out as outlines with lit floor inside, like a model
+	   with holes (E180/E184). The far face is where the ray leaves: the next
+	   level surface along it, which with culling off is the back of the same
+	   occluder. Within 256 units, or the near face as before - a wall that big
+	   is a room's shell, and the rule for those stands. */
+	float exitT = t;
+	{
+		rayQueryEXT rq;
+		rayQueryInitializeEXT(rq, topLevel, gl_RayFlagsOpaqueEXT, uint(RT_MASK_LEVEL_BIT),
+			O, t + 0.5, dir, t + 256.0);
+		while (rayQueryProceedEXT(rq)) {}
+		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+			exitT = rayQueryGetIntersectionTEXT(rq, true);
+		}
+	}
 	const float extra[5] = float[5](16.0, 32.0, 48.0, 64.0, 96.0);
 	for (int k = 0; k < 5; k++) {
 		float a, dd;
 		vec3 g;
-		if (gridAt(O + dir * (t + extra[k]), a, dd, g)) {
+		if (gridAt(O + dir * (exitT + extra[k]), a, dd, g)) {
 			return dot(g, dir) >= 0.0;
 		}
 	}
@@ -282,7 +301,11 @@ float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint l
 	vec3 sUp = abs(Lc.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
 	vec3 s1 = normalize(cross(Lc, sUp));
 	vec3 s2 = cross(Lc, s1);
-	float discScale = directional ? distance(lightPos, O) / 512.0 : 1.0;
+	/* [QL] E186: a directional light's disc is as wide, seen from here, as a
+	   light of size soft.x seen from 128 units - near a lamp's softness. At
+	   512 (E178) the sun's shadow came out hard beside the lamps' soft ones,
+	   whatever the softness was set to. */
+	float discScale = directional ? distance(lightPos, O) / 128.0 : 1.0;
 	float blocked = 0.0;
 	hitT = 0.0;
 	lenC = 1.0;
@@ -309,13 +332,23 @@ float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint l
 		if (tmax <= 1.0) {
 			continue;
 		}
+		/* [QL] E186: players and items are traced past the light's estimated
+		   distance - a quarter further and 32 units. The estimate can come up
+		   hundreds of units short near a lamp's fitting, and a ray that stops
+		   short of someone's shoulders casts only their legs: the hallway
+		   shadow cut in two under a wall torch, in the tester's screenshots.
+		   Something between a surface and a light shadows it however far the
+		   light is. Past the light is usually the wall the lamp hangs on, and
+		   levelBetween rejects anyone behind that. The level keeps its own,
+		   shorter cut (levelMax), which is about the lamp's fitting. */
+		float actorMax = directional ? tmax : len * 1.25 + 32.0;
 		bool hit = false;
 		vec3 dir = d / len;
 		if (actorMask != 0u) {
 			rayQueryEXT rq;
 			rayQueryInitializeEXT(rq, topLevel,
 				gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-				actorMask, O, 0.0, dir, tmax);
+				actorMask, O, 0.0, dir, actorMax);
 			while (rayQueryProceedEXT(rq)) {}
 			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
 				/* [QL] E170: only if no wall is in front of it. The rays
@@ -351,8 +384,8 @@ float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint l
 			blocked += 1.0;
 		}
 		/* the penumbra's width is R * t / (len - t): a directional light is as
-		   wide as its disc seen from 512 units, so its len is t + 512 */
-		lenC = directional ? hitT + 512.0 : len;
+		   wide as its disc seen from 128 units, so its len is t + 128 */
+		lenC = directional ? hitT + 128.0 : len;
 	}
 	return blocked / float(max(rays, 1));
 }
@@ -527,7 +560,8 @@ void main() {
 	}
 
 	float lost = (lost1 * blocked + lostS * blockedS) * strength;
-	float b = max(blocked, blockedS);
-	out_color = params.w > 0.0 ? vec4(1.0, 1.0 - 0.75 * b, 1.0 - 0.75 * b, 1.0)   // debug: red
+	/* debug: the first light's shadow red, the sun's (E178) blue, both magenta */
+	out_color = params.w > 0.0 ? vec4(1.0 - 0.75 * blockedS, 1.0 - 0.75 * max(blocked, blockedS),
+	                                  1.0 - 0.75 * blocked, 1.0)
 	                           : vec4(vec3(1.0 - lost), 1.0);
 }

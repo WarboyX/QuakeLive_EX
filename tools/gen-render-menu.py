@@ -505,9 +505,9 @@ def cast_shadows():
         # light, so the players' shadows agree with the ledges'.
         ("h", "SHADOWS ON THE LEVEL"),
         ("multi", "r_rtActorShadows", "Player shadows",
-         '"Off (default)" 0 "On" 1 "Debug (shadow red)" 2'),
+         '"Off (default)" 0 "On" 1 "Debug (red; sun blue)" 2'),
         ("multi", "r_rtLevelShadows", "Level shadows",
-         '"Off (default)" 0 "On" 1 "Debug (shadow red)" 2'),
+         '"Off (default)" 0 "On" 1 "Debug (red; sun blue)" 2'),
         ("multi", "r_rtActorShadowStrength", "Strength",
          '"0.25" 0.25 "0.5" 0.5 "0.7 (default)" 0.7 "0.85" 0.85 "1.0" 1'),
         ("multi", "r_rtActorShadowSoftness", "Softness",

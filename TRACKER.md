@@ -6048,6 +6048,37 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E186. Level shadows hollow (and holing the players' shadows), the sun's shadow hard, hallway shadow split — DONE (verify)
+**Lives in:** our **client** (renderervk shaders, pak01 menus) · **Seen by:** our client only
+
+Reported with screenshots after E184:
+- **Hollow level shadows:** the level casts "hollow" shadows (outlines with lit floor inside).
+- **Holes in player shadows:** a player's shadow goes hollow where it meets one.
+- **A hard second copy:** there is a sharp second silhouette beside the soft player shadow.
+- **A split shadow:** a hallway shadow is cut in two under a wall torch ("the light has a casting radius, it should give us a complete shadow regardless").
+
+**1. Level shadows were outlines.**
+- `occluderHides` decides whether a level hit really blocks the light by reading the light grid just past the hit.
+- For a thick occluder (pillar, beam, wall end), the grid just past the near face is inside solid for the whole 96 units sampled. The hit was then thrown away as "the room's shell", except where a ray clipped a thin edge.
+- **Fix:** the grid is read past the occluder's far face: the next level surface along the ray within 256 units, which with culling off is the back of the same occluder. A wall bigger than that is a room's shell, and that rule stands.
+
+**2. Players' shadows went hollow inside them.** This is a consequence of 1, not a second bug.
+- A player's hit is rejected when level geometry lies between the surface and the player (`levelBetween`, E170). That rule stops shadows through ceilings.
+- Inside a pillar's shadow the pillar is that geometry, so the player's shadow is correctly dropped there: the pillar already blocks that light.
+- But the pillar's own shadow had been dropped too, so the floor came out lit. With 1 fixed, the area is in the pillar's shadow.
+
+**3. The sun's shadow came out hard whatever the softness.** E178 sized a directional light's disc as a light of size `r_rtActorShadowSoftness` seen from 512 units, about 1°. It is now seen from 128 units, close to a lamp's softness, and the projected mode's width uses the same distance.
+
+**4. A shadow cut in two under a wall torch.**
+- Player and item rays stopped 8 units short of the light's *estimated* position.
+- The estimate can come up hundreds of units short near a lamp's fitting (E183's measurement: a heavy tail to -452), and a ray that stops short of someone's shoulders casts only their legs.
+- **Fix:** they now run to 1.25 × the estimate + 32. Something between a surface and a light shadows it however far the light is.
+- Past a wall lamp is the wall it hangs on, and `levelBetween` rejects anyone behind it. The level's own shorter cut (E170, about the fitting) is unchanged.
+
+**Debug view:** `r_rtActorShadows 2` / `r_rtLevelShadows 2` now colour the first light's shadow red, the sun's blue and both magenta, so a screenshot says which light cast what. The menu labels read "Debug (red; sun blue)".
+
+**Checked:** lavapipe, 7 spots, level shadows in the debug view and actor + level, validation layer 0 errors. Level shadows show as filled patches, and the cubes' shadows are solid. The hallway torch is not in the harness, so the cut shadow is for the tester to confirm.
+
 ### E185. Menu rows bound to cvars nothing reads: Bloom & Post rebuilt, two wrong names fixed, a check that fails the build — DONE (verify)
 **Lives in:** our **client** (pak01 menus, tools) · **Seen by:** our client only
 

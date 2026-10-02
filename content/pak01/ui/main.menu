@@ -4821,14 +4821,14 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtactorshadows  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorShadows"
-                  cvarFloatList { "Off (default)" 0 "On" 1 "Debug (shadow red)" 2 }
+                  cvarFloatList { "Off (default)" 0 "On" 1 "Debug (red; sun blue)" 2 }
                   rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Level shadows"  textscale .21  rect 24 148 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtlevelshadows  type ITEM_TYPE_MULTI  text ""  cvar "r_rtLevelShadows"
-                  cvarFloatList { "Off (default)" 0 "On" 1 "Debug (shadow red)" 2 }
+                  cvarFloatList { "Off (default)" 0 "On" 1 "Debug (red; sun blue)" 2 }
                   rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Strength"  textscale .21  rect 24 165 246 16  textaligny 13
@@ -6753,14 +6753,14 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtactorshadows  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorShadows"
-                  cvarFloatList { "Off (default)" 0 "On" 1 "Debug (shadow red)" 2 }
+                  cvarFloatList { "Off (default)" 0 "On" 1 "Debug (red; sun blue)" 2 }
                   rect 290 131 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Level shadows"  textscale .21  rect 24 148 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtlevelshadows  type ITEM_TYPE_MULTI  text ""  cvar "r_rtLevelShadows"
-                  cvarFloatList { "Off (default)" 0 "On" 1 "Debug (shadow red)" 2 }
+                  cvarFloatList { "Off (default)" 0 "On" 1 "Debug (red; sun blue)" 2 }
                   rect 290 148 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Strength"  textscale .21  rect 24 165 246 16  textaligny 13
