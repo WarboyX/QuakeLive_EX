@@ -907,7 +907,7 @@ static void LF_Classify( const world_t *w, const float *dir, const float *wt, co
 	const msurface_t *surfs = w->surfaces;
 	const qboolean haveSun = VectorLength( tr.sunLight ) > 0.0f ? qtrue : qfalse;
 	int numSurfs = w->numsurfaces, i, x, y, z, s;
-	int nSky = 0, nLamp = 0, nSunVis = 0, nClamped = 0, nSunPts = 0;
+	int nSky = 0, nLamp = 0, nSunVis = 0, nSunPts = 0;
 	float *skyRaw, *sunSamples;
 	lfBvh_t b;
 	int start = ri.Milliseconds();
@@ -984,15 +984,14 @@ static void LF_Classify( const world_t *w, const float *dir, const float *wt, co
 		{
 			const float *d = dir + c * 3;
 			vec3_t up, t1, t2, dd;
-			float hits = 0.0f, tc;
+			float hits = 0.0f;
 			VectorSet( up, 0, 0, 1 );
 			if ( fabsf( d[2] ) >= 0.9f ) VectorSet( up, 1, 0, 0 );
 			CrossProduct( d, up, t1 );
 			VectorNormalize( t1 );
 			CrossProduct( d, t1, t2 );
-			tc = LF_Trace( &b, pc, d, 16384.0f, &sky );
+			LF_Trace( &b, pc, d, 16384.0f, &sky );
 			hits += sky;
-			o[6] = sky ? 0.0f : tc;     /* scratch: the lamp's wall, until below */
 			for ( k = 0; k < 4; k++ ) {
 				VectorMA( d, ( k & 2 ) ? -0.09f : 0.09f, ( k & 1 ) ? t2 : t1, dd );
 				VectorNormalize( dd );
@@ -1040,21 +1039,17 @@ static void LF_Classify( const world_t *w, const float *dir, const float *wt, co
 				sunSamples[nSunPts++] = wt[c] / 255.0f;
 			}
 		} else if ( field[c * 4 + 3] > 0.0f ) {
-			/* the lamp is no further than the first thing its direction meets */
-			const float wall = o[6];
-			vec3_t v;
-			float along;
+			/* [QL] E183: the lamp's position as the field found it. E178 also
+			   clamped it to the first wall its direction meets, which measured
+			   worse - median error 26 units without, 66 with, against the
+			   map's own fittings - because a blended direction runs into the
+			   lamp's own fitting or a nearby edge first. Near walls and
+			   corners that put the light far too close and bent shadows
+			   there. */
 			VectorCopy( field + c * 4, o );
-			VectorSubtract( o, pc, v );
-			along = DotProduct( v, d );
-			if ( wall > 0.0f && along > wall + 8.0f ) {
-				VectorMA( pc, ( wall + 8.0f ) / along, v, o );
-				nClamped++;
-			}
 			o[3] = 1.0f;
 			nLamp++;
 		}
-		o[6] = 0.0f;
 	}
 #undef LF_IDX
 
@@ -1065,9 +1060,9 @@ static void LF_Classify( const world_t *w, const float *dir, const float *wt, co
 		tail[3] = sunSamples[nSunPts / 2];
 	}
 
-	ri.Printf( PRINT_ALL, "Light field: %i sky, %i lamp (%i moved in front of a wall), sun reaches %i points, "
+	ri.Printf( PRINT_ALL, "Light field: %i sky, %i lamp, sun reaches %i points, "
 		"sun brightness %.2f from %i; %i triangles, %i ms\n",
-		nSky, nLamp, nClamped, nSunVis, out[n * LF_STRIDE + 3], nSunPts, b.numTris, ri.Milliseconds() - start );
+		nSky, nLamp, nSunVis, out[n * LF_STRIDE + 3], nSunPts, b.numTris, ri.Milliseconds() - start );
 
 done:
 	if ( b.tris ) ri.Free( b.tris );

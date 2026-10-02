@@ -653,6 +653,10 @@ intptr_t CL_UISystemCalls(intptr_t* args) {
             Cvar_VariableStringBuffer(VMA(1), VMA(2), args[3]);
             return 0;
 
+        case UI_CVAR_LATCHEDSTRINGBUFFER:  // [QL] E183
+            Cvar_LatchedStringBuffer(VMA(1), VMA(2), args[3]);
+            return 0;
+
         case UI_CVAR_SETVALUE:
             Cvar_SetValueSafe(VMA(1), VMF(2));
             return 0;

@@ -3668,6 +3668,14 @@ void Item_TextField_Paint(itemDef_t* item) {
     }
 }
 
+/* [QL] E183: a value chosen but not yet running reads "<value> (Apply)" */
+static const char* Item_PendingLabel(itemDef_t* item, const char* text) {
+    if (item->cvar && DC->cvarPending && DC->cvarPending(item->cvar)) {
+        return va("%s (Apply)", text);
+    }
+    return text;
+}
+
 void Item_YesNo_Paint(itemDef_t* item) {
     vec4_t newColor, lowLight;
     float value;
@@ -3687,9 +3695,9 @@ void Item_YesNo_Paint(itemDef_t* item) {
 
     if (item->text) {
         Item_Text_Paint(item);
-        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, Item_PendingLabel(item, (value != 0) ? "Yes" : "No"), 0, 0, item->textStyle, item->fontIndex);
     } else {
-        DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, Item_PendingLabel(item, (value != 0) ? "Yes" : "No"), 0, 0, item->textStyle, item->fontIndex);
     }
 }
 
@@ -3712,6 +3720,7 @@ void Item_Multi_Paint(itemDef_t* item) {
     if (text == NULL) {
         text = "";
     }
+    text = Item_PendingLabel(item, text);   // [QL] E183
 
     if (item->text) {
         Item_Text_Paint(item);

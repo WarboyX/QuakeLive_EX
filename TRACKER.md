@@ -6048,6 +6048,38 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E183. Advanced rendering left water plain (`r_fbo`); menus show pending values; lamp clamp removed — DONE (verify)
+**Lives in:** our **client** (pak01 configs and menus, ui, client engine, renderervk) · **Seen by:** our client only
+
+Reported with a log, on the first-launch build:
+- the first launch prompted, but after "yes" the water was not drawn with its shader;
+- the render menu showed post-processing as enabled while it was not;
+- shadows warp and compact near edges, "where our AO is".
+
+**1. "Yes" turned everything on except the thing it all runs through.**
+- `advanced.cfg` and `advanced_norq.cfg` set `r_rt`, `r_rtao`, `r_ssr` and `r_waterWaves`, but not `r_fbo`, which defaults to 0 (E147).
+- The log shows it: `fbo off` after the restart, `RT AO: r_fbo is 0` and `SSR: not running - the pass was not created`. The water shader and reflections render through that framebuffer.
+- Both configs now set `r_fbo 1`.
+
+**2. The menus showed the running value, not the chosen one.**
+- Investigated first: every yes/no and list row reads the live cvar every frame, nothing is cached, and on screen the r_fbo row read "No" while it was 0. The reported case could not be reproduced from the code or on screen.
+- What was wrong is the latched cvars (`r_fbo`, `r_rt`, `cl_renderer`, `r_mode`…). Those keep their running value until a restart, so a row the player had just changed went on showing the old setting until Apply.
+- Clicking a latched yes/no a second time could not flip it back either: the toggle was computed from the value that had not moved.
+- **Fix:** a new UI call (`UI_CVAR_LATCHEDSTRINGBUFFER` → `Cvar_LatchedStringBuffer`, appended to the end of the UI call table). The UI's value reads (`UI_CvarPendingValue` / `UI_CvarPendingString`) return the pending value where there is one. Every row, toggle and cvarTest now shows what has been chosen, and yes/no and list rows add "(Apply)" while that is not yet what is running.
+- **On screen:** the post-processing row reads "No" with `r_fbo 0`, "Yes (Apply)" after setting 1, and "No" again after setting 0 (pending cleared).
+
+**3. E178's lamp clamp made light positions worse, near walls.**
+- E178 clamped each lamp point's light to no further than the first wall its direction meets. It was not measured before shipping.
+- Measured now on the CPU replica, against the 106 lamp fittings on japanesecastles:
+
+| | Median error | Middle 50% |
+|---|---|---|
+| Without the clamp | 26 units | -84 to +7 |
+| With the clamp | 66 units | -164 to -6 |
+
+- It moved a third of lamp points, all near geometry. A blended direction runs into the lamp's own fitting or a nearby edge first, putting the light far too close, which bends and stretches shadows near walls and corners.
+- Removed. Whether it accounts for all of the reported warping is for the tester to confirm.
+
 ### E182. Advanced hub: buttons for every render page, from one list — DONE (verify)
 **Lives in:** our **client** (pak01 menus) · **Seen by:** our client only
 

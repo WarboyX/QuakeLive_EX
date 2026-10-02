@@ -164,6 +164,25 @@ const char* Cvar_VariableString(const char* var_name) {
 
 /*
 ============
+Cvar_LatchedStringBuffer
+
+[QL] E183. The value a latched cvar will take at the next restart, or an
+empty string when nothing is pending. For the menus, which show what the
+player has chosen (see UI_CvarPendingValue in ui_main.c).
+============
+*/
+void Cvar_LatchedStringBuffer(const char* var_name, char* buffer, int bufsize) {
+    cvar_t* var = Cvar_FindVar(var_name);
+
+    if (var && (var->flags & CVAR_LATCH) && var->latchedString) {
+        Q_strncpyz(buffer, var->latchedString, bufsize);
+    } else if (bufsize > 0) {
+        *buffer = 0;
+    }
+}
+
+/*
+============
 Cvar_VariableStringBuffer
 ============
 */

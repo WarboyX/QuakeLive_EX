@@ -70,6 +70,10 @@ void trap_Cvar_VariableStringBuffer(const char* var_name, char* buffer, int bufs
     syscall(UI_CVAR_VARIABLESTRINGBUFFER, var_name, buffer, bufsize);
 }
 
+void trap_Cvar_LatchedStringBuffer(const char* var_name, char* buffer, int bufsize) {  // [QL] E183
+    syscall(UI_CVAR_LATCHEDSTRINGBUFFER, var_name, buffer, bufsize);
+}
+
 void trap_Cvar_SetValue(const char* var_name, float value) {
     syscall(UI_CVAR_SETVALUE, var_name, PASSFLOAT(value));
 }

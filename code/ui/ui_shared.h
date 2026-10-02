@@ -419,6 +419,9 @@ typedef struct {
     qhandle_t cursor;
     float FPS;
 
+    // [QL] E183: does this cvar have a value waiting for a restart. NULL in
+    // cgame, which has no menus that latch.
+    qboolean (*cvarPending)(const char* cvar);
 } displayContextDef_t;
 
 const char* String_Alloc(const char* p);

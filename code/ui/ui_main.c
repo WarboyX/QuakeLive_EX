@@ -5095,6 +5095,43 @@ UI_Init
 =================
 */
 
+/*
+=================
+UI_CvarPending / UI_CvarPendingValue / UI_CvarPendingString
+
+[QL] E183. What the menus read a cvar's value through.
+
+A latched cvar (r_fbo, r_rt, cl_renderer, r_mode...) keeps its running value
+until a restart; what the player picked sits beside it as the latched string.
+The menus read the running value, so a row the player had just changed went
+on showing the old setting until Apply - and clicking a yes/no again could not
+flip it back, because the toggle was computed from a value that had not moved.
+They read the pending value now where there is one, every frame, so every row,
+toggle and cvarTest shows what has been chosen; Item_YesNo_Paint and
+Item_Multi_Paint add "(Apply)" while it is not yet what is running.
+=================
+*/
+static qboolean UI_CvarPending(const char* cvar) {
+    char buf[2];
+
+    trap_Cvar_LatchedStringBuffer(cvar, buf, sizeof(buf));
+    return buf[0] ? qtrue : qfalse;
+}
+
+static float UI_CvarPendingValue(const char* cvar) {
+    char buf[256];
+
+    trap_Cvar_LatchedStringBuffer(cvar, buf, sizeof(buf));
+    return buf[0] ? (float)atof(buf) : trap_Cvar_VariableValue(cvar);
+}
+
+static void UI_CvarPendingString(const char* cvar, char* buffer, int bufsize) {
+    trap_Cvar_LatchedStringBuffer(cvar, buffer, bufsize);
+    if (!buffer[0]) {
+        trap_Cvar_VariableStringBuffer(cvar, buffer, bufsize);
+    }
+}
+
 void _UI_Init(qboolean inGameLoad) {
     const char* menuSet;
 
@@ -5149,8 +5186,9 @@ void _UI_Init(qboolean inGameLoad) {
     uiInfo.uiDC.runScript = &UI_RunMenuScript;
     uiInfo.uiDC.getTeamColor = &UI_GetTeamColor;
     uiInfo.uiDC.setCVar = trap_Cvar_Set;
-    uiInfo.uiDC.getCVarString = trap_Cvar_VariableStringBuffer;
-    uiInfo.uiDC.getCVarValue = trap_Cvar_VariableValue;
+    uiInfo.uiDC.getCVarString = UI_CvarPendingString;   // [QL] E183
+    uiInfo.uiDC.getCVarValue = UI_CvarPendingValue;
+    uiInfo.uiDC.cvarPending = UI_CvarPending;
     uiInfo.uiDC.drawTextWithCursor = &UI_DrawTextWithCursor_DC;
     uiInfo.uiDC.setOverstrikeMode = &trap_Key_SetOverstrikeMode;
     uiInfo.uiDC.getOverstrikeMode = &trap_Key_GetOverstrikeMode;
