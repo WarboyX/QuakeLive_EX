@@ -1459,73 +1459,66 @@
         itemDef { name r_rfullscreen  type ITEM_TYPE_YESNO  text ""  cvar "r_fullscreen"
                   rect 290 57 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Windowed mode"  textscale .21  rect 24 74 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_rwindowedmode  type ITEM_TYPE_MULTI  text ""  cvar "r_windowedMode"
-                  cvarFloatList { "Native Desktop" -2 "Custom" -1 "^1320x240 (4:3)" 0 "^1400x300 (4:3)" 1 "^1512x384 (4:3)" 2 "^1640x360 (16:9)" 3 "^1640x400 (16:10)" 4 "^1640x480 (4:3)" 5 "^1800x450 (16:9)" 6 "^1852x480 (16:9)" 7 "^1800x500 (16:10)" 8 "^1800x600 (4:3)" 9 "1024x640 (16:10)" 10 "1024x576 (16:9)" 11 "1024x768 (4:3)" 12 "1152x864 (4:3)" 13 "1280x720 (16:9)" 14 "1280x768 (5:3)" 15 "1280x800 (16:10)" 16 "1280x1024 (5:4)" 17 "1440x900 (16:10)" 18 "1600x900 (16:9)" 19 "1600x1000 (16:10)" 20 "1680x1050 (16:10)" 21 "1600x1200 (4:3)" 22 "1920x1080 (16:9)" 23 "1920x1200 (16:10)" 24 "1920x1440 (4:3)" 25 "2048x1536 (4:3)" 26 "2560x1600 (16:10)" 27 }
-                  rect 290 74 250 16  textscale .21  textaligny 13  textalignx 2
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Refresh rate"  textscale .21  rect 24 91 246 16  textaligny 13
+        itemDef { text "Refresh rate"  textscale .21  rect 24 74 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rdisplayrefresh  type ITEM_TYPE_MULTI  text ""  cvar "r_displayRefresh"
                   cvarFloatList { "Auto" 0 "50Hz" 50 "56Hz" 56 "60Hz" 60 "65Hz" 65 "70Hz" 70 "72Hz" 72 "75Hz" 75 "80Hz" 80 "85Hz" 85 "90Hz" 90 "95Hz" 95 "100Hz" 100 "110Hz" 110 "120Hz" 120 "144Hz" 144 "240Hz" 240 }
-                  rect 290 91 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 74 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Vertical sync"  textscale .21  rect 24 108 246 16  textaligny 13
+        itemDef { text "Vertical sync"  textscale .21  rect 24 91 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rswapinterval  type ITEM_TYPE_MULTI  text ""  cvar "r_swapInterval"
                   cvarFloatList { "Off" 0 "On" 1 "Adaptive" -1 }
-                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 91 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Texture detail"  textscale .21  rect 24 125 246 16  textaligny 13
+        itemDef { text "Texture detail"  textscale .21  rect 24 108 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rpicmip  type ITEM_TYPE_MULTI  text ""  cvar "r_picmip"
                   cvarFloatList { "Highest" 0 "High" 1 "Medium" 2 "Low" 3 }
-                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Texture depth"  textscale .21  rect 24 142 246 16  textaligny 13
+        itemDef { text "Texture depth"  textscale .21  rect 24 125 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rtexturebits  type ITEM_TYPE_MULTI  text ""  cvar "r_texturebits"
                   cvarFloatList { "Default" 0 "16-bit" 16 "32-bit" 32 }
-                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Compress textures"  textscale .21  rect 24 159 246 16  textaligny 13
+        itemDef { text "Compress textures"  textscale .21  rect 24 142 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rextcompressedtextures  type ITEM_TYPE_YESNO  text ""  cvar "r_ext_compressed_textures"
-                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Curve detail"  textscale .21  rect 24 176 246 16  textaligny 13
+        itemDef { text "Curve detail"  textscale .21  rect 24 159 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rsubdivisions  type ITEM_TYPE_MULTI  text ""  cvar "r_subdivisions"
                   cvarFloatList { "Quality" 4 "Performance" 80 }
-                  rect 290 176 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 159 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Model detail"  textscale .21  rect 24 193 246 16  textaligny 13
+        itemDef { text "Model detail"  textscale .21  rect 24 176 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rlodbias  type ITEM_TYPE_MULTI  text ""  cvar "r_lodbias"
                   cvarFloatList { "Best" -2 "High" -1 "Medium" 0 "Low" 1 "Poor" 2 }
-                  rect 290 193 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 176 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Fast sky"  textscale .21  rect 24 210 246 16  textaligny 13
+        itemDef { text "Fast sky"  textscale .21  rect 24 193 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rfastsky  type ITEM_TYPE_YESNO  text ""  cvar "r_fastsky"
-                  rect 290 210 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 193 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_video  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_mode ; reset r_fullscreen ; reset r_windowedMode ; reset r_displayRefresh ; reset r_swapInterval ; reset r_picmip ; reset r_texturebits ; reset r_ext_compressed_textures ; reset r_subdivisions ; reset r_lodbias ; reset r_fastsky" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_mode ; reset r_fullscreen ; reset r_displayRefresh ; reset r_swapInterval ; reset r_picmip ; reset r_texturebits ; reset r_ext_compressed_textures ; reset r_subdivisions ; reset r_lodbias ; reset r_fastsky" }
             mouseEnter { setitemcolor rs_io_ig_video backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_video forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_video bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_video backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_video forecolor 1 1 1 1 ; setitemcolor rs_io_ig_video bordercolor .35 .3 .12 1 }
         }
@@ -1704,94 +1697,76 @@
                   forecolor 0.964 0.815 0 1  visible 1  decoration }
         itemDef { name pgrule  text ""  rect 20 24 520 1  style WINDOW_STYLE_FILLED
                   backcolor .35 .3 .12 1  visible 1  decoration }
-        itemDef { text "Drawn by the OpenGL2 renderer."  textscale .19  rect 20 26 520 14  textaligny 11
+        itemDef { text "Post-processing and its effects. Most need Apply."  textscale .19  rect 20 26 520 14  textaligny 11
                   textalign ITEM_ALIGN_CENTER  textalignx 260
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Bloom"  textscale .21  rect 24 40 246 16  textaligny 13
+        itemDef { text "Post-processing (water)"  textscale .21  rect 24 40 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_renablebloom  type ITEM_TYPE_MULTI  text ""  cvar "r_enableBloom"
-                  cvarFloatList { "No" 0 "Single Pass" 1 "Two Passes" 2 }
-                  rect 290 40 250 16  textscale .21  textaligny 13  textalignx 2
+        itemDef { name r_rfbo  type ITEM_TYPE_YESNO  text ""  cvar "r_fbo"
+                  rect 290 40 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Bloom intensity"  textscale .21  rect 24 57 246 16  textaligny 13
+        itemDef { text "Bloom"  textscale .21  rect 24 57 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rbloom  type ITEM_TYPE_YESNO  text ""  cvar "r_bloom"
+                  rect 290 57 70 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "HDR bloom"  textscale .21  rect 24 74 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_rbloomhdr  type ITEM_TYPE_MULTI  text ""  cvar "r_bloomHDR"
+                  cvarFloatList { "Off (default)" 0 "On" 1 }
+                  rect 290 74 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Bloom intensity"  textscale .21  rect 24 91 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rbloomintensity  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "r_bloomIntensity" 0.6 0 2
-                  rect 290 57 96 16  textscale .21  textaligny 13
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_rbloomintensityv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_bloomIntensity"
-                  maxchars 7  maxpaintchars 7
-                  rect 398 57 56 16  textscale .19  textaligny 12  textalignx 4
-                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
-                  border 1  bordersize 1  bordercolor .35 .3 .12 1
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Bright threshold"  textscale .21  rect 24 74 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_rbloombrightthreshold  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "r_bloomBrightThreshold" 0.6 0 1
-                  rect 290 74 96 16  textscale .21  textaligny 13
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_rbloombrightthresholdv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_bloomBrightThreshold"
-                  maxchars 7  maxpaintchars 7
-                  rect 398 74 56 16  textscale .19  textaligny 12  textalignx 4
-                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
-                  border 1  bordersize 1  bordercolor .35 .3 .12 1
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Bloom saturation"  textscale .21  rect 24 91 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_rbloomsaturation  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "r_bloomSaturation" 1 0 2
+                  cvarFloat "r_bloom_intensity" 0.5 0 2
                   rect 290 91 96 16  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_rbloomsaturationv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_bloomSaturation"
+        itemDef { name r_rbloomintensityv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_bloom_intensity"
                   maxchars 7  maxpaintchars 7
                   rect 398 91 56 16  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Scene intensity"  textscale .21  rect 24 108 246 16  textaligny 13
+        itemDef { text "Bloom threshold"  textscale .21  rect 24 108 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_rbloomsceneintensity  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "r_bloomSceneIntensity" 1 0 2
+        itemDef { name r_rbloomthreshold  type ITEM_TYPE_SLIDER  text ""
+                  cvarFloat "r_bloom_threshold" 0.6 0 1
                   rect 290 108 96 16  textscale .21  textaligny 13
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_rbloomsceneintensityv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_bloomSceneIntensity"
+        itemDef { name r_rbloomthresholdv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_bloom_threshold"
                   maxchars 7  maxpaintchars 7
                   rect 398 108 56 16  textscale .19  textaligny 12  textalignx 4
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Scene saturation"  textscale .21  rect 24 125 246 16  textaligny 13
+        itemDef { text "Tone curve"  textscale .21  rect 24 125 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_rbloomscenesaturation  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "r_bloomSceneSaturation" 1 0 2
-                  rect 290 125 96 16  textscale .21  textaligny 13
+        itemDef { name r_rtonemap  type ITEM_TYPE_MULTI  text ""  cvar "r_toneMap"
+                  cvarFloatList { "Automatic (default)" 0 "Clip" 1 "Soft knee" 2 "Filmic (ACES)" 3 }
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_rbloomscenesaturationv  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "r_bloomSceneSaturation"
-                  maxchars 7  maxpaintchars 7
-                  rect 398 125 56 16  textscale .19  textaligny 12  textalignx 4
-                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
-                  border 1  bordersize 1  bordercolor .35 .3 .12 1
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Post processing"  textscale .21  rect 24 142 246 16  textaligny 13
+        itemDef { text "FXAA"  textscale .21  rect 24 142 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_renablepostprocess  type ITEM_TYPE_YESNO  text ""  cvar "r_enablePostProcess"
-                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
+        itemDef { name r_rfxaa  type ITEM_TYPE_MULTI  text ""  cvar "r_fxaa"
+                  cvarFloatList { "Off (default)" 0 "On" 1 }
+                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Colour correction"  textscale .21  rect 24 159 246 16  textaligny 13
+        itemDef { text "Sharpening (CAS)"  textscale .21  rect 24 159 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_renablecolorcorrect  type ITEM_TYPE_YESNO  text ""  cvar "r_enableColorCorrect"
-                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
+        itemDef { name r_rsharpen  type ITEM_TYPE_MULTI  text ""  cvar "r_sharpen"
+                  cvarFloatList { "Off (default)" 0 "Light" 0.25 "Medium" 0.5 "Strong" 0.75 "Strongest" 1 }
+                  rect 290 159 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "The Vulkan renderer has its own effects under Render Options."  textscale .17  rect 24 182 512 16  textaligny 12
+        itemDef { text "Vulkan renderer. Bloom and water need Post-processing on."  textscale .17  rect 24 182 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef {
@@ -1799,7 +1774,7 @@
             rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset r_enableBloom ; reset r_bloomIntensity ; reset r_bloomBrightThreshold ; reset r_bloomSaturation ; reset r_bloomSceneIntensity ; reset r_bloomSceneSaturation ; reset r_enablePostProcess ; reset r_enableColorCorrect" }
+            action { play "sound/misc/menu1.wav" ; exec "reset r_fbo ; reset r_bloom ; reset r_bloomHDR ; reset r_bloom_intensity ; reset r_bloom_threshold ; reset r_toneMap ; reset r_fxaa ; reset r_sharpen" }
             mouseEnter { setitemcolor rs_io_ig_bloom backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_bloom forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_bloom bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_bloom backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_bloom forecolor 1 1 1 1 ; setitemcolor rs_io_ig_bloom bordercolor .35 .3 .12 1 }
         }
@@ -2357,51 +2332,38 @@
                   style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
                   border 1  bordersize 1  bordercolor .35 .3 .12 1
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Voice chat"  textscale .21  rect 24 74 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_svoicevolume  type ITEM_TYPE_SLIDER  text ""
-                  cvarFloat "s_voiceVolume" 1 0 1
-                  rect 290 74 96 16  textscale .21  textaligny 13
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { name r_svoicevolumev  type ITEM_TYPE_NUMERICFIELD  text ""  cvar "s_voiceVolume"
-                  maxchars 7  maxpaintchars 7
-                  rect 398 74 56 16  textscale .19  textaligny 12  textalignx 4
-                  style WINDOW_STYLE_FILLED  backcolor 0 0 0 .55
-                  border 1  bordersize 1  bordercolor .35 .3 .12 1
-                  forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Doppler"  textscale .21  rect 24 91 246 16  textaligny 13
+        itemDef { text "Doppler"  textscale .21  rect 24 74 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_sdoppler  type ITEM_TYPE_YESNO  text ""  cvar "s_doppler"
-                  rect 290 91 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 74 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Announcer"  textscale .21  rect 24 108 246 16  textaligny 13
+        itemDef { text "Announcer"  textscale .21  rect 24 91 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgannouncer  type ITEM_TYPE_MULTI  text ""  cvar "cg_announcer"
                   cvarFloatList { "Default" 1 "Vadrigar" 2 "Daemia" 3 }
-                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 91 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Chat beep"  textscale .21  rect 24 125 246 16  textaligny 13
+        itemDef { text "Chat beep"  textscale .21  rect 24 108 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cgchatbeep  type ITEM_TYPE_YESNO  text ""  cvar "cg_chatbeep"
-                  rect 290 125 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 108 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Hit beep"  textscale .21  rect 24 142 246 16  textaligny 13
+        itemDef { text "Hit beep"  textscale .21  rect 24 125 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_cghitbeep  type ITEM_TYPE_MULTI  text ""  cvar "cg_hitbeep"
                   cvarFloatList { "No" 0 "Single Pitch" 1 "Descending" 2 "Ascending" 3 }
-                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_sound  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset s_volume ; reset s_musicvolume ; reset s_voiceVolume ; reset s_doppler ; reset cg_announcer ; reset cg_chatbeep ; reset cg_hitbeep" }
+            action { play "sound/misc/menu1.wav" ; exec "reset s_volume ; reset s_musicvolume ; reset s_doppler ; reset cg_announcer ; reset cg_chatbeep ; reset cg_hitbeep" }
             mouseEnter { setitemcolor rs_io_ig_sound backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_sound forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_sound bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_sound backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_sound forecolor 1 1 1 1 ; setitemcolor rs_io_ig_sound bordercolor .35 .3 .12 1 }
         }
@@ -2511,19 +2473,12 @@
         itemDef { name r_clallowconsolechat  type ITEM_TYPE_YESNO  text ""  cvar "cl_allowConsoleChat"
                   rect 290 210 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Demo record message"  textscale .21  rect 24 227 246 16  textaligny 13
-                  textalign ITEM_ALIGN_RIGHT  textalignx 246
-                  forecolor 1 1 1 1  visible 1  decoration }
-        itemDef { name r_cldemorecordmessage  type ITEM_TYPE_MULTI  text ""  cvar "cl_demoRecordMessage"
-                  cvarFloatList { "No" 0 "Yes (Verbose)" 1 "Yes (Small)" 2 }
-                  rect 290 227 250 16  textscale .21  textaligny 13  textalignx 2
-                  forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_game  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 150 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; exec "reset cg_allowTaunt ; reset cg_zoomToggle ; reset cg_zoomScaling ; reset cg_useItemMessage ; reset cg_useItemWarning ; reset cg_forceEnemyModel ; reset cg_forceTeamModel ; reset cg_followKiller ; reset cg_followPowerup ; reset cg_specFov ; reset cl_allowConsoleChat ; reset cl_demoRecordMessage" }
+            action { play "sound/misc/menu1.wav" ; exec "reset cg_allowTaunt ; reset cg_zoomToggle ; reset cg_zoomScaling ; reset cg_useItemMessage ; reset cg_useItemWarning ; reset cg_forceEnemyModel ; reset cg_forceTeamModel ; reset cg_followKiller ; reset cg_followPowerup ; reset cg_specFov ; reset cl_allowConsoleChat" }
             mouseEnter { setitemcolor rs_io_ig_game backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_game forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_game bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_game backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_game forecolor 1 1 1 1 ; setitemcolor rs_io_ig_game bordercolor .35 .3 .12 1 }
         }
@@ -3300,7 +3255,7 @@
 
         // Team Size
         itemDef { group grpRules  text "Team Size:"  textscale .2  rect 20 90 120 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
-        itemDef { group grpRules  type ITEM_TYPE_MULTI  text ""  cvar "g_teamsize"  cvarFloatList { "No Limit" 0 "1v1" 1 "2v2" 2 "3v3" 3 "4v4" 4 "5v5" 5 "6v6" 6 "8v8" 8 }  rect 150 90 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
+        itemDef { group grpRules  type ITEM_TYPE_MULTI  text ""  cvar "teamsize"  cvarFloatList { "No Limit" 0 "1v1" 1 "2v2" 2 "3v3" 3 "4v4" 4 "5v5" 5 "6v6" 6 "8v8" 8 }  rect 150 90 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
 
         // Overtime
         itemDef { group grpRules  text "Overtime (sec):"  textscale .2  rect 20 110 120 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
@@ -3432,7 +3387,7 @@
         itemDef { group grpPhysics  type ITEM_TYPE_MULTI  text ""  cvar "pmove_WeaponDropTime"  cvarFloatList { "0" 0 "100" 100 "200" 200 "300" 300 }  rect 465 90 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
 
         itemDef { group grpPhysics  text "Hook Pull Speed:"  textscale .2  rect 310 110 140 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
-        itemDef { group grpPhysics  type ITEM_TYPE_MULTI  text ""  cvar "pmove_HookPullVelocity"  cvarFloatList { "600" 600 "800" 800 "1000" 1000 "1200" 1200 }  rect 465 110 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
+        itemDef { group grpPhysics  type ITEM_TYPE_MULTI  text ""  cvar "pmove_velocity_gh"  cvarFloatList { "600" 600 "800" 800 "1000" 1000 "1200" 1200 }  rect 465 110 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }
 
         itemDef { group grpPhysics  text "Step Height:"  textscale .2  rect 310 130 140 15  textaligny 12  forecolor 0.8 0.8 0.8 1  visible 0  decoration }
         itemDef { group grpPhysics  type ITEM_TYPE_MULTI  text ""  cvar "pmove_StepHeight"  cvarFloatList { "18 (QL)" 18 "22 (Q3)" 22 "26" 26 }  rect 465 130 80 15  textaligny 12  textalignx 2  textscale .2  forecolor 1 1 1 1  visible 0 }

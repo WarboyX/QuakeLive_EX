@@ -5798,12 +5798,23 @@ the light without touching a triangle, so the middle of the shadow is lit and
 only the rim, where rays graze the walls, is dark - the "hollow" shadows in the
 tester's screenshots (an outline on the floor with the floor showing through).
 
-Found once per surface and kept: vertices welded by their position in frame 0
-(MD3 duplicates a vertex along a texture seam, and a seam is not a hole), every
-edge used by one triangle only is on a hole, and the edges are grouped into
-holes by which welded vertices they share. Each frame, a fan from the hole's
-current centre closes it in the structure - the same lerped positions as the
-rest of the surface, so the cap moves with the model.
+Found once per model and kept: vertices welded by their position in frame 0,
+across all of the model's surfaces, every edge used by one triangle only is on
+a hole, and the edges are grouped into holes by which welded vertices they
+share. Each frame, a fan from the hole's current centre closes it in the
+structure - the same lerped positions as the rest of the model, so the cap
+moves with it.
+
+[QL] E184: per model, not per surface. A player's torso is several surfaces
+stitched together, and E180 welded and capped each one on its own: a surface's
+"hole" was then its whole outline, seams to the next surface included, and a
+fan from the centre of a half-ring like that covers most of the opening but
+leaves a lens down the middle. Light went through the lens, and the shadows
+stayed hollow on the tester's player models - while E180's test, one tube
+made of one surface, came out closed. Welded across surfaces, a seam is two
+triangles sharing an edge like any other, and only the real holes - waist,
+neck, open ends - are left to close. Checked with a tube split into two
+surfaces along two seams.
 
 The table is cleared with the dynamic structures, which is every map load, so
 a model unloaded with the map cannot leave its answer under a pointer a new
@@ -5814,7 +5825,7 @@ one is given.
 #define RT_CAP_LOOPS	32
 
 typedef struct {
-	const md3Surface_t	*surf;
+	const md3Header_t	*model;
 	int					numEdges;
 	int					numLoops;
 	int					*edges;		/* numEdges * 3: from, to, hole */
@@ -5849,52 +5860,94 @@ static int rt_cap_find( int *parent, int v )
 	return v;
 }
 
-static const rtCapInfo_t *rt_caps_for( const md3Surface_t *surf )
+static const short *rtCapWeldXyz;
+
+static int rt_cap_weld_cmp( const void *a, const void *b )
 {
-	const uintptr_t key = (uintptr_t)surf;
-	const short *xyz = (const short *)( (const byte *)surf + surf->ofsXyzNormals );
-	const int *tris = (const int *)( (const byte *)surf + surf->ofsTriangles );
-	const int nv = surf->numVerts, ne = surf->numTriangles * 3;
+	const short *p = rtCapWeldXyz + *(const int *)a * 4, *q = rtCapWeldXyz + *(const int *)b * 4;
+	if ( p[0] != q[0] ) return p[0] - q[0];
+	if ( p[1] != q[1] ) return p[1] - q[1];
+	if ( p[2] != q[2] ) return p[2] - q[2];
+	return *(const int *)a - *(const int *)b;
+}
+
+static const rtCapInfo_t *rt_caps_for( const md3Header_t *model )
+{
+	const uintptr_t key = (uintptr_t)model;
+	const md3Surface_t *surf;
 	rtCapInfo_t *c = NULL;
-	int *weld, *und, *parent, *loopId;
-	int i, j, k, slot, nb = 0;
+	short *xyz;
+	int *weld, *und, *parent, *loopId, *order;
+	int i, j, k, slot, nb = 0, nv = 0, ne = 0, base;
 
 	slot = (int)( ( key >> 4 ) * 2654435761u % RT_CAP_SLOTS );
 	for ( i = 0; i < RT_CAP_SLOTS; i++ ) {
 		rtCapInfo_t *s = &rtCaps[ ( slot + i ) % RT_CAP_SLOTS ];
-		if ( s->surf == surf ) {
+		if ( s->model == model ) {
 			return s;
 		}
-		if ( s->surf == NULL ) {
+		if ( s->model == NULL ) {
 			c = s;
 			break;
 		}
 	}
-	if ( c == NULL || nv <= 0 || ne <= 0 ) {
-		return NULL;   /* table full: this surface goes uncapped */
+	if ( c == NULL ) {
+		return NULL;   /* table full: this model goes uncapped */
 	}
-	c->surf = surf;
+	surf = (const md3Surface_t *)( (const byte *)model + model->ofsSurfaces );
+	for ( i = 0; i < model->numSurfaces; i++ ) {
+		nv += surf->numVerts;
+		ne += surf->numTriangles * 3;
+		surf = (const md3Surface_t *)( (const byte *)surf + surf->ofsEnd );
+	}
+	c->model = model;
+	if ( nv <= 0 || ne <= 0 ) {
+		return c;
+	}
 
+	/* every surface's frame-0 positions, in the order rt_build_actor_mesh
+	   writes the vertices, so an index here is an offset from the model's
+	   first vertex there */
+	xyz = ri.Malloc( nv * 4 * sizeof( short ) );
 	weld = ri.Malloc( nv * sizeof( int ) );
+	order = ri.Malloc( nv * sizeof( int ) );
 	parent = ri.Malloc( nv * sizeof( int ) );
 	loopId = ri.Malloc( nv * sizeof( int ) );
 	und = ri.Malloc( ne * 4 * sizeof( int ) );
-	for ( i = 0; i < nv; i++ ) {
-		const short *p = xyz + i * 4;
-		weld[i] = i;
-		for ( j = 0; j < i; j++ ) {
-			const short *q = xyz + j * 4;
-			if ( p[0] == q[0] && p[1] == q[1] && p[2] == q[2] ) {
-				weld[i] = weld[j];
-				break;
-			}
+	surf = (const md3Surface_t *)( (const byte *)model + model->ofsSurfaces );
+	for ( i = 0, base = 0, k = 0; i < model->numSurfaces; i++ ) {
+		const int *tris = (const int *)( (const byte *)surf + surf->ofsTriangles );
+		Com_Memcpy( xyz + base * 4, (const byte *)surf + surf->ofsXyzNormals, surf->numVerts * 4 * sizeof( short ) );
+		for ( j = 0; j < surf->numTriangles * 3; j++ ) {
+			und[k * 4 + 2] = base + tris[j];
+			und[k * 4 + 3] = base + tris[ ( j % 3 == 2 ) ? j - 2 : j + 1 ];
+			k++;
 		}
+		base += surf->numVerts;
+		surf = (const md3Surface_t *)( (const byte *)surf + surf->ofsEnd );
+	}
+	/* weld: sort by position, the first of each run stands for the rest */
+	for ( i = 0; i < nv; i++ ) {
+		order[i] = i;
 		parent[i] = i;
 		loopId[i] = -1;
 	}
+	rtCapWeldXyz = xyz;
+	qsort( order, nv, sizeof( int ), rt_cap_weld_cmp );
+	for ( i = 0; i < nv; i++ ) {
+		const short *p = xyz + order[i] * 4;
+		if ( i > 0 ) {
+			const short *q = xyz + order[i - 1] * 4;
+			if ( p[0] == q[0] && p[1] == q[1] && p[2] == q[2] ) {
+				weld[ order[i] ] = weld[ order[i - 1] ];
+				continue;
+			}
+		}
+		weld[ order[i] ] = order[i];
+	}
 	/* every edge, undirected for counting, with its direction kept */
 	for ( i = 0; i < ne; i++ ) {
-		const int a = weld[ tris[i] ], b = weld[ tris[ ( i % 3 == 2 ) ? i - 2 : i + 1 ] ];
+		const int a = weld[ und[i * 4 + 2] ], b = weld[ und[i * 4 + 3] ];
 		und[i*4+0] = a < b ? a : b;
 		und[i*4+1] = a < b ? b : a;
 		und[i*4+2] = a;
@@ -5929,7 +5982,9 @@ static const rtCapInfo_t *rt_caps_for( const md3Surface_t *surf )
 			c->numEdges++;
 		}
 	}
+	ri.Free( xyz );
 	ri.Free( weld );
+	ri.Free( order );
 	ri.Free( parent );
 	ri.Free( loopId );
 	ri.Free( und );
@@ -5965,6 +6020,7 @@ static uint32_t rt_build_actor_mesh( int idx )
 		const md3Surface_t *surf;
 		int s, frame, oldframe;
 		float backlerp;
+		uint32_t entBase;
 
 		if ( ent->e.reType != RT_MODEL ) {
 			continue;
@@ -5987,6 +6043,7 @@ static uint32_t rt_build_actor_mesh( int idx )
 		if ( frame < 0 || frame >= header->numFrames ) frame = 0;
 		if ( oldframe < 0 || oldframe >= header->numFrames ) oldframe = 0;
 		backlerp = ent->e.backlerp;
+		entBase = nv;
 
 		surf = (const md3Surface_t *)( (const byte *)header + header->ofsSurfaces );
 		for ( s = 0; s < header->numSurfaces; s++ ) {
@@ -6014,40 +6071,39 @@ static uint32_t rt_build_actor_mesh( int idx )
 			for ( t = 0; t < surf->numTriangles * 3; t++ ) {
 				iout[ nt * 3 + t ] = nv + (uint32_t)tris[t];
 			}
-			{
-				/* [QL] E180: close its holes - see rt_caps_for */
-				const rtCapInfo_t *cap = r_rtActorCaps->integer ? rt_caps_for( surf ) : NULL;
-				const uint32_t base = nv;
-				nv += surf->numVerts;
-				nt += surf->numTriangles;
-				if ( cap && cap->numLoops > 0 &&
-					 nv + (uint32_t)cap->numLoops <= RT_ACTOR_MAX_VERTS &&
-					 nt + (uint32_t)cap->numEdges <= RT_ACTOR_MAX_TRIS ) {
-					float cnt[RT_CAP_LOOPS];
-					int l, k;
-					for ( l = 0; l < cap->numLoops; l++ ) {
-						VectorClear( &vout[ ( nv + l ) * 3 ] );
-						cnt[l] = 0.0f;
-					}
-					for ( k = 0; k < cap->numEdges; k++ ) {
-						const int *ed = &cap->edges[k * 3];
-						VectorAdd( &vout[ ( nv + ed[2] ) * 3 ], &vout[ ( base + ed[0] ) * 3 ], &vout[ ( nv + ed[2] ) * 3 ] );
-						cnt[ ed[2] ] += 1.0f;
-					}
-					for ( l = 0; l < cap->numLoops; l++ ) {
-						VectorScale( &vout[ ( nv + l ) * 3 ], 1.0f / ( cnt[l] > 0.0f ? cnt[l] : 1.0f ), &vout[ ( nv + l ) * 3 ] );
-					}
-					for ( k = 0; k < cap->numEdges; k++ ) {
-						const int *ed = &cap->edges[k * 3];
-						iout[ nt * 3 + 0 ] = nv + (uint32_t)ed[2];
-						iout[ nt * 3 + 1 ] = base + (uint32_t)ed[1];
-						iout[ nt * 3 + 2 ] = base + (uint32_t)ed[0];
-						nt++;
-					}
-					nv += (uint32_t)cap->numLoops;
-				}
-			}
+			nv += surf->numVerts;
+			nt += surf->numTriangles;
 			surf = (const md3Surface_t *)( (const byte *)surf + surf->ofsEnd );
+		}
+		{
+			/* [QL] E180/E184: close the model's holes - see rt_caps_for */
+			const rtCapInfo_t *cap = r_rtActorCaps->integer ? rt_caps_for( header ) : NULL;
+			if ( cap && cap->numLoops > 0 &&
+				 nv + (uint32_t)cap->numLoops <= RT_ACTOR_MAX_VERTS &&
+				 nt + (uint32_t)cap->numEdges <= RT_ACTOR_MAX_TRIS ) {
+				float cnt[RT_CAP_LOOPS];
+				int l, k;
+				for ( l = 0; l < cap->numLoops; l++ ) {
+					VectorClear( &vout[ ( nv + l ) * 3 ] );
+					cnt[l] = 0.0f;
+				}
+				for ( k = 0; k < cap->numEdges; k++ ) {
+					const int *ed = &cap->edges[k * 3];
+					VectorAdd( &vout[ ( nv + ed[2] ) * 3 ], &vout[ ( entBase + ed[0] ) * 3 ], &vout[ ( nv + ed[2] ) * 3 ] );
+					cnt[ ed[2] ] += 1.0f;
+				}
+				for ( l = 0; l < cap->numLoops; l++ ) {
+					VectorScale( &vout[ ( nv + l ) * 3 ], 1.0f / ( cnt[l] > 0.0f ? cnt[l] : 1.0f ), &vout[ ( nv + l ) * 3 ] );
+				}
+				for ( k = 0; k < cap->numEdges; k++ ) {
+					const int *ed = &cap->edges[k * 3];
+					iout[ nt * 3 + 0 ] = nv + (uint32_t)ed[2];
+					iout[ nt * 3 + 1 ] = entBase + (uint32_t)ed[1];
+					iout[ nt * 3 + 2 ] = entBase + (uint32_t)ed[0];
+					nt++;
+				}
+				nv += (uint32_t)cap->numLoops;
+			}
 		}
 		nents++;
 	}

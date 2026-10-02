@@ -93,7 +93,8 @@ not the block between its markers. `tools/check-menu-defaults.py` fails on a
 multi row whose "(default)" is not the registered default, or whose default is
 not in its list (such a row draws blank). Pass a directory of Quake Live's `ui/`
 to check against the real files, and `--dump-names <dir>` to regenerate that
-list after a game patch.
+list after a game patch. `tools/check-menu-cvars.py` fails on a row bound to a
+cvar no code of ours names: it sets and shows a value nothing reads.
 
 **`CVAR_ARCHIVE` on a shipped default means the default stops applying.** The
 value is written into a config on first run and that config then wins forever,

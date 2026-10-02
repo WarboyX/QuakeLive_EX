@@ -6048,6 +6048,49 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E185. Menu rows bound to cvars nothing reads: Bloom & Post rebuilt, two wrong names fixed, a check that fails the build — DONE (verify)
+**Lives in:** our **client** (pak01 menus, tools) · **Seen by:** our client only
+
+Reported after E183: post-processing still read as on in the menus, and only `r_fbo 1` plus `vid_restart` in the console turned it on.
+
+**Cause:** not the Render Options row (E183 checked it on screen: it reads `r_fbo` live). It was the in-game Advanced > **Bloom & Post** page.
+- That page's "Post processing" row was bound to `r_enablePostProcess`. With it were `r_enableBloom`, `r_bloomIntensity`, `r_bloomBrightThreshold`, `r_bloomSaturation`, `r_bloomSceneIntensity`, `r_bloomSceneSaturation` and `r_enableColorCorrect`.
+- These are Quake Live's names, and neither of our renderers registers or reads any of them.
+- Every row on the page set, showed and saved a value nothing used. "Post processing: Yes" was most likely a value from a Steam Quake Live config, shown while `r_fbo`, the real switch, was 0.
+
+**Fix:**
+- **Bloom & Post rebuilt** from what the Vulkan renderer reads: post-processing (`r_fbo`), bloom, HDR bloom, bloom intensity and threshold, tone curve, FXAA and sharpening. These are the same cvars Render Options and its Image page set.
+- **Scanning every menu of ours for the same thing** found five more rows bound to a cvar no code names:
+  - **Create-server page, wrong names:** `g_teamsize` is now `teamsize` (what the game registers and votes on), and `pmove_HookPullVelocity` is now `pmove_velocity_gh`.
+  - **Advanced pages, removed:** `r_windowedMode`, `s_voiceVolume` and `cl_demoRecordMessage`. They are Quake Live names nothing here reads. Following E111's rule, no row until the feature exists.
+- **`tools/check-menu-cvars.py`** fails when any of our menus binds a cvar that no C code of ours names as a string. It is the menu-side twin of `dead-cvars.py`, and `package-release.sh` runs it.
+
+### E184. Hollow shadows, again: caps per model, not per surface — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported after E180 with screenshots: still "weird / hollow" shadows. One showed a solid player shadow next to a second one that was only an outline.
+
+**Cause:** E180 closed holes per MD3 **surface**, but a player part is several surfaces stitched together.
+- Welded per surface, each surface's "hole" was its whole outline, including the seams to its neighbours.
+- A fan from the centre of a half-ring like that covers most of the opening but leaves a lens down the middle, and light went through the lens.
+- E180's test model was one tube made of one surface, which closed perfectly, so the test could not see this.
+
+**Fix:** `rt_caps_for` now works per **model**.
+- Vertices are welded by frame-0 position across all of the model's surfaces (a sort, not the old n²).
+- Edges come from every surface's triangles, in the same vertex order the actor mesh writes.
+- A seam between surfaces is then an ordinary shared edge, and only real holes are capped: waist, neck, open ends.
+- The fans are built after the model's last surface, from the entity's first vertex.
+
+**Checked:** lavapipe, a tube split into two surfaces along two seams, debug view, validation layer 0 errors.
+
+| Caps | Shadow at spot 1 |
+|---|---|
+| None | A ring |
+| E180 (per surface) | Filled except a lit wedge down the middle: the reported shape |
+| E184 (per model) | Solid |
+
+The one-surface tube from E180 is still solid.
+
 ### E183. Advanced rendering left water plain (`r_fbo`); menus show pending values; lamp clamp removed — DONE (verify)
 **Lives in:** our **client** (pak01 configs and menus, ui, client engine, renderervk) · **Seen by:** our client only
 

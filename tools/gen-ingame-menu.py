@@ -980,11 +980,13 @@ def page_advanced():
 #
 # The 34 are the backlog, not a gap in this menu. When one gets wired, add its
 # row; until then its absence is the honest state.
+# E183: r_windowedMode, s_voiceVolume and cl_demoRecordMessage taken off -
+# Quake Live's names that no code here registers or reads (found by
+# tools/check-menu-cvars.py, which now fails the build on such a row).
 SUBPAGES = [
     ("io_ig_video", "VIDEO", "Resolution and texture detail. Most of these need Apply.", [
         ("multi",  "r_mode",                    "Resolution"),
         ("yesno",  "r_fullscreen",              "Fullscreen"),
-        ("multi",  "r_windowedMode",            "Windowed mode"),
         ("multi",  "r_displayRefresh",          "Refresh rate"),
         ("multi",  "r_swapInterval",            "Vertical sync",
                    '"Off" 0 "On" 1 "Adaptive" -1'),
@@ -1021,16 +1023,25 @@ SUBPAGES = [
         ("yesno",  "cg_deadBodyDarken",  "Darken dead bodies"),
         ("yesno",  "cg_vignette",         "Vignette"),
     ], None),
-    ("io_ig_bloom", "BLOOM & POST", "Drawn by the OpenGL2 renderer.", [
-        ("multi",  "r_enableBloom",          "Bloom"),
-        ("slider", "r_bloomIntensity",       "Bloom intensity",  ("0.6", "0", "2")),
-        ("slider", "r_bloomBrightThreshold", "Bright threshold", ("0.6", "0", "1")),
-        ("slider", "r_bloomSaturation",      "Bloom saturation", ("1", "0", "2")),
-        ("slider", "r_bloomSceneIntensity",  "Scene intensity",  ("1", "0", "2")),
-        ("slider", "r_bloomSceneSaturation", "Scene saturation", ("1", "0", "2")),
-        ("yesno",  "r_enablePostProcess",    "Post processing"),
-        ("yesno",  "r_enableColorCorrect",   "Colour correction"),
-    ], "The Vulkan renderer has its own effects under Render Options."),
+    # E183. This page used to carry Quake Live's own bloom and post cvars -
+    # r_enableBloom, r_bloomIntensity, r_enablePostProcess, r_enableColorCorrect
+    # and four more - which neither of our renderers registers or reads. Every
+    # row set a value nothing used, and "Post processing: Yes" (a Steam Quake
+    # Live config's value) sat here while r_fbo, the real switch, was 0 - the
+    # tester's water stayed plain. Now the cvars the Vulkan renderer reads, the
+    # same ones Render Options and its Image page set.
+    ("io_ig_bloom", "BLOOM & POST", "Post-processing and its effects. Most need Apply.", [
+        ("yesno",  "r_fbo",             "Post-processing (water)"),
+        ("yesno",  "r_bloom",           "Bloom"),
+        ("multi",  "r_bloomHDR",        "HDR bloom",        '"Off (default)" 0 "On" 1'),
+        ("slider", "r_bloom_intensity", "Bloom intensity",  ("0.5", "0", "2")),
+        ("slider", "r_bloom_threshold", "Bloom threshold",  ("0.6", "0", "1")),
+        ("multi",  "r_toneMap",         "Tone curve",
+                   '"Automatic (default)" 0 "Clip" 1 "Soft knee" 2 "Filmic (ACES)" 3'),
+        ("multi",  "r_fxaa",            "FXAA",             '"Off (default)" 0 "On" 1'),
+        ("multi",  "r_sharpen",         "Sharpening (CAS)",
+                   '"Off (default)" 0 "Light" 0.25 "Medium" 0.5 "Strong" 0.75 "Strongest" 1'),
+    ], "Vulkan renderer. Bloom and water need Post-processing on."),
     # E131: no CROSSHAIR sub-page. Every crosshair option is on the Player tab
     # (page_settings), which is the one place to change it.
     ("io_ig_hud", "HUD", "What is drawn on screen while you play.", [
@@ -1083,7 +1094,6 @@ SUBPAGES = [
     ("io_ig_sound", "SOUND", "Levels, and the sounds that carry information.", [
         ("slider", "s_volume",      "Master volume", ("0.8", "0", "1")),
         ("slider", "s_musicvolume", "Music",         ("0.25", "0", "1")),
-        ("slider", "s_voiceVolume", "Voice chat",    ("1", "0", "1")),
         ("yesno",  "s_doppler",     "Doppler"),
         ("multi",  "cg_announcer",  "Announcer"),
         ("yesno",  "cg_chatbeep",   "Chat beep"),
@@ -1101,7 +1111,6 @@ SUBPAGES = [
         ("multi",  "cg_followPowerup",     "Follow powerup"),
         ("yesno",  "cg_specFov",           "Use followed player FOV"),
         ("yesno",  "cl_allowConsoleChat",  "Console chat"),
-        ("multi",  "cl_demoRecordMessage", "Demo record message"),
     ], None),
 ]
 

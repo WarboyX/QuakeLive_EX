@@ -72,6 +72,11 @@ python3 tools/check-assets.py
 # the default the code registers.
 python3 tools/check-menu-defaults.py
 
+# And a row whose cvar nothing in the code names at all: it sets, shows and
+# saves a value that no code reads. The in-game Bloom & Post page carried eight
+# (E183) - "Post processing: Yes" while r_fbo, the real switch, was 0.
+python3 tools/check-menu-cvars.py
+
 echo "building $REV"
 
 # Stamp the loaded pak01 with the revision. Menu fixes live in pak01.pk3 and
