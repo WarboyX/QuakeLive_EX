@@ -32,7 +32,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef USE_RENDERER_DLOPEN
 cvar_t* cl_renderer;
-cvar_t* cl_hwPrompt;    // [QL] E126 - CL_CheckHardwarePrompt
+cvar_t* com_qlex_firstlaunch;    // [QL] E126/E179 - CL_CheckHardwarePrompt
 #endif
 
 cvar_t* cl_nodelta;
@@ -2301,9 +2301,11 @@ main menu: switch to Vulkan? and if so, turn on the advanced rendering too?
 (ui: io_hwprompt, io_hwprompt2 - tools/gen-render-menu.py).
 
 Asked only when all of these hold:
-  - cl_hwPrompt is 0: nobody has answered yet. Either answer sets it to 1 and
-    it is archived, because it is the player's answer and not our default;
-  - cl_renderer is still opengl2 - anyone already on Vulkan chose it;
+  - com_qlex_firstlaunch is 0 or missing: the first launch has not been
+    completed. Answering sets it to 1, and it is archived, because it records
+    that this player went through it, not a default of ours. [QL] E179: it was
+    cl_hwPrompt; renamed so it cannot be confused with anything a Steam Quake
+    Live config in the same home directory carries;
   - the main menu is up, not connected, no local server, for 1.5 s, so the
     question does not arrive under a loading screen or a +connect;
   - the machine has a GPU worth it. E129: decided by PCI ID against
@@ -2313,6 +2315,12 @@ Asked only when all of these hold:
 
 A machine that does not qualify is not marked answered, so a new graphics
 card gets asked about on the next launch.
+
+[QL] E179: a player already on Vulkan (a config from an earlier build, or
+set by hand) is not asked to switch to it - the first launch goes straight to
+the second question, the advanced rendering. It used to skip the whole thing,
+which on a reinstall over an existing home directory looked like the first
+launch never happening.
 ==================
 */
 static const gpuListEntry_t* CL_FindGpu(unsigned vendor, unsigned device) {
@@ -2347,7 +2355,7 @@ static void CL_CheckHardwarePrompt(void) {
     char name[128];
     char* cut;
 
-    if (done || !uivm || !cl_hwPrompt || cl_hwPrompt->integer) {
+    if (done || !uivm || !com_qlex_firstlaunch || com_qlex_firstlaunch->integer) {
         return;
     }
     if (clc.state != CA_DISCONNECTED || com_sv_running->integer || !(Key_GetCatcher() & KEYCATCH_UI)) {
@@ -2362,10 +2370,6 @@ static void CL_CheckHardwarePrompt(void) {
         return;
     }
     done = qtrue;
-
-    if (Q_stricmp(cl_renderer->string, "opengl2")) {
-        return;
-    }
 
     Q_strncpyz(name, cls.glconfig.renderer_string, sizeof(name));
     if ((cut = strchr(name, '/')) != NULL) *cut = '\0';
@@ -2422,7 +2426,10 @@ static void CL_CheckHardwarePrompt(void) {
 
     Cvar_Set("ui_hwGpuName", name);
     Cvar_Set("ui_hwRayQuery", rayQuery ? "1" : "0");
-    Cbuf_AddText("menu_open io_hwprompt\n");
+    Com_Printf("First launch: asking about %s\n", Q_stricmp(cl_renderer->string, "vulkan")
+               ? "the Vulkan renderer" : "the advanced rendering (already on Vulkan)");
+    Cbuf_AddText(Q_stricmp(cl_renderer->string, "vulkan") ? "menu_open io_hwprompt\n"
+                                                           : "menu_open io_hwprompt2\n");
 }
 
 /*
@@ -2861,9 +2868,13 @@ void CL_InitRef(void) {
 
 #ifdef USE_RENDERER_DLOPEN
     cl_renderer = Cvar_Get("cl_renderer", "opengl2", CVAR_ARCHIVE | CVAR_LATCH);
-    // [QL] E126. Archived on purpose: it records the player's answer to the
-    // hardware prompt, not a default of ours (see CL_CheckHardwarePrompt).
-    cl_hwPrompt = Cvar_Get("cl_hwPrompt", "0", CVAR_ARCHIVE);
+    // [QL] E126/E179. Archived on purpose: it records that the player has
+    // been through the first launch, not a default of ours (see
+    // CL_CheckHardwarePrompt).
+    com_qlex_firstlaunch = Cvar_Get("com_qlex_firstlaunch", "0", CVAR_ARCHIVE);
+    Cvar_SetDescription(com_qlex_firstlaunch, "0 or missing: the first launch experience (the "
+                        "renderer and advanced rendering questions) runs from the main menu. Set to 1 "
+                        "once it has been answered; set it back to 0 to see it again.");
     Cvar_Get("ui_hwGpuName", "", CVAR_ROM);
     Cvar_Get("ui_hwRayQuery", "0", CVAR_ROM);
 

@@ -6048,6 +6048,46 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E180. Hollow shadows: the holes in player and item models closed for tracing (`r_rtActorCaps`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported with screenshots: some shadows are "hollow". There is an outline on the floor, the floor shows through inside it, and a player's shadow has lit gaps through the body.
+
+**Cause:** the models are open shells. A Quake player is three MD3s (legs, torso, head), each with a hole where it meets the next: the waist, the neck, the top of the legs. Weapons and many items have open ends too. Drawn, the holes never show. Traced from the floor toward a light high overhead, a ray under the player went up the inside of the legs, out through the neck and on to the light without touching a triangle. Only the rim, where rays graze the walls, came out dark.
+
+**Fix:** `rt_caps_for` (`vk.c`) closes each surface's holes in the shapes the traced shadows and AO use. The models as drawn are unchanged.
+- **Finding the holes, once per surface, then cached:**
+  - Vertices are welded by their frame-0 position, because MD3 duplicates vertices along texture seams and a seam is not a hole.
+  - Edges used by only one triangle are hole edges.
+  - Hole edges are grouped into holes by which welded vertices they share.
+- **Each frame:** a triangle fan from each hole's current centre, using the same lerped positions as the rest of the surface, so the cap moves with the animation.
+- **Cache lifetime:** cleared with the dynamic structures, which happens every map load.
+- **Toggle:** `r_rtActorCaps` (default 1, menu row "Solid model shadows"); `0` traces the triangles as they are.
+
+**Checked:** lavapipe, a test model made to match: an open tube (radius 40, height 24, with a texture seam), 7 sites, debug view, validation layer on, 0 errors.
+- **Caps off:** at every site with light from above, the tube casts a red **ring**, which is the reported shape.
+- **Caps on:** a filled disc.
+- **The seam** does not produce a cap: the tube's only holes are its top and bottom.
+
+### E179. First launch: its own flag (`com_qlex_firstlaunch`), and RTX 50-series cards were never asked — DONE (verify)
+**Lives in:** our **client** (client engine, pak01 menus, GPU list) · **Seen by:** our client only
+
+Reported: the first launch experience did not appear on a fresh install. The guess was that files made by Steam Quake Live were in the way.
+
+**Found two causes, both fixed:**
+1. **The GPU list classed every RTX 50-series card as "not offered".**
+   - `tools/gen-gpu-list.py` excluded data-centre chips with `GB2[01]\d`, which also matches GB202–GB207, the consumer Blackwell chips.
+   - So the tester's RTX 5080 Laptop GPU (`10de:2c59`) was listed under "data-centre part" and never prompted, whatever the config held.
+   - The pattern is now `GB1` only, and `GK2` was narrowed to `GK210`: it had also matched GK208 (GT 710/730), which were correctly not offered but listed for the wrong reason.
+   - Regenerated from pci.ids 2026.10.01: 380 rt, 263 vulkan, 1672 none. Every RTX 50 card is now tier `rt`.
+2. **Its own flag.** The first launch is now gated on `com_qlex_firstlaunch`, archived:
+   - **0 or missing:** it runs from the main menu.
+   - **Either answer:** sets it to 1.
+   - It replaces `cl_hwPrompt`.
+   - A player already on Vulkan (a config from an earlier build) used to skip the whole thing. Now they go straight to the second question, the advanced rendering.
+   - A machine that does not qualify is still not marked done, so a new graphics card is asked about on the next launch.
+   - Set `com_qlex_firstlaunch 0` to see it again.
+
 ### E178. Multiple shadows, step 1: sky and sun told apart from lamps, and the sun casts its own shadow (`r_rtShadowSun`) — DONE (verify)
 **Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
 

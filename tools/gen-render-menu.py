@@ -526,6 +526,8 @@ def cast_shadows():
         ("multi", "r_rtLightField", "Light position", '"Per pixel" 0 "Light field (default)" 1'),
         # [QL] E178. The sun gets its own shadow beside a brighter lamp.
         ("multi", "r_rtShadowSun", "Sun shadow", '"Strongest light only" 0 "Also the sun (default)" 1'),
+        # [QL] E180. Models' open holes closed, so shadows are not hollow.
+        ("multi", "r_rtActorCaps", "Solid model shadows", '"Off" 0 "On (default)" 1'),
         # [QL] E165/E166. Doors and lifts always cast; players and items by shape.
         ("multi", "r_rtShadowCasters", "Players block lights",
          '"No (default)" 0 "Yes" 1'),
@@ -774,7 +776,9 @@ def popup(menu, title, lines, buttons, esc):
 
 
 def hw_prompts():
-    done = 'exec "seta cl_hwPrompt 1"'
+    # [QL] E179. com_qlex_firstlaunch, set by either step: a player already on
+    # Vulkan is shown only the second (CL_CheckHardwarePrompt).
+    done = 'exec "seta com_qlex_firstlaunch 1"'
     step1 = popup(
         "io_hwprompt", "HIGH-END HARDWARE DETECTED",
         [("We found a graphics card that can run the Vulkan renderer:", WHITE),
@@ -799,11 +803,11 @@ def hw_prompts():
          ("The game restarts its video to apply this.", DIM)],
         # YES is two buttons on one slot: advanced.cfg where the card has ray
         # query, advanced_norq.cfg (no ray-traced AO) where it does not.
-        [[("hw2yes", "YES", 120, 'close io_hwprompt2 ; exec "exec advanced.cfg ; vid_restart"', rq),
-          ("hw2yesb", "YES", 120, 'close io_hwprompt2 ; exec "exec advanced_norq.cfg ; vid_restart"',
+        [[("hw2yes", "YES", 120, done + ' ; close io_hwprompt2 ; exec "exec advanced.cfg ; vid_restart"', rq),
+          ("hw2yesb", "YES", 120, done + ' ; close io_hwprompt2 ; exec "exec advanced_norq.cfg ; vid_restart"',
            norq)],
-         ("hw2no", "NO", 120, 'close io_hwprompt2 ; exec "vid_restart"')],
-        'close io_hwprompt2 ; exec "vid_restart"')
+         ("hw2no", "NO", 120, done + ' ; close io_hwprompt2 ; exec "vid_restart"')],
+        done + ' ; close io_hwprompt2 ; exec "vid_restart"')
     return step1 + step2
 
 

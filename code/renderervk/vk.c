@@ -5580,9 +5580,13 @@ static qboolean rt_create_proxy( vk_rt_proxy_t *proxy, const float ( *verts )[3]
 }
 
 
+static void rt_caps_clear( void );
+
 static void vk_rt_destroy_dynamic( void )
 {
 	uint32_t i;
+
+	rt_caps_clear();   /* [QL] E180: the models' holes go with the map */
 
 	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
 		if ( vk.rt.world.dyn_tlas[i] != VK_NULL_HANDLE ) {
@@ -5780,6 +5784,159 @@ static qboolean rt_actors_wanted( void )
 }
 
 /*
+=================
+rt_caps_for
+
+[QL] E180: the holes in a model, closed for its shadow.
+
+A Quake player is three MD3 models - legs, torso, head - each an open shell,
+with a hole where it meets the next: the waist, the neck, the top of the legs.
+Weapons and many items have open ends the same way. Drawn, the holes never
+show. Traced from the floor toward a light high overhead, a ray under the
+player goes straight up the inside of the legs, out through the neck and on to
+the light without touching a triangle, so the middle of the shadow is lit and
+only the rim, where rays graze the walls, is dark - the "hollow" shadows in the
+tester's screenshots (an outline on the floor with the floor showing through).
+
+Found once per surface and kept: vertices welded by their position in frame 0
+(MD3 duplicates a vertex along a texture seam, and a seam is not a hole), every
+edge used by one triangle only is on a hole, and the edges are grouped into
+holes by which welded vertices they share. Each frame, a fan from the hole's
+current centre closes it in the structure - the same lerped positions as the
+rest of the surface, so the cap moves with the model.
+
+The table is cleared with the dynamic structures, which is every map load, so
+a model unloaded with the map cannot leave its answer under a pointer a new
+one is given.
+=================
+*/
+#define RT_CAP_SLOTS	2048
+#define RT_CAP_LOOPS	32
+
+typedef struct {
+	const md3Surface_t	*surf;
+	int					numEdges;
+	int					numLoops;
+	int					*edges;		/* numEdges * 3: from, to, hole */
+} rtCapInfo_t;
+
+static rtCapInfo_t rtCaps[RT_CAP_SLOTS];
+
+static void rt_caps_clear( void )
+{
+	int i;
+	for ( i = 0; i < RT_CAP_SLOTS; i++ ) {
+		if ( rtCaps[i].edges ) {
+			ri.Free( rtCaps[i].edges );
+		}
+	}
+	Com_Memset( rtCaps, 0, sizeof( rtCaps ) );
+}
+
+static int rt_cap_edge_cmp( const void *a, const void *b )
+{
+	const int *x = (const int *)a, *y = (const int *)b;
+	if ( x[0] != y[0] ) return x[0] - y[0];
+	return x[1] - y[1];
+}
+
+static int rt_cap_find( int *parent, int v )
+{
+	while ( parent[v] != v ) {
+		parent[v] = parent[parent[v]];
+		v = parent[v];
+	}
+	return v;
+}
+
+static const rtCapInfo_t *rt_caps_for( const md3Surface_t *surf )
+{
+	const uintptr_t key = (uintptr_t)surf;
+	const short *xyz = (const short *)( (const byte *)surf + surf->ofsXyzNormals );
+	const int *tris = (const int *)( (const byte *)surf + surf->ofsTriangles );
+	const int nv = surf->numVerts, ne = surf->numTriangles * 3;
+	rtCapInfo_t *c = NULL;
+	int *weld, *und, *parent, *loopId;
+	int i, j, k, slot, nb = 0;
+
+	slot = (int)( ( key >> 4 ) * 2654435761u % RT_CAP_SLOTS );
+	for ( i = 0; i < RT_CAP_SLOTS; i++ ) {
+		rtCapInfo_t *s = &rtCaps[ ( slot + i ) % RT_CAP_SLOTS ];
+		if ( s->surf == surf ) {
+			return s;
+		}
+		if ( s->surf == NULL ) {
+			c = s;
+			break;
+		}
+	}
+	if ( c == NULL || nv <= 0 || ne <= 0 ) {
+		return NULL;   /* table full: this surface goes uncapped */
+	}
+	c->surf = surf;
+
+	weld = ri.Malloc( nv * sizeof( int ) );
+	parent = ri.Malloc( nv * sizeof( int ) );
+	loopId = ri.Malloc( nv * sizeof( int ) );
+	und = ri.Malloc( ne * 4 * sizeof( int ) );
+	for ( i = 0; i < nv; i++ ) {
+		const short *p = xyz + i * 4;
+		weld[i] = i;
+		for ( j = 0; j < i; j++ ) {
+			const short *q = xyz + j * 4;
+			if ( p[0] == q[0] && p[1] == q[1] && p[2] == q[2] ) {
+				weld[i] = weld[j];
+				break;
+			}
+		}
+		parent[i] = i;
+		loopId[i] = -1;
+	}
+	/* every edge, undirected for counting, with its direction kept */
+	for ( i = 0; i < ne; i++ ) {
+		const int a = weld[ tris[i] ], b = weld[ tris[ ( i % 3 == 2 ) ? i - 2 : i + 1 ] ];
+		und[i*4+0] = a < b ? a : b;
+		und[i*4+1] = a < b ? b : a;
+		und[i*4+2] = a;
+		und[i*4+3] = b;
+	}
+	qsort( und, ne, 4 * sizeof( int ), rt_cap_edge_cmp );
+	/* used once: on a hole. Kept in place at the front of und. */
+	for ( i = 0; i < ne; i = j ) {
+		for ( j = i + 1; j < ne && und[j*4] == und[i*4] && und[j*4+1] == und[i*4+1]; j++ ) {}
+		if ( j - i == 1 && und[i*4] != und[i*4+1] ) {
+			for ( k = 0; k < 4; k++ ) und[nb*4+k] = und[i*4+k];
+			nb++;
+		}
+	}
+	for ( i = 0; i < nb; i++ ) {
+		const int ra = rt_cap_find( parent, und[i*4+2] ), rb = rt_cap_find( parent, und[i*4+3] );
+		if ( ra != rb ) parent[ra] = rb;
+	}
+	if ( nb >= 3 ) {
+		c->edges = ri.Malloc( nb * 3 * sizeof( int ) );
+		for ( i = 0; i < nb; i++ ) {
+			const int r = rt_cap_find( parent, und[i*4+2] );
+			if ( loopId[r] < 0 ) {
+				loopId[r] = c->numLoops < RT_CAP_LOOPS ? c->numLoops++ : RT_CAP_LOOPS;
+			}
+			if ( loopId[r] >= RT_CAP_LOOPS ) {
+				continue;   /* more holes than a model plausibly has: leave the rest */
+			}
+			c->edges[c->numEdges*3+0] = und[i*4+2];
+			c->edges[c->numEdges*3+1] = und[i*4+3];
+			c->edges[c->numEdges*3+2] = loopId[r];
+			c->numEdges++;
+		}
+	}
+	ri.Free( weld );
+	ri.Free( parent );
+	ri.Free( loopId );
+	ri.Free( und );
+	return c;
+}
+
+/*
 Fill this command buffer's actor mesh and record its build. Returns the
 triangle count; 0 means nothing was built and the instance must be left out.
 */
@@ -5857,8 +6014,39 @@ static uint32_t rt_build_actor_mesh( int idx )
 			for ( t = 0; t < surf->numTriangles * 3; t++ ) {
 				iout[ nt * 3 + t ] = nv + (uint32_t)tris[t];
 			}
-			nv += surf->numVerts;
-			nt += surf->numTriangles;
+			{
+				/* [QL] E180: close its holes - see rt_caps_for */
+				const rtCapInfo_t *cap = r_rtActorCaps->integer ? rt_caps_for( surf ) : NULL;
+				const uint32_t base = nv;
+				nv += surf->numVerts;
+				nt += surf->numTriangles;
+				if ( cap && cap->numLoops > 0 &&
+					 nv + (uint32_t)cap->numLoops <= RT_ACTOR_MAX_VERTS &&
+					 nt + (uint32_t)cap->numEdges <= RT_ACTOR_MAX_TRIS ) {
+					float cnt[RT_CAP_LOOPS];
+					int l, k;
+					for ( l = 0; l < cap->numLoops; l++ ) {
+						VectorClear( &vout[ ( nv + l ) * 3 ] );
+						cnt[l] = 0.0f;
+					}
+					for ( k = 0; k < cap->numEdges; k++ ) {
+						const int *ed = &cap->edges[k * 3];
+						VectorAdd( &vout[ ( nv + ed[2] ) * 3 ], &vout[ ( base + ed[0] ) * 3 ], &vout[ ( nv + ed[2] ) * 3 ] );
+						cnt[ ed[2] ] += 1.0f;
+					}
+					for ( l = 0; l < cap->numLoops; l++ ) {
+						VectorScale( &vout[ ( nv + l ) * 3 ], 1.0f / ( cnt[l] > 0.0f ? cnt[l] : 1.0f ), &vout[ ( nv + l ) * 3 ] );
+					}
+					for ( k = 0; k < cap->numEdges; k++ ) {
+						const int *ed = &cap->edges[k * 3];
+						iout[ nt * 3 + 0 ] = nv + (uint32_t)ed[2];
+						iout[ nt * 3 + 1 ] = base + (uint32_t)ed[1];
+						iout[ nt * 3 + 2 ] = base + (uint32_t)ed[0];
+						nt++;
+					}
+					nv += (uint32_t)cap->numLoops;
+				}
+			}
 			surf = (const md3Surface_t *)( (const byte *)surf + surf->ofsEnd );
 		}
 		nents++;

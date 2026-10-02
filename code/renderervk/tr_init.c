@@ -84,6 +84,7 @@ cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
 cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
 cvar_t	*r_rtLightField;           // [QL] E176
 cvar_t	*r_rtShadowSun;            // [QL] E178
+cvar_t	*r_rtActorCaps;            // [QL] E180
 cvar_t	*r_rtTimings;              // [QL] E177
 cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
@@ -2789,6 +2790,12 @@ static void R_Register( void )
 		"is brighter. The light grid keeps one light per place, so without this the strongest light gets "
 		"the only shadow. Maps with a q3map_sun only; costs a second set of rays where the sun reaches.\n"
 		" 0 - one shadow, from the strongest light\n 1 - also the sun's (default)" );
+	r_rtActorCaps = ri.Cvar_Get( "r_rtActorCaps", "1", CVAR_ARCHIVE_ND );   // [QL] E180
+	ri.Cvar_CheckRange( r_rtActorCaps, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorCaps, "Close the holes in player and item models (the waist, the neck, "
+		"open ends) in the shapes the traced shadows and AO use. Models are open shells where their parts "
+		"meet, and a light from above shone straight through them, leaving shadows hollow in the middle.\n"
+		" 0 - the models' triangles as they are\n 1 - holes closed (default)" );
 	r_rtTimings = ri.Cvar_Get( "r_rtTimings", "0", CVAR_TEMP );
 	ri.Cvar_CheckRange( r_rtTimings, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtTimings, "Print the GPU time of each ray-tracing pass every two seconds: "

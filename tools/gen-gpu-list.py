@@ -61,7 +61,7 @@ def split(name):
 NV_RT = re.compile(r"^(TU10[246]|GA10[2-7]|AD10[2-7]|GB20[2-7])")
 NV_VK = re.compile(r"^(TU11[67]|GP10[2-7]|GM20[046]|GV100)")
 # No display output at all, or not a GeForce/Quadro-class part.
-NV_DATACENTER = re.compile(r"^(GA100|GH1|GB1|GB2[01]\d|GP100|GK2|GK110B?GL)")
+NV_DATACENTER = re.compile(r"^(GA100|GH1|GB1|GP100|GK210|GK110B?GL)")
 # Discrete, but the entry line: not what the prompt is asking about.
 NV_ENTRY = re.compile(r"\bMX\s?\d|\bGT \d|\bGT$|NVS|Tegra", re.I)
 
