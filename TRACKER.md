@@ -6048,6 +6048,25 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E182. Advanced hub: buttons for every render page, from one list — DONE (verify)
+**Lives in:** our **client** (pak01 menus) · **Seen by:** our client only
+
+Reported: the new render options were missing as selectable buttons in Advanced.
+
+**Cause:** the in-game Advanced hub's "Exclusive Options" named four render pages by hand: Render Options, Water, Ray Tracing, Surface Detail. Four pages added later had a tab in the render frame and no button on the hub:
+- Shadows (E161)
+- Cast Shadows (E167), where every shadow option since then lives (sun shadow, solid model shadows, light position, soft edges…)
+- Splashes (E147)
+- Image (E152)
+
+They were only reachable by opening one of the four and switching tabs.
+
+**Fix:** `RENDER_PAGES` in `tools/gen-ingame-menu.py` is now the one list of render pages: suffix, tab label, hub label. `gen-render-menu.py` builds its tab bar from it and the hub builds its buttons from it, so a page added to one cannot be missing from the other.
+- **Layout:** the hub lays all eight out on the same 3-wide centred grid as Normal Options (rows at y 176/204/232). Original Menu moves down to y 288, inside the 340-high page.
+- **Guard:** the generator now fails if the hub ever runs past its page.
+
+**Checked:** `check-menus.py` reports 0 problems and 0 unresolved references, and every button's `open io_igr_<page>` resolves. It was not looked at on screen: the harness cannot open in-game menus.
+
 ### E181. The GPU is recorded every launch; a different one runs the first launch again (`com_qlex_lastgpu`) — DONE (verify)
 **Lives in:** our **client** (client engine) · **Seen by:** our client only
 

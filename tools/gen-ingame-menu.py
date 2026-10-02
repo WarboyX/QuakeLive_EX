@@ -895,6 +895,36 @@ def heading(text, y):
             '                  forecolor %s  visible 1  decoration }\n' % (text, y, WHITE))
 
 
+# [QL] E182. Every render page (tools/gen-render-menu.py builds them), with its
+# tab label there and its button label on the Advanced hub here. One list for
+# both, so a page added there is reachable from here without anyone having to
+# remember. The hub used to name four of them by hand; the four added later -
+# both shadow pages, Splashes and Image - had tabs and no button.
+RENDER_PAGES = [
+    ("renderoptions", "Render",         "RENDER OPTIONS"),   # E167: tab shortened to fit eight
+    ("raytracing",    "Lighting & RT",  "LIGHTING & RT"),
+    ("shadows",       "Shadows",        "SHADOWS"),          # E161: cast by the level
+    ("castshadows",   "Cast Shadows",   "CAST SHADOWS"),     # E167: falling on the level
+    ("water",         "Water",          "WATER"),
+    ("splashes",      "Splashes",       "SPLASHES"),         # E147: split off Water
+    ("surfacedetail", "Surface Detail", "SURFACE DETAIL"),
+    ("image",         "Image",          "IMAGE"),            # E152: post effects, performance
+]
+
+
+def grid(items, y0, prefix):
+    """Three 160-wide buttons a row, 12 apart, a short last row centred."""
+    cols = [28, 200, 372]
+    out, n = "", len(items)
+    for i, (nm, label, action) in enumerate(items):
+        x = cols[i % 3]
+        left = n - (i - i % 3)      # buttons in this button's row
+        if left < 3:
+            x = (560 - (left * 160 + (left - 1) * 12)) // 2 + (i % 3) * 172
+        out += button(prefix + nm, label, x, y0 + (i // 3) * 28, 160, action)
+    return out, y0 + ((n + 2) // 3) * 28
+
+
 def page_advanced():
     """
     A hub. The sub-pages hold the rows; this only has to reach them.
@@ -910,33 +940,29 @@ def page_advanced():
     ones our code does not read), Exclusive Options (pages only this port has)
     and Original Menu (Quake Live's own in-game menu, reached unchanged).
     """
-    cols = [28, 200, 372]           # three 160-wide buttons, 12 apart, centred
     b = heading("Normal Options", 44)
-    n = len(SUBPAGE_INDEX)
-    for i, (menu, title) in enumerate(SUBPAGE_INDEX):
-        x = cols[i % 3]
-        left = n - (i - i % 3)      # buttons in this button's row
-        if left < 3:                # a short last row is centred, not left-hung
-            x = (560 - (left * 160 + (left - 1) * 12)) // 2 + (i % 3) * 172
-        b += button("adv_" + menu, title, x, 64 + (i // 3) * 28, 160,
-                    "close io_ig_advanced ; open %s" % menu)
+    b2, y = grid([(menu, title, "close io_ig_advanced ; open %s" % menu) for menu, title in SUBPAGE_INDEX],
+                 64, "adv_")
+    b += b2
     # These are full-size menus that cover this page, so they leave it open
     # underneath - closing them is what brings you back here (see E112).
-    b += heading("Exclusive Options", 156)
     # E118: Player Setup is gone from here - its name, handicap and model picker
     # are all on the Player tab now. It stays on the main menu, which has no
-    # Player tab. The four that remain are the renderer's, as a centred 2x2.
+    # Player tab.
     # E125: the in-game copies (io_igr_*). They REPLACE this frame rather than
     # opening over it - one dim, one tab bar, the same height - and their BACK
     # reopens this frame and page with the Advanced tab still lit.
+    # E182: every render page, from RENDER_PAGES.
     go = "close io_ig_advanced ; close io_ingame ; open %s"
-    b += button("ig_advrender", "RENDER OPTIONS", 114, 176, 160, go % "io_igr_renderoptions")
-    b += button("ig_advwater", "WATER", 286, 176, 160, go % "io_igr_water")
-    b += button("ig_advrt", "RAY TRACING", 114, 204, 160, go % "io_igr_raytracing")
-    b += button("ig_advsurf", "SURFACE DETAIL", 286, 204, 160, go % "io_igr_surfacedetail")
-    b += heading("Original Menu", 240)
-    b += button("ig_advql", "QUAKE LIVE MENU", 200, 260, 160,
+    b += heading("Exclusive Options", y + 8)
+    b2, y = grid([(suffix, label, go % ("io_igr_" + suffix)) for suffix, _, label in RENDER_PAGES],
+                 y + 28, "ig_adv_")
+    b += b2
+    b += heading("Original Menu", y + 8)
+    b += button("ig_advql", "QUAKE LIVE MENU", 200, y + 28, 160,
                 "open ingame ; open ingame_about")
+    if y + 28 + 24 > PAGE_H:
+        raise SystemExit("gen-ingame-menu: the Advanced hub runs past its page (%d > %d)" % (y + 52, PAGE_H))
     return page("io_ig_advanced", "ADVANCED", b, "Grouped the way Quake Live groups them.")
 
 

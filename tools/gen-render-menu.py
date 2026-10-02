@@ -61,16 +61,11 @@ GL = ('cvarTest "cl_renderer"  hideCvar { "vulkan" }')
 #                          stacked; BACK reopens io_ingame and io_ig_advanced.
 #                          The frame no longer resets its tabs on open, so
 #                          Advanced is still the lit tab when you come back.
-TABS = [
-    ("renderoptions", "Render"),         # [QL] E167: shortened to fit an eighth tab
-    ("raytracing",    "Lighting & RT"),    # [QL] E167: shortened to fit an eighth tab
-    ("shadows",       "Shadows"),        # [QL] E161: ray-traced shadows cast by the level
-    ("castshadows",   "Cast Shadows"),   # [QL] E167: shadows falling on the level
-    ("water",         "Water"),
-    ("splashes",      "Splashes"),   # [QL] E147: IMPACTS, split off Water
-    ("surfacedetail", "Surface Detail"),
-    ("image",         "Image"),          # [QL] E152: post effects and performance
-]
+# [QL] E182. The pages, their tab labels and their Advanced-hub buttons live in
+# one list in gen-ingame-menu.py (RENDER_PAGES), so a new page cannot get a tab
+# here and no button on the hub - which is how Shadows, Cast Shadows, Splashes
+# and Image all went missing from it.
+TABS = [(suffix, tab) for suffix, tab, _ in ig.RENDER_PAGES]
 
 VARIANTS = {
     "main":   {"prefix": "io_"},

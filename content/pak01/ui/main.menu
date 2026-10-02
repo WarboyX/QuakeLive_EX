@@ -1335,47 +1335,83 @@
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
-            name ig_advrender  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 114 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            name ig_adv_renderoptions  text "RENDER OPTIONS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 28 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_renderoptions }
-            mouseEnter { setitemcolor ig_advrender backcolor 0 0 0 .9 ; setitemcolor ig_advrender forecolor 0.964 0.815 0 1 ; setitemcolor ig_advrender bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advrender backcolor 0 0 0 .6 ; setitemcolor ig_advrender forecolor 1 1 1 1 ; setitemcolor ig_advrender bordercolor .35 .3 .12 1 }
+            mouseEnter { setitemcolor ig_adv_renderoptions backcolor 0 0 0 .9 ; setitemcolor ig_adv_renderoptions forecolor 0.964 0.815 0 1 ; setitemcolor ig_adv_renderoptions bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_adv_renderoptions backcolor 0 0 0 .6 ; setitemcolor ig_adv_renderoptions forecolor 1 1 1 1 ; setitemcolor ig_adv_renderoptions bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name ig_advwater  text "WATER"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 286 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
-            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
-            forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_water }
-            mouseEnter { setitemcolor ig_advwater backcolor 0 0 0 .9 ; setitemcolor ig_advwater forecolor 0.964 0.815 0 1 ; setitemcolor ig_advwater bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advwater backcolor 0 0 0 .6 ; setitemcolor ig_advwater forecolor 1 1 1 1 ; setitemcolor ig_advwater bordercolor .35 .3 .12 1 }
-        }
-        itemDef {
-            name ig_advrt  text "RAY TRACING"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 114 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            name ig_adv_raytracing  text "LIGHTING & RT"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 200 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_raytracing }
-            mouseEnter { setitemcolor ig_advrt backcolor 0 0 0 .9 ; setitemcolor ig_advrt forecolor 0.964 0.815 0 1 ; setitemcolor ig_advrt bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advrt backcolor 0 0 0 .6 ; setitemcolor ig_advrt forecolor 1 1 1 1 ; setitemcolor ig_advrt bordercolor .35 .3 .12 1 }
+            mouseEnter { setitemcolor ig_adv_raytracing backcolor 0 0 0 .9 ; setitemcolor ig_adv_raytracing forecolor 0.964 0.815 0 1 ; setitemcolor ig_adv_raytracing bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_adv_raytracing backcolor 0 0 0 .6 ; setitemcolor ig_adv_raytracing forecolor 1 1 1 1 ; setitemcolor ig_adv_raytracing bordercolor .35 .3 .12 1 }
         }
         itemDef {
-            name ig_advsurf  text "SURFACE DETAIL"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 286 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            name ig_adv_shadows  text "SHADOWS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 372 176 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_shadows }
+            mouseEnter { setitemcolor ig_adv_shadows backcolor 0 0 0 .9 ; setitemcolor ig_adv_shadows forecolor 0.964 0.815 0 1 ; setitemcolor ig_adv_shadows bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_adv_shadows backcolor 0 0 0 .6 ; setitemcolor ig_adv_shadows forecolor 1 1 1 1 ; setitemcolor ig_adv_shadows bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name ig_adv_castshadows  text "CAST SHADOWS"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 28 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_castshadows }
+            mouseEnter { setitemcolor ig_adv_castshadows backcolor 0 0 0 .9 ; setitemcolor ig_adv_castshadows forecolor 0.964 0.815 0 1 ; setitemcolor ig_adv_castshadows bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_adv_castshadows backcolor 0 0 0 .6 ; setitemcolor ig_adv_castshadows forecolor 1 1 1 1 ; setitemcolor ig_adv_castshadows bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name ig_adv_water  text "WATER"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 200 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_water }
+            mouseEnter { setitemcolor ig_adv_water backcolor 0 0 0 .9 ; setitemcolor ig_adv_water forecolor 0.964 0.815 0 1 ; setitemcolor ig_adv_water bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_adv_water backcolor 0 0 0 .6 ; setitemcolor ig_adv_water forecolor 1 1 1 1 ; setitemcolor ig_adv_water bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name ig_adv_splashes  text "SPLASHES"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 372 204 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_splashes }
+            mouseEnter { setitemcolor ig_adv_splashes backcolor 0 0 0 .9 ; setitemcolor ig_adv_splashes forecolor 0.964 0.815 0 1 ; setitemcolor ig_adv_splashes bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_adv_splashes backcolor 0 0 0 .6 ; setitemcolor ig_adv_splashes forecolor 1 1 1 1 ; setitemcolor ig_adv_splashes bordercolor .35 .3 .12 1 }
+        }
+        itemDef {
+            name ig_adv_surfacedetail  text "SURFACE DETAIL"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 114 232 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_surfacedetail }
-            mouseEnter { setitemcolor ig_advsurf backcolor 0 0 0 .9 ; setitemcolor ig_advsurf forecolor 0.964 0.815 0 1 ; setitemcolor ig_advsurf bordercolor 0.964 0.815 0 1 }
-            mouseExit  { setitemcolor ig_advsurf backcolor 0 0 0 .6 ; setitemcolor ig_advsurf forecolor 1 1 1 1 ; setitemcolor ig_advsurf bordercolor .35 .3 .12 1 }
+            mouseEnter { setitemcolor ig_adv_surfacedetail backcolor 0 0 0 .9 ; setitemcolor ig_adv_surfacedetail forecolor 0.964 0.815 0 1 ; setitemcolor ig_adv_surfacedetail bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_adv_surfacedetail backcolor 0 0 0 .6 ; setitemcolor ig_adv_surfacedetail forecolor 1 1 1 1 ; setitemcolor ig_adv_surfacedetail bordercolor .35 .3 .12 1 }
         }
-        itemDef { text "Original Menu"  textscale .21  rect 24 240 512 16  textaligny 12
+        itemDef {
+            name ig_adv_image  text "IMAGE"  type ITEM_TYPE_BUTTON  textscale .22
+            rect 286 232 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
+            forecolor 1 1 1 1  visible 1
+            action { play "sound/misc/menu1.wav" ; close io_ig_advanced ; close io_ingame ; open io_igr_image }
+            mouseEnter { setitemcolor ig_adv_image backcolor 0 0 0 .9 ; setitemcolor ig_adv_image forecolor 0.964 0.815 0 1 ; setitemcolor ig_adv_image bordercolor 0.964 0.815 0 1 }
+            mouseExit  { setitemcolor ig_adv_image backcolor 0 0 0 .6 ; setitemcolor ig_adv_image forecolor 1 1 1 1 ; setitemcolor ig_adv_image bordercolor .35 .3 .12 1 }
+        }
+        itemDef { text "Original Menu"  textscale .21  rect 24 268 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef {
             name ig_advql  text "QUAKE LIVE MENU"  type ITEM_TYPE_BUTTON  textscale .22
-            rect 200 260 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
+            rect 200 288 160 24  textalign ITEM_ALIGN_CENTER  textalignx 80  textaligny 16
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
             action { play "sound/misc/menu1.wav" ; open ingame ; open ingame_about }
