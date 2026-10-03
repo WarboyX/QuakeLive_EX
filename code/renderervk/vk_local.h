@@ -46,6 +46,9 @@ typedef struct {
 	float depthLinear[4];  // proj[10], proj[14], depth tolerance, [QL] E150 occlusion scale
 } rtaoBlurPush_t;
 
+// the main pass's MSAA sample count, chosen in vk.c
+extern int vkSamples;
+
 // Vulkan API functions, loaded by vk.c
 extern PFN_vkCreateInstance								qvkCreateInstance;
 extern PFN_vkEnumerateInstanceExtensionProperties		qvkEnumerateInstanceExtensionProperties;
@@ -190,5 +193,19 @@ void vk_ssr_destroy( void );
 // render passes shared with the RT files
 void vk_begin_render_pass( VkRenderPass renderPass, VkFramebuffer frameBuffer, qboolean clearValues, uint32_t width, uint32_t height );
 void vk_begin_rtao_offscreen_render_pass( int target, int scale );
+// descriptor updates each pass owns, called whenever the structure changes
+void vk_ssr_update_rt_descriptor( void );          // vk_ssr.c, E156
+void vk_actor_shadow_update_descriptor( void );    // vk_rt_shadow.c, E166
+
+// vk_rt_ao.c - once-per-map AO reports, reset by the world rebuild
+extern qboolean rtaoOnReported;
+extern qboolean rtaoOffReported;
+
+// vk_rt_ao.c - AO setup and teardown, the shared depth view
+void vk_rt_destroy_ao( void );
+void vk_depth_sampling_destroy( void );
+void vk_depth_sampling_create( void );
+void vk_rt_create_ao( void );
+void vk_rt_update_ao_descriptor( void );
 
 #endif // VK_LOCAL_H

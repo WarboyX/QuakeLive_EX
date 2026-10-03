@@ -1739,6 +1739,7 @@ Q3RVKOBJ = \
   $(B)/renderervk/vk_timing.o \
   $(B)/renderervk/vk_ssr.o \
   $(B)/renderervk/vk_rt_shadow.o \
+  $(B)/renderervk/vk_rt_ao.o \
   $(B)/renderervk/vk_flares.o \
   $(B)/renderervk/vk_vbo.o \
   $(B)/renderervk/tr_q3e_compat.o \
