@@ -4853,34 +4853,31 @@ Asked for: wide displays should look natural rather than stretched or based on 4
 - A FOV change alters what players see and feel. That is why it is an option, and why the menu label must say what 100 means.
 - Quake Live's own HUD layouts were designed for 16:9 at most; at 32:9 the anchored corners sit very far apart. That is a layout taste question for the tester, not a bug.
 
-### R30. Lua modding support — SCOPED, not started
-**Lives in:** our **server** (qagame) first; our **client** (cgame) later and optional · **Seen by:** every client for server scripts; our client only for client scripts
+### R30. Lua modding support, Garry's Mod–style — SCOPED, not started
+**Lives in:** our **server** (qagame) for tiers A/B; our **client** (cgame) for tier C, plus engine networking for the protocol extension · **Seen by:** every client for tiers A/B; **our client only** for tier C
 
-Asked for: scope Lua modding.
+Asked for: mod support "similar to Garry's Mod: models, scripts, game logic". Full scope in **`docs/lua-modding-scope.md`**; this is the summary.
 
-**What exists:** nothing; no scripting layer of any kind in the tree. The Quake Live server ecosystem today is **minqlx**, a Python plugin system that hooks the closed qzeroded binary from outside. We own the server source, so a native layer is cleaner than that: no binary patching, a stable API, and it runs inside our qagame.
-
-**Precedent:** ET: Legacy's Lua API for Wolfenstein: ET, used by its whole admin and mod ecosystem: hooks such as `et_InitGame`, `et_ClientConnect`, `et_ClientCommand`, `et_RunFrame`, `et_Damage`, and functions to read and write entity and client fields, run console commands and read cvars. It is the model to follow, adapted to Quake Live's game types and events.
-
-**Proposed shape:**
-- **Lua 5.4**, MIT licence, about 30 C files, vendored under `code/lua/` and built into qagame on both platforms (Makefile and the mingw build). No new runtime dependency for server admins.
-- **Scripts** in `baseq3/lua/*.lua`, loaded at map start in order from a `lua_modules` cvar, and reloadable with a `lua_restart` command without a map change.
-- **Sandbox:** no `os`, `io` or `package.loadlib`. File access only through the engine's filesystem under `lua/`. An instruction-count hook aborts a runaway callback, and an error in one script disables that script with a console message rather than taking the server down.
-- **Hooks, first set:** init and shutdown, run frame, client connect / begin / disconnect / userinfo changed, client command (to add `!commands` and votes), console command, and chat. **Second set:** damage, death and obituary, item pickup, round and match state changes (CA/FT/AD rounds, CTF captures), team changes.
-- **Functions, first set:** read and set cvars, run console commands, print and centre-print to one client or all, read client and player-state fields (name, team, score, health, armour, weapons, position), kick and team change. Write access to entity fields comes in the second set, field by field, behind an explicit list.
-
-**What "Seen by" means here (CLAUDE.md):**
-- A server script that only changes server-side state (scores, votes, chat, spawning, damage rules) is seen correctly by every client, stock Steam Quake Live included.
-- A script that changes anything the client predicts or regenerates from a seed (movement physics `pmove_*`, the shotgun pattern) is wrong for stock clients unless it goes through the replicated game-rule cvars (`CVAR_GAMERULE_REPL`). The API should refuse those writes, or document them as our-client-only.
-
-**Client-side Lua (later, optional):** custom HUD elements and client commands in cgame. Smaller audience, real security cost: a server could push a script to clients. Only scripts the player installs locally, never downloaded ones; a separate decision.
-
-**minqlx compatibility:** a large existing plugin library, in Python. Embedding CPython is far heavier than Lua. Better: name our hooks and functions after minqlx's where they line up, so porting a plugin is a translation rather than a redesign.
-
-**Effort:**
-- **First set** (embed, sandbox, lifecycle, commands, chat, cvars, client info, reload): 3–5 days with tests.
-- **Second set** (game events, entity writes): another 3–5 days.
-- **Harness test:** a dedicated server plus scripted bots, which the sanitizer run (task #2) already uses, plus one example plugin each for a command, a vote and a game event.
+- **Lineage:** Quake 3 already has the same skeleton as Source: classname entities with think/touch/use, a server/client split, shared predicted code, configstrings, and three model formats including skeletal IQM. GMod leans on four things Source added that we lack: rigid-body physics, server-sent client code, an extensible network format, and a runtime UI toolkit.
+- **Tiers:**
+  - **A** is server logic, seen by every client.
+  - **B** is server logic plus content (stock cgame draws any `ET_GENERAL` model, and `TR_INTERPOLATE` lets the server move it), seen by every client that has the files. Server-simulated physics props fall here.
+  - **C** is client Lua (HUD, predicted weapons and movement, UI), seen by our client only.
+- **Protocol-91 ceilings for stock clients:**
+  - 1024 entities, 256 models (8-bit index), 256 sounds.
+  - About 300 free configstrings.
+  - **One** free weapon slot.
+  - No new entity types or fields.
+  - A 64-slot reliable command buffer.
+- **Runtime:** Lua 5.4 (sandbox guarantees for downloaded client code), GMod-style addon layout, `lua_restart`, per-hook error isolation.
+- **Stages:** L1 runtime and server API → L2 scripted entities → L3 gamemodes → L4 content download → L5 client realm and sandbox → L6 client hooks → L7 weapons → L8 Jolt physics → L9 UI toolkit → L10 protocol extension → L11 ragdolls → L12 the Sandbox gamemode. L1–L4 is a scriptable server for all players; L5–L9 makes it GMod-like on our client.
+- **Decisions open:**
+  - D1: stock clients on client-Lua servers.
+  - D2: player consent for downloaded client Lua.
+  - D3: Lua 5.4 or LuaJIT.
+  - D4: GMod syntax extensions.
+  - D5: Jolt or Bullet.
+  - D6: starting stage.
 
 ### R22. Smoothed vertex normals on world geometry — SCOPED, not started
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
