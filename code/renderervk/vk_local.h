@@ -23,6 +23,16 @@ never this.
 #endif
 #endif
 
+#define VK_CHECK( function_call ) { \
+	VkResult res = function_call; \
+	if ( res < 0 ) { \
+		ri.Error( ERR_FATAL, "Vulkan: %s returned %s", #function_call, vk_result_string( res ) ); \
+	} \
+}
+
+// debug markers
+#define SET_OBJECT_NAME(obj,objName,objType) vk_set_object_name( (uint64_t)(obj), (objName), (objType) )
+
 // Vulkan API functions, loaded by vk.c
 extern PFN_vkCreateInstance								qvkCreateInstance;
 extern PFN_vkEnumerateInstanceExtensionProperties		qvkEnumerateInstanceExtensionProperties;
@@ -147,5 +157,21 @@ extern PFN_vkGetBufferDeviceAddressKHR					qvkGetBufferDeviceAddressKHR;
 void vk_timing_create( const VkPhysicalDeviceProperties *props );
 void vk_timing_destroy( void );
 void vk_timing_frame_start( void );
+
+// vk.c helpers the split files share
+const char *vk_result_string( VkResult code );
+void vk_set_object_name( uint64_t obj, const char *objName, VkDebugReportObjectTypeEXT objType );
+void record_image_layout_transition( VkCommandBuffer command_buffer, VkImage image, VkImageAspectFlags image_aspect_flags, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t src_stage_override, uint32_t dst_stage_override );
+qboolean rt_create_host_buffer( VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer *buffer, VkDeviceMemory *memory, void **mapped );
+qboolean rt_invert_matrix( const float *m, float *out );
+qboolean vk_rt_build_dynamic_tlas( void );
+void vk_begin_rtao_render_pass( void );
+void vk_end_composite_render_pass( void );
+qboolean vk_format_has_alpha( VkFormat format );
+// vk_ssr.c - water planes and the reflection pass (R19). Called from vk.c's
+// render-pass setup, vk_initialize and the teardown paths.
+void vk_ssr_create_render_pass( VkDevice device );
+void vk_ssr_create( void );
+void vk_ssr_destroy( void );
 
 #endif // VK_LOCAL_H
