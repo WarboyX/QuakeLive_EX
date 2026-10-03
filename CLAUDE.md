@@ -1,3 +1,19 @@
+# STOP — this branch is abandoned
+
+**Do not work on this branch.** All work moved to **`development`** (see
+`abandoned.md`). Before doing anything else:
+
+```
+git fetch origin development
+git switch development
+```
+
+and follow the CLAUDE.md on `development`, not this one. The rest of this file
+is the old copy, kept only so the branch is unchanged; where it names
+`claude/ioquakelive-review-6756u2` as the working branch, read `development`.
+
+---
+
 # Working conventions
 
 ## Branches
