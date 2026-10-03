@@ -6109,6 +6109,32 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E193. Real lamp list: prototype results — NOTE (not built into the engine)
+**Lives in:** test prototype only (scratchpad scripts) · **Seen by:** nobody yet
+
+Asked for: replace the light field's per-point light estimate with a real list of lamps.
+
+**What the map gives:** no light entities, because the compiler strips them. Only two shaders emit light: `textures/sfx/flame2` (q3map_surfacelight 5500, the torches) and `gothic_light_round_500` (500). The paper lanterns emit nothing; their light came from stripped light entities placed in or near them.
+
+**Why one light position per point keeps failing:** the light grid stores one *averaged* direction per point. A point lit by two lanterns points between them, at neither. Only about 5% of lamp-lit grid points have a visible lamp within 10° of their direction, and that holds even for the lantern and torch positions taken from shader names. A lamp list has to give each point a *blend* of lamps.
+
+**Candidate lists, scored the strict way.** Each lamp gets one brightness for the whole map (falloff 1/d², visibility traced), fitted on 400 lamp-lit grid points. The light direction is then predicted at 200 held-out points.
+
+| List | Held out: within 10° | Within 20° | Median error |
+|---|---|---|---|
+| 181 random open-space points (control) | 2.5% | 8% | 63–68° |
+| 106 named fittings (lantern/torch/flame shaders) | 2.5% | 6.5% | 158° |
+| 94 small objects the grid votes for (generic, no names) | 3.5% | 8.5% | 105° |
+| 99 grid-convergence peaks | 13% | 27% | 45° |
+| peaks + small objects (181) | 14% | 28% | 37° |
+
+- **Fixture positions do no better than random.** A lenient per-point blend test (no global brightness) had flattered them: 25% against 40% for random and 60% for the combined list. Random scoring 40% is what showed that test was too easy.
+- **All the signal is in the convergence peaks,** and even they explain under a third of the grid. Likely missing from the model: q3map2's real falloff, area lights for the flames, and bounce light in the grid.
+- **Not built:** a lamp list this weak would draw shadows from lamps that are not there, the failure E190 exists to suppress. The light field (E176–E190, 68.6% of lamp points see their estimated light) stays.
+- **Next, if pursued:** model q3map2's light falloff and its grid "directed" projection, add surface-light area emitters, and re-score. Build it into the engine only when held-out accuracy clearly beats the light field on the same points.
+
+The tester's shadow reports that started this round were the sun path (E192), not the lamp estimates.
+
 ### E192. Sun shadows came out hard and cut off in the soft-shadow mode; FPS cap when unfocused on the menu — DONE (verify)
 **Lives in:** our **client** (renderervk shaders; pak01 menu; `setviewpos` in qagame for the harness) · **Seen by:** our client only
 
