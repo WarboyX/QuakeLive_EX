@@ -695,7 +695,7 @@ static int LF_SurfaceKind( const msurface_t *surf )
 	if ( sh->isSky || ( sh->surfaceFlags & SURF_SKY ) ) {
 		return 2;
 	}
-	/* the same rules as vk.c's rt_surface_is_occluder, so this traces the
+	/* the same rules as vk_rt_world.c's rt_surface_is_occluder, so this traces the
 	   level the GPU does */
 	if ( sh->sort != SS_OPAQUE || ( sh->surfaceFlags & ( SURF_NODRAW | SURF_NONSOLID ) ) ) {
 		return 0;
@@ -966,7 +966,7 @@ static void LF_Classify( const world_t *w, const float *dir, const float *wt, co
 	Com_Memset( out, 0, ( n * LF_STRIDE + 4 ) * sizeof( float ) );
 	Com_Memset( &b, 0, sizeof( b ) );
 
-	/* the static level, as vk.c builds it: submodel 0 */
+	/* the static level, as vk_rt_world.c builds it: submodel 0 */
 	if ( w->bmodels != NULL && w->bmodels[0].numSurfaces > 0 && w->bmodels[0].numSurfaces <= w->numsurfaces ) {
 		surfs = w->bmodels[0].firstSurface;
 		numSurfs = w->bmodels[0].numSurfaces;

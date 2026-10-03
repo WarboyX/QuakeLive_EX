@@ -3116,7 +3116,7 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	}
 
 #ifdef USE_VULKAN
-	vk_rt_caps_reset();   /* [QL] E188: its memory is about to go - see vk.c */
+	vk_rt_caps_reset();   /* [QL] E188: its memory is about to go - see vk_rt_world.c */
 #endif
 	ri.FreeAll();
 

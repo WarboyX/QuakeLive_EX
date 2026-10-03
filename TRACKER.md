@@ -6109,6 +6109,32 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E191. vk.c split by subsystem — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** nobody: no behaviour change intended
+
+`vk.c` was 16,589 lines. The ray-tracing passes had grown inside it, and the next planned feature, temporal accumulation, touches AO, shadows and timing at once. Code was moved, not rewritten:
+
+| File | Lines | What it holds |
+|---|---|---|
+| `vk.c` | 10,518 | Device, swapchain, pipelines, attachments, frame, post-process, bloom |
+| `vk_rt_world.c` | 2,378 | Acceleration structures: static world, round proxies, players and items as triangles with hole caps (E166/E180/E184), the per-frame structure, world build and teardown with the light grid and light field upload |
+| `vk_rt_ao.c` | 1,212 | AO pipeline, descriptors, denoise, the shared depth view (E153), the per-frame AO pass |
+| `vk_rt_shadow.c` | 605 | The traced shadow pass and its penumbra setup (E166 onwards) |
+| `vk_ssr.c` | 1,757 | Water planes and walls found at map load, and the reflection pass |
+| `vk_timing.c` | 128 | `r_rtTimings` (E177) |
+| `vk_local.h` | 219 | What those files share: Vulkan entry points, `VK_CHECK`, and the vk.c helpers more than one of them calls. Not for `tr_*.c`. |
+
+- **Deviation from the plan:** the shared header is `vk_local.h`, not `vk_rt_local.h`. Most of what it carries is the Vulkan entry points, which are not RT-specific.
+- **Each step was its own commit** (`vk split 0/5` … `5/5`). The only code changes were dropping `static` where a second file now calls something, and moving forward declarations into the header.
+- **A new `vk_*.c` file needs a line in the Makefile's renderervk object list.** A bare `make` still does not build any of these (CLAUDE.md, `BUILD_RENDERER_VULKAN`).
+
+**Checked, after every step:**
+- **Build and symbols:** warning-free. Every function the original `vk.c` defined is still defined (`nm`), and code size is within 50 bytes of the start.
+- **Variables:** no file-scope variable is defined in two files.
+- **Harness:** japanesecastles, all RT features on, 7 spots plus the shadow debug view, `vid_restart` and a second map load. Screenshots are within the run-to-run noise floor measured from two unchanged runs: the animated sky, flicker lights and a static-noise panel. Map-load reports and timings are unchanged, with 0 validation errors.
+
+**To verify:** nothing should look or time differently from E190. Any change is a bug in this entry.
+
 ### E190. The light field, scored: each lamp point checks it can see its own light; level shadows are scaled by that trust — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

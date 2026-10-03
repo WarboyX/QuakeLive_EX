@@ -137,6 +137,11 @@ symptom is the stale-object one wearing a disguise, and `check-stale-objects.py`
 will report those objects as stale forever because make is never going to
 rebuild them.
 
+`vk.c` is split by subsystem (E191): `vk_rt_world.c`, `vk_rt_ao.c`,
+`vk_rt_shadow.c`, `vk_ssr.c`, `vk_timing.c`, sharing `vk_local.h`. A new
+`vk_*.c` needs its own line in the Makefile's renderervk object list. Nothing
+globs that directory, so a file left off it is never compiled, and nothing says so.
+
 Build renderer work the way `package-release.sh` does:
 
 ```
