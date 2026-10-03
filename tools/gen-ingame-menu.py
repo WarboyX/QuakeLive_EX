@@ -990,6 +990,9 @@ SUBPAGES = [
         ("multi",  "r_displayRefresh",          "Refresh rate"),
         ("multi",  "r_swapInterval",            "Vertical sync",
                    '"Off" 0 "On" 1 "Adaptive" -1'),
+        # E192: ioquake3's own cvar, never on a menu here. Applies at once.
+        ("multi",  "com_maxfpsUnfocused",       "FPS cap when unfocused",
+                   '"Off (default)" 0 "30 fps" 30'),
         ("multi",  "r_picmip",                  "Texture detail",
                    '"Highest" 0 "High" 1 "Medium" 2 "Low" 3'),
         ("multi",  "r_texturebits",             "Texture depth",

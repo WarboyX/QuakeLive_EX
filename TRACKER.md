@@ -6109,6 +6109,22 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E192. Sun shadows came out hard and cut off in the soft-shadow mode; FPS cap when unfocused on the menu — DONE (verify)
+**Lives in:** our **client** (renderervk shaders; pak01 menu; `setviewpos` in qagame for the harness) · **Seen by:** our client only
+
+**1. Sun shadows (tester: the own-player shadow on a deck was hard and broken off along a jagged line; "Strongest light only", `r_rtShadowSun 0`, made it soft and whole again).**
+- **Cause 1, the hard edge:** the projected soft shadows (`r_rtActorShadowSoftMode 1`, E171) blur the shadow's occlusion. `penumbra.tmpl` then multiplied the blurred value by the light the *centre* pixel would lose. A lit pixel beside the sun's shadow carried its lamp's loss, which is near zero outdoors, so the sun's soft edge spread at almost no strength. The shadow ended at its hard core. A lamp's own shadow was fine, because its neighbours lose the same lamp's light.
+- **Fix 1:** what is blurred is now the darkness itself (loss × occlusion, from `actorshadow.tmpl`), so an edge spreads as dark as the shadow it comes from, whichever light cast it.
+- **Cause 2, the cut:** the sun cast only where the map-load sun visibility, a 64-unit grid interpolated, was over 0.5. That is a contour line across the floor, with the sun's shadow whole on one side and gone on the other.
+- **Fix 2:** the sun's share now fades in over 0.35–0.65.
+- **Checked:**
+  - The harness player was given an OpenArena model, so the own shadow casts.
+  - `setviewpos` takes an optional pitch (cheat-only), so the camera looks down at an exact spot. Before, timing a `+lookdown` was never the same twice.
+  - On the moat decks (−304, −1540/−1650), the old shaders give a hard sun shadow and the new ones a soft one at every angle; lamp-only shadows are unchanged. 0 validation errors.
+- **Not changed:** where a point's *first* light is itself the sun (outdoors, sky ≥ 0.5) and its neighbour's is a lamp plus the sun as a second light, the sun's darkness is computed two ways. A seam is still possible there. Report it if seen.
+
+**2. FPS cap when the window loses focus.** The engine already had it: ioquake3's `com_maxfpsUnfocused` (0 off, otherwise the cap), switched by the SDL focus events. It was never on a menu. Now: Video → "FPS cap when unfocused", Off (default) / 30 fps. It applies at once, and minimising has its own `com_maxfpsMinimized`.
+
 ### E191. vk.c split by subsystem — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** nobody: no behaviour change intended
 

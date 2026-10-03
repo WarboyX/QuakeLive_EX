@@ -2016,8 +2016,10 @@ void Cmd_SetViewpos_f(gentity_t* ent) {
         trap_SendServerCommand(ent - g_entities, "print \"Cheats are not enabled on this server.\n\"");
         return;
     }
-    if (trap_Argc() != 5) {
-        trap_SendServerCommand(ent - g_entities, "print \"usage: setviewpos x y z yaw\n\"");
+    // [QL] E192: an optional pitch, so a scripted camera can look down at a
+    // spot exactly; holding +lookdown for a time was never the same twice
+    if (trap_Argc() != 5 && trap_Argc() != 6) {
+        trap_SendServerCommand(ent - g_entities, "print \"usage: setviewpos x y z yaw [pitch]\n\"");
         return;
     }
 
@@ -2029,6 +2031,10 @@ void Cmd_SetViewpos_f(gentity_t* ent) {
 
     trap_Argv(4, buffer, sizeof(buffer));
     angles[YAW] = atof(buffer);
+    if (trap_Argc() == 6) {
+        trap_Argv(5, buffer, sizeof(buffer));
+        angles[PITCH] = atof(buffer);
+    }
 
     TeleportPlayer(ent, origin, angles);
 }

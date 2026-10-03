@@ -563,8 +563,13 @@ void main() {
 	*/
 	float blockedS = 0.0, lostS = 0.0, hitTS = 0.0, lenCS = 1.0;
 	float ndlS = dot(N, sun.xyz);
-	if (soft.z > 0.5 && sun.w > 0.0 && !isSun && sunVis > 0.5 && ndlS > 0.02) {
-		lostS = min(sun.w * ndlS, 0.8 * ambient) / tot;
+	/* [QL] E192: faded in over sunVis 0.35-0.65 rather than switched on at 0.5.
+	   sunVis is a grid point every 64 units, interpolated, and a hard threshold
+	   on it is a contour line across the floor: the sun's shadow was cut along
+	   it, whole on one side and missing on the other. */
+	float sunW = smoothstep(0.35, 0.65, sunVis);
+	if (soft.z > 0.5 && sun.w > 0.0 && !isSun && sunW > 0.0 && ndlS > 0.02) {
+		lostS = sunW * min(sun.w * ndlS, 0.8 * ambient) / tot;
 		if (lostS > 0.01) {
 			blockedS = traceLight(O, O + sun.xyz * params.y, true, actorMask, mask & uint(RT_MASK_LEVEL_BIT),
 			                      rays, spin + 1.3, -smoothstep(0.6, 0.95, sunVis), 1.0, hitTS, lenCS);
@@ -573,17 +578,23 @@ void main() {
 
 	float strength = clamp(params.x, 0.0, 1.0);
 #ifdef USE_PEN
-	/* occlusion, how far from the pixel the blocker is, how far the light is,
-	   and how much light this pixel loses if it is shadowed - the last for
-	   every lit-facing pixel, since the soft edge spreads into lit ones. One
-	   edge per pixel: with both lights blocked the first's edge, darkened by
-	   both; with only the sun's, the sun's. */
+	/* the darkness this pixel's shadow brings, how far from the pixel the
+	   blocker is, and how far the light is; w 1 marks a pixel the edge may
+	   spread onto. One edge per pixel: with both lights blocked the first's
+	   edge, darkened by both; with only the sun's, the sun's.
+	   [QL] E192: x was the occlusion and w the light this pixel would lose,
+	   and penumbra.tmpl multiplied the blurred occlusion by the centre
+	   pixel's own w. A lit pixel beside the sun's shadow carried its LAMP's
+	   loss - often next to nothing outdoors - so the sun's soft edge spread
+	   at almost no strength and its shadow came out hard ("strongest light
+	   only" made it soft again). The darkness is now carried by the shadow,
+	   so an edge spreads as dark as the shadow it comes from. */
 	if (blocked > 0.0) {
-		out_color = vec4(blocked, hitT, lenC, (lost1 + lostS * blockedS) * strength);
+		out_color = vec4((lost1 * blocked + lostS * blockedS) * strength, hitT, lenC, 1.0);
 	} else if (blockedS > 0.0) {
-		out_color = vec4(blockedS, hitTS, lenCS, lostS * strength);
+		out_color = vec4(lostS * blockedS * strength, hitTS, lenCS, 1.0);
 	} else {
-		out_color = vec4(0.0, 0.0, lenC, lost1 * strength);
+		out_color = vec4(0.0, 0.0, lenC, 1.0);
 	}
 	return;
 #endif

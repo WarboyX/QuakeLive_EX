@@ -22,9 +22,14 @@ gradient.
   mode 0  the search. A lit pixel near a shadow has no blocker of its own, but
           the edge has to spread onto it too, so each pixel looks around it for
           blocked neighbours on its own surface and takes the edge width from
-          theirs. Writes (occlusion, width in pixels, light lost, 0).
-  mode 1  across: a weighted average of the occlusion over that width.
-  mode 2  down, and multiplied into the scene as 1 - lost * occlusion.
+          theirs. Writes (darkness, width in pixels, 1 if it may darken, 0).
+  mode 1  across: a weighted average of the darkness over that width.
+  mode 2  down, and multiplied into the scene as 1 - darkness.
+
+[QL] E192: what is blurred is the darkness (light lost x occlusion, from
+actorshadow.tmpl), not the occlusion alone. Two lights cast here - a lamp and
+the sun - and multiplying a blurred occlusion by the centre pixel's own loss
+used the wrong light's loss on the far side of every sun shadow's edge.
 
 The weights are strongest at the centre and fall to nothing at the edge,
 1 - |x| / (r + 1): full at the pixel, half way out at half, weakest at the

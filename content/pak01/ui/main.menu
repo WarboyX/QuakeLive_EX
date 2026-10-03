@@ -1473,52 +1473,59 @@
                   cvarFloatList { "Off" 0 "On" 1 "Adaptive" -1 }
                   rect 290 91 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Texture detail"  textscale .21  rect 24 108 246 16  textaligny 13
+        itemDef { text "FPS cap when unfocused"  textscale .21  rect 24 108 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name r_commaxfpsunfocused  type ITEM_TYPE_MULTI  text ""  cvar "com_maxfpsUnfocused"
+                  cvarFloatList { "Off (default)" 0 "30 fps" 30 }
+                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Texture detail"  textscale .21  rect 24 125 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rpicmip  type ITEM_TYPE_MULTI  text ""  cvar "r_picmip"
                   cvarFloatList { "Highest" 0 "High" 1 "Medium" 2 "Low" 3 }
-                  rect 290 108 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Texture depth"  textscale .21  rect 24 125 246 16  textaligny 13
+        itemDef { text "Texture depth"  textscale .21  rect 24 142 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rtexturebits  type ITEM_TYPE_MULTI  text ""  cvar "r_texturebits"
                   cvarFloatList { "Default" 0 "16-bit" 16 "32-bit" 32 }
-                  rect 290 125 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 142 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Compress textures"  textscale .21  rect 24 142 246 16  textaligny 13
+        itemDef { text "Compress textures"  textscale .21  rect 24 159 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rextcompressedtextures  type ITEM_TYPE_YESNO  text ""  cvar "r_ext_compressed_textures"
-                  rect 290 142 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 159 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Curve detail"  textscale .21  rect 24 159 246 16  textaligny 13
+        itemDef { text "Curve detail"  textscale .21  rect 24 176 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rsubdivisions  type ITEM_TYPE_MULTI  text ""  cvar "r_subdivisions"
                   cvarFloatList { "Quality" 4 "Performance" 80 }
-                  rect 290 159 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 176 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Model detail"  textscale .21  rect 24 176 246 16  textaligny 13
+        itemDef { text "Model detail"  textscale .21  rect 24 193 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rlodbias  type ITEM_TYPE_MULTI  text ""  cvar "r_lodbias"
                   cvarFloatList { "Best" -2 "High" -1 "Medium" 0 "Low" 1 "Poor" 2 }
-                  rect 290 176 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 193 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Fast sky"  textscale .21  rect 24 193 246 16  textaligny 13
+        itemDef { text "Fast sky"  textscale .21  rect 24 210 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name r_rfastsky  type ITEM_TYPE_YESNO  text ""  cvar "r_fastsky"
-                  rect 290 193 70 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 210 70 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef {
             name rs_io_ig_video  text "RESET"  type ITEM_TYPE_BUTTON  textscale .21
             rect 80 266 120 22  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 14
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu2.wav" ; exec "reset r_mode ; reset r_fullscreen ; reset r_displayRefresh ; reset r_swapInterval ; reset r_picmip ; reset r_texturebits ; reset r_ext_compressed_textures ; reset r_subdivisions ; reset r_lodbias ; reset r_fastsky" }
+            action { play "sound/misc/menu2.wav" ; exec "reset r_mode ; reset r_fullscreen ; reset r_displayRefresh ; reset r_swapInterval ; reset com_maxfpsUnfocused ; reset r_picmip ; reset r_texturebits ; reset r_ext_compressed_textures ; reset r_subdivisions ; reset r_lodbias ; reset r_fastsky" }
             mouseEnter { setitemcolor rs_io_ig_video backcolor 0 0 0 .9 ; setitemcolor rs_io_ig_video forecolor 0.964 0.815 0 1 ; setitemcolor rs_io_ig_video bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rs_io_ig_video backcolor 0 0 0 .6 ; setitemcolor rs_io_ig_video forecolor 1 1 1 1 ; setitemcolor rs_io_ig_video bordercolor .35 .3 .12 1 }
         }
