@@ -4820,6 +4820,68 @@ on it.
 
 ---
 
+### R29. Natural aspect ratios (16:9, 16:10, 21:9, 32:9) instead of 4:3 stretched or cropped — SCOPED, not started
+**Lives in:** our **client** (cgame, ui, client engine) · **Seen by:** our client only
+
+Asked for: wide displays should look natural rather than stretched or based on 4:3. Today it is right in some places and not in others.
+
+**What happens now, by layer:**
+
+| Layer | Today | Where |
+|---|---|---|
+| 3D view | `cg_fov` is the horizontal FOV across the full screen width, so a wider screen shows the same width over less height ("Vert−"). 21:9 and 32:9 look zoomed in. | `cg_view.c` `CG_CalcFov`; zoom and spectator FOV go through the same lines |
+| View weapon | E-era fix `cg_gunAspect` moves the gun forward on wide screens so it is not cropped. Correct for today's Vert− view; would need re-deriving under Hor+. | `cg_weapons.c` (comment at the `cg_gunAspect` block) |
+| HUD (cgame) | 640×480 grid with per-item anchoring: left, right, centre, stretch. The bias is computed from the real width (`cgs.widescreenBias`), so any aspect including 32:9 anchors correctly. Items drawn `WIDESCREEN_STRETCH` are stretched: 11 places in `cg_draw.c`, 2 in `cg_consolecmds.c`, 1 each in `cg_info.c` and `cg_weapons.c`. | `cg_draw.c` |
+| Menus (ui) | Aspect-correct: 4:3 scale from the height, centred with `uiInfo.uiDC.bias`; the cursor is clamped to the full width. | `ui_main.c` |
+| Engine 2D | `SCR_AdjustFrom640` scales x by width and y by height separately, so the console background, loading and connect screens and cinematics stretch. | `cl_scrn.c`, `cl_console.c`, `cl_cin.c` |
+| Narrower than 4:3 (5:4, 1280×1024) | The bias is clamped to 0, so everything stretches vertically. | `cg_main.c`, `ui_main.c` |
+
+**Work, in order of value:**
+1. **Hor+ field of view, as an option** (for example `cg_fovAspect`, default off so nobody's aim changes unannounced). Read `cg_fov` as the horizontal FOV *at 4:3*, derive the vertical FOV from it, then widen the horizontal FOV to the real aspect: `fovY = 2·atan(tan(fov/2)·3/4)`, `fovX = 2·atan(tan(fovY/2)·aspect)`.
+   - Applies to `cg_zoomfov` and the spectator FOV too.
+   - Clamp near 170° for 32:9.
+   - Re-derive `cg_gunAspect` under it: with Hor+ the vertical FOV is constant, so the gun crop it corrects should mostly vanish.
+   - The gun and sensitivity: `cg_zoomScaling` already scales by FOV; check it uses the same angle.
+   - About a day including testing at 16:9, 21:9 and 32:9.
+2. **Audit the 15 `WIDESCREEN_STRETCH` uses.** Keep stretch for full-screen tints and fades (damage, underwater, the vignette); switch icons, text and bars to left, right or centre.
+   - Also Quake Live's own hud.menu items without a `widescreen` keyword fall back to stretch; list them via the menu parser.
+   - One to two days; screenshots at each aspect are the test, and the harness can render 21:9 and 32:9.
+3. **Engine 2D:** a 4:3 pillarbox mode for the loading and connect screens and cinematics, with the console background tiled or aspect-fit and its text already scaled (`con_scale`). Half a day.
+4. **5:4 and other narrow screens:** letterbox rather than stretch. Rare; last.
+
+**Risks:**
+- A FOV change alters what players see and feel. That is why it is an option, and why the menu label must say what 100 means.
+- Quake Live's own HUD layouts were designed for 16:9 at most; at 32:9 the anchored corners sit very far apart. That is a layout taste question for the tester, not a bug.
+
+### R30. Lua modding support — SCOPED, not started
+**Lives in:** our **server** (qagame) first; our **client** (cgame) later and optional · **Seen by:** every client for server scripts; our client only for client scripts
+
+Asked for: scope Lua modding.
+
+**What exists:** nothing; no scripting layer of any kind in the tree. The Quake Live server ecosystem today is **minqlx**, a Python plugin system that hooks the closed qzeroded binary from outside. We own the server source, so a native layer is cleaner than that: no binary patching, a stable API, and it runs inside our qagame.
+
+**Precedent:** ET: Legacy's Lua API for Wolfenstein: ET, used by its whole admin and mod ecosystem: hooks such as `et_InitGame`, `et_ClientConnect`, `et_ClientCommand`, `et_RunFrame`, `et_Damage`, and functions to read and write entity and client fields, run console commands and read cvars. It is the model to follow, adapted to Quake Live's game types and events.
+
+**Proposed shape:**
+- **Lua 5.4**, MIT licence, about 30 C files, vendored under `code/lua/` and built into qagame on both platforms (Makefile and the mingw build). No new runtime dependency for server admins.
+- **Scripts** in `baseq3/lua/*.lua`, loaded at map start in order from a `lua_modules` cvar, and reloadable with a `lua_restart` command without a map change.
+- **Sandbox:** no `os`, `io` or `package.loadlib`. File access only through the engine's filesystem under `lua/`. An instruction-count hook aborts a runaway callback, and an error in one script disables that script with a console message rather than taking the server down.
+- **Hooks, first set:** init and shutdown, run frame, client connect / begin / disconnect / userinfo changed, client command (to add `!commands` and votes), console command, and chat. **Second set:** damage, death and obituary, item pickup, round and match state changes (CA/FT/AD rounds, CTF captures), team changes.
+- **Functions, first set:** read and set cvars, run console commands, print and centre-print to one client or all, read client and player-state fields (name, team, score, health, armour, weapons, position), kick and team change. Write access to entity fields comes in the second set, field by field, behind an explicit list.
+
+**What "Seen by" means here (CLAUDE.md):**
+- A server script that only changes server-side state (scores, votes, chat, spawning, damage rules) is seen correctly by every client, stock Steam Quake Live included.
+- A script that changes anything the client predicts or regenerates from a seed (movement physics `pmove_*`, the shotgun pattern) is wrong for stock clients unless it goes through the replicated game-rule cvars (`CVAR_GAMERULE_REPL`). The API should refuse those writes, or document them as our-client-only.
+
+**Client-side Lua (later, optional):** custom HUD elements and client commands in cgame. Smaller audience, real security cost: a server could push a script to clients. Only scripts the player installs locally, never downloaded ones; a separate decision.
+
+**minqlx compatibility:** a large existing plugin library, in Python. Embedding CPython is far heavier than Lua. Better: name our hooks and functions after minqlx's where they line up, so porting a plugin is a translation rather than a redesign.
+
+**Effort:**
+- **First set** (embed, sandbox, lifecycle, commands, chat, cvars, client info, reload): 3–5 days with tests.
+- **Second set** (game events, entity writes): another 3–5 days.
+- **Harness test:** a dedicated server plus scripted bots, which the sanitizer run (task #2) already uses, plus one example plugin each for a command, a vote and a game event.
+
 ### R22. Smoothed vertex normals on world geometry — SCOPED, not started
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 
