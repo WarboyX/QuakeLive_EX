@@ -7,8 +7,11 @@ Effort is given in **test rounds** (a build you run and report on), not time.
 Writing the code is not what limits progress. What limits it is how often something has to
 be seen on a real client, a real monitor, or a stock Steam client.
 
-**Status: parked.** This stays a scope here. If it is built, it is built as a
-separate client, **QLEX-CE** (Quake Live EX — Custom Edition), in its own repo.
+**Status: parked — concept for later.** This stays a scope. If it is built, it
+is built as a separate client, **QLEX-CE** (Quake Live EX — Custom Edition),
+most likely on its own long-lived branch in this repo rather than a new repo
+(not decided). A branch keeps one history, so merging QLEX work into CE is a
+plain `git merge`; CE commits never go to `main` or to the QLEX working branch.
 
 What the split changes:
 - **QLEX keeps its promise.** This repo stays a drop-in for stock Quake Live:
@@ -22,7 +25,7 @@ What the split changes:
 - **Tiers A/B could still come back here.** Server-only Lua (L1–L4) is useful
   on ordinary QLEX servers and stock-safe. Whether it lives in QLEX, CE, or
   both is a choice for later.
-- **Keeping the two in step.** CE forks from QLEX and takes QLEX's renderer,
+- **Keeping the two in step.** CE branches from QLEX and takes QLEX's renderer,
   menu and fix work by regular merges. CE-only code should stay in new files
   and behind clearly marked hooks, so those merges stay cheap.
 
