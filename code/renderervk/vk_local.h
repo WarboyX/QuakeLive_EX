@@ -46,6 +46,9 @@ typedef struct {
 	float depthLinear[4];  // proj[10], proj[14], depth tolerance, [QL] E150 occlusion scale
 } rtaoBlurPush_t;
 
+// the instance, kept outside vk because it outlives vid_restart (vk.c)
+extern VkInstance vk_instance;
+
 // the main pass's MSAA sample count, chosen in vk.c
 extern int vkSamples;
 
@@ -207,5 +210,10 @@ void vk_depth_sampling_destroy( void );
 void vk_depth_sampling_create( void );
 void vk_rt_create_ao( void );
 void vk_rt_update_ao_descriptor( void );
+
+// command buffers and memory, shared with the RT world build
+VkCommandBuffer begin_command_buffer( void );
+void end_command_buffer( VkCommandBuffer command_buffer, const char *location );
+uint32_t find_memory_type( uint32_t memory_type_bits, VkMemoryPropertyFlags properties );
 
 #endif // VK_LOCAL_H
