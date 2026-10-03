@@ -7,6 +7,25 @@ Effort is given in **test rounds** (a build you run and report on), not time.
 Writing the code is not what limits progress. What limits it is how often something has to
 be seen on a real client, a real monitor, or a stock Steam client.
 
+**Status: parked.** This stays a scope here. If it is built, it is built as a
+separate client, **QLEX-CE** (Quake Live EX — Custom Edition), in its own repo.
+
+What the split changes:
+- **QLEX keeps its promise.** This repo stays a drop-in for stock Quake Live:
+  protocol 91, stock clients welcome, nothing here depends on Lua.
+- **CE is free of the protocol-91 ceilings (§4).** It can extend
+  `entityState_t`, raise the entity and model limits, and add `svc_` ops
+  outright. The handshake-gated extension in §5.4 phase 2 becomes optional.
+  The cost is that CE servers and CE clients only talk to each other unless CE
+  keeps a stock-compatible mode. Decide that when the repo starts (it replaces
+  D1).
+- **Tiers A/B could still come back here.** Server-only Lua (L1–L4) is useful
+  on ordinary QLEX servers and stock-safe. Whether it lives in QLEX, CE, or
+  both is a choice for later.
+- **Keeping the two in step.** CE forks from QLEX and takes QLEX's renderer,
+  menu and fix work by regular merges. CE-only code should stay in new files
+  and behind clearly marked hooks, so those merges stay cheap.
+
 ---
 
 ## 1. The lineage, and where it stops helping

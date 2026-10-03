@@ -4853,7 +4853,9 @@ Asked for: wide displays should look natural rather than stretched or based on 4
 - A FOV change alters what players see and feel. That is why it is an option, and why the menu label must say what 100 means.
 - Quake Live's own HUD layouts were designed for 16:9 at most; at 32:9 the anchored corners sit very far apart. That is a layout taste question for the tester, not a bug.
 
-### R30. Lua modding support, Garry's Mod–style — SCOPED, not started
+### R30. Lua modding support, Garry's Mod–style — SCOPED, parked for QLEX-CE
+**Parked:** stays scope-only in this repo. If built, it goes into a separate client, **QLEX-CE** (Quake Live EX — Custom Edition), in a new repo, so this client stays stock-compatible and the mod work is free to extend the protocol. See "QLEX-CE" at the top of the scope doc.
+
 **Lives in:** our **server** (qagame) for tiers A/B; our **client** (cgame) for tier C, plus engine networking for the protocol extension · **Seen by:** every client for tiers A/B; **our client only** for tier C
 
 Asked for: mod support "similar to Garry's Mod: models, scripts, game logic". Full scope in **`docs/lua-modding-scope.md`**; this is the summary.
