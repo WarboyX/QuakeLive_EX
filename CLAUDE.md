@@ -2,13 +2,15 @@
 
 ## Branches
 
-Default working branch: **`claude/ioquakelive-review-6756u2`**. All work goes
-there and stays there. `main` does not move on its own.
+Default working branch: **`development`**. All work goes
+there and stays there. `main` does not move on its own. A session that starts
+on an assigned `claude/...` branch switches to `development` before working;
+the old `claude/ioquakelive-review-6756u2` was renamed to it.
 
 **"merge into main" means, in this order:**
 
 1. Merge the working branch into `main` and push `main`.
-2. Return to `claude/ioquakelive-review-6756u2` — the merge is a release step,
+2. Return to `development` — the merge is a release step,
    not a change of where work happens.
 3. Build a fresh package from that commit and hand over both archives, for
    upload to the GitHub release page.
