@@ -143,4 +143,9 @@ extern PFN_vkCmdBuildAccelerationStructuresKHR			qvkCmdBuildAccelerationStructur
 extern PFN_vkGetAccelerationStructureDeviceAddressKHR	qvkGetAccelerationStructureDeviceAddressKHR;
 extern PFN_vkGetBufferDeviceAddressKHR					qvkGetBufferDeviceAddressKHR;
 
+// vk_timing.c - r_rtTimings (E177)
+void vk_timing_create( const VkPhysicalDeviceProperties *props );
+void vk_timing_destroy( void );
+void vk_timing_frame_start( void );
+
 #endif // VK_LOCAL_H
