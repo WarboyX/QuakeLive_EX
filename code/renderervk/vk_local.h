@@ -33,6 +33,19 @@ never this.
 // debug markers
 #define SET_OBJECT_NAME(obj,objName,objType) vk_set_object_name( (uint64_t)(obj), (objName), (objType) )
 
+/*
+[QL] R13 step 3c: what the denoise passes are pushed (AO and shadow passes).
+
+Deliberately not sharing rtaoPush_t. The blur needs none of the trace's 96 bytes
+of matrix and eye position, and the two shaders declare different blocks -
+handing one the other's layout is the same class of mistake as feeding the AO
+shader the gamma shader's specialization constants, which cost a round already.
+*/
+typedef struct {
+	float step[4];         // xy = texel step along the axis being blurred
+	float depthLinear[4];  // proj[10], proj[14], depth tolerance, [QL] E150 occlusion scale
+} rtaoBlurPush_t;
+
 // Vulkan API functions, loaded by vk.c
 extern PFN_vkCreateInstance								qvkCreateInstance;
 extern PFN_vkEnumerateInstanceExtensionProperties		qvkEnumerateInstanceExtensionProperties;
@@ -173,5 +186,9 @@ qboolean vk_format_has_alpha( VkFormat format );
 void vk_ssr_create_render_pass( VkDevice device );
 void vk_ssr_create( void );
 void vk_ssr_destroy( void );
+
+// render passes shared with the RT files
+void vk_begin_render_pass( VkRenderPass renderPass, VkFramebuffer frameBuffer, qboolean clearValues, uint32_t width, uint32_t height );
+void vk_begin_rtao_offscreen_render_pass( int target, int scale );
 
 #endif // VK_LOCAL_H
