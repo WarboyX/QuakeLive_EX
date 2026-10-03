@@ -6048,6 +6048,32 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E190. The light field, scored: each lamp point checks it can see its own light; level shadows are scaled by that trust — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported (E186/E187 rounds): level shadows that the lightmap does not have. Examples are the column's curved shadow across the flag-room tatami and the jagged edges in the blue base. These are shadows cast from a light the light field estimated in the wrong place.
+
+**The score.** The map compiler built the light grid with occlusion: a grid point's directed light came from a lamp that point can see. So an estimate the point *cannot* see is wrong.
+- **Prototype first** (CPU copy of japanesecastles, 400 lamp points): the share that can see their estimated light, by setting.
+
+| Setting | Can see their light |
+|---|---|
+| Neighbour agreement 0.80, two smoothing passes (current) | **72.2%** |
+| 0.80, no smoothing | 72.2% |
+| 0.90 | 64.2–68.5% |
+| 0.95 | 56.8–59.5% |
+| Two-cell neighbourhood, 0.90 | 63.8–65.5% |
+
+- The current settings are already the best of these; nothing was retuned.
+- **In the engine (`LF_Trust`):** every lamp point traces five rays to its estimated light and four points 12 units round it, against the level, stopping 24 short so the lamp's own fitting does not count. The share that get through is the point's trust, stored in the field (slot 6).
+- **Map-load log:** "Light field: 4782 of 6973 lamp points (68.6%) see their estimated light, mean trust 0.68". It agrees with the prototype; the triangle sets differ slightly. Map load takes about 0.25 s longer (275 to 522 ms).
+
+**Use:** the shadow pass interpolates trust like the rest of the field and scales level hits toward a lamp by `smoothstep(0.3, 0.8, trust)`. Where the field's light is a guess, the lightmap's own shadow stands instead of a second, wrong one being drawn.
+- **Not scaled:** players' and items' shadows (a few degrees off still reads as a shadow on them), sky and sun light (sun shadows use the exact sun direction), and the per-pixel estimate.
+- **The score is now a number to improve:** the real lamp list (glowing surfaces, fitted lanterns) should raise it, and each step can be measured the same way.
+
+**Checked:** lavapipe with pak00's textures (E189), level debug and normal views at 4 spots, validation 0 errors. Level shadows from unverified lamps no longer draw; the cubes' shadows are unchanged. The flag-room column and blue base are not among the harness spots, so those are for the tester.
+
 ### E189. Test-only assets for the harness: pak00 textures and OpenArena players — NOTE (not shipped)
 **Lives in:** test harness only · **Seen by:** nobody
 

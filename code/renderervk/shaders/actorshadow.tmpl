@@ -236,10 +236,11 @@ light comes from the sky. A sky point's "position" is far out along its
 direction - read as a direction, not a place. sunVis comes from every open
 point, lit or not, so it is interpolated over its own set of corners.
 */
-bool lightFieldAt(vec3 p, out vec3 lightPos, out float sky, out float sunVis) {
+bool lightFieldAt(vec3 p, out vec3 lightPos, out float sky, out float sunVis, out float trust) {
 	lightPos = vec3(0.0);
 	sky = 0.0;
 	sunVis = 0.0;
+	trust = 1.0;
 	if (gridBounds.w <= 0.0) {
 		return false;
 	}
@@ -248,7 +249,7 @@ bool lightFieldAt(vec3 p, out vec3 lightPos, out float sky, out float sunVis) {
 	vec3 v = (p - gridOrigin.xyz) * gridInvSize.xyz;
 	vec3 f = fract(v);
 	ivec3 i0 = ivec3(floor(v));
-	float total = 0.0, open = 0.0;
+	float total = 0.0, open = 0.0, trustAcc = 0.0;
 	for (int k = 0; k < 8; k++) {
 		ivec3 o = ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
 		ivec3 c = clamp(i0 + o, ivec3(0), b - ivec3(1));
@@ -265,6 +266,7 @@ bool lightFieldAt(vec3 p, out vec3 lightPos, out float sky, out float sunVis) {
 		lightPos += w * vec3(uintBitsToFloat(gridData[idx]), uintBitsToFloat(gridData[idx + 1]),
 		                     uintBitsToFloat(gridData[idx + 2]));
 		sky += w * uintBitsToFloat(gridData[idx + 5]);
+		trustAcc += w * uintBitsToFloat(gridData[idx + 6]);   // E190
 		total += w;
 	}
 	if (open > 0.0) {
@@ -277,6 +279,7 @@ bool lightFieldAt(vec3 p, out vec3 lightPos, out float sky, out float sunVis) {
 	}
 	lightPos /= total;
 	sky /= total;
+	trust = trustAcc / total;
 	return true;
 }
 
@@ -316,7 +319,7 @@ edge stands there. Players and items are not in the lightmap and count in
 full everywhere.
 */
 float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint levelMask,
-                 int rays, float spin, float dHere, out float hitT, out float lenC) {
+                 int rays, float spin, float dHere, float levelTrust, out float hitT, out float lenC) {
 	vec3 Lc = normalize(lightPos - O);
 	vec3 sUp = abs(Lc.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
 	vec3 s1 = normalize(cross(Lc, sUp));
@@ -399,8 +402,8 @@ float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint l
 			if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
 				float dBeyond;
 				if (occluderHides(O, dir, rayQueryGetIntersectionTEXT(rq, true), dBeyond)) {
-					levelW = dHere < 0.0 ? -dHere
-					                     : smoothstep(0.5, 0.85, dHere / max(dBeyond, 1e-3));
+					levelW = (dHere < 0.0 ? -dHere
+					                      : smoothstep(0.5, 0.85, dHere / max(dBeyond, 1e-3))) * levelTrust;
 					hit = levelW > 0.0;
 				}
 				hitT = rayQueryGetIntersectionTEXT(rq, true);
@@ -479,9 +482,9 @@ void main() {
 	bool found = false;
 	bool directional = false, isSun = false;
 	vec3 lightPos;
-	float sky, sunVis;
+	float sky, sunVis, trust;
 	vec4 sun = sunInfo();
-	bool haveField = lightFieldAt(Q0, lightPos, sky, sunVis);
+	bool haveField = lightFieldAt(Q0, lightPos, sky, sunVis, trust);
 	/* [QL] E178: sky light first. Parallel, from outside the level; toward
 	   the exact q3map_sun where it is within 20 degrees of it, and then the
 	   level is traced too, since that direction is not a blend of anything */
@@ -538,7 +541,10 @@ void main() {
 	hitT = 0.0;
 	lenC = 1.0;
 	if (firstLit) {
-		blocked = traceLight(O, lightPos, directional, actorMask, levelMask, rays, spin, directed, hitT, lenC);
+		/* E190: level shadows from a lamp the field could not verify are left to
+		   the lightmap - trust is 1 for the sky, the sun and the per-pixel estimate */
+		float levelTrust = (haveField && !directional && found) ? smoothstep(0.3, 0.8, trust) : 1.0;
+		blocked = traceLight(O, lightPos, directional, actorMask, levelMask, rays, spin, directed, levelTrust, hitT, lenC);
 	}
 
 	float tot = max(ambient + directed * ndl, 1e-3);
@@ -561,7 +567,7 @@ void main() {
 		lostS = min(sun.w * ndlS, 0.8 * ambient) / tot;
 		if (lostS > 0.01) {
 			blockedS = traceLight(O, O + sun.xyz * params.y, true, actorMask, mask & uint(RT_MASK_LEVEL_BIT),
-			                      rays, spin + 1.3, -smoothstep(0.6, 0.95, sunVis), hitTS, lenCS);
+			                      rays, spin + 1.3, -smoothstep(0.6, 0.95, sunVis), 1.0, hitTS, lenCS);
 		}
 	}
 

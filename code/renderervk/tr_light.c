@@ -657,7 +657,8 @@ Layout, LF_STRIDE floats a point:
 	[3]    1 if [0..2] means something, else 0
 	[4]    1 if the sun reaches this point
 	[5]    sky fraction 0..1
-	[6]    0
+	[6]    trust 0..1 (E190): how much of the light at [0..2] its grid point
+	       can see past the level - see LF_Trust
 	[7]    1 if the point is open (not inside a wall)
 and after the last point, four floats: the sun's direction and its directed
 brightness 0..1 (all zero on a map with no q3map_sun).
@@ -893,6 +894,55 @@ static float LF_Trace( const lfBvh_t *b, const vec3_t o, const vec3_t d, float t
 	return best;
 }
 
+/*
+[QL] E190: how far a lamp point's estimated light is to be believed.
+
+The map compiler built the light grid with occlusion: a grid point's
+directed light came from a lamp that point can see. So a light field estimate
+the point CANNOT see - the level is in the way - is wrong, and every shadow
+cast from it is wrong too: the column's curved shadow across the flag room's
+tatami, the jagged edges in the blue base, shadows the lightmap does not have.
+
+Five rays from the point, at the estimated light and at four points 12 units
+round it, against the level, stopping 24 short so the lamp's own fitting does
+not count. The share that get through is the point's trust; level shadows
+are scaled by it (actorshadow.tmpl), so a point whose light is a guess leaves
+the lightmap's own shadow standing instead of drawing a second, wrong one.
+Players' and items' shadows are not scaled: a few degrees off on those reads
+as a shadow, on a column it reads as a mistake.
+*/
+static float LF_Trust( const lfBvh_t *b, const vec3_t pc, const vec3_t light )
+{
+	vec3_t v, t1, t2, up, tgt, d;
+	float dist, seen = 0.0f;
+	int k, sky;
+
+	VectorSubtract( light, pc, v );
+	dist = VectorNormalize( v );
+	if ( dist < 32.0f ) {
+		return 1.0f;
+	}
+	VectorSet( up, 0, 0, 1 );
+	if ( fabsf( v[2] ) >= 0.9f ) VectorSet( up, 1, 0, 0 );
+	CrossProduct( v, up, t1 );
+	VectorNormalize( t1 );
+	CrossProduct( v, t1, t2 );
+	for ( k = 0; k < 5; k++ ) {
+		float len, t;
+		VectorCopy( light, tgt );
+		if ( k > 0 ) {
+			VectorMA( tgt, ( k & 2 ) ? -12.0f : 12.0f, ( k & 1 ) ? t2 : t1, tgt );
+		}
+		VectorSubtract( tgt, pc, d );
+		len = VectorNormalize( d );
+		t = LF_Trace( b, pc, d, len - 24.0f, &sky );
+		if ( t >= len - 24.0f ) {
+			seen += 1.0f;
+		}
+	}
+	return seen / 5.0f;
+}
+
 static int LF_CompareFloats( const void *a, const void *b )
 {
 	const float fa = *(const float *)a, fb = *(const float *)b;
@@ -907,7 +957,8 @@ static void LF_Classify( const world_t *w, const float *dir, const float *wt, co
 	const msurface_t *surfs = w->surfaces;
 	const qboolean haveSun = VectorLength( tr.sunLight ) > 0.0f ? qtrue : qfalse;
 	int numSurfs = w->numsurfaces, i, x, y, z, s;
-	int nSky = 0, nLamp = 0, nSunVis = 0, nSunPts = 0;
+	int nSky = 0, nLamp = 0, nSunVis = 0, nSunPts = 0, nSeen = 0;
+	float trustSum = 0.0f;
 	float *skyRaw, *sunSamples;
 	lfBvh_t b;
 	int start = ri.Milliseconds();
@@ -1048,10 +1099,19 @@ static void LF_Classify( const world_t *w, const float *dir, const float *wt, co
 			   there. */
 			VectorCopy( field + c * 4, o );
 			o[3] = 1.0f;
+			o[6] = LF_Trust( &b, pc, o );   /* E190 */
+			trustSum += o[6];
+			if ( o[6] >= 0.6f ) nSeen++;
 			nLamp++;
+		} else {
+			o[6] = 1.0f;
 		}
 	}
 #undef LF_IDX
+
+	/* E190: the score - how many lamp points can see the light they were given */
+	ri.Printf( PRINT_ALL, "Light field: %i of %i lamp points (%.1f%%) see their estimated light, mean trust %.2f\n",
+		nSeen, nLamp, nLamp ? 100.0f * nSeen / nLamp : 0.0f, nLamp ? trustSum / nLamp : 0.0f );
 
 	if ( nSunPts >= 32 ) {
 		float *tail = out + n * LF_STRIDE;
