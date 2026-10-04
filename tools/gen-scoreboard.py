@@ -264,7 +264,10 @@ def board_team(name, stats):
                       ".16", "ITEM_ALIGN_LEFT", DIM)
         b += ownerdraw("sb_score%d" % side, score_od, lx + TEAM_LIST_W - 90, top + 3,
                        82, 22, ".32", 2)
-        cols = [(0, 4, 14, 1), (3, 20, 12, 1), (5, 36, 88, 10)]
+        # [QL] E195: the name column held 10 characters in 88 units that fit
+        # about 20 at this scale. A bot's skill tag (E141, developer 1) was cut
+        # off on every name over four letters: "TankJr [", "Phobos [".
+        cols = [(0, 4, 14, 1), (3, 20, 12, 1), (5, 36, 88, 18)]
         head = [("PLAYER", 36, 88)]
         for (field, text), (pos, w, mx) in zip(stats, STAT_POS):
             cols.append((field, pos, w, mx))

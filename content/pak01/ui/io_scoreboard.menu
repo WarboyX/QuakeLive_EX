@@ -147,7 +147,7 @@
             name sb_list0  rect 8 124 268 250  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 268  elementheight 18
             elementtype LISTBOX_TEXT  feeder FEEDER_REDTEAM_LIST
-            columns 10  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 10  128 32 5  162 42 7  206 32 6  240 26 4
+            columns 10  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 18  128 32 5  162 42 7  206 32 6  240 26 4
             textscale .2  forecolor 1 1 1 1  backcolor 0 0 0 .35
             outlinecolor 0.964 0.815 0 .28
             border 1  bordersize 1  bordercolor .35 .3 .12 1  visible 1
@@ -187,7 +187,7 @@
             name sb_list1  rect 284 124 268 250  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 268  elementheight 18
             elementtype LISTBOX_TEXT  feeder FEEDER_BLUETEAM_LIST
-            columns 10  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 10  128 32 5  162 42 7  206 32 6  240 26 4
+            columns 10  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 18  128 32 5  162 42 7  206 32 6  240 26 4
             textscale .2  forecolor 1 1 1 1  backcolor 0 0 0 .35
             outlinecolor 0.964 0.815 0 .28
             border 1  bordersize 1  bordercolor .35 .3 .12 1  visible 1
@@ -269,7 +269,7 @@
             name sb_list0  rect 8 124 268 250  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 268  elementheight 18
             elementtype LISTBOX_TEXT  feeder FEEDER_REDTEAM_LIST
-            columns 12  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 10  128 32 5  162 42 7  206 32 6  0 0 0  0 0 0  240 26 4
+            columns 12  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 18  128 32 5  162 42 7  206 32 6  0 0 0  0 0 0  240 26 4
             textscale .2  forecolor 1 1 1 1  backcolor 0 0 0 .35
             outlinecolor 0.964 0.815 0 .28
             border 1  bordersize 1  bordercolor .35 .3 .12 1  visible 1
@@ -309,7 +309,7 @@
             name sb_list1  rect 284 124 268 250  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 268  elementheight 18
             elementtype LISTBOX_TEXT  feeder FEEDER_BLUETEAM_LIST
-            columns 12  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 10  128 32 5  162 42 7  206 32 6  0 0 0  0 0 0  240 26 4
+            columns 12  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 18  128 32 5  162 42 7  206 32 6  0 0 0  0 0 0  240 26 4
             textscale .2  forecolor 1 1 1 1  backcolor 0 0 0 .35
             outlinecolor 0.964 0.815 0 .28
             border 1  bordersize 1  bordercolor .35 .3 .12 1  visible 1
@@ -391,7 +391,7 @@
             name sb_list0  rect 8 124 268 250  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 268  elementheight 18
             elementtype LISTBOX_TEXT  feeder FEEDER_REDTEAM_LIST
-            columns 12  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 10  128 32 5  162 42 7  206 32 6  0 0 0  0 0 0  240 26 4
+            columns 12  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 18  128 32 5  162 42 7  206 32 6  0 0 0  0 0 0  240 26 4
             textscale .2  forecolor 1 1 1 1  backcolor 0 0 0 .35
             outlinecolor 0.964 0.815 0 .28
             border 1  bordersize 1  bordercolor .35 .3 .12 1  visible 1
@@ -431,7 +431,7 @@
             name sb_list1  rect 284 124 268 250  type ITEM_TYPE_LISTBOX
             style WINDOW_STYLE_EMPTY  elementwidth 268  elementheight 18
             elementtype LISTBOX_TEXT  feeder FEEDER_BLUETEAM_LIST
-            columns 12  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 10  128 32 5  162 42 7  206 32 6  0 0 0  0 0 0  240 26 4
+            columns 12  4 14 1  0 0 0  0 0 0  20 12 1  0 0 0  36 88 18  128 32 5  162 42 7  206 32 6  0 0 0  0 0 0  240 26 4
             textscale .2  forecolor 1 1 1 1  backcolor 0 0 0 .35
             outlinecolor 0.964 0.815 0 .28
             border 1  bordersize 1  bordercolor .35 .3 .12 1  visible 1
