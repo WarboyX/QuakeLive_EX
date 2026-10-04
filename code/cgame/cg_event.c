@@ -800,16 +800,33 @@ void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float 
             return;             // deeper than this looks; not a surface event
         }
     } else {
-        /* above it - drop until we find some */
-        for (i = 0; i < 8; i++) {
-            p[2] -= 16.0f;
-            if (trap_CM_PointContents(p, 0) & CONTENTS_WATER) {
-                break;
-            }
+        /*
+        Above it - look down for water, and stop at the first thing in the way.
+
+        [QL] E199: a trace, where this used to step down 16 units at a time
+        asking only "is this point water?". That walks straight through solid
+        ground, and a pond's water brush usually runs on under its banks past
+        the visible shore. Walking on the grass in japanesecastles' garden
+        found the water a few units under the turf, and every footstep and the
+        wake put a ring there whose edge spread onto the visible pond - the
+        water "reacting to us walking near it". A floor between the point and
+        the water means the water cannot be touched from here. The trace also
+        cannot hop over a floor thinner than a step the way the probes could.
+        World only, like the probes it replaces.
+        */
+        trace_t tr;
+        vec3_t end;
+
+        VectorCopy(p, end);
+        end[2] -= 128.0f;
+        trap_CM_BoxTrace(&tr, p, end, NULL, NULL, 0, CONTENTS_SOLID | CONTENTS_WATER);
+        if (tr.startsolid || tr.fraction == 1.0f || !(tr.contents & CONTENTS_WATER)) {
+            return;             // no water under this, or ground first
         }
-        if (i == 8) {
-            return;             // no water under this at all
-        }
+        /* just inside the surface, so the refinement below starts in water's
+           column and climbs the last couple of units to it */
+        VectorCopy(tr.endpos, p);
+        p[2] += 2.0f;
     }
 
     /*

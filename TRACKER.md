@@ -6109,6 +6109,31 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E199. Water rippled when walking on the grass beside the garden ponds — DONE (verify)
+**Lives in:** our **client** (cgame `CG_WaterRipple`) · **Seen by:** our client only
+
+Tester: "the under side of our water past the visible range of the coast in the garden area is reacting to us since we're over it". Exactly right.
+
+**Cause.**
+- **The probe.** `CG_WaterRipple` runs for every moving player's wake (every ~110 ms), every footstep splash and every swim stroke. From a point that is not in water it looked *down* for water in 16-unit steps, up to 128 units, asking only "is this point water?".
+- **The map.** That walks straight through solid ground, and both garden ponds' water brushes run on under their banks. Read from the BSP:
+  - **How much:** water top at z −340, with 384 and 383 sample points of each pond covered by turf, 4 units above it.
+  - **Where:** a strip at x 780–840 covers water along its whole length.
+- **The result.** Walking on that grass placed a ring under the turf, at whatever depth the 16-unit step landed on (−345 to −352, not the surface). Its edge spread onto the visible pond.
+
+**Fix.** A world trace down from the point (solid or water mask, 128 units). It ripples only if water is reached before anything solid, and it starts the 2-unit surface refinement from where the trace met the water. A floor thinner than one probe step can no longer be hopped over either. Unchanged:
+- impacts and positions already in water (the climb-to-surface branch);
+- the shot-entry solve.
+
+**Measured** (lavapipe, `developer 1` ripple report, old cgame from e36b593a against new):
+
+| | old | new |
+|---|---|---|
+| walking the turf strip over water (x 810, y 1350 → north) | **5 ripples**, at z −345 / −352 under the grass | **0** |
+| walking into the open pond at x 615 | rippled | rippled, at −340, the true surface |
+
+**To verify:** walk the grass along the garden ponds; the water stays flat. Wading in and shooting the water still ripple.
+
 ### E198. Menu clicks bypassed CVAR_LATCH: bloom crash on NVIDIA, and r_rts / HDR bloom "on in the menu, off in the game" — DONE (verify); dither on by default
 **Lives in:** our **client** (engine `cvar.c`, `cl_ui.c`, `cl_cgame.c`; cgame menus; renderervk) · **Seen by:** our client only
 
