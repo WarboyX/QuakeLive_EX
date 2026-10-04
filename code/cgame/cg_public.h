@@ -216,7 +216,16 @@ typedef enum {
 
     Appended, for the reason spelled out above this.
     */
-    CG_R_ADDWATERRIPPLE
+    CG_R_ADDWATERRIPPLE,
+
+    /*
+    [QL] E198: a latched cvar's pending value, "" if none - the ui's
+    UI_CVAR_LATCHEDSTRINGBUFFER (E183) for cgame's menus. Menu sets now wait
+    for the restart on a latched cvar (Cvar_SetFromClientVM), so the in-game
+    render pages need to show the chosen value and "(Apply)", as the main
+    menu's do. Appended.
+    */
+    CG_CVAR_LATCHEDSTRINGBUFFER
 } cgameImport_t;
 
 /*

@@ -487,6 +487,8 @@ void Cvar_SetSafe(const char* var_name, const char* value);
 // sometimes we set variables from an untrusted source: fail if flags & CVAR_PROTECTED
 
 void Cvar_SetLatched(const char* var_name, const char* value);
+void Cvar_SetFromClientVM(const char* var_name, const char* value);  // [QL] E198 ui/cgame sets
+void Cvar_SetValueFromClientVM(const char* var_name, float value);   // [QL] E198
 // don't set the cvar immediately
 
 void Cvar_SetValue(const char* var_name, float value);

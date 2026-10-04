@@ -4123,7 +4123,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rdither  type ITEM_TYPE_MULTI  text ""  cvar "r_dither"
-                  cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2 }
+                  cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (default)" 2 }
                   rect 290 224 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "IMAGE"  textscale .2  rect 24 241 512 16  textaligny 13
@@ -6069,7 +6069,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rdither  type ITEM_TYPE_MULTI  text ""  cvar "r_dither"
-                  cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2 }
+                  cvarFloatList { "Off" 0 "Ordered (stable)" 1 "Temporal (default)" 2 }
                   rect 290 224 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "IMAGE"  textscale .2  rect 24 241 512 16  textaligny 13

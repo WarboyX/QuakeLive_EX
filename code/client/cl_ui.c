@@ -643,7 +643,7 @@ intptr_t CL_UISystemCalls(intptr_t* args) {
             return 0;
 
         case UI_CVAR_SET:
-            Cvar_SetSafe(VMA(1), VMA(2));
+            Cvar_SetFromClientVM(VMA(1), VMA(2));   // [QL] E198: honours CVAR_LATCH
             return 0;
 
         case UI_CVAR_VARIABLEVALUE:
@@ -658,7 +658,7 @@ intptr_t CL_UISystemCalls(intptr_t* args) {
             return 0;
 
         case UI_CVAR_SETVALUE:
-            Cvar_SetValueSafe(VMA(1), VMF(2));
+            Cvar_SetValueFromClientVM(VMA(1), VMF(2));   // [QL] E198
             return 0;
 
         case UI_CVAR_RESET:

@@ -5819,11 +5819,19 @@ void vk_initialize( void )
 		desc.flags = 0;
 		desc.setLayoutCount = 1;
 		desc.pSetLayouts = set_layouts;
-		desc.pushConstantRangeCount = 0;
-		desc.pPushConstantRanges = NULL;
+		/* [QL] E198: four bytes for the present pass - the frame number its
+		   temporal dither (r_dither 2) needs. The other pipelines on this
+		   layout declare no push block, which is allowed. */
+		push_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		push_range.offset = 0;
+		push_range.size = sizeof( uint32_t );
+		desc.pushConstantRangeCount = 1;
+		desc.pPushConstantRanges = &push_range;
 
 		VK_CHECK( qvkCreatePipelineLayout( vk.device, &desc, NULL, &vk.pipeline_layout_post_process ) );
 
+		desc.pushConstantRangeCount = 0;
+		desc.pPushConstantRanges = NULL;
 		desc.setLayoutCount = VK_NUM_BLOOM_PASSES;
 
 		VK_CHECK( qvkCreatePipelineLayout( vk.device, &desc, NULL, &vk.pipeline_layout_blend ) );
@@ -9560,6 +9568,16 @@ void vk_draw_dot( uint32_t storage_offset )
 }
 
 
+/* [QL] E198: the present shader's frame number (gamma.frag, r_dither 2) */
+static void vk_push_present_frame( void )
+{
+	const uint32_t frame = (uint32_t)tr.frameCount;
+
+	qvkCmdPushConstants( vk.cmd->command_buffer, vk.pipeline_layout_post_process,
+		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( frame ), &frame );
+}
+
+
 void vk_begin_render_pass( VkRenderPass renderPass, VkFramebuffer frameBuffer, qboolean clearValues, uint32_t width, uint32_t height )
 {
 	VkRenderPassBeginInfo render_pass_begin_info;
@@ -10008,6 +10026,7 @@ void vk_end_frame( void )
 			vk_begin_render_pass( vk.render_pass.capture, vk.framebuffers.capture, qfalse, gls.captureWidth, gls.captureHeight );
 			qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.capture_pipeline );
 			qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout_post_process, 0, 1, &vk.color_descriptor, 0, NULL );
+			vk_push_present_frame();   /* [QL] E198 */
 
 			qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 		}
@@ -10025,6 +10044,7 @@ void vk_end_frame( void )
 			vk_begin_render_pass( vk.render_pass.gamma, vk.framebuffers.gamma[ vk.cmd->swapchain_image_index ], qfalse, vk.renderWidth, vk.renderHeight );
 			qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.gamma_pipeline );
 			qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout_post_process, 0, 1, &vk.color_descriptor, 0, NULL );
+			vk_push_present_frame();   /* [QL] E198 */
 
 			qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 		}
@@ -10458,6 +10478,28 @@ qboolean vk_bloom( void )
 
 	if ( backEnd.doneBloom || !backEnd.doneSurfaces || !vk.fboActive )
 	{
+		return qfalse;
+	}
+
+	/*
+	[QL] E198: never begin a pass on a target that was not built.
+
+	r_bloom is latched: the extraction and blur passes, their framebuffers and
+	images exist only if it was on when the renderer started. A menu click used
+	to change it live (a forced cvar set - see Cvar_SetFromClientVM), and the
+	next frame began the extraction pass on two null handles: NVIDIA read
+	address 0xf0 inside vkCmdBeginRenderPass, lavapipe let it pass. The menus
+	latch now; this is so no other route can get here the same way.
+	*/
+	if ( vk.render_pass.bloom_extract == VK_NULL_HANDLE || vk.framebuffers.bloom_extract == VK_NULL_HANDLE ||
+		vk.bloom_extract_pipeline == VK_NULL_HANDLE )
+	{
+		static qboolean warned;
+		if ( !warned ) {
+			warned = qtrue;
+			ri.Printf( PRINT_WARNING, "Bloom: on, but the renderer was started without it - "
+				"vid_restart to apply r_bloom\n" );
+		}
 		return qfalse;
 	}
 

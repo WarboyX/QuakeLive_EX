@@ -2369,6 +2369,7 @@ void trap_R_AddLightToScene(const vec3_t org, float intensity, float r, float g,
 void trap_R_AddAdditiveLightToScene(const vec3_t org, float intensity, float r, float g, float b);
 void trap_R_AddLinearLightToScene(const vec3_t start, const vec3_t end, float intensity, float r, float g, float b);
 void trap_R_AddWaterRipple(const vec3_t origin, float radius, float strength);
+void trap_Cvar_LatchedStringBuffer(const char* var_name, char* buffer, int bufsize);  // [QL] E198
 /* [QL] R19: water disturbances - defined in cg_event.c, used from there and
    from the shotgun's per-pellet trace in cg_weapons.c */
 void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float strength);

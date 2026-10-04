@@ -2164,9 +2164,15 @@ static void R_Register( void )
 		"full brightness for the curve to work with. Requires " S_COLOR_CYAN "\\r_fbo 1." );
 	ri.Cvar_SetGroup( r_toneMap, CVG_RENDERER );
 
-	r_dither = ri.Cvar_Get( "r_dither", "0", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_dither, "0", "1", CV_INTEGER );
-	ri.Cvar_SetDescription(r_dither, "Set dithering mode:\n 0 - disabled\n 1 - ordered\nRequires " S_COLOR_CYAN "\\r_fbo 1." );
+	/* [QL] E198: 2 by default, and 2 exists. The menu row has always offered
+	   "Temporal (best)" 2 and OpenGL 2 defaults to it; here the range stopped
+	   at 1, so the row was refused, and the default was 0 - an 8-bit present
+	   with no dither at all, which on a dark gradient (the Quake Live sign on
+	   japanesecastles) shows every one of its 256 steps as a band. ARCHIVE_ND,
+	   so an install that never chose a value picks the new default up. */
+	r_dither = ri.Cvar_Get( "r_dither", "2", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_dither, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription(r_dither, "Set dithering mode:\n 0 - disabled\n 1 - ordered\n 2 - temporal: the ordered pattern, shifted every frame so it averages away\nRequires " S_COLOR_CYAN "\\r_fbo 1." );
 	ri.Cvar_SetGroup( r_dither, CVG_RENDERER );
 
 	r_presentBits = ri.Cvar_Get( "r_presentBits", "24", CVAR_ARCHIVE_ND | CVAR_LATCH );

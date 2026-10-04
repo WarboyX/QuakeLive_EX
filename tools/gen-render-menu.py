@@ -385,7 +385,7 @@ def render_options():
         ("yesno", "r_fullscreen", "Fullscreen", None),
         ("multi", "r_colorbits", "Colour depth",
          '"Driver default" 0 "16-bit (3dfx look)" 16 "10-bit per channel" 30'),
-        ("multi", "r_dither", "Dither", '"Off" 0 "Ordered (stable)" 1 "Temporal (best)" 2'),
+        ("multi", "r_dither", "Dither", '"Off" 0 "Ordered (stable)" 1 "Temporal (default)" 2'),
         ("h", "IMAGE"),
         # [QL] E124. Brightness belongs on the render page too - it was only on
         # the in-game Lighting page. It applies live now that the renderer's

@@ -637,6 +637,55 @@ void Cvar_SetSafe(const char* var_name, const char* value) {
 
 /*
 ============
+Cvar_SetFromClientVM
+
+[QL] E198. What ui and cgame set cvars through - every menu row, every
+"set" a menu script runs through trap_Cvar_Set.
+
+That was Cvar_SetSafe, which is a *forced* set, and a forced set does two
+things a menu must not:
+
+  - It ignores CVAR_LATCH. The value changed live, inside a renderer built for
+    the old one. Clicking Bloom on set r_bloom->integer to 1 in a renderer
+    that had never created the bloom render pass or framebuffer, and the next
+    frame began a render pass on two null handles: NVIDIA read address 0xf0
+    and the game died, lavapipe shrugged. r_rts clicked on produced a renderer
+    that believed it had a float target and did not.
+
+  - On a cvar that does not exist yet - a Vulkan setting changed while
+    OpenGL 2 is running, or anything set before the renderer registers it -
+    it creates the cvar with the value just set as its *default*, not as a
+    user setting. The renderer's own default can then never replace it ("cvar
+    r_rts given initial values: 1 and 0"), and the config writer leaves out a
+    CVAR_ARCHIVE_ND cvar that equals its default. r_rts 1 was never saved: on
+    the next launch it was 0 again while the menu had shown it on. That is
+    the "had to type it in by hand" that kept coming back.
+
+So this is the console's set, which is what a player choosing a value is:
+latched cvars wait for the restart (the menus show them pending, E183, and
+APPLY restarts), and a new cvar is user-created, so the code that registers
+it later supplies the real default. The protected-cvar check stays.
+
+qagame keeps Cvar_SetSafe: game code corrects latched cvars such as
+g_gametype during init and needs that to take effect at once.
+============
+*/
+void Cvar_SetFromClientVM(const char* var_name, const char* value) {
+    int flags = Cvar_Flags(var_name);
+
+    if ((flags != CVAR_NONEXISTENT) && (flags & CVAR_PROTECTED)) {
+        Cvar_SetSafe(var_name, value);   // the same refusal, reported the same way
+        return;
+    }
+    if (flags == CVAR_NONEXISTENT || (flags & CVAR_LATCH)) {
+        Cvar_Set2(var_name, value, qfalse);
+        return;
+    }
+    Cvar_Set(var_name, value);
+}
+
+/*
+============
 Cvar_SetLatched
 ============
 */
@@ -673,6 +722,17 @@ void Cvar_SetValueSafe(const char* var_name, float value) {
     else
         Com_sprintf(val, sizeof(val), "%f", value);
     Cvar_SetSafe(var_name, val);
+}
+
+// [QL] E198: the ui's trap_Cvar_SetValue - see Cvar_SetFromClientVM
+void Cvar_SetValueFromClientVM(const char* var_name, float value) {
+    char val[32];
+
+    if (Q_isintegral(value))
+        Com_sprintf(val, sizeof(val), "%i", (int)value);
+    else
+        Com_sprintf(val, sizeof(val), "%f", value);
+    Cvar_SetFromClientVM(var_name, val);
 }
 
 /*

@@ -3232,11 +3232,36 @@ static void CG_FeederSelection(float feederID, int index) {
     }
 }
 
+/*
+[QL] E198. What cgame's menus read cvars through - the ui's E183 rule
+(UI_CvarPendingValue): a latched cvar shows the value chosen for the next
+restart where there is one, and Item_PendingLabel adds "(Apply)". Menu sets
+of a latched cvar wait for that restart now (Cvar_SetFromClientVM); read
+live, an in-game row would go on showing the old value after a click and a
+second click could not flip it back.
+*/
 static float CG_Cvar_Get(const char* cvar) {
     char buff[128];
     memset(buff, 0, sizeof(buff));
-    trap_Cvar_VariableStringBuffer(cvar, buff, sizeof(buff));
+    trap_Cvar_LatchedStringBuffer(cvar, buff, sizeof(buff));
+    if (!buff[0]) {
+        trap_Cvar_VariableStringBuffer(cvar, buff, sizeof(buff));
+    }
     return atof(buff);
+}
+
+static void CG_CvarPendingString(const char* cvar, char* buffer, int bufsize) {
+    trap_Cvar_LatchedStringBuffer(cvar, buffer, bufsize);
+    if (!buffer[0]) {
+        trap_Cvar_VariableStringBuffer(cvar, buffer, bufsize);
+    }
+}
+
+static qboolean CG_CvarPending(const char* cvar) {
+    char buf[2];
+
+    trap_Cvar_LatchedStringBuffer(cvar, buf, sizeof(buf));
+    return buf[0] ? qtrue : qfalse;
 }
 
 void CG_Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const char* text, int cursorPos, char cursor, int limit, int style) {
@@ -3307,8 +3332,9 @@ void CG_LoadHudMenu(void) {
     cgDC.runScript = &CG_RunMenuScript;
     cgDC.getTeamColor = &CG_GetTeamColor;
     cgDC.setCVar = trap_Cvar_Set;
-    cgDC.getCVarString = trap_Cvar_VariableStringBuffer;
+    cgDC.getCVarString = CG_CvarPendingString;   // [QL] E198
     cgDC.getCVarValue = CG_Cvar_Get;
+    cgDC.cvarPending = CG_CvarPending;
     cgDC.drawTextWithCursor = &CG_DrawTextWithCursor_DC;
     // cgDC.setOverstrikeMode = &trap_Key_SetOverstrikeMode;
     // cgDC.getOverstrikeMode = &trap_Key_GetOverstrikeMode;

@@ -416,7 +416,7 @@ intptr_t CL_CgameSystemCalls(intptr_t* args) {
             Cvar_Update(VMA(1));
             return 0;
         case CG_CVAR_SET:
-            Cvar_SetSafe(VMA(1), VMA(2));
+            Cvar_SetFromClientVM(VMA(1), VMA(2));   // [QL] E198: honours CVAR_LATCH
             return 0;
         case CG_CVAR_VARIABLESTRINGBUFFER:
             Cvar_VariableStringBuffer(VMA(1), VMA(2), args[3]);
@@ -573,6 +573,10 @@ intptr_t CL_CgameSystemCalls(intptr_t* args) {
             if (re.AddWaterRipple) {
                 re.AddWaterRipple(VMA(1), VMF(2), VMF(3));
             }
+            return 0;
+
+        case CG_CVAR_LATCHEDSTRINGBUFFER:  // [QL] E198
+            Cvar_LatchedStringBuffer(VMA(1), VMA(2), args[3]);
             return 0;
         case CG_R_RENDERSCENE:
             re.RenderScene(VMA(1));

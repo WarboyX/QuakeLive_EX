@@ -6109,6 +6109,50 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E198. Menu clicks bypassed CVAR_LATCH: bloom crash on NVIDIA, and r_rts / HDR bloom "on in the menu, off in the game" — DONE (verify); dither on by default
+**Lives in:** our **client** (engine `cvar.c`, `cl_ui.c`, `cl_cgame.c`; cgame menus; renderervk) · **Seen by:** our client only
+
+Two long-running reports, one cause. "We've had this issue a few times."
+
+**The cause.** ui and cgame set cvars with `trap_Cvar_Set`, which the engine routed to `Cvar_SetSafe`, a *forced* set. Two consequences:
+- **It ignored `CVAR_LATCH`.** A latched renderer cvar changed live, inside a renderer built for the old value.
+  - Clicking Bloom on set `r_bloom->integer` to 1 in a renderer that had never created the bloom render passes or framebuffers. The next frame began the extraction pass on two null handles.
+  - **Tester's crash:** `nvoglv64.dll`, reading `0xf0`, return address `vk_bloom.part.0+0xb7`, immediately after `qvkCmdBeginRenderPass` (mapped against the shipped DLL).
+  - Lavapipe tolerates the null handles, which is why every repro here stayed clean.
+- **On a cvar that did not exist yet, it recorded the value as the default.** A forced set creates the cvar with `Cvar_Get(name, value, 0)`: the value just set becomes the *default*, and the cvar is not user-created. This happens to a Vulkan setting changed while OpenGL 2 runs, or anything set before its module registers it.
+  - The renderer's real default could then never replace it. The tester's 1 October log shows the engine saying so: `cvar "r_rts" given initial values: "1" and "0"`.
+  - The config writer leaves out a `CVAR_ARCHIVE_ND` cvar equal to its default, so `r_rts 1` was never saved. The next launch came up at 0, every time, while the session that set it had shown it on.
+
+**Proven, not inferred.** `cvar.c` compiled alone against stubs, the same two steps run through the old and new paths:
+
+| | old (`Cvar_SetSafe`) | new (`Cvar_SetFromClientVM`) |
+|---|---|---|
+| menu sets `r_rts 1`, then the renderer registers it | the tester's exact warning; default 1; **not written to qzconfig** | default 0; `seta r_rts "1"` written |
+| menu turns `r_bloom` on in a running renderer | live **1** at once | live 0, pending 1, "will be changed upon restarting" |
+
+**Fix.**
+- **`Cvar_SetFromClientVM`:** the console's set, which is what a player choosing a value is. Latched cvars wait for the restart, and a new cvar is user-created, so the code that registers it later supplies the real default. Protected cvars are refused as before. ui (`UI_CVAR_SET`, `UI_CVAR_SETVALUE`) and cgame (`CG_CVAR_SET`) use it; qagame keeps `Cvar_SetSafe`, because game init corrects latched cvars like `g_gametype` and needs that at once.
+- **cgame's menus show pending values** like the ui's (E183): new `CG_CVAR_LATCHEDSTRINGBUFFER`, appended at the end of the import list. A latched row now shows the chosen value and "(Apply)" instead of appearing to ignore the click.
+- **`vk_bloom` guard:** returns, with one warning, if the bloom pass, framebuffer or pipeline was not built, so no other route reaches the driver with null handles.
+
+**Already-affected installs:** the lost values are not in qzconfig to recover. Set `r_rts` / `r_bloomHDR` once more, then APPLY. They now stick.
+
+**Also: `devmap` is not a renderer restart.** It reloads with `RE_Shutdown( 0 )`, which does not rebuild for latched renderer cvars. Typing `r_rts 1` then `devmap` (tester's 03:34 log) left it pending; `vid_restart` or APPLY applies it.
+
+**Dither (the banding on the Quake Live sign).**
+- **The default was off.** The Vulkan renderer defaulted `r_dither` to 0 and accepted only 0–1. The menu row has always offered "Temporal (best)" 2 and OpenGL 2 defaults to it, so the row was refused and the 8-bit present undithered. On a dark gradient every one of the 256 steps shows as a band.
+- **Now:** default 2, range 0–2. Mode 2 shifts the ordered threshold by the golden-ratio fraction each frame, so the pattern averages out.
+- **Mechanism:** the frame number reaches `gamma.frag` as a 4-byte push constant on the post-process layout, pushed before the present and capture draws.
+- **Inherent limit:** with `r_rts 0` the scene itself is 8-bit, and banding baked into it during multi-stage blending cannot be dithered away afterwards. `r_rts 1` is what removes that.
+
+**Checked:** the Linux build is clean. The validation-layer run on japanesecastles with MSAA 4, bloom on, `r_rts 0` and dither 2 rendered with 0 errors. The menu, menu-defaults, menu-cvars and dead-cvars checks pass. The render page shows "Dither: Temporal (default)".
+
+**To verify:**
+1. Turn Bloom on in-game: the row reads "Yes (Apply)" and nothing changes until APPLY.
+2. APPLY, and bloom runs without a crash.
+3. Set Real-time shading on, APPLY, quit and relaunch: it is still on.
+4. Check that the sign's gradient no longer bands.
+
 ### E196. Temporal accumulation for ray-traced AO and sampled shadows; the AO "frame counter" never counted — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

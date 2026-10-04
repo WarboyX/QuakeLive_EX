@@ -10,7 +10,14 @@ layout(constant_id = 0) const float gamma = 1.0;
 layout(constant_id = 1) const float obScale = 2.0;
 layout(constant_id = 2) const float greyscale = 0.0;
 //
-layout(constant_id = 7) const int ditherMode = 0; // 0 - disabled, 1 - ordered
+layout(constant_id = 7) const int ditherMode = 0; // 0 - disabled, 1 - ordered, 2 - temporal (E198)
+
+/* [QL] E198: the frame number, for r_dither 2. A push constant rather than a
+   specialization constant because it changes every frame and a pipeline must
+   not. Pushed before every draw with this shader (present and capture). */
+layout(push_constant) uniform Push {
+	uint frame;
+} pc;
 layout(constant_id = 8) const int depth_r = 255;
 layout(constant_id = 9) const int depth_g = 255;
 layout(constant_id = 10) const int depth_b = 255;
@@ -37,6 +44,16 @@ float threshold() {
 	ivec2 bayerCoord = coordDenormalized % bayerSize;
 	float bayerSample = bayerMatrix[bayerCoord.x + bayerCoord.y * bayerSize];
 	float threshold = (bayerSample + 0.5) / float(bayerSize * bayerSize);
+	/* [QL] E198, r_dither 2. The ordered pattern is fixed to the screen, so on
+	   a gradient that moves - or a camera that does - it reads as a fine grid
+	   standing still while the picture slides under it. Stepping every
+	   threshold by the golden ratio's fraction each frame walks each pixel
+	   through the whole 0..1 range evenly over a few frames, so the pattern
+	   averages away on a high refresh display and what is left is the gradient
+	   the 8-bit output cannot otherwise hold. */
+	if ( ditherMode == 2 ) {
+		threshold = fract( threshold + float( pc.frame & 255u ) * 0.6180340 );
+	}
 	return threshold;
 }
 
@@ -278,7 +295,7 @@ void main() {
 		out_color = vec4(base * obScale, 1);
 	}
 
-	if ( ditherMode == 1 ) {
+	if ( ditherMode != 0 ) {
 		out_color.rgb = dither(out_color.rgb);
 	}
 }
