@@ -6109,6 +6109,36 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E201. Anarki "no such frame 151 to 151": a player's running frame left over from a stand-in model — DONE (guarded; root route not reproduced)
+**Lives in:** our **client** (cgame `cg_players.c`) · **Seen by:** our client only
+
+**What the log says** (tester's 01:40 bot CTF, `R_AddMD3Surfaces: no such frame`).
+- **The count:** 1,883 × "151 to 151" for `anarki/upper.md3`, which has 146 frames. Continuous from the moment an Anarki bot joined blue and `loaddeferred` ran, just after the viewer went spectator.
+- **The end:** four "151 to 123", where 123 is Anarki's own TORSO_ATTACK, and then never again.
+- **So the table was right:** Anarki's (stand 144/145, attack 123). After its first attack the bot stood at 144 without complaint.
+- **What was wrong was the running frame:** the bot's torso still held the stand-in's TORSO_STAND, 151, and was not recomputed for the whole time it stood still. An out-of-range frame draws as frame 0 — a torso in the first frame of a death, for as long as it lasts.
+
+**A real gap, fixed.** A player's animation state is in the current model's frame numbers. `CG_LoadClientInfo` resets the player's entities when it loads a model. The two other ways a client changes model did not:
+- `CG_ScanForExistingClientInfo` copies a model another client already has.
+- `CG_SetDeferredClientInfo` copies a stand-in.
+
+`CG_NewClientInfo` now resets the client's entities whenever the legs or torso model actually changed, by any of the three paths.
+
+**The guard, `CG_CheckLerpFrame`.** After each animation step, a current frame outside the current animation's range is rebuilt from the table.
+- **Not flagged:** within a second of the animation's start. The first frames of a change still belong to the old animation, and that blend is normal.
+- **Diagnostic:** one line per client per map with the frame, the animation and both timers. If it recurs, the log names the route.
+- **First version over-fired, now fixed:** it flagged the normal initial-lerp window, and the frame-0 old frame `CG_ResetPlayerEntity`'s memset leaves for one frame. The shipped version judges only the current frame, outside that window.
+- **Measured:** 0 reports in a 6-Anarki bot CTF; 0 in another with seven `map_restart`s.
+
+**Not reproduced.** The harness never produced the stuck frame:
+- six Anarki bots with a penguin stand-in (OpenArena's penguin stands at 151, the same number);
+- spectator transitions;
+- map restarts.
+
+So which route left it stuck in the tester's match is unknown. The guard removes the symptom whatever the route, and its log line will say.
+
+**To verify:** a bot match with Anarki joining mid-match, as spectator. There should be no "no such frame" lines. A yellow "outside animation ... reset" line is the guard working; please send that log.
+
 ### E200. E199 was too strict at the shoreline: a body half over the water left it still — DONE (verify)
 **Lives in:** our **client** (cgame `CG_WaterRipple`) · **Seen by:** our client only
 

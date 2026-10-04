@@ -1263,7 +1263,40 @@ void CG_NewClientInfo(int clientNum) {
 
     // replace whatever was there with the new one
     newInfo.infoValid = qtrue;
-    *ci = newInfo;
+    {
+        /*
+        [QL] E201: the Anarki "no such frame 151 to 151 / 151 to 123".
+
+        A player's animation state - cent->pe.legs/torso, the frame and old
+        frame the renderer is handed - is in the old model's frame numbers.
+        CG_LoadClientInfo resets the player when it loads a model, because
+        those numbers mean nothing in the new one. The two other ways a
+        client changes model did not: CG_ScanForExistingClientInfo copies a
+        model another client already has (a second bot of the same character,
+        a team change), and CG_SetDeferredClientInfo copies a stand-in. So a
+        bot whose stand-in had its torso stand at frame 151 became Anarki,
+        whose upper body has 146 frames, and went on asking for 151 until the
+        animation next advanced. The renderer draws an out-of-range frame as
+        frame 0: a torso that pops for a frame, and the developer warning.
+
+        Reset whenever the model actually changed, whichever path did it.
+        */
+        qboolean modelChanged = ci->infoValid &&
+            (ci->legsModel != newInfo.legsModel || ci->torsoModel != newInfo.torsoModel);
+
+        *ci = newInfo;
+
+        if (modelChanged) {
+            int e;
+
+            for (e = 0; e < MAX_GENTITIES; e++) {
+                if (cg_entities[e].currentState.clientNum == clientNum &&
+                    cg_entities[e].currentState.eType == ET_PLAYER) {
+                    CG_ResetPlayerEntity(&cg_entities[e]);
+                }
+            }
+        }
+    }
 
     // [QL] when the LOCAL player's own info changes (join a team, leave spectator, change follow
     // target - all rewrite our CS_PLAYERS configstring), re-resolve every other client's forced
@@ -1482,6 +1515,72 @@ static void CG_ClearLerpFrame(clientInfo_t* ci, lerpFrame_t* lf, int animationNu
 
 /*
 ===============
+CG_CheckLerpFrame
+
+[QL] E201: the Anarki "no such frame 151 to 151".
+
+A tester's log: an Anarki bot joined blue while the viewer spectated, was
+drawn with a stand-in model until "loaddeferred", and from then until its first
+shot - 2,159 lines of log - the renderer was asked for torso frame 151 of a
+146-frame model, every frame. Its first attack ended it ("151 to 123", 123
+being Anarki's own TORSO_ATTACK) and nothing recurred: Anarki's animation table
+was right all along. What was wrong was the running frame, which still held
+the stand-in's TORSO_STAND (151) and was never recomputed.
+
+Two causes were found and fixed at the source (the model-change reset in
+CG_NewClientInfo; see there). This is the net under them, because a frame is
+only ever meaningful inside the animation that produced it, and a stale one
+costs a visible pose - the renderer draws an out-of-range frame as frame 0, the
+first frame of a death - for as long as the stale state lasts.
+
+So: a current frame outside the current animation's range, more than a second
+from that animation's start, is rebuilt from the current table. Said once per client per map with the numbers that matter,
+so a recurrence names its own cause instead of showing up as a renderer
+warning that cannot say which entity or why.
+===============
+*/
+static qboolean CG_CheckLerpFrame(centity_t* cent, clientInfo_t* ci, lerpFrame_t* lf, const char* part) {
+    static int reported[MAX_CLIENTS];
+    const animation_t* anim = lf->animation;
+    int first, last, n;
+
+    if (!anim || anim->numFrames <= 0) {
+        return qfalse;
+    }
+    first = anim->firstFrame;
+    last = first + anim->numFrames - 1;
+    /* The current frame only. The old frame is a one-frame lerp source that
+       the next step replaces, and it is legitimately foreign for that frame
+       (a transition, or the frame 0 that CG_ResetPlayerEntity's memset leaves).
+       The tester's case had both stuck: "151 to 151". */
+    if (lf->frame >= first && lf->frame <= last) {
+        return qfalse;
+    }
+    /* A change of animation is out of range on purpose for a moment: until the
+       new animation's start time (frameTime + initialLerp) the frame still
+       belongs to the old one and is lerped from, and the first recomputed frame
+       lerps from it. So only state that stays out of range counts - more than
+       a second either side of the animation's start. The case this is for
+       lasted minutes; an animation start more than a second in the future is
+       a clock that went backwards (a map_restart under a held state). */
+    if (lf->animationTime > cg.time - 1000 && lf->animationTime < cg.time + 1000) {
+        return qfalse;
+    }
+
+    n = cent->currentState.clientNum;
+    if (n >= 0 && n < MAX_CLIENTS && reported[n] != cgs.levelStartTime + 1) {
+        reported[n] = cgs.levelStartTime + 1;
+        CG_Printf(S_COLOR_YELLOW "player %d (%s) %s frame %d->%d outside animation %d (%d..%d), "
+                  "times frame %d anim %d now %d - reset\n",
+                  n, ci->modelName, part, lf->oldFrame, lf->frame, lf->animationNumber & ~ANIM_TOGGLEBIT,
+                  first, last, lf->frameTime, lf->animationTime, cg.time);
+    }
+    CG_ClearLerpFrame(ci, lf, lf->animationNumber);
+    return qtrue;
+}
+
+/*
+===============
 CG_PlayerAnimation
 ===============
 */
@@ -1517,6 +1616,15 @@ static void CG_PlayerAnimation(centity_t* cent, int* legsOld, int* legs, float* 
     *legsBackLerp = cent->pe.legs.backlerp;
 
     CG_RunLerpFrame(ci, &cent->pe.torso, cent->currentState.torsoAnim, speedScale);
+
+    /* [QL] E201: never hand the renderer a frame outside the animation it is
+       playing - see CG_CheckLerpFrame */
+    if (CG_CheckLerpFrame(cent, ci, &cent->pe.legs, "legs") |
+        CG_CheckLerpFrame(cent, ci, &cent->pe.torso, "torso")) {
+        *legsOld = cent->pe.legs.oldFrame;
+        *legs = cent->pe.legs.frame;
+        *legsBackLerp = cent->pe.legs.backlerp;
+    }
 
     *torsoOld = cent->pe.torso.oldFrame;
     *torso = cent->pe.torso.frame;
