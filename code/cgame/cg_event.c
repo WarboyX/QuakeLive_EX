@@ -777,16 +777,13 @@ static const float *CG_ShotOrigin(const entityState_t *es) {
     return org;
 }
 
-void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float strength) {
-    vec3_t p;
-    float surfaceZ;
+/*
+[QL] Find the water surface at or under p, and move p onto it. qfalse when
+there is none to touch from here: too deep below it, nothing under it, or
+ground in the way (E199).
+*/
+static qboolean CG_WaterSurfaceAt(vec3_t p) {
     int i;
-
-    if (!cg_waterRipples.integer) {
-        return;
-    }
-
-    VectorCopy(impact, p);
 
     if (trap_CM_PointContents(p, 0) & CONTENTS_WATER) {
         /* under it - climb to the surface */
@@ -797,7 +794,7 @@ void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float 
             }
         }
         if (i == 16) {
-            return;             // deeper than this looks; not a surface event
+            return qfalse;      // deeper than this looks; not a surface event
         }
     } else {
         /*
@@ -821,7 +818,7 @@ void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float 
         end[2] -= 128.0f;
         trap_CM_BoxTrace(&tr, p, end, NULL, NULL, 0, CONTENTS_SOLID | CONTENTS_WATER);
         if (tr.startsolid || tr.fraction == 1.0f || !(tr.contents & CONTENTS_WATER)) {
-            return;             // no water under this, or ground first
+            return qfalse;      // no water under this, or ground first
         }
         /* just inside the surface, so the refinement below starts in water's
            column and climbs the last couple of units to it */
@@ -847,6 +844,70 @@ void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float 
             break;
         }
         p[2] = q[2];
+    }
+    return qtrue;
+}
+
+/*
+[QL] E200: how far from a body's centre to look for water it is standing in.
+A player is 30 units across (mins/maxs +-15); 20 is that half-width and a
+little more, so a body straddling the shoreline - feet on the bank, half of it
+over the pond - still disturbs the water it is touching.
+*/
+#define WATER_BODY_REACH 20.0f
+
+void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float strength) {
+    vec3_t p;
+    float surfaceZ;
+
+    if (!cg_waterRipples.integer) {
+        return;
+    }
+
+    VectorCopy(impact, p);
+
+    if (!CG_WaterSurfaceAt(p)) {
+        /*
+        [QL] E200: the edge of the water, for bodies.
+
+        E199 made the test exact - water under this point, and no ground in
+        the way - and exact was too strict for a player. The point is the
+        centre of a 30-unit body; walking the shoreline with the centre over
+        the bank and half the body over the pond left the water still, where
+        it should have been disturbed. So for a body (no shot origin: the
+        wake, footsteps, swimming, entering and leaving) look again around its
+        footprint, and ripple at the first spot that is over open water.
+
+        Shots keep the exact test. An impact is a point; a rocket hitting the
+        bank beside a pond did not touch the pond.
+
+        Deep on a bank over a hidden water brush every one of these still meets
+        turf first, so E199 holds: only within reach of open water does this
+        find any.
+        */
+        static const float dirs[8][2] = {
+            {1, 0}, {0.7071f, 0.7071f}, {0, 1}, {-0.7071f, 0.7071f},
+            {-1, 0}, {-0.7071f, -0.7071f}, {0, -1}, {0.7071f, -0.7071f}
+        };
+        int k;
+
+        if (from != NULL) {
+            return;
+        }
+        for (k = 0; k < 8; k++) {
+            p[0] = impact[0] + dirs[k][0] * WATER_BODY_REACH;
+            p[1] = impact[1] + dirs[k][1] * WATER_BODY_REACH;
+            p[2] = impact[2];
+            /* and the feet have to reach it: the body's origin is 24 above
+               its feet (MINS_Z), and a player on top of a bank whose edge
+               overhangs the pond fifty units down is not touching it */
+            if (CG_WaterSurfaceAt(p) && p[2] >= impact[2] - 24.0f - 12.0f) {
+                break;
+            }
+        }
+        if (k == 8) {
+            return;
+        }
     }
 
     surfaceZ = p[2];

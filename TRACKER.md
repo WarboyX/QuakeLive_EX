@@ -6109,6 +6109,33 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E200. E199 was too strict at the shoreline: a body half over the water left it still — DONE (verify)
+**Lives in:** our **client** (cgame `CG_WaterRipple`) · **Seen by:** our client only
+
+Tester: "if I walk the line because my body is half on the water and half on the ground, the animation doesnt play... a small buffer zone".
+
+**Cause.** E199 tests the single point under the body's centre. A player is 30 units across, so straddling the shoreline with the centre over the bank fails the test while half the body is over the pond.
+
+**Fix.**
+- **Footprint test:** for bodies only, when the centre finds no water, it looks again at 8 points 20 units out (half-width 15 plus 5) and ripples at the first that is over open water. Bodies means calls with no shot origin: the wake, footsteps, swimming, entering and leaving water.
+- **Feet check:** a buffer point counts only if the water surface there is within 12 units below the feet (origin −24). A player on top of a bank whose edge overhangs the pond 50 units down is not touching it.
+- **Shots unchanged:** they keep the exact test, so a rocket on the bank does not ripple the pond.
+- **E199 still holds:** deep on turf over a hidden water brush, every buffer point meets turf first.
+
+**Measured over the whole garden pond.** The same logic runs against japanesecastles' BSP: every standable spot on land around pond 1 (12-unit grid, 3,374 spots), with the player's origin 25 above the ground and the trace done as a 2-unit vertical scan.
+
+| | ripples |
+|---|---|
+| E199 (centre only) | **0** of 3,374 — the complaint |
+| buffer, no feet check | 383 — included tops of the steep banks, 30–50 units above the water |
+| **buffer + feet check (shipped)** | **87**, all on low shore 2–12 units above the water, all within 20 units of open water |
+
+The turf strip over the hidden water stays silent.
+
+**Not tested in-game:** the beach strips are about 24 units long, and at lavapipe's few frames a second the wake (one check per ~110 ms after 8 units of movement) did not fire inside one. The steep banks at y 1620 / x 760 and x 400 / y 1800 are not shores you can straddle.
+
+**To verify:** walk the low edge of the garden ponds with half the body over the water; it ripples. Walk the grass a step further in; it does not.
+
 ### E199. Water rippled when walking on the grass beside the garden ponds — DONE (verify)
 **Lives in:** our **client** (cgame `CG_WaterRipple`) · **Seen by:** our client only
 
