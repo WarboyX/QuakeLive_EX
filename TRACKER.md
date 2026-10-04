@@ -6109,7 +6109,47 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
-### E201. Anarki "no such frame 151 to 151": a player's running frame left over from a stand-in model — DONE (guarded; root route not reproduced)
+### E202. RT performance, step 1: stop re-tracing what the temporal pass already averages — DONE (verify)
+**Lives in:** our **client** (renderervk: `rtao.tmpl`, `vk_rt_ao.c`, `vk_rt_shadow.c`) · **Seen by:** our client only
+
+Tester: "we easily lose 4/5th of our performance with the RT set".
+
+**Their log (2560x1440, 4x MSAA, RTX 5080).**
+
+| | reports/s | GPU ms per frame |
+|---|---|---|
+| `r_rt 1`, features on | ~250 | 3.8 |
+| `r_rt 0` | ~850 | 0.9–1.4 |
+
+The gap is the three ray-traced passes: ambient occlusion 1.4 ms, shadows on the level 1.1 ms, structure build 0.55 ms. The log has no stretch with `r_rt 1` and every feature off, so that case is still unmeasured.
+
+**The waste.** E196 averages AO and the sampled shadow edge over about eight frames, but every frame still traced the full ray count. That bought nothing the average did not already have.
+- **AO:** with `r_rtaoTemporal 1`, each pixel traces every K-th of its stratified directions, the phase stepping with the frame. At the default 4 rays: 1 ray a frame, and about 8 samples averaged where it had 4. `res.z` carries K.
+- **Sampled shadow edge:** with `r_rtShadowTemporal 1`, half the rays a frame, never fewer than 2 (one ray is the light's centre and has no softness). The pattern already turns each frame (E196).
+- **Accumulation off** is the old behaviour exactly.
+
+**Measured** (lavapipe, japanesecastles, 6 bots, 1280x720, both temporals on; previous build 539ded5e against this one; ratios only):
+
+| pass | before | after |
+|---|---|---|
+| ambient occlusion | 286–294 ms | 123–133 ms |
+| level shadows | 125–142 ms | ~106 ms |
+| whole frame | ~460 ms | ~280 ms |
+| frames in the same 30 s | 55 | 94 |
+
+AO falls about 2.3×, not 4×, because the denoise and the temporal pass are fixed costs. 0 validation errors.
+
+**Quality.** Same session and same camera, AO debug view (`r_rtao 2`), denoise off:
+- 1 ray/frame accumulated: high-pass grain 29.0;
+- the old 4 rays/frame, not accumulated: 35.3.
+
+The new path is cleaner, as it averages more samples.
+
+**Harness note.** The derived bot scripts had included an.sh's own `client host` line, so two games shared one port and fifo. The Anarki false-positive runs of E201 are affected and need redoing with the fixed header (first 267 lines).
+
+**To verify:** `r_rtTimings 1`, same scene as before. Expect AO well under its old 1.4 ms and shadows somewhat lower. Watch for grain trailing behind fast-moving players, where history is rejected.
+
+### E201. Anarki "no such frame 151 to 151": the followed player drawn with the previous viewed player's animation state — DONE (root cause found and fixed; verify)
 **Lives in:** our **client** (cgame `cg_players.c`) · **Seen by:** our client only
 
 **What the log says** (tester's 01:40 bot CTF, `R_AddMD3Surfaces: no such frame`).
@@ -6136,6 +6176,20 @@ Open, not changed:
 - map restarts.
 
 So which route left it stuck in the tester's match is unknown. The guard removes the symptom whatever the route, and its log line will say.
+
+**Root cause, found after the above (same day).** Once the harness stopped starting two games (see E202), the scenario reproduced: 144 × "151 to 151" and "151 to 123", the tester's exact signature. A debug print on the drawn entities showed the route.
+- **The mechanism:** the viewed player is drawn through `cg.predictedPlayerEntity`, whose `pe.legs` / `pe.torso` belong to whoever was viewed before, in that model's frame numbers.
+- **The trigger:** going spectator as a penguin (TORSO_STAND 151), then following an Anarki bot, handed Anarki's 146-frame torso frame 151. The tester went spectator, then followed the Anarki bot that had just joined.
+- **The fix:** `CG_TransitionPlayerState` clears that state when `ps->clientNum` changes (follow target), with yaw and pitch set from the new view.
+
+**Measured:**
+
+| cgame | "no such frame" |
+|---|---|
+| previous build | 178 |
+| fixed, 3 runs, each with the spectate-and-follow switch | 0 |
+
+The model-change reset and the guard above stay. The guard reported nothing in those runs.
 
 **To verify:** a bot match with Anarki joining mid-match, as spectator. There should be no "no such frame" lines. A yellow "outside animation ... reset" line is the guard working; please send that log.
 

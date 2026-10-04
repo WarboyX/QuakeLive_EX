@@ -458,6 +458,15 @@ qboolean vk_actor_shadows( void )
 	projected = u->soft[0] > 0.0f && u->params[3] == 0.0f && r_rtActorShadowSoftMode->integer == 1 &&
 		vk.actorShadow.pen_composite != VK_NULL_HANDLE;
 	u->soft[1] = (float)r_rtActorShadowRays->integer;
+	/* [QL] E202: the sampled soft edge is averaged over frames when
+	   r_rtShadowTemporal is on (E196), and its pattern already turns each
+	   frame, so half the rays per frame cover the light's disc as well over
+	   the frames averaged. Never fewer than 2: one ray is the light's centre
+	   and has no softness to average. */
+	if ( denoise && !projected && r_rtShadowTemporal->integer == 1 && r_rtActorShadowRays->integer > 2 ) {
+		const int half = r_rtActorShadowRays->integer / 2;
+		u->soft[1] = (float)( half < 2 ? 2 : half );
+	}
 	u->soft[2] = r_rtShadowSun->integer ? 1.0f : 0.0f;   /* [QL] E178 */
 	/* [QL] E196: the ray pattern turns each frame while r_rtShadowTemporal is
 	   averaging it (sampled soft edge only); fixed otherwise, as before - a

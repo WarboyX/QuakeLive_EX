@@ -349,7 +349,30 @@ void main() {
 
 	float occluded = 0.0;
 
+	/*
+	[QL] E202: share the rays across frames when they are being averaged.
+
+	With r_rtaoTemporal accumulating (E196), each pixel is already the mean of
+	about eight frames of traces. Tracing all of sampleCount every one of those
+	frames bought nothing the average did not already have: the cost of the
+	pass is its rays, and this was the most expensive pass in the frame (1.4 ms
+	of 3.8 at 2560x1440 in the tester's log).
+
+	So res.z = K > 1 traces every K-th of the stratified directions, starting at
+	a phase that steps with the frame - over K frames the full set, and the
+	hemisphere turns (rot) as before. At the default 4 that is one ray a frame
+	and four times fewer rays, for a pixel that averages ~8 samples instead of
+	4. Off (K = 1) is the old loop exactly.
+	*/
+	int stride = max(int(pc.res.z + 0.5), 1);
+	int phase = int(pc.params.z + 0.5) % stride;
+	float traced = 0.0;
+
 	for (int i = 0; i < sampleCount; i++) {
+		if (stride > 1 && (i % stride) != phase) {
+			continue;
+		}
+		traced += 1.0;
 		/*
 		Cosine-weighted hemisphere direction. r = sqrt(u) and z = sqrt(1-u) is
 		the concentric-disc mapping: the disc radius grows as sqrt so equal-area
@@ -430,7 +453,7 @@ void main() {
 		}
 	}
 
-	float ao = 1.0 - (occluded / float(sampleCount)) * pc.params.y;
+	float ao = 1.0 - (occluded / max(traced, 1.0)) * pc.params.y;
 
 	/*
 	[QL] Fade the occlusion out inside whatever is lighting this point.

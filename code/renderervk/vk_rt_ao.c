@@ -1102,7 +1102,16 @@ qboolean vk_rt_ao( void )
 	   which under an item drew a round blob that read as a second shadow */
 	push.res[1] = (float)( ( r_rtDynamic->integer == 2 && vk.rt.world.actorReady && vk.rt.world.actorTris > 0 )
 		? ( RT_MASK_LEVEL | RT_MASK_SILHOUETTE ) : RT_MASK_OCCLUSION );
-	push.res[2] = push.res[3] = 0.0f;
+	/* [QL] E202: rays shared across the frames the temporal pass averages -
+	   one in K traced per frame, K chosen so a frame still traces a quarter of
+	   the set (at least one ray). See rtao.tmpl. */
+	push.res[2] = 1.0f;
+	if ( useRT && r_rtaoTemporal->integer == 1 ) {
+		const int n = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
+		const int perFrame = n / 4 > 1 ? n / 4 : 1;
+		push.res[2] = (float)( n > 1 ? n / perFrame : 1 );
+	}
+	push.res[3] = 0.0f;
 
 	/*
 	[QL] Which depth values are not surfaces, taken from the engine's own

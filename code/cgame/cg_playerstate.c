@@ -529,6 +529,24 @@ void CG_TransitionPlayerState(playerState_t* ps, playerState_t* ops) {
         cg.thisFrameTeleport = qtrue;
         // make sure we don't get any unwanted transition effects
         *ops = *ps;
+        /*
+        [QL] E201: and start the drawn player's animation over.
+
+        The viewed player is drawn through cg.predictedPlayerEntity, whose
+        animation state (pe.legs / pe.torso) belongs to whoever was viewed
+        before - in that client's model's frame numbers. Following someone
+        else kept it: going spectator as a penguin and following an Anarki bot
+        handed Anarki's 146-frame torso the penguin's TORSO_STAND, frame 151
+        ("no such frame 151 to ..."). Found in the harness with a debug print
+        on the predicted entity. memset, as CG_ResetPlayerEntity does: frame
+        0 exists in every model, and the next animation step rebuilds the rest
+        from the followed player's own table.
+        */
+        memset(&cg.predictedPlayerEntity.pe.legs, 0, sizeof(cg.predictedPlayerEntity.pe.legs));
+        memset(&cg.predictedPlayerEntity.pe.torso, 0, sizeof(cg.predictedPlayerEntity.pe.torso));
+        cg.predictedPlayerEntity.pe.legs.yawAngle = ps->viewangles[YAW];
+        cg.predictedPlayerEntity.pe.torso.yawAngle = ps->viewangles[YAW];
+        cg.predictedPlayerEntity.pe.torso.pitchAngle = ps->viewangles[PITCH];
     }
 
     // damage events (player is getting wounded)
