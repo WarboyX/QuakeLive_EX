@@ -6109,6 +6109,30 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E194. "Lit surfaces" timed 0.00; light grid in GPU memory; vkmem; a false "NOT RUNNING" at startup — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**1. `r_rtTimings` "lit surfaces (dynamic lights)" always read 0.00.**
+- **Cause:** the timer wrapped the lighting-pass call at the end of `RB_DrawSurfs`. Once any surface sorts at or past `SS_FOG` (fog, glass, smoke, effects: nearly every frame), the pass runs earlier, in the middle of the surface list, and zeroes `num_dlights`. The timed call then found nothing to do.
+- **Fix:** the timer now sits inside `RB_LightingPass`, around the real work, and only when there are lights.
+- **Not checked:** the harness cannot fire weapons (no weapon assets), so this needs a reading while firing plasma or rockets.
+
+**2. Light grid and light field in GPU memory.** Written once at map load and read by every shadow ray several times. It lived in host-visible memory, so each of those reads crossed the PCIe bus.
+- **Now:** a device-local buffer filled through the staging buffer.
+- **Fallback:** if the card has no room, the old host-visible buffer is used, with a warning.
+- **Map-load line:** "RT: light grid and light field in GPU memory (4722 KiB)" on japanesecastles.
+
+**3. `vkmem`, and a GPU-memory line at map load.**
+- **What it reports:** with `VK_EXT_memory_budget` (now enabled where the driver has it), each heap's size, this process's use and the driver's budget.
+- **Map-load line:** "GPU memory: N MiB used, budget M MiB".
+- **No leak:** under lavapipe, use settles at about 1.1 GiB after three loads and stays there through six map loads. Two `vid_restart`s bring it back to about 1.0 GiB. Lavapipe's "GPU" heap is system RAM; an RTX card reports its own.
+
+**4. "RT shadows … NOT RUNNING: the level's acceleration structure is not bound" printed on every launch, in the main menu** (tester's log). The shadow report treated the settings a session starts with as a toggle, and reported it two frames later with no map loaded. The first frame now records the state without reporting, and a toggle made in the menus with no map waits for one.
+
+**Checked in the tester's log (E192 build):** no errors, validation messages or failed passes. Light field 68.7%, built in 313 ms. The red "Pipeline cache: saved" line is a developer-only print (developer prints are red), not an error.
+
+**Checked:** harness regression within the noise floor (site 1 caught the spawn flash), through `vid_restart` and a second map load; 0 validation errors.
+
 ### E193. Real lamp list: prototype results — NOTE (not built into the engine)
 **Lives in:** test prototype only (scratchpad scripts) · **Seen by:** nobody yet
 

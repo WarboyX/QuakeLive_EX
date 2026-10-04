@@ -125,7 +125,7 @@ vertex buffer is routinely larger than the staging buffer and a single
 vkCmdCopyBuffer would silently truncate.
 =================
 */
-static void rt_upload( VkBuffer dst, const void *data, VkDeviceSize size )
+static void rt_upload_at( VkBuffer dst, VkDeviceSize dstOffset, const void *data, VkDeviceSize size )
 {
 	VkDeviceSize done = 0;
 
@@ -141,13 +141,18 @@ static void rt_upload( VkBuffer dst, const void *data, VkDeviceSize size )
 
 		cmd = begin_command_buffer();
 		region.srcOffset = 0;
-		region.dstOffset = done;
+		region.dstOffset = dstOffset + done;
 		region.size = chunk;
 		qvkCmdCopyBuffer( cmd, vk.staging_buffer.handle, dst, 1, &region );
 		end_command_buffer( cmd, __func__ );
 
 		done += chunk;
 	}
+}
+
+static void rt_upload( VkBuffer dst, const void *data, VkDeviceSize size )
+{
+	rt_upload_at( dst, 0, data, size );
 }
 
 
@@ -2015,7 +2020,9 @@ void vk_rt_destroy_world( void )
 	   binding them before either goes */
 	vk.ssr.rtReady = qfalse;
 	if ( vk.rt.world.grid_buffer != VK_NULL_HANDLE ) {
-		qvkUnmapMemory( vk.device, vk.rt.world.grid_memory );
+		if ( vk.rt.world.grid_ptr != NULL ) {   /* E194: mapped only in system memory */
+			qvkUnmapMemory( vk.device, vk.rt.world.grid_memory );
+		}
 		qvkDestroyBuffer( vk.device, vk.rt.world.grid_buffer, NULL );
 		qvkFreeMemory( vk.device, vk.rt.world.grid_memory, NULL );
 	}
@@ -2347,7 +2354,27 @@ void vk_rt_build_world( const world_t *world )
 		const VkDeviceSize bytes = gridBytes + fieldBytes;
 
 		vk.rt.world.haveLightField = qfalse;
-		if ( rt_create_host_buffer( bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+		/* [QL] E194: in GPU memory, staged once. It is written at map load and
+		   then only read - by every shadow ray, several times each - and in
+		   host-visible memory every one of those reads crossed the PCIe bus.
+		   System memory stays as the fallback for a card that is out of room. */
+		if ( rt_create_buffer( bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				&vk.rt.world.grid_buffer, &vk.rt.world.grid_memory ) ) {
+			vk.rt.world.grid_ptr = NULL;
+			if ( points > 0 ) {
+				rt_upload_at( vk.rt.world.grid_buffer, 0, world->lightGridData, gridBytes );
+				if ( fieldBytes ) {
+					rt_upload_at( vk.rt.world.grid_buffer, gridBytes, world->lightField, fieldBytes );
+					vk.rt.world.haveLightField = qtrue;
+				}
+				vk.rt.world.haveGrid = qtrue;
+			} else {
+				static const byte zero[16];
+				rt_upload_at( vk.rt.world.grid_buffer, 0, zero, sizeof( zero ) );
+			}
+			ri.Printf( PRINT_ALL, "RT: light grid%s in GPU memory (%i KiB)\n",
+				vk.rt.world.haveLightField ? " and light field" : "", (int)( bytes / 1024 ) );
+		} else if ( rt_create_host_buffer( bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 				&vk.rt.world.grid_buffer, &vk.rt.world.grid_memory, &vk.rt.world.grid_ptr ) ) {
 			if ( points > 0 ) {
 				Com_Memcpy( vk.rt.world.grid_ptr, world->lightGridData, (size_t)gridBytes );
@@ -2359,6 +2386,8 @@ void vk_rt_build_world( const world_t *world )
 			} else {
 				Com_Memset( vk.rt.world.grid_ptr, 0, (size_t)bytes );
 			}
+			ri.Printf( PRINT_WARNING, "RT: light grid in system memory (%i KiB) - no room in GPU memory\n",
+				(int)( bytes / 1024 ) );
 		} else {
 			ri.Printf( PRINT_WARNING, "RT: no light grid buffer - reflections will not ray trace\n" );
 		}
@@ -2375,4 +2404,5 @@ void vk_rt_build_world( const world_t *world )
 
 	ri.Printf( PRINT_ALL, "RT: world acceleration structure ready%s\n",
 		vk.rt.world.dynReady ? " (+ dynamic entities)" : "" );
+	vk_print_memory( qtrue );   /* [QL] E194: with the map's structures in place */
 }

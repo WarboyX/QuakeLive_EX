@@ -2257,6 +2257,7 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		qboolean bufferDeviceAddress = qfalse;
 		qboolean spirv14 = qfalse, floatControls = qfalse, descriptorIndexing = qfalse;
 		const char *storeOpNoneExt = NULL;   /* [QL] E173 */
+		qboolean memoryBudget = qfalse;      /* [QL] E194 */
 		/* [QL] R13: the three feature structs a ray query needs chained onto
 		   device creation, and the request that turns the whole thing on. */
 		VkPhysicalDeviceAccelerationStructureFeaturesKHR accel_features;
@@ -2319,6 +2320,10 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 				storeOpNoneExt = "VK_EXT_load_store_op_none";
 			} else if ( strcmp( ext, "VK_KHR_load_store_op_none" ) == 0 && storeOpNoneExt == NULL ) {
 				storeOpNoneExt = "VK_KHR_load_store_op_none";
+			/* [QL] E194: how much GPU memory this process uses, and how much the
+			   driver will let it have - for vkmem and the map-load line */
+			} else if ( strcmp( ext, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME ) == 0 ) {
+				memoryBudget = qtrue;
 #ifdef _DEBUG
 			} else if ( strcmp( ext, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME ) == 0 ) {
 				timelineSemaphore = qtrue;
@@ -2502,6 +2507,12 @@ static qboolean vk_create_device( VkPhysicalDevice physical_device, int device_i
 		if ( debugMarker ) {
 			device_extension_list[ device_extension_count++ ] = VK_EXT_DEBUG_MARKER_EXTENSION_NAME;
 			vk.debugMarkers = qtrue;
+		}
+
+		vk.memoryBudget = qfalse;
+		if ( memoryBudget ) {   /* [QL] E194 */
+			device_extension_list[ device_extension_count++ ] = VK_EXT_MEMORY_BUDGET_EXTENSION_NAME;
+			vk.memoryBudget = qtrue;
 		}
 
 		/* [QL] E173: see vk_create_rtao_render_pass - the composite pass holds
@@ -10515,4 +10526,68 @@ qboolean vk_bloom( void )
 	backEnd.doneBloom = qtrue;
 
 	return qtrue;
+}
+
+
+/*
+=================
+[QL] E194. GPU memory: every heap the device has, how big it is, and - with
+VK_EXT_memory_budget - how much of it this process uses and how much the
+driver will give it before it starts paging. "brief" is the one line printed
+at map load: device-local use against its budget, which is the number that
+answers "how much GPU memory does the game take".
+=================
+*/
+void vk_print_memory( qboolean brief )
+{
+	PFN_vkGetPhysicalDeviceMemoryProperties2 getProps2;
+	VkPhysicalDeviceMemoryProperties2 props2;
+	VkPhysicalDeviceMemoryBudgetPropertiesEXT budget;
+	VkDeviceSize used = 0, avail = 0, total = 0;
+	uint32_t i;
+
+	if ( vk.physical_device == VK_NULL_HANDLE ) {
+		return;
+	}
+	getProps2 = (PFN_vkGetPhysicalDeviceMemoryProperties2)ri.VK_GetInstanceProcAddr( vk_instance, "vkGetPhysicalDeviceMemoryProperties2" );
+	if ( getProps2 == NULL ) {
+		getProps2 = (PFN_vkGetPhysicalDeviceMemoryProperties2)ri.VK_GetInstanceProcAddr( vk_instance, "vkGetPhysicalDeviceMemoryProperties2KHR" );
+	}
+
+	Com_Memset( &props2, 0, sizeof( props2 ) );
+	Com_Memset( &budget, 0, sizeof( budget ) );
+	props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+	budget.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+	if ( getProps2 != NULL ) {
+		props2.pNext = vk.memoryBudget ? &budget : NULL;
+		getProps2( vk.physical_device, &props2 );
+	} else {
+		qvkGetPhysicalDeviceMemoryProperties( vk.physical_device, &props2.memoryProperties );
+	}
+
+	for ( i = 0; i < props2.memoryProperties.memoryHeapCount; i++ ) {
+		const VkMemoryHeap *h = &props2.memoryProperties.memoryHeaps[i];
+		const qboolean local = ( h->flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT ) ? qtrue : qfalse;
+		if ( local ) {
+			total += h->size;
+			used += budget.heapUsage[i];
+			avail += budget.heapBudget[i];
+		}
+		if ( !brief ) {
+			if ( vk.memoryBudget && getProps2 != NULL ) {
+				ri.Printf( PRINT_ALL, "heap %u: %5i MiB %s - this process uses %i MiB, budget %i MiB\n", i,
+					(int)( h->size >> 20 ), local ? "GPU   " : "system",
+					(int)( budget.heapUsage[i] >> 20 ), (int)( budget.heapBudget[i] >> 20 ) );
+			} else {
+				ri.Printf( PRINT_ALL, "heap %u: %5i MiB %s\n", i, (int)( h->size >> 20 ), local ? "GPU" : "system" );
+			}
+		}
+	}
+	if ( !vk.memoryBudget || getProps2 == NULL ) {
+		ri.Printf( PRINT_ALL, "GPU memory: %i MiB on the card; this driver does not report use (no VK_EXT_memory_budget)\n",
+			(int)( total >> 20 ) );
+		return;
+	}
+	ri.Printf( PRINT_ALL, "GPU memory: %i MiB used, budget %i MiB, %i MiB on the card\n",
+		(int)( used >> 20 ), (int)( avail >> 20 ), (int)( total >> 20 ) );
 }

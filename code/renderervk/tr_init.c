@@ -1555,6 +1555,12 @@ static void R_RTAOInstances_f( void )
 }
 
 
+/* [QL] E194: GPU memory by heap, with use and budget where the driver says */
+static void VkMem_f( void )
+{
+	vk_print_memory( qfalse );
+}
+
 static void VkInfo_f( void )
 {
 	ri.Printf(PRINT_ALL, "max_vertex_usage: %iKb\n", (int)((vk.stats.vertex_buffer_max + 1023) / 1024) );
@@ -1784,6 +1790,7 @@ static void R_Register( void )
 	ri.Cmd_AddCommand( "gfxinfo", GfxInfo_f );
 #ifdef USE_VULKAN
 	ri.Cmd_AddCommand( "vkinfo", VkInfo_f );
+	ri.Cmd_AddCommand( "vkmem", VkMem_f );   /* [QL] E194 */
 	ri.Cmd_AddCommand( "rtao_instances", R_RTAOInstances_f );
 	ri.Cmd_AddCommand( "rtshadows", R_RTShadows_f );   // [QL] E162
 #endif
@@ -3060,6 +3067,7 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	ri.Cmd_RemoveCommand( "rtao_instances" );
 	ri.Cmd_RemoveCommand( "rtshadows" );
 	ri.Cmd_RemoveCommand( "vkinfo" );
+	ri.Cmd_RemoveCommand( "vkmem" );
 #endif
 
 	//if ( tr.registered ) {

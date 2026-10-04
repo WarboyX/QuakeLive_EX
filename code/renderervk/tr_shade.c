@@ -1179,7 +1179,14 @@ void R_RTShadowReport( qboolean force )
 	if ( !force ) {
 		const int state = r_rtActorShadows->integer * 64 + r_rtModelShadows->integer * 16 +
 			r_rtDlightShadows->integer * 4 + ( R_SHADOWS_TRACED ? 1 : 0 );
-		static int lastState = 0;
+		/* [QL] E194: -1 until the first frame, so the settings a session starts
+		   with are not mistaken for a toggle - that printed "NOT RUNNING" from
+		   the main menu on every launch, before any map could have been built */
+		static int lastState = -1;
+		if ( lastState < 0 ) {
+			lastState = state;
+			return;
+		}
 		if ( state != lastState ) {
 			/* a toggle is reported two frames on, so "last frame" is one that
 			   was drawn with the new setting from start to finish */
@@ -1189,6 +1196,9 @@ void R_RTShadowReport( qboolean force )
 		}
 		if ( rtReportDue < 0 || tr.frameCount < rtReportDue ) {
 			return;
+		}
+		if ( !tr.worldMapLoaded ) {
+			return;   /* toggled in the menus with no map: nothing to report on yet */
 		}
 		rtReportDue = -1;
 	}

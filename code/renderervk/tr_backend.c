@@ -1244,6 +1244,16 @@ static void RB_LightingPass( void )
 	//tess.allowVBO = qfalse; // for now
 #endif
 
+	/* [QL] E194: timed here, where the work is. The call at the end of
+	   RB_DrawSurfs that used to carry the timer usually finds nothing left:
+	   once any surface sorts at or past SS_FOG this pass runs mid-list and
+	   zeroes num_dlights below, so "lit surfaces" read 0.00 whatever was lit */
+#ifdef USE_VULKAN
+	if ( backEnd.viewParms.num_dlights > 0 ) {
+		vk_timing_begin( RTT_LIT );
+	}
+#endif
+
 	tess.dlightPass = qtrue;
 
 	for ( i = 0; i < backEnd.viewParms.num_dlights; i++ )
@@ -1258,6 +1268,9 @@ static void RB_LightingPass( void )
 
 	tess.dlightPass = qfalse;
 
+#ifdef USE_VULKAN
+	vk_timing_end( RTT_LIT );   /* a no-op unless the begin above ran */
+#endif
 	backEnd.viewParms.num_dlights = 0;
 }
 #endif
@@ -1505,13 +1518,7 @@ static const void *RB_DrawSurfs( const void *data ) {
 #ifdef USE_PMLIGHT
 	if ( backEnd.refdef.numLitSurfs ) {
 		RB_BeginDrawingLitSurfs();
-#ifdef USE_VULKAN
-		vk_timing_begin( RTT_LIT );   /* [QL] E177 */
-#endif
-		RB_LightingPass();
-#ifdef USE_VULKAN
-		vk_timing_end( RTT_LIT );
-#endif
+		RB_LightingPass();   /* timed inside (E194) */
 	}
 #endif
 

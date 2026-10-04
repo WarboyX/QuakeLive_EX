@@ -877,6 +877,7 @@ typedef struct {
 	   depth-fail counting (own-player shadow) is only offered with it */
 	qboolean depthClamp;
 	qboolean storeOpNone;   // [QL] E173: VK_KHR/EXT_load_store_op_none - read-only depth is not stored
+	qboolean memoryBudget;  // [QL] E194: VK_EXT_memory_budget - vkmem reports use and budget
 	qboolean fragmentStores;
 	qboolean dedicatedAllocation;
 	/* [QL] R13 ray query state. Three separate facts, deliberately not one:
@@ -1368,4 +1369,5 @@ extern Vk_World		vk_world;		// this data is cleared during ref re-init
 enum { RTT_FRAME, RTT_TLAS, RTT_AO, RTT_SHADOW, RTT_SSR, RTT_LIT, RTT_COUNT };
 void vk_rt_caps_reset( void );   // [QL] E188: RE_Shutdown, before ri.FreeAll
 void vk_timing_begin( int section );
+void vk_print_memory( qboolean brief );   // [QL] E194: vkmem
 void vk_timing_end( int section );
