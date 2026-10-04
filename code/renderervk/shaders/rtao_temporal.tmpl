@@ -1,0 +1,152 @@
+#version 450
+
+/*
+[QL] E196: ambient occlusion, accumulated over frames (r_rtaoTemporal).
+
+A few rays a pixel is a noisy estimate, and the denoise can only average a
+pixel with its neighbours - which blurs detail as it smooths. The trace already
+turns its ray pattern every frame (rtao.tmpl's frame counter), so the same
+surface seen over several frames has been sampled several different ways.
+Averaging those is free detail: this pass blends the frame's trace into a
+running average kept from earlier frames, before the spatial denoise.
+
+The average lives in screen space, so it has to follow the camera. Each texel
+is put back where it was last frame - reproject = last frame's view-projection
+times the inverse of this one's, applied to the texel's depth - and the
+history is read there.
+
+What makes this safe is the second channel. Every history texel keeps the view
+depth it was written at. A history tap whose depth does not match where this
+surface would have been last frame is something else - a wall a player has
+just walked out from in front of, a ledge seen past the edge of another - and
+is left out. Where none of the four taps match, the pass keeps this frame's
+trace and starts the average over: nothing smears into a newly revealed surface.
+
+A moving player's own occlusion on the floor is the remaining case: the floor
+has not moved, so its history is accepted, but the darkening under the player
+has. The history is clamped to the spread of this frame's trace around the
+texel, so a stale value outside what this frame can see is pulled back in
+rather than left to fade at the blend rate.
+
+Writes (occlusion, view depth) at the occlusion's own resolution, into the
+history target that the denoise then reads in place of the raw trace.
+*/
+
+layout(set = 0, binding = 0) uniform sampler2D aoMap;        // this frame's trace
+#ifdef USE_MSAA
+layout(set = 0, binding = 1) uniform sampler2DMS depthMap;
+#else
+layout(set = 0, binding = 1) uniform sampler2D depthMap;
+#endif
+layout(set = 0, binding = 2) uniform sampler2D historyMap;   // r occlusion, g view depth
+
+layout(location = 0) in vec2 frag_tex_coord;
+layout(location = 0) out vec4 out_color;
+
+layout(push_constant) uniform Push {
+	mat4 reproject;      // this frame's clip space -> last frame's
+	vec4 depthLinear;    // x proj[10], y proj[14], z depth tolerance (fraction), w aoScale
+	vec4 params;         // x weight of this frame (negative: the diagnostic view), y 1 if the history is usable, zw full-resolution size
+} pc;
+
+float fetchDepth(ivec2 p) {
+	return texelFetch(depthMap, p, 0).r;
+}
+
+float linearise(float d) {
+	return pc.depthLinear.y / (d + pc.depthLinear.x);
+}
+
+void main() {
+	int s = max(int(pc.depthLinear.w + 0.5), 1);
+	ivec2 full = ivec2(pc.params.zw);
+	ivec2 size = (full + ivec2(s - 1)) / s;          // the part of the targets in use
+	ivec2 c = ivec2(gl_FragCoord.xy);
+	ivec2 cd = min(c * s, full - ivec2(1));          // the depth texel this one was traced at
+
+	/* The targets were R8_UNORM before E196, which clamped every write to
+	   [0,1] for free; as R16G16_SFLOAT they keep whatever is written. An
+	   occlusion or shadow factor is 0..1 by definition, so it is held there
+	   here, and a value that is not a number at all is taken as "unshadowed"
+	   rather than passed on - one NaN reaching the scene spreads through
+	   bloom across the whole screen (E175). */
+	float cur = texelFetch(aoMap, c, 0).r;
+	cur = (isnan(cur) || isinf(cur)) ? 1.0 : clamp(cur, 0.0, 1.0);
+	float d = fetchDepth(cd);
+	float z = linearise(d);
+	if (isnan(z) || isinf(z)) {
+		z = 65504.0;                                 // the cleared depth: as far as the format holds
+	}
+	/* r_rtaoTemporal 2: what the history did here, in place of the occlusion -
+	   black no history this frame, grey history rejected (another surface, off
+	   screen), white history used */
+	bool diag = pc.params.x < 0.0;
+	out_color = vec4(diag ? 0.0 : cur, z, 0.0, 1.0);
+
+	if (pc.params.y < 0.5) {
+		return;                                      // nothing to blend with: start the average
+	}
+	if (diag) {
+		out_color.r = 0.5;
+	}
+
+	/* where this texel's surface was last frame */
+	vec2 uv = (vec2(cd) + 0.5) / vec2(full);
+	vec4 prev = pc.reproject * vec4(uv * 2.0 - 1.0, d, 1.0);
+	if (prev.w <= 0.0) {
+		return;
+	}
+	vec2 puv = prev.xy / prev.w * 0.5 + 0.5;
+	if (any(lessThan(puv, vec2(0.0))) || any(greaterThan(puv, vec2(1.0)))) {
+		return;                                      // off screen last frame
+	}
+	/* its view depth then. The point went in as normalised device coordinates
+	   (w = 1), not clip coordinates, so what comes out is last frame's clip
+	   scaled by 1 / this frame's w: x/w and y/w are right as they are, and w
+	   has to be multiplied back by this frame's view depth. Read as a depth
+	   on its own it is the ratio of the two - 1 for a still camera - and
+	   every history tap failed the test below. */
+	float zPrev = prev.w * z;
+	float tol = pc.depthLinear.z * zPrev + 1.0;
+
+	/* bilinear by hand, so a tap from another surface can be dropped rather
+	   than blended in by the sampler */
+	vec2 ht = puv * vec2(full) / float(s) - 0.5;
+	ivec2 h0 = ivec2(floor(ht));
+	vec2 f = ht - vec2(h0);
+	float acc = 0.0, wsum = 0.0;
+	for (int k = 0; k < 4; k++) {
+		ivec2 o = ivec2(k & 1, k >> 1);
+		ivec2 h = h0 + o;
+		if (any(lessThan(h, ivec2(0))) || any(greaterThanEqual(h, size))) {
+			continue;
+		}
+		vec2 hv = texelFetch(historyMap, h, 0).rg;
+		if (any(isnan(hv)) || any(isinf(hv)) || abs(hv.g - zPrev) > tol) {
+			continue;
+		}
+		float w = (o.x == 1 ? f.x : 1.0 - f.x) * (o.y == 1 ? f.y : 1.0 - f.y);
+		acc += hv.r * w;
+		wsum += w;
+	}
+	if (wsum < 0.25) {
+		return;                                      // mostly a different surface: start over
+	}
+	float hist = acc / wsum;
+
+	/* this frame's spread around the texel, which the history may not leave */
+	float m1 = 0.0, m2 = 0.0;
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			float v = texelFetch(aoMap, clamp(c + ivec2(i, j), ivec2(0), size - ivec2(1)), 0).r;
+			m1 += v;
+			m2 += v * v;
+		}
+	}
+	m1 /= 9.0;
+	m2 /= 9.0;
+	float sd = sqrt(max(m2 - m1 * m1, 0.0));
+	hist = clamp(hist, m1 - 1.5 * sd - 0.05, m1 + 1.5 * sd + 0.05);
+
+	out_color = vec4(diag ? 1.0 : clamp(mix(hist, cur, pc.params.x), 0.0, 1.0), z, 0.0, 1.0);
+}

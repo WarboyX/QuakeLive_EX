@@ -180,6 +180,8 @@ cvar_t	*r_rtaoNormals;
 cvar_t	*r_rtaoWeapon;
 cvar_t	*r_rts;
 cvar_t	*r_rtaoDenoise;
+cvar_t	*r_rtaoTemporal;   // [QL] E196
+cvar_t	*r_rtShadowTemporal;   // [QL] E196
 cvar_t	*r_rtaoResolution;   // [QL] E150
 cvar_t	*r_ssrResolution;    // [QL] E151
 cvar_t	*r_ssrRayTrace;      // [QL] E156
@@ -2684,6 +2686,26 @@ static void R_Register( void )
 		" 1 - on\n"
 		" 2 - wide (smoother, softer contact shadows)\n"
 		"The width needs a vid_restart; off and on do not." );
+
+	/* [QL] E196 */
+	r_rtShadowTemporal = ri.Cvar_Get( "r_rtShadowTemporal", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtShadowTemporal, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtShadowTemporal, "Accumulate the traced shadows' sampled soft edge over frames, "
+		"following the camera (with " S_COLOR_CYAN "\\r_rtActorShadowSoftMode" S_COLOR_WHITE " 0 and the "
+		"shadow denoise on):\n"
+		" 0 - off, each frame stands alone\n"
+		" 1 - on (default) - smoother edges for the same rays\n"
+		" 2 - debug: dark where last frame could not be reused\n"
+		"A shadow that moves leaves no trail: where this frame's rays disagree with the "
+		"average, this frame wins. Applies at once." );
+	r_rtaoTemporal = ri.Cvar_Get( "r_rtaoTemporal", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoTemporal, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoTemporal, "Accumulate the occlusion over frames, following the camera:\n"
+		" 0 - off, each frame stands alone\n"
+		" 1 - on (default) - steadier and more detailed for the same rays\n"
+		" 2 - debug: with r_rtao 2, white where last frame was reused, grey where it was\n"
+		"     rejected (newly in view, or something moved), black where there was none\n"
+		"Surfaces newly in view, or in front of something that moved, start fresh. Applies at once." );
 
 	/* [QL] E155. Your own player's stencil shadow (cg_shadows 2). */
 	r_stencilSelfShadow = ri.Cvar_Get( "r_stencilSelfShadow", "1", CVAR_ARCHIVE_ND );

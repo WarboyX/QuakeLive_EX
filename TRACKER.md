@@ -6109,6 +6109,69 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E196. Temporal accumulation for ray-traced AO and sampled shadows; the AO "frame counter" never counted — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**What it does.** A few rays a pixel is a noisy estimate, and the spatial denoise can only average neighbours, which blurs detail. A new pass blends each frame's trace into a running average kept from earlier frames, before the denoise, following the camera.
+- **Following the camera:** each texel is reprojected with last frame's view-projection × this frame's inverse.
+- **Rejecting stale history:** each history texel keeps the view depth it was written at. A tap whose depth does not match where this surface was last frame is another surface (newly revealed, or something moved), and is dropped. With no matching tap the average starts over.
+- **No trails:** the history is clamped to the spread of this frame's raw trace around the texel, so a shadow or crease that has moved does not linger.
+- **Blend:** this frame weighs 0.12, about the last eight frames.
+
+**Two channels, one shader** (`rtao_temporal.tmpl`, `vk_rt_temporal` in `vk_rt_ao.c`):
+- **`r_rtaoTemporal`:** the ambient occlusion, full or half trace resolution.
+- **`r_rtShadowTemporal`:** the traced shadows' *sampled* soft edge (soft mode 0 with the shadow denoise on, which already runs through AO's targets, E169). Projected edges (mode 1) are not noisy and are untouched.
+- **Values:** 1 on (default), 0 off, 2 a diagnostic. In the AO debug view (`r_rtao 2`), white = last frame reused, grey = rejected, black = no history.
+- **Menu:** each has a row, Lighting & RT and Cast Shadows, "Accumulate over frames". Both apply at once.
+
+**Found on the way: the AO's per-frame rotation was never per frame.**
+- **Cause:** `rtao.tmpl` rotates its rays by a hash of the pixel and `params.z`, documented as "a frame counter... so successive frames use different sets". It was fed `vk.frame_count`, which is `vk_begin_frame`'s nesting guard, 1 throughout every frame. The pattern had been identical every frame since R13: two frames 20 apart differed in 180 pixels.
+- **Fix:** now `tr.frameCount`, but only while accumulation is on. Alone, a moving pattern is shimmer where a fixed one is grain, so AO with accumulation off looks exactly as before.
+- **Shadows:** the shadow trace turns its pattern by the golden angle per frame on the same terms (`soft.w`, previously unused).
+
+**Format.**
+- **Targets:** the occlusion targets went from R8_UNORM to R16G16_SFLOAT, plus four history targets. Sharing the format lets everything share the render pass, framebuffers and denoise layout.
+- **Clamping:** R8 clamped every write to 0..1 for free. The temporal pass and the denoise now clamp what they read, and treat a non-finite value as unshadowed (the E175 NaN-through-bloom rule).
+- **Pool:** `MAX_ATTACHMENTS_IN_POOL` +4 (its startup guard caught the first attempt).
+
+**Bug found in testing, fixed before commit:** the reprojected point went in as screen coordinates (w = 1), so the w that came out was last frame's depth divided by this frame's, 1 for a still camera. Every history tap failed the depth test until it was multiplied back.
+
+**Measured (lavapipe, japanesecastles):**
+- **Raw AO, 4 rays, denoise off, still camera:** grain 24.2 → **6.1** with accumulation, and mean brightness unchanged (905.5 → 906.8).
+- **Diagnostic, still camera:** history reused on all but 460 of 921,600 pixels.
+- **Turning and strafing at lavapipe's few frames a second:** rejected exactly at the newly visible edge and at uncovered edges, with no smear.
+- **Own shadow strafing on the moat deck:** no trail.
+- **Sampled shadow edge after the denoise:** already smooth at 4 rays (edge grain 4.5 either way), so the gain there is small. It matters more with fewer rays or at high frame rates.
+- **Regression:** screenshots within the noise floor, 0 validation errors.
+
+**To verify:** look for smearing behind moving players and at doorways while turning fast. `r_rtaoTemporal 2` with `r_rtao 2` shows what is being reused.
+
+### E195. Bot skill tag cut off on the team scoreboards — DONE (verify)
+**Lives in:** our **client** (pak01 scoreboard) · **Seen by:** our client only
+
+E141's "[7]" after a bot's name (developer 1) was cut on every name over four letters: "TankJr [", "Phobos [". The red/blue name column allowed 10 characters in a width that fits about 20 at its text scale. Now 18 (`gen-scoreboard.py`). Photographed: "Bitterman [7]" fits with room to spare.
+
+### E197. Bot CTF match review: no captures, and two log findings — NOTE
+**Lives in:** our **server** (qagame bots) and our **client** (cgame, renderer) · **Seen by:** every client (bots); our client only (overlay, frame warnings)
+
+Tester's 21v22 instagib CTF on japanesecastles, 20 minutes, "bots never scored".
+
+**Not a scoring bug** (the tester's words too).
+- The last `scores_ctf` gives bots 290, 289, 250 points, with 30-80 kills each.
+- The team score stayed 0 because nobody captured: about 30 flag grabs, about 25 carriers fragged, about 25 returns, 0 captures.
+- The screenshot of a board full of zeros was taken 27 s into the match (19:33 of 20:00 left).
+
+**It is the known weakness, at its worst setting.**
+- E132-E141 measured this at 30 a side: 1-4% of grabs become captures, and instagib 0.08 per 5-minute match (about one an hour).
+- A carrier dies to one rail hit, and the escort and route work (E135-E138) raised standard CTF, not instagib.
+- The bots' own status table in the log shows 0 escorts.
+- Next lever, untested: instagib-specific carrier behaviour (cover-to-cover routing, never stopping in open courtyards), measured with the 30v30 batch harness.
+
+**Log findings:**
+- `R_AddMD3Surfaces: no such frame 151 to 151 for 'models/players/anarki/upper.md3'` 1,883 times. One frame past the end of Anarki's torso model, so that animation draws frame 0 instead. Probably Quake Live's own animation.cfg running one frame long; it needs that file from pak00 to confirm. Printed only with `developer 1`.
+- 650 lines a bot of "N allies, N foes, posture even/push": bot debug output at `developer 1`.
+- The **old team overlay** (`cg_drawTeamOverlay`, top right) draws fixed-width cells from the console character sheet. Quake Live's sheet has narrow glyphs, so names read "W a r b o y". Not fixed; it should draw with the font system like the rest of the HUD.
+
 ### E194. "Lit surfaces" timed 0.00; light grid in GPU memory; vkmem; a false "NOT RUNNING" at startup — DONE (verify)
 **Lives in:** our **client** (renderervk) · **Seen by:** our client only
 

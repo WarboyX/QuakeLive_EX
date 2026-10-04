@@ -394,6 +394,7 @@ qboolean vk_actor_shadows( void )
 	actorShadowUniform_t *u;
 	float proj[16], vp[16];
 	qboolean denoise, projected;
+	int src = 0;   /* [QL] E196 */
 
 	/* [QL] E167: one pass for both - players and items (silhouettes) and the
 	   level itself, traced toward the same estimated light */
@@ -458,7 +459,10 @@ qboolean vk_actor_shadows( void )
 		vk.actorShadow.pen_composite != VK_NULL_HANDLE;
 	u->soft[1] = (float)r_rtActorShadowRays->integer;
 	u->soft[2] = r_rtShadowSun->integer ? 1.0f : 0.0f;   /* [QL] E178 */
-	u->soft[3] = 0.0f;
+	/* [QL] E196: the ray pattern turns each frame while r_rtShadowTemporal is
+	   averaging it (sampled soft edge only); fixed otherwise, as before - a
+	   pattern that moves by itself is shimmer, where a fixed one is grain */
+	u->soft[3] = r_rtShadowTemporal->integer ? (float)( tr.frameCount & 255 ) : 0.0f;
 	if ( vk.rt.world.haveGrid && tr.world ) {
 		VectorCopy( tr.world->lightGridOrigin, u->gridOrigin );
 		VectorCopy( tr.world->lightGridInverseSize, u->gridInvSize );
@@ -565,11 +569,14 @@ qboolean vk_actor_shadows( void )
 		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 		vk_end_render_pass();
 
+		/* [QL] E196: averaged over frames, then denoised as before */
+		src = vk_rt_temporal( 1, r_rtShadowTemporal->integer, 1, vp, u->invViewProj, proj );
+
 		blur.step[0] = 1.0f; blur.step[1] = 0.0f; blur.step[2] = 1.0f; blur.step[3] = 0.0f;
 		vk_begin_rtao_offscreen_render_pass( 1, 1 );
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline_blur );
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[0], 0, NULL );
+			vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[ src ], 0, NULL );
 		qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
 			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
 		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );

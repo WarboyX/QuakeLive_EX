@@ -3908,6 +3908,10 @@ static void vk_create_shader_modules( void )
 	vk.modules.rtao_blur_ms_fs = SHADER_MODULE( rtao_blur_frag_ms_spv );
 	SET_OBJECT_NAME( vk.modules.rtao_blur_fs, "ambient occlusion denoise module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	SET_OBJECT_NAME( vk.modules.rtao_blur_ms_fs, "ambient occlusion denoise module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+	vk.modules.rtao_temporal_fs = SHADER_MODULE( rtao_temporal_frag_spv );         /* [QL] E196 */
+	vk.modules.rtao_temporal_ms_fs = SHADER_MODULE( rtao_temporal_frag_ms_spv );
+	SET_OBJECT_NAME( vk.modules.rtao_temporal_fs, "ambient occlusion temporal module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
+	SET_OBJECT_NAME( vk.modules.rtao_temporal_ms_fs, "ambient occlusion temporal module (msaa)", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 
 	/* [QL] R19 */
 	vk.modules.ssr_fs = SHADER_MODULE( ssr_frag_spv );
@@ -4656,7 +4660,7 @@ static void vk_create_attachments( void )
 	if ( vk.rtDepthSampled ) {   // [QL] E154: and screen-space AO
 		VkImageUsageFlags aoUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-		vk.rt.ao_format = VK_FORMAT_R8_UNORM;
+		vk.rt.ao_format = VK_FORMAT_R16G16_SFLOAT;   /* [QL] E196: occlusion + view depth, see vk.h */
 
 		for ( i = 0; i < ARRAY_LEN( vk.rt.ao_image ); i++ ) {
 			create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT,
@@ -6274,6 +6278,7 @@ void vk_shutdown( refShutdownCode_t code )
 		VkShaderModule *mods[] = {
 			&vk.modules.rtao_fs, &vk.modules.rtao_ms_fs,
 			&vk.modules.rtao_blur_fs, &vk.modules.rtao_blur_ms_fs,
+			&vk.modules.rtao_temporal_fs, &vk.modules.rtao_temporal_ms_fs,   /* [QL] E196 */
 			&vk.modules.ssr_fs, &vk.modules.ssr_ms_fs, &vk.modules.ssr_composite_fs,
 			&vk.modules.ssao_fs, &vk.modules.ssao_ms_fs,
 			&vk.modules.ssr_rt_fs, &vk.modules.ssr_rt_ms_fs,
@@ -7003,6 +7008,18 @@ void vk_create_post_process_pipeline( int program_index, uint32_t width, uint32_
 			   samples when the composite pass multiplies it in. */
 			samples = VK_SAMPLE_COUNT_1_BIT;
 			pipeline_name = "rt ambient occlusion pipeline (trace, half resolution)";
+			blend = qfalse;
+			multiply = qfalse;
+			break;
+		case 25: // [QL] E196 AO temporal accumulation, into a history target
+		case 26: // and at half resolution
+			pipeline = ( program_index == 25 ) ? &vk.rt.pipeline_temporal : &vk.rt.pipeline_temporal_half;
+			fsmodule = ( vkSamples != VK_SAMPLE_COUNT_1_BIT ) ? vk.modules.rtao_temporal_ms_fs : vk.modules.rtao_temporal_fs;
+			renderpass = vk.render_pass.rtao_offscreen;
+			layout = vk.rt.temporal_pipeline_layout;
+			samples = VK_SAMPLE_COUNT_1_BIT;
+			pipeline_name = ( program_index == 25 ) ? "rt ambient occlusion pipeline (temporal)"
+				: "rt ambient occlusion pipeline (temporal, half resolution)";
 			blend = qfalse;
 			multiply = qfalse;
 			break;

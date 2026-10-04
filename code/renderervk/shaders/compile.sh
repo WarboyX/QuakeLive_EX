@@ -157,6 +157,10 @@ emit frag ssao_frag_ms_spv ssao.tmpl -DUSE_MSAA
 emit frag rtao_blur_frag_spv    rtao_blur.tmpl
 emit frag rtao_blur_frag_ms_spv rtao_blur.tmpl -DUSE_MSAA
 
+# [QL] E196: AO temporal accumulation - reads the trace, depth and history, no rays
+emit frag rtao_temporal_frag_spv    rtao_temporal.tmpl
+emit frag rtao_temporal_frag_ms_spv rtao_temporal.tmpl -DUSE_MSAA
+
 # ---------------------------------------------------------------------------
 # lighting variations from templates
 # ---------------------------------------------------------------------------

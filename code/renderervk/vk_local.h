@@ -203,6 +203,8 @@ void vk_actor_shadow_update_descriptor( void );    // vk_rt_shadow.c, E166
 // vk_rt_ao.c - once-per-map AO reports, reset by the world rebuild
 extern qboolean rtaoOnReported;
 extern qboolean rtaoOffReported;
+// vk_rt_ao.c - E196: temporal accumulation of a trace in ao_image[0]; returns the target to denoise
+int vk_rt_temporal( int ch, int mode, int scale, const float *vp, const float *invViewProj, const float *proj );
 
 // vk_rt_ao.c - AO setup and teardown, the shared depth view
 void vk_rt_destroy_ao( void );

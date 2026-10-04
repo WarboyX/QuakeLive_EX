@@ -59,6 +59,7 @@ into a total.
 	1 +                          /* msaa                              */ \
 	1 +                          /* capture (r_ext_supersample)       */ \
 	2 +                          /* rt ambient occlusion targets      */ \
+	4 +                          /* [QL] E196 AO + shadow history      */ \
 	1 +                          /* screen-space reflection target    */ \
 	2 +                          /* [QL] E171 projected soft shadows  */ \
 	1 )                          /* depth                             */
@@ -663,7 +664,7 @@ typedef struct {
 		/* [QL] R13: [0] the raw trace target, [1] the half-denoised one. The
 		   trace writes 0, the horizontal pass reads 0 and writes 1, the
 		   vertical pass reads 1 and writes the scene. */
-		VkFramebuffer rtao[2];
+		VkFramebuffer rtao[6];   // [QL] E196: + AO and shadow history, two each
 	} framebuffers;
 
 #ifdef USE_UPLOAD_QUEUE
@@ -755,6 +756,8 @@ typedef struct {
 		   ordinary SPIR-V rather than 1.4 modules. */
 		VkShaderModule rtao_blur_fs;
 		VkShaderModule rtao_blur_ms_fs;
+		VkShaderModule rtao_temporal_fs;     // [QL] E196
+		VkShaderModule rtao_temporal_ms_fs;
 
 		/* [QL] R19. Screen-space reflections. Same two-variant split, same
 		   reason - it marches the depth buffer, which is multisampled when
@@ -1275,19 +1278,41 @@ typedef struct {
 		there are three fullscreen passes for AO, not four, and pipeline_blur
 		and pipeline differ only in their render pass and blend state.
 		*/
-		/* R8_UNORM. Occlusion is one number in [0,1] and a byte of it is more
-		   precision than a 4-ray estimate carries; a wider format would cost
-		   bandwidth on every tap of the denoise for nothing. */
+		/* [QL] E196: R16G16_SFLOAT, was R8_UNORM. The two history targets
+		   (2 and 3) keep each texel's view depth beside its occlusion, to tell
+		   a reprojected texel that still shows the same surface from one that
+		   does not; sharing the format lets all four share the render pass,
+		   framebuffer setup and denoise layout. */
 		VkFormat				ao_format;
-		VkImage					ao_image[2];
-		VkImageView				ao_image_view[2];
+		VkImage					ao_image[6];	// trace, denoise, AO history A/B, shadow history A/B
+		VkImageView				ao_image_view[6];
 		VkSampler				ao_sampler;
 
 		VkDescriptorSetLayout	blur_set_layout;
-		/* [0] samples ao_image[0], [1] samples ao_image[1]. Binding 1 of both
-		   is depth, which the bilateral weight needs. */
-		VkDescriptorSet			blur_descriptor[2];
+		/* [n] samples ao_image[n]. Binding 1 of all is depth, which the
+		   bilateral weight needs. */
+		VkDescriptorSet			blur_descriptor[6];
 		VkPipelineLayout		blur_pipeline_layout;
+
+		/* [QL] E196: temporal accumulation (r_rtaoTemporal, r_rtShadowTemporal).
+		   Reads this frame's trace in ao_image[0], depth and last frame's
+		   history; writes the other history target. Two channels, each with
+		   its own pair of targets and state: 0 the occlusion, 1 the sampled
+		   shadows, which run through the same targets (E169).
+		   temporal_descriptor[ch * 2 + p] writes 2 + ch * 2 + p and reads
+		   2 + ch * 2 + (1 - p). */
+		VkDescriptorSetLayout	temporal_set_layout;
+		VkDescriptorSet			temporal_descriptor[4];
+		VkPipelineLayout		temporal_pipeline_layout;
+		VkPipeline				pipeline_temporal;
+		VkPipeline				pipeline_temporal_half;
+		struct {
+			int					parity;			// history target written next: 2 + ch * 2 + parity
+			qboolean			valid;
+			int					frame;			// tr.frameCount when it was written
+			int					scale;			// trace scale it was written at
+			float				viewproj[16];	// the view-projection it was written with
+		} hist[2];
 
 		VkPipeline				pipeline_gen;	// trace        -> ao_image[0]
 		VkPipeline				pipeline_blur;	// ao_image[0]  -> ao_image[1]

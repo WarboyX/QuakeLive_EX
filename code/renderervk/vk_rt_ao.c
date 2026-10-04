@@ -53,6 +53,14 @@ typedef struct {
 	float light[RT_MAX_AO_LIGHTS][4];     // xyz = origin, w = 1/(r*r)
 } rtaoLights_t;
 
+/* [QL] E196: the temporal pass's push constants - see rtao_temporal.tmpl. 96
+   bytes: one matrix carries both views, so the 128-byte limit is not near. */
+typedef struct {
+	float reproject[16];   // this frame's clip -> last frame's clip
+	float depthLinear[4];  // proj[10], proj[14], tolerance, aoScale
+	float params[4];       // weight of this frame, history usable, full width, full height
+} rtaoTemporalPush_t;
+
 /* [QL] One line each per map, not per frame - 250 of these a second is not a
    diagnostic. Reset when the world is rebuilt, which is where a change of state
    would actually matter. */
@@ -111,6 +119,20 @@ void vk_rt_destroy_ao( void )
 		qvkDestroyPipelineLayout( vk.device, vk.rt.blur_pipeline_layout, NULL );
 		vk.rt.blur_pipeline_layout = VK_NULL_HANDLE;
 	}
+	/* [QL] E196 */
+	if ( vk.rt.pipeline_temporal != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_temporal, NULL );
+		vk.rt.pipeline_temporal = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.pipeline_temporal_half != VK_NULL_HANDLE ) {
+		qvkDestroyPipeline( vk.device, vk.rt.pipeline_temporal_half, NULL );
+		vk.rt.pipeline_temporal_half = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.temporal_pipeline_layout != VK_NULL_HANDLE ) {
+		qvkDestroyPipelineLayout( vk.device, vk.rt.temporal_pipeline_layout, NULL );
+		vk.rt.temporal_pipeline_layout = VK_NULL_HANDLE;
+	}
+	vk.rt.hist[0].valid = vk.rt.hist[1].valid = qfalse;
 	{
 		uint32_t li;
 		for ( li = 0; li < ARRAY_LEN( vk.rt.light_buffer ); li++ ) {
@@ -131,8 +153,8 @@ void vk_rt_destroy_ao( void )
 		vk.rt.pool = VK_NULL_HANDLE;
 		vk.rt.descriptor[0] = VK_NULL_HANDLE;
 		vk.rt.descriptor[1] = VK_NULL_HANDLE;
-		vk.rt.blur_descriptor[0] = VK_NULL_HANDLE;
-		vk.rt.blur_descriptor[1] = VK_NULL_HANDLE;
+		Com_Memset( vk.rt.blur_descriptor, 0, sizeof( vk.rt.blur_descriptor ) );
+		Com_Memset( vk.rt.temporal_descriptor, 0, sizeof( vk.rt.temporal_descriptor ) );   /* [QL] E196 */
 	}
 	if ( vk.rt.set_layout != VK_NULL_HANDLE ) {
 		qvkDestroyDescriptorSetLayout( vk.device, vk.rt.set_layout, NULL );
@@ -141,6 +163,10 @@ void vk_rt_destroy_ao( void )
 	if ( vk.rt.blur_set_layout != VK_NULL_HANDLE ) {
 		qvkDestroyDescriptorSetLayout( vk.device, vk.rt.blur_set_layout, NULL );
 		vk.rt.blur_set_layout = VK_NULL_HANDLE;
+	}
+	if ( vk.rt.temporal_set_layout != VK_NULL_HANDLE ) {   /* [QL] E196 */
+		qvkDestroyDescriptorSetLayout( vk.device, vk.rt.temporal_set_layout, NULL );
+		vk.rt.temporal_set_layout = VK_NULL_HANDLE;
 	}
 	if ( vk.rt.ao_sampler != VK_NULL_HANDLE ) {
 		qvkDestroySampler( vk.device, vk.rt.ao_sampler, NULL );
@@ -407,6 +433,18 @@ void vk_rt_create_ao( void )
 		return;
 	}
 
+	/* [QL] E196: the temporal pass - this frame's trace, depth, last frame's
+	   history. Bindings 0 and 1 as the denoise has them. */
+	bindings[2] = bindings[0];
+	bindings[2].binding = 2;
+	layout_desc.bindingCount = 3;
+	res = qvkCreateDescriptorSetLayout( vk.device, &layout_desc, NULL, &vk.rt.temporal_set_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "AO: temporal set layout failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
 	/*
 	[QL] One light list per command buffer, host visible and written each frame.
 
@@ -431,7 +469,8 @@ void vk_rt_create_ao( void )
 	/* Three sets: the trace's, and one per occlusion target for the denoise. */
 	Com_Memset( pool_sizes, 0, sizeof( pool_sizes ) );
 	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	pool_sizes[0].descriptorCount = 7;   // trace: depth x2. denoise: 2 x (ao + depth). E154: SSAO depth
+	/* trace: depth x2. denoise: 6 x (ao + depth). E154: SSAO depth. E196: temporal 4 x 3 */
+	pool_sizes[0].descriptorCount = 2 + 12 + 1 + 12;
 	pool_sizes[1].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 	pool_sizes[1].descriptorCount = 2;   // one per command buffer
 	pool_sizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -439,7 +478,7 @@ void vk_rt_create_ao( void )
 
 	Com_Memset( &pool_desc, 0, sizeof( pool_desc ) );
 	pool_desc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	pool_desc.maxSets = 5;   // two trace sets, two denoise sets, [QL] E154 the screen-space set
+	pool_desc.maxSets = 13;   // two trace sets, six denoise sets, [QL] E154 the screen-space set, E196 four temporal
 	/* [QL] E154: without ray query there is no acceleration structure or light
 	   list to pool for - only the first entry, the samplers */
 	pool_desc.poolSizeCount = vk.rtActive ? 3 : 1;
@@ -472,6 +511,17 @@ void vk_rt_create_ao( void )
 		res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.rt.blur_descriptor[i] );
 		if ( res < 0 ) {
 			ri.Printf( PRINT_WARNING, "RT AO: denoise set %i failed (%s)\n", i, vk_result_string( res ) );
+			vk_rt_destroy_ao();
+			return;
+		}
+	}
+
+	/* [QL] E196 */
+	set_alloc.pSetLayouts = &vk.rt.temporal_set_layout;
+	for ( i = 0; i < ARRAY_LEN( vk.rt.temporal_descriptor ); i++ ) {
+		res = qvkAllocateDescriptorSets( vk.device, &set_alloc, &vk.rt.temporal_descriptor[i] );
+		if ( res < 0 ) {
+			ri.Printf( PRINT_WARNING, "AO: temporal set %i failed (%s)\n", i, vk_result_string( res ) );
 			vk_rt_destroy_ao();
 			return;
 		}
@@ -545,6 +595,37 @@ void vk_rt_create_ao( void )
 		qvkUpdateDescriptorSets( vk.device, 2, blur_writes, 0, NULL );
 	}
 
+	/* [QL] E196: temporal set ch * 2 + p writes history 2 + ch * 2 + p and reads
+	   2 + ch * 2 + (1 - p) - see vk.h */
+	for ( i = 0; i < ARRAY_LEN( vk.rt.temporal_descriptor ); i++ ) {
+		VkDescriptorImageInfo t_info[3];
+		VkWriteDescriptorSet t_writes[3];
+		uint32_t b;
+
+		Com_Memset( t_info, 0, sizeof( t_info ) );
+		t_info[0].sampler = vk.rt.ao_sampler;
+		t_info[0].imageView = vk.rt.ao_image_view[0];
+		t_info[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		t_info[1].sampler = vk.rt.depth_sampler;
+		t_info[1].imageView = vk.rt.depth_view;
+		t_info[1].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		t_info[2].sampler = vk.rt.ao_sampler;
+		t_info[2].imageView = vk.rt.ao_image_view[ 2 + ( i / 2 ) * 2 + ( 1 - ( i & 1 ) ) ];
+		t_info[2].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		Com_Memset( t_writes, 0, sizeof( t_writes ) );
+		for ( b = 0; b < 3; b++ ) {
+			t_writes[b].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			t_writes[b].dstSet = vk.rt.temporal_descriptor[i];
+			t_writes[b].dstBinding = b;
+			t_writes[b].descriptorCount = 1;
+			t_writes[b].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			t_writes[b].pImageInfo = &t_info[b];
+		}
+		qvkUpdateDescriptorSets( vk.device, 3, t_writes, 0, NULL );
+	}
+	vk.rt.hist[0].valid = vk.rt.hist[1].valid = qfalse;   // new targets hold nothing yet
+
 	// ---- pipeline layouts ----
 	Com_Memset( &push_range, 0, sizeof( push_range ) );
 	push_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -585,6 +666,16 @@ void vk_rt_create_ao( void )
 		return;
 	}
 
+	/* [QL] E196 */
+	push_range.size = sizeof( rtaoTemporalPush_t );
+	pl_desc.pSetLayouts = &vk.rt.temporal_set_layout;
+	res = qvkCreatePipelineLayout( vk.device, &pl_desc, NULL, &vk.rt.temporal_pipeline_layout );
+	if ( res < 0 ) {
+		ri.Printf( PRINT_WARNING, "AO: temporal pipeline layout failed (%s)\n", vk_result_string( res ) );
+		vk_rt_destroy_ao();
+		return;
+	}
+
 	if ( vk.rtActive ) {   // [QL] E154: the ray-traced trace, full and half
 		vk_create_post_process_pipeline( 4, glConfig.vidWidth, glConfig.vidHeight );
 		vk_create_post_process_pipeline( 11, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
@@ -598,6 +689,9 @@ void vk_rt_create_ao( void )
 	/* [QL] E150: half-resolution trace and horizontal denoise. Not fatal if
 	   they fail - r_rtaoResolution 2 then just runs at full resolution. */
 	vk_create_post_process_pipeline( 12, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
+	/* [QL] E196: optional - without them r_rtaoTemporal simply does nothing */
+	vk_create_post_process_pipeline( 25, glConfig.vidWidth, glConfig.vidHeight );
+	vk_create_post_process_pipeline( 26, ( glConfig.vidWidth + 1 ) / 2, ( glConfig.vidHeight + 1 ) / 2 );
 	if ( ( vk.rt.pipeline_gen == VK_NULL_HANDLE && vk.rt.pipeline_ssao == VK_NULL_HANDLE ) ||
 		vk.rt.pipeline_blur == VK_NULL_HANDLE ||
 		vk.rt.pipeline == VK_NULL_HANDLE || vk.rt.pipeline_debug == VK_NULL_HANDLE ) {
@@ -774,6 +868,63 @@ discard the colour - so the AO pass doubles as the pass everything after it
 draws into, exactly as vk_bloom leaves post-bloom open for the 2D that follows.
 =================
 */
+/*
+=================
+[QL] E196. vk_rt_temporal
+
+Blend this frame's trace (ao_image[0]) into channel ch's running average and
+return the target that now holds it, for the denoise to read in place of the
+trace - or 0, the trace itself, when the pass is off or cannot run. ch 0 is
+the occlusion, 1 the sampled shadows. mode is the cvar: 1 on, 2 the
+diagnostic view (see rtao_temporal.tmpl).
+
+The history is only used when it was written on the frame just before this
+one, at this trace scale: a menu, a map load, a toggle, a resolution change or
+a pass that skipped a frame starts the average over. Must be called outside a
+render pass, after the trace's has ended.
+=================
+*/
+int vk_rt_temporal( int ch, int mode, int scale, const float *vp, const float *invViewProj, const float *proj )
+{
+	const VkPipeline tp = scale > 1 ? vk.rt.pipeline_temporal_half : vk.rt.pipeline_temporal;
+	const int p = vk.rt.hist[ch].parity & 1;
+	rtaoTemporalPush_t tpush;
+	qboolean usable;
+
+	if ( !mode || tp == VK_NULL_HANDLE || vk.rt.temporal_descriptor[ ch * 2 + p ] == VK_NULL_HANDLE ) {
+		vk.rt.hist[ch].valid = qfalse;
+		return 0;
+	}
+	usable = vk.rt.hist[ch].valid && vk.rt.hist[ch].scale == scale && vk.rt.hist[ch].frame == tr.frameCount - 1;
+
+	myGlMultMatrix( invViewProj, vk.rt.hist[ch].viewproj, tpush.reproject );
+	tpush.depthLinear[0] = proj[10];
+	tpush.depthLinear[1] = proj[14];
+	tpush.depthLinear[2] = 0.05f;
+	tpush.depthLinear[3] = (float)scale;
+	tpush.params[0] = mode == 2 ? -1.0f : 0.12f;   // this frame's share: about the last eight frames, weighted to the newest
+	tpush.params[1] = usable ? 1.0f : 0.0f;
+	tpush.params[2] = (float)glConfig.vidWidth;
+	tpush.params[3] = (float)glConfig.vidHeight;
+
+	vk_begin_rtao_offscreen_render_pass( 2 + ch * 2 + p, scale );
+	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, tp );
+	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vk.rt.temporal_pipeline_layout, 0, 1, &vk.rt.temporal_descriptor[ ch * 2 + p ], 0, NULL );
+	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.temporal_pipeline_layout,
+		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( tpush ), &tpush );
+	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
+	vk_end_render_pass();
+
+	Com_Memcpy( vk.rt.hist[ch].viewproj, vp, sizeof( vk.rt.hist[ch].viewproj ) );
+	vk.rt.hist[ch].valid = qtrue;
+	vk.rt.hist[ch].scale = scale;
+	vk.rt.hist[ch].frame = tr.frameCount;
+	vk.rt.hist[ch].parity = p ^ 1;
+	return 2 + ch * 2 + p;
+}
+
+
 qboolean vk_rt_ao( void )
 {
 	rtaoPush_t push;
@@ -781,6 +932,7 @@ qboolean vk_rt_ao( void )
 	float vp[16];
 	float proj[16];
 	int denoise;
+	int src;   /* [QL] E196: the occlusion target the denoise reads */
 	/* [QL] E154: which AO runs this frame. Ray-traced when it is ready and on;
 	   otherwise screen-space when r_ssao asks for it - so a player with ray
 	   query can still choose screen-space by turning ray-traced AO off. */
@@ -936,7 +1088,13 @@ qboolean vk_rt_ao( void )
 	   it only has to differ between neighbouring frames, and a float that grows
 	   without bound loses its low bits - which are the only part the hash
 	   uses - after a few hours of uptime. */
-	push.params[2] = (float)( vk.frame_count & 255 );
+	/* [QL] E196: tr.frameCount. This read vk.frame_count, which is not a frame
+	   counter: it is vk_begin_frame's nesting guard, 1 for the whole of every
+	   frame. The rotation was the same every frame since R13 - the grain never
+	   moved, and nothing accumulating over frames could have averaged it.
+	   It turns only while the temporal pass is on to average it: alone, a
+	   pattern that moves every frame is shimmer, where a fixed one is grain. */
+	push.params[2] = r_rtaoTemporal->integer ? (float)( tr.frameCount & 255 ) : 0.0f;
 	push.params[3] = 1.5f;   // surface bias, in world units
 	push.res[0] = (float)aoScale;   // [QL] E150
 	/* [QL] E174: r_rtDynamic 2 - players and items occlude by their real
@@ -1110,7 +1268,16 @@ qboolean vk_rt_ao( void )
 
 	vk_end_render_pass();
 
-	// ---- pass 2: horizontal denoise, ao_image[0] -> ao_image[1] ----
+	/*
+	[QL] E196: temporal accumulation, ao_image[0] + last frame's history ->
+	this frame's history (2 + parity), which the denoise then reads instead of
+	the raw trace. See rtao_temporal.tmpl. The history is only used when it was
+	written on the frame just before this one, at this resolution: a menu, a
+	map load, a toggle or a resolution change starts the average over.
+	*/
+	src = vk_rt_temporal( 0, r_rtaoTemporal->integer, aoScale, vp, push.invViewProj, proj );
+
+	// ---- pass 2: horizontal denoise, ao_image[src] -> ao_image[1] ----
 	/*
 	Skipped entirely when the denoise is off, rather than run with a zero step.
 	The composite below then reads target 0 instead of target 1, which is the
@@ -1127,7 +1294,7 @@ qboolean vk_rt_ao( void )
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			aoScale > 1 ? vk.rt.pipeline_blur_half : vk.rt.pipeline_blur );
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[0], 0, NULL );
+			vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[ src ], 0, NULL );
 		qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
 			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
 		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
@@ -1166,7 +1333,7 @@ qboolean vk_rt_ao( void )
 	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		debugView ? vk.rt.pipeline_debug : vk.rt.pipeline );
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[ denoise ? 1 : 0 ], 0, NULL );
+		vk.rt.blur_pipeline_layout, 0, 1, &vk.rt.blur_descriptor[ denoise ? 1 : src ], 0, NULL );
 	qvkCmdPushConstants( vk.cmd->command_buffer, vk.rt.blur_pipeline_layout,
 		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );

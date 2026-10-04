@@ -134,7 +134,7 @@ void main() {
 	not do something.
 	*/
 	if (pc.step.x == 0.0 && pc.step.y == 0.0) {
-		out_color = vec4(texelFetch(aoMap, c, 0).r * pc.step.z);
+		out_color = vec4(clamp(texelFetch(aoMap, c, 0).r, 0.0, 1.0) * pc.step.z);   /* E196: see below */
 		return;
 	}
 
@@ -161,7 +161,10 @@ void main() {
 		float d0 = linearise(fetchDepth(c * aoScale));
 		centerW = max(0.05, 1.0 - abs(d0 - centerDepth) / tolerance);
 	}
-	float sum = texelFetch(aoMap, c, 0).r * centerW;
+	/* [QL] E196: the targets are float now (R16G16_SFLOAT) and no longer clamp
+	   on write as R8_UNORM did; every read is held to the 0..1 an occlusion or
+	   shadow factor means */
+	float sum = clamp(texelFetch(aoMap, c, 0).r, 0.0, 1.0) * centerW;
 	float weightSum = centerW;
 
 	/*
@@ -188,7 +191,7 @@ void main() {
 			float range = max(0.0, 1.0 - abs(d - centerDepth) / tolerance);
 			float w = spatial * range;
 
-			sum += texelFetch(aoMap, p, 0).r * w;
+			sum += clamp(texelFetch(aoMap, p, 0).r, 0.0, 1.0) * w;
 			weightSum += w;
 		}
 	}

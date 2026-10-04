@@ -34,7 +34,7 @@ layout(set = 0, binding = 2) uniform ActorShadow {
 	vec4 gridOrigin;    // w 1 if the map has a light grid
 	vec4 gridInvSize;
 	vec4 gridBounds;    // w: 1 if the light field follows the grid in gridData (E176)
-	vec4 soft;          // [QL] E167: x light size in world units, y rays per pixel
+	vec4 soft;          // [QL] E167: x light size in world units, y rays per pixel, z sun (E178), w frame (E196)
 };
 
 layout(set = 0, binding = 3, std430) readonly buffer LightGrid {
@@ -535,7 +535,10 @@ void main() {
 	   interleaved gradient noise, so neighbours sample different points and
 	   the denoise has an average to find - the old per-pixel hash gave
 	   clumps, and clumps survive a blur. */
-	float spin = ign(gl_FragCoord.xy) * 6.2831853;
+	/* [QL] E196: soft.w, the frame number while r_rtShadowTemporal is on: the
+	   whole pattern turns by the golden angle each frame, so the frames it
+	   averages saw the light from different points */
+	float spin = ign(gl_FragCoord.xy) * 6.2831853 + soft.w * 2.3999632;
 	float hitT, lenC;
 	float blocked = 0.0;
 	hitT = 0.0;

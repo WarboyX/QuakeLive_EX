@@ -1614,6 +1614,8 @@ extern	cvar_t	*r_ssrResolution;				// [QL] E151: 1 full, 2 half (live)
 extern	cvar_t	*r_ssrRayTrace;				// [QL] E156: 0 off, 1 on-screen hits, 2 + estimates (live)
 extern	cvar_t	*r_rtaoResolution;				// [QL] E150: 1 full, 2 half (live)
 extern	cvar_t	*r_rtaoDenoise;					// [QL] R13: bilateral denoise width (latched)
+extern	cvar_t	*r_rtaoTemporal;				// [QL] E196: accumulate AO over frames
+extern	cvar_t	*r_rtShadowTemporal;			// [QL] E196: and the sampled shadow edge
 extern	cvar_t	*r_rtaoLights;					// [QL] dynamic lights clear occlusion where they reach
 
 extern	cvar_t	*r_ssr;							// [QL] R19: reflection strength on water, 0 = off

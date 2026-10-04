@@ -457,6 +457,8 @@ def raytracing():
         # is 133 million ray queries in one draw - past a driver watchdog.
         ("multi", "r_rtaoSamples", "Rays per pixel", '"2 (fastest)" 2 "4 (default)" 4 "8 (heavy)" 8 "16 (very heavy)" 16'),
         ("multi", "r_rtaoDenoise", "Denoise", '"Off (raw, grainy)" 0 "On (default)" 1 "Wide (smoothest)" 2'),
+        # [QL] E196. Live. Averages the trace over frames, following the camera.
+        ("multi", "r_rtaoTemporal", "Accumulate over frames", '"Off" 0 "On (default)" 1'),
         # [QL] Occlusion is an ambient term; where a rocket is the light, its
         # contact shadow reads as dirt. Cleared over the light's own falloff.
         ("multi", "r_rtaoLights", "Lights clear AO", '"Off" 0 "Half" 0.5 "Full (default)" 1'),
@@ -515,6 +517,8 @@ def cast_shadows():
         ("multi", "r_rtActorShadowRays", "Rays", '"1" 1 "3" 3 "5 (default)" 5 "9" 9 "15 (heavy)" 15'),
         # [QL] E169. Soft edges through AO's edge-aware blur.
         ("multi", "r_rtActorShadowDenoise", "Soft edge denoise", '"Off" 0 "On (default)" 1'),
+        # [QL] E196. Live. Sampled edges only - projected ones are not noisy.
+        ("multi", "r_rtShadowTemporal", "Accumulate over frames", '"Off" 0 "On (default)" 1'),
         # [QL] E171. Soft edges worked out from the distances, from one ray.
         ("multi", "r_rtActorShadowSoftMode", "Soft edges", '"Sampled (default)" 0 "Projected" 1'),
         # [QL] E176. Where shadows are cast from: per pixel, or the map-load field.
