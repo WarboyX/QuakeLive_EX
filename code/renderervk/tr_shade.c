@@ -1534,7 +1534,19 @@ static void VK_ModelShadowPass( void )
 	}
 	su.rtParams[0] = r_rtModelShadowStrength->value;
 	su.rtParams[1] = (float)r_rtModelShadowRays->integer;
-	su.rtParams[2] = r_rtModelShadowSoftness->value;
+	/*
+	[QL] E207: the light's size in world units, as the other two softness
+	settings are, turned into the angle this shader spreads its rays over by
+	seeing the light from 128 units - the distance actorshadow.tmpl uses for
+	the sun. It was an angle in radians, with menu steps 0.03 / 0.06 / 0.12 /
+	0.25, which at 128 units are 4 / 8 / 16 / 32: the same choices, now with
+	the same numbers as the other pages. A saved value below 1 is still the
+	old radians and is read as such.
+	*/
+	{
+		const float sz = r_rtModelShadowSoftness->value;
+		su.rtParams[2] = ( sz > 0.0f && sz < 1.0f ) ? sz : sz / 128.0f;
+	}
 	su.rtParams[3] = r_rtModelShadows->integer >= 2 ? 1.0f : 0.0f;   // debug tint
 
 	offset = VK_PushUniform( &su );

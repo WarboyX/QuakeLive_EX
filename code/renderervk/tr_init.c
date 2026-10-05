@@ -2760,9 +2760,11 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_rtModelShadowStrength, "0", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_rtModelShadowStrength, "How much of the blocked light a model loses, 0 to 1." );
 	r_rtModelShadowSoftness = ri.Cvar_Get( "r_rtModelShadowSoftness", "0", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_rtModelShadowSoftness, "0", "0.3", CV_FLOAT );
-	ri.Cvar_SetDescription( r_rtModelShadowSoftness, "Spread of the shadow rays in radians, for soft "
-		"edges on models. 0 is sharp. Pair with more " S_COLOR_CYAN "\\r_rtModelShadowRays" S_COLOR_WHITE "." );
+	/* [QL] E207: world units, like every other softness - see tr_shade.c */
+	ri.Cvar_CheckRange( r_rtModelShadowSoftness, "0", "32", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtModelShadowSoftness, "Size of the light in world units, for soft "
+		"edges on models - the same scale as the other shadow softness settings. 0 is sharp. "
+		"Pair with more " S_COLOR_CYAN "\\r_rtModelShadowRays" S_COLOR_WHITE "." );
 	r_rtModelShadowRays = ri.Cvar_Get( "r_rtModelShadowRays", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtModelShadowRays, "1", "8", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtModelShadowRays, "Rays per model pixel. 1 for sharp shadows, 4 or more "

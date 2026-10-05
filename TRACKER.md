@@ -6109,6 +6109,23 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E207. Shadow noise after E202; one softness scale on every page — DONE (verify)
+**Lives in:** our **client** (renderervk `vk_rt_shadow.c`, `tr_shade.c`, `tr_init.c`; pak01 render pages) · **Seen by:** our client only
+
+**Noise.** Tester: "the noise on the floor here", with soft shadow edges showing streaks and blotches. E202 had halved the sampled shadow-edge rays (5 to 2) while `r_rtShadowTemporal` averaged them. A still camera hid that; a shadow edge moves with every step its caster takes, so history is rejected far more often than for occlusion, and two rays showed through the blur. Reverted for shadows (AO keeps E202). E204's early-out already made the pass cheap where there is nothing to shadow: in the next harness run the shadow trace was 12.8 ms.
+
+**Softness.** "Level shadows on models softness and level shadows on lights softness are stated as two different values." They were:
+
+| page | old scale |
+|---|---|
+| lights | world units: Hard / 2 / 4 / 8 / 16 |
+| models | radians: Sharp / 0.03 / 0.06 / 0.12 / 0.25 |
+| player shadows on the level | world units: Hard / 4 / 8 / 16 / 32 |
+
+All three now mean the light's size in world units, with one list: Hard / 2 / 4 / 8 / 16 / 32. The model shader still spreads by an angle, size / 128 (the distance `actorshadow.tmpl` sees the sun from). The old radian steps were exactly 4/8/16/32 at 128. A saved value below 1 is read as old radians.
+
+**Gun grain.** Not the denoiser. "Level shadows on models" traces in the model's own forward shader, with a fixed per-pixel pattern and no blur pass, so a soft edge there is as grainy as its ray count allows. Hard, or more rays, until it gets a denoise of its own.
+
 ### E206. RT timings split each pass into trace and composite — DONE
 **Lives in:** our **client** (renderervk `vk_timing.c`, `vk_rt_ao.c`, `vk_rt_shadow.c`) · **Seen by:** our client only
 

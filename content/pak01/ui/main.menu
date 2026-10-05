@@ -4630,7 +4630,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtdlightshadowsoftness  type ITEM_TYPE_MULTI  text ""  cvar "r_rtDlightShadowSoftness"
-                  cvarFloatList { "Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16 (very soft)" 16 }
+                  cvarFloatList { "Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16" 16 "32 (very soft)" 32 }
                   rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Rays"  textscale .21  rect 24 182 246 16  textaligny 13
@@ -4661,7 +4661,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtmodelshadowsoftness  type ITEM_TYPE_MULTI  text ""  cvar "r_rtModelShadowSoftness"
-                  cvarFloatList { "Sharp (default)" 0 "0.03" 0.03 "0.06" 0.06 "0.12" 0.12 "0.25 (very soft)" 0.25 }
+                  cvarFloatList { "Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16" 16 "32 (very soft)" 32 }
                   rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Rays"  textscale .21  rect 24 267 246 16  textaligny 13
@@ -4856,7 +4856,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtactorshadowsoftness  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorShadowSoftness"
-                  cvarFloatList { "Hard" 0 "4" 4 "8 (default)" 8 "16" 16 "32 (very soft)" 32 }
+                  cvarFloatList { "Hard" 0 "2" 2 "4" 4 "8 (default)" 8 "16" 16 "32 (very soft)" 32 }
                   rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Rays"  textscale .21  rect 24 199 246 16  textaligny 13
@@ -6576,7 +6576,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtdlightshadowsoftness  type ITEM_TYPE_MULTI  text ""  cvar "r_rtDlightShadowSoftness"
-                  cvarFloatList { "Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16 (very soft)" 16 }
+                  cvarFloatList { "Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16" 16 "32 (very soft)" 32 }
                   rect 290 165 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Rays"  textscale .21  rect 24 182 246 16  textaligny 13
@@ -6607,7 +6607,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtmodelshadowsoftness  type ITEM_TYPE_MULTI  text ""  cvar "r_rtModelShadowSoftness"
-                  cvarFloatList { "Sharp (default)" 0 "0.03" 0.03 "0.06" 0.06 "0.12" 0.12 "0.25 (very soft)" 0.25 }
+                  cvarFloatList { "Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16" 16 "32 (very soft)" 32 }
                   rect 290 250 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Rays"  textscale .21  rect 24 267 246 16  textaligny 13
@@ -6802,7 +6802,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtactorshadowsoftness  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorShadowSoftness"
-                  cvarFloatList { "Hard" 0 "4" 4 "8 (default)" 8 "16" 16 "32 (very soft)" 32 }
+                  cvarFloatList { "Hard" 0 "2" 2 "4" 4 "8 (default)" 8 "16" 16 "32 (very soft)" 32 }
                   rect 290 182 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Rays"  textscale .21  rect 24 199 246 16  textaligny 13

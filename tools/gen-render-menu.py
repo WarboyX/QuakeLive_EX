@@ -478,15 +478,16 @@ def shadows():
         ("multi", "r_rtDlightShadows", "Dynamic light shadows", '"Off (default)" 0 "On" 1 "Debug (blocked light red)" 2'),
         ("multi", "r_rtDlightShadowStrength", "Strength",
          '"0.25" 0.25 "0.5" 0.5 "0.75" 0.75 "1.0 (default)" 1'),
+        # [QL] E207: one scale on every page - the light's size in world units
         ("multi", "r_rtDlightShadowSoftness", "Softness",
-         '"Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16 (very soft)" 16'),
+         '"Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16" 16 "32 (very soft)" 32'),
         ("multi", "r_rtDlightShadowRays", "Rays", '"1 (default)" 1 "3" 3 "5" 5 "7 (heavy)" 7'),   # E174: odd - ray 0 at the light's centre
         ("h", "LEVEL SHADOWS ON MODELS"),
         ("multi", "r_rtModelShadows", "Model shadows", '"Off (default)" 0 "On" 1 "Debug (tint)" 2'),
         ("multi", "r_rtModelShadowStrength", "Strength",
          '"0.25" 0.25 "0.5" 0.5 "0.85 (default)" 0.85 "1.0" 1'),
         ("multi", "r_rtModelShadowSoftness", "Softness",
-         '"Sharp (default)" 0 "0.03" 0.03 "0.06" 0.06 "0.12" 0.12 "0.25 (very soft)" 0.25'),
+         '"Hard (default)" 0 "2" 2 "4" 4 "8" 8 "16" 16 "32 (very soft)" 32'),
         ("multi", "r_rtModelShadowRays", "Rays", '"1 (default)" 1 "3" 3 "5" 5 "7 (heavy)" 7'),
         ("multi", "r_rtModelShadowDistance", "Reach",
          '"256" 256 "512" 512 "1024 (default)" 1024 "2048" 2048 "4096" 4096'),
@@ -513,7 +514,7 @@ def cast_shadows():
         ("multi", "r_rtActorShadowStrength", "Strength",
          '"0.25" 0.25 "0.5" 0.5 "0.7 (default)" 0.7 "0.85" 0.85 "1.0" 1'),
         ("multi", "r_rtActorShadowSoftness", "Softness",
-         '"Hard" 0 "4" 4 "8 (default)" 8 "16" 16 "32 (very soft)" 32'),
+         '"Hard" 0 "2" 2 "4" 4 "8 (default)" 8 "16" 16 "32 (very soft)" 32'),
         ("multi", "r_rtActorShadowRays", "Rays", '"1" 1 "3" 3 "5 (default)" 5 "9" 9 "15 (heavy)" 15'),
         # [QL] E169. Soft edges through AO's edge-aware blur.
         ("multi", "r_rtActorShadowDenoise", "Soft edge denoise", '"Off" 0 "On (default)" 1'),
