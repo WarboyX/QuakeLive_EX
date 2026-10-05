@@ -1401,124 +1401,247 @@ static uint32_t rt_build_actor_mesh( int idx )
 		return 0;
 	}
 
-	for ( e = 0; e < backEnd.refdef.num_entities; e++ ) {
-		const trRefEntity_t *ent = &backEnd.refdef.entities[e];
-		const model_t *mod;
-		const md3Header_t *header;
-		const md3Surface_t *surf;
-		int s, frame, oldframe;
-		float backlerp;
-		uint32_t entBase;
+	/*
+	[QL] E214: casters, not model parts.
 
-		if ( ent->e.reType != RT_MODEL ) {
-			continue;
-		}
-		/* the view weapon, things made of light, things that cast nothing,
-		   and shells/effects drawn over another entity with a custom shader */
-		if ( ent->e.renderfx & ( RF_FIRST_PERSON | RF_DEPTHHACK | RF_NOOCCLUDE | RF_NOSHADOW ) ) {
-			continue;
-		}
-		if ( ent->e.customShader ) {
-			continue;
-		}
-		mod = R_GetModelByHandle( ent->e.hModel );
-		if ( mod == NULL || mod->type != MOD_MESH || mod->md3[0] == NULL ) {
-			continue;
-		}
-		header = mod->md3[0];
-		{
-			/* [QL] E203: the model's own bound, from its frame (md3Frame_t.radius,
-			   scaled with the axis cgame drew it with) */
-			const md3Frame_t *fr = (const md3Frame_t *)( (const byte *)header + header->ofsFrames ) +
-				( ( ent->e.frame >= 0 && ent->e.frame < header->numFrames ) ? ent->e.frame : 0 );
-			const float scale = VectorLength( ent->e.axis[0] );
-			const float rad = ( fr->radius + VectorLength( fr->localOrigin ) ) * ( scale > 0.0f ? scale : 1.0f );
-			if ( !rt_in_reach( ent, rad, reach ) ) {
+	A player is four or five MD3s (legs, torso, head, weapon) and the shadow
+	pass used to see each as its own sphere, regroup them per pixel by
+	distance, and look the light up at whatever centre that gave - so two
+	pixels of one shadow could use two lights, and a pickup beside a player
+	could join them. Here the parts are grouped once, by the lighting origin
+	cgame gives every part of one player (RF_LIGHTING_ORIGIN, so they are lit
+	alike) or the entity's own origin, into one caster: a sphere around every
+	part over both animation frames, the light grid's direction at it -
+	R_LightForPoint, the sample Quake 3 lights the model itself with - and the
+	range of its triangles, which are emitted caster by caster so the range is
+	contiguous and the shadow pass can tell its hits from another's.
+	*/
+	{
+		static int		partEnt[MAX_REFENTITIES];
+		static int		partCaster[MAX_REFENTITIES];
+		static float	partSphere[MAX_REFENTITIES][4];
+		float			castKey[RT_MAX_SHADOW_ACTORS][3];
+		float			castSum[RT_MAX_SHADOW_ACTORS][3];
+		int				castParts[RT_MAX_SHADOW_ACTORS];
+		int				nparts = 0, ncast = 0, p, c, k;
+
+		vk.rt.world.actorListComplete = qtrue;
+		for ( e = 0; e < backEnd.refdef.num_entities && nparts < MAX_REFENTITIES; e++ ) {
+			const trRefEntity_t *ent = &backEnd.refdef.entities[e];
+			const model_t *mod;
+			const md3Header_t *header;
+			const float *key;
+			float pc[2][3], pr[2], scale, d;
+			int fi;
+
+			if ( ent->e.reType != RT_MODEL ) {
+				continue;
+			}
+			/* the view weapon, things made of light, things that cast nothing,
+			   and shells/effects drawn over another entity with a custom shader */
+			if ( ent->e.renderfx & ( RF_FIRST_PERSON | RF_DEPTHHACK | RF_NOOCCLUDE | RF_NOSHADOW ) ) {
+				continue;
+			}
+			if ( ent->e.customShader ) {
+				continue;
+			}
+			mod = R_GetModelByHandle( ent->e.hModel );
+			if ( mod == NULL || mod->type != MOD_MESH || mod->md3[0] == NULL ) {
+				continue;
+			}
+			header = mod->md3[0];
+			/* [QL] E203/E214: the part's bound over BOTH frames it is lerped
+			   between, scaled by the largest axis - the current frame alone
+			   could leave the lerped mesh outside its own sphere */
+			scale = VectorLength( ent->e.axis[0] );
+			d = VectorLength( ent->e.axis[1] ); if ( d > scale ) scale = d;
+			d = VectorLength( ent->e.axis[2] ); if ( d > scale ) scale = d;
+			if ( scale <= 0.0f ) scale = 1.0f;
+			for ( fi = 0; fi < 2; fi++ ) {
+				int f = fi ? ent->e.oldframe : ent->e.frame;
+				const md3Frame_t *fr;
+				if ( f < 0 || f >= header->numFrames ) f = 0;
+				fr = (const md3Frame_t *)( (const byte *)header + header->ofsFrames ) + f;
+				for ( k = 0; k < 3; k++ ) {
+					pc[fi][k] = ent->e.origin[k] + ent->e.axis[0][k] * fr->localOrigin[0] +
+						ent->e.axis[1][k] * fr->localOrigin[1] + ent->e.axis[2][k] * fr->localOrigin[2];
+				}
+				pr[fi] = fr->radius * scale;
+			}
+			for ( k = 0; k < 3; k++ ) {
+				partSphere[nparts][k] = 0.5f * ( pc[0][k] + pc[1][k] );
+			}
+			partSphere[nparts][3] = 0.5f * Distance( pc[0], pc[1] ) + ( pr[0] > pr[1] ? pr[0] : pr[1] );
+			if ( !rt_in_reach( ent, partSphere[nparts][3] + Distance( partSphere[nparts], ent->e.origin ), reach ) ) {
 				culled++;
 				continue;
 			}
-			/* [QL] E204: remember where it is, for the shadow pass */
-			if ( vk.rt.world.actorSphereCount >= 0 ) {
-				if ( vk.rt.world.actorSphereCount < RT_MAX_SHADOW_ACTORS ) {
-					float *sp = vk.rt.world.actorSphere[ vk.rt.world.actorSphereCount++ ];
-					VectorCopy( ent->e.origin, sp );
-					sp[3] = rad;
+			key = ( ent->e.renderfx & RF_LIGHTING_ORIGIN ) ? ent->e.lightingOrigin : ent->e.origin;
+			for ( c = 0; c < ncast; c++ ) {
+				if ( fabsf( castKey[c][0] - key[0] ) < 0.01f && fabsf( castKey[c][1] - key[1] ) < 0.01f &&
+					 fabsf( castKey[c][2] - key[2] ) < 0.01f ) {
+					break;
+				}
+			}
+			if ( c == ncast ) {
+				if ( ncast < RT_MAX_SHADOW_ACTORS ) {
+					VectorCopy( key, castKey[ncast] );
+					VectorClear( castSum[ncast] );
+					castParts[ncast] = 0;
+					ncast++;
 				} else {
-					vk.rt.world.actorSphereCount = -1;   // too many: no early out this frame
+					c = -1;   /* not listed: emitted last, traced the old way */
+					vk.rt.world.actorListComplete = qfalse;
 				}
 			}
+			if ( c >= 0 ) {
+				VectorAdd( castSum[c], partSphere[nparts], castSum[c] );
+				castParts[c]++;
+			}
+			partEnt[nparts] = e;
+			partCaster[nparts] = c;
+			nparts++;
 		}
-		frame = ent->e.frame;
-		oldframe = ent->e.oldframe;
-		if ( frame < 0 || frame >= header->numFrames ) frame = 0;
-		if ( oldframe < 0 || oldframe >= header->numFrames ) oldframe = 0;
-		backlerp = ent->e.backlerp;
-		entBase = nv;
 
-		surf = (const md3Surface_t *)( (const byte *)header + header->ofsSurfaces );
-		for ( s = 0; s < header->numSurfaces; s++ ) {
-			const short *newXyz, *oldXyz;
-			const int *tris;
-			int v, t;
+		/* each caster's sphere and light */
+		for ( c = 0; c < ncast; c++ ) {
+			float *sp = vk.rt.world.actorSphere[c];
+			float *lt = vk.rt.world.actorLight[c];
+			vec3_t amb, dl, dir, key;
+			VectorScale( castSum[c], 1.0f / (float)castParts[c], sp );
+			sp[3] = 0.0f;
+			for ( p = 0; p < nparts; p++ ) {
+				if ( partCaster[p] == c ) {
+					const float r = Distance( sp, partSphere[p] ) + partSphere[p][3];
+					if ( r > sp[3] ) sp[3] = r;
+				}
+			}
+			VectorCopy( castKey[c], key );
+			lt[3] = 0.0f;
+			VectorSet( lt, 0.0f, 0.0f, 1.0f );
+			if ( R_LightForPoint( key, amb, dl, dir ) && VectorNormalize( dir ) > 0.0f ) {
+				/* never flatter than 30 degrees above the ground - Quake 3's
+				   RB_ProjectionShadowDeform: a shadow cast off a light at the
+				   horizon runs across the whole floor */
+				if ( dir[2] < 0.5f ) {
+					dir[2] = 0.5f;
+					VectorNormalize( dir );
+				}
+				VectorCopy( dir, lt );
+				lt[3] = ( dl[0] + dl[1] + dl[2] > 0.0f ) ? 1.0f : 0.0f;
+			}
+		}
+		/* counted up as each caster's triangles are complete, so a mesh that
+		   fills up part-way lists only the casters it holds whole */
+		vk.rt.world.actorSphereCount = 0;
+		vk.rt.world.actorRestStart = 0;
 
-			if ( nv + (uint32_t)surf->numVerts > RT_ACTOR_MAX_VERTS ||
-				 nt + (uint32_t)surf->numTriangles > RT_ACTOR_MAX_TRIS ) {
-				goto full;
+		/* emit: caster by caster, then the unlisted ones */
+		for ( c = 0; c <= ncast; c++ ) {
+			const int want = c < ncast ? c : -1;
+			const uint32_t firstTri = nt;
+			for ( p = 0; p < nparts; p++ ) {
+				const trRefEntity_t *ent;
+				const model_t *mod;
+				const md3Header_t *header;
+				const md3Surface_t *surf;
+				int s, frame, oldframe;
+				float backlerp;
+				uint32_t entBase;
+
+				if ( partCaster[p] != want ) {
+					continue;
+				}
+				ent = &backEnd.refdef.entities[ partEnt[p] ];
+				mod = R_GetModelByHandle( ent->e.hModel );
+				header = mod->md3[0];
+			frame = ent->e.frame;
+			oldframe = ent->e.oldframe;
+			if ( frame < 0 || frame >= header->numFrames ) frame = 0;
+			if ( oldframe < 0 || oldframe >= header->numFrames ) oldframe = 0;
+			backlerp = ent->e.backlerp;
+			entBase = nv;
+
+			surf = (const md3Surface_t *)( (const byte *)header + header->ofsSurfaces );
+			for ( s = 0; s < header->numSurfaces; s++ ) {
+				const short *newXyz, *oldXyz;
+				const int *tris;
+				int v, t;
+
+				if ( nv + (uint32_t)surf->numVerts > RT_ACTOR_MAX_VERTS ||
+					 nt + (uint32_t)surf->numTriangles > RT_ACTOR_MAX_TRIS ) {
+					goto full;
+				}
+				newXyz = (const short *)( (const byte *)surf + surf->ofsXyzNormals ) + frame * surf->numVerts * 4;
+				oldXyz = (const short *)( (const byte *)surf + surf->ofsXyzNormals ) + oldframe * surf->numVerts * 4;
+				for ( v = 0; v < surf->numVerts; v++, newXyz += 4, oldXyz += 4 ) {
+					vec3_t l;
+					float *o = &vout[ ( nv + v ) * 3 ];
+					l[0] = ( newXyz[0] * ( 1.0f - backlerp ) + oldXyz[0] * backlerp ) * MD3_XYZ_SCALE;
+					l[1] = ( newXyz[1] * ( 1.0f - backlerp ) + oldXyz[1] * backlerp ) * MD3_XYZ_SCALE;
+					l[2] = ( newXyz[2] * ( 1.0f - backlerp ) + oldXyz[2] * backlerp ) * MD3_XYZ_SCALE;
+					o[0] = ent->e.origin[0] + ent->e.axis[0][0] * l[0] + ent->e.axis[1][0] * l[1] + ent->e.axis[2][0] * l[2];
+					o[1] = ent->e.origin[1] + ent->e.axis[0][1] * l[0] + ent->e.axis[1][1] * l[1] + ent->e.axis[2][1] * l[2];
+					o[2] = ent->e.origin[2] + ent->e.axis[0][2] * l[0] + ent->e.axis[1][2] * l[1] + ent->e.axis[2][2] * l[2];
+				}
+				tris = (const int *)( (const byte *)surf + surf->ofsTriangles );
+				for ( t = 0; t < surf->numTriangles * 3; t++ ) {
+					iout[ nt * 3 + t ] = nv + (uint32_t)tris[t];
+				}
+				nv += surf->numVerts;
+				nt += surf->numTriangles;
+				surf = (const md3Surface_t *)( (const byte *)surf + surf->ofsEnd );
 			}
-			newXyz = (const short *)( (const byte *)surf + surf->ofsXyzNormals ) + frame * surf->numVerts * 4;
-			oldXyz = (const short *)( (const byte *)surf + surf->ofsXyzNormals ) + oldframe * surf->numVerts * 4;
-			for ( v = 0; v < surf->numVerts; v++, newXyz += 4, oldXyz += 4 ) {
-				vec3_t l;
-				float *o = &vout[ ( nv + v ) * 3 ];
-				l[0] = ( newXyz[0] * ( 1.0f - backlerp ) + oldXyz[0] * backlerp ) * MD3_XYZ_SCALE;
-				l[1] = ( newXyz[1] * ( 1.0f - backlerp ) + oldXyz[1] * backlerp ) * MD3_XYZ_SCALE;
-				l[2] = ( newXyz[2] * ( 1.0f - backlerp ) + oldXyz[2] * backlerp ) * MD3_XYZ_SCALE;
-				o[0] = ent->e.origin[0] + ent->e.axis[0][0] * l[0] + ent->e.axis[1][0] * l[1] + ent->e.axis[2][0] * l[2];
-				o[1] = ent->e.origin[1] + ent->e.axis[0][1] * l[0] + ent->e.axis[1][1] * l[1] + ent->e.axis[2][1] * l[2];
-				o[2] = ent->e.origin[2] + ent->e.axis[0][2] * l[0] + ent->e.axis[1][2] * l[1] + ent->e.axis[2][2] * l[2];
+			{
+				/* [QL] E180/E184: close the model's holes - see rt_caps_for */
+				const rtCapInfo_t *cap = r_rtActorCaps->integer ? rt_caps_for( header ) : NULL;
+				if ( cap && cap->numLoops > 0 &&
+					 nv + (uint32_t)cap->numLoops <= RT_ACTOR_MAX_VERTS &&
+					 nt + (uint32_t)cap->numEdges <= RT_ACTOR_MAX_TRIS ) {
+					float cnt[RT_CAP_LOOPS];
+					int l, k;
+					for ( l = 0; l < cap->numLoops; l++ ) {
+						VectorClear( &vout[ ( nv + l ) * 3 ] );
+						cnt[l] = 0.0f;
+					}
+					for ( k = 0; k < cap->numEdges; k++ ) {
+						const int *ed = &cap->edges[k * 3];
+						VectorAdd( &vout[ ( nv + ed[2] ) * 3 ], &vout[ ( entBase + ed[0] ) * 3 ], &vout[ ( nv + ed[2] ) * 3 ] );
+						cnt[ ed[2] ] += 1.0f;
+					}
+					for ( l = 0; l < cap->numLoops; l++ ) {
+						VectorScale( &vout[ ( nv + l ) * 3 ], 1.0f / ( cnt[l] > 0.0f ? cnt[l] : 1.0f ), &vout[ ( nv + l ) * 3 ] );
+					}
+					for ( k = 0; k < cap->numEdges; k++ ) {
+						const int *ed = &cap->edges[k * 3];
+						iout[ nt * 3 + 0 ] = nv + (uint32_t)ed[2];
+						iout[ nt * 3 + 1 ] = entBase + (uint32_t)ed[1];
+						iout[ nt * 3 + 2 ] = entBase + (uint32_t)ed[0];
+						nt++;
+					}
+					nv += (uint32_t)cap->numLoops;
+				}
 			}
-			tris = (const int *)( (const byte *)surf + surf->ofsTriangles );
-			for ( t = 0; t < surf->numTriangles * 3; t++ ) {
-				iout[ nt * 3 + t ] = nv + (uint32_t)tris[t];
+			nents++;
+			sig = sig * 1000003u + (uint32_t)ent->e.hModel;   /* [QL] E205 */
 			}
-			nv += surf->numVerts;
-			nt += surf->numTriangles;
-			surf = (const md3Surface_t *)( (const byte *)surf + surf->ofsEnd );
+			if ( c < ncast ) {
+				vk.rt.world.actorRange[c][0] = (float)firstTri;
+				vk.rt.world.actorRange[c][1] = (float)nt;
+				vk.rt.world.actorRange[c][2] = vk.rt.world.actorRange[c][3] = 0.0f;
+				vk.rt.world.actorSphereCount = c + 1;
+				vk.rt.world.actorRestStart = nt;
+			} else {
+				vk.rt.world.actorRestStart = firstTri;
+			}
 		}
-		{
-			/* [QL] E180/E184: close the model's holes - see rt_caps_for */
-			const rtCapInfo_t *cap = r_rtActorCaps->integer ? rt_caps_for( header ) : NULL;
-			if ( cap && cap->numLoops > 0 &&
-				 nv + (uint32_t)cap->numLoops <= RT_ACTOR_MAX_VERTS &&
-				 nt + (uint32_t)cap->numEdges <= RT_ACTOR_MAX_TRIS ) {
-				float cnt[RT_CAP_LOOPS];
-				int l, k;
-				for ( l = 0; l < cap->numLoops; l++ ) {
-					VectorClear( &vout[ ( nv + l ) * 3 ] );
-					cnt[l] = 0.0f;
-				}
-				for ( k = 0; k < cap->numEdges; k++ ) {
-					const int *ed = &cap->edges[k * 3];
-					VectorAdd( &vout[ ( nv + ed[2] ) * 3 ], &vout[ ( entBase + ed[0] ) * 3 ], &vout[ ( nv + ed[2] ) * 3 ] );
-					cnt[ ed[2] ] += 1.0f;
-				}
-				for ( l = 0; l < cap->numLoops; l++ ) {
-					VectorScale( &vout[ ( nv + l ) * 3 ], 1.0f / ( cnt[l] > 0.0f ? cnt[l] : 1.0f ), &vout[ ( nv + l ) * 3 ] );
-				}
-				for ( k = 0; k < cap->numEdges; k++ ) {
-					const int *ed = &cap->edges[k * 3];
-					iout[ nt * 3 + 0 ] = nv + (uint32_t)ed[2];
-					iout[ nt * 3 + 1 ] = entBase + (uint32_t)ed[1];
-					iout[ nt * 3 + 2 ] = entBase + (uint32_t)ed[0];
-					nt++;
-				}
-				nv += (uint32_t)cap->numLoops;
-			}
-		}
-		nents++;
-		sig = sig * 1000003u + (uint32_t)ent->e.hModel;   /* [QL] E205 */
 	}
+	if ( 0 ) {
 full:
+		/* [QL] E214: out of room part-way - what was emitted after the last
+		   whole caster is unlisted */
+		vk.rt.world.actorListComplete = qfalse;
+	}
 	vk.rt.world.actorCulled = culled;   /* [QL] E203 */
 	if ( nt == 0 ) {
 		vk.rt.world.actorBuiltValid[idx] = qfalse;

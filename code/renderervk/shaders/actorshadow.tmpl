@@ -36,7 +36,10 @@ layout(set = 0, binding = 2) uniform ActorShadow {
 	vec4 gridBounds;    // w: 1 if the light field follows the grid in gridData (E176)
 	vec4 soft;          // [QL] E167: x light size in world units, y rays per pixel, z sun (E178), w frame (E196)
 	vec4 actorInfo;     // [QL] E204: x silhouette spheres listed (-1: not listed), y furthest a ray can meet a player
-	vec4 actors[64];    // [QL] E204: xyz centre, w radius (RT_MAX_SHADOW_ACTORS)
+	vec4 actors[64];    // [QL] E204/E214: one per caster - xyz centre, w radius (RT_MAX_SHADOW_ACTORS)
+	vec4 actorLight[64];  // [QL] E214: the light grid's direction at the caster, w 1 if it has directed light
+	vec4 actorRange[64];  // [QL] E214: the caster's triangles in the silhouette mesh, x first, y end
+	vec4 actorRest;       // [QL] E214: x first triangle of the casters not listed, y 1 if all are listed
 };
 
 layout(set = 0, binding = 3, std430) readonly buffer LightGrid {
@@ -435,6 +438,66 @@ float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint l
 	return blocked / float(max(rays, 1));
 }
 
+/*
+[QL] E214: one caster's share of the rays toward its own light. Only hits on
+its own triangles [t0, t1) count: the silhouette mesh holds every caster, and
+a ray aimed at this one's light can meet another, whose shadow is that one's
+business, cast from its own light. Opaque geometry commits without asking,
+so the query runs non-opaque and confirms the triangles in range itself.
+*/
+float traceCaster(vec3 O, vec3 lightPos, bool directional, uint actorMask, float t0, float t1,
+                  int rays, float spin, out float hitT, out float lenC) {
+	vec3 Lc = normalize(lightPos - O);
+	vec3 sUp = abs(Lc.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 s1 = normalize(cross(Lc, sUp));
+	vec3 s2 = cross(Lc, s1);
+	float discScale = directional ? distance(lightPos, O) / 128.0 : 1.0;
+	float blocked = 0.0;
+	hitT = 0.0;
+	lenC = 1.0;
+	for (int i = 0; i < rays; i++) {
+		vec3 target = lightPos;
+#ifdef USE_PEN
+		if (false) {
+#else
+		if (soft.x > 0.0) {
+#endif
+			int ring = rays - (rays & 1);
+			int k = i - (rays & 1);
+			float rr = k < 0 ? 0.0 : sqrt((float(k) + 0.5) / float(max(ring, 1))) * soft.x * discScale;
+			float a = float(i) * 2.3999632 + spin;
+			target += (s1 * cos(a) + s2 * sin(a)) * rr;
+		}
+		vec3 d = target - O;
+		float len = length(d);
+		float tmax = directional ? len : len - 8.0;
+		if (tmax <= 1.0) {
+			continue;
+		}
+		vec3 dir = d / len;
+		rayQueryEXT rq;
+		rayQueryInitializeEXT(rq, topLevel, gl_RayFlagsNoOpaqueEXT, actorMask, O, 0.0, dir, tmax);
+		while (rayQueryProceedEXT(rq)) {
+			if (rayQueryGetIntersectionTypeEXT(rq, false) == gl_RayQueryCandidateIntersectionTriangleEXT) {
+				float prim = float(rayQueryGetIntersectionPrimitiveIndexEXT(rq, false));
+				if (prim >= t0 && prim < t1) {
+					rayQueryConfirmIntersectionEXT(rq);
+					rayQueryTerminateEXT(rq);
+				}
+			}
+		}
+		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+			float t = rayQueryGetIntersectionTEXT(rq, true);
+			if (!levelBetween(O, dir, t)) {
+				blocked += 1.0;
+				hitT = t;
+			}
+		}
+		lenC = directional ? hitT + 128.0 : len;
+	}
+	return blocked / float(max(rays, 1));
+}
+
 void main() {
 	ivec2 size = depthSize();
 	vec2 invSize = 1.0 / vec2(size);
@@ -561,101 +624,26 @@ void main() {
 		}
 	}
 	/*
-	[QL] E211: a player's shadow from the light at the player.
+	[QL] E211/E212/E214: a player's or item's shadow from the light at the
+	caster, not at the surface it falls on.
 
-	Everything above finds the light for THIS pixel - from the grid and the
-	light field where the pixel is, or the per-pixel estimate where those
-	cannot say. That is right for the level shadowing itself. It is wrong for
-	a player: the floor under them and the wall beside them each found their
-	own light, so one shadow over both was cast from two places and bent at
-	the corner, and next to a lamp, where neighbouring grid points disagree
-	most and a few units of error is a large angle, it swung around them.
-	The light is where it is, whatever it falls on. So the caster's light is
-	looked up once, at the caster - the middle of the nearest cluster of
-	silhouette spheres (legs, torso, head and gun are separate models, one
-	body) - and every pixel its shadow reaches traces toward that same point.
-	A light inside the body, or touching it, is moved out to just past its
-	bounds: a point light there casts a shadow that wraps the whole room.
+	Everything above finds the light for THIS pixel - right for the level
+	shadowing itself, wrong for a player: the floor under them and the wall
+	beside them found their own lights, so one shadow over both was cast from
+	two places and bent at the corner, swung around them near a lamp, and
+	could be cut off along a line wherever this pixel's own light direction
+	turned away. The casters are listed per frame, one per player or item
+	(vk_rt_world.c groups the model parts), each with the light grid's
+	direction at it. Each caster in reach is traced toward its own light, its
+	own triangles only, and gated by that light against this surface - not by
+	this pixel's grid light. r_rtActorLight 1 casts along the direction
+	(parallel, never flatter than 30 degrees: Quake 3's model-shadow rule),
+	2 toward the light field's estimated point at the caster (E211), 0 is the
+	per-pixel light from before E211.
 	*/
 	uint mask = uint(params.z);
 	uint actorMask = mask & ~uint(RT_MASK_LEVEL_BIT);
-	vec3 actorLightPos = lightPos;
-	bool splitActor = false;
-	bool actorDirectional = false;
-	if (!directional && actorInfo.z > 0.5 && actorInfo.x > 0.0) {
-		int na = min(int(actorInfo.x + 0.5), 64);
-		int nearest = -1;
-		float best = 1e30;
-		for (int k = 0; k < na; k++) {
-			vec3 dv = P - actors[k].xyz;
-			float r = actors[k].w + actorInfo.y;
-			float dd = dot(dv, dv);
-			if (dd < r * r && dd < best) {
-				best = dd;
-				nearest = k;
-			}
-		}
-		if (nearest >= 0) {
-			vec3 c = vec3(0.0);
-			float cn = 0.0;
-			for (int k = 0; k < na; k++) {
-				if (distance(actors[k].xyz, actors[nearest].xyz) < 64.0) {
-					c += actors[k].xyz;
-					cn += 1.0;
-				}
-			}
-			c /= cn;
-			float R = 0.0;
-			for (int k = 0; k < na; k++) {
-				if (distance(actors[k].xyz, actors[nearest].xyz) < 64.0) {
-					R = max(R, distance(actors[k].xyz, c) + actors[k].w);
-				}
-			}
-			if (actorInfo.z < 1.5) {
-				/* [QL] E212: mode 1 - Quake 3's own rule for a model's shadow:
-				   along the light grid's direction where the model is (the
-				   direction the model itself is lit from), as parallel rays, so
-				   the shadow is the caster's own size whatever an estimate says
-				   about how far the light is; and never flatter than 30 degrees
-				   above the ground (RB_ProjectionShadowDeform), so it cannot run
-				   away across the floor. An estimated point next to a small item
-				   magnified it many times over: the shard and armour smears. */
-				float cAmb, cDir;
-				vec3 cL;
-				if (gridAt(c, cAmb, cDir, cL) && cDir > 0.0) {
-					if (cL.z < 0.5) {
-						cL = normalize(cL + vec3(0.0, 0.0, 1.0) * (0.5 - cL.z));
-					}
-					if (dot(cL, N) > 0.02) {
-						actorLightPos = Q0 + cL * params.y;
-						splitActor = true;
-						actorDirectional = true;
-					} else {
-						actorMask = 0u;
-					}
-				}
-			} else {
-				vec3 aPos;
-				float aSky, aSun, aTrust;
-				if (lightFieldAt(c, aPos, aSky, aSun, aTrust) && aSky < 0.5) {
-					float minD = R + 16.0;
-					vec3 off = aPos - c;
-					float od = length(off);
-					if (od < minD) {
-						aPos = c + (od > 1e-3 ? off / od : vec3(0.0, 0.0, 1.0)) * minD;
-					}
-					/* only a light on this surface's side can shadow it */
-					if (dot(aPos - Q0, N) > 0.0) {
-						actorLightPos = aPos;
-						splitActor = true;
-					} else {
-						actorMask = 0u;
-					}
-				}
-			}
-		}
-	}
-
+	bool perCaster = actorInfo.z > 0.5 && actorInfo.x >= 0.0;
 	vec3 O = P + N * 2.0;
 #ifdef USE_PEN
 	/* [QL] E171: one ray, at the centre of the light. The softness comes
@@ -668,41 +656,90 @@ void main() {
 	   Where the grid cannot say where it is, a ray run to the full reach goes
 	   past the lamp and finds the far wall. */
 	uint levelMask = found ? (mask & uint(RT_MASK_LEVEL_BIT)) : 0u;
-	/* [QL] E169: the points on the light, spread evenly over a disc facing
-	   this pixel rather than scattered through a cube (half of whose spread
-	   ran along the ray and did nothing). A golden-angle spiral covers the disc
-	   evenly at any ray count, and each pixel turns it by a fixed amount from
-	   interleaved gradient noise, so neighbours sample different points and
-	   the denoise has an average to find - the old per-pixel hash gave
-	   clumps, and clumps survive a blur. */
-	/* [QL] E196: soft.w, the frame number while r_rtShadowTemporal is on: the
-	   whole pattern turns by the golden angle each frame, so the frames it
-	   averages saw the light from different points */
-	/* [QL] E208: per pixel per frame while frames are averaged - the uniform
-	   golden-angle step turned the whole pattern at once, which reads as
-	   motion; the fixed interleaved gradient otherwise, as before */
+	/* [QL] E169/E196/E208: the points on the light, a golden-angle spiral over
+	   a disc facing this pixel, turned per pixel (per frame while averaging) */
 	float spin = (soft.w > 0.0 ? hashPixelFrame(gl_FragCoord.xy, soft.w) : ign(gl_FragCoord.xy)) * 6.2831853;
-	float hitT, lenC;
+	float hitT = 0.0, lenC = 1.0;
 	float blocked = 0.0;
-	hitT = 0.0;
-	lenC = 1.0;
 	if (firstLit) {
 		/* E190: level shadows from a lamp the field could not verify are left to
 		   the lightmap - trust is 1 for the sky, the sun and the per-pixel estimate */
 		float levelTrust = (haveField && !directional && found) ? smoothstep(0.3, 0.8, trust) : 1.0;
-		if (splitActor) {
-			/* E211: players toward their own light, the level toward this pixel's */
-			float hitTA, lenCA;
-			float bA = traceLight(O, actorLightPos, actorDirectional, actorMask, 0u, rays, spin, directed, levelTrust, hitTA, lenCA);
-			float bL = levelMask != 0u
-				? traceLight(O, lightPos, false, 0u, levelMask, rays, spin, directed, levelTrust, hitT, lenC) : 0.0;
-			if (bA >= bL) {
-				hitT = hitTA;
-				lenC = lenCA;
-			}
-			blocked = max(bA, bL);
-		} else {
+		if (!perCaster) {
 			blocked = traceLight(O, lightPos, directional, actorMask, levelMask, rays, spin, directed, levelTrust, hitT, lenC);
+		} else {
+			if (levelMask != 0u) {
+				blocked = traceLight(O, lightPos, directional, 0u, levelMask, rays, spin, directed, levelTrust, hitT, lenC);
+			}
+			/* casters the list had no room for: the old way, this pixel's light */
+			if (actorRest.y < 0.5 && actorMask != 0u) {
+				float hR, lR;
+				float bR = traceCaster(O, lightPos, directional, actorMask, actorRest.x, 1e9, rays, spin, hR, lR);
+				if (bR > blocked) {
+					blocked = bR;
+					hitT = hR;
+					lenC = lR;
+				}
+			}
+		}
+	}
+
+	float blockedA = 0.0, lostA = 0.0, hitTA = 0.0, lenCA = 1.0;
+	bool dirMode = actorInfo.z < 1.5;
+	if (perCaster && actorMask != 0u && directed > 0.0) {
+		float totA = max(ambient + directed * ndl, 1e-3);
+		int na = min(int(actorInfo.x + 0.5), 64);
+		int traced = 0;
+		for (int k = 0; k < na && traced < 4; k++) {
+			vec3 c = actors[k].xyz;
+			float R = actors[k].w;
+			vec3 dv = P - c;
+			float rr = R + actorInfo.y;
+			if (dot(dv, dv) > rr * rr) {
+				continue;
+			}
+			vec3 Lp, Ld;
+			if (dirMode) {
+				if (actorLight[k].w <= 0.0) {
+					continue;
+				}
+				Ld = actorLight[k].xyz;
+				Lp = O + Ld * params.y;
+			} else {
+				vec3 aPos;
+				float aSky, aSun, aTrust;
+				if (!lightFieldAt(c, aPos, aSky, aSun, aTrust) || aSky >= 0.5) {
+					continue;
+				}
+				float minD = R + 16.0;
+				vec3 off = aPos - c;
+				float od = length(off);
+				if (od < minD) {
+					aPos = c + (od > 1e-3 ? off / od : vec3(0.0, 0.0, 1.0)) * minD;
+				}
+				Lp = aPos;
+				Ld = normalize(Lp - O);
+			}
+			float nl = dot(N, Ld);
+			if (nl <= 0.02) {
+				continue;       // this caster's light does not reach this side
+			}
+			/* only if the ray toward its light passes the caster at all */
+			float tc = dot(c - O, Ld);
+			float margin = soft.x * (dirMode ? params.y / 128.0 : 1.0) + 8.0;
+			if (tc < -R || distance(O + Ld * max(tc, 0.0), c) > R + margin) {
+				continue;
+			}
+			traced++;
+			float h, l;
+			float b = traceCaster(O, Lp, dirMode, actorMask, actorRange[k].x, actorRange[k].y, rays, spin, h, l);
+			float la = directed * nl / totA;
+			if (b * la > blockedA * lostA) {
+				blockedA = b;
+				lostA = la;
+				hitTA = h;
+				lenCA = l;
+			}
 		}
 	}
 
@@ -730,8 +767,35 @@ void main() {
 	if (soft.z > 0.5 && sun.w > 0.0 && !isSun && sunW > 0.0 && ndlS > 0.02) {
 		lostS = sunW * min(sun.w * ndlS, 0.8 * ambient) / tot;
 		if (lostS > 0.01) {
-			blockedS = traceLight(O, O + sun.xyz * params.y, true, actorMask, mask & uint(RT_MASK_LEVEL_BIT),
+			blockedS = traceLight(O, O + sun.xyz * params.y, true, perCaster ? 0u : actorMask, mask & uint(RT_MASK_LEVEL_BIT),
 			                      rays, spin + 1.3, -smoothstep(0.6, 0.95, sunVis), 1.0, hitTS, lenCS);
+			/* [QL] E214: casters in the sun, each its own triangles - unless the
+			   caster's own light already is the sun, which would cast it twice */
+			if (perCaster && actorMask != 0u) {
+				int na = min(int(actorInfo.x + 0.5), 64);
+				int traced = 0;
+				for (int k = 0; k < na && traced < 4; k++) {
+					vec3 c = actors[k].xyz;
+					float R = actors[k].w;
+					if (dirMode && actorLight[k].w > 0.0 && dot(actorLight[k].xyz, sun.xyz) > 0.94) {
+						continue;
+					}
+					float tc = dot(c - O, sun.xyz);
+					if (tc < -R || tc > params.y + R ||
+					    distance(O + sun.xyz * max(tc, 0.0), c) > R + soft.x * params.y / 128.0 + 8.0) {
+						continue;
+					}
+					traced++;
+					float h, l;
+					float b = traceCaster(O, O + sun.xyz * params.y, true, actorMask, actorRange[k].x, actorRange[k].y,
+					                      rays, spin + 1.3, h, l);
+					if (b > blockedS) {
+						blockedS = b;
+						hitTS = h;
+						lenCS = l;
+					}
+				}
+			}
 		}
 	}
 
@@ -748,6 +812,14 @@ void main() {
 	   at almost no strength and its shadow came out hard ("strongest light
 	   only" made it soft again). The darkness is now carried by the shadow,
 	   so an edge spreads as dark as the shadow it comes from. */
+	/* [QL] E214: the level's and the casters' shadows of the first light do
+	   not add - a pixel in both is in one shadow, as dark as the darker */
+	if (lostA * blockedA > lost1 * blocked) {
+		blocked = blockedA;
+		lost1 = lostA;
+		hitT = hitTA;
+		lenC = lenCA;
+	}
 	if (blocked > 0.0) {
 		out_color = vec4((lost1 * blocked + lostS * blockedS) * strength, hitT, lenC, 1.0);
 	} else if (blockedS > 0.0) {
@@ -757,6 +829,10 @@ void main() {
 	}
 	return;
 #endif
+	if (lostA * blockedA > lost1 * blocked) {
+		blocked = blockedA;
+		lost1 = lostA;
+	}
 	if (blocked <= 0.0 && blockedS <= 0.0) {
 		return;
 	}

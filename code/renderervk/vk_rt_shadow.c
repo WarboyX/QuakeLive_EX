@@ -29,6 +29,9 @@ typedef struct {
 	float soft[4];        // [QL] E167: x light size (world units), y rays
 	float actorInfo[4];   // [QL] E204: x sphere count (-1 none listed), y reach
 	float actors[RT_MAX_SHADOW_ACTORS][4];
+	float actorLight[RT_MAX_SHADOW_ACTORS][4];   // [QL] E214: grid direction at each caster
+	float actorRange[RT_MAX_SHADOW_ACTORS][4];   // [QL] E214: its triangles, x first, y end
+	float actorRest[4];                          // [QL] E214: x first unlisted triangle
 } actorShadowUniform_t;
 
 void vk_actor_shadow_destroy( void )
@@ -473,8 +476,13 @@ qboolean vk_actor_shadows( void )
 	/* [QL] E211: listed whenever they are known - the per-caster light needs
 	   them too; actorInfo.w says whether the early-out may use them */
 	if ( actors && vk.rt.world.actorReady && vk.rt.world.actorSphereCount >= 0 ) {
-		u->actorInfo[0] = (float)vk.rt.world.actorSphereCount;
-		Com_Memcpy( u->actors, vk.rt.world.actorSphere, sizeof( float ) * 4 * vk.rt.world.actorSphereCount );
+		const int n = vk.rt.world.actorSphereCount;
+		u->actorInfo[0] = (float)n;
+		Com_Memcpy( u->actors, vk.rt.world.actorSphere, sizeof( float ) * 4 * n );
+		Com_Memcpy( u->actorLight, vk.rt.world.actorLight, sizeof( float ) * 4 * n );
+		Com_Memcpy( u->actorRange, vk.rt.world.actorRange, sizeof( float ) * 4 * n );
+		u->actorRest[0] = (float)vk.rt.world.actorRestStart;
+		u->actorRest[1] = vk.rt.world.actorListComplete ? 1.0f : 0.0f;
 	} else {
 		u->actorInfo[0] = -1.0f;
 	}
@@ -492,7 +500,8 @@ qboolean vk_actor_shadows( void )
 	/* [QL] E211: z - each caster's shadow from the light at the caster
 	   (r_rtActorLight); w - the E204 early-out (r_rtCull) */
 	u->actorInfo[2] = (float)r_rtActorLight->integer;   /* E212: 1 direction, 2 point */
-	u->actorInfo[3] = r_rtCull->integer ? 1.0f : 0.0f;
+	/* E214: the early out needs every caster listed */
+	u->actorInfo[3] = ( r_rtCull->integer && vk.rt.world.actorListComplete ) ? 1.0f : 0.0f;
 	/* [QL] E196: the ray pattern turns each frame while r_rtShadowTemporal is
 	   averaging it (sampled soft edge only); fixed otherwise, as before - a
 	   pattern that moves by itself is shimmer, where a fixed one is grain */

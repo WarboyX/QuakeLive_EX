@@ -1221,11 +1221,20 @@ typedef struct {
 			uint32_t		actorTris;		// in this frame's structure
 			uint32_t		actorEntities;
 			uint32_t		actorCulled;		/* [QL] E203: left out by rt_in_reach this frame */
-			/* [QL] E204: the bounding spheres of what went into the silhouette
-			   mesh this frame (xyz centre, w radius), for the shadow pass's
-			   per-pixel early out; actorSphereCount -1 = too many to list */
+			/* [QL] E204/E214: the casters in the silhouette mesh this frame -
+			   one per player or item, its parts grouped by lighting origin:
+			   bounding sphere over every part and both animation frames (xyz
+			   centre, w radius), the light grid's direction at it (xyz, w 1 if
+			   the grid has directed light there), and its contiguous triangle
+			   range (x first, y end). actorSphereCount -1 = no mesh this frame.
+			   Casters past RT_MAX_SHADOW_ACTORS go after actorRestStart and are
+			   not listed: the early out is then off (actorListComplete). */
 			float			actorSphere[RT_MAX_SHADOW_ACTORS][4];
+			float			actorLight[RT_MAX_SHADOW_ACTORS][4];
+			float			actorRange[RT_MAX_SHADOW_ACTORS][4];
 			int				actorSphereCount;
+			uint32_t		actorRestStart;
+			qboolean		actorListComplete;
 			/* [QL] E205: what each command buffer's silhouette structure was
 			   last built from, so an unchanged set can be refitted */
 			uint32_t		actorBuiltSig[NUM_COMMAND_BUFFERS];

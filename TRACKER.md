@@ -6199,6 +6199,38 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E214. One record per caster, each traced toward its own light, with only its own triangles counting — DONE (verify)
+**Lives in:** our **client** (renderervk `vk_rt_world.c`, `vk_rt_shadow.c`, `vk.h`, `actorshadow.tmpl`) · **Seen by:** our client only
+
+The external shadow diagnosis of `6bc976c5` found E211/E212 did not do what their entries said. Each point was checked against the source:
+
+1. **Gated by the wrong light.** Players and items were only traced where the *receiving pixel's own* grid light passed `N·L > 0.02`. Wherever that light turned away, the shadow was cut off along a line, even when the caster's own light still reached the surface. That is a source of the wedge cutoffs.
+2. **Regrouped per pixel.** Each pixel picked its nearest model *part* and grouped everything within 64 units, so neighbouring pixels could pick different centres (and lights) for one body, and a pickup beside a player could join them. Every ray also counted hits on *any* actor. The entries said "once at the caster"; the code did it per pixel.
+3. **Overflow switched it off.** The list held 64 *parts*, not players. Past that, `-1` switched off the per-pixel early-out *and* the caster light, for the whole frame.
+4. **Culling bounds ignored the previous frame.** Bounds came from the current animation frame only, though the mesh is lerped from the previous one, and from axis 0's scale only.
+
+**Now:**
+- **Grouped once, on the CPU.** The silhouette build groups parts by the lighting origin cgame gives every part of one player (`RF_LIGHTING_ORIGIN`), or by the entity's origin, into one caster:
+  - a sphere around every part over both animation frames, using the largest axis scale;
+  - the light grid's direction at it, from `R_LightForPoint` (the sample Quake 3 lights the model itself with), at least 30° above the ground;
+  - a contiguous triangle range: triangles are emitted caster by caster.
+- **Up to 64 casters** (players and items, not parts). More than that are emitted last and traced the old way, and only the early-out is switched off.
+- **In the shader:**
+  - Each caster within reach whose light faces the surface, up to 4, is traced toward its own light. The query runs non-opaque and confirms only that caster's triangles.
+  - The darkness is this surface's directed light × N·L toward the caster's light, not the pixel's own.
+  - The level keeps the pixel's own light. A pixel in both shadows takes the darker of the two; they do not add.
+  - The sun is traced per caster too, skipped where the caster's own light already is the sun, so it is not cast twice.
+- **`r_rtActorLight`:** 1 casts along the direction (default), 2 toward the light field's point at the caster (E211), 0 the per-pixel light.
+
+**Test.** Red flag room, both shard groups and the yellow armour, first person, all three modes. A first pass waited 3 s per shot and lavapipe lagged a settings change behind; re-run at 8–10 s.
+- Looking down: one body silhouette (mode 0: a broken smear).
+- No smears at the shard groups.
+- Lamp (red) and sun (blue) shadows both present where both lights reach.
+- The shadow takes the debug tint, so this pass draws it.
+- 0 validation errors.
+
+Not covered: a scene with more than 64 casters, and timing on a real GPU.
+
 ### E213. Review findings: access reload, spawn armour as Quad, AD/CA/FT/RR status after a zero countdown; packaging checks — DONE (verify)
 **Lives in:** our **server** (qagame `g_svcmds.c`, `g_gametype_{ca,rr,ad,ft}.c`); tools · **Seen by:** every client
 
