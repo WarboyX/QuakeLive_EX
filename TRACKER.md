@@ -6199,6 +6199,17 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E215. K1–K3: water.cfg values checked; the largest water faces kept; the dynamic lights that matter reflected — DONE (verify)
+**Lives in:** our **client** (renderervk `tr_scene.c`, `vk_ssr.c`) · **Seen by:** our client only
+
+- **K1, `water.cfg`.** Every value went through a bare `atof`, and `R_WaterSetting` hands a map's value to the shader without the cvar's range check, so `nan`, a typo or an empty value (0) reached the waves. Each value now has to be a whole token of digits, one sign and a point. That is checked as text, because the renderer is built with `-ffast-math`, which may remove a `v != v` NaN test. It is then clamped to the range its cvar is registered with (scale 8–1024, speed 0–8, steepness 0–0.5, height 0–32, strength 0–1, ripplesize 0.1–16, rippleheight 0–16, ripplewaves 1–24, ripplelife 0.25–10). A rejected value leaves the setting to the player's cvar. The console names the map, key and value.
+  - Probe built with the same flags: `64` taken; `nan`, `inf`, `1e5`, `12abc`, empty and over-long rejected; `99999` and `-3` clamped.
+  - In game, a deliberately bad japanesecastles block produced all four warnings.
+- **K2, the water-plane cap.** Past 32 faces the first ones in BSP order won, so which water reflected depended on how the compiler split the map. Every face is now a candidate (deduplicated as before), and the 32 largest by the box the shader tests are kept, BSP order breaking ties so it is the same every load. The warning says how many were left out and their area. japanesecastles has 4, unchanged.
+- **K3, dynamic lights for water.** The shader holds 16, and the first 16 found won. When there are more, they are now scored by brightness × radius, discounted by distance to the nearest water box. It is not camera distance: reflections show off-screen lights. The best 16 are kept, in frame order. With 16 or fewer, nothing changes.
+
+Pool view against the E214 renderer: RMSE 0.015, which is water animation. 0 validation errors.
+
 ### E214. One record per caster, each traced toward its own light, with only its own triangles counting — DONE (verify)
 **Lives in:** our **client** (renderervk `vk_rt_world.c`, `vk_rt_shadow.c`, `vk.h`, `actorshadow.tmpl`) · **Seen by:** our client only
 

@@ -371,6 +371,51 @@ pass decides what, if anything, a given ripple touches.
 */
 /*
 =====================
+R_WaterValue
+
+[QL] K1. One water.cfg value: a whole number token, finite, inside the range the
+matching cvar is registered with. A map value goes straight to the shader -
+R_WaterSetting hands it over without the cvar's own range check - so a typo,
+"nan", or an empty value (atof made that 0) used to reach the waves as it was.
+Rejected values leave the setting to the player's cvar; out-of-range ones are
+clamped. Either way the console names the map, the key and the value.
+=====================
+*/
+static qboolean R_WaterValue( const char *map, const char *key, const char *token, float lo, float hi, float *out ) {
+	char *end;
+	double v;
+
+	if ( token == NULL || token[0] == '\0' ) {
+		ri.Printf( PRINT_WARNING, "water.cfg: '%s' for '%s' has no value - ignored\n", key, map[0] ? map : "(no map yet)" );
+		return qfalse;
+	}
+	/* digits, one sign, a point - no exponent, "nan" or "inf". Checked as
+	   text: this file is built with -ffast-math, which may drop a v != v test */
+	for ( end = (char *)token; *end; end++ ) {
+		if ( !( ( *end >= '0' && *end <= '9' ) || *end == '.' || ( end == token && ( *end == '-' || *end == '+' ) ) ) ) {
+			break;
+		}
+	}
+	if ( *end != '\0' || end - token > 24 ) {
+		end = (char *)token;    /* rejected below */
+		v = 0.0;
+	} else {
+		v = strtod( token, &end );
+	}
+	if ( end == token || *end != '\0' ) {
+		ri.Printf( PRINT_WARNING, "water.cfg: '%s' for '%s' is \"%s\", not a number - ignored\n", key, map[0] ? map : "(no map yet)", token );
+		return qfalse;
+	}
+	if ( v < lo || v > hi ) {
+		ri.Printf( PRINT_WARNING, "water.cfg: '%s' for '%s' is %s, outside %g..%g - clamped\n", key, map[0] ? map : "(no map yet)", token, lo, hi );
+		v = v < lo ? lo : hi;
+	}
+	*out = (float)v;
+	return qtrue;
+}
+
+/*
+=====================
 R_LoadWaterProfile
 
 [QL] R19: per-map water settings, from scripts/water.cfg.
@@ -434,22 +479,24 @@ void R_LoadWaterProfile( const char *mapName ) {
 				token = R_ParseExt( &p, qfalse );
 				Q_strncpyz( blockMap, token, sizeof( blockMap ) );
 			}
-#define WATER_KEY( name, field, have ) \
+#define WATER_KEY( name, field, have, lo, hi ) \
 			else if ( Q_stricmp( token, name ) == 0 ) { \
 				token = R_ParseExt( &p, qfalse ); \
-				block.field = atof( token ); \
-				block.have = qtrue; \
+				if ( R_WaterValue( blockMap, name, token, lo, hi, &block.field ) ) { \
+					block.have = qtrue; \
+				} \
 			}
-			WATER_KEY( "scale",     scale,     haveScale )
-			WATER_KEY( "speed",     speed,     haveSpeed )
-			WATER_KEY( "steepness", steepness, haveSteepness )
-			WATER_KEY( "height",    height,    haveHeight )
-			WATER_KEY( "strength",  strength,  haveStrength )
+			/* [QL] K1: each bounded by its cvar's own registered range (tr_init.c) */
+			WATER_KEY( "scale",     scale,     haveScale,     8.0f, 1024.0f )
+			WATER_KEY( "speed",     speed,     haveSpeed,     0.0f, 8.0f )
+			WATER_KEY( "steepness", steepness, haveSteepness, 0.0f, 0.5f )
+			WATER_KEY( "height",    height,    haveHeight,    0.0f, 32.0f )
+			WATER_KEY( "strength",  strength,  haveStrength,  0.0f, 1.0f )
 			/* [QL] R28: impacts, as opposed to the wind chop above */
-			WATER_KEY( "ripplesize",   rippleSize,   haveRippleSize )
-			WATER_KEY( "rippleheight", rippleHeight, haveRippleHeight )
-			WATER_KEY( "ripplewaves",  rippleWaves,  haveRippleWaves )
-			WATER_KEY( "ripplelife",   rippleLife,   haveRippleLife )
+			WATER_KEY( "ripplesize",   rippleSize,   haveRippleSize,   0.1f, 16.0f )
+			WATER_KEY( "rippleheight", rippleHeight, haveRippleHeight, 0.0f, 16.0f )
+			WATER_KEY( "ripplewaves",  rippleWaves,  haveRippleWaves,  1.0f, 24.0f )
+			WATER_KEY( "ripplelife",   rippleLife,   haveRippleLife,   0.25f, 10.0f )
 #undef WATER_KEY
 			else {
 				ri.Printf( PRINT_WARNING, "water.cfg: unknown key '%s' in block for '%s' - "

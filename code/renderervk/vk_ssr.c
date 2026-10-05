@@ -216,12 +216,32 @@ this approach does not fit the map, and that is worth one line at load rather
 than a reflection pass that silently never runs.
 =================
 */
+/* [QL] K2: every water face is a candidate; the largest VK_MAX_WATER_PLANES win */
+#define WATER_CANDIDATES	1024
+typedef struct {
+	vkWaterPlane_t	plane;
+	float			area;
+	int				order;
+} waterCand_t;
+
+static int vk_water_cand_cmp( const void *a, const void *b )
+{
+	const waterCand_t *x = (const waterCand_t *)a, *y = (const waterCand_t *)b;
+	if ( x->area != y->area ) {
+		return x->area > y->area ? -1 : 1;
+	}
+	return x->order - y->order;
+}
+
 void vk_find_water_planes( const world_t *world )
 {
 	const int liquid = CONTENTS_WATER | CONTENTS_SLIME | CONTENTS_LAVA;
 	int surfaces = 0, waterSurfaces = 0;
 	vec3_t surfMins, surfMaxs;
 	int i, j, k;
+	static waterCand_t cand[WATER_CANDIDATES];
+	int numCand = 0, candDropped = 0;
+	float areaDropped = 0.0f;
 
 	vk.numWaterPlanes = 0;
 
@@ -288,8 +308,8 @@ void vk_find_water_planes( const world_t *world )
 		be gained from holding it twice.
 		*/
 		known = qfalse;
-		for ( j = 0; j < vk.numWaterPlanes; j++ ) {
-			const vkWaterPlane_t *wp = &vk.waterPlanes[j];
+		for ( j = 0; j < numCand; j++ ) {
+			const vkWaterPlane_t *wp = &cand[j].plane;
 
 			if ( fabsf( wp->dist - face->plane.dist ) >= 1.0f ||
 				 DotProduct( wp->normal, face->plane.normal ) <= 0.999f ) {
@@ -303,16 +323,40 @@ void vk_find_water_planes( const world_t *world )
 		if ( known ) {
 			continue;
 		}
-		if ( vk.numWaterPlanes >= VK_MAX_WATER_PLANES ) {
+		if ( numCand >= WATER_CANDIDATES ) {
+			candDropped++;
 			continue;
 		}
 
-		VectorCopy( face->plane.normal, vk.waterPlanes[ vk.numWaterPlanes ].normal );
-		vk.waterPlanes[ vk.numWaterPlanes ].dist = face->plane.dist;
-		VectorCopy( surfMins, vk.waterPlanes[ vk.numWaterPlanes ].mins );
-		VectorCopy( surfMaxs, vk.waterPlanes[ vk.numWaterPlanes ].maxs );
-		vk.numWaterPlanes++;
+		VectorCopy( face->plane.normal, cand[numCand].plane.normal );
+		cand[numCand].plane.dist = face->plane.dist;
+		VectorCopy( surfMins, cand[numCand].plane.mins );
+		VectorCopy( surfMaxs, cand[numCand].plane.maxs );
+		cand[numCand].area = ( surfMaxs[0] - surfMins[0] ) * ( surfMaxs[1] - surfMins[1] );
+		cand[numCand].order = numCand;
+		numCand++;
 	}
+
+	/*
+	[QL] K2: the largest faces, not the first ones.
+
+	Past VK_MAX_WATER_PLANES the faces used to be taken in BSP order, so
+	which water reflected depended on how the compiler split the map - a
+	puddle early in the lump could cost the main pool its reflection. Every
+	candidate is collected first and the largest (by the box the shader tests,
+	which is what it covers on screen) are kept; BSP order breaks ties, so the
+	choice is the same every load.
+	*/
+	if ( numCand > VK_MAX_WATER_PLANES ) {
+		qsort( cand, numCand, sizeof( cand[0] ), vk_water_cand_cmp );
+		for ( j = VK_MAX_WATER_PLANES; j < numCand; j++ ) {
+			areaDropped += cand[j].area;
+		}
+	}
+	for ( j = 0; j < numCand && j < VK_MAX_WATER_PLANES; j++ ) {
+		vk.waterPlanes[j] = cand[j].plane;
+	}
+	vk.numWaterPlanes = j;
 
 	if ( surfaces == 0 ) {
 		ri.Printf( PRINT_ALL, "Water: this map has no liquid surfaces\n" );
@@ -332,9 +376,11 @@ void vk_find_water_planes( const world_t *world )
 			vk.waterPlanes[i].maxs[0], vk.waterPlanes[i].maxs[1] );
 	}
 
-	if ( vk.numWaterPlanes >= VK_MAX_WATER_PLANES ) {
-		ri.Printf( PRINT_WARNING, "Water: hit the ceiling of %i planes - some water will not "
-			"reflect\n", VK_MAX_WATER_PLANES );
+	if ( numCand > VK_MAX_WATER_PLANES || candDropped ) {
+		ri.Printf( PRINT_WARNING, "Water: %i water faces, room for %i - the largest kept; %i left out "
+			"(%.0f square units)%s\n", numCand + candDropped, VK_MAX_WATER_PLANES,
+			numCand - vk.numWaterPlanes + candDropped, areaDropped,
+			candDropped ? ", some never ranked: the candidate list was full" : "" );
 	}
 
 	vk_find_water_walls( world );
@@ -1541,17 +1587,68 @@ qboolean vk_ssr( void )
 	one end of a rail trail is worse than no reflection of it at all.
 	*/
 	{
-		int l, count = 0;
+		int l, count = 0, nvalid = 0, pick[MAX_DLIGHTS];
+		float score[MAX_DLIGHTS];
 
-		for ( l = 0; l < backEnd.refdef.num_dlights && count < SSR_MAX_LIGHTS; l++ ) {
+		/*
+		[QL] K3: the lights that matter most, not the first ones.
+
+		The shader holds SSR_MAX_LIGHTS. With more in the frame, the first ones
+		found used to win, so a distant torch could take the slot a rocket
+		going off over the pool needed. Each light is scored by its brightness
+		times its radius, discounted by how far it is from the nearest water
+		box - reflections can show lights off screen, so this is not about the
+		camera. Fewer than the limit: all of them, in order, as before.
+		*/
+		for ( l = 0; l < backEnd.refdef.num_dlights && l < MAX_DLIGHTS; l++ ) {
 			const dlight_t *dl = &backEnd.refdef.dlights[l];
+			float near = 1e9f, bright;
+			int w;
 
-			if ( dl->linear ) {
+			if ( dl->linear || dl->radius <= 0.0f ) {
 				continue;
 			}
-			if ( dl->radius <= 0.0f ) {
-				continue;
+			for ( w = 0; w < vk.numWaterPlanes; w++ ) {
+				const vkWaterPlane_t *wp = &vk.waterPlanes[w];
+				vec3_t c;
+				int a;
+				for ( a = 0; a < 3; a++ ) {
+					c[a] = dl->origin[a] < wp->mins[a] ? wp->mins[a] : ( dl->origin[a] > wp->maxs[a] ? wp->maxs[a] : dl->origin[a] );
+				}
+				if ( Distance( c, dl->origin ) < near ) {
+					near = Distance( c, dl->origin );
+				}
 			}
+			bright = dl->color[0] > dl->color[1] ? dl->color[0] : dl->color[1];
+			if ( dl->color[2] > bright ) bright = dl->color[2];
+			score[nvalid] = bright * dl->radius * dl->radius / ( dl->radius + near );
+			pick[nvalid++] = l;
+		}
+		if ( nvalid > SSR_MAX_LIGHTS ) {
+			/* partial selection sort: the best SSR_MAX_LIGHTS to the front,
+			   then back into frame order so the list is stable */
+			int a, b;
+			for ( a = 0; a < SSR_MAX_LIGHTS; a++ ) {
+				int best = a;
+				for ( b = a + 1; b < nvalid; b++ ) {
+					if ( score[b] > score[best] ) best = b;
+				}
+				if ( best != a ) {
+					float ts = score[a]; int tp = pick[a];
+					score[a] = score[best]; pick[a] = pick[best];
+					score[best] = ts; pick[best] = tp;
+				}
+			}
+			for ( a = 1; a < SSR_MAX_LIGHTS; a++ ) {
+				for ( b = a; b > 0 && pick[b - 1] > pick[b]; b-- ) {
+					int tp = pick[b]; pick[b] = pick[b - 1]; pick[b - 1] = tp;
+				}
+			}
+			nvalid = SSR_MAX_LIGHTS;
+		}
+
+		for ( l = 0; l < nvalid; l++ ) {
+			const dlight_t *dl = &backEnd.refdef.dlights[ pick[l] ];
 
 			u->emitter[count][0] = dl->origin[0];
 			u->emitter[count][1] = dl->origin[1];
