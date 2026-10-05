@@ -581,6 +581,7 @@ void main() {
 	uint actorMask = mask & ~uint(RT_MASK_LEVEL_BIT);
 	vec3 actorLightPos = lightPos;
 	bool splitActor = false;
+	bool actorDirectional = false;
 	if (!directional && actorInfo.z > 0.5 && actorInfo.x > 0.0) {
 		int na = min(int(actorInfo.x + 0.5), 64);
 		int nearest = -1;
@@ -610,21 +611,46 @@ void main() {
 					R = max(R, distance(actors[k].xyz, c) + actors[k].w);
 				}
 			}
-			vec3 aPos;
-			float aSky, aSun, aTrust;
-			if (lightFieldAt(c, aPos, aSky, aSun, aTrust) && aSky < 0.5) {
-				float minD = R + 16.0;
-				vec3 off = aPos - c;
-				float od = length(off);
-				if (od < minD) {
-					aPos = c + (od > 1e-3 ? off / od : vec3(0.0, 0.0, 1.0)) * minD;
+			if (actorInfo.z < 1.5) {
+				/* [QL] E212: mode 1 - Quake 3's own rule for a model's shadow:
+				   along the light grid's direction where the model is (the
+				   direction the model itself is lit from), as parallel rays, so
+				   the shadow is the caster's own size whatever an estimate says
+				   about how far the light is; and never flatter than 30 degrees
+				   above the ground (RB_ProjectionShadowDeform), so it cannot run
+				   away across the floor. An estimated point next to a small item
+				   magnified it many times over: the shard and armour smears. */
+				float cAmb, cDir;
+				vec3 cL;
+				if (gridAt(c, cAmb, cDir, cL) && cDir > 0.0) {
+					if (cL.z < 0.5) {
+						cL = normalize(cL + vec3(0.0, 0.0, 1.0) * (0.5 - cL.z));
+					}
+					if (dot(cL, N) > 0.02) {
+						actorLightPos = Q0 + cL * params.y;
+						splitActor = true;
+						actorDirectional = true;
+					} else {
+						actorMask = 0u;
+					}
 				}
-				/* only a light on this surface's side can shadow it */
-				if (dot(aPos - Q0, N) > 0.0) {
-					actorLightPos = aPos;
-					splitActor = true;
-				} else {
-					actorMask = 0u;
+			} else {
+				vec3 aPos;
+				float aSky, aSun, aTrust;
+				if (lightFieldAt(c, aPos, aSky, aSun, aTrust) && aSky < 0.5) {
+					float minD = R + 16.0;
+					vec3 off = aPos - c;
+					float od = length(off);
+					if (od < minD) {
+						aPos = c + (od > 1e-3 ? off / od : vec3(0.0, 0.0, 1.0)) * minD;
+					}
+					/* only a light on this surface's side can shadow it */
+					if (dot(aPos - Q0, N) > 0.0) {
+						actorLightPos = aPos;
+						splitActor = true;
+					} else {
+						actorMask = 0u;
+					}
 				}
 			}
 		}
@@ -667,7 +693,7 @@ void main() {
 		if (splitActor) {
 			/* E211: players toward their own light, the level toward this pixel's */
 			float hitTA, lenCA;
-			float bA = traceLight(O, actorLightPos, false, actorMask, 0u, rays, spin, directed, levelTrust, hitTA, lenCA);
+			float bA = traceLight(O, actorLightPos, actorDirectional, actorMask, 0u, rays, spin, directed, levelTrust, hitTA, lenCA);
 			float bL = levelMask != 0u
 				? traceLight(O, lightPos, false, 0u, levelMask, rays, spin, directed, levelTrust, hitT, lenC) : 0.0;
 			if (bA >= bL) {

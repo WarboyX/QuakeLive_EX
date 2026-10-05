@@ -2855,15 +2855,18 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_rtCull, "Skip players and items whose shadow or occlusion cannot reach the view "
 		"when building the ray-traced structures each frame. 0 traces every one the server sent, "
 		"for comparison." );
-	/* [QL] E211 */
+	/* [QL] E211, E212 */
 	r_rtActorLight = ri.Cvar_Get( "r_rtActorLight", "1", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_rtActorLight, "0", "1", CV_INTEGER );
+	ri.Cvar_CheckRange( r_rtActorLight, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtActorLight, "Where a player's or item's traced shadow comes from:\n"
 		" 0 - the light each shadowed surface finds for itself (before E211). One shadow over a floor "
 		"and a wall could come from two lights and bend at the corner, and next to a lamp it swung "
 		"around the player\n"
-		" 1 - the light at the player or item, the same for every surface its shadow falls on, and "
-		"never closer to it than just outside its bounds (default)" );
+		" 1 - the light grid's direction at the player or item, as parallel rays and never flatter "
+		"than 30 degrees - Quake 3's rule. The shadow is the caster's own size and the same on every "
+		"surface it falls on (default)\n"
+		" 2 - the estimated light position at the player or item (E211). Truer near a real lamp, but a "
+		"wrong estimate next to a small item magnifies its shadow many times over\n" );
 	r_rtActorCaps = ri.Cvar_Get( "r_rtActorCaps", "1", CVAR_ARCHIVE_ND );   // [QL] E180
 	ri.Cvar_CheckRange( r_rtActorCaps, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtActorCaps, "Close the holes in player and item models (the waist, the neck, "

@@ -491,7 +491,7 @@ qboolean vk_actor_shadows( void )
 	}
 	/* [QL] E211: z - each caster's shadow from the light at the caster
 	   (r_rtActorLight); w - the E204 early-out (r_rtCull) */
-	u->actorInfo[2] = r_rtActorLight->integer ? 1.0f : 0.0f;
+	u->actorInfo[2] = (float)r_rtActorLight->integer;   /* E212: 1 direction, 2 point */
 	u->actorInfo[3] = r_rtCull->integer ? 1.0f : 0.0f;
 	/* [QL] E196: the ray pattern turns each frame while r_rtShadowTemporal is
 	   averaging it (sampled soft edge only); fixed otherwise, as before - a

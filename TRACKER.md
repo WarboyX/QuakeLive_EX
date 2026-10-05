@@ -6199,6 +6199,32 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E212. E211 was wrong where it mattered: shadows now along the light grid's direction, Quake 3's rule — DONE (verify)
+**Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `tr_init.c`) · **Seen by:** our client only
+
+Tester, on E211, with screenshots from the red flag room facing the armour wall, the flag room to garden hallway and its jump pad: "that's not true at all". Shards, the yellow armour and the ammo pack threw large smears. The player's own shadow came out as an upside-down L, as curved arcs, and in two places at once.
+
+**Why E211's test missed it.** The harness had no item models (Quake Live's are in pak00) and was never run in that room. It now loads OpenArena's armour, ammo and health models, test only, from the scratchpad, never shipped. The flag room floor and back wall were traced from the BSP.
+
+**Why E211 was wrong.** It took the estimated light *position* at the caster. Next to a small item, or with the estimate near the player's head, a point light a few dozen units away magnifies the shadow many times over and swings it with every unit of error. Holding the point just outside the caster's bounds does not help a 10-unit shard.
+
+**The rule now (`r_rtActorLight 1`, default).** A player's or item's shadow goes along the light grid's direction at the caster: the direction the model itself is lit from, as parallel rays. That is Quake 3's own rule for model shadows. Like Quake 3's `RB_ProjectionShadowDeform`, it is never flatter than 30° above the ground, so it cannot run off across the floor.
+- The shadow is the caster's own size whatever any estimate says about distance.
+- It is straight: one direction for every pixel, so it cannot curve.
+- It is the same on every surface it falls on.
+- `2` keeps E211's point. `0` is the per-pixel light from before E211, which is what drew the curved arcs: a light direction that changes across the floor turns a straight body into a curve.
+
+**Flag room result** (same standing position, modes back to back; teleport flashes in some mode-0 shots are the harness, not shadows):
+
+| What | Mode 0 | Mode 2 (E211) | Mode 1 |
+|---|---|---|---|
+| Own shadow looking down | two shapes | stretched and turned aside | one compact silhouette under the player |
+| Floor ahead | two offset copies (lamp red, sun blue) | two offset copies | one shadow |
+| Near the shard line | — | large smear | does not smear |
+| Yellow armour on its pedestal | smeared over the pad | smeared over the pad | compact, under the armour |
+
+0 validation errors.
+
 ### E211. A player's shadow bent across surfaces and swung around near lamps — DONE (verify)
 **Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `tr_init.c`) · **Seen by:** our client only
 
