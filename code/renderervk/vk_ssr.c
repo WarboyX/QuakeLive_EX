@@ -1211,54 +1211,20 @@ void vk_ssr_create( void )
 }
 
 
-qboolean vk_ssr( void )
+/*
+=================
+[QL] K6. vk_ssr, one job each.
+
+vk_ssr was some 600 lines doing all of it in a row - whether to run, the
+view, the water planes, the waves, the ray-traced fallback, the ripples, the
+emitters, the load report, the trace and the composite. The same code, moved
+as it was into one function per job, in the order it runs; vk_ssr is now the
+list. No behaviour change is intended.
+=================
+*/
+static qboolean ssr_build_view( ssrUniform_t *u )
 {
-	ssrUniform_t *u;
 	float proj[16];
-	int i;
-	/* [QL] E151: r_ssrResolution, and only if every half-size pipeline exists */
-	const int ssrScale = ( r_ssrResolution && r_ssrResolution->integer >= 2 &&
-		vk.ssr.trace_pipeline_half != VK_NULL_HANDLE && vk.ssr.composite_pipeline_half != VK_NULL_HANDLE &&
-		vk.ssr.debug_pipeline_half != VK_NULL_HANDLE ) ? 2 : 1;
-	/* [QL] E156: r_ssrRayTrace, and only with this map's sets written and the
-	   pipeline for the chosen resolution built */
-	/* [QL] E165: also when the lights cast ray-traced shadows, for the emitter
-	   visibility test - rtInfo.x still says whether the fallback itself runs */
-	const qboolean lightShadows = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? qtrue : qfalse;
-	const qboolean useRT = ( r_ssrRayTrace && ( r_ssrRayTrace->integer > 0 || lightShadows ) && vk.ssr.rtReady &&
-		( ssrScale > 1 ? vk.ssr.rt_trace_pipeline_half : vk.ssr.rt_trace_pipeline ) != VK_NULL_HANDLE );
-
-	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
-		return qfalse;
-	}
-	if ( backEnd.doneSSR || !backEnd.doneSurfaces ) {
-		return qfalse;   // already run this frame, or there is no 3D yet
-	}
-	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
-		return qfalse;   // [QL] E175: a UI model view - see vk_actor_shadows
-	}
-	if ( r_ssr == NULL || r_ssr->value <= 0.0f ) {
-		return qfalse;
-	}
-	if ( !vk.ssr.ready ) {
-		if ( !ssrReported ) {
-			ssrReported = qtrue;
-			ri.Printf( PRINT_ALL, "SSR: not running - the pass was not created\n" );
-		}
-		return qfalse;
-	}
-	if ( vk.numWaterPlanes == 0 ) {
-		if ( !ssrReported ) {
-			ssrReported = qtrue;
-			ri.Printf( PRINT_ALL, "SSR: not running - this map has no water plane to reflect in\n" );
-		}
-		return qfalse;
-	}
-
-	u = (ssrUniform_t *)vk.ssr.uniform_ptr[ vk.cmd_index ];
-	if ( u == NULL ) {
-		return qfalse;
-	}
 
 	/*
 	The same clip the depth buffer was rendered with, which is not
@@ -1298,6 +1264,12 @@ qboolean vk_ssr( void )
 	/* [QL] r_ssrDebug - see the shader. 0 to 2 are exactly representable, so the
 	   equality compares over there are exact. */
 	u->depthInfo[3] = (float)r_ssrDebug->integer;
+	return qtrue;
+}
+
+static void ssr_build_planes( ssrUniform_t *u )
+{
+	int i;
 
 	for ( i = 0; i < vk.numWaterPlanes && i < SSR_MAX_PLANES; i++ ) {
 		u->planes[i][0] = vk.waterPlanes[i].normal[0];
@@ -1311,7 +1283,10 @@ qboolean vk_ssr( void )
 	}
 	u->planeCount[0] = (float)i;
 	u->planeCount[1] = u->planeCount[2] = u->planeCount[3] = 0.0f;
+}
 
+static void ssr_build_waves( ssrUniform_t *u, int ssrScale )
+{
 	/*
 	[QL] R19 waves. Both controls collapse to zero when r_waterWaves is off, so
 	the shader's two early-outs cover the whole feature and there is no second
@@ -1352,7 +1327,10 @@ qboolean vk_ssr( void )
 	u->wave2[1] = r_waterFoam->value;
 	u->wave2[2] = (float)ssrScale;   /* [QL] E151: the trace's pixel scale */
 	u->wave2[3] = 0.0f;
+}
 
+static void ssr_build_rt( ssrUniform_t *u, qboolean useRT, qboolean lightShadows )
+{
 	/* [QL] E156: r_ssrRayTrace - 0 whenever the ray-traced pipeline will not be
 	   the one bound, so the shader's test and the binding cannot disagree */
 	u->rtInfo[0] = useRT ? (float)r_ssrRayTrace->integer : 0.0f;
@@ -1371,6 +1349,11 @@ qboolean vk_ssr( void )
 		u->gridOrigin[3] = 0.0f;
 	}
 	u->gridInvSize[3] = u->gridBounds[3] = 0.0f;
+}
+
+static void ssr_build_ripples( ssrUniform_t *u )
+{
+	const int i = (int)u->planeCount[0];   /* the plane count, for the report */
 
 	/*
 	[QL] R19: the disturbances, matched to the plane each one belongs to.
@@ -1573,7 +1556,10 @@ qboolean vk_ssr( void )
 				bestZ, bestGap, band );
 		}
 	}
+}
 
+static void ssr_build_emitters( ssrUniform_t *u )
+{
 	/*
 	[QL] R19: the frame's dynamic lights, so emitters reflect.
 
@@ -1664,7 +1650,10 @@ qboolean vk_ssr( void )
 
 		u->planeCount[2] = (float)count;
 	}
+}
 
+static void ssr_report( const ssrUniform_t *u )
+{
 	if ( !ssrReported ) {
 		ssrReported = qtrue;
 		ri.Printf( PRINT_ALL, "SSR: reflecting in %i water plane(s) - strength %g, "
@@ -1691,7 +1680,10 @@ qboolean vk_ssr( void )
 			vk.ssr.debug_pipeline != VK_NULL_HANDLE
 				? "; debug views go on unblended" : "; no unblended debug pipeline" );
 	}
+}
 
+static void ssr_trace( qboolean useRT, int ssrScale )
+{
 	vk_timing_begin( RTT_SSR );   /* [QL] E177 */
 	vk_end_render_pass();   // end main
 
@@ -1812,7 +1804,10 @@ qboolean vk_ssr( void )
 		glConfig.stencilBits ? ( VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT ) : VK_IMAGE_ASPECT_DEPTH_BIT,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 		0, 0 );
+}
 
+static void ssr_composite( int ssrScale )
+{
 	/* ---- pass 2: blend it over the scene ---- */
 	vk_begin_rtao_render_pass();
 
@@ -1847,6 +1842,67 @@ qboolean vk_ssr( void )
 	vk.cmd->descriptor_set.end = VK_DESC_COUNT - 1;
 	vk_update_mvp( NULL );
 	vk.cmd->depth_range = DEPTH_RANGE_COUNT;
+}
+
+qboolean vk_ssr( void )
+{
+	ssrUniform_t *u;
+	/* [QL] E151: r_ssrResolution, and only if every half-size pipeline exists */
+	const int ssrScale = ( r_ssrResolution && r_ssrResolution->integer >= 2 &&
+		vk.ssr.trace_pipeline_half != VK_NULL_HANDLE && vk.ssr.composite_pipeline_half != VK_NULL_HANDLE &&
+		vk.ssr.debug_pipeline_half != VK_NULL_HANDLE ) ? 2 : 1;
+	/* [QL] E156: r_ssrRayTrace, and only with this map's sets written and the
+	   pipeline for the chosen resolution built */
+	/* [QL] E165: also when the lights cast ray-traced shadows, for the emitter
+	   visibility test - rtInfo.x still says whether the fallback itself runs */
+	const qboolean lightShadows = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? qtrue : qfalse;
+	const qboolean useRT = ( r_ssrRayTrace && ( r_ssrRayTrace->integer > 0 || lightShadows ) && vk.ssr.rtReady &&
+		( ssrScale > 1 ? vk.ssr.rt_trace_pipeline_half : vk.ssr.rt_trace_pipeline ) != VK_NULL_HANDLE );
+
+	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
+		return qfalse;
+	}
+	if ( backEnd.doneSSR || !backEnd.doneSurfaces ) {
+		return qfalse;   // already run this frame, or there is no 3D yet
+	}
+	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
+		return qfalse;   // [QL] E175: a UI model view - see vk_actor_shadows
+	}
+	if ( r_ssr == NULL || r_ssr->value <= 0.0f ) {
+		return qfalse;
+	}
+	if ( !vk.ssr.ready ) {
+		if ( !ssrReported ) {
+			ssrReported = qtrue;
+			ri.Printf( PRINT_ALL, "SSR: not running - the pass was not created\n" );
+		}
+		return qfalse;
+	}
+	if ( vk.numWaterPlanes == 0 ) {
+		if ( !ssrReported ) {
+			ssrReported = qtrue;
+			ri.Printf( PRINT_ALL, "SSR: not running - this map has no water plane to reflect in\n" );
+		}
+		return qfalse;
+	}
+
+	u = (ssrUniform_t *)vk.ssr.uniform_ptr[ vk.cmd_index ];
+	if ( u == NULL ) {
+		return qfalse;
+	}
+
+	if ( !ssr_build_view( u ) ) {
+		return qfalse;
+	}
+	ssr_build_planes( u );
+	ssr_build_waves( u, ssrScale );
+	ssr_build_rt( u, useRT, lightShadows );
+	ssr_build_ripples( u );
+	ssr_build_emitters( u );
+	ssr_report( u );
+
+	ssr_trace( useRT, ssrScale );
+	ssr_composite( ssrScale );
 
 	backEnd.doneSSR = qtrue;
 

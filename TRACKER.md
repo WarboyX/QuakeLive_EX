@@ -6199,6 +6199,24 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E217. K6: vk_ssr() split into one function per job — DONE, no visible change
+**Lives in:** our **client** (renderervk `vk_ssr.c`) · **Seen by:** nobody, by design
+
+`vk_ssr()` was about 600 lines doing everything in a row. Each section was moved as-is into a static function, in the order it runs:
+- `ssr_build_view`: matrices, eye, strength, depth convention
+- `ssr_build_planes`, `ssr_build_waves`, `ssr_build_rt`
+- `ssr_build_ripples`: matching, bounce, report
+- `ssr_build_emitters`: K3's light choice
+- `ssr_report`: the once-per-map lines
+- `ssr_trace`: depth hand-off, march pass
+- `ssr_composite`: blend, state restore
+
+`vk_ssr()` is now its eligibility checks plus that list. The one value that crossed sections, the plane count the ripple report prints, is read back from the uniform.
+
+**Proof.** The pool below the bridge, camera settled and position logged, waves and foam off. The normal view and `r_ssrDebug` 1, 4 and 6 were compared against the E214 renderer:
+- With AO and traced shadows on, both builds differ from themselves run to run, in sparse speckles along shading edges. That is per-frame sampling, not this change.
+- With those off: **0 differing pixels in all four views**, no fuzz.
+
 ### E216. K4: one scores_ad sender, pinned by the field check; one validator script for packaging and CI — DONE (verify)
 **Lives in:** our **server** (qagame `g_gametype_ad.c`); tools, CI · **Seen by:** every client (wire format unchanged)
 
