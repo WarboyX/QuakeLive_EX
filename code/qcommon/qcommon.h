@@ -822,6 +822,9 @@ int QDECL Com_strCompare(const void* a, const void* b);
 extern cvar_t* com_developer;
 extern cvar_t* com_dedicated;
 extern cvar_t* com_speeds;
+/* [QL] E222: com_cpuTimings - microseconds this frame, filled where they run */
+extern cvar_t* com_cpuTimings;
+extern int64_t com_usBots, com_usGame, com_usScene, com_usSubmit;
 extern cvar_t* com_timescale;
 extern cvar_t* com_sv_running;
 extern cvar_t* com_cl_running;
@@ -1041,6 +1044,7 @@ NON-PORTABLE SYSTEM SERVICES
 #define MAX_JOYSTICK_AXIS 16
 
 void Sys_Init(void);
+void Sys_CpuFrame(void);   // [QL] E222
 
 // general development dll loading for virtual machine testing
 void* QDECL Sys_LoadGameDll(const char* name, vmMainProc* entryPoint, intptr_t(QDECL* systemcalls)(intptr_t, ...));

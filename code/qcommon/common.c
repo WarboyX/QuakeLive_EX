@@ -68,6 +68,8 @@ fileHandle_t com_journalFile;      // events are written here
 fileHandle_t com_journalDataFile;  // config files are written here
 
 cvar_t* com_speeds;
+cvar_t* com_cpuTimings;   // [QL] E222
+int64_t com_usBots, com_usGame, com_usScene, com_usSubmit;
 cvar_t* com_developer;
 cvar_t* com_dedicated;
 cvar_t* com_timescale;
@@ -2666,6 +2668,13 @@ void Com_Init(char* commandLine) {
     com_fixedtime = Cvar_Get("fixedtime", "0", CVAR_CHEAT);
     com_showtrace = Cvar_Get("com_showtrace", "0", CVAR_CHEAT);
     com_speeds = Cvar_Get("com_speeds", "0", 0);
+    // [QL] E222
+    com_cpuTimings = Cvar_Get("com_cpuTimings", "0", 0);
+    Cvar_CheckRange(com_cpuTimings, 0, 1, qtrue);
+    Cvar_SetDescription(com_cpuTimings, "Print where the CPU's time goes, averaged every two seconds: "
+        "bots, game simulation, the rest of the server, building the scene (cgame and the renderer's "
+        "front end), submitting it and presenting (which includes waiting for the GPU or vsync), and "
+        "the frame limiter's idle time. The CPU-side companion to r_rtTimings.");
     com_timedemo = Cvar_Get("timedemo", "0", CVAR_CHEAT);
     com_cameraMode = Cvar_Get("com_cameraMode", "0", CVAR_CHEAT);
 
@@ -3048,6 +3057,49 @@ static int64_t Com_TimeValUsec(int64_t minUsec) {
     return minUsec - timeVal;
 }
 
+
+/*
+=================
+Com_CpuTimingsReport
+
+[QL] E222. Where the CPU's frame goes (com_cpuTimings 1).
+
+com_speeds answered this in whole milliseconds, once per frame - at 200 fps
+every number is 0 or 5 and the console scrolls too fast to read. This keeps
+microsecond totals for each part of Com_Frame and prints their per-frame
+average every two seconds, like r_rtTimings does for the GPU.
+
+"submit + present" is re.EndFrame: handing the frame to the GPU and presenting
+it, which waits when the GPU (or vsync) is behind - a large number there means
+the GPU is the limit, not the CPU. "frame cap" is the limiter's idle wait: time
+the CPU had to spare.
+=================
+*/
+static void Com_CpuTimingsReport(int64_t whole, int64_t wait, int64_t server, int64_t client) {
+    static int64_t sWhole, sWait, sServer, sClient, sBots, sGame, sScene, sSubmit, last;
+    static int frames;
+    int64_t now = Sys_Microseconds();
+
+    sWhole += whole; sWait += wait; sServer += server; sClient += client;
+    sBots += com_usBots; sGame += com_usGame; sScene += com_usScene; sSubmit += com_usSubmit;
+    frames++;
+    if (last == 0) {
+        last = now;
+    }
+    if (now - last >= 2000000 && frames > 0) {
+        const double f = 1000.0 * frames;   // microseconds -> ms per frame
+        Com_Printf("CPU timings (ms/frame over %i frames, %.0f fps): whole frame %.2f, frame cap (idle) %.2f, "
+                   "server %.2f [bots %.2f, game %.2f], client %.2f [scene %.2f, submit + present %.2f], other %.2f\n",
+                   frames, frames * 1000000.0 / (double)(now - last), sWhole / f, sWait / f,
+                   sServer / f, sBots / f, sGame / f, sClient / f, sScene / f, sSubmit / f,
+                   (sWhole - sWait - sServer - sClient) / f);
+        sWhole = sWait = sServer = sClient = sBots = sGame = sScene = sSubmit = 0;
+        frames = 0;
+        last = now;
+    }
+}
+
+
 /*
 =================
 Com_Frame
@@ -3055,6 +3107,9 @@ Com_Frame
 */
 void Com_Frame(void) {
     int msec, minMsec;
+    // [QL] E222: com_cpuTimings
+    static int64_t cpuLastEnd;
+    int64_t cpuEntry = 0, cpuWaitEnd = 0, cpuSvStart = 0, cpuSvEnd = 0, cpuClStart = 0, cpuClEnd = 0;
     int timeVal, timeValSV;
     // [QL] the requested rate, hoisted out of the branch below so the
     // microsecond limiter can derive its interval straight from it.
@@ -3082,6 +3137,13 @@ void Com_Frame(void) {
     timeBeforeEvents = 0;
     timeBeforeClient = 0;
     timeAfter = 0;
+
+    Sys_CpuFrame();   // [QL] E222: sys_cpuPlacement changes apply at once
+
+    if (com_cpuTimings->integer) {   // [QL] E222
+        cpuEntry = Sys_Microseconds();
+        com_usBots = com_usGame = com_usScene = com_usSubmit = 0;
+    }
 
     // write config file if anything changed
     Com_WriteConfiguration();
@@ -3243,6 +3305,10 @@ void Com_Frame(void) {
         com_frameTimeUsec = Sys_Microseconds();
     }
 
+    if (com_cpuTimings->integer) {
+        cpuWaitEnd = Sys_Microseconds();   // [QL] E222: the limiter's idle time ends here
+    }
+
     IN_Frame();
 
     lastTime = com_frameTime;
@@ -3262,7 +3328,13 @@ void Com_Frame(void) {
         timeBeforeServer = Sys_Milliseconds();
     }
 
+    if (com_cpuTimings->integer) {
+        cpuSvStart = Sys_Microseconds();
+    }
     SV_Frame(msec);
+    if (com_cpuTimings->integer) {
+        cpuSvEnd = Sys_Microseconds();
+    }
 
     // if "dedicated" has been modified, start up
     // or shut down the client system.
@@ -3299,7 +3371,13 @@ void Com_Frame(void) {
         timeBeforeClient = Sys_Milliseconds();
     }
 
+    if (com_cpuTimings->integer) {
+        cpuClStart = Sys_Microseconds();
+    }
     CL_Frame(msec);
+    if (com_cpuTimings->integer) {
+        cpuClEnd = Sys_Microseconds();
+    }
 
     if (com_speeds->integer) {
         timeAfter = Sys_Milliseconds();
@@ -3313,6 +3391,17 @@ void Com_Frame(void) {
 #endif
 
     NET_FlushPacketQueue();
+
+    // [QL] E222
+    if (com_cpuTimings->integer) {
+        const int64_t now = Sys_Microseconds();
+        if (cpuLastEnd != 0 && cpuEntry != 0) {
+            Com_CpuTimingsReport(now - cpuLastEnd, cpuWaitEnd - cpuEntry, cpuSvEnd - cpuSvStart, cpuClEnd - cpuClStart);
+        }
+        cpuLastEnd = now;
+    } else {
+        cpuLastEnd = 0;
+    }
 
     //
     // report timing information

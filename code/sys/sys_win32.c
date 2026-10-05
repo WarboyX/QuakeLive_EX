@@ -1130,3 +1130,122 @@ Check if filename should be allowed to be loaded as a DLL.
 qboolean Sys_DllExtension(const char* name) {
     return COM_CompareExtension(name, DLL_EXT);
 }
+
+/*
+=================
+Sys_CpuTopology / Sys_CpuPlaceMainThread - [QL] E222, Windows. See sys_main.c.
+
+Processor group 0 only: every consumer CPU fits in its 64 logical processors.
+EfficiencyClass is per core and higher is faster; where the classes differ the
+CPU is hybrid and the highest class is the performance cores. Distinct L3
+caches of different sizes are a dual-die X3D: the larger is the V-Cache die.
+=================
+*/
+void Sys_CpuTopology(sysCpuTopology_t* t) {
+    typedef BOOL(WINAPI * glpiex_t)(LOGICAL_PROCESSOR_RELATIONSHIP, PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, PDWORD);
+    glpiex_t glpiex = (glpiex_t)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetLogicalProcessorInformationEx");
+    DWORD len = 0;
+    BYTE* buf;
+    BYTE* p;
+    int maxClass = -1, minClass = 256;
+    unsigned long long coreMask[256];
+    int coreClass[256];
+    int ncores = 0, i, j;
+    unsigned long long l3Mask[SYS_CPU_MAX_L3];
+    MEMORYSTATUSEX mem;
+
+    mem.dwLength = sizeof(mem);
+    if (GlobalMemoryStatusEx(&mem)) {
+        t->ramMB = mem.ullTotalPhys / (1024 * 1024);
+    }
+    if (!glpiex) {
+        return;
+    }
+    glpiex(RelationAll, NULL, &len);
+    if (len == 0 || (buf = (BYTE*)malloc(len)) == NULL) {
+        return;
+    }
+    if (!glpiex(RelationAll, (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)buf, &len)) {
+        free(buf);
+        return;
+    }
+    for (p = buf; p < buf + len; p += ((PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)p)->Size) {
+        PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX e = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)p;
+        if (e->Relationship == RelationProcessorCore && e->Processor.GroupMask[0].Group == 0 && ncores < 256) {
+            const unsigned long long m = e->Processor.GroupMask[0].Mask;
+            coreMask[ncores] = m;
+            // EfficiencyClass is the byte after Flags; older mingw headers call it Reserved[0]
+            coreClass[ncores] = ((const BYTE*)&e->Processor)[1];
+            if (coreClass[ncores] > maxClass) maxClass = coreClass[ncores];
+            if (coreClass[ncores] < minClass) minClass = coreClass[ncores];
+            ncores++;
+            for (j = 0; j < 64; j++) {
+                if (m & (1ULL << j)) t->logical++;
+            }
+        } else if (e->Relationship == RelationCache && e->Cache.Level == 3 && e->Cache.GroupMask.Group == 0 &&
+                   t->numL3 < SYS_CPU_MAX_L3) {
+            l3Mask[t->numL3] = e->Cache.GroupMask.Mask;
+            t->l3KB[t->numL3] = (int)(e->Cache.CacheSize / 1024);
+            t->numL3++;
+        }
+    }
+    free(buf);
+    t->physical = ncores;
+
+    for (i = 0; i < t->numL3; i++) {
+        for (j = 0; j < ncores; j++) {
+            if (coreMask[j] & l3Mask[i]) t->l3Cores[i]++;
+        }
+    }
+    if (ncores > 0 && maxClass != minClass) {
+        for (j = 0; j < ncores; j++) {
+            if (coreClass[j] == maxClass) {
+                t->fastMask |= coreMask[j];
+                t->fastCores++;
+            } else {
+                t->slowCores++;
+            }
+        }
+        t->preferred = 1;
+    } else if (t->numL3 > 1) {
+        int big = 0, alike = 1;
+        for (i = 1; i < t->numL3; i++) {
+            if (t->l3KB[i] != t->l3KB[0]) alike = 0;
+            if (t->l3KB[i] > t->l3KB[big]) big = i;
+        }
+        if (!alike) {
+            t->fastMask = l3Mask[big];
+            t->preferred = 2;
+        }
+    }
+}
+
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
+    typedef BOOL(WINAPI * spi_t)(HANDLE, PROCESS_INFORMATION_CLASS, LPVOID, DWORD);
+    spi_t spi = (spi_t)GetProcAddress(GetModuleHandleA("kernel32.dll"), "SetProcessInformation");
+    DWORD_PTR procMask = 0, sysMask = 0;
+    qboolean ok = qtrue;
+
+    if (spi) {
+        PROCESS_POWER_THROTTLING_STATE st;
+        Com_Memset(&st, 0, sizeof(st));
+        st.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+        st.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+        st.StateMask = noThrottle ? 0 : PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+        if (!noThrottle) {
+            st.ControlMask = 0;   // hand the decision back to Windows
+            st.StateMask = 0;
+        }
+        spi(GetCurrentProcess(), ProcessPowerThrottling, &st, sizeof(st));
+    }
+    if (!GetProcessAffinityMask(GetCurrentProcess(), &procMask, &sysMask)) {
+        procMask = 0;
+    }
+    if (mask) {
+        DWORD_PTR m = (DWORD_PTR)mask & (procMask ? procMask : (DWORD_PTR)mask);
+        ok = (m && SetThreadAffinityMask(GetCurrentThread(), m) != 0) ? qtrue : qfalse;
+    } else if (procMask) {
+        SetThreadAffinityMask(GetCurrentThread(), procMask);
+    }
+    return ok;
+}

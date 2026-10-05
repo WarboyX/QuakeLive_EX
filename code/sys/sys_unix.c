@@ -1183,3 +1183,283 @@ qboolean Sys_DllExtension(const char* name) {
 
     return qfalse;
 }
+
+/*
+=================
+Sys_CpuTopology / Sys_CpuPlaceMainThread - [QL] E222, Linux and macOS. See sys_main.c.
+
+Linux reads sysfs. A hybrid CPU is found two ways: Intel's split PMU lists the
+performance cores under /sys/devices/cpu_core, and on ARM (and newer kernels on
+x86) the cores report different cpu_capacity. Distinct L3 caches are read from
+each CPU's cache/index* entries and told apart by their shared_cpu_list; sizes
+that differ are a dual-die X3D. Logical CPUs 0-63 only, as on Windows.
+
+macOS does not let a thread choose cores on Apple Silicon - affinity is ignored.
+What it honours is a QoS class: user-interactive keeps the thread on the
+performance cluster. hw.perflevel0 is the performance cluster, hw.perflevel1 the
+efficiency one (macOS 12+); no L3 is exposed, so there is nothing to compare.
+=================
+*/
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#include <pthread.h>
+
+static int Sys_SysctlInt(const char* name) {
+    int v = 0;
+    size_t len = sizeof(v);
+    return sysctlbyname(name, &v, &len, NULL, 0) == 0 ? v : 0;
+}
+
+void Sys_CpuTopology(sysCpuTopology_t* t) {
+    unsigned long long mem = 0;
+    size_t len = sizeof(t->brand);
+
+    if (sysctlbyname("machdep.cpu.brand_string", t->brand, &len, NULL, 0) != 0) {
+        t->brand[0] = '\0';
+    }
+    t->brand[sizeof(t->brand) - 1] = '\0';
+    t->logical = Sys_SysctlInt("hw.logicalcpu");
+    t->physical = Sys_SysctlInt("hw.physicalcpu");
+    if (Sys_SysctlInt("hw.nperflevels") > 1) {
+        t->fastCores = Sys_SysctlInt("hw.perflevel0.physicalcpu");
+        t->slowCores = Sys_SysctlInt("hw.perflevel1.physicalcpu");
+    }
+    len = sizeof(mem);
+    if (sysctlbyname("hw.memsize", &mem, &len, NULL, 0) == 0) {
+        t->ramMB = mem / (1024 * 1024);
+    }
+    t->qosOnly = qtrue;
+    t->preferred = (t->fastCores > 0 && t->slowCores > 0) ? 1 : 0;
+}
+
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
+    (void)mask;
+    return pthread_set_qos_class_self_np(noThrottle ? QOS_CLASS_USER_INTERACTIVE : QOS_CLASS_DEFAULT, 0) == 0
+               ? qtrue : qfalse;
+}
+
+#elif defined(__linux__)
+#include <sys/syscall.h>
+
+static int Sys_ReadSysfs(const char* path, char* buf, int size) {
+    FILE* f = fopen(path, "r");
+    int n;
+
+    buf[0] = '\0';
+    if (!f) {
+        return 0;
+    }
+    n = (int)fread(buf, 1, size - 1, f);
+    fclose(f);
+    if (n < 0) {
+        n = 0;
+    }
+    buf[n] = '\0';
+    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == ' ')) {
+        buf[--n] = '\0';
+    }
+    return n;
+}
+
+// "0-3,8,10-11" -> bitmask of CPUs 0-63
+static unsigned long long Sys_ParseCpuList(const char* s) {
+    unsigned long long m = 0;
+
+    while (*s) {
+        char* end;
+        long a = strtol(s, &end, 10), b;
+        if (end == s) {
+            break;
+        }
+        b = a;
+        s = end;
+        if (*s == '-') {
+            b = strtol(s + 1, &end, 10);
+            s = end;
+        }
+        for (; a <= b && a < 64; a++) {
+            if (a >= 0) {
+                m |= 1ULL << a;
+            }
+        }
+        if (*s == ',') {
+            s++;
+        } else {
+            break;
+        }
+    }
+    return m;
+}
+
+static int Sys_MaskCount(unsigned long long m) {
+    int n = 0;
+    for (; m; m &= m - 1) {
+        n++;
+    }
+    return n;
+}
+
+void Sys_CpuTopology(sysCpuTopology_t* t) {
+    char path[128], buf[256];
+    unsigned long long online, cores = 0, l3Mask[SYS_CPU_MAX_L3];
+    int capacity[64], capMax = 0, capMin = 0x7fffffff;
+    long pages = sysconf(_SC_PHYS_PAGES), pageSize = sysconf(_SC_PAGESIZE);
+    int cpu, k, i;
+    FILE* f;
+
+    if (pages > 0 && pageSize > 0) {
+        t->ramMB = (unsigned long long)pages * (unsigned long long)pageSize / (1024 * 1024);
+    }
+    // brand for CPUs without cpuid (ARM); x86 takes cpuid's in sys_main.c
+    if ((f = fopen("/proc/cpuinfo", "r")) != NULL) {
+        char line[256];
+        while (fgets(line, sizeof(line), f)) {
+            if (!Q_strncmp(line, "model name", 10) || !Q_strncmp(line, "Model", 5) || !Q_strncmp(line, "Hardware", 8)) {
+                char* p = strchr(line, ':');
+                if (p) {
+                    p++;
+                    while (*p == ' ' || *p == '\t') p++;
+                    p[strcspn(p, "\r\n")] = '\0';
+                    if (*p) {
+                        Q_strncpyz(t->brand, p, sizeof(t->brand));
+                        break;
+                    }
+                }
+            }
+        }
+        fclose(f);
+    }
+
+    if (Sys_ReadSysfs("/sys/devices/system/cpu/online", buf, sizeof(buf))) {
+        online = Sys_ParseCpuList(buf);
+    } else {
+        long n = sysconf(_SC_NPROCESSORS_ONLN);
+        online = (n >= 64) ? ~0ULL : (n > 0 ? (1ULL << n) - 1 : 1);
+    }
+    t->logical = Sys_MaskCount(online);
+
+    for (cpu = 0; cpu < 64; cpu++) {
+        if (!(online & (1ULL << cpu))) {
+            continue;
+        }
+        // a core is counted at its first sibling
+        Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/topology/thread_siblings_list", cpu);
+        if (Sys_ReadSysfs(path, buf, sizeof(buf))) {
+            unsigned long long sib = Sys_ParseCpuList(buf);
+            if (sib && (sib & (~sib + 1)) == (1ULL << cpu)) {
+                t->physical++;
+                cores |= 1ULL << cpu;
+            }
+        }
+        Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/cpu_capacity", cpu);
+        capacity[cpu] = Sys_ReadSysfs(path, buf, sizeof(buf)) ? atoi(buf) : 0;
+        if (capacity[cpu] > 0) {
+            if (capacity[cpu] > capMax) capMax = capacity[cpu];
+            if (capacity[cpu] < capMin) capMin = capacity[cpu];
+        }
+        for (k = 0; k < 8; k++) {
+            unsigned long long shared;
+            Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/cache/index%i/level", cpu, k);
+            if (!Sys_ReadSysfs(path, buf, sizeof(buf))) {
+                break;
+            }
+            if (atoi(buf) != 3) {
+                continue;
+            }
+            Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/cache/index%i/shared_cpu_list", cpu, k);
+            if (!Sys_ReadSysfs(path, buf, sizeof(buf))) {
+                continue;
+            }
+            shared = Sys_ParseCpuList(buf);
+            for (i = 0; i < t->numL3; i++) {
+                if (l3Mask[i] == shared) break;
+            }
+            if (i == t->numL3 && t->numL3 < SYS_CPU_MAX_L3) {
+                Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/cache/index%i/size", cpu, k);
+                Sys_ReadSysfs(path, buf, sizeof(buf));
+                l3Mask[t->numL3] = shared;
+                t->l3KB[t->numL3] = atoi(buf);   // "32768K"
+                if (strchr(buf, 'M')) {
+                    t->l3KB[t->numL3] *= 1024;
+                }
+                t->numL3++;
+            }
+        }
+    }
+    if (t->physical == 0) {
+        t->physical = t->logical;
+        cores = online;
+    }
+    for (i = 0; i < t->numL3; i++) {
+        t->l3Cores[i] = Sys_MaskCount(l3Mask[i] & cores);
+    }
+
+    // hybrid: Intel's cpu_core PMU, else differing cpu_capacity
+    if (Sys_ReadSysfs("/sys/devices/cpu_core/cpus", buf, sizeof(buf))) {
+        t->fastMask = Sys_ParseCpuList(buf) & online;
+    } else if (capMax > 0 && capMin < capMax) {
+        for (cpu = 0; cpu < 64; cpu++) {
+            if ((online & (1ULL << cpu)) && capacity[cpu] == capMax) {
+                t->fastMask |= 1ULL << cpu;
+            }
+        }
+    }
+    if (t->fastMask && t->fastMask != online) {
+        t->fastCores = Sys_MaskCount(t->fastMask & cores);
+        t->slowCores = t->physical - t->fastCores;
+        t->preferred = 1;
+    } else {
+        t->fastMask = 0;
+        if (t->numL3 > 1) {
+            int big = 0, alike = 1;
+            for (i = 1; i < t->numL3; i++) {
+                if (t->l3KB[i] != t->l3KB[0]) alike = 0;
+                if (t->l3KB[i] > t->l3KB[big]) big = i;
+            }
+            if (!alike) {
+                t->fastMask = l3Mask[big] & online;
+                t->preferred = 2;
+            }
+        }
+    }
+}
+
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
+    // the affinity this thread started with, to hand back on sys_cpuPlacement 0
+    static unsigned long long original;
+    static qboolean saved;
+    unsigned long long m;
+
+    (void)noThrottle;   // no per-process throttling on Linux; the governor is system-wide
+    if (!saved) {
+        // the kernel refuses a buffer smaller than its CPU count, so ask with room for 1024
+        unsigned long long all[16];
+        Com_Memset(all, 0, sizeof(all));
+        original = syscall(SYS_sched_getaffinity, 0, sizeof(all), all) > 0 ? all[0] : 0;
+        saved = qtrue;
+    }
+    if (!mask) {
+        if (original) {
+            syscall(SYS_sched_setaffinity, 0, sizeof(original), &original);
+        }
+        return qtrue;
+    }
+    m = original ? (mask & original) : mask;
+    if (!m) {
+        return qfalse;
+    }
+    return syscall(SYS_sched_setaffinity, 0, sizeof(m), &m) == 0 ? qtrue : qfalse;
+}
+
+#else
+void Sys_CpuTopology(sysCpuTopology_t* t) {
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    t->logical = t->physical = n > 0 ? (int)n : 1;
+}
+
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
+    (void)mask;
+    (void)noThrottle;
+    return qtrue;
+}
+#endif

@@ -48,6 +48,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <locale.h>
 
 #include "sys_local.h"
+#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
+#include <cpuid.h>
+#endif
 #include "sys_loadlib.h"
 
 #include "../qcommon/q_shared.h"
@@ -331,11 +334,182 @@ cpuFeatures_t Sys_GetProcessorFeatures(void) {
 
 /*
 =================
+[QL] E222. The CPU: what it is, and where the game's main thread should run.
+
+Nothing reported the CPU, and nothing decided where the game ran on it. The
+whole game - server, sixty bots on a listen server, cgame, the renderer's front
+end - is one thread, so on a CPU whose cores are not all alike the core it
+lands on is most of the frame rate:
+
+  - Intel hybrid (12th gen on): performance cores and efficiency cores. The
+    scheduler can put the game thread on an efficiency core, or move it there
+    when the window loses focus for a moment.
+  - AMD dual-die X3D (7950X3D, 9950X3D...): one die carries the extra 3D
+    V-Cache. A game wants the cache; the other die clocks higher but misses
+    it. Without AMD's chipset driver and Game Bar steering, the thread lands
+    on whichever.
+
+sys_cpuPlacement 1 (default) keeps the main thread on the performance cores,
+or on the larger-cache die, when the CPU has such a split, and asks Windows not
+to power-throttle the process (EcoQoS). On a CPU whose cores are all alike it
+does nothing. 0 leaves all of it to the OS, as before.
+=================
+*/
+static cvar_t* sys_cpuPlacement;
+static sysCpuTopology_t sysCpu;
+static char sysCpuBrand[64];
+static char sysCpuSimd[64];
+
+static void Sys_CpuIdentify(void) {
+#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
+    unsigned int regs[12];
+    unsigned int a, b, c, d;
+    int i;
+
+    sysCpuBrand[0] = '\0';
+    if (__get_cpuid(0x80000000, &a, &b, &c, &d) && a >= 0x80000004) {
+        for (i = 0; i < 3; i++) {
+            __get_cpuid(0x80000002 + i, &regs[i * 4 + 0], &regs[i * 4 + 1], &regs[i * 4 + 2], &regs[i * 4 + 3]);
+        }
+        Com_Memcpy(sysCpuBrand, regs, 48);
+        sysCpuBrand[48] = '\0';
+    }
+    sysCpuSimd[0] = '\0';
+    if (__get_cpuid(1, &a, &b, &c, &d)) {
+        Q_strcat(sysCpuSimd, sizeof(sysCpuSimd), (c & (1u << 20)) ? "SSE4.2" : "SSE2");
+        if (c & (1u << 28)) {
+            Q_strcat(sysCpuSimd, sizeof(sysCpuSimd), " AVX");
+        }
+    }
+    if (__get_cpuid_count(7, 0, &a, &b, &c, &d)) {
+        if (b & (1u << 5)) {
+            Q_strcat(sysCpuSimd, sizeof(sysCpuSimd), " AVX2");
+        }
+        if (b & (1u << 16)) {
+            Q_strcat(sysCpuSimd, sizeof(sysCpuSimd), " AVX-512");
+        }
+    }
+#else
+    Q_strncpyz(sysCpuBrand, "unknown", sizeof(sysCpuBrand));
+    sysCpuSimd[0] = '\0';
+#endif
+    {   // the brand string comes padded with spaces
+        char* p = sysCpuBrand;
+        while (*p == ' ') {
+            p++;
+        }
+        memmove(sysCpuBrand, p, strlen(p) + 1);
+    }
+}
+
+static int Sys_CpuMaskCount(unsigned long long m) {
+    int n = 0;
+    while (m) {
+        n += (int)(m & 1);
+        m >>= 1;
+    }
+    return n;
+}
+
+#ifdef _WIN32
+#define SYS_CPU_THROTTLE "; process not power-throttled"
+#else
+#define SYS_CPU_THROTTLE ""
+#endif
+
+static void Sys_CpuApply(qboolean report) {
+    const qboolean on = sys_cpuPlacement->integer ? qtrue : qfalse;
+    const unsigned long long mask = on ? sysCpu.fastMask : 0;
+    const qboolean ok = Sys_CpuPlaceMainThread(mask, on);
+
+    if (!report) {
+        return;
+    }
+    if (!on) {
+        Com_Printf("CPU placement: off (sys_cpuPlacement 0) - the OS decides\n");
+    } else if (sysCpu.preferred == 1 && ok && sysCpu.qosOnly) {
+        Com_Printf("CPU placement: game thread marked user-interactive - macOS keeps it on the %i "
+                   "performance cores\n", sysCpu.fastCores);
+    } else if (sysCpu.preferred == 1 && ok) {
+        Com_Printf("CPU placement: game thread on the %i performance cores (%i threads)"
+                   SYS_CPU_THROTTLE "\n", sysCpu.fastCores, Sys_CpuMaskCount(mask));
+    } else if (sysCpu.preferred == 2 && ok) {
+        Com_Printf("CPU placement: game thread on the larger-cache die (%i threads)"
+                   SYS_CPU_THROTTLE "\n", Sys_CpuMaskCount(mask));
+    } else if (sysCpu.preferred && !ok) {
+        Com_Printf("CPU placement: could not be set - the OS decides\n");
+    } else {
+        Com_Printf("CPU placement: all cores alike - nothing to steer" SYS_CPU_THROTTLE "\n");
+    }
+}
+
+static void Sys_CpuInfo_f(void) {
+    int i;
+    char l3[128];
+
+    l3[0] = '\0';
+    for (i = 0; i < sysCpu.numL3; i++) {
+        Q_strcat(l3, sizeof(l3), va("%s%i MB (%i cores)", i ? " + " : "", sysCpu.l3KB[i] / 1024, sysCpu.l3Cores[i]));
+    }
+    Com_Printf("CPU: %s\n", sysCpuBrand[0] ? sysCpuBrand : "unknown");
+    Com_Printf("  %i cores, %i threads", sysCpu.physical, sysCpu.logical);
+    if (sysCpu.fastCores && sysCpu.slowCores) {
+        Com_Printf(" - %i performance + %i efficiency", sysCpu.fastCores, sysCpu.slowCores);
+    }
+    Com_Printf("\n");
+    if (l3[0]) {
+        Com_Printf("  L3: %s%s\n", l3, sysCpu.preferred == 2 ? " - one die has the extra cache (3D V-Cache)" : "");
+    }
+    if (sysCpuSimd[0]) {
+        Com_Printf("  %s\n", sysCpuSimd);
+    }
+    if (sysCpu.ramMB) {
+        Com_Printf("  %llu MB RAM\n", sysCpu.ramMB);
+    }
+    Sys_CpuApply(qtrue);
+}
+
+void Sys_CpuInit(void) {
+    sys_cpuPlacement = Cvar_Get("sys_cpuPlacement", "1", CVAR_ARCHIVE | CVAR_NODEFAULT);
+    Cvar_CheckRange(sys_cpuPlacement, 0, 1, qtrue);
+    Cvar_SetDescription(sys_cpuPlacement,
+        "Where the game's main thread runs:\n"
+        " 0 - wherever the OS puts it\n"
+        " 1 - on the performance cores of a hybrid CPU, or the larger-cache die of a dual-die X3D "
+        "(default). Windows: the process is also not power-throttled. macOS: the thread is marked "
+        "user-interactive, which is how macOS keeps it on the performance cores.\n"
+        "cpuinfo shows what was found and what was done.");
+    Com_Memset(&sysCpu, 0, sizeof(sysCpu));
+    Sys_CpuIdentify();
+    Sys_CpuTopology(&sysCpu);
+    if ((!sysCpuBrand[0] || !Q_stricmp(sysCpuBrand, "unknown")) && sysCpu.brand[0]) {
+        Q_strncpyz(sysCpuBrand, sysCpu.brand, sizeof(sysCpuBrand));
+    }
+#if defined(__aarch64__) || defined(__arm64__)
+    if (!sysCpuSimd[0]) {
+        Q_strncpyz(sysCpuSimd, "NEON", sizeof(sysCpuSimd));
+    }
+#endif
+    Cmd_AddCommand("cpuinfo", Sys_CpuInfo_f);
+    Sys_CpuInfo_f();
+    sys_cpuPlacement->modified = qfalse;
+}
+
+void Sys_CpuFrame(void) {
+    if (sys_cpuPlacement && sys_cpuPlacement->modified) {
+        sys_cpuPlacement->modified = qfalse;
+        Sys_CpuApply(qtrue);
+    }
+}
+
+/*
+=================
 Sys_Init
 =================
 */
 void Sys_Init(void) {
     Cmd_AddCommand("in_restart", Sys_In_Restart_f);
+    Sys_CpuInit();   // [QL] E222
     Cvar_Set("arch", OS_STRING " " ARCH_STRING);
     Cvar_Set("username", Sys_GetCurrentUser());
 }

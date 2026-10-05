@@ -6199,6 +6199,27 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E222. CPU detection, main-thread placement, and a per-frame CPU breakdown — DONE (verify)
+**Lives in:** our **client and server** engine (`sys_main.c`, `sys_win32.c`, `sys_unix.c`, `common.c`, `sv_main.c`, `cl_scrn.c`) · **Seen by:** whoever runs the binary
+
+The tester's RT timings (`qconsole-20261005-164528.log`) put the whole ray-traced frame at 4–5.6 ms on an RTX 5080, so a 30v30 listen server that still drops frames is spending them on the CPU. The engine is one thread — server, bots, game and client in turn — so the core that thread lands on matters.
+
+**What it finds** (`cpuinfo`, also printed at startup): brand, cores and threads, performance/efficiency split, L3 per die, SIMD level, RAM.
+- **Windows:** `GetLogicalProcessorInformationEx` — per-core `EfficiencyClass` (hybrid Intel) and L3 caches (a dual-die X3D shows as two L3s of different size).
+- **Linux:** sysfs — `/sys/devices/cpu_core/cpus` for hybrid Intel, else differing `cpu_capacity` (ARM big.LITTLE), `cache/index*` for L3.
+- **macOS:** `sysctlbyname` — `machdep.cpu.brand_string`, `hw.perflevel0/1.physicalcpu` (Apple Silicon P/E clusters), `hw.memsize`. Apple Silicon exposes no L3; NEON is always there.
+
+**What it does** (`sys_cpuPlacement`, default 1, 0 leaves everything to the OS, changeable live):
+- Hybrid CPU: the main thread is pinned to the performance cores. Dual-die X3D: to the larger-cache die. All cores alike: nothing.
+- Windows also opts the process out of power throttling (EcoQoS), which otherwise lets Windows park a background-looking game on E-cores.
+- macOS ignores thread affinity on Apple Silicon; the thread is marked `QOS_CLASS_USER_INTERACTIVE`, which is what keeps it on the P cluster.
+
+**What it measures** (`com_cpuTimings 1`, every 2 s): ms per frame for the whole frame, the frame-cap idle, server (bots / game), client (scene build / submit + present) and the rest. That says which part a 30v30 frame goes to before anything is threaded.
+
+Harness (Linux, 4-core Xeon VM, dedicated server on `qltest_stone`): `cpuinfo` reports 4 cores / 33 MB L3 / AVX-512 / 16 GB and "all cores alike"; toggling `sys_cpuPlacement` reports at once; the timing line prints with server/game populated. Bots read 0 here (no botfiles in the test pak). With no map loaded a dedicated server sleeps inside `SV_Frame`, so "server" then shows the sleep — only read it with a map running.
+
+**Not seen here:** hybrid, X3D and Apple Silicon paths — there is no such CPU in this container, and the macOS file is compiled by nobody here. The Windows path is compiled by the mingw build.
+
 ### E221. "r_rtModelShadowSoftness is 0.06, not one of its 6 listed values" — DONE (verify)
 **Lives in:** our **client** (renderervk `tr_init.c`) · **Seen by:** our client only
 

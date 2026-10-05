@@ -57,6 +57,25 @@ void Sys_DisableStateRestoration(void);
 
 char* Sys_BinaryPath(void);
 
+/* [QL] E222: the CPU, as the game should use it - see Sys_CpuInit (sys_main.c) */
+#define SYS_CPU_MAX_L3 8
+typedef struct {
+    int logical, physical;              // threads and cores (processor group 0)
+    int fastCores, slowCores;           // hybrid CPUs: performance / efficiency cores; 0 when uniform
+    int numL3;                          // distinct L3 caches (one per CCD / die)
+    int l3KB[SYS_CPU_MAX_L3];
+    int l3Cores[SYS_CPU_MAX_L3];        // physical cores sharing each
+    unsigned long long fastMask;        // logical CPUs of the preferred set, 0 = no preference
+    int preferred;                      // 0 none, 1 performance cores, 2 the larger-cache die
+    unsigned long long ramMB;
+    char brand[64];                     // from the OS where cpuid has none (Apple, ARM)
+    qboolean qosOnly;                   // macOS: no core pinning - placement is a QoS class
+} sysCpuTopology_t;
+void Sys_CpuTopology(sysCpuTopology_t* t);           // per platform
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle);   // per platform; mask 0 = all
+void Sys_CpuInit(void);
+void Sys_CpuFrame(void);
+
 void Sys_GLimpSafeInit(void);
 void Sys_GLimpInit(void);
 void Sys_PlatformInit(void);

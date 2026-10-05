@@ -1107,8 +1107,11 @@ void SV_Frame(int msec) {
 
     sv.timeResidual += msec;
 
-    if (!com_dedicated->integer)
+    if (!com_dedicated->integer) {
+        const int64_t t0 = com_cpuTimings->integer ? Sys_Microseconds() : 0;   // [QL] E222
         SV_BotFrame(sv.time + sv.timeResidual);
+        if (t0) com_usBots += Sys_Microseconds() - t0;
+    }
 
     // if time is about to hit the 32nd bit, kick all clients
     // and clear sv.time, rather
@@ -1152,17 +1155,24 @@ void SV_Frame(int msec) {
     // update ping based on the all received frames
     SV_CalcPings();
 
-    if (com_dedicated->integer)
+    if (com_dedicated->integer) {
+        const int64_t t0 = com_cpuTimings->integer ? Sys_Microseconds() : 0;   // [QL] E222
         SV_BotFrame(sv.time);
+        if (t0) com_usBots += Sys_Microseconds() - t0;
+    }
 
     // run the game simulation in chunks
-    while (sv.timeResidual >= frameMsec) {
-        sv.timeResidual -= frameMsec;
-        svs.time += frameMsec;
-        sv.time += frameMsec;
+    {
+        const int64_t t0 = com_cpuTimings->integer ? Sys_Microseconds() : 0;   // [QL] E222
+        while (sv.timeResidual >= frameMsec) {
+            sv.timeResidual -= frameMsec;
+            svs.time += frameMsec;
+            sv.time += frameMsec;
 
-        // let everything in the world think and move
-        SV_GameRunFrame(sv.time);
+            // let everything in the world think and move
+            SV_GameRunFrame(sv.time);
+        }
+        if (t0) com_usGame += Sys_Microseconds() - t0;
     }
 
     if (com_speeds->integer) {
