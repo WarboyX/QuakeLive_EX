@@ -38,14 +38,12 @@ W=build/release-mingw32-x86_64
 # A mode config only sets what it cares about, so anything it does not mention
 # survives from whatever ran before it. common.cfg resets those; this fails the
 # build if a config sets something that reset block does not cover.
-python3 content/serverconfigs/check-configs.py
 
 # Every empty function body has to carry a reviewed verdict (tools/stub-report.py
 # and docs/stub-manifest.txt). This fails the build on an unclassified one, which
 # is the point: an empty function is indistinguishable from a finished one at the
 # call site, so a new one has to be looked at deliberately rather than joining the
 # seventy-odd that were already there.
-python3 tools/stub-report.py
 
 # The same idea for cvars. 240 are registered and read by nothing, and they are
 # staying - they are Quake Live's, transcribed from the real binary so a factory
@@ -55,7 +53,6 @@ python3 tools/stub-report.py
 # the whole point. g_spawnItemWeapons was registered, documented, set in the
 # shipped instagib configs and read by nothing, and instagib servers kept
 # spawning weapons.
-python3 tools/dead-cvars.py
 
 # And the same idea for assets. RE_RegisterModel and RE_RegisterShader return 0
 # for a name the paks do not contain - not an error code, a handle that draws
@@ -63,26 +60,24 @@ python3 tools/dead-cvars.py
 # checks every literal model, sound and skin name against
 # docs/pak-manifest.txt. It found Overload's "your base is under attack" sound
 # registered under a Quake 3 name the paks have never contained.
-python3 tools/check-assets.py
 
 # And for menu rows. A multi-choice row draws blank when its cvar holds a value
 # the row does not list, and a "(default)" label on the wrong value sends every
 # reset somewhere else. r_ssrSteps/r_ssrThickness shipped blank on every
 # install; roundlimit and g_itemHeight did too. This compares every row with
 # the default the code registers.
-python3 tools/check-menu-defaults.py
 
 # And a row whose cvar nothing in the code names at all: it sets, shows and
 # saves a value that no code reads. The in-game Bloom & Post page carried eight
 # (E183) - "Post processing: Yes" while r_fbo, the real switch, was 0.
-python3 tools/check-menu-cvars.py
 
 # A menu that fails to parse merges into the next one and shows the wrong items,
 # loud only in the console (CLAUDE.md). And a scoreboard emitter and its parser
 # that disagree on the field count shift every column after the first mismatch.
 # Both were documented as "run after touching..." and never run here.
-python3 tools/check-menus.py
-python3 tools/check-score-fields.py
+
+# All of the above, in tools/validate.sh so CI runs the same list.
+tools/validate.sh
 
 echo "building $REV"
 

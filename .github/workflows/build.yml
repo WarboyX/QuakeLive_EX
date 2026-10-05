@@ -19,6 +19,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libsdl2-dev \
           libfreetype-dev libogg-dev libvorbis-dev
+    - name: Feature checks
+      # menus, cvars, assets, scoreboard fields, server configs - see tools/validate.sh
+      run: tools/validate.sh
     - name: Compile
       run: make release -j$(nproc)
     - name: Stage build outputs

@@ -21,6 +21,29 @@ static int ad_turnDelta[2];
 
 // ============================================================================
 // AD_UpdateScoreHistory
+/*
+=================
+AD_SendScores
+
+[QL] K4. The one place the A&D round history goes out: "scores_ad", twenty
+history slots then the red and blue team scores - Quake Live's own command,
+parsed by the stock cgame (CG_InitScores), so its shape is fixed. It was written
+out twice, once from the sorted history and once with every slot -1 on reset;
+the reset now clears the sorted history first and comes through here too.
+tools/check-score-fields.py counts these fields against the parser.
+=================
+*/
+static void AD_SendScores(void) {
+    trap_SendServerCommand(-1,
+        va("scores_ad %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+            ad_scoreSorted[0], ad_scoreSorted[1], ad_scoreSorted[2], ad_scoreSorted[3],
+            ad_scoreSorted[4], ad_scoreSorted[5], ad_scoreSorted[6], ad_scoreSorted[7],
+            ad_scoreSorted[8], ad_scoreSorted[9], ad_scoreSorted[10], ad_scoreSorted[11],
+            ad_scoreSorted[12], ad_scoreSorted[13], ad_scoreSorted[14], ad_scoreSorted[15],
+            ad_scoreSorted[16], ad_scoreSorted[17], ad_scoreSorted[18], ad_scoreSorted[19],
+            level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE]));
+}
+
 // ============================================================================
 static void AD_UpdateScoreHistory(void) {
     int turn = level.roundState.turn;
@@ -58,14 +81,7 @@ static void AD_UpdateScoreHistory(void) {
         }
     }
 
-    trap_SendServerCommand(-1,
-        va("scores_ad %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
-            ad_scoreSorted[0], ad_scoreSorted[1], ad_scoreSorted[2], ad_scoreSorted[3],
-            ad_scoreSorted[4], ad_scoreSorted[5], ad_scoreSorted[6], ad_scoreSorted[7],
-            ad_scoreSorted[8], ad_scoreSorted[9], ad_scoreSorted[10], ad_scoreSorted[11],
-            ad_scoreSorted[12], ad_scoreSorted[13], ad_scoreSorted[14], ad_scoreSorted[15],
-            ad_scoreSorted[16], ad_scoreSorted[17], ad_scoreSorted[18], ad_scoreSorted[19],
-            level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE]));
+    AD_SendScores();
 }
 
 // ============================================================================
@@ -572,9 +588,5 @@ void ADScoreboardMessage(gentity_t *ent) {
     }
     ad_scoreHistoryIndex = 0;
 
-    trap_SendServerCommand(-1,
-        va("scores_ad %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
-           -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-           -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-           level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE]));
+    AD_SendScores();
 }

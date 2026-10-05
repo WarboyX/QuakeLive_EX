@@ -6199,6 +6199,13 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E216. K4: one scores_ad sender, pinned by the field check; one validator script for packaging and CI — DONE (verify)
+**Lives in:** our **server** (qagame `g_gametype_ad.c`); tools, CI · **Seen by:** every client (wire format unchanged)
+
+- **One `scores_ad` sender.** The A&D round history went out from two hand-written copies of the same 22-field `va()`. One sent the sorted history; the reset sent every slot as −1. Both now go through `AD_SendScores()`, and the reset clears the sorted history to −1 first, so its message is byte-for-byte what it was. The shape stays Quake Live's: the stock cgame parses it.
+- **`check-score-fields.py` pins it.** It now checks `scores_ad`: exactly one sender; 22 fields; `CG_InitScores` reading 20 in its loop and then arguments 21 and 22, contiguous. Unlike the per-row boards this is checked against a fixed 22, not just matched, because a stock client fixes it.
+- **`tools/validate.sh`** runs every source-level check: server configs, stubs, dead cvars, assets, menu defaults, menu cvars, menu parse, score fields. `package-release.sh` calls it in place of its own list (its comments explaining each check stay), and the CI workflow runs it before compiling. CI ran none of them before.
+
 ### E215. K1–K3: water.cfg values checked; the largest water faces kept; the dynamic lights that matter reflected — DONE (verify)
 **Lives in:** our **client** (renderervk `tr_scene.c`, `vk_ssr.c`) · **Seen by:** our client only
 

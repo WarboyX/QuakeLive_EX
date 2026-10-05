@@ -110,6 +110,33 @@ def main():
             )
             bad += 1
 
+    # scores_ad is not a per-row scoreboard: one fixed message, the round
+    # history then two team scores, sent from one place (AD_SendScores, K4)
+    # and read by CG_InitScores with a loop and two fixed reads. The stock
+    # cgame parses the same shape, so the count is pinned, not just matched.
+    ad_src = open(os.path.join(GAME_DIR, "g_gametype_ad.c"), encoding="utf-8", errors="replace").read()
+    sends = re.findall(r'va\(\s*"scores_ad((?: %d)+)"', ad_src)
+    pt = open(PARSER, encoding="utf-8", errors="replace").read()
+    m = re.search(r"void CG_InitScores\(void\) \{(.*?)\n\}", pt, re.S)
+    if len(sends) != 1:
+        print("%-14s ?  expected one sender, found %d" % ("scores_ad", len(sends)))
+        bad += 1
+    elif not m:
+        print("%-14s ?  parser CG_InitScores not found" % "scores_ad")
+        bad += 1
+    else:
+        wrote = sends[0].count("%d")
+        loop = re.search(r"for \(i = 0; i < (\d+); i\+\+\)\s*\{?\s*cg\.adScores\[i\] = atoi\(CG_Argv\(i \+ 1\)\)", m.group(1))
+        fixed = sorted(int(x) for x in re.findall(r"CG_Argv\((\d+)\)", m.group(1)))
+        read = (int(loop.group(1)) if loop else 0) + len(fixed)
+        contiguous = loop and fixed == list(range(int(loop.group(1)) + 1, int(loop.group(1)) + 1 + len(fixed)))
+        if wrote == read == 22 and contiguous:
+            print("%-14s ok  %2d fields (20 history + 2 team scores, stock shape)" % ("scores_ad", wrote))
+        else:
+            print("%-14s MISMATCH  emitter writes %d, CG_InitScores reads %d%s; stock is 22"
+                  % ("scores_ad", wrote, read, "" if contiguous else ", not contiguous"))
+            bad += 1
+
     print()
     if bad:
         print("%d mismatch(es) - a scoreboard will show wrong or blank rows" % bad)
