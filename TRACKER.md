@@ -6199,6 +6199,44 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E211. A player's shadow bent across surfaces and swung around near lamps — DONE (verify)
+**Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `tr_init.c`) · **Seen by:** our client only
+
+Tester:
+- "when we get too close to the light the shadow will warp around it";
+- "when we apply a single shadow across multiple surfaces, that's where the wonkiness in bending comes from".
+
+**Cause.** The shadow pass looked the light up separately for every pixel receiving a shadow:
+- from the grid and the light field at that pixel;
+- or, where those could not say, from the per-pixel estimate.
+
+That is right for the level shadowing itself, and wrong for a player. The floor and the wall beside them each found their own light, so one shadow was cast from two places and bent or broke at the crease. Next to a lamp, neighbouring grid points disagree most, and a few units of error is a large angle, so the shadow swung around the player. With the light inside the body's bounds, it wrapped.
+
+**Fix: the light at the caster.**
+- For a pixel near a player or item, the nearest cluster of silhouette spheres is found. Legs, torso, head and gun are separate models of one body.
+- The light field is looked up once, at that cluster's centre.
+- Players and items are traced toward that point from every surface their shadow reaches. The level is still traced toward the pixel's own light.
+- A light closer to the caster than its bounds + 16 units is moved out to that distance, along the same direction.
+- A surface facing away from the caster's light takes no shadow from it.
+- `r_rtActorLight 0` restores the old per-pixel light (default 1).
+- The silhouette spheres are now sent whenever they are known. The E204 early-out still follows `r_rtCull`.
+
+**Test (rebuilt to the tester's spec).**
+- **Spots:** next to the map's real torches (light emitters recovered from the BSP, `flame2`) at 32, 64 and 128 units, chosen where the shadow falls on floor and wall or steps; plus beside both jump pads.
+- **Player:** first person, on foot, view panned −10 / 25 / 55 / 85° and a side view.
+- **Comparison:** `r_rtActorLight 0` and `1` shot back to back at the same standing position (`viewpos` logged). Each pair is split into 8×6 sectors and diffed.
+
+Result: 21 of 45 views changed.
+- **Own shadow looking down:** the legs' shadow, broken into blobs with 0, is one silhouette with 1.
+- **Side view:** a shadow cut off along a straight diagonal (the "wedge") continues.
+- **Over a step edge:** keeps its shape.
+- **Lit grass:** an own shadow missing with 0 appears.
+- **Other changed sectors** are the jump pad's animated glow, flames and water.
+
+0 validation errors.
+
+Harness note: an earlier E192-vs-current run let the player land differently per build at the jump pads and spot G. Those pairs were discarded. Position is now logged, and the pad spots stand outside the trigger.
+
 ### E210. "Shadows came back broken after I said they were fixed" — what changed, measured — DONE (verify)
 **Lives in:** our **client** (renderervk `tr_init.c`; pak01 render page) · **Seen by:** our client only
 
