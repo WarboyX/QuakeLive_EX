@@ -2777,6 +2777,26 @@ static void R_Register( void )
 	r_rtModelShadowSoftness = ri.Cvar_Get( "r_rtModelShadowSoftness", "0", CVAR_ARCHIVE_ND );
 	/* [QL] E207: world units, like every other softness - see tr_shade.c */
 	ri.Cvar_CheckRange( r_rtModelShadowSoftness, "0", "32", CV_FLOAT );
+	/* [QL] E221: a value saved before E207 is still the old angle in radians
+	   (the menu's 0.03 / 0.06 / 0.12 / 0.25). tr_shade.c reads it correctly,
+	   but the menu row lists 0 / 2 / 4 / 8 / 16 / 32 and drew blank over it
+	   ("not one of its 6 listed values"). Converted once here, to the size
+	   that angle is at 128 units, on the nearest listed step - 0.06 -> 8 - and
+	   saved, so the row shows it and the next start has nothing to convert. */
+	if ( r_rtModelShadowSoftness->value > 0.0f && r_rtModelShadowSoftness->value < 1.0f ) {
+		static const float steps[] = { 2.0f, 4.0f, 8.0f, 16.0f, 32.0f };
+		const float want = r_rtModelShadowSoftness->value * 128.0f;
+		float best = steps[0];
+		int k;
+		for ( k = 1; k < (int)ARRAY_LEN( steps ); k++ ) {
+			if ( fabsf( logf( steps[k] / want ) ) < fabsf( logf( best / want ) ) ) {
+				best = steps[k];
+			}
+		}
+		ri.Printf( PRINT_ALL, "r_rtModelShadowSoftness: %s was the old radians scale - now %g world units\n",
+			r_rtModelShadowSoftness->string, best );
+		ri.Cvar_Set( "r_rtModelShadowSoftness", va( "%g", best ) );
+	}
 	ri.Cvar_SetDescription( r_rtModelShadowSoftness, "Size of the light in world units, for soft "
 		"edges on models - the same scale as the other shadow softness settings. 0 is sharp. "
 		"Pair with more " S_COLOR_CYAN "\\r_rtModelShadowRays" S_COLOR_WHITE "." );

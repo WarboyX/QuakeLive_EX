@@ -6199,6 +6199,19 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E221. "r_rtModelShadowSoftness is 0.06, not one of its 6 listed values" — DONE (verify)
+**Lives in:** our **client** (renderervk `tr_init.c`) · **Seen by:** our client only
+
+Tester's console on `c7ba822a`: `WARNING: multi item cvar "r_rtModelShadowSoftness" is "0.06", which is not one of its 6 listed values - the row will draw blank`.
+
+E207 moved this setting from an angle in radians (menu steps 0.03 / 0.06 / 0.12 / 0.25) to world units (0 / 2 / 4 / 8 / 16 / 32). It kept reading an old saved value correctly (below 1 is read as radians), but the menu row could not show it.
+
+A saved value between 0 and 1 is now converted once at startup to the size that angle is at 128 units, on the nearest listed step (0.06 → 7.7 → 8). It is saved, so the next start has nothing to convert, and the console says what it did.
+
+The other two softness rows E207 touched only gained values (the light's 32, the players' 2), so every value saved under their old lists is still listed.
+
+Harness, started with `r_rtModelShadowSoftness 0.06`: the conversion line printed, the cvar reads 8, and no blank-row warning appeared.
+
 ### E220. Pre-test sweep: r_rtActorLight on the Cast Shadows page — DONE (verify)
 **Lives in:** our **client** (pak01 render menus, `gen-render-menu.py`) · **Seen by:** our client only
 
