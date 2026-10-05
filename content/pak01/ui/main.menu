@@ -4894,38 +4894,45 @@
                   cvarFloatList { "Per pixel" 0 "Light field (default)" 1 }
                   rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Sun shadow"  textscale .21  rect 24 284 246 16  textaligny 13
+        itemDef { text "Player shadow light"  textscale .21  rect 24 284 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtactorlight  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorLight"
+                  cvarFloatList { "Per surface (old)" 0 "Grid direction (default)" 1 "Estimated point" 2 }
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Sun shadow"  textscale .21  rect 24 301 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtshadowsun  type ITEM_TYPE_MULTI  text ""  cvar "r_rtShadowSun"
                   cvarFloatList { "Strongest light only" 0 "Also the sun (default)" 1 }
-                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Solid model shadows"  textscale .21  rect 24 301 246 16  textaligny 13
+        itemDef { text "Solid model shadows"  textscale .21  rect 24 318 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtactorcaps  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorCaps"
                   cvarFloatList { "Off" 0 "On (default)" 1 }
-                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Players block lights"  textscale .21  rect 24 318 246 16  textaligny 13
+        itemDef { text "Players block lights"  textscale .21  rect 24 335 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtshadowcasters  type ITEM_TYPE_MULTI  text ""  cvar "r_rtShadowCasters"
                   cvarFloatList { "No (default)" 0 "Yes" 1 }
-                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Players shadow your gun"  textscale .21  rect 24 335 246 16  textaligny 13
+        itemDef { text "Players shadow your gun"  textscale .21  rect 24 352 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtweaponselfshadow  type ITEM_TYPE_MULTI  text ""  cvar "r_rtWeaponSelfShadow"
                   cvarFloatList { "No (default)" 0 "Yes" 1 }
-                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "One light for players and ledges, so their shadows agree."  textscale .17  rect 24 352 512 16  textaligny 12
+        itemDef { text "One light for players and ledges, so their shadows agree."  textscale .17  rect 24 369 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Lighting > Shadows: Traced turns all of these on."  textscale .17  rect 24 369 512 16  textaligny 12
+        itemDef { text "Lighting > Shadows: Traced turns all of these on."  textscale .17  rect 24 386 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -4935,7 +4942,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu2.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtShadowTemporal ; reset r_rtActorShadowSoftMode ; reset r_rtLightField ; reset r_rtShadowSun ; reset r_rtActorCaps ; reset r_rtShadowCasters ; reset r_rtWeaponSelfShadow" }
+            action { play "sound/misc/menu2.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtShadowTemporal ; reset r_rtActorShadowSoftMode ; reset r_rtLightField ; reset r_rtActorLight ; reset r_rtShadowSun ; reset r_rtActorCaps ; reset r_rtShadowCasters ; reset r_rtWeaponSelfShadow" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }
@@ -6840,38 +6847,45 @@
                   cvarFloatList { "Per pixel" 0 "Light field (default)" 1 }
                   rect 290 267 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Sun shadow"  textscale .21  rect 24 284 246 16  textaligny 13
+        itemDef { text "Player shadow light"  textscale .21  rect 24 284 246 16  textaligny 13
+                  textalign ITEM_ALIGN_RIGHT  textalignx 246
+                  forecolor 1 1 1 1  visible 1  decoration }
+        itemDef { name c_rrtactorlight  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorLight"
+                  cvarFloatList { "Per surface (old)" 0 "Grid direction (default)" 1 "Estimated point" 2 }
+                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  forecolor 1 1 1 1  visible 1 }
+        itemDef { text "Sun shadow"  textscale .21  rect 24 301 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtshadowsun  type ITEM_TYPE_MULTI  text ""  cvar "r_rtShadowSun"
                   cvarFloatList { "Strongest light only" 0 "Also the sun (default)" 1 }
-                  rect 290 284 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Solid model shadows"  textscale .21  rect 24 301 246 16  textaligny 13
+        itemDef { text "Solid model shadows"  textscale .21  rect 24 318 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtactorcaps  type ITEM_TYPE_MULTI  text ""  cvar "r_rtActorCaps"
                   cvarFloatList { "Off" 0 "On (default)" 1 }
-                  rect 290 301 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Players block lights"  textscale .21  rect 24 318 246 16  textaligny 13
+        itemDef { text "Players block lights"  textscale .21  rect 24 335 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtshadowcasters  type ITEM_TYPE_MULTI  text ""  cvar "r_rtShadowCasters"
                   cvarFloatList { "No (default)" 0 "Yes" 1 }
-                  rect 290 318 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "Players shadow your gun"  textscale .21  rect 24 335 246 16  textaligny 13
+        itemDef { text "Players shadow your gun"  textscale .21  rect 24 352 246 16  textaligny 13
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtweaponselfshadow  type ITEM_TYPE_MULTI  text ""  cvar "r_rtWeaponSelfShadow"
                   cvarFloatList { "No (default)" 0 "Yes" 1 }
-                  rect 290 335 250 16  textscale .21  textaligny 13  textalignx 2
+                  rect 290 352 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
-        itemDef { text "One light for players and ledges, so their shadows agree."  textscale .17  rect 24 352 512 16  textaligny 12
+        itemDef { text "One light for players and ledges, so their shadows agree."  textscale .17  rect 24 369 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
-        itemDef { text "Lighting > Shadows: Traced turns all of these on."  textscale .17  rect 24 369 512 16  textaligny 12
+        itemDef { text "Lighting > Shadows: Traced turns all of these on."  textscale .17  rect 24 386 512 16  textaligny 12
                   textalign ITEM_ALIGN_CENTER  textalignx 256
                   forecolor .72 .72 .72 1  visible 1  decoration }
         itemDef { name rfoot  rect 0 444 560 34  style WINDOW_STYLE_FILLED  visible 1  decoration
@@ -6881,7 +6895,7 @@
             rect 154 448 120 26  textalign ITEM_ALIGN_CENTER  textalignx 60  textaligny 17
             style WINDOW_STYLE_FILLED  backcolor 0 0 0 .6  border 1  bordersize 1  bordercolor .35 .3 .12 1
             forecolor 1 1 1 1  visible 1
-            action { play "sound/misc/menu2.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtShadowTemporal ; reset r_rtActorShadowSoftMode ; reset r_rtLightField ; reset r_rtShadowSun ; reset r_rtActorCaps ; reset r_rtShadowCasters ; reset r_rtWeaponSelfShadow" }
+            action { play "sound/misc/menu2.wav" ; exec "reset r_rtActorShadowStrength ; reset r_rtActorShadowSoftness ; reset r_rtActorShadowRays ; reset r_rtActorShadowDenoise ; reset r_rtShadowTemporal ; reset r_rtActorShadowSoftMode ; reset r_rtLightField ; reset r_rtActorLight ; reset r_rtShadowSun ; reset r_rtActorCaps ; reset r_rtShadowCasters ; reset r_rtWeaponSelfShadow" }
             mouseEnter { setitemcolor rreset backcolor 0 0 0 .9 ; setitemcolor rreset forecolor 0.964 0.815 0 1 ; setitemcolor rreset bordercolor 0.964 0.815 0 1 }
             mouseExit  { setitemcolor rreset backcolor 0 0 0 .6 ; setitemcolor rreset forecolor 1 1 1 1 ; setitemcolor rreset bordercolor .35 .3 .12 1 }
         }

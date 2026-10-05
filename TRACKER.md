@@ -6199,6 +6199,14 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E220. Pre-test sweep: r_rtActorLight on the Cast Shadows page — DONE (verify)
+**Lives in:** our **client** (pak01 render menus, `gen-render-menu.py`) · **Seen by:** our client only
+
+Before the tester's round, a last pass.
+- **Console:** harness logs from gameplay, menus, debug views and a disconnect. Every warning left is the harness, not the build: pak00 art it does not have (explosion animMaps, weapon hand models, icons), no IPv6 in the container, and japanesecastles' known 85-of-63 target_location entities.
+- **Menus:** the settings this session added. `r_rtActorLight` had no menu row and is the one to flip at a spot (0 per surface, 1 grid direction, 2 estimated point), so it is now on Render > Cast Shadows after "Light position". It fits the panel. `r_rtCull` and `r_rtActorRefit` are diagnostic switches and stay console-only.
+- **Checks:** `tools/validate.sh` passes.
+
 ### E219. Caster shadows no longer cut by the pixel's own light; darkness from one direction; candidates ranked; casters whole or not at all; mode 2 without push-out — DONE (verify)
 **Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_world.c`, `vk.h`, `tr_shade.c`) · **Seen by:** our client only
 

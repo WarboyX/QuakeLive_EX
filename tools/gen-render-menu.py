@@ -524,6 +524,9 @@ def cast_shadows():
         ("multi", "r_rtActorShadowSoftMode", "Soft edges", '"Sampled (default)" 0 "Projected" 1'),
         # [QL] E176. Where shadows are cast from: per pixel, or the map-load field.
         ("multi", "r_rtLightField", "Light position", '"Per pixel" 0 "Light field (default)" 1'),
+        # [QL] E211/E212/E214. Where a player's or item's own shadow is cast from.
+        ("multi", "r_rtActorLight", "Player shadow light",
+         '"Per surface (old)" 0 "Grid direction (default)" 1 "Estimated point" 2'),
         # [QL] E178. The sun gets its own shadow beside a brighter lamp.
         ("multi", "r_rtShadowSun", "Sun shadow", '"Strongest light only" 0 "Also the sun (default)" 1'),
         # [QL] E180. Models' open holes closed, so shadows are not hollow.
