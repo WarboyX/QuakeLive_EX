@@ -6225,6 +6225,15 @@ Tester, on E211, with screenshots from the red flag room facing the armour wall,
 
 0 validation errors.
 
+**Re-run at the right wall.** Tester: the earlier spots faced the flag base, not the back wall. The shards are two groups of three (y −300…−204 and 148…244), each by a side corner, 32 units in front of the wall at x −2204. The harness also had to change: Quake 3's teleport gives a forward push, which slid the player onto the shards and launched it off the pads. Moves now go through noclip, and the player then drops and stands; logged positions land within 10 units of target.
+
+What lights this corner, from the BSP: a `flame2` torch on the side wall at (−2515, −588, −197), about 390 units away and about 50 units above head height, low and behind-left of a player facing the shards.
+
+| What | Mode 0 | Mode 2 (E211) | Mode 1 |
+|---|---|---|---|
+| Player's shadow | thrown sideways, toward the torch: the "upside-down L" | compact blob underfoot, as if lit from overhead | long, forward-left, away from the torch, as this light casts it |
+| Shards' shadows | a streak up the paper window above them, impossible for a light below it | — | at the wall base under them |
+
 ### E211. A player's shadow bent across surfaces and swung around near lamps — DONE (verify)
 **Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `tr_init.c`) · **Seen by:** our client only
 
