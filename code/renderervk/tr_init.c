@@ -86,6 +86,7 @@ cvar_t	*r_rtLightField;           // [QL] E176
 cvar_t	*r_rtShadowSun;            // [QL] E178
 cvar_t	*r_rtActorCaps;            // [QL] E180
 cvar_t	*r_rtCull;                 // [QL] E203
+cvar_t	*r_rtActorRefit;           // [QL] E208
 cvar_t	*r_rtTimings;              // [QL] E177
 cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
@@ -2695,7 +2696,12 @@ static void R_Register( void )
 		"The width needs a vid_restart; off and on do not." );
 
 	/* [QL] E196 */
-	r_rtShadowTemporal = ri.Cvar_Get( "r_rtShadowTemporal", "1", CVAR_ARCHIVE_ND );
+	/* [QL] E208: off by default. A shadow moves with its caster over a floor
+	   that does not, so the floor's history is accepted and the old shadow is
+	   carried along - smeared, warped own-shadows in the tester's screenshots -
+	   and E196 measured the gain after the denoise as nil (edge grain 4.5
+	   either way). ARCHIVE_ND: an install that never chose picks this up. */
+	r_rtShadowTemporal = ri.Cvar_Get( "r_rtShadowTemporal", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtShadowTemporal, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtShadowTemporal, "Accumulate the traced shadows' sampled soft edge over frames, "
 		"following the camera (with " S_COLOR_CYAN "\\r_rtActorShadowSoftMode" S_COLOR_WHITE " 0 and the "
@@ -2830,6 +2836,11 @@ static void R_Register( void )
 		" 0 - one shadow, from the strongest light\n 1 - also the sun's (default)" );
 	/* [QL] E203: leave players and items out of the ray-traced structures
 	   when nothing they do can reach the view - see rt_in_reach */
+	/* [QL] E208: E205's refit, switchable to rule it in or out */
+	r_rtActorRefit = ri.Cvar_Get( "r_rtActorRefit", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorRefit, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorRefit, "Refit the players' and items' ray-traced structure when the same "
+		"models are in it, instead of rebuilding it. 0 rebuilds every frame." );
 	r_rtCull = ri.Cvar_Get( "r_rtCull", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtCull, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtCull, "Skip players and items whose shadow or occlusion cannot reach the view "

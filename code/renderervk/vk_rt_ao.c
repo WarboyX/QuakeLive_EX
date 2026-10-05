@@ -1102,15 +1102,12 @@ qboolean vk_rt_ao( void )
 	   which under an item drew a round blob that read as a second shadow */
 	push.res[1] = (float)( ( r_rtDynamic->integer == 2 && vk.rt.world.actorReady && vk.rt.world.actorTris > 0 )
 		? ( RT_MASK_LEVEL | RT_MASK_SILHOUETTE ) : RT_MASK_OCCLUSION );
-	/* [QL] E202: rays shared across the frames the temporal pass averages -
-	   one in K traced per frame, K chosen so a frame still traces a quarter of
-	   the set (at least one ray). See rtao.tmpl. */
+	/* [QL] E202 traced one in K of the rays per frame while the temporal pass
+	   averaged them; E208 took that back. On a still camera the average hid
+	   it, but in play the history is rejected constantly and the one-ray
+	   frames showed as noise flickering on a K-frame cycle (tester). The
+	   shader still accepts a stride in res.z; 1 is the full set. */
 	push.res[2] = 1.0f;
-	if ( useRT && r_rtaoTemporal->integer == 1 ) {
-		const int n = ri.Cvar_VariableIntegerValue( "r_rtaoSamples" );
-		const int perFrame = n / 4 > 1 ? n / 4 : 1;
-		push.res[2] = (float)( n > 1 ? n / perFrame : 1 );
-	}
 	push.res[3] = 0.0f;
 
 	/*

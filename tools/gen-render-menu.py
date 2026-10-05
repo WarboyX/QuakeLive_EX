@@ -519,7 +519,7 @@ def cast_shadows():
         # [QL] E169. Soft edges through AO's edge-aware blur.
         ("multi", "r_rtActorShadowDenoise", "Soft edge denoise", '"Off" 0 "On (default)" 1'),
         # [QL] E196. Live. Sampled edges only - projected ones are not noisy.
-        ("multi", "r_rtShadowTemporal", "Accumulate over frames", '"Off" 0 "On (default)" 1'),
+        ("multi", "r_rtShadowTemporal", "Accumulate over frames", '"Off (default)" 0 "On" 1'),   # E208: off - smears moving shadows
         # [QL] E171. Soft edges worked out from the distances, from one ray.
         ("multi", "r_rtActorShadowSoftMode", "Soft edges", '"Sampled (default)" 0 "Projected" 1'),
         # [QL] E176. Where shadows are cast from: per pixel, or the map-load field.

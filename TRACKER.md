@@ -6109,6 +6109,29 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E208. Noise that scrolled on a still screen; smeared player shadows; E202 fully reverted — DONE (verify)
+**Lives in:** our **client** (renderervk `rtao.tmpl`, `actorshadow.tmpl`, `vk_rt_ao.c`, `tr_init.c`; pak01) · **Seen by:** our client only
+
+Tester: "still a lot of noise and flickering", "even when the camera is stationary, there's like a scrolling noise on it", and "this whole red area is the player shadow, that is broken as well... warped around" (`r_rtActorShadows 2` debug view).
+
+**Scrolling.** Since E196, while frames are averaged, the ray pattern changes each frame, and the way it changed was itself a pattern.
+- **AO:** rotated each pixel by `hash12(pixel + frame)`, which is the same noise shifted one pixel diagonally per frame. Whatever survives the average slides across a still image.
+- **Shadows:** turned every pixel's pattern by the same golden angle, so the whole residue rotated at once.
+- **Fix:** both now use a PCG hash of (x, y, frame), per pixel per frame, so the residue does not travel. With averaging off, the fixed patterns are as before.
+
+**Flicker.** E202's AO stride (one ray of four per frame) is reverted too, after E207 reverted the shadow half. In play the history is rejected constantly, and the one-ray frames flickered on a four-frame cycle. The shader still takes a stride; the engine passes 1. E203/E204 (culling, early-out) stay: they skip only work that cannot change a pixel.
+
+**Smeared player shadows: shadow accumulation off by default.** A shadow moves with its caster over a floor that does not, so the floor's history passes the depth test and the old shadow is carried along. E196's own measurement put the gain after the denoise at nil (edge grain 4.5 either way). `r_rtShadowTemporal` now defaults to 0 (ARCHIVE_ND, so installs that never chose pick it up); the menu still offers it.
+
+**`r_rtActorRefit`** (default 1) switches E205's refit off, to rule it in or out for the warped own-shadow. The harness cannot: lavapipe's refit is likely a rebuild underneath.
+
+0 validation errors; menu checks pass.
+
+**To verify:**
+1. The noise no longer scrolls on a still view.
+2. Player shadows follow without smearing.
+3. If an own-shadow still looks warped, try `r_rtActorRefit 0` and say whether it changes.
+
 ### E207. Shadow noise after E202; one softness scale on every page — DONE (verify)
 **Lives in:** our **client** (renderervk `vk_rt_shadow.c`, `tr_shade.c`, `tr_init.c`; pak01 render pages) · **Seen by:** our client only
 

@@ -114,6 +114,20 @@ bool gridAt(vec3 p, out float ambient, out float directed, out vec3 dir) {
 /* [QL] E169: interleaved gradient noise (Jimenez 2014) - a fixed per-pixel
    value in 0..1 whose neighbours differ as much as possible, which is what a
    blur averages away best */
+/* [QL] E208: a value per pixel AND per frame that does not travel. Hashing
+   the pixel position plus the frame number is the same noise shifted one
+   pixel diagonally per frame, and what is left of it after averaging slides
+   across a still image ("scrolling noise", tester). PCG over (x, y, frame). */
+uint pcgHash(uint v) {
+	uint state = v * 747796405u + 2891336453u;
+	uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+	return (word >> 22u) ^ word;
+}
+float hashPixelFrame(vec2 p, float frame) {
+	uvec2 q = uvec2(p);
+	return float(pcgHash(q.x + pcgHash(q.y + pcgHash(uint(frame))))) * (1.0 / 4294967296.0);
+}
+
 float ign(vec2 p) {
 	return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
@@ -570,7 +584,10 @@ void main() {
 	/* [QL] E196: soft.w, the frame number while r_rtShadowTemporal is on: the
 	   whole pattern turns by the golden angle each frame, so the frames it
 	   averages saw the light from different points */
-	float spin = ign(gl_FragCoord.xy) * 6.2831853 + soft.w * 2.3999632;
+	/* [QL] E208: per pixel per frame while frames are averaged - the uniform
+	   golden-angle step turned the whole pattern at once, which reads as
+	   motion; the fixed interleaved gradient otherwise, as before */
+	float spin = (soft.w > 0.0 ? hashPixelFrame(gl_FragCoord.xy, soft.w) : ign(gl_FragCoord.xy)) * 6.2831853;
 	float hitT, lenC;
 	float blocked = 0.0;
 	hitT = 0.0;

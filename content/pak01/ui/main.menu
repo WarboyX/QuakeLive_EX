@@ -4877,7 +4877,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtshadowtemporal  type ITEM_TYPE_MULTI  text ""  cvar "r_rtShadowTemporal"
-                  cvarFloatList { "Off" 0 "On (default)" 1 }
+                  cvarFloatList { "Off (default)" 0 "On" 1 }
                   rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Soft edges"  textscale .21  rect 24 250 246 16  textaligny 13
@@ -6823,7 +6823,7 @@
                   textalign ITEM_ALIGN_RIGHT  textalignx 246
                   forecolor 1 1 1 1  visible 1  decoration }
         itemDef { name c_rrtshadowtemporal  type ITEM_TYPE_MULTI  text ""  cvar "r_rtShadowTemporal"
-                  cvarFloatList { "Off" 0 "On (default)" 1 }
+                  cvarFloatList { "Off (default)" 0 "On" 1 }
                   rect 290 233 250 16  textscale .21  textaligny 13  textalignx 2
                   forecolor 1 1 1 1  visible 1 }
         itemDef { text "Soft edges"  textscale .21  rect 24 250 246 16  textaligny 13

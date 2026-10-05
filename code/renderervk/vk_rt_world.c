@@ -1539,7 +1539,7 @@ full:
 	*/
 	sig = sig * 1000003u + nv;
 	sig = sig * 1000003u + nt;
-	refit = vk.rt.world.actorBuiltValid[idx] && vk.rt.world.actorBuiltSig[idx] == sig &&
+	refit = r_rtActorRefit->integer && vk.rt.world.actorBuiltValid[idx] && vk.rt.world.actorBuiltSig[idx] == sig &&
 		vk.rt.world.actorRefits[idx] < 30;
 	if ( refit ) {
 		vk.rt.world.actorRefits[idx]++;
