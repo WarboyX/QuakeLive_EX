@@ -1678,6 +1678,7 @@ extern	cvar_t	*r_rtLightField;           // [QL] E176
 extern	cvar_t	*r_rtShadowSun;            // [QL] E178
 extern	cvar_t	*r_rtActorCaps;            // [QL] E180
 extern	cvar_t	*r_rtCull;                 // [QL] E203
+extern	cvar_t	*r_rtActorLight;           // [QL] E211
 extern	cvar_t	*r_rtActorRefit;           // [QL] E208
 extern	cvar_t	*r_rtTimings;              // [QL] E177
 extern	cvar_t	*r_rtLevelShadows;			// [QL] E167: the level's traced shadows on the level

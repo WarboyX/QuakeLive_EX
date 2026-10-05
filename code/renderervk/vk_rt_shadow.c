@@ -470,7 +470,9 @@ qboolean vk_actor_shadows( void )
 	/* [QL] E204: where the silhouettes are, so a pixel nowhere near one need
 	   not trace - see actorshadow.tmpl. Only meaningful when the mesh was
 	   built this frame; otherwise say "not listed" and trace as before. */
-	if ( actors && vk.rt.world.actorReady && vk.rt.world.actorSphereCount >= 0 && r_rtCull->integer ) {
+	/* [QL] E211: listed whenever they are known - the per-caster light needs
+	   them too; actorInfo.w says whether the early-out may use them */
+	if ( actors && vk.rt.world.actorReady && vk.rt.world.actorSphereCount >= 0 ) {
 		u->actorInfo[0] = (float)vk.rt.world.actorSphereCount;
 		Com_Memcpy( u->actors, vk.rt.world.actorSphere, sizeof( float ) * 4 * vk.rt.world.actorSphereCount );
 	} else {
@@ -487,7 +489,10 @@ qboolean vk_actor_shadows( void )
 		const float disc = r_rtActorShadowSoftness->value * ( reach / 128.0f > 1.0f ? reach / 128.0f : 1.0f );
 		u->actorInfo[1] = 1.25f * ( reach + disc + 8.0f ) + 32.0f;
 	}
-	u->actorInfo[2] = u->actorInfo[3] = 0.0f;
+	/* [QL] E211: z - each caster's shadow from the light at the caster
+	   (r_rtActorLight); w - the E204 early-out (r_rtCull) */
+	u->actorInfo[2] = r_rtActorLight->integer ? 1.0f : 0.0f;
+	u->actorInfo[3] = r_rtCull->integer ? 1.0f : 0.0f;
 	/* [QL] E196: the ray pattern turns each frame while r_rtShadowTemporal is
 	   averaging it (sampled soft edge only); fixed otherwise, as before - a
 	   pattern that moves by itself is shimmer, where a fixed one is grain */
