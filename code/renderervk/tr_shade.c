@@ -1173,8 +1173,8 @@ void R_RTShadowReport( qboolean force )
 {
 	const char *why = RT_NotReadyReason();
 	const rtShadowStats_t *s = &rtStatsLast;
-	const int modelOn = ( r_rtModelShadows->integer || R_SHADOWS_TRACED ) ? 1 : 0;
-	const int dlOn = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? 1 : 0;
+	const int modelOn = rtf.modelShadows ? 1 : 0;
+	const int dlOn = rtf.dlightShadows ? 1 : 0;
 
 	if ( !force ) {
 		const int state = r_rtActorShadows->integer * 64 + r_rtModelShadows->integer * 16 +
@@ -1215,7 +1215,7 @@ void R_RTShadowReport( qboolean force )
 		ri.Printf( PRINT_ALL, "  models last frame: %i surface(s) shadowed; skipped %i translucent, "
 			"%i not lit from the light grid\n", s->modelDrawn, s->modelTranslucent, s->modelNoGrid );
 	}
-	if ( r_rtActorShadows->integer || R_SHADOWS_TRACED ) {
+	if ( rtf.actorShadows ) {
 		ri.Printf( PRINT_ALL, "  players/items on the level: %u triangle(s) from %u model(s) in the silhouette "
 			"structure, %u out of reach left out (r_rtCull); %u refitted / %u built since the last report%s\n",
 			vk.rt.world.actorTris, vk.rt.world.actorEntities, vk.rt.world.actorCulled,
@@ -1310,11 +1310,11 @@ static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 	   the r_rtDlightShadows settings. Harmless to the plain light shader,
 	   which does not declare them. */
 	VK_SetRTTransform( uniform );
-	uniform->rtParams[0] = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? r_rtDlightShadowStrength->value : 0.0f;
+	uniform->rtParams[0] = rtf.dlightShadows ? r_rtDlightShadowStrength->value : 0.0f;
 	uniform->rtParams[1] = (float)r_rtDlightShadowRays->integer;
 	uniform->rtParams[2] = r_rtDlightShadowSoftness->value;
 	uniform->rtParams[3] = 8.0f;   // stop short of the light: what it sits against must not shadow it
-	uniform->rtLight[3] = r_rtDlightShadows->integer >= 2 ? 1.0f : 0.0f;   // [QL] E162: debug tint
+	uniform->rtLight[3] = rtf.dlightDebug ? 1.0f : 0.0f;   // [QL] E162: debug tint
 }
 #endif
 
@@ -1390,7 +1390,7 @@ void VK_LightingPass( void )
 	/* [QL] E161: the ray-traced twin, when asked for and the level's structure
 	   is bound for this map */
 	RT_StatsFrame();
-	if ( ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) && vk.rt.world.mainTlasWritten &&
+	if ( rtf.dlightShadows && vk.rt.world.mainTlasWritten &&
 		!( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) ) {   /* [QL] E175: not a UI model view */
 		const uint32_t rt = tess.light->linear
 			? vk.dlight1_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light]
@@ -1469,7 +1469,7 @@ static void VK_ModelShadowPass( void )
 	int i, lit;
 
 	RT_StatsFrame();
-	if ( !( r_rtModelShadows->integer || R_SHADOWS_TRACED ) || !vk.rt.world.mainTlasWritten ) {
+	if ( !rtf.modelShadows || !vk.rt.world.mainTlasWritten ) {
 		return;
 	}
 	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
@@ -1547,7 +1547,7 @@ static void VK_ModelShadowPass( void )
 		const float sz = r_rtModelShadowSoftness->value;
 		su.rtParams[2] = ( sz > 0.0f && sz < 1.0f ) ? sz : sz / 128.0f;
 	}
-	su.rtParams[3] = r_rtModelShadows->integer >= 2 ? 1.0f : 0.0f;   // debug tint
+	su.rtParams[3] = rtf.modelDebug ? 1.0f : 0.0f;   // debug tint
 
 	offset = VK_PushUniform( &su );
 	if ( offset == ~0U ) {

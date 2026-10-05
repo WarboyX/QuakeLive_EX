@@ -1210,10 +1210,11 @@ qboolean vk_rt_ao( void )
 		lights->params[1] = strength;
 		/* [QL] E165: lights clear occlusion only where they arrive, when they
 		   cast shadows - see rtao.tmpl */
-		lights->params[2] = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? 1.0f : 0.0f;
+		lights->params[2] = rtf.dlightShadows ? 1.0f : 0.0f;
 		lights->params[3] = (float)( RT_SHADOW_MASK );
 	}
 
+	vk_pass_check( "ambient occlusion", PASS_NEEDS_SCENE_DEPTH | PASS_NEEDS_WORLD_AS );   /* [QL] K10 */
 	vk_timing_begin( RTT_AO );   /* [QL] E177 */
 	vk_end_render_pass();   // end main
 

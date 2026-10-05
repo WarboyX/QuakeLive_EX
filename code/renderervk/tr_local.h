@@ -1608,6 +1608,31 @@ test goes through R_STENCIL_SHADOWS instead of comparing r_shadows with 2.
 #endif
 #define R_SHADOWS_TRACED ( r_shadows->integer == 4 )
 #define R_STENCIL_SHADOWS ( r_shadows->integer == 2 || ( R_SHADOWS_TRACED && !R_RT_SHADOWS_READY ) )
+
+/*
+[QL] K8. Which ray-traced shadow features are on, resolved once.
+
+Each of these was worked out where it was used - "r_rtModelShadows or
+r_shadows 4", "actor shadows or traced or casters" - two dozen times over
+five files, and a pass that read the rule slightly differently from its
+neighbour ran when the other did not. R_ResolveRTFeatures fills this at the
+start of each frame (RE_BeginFrame) and when the world's structures are
+built; everything that asks reads it, so the dependency rules live in one
+place. The debug values are the cvars' own 2 = tint.
+*/
+typedef struct {
+	qboolean	traced;          // r_shadows 4: every traced shadow below on
+	qboolean	modelShadows;    // shadows on models (r_rtModelShadows)
+	qboolean	dlightShadows;   // dynamic lights trace their shadows (r_rtDlightShadows)
+	qboolean	actorShadows;    // players and items shadow the level (r_rtActorShadows)
+	qboolean	levelShadows;    // the level shadows itself (r_rtLevelShadows)
+	qboolean	casters;         // players and items in other passes' shadow rays (r_rtShadowCasters)
+	qboolean	actorMesh;       // the silhouette mesh is wanted for shadows
+	qboolean	anyShadow;       // any traced shadow at all this frame
+	qboolean	modelDebug, dlightDebug, actorDebug;
+} rtFeatures_t;
+extern rtFeatures_t rtf;
+void R_ResolveRTFeatures( void );
 extern	cvar_t	*r_ssao;						// [QL] E154: 0 off, 1 on, 2 debug
 extern	cvar_t	*r_pipelineCache;				// [QL] E152: 0 off, 1 disk, 2 disk + pre-build
 extern	cvar_t	*r_ssrResolution;				// [QL] E151: 1 full, 2 half (live)

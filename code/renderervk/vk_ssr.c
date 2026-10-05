@@ -1696,6 +1696,8 @@ static void ssr_trace( qboolean useRT, int ssrScale )
 	if ( useRT && !backEnd.doneRTDynamic ) {
 		vk_rt_build_dynamic_tlas();
 	}
+	/* [QL] K10 */
+	vk_pass_check( "water reflections", PASS_NEEDS_SCENE_DEPTH | ( useRT ? PASS_NEEDS_WORLD_AS | PASS_NEEDS_DYNAMIC_AS : 0 ) );
 
 	/*
 	[QL] R19: depth becomes a texture here, and the layout it becomes is the
@@ -1855,7 +1857,7 @@ qboolean vk_ssr( void )
 	   pipeline for the chosen resolution built */
 	/* [QL] E165: also when the lights cast ray-traced shadows, for the emitter
 	   visibility test - rtInfo.x still says whether the fallback itself runs */
-	const qboolean lightShadows = ( r_rtDlightShadows->integer || R_SHADOWS_TRACED ) ? qtrue : qfalse;
+	const qboolean lightShadows = rtf.dlightShadows;
 	const qboolean useRT = ( r_ssrRayTrace && ( r_ssrRayTrace->integer > 0 || lightShadows ) && vk.ssr.rtReady &&
 		( ssrScale > 1 ? vk.ssr.rt_trace_pipeline_half : vk.ssr.rt_trace_pipeline ) != VK_NULL_HANDLE );
 

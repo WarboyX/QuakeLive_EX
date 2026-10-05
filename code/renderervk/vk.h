@@ -1421,3 +1421,8 @@ void vk_rt_caps_reset( void );   // [QL] E188: RE_Shutdown, before ri.FreeAll
 void vk_timing_begin( int section );
 void vk_print_memory( qboolean brief );   // [QL] E194: vkmem
 void vk_timing_end( int section );
+/* [QL] K10: what a pass needs when it commits to running - see vk_pass_check */
+#define PASS_NEEDS_SCENE_DEPTH	1	/* this frame's world view is in the depth buffer */
+#define PASS_NEEDS_WORLD_AS		2	/* the level's acceleration structure is bound */
+#define PASS_NEEDS_DYNAMIC_AS	4	/* this frame's players/items structure is built */
+void vk_pass_check( const char *pass, int needs );

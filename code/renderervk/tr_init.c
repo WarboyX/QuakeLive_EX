@@ -3366,3 +3366,25 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 
 	return &re;
 }
+
+
+/*
+=================
+R_ResolveRTFeatures - [QL] K8, see rtFeatures_t in tr_local.h
+=================
+*/
+rtFeatures_t rtf;
+
+void R_ResolveRTFeatures( void ) {
+	rtf.traced = R_SHADOWS_TRACED ? qtrue : qfalse;
+	rtf.modelShadows  = ( r_rtModelShadows->integer  || rtf.traced ) ? qtrue : qfalse;
+	rtf.dlightShadows = ( r_rtDlightShadows->integer || rtf.traced ) ? qtrue : qfalse;
+	rtf.actorShadows  = ( r_rtActorShadows->integer  || rtf.traced ) ? qtrue : qfalse;
+	rtf.levelShadows  = ( r_rtLevelShadows->integer  || rtf.traced ) ? qtrue : qfalse;
+	rtf.casters = r_rtShadowCasters->integer ? qtrue : qfalse;
+	rtf.actorMesh = ( rtf.actorShadows || rtf.casters ) ? qtrue : qfalse;
+	rtf.anyShadow = ( rtf.modelShadows || rtf.dlightShadows || rtf.actorShadows || rtf.levelShadows ) ? qtrue : qfalse;
+	rtf.modelDebug  = r_rtModelShadows->integer >= 2 ? qtrue : qfalse;
+	rtf.dlightDebug = r_rtDlightShadows->integer >= 2 ? qtrue : qfalse;
+	rtf.actorDebug  = ( r_rtActorShadows->integer >= 2 || r_rtLevelShadows->integer >= 2 ) ? qtrue : qfalse;
+}

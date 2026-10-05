@@ -1085,8 +1085,7 @@ fail:
 /* is anything this frame going to trace the silhouettes */
 static qboolean rt_actors_wanted( void )
 {
-	return ( r_rtActorShadows->integer || R_SHADOWS_TRACED || r_rtShadowCasters->integer ||
-		r_rtDynamic->integer == 2 ) ? qtrue : qfalse;   /* [QL] E174: AO by real shapes */
+	return ( rtf.actorMesh || r_rtDynamic->integer == 2 ) ? qtrue : qfalse;   /* [QL] E174: AO by real shapes */
 }
 
 /*
@@ -1363,7 +1362,7 @@ static qboolean rt_in_reach( const trRefEntity_t *ent, float radius, float reach
 static float rt_actor_reach( void )
 {
 	float r = r_rtaoRadius->value;
-	if ( r_rtActorShadows->integer || R_SHADOWS_TRACED || r_rtShadowCasters->integer ) {
+	if ( rtf.actorMesh ) {
 		/* as far as a shadow ray can meet a player - the same bound the shadow
 		   pass's per-pixel test uses (vk_rt_shadow.c, E204) */
 		const float reach = r_rtActorShadowLength->value;
@@ -2219,8 +2218,7 @@ void vk_rt_prebuild_dynamic( void )
 	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		return;
 	}
-	if ( !( r_rtModelShadows->integer || r_rtDlightShadows->integer || R_SHADOWS_TRACED ||
-			r_rtActorShadows->integer || r_rtLevelShadows->integer ) ) {
+	if ( !rtf.anyShadow ) {
 		return;
 	}
 
@@ -2320,6 +2318,8 @@ void vk_rt_build_world( const world_t *world )
 	VkDeviceSize vertexBytes, indexBytes;
 	const msurface_t *worldSurfaces;
 	uint32_t worldSurfaceCount;
+
+	R_ResolveRTFeatures();   // [QL] K8: the load-time decisions read it too
 
 	vk_rt_destroy_world();
 

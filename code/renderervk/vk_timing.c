@@ -127,3 +127,55 @@ void vk_timing_end( int section )
 		( vk.cmd_index * RTT_COUNT + section ) * 2 + 1 );
 	rttState[ vk.cmd_index ][ section ] = 3;
 }
+
+
+/*
+=================
+vk_pass_check
+
+[QL] K10. The contract a pass runs under, checked where it commits to running.
+
+The tracker's worst renderer bugs were passes reading something that was not
+what they assumed: depth still from the menu's model view, a structure from
+the previous frame, depth handed over in the wrong layout because another
+pass had moved. Each was found from a symptom, and each pass's early-outs were
+then made to cover it. This says what each pass needs, in one call, and if one
+is missing when the pass runs anyway, prints that once - pass and need - so a
+reordering that breaks one shows up in the console the first time it happens
+rather than as a picture to diagnose. It only reports; the passes' own checks
+still decide whether they run.
+=================
+*/
+void vk_pass_check( const char *pass, int needs )
+{
+	static char reported[16][32];
+	static int numReported;
+	int have = 0, missing, i;
+
+	if ( backEnd.doneSurfaces && !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) &&
+		 vk.renderPassIndex != RENDER_PASS_SCREENMAP ) {
+		have |= PASS_NEEDS_SCENE_DEPTH;
+	}
+	if ( vk.rt.world.mainTlasWritten ) {
+		have |= PASS_NEEDS_WORLD_AS;
+	}
+	if ( backEnd.doneRTDynamic ) {
+		have |= PASS_NEEDS_DYNAMIC_AS;
+	}
+	missing = needs & ~have;
+	if ( !missing ) {
+		return;
+	}
+	for ( i = 0; i < numReported; i++ ) {
+		if ( !strcmp( reported[i], pass ) ) {
+			return;
+		}
+	}
+	if ( numReported < 16 ) {
+		Q_strncpyz( reported[numReported++], pass, sizeof( reported[0] ) );
+	}
+	ri.Printf( PRINT_WARNING, "pass contract: %s ran without%s%s%s - its own checks let it through\n", pass,
+		( missing & PASS_NEEDS_SCENE_DEPTH ) ? " the world's depth" : "",
+		( missing & PASS_NEEDS_WORLD_AS ) ? " the level structure" : "",
+		( missing & PASS_NEEDS_DYNAMIC_AS ) ? " this frame's player/item structure" : "" );
+}

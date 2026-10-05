@@ -309,6 +309,8 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 		return;
 	}
 
+	R_ResolveRTFeatures();   // [QL] K8
+
 	glState.finishCalled = qfalse;
 
 #ifdef USE_VULKAN

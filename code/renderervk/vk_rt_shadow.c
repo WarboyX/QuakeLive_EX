@@ -403,9 +403,9 @@ qboolean vk_actor_shadows( void )
 
 	/* [QL] E167: one pass for both - players and items (silhouettes) and the
 	   level itself, traced toward the same estimated light */
-	const qboolean actors = ( r_rtActorShadows->integer || R_SHADOWS_TRACED ) &&
+	const qboolean actors = rtf.actorShadows &&
 		vk.rt.world.actorReady && vk.rt.world.actorTris > 0;
-	const qboolean level = ( r_rtLevelShadows->integer || R_SHADOWS_TRACED ) ? qtrue : qfalse;
+	const qboolean level = rtf.levelShadows;
 
 	if ( !actors && !level ) {
 		return qfalse;
@@ -430,6 +430,8 @@ qboolean vk_actor_shadows( void )
 		return qfalse;
 	}
 	backEnd.doneActorShadows = qtrue;
+	vk_pass_check( "shadows on the level", PASS_NEEDS_SCENE_DEPTH | PASS_NEEDS_WORLD_AS |
+		( actors ? PASS_NEEDS_DYNAMIC_AS : 0 ) );   /* [QL] K10 */
 	vk_timing_begin( RTT_SHADOW );   /* [QL] E177 */
 	u = (actorShadowUniform_t *)vk.actorShadow.uniform_ptr[ vk.cmd_index ];
 	if ( u == NULL ) {
@@ -454,7 +456,7 @@ qboolean vk_actor_shadows( void )
 	u->params[0] = r_rtActorShadowStrength->value;
 	u->params[1] = r_rtActorShadowLength->value;
 	u->params[2] = (float)( ( actors ? RT_MASK_SILHOUETTE : 0 ) | ( level ? RT_MASK_LEVEL : 0 ) );
-	u->params[3] = ( r_rtActorShadows->integer >= 2 || r_rtLevelShadows->integer >= 2 ) ? 1.0f : 0.0f;
+	u->params[3] = rtf.actorDebug ? 1.0f : 0.0f;
 	/* [QL] E169 */
 	denoise = ( u->soft[0] = r_rtActorShadowSoftness->value ) > 0.0f && u->params[3] == 0.0f &&
 		r_rtActorShadowDenoise->integer && vk.actorShadow.pipeline_offscreen != VK_NULL_HANDLE &&
