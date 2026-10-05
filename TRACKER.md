@@ -256,10 +256,100 @@ loud in the console.)*
 7. **E1** factory · **E2** teammate weapon icons · **E3** master heartbeat ·
    **E4** ZMQ stats · **E5** Steam.
 
+**P1b — consolidation roadmap:** see **K1–K22** below. Stages 1–2 come before
+any new renderer feature.
+
 **Deliberately parked**
 - **R1** restoring renderergl1 — likely moot if R5 lands, since Quake3e's Vulkan
   renderer is GL1-equivalent in output.
 - **R6** Voodoo postfilter — only meaningful at `r_colorbits 16`.
+
+---
+
+## Consolidation roadmap (K) — from two external reviews, 2026-10-05
+
+Two outside reviews read the abandoned `claude/ioquakelive-review-6756u2`, 25
+commits behind `development` (before E191's `vk.c` split). Every concrete claim
+was checked against `development` before it went in here. A claim that was wrong
+is listed at the bottom with the reason, so it is not raised again.
+
+The thread through all of it: the tracker is good at recording **what went
+wrong**. The code should start **guaranteeing** what the tracker explains —
+which pass may read depth and when, which cvar is actually wired, which
+message format a stock client parses.
+
+Sizes are in test rounds. "Neutral" means no visible change is intended, and it
+is proven with identical harness screenshots before and after.
+
+### Stage 1 — small, confirmed fixes (≈1–2 rounds together)
+
+| ID | Item | Lives in | Seen by | Size |
+|---|---|---|---|---|
+| **K1** | **Validate `water.cfg`.** Every key goes through a bare `atof` (`tr_scene.c:440`), and a map value skips the cvar's range check (`R_WaterSetting`). A typo or `nan` reaches the shader. Reject non-finite values, clamp to the cvar's own range, and warn naming the map and key. | client (renderervk) | our client | small |
+| **K2** | **Water-plane cap by area.** Past 32 planes, `vk_ssr.c:306` keeps whichever came first in BSP order. Collect the candidates, sort by area, then cap, so a puddle cannot cost the main pool its reflection. | client | our client | small |
+| **K3** | **Nearest 16 dynamic lights for water**, not the first 16 (`vk_ssr.c:1546`). At 30v30 a distant rocket can take a near one's slot. Rank by distance to the view, weighted by radius. | client | our client | small |
+| **K4** | **One `scores_ad` sender.** The same 22-integer `va()` is copied at `g_gametype_ad.c:62` and `:572`. Make it one helper. **The wire format must not change:** it is Quake Live's own, and the stock cgame parses it (`cg_servercmds.c` `CG_InitScores`). | server (qagame) | every client | small |
+| **K5** | **Say "not implemented" where the player can see it.** Every `QL-FEATURE` row in `docs/cvar-manifest.txt` gets a cvar description saying it is accepted for compatibility and does nothing yet. This is the cheapest guard against another `g_spawnItemWeapons`. | both | our client + server console | small |
+
+### Stage 2 — neutral restructuring (≈3–4 rounds)
+
+| ID | Item | Lives in | Size | Depends |
+|---|---|---|---|---|
+| **K6** | **Split `vk_ssr()`** (≈590 lines, `vk_ssr.c:1168–1757`) into static builders: can-run, view, planes, waves, ripples, emitters, RT, then trace and composite. The public function becomes a short list of calls. Neutral. | client | ~1 | — |
+| **K7** | **Water is not SSR.** Move profile, waves, ripples and foam into `vk_water.c`, which owns the surface state. SSR and the RT fallback only consume it. Later this lets waves drive normals, specular and foam with `r_ssr 0`. Neutral first; the `r_ssr 0` behaviour is a separate follow-up. | client | ~1 | K6 |
+| **K8** | **RT feature state, resolved once per frame.** One `rtFeatureState_t` (world shadows, actor shadows, dlight shadows, sun, AO, reflections, light field, dynamic geometry) is built from the cvars in one place, with the dependencies enforced there. It replaces the 22 scattered `r_rtActorShadows`/`r_rtDlightShadows`/`R_SHADOWS_TRACED` tests across five files. Neutral. | client | ~1 | — |
+| **K9** | **RT quality tiers:** Off / Performance / Quality / Ultra buttons on the Render page, like the existing CLASSIC/GLOSS presets, writing the individual cvars. **Every individual setting stays** and wins once set. Lives on K8. Defaults per tier come from the timings breakdown. | client (+ pak01) | ~1 | K8, user `r_rtTimings` |
+
+### Stage 3 — guarantees at pass boundaries (≈2–3 rounds)
+
+| ID | Item | Lives in | Size | Depends |
+|---|---|---|---|---|
+| **K10** | **Pass resource contracts.** Track depth layout, what the depth image currently holds (scene / cleared / undefined), the colour target's format and the active render pass. Every post/RT pass declares what it reads and writes, and a mismatch logs once with the pass name. Release builds log; they do not abort. This turns the depth-lifetime bugs in R19/E-series prose into a check. | client | ~2 | K6 |
+| **K11** | **One readiness state for each acceleration structure** (empty / building / ready / dirty) in place of `worldBuilt`, `dynReady`, `mainTlasWritten`, checked by every consumer through K10. | client | ½ | K10 |
+| **K12** | **Pass order written down in code:** AO → actor shadows → dlights → SSR → bloom → post as one table, which drives the order and the `r_rtTimings` sections. The comments that explain the order become the table's notes. | client | ½ | K10 |
+| **K13** | **`r_debugView`:** one entry point listing every debug view (depth, normals, AO, level shadow, actor shadow, SSR mask, SSR source, water planes, ripples, light field). It maps onto the existing `r_ssrDebug`/`r_rt*` debug values, which stay. | client | ~1 | K12 |
+
+### Stage 4 — tooling and data (≈2–3 rounds)
+
+| ID | Item | Lives in | Size |
+|---|---|---|---|
+| **K14** | **One cvar schema.** Generate `docs/cvar-schema` (name, default, range, flags, reader found, manifest verdict, menus that bind it) once. `dead-cvars.py`, `check-menu-cvars.py` and `check-menu-defaults.py` read it instead of each parsing the source their own way. | tools | ~1 |
+| **K15** | **Setting classes:** user / map / session / engine / debug, as a column in K14 first. A registration wrapper that picks the Quake3e flags from the class comes later, if the column shows the flags are being chosen wrongly. The flags themselves stay, for compatibility. | tools → both | ~1 |
+| **K16** | **The rendering coordinate spaces, written down:** world → camera/FOV → 3D viewport → 640×480 virtual HUD → aspect fit → framebuffer, with which layers may stretch. A prerequisite for R29 (Hor+) and for C34's layouts. | docs | ½ |
+
+### Stage 5 — gameplay architecture (large; several rounds each)
+
+| ID | Item | Lives in | Seen by | Size | Notes |
+|---|---|---|---|---|---|
+| **K17** | **Round lifecycle framework.** A shared `roundState_t` exists, but FT touches it 28 times, AD 14, CA 11 and RR 13, each driving its own transitions. That is how CA and AD missed FT's round setup. Target: init / begin / eliminated / time-up / winner / end / advance, with per-gametype rule callbacks. Migrate one gametype at a time: CA first, then AD, FT, RR. | server | every client | ~2 per gametype | The wire stays identical. Bot matches per gametype before and after. |
+| **K18** | **Bot perception cache.** Once per server frame, build per-room occupancy, team strength and visibility summaries. Bots query that instead of each walking every player (`ai_tactics.c`; missiles already work this way). Profile 30v30 first, to size the win. | server | — | ~2 | Measure first |
+| **K19** | **Bot tactical state:** sensing → decision → goal → movement, with role, posture, strengths, target/fallback rooms, confidence and next-decision time in one struct. | server | — | ~3 | After K18 |
+
+### Stage 6 — milestones already on the tracker, in this order
+
+| ID | Item | Notes |
+|---|---|---|
+| **C34** | Our own menus | Order: main → in-game → render → player setup → scoreboard → match summary → server browser. Then stop changing how QL menus are interpreted, except for compatibility. |
+| **R29** | Hor+ field of view | After K16. |
+| **R22 → R20 → R20B → R21** | Normals → surface detail → lighting → displacement | One surface representation, not three. R21 waits for the rest. |
+| **K20** | RT reads materials | After R20: RT reflection misses use the surface's albedo and normal, not the fixed 0.5 albedo (`vk_ssr.c:1314`). The same data feeds AO and shadows. |
+| **#43** | Unified RT pass (AO + shadows, shared denoise) | After K8, K10, and the user's `r_rtTimings` numbers. |
+
+### Debt — record it, do it only when a map needs it
+
+- **K21** Water-plane IDs, so a ripple belongs to a surface rather than to the nearest height within 48 units (`vk_ssr.c:1347`). Matters for stacked pools and water above water; no shipped map has either.
+- **K22** Ripple importance at insertion (strength × closeness × time left), only if `MAX_WATER_RIPPLES` is ever raised above the shader's limit.
+
+### Checked and rejected
+
+- **"`posture_time` is set twice in `ai_tactics.c`"** — it is set once (line 260), on both branches.
+- **"Replace `scores_ad` with a configstring"** — that breaks the stock client's A&D scoreboard. K4 is the part worth doing.
+- **"New ripples lose to old ones"** — this cannot happen. The ring and the shader limit are both 48 and the ring overwrites its oldest entry, so everything stored is drawn and the newest wins. A `r_waterRippleBudget` cvar has nothing to budget.
+- **"Show which reflections came from RT"** — that already exists: `r_ssrDebug 6`.
+- **"Move RT lifecycle out of `vk.c`"** — done in E191 (`vk_rt_world.c`).
+- **"Upload water planes once"** — they are 1.5 KB a frame; not worth the code.
+- **"`CVAR_ARCHIVE_ND` was invented here"** — it comes from Quake3e.
+- **Lua (R30), map rebuilds (R23), GL1 (R1), Voodoo (R6)** — already parked. The reviews agree.
 
 ---
 ## Weapons / gameplay
