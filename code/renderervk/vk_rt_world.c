@@ -1362,8 +1362,13 @@ static float rt_actor_reach( void )
 {
 	float r = r_rtaoRadius->value;
 	if ( r_rtActorShadows->integer || R_SHADOWS_TRACED || r_rtShadowCasters->integer ) {
-		if ( r_rtActorShadowLength->value > r ) {
-			r = r_rtActorShadowLength->value;
+		/* as far as a shadow ray can meet a player - the same bound the shadow
+		   pass's per-pixel test uses (vk_rt_shadow.c, E204) */
+		const float reach = r_rtActorShadowLength->value;
+		const float disc = r_rtActorShadowSoftness->value * ( reach / 128.0f > 1.0f ? reach / 128.0f : 1.0f );
+		const float bound = 1.25f * ( reach + disc + 8.0f ) + 32.0f;
+		if ( bound > r ) {
+			r = bound;
 		}
 	}
 	return r + 16.0f;
@@ -1387,6 +1392,7 @@ static uint32_t rt_build_actor_mesh( int idx )
 	vk.rt.world.actorTris = 0;
 	vk.rt.world.actorEntities = 0;
 	vk.rt.world.actorCulled = 0;
+	vk.rt.world.actorSphereCount = 0;
 	if ( !vk.rt.world.actorReady || vout == NULL || iout == NULL ) {
 		return 0;
 	}
@@ -1422,9 +1428,20 @@ static uint32_t rt_build_actor_mesh( int idx )
 			const md3Frame_t *fr = (const md3Frame_t *)( (const byte *)header + header->ofsFrames ) +
 				( ( ent->e.frame >= 0 && ent->e.frame < header->numFrames ) ? ent->e.frame : 0 );
 			const float scale = VectorLength( ent->e.axis[0] );
-			if ( !rt_in_reach( ent, ( fr->radius + VectorLength( fr->localOrigin ) ) * ( scale > 0.0f ? scale : 1.0f ), reach ) ) {
+			const float rad = ( fr->radius + VectorLength( fr->localOrigin ) ) * ( scale > 0.0f ? scale : 1.0f );
+			if ( !rt_in_reach( ent, rad, reach ) ) {
 				culled++;
 				continue;
+			}
+			/* [QL] E204: remember where it is, for the shadow pass */
+			if ( vk.rt.world.actorSphereCount >= 0 ) {
+				if ( vk.rt.world.actorSphereCount < RT_MAX_SHADOW_ACTORS ) {
+					float *sp = vk.rt.world.actorSphere[ vk.rt.world.actorSphereCount++ ];
+					VectorCopy( ent->e.origin, sp );
+					sp[3] = rad;
+				} else {
+					vk.rt.world.actorSphereCount = -1;   // too many: no early out this frame
+				}
 			}
 		}
 		frame = ent->e.frame;

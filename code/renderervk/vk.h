@@ -273,6 +273,7 @@ typedef struct VK_Pipeline {
 } VK_Pipeline_t;
 
 /* [QL] E165: ray-tracing instance masks, see vk_rt_build_dynamic_tlas */
+#define RT_MAX_SHADOW_ACTORS	64	/* [QL] E204: spheres the shadow pass tests per pixel */
 #define RT_MASK_LEVEL	0x01
 #define RT_MASK_ACTORS	0x02	/* players and items as proxy boxes/balls - occlusion, reflections */
 #define RT_MASK_SILHOUETTE	0x04	/* [QL] E166: players and items as their real triangles - shadows */
@@ -1220,6 +1221,11 @@ typedef struct {
 			uint32_t		actorTris;		// in this frame's structure
 			uint32_t		actorEntities;
 			uint32_t		actorCulled;		/* [QL] E203: left out by rt_in_reach this frame */
+			/* [QL] E204: the bounding spheres of what went into the silhouette
+			   mesh this frame (xyz centre, w radius), for the shadow pass's
+			   per-pixel early out; actorSphereCount -1 = too many to list */
+			float			actorSphere[RT_MAX_SHADOW_ACTORS][4];
+			int				actorSphereCount;
 
 			/* [QL] E156: the map's light grid, as the BSP stores it, for the
 			   reflection's ray-traced fallback to light what it hits. */

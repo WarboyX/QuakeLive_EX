@@ -35,6 +35,8 @@ layout(set = 0, binding = 2) uniform ActorShadow {
 	vec4 gridInvSize;
 	vec4 gridBounds;    // w: 1 if the light field follows the grid in gridData (E176)
 	vec4 soft;          // [QL] E167: x light size in world units, y rays per pixel, z sun (E178), w frame (E196)
+	vec4 actorInfo;     // [QL] E204: x silhouette spheres listed (-1: not listed), y furthest a ray can meet a player
+	vec4 actors[64];    // [QL] E204: xyz centre, w radius (RT_MAX_SHADOW_ACTORS)
 };
 
 layout(set = 0, binding = 3, std430) readonly buffer LightGrid {
@@ -441,6 +443,36 @@ void main() {
 	   multiplied into the float target spreads through bloom as speckle */
 	if (any(isnan(P)) || any(isinf(P))) {
 		return;
+	}
+
+	/*
+	[QL] E204: nothing to shadow here.
+
+	Without the level in the mask, the only thing this pass can find is a
+	player or item, and a ray from here can only meet one within actorInfo.y:
+	the light's reach plus a soft light's disc, stretched by the 1.25x + 32
+	that lamps trace players past their estimated distance (E186) - computed
+	in vk_rt_shadow.c from the same cvars the rays use. The pass used to do all of the below for every pixel on the screen -
+	five depth taps for the normal, the light grid, the light field, the
+	distance search, then the rays - to conclude, for most of them, that no
+	player was anywhere near. Tested against the bounding spheres of what is
+	in the silhouette mesh this frame, a pixel out of reach of every one of
+	them leaves now, unshadowed, which is what it would have come out as.
+	*/
+	if ((uint(params.z) & RT_MASK_LEVEL_BIT) == 0u && actorInfo.x >= 0.0) {
+		bool nearActor = false;
+		int na = min(int(actorInfo.x + 0.5), 64);
+		for (int k = 0; k < na; k++) {
+			vec3 dv = P - actors[k].xyz;
+			float r = actors[k].w + actorInfo.y;
+			if (dot(dv, dv) < r * r) {
+				nearActor = true;
+				break;
+			}
+		}
+		if (!nearActor) {
+			return;
+		}
 	}
 
 	/* the surface normal from the neighbours, the closer one on each axis so a

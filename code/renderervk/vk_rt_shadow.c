@@ -27,6 +27,8 @@ typedef struct {
 	float gridInvSize[4];
 	float gridBounds[4];
 	float soft[4];        // [QL] E167: x light size (world units), y rays
+	float actorInfo[4];   // [QL] E204: x sphere count (-1 none listed), y reach
+	float actors[RT_MAX_SHADOW_ACTORS][4];
 } actorShadowUniform_t;
 
 void vk_actor_shadow_destroy( void )
@@ -468,6 +470,27 @@ qboolean vk_actor_shadows( void )
 		u->soft[1] = (float)( half < 2 ? 2 : half );
 	}
 	u->soft[2] = r_rtShadowSun->integer ? 1.0f : 0.0f;   /* [QL] E178 */
+	/* [QL] E204: where the silhouettes are, so a pixel nowhere near one need
+	   not trace - see actorshadow.tmpl. Only meaningful when the mesh was
+	   built this frame; otherwise say "not listed" and trace as before. */
+	if ( actors && vk.rt.world.actorReady && vk.rt.world.actorSphereCount >= 0 && r_rtCull->integer ) {
+		u->actorInfo[0] = (float)vk.rt.world.actorSphereCount;
+		Com_Memcpy( u->actors, vk.rt.world.actorSphere, sizeof( float ) * 4 * vk.rt.world.actorSphereCount );
+	} else {
+		u->actorInfo[0] = -1.0f;
+	}
+	{
+		/* the furthest a ray from this pixel can meet a player: the light is at
+		   most the reach away (lamp or sun), plus the disc a soft light's rays
+		   spread over (softness, times reach/128 for the sun - discScale in
+		   actorshadow.tmpl), plus the surface offsets; and lamps trace players
+		   to 1.25x the light's distance + 32 (E186). Anything further cannot
+		   shadow this pixel by construction. */
+		const float reach = r_rtActorShadowLength->value;
+		const float disc = r_rtActorShadowSoftness->value * ( reach / 128.0f > 1.0f ? reach / 128.0f : 1.0f );
+		u->actorInfo[1] = 1.25f * ( reach + disc + 8.0f ) + 32.0f;
+	}
+	u->actorInfo[2] = u->actorInfo[3] = 0.0f;
 	/* [QL] E196: the ray pattern turns each frame while r_rtShadowTemporal is
 	   averaging it (sampled soft edge only); fixed otherwise, as before - a
 	   pattern that moves by itself is shimmer, where a fixed one is grain */

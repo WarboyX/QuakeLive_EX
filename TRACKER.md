@@ -6109,6 +6109,34 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E204. RT performance, step 3: the shadow pass only works near players — DONE (verify)
+**Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `vk_rt_world.c`) · **Seen by:** our client only
+
+**The waste.** The players'-shadow pass ("shadows on the level", 1.1 ms of the tester's 3.8) did the whole job for every pixel on screen before any ray: five depth taps for the normal, the light grid, the light field, the light-distance search, then the rays. Most of those pixels are floor and wall with no player anywhere near, and they came out unshadowed.
+
+**The fix.** The silhouette builder now records the bounding sphere of every model it put in the mesh this frame (up to 64; more disables the test that frame). They go to the pass's uniform block. Without the level in the shadow mask, a pixel farther than the ray bound from every sphere returns at once, unshadowed, which is what it would have come out as.
+
+**The ray bound, from the shader's own geometry.**
+- The light is at most the reach (`r_rtActorShadowLength`) from the surface.
+- A soft light's rays spread over a disc: the softness, times reach/128 for the sun (`discScale`).
+- Lamps trace players to 1.25 × the light's distance + 32 (E186).
+- So: 1.25 × (reach + disc + 8) + 32 — about 700 units at the defaults. Nothing farther can be hit by this pixel's rays.
+
+**E203 corrected.** Its cull reach was the shadow length + 16, which underestimated the same bound. A player behind the camera near a wall lamp could have lost a shadow edge. It now uses the same bound.
+
+**`r_rtCull 0`** also turns this test off, for comparison.
+
+**Measured** (lavapipe, 6 bots, same build and camera):
+
+| | shadow pass | frames in 30 s |
+|---|---|---|
+| `r_rtCull 0` | 171–191 ms | 59 |
+| `r_rtCull 1` | 21–72 ms, depending on how near the players are | 80 |
+
+0 validation errors. A same-camera screenshot comparison was attempted and failed on harness camera drift, so correctness rests on the bound above.
+
+**To verify:** shadows of players near and just off screen, under lamps and sun, look the same with `r_rtCull 0` and 1. `r_rtTimings 1` "shadows on the level" should now track how much of the screen is near a player.
+
 ### E203. RT performance, step 2: leave out players and items that cannot reach the view — DONE (verify)
 **Lives in:** our **client** (renderervk `vk_rt_world.c`) · **Seen by:** our client only
 
