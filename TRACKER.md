@@ -6279,7 +6279,7 @@ From the external review of `6bc976c5`, each claim confirmed against the source 
 
 **Smoke test:** dedicated server, 8 bots, `g_spawnArmor 3000`, current qagame.
 - CA, AD and RR play rounds with kills, no errors.
-- FT, and CA with `g_roundWarmupDelay 0`, forfeit repeatedly on the previous release (27e926a7) exactly as on this one. A bot-only server never fills both teams (tester: no human to start it). That is the harness, not these changes.
+- FT, and CA with `g_roundWarmupDelay 0`, forfeit repeatedly on the previous release (27e926a7) exactly as on this one. That is the harness, not these changes: a match needs one human player to ready up, and there is no way around it (tester). A bot-only dedicated server cannot test round transitions; that needs a client in the game.
 - Not checked: the published configstring itself. A dedicated server cannot print it; this needs a client.
 
 ### E212. E211 was wrong where it mattered: shadows now along the light grid's direction, Quake 3's rule — DONE (verify)
