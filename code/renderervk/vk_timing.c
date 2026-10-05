@@ -22,7 +22,8 @@ counted and a query is never written twice without a reset.
 */
 static const char *const rttNames[RTT_COUNT] = {
 	"whole frame", "structure build", "ambient occlusion", "shadows on the level",
-	"water reflections", "lit surfaces (dynamic lights)"
+	"water reflections", "lit surfaces (dynamic lights)",
+	"[AO trace", "AO composite", "shadow trace", "shadow composite]"
 };
 static VkQueryPool rttPool = VK_NULL_HANDLE;
 static float rttPeriodNs;

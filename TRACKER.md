@@ -6109,6 +6109,22 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E206. RT timings split each pass into trace and composite — DONE
+**Lives in:** our **client** (renderervk `vk_timing.c`, `vk_rt_ao.c`, `vk_rt_shadow.c`) · **Seen by:** our client only
+
+`r_rtTimings 1` now ends with "[AO trace, AO composite, shadow trace, shadow composite]". These are parts of the AO and shadow totals before them. What remains of a total after its parts is the temporal pass and the horizontal blur.
+
+**Why.** After E202–E205, the next step is merging work the two passes do separately. Both run back to back before the dynamic lights, and both multiply the scene, so scene × AO × shadow in one composite would be exact. The first measurement (lavapipe, 6 bots):
+
+| | AO | shadows |
+|---|---|---|
+| total | 187 ms | 93–101 ms |
+| trace | 117 ms | 30–38 ms |
+| composite | 21 ms | 21.5 ms |
+| temporal + blur | ~49 ms | ~40 ms |
+
+So the fixed full-screen passes are now about half of the RT cost on lavapipe. Lavapipe traces in software, though, so real hardware's split will differ. The tester's log decides between merging only the two composites (each round-trips the 4x MSAA framebuffer) and a fully shared temporal/blur/composite with two-channel targets.
+
 ### E205. RT performance, step 4: refit the players' structure instead of rebuilding it — DONE (verify on NVIDIA)
 **Lives in:** our **client** (renderervk `vk_rt_world.c`) · **Seen by:** our client only
 

@@ -1256,6 +1256,7 @@ qboolean vk_rt_ao( void )
 		0, 0 );
 
 	// ---- pass 1: trace, into ao_image[0] ----
+	vk_timing_begin( RTT_AO_TRACE );   /* [QL] E206 */
 	vk_begin_rtao_offscreen_render_pass( 0, aoScale );
 
 	if ( useSSAO ) {   /* [QL] E154: the depth-only trace */
@@ -1276,6 +1277,7 @@ qboolean vk_rt_ao( void )
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	vk_end_render_pass();
+	vk_timing_end( RTT_AO_TRACE );
 
 	/*
 	[QL] E196: temporal accumulation, ao_image[0] + last frame's history ->
@@ -1334,6 +1336,7 @@ qboolean vk_rt_ao( void )
 		: 1.0f;
 	blur.step[3] = 1.0f;   // [QL] E150: writes at full resolution (the upsample)
 
+	vk_timing_begin( RTT_AO_COMP );   /* [QL] E206 */
 	vk_begin_rtao_render_pass();
 
 	/* r_rtao 2 shows the occlusion term itself instead of its effect. Grey with
@@ -1348,6 +1351,7 @@ qboolean vk_rt_ao( void )
 	qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 
 	vk_end_composite_render_pass();   // [QL] E150: depth writable for the rest of the frame
+	vk_timing_end( RTT_AO_COMP );
 	vk_timing_end( RTT_AO );   /* [QL] E177 */
 
 	/*

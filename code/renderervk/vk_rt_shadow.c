@@ -579,6 +579,7 @@ qboolean vk_actor_shadows( void )
 		vk_end_render_pass();
 
 		push[0] = 2.0f;   // down, into the scene: target 0
+		vk_timing_begin( RTT_SH_COMP );   /* [QL] E206 */
 		vk_begin_rtao_render_pass();
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pen_composite );
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -594,12 +595,14 @@ qboolean vk_actor_shadows( void )
 		blur.depthLinear[2] = 0.05f;
 		blur.depthLinear[3] = 1.0f;
 
+		vk_timing_begin( RTT_SH_TRACE );   /* [QL] E206 */
 		vk_begin_rtao_offscreen_render_pass( 0, 1 );
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pipeline_offscreen );
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			vk.actorShadow.pipeline_layout, 0, 1, &vk.actorShadow.descriptor[ vk.cmd_index ], 0, NULL );
 		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 		vk_end_render_pass();
+		vk_timing_end( RTT_SH_TRACE );
 
 		/* [QL] E196: averaged over frames, then denoised as before */
 		src = vk_rt_temporal( 1, r_rtShadowTemporal->integer, 1, vp, u->invViewProj, proj );
@@ -615,6 +618,7 @@ qboolean vk_actor_shadows( void )
 		vk_end_render_pass();
 
 		blur.step[0] = 0.0f; blur.step[1] = 1.0f; blur.step[2] = 1.0f; blur.step[3] = 1.0f;
+		vk_timing_begin( RTT_SH_COMP );   /* [QL] E206 */
 		vk_begin_rtao_render_pass();
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.rt.pipeline );
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -623,6 +627,7 @@ qboolean vk_actor_shadows( void )
 			VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( blur ), &blur );
 		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 	} else {
+		vk_timing_begin( RTT_SH_COMP );   /* [QL] E206 */
 		vk_begin_rtao_render_pass();
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.actorShadow.pipeline );
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -631,6 +636,7 @@ qboolean vk_actor_shadows( void )
 	}
 
 	vk_end_composite_render_pass();
+	vk_timing_end( RTT_SH_COMP );
 
 	vk_timing_end( RTT_SHADOW );   /* [QL] E177 */
 
