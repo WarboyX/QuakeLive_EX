@@ -293,6 +293,10 @@ void AD_RoundStateTransition(void) {
             level.roundState.tNext = 0;
             level.roundState.eCurrent = RS_PLAYING;
             AD_RoundStateTransition();
+            /* [QL] the playing branch has published its own status; the
+               countdown status below would overwrite it (a "countdown"
+               showing while the round is live) */
+            return;
         } else {
             level.roundState.tNext = level.time + g_roundWarmupDelay.integer;
             level.roundState.eNext = RS_PLAYING;

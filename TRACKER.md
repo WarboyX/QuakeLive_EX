@@ -6199,6 +6199,21 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E213. Review findings: access reload, spawn armour as Quad, AD/CA/FT/RR status after a zero countdown; packaging checks — DONE (verify)
+**Lives in:** our **server** (qagame `g_svcmds.c`, `g_gametype_{ca,rr,ad,ft}.c`); tools · **Seen by:** every client
+
+From the external review of `6bc976c5`, each claim confirmed against the source first.
+
+- **F1, `reload_access` missed sparse slots.** It walked `[0, level.numConnectedClients)` as if that were a slot range; the binary does the same. With players in slots 0, 5 and 63 it touched 0, 1 and 2, so an admin removed from the access file in slot 5 or 63 kept their rights. It now walks every slot and skips disconnected ones.
+- **F2, CA and RR spawn armour gave Quad.** The `g_spawnArmor` timer went into `powerups[PW_QUAD]`. FT and AD put it in `powerups[0]`, which is what `g_combat.c` reads, and their comments say the binary does too. With `g_spawnArmor` set, CA and RR handed out quad damage at round start. Now `PW_NONE`. Off by default, so it only affected servers that set it.
+- **F3, a zero countdown overwrote the playing status.** With no countdown, all four round modes switched to playing, which published its own status, and the countdown code then wrote its countdown status on top. AD ended up saying `state\1` (countdown) during a live round. Each now returns straight after the immediate switch. Wire formats unchanged.
+- **Packaging** now also runs `check-menus.py` and `check-score-fields.py`. Both were documented as "run after touching…" and never run.
+
+**Smoke test:** dedicated server, 8 bots, `g_spawnArmor 3000`, current qagame.
+- CA, AD and RR play rounds with kills, no errors.
+- FT, and CA with `g_roundWarmupDelay 0`, forfeit repeatedly on the previous release (27e926a7) exactly as on this one. A bot-only server never fills both teams (tester: no human to start it). That is the harness, not these changes.
+- Not checked: the published configstring itself. A dedicated server cannot print it; this needs a client.
+
 ### E212. E211 was wrong where it mattered: shadows now along the light grid's direction, Quake 3's rule — DONE (verify)
 **Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `tr_init.c`) · **Seen by:** our client only
 

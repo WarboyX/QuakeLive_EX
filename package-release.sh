@@ -77,6 +77,13 @@ python3 tools/check-menu-defaults.py
 # (E183) - "Post processing: Yes" while r_fbo, the real switch, was 0.
 python3 tools/check-menu-cvars.py
 
+# A menu that fails to parse merges into the next one and shows the wrong items,
+# loud only in the console (CLAUDE.md). And a scoreboard emitter and its parser
+# that disagree on the field count shift every column after the first mismatch.
+# Both were documented as "run after touching..." and never run here.
+python3 tools/check-menus.py
+python3 tools/check-score-fields.py
+
 echo "building $REV"
 
 # Stamp the loaded pak01 with the revision. Menu fixes live in pak01.pk3 and

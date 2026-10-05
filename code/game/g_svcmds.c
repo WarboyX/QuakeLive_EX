@@ -633,14 +633,21 @@ G_ReloadAccessList
 
 [QL] "reload_access" console command: reload the access file and re-apply the
 stored privilege level to every connected client slot. (The binary iterates
-slots [0, level.numConnectedClients) exactly as written here.)
+slots [0, level.numConnectedClients), which misses sparse slots - see below.)
 =================
 */
 void G_ReloadAccessList(void) {
     int i;
 
     G_InitAccessList();
-    for (i = 0; i < level.numConnectedClients; i++) {
+    /* [QL] the binary walks [0, numConnectedClients) as if it were a slot
+       range. It is a count: with players in slots 0, 5 and 63 that touches
+       0, 1 and 2, and an admin removed from the file in slot 5 or 63 kept
+       their rights. Every slot, connected ones only. */
+    for (i = 0; i < level.maxclients; i++) {
+        if (g_clients[i].pers.connected == CON_DISCONNECTED) {
+            continue;
+        }
         g_clients[i].sess.privileges = G_GetAccess(i);
     }
 }

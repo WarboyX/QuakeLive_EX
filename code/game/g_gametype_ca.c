@@ -141,6 +141,10 @@ void CA_RoundStateTransition(void) {
             level.roundState.tNext = 0;
             level.roundState.eCurrent = RS_PLAYING;
             CA_RoundStateTransition();
+            /* [QL] the playing branch has published its own status; the
+               countdown status below would overwrite it (a "countdown"
+               showing while the round is live) */
+            return;
         } else {
             level.roundState.tNext = level.time + g_roundWarmupDelay.integer;
             level.roundState.eNext = RS_PLAYING;
@@ -165,7 +169,10 @@ void CA_RoundStateTransition(void) {
                 cl->round_damage = 0;
                 cl->expandedStats.killStreak = 0;
                 if (g_spawnArmor.integer != 0) {
-                    cl->ps.powerups[PW_QUAD] =
+                    /* [QL] the spawn-protection timer lives in powerups[0]
+                       (PW_NONE), as FT and AD have it and g_combat.c reads it;
+                       PW_QUAD here handed out quad damage instead */
+                    cl->ps.powerups[PW_NONE] =
                         (level.time / 1000) * 1000 + g_spawnArmor.integer;
                 }
             }

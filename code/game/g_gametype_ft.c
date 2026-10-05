@@ -286,6 +286,9 @@ void Freeze_RoundStateTransition(void) {
                 level.roundState.tNext = 0;
                 level.roundState.eCurrent = RS_PLAYING;
                 Freeze_RoundStateTransition();
+                /* [QL] the playing branch has published its own status; the
+                   countdown status below would overwrite it */
+                return;
             } else {
                 level.roundState.tNext = level.time + countdown;
                 level.roundState.eNext = RS_PLAYING;
