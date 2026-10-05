@@ -6199,6 +6199,22 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E218. K8: RT shadow features resolved once per frame; K10: passes state what they need — DONE, no visible change
+**Lives in:** our **client** (renderervk `tr_init.c`, `tr_local.h`, `tr_cmds.c`, `tr_shade.c`, `vk_rt_*.c`, `vk_ssr.c`, `vk_timing.c`) · **Seen by:** nobody, by design
+
+- **K8.** Whether each traced shadow feature was on was worked out where it was used: "`r_rtModelShadows` or `r_shadows 4`", "actor shadows or traced or casters", 24 times over five files. A pass that read the rule slightly differently from its neighbour could run when the other did not.
+  - `R_ResolveRTFeatures()` now fills `rtf` once, at the start of each frame (`RE_BeginFrame`, after registration) and when the world's structures are built.
+  - `rtf` holds: traced, model, dlight, actor and level shadows, casters, whether the silhouette mesh is needed, whether any traced shadow is on, and the three debug flags.
+  - Every one of those sites now reads it.
+- **K10.** `vk_pass_check(pass, needs)` is called where ambient occlusion, the shadows on the level and the water reflections commit to running.
+  - Each says what it needs: the world's depth this frame, the level's structure, and (when it traces players) this frame's player/item structure.
+  - If one is missing the console says so once, naming the pass and the need. It only reports; the passes' own checks still decide.
+  - It turns the tracker's depth-layout and stale-structure history into a line in the log instead of a picture to diagnose.
+
+**Proof.**
+- **K8:** traced shadows on, AO off, three views (flag room twice, pool), normal and the shadow debug view, against the E214 renderer and against itself: **0 differing pixels in all six shots**, no fuzz.
+- **K10:** gameplay with AO, SSR with its RT fallback, traced shadows and a bot, then the in-game menu, the debug views and a disconnect to the main menu (whose player model is a world-less view): no contract line, 0 validation errors. A real violation was not induced, so the message itself is checked by reading only.
+
 ### E217. K6: vk_ssr() split into one function per job — DONE, no visible change
 **Lives in:** our **client** (renderervk `vk_ssr.c`) · **Seen by:** nobody, by design
 
