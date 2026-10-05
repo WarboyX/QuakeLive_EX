@@ -1395,6 +1395,7 @@ static uint32_t rt_build_actor_mesh( int idx )
 	vk.rt.world.actorTris = 0;
 	vk.rt.world.actorEntities = 0;
 	vk.rt.world.actorCulled = 0;
+	vk.rt.world.actorDropped = 0;
 	vk.rt.world.actorSphereCount = 0;
 	if ( !vk.rt.world.actorReady || vout == NULL || iout == NULL ) {
 		return 0;
@@ -1539,6 +1540,49 @@ static uint32_t rt_build_actor_mesh( int idx )
 		for ( c = 0; c <= ncast; c++ ) {
 			const int want = c < ncast ? c : -1;
 			const uint32_t firstTri = nt;
+			/*
+			[QL] E219: whole casters only. What a caster needs - every part's
+			surfaces and its caps - is counted before any of it is written; a
+			caster that does not fit is left out entirely and counted, rather
+			than written up to the point the mesh ran out (a player cut off at
+			the waist) or without its caps (a hollow shadow). The unlisted
+			casters past RT_MAX_SHADOW_ACTORS are checked part by part.
+			*/
+			if ( want >= 0 ) {
+				uint32_t needV = 0, needT = 0;
+				for ( p = 0; p < nparts; p++ ) {
+					const md3Header_t *h;
+					const md3Surface_t *sf;
+					const rtCapInfo_t *cp;
+					int si;
+					if ( partCaster[p] != want ) {
+						continue;
+					}
+					h = R_GetModelByHandle( backEnd.refdef.entities[ partEnt[p] ].e.hModel )->md3[0];
+					sf = (const md3Surface_t *)( (const byte *)h + h->ofsSurfaces );
+					for ( si = 0; si < h->numSurfaces; si++ ) {
+						needV += (uint32_t)sf->numVerts;
+						needT += (uint32_t)sf->numTriangles;
+						sf = (const md3Surface_t *)( (const byte *)sf + sf->ofsEnd );
+					}
+					cp = r_rtActorCaps->integer ? rt_caps_for( h ) : NULL;
+					if ( cp && cp->numLoops > 0 ) {
+						needV += (uint32_t)cp->numLoops;
+						needT += (uint32_t)cp->numEdges;
+					}
+				}
+				if ( nv + needV > RT_ACTOR_MAX_VERTS || nt + needT > RT_ACTOR_MAX_TRIS ) {
+					vk.rt.world.actorDropped++;
+					vk.rt.world.actorListComplete = qfalse;
+					/* its sphere stays listed for the early out (conservative);
+					   an empty range means nothing of it is hit */
+					vk.rt.world.actorRange[c][0] = vk.rt.world.actorRange[c][1] = (float)nt;
+					vk.rt.world.actorRange[c][2] = vk.rt.world.actorRange[c][3] = 0.0f;
+					vk.rt.world.actorSphereCount = c + 1;
+					vk.rt.world.actorRestStart = nt;
+					continue;
+				}
+			}
 			for ( p = 0; p < nparts; p++ ) {
 				const trRefEntity_t *ent;
 				const model_t *mod;
@@ -1554,6 +1598,25 @@ static uint32_t rt_build_actor_mesh( int idx )
 				ent = &backEnd.refdef.entities[ partEnt[p] ];
 				mod = R_GetModelByHandle( ent->e.hModel );
 				header = mod->md3[0];
+				if ( want < 0 ) {
+					/* an unlisted part: whole or not at all, the same way */
+					uint32_t needV = 0, needT = 0;
+					const md3Surface_t *sf = (const md3Surface_t *)( (const byte *)header + header->ofsSurfaces );
+					const rtCapInfo_t *cp = r_rtActorCaps->integer ? rt_caps_for( header ) : NULL;
+					for ( s = 0; s < header->numSurfaces; s++ ) {
+						needV += (uint32_t)sf->numVerts;
+						needT += (uint32_t)sf->numTriangles;
+						sf = (const md3Surface_t *)( (const byte *)sf + sf->ofsEnd );
+					}
+					if ( cp && cp->numLoops > 0 ) {
+						needV += (uint32_t)cp->numLoops;
+						needT += (uint32_t)cp->numEdges;
+					}
+					if ( nv + needV > RT_ACTOR_MAX_VERTS || nt + needT > RT_ACTOR_MAX_TRIS ) {
+						vk.rt.world.actorDropped++;
+						continue;
+					}
+				}
 			frame = ent->e.frame;
 			oldframe = ent->e.oldframe;
 			if ( frame < 0 || frame >= header->numFrames ) frame = 0;

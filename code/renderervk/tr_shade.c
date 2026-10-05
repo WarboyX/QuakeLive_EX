@@ -1222,6 +1222,11 @@ void R_RTShadowReport( qboolean force )
 			vk.rt.world.actorRefitFrames, vk.rt.world.actorBuildFrames,
 			vk.rt.world.actorReady ? "" : " - NOT AVAILABLE (see the RT: lines at map load)" );
 		vk.rt.world.actorRefitFrames = vk.rt.world.actorBuildFrames = 0;
+		/* [QL] E214/E219: casters, and what the structure had no room for */
+		ri.Printf( PRINT_ALL, "  casters: %i listed%s, %u left out whole for lack of room\n",
+			vk.rt.world.actorSphereCount,
+			vk.rt.world.actorListComplete ? "" : " (not all - the rest traced toward each pixel's own light)",
+			vk.rt.world.actorDropped );
 	}
 	if ( dlOn ) {
 		if ( r_dlightMode->integer == 0 ) {

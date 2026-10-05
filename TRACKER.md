@@ -6199,6 +6199,23 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E219. Caster shadows no longer cut by the pixel's own light; darkness from one direction; candidates ranked; casters whole or not at all; mode 2 without push-out — DONE (verify)
+**Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_world.c`, `vk.h`, `tr_shade.c`) · **Seen by:** our client only
+
+An external review of `fbae71b9`, with a shader fixture, found E214 left these. Each was confirmed in the source first.
+
+1. **An early return still gated casters on the pixel's own light.** `if (!firstLit && soft.z <= 0.5) return;` ran before any caster was considered. Where this pixel's grid direction faced away, every caster shadow vanished; the sun option re-enabled them, which the sun-on tests could not see. Fixture: 64 shadow pixels with the grid pointing up, 0 pointing down, 64 again with the sun option on. It now returns only when no caster could apply.
+2. **The darkness mixed two directions.** Caster light × N·L on top, this pixel's grid direction underneath: past 1 where they disagreed, a brightness of −4.14 in the fixture. It is now `directed·nl / (ambient + directed·nl)`, the same direction above and below, which cannot reach 1. When a caster's shadow is the first light's, the sun's share is taken out of that same total: `(directed·nl + 0.8·ambient) / (ambient + directed·nl) < 1`, so the sum stays below 1 by construction, not by a clamp.
+3. **"The first four" casters.** The budget went in list order, and a near miss used a slot. Every caster passing the sphere test is now ranked by how squarely the ray passes it (closest approach over radius + margin), and the best four are traced, deterministically. The sun's casters are ranked the same way. Per-tile candidate lists are the fuller answer and are left for later.
+4. **Half-built casters.** The mesh could fill up partway through a caster (a player cut off at the waist), or drop its caps when cap room ran out (a hollow shadow). What a caster needs, every part plus its caps, is now counted before any of it is written. A caster that does not fit is left out entirely and counted; unlisted parts past 64 casters are checked the same way. `rtshadows` reports "casters: N listed, M left out whole for lack of room".
+5. **Mode 2's push-out.** A light estimated within the caster's bounds + 16 was moved out along an unstable direction (a 2-unit move could swing it 94 units). Such a light is now not used: that caster falls back to its grid direction. Real light positions are never moved.
+
+Not changed: caster identity is still the lighting origin, so two objects at exactly the same origin would share a caster. Explicit ownership needs a submission-interface change and is noted for later.
+
+**Test.** Flag room ×2 and the yellow armour, `r_rtShadowSun` 0 and 1, normal and debug, against E218: the same shapes, with darkness differing where the two directions differed. "casters: 21 listed, 0 left out whole". 0 validation errors.
+
+Not reproduced in game: a floor whose own grid light faces away while a caster's light reaches it. That is the fixture's case, and this fix is checked by reading and by the algebra above.
+
 ### E218. K8: RT shadow features resolved once per frame; K10: passes state what they need — DONE, no visible change
 **Lives in:** our **client** (renderervk `tr_init.c`, `tr_local.h`, `tr_cmds.c`, `tr_shade.c`, `vk_rt_*.c`, `vk_ssr.c`, `vk_timing.c`) · **Seen by:** nobody, by design
 

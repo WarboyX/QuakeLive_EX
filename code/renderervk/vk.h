@@ -1234,6 +1234,7 @@ typedef struct {
 			float			actorRange[RT_MAX_SHADOW_ACTORS][4];
 			int				actorSphereCount;
 			uint32_t		actorRestStart;
+			uint32_t		actorDropped;	/* [QL] E219: casters/parts left out whole - no room this frame */
 			qboolean		actorListComplete;
 			/* [QL] E205: what each command buffer's silhouette structure was
 			   last built from, so an unchanged set can be refitted */
