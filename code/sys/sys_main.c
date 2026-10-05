@@ -425,7 +425,9 @@ static void Sys_CpuApply(qboolean report) {
     if (!report) {
         return;
     }
-    if (!on) {
+    if (!on && !ok) {
+        Com_Printf(S_COLOR_YELLOW "CPU placement: off, but the thread's original cores could not be given back\n");
+    } else if (!on) {
         Com_Printf("CPU placement: off (sys_cpuPlacement 0) - the OS decides\n");
     } else if (sysCpu.preferred == 1 && ok && sysCpu.qosOnly) {
         Com_Printf("CPU placement: game thread marked user-interactive - macOS keeps it on the %i "
@@ -928,7 +930,9 @@ main
 */
 int main(int argc, char** argv) {
     int i;
-    char commandLine[MAX_STRING_CHARS] = {0};
+    // [QL] E223: was MAX_STRING_CHARS (1024), cut off without a word - a
+    // launcher's long line lost its trailing +connect, or ran half of it
+    static char commandLine[16384];
 
     /*
     [QL] Everything this engine parses and prints assumes a '.' decimal point.
@@ -1016,6 +1020,11 @@ int main(int argc, char** argv) {
         }
 
         containsSpaces = strchr(argv[i], ' ') != NULL;
+        // whole arguments only: half of "+map qltest_stone" is a different command
+        if (strlen(commandLine) + strlen(argv[i]) + (containsSpaces ? 3 : 1) >= sizeof(commandLine)) {
+            com_cmdlineTruncated = argc - i;
+            break;
+        }
         if (containsSpaces)
             Q_strcat(commandLine, sizeof(commandLine), "\"");
 

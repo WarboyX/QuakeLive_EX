@@ -465,7 +465,11 @@ quake3 set test blah + map test
 ============================================================================
 */
 
-#define MAX_CONSOLE_LINES 32
+// [QL] E223: was 32, and the 33rd '+' and everything after it were dropped
+// without a word - a launcher's trailing +connect or +map simply did not run
+#define MAX_CONSOLE_LINES 128
+static int com_droppedConsoleLines;
+int com_cmdlineTruncated;
 int com_numConsoleLines;
 char* com_consoleLines[MAX_CONSOLE_LINES];
 
@@ -489,7 +493,11 @@ void Com_ParseCommandLine(char* commandLine) {
         // if commandLine came from a file, we might have real line seperators
         if ((*commandLine == '+' && !inq) || *commandLine == '\n' || *commandLine == '\r') {
             if (com_numConsoleLines == MAX_CONSOLE_LINES) {
-                return;
+                // counted, and reported once the console exists (Com_AddStartupCommands)
+                com_droppedConsoleLines++;
+                *commandLine = 0;
+                commandLine++;
+                continue;
             }
             com_consoleLines[com_numConsoleLines] = commandLine + 1;
             com_numConsoleLines++;
@@ -568,6 +576,14 @@ qboolean Com_AddStartupCommands(void) {
     qboolean added;
 
     added = qfalse;
+    if (com_cmdlineTruncated) {
+        Com_Printf(S_COLOR_YELLOW "WARNING: the command line is too long - its last %i argument(s) were ignored. "
+                   "Put them in a .cfg and +exec it.\n", com_cmdlineTruncated);
+    }
+    if (com_droppedConsoleLines) {
+        Com_Printf(S_COLOR_YELLOW "WARNING: the command line has more than %i '+' commands - the last %i were "
+                   "ignored. Put them in a .cfg and +exec it.\n", MAX_CONSOLE_LINES, com_droppedConsoleLines);
+    }
     // quote every token, so args with semicolons can work
     for (i = 0; i < com_numConsoleLines; i++) {
         if (!com_consoleLines[i] || !com_consoleLines[i][0]) {
@@ -3075,27 +3091,36 @@ the GPU is the limit, not the CPU. "frame cap" is the limiter's idle wait: time
 the CPU had to spare.
 =================
 */
-static void Com_CpuTimingsReport(int64_t whole, int64_t wait, int64_t server, int64_t client) {
-    static int64_t sWhole, sWait, sServer, sClient, sBots, sGame, sScene, sSubmit, last;
-    static int frames;
-    int64_t now = Sys_Microseconds();
+static struct {
+    int64_t whole, wait, server, client, bots, game, scene, submit, start;
+    int frames;
+} cpuSum;
 
-    sWhole += whole; sWait += wait; sServer += server; sClient += client;
-    sBots += com_usBots; sGame += com_usGame; sScene += com_usScene; sSubmit += com_usSubmit;
-    frames++;
-    if (last == 0) {
-        last = now;
+// a window starts empty when timing is switched on, so frames from before it was
+// switched off do not count against the time since
+static void Com_CpuTimingsReset(void) {
+    Com_Memset(&cpuSum, 0, sizeof(cpuSum));
+}
+
+static void Com_CpuTimingsReport(int64_t whole, int64_t wait, int64_t server, int64_t client) {
+    const int64_t now = Sys_Microseconds();
+
+    if (cpuSum.start == 0) {
+        cpuSum.start = now - whole;   // the window opens where this frame began
     }
-    if (now - last >= 2000000 && frames > 0) {
-        const double f = 1000.0 * frames;   // microseconds -> ms per frame
+    cpuSum.whole += whole; cpuSum.wait += wait; cpuSum.server += server; cpuSum.client += client;
+    cpuSum.bots += com_usBots; cpuSum.game += com_usGame; cpuSum.scene += com_usScene; cpuSum.submit += com_usSubmit;
+    cpuSum.frames++;
+    if (now - cpuSum.start >= 2000000) {
+        const double f = 1000.0 * cpuSum.frames;   // microseconds -> ms per frame
         Com_Printf("CPU timings (ms/frame over %i frames, %.0f fps): whole frame %.2f, frame cap (idle) %.2f, "
                    "server %.2f [bots %.2f, game %.2f], client %.2f [scene %.2f, submit + present %.2f], other %.2f\n",
-                   frames, frames * 1000000.0 / (double)(now - last), sWhole / f, sWait / f,
-                   sServer / f, sBots / f, sGame / f, sClient / f, sScene / f, sSubmit / f,
-                   (sWhole - sWait - sServer - sClient) / f);
-        sWhole = sWait = sServer = sClient = sBots = sGame = sScene = sSubmit = 0;
-        frames = 0;
-        last = now;
+                   cpuSum.frames, cpuSum.frames * 1000000.0 / (double)(now - cpuSum.start), cpuSum.whole / f,
+                   cpuSum.wait / f, cpuSum.server / f, cpuSum.bots / f, cpuSum.game / f, cpuSum.client / f,
+                   cpuSum.scene / f, cpuSum.submit / f,
+                   (cpuSum.whole - cpuSum.wait - cpuSum.server - cpuSum.client) / f);
+        Com_CpuTimingsReset();
+        cpuSum.start = now;
     }
 }
 
@@ -3399,8 +3424,9 @@ void Com_Frame(void) {
             Com_CpuTimingsReport(now - cpuLastEnd, cpuWaitEnd - cpuEntry, cpuSvEnd - cpuSvStart, cpuClEnd - cpuClStart);
         }
         cpuLastEnd = now;
-    } else {
+    } else if (cpuLastEnd != 0) {
         cpuLastEnd = 0;
+        Com_CpuTimingsReset();
     }
 
     //

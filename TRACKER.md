@@ -6199,6 +6199,20 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E223. Review of `4a0e77fe`: affinity restore, timing window, and three caster-shadow follow-ups — DONE (verify)
+**Lives in:** our **client and server** engine (`sys_unix.c`, `sys_main.c`, `common.c`) and our **client** (renderervk `vk_rt_world.c`, `actorshadow.tmpl`) · **Seen by:** our client only (shadows); whoever runs the binary (CPU)
+
+An external review of `4a0e77fe` with build logs and source probes. Each finding was confirmed in the source first.
+
+- **Linux affinity lost CPUs above 63, even with placement off.** E222 read the thread's whole affinity but saved only the first 64 bits, and `sys_cpuPlacement 0` "restored" that at startup without ever having changed anything. The whole mask is now kept (up to 1024 CPUs) and written back with the length the kernel gave. Placement off at startup touches nothing, and a restore that fails says so in yellow instead of reporting success. Probe with a mocked kernel, starting on CPUs 2 and 70: off at startup → 2 70; placed → 2; off → 2 70; failing restore → reported as failed.
+- **`com_cpuTimings` kept samples across off/on.** The two-second window carried frames from before it was switched off into the next report, which skewed its fps. Switching it off now empties the window, and a new window starts where its first frame began.
+- **Dropped casters took candidate slots.** A caster left out for room keeps its sphere (for the early-out) but has an empty triangle range. It still ranked among the four candidates, so four of them could crowd out the caster actually shading the pixel. An empty range is now skipped before ranking, in both the caster-light and the sun loops.
+- **Mode 2 counted the sun twice.** The sun loop skipped a caster whose light is the sun only in mode 1. In mode 2 a caster without a clear point light falls back to its grid direction, and when that direction was the sun it was traced again as the sun. Both loops now ask the same function (`casterPointLight`) which light the caster resolved to.
+- **Casters past the 64 listed were fitted part by part.** An unlisted player could keep its legs and lose its head when the mesh filled. Unlisted parts are now grouped by the same key as listed casters and fitted whole or not at all.
+- **Found while testing this: a long command line lost its end without a word.** `main()` joined the arguments into 1024 characters, and the engine kept only 32 `+` commands. Everything past either limit was dropped silently, so a launcher's trailing `+connect` or `+map` simply did not run (the harness hit it: two more `+set`s and `+devmap` never happened). The limits are now 16384 characters (whole arguments only, never half of one) and 128 commands. Anything past them prints a yellow warning naming how many were ignored. Dedicated server: 100 `+set`s then `+map` loads the map; 130 and 2000 print the warnings.
+
+Harness (japanesecastles, red-base back wall and the hallway, first person, `r_rtActorLight` 1 and 2 with the sun on), against `4a0e77fe`'s renderer: 20–21 casters listed, none dropped, and old and new differ by no more than two shots of the same build do (mean luminance 0.02–0.48 vs 0.05–0.49). The fixes change nothing where nothing was dropped and no mode-2 caster falls back to the sun. The reviewer's fixtures for those cases were not in this session.
+
 ### E222. CPU detection, main-thread placement, and a per-frame CPU breakdown — DONE (verify)
 **Lives in:** our **client and server** engine (`sys_main.c`, `sys_win32.c`, `sys_unix.c`, `common.c`, `sv_main.c`, `cl_scrn.c`) · **Seen by:** whoever runs the binary
 

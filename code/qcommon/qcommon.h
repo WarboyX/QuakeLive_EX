@@ -1045,6 +1045,7 @@ NON-PORTABLE SYSTEM SERVICES
 
 void Sys_Init(void);
 void Sys_CpuFrame(void);   // [QL] E222
+extern int com_cmdlineTruncated;   // [QL] E223: arguments left off a command line too long to hold
 
 // general development dll loading for virtual machine testing
 void* QDECL Sys_LoadGameDll(const char* name, vmMainProc* entryPoint, intptr_t(QDECL* systemcalls)(intptr_t, ...));

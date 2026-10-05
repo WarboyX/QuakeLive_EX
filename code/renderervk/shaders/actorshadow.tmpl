@@ -439,6 +439,19 @@ float traceLight(vec3 O, vec3 lightPos, bool directional, uint actorMask, uint l
 }
 
 /*
+[QL] E223: mode 2's light for a caster - the light field's point at its centre,
+when that is a point and clear of it. False means the caster falls back to its
+grid direction (actorLight), as in mode 1: a light estimated inside or against
+it is no light to aim at, and moving it out (E211) swung it across the body.
+Both the caster's own light and the sun's de-duplication ask this, so they
+agree on which light a caster has.
+*/
+bool casterPointLight(vec3 c, float R, out vec3 Lp) {
+	float aSky, aSun, aTrust;
+	return lightFieldAt(c, Lp, aSky, aSun, aTrust) && aSky < 0.5 && distance(Lp, c) >= R + 16.0;
+}
+
+/*
 [QL] E214: one caster's share of the rays toward its own light. Only hits on
 its own triangles [t0, t1) count: the silhouette mesh holds every caster, and
 a ray aimed at this one's light can meet another, whose shadow is that one's
@@ -719,19 +732,17 @@ void main() {
 			float R = actors[k].w;
 			vec3 dv = P - c;
 			float rr = R + actorInfo.y;
-			if (dot(dv, dv) > rr * rr || actorLight[k].w <= 0.0) {
+			/* E223: a caster dropped for room has an empty range - nothing of
+			   it can be hit, so it must not take one of the four slots */
+			if (dot(dv, dv) > rr * rr || actorLight[k].w <= 0.0 || actorRange[k].y <= actorRange[k].x) {
 				continue;
 			}
 			vec3 Lp, Ld;
 			bool pointLight = false;
 			if (!dirMode) {
-				/* mode 2: the light field's point, if it is a point clear of
-				   the caster; otherwise the caster's grid direction - a light
-				   estimated inside or against it is no light to aim at, and
-				   moving it out (E211) swung it across the body */
+				/* mode 2: the light field's point - see casterPointLight */
 				vec3 aPos;
-				float aSky, aSun, aTrust;
-				if (lightFieldAt(c, aPos, aSky, aSun, aTrust) && aSky < 0.5 && distance(aPos, c) >= R + 16.0) {
+				if (casterPointLight(c, R, aPos)) {
 					Lp = aPos;
 					Ld = normalize(Lp - O);
 					pointLight = true;
@@ -821,8 +832,18 @@ void main() {
 				for (int k = 0; k < na; k++) {
 					vec3 c = actors[k].xyz;
 					float R = actors[k].w;
-					if (dirMode && actorLight[k].w > 0.0 && dot(actorLight[k].xyz, sun.xyz) > 0.94) {
-						continue;
+					if (actorRange[k].y <= actorRange[k].x) {
+						continue;   /* E223: dropped for room - nothing to hit */
+					}
+					/* E223: skip a caster whose own light IS the sun - decided by
+					   the light it resolved to, not the mode: in mode 2 a caster
+					   with no clear point falls back to its direction, and that
+					   direction counted the sun twice */
+					if (actorLight[k].w > 0.0 && dot(actorLight[k].xyz, sun.xyz) > 0.94) {
+						vec3 aPos;
+						if (dirMode || !casterPointLight(c, R, aPos)) {
+							continue;
+						}
 					}
 					float tc = dot(c - O, sun.xyz);
 					float miss = distance(O + sun.xyz * max(tc, 0.0), c) / (R + sMargin);

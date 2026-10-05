@@ -1425,30 +1425,44 @@ void Sys_CpuTopology(sysCpuTopology_t* t) {
 }
 
 qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
-    // the affinity this thread started with, to hand back on sys_cpuPlacement 0
-    static unsigned long long original;
-    static qboolean saved;
-    unsigned long long m;
+    // The affinity this thread started with, all of it: room for 1024 CPUs, since
+    // the kernel refuses a buffer smaller than its CPU count. Only CPUs 0-63 can be
+    // in a preferred set, but restoring must give back every CPU, not the first 64.
+    static unsigned long long original[16];
+    static long originalLen;   // bytes the kernel filled, 0 = unknown
+    static qboolean saved, placed;
+    unsigned long long m[16];
 
     (void)noThrottle;   // no per-process throttling on Linux; the governor is system-wide
     if (!saved) {
-        // the kernel refuses a buffer smaller than its CPU count, so ask with room for 1024
-        unsigned long long all[16];
-        Com_Memset(all, 0, sizeof(all));
-        original = syscall(SYS_sched_getaffinity, 0, sizeof(all), all) > 0 ? all[0] : 0;
+        Com_Memset(original, 0, sizeof(original));
+        originalLen = syscall(SYS_sched_getaffinity, 0, sizeof(original), original);
+        if (originalLen < 0) {
+            originalLen = 0;
+        }
         saved = qtrue;
     }
     if (!mask) {
-        if (original) {
-            syscall(SYS_sched_setaffinity, 0, sizeof(original), &original);
+        // never placed: the thread still has what it started with, leave it alone
+        if (!placed) {
+            return qtrue;
         }
+        if (!originalLen || syscall(SYS_sched_setaffinity, 0, originalLen, original) != 0) {
+            return qfalse;
+        }
+        placed = qfalse;
         return qtrue;
     }
-    m = original ? (mask & original) : mask;
-    if (!m) {
+    Com_Memset(m, 0, sizeof(m));
+    m[0] = originalLen ? (mask & original[0]) : mask;
+    if (!m[0]) {
         return qfalse;
     }
-    return syscall(SYS_sched_setaffinity, 0, sizeof(m), &m) == 0 ? qtrue : qfalse;
+    if (syscall(SYS_sched_setaffinity, 0, originalLen ? originalLen : (long)sizeof(m[0]), m) != 0) {
+        return qfalse;
+    }
+    placed = qtrue;
+    return qtrue;
 }
 
 #else

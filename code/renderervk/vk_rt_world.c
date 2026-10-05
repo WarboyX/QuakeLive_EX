@@ -1420,10 +1420,11 @@ static uint32_t rt_build_actor_mesh( int idx )
 		static int		partEnt[MAX_REFENTITIES];
 		static int		partCaster[MAX_REFENTITIES];
 		static float	partSphere[MAX_REFENTITIES][4];
+		static float	overKey[MAX_REFENTITIES][3];
 		float			castKey[RT_MAX_SHADOW_ACTORS][3];
 		float			castSum[RT_MAX_SHADOW_ACTORS][3];
 		int				castParts[RT_MAX_SHADOW_ACTORS];
-		int				nparts = 0, ncast = 0, p, c, k;
+		int				nparts = 0, ncast = 0, nover = 0, p, c, k;
 
 		vk.rt.world.actorListComplete = qtrue;
 		for ( e = 0; e < backEnd.refdef.num_entities && nparts < MAX_REFENTITIES; e++ ) {
@@ -1490,7 +1491,20 @@ static uint32_t rt_build_actor_mesh( int idx )
 					castParts[ncast] = 0;
 					ncast++;
 				} else {
-					c = -1;   /* not listed: emitted last, traced the old way */
+					/* not listed: emitted last, traced the old way - but still
+					   grouped, -1 - group, so it fits whole or not at all too */
+					int g;
+					for ( g = 0; g < nover; g++ ) {
+						if ( fabsf( overKey[g][0] - key[0] ) < 0.01f && fabsf( overKey[g][1] - key[1] ) < 0.01f &&
+							 fabsf( overKey[g][2] - key[2] ) < 0.01f ) {
+							break;
+						}
+					}
+					if ( g == nover ) {
+						VectorCopy( key, overKey[nover] );
+						nover++;
+					}
+					c = -1 - g;
 					vk.rt.world.actorListComplete = qfalse;
 				}
 			}
@@ -1536,9 +1550,9 @@ static uint32_t rt_build_actor_mesh( int idx )
 		vk.rt.world.actorSphereCount = 0;
 		vk.rt.world.actorRestStart = 0;
 
-		/* emit: caster by caster, then the unlisted ones */
-		for ( c = 0; c <= ncast; c++ ) {
-			const int want = c < ncast ? c : -1;
+		/* emit: caster by caster, then the unlisted ones group by group */
+		for ( c = 0; c < ncast + nover; c++ ) {
+			const int want = c < ncast ? c : -1 - ( c - ncast );
 			const uint32_t firstTri = nt;
 			/*
 			[QL] E219: whole casters only. What a caster needs - every part's
@@ -1546,9 +1560,11 @@ static uint32_t rt_build_actor_mesh( int idx )
 			caster that does not fit is left out entirely and counted, rather
 			than written up to the point the mesh ran out (a player cut off at
 			the waist) or without its caps (a hollow shadow). The unlisted
-			casters past RT_MAX_SHADOW_ACTORS are checked part by part.
+			casters past RT_MAX_SHADOW_ACTORS are grouped the same way and
+			checked the same way - E222 review: checked part by part, an
+			unlisted player could lose its head and keep its legs.
 			*/
-			if ( want >= 0 ) {
+			{
 				uint32_t needV = 0, needT = 0;
 				for ( p = 0; p < nparts; p++ ) {
 					const md3Header_t *h;
@@ -1574,8 +1590,12 @@ static uint32_t rt_build_actor_mesh( int idx )
 				if ( nv + needV > RT_ACTOR_MAX_VERTS || nt + needT > RT_ACTOR_MAX_TRIS ) {
 					vk.rt.world.actorDropped++;
 					vk.rt.world.actorListComplete = qfalse;
+					if ( want < 0 ) {
+						continue;
+					}
 					/* its sphere stays listed for the early out (conservative);
-					   an empty range means nothing of it is hit */
+					   an empty range means nothing of it is hit, and the shadow
+					   pass does not spend a candidate on it */
 					vk.rt.world.actorRange[c][0] = vk.rt.world.actorRange[c][1] = (float)nt;
 					vk.rt.world.actorRange[c][2] = vk.rt.world.actorRange[c][3] = 0.0f;
 					vk.rt.world.actorSphereCount = c + 1;
@@ -1598,25 +1618,6 @@ static uint32_t rt_build_actor_mesh( int idx )
 				ent = &backEnd.refdef.entities[ partEnt[p] ];
 				mod = R_GetModelByHandle( ent->e.hModel );
 				header = mod->md3[0];
-				if ( want < 0 ) {
-					/* an unlisted part: whole or not at all, the same way */
-					uint32_t needV = 0, needT = 0;
-					const md3Surface_t *sf = (const md3Surface_t *)( (const byte *)header + header->ofsSurfaces );
-					const rtCapInfo_t *cp = r_rtActorCaps->integer ? rt_caps_for( header ) : NULL;
-					for ( s = 0; s < header->numSurfaces; s++ ) {
-						needV += (uint32_t)sf->numVerts;
-						needT += (uint32_t)sf->numTriangles;
-						sf = (const md3Surface_t *)( (const byte *)sf + sf->ofsEnd );
-					}
-					if ( cp && cp->numLoops > 0 ) {
-						needV += (uint32_t)cp->numLoops;
-						needT += (uint32_t)cp->numEdges;
-					}
-					if ( nv + needV > RT_ACTOR_MAX_VERTS || nt + needT > RT_ACTOR_MAX_TRIS ) {
-						vk.rt.world.actorDropped++;
-						continue;
-					}
-				}
 			frame = ent->e.frame;
 			oldframe = ent->e.oldframe;
 			if ( frame < 0 || frame >= header->numFrames ) frame = 0;
@@ -1692,9 +1693,7 @@ static uint32_t rt_build_actor_mesh( int idx )
 				vk.rt.world.actorRange[c][1] = (float)nt;
 				vk.rt.world.actorRange[c][2] = vk.rt.world.actorRange[c][3] = 0.0f;
 				vk.rt.world.actorSphereCount = c + 1;
-				vk.rt.world.actorRestStart = nt;
-			} else {
-				vk.rt.world.actorRestStart = firstTri;
+				vk.rt.world.actorRestStart = nt;   /* the unlisted ones start here */
 			}
 		}
 	}
