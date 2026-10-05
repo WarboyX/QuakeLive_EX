@@ -6109,6 +6109,22 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E205. RT performance, step 4: refit the players' structure instead of rebuilding it — DONE (verify on NVIDIA)
+**Lives in:** our **client** (renderervk `vk_rt_world.c`) · **Seen by:** our client only
+
+**What changed.** The silhouette structure (players' and items' real triangles) was built from scratch every frame. When the same models are in it in the same order, only vertex positions have moved: the triangles and their index order are identical. A structure built with `ALLOW_UPDATE` can then be refitted in place, which keeps the tree and recomputes its boxes — several times cheaper than a build on real GPUs.
+- **Signature per command buffer:** a hash of the ordered model handles plus the vertex and triangle counts. It is compared with what that buffer's own structure was last built from (the two buffers alternate).
+- **Forced rebuild** every 30 refits, because a tree shaped for one pose gets looser as models animate away from it.
+- **Invalidated** whenever the structures are destroyed (map change, vid_restart).
+- **Scratch** sized for the larger of build and update.
+- **Report:** `rtshadows` gives "N refitted / M built since the last report".
+
+The CPU work per frame (lerping the vertices) is unchanged; only the GPU build is cheaper.
+
+**Measured** (lavapipe, 6 bots): 165 refits / 23 builds in one report window; 0 validation errors on the update path. Lavapipe's structure build time did not change (about 7.8 ms either way): its build runs on the CPU and refit costs it about the same. The saving is the GPU's, and only a real GPU will show it.
+
+**To verify:** `r_rtTimings 1` "structure build" in a bot match against build 3b88f72e.
+
 ### E204. RT performance, step 3: the shadow pass only works near players — DONE (verify)
 **Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `vk_rt_world.c`) · **Seen by:** our client only
 

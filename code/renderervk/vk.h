@@ -1226,6 +1226,12 @@ typedef struct {
 			   per-pixel early out; actorSphereCount -1 = too many to list */
 			float			actorSphere[RT_MAX_SHADOW_ACTORS][4];
 			int				actorSphereCount;
+			/* [QL] E205: what each command buffer's silhouette structure was
+			   last built from, so an unchanged set can be refitted */
+			uint32_t		actorBuiltSig[NUM_COMMAND_BUFFERS];
+			qboolean		actorBuiltValid[NUM_COMMAND_BUFFERS];
+			int				actorRefits[NUM_COMMAND_BUFFERS];
+			uint32_t		actorRefitFrames, actorBuildFrames;	/* counters for the rtshadows report */
 
 			/* [QL] E156: the map's light grid, as the BSP stores it, for the
 			   reflection's ray-traced fallback to light what it hits. */

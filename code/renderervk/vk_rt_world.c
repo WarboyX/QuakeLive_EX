@@ -928,6 +928,7 @@ static void vk_rt_destroy_dynamic( void )
 		if ( vk.rt.world.actor_blas[i] != VK_NULL_HANDLE ) {
 			qvkDestroyAccelerationStructureKHR( vk.device, vk.rt.world.actor_blas[i], NULL );
 			vk.rt.world.actor_blas[i] = VK_NULL_HANDLE;
+			vk.rt.world.actorBuiltValid[i] = qfalse;   /* [QL] E205 */
 		}
 		if ( vk.rt.world.actor_blas_buffer[i] != VK_NULL_HANDLE ) {
 			qvkDestroyBuffer( vk.device, vk.rt.world.actor_blas_buffer[i], NULL );
@@ -1019,7 +1020,8 @@ static void rt_create_actor_mesh( void )
 	Com_Memset( &build_info, 0, sizeof( build_info ) );
 	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
 	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR |
+		VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;   /* [QL] E205: refit when the set is unchanged */
 	build_info.geometryCount = 1;
 	build_info.pGeometries = &geom;
 
@@ -1059,7 +1061,7 @@ static void rt_create_actor_mesh( void )
 			vk.rt.world.actor_blas[i] = VK_NULL_HANDLE;
 			goto fail;
 		}
-		if ( !rt_create_buffer( sizes.buildScratchSize + scratchAlign,
+		if ( !rt_create_buffer( ( sizes.buildScratchSize > sizes.updateScratchSize ? sizes.buildScratchSize : sizes.updateScratchSize ) + scratchAlign,
 				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 				&vk.rt.world.actor_scratch_buffer[i], &vk.rt.world.actor_scratch_memory[i] ) ) {
 			goto fail;
@@ -1388,6 +1390,8 @@ static uint32_t rt_build_actor_mesh( int idx )
 
 	const float reach = rt_actor_reach();
 	uint32_t culled = 0;
+	uint32_t sig = 2166136261u;   /* [QL] E205: which models, in order - see the build below */
+	qboolean refit;
 
 	vk.rt.world.actorTris = 0;
 	vk.rt.world.actorEntities = 0;
@@ -1512,19 +1516,49 @@ static uint32_t rt_build_actor_mesh( int idx )
 			}
 		}
 		nents++;
+		sig = sig * 1000003u + (uint32_t)ent->e.hModel;   /* [QL] E205 */
 	}
 full:
 	vk.rt.world.actorCulled = culled;   /* [QL] E203 */
 	if ( nt == 0 ) {
+		vk.rt.world.actorBuiltValid[idx] = qfalse;
 		return 0;
 	}
+
+	/*
+	[QL] E205: refit rather than rebuild, when nothing but positions changed.
+
+	The same models in the same order give the same triangles in the same
+	index order - only where the vertices are has moved. A structure built with
+	ALLOW_UPDATE can then be refitted in place: the tree is kept and its boxes
+	are recomputed, which is several times cheaper than building one. Each
+	command buffer's structure is compared with what that buffer itself last
+	built (the buffers alternate). The tree was shaped for the pose it was
+	built in, so it gets looser as players animate away from it: a full build
+	every 30 refits keeps tracing fast.
+	*/
+	sig = sig * 1000003u + nv;
+	sig = sig * 1000003u + nt;
+	refit = vk.rt.world.actorBuiltValid[idx] && vk.rt.world.actorBuiltSig[idx] == sig &&
+		vk.rt.world.actorRefits[idx] < 30;
+	if ( refit ) {
+		vk.rt.world.actorRefits[idx]++;
+	} else {
+		vk.rt.world.actorBuiltSig[idx] = sig;
+		vk.rt.world.actorBuiltValid[idx] = qtrue;
+		vk.rt.world.actorRefits[idx] = 0;
+	}
+	vk.rt.world.actorRefitFrames += refit ? 1 : 0;
+	vk.rt.world.actorBuildFrames += refit ? 0 : 1;
 
 	rt_actor_geometry( &geom, idx, nv );
 	Com_Memset( &build_info, 0, sizeof( build_info ) );
 	build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
 	build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
-	build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR |
+		VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;   /* [QL] E205 */
+	build_info.mode = refit ? VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR : VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	build_info.srcAccelerationStructure = refit ? vk.rt.world.actor_blas[idx] : VK_NULL_HANDLE;
 	build_info.dstAccelerationStructure = vk.rt.world.actor_blas[idx];
 	build_info.geometryCount = 1;
 	build_info.pGeometries = &geom;

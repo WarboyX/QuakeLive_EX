@@ -1217,9 +1217,11 @@ void R_RTShadowReport( qboolean force )
 	}
 	if ( r_rtActorShadows->integer || R_SHADOWS_TRACED ) {
 		ri.Printf( PRINT_ALL, "  players/items on the level: %u triangle(s) from %u model(s) in the silhouette "
-			"structure, %u out of reach left out (r_rtCull)%s\n", vk.rt.world.actorTris, vk.rt.world.actorEntities,
-			vk.rt.world.actorCulled,
+			"structure, %u out of reach left out (r_rtCull); %u refitted / %u built since the last report%s\n",
+			vk.rt.world.actorTris, vk.rt.world.actorEntities, vk.rt.world.actorCulled,
+			vk.rt.world.actorRefitFrames, vk.rt.world.actorBuildFrames,
 			vk.rt.world.actorReady ? "" : " - NOT AVAILABLE (see the RT: lines at map load)" );
+		vk.rt.world.actorRefitFrames = vk.rt.world.actorBuildFrames = 0;
 	}
 	if ( dlOn ) {
 		if ( r_dlightMode->integer == 0 ) {
