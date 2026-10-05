@@ -2172,9 +2172,13 @@ static void R_Register( void )
 	   with no dither at all, which on a dark gradient (the Quake Live sign on
 	   japanesecastles) shows every one of its 256 steps as a band. ARCHIVE_ND,
 	   so an install that never chose a value picks the new default up. */
-	r_dither = ri.Cvar_Get( "r_dither", "2", CVAR_ARCHIVE_ND );
+	/* [QL] E210: 1, not 2. Temporal dither moves its pattern every frame, so a
+	   still screen is never still - one of three frame-to-frame changes the
+	   tester saw as "scrolling noise" after the build he had signed off.
+	   Ordered dither removes the banding just as well and holds still. */
+	r_dither = ri.Cvar_Get( "r_dither", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_dither, "0", "2", CV_INTEGER );
-	ri.Cvar_SetDescription(r_dither, "Set dithering mode:\n 0 - disabled\n 1 - ordered\n 2 - temporal: the ordered pattern, shifted every frame so it averages away\nRequires " S_COLOR_CYAN "\\r_fbo 1." );
+	ri.Cvar_SetDescription(r_dither, "Set dithering mode:\n 0 - disabled\n 1 - ordered (default) - holds still\n 2 - temporal: the ordered pattern, shifted every frame so it averages away\nRequires " S_COLOR_CYAN "\\r_fbo 1." );
 	ri.Cvar_SetGroup( r_dither, CVG_RENDERER );
 
 	r_presentBits = ri.Cvar_Get( "r_presentBits", "24", CVAR_ARCHIVE_ND | CVAR_LATCH );
@@ -2706,16 +2710,20 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_rtShadowTemporal, "Accumulate the traced shadows' sampled soft edge over frames, "
 		"following the camera (with " S_COLOR_CYAN "\\r_rtActorShadowSoftMode" S_COLOR_WHITE " 0 and the "
 		"shadow denoise on):\n"
-		" 0 - off, each frame stands alone\n"
-		" 1 - on (default) - smoother edges for the same rays\n"
+		" 0 - off (default), each frame stands alone\n"
+		" 1 - on - smoother edges for the same rays\n"
 		" 2 - debug: dark where last frame could not be reused\n"
 		"A shadow that moves leaves no trail: where this frame's rays disagree with the "
 		"average, this frame wins. Applies at once." );
-	r_rtaoTemporal = ri.Cvar_Get( "r_rtaoTemporal", "1", CVAR_ARCHIVE_ND );
+	/* [QL] E210: off by default, as E192 had it. On, the AO pattern changes
+	   every frame for the average to work, and wherever the history is
+	   rejected - which in play is constantly - that change shows as flicker.
+	   ARCHIVE_ND: an install that never chose picks this up. */
+	r_rtaoTemporal = ri.Cvar_Get( "r_rtaoTemporal", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_rtaoTemporal, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtaoTemporal, "Accumulate the occlusion over frames, following the camera:\n"
-		" 0 - off, each frame stands alone\n"
-		" 1 - on (default) - steadier and more detailed for the same rays\n"
+		" 0 - off (default), each frame stands alone\n"
+		" 1 - on - steadier and more detailed for the same rays when still, but flickers where history is rejected\n"
 		" 2 - debug: with r_rtao 2, white where last frame was reused, grey where it was\n"
 		"     rejected (newly in view, or something moved), black where there was none\n"
 		"Surfaces newly in view, or in front of something that moved, start fresh. Applies at once." );

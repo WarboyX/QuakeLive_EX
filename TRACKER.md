@@ -6199,6 +6199,35 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E210. "Shadows came back broken after I said they were fixed" — what changed, measured — DONE (verify)
+**Lives in:** our **client** (renderervk `tr_init.c`; pak01 render page) · **Seen by:** our client only
+
+Tester: shadows were confirmed fixed on E192 (`13e26fe8`, 10-04), then "something popped up after your recent builds".
+
+**Bisect.** Each build since E192 is kept in `release/out`. On japanesecastles I rendered the same views with E192 and E209, in traced mode (`cg_shadows 4`), normal and with `r_rtActorShadows 2`:
+- seven lamp-lit spots;
+- the indoor torch halls at both ends of the map, from four sides and looking down.
+
+Level and lamp shadows match **pixel for pixel** in every view. The shadow code did not regress.
+
+**Two things did change.**
+1. **Your own shadow, looking down.** The bent own-body shadow is identical on E192, E194 and E208. It was there on the signed-off build, and shows only when you look down near a lamp. E209 fixed it.
+2. **Three new defaults change the picture every frame on a still screen:**
+
+| Cvar | Since | Effect |
+|---|---|---|
+| `r_rtaoTemporal 1` | E196 | AO pattern changes every frame; flickers wherever the history is rejected |
+| `r_rtShadowTemporal 1` | E196 → E208 | the same for shadows; already off again since E208 |
+| `r_dither 2` | E198 | dither pattern moves every frame |
+
+That is the "noise and flickering" and the "scrolling noise even when the camera is stationary".
+
+**Fix:** `r_rtaoTemporal` defaults to 0 and `r_dither` to 1 (ordered: same banding fix, holds still). All three can still be turned on, with menu rows and labels updated. ARCHIVE_ND, so an install that never chose a value picks these up.
+
+**Not covered by the harness:** lavapipe cannot show what a real GPU does differently, such as E205's refit, which lavapipe likely rebuilds. To reproduce a spot exactly, type `viewpos` there and send the line together with `rtshadows`.
+
+0 validation errors; menu checks pass.
+
 ### E209. Your own shadow bent over when you looked down — DONE (verify)
 **Lives in:** our **client** (cgame `cg_players.c` `CG_PlayerAngles`, ships in iobin) · **Seen by:** our client only
 

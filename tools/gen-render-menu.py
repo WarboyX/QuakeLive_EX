@@ -385,7 +385,7 @@ def render_options():
         ("yesno", "r_fullscreen", "Fullscreen", None),
         ("multi", "r_colorbits", "Colour depth",
          '"Driver default" 0 "16-bit (3dfx look)" 16 "10-bit per channel" 30'),
-        ("multi", "r_dither", "Dither", '"Off" 0 "Ordered (stable)" 1 "Temporal (default)" 2'),
+        ("multi", "r_dither", "Dither", '"Off" 0 "Ordered (default)" 1 "Temporal" 2'),
         ("h", "IMAGE"),
         # [QL] E124. Brightness belongs on the render page too - it was only on
         # the in-game Lighting page. It applies live now that the renderer's
@@ -458,7 +458,7 @@ def raytracing():
         ("multi", "r_rtaoSamples", "Rays per pixel", '"2 (fastest)" 2 "4 (default)" 4 "8 (heavy)" 8 "16 (very heavy)" 16'),
         ("multi", "r_rtaoDenoise", "Denoise", '"Off (raw, grainy)" 0 "On (default)" 1 "Wide (smoothest)" 2'),
         # [QL] E196. Live. Averages the trace over frames, following the camera.
-        ("multi", "r_rtaoTemporal", "Accumulate over frames", '"Off" 0 "On (default)" 1'),
+        ("multi", "r_rtaoTemporal", "Accumulate over frames", '"Off (default)" 0 "On" 1'),   # E210
         # [QL] Occlusion is an ambient term; where a rocket is the light, its
         # contact shadow reads as dirt. Cleared over the light's own falloff.
         ("multi", "r_rtaoLights", "Lights clear AO", '"Off" 0 "Half" 0.5 "Full (default)" 1'),
