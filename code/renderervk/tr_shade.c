@@ -1217,7 +1217,8 @@ void R_RTShadowReport( qboolean force )
 	}
 	if ( r_rtActorShadows->integer || R_SHADOWS_TRACED ) {
 		ri.Printf( PRINT_ALL, "  players/items on the level: %u triangle(s) from %u model(s) in the silhouette "
-			"structure%s\n", vk.rt.world.actorTris, vk.rt.world.actorEntities,
+			"structure, %u out of reach left out (r_rtCull)%s\n", vk.rt.world.actorTris, vk.rt.world.actorEntities,
+			vk.rt.world.actorCulled,
 			vk.rt.world.actorReady ? "" : " - NOT AVAILABLE (see the RT: lines at map load)" );
 	}
 	if ( dlOn ) {

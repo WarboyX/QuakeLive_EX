@@ -6109,6 +6109,29 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E203. RT performance, step 2: leave out players and items that cannot reach the view — DONE (verify)
+**Lives in:** our **client** (renderervk `vk_rt_world.c`) · **Seen by:** our client only
+
+Tester: "could we apply culling to stop RT from being done to unseen parts of the map and for unseen players?"
+
+**Players and items: yes, and they were the cost.** The server sends every entity in the potentially visible set, including those behind the camera and across the room. Each was lerped on the CPU into the silhouette mesh and built into the structure every frame. `rt_in_reach` keeps an entity only if its bounding sphere meets the four side planes of the view frustum, each pushed out by the entity's reach. The sphere is the md3 frame radius plus its local-origin offset, scaled with the axis.
+- **Silhouette mesh** (shadows, `r_rtDynamic 2`): reach is the shadow length (`r_rtActorShadowLength`, 512) when traced shadows are on, else the AO radius, plus 16. A player just behind the camera whose shadow falls into view stays in.
+- **Proxy boxes/balls** (occlusion): reach is the AO radius. Not culled while the ray-traced reflection fallback is on (`r_ssr` and `r_ssrRayTrace`), because a reflection can show things outside the frustum. Reflections trace mask 0x03, not the silhouettes, so silhouette culling never removes anyone from a reflection.
+- **`r_rtCull`** (default 1; 0 for comparison). The `rtshadows` report now says how many were left out.
+
+**The level: no, deliberately.** It is built once at map load. Rays only start from visible pixels, so unseen geometry costs only when a visible ray reaches it — a pillar behind the camera shadowing the floor in front — which is exactly when it must be there.
+
+**Measured** (lavapipe, 6 bots, same camera, both temporals on):
+
+| | silhouette mesh | structure build | frames in 30 s |
+|---|---|---|---|
+| `r_rtCull 0` | 6 models, 1,756 triangles | 7.9–8.2 ms | 64 |
+| `r_rtCull 1` | 3 models in, 6 out, 1,128 triangles | 6.2–6.4 ms | 72 |
+
+The CPU lerp saved grows with the player count: a 30-bot match culls far more of them. 0 validation errors.
+
+**To verify:** a bot match with `r_rtTimings 1`; structure build should drop. Shadows from players just behind you should still land in view. `r_rtCull 0` to compare.
+
 ### E202. RT performance, step 1: stop re-tracing what the temporal pass already averages — DONE (verify)
 **Lives in:** our **client** (renderervk: `rtao.tmpl`, `vk_rt_ao.c`, `vk_rt_shadow.c`) · **Seen by:** our client only
 

@@ -1219,6 +1219,7 @@ typedef struct {
 			qboolean		actorReady;
 			uint32_t		actorTris;		// in this frame's structure
 			uint32_t		actorEntities;
+			uint32_t		actorCulled;		/* [QL] E203: left out by rt_in_reach this frame */
 
 			/* [QL] E156: the map's light grid, as the BSP stores it, for the
 			   reflection's ray-traced fallback to light what it hits. */

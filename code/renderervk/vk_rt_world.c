@@ -1317,6 +1317,58 @@ static const rtCapInfo_t *rt_caps_for( const md3Header_t *model )
 Fill this command buffer's actor mesh and record its build. Returns the
 triangle count; 0 means nothing was built and the instance must be left out.
 */
+/*
+=================
+rt_in_reach
+
+[QL] E203: could anything this entity does in the traced passes show on screen?
+
+The server sends every player and item in the potentially visible set - behind
+the camera, round the corner, the far side of a big room - and each of them
+used to be lerped on the CPU into the silhouette mesh and built into the
+structure every frame, a cost that grows with the player count and was paid
+for models that could not touch a single traced pixel.
+
+What an entity can affect is bounded: its shadow reaches at most `reach`
+units from it (r_rtActorShadowLength), its occlusion at most the AO radius.
+So it matters only if its bounding sphere, grown by that reach, meets the view
+frustum - tested against the four side planes, which also exclude everything
+behind the eye beyond the reach. A player just behind the camera whose shadow
+falls forward into view stays in; one across the map does not.
+
+The level itself is not culled and does not need to be: it is built once at
+map load, and rays only start from visible pixels, so unseen geometry costs
+only when a visible ray reaches it - which is exactly when it has to be there.
+=================
+*/
+static qboolean rt_in_reach( const trRefEntity_t *ent, float radius, float reach )
+{
+	int p;
+
+	if ( !r_rtCull->integer ) {
+		return qtrue;
+	}
+	for ( p = 0; p < 4; p++ ) {
+		const cplane_t *pl = &backEnd.viewParms.frustum[p];
+		if ( DotProduct( ent->e.origin, pl->normal ) - pl->dist < -( radius + reach ) ) {
+			return qfalse;
+		}
+	}
+	return qtrue;
+}
+
+/* how far an entity's effect on the traced passes can reach, per structure */
+static float rt_actor_reach( void )
+{
+	float r = r_rtaoRadius->value;
+	if ( r_rtActorShadows->integer || R_SHADOWS_TRACED || r_rtShadowCasters->integer ) {
+		if ( r_rtActorShadowLength->value > r ) {
+			r = r_rtActorShadowLength->value;
+		}
+	}
+	return r + 16.0f;
+}
+
 static uint32_t rt_build_actor_mesh( int idx )
 {
 	float *vout = (float *)vk.rt.world.actor_vertex_ptr[idx];
@@ -1329,8 +1381,12 @@ static uint32_t rt_build_actor_mesh( int idx )
 	VkMemoryBarrier barrier;
 	int e;
 
+	const float reach = rt_actor_reach();
+	uint32_t culled = 0;
+
 	vk.rt.world.actorTris = 0;
 	vk.rt.world.actorEntities = 0;
+	vk.rt.world.actorCulled = 0;
 	if ( !vk.rt.world.actorReady || vout == NULL || iout == NULL ) {
 		return 0;
 	}
@@ -1360,6 +1416,17 @@ static uint32_t rt_build_actor_mesh( int idx )
 			continue;
 		}
 		header = mod->md3[0];
+		{
+			/* [QL] E203: the model's own bound, from its frame (md3Frame_t.radius,
+			   scaled with the axis cgame drew it with) */
+			const md3Frame_t *fr = (const md3Frame_t *)( (const byte *)header + header->ofsFrames ) +
+				( ( ent->e.frame >= 0 && ent->e.frame < header->numFrames ) ? ent->e.frame : 0 );
+			const float scale = VectorLength( ent->e.axis[0] );
+			if ( !rt_in_reach( ent, ( fr->radius + VectorLength( fr->localOrigin ) ) * ( scale > 0.0f ? scale : 1.0f ), reach ) ) {
+				culled++;
+				continue;
+			}
+		}
 		frame = ent->e.frame;
 		oldframe = ent->e.oldframe;
 		if ( frame < 0 || frame >= header->numFrames ) frame = 0;
@@ -1430,6 +1497,7 @@ static uint32_t rt_build_actor_mesh( int idx )
 		nents++;
 	}
 full:
+	vk.rt.world.actorCulled = culled;   /* [QL] E203 */
 	if ( nt == 0 ) {
 		return 0;
 	}
@@ -1682,6 +1750,9 @@ static qboolean vk_rt_build_dynamic_tlas_inner( void )
 	const qboolean dump = rtDumpRequested;
 	int i, j;
 
+	/* [QL] E203: see rt_in_reach; 0 means do not cull the proxies */
+	const float proxyReach = ( r_ssr->integer && r_ssrRayTrace->integer ) ? 0.0f : r_rtaoRadius->value + 16.0f;
+
 	rtDumpRequested = qfalse;
 
 	if ( !vk.rt.world.dynReady ) {
@@ -1773,6 +1844,14 @@ static qboolean vk_rt_build_dynamic_tlas_inner( void )
 		}
 		VectorAdd( mins, maxs, centre );
 		VectorScale( centre, 0.5f, centre );
+
+		/* [QL] E203: a proxy reaches only as far as the occlusion radius - but
+		   the ray-traced reflection fallback can show it from anywhere, so no
+		   culling while that is on */
+		if ( proxyReach > 0.0f && !rt_in_reach( ent, 0.5f * VectorLength( size ) + VectorLength( centre ), proxyReach ) ) {
+			if ( dump ) rt_dump_entity( i, ent, "skipped - out of reach (r_rtCull)" );
+			continue;
+		}
 
 		/*
 		A 3x4 row-major transform taking the unit box to this entity's oriented

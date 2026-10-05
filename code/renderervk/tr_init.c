@@ -85,6 +85,7 @@ cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
 cvar_t	*r_rtLightField;           // [QL] E176
 cvar_t	*r_rtShadowSun;            // [QL] E178
 cvar_t	*r_rtActorCaps;            // [QL] E180
+cvar_t	*r_rtCull;                 // [QL] E203
 cvar_t	*r_rtTimings;              // [QL] E177
 cvar_t	*r_rtLevelShadows;
 cvar_t	*r_bloomHDR; // [QL] E158
@@ -2825,6 +2826,13 @@ static void R_Register( void )
 		"is brighter. The light grid keeps one light per place, so without this the strongest light gets "
 		"the only shadow. Maps with a q3map_sun only; costs a second set of rays where the sun reaches.\n"
 		" 0 - one shadow, from the strongest light\n 1 - also the sun's (default)" );
+	/* [QL] E203: leave players and items out of the ray-traced structures
+	   when nothing they do can reach the view - see rt_in_reach */
+	r_rtCull = ri.Cvar_Get( "r_rtCull", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtCull, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtCull, "Skip players and items whose shadow or occlusion cannot reach the view "
+		"when building the ray-traced structures each frame. 0 traces every one the server sent, "
+		"for comparison." );
 	r_rtActorCaps = ri.Cvar_Get( "r_rtActorCaps", "1", CVAR_ARCHIVE_ND );   // [QL] E180
 	ri.Cvar_CheckRange( r_rtActorCaps, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_rtActorCaps, "Close the holes in player and item models (the waist, the neck, "
