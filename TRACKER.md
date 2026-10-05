@@ -6109,6 +6109,15 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### E209. Your own shadow bent over when you looked down — DONE (verify)
+**Lives in:** our **client** (cgame `cg_players.c` `CG_PlayerAngles`, ships in iobin) · **Seen by:** our client only
+
+Tester: "that bottom left red is all player shadow that's warped around" (`r_rtActorShadows 2`); `r_rtCull 0` and `r_rtActorRefit 0` changed nothing, which put it outside the renderer.
+
+In first person your body is never drawn (`RF_THIRD_PERSON`), but it is in the scene and the traced shadows cast it. Its torso pitches with your view at 0.75× and its head at the full angle, so looking at the floor folded the invisible body forward and its shadow came out as a wide hunched blob, changing shape with every look up or down. The own body now stands upright in first person (torso and head pitch 0). Third person, and every other player, are unchanged.
+
+Harness, same spot and angle, old iobin vs new, looking 75° down: old casts a broad, smeared shape; new casts a narrow upright silhouette. Trade-off: in a mirror or portal view your reflection no longer tilts with your view. 0 validation errors; menu checks pass.
+
 ### E208. Noise that scrolled on a still screen; smeared player shadows; E202 fully reverted — DONE (verify)
 **Lives in:** our **client** (renderervk `rtao.tmpl`, `actorshadow.tmpl`, `vk_rt_ao.c`, `tr_init.c`; pak01) · **Seen by:** our client only
 

@@ -1851,6 +1851,17 @@ static void CG_PlayerAngles(centity_t* cent, vec3_t legs[3], vec3_t torso[3], ve
         }
     }
 
+    /*
+    [QL] E209: your own body in first person is never drawn (RF_THIRD_PERSON),
+    but the traced actor shadows still cast it - and its torso and head follow
+    your view pitch, so looking at the floor folded the invisible body over
+    and its shadow came out bent and smeared across the ground. Stand it up.
+    */
+    if (cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson) {
+        torsoAngles[PITCH] = 0.0f;
+        headAngles[PITCH] = 0.0f;
+    }
+
     // pain twitch
     CG_AddPainTwitch(cent, torsoAngles);
 
