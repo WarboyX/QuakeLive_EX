@@ -32,6 +32,7 @@ static int red_altroutesides[2], blue_altroutesides[2];
 static int red_numaltroutegoals = 2, blue_numaltroutegoals = 2;
 static bot_goal_t ctf_redflag = {.areanum=99}, ctf_blueflag = {.areanum=88};
 static int gametype = GT_CTF, carrying = 1, direct = 500, queries;
+vmCvar_t bot_ctfDetours = {.integer = 3};
 static int legs[2] = {100,50}, remaining[2] = {400,350};
 int BotTeam(bot_state_t* bs) { (void)bs; return TEAM_RED; }
 int BotCTFCarryingFlag(bot_state_t* bs) { (void)bs; return carrying; }
@@ -63,6 +64,13 @@ static bot_state_t reset(void) {
 int main(void) {
     bot_state_t bs = reset();
     assert(BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && bs.altroutegoal.areanum == 10);
+    /* E226: detours off for the other team leave this one alone; off for its
+       own team (red) the carrier goes straight home and asks nothing */
+    bot_ctfDetours.integer = 1; bs = reset();
+    assert(BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && bs.altroutegoal.areanum == 10);
+    bot_ctfDetours.integer = 2; bs = reset(); queries = 0;
+    assert(!BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && bs.altroutegoal.areanum == 0 && queries == 0);
+    bot_ctfDetours.integer = 3;
     bs = reset(); remaining[1] = 300; // replacement saves exactly 100 beyond incumbent preference
     assert(BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && bs.altroutegoal.areanum == 20);
     bs = reset(); remaining[1] = 301; // 99 is insufficient
@@ -93,7 +101,7 @@ int main(void) {
     assert(BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && bs.altroutegoal.areanum == 10);
     bs = reset(); legs[0]=150; remaining[0]=400; remaining[1]=500;
     assert(!BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && !bs.altroutegoal.areanum);
-    puts("Complete selector: arrival boundary, meaningful savings, stuck/reached/invalid release, no-route fallback and legacy mode verified");
+    puts("Per-team detour switch (E226), complete selector: arrival boundary, meaningful savings, stuck/reached/invalid release, no-route fallback and legacy mode verified");
     return 0;
 }
 ''')

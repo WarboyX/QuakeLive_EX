@@ -91,6 +91,8 @@ int BotEnemyFlagAtBase(struct bot_state_s* bs);
 int BotCTFRecoveryGoal(struct bot_state_s* bs, bot_goal_t* goal);
 // keep combat movement on a live CTF objective
 int BotCTFKeepObjective(struct bot_state_s* bs);
+// [QL] E226: the combat-movement use of it, per-team switchable (bot_ctfObjectiveMove)
+int BotCTFObjectiveMove(struct bot_state_s* bs);
 // release surplus autonomous escorts of a waiting home carrier
 int BotCTFReleaseEscort(struct bot_state_s* bs);
 // nearest available teammates fill a bounded screen; explicit orders take precedence

@@ -847,7 +847,7 @@ int BotRegroupGoal(bot_state_t* bs, bot_goal_t* goal) {
     if (!BotTacticsEnabled()) {
         return qfalse;
     }
-    if (BotCTFKeepObjective(bs)) {
+    if (BotCTFObjectiveMove(bs)) {
         return qfalse; // fight while moving to the flag, not toward another ally
     }
     if (!TeamPlayIsOn()) {
@@ -1914,6 +1914,13 @@ int BotCTFKeepObjective(bot_state_t* bs) {
     flag = team == TEAM_RED ? PW_BLUEFLAG : PW_REDFLAG;
     return g_entities[bs->teammate].inuse && cl && cl->pers.connected == CON_CONNECTED &&
            (int)cl->sess.sessionTeam == team && cl->ps.stats[STAT_HEALTH] > 0 && cl->ps.powerups[flag];
+}
+
+/* [QL] E226: the combat-movement half of BotCTFKeepObjective, switchable per
+   team with bot_ctfObjectiveMove. Off, an objective bot fights, chases and
+   falls back to its squad like any other; item ranges still use the objective. */
+int BotCTFObjectiveMove(bot_state_t* bs) {
+    return (bot_ctfObjectiveMove.integer & (BotTeam(bs) == TEAM_RED ? 1 : 2)) && BotCTFKeepObjective(bs);
 }
 
 // Bound the travelling screen as well as the guards at a waiting home carrier.

@@ -3093,7 +3093,7 @@ static int BotWantsToRetreatRaw(bot_state_t* bs) {
         return qtrue;
     // Recovery and escort fight while advancing; an enemy flag carrier above
     // still takes priority over this movement policy.
-    if (BotCTFKeepObjective(bs))
+    if (BotCTFObjectiveMove(bs))
         return qtrue;
     /* [QL] E137. And a flag carrier's escort: "retreat" is the node that
        fights while still moving to the long term goal, and the others stand
@@ -3206,7 +3206,7 @@ int BotWantsToChase(bot_state_t* bs) {
     // if the bot is getting the flag
     if (bs->ltgtype == LTG_GETFLAG)
         return qfalse;
-    if (BotCTFKeepObjective(bs))
+    if (BotCTFObjectiveMove(bs))
         return qfalse;
     /*
     [QL] Whether chasing is worth it, rather than only whether the bot feels like
@@ -6383,6 +6383,13 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
            sends it back into their base. The stuck and crowded-room re-rolls
            ask on the way home too, and a traced carrier spent 27 s turning
            round in the south garden, twice, before it died there. */
+        /* [QL] E226: bot_ctfDetours off for this team - the carrier goes
+           straight home, no waypoint. Note this selection is not behind
+           bot_tactics: it runs for a "tactics off" team too. */
+        if (carrier && gametype == GT_CTF && !(bot_ctfDetours.integer & (BotTeam(bs) == TEAM_RED ? 1 : 2))) {
+            bs->altroutegoal.areanum = 0;
+            return qfalse;
+        }
         if (carrier && gametype == GT_CTF && bs->areanum && home->areanum) {
             tohome = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, home->areanum, bs->tfl);
         }

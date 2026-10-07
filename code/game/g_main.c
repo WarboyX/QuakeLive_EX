@@ -133,6 +133,8 @@ vmCvar_t bot_startingSkill;
 vmCvar_t bot_tactics;
 vmCvar_t bot_tacticsTeams;   // [QL] E224
 vmCvar_t bot_ctfIntercept;   // [QL] E224
+vmCvar_t bot_ctfDetours;     // [QL] E226
+vmCvar_t bot_ctfObjectiveMove;   // [QL] E226
 vmCvar_t bot_teamkill;
 vmCvar_t bot_training;
 vmCvar_t g_accessFile;
@@ -1172,6 +1174,15 @@ static cvarTable_t gameCvarTable[] = {
     */
     {&bot_tacticsTeams, "bot_tacticsTeams", "3", 0, 0, NULL},
     {&bot_ctfIntercept, "bot_ctfIntercept", "3", 0, 0, NULL},
+    /*
+    [QL] E226. Two more per-team masks (1 red, 2 blue, 3 both - the default,
+    which is current behaviour), so one behaviour can be compared alone:
+    bot_ctfDetours off sends a carrier straight home (no alternate-route
+    waypoint); bot_ctfObjectiveMove off stops objective bots overriding the
+    combat choice (retreat-while-moving, no chase, no squad fallback).
+    */
+    {&bot_ctfDetours, "bot_ctfDetours", "3", 0, 0, NULL},
+    {&bot_ctfObjectiveMove, "bot_ctfObjectiveMove", "3", 0, 0, NULL},
     {&bot_teamkill, "bot_teamkill", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_training, "bot_training", "0", CVAR_GAMERULE, 0, NULL},
     {&g_accessFile, "g_accessFile", "access.txt", 0, 0, NULL},
