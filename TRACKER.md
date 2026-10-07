@@ -6264,6 +6264,33 @@ Exact-source fixtures verify snapshot identity and invalidation, timing boundari
 
 Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
 
+### E225. Heat maps of two head-to-head CTF matches: the stock bots won both, 6–0 and 4–0 — OPEN (finding)
+**Lives in:** our **server** (qagame tactical layer) and test tools (`tools/test-environment/heatmap.py`) · **Seen by:** every client
+
+Setup: japanesecastles, 15v15 bots, skill 5, 600 game seconds at 4x. Match 1 had `bot_tacticsTeams 1` (red ours, blue stock). Match 2 had `bot_tacticsTeams 2`, sides swapped. Both PASS, no errors.
+
+| match | team | captures | flag grabs | deaths | fighting | escorts within 600u |
+|---|---|---:|---:|---:|---:|---:|
+| 1 | red, ours | 0 | 17 | 236 | 71% | 71% |
+| 1 | blue, stock | 6 | 24 | 78 | 63% | 25% |
+| 2 | red, stock | 4 | 22 | 102 | 63% | 23% |
+| 2 | blue, ours | 0 | 21 | 189 | 74% | 67% |
+
+What the maps show:
+- **Our team reaches the flag about as often** (17 and 21 grabs against 24 and 22) and keeps its escorts close (67–71% within 600 units, against 23–25%).
+- **But it dies two to three times as often, and its carriers never get home.** Their paths wander round the middle courtyard loop, the detours the route-risk scoring picks. The stock carriers run one line home.
+- So the loss is in surviving, not in reaching the flag.
+
+This is not yet a verdict on any one change, because `bot_tactics` gates more than the CTF planner:
+- think rate by skill;
+- aim sweep and view smoothing;
+- squad fallback;
+- "fight while moving" (`BotCTFKeepObjective` turns chase and retreat off for objective bots).
+
+The last is the first suspect for the death rate. Two matches at 4x is a small sample, but 10–0 and 2–3x the deaths is not a small effect.
+
+Next: the same head-to-head with only parts of the layer switched, to find which part costs the deaths. Run each on `387d68a6` as well, to tell whether the ctf11–18 merge made it worse or the layer already lost to stock.
+
 ### E224. CTF18 bot AI merged; per-team policy switch for head-to-head tests; CA rounds no longer demote the dead or run forever — DONE (verify)
 **Lives in:** our **server** (qagame `ai_*.c`, `g_gametype_common.c`, `g_gametype_ca.c`; engine `sv_game.c`, `sv_main.c`, `common.c`) and test tools · **Seen by:** every client (bot behaviour, CA rounds)
 

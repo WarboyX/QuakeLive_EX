@@ -64,6 +64,17 @@ Do not copy it into a real installation. Generated BSP/AAS files exercise
 collision and navigation; they contain no render surfaces, player models,
 sounds or production materials.
 
+## Heat maps
+
+```sh
+python3 tools/test-environment/heatmap.py <map>.bsp <run dir> <out prefix> "title"
+```
+
+Four panels over the map's floors, from a run's `bottrack`/`ctftrack` lines:
+team presence, combat, deaths and flag carriers' paths. With
+`--set bot_tacticsTeams=1` (or 2) on the run, one team is our tactical layer
+and the other stock, so the panels compare them in the same match.
+
 ## Shadow checks
 
 ```sh
