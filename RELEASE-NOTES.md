@@ -290,6 +290,108 @@ what `/devmap` takes. Everything in it is namespaced under `maps/qltest_*` and
 `textures/qltest/`, so it collides with nothing in `pak00.pk3` and a normal game
 neither loads nor checksums it.
 
+## Ray-traced shadows
+
+Shadows: Traced (`cg_shadows 4`, offered only while ray tracing is running)
+is new in this release. Players and items cast shadows on the level with their
+real shapes. The level casts shadows on dynamic lights and on models. Doors and
+lifts take part.
+
+- **Each caster is traced toward its own light.** That light is the light grid's
+  direction at the caster, Quake 3's own rule. Shadows no longer bend across
+  surfaces or swing near lamps. `r_rtActorLight` picks per-pixel, grid direction
+  (the default) or an estimated point light.
+- **The sun is a light of its own** (`r_rtShadowSun`). Where a lamp out-shines it
+  the sun still casts.
+- **Soft edges** come from one ray and the distances (`r_rtActorShadowSoftMode`),
+  smoothed over time and over space (`r_rtActorShadowDenoise`). Player and item
+  models have their holes closed for tracing, so shadows are not hollow.
+- **The light field** is worked out once per map (`r_rtLightField`). Each lamp
+  point checks it can see its own light, so a shadow does not tear apart from
+  one pixel to the next.
+- **Cost.** It only does work near players. Players outside the view's reach are
+  left out, and their structure is refitted rather than rebuilt. `r_rtTimings 1`
+  prints GPU time per pass, split into trace and composite.
+
+## Water, AO and post-processing
+
+- **Water ripples** bounce off the pool's real shore, sloped banks included. They
+  slow with radius, are worked out once per pixel, and no longer start when you
+  walk on the grass beside a pond. Water reflections work without ray tracing.
+  A ray-traced fallback covers spots the screen trace misses
+  (`r_ssrRayTrace`). Half-resolution reflection is an option.
+- **Ambient occlusion:** ray-traced AO at half resolution (option), with
+  accumulation over time, and screen-space AO (`r_ssao`) for GPUs without ray
+  tracing.
+- **Post:** FXAA and sharpening (`r_fxaa`, `r_sharpen`), a choice of tone curve
+  (`r_toneMap`), HDR bloom (`r_bloomHDR`), and ordered dither on by default.
+  Your own player gets stencil shadows (`r_stencilSelfShadow`).
+- **The pipeline cache is kept between runs** (`r_pipelineCache`), so the first
+  minute of a session no longer stutters.
+
+## Settings, menus and first launch
+
+- The render pages use the in-game menu's style, from one list. RESET no longer
+  switches features off. Menus show values that are pending a restart.
+- A menu row bound to a cvar nothing reads now fails the build. Bloom & Post was
+  rebuilt around that, and two wrong names were fixed.
+- Menu clicks on restart-only settings (`CVAR_LATCH`) applied them at once. That
+  was the bloom crash on NVIDIA, and why `r_rts` / HDR bloom read "on" in the
+  menu and "off" in the game.
+- First launch has its own flag. The GPU is recorded every launch, so a different
+  card runs the first launch again. The hardware prompt decides by PCI ID from a
+  real GPU list. OpenGL 2 stays the default, and capable machines are offered
+  Vulkan once.
+- Crosshair hit colour, style and time. The scoreboard shows player counts and a
+  spectator ticker, and the bot skill tag on the team boards.
+
+## Game modes
+
+- **Clan Arena: dying mid-round moved you to the spectator team for good.** The
+  follow camera used the console's "follow", which joins spectators first. Teams
+  emptied one death at a time until the match forfeited. Freeze Tag had the same
+  bug and was fixed earlier. CA rounds also never ran out:
+  `roundtimelimit` (180 s) now ends a round nobody finished, decided by
+  survivors, then health. Earlier, CA rounds never ended at all, because the round
+  machine was never started.
+- Spawn armour was awarded as Quad Damage in CA and RR.
+- AD, CA, FT and RR no longer publish a stale round status after a zero
+  countdown.
+- Reloading the access list applies to every connected player.
+
+## Bots (Alpha 2)
+
+- **CTF.** One planner owns attack, defend, escort, flag recovery and roaming.
+  Carriers choose routes by the enemies along the whole path. A dropped flag a
+  teammate has seen gets picked up. Escorts are chosen by where they can meet the
+  carrier, not where it is now. The tactical layer stays switchable
+  (`bot_tactics 0` is stock).
+- **Per-team switches** for testing the AI in a single match: `bot_tacticsTeams`
+  and `bot_ctfIntercept`, each 1 = red, 2 = blue, 3 = both.
+- **Movement.** Three botlib routing bugs at chokepoints were fixed, and bots
+  steer round each other instead of going in circles. Defenders cover both ways
+  into the flag room. Close range uses a gun rather than a launcher, and fewer
+  rockets are fired into nearby walls.
+- **Skill** runs 1 to 10, and bots chat less when humans are present.
+
+## Diagnostics (Alpha 2)
+
+- **`cpuinfo`** shows the CPU as the game sees it: cores, the performance /
+  efficiency split, L3 per die, SIMD and RAM. It works on Windows, Linux and
+  macOS.
+- **`sys_cpuPlacement 1`** (the default) keeps the game thread on the
+  performance cores of a hybrid CPU, or the larger-cache die of a dual-die X3D.
+  On Windows the process is also not power-throttled; on macOS the thread is
+  marked user-interactive.
+- **`com_cpuTimings 1`** prints where each frame's CPU time goes every two
+  seconds: frame cap, server (bots, game), client (scene, submit). Bots are split
+  into setup, world, AI and input.
+- **A command line too long to hold** (over 16384 characters or 128 `+`
+  commands) now says what it ignored. It used to drop the end silently, so a
+  launcher's trailing `+connect` simply did not happen.
+- Fixed a crash on the second map load of a session, and the followed player
+  drawn with the previous player's animation (Anarki "no such frame").
+
 ## Known issues
 
 **Normal map green-channel convention.** A normal map is baked against one of
@@ -390,6 +492,10 @@ in and which client sees it. Worth knowing before you run a server:
   texture is light and dark for some other reason — signs, posters, lettering
   will grow bumps that track the artwork. A shader declines with `qlNoPerturb`,
   and `r_qlNormalMaps 0` plus `vid_restart` turns the whole thing off.
+
+**Ray-traced shadows on macOS and on non-NVIDIA GPUs** have not been seen by a
+tester. The macOS CPU detection compiles for nobody here; the first Mac build is
+its test.
 
 ## Before cutting the release
 
