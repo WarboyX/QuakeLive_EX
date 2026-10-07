@@ -1,0 +1,16 @@
+base1a	cur	bot_tacticsTeams=1	REPLICATE red layer ON vs blue OFF
+base1b	cur	bot_tacticsTeams=2	REPLICATE blue layer ON vs red OFF
+sweep1a	cur	bot_tacticsTeams=1 --set bot_aimSweep=0	red layer ON minus aimSweep vs blue OFF
+sweep1b	cur	bot_tacticsTeams=2 --set bot_aimSweep=0	blue layer ON minus aimSweep vs red OFF
+base2a	cur	bot_tacticsTeams=1	REPLICATE red layer ON vs blue OFF
+base2b	cur	bot_tacticsTeams=2	REPLICATE blue layer ON vs red OFF
+sweep2a	cur	bot_tacticsTeams=1 --set bot_aimSweep=0	red layer ON minus aimSweep vs blue OFF
+sweep2b	cur	bot_tacticsTeams=2 --set bot_aimSweep=0	blue layer ON minus aimSweep vs red OFF
+base3a	cur	bot_tacticsTeams=1	REPLICATE red layer ON vs blue OFF
+base3b	cur	bot_tacticsTeams=2	REPLICATE blue layer ON vs red OFF
+sweep3a	cur	bot_tacticsTeams=1 --set bot_aimSweep=0	red layer ON minus aimSweep vs blue OFF
+sweep3b	cur	bot_tacticsTeams=2 --set bot_aimSweep=0	blue layer ON minus aimSweep vs red OFF
+base4a	cur	bot_tacticsTeams=1	REPLICATE red layer ON vs blue OFF
+base4b	cur	bot_tacticsTeams=2	REPLICATE blue layer ON vs red OFF
+sweep4a	cur	bot_tacticsTeams=1 --set bot_aimSweep=0	red layer ON minus aimSweep vs blue OFF
+sweep4b	cur	bot_tacticsTeams=2 --set bot_aimSweep=0	blue layer ON minus aimSweep vs red OFF

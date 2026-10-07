@@ -1,0 +1,8 @@
+A1	cur	bot_tacticsTeams=1	red layer ON vs blue layer OFF
+A2	cur	bot_tacticsTeams=2	blue layer ON vs red layer OFF
+B1	cur	bot_ctfDetours=2	red no-detours vs blue full layer
+B2	cur	bot_ctfDetours=1	blue no-detours vs red full layer
+C1	cur	bot_ctfObjectiveMove=2	red no-objective-move vs blue full layer
+C2	cur	bot_ctfObjectiveMove=1	blue no-objective-move vs red full layer
+D1	pre	bot_tacticsTeams=1	PRE-MERGE red layer ON vs blue layer OFF
+D2	pre	bot_tacticsTeams=2	PRE-MERGE blue layer ON vs red layer OFF

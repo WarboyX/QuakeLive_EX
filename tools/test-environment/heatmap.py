@@ -209,8 +209,11 @@ fs = res['final']
 panels = [
     panel(team_overlay(density(red), density(blue)), 'Where each team spent its time',
           f'red and blue presence, {len(alive)} live samples (4 per bot per second)'),
-    panel(overlay(density(fights, 7)), 'Where the fighting was',
-          f'{len(fights)} samples of bots in combat'),
+    # bottrack 'f' is every live node that is not a seek node: fight, chase,
+    # battle-item AND retreat - which is also how an escort follows its carrier
+    # while shooting. So this is "in a battle node", not "not escorting" (E226).
+    panel(overlay(density(fights, 7)), 'Bots in a battle node',
+          f'{len(fights)} samples in fight/chase/retreat/battle-item - retreat includes escorting while shooting'),
     panel(overlay(density(deaths, 9)), 'Where bots died',
           f'{len(deaths)} deaths; dots = each death, coloured by the victim\'s team',
           [(r[3], r[4], (255, 90, 90) if r[2] == 1 else (100, 160, 255)) for r in deaths]),

@@ -6264,6 +6264,36 @@ Exact-source fixtures verify snapshot identity and invalidation, timing boundari
 
 Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
 
+### E226. Why the tactical layer loses: controlled side-swapped series at normal speed — aim sweep is most of it — FINDING (no default changed)
+**Lives in:** our **server** (qagame `ai_main.c` `BotAimSweep`; switches in `ai_dmq3.c`, `ai_tactics.c`) and test tools · **Seen by:** every client (bot behaviour)
+
+An external review of E225 corrected four readings, and every one held up:
+- the carrier plot overlaid possessions, so it could not show loops;
+- `f` in `bottrack` is any battle node, retreat-following included;
+- objective movement selects the retreat node, it does not disable retreat;
+- proximity is not protection.
+
+The review asked for a controlled series in five steps. All runs: japanesecastles, 15v15, skill 5, 600 s, **timescale 1**, every match PASS. 34 matches in all. The journal is in `docs/bot-ai-changes-e226.md`.
+
+1. **Normal speed:** the deficit holds. Layer on 1 capture, off 10. Deaths 1.70×.
+2. **Switch audit:** `docs/bot-tactics-switch-audit.md`.
+   - The baseline is "tactical layer off", not stock Quake 3. Crowd steering, the E135 routing fixes and carrier route selection (CTF16–18 travel cost) run for both teams.
+   - The layer itself also changes think rate, aim, view, dodge and target commitment.
+3. **Carrier detours off** (`bot_ctfDetours`, new): no effect. 5–6 captures, deaths mixed.
+   - Per-possession trajectories (`ctf-possessions.py`, new) show layer-on carriers reverse *less* than layer-off ones. No looping.
+   - The real deficit: 28 pickups against 50, and home carriers dying while their own flag is away (1 of 5 captured, against 10 of 12).
+4. **Objective movement off** (`bot_ctfObjectiveMove`, new): small. 10–7 captures, deaths 289 vs 303.
+   - One aim or view piece at a time, removed from the layer-on team only. **`bot_aimSweep 0` alone flips the result.**
+   - Replicated over 4 more pairs: baseline 3–22, aim sweep off 12–8. Over all 5 pairs each: **4–32 against 16–10**. Death ratio about 1.68 against about 1.25.
+   - aimDrift, viewSmooth and dodge show no change. targetCommit is 1.42 in a single pair.
+5. **Pre-merge build** (`387d68a6` + switch): the same 1.70× death ratio and 0–3 captures. **Inherited, not a CTF18 regression.**
+
+`BotAimSweep` is human-like on purpose: eased sweeps, slowing corrections, and a deadzone that leaves residual error. Against servo aim it loses fights. **Nothing was changed by default.** Keeping, tuning or dropping it is a design call.
+
+Open:
+- the remaining 1.25× (think rate has no switch yet; targetCommit; attack pickups);
+- a second map.
+
 ### E225. Heat maps of two head-to-head CTF matches: the stock bots won both, 6–0 and 4–0 — OPEN (finding)
 **Lives in:** our **server** (qagame tactical layer) and test tools (`tools/test-environment/heatmap.py`) · **Seen by:** every client
 

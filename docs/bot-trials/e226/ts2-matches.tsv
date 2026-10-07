@@ -1,0 +1,10 @@
+aimDrift1	cur	bot_tacticsTeams=1 --set bot_aimDrift=0	red layer ON minus aimDrift vs blue layer OFF
+aimDrift2	cur	bot_tacticsTeams=2 --set bot_aimDrift=0	blue layer ON minus aimDrift vs red layer OFF
+aimSweep1	cur	bot_tacticsTeams=1 --set bot_aimSweep=0	red layer ON minus aimSweep vs blue layer OFF
+aimSweep2	cur	bot_tacticsTeams=2 --set bot_aimSweep=0	blue layer ON minus aimSweep vs red layer OFF
+viewSmooth1	cur	bot_tacticsTeams=1 --set bot_viewSmooth=0	red layer ON minus viewSmooth vs blue layer OFF
+viewSmooth2	cur	bot_tacticsTeams=2 --set bot_viewSmooth=0	blue layer ON minus viewSmooth vs red layer OFF
+dodge1	cur	bot_tacticsTeams=1 --set bot_dodge=0	red layer ON minus dodge vs blue layer OFF
+dodge2	cur	bot_tacticsTeams=2 --set bot_dodge=0	blue layer ON minus dodge vs red layer OFF
+targetCommit1	cur	bot_tacticsTeams=1 --set bot_targetCommit=0	red layer ON minus targetCommit vs blue layer OFF
+targetCommit2	cur	bot_tacticsTeams=2 --set bot_targetCommit=0	blue layer ON minus targetCommit vs red layer OFF
