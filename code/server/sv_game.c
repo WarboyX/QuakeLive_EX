@@ -326,7 +326,44 @@ static qboolean SV_GI_GetEntityToken(char *buf, int size) {
 
 // --- Bot library wrappers (runtime botlib_export check) ---
 
+static struct {
+    qboolean allowed, active;
+    botTimingStage_t stage;
+    int64_t last;
+} sv_botTiming;
+
+static void SV_BotTimingMark(const char *value) {
+    int64_t now;
+    botTimingStage_t next;
+
+    if (!sv_botTiming.allowed) return;
+    if (!strcmp(value, "begin")) {
+        if (sv_botTiming.active) return;
+        sv_botTiming.active = qtrue;
+        sv_botTiming.stage = BOT_TIMING_SETUP;
+        sv_botTiming.last = Sys_Microseconds();
+        return;
+    }
+    if (!sv_botTiming.active) return;
+    if (!strcmp(value, "world")) next = BOT_TIMING_WORLD;
+    else if (!strcmp(value, "ai")) next = BOT_TIMING_AI;
+    else if (!strcmp(value, "input")) next = BOT_TIMING_INPUT;
+    else if (!strcmp(value, "end")) next = BOT_TIMING_STAGES;
+    else return;
+
+    now = Sys_Microseconds();
+    com_usBotStages[sv_botTiming.stage] += now - sv_botTiming.last;
+    com_usBots += now - sv_botTiming.last;
+    sv_botTiming.last = now;
+    if (next == BOT_TIMING_STAGES) sv_botTiming.active = qfalse;
+    else sv_botTiming.stage = next;
+}
+
 static int SV_GI_BotLibVarSet(const char *n, const char *v) {
+    if (!strcmp(n, BOT_TIMING_MARKER)) {
+        SV_BotTimingMark(v);
+        return 0;
+    }
     return botlib_export ? botlib_export->BotLibVarSet((char*)n, (char*)v) : 0;
 }
 
@@ -1132,8 +1169,13 @@ void SV_GameShutdown(int restart) {
 }
 
 void SV_GameRunFrame(int serverTime) {
+    sv_botTiming.active = qfalse;
+    sv_botTiming.allowed = com_cpuTimings && com_cpuTimings->integer;
     if (sv_vmMainTable[GAME_RUN_FRAME])
         ((void (*)(int))sv_vmMainTable[GAME_RUN_FRAME])(serverTime);
+    // Also close a missing end marker from an older or interrupted game module.
+    SV_BotTimingMark("end");
+    sv_botTiming.allowed = qfalse;
 }
 
 void SV_GameRegisterCvars(void) {

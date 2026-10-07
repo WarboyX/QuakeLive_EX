@@ -1108,9 +1108,7 @@ void SV_Frame(int msec) {
     sv.timeResidual += msec;
 
     if (!com_dedicated->integer) {
-        const int64_t t0 = com_cpuTimings->integer ? Sys_Microseconds() : 0;   // [QL] E222
         SV_BotFrame(sv.time + sv.timeResidual);
-        if (t0) com_usBots += Sys_Microseconds() - t0;
     }
 
     // if time is about to hit the 32nd bit, kick all clients
@@ -1156,14 +1154,14 @@ void SV_Frame(int msec) {
     SV_CalcPings();
 
     if (com_dedicated->integer) {
-        const int64_t t0 = com_cpuTimings->integer ? Sys_Microseconds() : 0;   // [QL] E222
         SV_BotFrame(sv.time);
-        if (t0) com_usBots += Sys_Microseconds() - t0;
     }
 
     // run the game simulation in chunks
     {
-        const int64_t t0 = com_cpuTimings->integer ? Sys_Microseconds() : 0;   // [QL] E222
+        const qboolean timed = com_cpuTimings->integer != 0;
+        const int64_t t0 = timed ? Sys_Microseconds() : 0;
+        const int64_t botsBefore = com_usBots;
         while (sv.timeResidual >= frameMsec) {
             sv.timeResidual -= frameMsec;
             svs.time += frameMsec;
@@ -1172,7 +1170,8 @@ void SV_Frame(int msec) {
             // let everything in the world think and move
             SV_GameRunFrame(sv.time);
         }
-        if (t0) com_usGame += Sys_Microseconds() - t0;
+        // BotAI runs inside G_RunFrame; exclude it from the game subtotal.
+        if (timed) com_usGame += Sys_Microseconds() - t0 - (com_usBots - botsBefore);
     }
 
     if (com_speeds->integer) {

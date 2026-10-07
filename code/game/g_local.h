@@ -1497,6 +1497,8 @@ extern vmCvar_t bot_dodge;
 extern vmCvar_t bot_squadRange;
 extern vmCvar_t bot_startingSkill;
 extern vmCvar_t bot_tactics;
+extern vmCvar_t bot_tacticsTeams;   // [QL] E224
+extern vmCvar_t bot_ctfIntercept;   // [QL] E224
 extern vmCvar_t bot_teamkill;
 extern vmCvar_t bot_training;
 extern vmCvar_t g_accessFile;

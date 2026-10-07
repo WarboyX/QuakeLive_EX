@@ -825,6 +825,7 @@ extern cvar_t* com_speeds;
 /* [QL] E222: com_cpuTimings - microseconds this frame, filled where they run */
 extern cvar_t* com_cpuTimings;
 extern int64_t com_usBots, com_usGame, com_usScene, com_usSubmit;
+extern int64_t com_usBotStages[BOT_TIMING_STAGES];
 extern cvar_t* com_timescale;
 extern cvar_t* com_sv_running;
 extern cvar_t* com_cl_running;

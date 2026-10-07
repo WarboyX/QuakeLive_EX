@@ -689,6 +689,28 @@ ConsoleCommand
 
 =================
 */
+static void Svcmd_BotScores_f(void) {
+    int i, count = 0;
+
+    // Run twice to inspect score progress without connecting a human client.
+    G_Printf("Bot scores at %d ms: gametype %d, warmup %d, round state %d, playing %d\n",
+             level.time, g_gametype.integer, level.warmupTime,
+             level.roundState.eCurrent, level.numPlayingClients);
+    G_Printf("Score guards: reported %d, intermission queued %d, intermission %d, disabled %d, race %d, training %d\n",
+             level.gameStatsReported, level.intermissionQueued != 0,
+             level.intermissionTime != 0, level.scoringDisabled,
+             g_gametype.integer == GT_RACE, g_training.integer);
+    for (i = 0; i < level.maxclients; i++) {
+        gclient_t *cl = level.clients + i;
+        if (cl->pers.connected != CON_CONNECTED || !(g_entities[i].r.svFlags & SVF_BOT)) continue;
+        G_Printf("  slot %d: team %d, score %d, %s\n", i, cl->sess.sessionTeam,
+                 cl->ps.persistant[PERS_SCORE], cl->pers.netname);
+        count++;
+    }
+    G_Printf("%d connected bots; team scores red %d, blue %d\n", count,
+             level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE]);
+}
+
 qboolean ConsoleCommand(void) {
     char cmd[MAX_TOKEN_CHARS];
 
@@ -714,6 +736,10 @@ qboolean ConsoleCommand(void) {
     }
     if (Q_stricmp(cmd, "botlist") == 0) {
         Svcmd_BotList_f();
+        return qtrue;
+    }
+    if (Q_stricmp(cmd, "botscores") == 0) {
+        Svcmd_BotScores_f();
         return qtrue;
     }
     /* [QL] What the bots are actually doing right now. botlist prints the bot

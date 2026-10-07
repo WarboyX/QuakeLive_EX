@@ -1390,6 +1390,14 @@ typedef enum _flag_status {
 
 #define MAX_MAP_ADVERTISEMENTS 30
 
+// Internal native-game timing markers through the existing BotLibVarSet import.
+// No import-table or network ABI change. Older engines treat this as a libvar.
+#define BOT_TIMING_MARKER "__ql_botTiming"
+typedef enum {
+    BOT_TIMING_SETUP, BOT_TIMING_WORLD, BOT_TIMING_AI, BOT_TIMING_INPUT,
+    BOT_TIMING_STAGES
+} botTimingStage_t;
+
 #define LERP(a, b, w) ((a) * (1.0f - (w)) + (b) * (w))
 #define LUMA(red, green, blue) (0.2126f * (red) + 0.7152f * (green) + 0.0722f * (blue))
 

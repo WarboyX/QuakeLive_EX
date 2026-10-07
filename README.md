@@ -12,6 +12,7 @@ It's really important to me that the Quake Live community prosper - it's such a 
 - [`IMPROVED.md`](IMPROVED.md) — what this build adds on top of the base fork: subsystems, protections and diagnostics, with verification status. ([Discord-sized version](docs/IMPROVED-discord.md).)
 - [`RELEASE-NOTES.md`](RELEASE-NOTES.md) — the current release body.
 - [`TRACKER.md`](TRACKER.md) — every tracked issue, with which binary it lives in and which clients see it.
+- [`Test environment`](docs/test-environment.md) — reusable headless bot matches on authored fixtures, score controls, and current-shader Vulkan checks.
 
 ### What works
 

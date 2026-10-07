@@ -547,8 +547,14 @@ void CA_Think(void) {
 
     Team_LivingTeamCounts(&redAlive, &blueAlive);
 
-    // Check if round is over (one team eliminated)
-    if (redAlive == 0 || blueAlive == 0) {
+    /* Check if round is over: one team eliminated, or [QL] E224 roundtimelimit
+       run out. RS_ROUND_OVER already decides a both-alive round by living count
+       then health (g_roundDrawLivingCount / g_roundDrawHealthCount) - a branch
+       only a timeout can reach - but nothing here ever timed out, so a CA round
+       that nobody finished ran forever. RR, FT and AD all apply the limit. */
+    if (redAlive == 0 || blueAlive == 0 ||
+        (roundtimelimit.integer != 0 &&
+         level.time - level.roundState.startTime >= roundtimelimit.integer * 1000)) {
         level.roundState.eCurrent = RS_ROUND_OVER;
         CA_RoundStateTransition();
         return;

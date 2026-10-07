@@ -103,6 +103,7 @@ make PLATFORM=mingw32 ARCH=x86_64 BUILD_RENDERER_VULKAN=1 -j"$JOBS"
 # a header it includes. It runs after make, not before, because the question is
 # about what was produced and not about what the source says.
 python3 tools/check-stale-objects.py
+python3 tools/check-native-game-modules.py build/release-linux-x86_64
 
 rm -rf "$OUT/pkg"
 mkdir -p "$OUT/pkg" "$OUT/stage"

@@ -1,5 +1,18 @@
 # Working conventions
 
+## Bot AI handoff requirement
+
+For every bot AI iteration, provide a detailed code-change document comparing
+the final source against the original uploaded build, plus the incremental
+change from the preceding iteration. Jonathan requested this so the work can
+be reviewed and handed to another developer. Record the exact baseline archive
+and hashes; changed files/functions; before/after behavior; reasons and limits;
+source fixtures, actual runtime captures, commands and build scope; cumulative
+and incremental patches; and integration/rollback instructions. Distinguish
+server AI code from original `botfiles` character/weight/navigation assets and
+state explicitly whether those assets changed. Retain failed trials. Include
+the document and patches in every delivered test kit.
+
 ## Branches
 
 Default working branch: **`development`**. All work goes
@@ -212,3 +225,11 @@ three bits). Regenerate with `tools/dump-cvar-semantics.py <ql ui dir>`.
 
 Absence means no menu exposes it, not that the cvar is simple — `cg_hitBeep` is
 absent and is still unwired for exactly that reason.
+
+## Match reporting
+
+For every match, report its start and completion with build, map, population,
+duration, scores, and errors. While running, give a user-visible update at
+least once a minute. Keep the same information in the saved match journal.
+Save each iteration source, original-relative report and evidence before
+starting another iteration. Do not claim work is running unless it is.

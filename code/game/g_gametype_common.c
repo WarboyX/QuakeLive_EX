@@ -40,7 +40,9 @@ void ClientBegin_RoundBased(gentity_t* ent) {
         if (!g_teamSpecFreeCam.integer
             && client->sess.sessionTeam != TEAM_SPECTATOR
             && redAlive > 0 && blueAlive > 0) {
-            Cmd_FollowCycle_f(ent, 1);
+            // [QL] E224: keep the team - see G_FollowCycle. The ordinary follow
+            // moved a mid-round joiner to TEAM_SPECTATOR for good.
+            G_FollowCycleKeepTeam(ent, 1);
         }
     }
 }
@@ -65,7 +67,11 @@ void ClientBegin_RoundBased_impl(gentity_t* ent) {
     if (!g_teamSpecFreeCam.integer
         && client->sess.sessionTeam != TEAM_SPECTATOR
         && redAlive > 0 && blueAlive > 0) {
-        Cmd_FollowCycle_f(ent, 1);
+        /* [QL] E224: keep the team. This is every CA/AD death mid-round, and
+           the ordinary follow made each one TEAM_SPECTATOR permanently - teams
+           emptied death by death and the match forfeited. FT had the same bug
+           and was fixed with this call; these two were missed. */
+        G_FollowCycleKeepTeam(ent, 1);
     }
 }
 

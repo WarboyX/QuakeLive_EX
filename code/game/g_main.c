@@ -131,6 +131,8 @@ vmCvar_t bot_dodge;
 vmCvar_t bot_squadRange;
 vmCvar_t bot_startingSkill;
 vmCvar_t bot_tactics;
+vmCvar_t bot_tacticsTeams;   // [QL] E224
+vmCvar_t bot_ctfIntercept;   // [QL] E224
 vmCvar_t bot_teamkill;
 vmCvar_t bot_training;
 vmCvar_t g_accessFile;
@@ -1161,6 +1163,15 @@ static cvarTable_t gameCvarTable[] = {
     {&bot_squadRange, "bot_squadRange", "800", CVAR_GAMERULE, 0, NULL},
     {&bot_startingSkill, "bot_startingSkill", "1", CVAR_GAMERULE, 0, NULL},
     {&bot_tactics, "bot_tactics", "1", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] E224. Head-to-head testing: which teams get the tactical layer (1 red,
+    2 blue, 3 both) and which get CTF18's interception-aware escort choice. Red
+    on one policy against blue on the other in the same match, sides swapped
+    next match, is a far smaller-noise comparison than separate builds. Bots
+    with no team (FFA, duel) follow bot_tactics alone. See ai_main.c.
+    */
+    {&bot_tacticsTeams, "bot_tacticsTeams", "3", 0, 0, NULL},
+    {&bot_ctfIntercept, "bot_ctfIntercept", "3", 0, 0, NULL},
     {&bot_teamkill, "bot_teamkill", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_training, "bot_training", "0", CVAR_GAMERULE, 0, NULL},
     {&g_accessFile, "g_accessFile", "access.txt", 0, 0, NULL},

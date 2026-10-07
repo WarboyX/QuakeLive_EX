@@ -79,3 +79,5 @@ __pycache__/
 
 # [QL] Compiled test maps are build output, same rule as release/
 /content/testmaps/out/
+# Private runtime trees, copied binaries, generated maps and test logs.
+/test-environment/

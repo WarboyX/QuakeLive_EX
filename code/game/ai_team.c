@@ -833,6 +833,7 @@ BotCTFOrders
 ==================
 */
 void BotCTFOrders(bot_state_t* bs) {
+    if (bot_tactics.integer) return; // autonomous CTF assignments use BotCTFPlanGoals
     int flagstatus;
 
     //

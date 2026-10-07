@@ -6199,6 +6199,97 @@ Open, not changed:
 - **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
 - **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
 
+### Local runtime test environment — READY; CA regression retained
+**Lives in:** test tools for our **server**, plus Vulkan shader fixtures · **Seen by:** whoever runs the tests
+
+`tools/test-environment/verify.py` runs actual native bot matches on authored BSP/AAS/bot data, with isolated binaries/paks/homes and recorded commands, module hashes, scores, events and tracks. Live bot-only tests use `g_doWarmup 0` after admitting the whole population; no human ready-up. FFA/TDM progress, CTF captures and the zero-score warmup control pass. `run-shadow.py` recompiles the current shadow shader and runs 13 synthetic views on software Vulkan with zero validation errors. Production maps, NVIDIA fast updates and representative 30v30 performance are separate. Instructions and raw outcome scope: `docs/test-environment.md`.
+
+**New reproducible CA failure — fixed in E224** (both calls now keep the team; CA also gained its round time limit): normal and zero round delay runs move playing bots to the spectator team and auto-forfeit. The shared CA/AD begin/respawn paths call `Cmd_FollowCycle_f`, which changes the team, instead of the existing `G_FollowCycleKeepTeam` used by FT. CA is runtime-reproduced; AD shares the suspicious source path but was not played. The zero-delay restart/begin order also needs verification. `verify.py --rounds` retains nonzero exit codes; this is not classified as missing human ready-up.
+
+### Local CTF carrier selection trial — `387d68a6-ctf11` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmq3.c`) and test tools · **Seen by:** every client
+
+Carrier selection rejects a waypoint whose first leg is already below the movement arrival threshold of 20 AAS units. A valid pending route is retained unless a replacement saves another 100 score units beyond the existing 50-unit preference; reached/stuck/invalid routes get no extra protection. No accepted candidate clears the detour instead of reviving a random rejected waypoint when direct home travel is zero. Complete-selector fixtures and ctf10 before-behavior reproductions pass. Original botfiles remain unchanged.
+
+**Played:** Japanese Castles, bot-only `g_doWarmup 0`, 15v15. Two 15-minute simulated matches at 4x per build: ctf11 **5 captures**, ctf10 **6**, ctf3 **7**. Ten minutes normal speed: ctf11 **1 / 2**, ctf10 **1 / 0**, ctf3 **0 / 0**. 1 objective-progress failures retained. No dependable capture-rate gain established; remains experimental. Linux/Windows dedicated builds, validators and dependency/nonempty-object checks pass; Windows was not played. FFA/warmup controls pass. Detailed cumulative original-build handoff, incremental changes, patches and evidence: `docs/bot-ai-changes-ctf11.md`. Two saved engine findings remain deferred.
+
+### Local CTF escort item trial — `387d68a6-ctf10` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmnet.c`, `ai_dmq3.c`) and test tools · **Seen by:** every client
+
+Autonomous live escorts cap the already-scaled optional item range at 50 AAS units, or 150 at health at most 40. All three item entry deadlines are bounded at 1.5/2.5 seconds. New healthy escort assignments expire old item tasks; critical health allows up to 2.5 seconds and oxygen escape preserves its deadline. Orders, other jobs/modes and tactics-off retain ordinary item behavior. Exact-source fixtures pass. Original botfiles assets remain unchanged.
+
+**Played:** Japanese Castles, bot-only `g_doWarmup 0`, 15v15. Two 15-minute simulated matches at 4x per build: ctf10 **8 captures**, ctf9 **9**, ctf3 **6**. Ten minutes at normal speed: ctf10 **1 / 0**, ctf9 **0 / 0**, ctf3 **0 / 1**. 1 objective-progress failure(s) retained. No dependable capture-rate gain established. Linux/Windows dedicated builds, validators and dependency/nonempty-object checks pass; Windows was not played. FFA/warmup controls pass. Detailed cumulative original-upload comparison, incremental changes, file/function inventory, patches, evidence and handoff instructions: `docs/bot-ai-changes-ctf10.md`. The two saved engine findings remain deferred.
+
+### Local CTF navigation trial — `387d68a6-ctf9` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_tactics.c`) and test tools · **Seen by:** every client
+
+Escorts now rank reachable AAS travel time to their teammate carrier instead of straight-line proximity, with per-frame cost sharing and a small incumbent preference. Orders, vacant-slot checks, quotas and disabled/other-mode behavior remain intact. Exact-source fixtures reproduce the wall-proximity failure and cover both teams, cache reuse, flags, stability, orders and airborne/same-area fallbacks. Optional trace analysis now verifies actual followed flag carriers and excludes stale/dead/opposing-team targets.
+
+**Played:** Japanese Castles, bot-only `g_doWarmup 0`, 15v15. Two 15-minute simulated matches at 4x per build: ctf9 **8 captures**, ctf8 **6**, ctf3 **9**. One 10-minute normal-speed match per build: each **red 0 / blue 1**. No dependable capture gain established; ctf3 remains the preferred baseline. All nine CTF runs and FFA/warmup controls pass. Linux/Windows dedicated builds, validators, dependency checks and nonempty objects verified; Windows was not played. Linked escort proximity increased against ctf8 in this sample, but about 28% of ctf9 accelerated escort samples still used the item node. Full evidence and limitations: `docs/ctf-navigation-follow-up.md`. Two saved engine findings remain deferred.
+
+### Local CTF escort trial — `387d68a6-ctf8` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_tactics.c`, `ai_main.c`), plus test tools · **Seen by:** every client
+
+Escort prediction now follows the carrier's pending alternate route and then home, with its travel flags. It scans the bounded route for a reachable early interception instead of rejecting it solely on final arrival time and using a binary search. Exact-source fixtures reproduce the failures and pass with the fixes. Optional CTF traces identify actual possession, health, carrier target, route and direct home travel time; analysis adds escort proximity/progress proxies.
+
+**Played:** Japanese Castles, bot-only `g_doWarmup 0`, 15v15, two 15-minute simulated matches at 4x per build: ctf8 **7 total captures**, ctf7 **8**, ctf3 **8**. One 10-minute normal-speed match each: ctf8 **2 / 2**, ctf7 **2 / 2**, ctf3 **1 / 1**. No dependable capture-rate gain established; keep ctf3 as the preferred baseline. All nine CTF runs and FFA/warmup controls pass. Linux/Windows dedicated builds and all validators/dependency checks pass; Windows was not played. Overlapping traced matches are not CPU benchmarks. Raw evidence, build scope and limitations: `docs/ctf-escort-follow-up.md`. The two saved engine findings remain deferred.
+
+### Local CTF planner trial — `387d68a6-ctf7` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmq3.c`, `ai_dmnet.c`, `ai_tactics.c`, `ai_main.h`) · **Seen by:** every client
+
+One autonomous decision path now runs before combat each think. Recovery and carriers have their own census roles; intentional roaming no longer looks like defense just because the bot is near spawn. Explicit orders are preserved. Travelling escorts use one/two/four slots, waiting carriers one/two; replacements wait for a vacancy. A ctf6 runtime diagnostic exposed the fifth-escort transition, covered by a compiled-source fixture and corrected in ctf7. Return routes check actual reverse travel, progress and a detour budget.
+
+Actual Japanese Castles, 15v15, 15 simulated minutes at timescale 4: **final ctf7 red 3 / blue 0 and red 0 / blue 2**, versus **ctf3 red 2 / blue 2 and red 3 / blue 1**. Five versus eight captures: **no capture-rate improvement established; retain the baseline as preferred**. Final diagnostics never sampled more than four active flag escorts. The final build has not been tested at 30v30; the earlier drafts still scored zero there. Linux runtime, Windows cross-compile, source validators, 302 dependency checks and module hashes verified. Final FFA/live score and Japanese Castles zero-score warmup controls passed. Full source, failed trials and measurement limits: `docs/ctf-planner-follow-up.md`.
+
+### Local CTF planner trial — `387d68a6-ctf7` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmq3.c`, `ai_dmnet.c`, `ai_tactics.c`, `ai_main.h`) · **Seen by:** every client
+
+One autonomous decision path now runs before combat each think. Recovery and carriers have their own census roles; intentional roaming no longer looks like defense just because the bot is near spawn. Explicit orders are preserved. Travelling escorts use one/two/four slots, waiting carriers one/two; replacements wait for a vacancy. A ctf6 runtime diagnostic exposed the fifth-escort transition, covered by a compiled-source fixture and corrected in ctf7. Return routes check actual reverse travel, progress and a detour budget.
+
+Actual Japanese Castles, 15v15, 15 simulated minutes at timescale 4: **final ctf7 red 3 / blue 0 and red 0 / blue 2**, versus **ctf3 red 2 / blue 2 and red 3 / blue 1**. Five versus eight captures: **no capture-rate improvement established; retain the baseline as preferred**. Final diagnostics never sampled more than four active flag escorts. The final build has not been tested at 30v30; the earlier drafts still scored zero there. Linux runtime, Windows cross-compile, source validators, 302 dependency checks and module hashes verified. Final FFA/live score and Japanese Castles zero-score warmup controls passed. Full source, failed trials and measurement limits: `docs/ctf-planner-follow-up.md`.
+
+### Local CTF AI follow-up — `387d68a6-ctf3` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmq3.c`, `ai_dmnet.c`, `ai_tactics.c`) · **Seen by:** every client
+
+Recovery no longer gets cancelled while an enemy carries our flag, targets a dropped flag or a shared last-seen carrier position, and cannot be redirected by an obsolete alternate-route waypoint. Objective runs retain their destination during squad fallback; recovery and escort do not chase ordinary opponents away from the objective. Surplus autonomous escorts of a waiting home carrier switch to recovery, leaving one/two nearest guards. Shared sightings expire after 15 seconds and never target a hidden carrier's current position. Tactics-disabled behavior remains unchanged.
+
+Actual Japanese Castles 4v4 tests: **red 3 / blue 1 and red 2 / blue 0, each in five minutes at normal speed**, versus zero in the original bot1 run and two in its repeat. The tactics-disabled control also scored two. This is a small sample, not a proven capture-rate improvement. Latest 30v30: **zero captures in 15 simulated minutes**, 31 grabs and 30 carrier kills. Crowded matches remain **OPEN**, with travelling escort overflow and the missing recovery role confirmed in source/reports. One earlier large test stalled and timed out; cause unresolved. Linux/Windows compile, exact-source fixtures and all validators pass; final objects and tested module hashes verified. Full changes, failed runs, reproduction and prioritized planner rewrites: `docs/ctf-ai-review.md`.
+
+### Local bot performance follow-up — `387d68a6-bot1` (not pushed)
+**Lives in:** our **server** engine and qagame (`sv_main.c`, `sv_game.c`, `common.c`, `ai_main.c`, `g_svcmds.c`) · **Seen by:** server operator; bots' behavior is seen by every client
+
+The old CPU bots subtotal measured the empty `SV_BotFrame` hook. Actual AI ran inside `G_RunFrame`, under game. Timings now bracket the native game AI and split setup/world/AI/input, excluding that cost from game. Existing imports carry internal markers; no import or network layout changes. Scheduled AI shares stable client AAS snapshots within one tick, without sharing visibility results or changing bot think intervals. `botscores` reports live score and match-state diagnostics on a bot-only server.
+
+Exact-source fixtures verify snapshot identity and invalidation, timing boundaries and accounting, and bot scoring guards. A synthetic 60-bot workload reduces 18,000 repeated queries to 60 botlib reads; this is not a measured live frame-time gain. Linux and Windows x64 compile. Actual authored-data runtime matches now verify FFA/TDM/CTF progress and expose the CA failure above. At that stage original map/bot assets were unavailable. The later Japanese Castles review below uses the supplied original assets. Bot-only tests must use `g_doWarmup 0`; a missing human ready-up is not an explanation with that setting. Full procedure and limitations: `docs/bot-performance-follow-up.md`. The broad K18 cache remains open.
+
+Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
+
+### E224. CTF18 bot AI merged; per-team policy switch for head-to-head tests; CA rounds no longer demote the dead or run forever — DONE (verify)
+**Lives in:** our **server** (qagame `ai_*.c`, `g_gametype_common.c`, `g_gametype_ca.c`; engine `sv_game.c`, `sv_main.c`, `common.c`) and test tools · **Seen by:** every client (bot behaviour, CA rounds)
+
+**The merge.** The ctf11 → ctf16 → ctf17 → ctf18 bot work was developed on a copy of `387d68a6` (this branch's previous head), so it applied as a straight diff with no conflict against E222/E223. It was reviewed before merging:
+- **CTF planner.** One planner owns autonomous CTF jobs (`BotCTFPlanGoals`): attack, defend, escort, recover and roam, with carrier route risk, recovery of a carried flag from team sightings, a dropped enemy flag acted on once a teammate has seen it, and escorts ranked by where they can meet the carrier. Everything is behind `bot_tactics`; 0 is stock.
+- **Bot CPU timing.** The game reports its stages (setup / world / AI / input) to the engine through the existing `BotLibVarSet` import, so there is no ABI change. It fills E222's `bots` figure, which previously timed `SV_BotFrame` while the AI actually runs inside `G_RunFrame`. A per-frame entity-info cache serves AI reads.
+- **Tools.** A `botscores` server command, 8 source-level fixtures in `tools/validate.sh`, `check-native-game-modules.py` in packaging, the headless match runner `tools/test-environment/`, and the docs `docs/bot-ai-changes-ctf*.md`.
+- **One loss restored.** The rewrite of the role census dropped the E67/E83 reasoning for "a declared job outranks position". The rule was kept; the explanation is now back on `BotCTFClientRole`.
+
+**Head-to-head switch (new).** Capture counts from six games per build cannot tell builds apart, so comparisons now run inside one match.
+- `bot_tacticsTeams` (1 red, 2 blue, 3 both; default 3) gives the tactical layer to one team only. While a bot thinks, `bot_tactics` reads as its own team's setting and is restored after, so all 64 readers follow without being edited. Shared caches are per team.
+- `bot_ctfIntercept` (same bits) switches only CTF18's meeting-point escort choice, which is the ctf17-vs-ctf18 question.
+- `run.py --set NAME=VALUE` passes either cvar.
+- Verified: a 12-bot CTF run with `bot_tacticsTeams 1` logged 18 planner role decisions, all from red, none from blue. The intercept fixture now covers one team off and the other on.
+
+**CA: dead players moved to spectator for good.** The merged handoff reported it; confirmed in source. Both CA/AD round paths in `g_gametype_common.c` (a mid-round join, and every respawn after a mid-round death) called `Cmd_FollowCycle_f`, whose first act is `SetTeam(ent, "spectator")`. Teams emptied death by death and the match forfeited. That, not the missing human ready-up, is the likelier cause of our bot-only CA forfeits. FT had exactly this and was fixed with `G_FollowCycleKeepTeam`; these two calls were missed and now use it.
+
+**CA: a round nobody finished never ended.** `CA_Think` ended a round only on elimination. `roundtimelimit` (180) was read by RR, FT and AD but not CA, although CA's round-over branch already holds the both-alive draw rules a timeout needs. Now applied.
+
+Runs (japanesecastles, bot-only, `g_doWarmup 0`, 4x):
+- CTF 10v10 head-to-head: PASS, 1–1.
+- CA 6v6, 420 s: before, 17 kills and no round ever ended. After, PASS: rounds end at the limit, 2–0, all 12 bots still on their teams.
+- AD 6v6, 420 s: rounds end, 44 kills, no demotions. No score, by AD's rules: points come only from touches, captures and elimination bonuses, and these bots never took the flag.
+
+Not done: no capture-rate claim for CTF18. That needs the head-to-head runs above, sides swapped, measuring escort arrival and carrier survival as well as captures.
+
 ### E223. Review of `4a0e77fe`: affinity restore, timing window, and three caster-shadow follow-ups — DONE (verify)
 **Lives in:** our **client and server** engine (`sys_unix.c`, `sys_main.c`, `common.c`) and our **client** (renderervk `vk_rt_world.c`, `actorshadow.tmpl`) · **Seen by:** our client only (shadows); whoever runs the binary (CPU)
 
@@ -6368,7 +6459,7 @@ From the external review of `6bc976c5`, each claim confirmed against the source 
 
 **Smoke test:** dedicated server, 8 bots, `g_spawnArmor 3000`, current qagame.
 - CA, AD and RR play rounds with kills, no errors.
-- FT, and CA with `g_roundWarmupDelay 0`, forfeit repeatedly on the previous release (27e926a7) exactly as on this one. That is the harness, not these changes: a match needs one human player to ready up, and there is no way around it (tester). A bot-only dedicated server cannot test round transitions; that needs a client in the game.
+- Historical FT and zero-delay CA runs forfeited repeatedly on both releases. The earlier explanation that bot-only tests require a human was incorrect: `g_doWarmup 0` bypasses readiness. The reusable runtime environment now reproduces a separate CA spectator-demotion/forfeit regression with both normal and zero round delay; see `docs/test-environment.md`. FT was not rerun in that environment, and these historical runs do not verify round transitions.
 - Not checked: the published configstring itself. A dedicated server cannot print it; this needs a client.
 
 ### E212. E211 was wrong where it mattered: shadows now along the light grid's direction, Quake 3's rule — DONE (verify)
@@ -13569,3 +13660,33 @@ compiler warnings in engine code).
 | `menu_open <name>` | client | Opens any loaded menu by name |
 | `menu_close <name>` | client | Closes it |
 | `ui_report` | client | Dumps menu/item state |
+
+## CTF16 — route-risk trial (measured gain)
+
+**Lives in:** server qagame; native build/test tooling.
+**Seen by:** every client observing these server bots.
+
+Compare carrier direct-home and detour scores using peak enemy population
+along predicted AAS routes. Preserve return progress, detour bounds, arrival
+threshold and meaningful replacement margin. Original botfiles unchanged.
+Twelve600-second normal-speed Japanese Castles15v15 matches completed:
+candidate16 captures in6 games versus saved ctf11's10 in6 (+60%). Cohorts
+10–4 and6–6; the second tied, so capture superiority needs further replication; candidate scored every game, baseline had one no-progress failure.
+All validators, native import checks and dependency checks passed. Final
+rebuild matched the played qagame SHA256 exactly. This is a measured gain on
+one map, not a general proof or a CPU benchmark. Original151 botfile entries
+unchanged. Practice CTF team captures are permitted by unchanged scoring code;
+an exploratory stricter warmup criterion was rejected and its failure retained.
+Detailed original-relative and incremental handoff: docs/bot-ai-changes-ctf16.md.
+
+## CTF17 — spotted dropped-flag relay trial
+
+**Lives in:** server qagame; test tooling.
+**Seen by:** every client observing these server bots.
+
+Living teammates must see a dropped enemy flag before the planner assigns it.
+Share the last observed point, invalidate reused entities and wake planning on
+new sight. Original 151 botfile assets unchanged. ctf17 made 17 captures versus ctf16's 16, across six ten-minute matches per build.
+All matches and failures, source checks and limits are recorded in
+docs/bot-ai-changes-ctf17.md and the saved match evidence.
+No upstream push/main merge, Windows build or GPU validation is claimed.

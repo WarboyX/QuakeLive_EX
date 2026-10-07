@@ -40,7 +40,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define CTFROLE_DEFEND 1  // hold our own
 #define CTFROLE_ESCORT 2  // stay with whoever is carrying theirs
 #define CTFROLE_ROAM 3    // fight for the middle, pick things up
-#define CTFROLE_COUNT 4
+#define CTFROLE_RECOVER 4 // pursue our missing flag
+#define CTFROLE_CARRIER 5 // carry theirs home; never assigned by the picker
+#define CTFROLE_COUNT 6
 
 #define TACTIC_FALLBACK 0  // outnumbered here and now
 #define TACTIC_EVEN 1      // no reason to think either way
@@ -85,6 +87,14 @@ int BotRoomEnemies(struct bot_state_s* bs, vec3_t origin);  // [QL] E135
 void BotRoomsReset(void);
 // qtrue when the flag this bot wants to capture is still on its stand
 int BotEnemyFlagAtBase(struct bot_state_s* bs);
+// dropped own flag, shared last-seen carrier position, or the enemy stand to search
+int BotCTFRecoveryGoal(struct bot_state_s* bs, bot_goal_t* goal);
+// keep combat movement on a live CTF objective
+int BotCTFKeepObjective(struct bot_state_s* bs);
+// release surplus autonomous escorts of a waiting home carrier
+int BotCTFReleaseEscort(struct bot_state_s* bs);
+// nearest available teammates fill a bounded screen; explicit orders take precedence
+int BotCTFEscortEligible(struct bot_state_s* bs, int carrier);
 // keep a body's width between team mates; objective carriers are exempt
 void BotTeamSpacing(struct bot_state_s* bs);
 // qtrue when there is somewhere to go that way - not blocked, not off an edge
@@ -97,3 +107,8 @@ int BotEscortGoal(struct bot_state_s* bs, bot_goal_t* goal);  // [QL] E137
 int BotRoamWaypoint(struct bot_state_s* bs, bot_goal_t* goal);  // [QL] E137
 // forget the guard posts on a map change
 void BotDefendPostsReset(void);
+
+int BotCTFRouteThreat(bot_state_t* bs, int area, vec3_t origin, int target, vec3_t destination, int flags);
+
+int BotCTFEnemyFlagGoal(struct bot_state_s* bs, bot_goal_t* goal);
+int BotCTFEnemyFlagAvailable(struct bot_state_s* bs);

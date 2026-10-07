@@ -55,6 +55,27 @@ ceiling is eight and the rest go where the mix sends its surplus.
 */
 #define CTF_MAX_DEFENDERS 8
 
+typedef struct {
+    int frame, status, carrier;
+    qboolean known;
+    float seen;
+    vec3_t origin;
+    int area;
+    bot_goal_t dropped;
+} ctf_recovery_t;
+
+static ctf_recovery_t ctfRecovery[2];
+
+typedef struct {
+    int frame, carrier;
+    int travel[MAX_CLIENTS];
+    int intercept_valid, intercept_carrier, intercept_waypoint, intercept_home;
+    float intercept_time;
+    int intercept[MAX_CLIENTS];
+} ctf_escort_costs_t;
+
+static ctf_escort_costs_t ctfEscortCosts[2];
+
 /*
 ==================
 BotTacticsEnabled
@@ -82,6 +103,7 @@ void BotTacticsReset(bot_state_t* bs) {
        attack, which is the one answer that needs no special handling and so
        would never be noticed. */
     bs->tac.assignedrole = -1;
+    bs->tac.ctfphase = -1;
 }
 
 /*
@@ -825,6 +847,9 @@ int BotRegroupGoal(bot_state_t* bs, bot_goal_t* goal) {
     if (!BotTacticsEnabled()) {
         return qfalse;
     }
+    if (BotCTFKeepObjective(bs)) {
+        return qfalse; // fight while moving to the flag, not toward another ally
+    }
     if (!TeamPlayIsOn()) {
         return qfalse;
     }
@@ -888,8 +913,8 @@ int BotAutoDefendGoal(bot_state_t* bs) {
     if (!BotTacticsEnabled()) {
         return qfalse;
     }
-    if (!TeamPlayIsOn()) {
-        return qfalse;
+    if (!TeamPlayIsOn() || gametype == GT_CTF) {
+        return qfalse; // the CTF planner owns autonomous assignments
     }
     // an order outranks this, always
     if (bs->ordered || bs->ltgtype) {
@@ -1029,6 +1054,7 @@ static const char* BotNodeName(bot_state_t* bs) {
 
 /* [QL] Defined below, reported here. Declared rather than moved because the
    report is the top of the file's reading order and the census is detail. */
+static int BotCTFClientRole(int client, int team);
 static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize);
 static void BotCTFRoleWanted(bot_state_t* bs, int teamsize, float* want);
 
@@ -1186,7 +1212,7 @@ void BotTacticsReport(void) {
     one bot of each team is enough to ask.
     */
     if (gametype == GT_CTF && bot_tactics.integer) {
-        static const char* rolename[CTFROLE_COUNT] = {"attack", "defend", "escort", "roam"};
+        static const char* rolename[CTFROLE_COUNT] = {"attack", "defend", "escort", "roam", "recover", "carrier"};
         int t;
 
         for (t = TEAM_RED; t <= TEAM_BLUE; t++) {
@@ -1207,6 +1233,9 @@ void BotTacticsReport(void) {
                 continue;  // no bots on this team, nothing decided anything
             }
             BotCTFRoleCounts(bs, have, &teamsize);
+            if (g_entities[bs->client].client->ps.stats[STAT_HEALTH] > 0) {
+                have[BotCTFClientRole(bs->client, t)]++;
+            }
             BotCTFRoleWanted(bs, teamsize, want);
 
             G_Printf("%s roles (%i):", t == TEAM_RED ? "red" : "blue", teamsize);
@@ -1269,7 +1298,16 @@ module starts a map, because these are file statics and a map change otherwise
 leaves pointers into the previous level's entities.
 ==================
 */
+static void BotCTFRelayReset(void);
+
 void BotRoomsReset(void) {
+    BotCTFRelayReset();
+    memset(ctfRecovery, 0, sizeof(ctfRecovery));
+    ctfRecovery[0].frame = ctfRecovery[1].frame = -1;
+    ctfRecovery[0].carrier = ctfRecovery[1].carrier = -1;
+    memset(ctfEscortCosts, 0, sizeof(ctfEscortCosts));
+    ctfEscortCosts[0].frame = ctfEscortCosts[1].frame = -1;
+    ctfEscortCosts[0].carrier = ctfEscortCosts[1].carrier = -1;
     numRooms = 0;
     roomCensus_time = 0;
     memset(roomEnt, 0, sizeof(roomEnt));
@@ -1427,6 +1465,37 @@ int BotRoomEnemies(bot_state_t* bs, vec3_t origin) {
         return 0;
     }
     return roomHere[room][team == TEAM_RED ? TEAM_BLUE : TEAM_RED];
+}
+
+/* Carrier risk is the maximum enemy count along the predicted route, not
+   just the waypoint. Starting-room danger is unavoidable and excluded. This
+   uses the existing global room census; it is not a visibility calculation. */
+int BotCTFRouteThreat(bot_state_t* bs, int area, vec3_t origin,
+                      int target, vec3_t destination, int flags) {
+    aas_predictroute_t route;
+    vec3_t pos;
+    int step, room, startroom, peak = 0, danger;
+    if (!BotTacticsEnabled() || !area || !target) return 0;
+    BotRoomCensus();
+    startroom = BotRoomAt(origin);
+    VectorCopy(origin, pos);
+    for (step = 0; step < 128 && area != target; step++) {
+        trap_AAS_PredictRoute(&route, area, pos, target, flags, 1, 0, RSE_NONE, 0, 0, 0);
+        if (!route.endarea || route.endarea == area || route.time <= 0) break;
+        area = route.endarea;
+        VectorCopy(route.endpos, pos);
+        room = BotRoomAt(pos);
+        if (room >= 0 && room != startroom) {
+            danger = BotRoomEnemies(bs, pos);
+            if (danger > peak) peak = danger;
+        }
+    }
+    room = BotRoomAt(destination);
+    if (room >= 0 && room != startroom) {
+        danger = BotRoomEnemies(bs, destination);
+        if (danger > peak) peak = danger;
+    }
+    return peak;
 }
 
 /*
@@ -1636,6 +1705,7 @@ team overlay shows every player, so nothing here is hidden knowledge.
 typedef struct {
     float time;
     int num;
+    int waypoint, home;
     int area[ESCORT_POINTS];
     int eta[ESCORT_POINTS];  // hundredths for the carrier to get there
     vec3_t pos[ESCORT_POINTS];
@@ -1647,22 +1717,38 @@ static escortroute_t* BotCarrierRoute(int carrier, int team) {
     escortroute_t* r = &escortroutes[carrier];
     bot_goal_t* home = team == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
     gentity_t* ent = &g_entities[carrier];
+    bot_state_t* runner = botstates[carrier];
     aas_predictroute_t route;
     vec3_t pos;
-    int area, t = 0;
+    int area, target = home->areanum, waypoint = 0, t = 0;
+    int flags = runner && runner->inuse ? runner->tfl : TFL_DEFAULT;
 
-    if (r->time > FloatTime() - ESCORT_REPLAN && r->time <= FloatTime()) {
+    // Screen the path the carrier actually chose, including its pending detour.
+    // Human carriers have no bot route, so use their direct path home.
+    if (runner && runner->inuse && runner->altroutegoal.areanum &&
+        !runner->reachedaltroutegoal_time) {
+        waypoint = runner->altroutegoal.areanum;
+        target = waypoint;
+    }
+    if (r->time > FloatTime() - ESCORT_REPLAN && r->time <= FloatTime() &&
+        r->waypoint == waypoint && r->home == home->areanum) {
         return r;
     }
     r->time = FloatTime();
     r->num = 0;
+    r->waypoint = waypoint;
+    r->home = home->areanum;
     if (!ent->client || !home->areanum) {
         return r;
     }
     VectorCopy(ent->r.currentOrigin, pos);
     area = BotPointAreaNum(pos);
-    while (area && area != home->areanum && r->num < ESCORT_POINTS) {
-        trap_AAS_PredictRoute(&route, area, pos, home->areanum, TFL_DEFAULT, 1, 0, RSE_NONE, 0, 0, 0);
+    while (area && r->num < ESCORT_POINTS) {
+        if (area == target) {
+            if (target == home->areanum) break;
+            target = home->areanum;
+        }
+        trap_AAS_PredictRoute(&route, area, pos, target, flags, 1, 0, RSE_NONE, 0, 0, 0);
         if (!route.endarea || route.endarea == area || route.time <= 0) {
             break;
         }
@@ -1677,16 +1763,38 @@ static escortroute_t* BotCarrierRoute(int carrier, int team) {
     return r;
 }
 
+/* [CTF18] Use one interception rule for assignment and actual movement.
+   AAS reports 1 for travel within one area; use distance there so a large
+   room is not mistaken for an instantaneous meeting. */
+static int BotCTFInterceptPoint(bot_state_t* bs, escortroute_t* route) {
+    int i, travel;
+    if (!bs->areanum) return -1;
+    for (i = 0; i < route->num; i++) {
+        if (route->eta[i] < ESCORT_LEAD) continue;
+        if (bs->areanum == route->area[i]) {
+            travel = (int)(Distance(bs->origin, route->pos[i]) * (100.0f / 320.0f));
+            if (travel < 1) travel = 1;
+        } else {
+            travel = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin,
+                                                      route->area[i], bs->tfl ? bs->tfl : TFL_DEFAULT);
+        }
+        if (travel > 0 && travel < route->eta[i]) return i;
+    }
+    return -1;
+}
+
 int BotEscortGoal(bot_state_t* bs, bot_goal_t* goal) {
     escortroute_t* r;
-    int lo, hi, mid, first, te;
+    int lo;
 
     if (!bot_tactics.integer || gametype != GT_CTF || !bs->areanum ||
         bs->teammate < 0 || bs->teammate >= MAX_CLIENTS) {
         return qfalse;
     }
-    // the answer holds for ESCORT_REPLAN, like the route it comes from
-    if (bs->tac.escort_time > FloatTime() - ESCORT_REPLAN && bs->tac.escort_time <= FloatTime()) {
+    r = BotCarrierRoute(bs->teammate, BotTeam(bs));
+    // Invalidate an interception when its carrier changes the planned route.
+    if (bs->tac.escort_time > FloatTime() - ESCORT_REPLAN && bs->tac.escort_time <= FloatTime() &&
+        r->time <= bs->tac.escort_time) {
         if (!bs->tac.escortgoal.areanum) {
             return qfalse;
         }
@@ -1695,33 +1803,11 @@ int BotEscortGoal(bot_state_t* bs, bot_goal_t* goal) {
     }
     bs->tac.escort_time = FloatTime();
     bs->tac.escortgoal.areanum = 0;
-    r = BotCarrierRoute(bs->teammate, BotTeam(bs));
-    // first point at least ESCORT_LEAD out
-    for (first = 0; first < r->num && r->eta[first] < ESCORT_LEAD; first++) {
-    }
-    if (first >= r->num) {
-        return qfalse;
-    }
-    /* The escort's lead over the carrier grows along the route when it is
-       ahead of it (the carrier's time keeps rising, the escort's falls), so
-       where it can first get there first is a binary search, not a scan - a
-       handful of route queries instead of one per area. The last point is
-       home: if it cannot beat the carrier even there, it is behind it. */
-    te = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, r->area[r->num - 1], bs->tfl);
-    if (!te || te >= r->eta[r->num - 1]) {
-        return qfalse;
-    }
-    lo = first;
-    hi = r->num - 1;
-    while (lo < hi) {
-        mid = (lo + hi) / 2;
-        te = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, r->area[mid], bs->tfl);
-        if (te && te < r->eta[mid]) {
-            hi = mid;
-        } else {
-            lo = mid + 1;
-        }
-    }
+    /* Detours and directional travel (jumps/lifts) make interception times
+       non-monotonic. Not beating the carrier home does not rule out meeting
+       it earlier. Scan the bounded cached route for the first reachable lead. */
+    lo = BotCTFInterceptPoint(bs, r);
+    if (lo < 0) return qfalse;
     memset(&bs->tac.escortgoal, 0, sizeof(bot_goal_t));
     VectorCopy(r->pos[lo], bs->tac.escortgoal.origin);
     bs->tac.escortgoal.areanum = r->area[lo];
@@ -1801,6 +1887,390 @@ int BotEnemyFlagAtBase(bot_state_t* bs) {
         return bs->blueflagstatus == 0;
     }
     return bs->redflagstatus == 0;
+}
+
+// Objective movement must survive an incidental fight or squad fallback.
+int BotCTFKeepObjective(bot_state_t* bs) {
+    int team, flag;
+    gclient_t* cl;
+
+    if (!bot_tactics.integer || gametype != GT_CTF) {
+        return qfalse;
+    }
+    team = BotTeam(bs);
+    if (team != TEAM_RED && team != TEAM_BLUE) {
+        return qfalse;
+    }
+    if (BotCTFCarryingFlag(bs) || bs->ltgtype == LTG_GETFLAG) {
+        return qtrue;
+    }
+    if (bs->ltgtype == LTG_RETURNFLAG) {
+        return Team_GetFlagStatus(team) != FLAG_ATBASE;
+    }
+    if (bs->ltgtype != LTG_TEAMACCOMPANY || bs->teammate < 0 || bs->teammate >= level.maxclients) {
+        return qfalse;
+    }
+    cl = g_entities[bs->teammate].client;
+    flag = team == TEAM_RED ? PW_BLUEFLAG : PW_REDFLAG;
+    return g_entities[bs->teammate].inuse && cl && cl->pers.connected == CON_CONNECTED &&
+           (int)cl->sess.sessionTeam == team && cl->ps.stats[STAT_HEALTH] > 0 && cl->ps.powerups[flag];
+}
+
+// Bound the travelling screen as well as the guards at a waiting home carrier.
+// Rank all available bots, not just existing escorts: a nearby attacker may
+// replace a distant escort without increasing the number of assigned slots.
+// Player orders occupy slots but are never cancelled by this selection.
+static int BotCTFEscortLimit(bot_state_t* bs, int carrier, int size) {
+    bot_goal_t* own = BotTeam(bs) == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+    if (Team_GetFlagStatus(BotTeam(bs)) != FLAG_ATBASE &&
+        DistanceSquared(g_entities[carrier].r.currentOrigin, own->origin) <= Square(600)) {
+        return size > 4 ? 2 : 1;
+    }
+    return size <= 4 ? 1 : (size <= 8 ? 2 : 4);
+}
+
+/* [CTF18] Assignment may use a reachable point ahead of the carrier instead
+   of walking backwards to its current position. Cache the expensive route
+   scan per route revision (normally 0.5 s), shared by the whole team. Return
+   the carrier's ETA: an escort waiting near home is not immediate coverage.
+   Death, orders and occupied slots are still checked live by eligibility. */
+static int BotCTFEscortInterceptTime(bot_state_t* bs, int carrier) {
+    int team = BotTeam(bs), i;
+    ctf_escort_costs_t* cache = &ctfEscortCosts[team == TEAM_RED ? 0 : 1];
+    escortroute_t* route = BotCarrierRoute(carrier, team);
+    if (!cache->intercept_valid || cache->intercept_carrier != carrier ||
+        cache->intercept_time != route->time || cache->intercept_waypoint != route->waypoint ||
+        cache->intercept_home != route->home) {
+        cache->intercept_valid = qtrue;
+        cache->intercept_carrier = carrier;
+        cache->intercept_time = route->time;
+        cache->intercept_waypoint = route->waypoint;
+        cache->intercept_home = route->home;
+        for (i = 0; i < MAX_CLIENTS; i++) cache->intercept[i] = -1;
+        for (i = 0; i < level.maxclients; i++) {
+            bot_state_t* other = botstates[i];
+            gclient_t* cl = g_entities[i].client;
+            int point;
+            if (i == carrier || !other || !other->inuse || !g_entities[i].inuse || !cl ||
+                cl->pers.connected != CON_CONNECTED || (int)cl->sess.sessionTeam != team ||
+                cl->ps.stats[STAT_HEALTH] <= 0 || !other->areanum ||
+                !trap_AAS_AreaReachability(other->areanum)) continue;
+            point = BotCTFInterceptPoint(other, route);
+            if (point >= 0) cache->intercept[i] = route->eta[point];
+        }
+    }
+    return cache->intercept[bs->client];
+}
+
+/* Navigation distance, not proximity through a wall. Share the raw travel
+   estimates once per team/carrier/server frame, then apply the incumbent
+   preference against current assignments. Orders and vacancies stay live.
+   AAS has no route from/to some airborne areas: use proximity temporarily
+   for an airborne carrier, or retain a nearby airborne incumbent with a
+   penalty. A grounded unreachable candidate cannot occupy an escort slot. */
+static int BotCTFEscortTravelTime(bot_state_t* bs, int carrier) {
+    int team = BotTeam(bs), i, target, cost;
+    ctf_escort_costs_t* cache = &ctfEscortCosts[team == TEAM_RED ? 0 : 1];
+    vec3_t position;
+    if (cache->frame != level.time || cache->carrier != carrier) {
+        cache->frame = level.time;
+        cache->carrier = carrier;
+        VectorCopy(g_entities[carrier].r.currentOrigin, position);
+        target = BotPointAreaNum(position);
+        if (target && !trap_AAS_AreaReachability(target)) target = 0;
+        for (i = 0; i < MAX_CLIENTS; i++) cache->travel[i] = -1;
+        for (i = 0; i < level.maxclients; i++) {
+            bot_state_t* other = botstates[i];
+            gclient_t* cl = g_entities[i].client;
+            int estimate;
+            if (i == carrier || !other || !other->inuse || !g_entities[i].inuse || !cl ||
+                cl->pers.connected != CON_CONNECTED || (int)cl->sess.sessionTeam != team ||
+                cl->ps.stats[STAT_HEALTH] <= 0) continue;
+            estimate = (int)(Distance(other->origin, position) * (100.0f / 320.0f));
+            if (estimate < 1) estimate = 1;
+            if (!target) {
+                cache->travel[i] = estimate;
+            } else if (!other->areanum || !trap_AAS_AreaReachability(other->areanum)) {
+                if (other->ltgtype == LTG_TEAMACCOMPANY && other->teammate == carrier &&
+                    DistanceSquared(other->origin, position) <= Square(600)) {
+                    cache->travel[i] = estimate + 200;
+                }
+            } else if (other->areanum == target) {
+                // AAS returns 1 for the whole area; retain distance within it.
+                cache->travel[i] = estimate;
+            } else {
+                int travel = trap_AAS_AreaTravelTimeToGoalArea(other->areanum, other->origin, target,
+                                                              other->tfl ? other->tfl : TFL_DEFAULT);
+                if (travel) cache->travel[i] = travel;
+            }
+            /* [QL] E224: bot_ctfIntercept off for this team is ctf17's choice -
+               travel to where the carrier is now */
+            if (bot_ctfIntercept.integer & (team == TEAM_RED ? 1 : 2)) {
+                int intercept = BotCTFEscortInterceptTime(other, carrier);
+                if (intercept >= 0 && (cache->travel[i] < 0 || intercept < cache->travel[i])) {
+                    cache->travel[i] = intercept;
+                }
+            }
+        }
+    }
+    cost = cache->travel[bs->client];
+    if (cost >= 0 && bs->ltgtype == LTG_TEAMACCOMPANY && bs->teammate == carrier) {
+        cost -= 100; // keep the screen unless a replacement saves roughly a second
+        if (cost < 0) cost = 0;
+    }
+    return cost;
+}
+
+int BotCTFEscortEligible(bot_state_t* bs, int carrier) {
+    int team = BotTeam(bs), i, size = 0, rank = 0, occupied = 0, limit;
+    int time;
+    gclient_t* cl;
+    if (!bot_tactics.integer || gametype != GT_CTF || carrier < 0 ||
+        carrier >= level.maxclients || carrier == bs->client ||
+        (team != TEAM_RED && team != TEAM_BLUE)) {
+        return qfalse;
+    }
+    cl = g_entities[bs->client].client;
+    if (!g_entities[bs->client].inuse || !cl || cl->pers.connected != CON_CONNECTED ||
+        cl->ps.stats[STAT_HEALTH] <= 0) return qfalse;
+    cl = g_entities[carrier].client;
+    if (!g_entities[carrier].inuse || !cl || cl->pers.connected != CON_CONNECTED ||
+        (int)cl->sess.sessionTeam != team || cl->ps.stats[STAT_HEALTH] <= 0 ||
+        !cl->ps.powerups[team == TEAM_RED ? PW_BLUEFLAG : PW_REDFLAG]) {
+        return qfalse;
+    }
+    if (bs->ordered) {
+        return bs->ltgtype == LTG_TEAMACCOMPANY && bs->teammate == carrier;
+    }
+    time = BotCTFEscortTravelTime(bs, carrier);
+    if (time < 0) return qfalse;
+    for (i = 0; i < level.maxclients; i++) {
+        bot_state_t* other = botstates[i];
+        int otherTime;
+        cl = g_entities[i].client;
+        if (!g_entities[i].inuse || !cl || cl->pers.connected != CON_CONNECTED ||
+            (int)cl->sess.sessionTeam != team) {
+            continue;
+        }
+        size++;
+        if (i == carrier || i == bs->client || !other || !other->inuse ||
+            cl->ps.stats[STAT_HEALTH] <= 0) {
+            continue;
+        }
+        if (other->ltgtype == LTG_TEAMACCOMPANY && other->teammate == carrier) occupied++;
+        if (other->ordered) {
+            if (other->ltgtype == LTG_TEAMACCOMPANY && other->teammate == carrier) {
+                rank++;
+            }
+            continue;
+        }
+        otherTime = BotCTFEscortTravelTime(other, carrier);
+        if (otherTime >= 0 && (otherTime < time || (otherTime == time && i < bs->client))) {
+            rank++;
+        }
+    }
+    limit = BotCTFEscortLimit(bs, carrier, size);
+    if (rank >= limit) return qfalse;
+    // Thinks are staggered. A closer replacement waits until the old escort
+    // releases its slot, instead of briefly admitting a fifth follower.
+    return (bs->ltgtype == LTG_TEAMACCOMPANY && bs->teammate == carrier) || occupied < limit;
+}
+
+int BotCTFReleaseEscort(bot_state_t* bs) {
+    return bot_tactics.integer && gametype == GT_CTF && !bs->ordered &&
+           bs->ltgtype == LTG_TEAMACCOMPANY &&
+           !BotCTFEscortEligible(bs, bs->teammate);
+}
+
+/* [CTF17] A dropped enemy flag is an offensive objective only after a
+   living teammate sees it. Remember the observed point, not hidden movement.
+   Entity plus scheduled return time identifies the drop across slot reuse. */
+typedef struct {
+    int frame, entity, deadline;
+    qboolean known;
+    bot_goal_t goal;
+} ctf_relay_t;
+static ctf_relay_t ctfRelay[2];
+
+static void BotCTFRelayReset(void) {
+    memset(ctfRelay, 0, sizeof(ctfRelay));
+    ctfRelay[0].frame = ctfRelay[1].frame = -1;
+    ctfRelay[0].entity = ctfRelay[1].entity = -1;
+}
+
+int BotCTFEnemyFlagGoal(bot_state_t* bs, bot_goal_t* goal) {
+    team_t team = BotTeam(bs);
+    int enemy, status, flag, i, found = -1;
+    ctf_relay_t* intel;
+    gentity_t* ent;
+    bot_goal_t* stand;
+    vec3_t eye;
+    if (gametype != GT_CTF || (team != TEAM_RED && team != TEAM_BLUE)) return qfalse;
+    enemy = team == TEAM_RED ? TEAM_BLUE : TEAM_RED;
+    stand = team == TEAM_RED ? &ctf_blueflag : &ctf_redflag;
+    flag = team == TEAM_RED ? PW_BLUEFLAG : PW_REDFLAG;
+    intel = &ctfRelay[team == TEAM_RED ? 0 : 1];
+    status = Team_GetFlagStatus(enemy);
+    if (status != FLAG_DROPPED) {
+        intel->known = qfalse;
+        intel->entity = -1;
+        intel->frame = -1;
+        if (status != FLAG_ATBASE) return qfalse;
+        *goal = *stand;
+        return goal->areanum != 0;
+    }
+    if (intel->frame != level.time) {
+        intel->frame = level.time;
+        for (i = level.maxclients; i < level.num_entities; i++) {
+            ent = &g_entities[i];
+            if (ent->inuse && (ent->flags & FL_DROPPED_ITEM) && ent->item &&
+                ent->item->giType == IT_TEAM && ent->item->giTag == flag) {
+                found = i;
+                break;
+            }
+        }
+        if (found < 0) {
+            intel->known = qfalse;
+            intel->entity = -1;
+        } else {
+            ent = &g_entities[found];
+            if (intel->entity != found || intel->deadline != ent->nextthink) {
+                intel->known = qfalse;
+                intel->entity = found;
+                intel->deadline = ent->nextthink;
+            }
+            for (i = 0; i < level.maxclients; i++) {
+                gclient_t* cl = g_entities[i].client;
+                int area;
+                if (!g_entities[i].inuse || !cl || cl->pers.connected != CON_CONNECTED ||
+                    cl->sess.sessionTeam != team || cl->ps.stats[STAT_HEALTH] <= 0) continue;
+                VectorCopy(cl->ps.origin, eye);
+                eye[2] += cl->ps.viewheight;
+                if (!trap_InPVS(eye, ent->r.currentOrigin) ||
+                    BotEntityVisible(i, eye, cl->ps.viewangles, 360, found) <= 0) continue;
+                area = BotPointAreaNum(ent->r.currentOrigin);
+                if (area) {
+                    intel->goal = *stand;
+                    VectorCopy(ent->r.currentOrigin, intel->goal.origin);
+                    intel->goal.areanum = area;
+                    intel->goal.entitynum = found;
+                    intel->goal.flags = GFL_ITEM | GFL_DROPPED;
+                    intel->known = qtrue;
+                }
+                break;
+            }
+        }
+    }
+    if (!intel->known) return qfalse;
+    *goal = intel->goal;
+    return qtrue;
+}
+
+int BotCTFEnemyFlagAvailable(bot_state_t* bs) {
+    bot_goal_t goal;
+    return BotCTFEnemyFlagGoal(bs, &goal);
+}
+
+/*
+Recover the flag where it is, rather than repeatedly visiting an empty stand.
+Entity discovery and team sight are shared once per server frame. A hidden
+carrier is pursued only to a teammate's last observation, for at most 15 s;
+the fallback is searching its home stand, not its current hidden position.
+*/
+int BotCTFRecoveryGoal(bot_state_t* bs, bot_goal_t* goal) {
+    team_t team = BotTeam(bs);
+    int status, flag, i, carrier = -1;
+    ctf_recovery_t* intel;
+    bot_goal_t* own;
+    aas_entityinfo_t info;
+    vec3_t eye;
+
+    if (gametype != GT_CTF || (team != TEAM_RED && team != TEAM_BLUE)) {
+        return qfalse;
+    }
+    intel = &ctfRecovery[team == TEAM_RED ? 0 : 1];
+    status = Team_GetFlagStatus(team);
+    if (status == FLAG_ATBASE) {
+        intel->known = qfalse;
+        intel->carrier = -1;
+        intel->status = status;
+        return qfalse;
+    }
+    own = team == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+    flag = team == TEAM_RED ? PW_REDFLAG : PW_BLUEFLAG;
+    if (intel->frame != level.time || intel->status != status) {
+        intel->frame = level.time;
+        intel->status = status;
+        intel->dropped.areanum = 0;
+        if (status == FLAG_DROPPED) {
+            intel->known = qfalse;
+            intel->carrier = -1;
+            for (i = level.maxclients; i < level.num_entities; i++) {
+                gentity_t* ent = &g_entities[i];
+                if (!ent->inuse || !(ent->flags & FL_DROPPED_ITEM) ||
+                    !ent->item || ent->item->giType != IT_TEAM || ent->item->giTag != flag) {
+                    continue;
+                }
+                intel->dropped = *own;
+                VectorCopy(ent->r.currentOrigin, intel->dropped.origin);
+                intel->dropped.areanum = BotPointAreaNum(intel->dropped.origin);
+                intel->dropped.entitynum = i;
+                intel->dropped.flags = GFL_ITEM | GFL_DROPPED;
+                break;
+            }
+        } else {
+            for (i = 0; i < level.maxclients; i++) {
+                gclient_t* cl = g_entities[i].client;
+                if (g_entities[i].inuse && cl && cl->pers.connected == CON_CONNECTED &&
+                    cl->sess.sessionTeam != team && cl->sess.sessionTeam != TEAM_SPECTATOR &&
+                    cl->ps.stats[STAT_HEALTH] > 0 && cl->ps.powerups[flag]) {
+                    carrier = i;
+                    break;
+                }
+            }
+            if (intel->carrier != carrier) {
+                intel->known = qfalse;
+                intel->carrier = carrier;
+            }
+            if (carrier >= 0) {
+                BotEntityInfo(carrier, &info);
+                if (info.valid) {
+                    for (i = 0; i < level.maxclients; i++) {
+                        gclient_t* cl = g_entities[i].client;
+                        if (!g_entities[i].inuse || !cl || cl->pers.connected != CON_CONNECTED ||
+                            cl->sess.sessionTeam != team || cl->ps.stats[STAT_HEALTH] <= 0) {
+                            continue;
+                        }
+                        VectorCopy(cl->ps.origin, eye);
+                        eye[2] += cl->ps.viewheight;
+                        if (!trap_InPVS(eye, info.origin) ||
+                            BotEntityVisible(i, eye, cl->ps.viewangles, 360, carrier) <= 0) {
+                            continue;
+                        }
+                        intel->area = BotPointAreaNum(info.origin);
+                        if (intel->area) {
+                            VectorCopy(info.origin, intel->origin);
+                            intel->seen = FloatTime();
+                            intel->known = qtrue;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (intel->dropped.areanum) {
+        *goal = intel->dropped;
+    } else if (intel->known && FloatTime() - intel->seen <= 15.0f) {
+        *goal = *own;
+        VectorCopy(intel->origin, goal->origin);
+        goal->areanum = intel->area;
+        goal->entitynum = intel->carrier;
+        goal->flags = 0;
+    } else {
+        *goal = team == TEAM_RED ? ctf_blueflag : ctf_redflag;
+    }
+    return goal->areanum != 0;
 }
 
 /*
@@ -2013,53 +2483,19 @@ The mix moves with the game:
 ==================
 */
 static void BotCTFRoleMix(bot_state_t* bs, float* mix) {
-    qboolean ourflagout, theirflagout;
-    float jitter;
-    int i;
-
-    if (BotTeam(bs) == TEAM_RED) {
-        ourflagout = bs->redflagstatus != 0;
-        theirflagout = bs->blueflagstatus != 0;
+    int team = BotTeam(bs), i;
+    qboolean ours = Team_GetFlagStatus(team) != FLAG_ATBASE;
+    qboolean theirs = !BotCTFEnemyFlagAvailable(bs);
+    for (i = 0; i < CTFROLE_COUNT; i++) mix[i] = 0;
+    if (ours) {
+        mix[CTFROLE_RECOVER] = theirs ? .65f : .55f;
+        mix[CTFROLE_DEFEND] = .15f;
+        mix[CTFROLE_ATTACK] = theirs ? 0 : .20f;
+        mix[CTFROLE_ROAM] = theirs ? .20f : .10f;
     } else {
-        ourflagout = bs->blueflagstatus != 0;
-        theirflagout = bs->redflagstatus != 0;
-    }
-
-    if (ourflagout && theirflagout) {
-        mix[CTFROLE_ATTACK] = 0.15f;
-        mix[CTFROLE_DEFEND] = 0.45f;
-        mix[CTFROLE_ESCORT] = 0.30f;
-        mix[CTFROLE_ROAM] = 0.10f;
-    } else if (ourflagout) {
-        mix[CTFROLE_ATTACK] = 0.25f;
-        mix[CTFROLE_DEFEND] = 0.60f;
-        mix[CTFROLE_ESCORT] = 0.00f;
-        mix[CTFROLE_ROAM] = 0.15f;
-    } else if (theirflagout) {
-        mix[CTFROLE_ATTACK] = 0.25f;
-        mix[CTFROLE_DEFEND] = 0.30f;
-        mix[CTFROLE_ESCORT] = 0.35f;
-        mix[CTFROLE_ROAM] = 0.10f;
-    } else {
-        mix[CTFROLE_ATTACK] = 0.45f;
-        mix[CTFROLE_DEFEND] = 0.35f;
-        mix[CTFROLE_ESCORT] = 0.00f;
-        mix[CTFROLE_ROAM] = 0.20f;
-    }
-
-    /*
-    And it is never exactly those numbers. A fixed mix is a team that plays the
-    same match twice; this wanders by up to a tenth on a slow clock shared by the
-    whole team - the same value for every bot at a given moment, so the team
-    leans one way together rather than each bot wobbling on its own.
-    */
-    jitter = sin((double)level.time * 0.00013) * 0.10f;
-    mix[CTFROLE_ATTACK] += jitter;
-    mix[CTFROLE_DEFEND] -= jitter;
-    for (i = 0; i < CTFROLE_COUNT; i++) {
-        if (mix[i] < 0.0f) {
-            mix[i] = 0.0f;
-        }
+        mix[CTFROLE_ATTACK] = theirs ? 0 : .55f;
+        mix[CTFROLE_DEFEND] = .25f;
+        mix[CTFROLE_ROAM] = theirs ? .75f : .20f;
     }
 }
 
@@ -2095,153 +2531,89 @@ difference between a screen and a scrum.
 
 static void BotCTFRoleWanted(bot_state_t* bs, int teamsize, float* want) {
     float mix[CTFROLE_COUNT];
-    int i;
-
+    int i, carrier = BotTeamFlagCarrier(bs);
     BotCTFRoleMix(bs, mix);
-    for (i = 0; i < CTFROLE_COUNT; i++) {
-        want[i] = mix[i] * (float)teamsize;
-    }
-    if (want[CTFROLE_ESCORT] > (float)CTF_MAX_ESCORTS) {
-        want[CTFROLE_ESCORT] = (float)CTF_MAX_ESCORTS;
-    }
+    for (i = 0; i < CTFROLE_COUNT; i++) want[i] = mix[i] * (float)teamsize;
     if (want[CTFROLE_DEFEND] > (float)CTF_MAX_DEFENDERS) {
-        want[CTFROLE_ATTACK] += want[CTFROLE_DEFEND] - (float)CTF_MAX_DEFENDERS;
+        int role = Team_GetFlagStatus(BotTeam(bs)) == FLAG_ATBASE ? CTFROLE_ATTACK : CTFROLE_RECOVER;
+        want[role] += want[CTFROLE_DEFEND] - (float)CTF_MAX_DEFENDERS;
         want[CTFROLE_DEFEND] = (float)CTF_MAX_DEFENDERS;
+    }
+    if (carrier >= 0) {
+        want[CTFROLE_CARRIER] = 1;
+        want[CTFROLE_ESCORT] = BotCTFEscortLimit(bs, carrier, teamsize);
+        // Remove the screen from the roaming budget, then recovery if needed.
+        want[CTFROLE_ROAM] -= want[CTFROLE_ESCORT] + 1;
+        if (want[CTFROLE_ROAM] < 0) {
+            want[CTFROLE_RECOVER] += want[CTFROLE_ROAM];
+            want[CTFROLE_ROAM] = 0;
+            if (want[CTFROLE_RECOVER] < 0) want[CTFROLE_RECOVER] = 0;
+        }
     }
 }
 
-/*
-==================
-BotCTFRoleCounts
+/* A declared role outranks position, including recovery and intentional roam.
+   Human flag carriers are counted too; other human intentions are unknown.
 
-[QL] What the rest of this bot's team is doing, by role, and how big the team is.
-
-Split out of BotCTFPickRole so the escort cap can ask the same question without
-picking a role. Bots only - botstates[] is the only place a role is legible, so
-a human holding the base is not counted.
-==================
-*/
-static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize) {
-    int i, team;
+   [QL] Why declared first (E67, E83 - kept from the census this replaces).
+   Position alone came from Xonotic's havocbot and fixed E67, where reading
+   intentions counted "nought defenders" the moment our flag went and the picker
+   kept reissuing orders destroyed before anyone acted. But position answers
+   "where is this body", not "what will it do", and the two diverge at the start
+   of every attacking run: an attacker spawns in its own base, so position calls
+   it a defender. At 31 a side on japanesecastles that was a runaway - census
+   "have 3/28/0/0", 87 of 87 decisions choosing attack, twenty-two bots on one
+   staircase - because the fuller the jam, the emptier attack looked. So a
+   declared goal decides; a bot with no goal (whose order was destroyed, E67's
+   case) still falls through to position. */
+static int BotCTFClientRole(int client, int team) {
+    bot_state_t* bs = botstates[client];
     float zone, ownd, enemyd;
-    vec3_t dir;
-
-    for (i = 0; i < CTFROLE_COUNT; i++) {
-        have[i] = 0;
+    bot_goal_t* own = team == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+    bot_goal_t* enemy = team == TEAM_RED ? &ctf_blueflag : &ctf_redflag;
+    if (g_entities[client].client->ps.powerups[team == TEAM_RED ? PW_BLUEFLAG : PW_REDFLAG]) {
+        return CTFROLE_CARRIER;
     }
+    if (bs && bs->inuse) {
+        switch (bs->ltgtype) {
+            case LTG_GETFLAG:
+            case LTG_ATTACKENEMYBASE: return CTFROLE_ATTACK;
+            case LTG_RETURNFLAG: return CTFROLE_RECOVER;
+            case LTG_RUSHBASE: return CTFROLE_CARRIER;
+            case LTG_DEFENDKEYAREA: return CTFROLE_DEFEND;
+            case LTG_TEAMACCOMPANY:
+                if (bs->teammate >= 0 && bs->teammate < level.maxclients &&
+                    g_entities[bs->teammate].client &&
+                    g_entities[bs->teammate].client->ps.powerups[team == TEAM_RED ? PW_BLUEFLAG : PW_REDFLAG]) {
+                    return CTFROLE_ESCORT;
+                }
+                return CTFROLE_ROAM; // a stale follow or a non-carrier player order
+            case 0:
+                if (bs->tac.assignedrole == CTFROLE_ROAM) return CTFROLE_ROAM;
+                break;
+            default: break;
+        }
+    }
+    zone = Distance(own->origin, enemy->origin) * .25f;
+    if (zone < 256) zone = 256;
+    ownd = Distance(g_entities[client].r.currentOrigin, own->origin);
+    enemyd = Distance(g_entities[client].r.currentOrigin, enemy->origin);
+    return ownd < zone ? CTFROLE_DEFEND : (enemyd < zone ? CTFROLE_ATTACK : CTFROLE_ROAM);
+}
+
+static void BotCTFRoleCounts(bot_state_t* bs, int* have, int* teamsize) {
+    int i, team = BotTeam(bs);
+    for (i = 0; i < CTFROLE_COUNT; i++) have[i] = 0;
     *teamsize = 0;
-    team = g_entities[bs->client].client->sess.sessionTeam;
-
-    /*
-    [QL] The zone radius scales with the map, as Xonotic's does: their
-    havocbot_middlepoint_radius is half the distance between the flag stands and
-    the defence census uses half of that again. A quarter of the base separation
-    is a flag room and its approach on a small map and still a flag room on a
-    big one, which a fixed number in units is not.
-    */
-    VectorSubtract(ctf_redflag.origin, ctf_blueflag.origin, dir);
-    zone = VectorLength(dir) * 0.25f;
-    if (zone < 256.0f) {
-        zone = 256.0f;
-    }
-
     for (i = 0; i < level.maxclients; i++) {
-        if (!g_entities[i].inuse || !g_entities[i].client) {
-            continue;
-        }
-        if (g_entities[i].client->sess.sessionTeam != team) {
-            continue;
-        }
+        gclient_t* cl = g_entities[i].client;
+        if (!g_entities[i].inuse || !cl || cl->pers.connected != CON_CONNECTED ||
+            (int)cl->sess.sessionTeam != team) continue;
         (*teamsize)++;
-        if (i == bs->client) {
-            continue;
-        }
-        if (g_entities[i].client->ps.stats[STAT_HEALTH] <= 0) {
-            continue;  // a corpse is not holding anything
-        }
-        /*
-        [QL] A declared job first, and position only for whoever has not
-        declared one. This is the reverse of what this census did until E83, and
-        the reversal is the fix for a feedback loop - so both halves of the
-        history matter.
-
-        Position came from Xonotic's havocbot, whose havocbot_ctf_teamcount
-        counts live team mates within a radius of a point and never asks another
-        bot what its goal is. That fixed E67, where every defender was converted
-        to attack the moment our flag was taken, the census read "nought
-        defenders" because it was reading intentions, and the role picker kept
-        reissuing an order that was destroyed before anyone acted on it.
-
-        But position answers "where is this body", and the role picker is asking
-        "what is this body going to do", and those diverge in exactly one place:
-        the start of an attacking run. An attacker always begins inside its own
-        base, because that is where it spawns. Position calls it a defender.
-
-        That is survivable at four a side and a runaway at thirty-two. A field
-        log of 62 bots on japanesecastles: every bot on the server holding
-        ltgtype LTG_GETFLAG, the last census before the pile-up reading
-        "have 3/28/0/0", and 87 role decisions of which 87 chose attack. The
-        loop closes on itself -
-
-          bots jam in their own base
-            -> position counts the jam as 28 defenders and 3 attackers
-              -> attack looks 10 short of its quota, so every decision picks it
-                -> BotCTFRoleCrowded never fires, so nobody re-decides
-                  -> another attacker joins the jam, which is in its own base
-
-        - and it cannot recover, because the fuller the jam gets the emptier
-        attack looks. No "over-subscribed, re-deciding" line appears in the whole
-        match. The screenshot is twenty-two bots shuffling on one staircase.
-
-        So: ltgtype decides for a bot that has one, position decides for
-        everyone else. The E67 protection is kept rather than traded away,
-        because the bot whose goal got destroyed has ltgtype 0 and therefore
-        still falls through to position - a body standing in the flag room with
-        no declared goal is still counted as holding it. What changes is only
-        that a *declared* goal is no longer overridden by standing where that
-        goal starts.
-
-        Escort was already carved out of the position test for the same reason
-        (E67's cap read "have 26/5/0/0" with 148 of 228 stuck episodes in
-        LTG_TEAMACCOMPANY, so the cap silently stopped capping). This makes the
-        other three consistent with it instead of leaving escort the exception.
-        */
-        if (botstates[i] && botstates[i]->inuse) {
-            switch (botstates[i]->ltgtype) {
-                case LTG_GETFLAG:
-                case LTG_ATTACKENEMYBASE:
-                    have[CTFROLE_ATTACK]++;
-                    continue;
-                case LTG_DEFENDKEYAREA:
-                    have[CTFROLE_DEFEND]++;
-                    continue;
-                case LTG_TEAMACCOMPANY:
-                    have[CTFROLE_ESCORT]++;
-                    continue;
-                default:
-                    break;  // no declared job - position answers below
-            }
-        }
-        VectorSubtract(g_entities[i].r.currentOrigin, ctf_redflag.origin, dir);
-        ownd = VectorLength(dir);
-        VectorSubtract(g_entities[i].r.currentOrigin, ctf_blueflag.origin, dir);
-        enemyd = VectorLength(dir);
-        if (team != TEAM_RED) {
-            float swap = ownd;
-            ownd = enemyd;
-            enemyd = swap;
-        }
-        if (ownd < zone) {
-            have[CTFROLE_DEFEND]++;
-        } else if (enemyd < zone) {
-            have[CTFROLE_ATTACK]++;
-        } else {
-            have[CTFROLE_ROAM]++;
-        }
+        if (i == bs->client || cl->ps.stats[STAT_HEALTH] <= 0) continue;
+        have[BotCTFClientRole(i, team)]++;
     }
-    if (*teamsize < 1) {
-        *teamsize = 1;
-    }
+    if (*teamsize < 1) *teamsize = 1;
 }
 
 /*
@@ -2294,8 +2666,11 @@ int BotCTFPickRole(bot_state_t* bs) {
     best = CTFROLE_ROAM;
     bestdeficit = -999;
     for (i = 0; i < CTFROLE_COUNT; i++) {
-        // escort is only a job when there is somebody to escort
-        if (i == CTFROLE_ESCORT && BotTeamFlagCarrier(bs) < 0) {
+        // Carrier is a powerup, not a job to assign. Escort slots go to nearby bots.
+        if (i == CTFROLE_CARRIER ||
+            (i == CTFROLE_RECOVER && Team_GetFlagStatus(BotTeam(bs)) == FLAG_ATBASE) ||
+            (i == CTFROLE_ATTACK && !BotCTFEnemyFlagAvailable(bs)) ||
+            (i == CTFROLE_ESCORT && !BotCTFEscortEligible(bs, BotTeamFlagCarrier(bs)))) {
             continue;
         }
         deficit = want[i] - (float)have[i];
@@ -2305,10 +2680,10 @@ int BotCTFPickRole(bot_state_t* bs) {
         }
     }
     if (bot_debugTactics.integer) {
-        G_Printf("%s: ctf role %i (team %i, want %.1f/%.1f/%.1f/%.1f, have %i/%i/%i/%i)\n",
+        G_Printf("%s: ctf role %i (team %i, want %.1f/%.1f/%.1f/%.1f/%.1f/%.1f, have %i/%i/%i/%i/%i/%i)\n",
                  g_entities[bs->entitynum].client->pers.netname, best, teamsize,
-                 want[0], want[1], want[2], want[3],
-                 have[0], have[1], have[2], have[3]);
+                 want[0], want[1], want[2], want[3], want[4], want[5],
+                 have[0], have[1], have[2], have[3], have[4], have[5]);
     }
     return best;
 }

@@ -589,6 +589,102 @@ void BotRefuseOrder(bot_state_t* bs) {
     }
 }
 
+/* One autonomous CTF assignment path. Flag transitions invalidate obsolete
+   jobs immediately; otherwise hold a useful job long enough to make progress.
+   Explicit orders bypass this planner. The stock path remains below for
+   bot_tactics 0. Carriers are handled before this function is called. */
+static void BotCTFPlanGoals(bot_state_t* bs) {
+    int role, current = -1, carrier = BotTeamFlagCarrier(bs);
+    int team = BotTeam(bs);
+    qboolean ours = Team_GetFlagStatus(team) != FLAG_ATBASE;
+    qboolean enemyavailable = BotCTFEnemyFlagAvailable(bs);
+    qboolean escort = BotCTFEscortEligible(bs, carrier);
+    bot_goal_t* own = team == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+
+    if (bs->ordered) {
+        if (bs->ltgtype && bs->teamgoal_time > FloatTime()) return;
+        bs->ordered = qfalse;
+        bs->lastgoal_ltgtype = 0;
+    }
+    {
+        // A newly spotted drop must wake the planner even if the public
+        // flag status has remained DROPPED throughout the observation.
+        int phase = (Team_GetFlagStatus(team) * 4 + Team_GetFlagStatus(BotOppositeTeam(bs))) * 2 + enemyavailable;
+        if (bs->tac.ctfphase != phase) {
+            bs->tac.ctfphase = phase;
+            bs->tac.roleredecide_time = 0;
+        }
+    }
+    switch (bs->ltgtype) {
+        case LTG_GETFLAG: current = enemyavailable ? CTFROLE_ATTACK : -1; break;
+        case LTG_DEFENDKEYAREA: current = CTFROLE_DEFEND; break;
+        case LTG_RETURNFLAG: current = ours ? CTFROLE_RECOVER : -1; break;
+        case LTG_TEAMACCOMPANY:
+            current = escort && bs->teammate == carrier ? CTFROLE_ESCORT : -1;
+            break;
+        case 0: current = bs->tac.assignedrole == CTFROLE_ROAM ? CTFROLE_ROAM : -1; break;
+        default: break; // autonomous camp/other tasks yield to the team plan
+    }
+    // The closest screen assembles immediately on a grab. Surplus travelling
+    // escorts cannot retain their old ten-minute follow job.
+    if (escort) {
+        role = CTFROLE_ESCORT;
+    } else if (current >= 0 && bs->teamgoal_time > FloatTime() &&
+               (bs->tac.roleredecide_time > FloatTime() || !BotCTFRoleCrowded(bs, current))) {
+        return;
+    } else {
+        role = BotCTFPickRole(bs);
+    }
+    if (role < 0) return;
+    if (role == current) {
+        bs->teamgoal_time = FloatTime() + 60;
+        bs->tac.roleredecide_time = FloatTime() + 5;
+        return;
+    }
+    bs->decisionmaker = bs->client;
+    bs->ordered = qfalse;
+    bs->lastgoal_ltgtype = 0;
+    bs->teammessage_time = 0;
+    bs->altroutegoal.areanum = 0;
+    bs->tac.assignedrole = role;
+    bs->tac.roleredecide_time = FloatTime() + (role == CTFROLE_ATTACK ? 30 : 5);
+    bs->teamgoal_time = FloatTime() + 60;
+    bs->owndecision_time = 0;
+    bs->ctfroam_time = 0;
+    switch (role) {
+        case CTFROLE_ATTACK:
+            bs->ltgtype = LTG_GETFLAG;
+            if (BotEnemyFlagAtBase(bs)) BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+            break;
+        case CTFROLE_DEFEND:
+            bs->ltgtype = LTG_DEFENDKEYAREA;
+            bs->teamgoal = *own;
+            bs->defendaway_time = 0;
+            break;
+        case CTFROLE_RECOVER:
+            bs->ltgtype = LTG_RETURNFLAG;
+            break;
+        case CTFROLE_ESCORT:
+            bs->ltgtype = LTG_TEAMACCOMPANY;
+            bs->teammate = carrier;
+            // Drop an obsolete item task on a new escort assignment. A hurt
+            // bot may finish a short supply task; oxygen escape keeps its time.
+            if (bs->lastair_time >= FloatTime() - 6) {
+                if (bs->inventory[INVENTORY_HEALTH] > 40) bs->nbg_time = 0;
+                else if (bs->nbg_time > FloatTime() + 2.5f) bs->nbg_time = FloatTime() + 2.5f;
+            }
+            bs->teammatevisible_time = FloatTime();
+            bs->formation_dist = 112 + (bs->client % 4) * 56;
+            bs->arrive_time = 1;
+            break;
+        default:
+            bs->ltgtype = 0;
+            bs->ctfroam_time = FloatTime() + 5;
+            break;
+    }
+    BotSetTeamStatus(bs);
+}
+
 /*
 ==================
 BotCTFSeekGoals
@@ -643,6 +739,17 @@ void BotCTFSeekGoals(bot_state_t* bs) {
             }
         }
         return;
+    }
+    if (bot_tactics.integer) {
+        BotCTFPlanGoals(bs);
+        return;
+    }
+    if (BotCTFReleaseEscort(bs)) {
+        bs->ltgtype = LTG_RETURNFLAG;
+        bs->teamgoal_time = FloatTime() + CTF_RETURNFLAG_TIME;
+        bs->owndecision_time = FloatTime() + 5;
+        bs->altroutegoal.areanum = 0;
+        BotSetTeamStatus(bs);
     }
     // if the bot decided to follow someone
     if (bs->ltgtype == LTG_TEAMACCOMPANY && !bs->ordered) {
@@ -1716,10 +1823,9 @@ flag, which is what "the bots touch their own flag first" was.
 Two goals still legitimately point at the bot's own base and are left alone:
 
   - carrying the enemy flag. LTG_RUSHBASE is how a capture happens.
-  - the bot's own flag lying on the floor. Team_GetFlagStatus tells a dropped
-    flag from one an enemy is carrying, which the AI's own flagstatus fields
-    cannot - they only record at-base or not - so the exception is exactly
-    "dropped" and not "gone".
+  - recovering its own flag. With tactics enabled this includes pursuing an
+    enemy carrier using the team's sightings, as well as a dropped flag.
+    With tactics disabled the original dropped-only exception is preserved.
 
 Everything else that was aimed at the bot's own flag is cleared and replaced
 with LTG_GETFLAG. Goals that are neither offence nor own-base - following the
@@ -1734,6 +1840,8 @@ static void BotCTFEnforceOffense(bot_state_t* bs) {
     int team = BotTeam(bs);
     bot_goal_t* ownflag;
 
+    if (bot_tactics.integer) return; // the planner is the sole autonomous CTF writer
+
     if (team != TEAM_RED && team != TEAM_BLUE) {
         return;
     }
@@ -1742,12 +1850,15 @@ static void BotCTFEnforceOffense(bot_state_t* bs) {
     }
     ownflag = (team == TEAM_RED) ? &ctf_redflag : &ctf_blueflag;
 
-    if (Team_GetFlagStatus(team) == FLAG_DROPPED) {
-        if (bs->ltgtype == LTG_RETURNFLAG) {
-            return;   // ours is on the floor - go and get it back
+    if (bs->ltgtype == LTG_RETURNFLAG) {
+        int status = Team_GetFlagStatus(team);
+        if (status == FLAG_DROPPED || (bot_tactics.integer && status != FLAG_ATBASE)) {
+            return;   // recover a dropped flag or pursue its carrier
         }
-    } else if (bs->ltgtype == LTG_RETURNFLAG) {
-        bs->ltgtype = 0;   // nothing to fetch
+        bs->ltgtype = 0;
+        if (bot_tactics.integer) {
+            bs->owndecision_time = 0;
+        }
     }
 
     /*
@@ -1824,6 +1935,10 @@ static void BotCTFEnforceOffense(bot_state_t* bs) {
 }
 
 void BotTeamGoals(bot_state_t* bs, int retreat) {
+    if (gametype == GT_CTF && bot_tactics.integer) {
+        bs->order_time = 0;
+        return; // planned once per think, before any combat node
+    }
     if (retreat) {
         if (gametype == GT_CTF) {
             BotCTFRetreatGoals(bs);
@@ -2976,6 +3091,10 @@ static int BotWantsToRetreatRaw(bot_state_t* bs) {
     // if the bot is getting the flag
     if (bs->ltgtype == LTG_GETFLAG)
         return qtrue;
+    // Recovery and escort fight while advancing; an enemy flag carrier above
+    // still takes priority over this movement policy.
+    if (BotCTFKeepObjective(bs))
+        return qtrue;
     /* [QL] E137. And a flag carrier's escort: "retreat" is the node that
        fights while still moving to the long term goal, and the others stand
        and trade shots where they are. Escorts spent three quarters of their
@@ -3086,6 +3205,8 @@ int BotWantsToChase(bot_state_t* bs) {
     }
     // if the bot is getting the flag
     if (bs->ltgtype == LTG_GETFLAG)
+        return qfalse;
+    if (BotCTFKeepObjective(bs))
         return qfalse;
     /*
     [QL] Whether chasing is worth it, rather than only whether the bot feels like
@@ -6157,6 +6278,41 @@ BotGetAlternateRouteGoal
 ==================
 */
 
+/* Return routes use travel in the direction actually being walked. Static
+   starttraveltime describes home -> waypoint, which can differ from the reverse
+   on lifts and jumps. Reject unreachable/backward points and bound the detour.
+   Route threat still matters, but an empty faraway room no longer wins a tie
+   against a short return route. Costs use AAS travel-time units. */
+static int BotCTFCarrierRouteCost(bot_state_t* bs, aas_altroutegoal_t* candidate,
+                                  bot_goal_t* home, int direct) {
+    int leg, remaining, cost, danger, tail;
+    if (!direct) return -1;
+    leg = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, candidate->areanum, bs->tfl);
+    remaining = trap_AAS_AreaTravelTimeToGoalArea(candidate->areanum, candidate->origin, home->areanum, bs->tfl);
+    // BotAlternateRoute treats travel below 20 as already reached. Do not
+    // re-arm that same arrived waypoint during a periodic carrier replan.
+    if (leg < 20 || !remaining || remaining >= direct) return -1;
+    cost = leg + remaining;
+    if (cost > direct * 3 / 2 + 100) return -1;
+    danger = BotCTFRouteThreat(bs, bs->areanum, bs->origin, candidate->areanum, candidate->origin, bs->tfl);
+    tail = BotCTFRouteThreat(bs, candidate->areanum, candidate->origin, home->areanum, home->origin, bs->tfl);
+    cost += (danger > tail ? danger : tail) * 300;
+    if (bs->altroutegoal.areanum == candidate->areanum) cost -= 50; // avoid gratuitous route switching
+    return cost < 0 ? 0 : cost;
+}
+
+static qboolean BotCTFKeepCarrierRoute(bot_state_t* bs, aas_altroutegoal_t* current,
+                                      bot_goal_t* home, int direct, int bestcost) {
+    int cost;
+    if (!bs->altroutegoal.areanum || current->areanum != bs->altroutegoal.areanum ||
+        bs->reachedaltroutegoal_time || bs->tac.reportedstuck) return qfalse;
+    cost = BotCTFCarrierRouteCost(bs, current, home, direct);
+    // Retain a useful pending leg unless replacing it saves at least 100
+    // score units beyond the existing 50-unit incumbent preference. An
+    // invalid/reached/stuck leg must not prevent escape or forward progress.
+    return cost >= 0 && bestcost + 100 > cost;
+}
+
 int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     aas_altroutegoal_t* altroutegoals;
     bot_goal_t* goal;
@@ -6257,11 +6413,13 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
                 if (togo && altroutegoals[i].goaltraveltime >= togo) {
                     continue;  // behind us
                 }
-                if (tohome && altroutegoals[i].starttraveltime >= tohome) {
-                    continue;  // back toward their base
+                if (carrier && gametype == GT_CTF) {
+                    crowd = BotCTFCarrierRouteCost(bs, &altroutegoals[i], home, tohome);
+                    if (crowd < 0) continue;
+                } else {
+                    crowd = carrier ? BotRoomEnemies(bs, altroutegoals[i].origin)
+                                    : BotRoomCrowding(bs, altroutegoals[i].origin);
                 }
-                crowd = carrier ? BotRoomEnemies(bs, altroutegoals[i].origin)
-                                : BotRoomCrowding(bs, altroutegoals[i].origin);
                 if (best < 0 || crowd < bestcrowd) {
                     best = i;
                     bestcrowd = crowd;
@@ -6275,8 +6433,24 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
                 }
             }
         }
+        if (carrier && gametype == GT_CTF && best >= 0 &&
+            altroutegoals[best].areanum != bs->altroutegoal.areanum) {
+            for (i = 0; i < numaltroutegoals; i++) {
+                if (altroutegoals[i].areanum == bs->altroutegoal.areanum &&
+                    BotCTFKeepCarrierRoute(bs, &altroutegoals[i], home, tohome, bestcrowd)) {
+                    best = i;
+                    bestcrowd = BotCTFCarrierRouteCost(bs, &altroutegoals[i], home, tohome);
+                    break;
+                }
+            }
+        }
+        if (carrier && gametype == GT_CTF && best >= 0) {
+            int directcost = tohome + 300 * BotCTFRouteThreat(bs, bs->areanum,
+                bs->origin, home->areanum, home->origin, bs->tfl);
+            if (bestcrowd >= directcost) best = -1;
+        }
         rnd = best;
-        if (rnd < 0 && (togo || tohome)) {
+        if (rnd < 0 && (togo || tohome || (carrier && gametype == GT_CTF))) {
             bs->altroutegoal.areanum = 0;
             return qfalse;  // nothing left ahead: straight on
         }
@@ -6729,6 +6903,15 @@ void BotSetupAlternativeRouteGoals(void) {
 BotDeathmatchAI
 ==================
 */
+static void BotCTFThinkGoals(bot_state_t* bs) {
+    // Assignment must run during fights too. Seek_LTG can switch to combat
+    // before reaching BotTeamGoals, and Retreat used a carrier-only helper.
+    if (bot_tactics.integer && gametype == GT_CTF &&
+        !BotIntermission(bs) && !BotIsObserver(bs) && !BotIsDead(bs)) {
+        BotCTFSeekGoals(bs);
+    }
+}
+
 void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
     char gender[144], name[144];
     char userinfo[MAX_INFO_STRING];
@@ -6785,6 +6968,7 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
         // do team AI
         BotTeamAI(bs);
     }
+    BotCTFThinkGoals(bs);
     /*
     [QL] InstaGib: when g_instaGib is set and the bot has no enemy, drop into
     the InstaGib hunting node. (binary BotDeathmatchAI dispatch 0x1001f359)

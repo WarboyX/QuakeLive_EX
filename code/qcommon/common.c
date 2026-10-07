@@ -70,6 +70,7 @@ fileHandle_t com_journalDataFile;  // config files are written here
 cvar_t* com_speeds;
 cvar_t* com_cpuTimings;   // [QL] E222
 int64_t com_usBots, com_usGame, com_usScene, com_usSubmit;
+int64_t com_usBotStages[BOT_TIMING_STAGES];
 cvar_t* com_developer;
 cvar_t* com_dedicated;
 cvar_t* com_timescale;
@@ -3093,6 +3094,7 @@ the CPU had to spare.
 */
 static struct {
     int64_t whole, wait, server, client, bots, game, scene, submit, start;
+    int64_t botStages[BOT_TIMING_STAGES];
     int frames;
 } cpuSum;
 
@@ -3104,12 +3106,16 @@ static void Com_CpuTimingsReset(void) {
 
 static void Com_CpuTimingsReport(int64_t whole, int64_t wait, int64_t server, int64_t client) {
     const int64_t now = Sys_Microseconds();
+    int stage;
 
     if (cpuSum.start == 0) {
         cpuSum.start = now - whole;   // the window opens where this frame began
     }
     cpuSum.whole += whole; cpuSum.wait += wait; cpuSum.server += server; cpuSum.client += client;
     cpuSum.bots += com_usBots; cpuSum.game += com_usGame; cpuSum.scene += com_usScene; cpuSum.submit += com_usSubmit;
+    for (stage = 0; stage < BOT_TIMING_STAGES; stage++) {
+        cpuSum.botStages[stage] += com_usBotStages[stage];
+    }
     cpuSum.frames++;
     if (now - cpuSum.start >= 2000000) {
         const double f = 1000.0 * cpuSum.frames;   // microseconds -> ms per frame
@@ -3119,6 +3125,9 @@ static void Com_CpuTimingsReport(int64_t whole, int64_t wait, int64_t server, in
                    cpuSum.wait / f, cpuSum.server / f, cpuSum.bots / f, cpuSum.game / f, cpuSum.client / f,
                    cpuSum.scene / f, cpuSum.submit / f,
                    (cpuSum.whole - cpuSum.wait - cpuSum.server - cpuSum.client) / f);
+        Com_Printf("Bot CPU timings (ms/frame): setup %.2f, world update %.2f, AI %.2f, input %.2f\n",
+                   cpuSum.botStages[BOT_TIMING_SETUP] / f, cpuSum.botStages[BOT_TIMING_WORLD] / f,
+                   cpuSum.botStages[BOT_TIMING_AI] / f, cpuSum.botStages[BOT_TIMING_INPUT] / f);
         Com_CpuTimingsReset();
         cpuSum.start = now;
     }
@@ -3168,6 +3177,7 @@ void Com_Frame(void) {
     if (com_cpuTimings->integer) {   // [QL] E222
         cpuEntry = Sys_Microseconds();
         com_usBots = com_usGame = com_usScene = com_usSubmit = 0;
+        Com_Memset(com_usBotStages, 0, sizeof(com_usBotStages));
     }
 
     // write config file if anything changed

@@ -681,8 +681,22 @@ void BotInterbreeding(void) {
 BotEntityInfo
 ==============
 */
+// AAS client snapshots are stable between the world update and input submission.
+// Share reads across bots only during that interval; callers receive a copy.
+static qboolean botEntityCacheActive;
+static qboolean botEntityCacheValid[MAX_CLIENTS];
+static aas_entityinfo_t botEntityCache[MAX_CLIENTS];
+
 void BotEntityInfo(int entnum, aas_entityinfo_t* info) {
-    trap_AAS_EntityInfo(entnum, info);
+    if (!botEntityCacheActive || entnum < 0 || entnum >= MAX_CLIENTS) {
+        trap_AAS_EntityInfo(entnum, info);
+        return;
+    }
+    if (!botEntityCacheValid[entnum]) {
+        trap_AAS_EntityInfo(entnum, &botEntityCache[entnum]);
+        botEntityCacheValid[entnum] = qtrue;
+    }
+    *info = botEntityCache[entnum];
 }
 
 /*
@@ -1908,6 +1922,20 @@ void BotTrackSample(bot_state_t* bs) {
              bs->origin[0], bs->origin[1], bs->origin[2],
              sqrt(bs->cur_ps.velocity[0] * bs->cur_ps.velocity[0] + bs->cur_ps.velocity[1] * bs->cur_ps.velocity[1]),
              state, bs->ltgtype, goalarea, g_entities[bs->client].client->pers.netname, bs->mstat.traveltype);
+    // Optional CTF evidence: distinguish actual possession from a stale job,
+    // identify escorts' carriers, and record progress in AAS travel time.
+    if (gametype == GT_CTF && (BotCTFCarryingFlag(bs) || bs->ltgtype == LTG_TEAMACCOMPANY)) {
+        bot_goal_t* home = BotTeam(bs) == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+        int travel = bs->areanum && home->areanum ?
+            trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, home->areanum, bs->tfl) : 0;
+        G_Printf("ctftrack %d %d hp%d flag%d mate%d via%d home%d node%s\n",
+                 level.time, bs->client, bs->cur_ps.stats[STAT_HEALTH], BotCTFCarryingFlag(bs),
+                 bs->ltgtype == LTG_TEAMACCOMPANY ? bs->teammate : -1,
+                 bs->reachedaltroutegoal_time ? 0 : bs->altroutegoal.areanum, travel,
+                 bs->ainode == AINode_Battle_Retreat ? "retreat" :
+                 bs->ainode == AINode_Battle_NBG ? "item" :
+                 bs->ainode == AINode_Battle_Fight ? "fight" : "other");
+    }
 }
 
 static void BotMoveStatsReport(void) {
@@ -1960,7 +1988,40 @@ static void BotMoveStatsReport(void) {
 BotAIStartFrame
 ==================
 */
-int BotAIStartFrame(int time) {
+static qboolean botTimingEnabled;
+
+static void BotTimingStage(char *stage) {
+    if (botTimingEnabled) {
+        trap_BotLibVarSet(BOT_TIMING_MARKER, stage);
+    }
+}
+
+/*
+[QL] E224: bot_tacticsTeams. Every reader of bot_tactics - 64 of them, across
+the planner, movement, combat and think rate - runs inside one bot's think or
+input, so the per-team policy is applied there: for that bot the cvar reads as
+its own team's setting, and the real value is put back straight after. Shared
+per-team caches stay consistent because a team is all one policy.
+*/
+static int botTacticsSaved;
+
+static void BotTacticsForClient(int client) {
+    const gclient_t* cl = g_entities[client].client;
+    botTacticsSaved = bot_tactics.integer;
+    if (bot_tactics.integer && cl &&
+        (cl->sess.sessionTeam == TEAM_RED || cl->sess.sessionTeam == TEAM_BLUE)) {
+        const int bit = cl->sess.sessionTeam == TEAM_RED ? 1 : 2;
+        if (!(bot_tacticsTeams.integer & bit)) {
+            bot_tactics.integer = 0;
+        }
+    }
+}
+
+static void BotTacticsRestore(void) {
+    bot_tactics.integer = botTacticsSaved;
+}
+
+static int BotAIStartFrameRun(int time) {
     int i;
     gentity_t* ent;
     bot_entitystate_t state;
@@ -1995,6 +2056,7 @@ int BotAIStartFrame(int time) {
     }
 
     if (bot_pause.integer) {
+        BotTimingStage("input");
         // execute bot user commands every frame
         for (i = 0; i < MAX_CLIENTS; i++) {
             if (!botstates[i] || !botstates[i]->inuse) {
@@ -2055,6 +2117,7 @@ int BotAIStartFrame(int time) {
     else
         thinktime = bot_thinktime.integer;
 
+    BotTimingStage("world");
     // update the bot library
     if (botlib_residual >= thinktime) {
         botlib_residual -= thinktime;
@@ -2133,6 +2196,9 @@ int BotAIStartFrame(int time) {
 
     floattime = trap_AAS_Time();
 
+    BotTimingStage("ai");
+    memset(botEntityCacheValid, 0, sizeof(botEntityCacheValid));
+    botEntityCacheActive = qtrue;
     // execute scheduled bot AI
     for (i = 0; i < MAX_CLIENTS; i++) {
         if (!botstates[i] || !botstates[i]->inuse) {
@@ -2161,6 +2227,7 @@ int BotAIStartFrame(int time) {
         staggers the residuals so the load stays spread across frames rather
         than landing on one.
         */
+        BotTacticsForClient(i);
         {
             int botthinktime = thinktime;
 
@@ -2179,16 +2246,21 @@ int BotAIStartFrame(int time) {
             if (botstates[i]->botthink_residual >= botthinktime) {
                 botstates[i]->botthink_residual -= botthinktime;
 
-                if (!trap_AAS_Initialized())
+                if (!trap_AAS_Initialized()) {
+                    BotTacticsRestore();
                     return qfalse;
+                }
 
                 if (g_entities[i].client->pers.connected == CON_CONNECTED) {
                     BotAI(i, (float)botthinktime / 1000);
                 }
             }
         }
+        BotTacticsRestore();
     }
 
+    botEntityCacheActive = qfalse;
+    BotTimingStage("input");
     // execute bot user commands every frame
     for (i = 0; i < MAX_CLIENTS; i++) {
         if (!botstates[i] || !botstates[i]->inuse) {
@@ -2198,11 +2270,27 @@ int BotAIStartFrame(int time) {
             continue;
         }
 
+        BotTacticsForClient(i);
         BotUpdateInput(botstates[i], time, elapsed_time);
+        BotTacticsRestore();
         trap_BotUserCommand(botstates[i]->client, &botstates[i]->lastucmd);
     }
 
     return qtrue;
+}
+
+int BotAIStartFrame(int time) {
+    int result;
+
+    // The wrapper closes timings and the cache on pause and AAS early returns.
+    botEntityCacheActive = qfalse;
+    botTimingEnabled = trap_Cvar_VariableIntegerValue("com_cpuTimings") != 0;
+    BotTimingStage("begin");
+    result = BotAIStartFrameRun(time);
+    botEntityCacheActive = qfalse;
+    BotTimingStage("end");
+    botTimingEnabled = qfalse;
+    return result;
 }
 
 /*

@@ -178,6 +178,7 @@ typedef struct bot_tactics_s {
        CTFROLE_ATTACK and a zeroed struct would claim every fresh bot had been
        assigned to attack. */
     int assignedrole;
+    int ctfphase; // flag state used by the autonomous planner, -1 before first decision
     /* [QL] Aim anticipation - see BotAimSweep. How fast the place the bot wants
        to look is itself moving, filtered, so the view can lead a strafing target
        instead of trailing it. Xonotic's havocbot calls these the 1st and 2nd

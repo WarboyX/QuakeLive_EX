@@ -15,4 +15,12 @@ python3 tools/check-menu-defaults.py
 python3 tools/check-menu-cvars.py
 python3 tools/check-menus.py
 python3 tools/check-score-fields.py
+python3 tools/test-bot-performance.py
+python3 tools/test-ctf-recovery.py
+python3 tools/test-ctf-analysis.py
+python3 tools/test-ctf-escort-items.py
+python3 tools/test-ctf-carrier-selection.py
+python3 tools/test-ctf-route-threat.py
+python3 tools/test-ctf-relay.py
+python3 tools/test-ctf-escort-intercept.py
 echo "validate: all checks passed"

@@ -188,6 +188,25 @@ int BotGoForAir(bot_state_t* bs, int tfl, bot_goal_t* ltg, float range) {
 BotNearbyGoal
 ==================
 */
+/* A travelling autonomous screen can take a short supply detour, but should
+   not inherit an ordinary roam's expanded item search. Preserve oxygen escape,
+   explicit orders, carriers and jobs whose followed teammate lost the flag. */
+static float BotCTFEscortItemRange(bot_state_t* bs, float range) {
+    float limit;
+    if (bs->ordered || bs->ltgtype != LTG_TEAMACCOMPANY || BotCTFCarryingFlag(bs) ||
+        !BotCTFKeepObjective(bs) || bs->lastair_time < FloatTime() - 6) return range;
+    limit = bs->inventory[INVENTORY_HEALTH] <= 40 ? 150 : 50;
+    return range < limit ? range : limit;
+}
+
+static float BotCTFEscortItemDuration(bot_state_t* bs, float range, float duration) {
+    float limit;
+    if (bs->ordered || bs->ltgtype != LTG_TEAMACCOMPANY || BotCTFCarryingFlag(bs) ||
+        !BotCTFKeepObjective(bs) || bs->lastair_time < FloatTime() - 6) return duration;
+    limit = BotCTFEscortItemRange(bs, range) / 100 + 1;
+    return duration < limit ? duration : limit;
+}
+
 int BotNearbyGoal(bot_state_t* bs, int tfl, bot_goal_t* ltg, float range) {
     int ret;
 
@@ -210,6 +229,7 @@ int BotNearbyGoal(bot_state_t* bs, int tfl, bot_goal_t* ltg, float range) {
     and the same bot at full health does not.
     */
     range = BotItemSearchRange(bs, range);
+    range = BotCTFEscortItemRange(bs, range);
     //
     ret = trap_BotChooseNBGItem(bs->gs, bs->origin, bs->inventory, tfl, ltg, range);
     /*
@@ -455,7 +475,8 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
             /* home, and waiting on our stand for our flag: it needs our flag
                back, which the base's defenders and the recovery job see to,
                not a ring of escorts standing round it */
-            if (DistanceSquared(g_entities[bs->teammate].r.currentOrigin,
+            if (bot_tactics.integer ? !BotCTFEscortEligible(bs, bs->teammate) :
+                DistanceSquared(g_entities[bs->teammate].r.currentOrigin,
                                 (BotTeam(bs) == TEAM_RED ? ctf_redflag : ctf_blueflag).origin) < Square(600)) {
                 bs->ltgtype = 0;
                 return qfalse;
@@ -830,6 +851,14 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
     if (gametype == GT_CTF) {
         // if going for enemy flag
         if (bs->ltgtype == LTG_GETFLAG) {
+            if (bot_tactics.integer && Team_GetFlagStatus(BotOppositeTeam(bs)) == FLAG_DROPPED) {
+                bs->altroutegoal.areanum = 0;
+                if (BotCTFEnemyFlagGoal(bs, goal)) return qtrue;
+                bs->ltgtype = 0;
+                bs->tac.roleredecide_time = 0;
+                return BotRoamWaypoint(bs, goal);
+            }
+
             /*
             [QL] The flag is already gone. Do not walk over there to find out.
 
@@ -849,54 +878,9 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
             BotCTFSeekGoals; this handler simply never asked.
             */
             if (bot_tactics.integer && !BotEnemyFlagAtBase(bs)) {
-                /*
-                [QL] E137. But not for nothing. Returning no goal here is the
-                seek node's cue to stand still, and the team logic hands the
-                same bot the same get-flag job again on the next frame - so an
-                attacker whose target had been taken stood where it was, frame
-                after frame, for as long as the flag was away. Over 25
-                standard-weapon matches at 30 a side that was 13.5% of all bot
-                time, at speed 0.
-
-                So an attacker without a flag to attack goes where the flag is:
-                with our carrier if one of us has it - the escort it needs - and
-                otherwise out along the routes (the flag is on the floor
-                somewhere, and a dropped flag within reach is picked up as a
-                nearby goal on the way).
-                */
-                int carrier = BotTeamFlagCarrier(bs);
-                bot_goal_t* ourflag = BotTeam(bs) == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
-                qboolean ourflagout = BotTeam(bs) == TEAM_RED ? bs->redflagstatus != 0 : bs->blueflagstatus != 0;
-                qboolean carrierhome = carrier >= 0 &&
-                                       DistanceSquared(g_entities[carrier].r.currentOrigin, ourflag->origin) < Square(600);
-
-                /* our carrier is on our stand waiting for our flag: the job is
-                   getting ours back, not standing round the carrier - tried,
-                   and twenty escorts stood at home while nobody went for it */
-                if (ourflagout && (carrier < 0 || carrierhome)) {
-                    bs->ltgtype = LTG_RETURNFLAG;
-                    bs->teamgoal_time = FloatTime() + CTF_RETURNFLAG_TIME;
-                    bs->decisionmaker = bs->client;
-                    bs->ordered = qfalse;
-                    BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
-                    return BotGetLongTermGoal(bs, tfl, retreat, goal);
-                }
-                // escort a carrier still on its way - within the escort
-                // quota, or past it when already beside the carrier
-                if (carrier >= 0 && carrier != bs->client && !carrierhome &&
-                    (!BotCTFRoleCrowded(bs, CTFROLE_ESCORT) ||
-                     DistanceSquared(bs->origin, g_entities[carrier].r.currentOrigin) < Square(1000))) {
-                    bs->ltgtype = LTG_TEAMACCOMPANY;
-                    bs->teammate = carrier;
-                    bs->teammatevisible_time = FloatTime();
-                    bs->teamgoal_time = FloatTime() + TEAM_ACCOMPANY_TIME;
-                    bs->formation_dist = 112 + (bs->client % 4) * 56;
-                    bs->arrive_time = 1;
-                    bs->decisionmaker = bs->client;
-                    bs->ordered = qfalse;
-                    return BotGetLongTermGoal(bs, tfl, retreat, goal);
-                }
+                // Do not create another escort/recovery job behind the planner.
                 bs->ltgtype = 0;
+                bs->tac.roleredecide_time = 0;
                 return BotRoamWaypoint(bs, goal);
             }
             // check for bot typing status message
@@ -1009,6 +993,16 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
         }
         // returning flag
         if (bs->ltgtype == LTG_RETURNFLAG) {
+            if (bot_tactics.integer) {
+                // A stale alternate route must not redirect a moving target.
+                bs->altroutegoal.areanum = 0;
+                if (BotCTFRecoveryGoal(bs, goal)) {
+                    return qtrue;
+                }
+                bs->ltgtype = 0;
+                bs->owndecision_time = 0;
+                return BotRoamWaypoint(bs, goal);
+            }
             // check for bot typing status message
             if (bs->teammessage_time && bs->teammessage_time < FloatTime()) {
                 BotAI_BotInitialChat(bs, "returnflag_start", NULL);
@@ -2155,7 +2149,7 @@ int AINode_Seek_LTG(bot_state_t* bs) {
             // trap_BotGoalName(tmpgoal.number, buf, 144);
             // BotAI_Print(PRT_MESSAGE, "new nearby goal %s\n", buf);
             // time the bot gets to pick up the nearby goal item
-            bs->nbg_time = FloatTime() + 4 + range * 0.01;
+            bs->nbg_time = FloatTime() + BotCTFEscortItemDuration(bs, range, 4 + range * 0.01);
             AIEnter_Seek_NBG(bs, "ltg seek: nbg");
             return qfalse;
         }
@@ -2518,7 +2512,7 @@ int AINode_Battle_Chase(bot_state_t* bs) {
         //
         if (BotNearbyGoal(bs, bs->tfl, &goal, range)) {
             // the bot gets 5 seconds to pick up the nearby goal item
-            bs->nbg_time = FloatTime() + 0.1 * range + 1;
+            bs->nbg_time = FloatTime() + BotCTFEscortItemDuration(bs, range, 0.1 * range + 1);
             trap_BotResetLastAvoidReach(bs->ms);
             AIEnter_Battle_NBG(bs, "battle chase: nbg");
             return qfalse;
@@ -2717,7 +2711,7 @@ int AINode_Battle_Retreat(bot_state_t* bs) {
         if (BotNearbyGoal(bs, bs->tfl, &goal, range)) {
             trap_BotResetLastAvoidReach(bs->ms);
             // time the bot gets to pick up the nearby goal item
-            bs->nbg_time = FloatTime() + range / 100 + 1;
+            bs->nbg_time = FloatTime() + BotCTFEscortItemDuration(bs, range, range / 100 + 1);
             AIEnter_Battle_NBG(bs, "battle retreat: nbg");
             return qfalse;
         }
