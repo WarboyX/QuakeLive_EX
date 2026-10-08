@@ -780,266 +780,111 @@ BotChangeViewAngles
 */
 
 /*
-==============
-BotAimSweep
+BotAimSweep: an eased acquisition followed by continuous corrective tracking.
+Timing uses the game/input clock, not FloatTime's stepped botlib clock. Angular
+velocity is measured only when BotAimAtEnemy supplies a fresh sample; random
+drift is applied afterwards, so it cannot become predicted target motion.
+These constants are engineering tuning, not a fitted model of human motor data.
 
-[QL] Move the view from where it is to where it wants to be as a *movement*, with
-a start, a duration and an end, instead of chasing a target that moves under it.
-
-Both of the models below are servos: they read the angle still to cover and pick
-a speed from it, every frame, forever. That is why neither ever looks settled -
-there is no such thing as "arrived" in a servo, only a smaller and smaller error,
-and any change in the target restarts the correction from wherever the view
-happens to be.
-
-A person does not aim like that. They make one committed movement towards where
-the target is, which takes longer the further it has to go, and then they track.
-So:
-
-  A   bs->tac.aimfrom  - the view angles at the moment the bot decided to look
-                         somewhere else
-  B   bs->tac.aimto    - where it decided to look, updated as the target moves so
-                         a moving enemy is still arrived at rather than chased
-  t   how far through the movement it is, eased so it accelerates out of A and
-      decelerates into B rather than starting and stopping at full speed
-
-The duration is Fitts-ish - a constant plus a term proportional to the angle -
-scaled by CHARACTERISTIC_AIM_SKILL, so a good bot flicks 90 degrees in about a
-fifth of a second and a poor one takes half. Once t reaches 1 the sweep is over
-and the view simply follows B, which is the tracking phase; bot_aimDrift is what
-makes B wander while that happens, so a settled bot still is not a turret.
-
-A change in B of more than eight degrees is a new decision, not a correction, and
-starts a fresh sweep from wherever the view currently is.
-==============
+[QL] E227 (A1, from the Route Intel kit). This replaced a tracker that slowed
+as it closed and stopped inside a 0.35-degree deadzone, written to stop the view
+gluing itself to the 10 Hz ideal_viewangles staircase (see this function at
+e4036f1e for that reasoning). A1 tracks at 12-20/s with no deadzone, which is
+the shape that note warned against: if spectators see aim jitter, look here
+first. E226 measured the old version costing the layer most of its fights.
 */
-#define AIM_RESWEEP_DEGREES 8.0f
-
-/*
-[QL] Aim anticipation filters, from Xonotic's havocbot defaults
-(bot_ai_aimskill_order_filter_1st/2nd 0.2, order_mix_1st 0.01, mix_2nd 0.075).
-The filters smooth the measured angular rate; the mixes say how much of it to
-lead by.
-*/
-#define AIM_FILTER_1ST 0.2f
-#define AIM_FILTER_2ND 0.2f
-#define AIM_MIX_1ST 0.01f
-#define AIM_MIX_2ND 0.075f
-
-/*
-[QL] Tracking rate, and deliberately NOT Xonotic's r = max(fixedrate / dist,
-blendrate).
-
-Their form makes the turn rate inversely proportional to the angle remaining, so
-a small residual is closed almost instantly. That is right in their engine and
-wrong in ours, because of a stage of theirs we do not have: bot_aimdir tracks a
-separate bot_mouseaim that only moves on bot_aimthinktime, every
-0.5 - 0.05 * skill seconds, and the angle it finally turns towards has been
-pulled most of the way to that. By the time their turn calculation runs, the
-thing being chased is already slow and stepped, so chasing it hard is safe.
-
-Ours has no such intermediary. aimto is the live destination, rebuilt from
-ideal_viewangles, which is recomputed when the bot thinks - ten times a second.
-Closing the last fraction of a degree every frame glues the view to a
-ten-hertz staircase and reproduces it exactly. That is the jitter, and making
-the tracker faster feeds it.
-
-So the shape here is the other way round, which is also how a hand behaves: a
-correction gets slower as it gets smaller, and below a threshold it is not made
-at all. Real aim sits near the target with residual error; it does not drive the
-error to zero and hold it there. The deadzone is what stops the view chasing
-ten-hertz updates it cannot see the point of.
-*/
-#define AIM_TRACK_BASE 3.45f    // per-second fraction at zero residual
-#define AIM_TRACK_GAIN 1.15f    // added per degree still to go
-#define AIM_DEADZONE 0.35f      // below this, leave it alone
-
 static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
-	float dist, t, skill, targetangles[2];
-	int i;
+    float now = level.time * 0.001f;
+    float targetangles[2], dist = 0, t, skill, rate, delta;
+    qboolean acquire;
+    int i;
 
-	if (!bot_tactics.integer || !bot_aimSweep.integer) {
-		return qfalse;
-	}
-	if (bs->enemy < 0) {
-		// no target to sweep towards; the servo below is fine for looking around
-		bs->tac.aimsweep_len = 0;
-		return qfalse;
-	}
-
-	/*
-	The destination, which is where the bot means to look plus how wrong its aim
-	currently is.
-
-	The error is folded in here rather than added to the output, because the
-	sweep and the settle tracker both work from this destination - post-adding an
-	offset to viewangles would have the tracker spend every frame removing it
-	again. BotAimAtEnemy sets aimoffsetgoal on the think, ten times a second; the
-	applied offset walks towards it every frame, so the destination wanders
-	continuously rather than being placed somewhere new ten times a second, which
-	is what the remaining jitter was.
-
-	Deliberately slower than the settle tracker: this is a hand not being
-	perfectly steady, and a hand does not shake at ten hertz.
-	*/
-	skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_SKILL, 0, 1);
-	for (i = 0; i < 2; i++) {
-		float rate = frametime * 4.0f;
-
-		if (rate > 1.0f) {
-			rate = 1.0f;
-		}
-		bs->tac.aimoffset[i] += (bs->tac.aimoffsetgoal[i] - bs->tac.aimoffset[i]) * rate;
-		targetangles[i] = AngleMod(bs->ideal_viewangles[i] + bs->tac.aimoffset[i]);
-	}
-
-	/*
-	[QL] Anticipate where the destination is going, not just where it is.
-
-	Taken from Xonotic's havocbot (bot_aimdir, GPLv2): it keeps a cascade of
-	exponential filters on the *rate of change* of the desired angle and blends
-	their output back into it, scaled by skill. Two orders here rather than five -
-	theirs mixes the 1st at 0.01 and the 2nd at 0.075, and the 3rd to 5th at 0.01
-	to 0.0375, so the top of the cascade buys very little for three more filters'
-	worth of state.
-
-	Why this rather than more smoothing: against a strafing target the destination
-	moves every think, and a view that only ever chases where the target *was*
-	trails it by a fixed lag. The error grows until it crosses AIM_RESWEEP_DEGREES,
-	the sweep restarts from wherever the view had got to, and it repeats - a
-	sawtooth, which is what "still some jitter while aiming" looks like from the
-	outside. Leading by the filtered angular velocity keeps the error small enough
-	that the resweep stops firing.
-
-	The lead is deliberately small. At a hundred degrees a second and full skill it
-	is under a degree, so this is anticipation, not aimbotting.
-	*/
-	{
-		float delta = FloatTime() - bs->tac.aimfilter_time;
-
-		if (delta > 0.001f && delta < 0.5f) {
-			for (i = 0; i < 2; i++) {
-				float raw = AngleDifference(targetangles[i], bs->tac.aimprev[i]) / delta;
-
-				bs->tac.aim1st[i] += (raw - bs->tac.aim1st[i]) * AIM_FILTER_1ST;
-				bs->tac.aim2nd[i] += (bs->tac.aim1st[i] - bs->tac.aim2nd[i]) * AIM_FILTER_2ND;
-			}
-		} else {
-			// first frame, or a gap long enough that the old rate means nothing
-			for (i = 0; i < 2; i++) {
-				bs->tac.aim1st[i] = 0;
-				bs->tac.aim2nd[i] = 0;
-			}
-		}
-		for (i = 0; i < 2; i++) {
-			bs->tac.aimprev[i] = targetangles[i];
-		}
-		bs->tac.aimfilter_time = FloatTime();
-
-		for (i = 0; i < 2; i++) {
-			targetangles[i] = AngleMod(targetangles[i] +
-			                           skill * (bs->tac.aim1st[i] * AIM_MIX_1ST +
-			                                    bs->tac.aim2nd[i] * AIM_MIX_2ND));
-		}
-	}
-
-	// how far the destination has moved since the sweep was planned
-	dist = 0;
-	for (i = 0; i < 2; i++) {
-		float d = fabs(AngleDifference(targetangles[i], bs->tac.aimto[i]));
-
-		if (d > dist) {
-			dist = d;
-		}
-	}
-
-	if (bs->tac.aimsweep_len <= 0 || dist > AIM_RESWEEP_DEGREES) {
-		// a new decision: start again from where the view actually is
-		for (i = 0; i < 2; i++) {
-			bs->tac.aimfrom[i] = bs->viewangles[i];
-			bs->tac.aimto[i] = targetangles[i];
-		}
-		dist = 0;
-		for (i = 0; i < 2; i++) {
-			float d = fabs(AngleDifference(bs->tac.aimto[i], bs->tac.aimfrom[i]));
-
-			if (d > dist) {
-				dist = d;
-			}
-		}
-		bs->tac.aimsweep_len = (0.05f + dist * 0.004f) * (1.5f - skill);
-		if (bs->tac.aimsweep_len < 0.05f) {
-			bs->tac.aimsweep_len = 0.05f;
-		} else if (bs->tac.aimsweep_len > 1.0f) {
-			bs->tac.aimsweep_len = 1.0f;
-		}
-		bs->tac.aimsweep_start = FloatTime();
-	} else {
-		// the same decision, target has drifted: arrive at the new place, on the
-		// original clock
-		for (i = 0; i < 2; i++) {
-			bs->tac.aimto[i] = targetangles[i];
-		}
-	}
-
-	t = (FloatTime() - bs->tac.aimsweep_start) / bs->tac.aimsweep_len;
-	if (t < 0.0f) {
-		t = 0.0f;
-	}
-
-	if (t >= 1.0f) {
-		/*
-		Arrived, so this is the tracking phase - and it must not be a hard set to
-		aimto. ideal_viewangles is only recomputed when the bot thinks, ten times
-		a second, so assigning it directly would hold the view still for 100ms and
-		then step, which is the same staircase the sweep exists to remove. A short
-		lag instead: a fixed fraction of the remaining angle per frame, which at
-		40 tick closes most of a small correction inside three frames and reads as
-		a hand following something.
-
-		The fraction is not fixed any more, and it tapers *down* as the residual
-		shrinks rather than up - see AIM_TRACK_BASE for why that is the
-		opposite of Xonotic's form and why copying theirs here would be wrong.
-		Below AIM_DEADZONE the correction is not made at all.
-		*/
-		float remaining = 0;
-		float rate;
-
-		for (i = 0; i < 2; i++) {
-			float d = fabs(AngleDifference(bs->tac.aimto[i], bs->viewangles[i]));
-
-			if (d > remaining) {
-				remaining = d;
-			}
-		}
-		if (remaining < AIM_DEADZONE) {
-			// near enough. Holding still here is the whole point.
-			return qtrue;
-		}
-		rate = frametime * (AIM_TRACK_BASE + remaining * AIM_TRACK_GAIN);
-		if (rate > 1.0f) {
-			rate = 1.0f;
-		}
-		for (i = 0; i < 2; i++) {
-			float d = AngleDifference(bs->tac.aimto[i], bs->viewangles[i]);
-
-			bs->viewangles[i] = AngleMod(bs->viewangles[i] + d * rate);
-		}
-	} else {
-		// ease in and out: accelerate away from A, decelerate into B
-		t = t * t * (3.0f - 2.0f * t);
-		for (i = 0; i < 2; i++) {
-			float diff = AngleDifference(bs->tac.aimto[i], bs->tac.aimfrom[i]);
-
-			bs->viewangles[i] = AngleMod(bs->tac.aimfrom[i] + diff * t);
-		}
-	}
-
-	if (bs->viewangles[PITCH] > 180) {
-		bs->viewangles[PITCH] -= 360;
-	}
-	trap_EA_View(bs->client, bs->viewangles);
-	return qtrue;
+    if (!bot_tactics.integer || !bot_aimSweep.integer || bs->enemy < 0) {
+        bs->tac.aimsweep_len = 0;
+        return qfalse;
+    }
+    if (frametime <= 0) return qtrue;
+    if (frametime > 0.2f) frametime = 0.2f;
+    skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_SKILL, 0, 1);
+    acquire = bs->tac.aimsweep_len <= 0 || bs->tac.aimenemy != bs->enemy ||
+              now < bs->tac.aimsweep_start;
+    delta = bs->tac.aimsample_time - bs->tac.aimfilter_time;
+    if (delta < 0 || delta > 0.5f) acquire = qtrue;
+    if (!acquire && delta > 0) {
+        for (i = 0; i < 2; i++) {
+            float d = fabs(AngleDifference(bs->ideal_viewangles[i], bs->tac.aimprev[i]));
+            if (d > dist) dist = d;
+        }
+        // A discontinuity starts a new acquisition; ordinary fast tracking
+        // no longer restarts the flick at every eight-degree think update.
+        if (dist > 45.0f) acquire = qtrue;
+    }
+    if (acquire) {
+        for (i = 0; i < 2; i++) {
+            bs->tac.aim1st[i] = 0;
+            bs->tac.aimprev[i] = bs->ideal_viewangles[i];
+        }
+        bs->tac.aimfilter_time = bs->tac.aimsample_time;
+        bs->tac.aimenemy = bs->enemy;
+    } else if (delta > 0) {
+        rate = 1.0f - expf(-delta / 0.08f);
+        for (i = 0; i < 2; i++) {
+            float raw = AngleDifference(bs->ideal_viewangles[i], bs->tac.aimprev[i]) / delta;
+            if (raw > 180) raw = 180;
+            if (raw < -180) raw = -180;
+            bs->tac.aim1st[i] += (raw - bs->tac.aim1st[i]) * rate;
+            bs->tac.aimprev[i] = bs->ideal_viewangles[i];
+        }
+        bs->tac.aimfilter_time = bs->tac.aimsample_time;
+    }
+    rate = 1.0f - expf(-frametime * 4.0f);
+    for (i = 0; i < 2; i++) {
+        float lead = skill * bs->tac.aim1st[i] * 0.03f;
+        // This compensates a little controller lag, not projectile flight.
+        // Do not extrapolate indefinitely when the aim sample stops updating.
+        if (now - bs->tac.aimsample_time > 0.2f) lead = 0;
+        if (lead > 2) lead = 2;
+        if (lead < -2) lead = -2;
+        bs->tac.aimoffset[i] += (bs->tac.aimoffsetgoal[i] - bs->tac.aimoffset[i]) * rate;
+        targetangles[i] = AngleMod(bs->ideal_viewangles[i] + bs->tac.aimoffset[i] + lead);
+    }
+    if (acquire) {
+        dist = 0;
+        for (i = 0; i < 2; i++) {
+            float d = fabs(AngleDifference(targetangles[i], bs->viewangles[i]));
+            bs->tac.aimfrom[i] = bs->viewangles[i];
+            if (d > dist) dist = d;
+        }
+        // Preserve the existing distance/skill-based flick duration.
+        bs->tac.aimsweep_len = (0.05f + dist * 0.004f) * (1.5f - skill);
+        if (bs->tac.aimsweep_len < 0.05f) bs->tac.aimsweep_len = 0.05f;
+        if (bs->tac.aimsweep_len > 1.0f) bs->tac.aimsweep_len = 1.0f;
+        bs->tac.aimsweep_start = now;
+    }
+    for (i = 0; i < 2; i++) bs->tac.aimto[i] = targetangles[i];
+    t = (now - bs->tac.aimsweep_start) / bs->tac.aimsweep_len;
+    if (t < 0) t = 0;
+    if (t < 1) {
+        t = t * t * (3.0f - 2.0f * t);
+        for (i = 0; i < 2; i++) {
+            bs->viewangles[i] = AngleMod(bs->tac.aimfrom[i] +
+                AngleDifference(targetangles[i], bs->tac.aimfrom[i]) * t);
+        }
+    } else {
+        // No permanent deadzone: small misses remain correctable. Exponential
+        // blending gives the same stationary response across input rates.
+        float maxstep = (180.0f + 540.0f * skill) * frametime;
+        rate = 1.0f - expf(-frametime * (12.0f + 8.0f * skill));
+        for (i = 0; i < 2; i++) {
+            float step = AngleDifference(targetangles[i], bs->viewangles[i]) * rate;
+            if (step > maxstep) step = maxstep;
+            if (step < -maxstep) step = -maxstep;
+            bs->viewangles[i] = AngleMod(bs->viewangles[i] + step);
+        }
+    }
+    if (bs->viewangles[PITCH] > 180) bs->viewangles[PITCH] -= 360;
+    trap_EA_View(bs->client, bs->viewangles);
+    return qtrue;
 }
 
 void BotChangeViewAngles(bot_state_t* bs, float thinktime) {

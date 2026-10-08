@@ -179,12 +179,10 @@ typedef struct bot_tactics_s {
        assigned to attack. */
     int assignedrole;
     int ctfphase; // flag state used by the autonomous planner, -1 before first decision
-    /* [QL] Aim anticipation - see BotAimSweep. How fast the place the bot wants
-       to look is itself moving, filtered, so the view can lead a strafing target
-       instead of trailing it. Xonotic's havocbot calls these the 1st and 2nd
-       order aim filters. */
+    /* Sampled angular velocity of the ideal aim, before drift is added. */
     float aim1st[2];
-    float aim2nd[2];
+    int aimenemy;          // target identity for filter/acquisition reset
+    float aimsample_time; // game time of the last BotAimAtEnemy output
     float aimprev[2];
     float aimfilter_time;
 } bot_tactics_t;

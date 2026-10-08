@@ -4617,10 +4617,9 @@ void BotAimAtEnemy(bot_state_t* bs) {
     one direction at a time; this was wrong discontinuously, and it is most of
     what "spasm" looks like from a spectator.
 
-    Same magnitude, same distribution over time, same dependence on
-    CHARACTERISTIC_AIM_ACCURACY - a bad bot still misses by just as much. Only
-    the step-to-step correlation changes: each think moves 30% of the way to a
-    new random target, which is a low-pass filter on the same noise.
+    The spread and CHARACTERISTIC_AIM_ACCURACY still scale the error. The
+    low-pass filter correlates successive errors and reduces their variance;
+    it does not preserve the independent-noise distribution.
     */
     if (bot_tactics.integer && bot_aimDrift.integer) {
         /*
@@ -4635,6 +4634,11 @@ void BotAimAtEnemy(bot_state_t* bs) {
         bs->tac.aimdrift[1] = bs->tac.aimdrift[1] * 0.7f + crandom() * 0.3f;
         bs->tac.aimoffsetgoal[0] = 6 * wi.vspread * bs->tac.aimdrift[0] * (1 - aim_accuracy);
         bs->tac.aimoffsetgoal[1] = 6 * wi.hspread * bs->tac.aimdrift[1] * (1 - aim_accuracy);
+        // The drift switch must retain its error when the sweep is disabled.
+        if (!bot_aimSweep.integer) {
+            bs->ideal_viewangles[PITCH] += bs->tac.aimoffsetgoal[0];
+            bs->ideal_viewangles[YAW] += bs->tac.aimoffsetgoal[1];
+        }
     } else {
         bs->tac.aimoffsetgoal[0] = bs->tac.aimoffsetgoal[1] = 0;
         bs->tac.aimoffset[0] = bs->tac.aimoffset[1] = 0;
@@ -4642,6 +4646,7 @@ void BotAimAtEnemy(bot_state_t* bs) {
         bs->ideal_viewangles[PITCH] += 6 * wi.vspread * crandom() * (1 - aim_accuracy);
         bs->ideal_viewangles[YAW] += 6 * wi.hspread * crandom() * (1 - aim_accuracy);
     }
+    bs->tac.aimsample_time = level.time * 0.001f;
     bs->ideal_viewangles[PITCH] = AngleMod(bs->ideal_viewangles[PITCH]);
     bs->ideal_viewangles[YAW] = AngleMod(bs->ideal_viewangles[YAW]);
     // if the bots should be really challenging
