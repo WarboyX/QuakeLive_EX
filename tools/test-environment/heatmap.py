@@ -208,7 +208,7 @@ tt = res.get('settings', {}).get('bot_tacticsTeams') if isinstance(res.get('sett
 fs = res['final']
 panels = [
     panel(team_overlay(density(red), density(blue)), 'Where each team spent its time',
-          f'red and blue presence, {len(alive)} live samples (4 per bot per second)'),
+          f'red and blue presence, {len(alive)} live samples ({len(track) / max(1, len({r[1] for r in track})) / max(1, secs):.1f} per bot per second)'),
     # bottrack 'f' is every live node that is not a seek node: fight, chase,
     # battle-item AND retreat - which is also how an escort follows its carrier
     # while shooting. So this is "in a battle node", not "not escorting" (E226).

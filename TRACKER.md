@@ -6264,6 +6264,34 @@ Exact-source fixtures verify snapshot identity and invalidation, timing boundari
 
 Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
 
+### E229. A1 + R1 applied and played: the layer's deficit closes to near parity; heat maps — FINDING
+**Lives in:** test tools (`tools/test-environment/heatmap-compare.py`, new) · **Seen by:** —
+
+**New matches on `46fc571d` (A1 + R1).** japanesecastles, 15v15, skill 5, 600 s, timescale 1, two side-swapped pairs of layer on vs layer off. All 4 PASS with no errors. Journal: `docs/bot-trials/e229/`.
+
+| match | layer on | red–blue |
+|---|---|---|
+| R1a | red | 1–1 |
+| R1b | blue | 3–3 |
+| R1c | red | 1–3 |
+| R1d | blue | 0–1 |
+
+Totals:
+- **Captures:** layer on 6, off 7. The E226 baseline was 4–32 over 5 pairs.
+- **Deaths:** 963 vs 789, a ratio of **1.22**. E226 baseline about 1.68; E226 with `bot_aimSweep 0` about 1.25.
+- **Reading:** A1 recovers what turning the sweep off did. That disagrees with the kit's own B2 batch (A1 at 1.33× and 3–9 in captures). It is two pairs each way, so still small.
+
+**Heat maps:**
+- Their 8 B2 matches, A1 vs R1, layer-on team pooled. R1's one visible effect is carriers going through both gardens, which A1's almost never enter. Presence and deaths look the same.
+- Per possession, 60 each: R1 carriers hold longer (median 17.4 s vs 13.3 s) and get home more (12 vs 7), with the same 4 captures. Their logs sample once a second, so "reached home" is rough.
+- Before/after on our builds (E226 baseline vs A1 + R1, 4 matches each): captures 2–13 against 6–7. Deaths 1007 vs 963. Carrier paths tighter along the two main lanes.
+
+Still open:
+- spectator check of A1's tracking for jitter (E227);
+- a second map;
+- the remaining 1.22× death ratio;
+- R1's garden routing has not been shown to help.
+
 ### E228. Route Intel R1: carrier route risk from what the team has seen, not a global enemy count — APPLIED, experimental
 **Lives in:** our **server** (qagame `ai_tactics.c`, `g_combat.c` `G_Damage`, `g_local.h`) · **Seen by:** every client
 
@@ -6281,7 +6309,7 @@ Review: correct, bounded and per team. It is a fairness gain on its own: the car
 - B2: 8 matches × 600 s. R1 4–7 against A1 3–9 in captures, deaths about equal.
 - Carriers use alternate waypoints more (36% of samples against 24%) and are in the gardens more. No survival gain.
 
-**Heat maps of their 8 matches (A1 vs R1) and of 2 new matches on this build: see E229.**
+**Heat maps of their 8 matches (A1 vs R1) and of 4 new matches on this build: see E229.**
 
 ### E227. Aim sweep A1 (from the Route Intel kit): continuous tracking, no deadzone — APPLIED, experimental (verify on screen)
 **Lives in:** our **server** (qagame `ai_main.c` `BotAimSweep`, `ai_main.h`, `ai_dmq3.c` `BotAimAtEnemy`) · **Seen by:** every client
