@@ -24,4 +24,5 @@ python3 tools/test-ctf-route-threat.py
 python3 tools/test-ctf-relay.py
 python3 tools/test-ctf-escort-intercept.py
 python3 tools/test-aim-sweep.py
+python3 tools/test-route-intel.py
 echo "validate: all checks passed"

@@ -153,6 +153,10 @@ visibility traces are the expensive half, which is why the whole picture is
 refreshed on a timer rather than every frame.
 ==================
 */
+static void BotRouteReportSight(bot_state_t* bs, int enemy, vec3_t origin);
+static void BotRouteIntelReset(void);
+static void BotRouteIntelReport(void);
+
 static void BotCountNearby(bot_state_t* bs, float range) {
     int i, sameteam;
     float dist, strength, own, other, fallbackmargin;
@@ -211,6 +215,7 @@ static void BotCountNearby(bot_state_t* bs, float range) {
                 VectorCopy(entinfo.origin, bs->tac.nearestallyorigin);
             }
         } else {
+            BotRouteReportSight(bs, i, entinfo.origin);
             bs->tac.foes++;
             other += strength;
         }
@@ -1078,6 +1083,8 @@ void BotTacticsReport(void) {
     char netname[MAX_NETNAME];
     gclient_t* cl;
 
+    BotRouteIntelReport();
+
     if (!bot_tactics.integer) {
         G_Printf("bot_tactics is 0 - stock Quake 3 behaviour, nothing below is in use\n");
     }
@@ -1301,6 +1308,7 @@ leaves pointers into the previous level's entities.
 static void BotCTFRelayReset(void);
 
 void BotRoomsReset(void) {
+    BotRouteIntelReset();
     BotCTFRelayReset();
     memset(ctfRecovery, 0, sizeof(ctfRecovery));
     ctfRecovery[0].frame = ctfRecovery[1].frame = -1;
@@ -1467,9 +1475,129 @@ int BotRoomEnemies(bot_state_t* bs, vec3_t origin) {
     return roomHere[room][team == TEAM_RED ? TEAM_BLUE : TEAM_RED];
 }
 
-/* Carrier risk is the maximum enemy count along the predicted route, not
-   just the waypoint. Starting-room danger is unavoidable and excluded. This
-   uses the existing global room census; it is not a visibility calculation. */
+/* Team radio memory. Sightings are keyed by enemy, incidents by victim: a
+   crowd of reporters cannot multiply the same enemy or stack one firefight.
+   Locations use the existing named-room partition, not a visibility volume. */
+#define ROUTE_INTEL_TTL 8.0f
+#define ROUTE_INTEL_CAP 4
+
+typedef struct {
+    qboolean valid;
+    int room;
+    float time, weight;
+} route_report_t;
+static route_report_t routeSight[2][MAX_CLIENTS], routeIncident[2][MAX_CLIENTS];
+static int routeIntelFrame[2] = {-1, -1};
+static float routeIntelRisk[2][MAX_ROOMS];
+static unsigned routeIntelSightReports[2], routeIntelIncidentReports[2], routeIntelQueries[2];
+
+static int BotRouteRadioTeam(int client) {
+    int team;
+    if (!bot_tactics.integer || gametype != GT_CTF || client < 0 || client >= level.maxclients ||
+        !g_entities[client].inuse || !g_entities[client].client) return -1;
+    team = g_entities[client].client->sess.sessionTeam;
+    if (team != TEAM_RED && team != TEAM_BLUE) return -1;
+    if (!(bot_tacticsTeams.integer & (team == TEAM_RED ? 1 : 2))) return -1;
+    return team == TEAM_RED ? 0 : 1;
+}
+
+static void BotRouteIntelReset(void) {
+    memset(routeSight, 0, sizeof(routeSight));
+    memset(routeIncident, 0, sizeof(routeIncident));
+    memset(routeIntelRisk, 0, sizeof(routeIntelRisk));
+    memset(routeIntelSightReports, 0, sizeof(routeIntelSightReports));
+    memset(routeIntelIncidentReports, 0, sizeof(routeIntelIncidentReports));
+    memset(routeIntelQueries, 0, sizeof(routeIntelQueries));
+    routeIntelFrame[0] = routeIntelFrame[1] = -1;
+}
+
+static void BotRouteReportSight(bot_state_t* bs, int enemy, vec3_t origin) {
+    int team = BotRouteRadioTeam(bs->client), room;
+    route_report_t* report;
+    if (team < 0 || enemy < 0 || enemy >= MAX_CLIENTS) return;
+    BotRoomCensus();
+    room = BotRoomAt(origin);
+    if (room < 0) return;
+    report = &routeSight[team][enemy];
+    report->valid = qtrue;
+    report->room = room;
+    report->time = level.time * 0.001f;
+    report->weight = 1.0f;
+    routeIntelFrame[team] = -1;
+    routeIntelSightReports[team]++;
+}
+
+/* Called only for real enemy damage to a living bot, at the victim's location.
+   The attacker identity/location is deliberately not passed into this API. */
+void BotRouteReportDamage(int client, vec3_t origin, qboolean fatal) {
+    int team = BotRouteRadioTeam(client), room;
+    route_report_t* report;
+    float now = level.time * 0.001f, weight = fatal ? 2.0f : 1.0f;
+    if (team < 0 || !botstates[client] || !botstates[client]->inuse) return;
+    BotRoomCensus();
+    room = BotRoomAt(origin);
+    if (room < 0) return;
+    report = &routeIncident[team][client];
+    if (report->valid && report->room == room && now >= report->time &&
+        now - report->time < ROUTE_INTEL_TTL && report->weight > weight)
+        weight = report->weight;
+    report->valid = qtrue;
+    report->room = room;
+    report->time = now;
+    report->weight = weight;
+    routeIntelFrame[team] = -1;
+    routeIntelIncidentReports[team]++;
+}
+
+static float BotRouteReportWeight(route_report_t* report, float now) {
+    float age = now - report->time;
+    if (!report->valid || age < 0 || age >= ROUTE_INTEL_TTL) return 0;
+    return report->weight * (1.0f - age / ROUTE_INTEL_TTL);
+}
+
+static int BotRouteKnownDanger(bot_state_t* bs, vec3_t origin) {
+    int team = BotRouteRadioTeam(bs->client), room, i;
+    float now = level.time * 0.001f, incidents[MAX_ROOMS], value;
+    route_report_t* report;
+    if (team < 0) return 0;
+    room = BotRoomAt(origin);
+    if (room < 0) return 0;
+    if (routeIntelFrame[team] != level.time) {
+        memset(routeIntelRisk[team], 0, sizeof(routeIntelRisk[team]));
+        memset(incidents, 0, sizeof(incidents));
+        for (i = 0; i < MAX_CLIENTS; i++) {
+            report = &routeSight[team][i];
+            if (report->valid && report->room >= 0 && report->room < numRooms)
+                routeIntelRisk[team][report->room] += BotRouteReportWeight(report, now);
+            report = &routeIncident[team][i];
+            if (report->valid && report->room >= 0 && report->room < numRooms) {
+                value = BotRouteReportWeight(report, now);
+                if (value > incidents[report->room]) incidents[report->room] = value;
+            }
+        }
+        for (i = 0; i < numRooms; i++) {
+            // Damage and sightings can describe the same encounter; use the
+            // stronger evidence, not their sum. Repeated casualties are bounded.
+            if (incidents[i] > routeIntelRisk[team][i]) routeIntelRisk[team][i] = incidents[i];
+        }
+        routeIntelFrame[team] = level.time;
+    }
+    routeIntelQueries[team]++;
+    value = routeIntelRisk[team][room];
+    if (value > ROUTE_INTEL_CAP) value = ROUTE_INTEL_CAP;
+    return (int)(value + 0.5f); // preserve the existing three-second risk unit
+}
+
+static void BotRouteIntelReport(void) {
+    int t;
+    for (t = 0; t < 2; t++)
+        G_Printf("routeintel %d %s sight_reports %u incident_reports %u queries %u\n",
+            level.time, t ? "blue" : "red", routeIntelSightReports[t],
+            routeIntelIncidentReports[t], routeIntelQueries[t]);
+}
+
+/* Carrier risk uses decaying team reports along the predicted route.
+   Starting-room danger is unavoidable and excluded, as before. */
 int BotCTFRouteThreat(bot_state_t* bs, int area, vec3_t origin,
                       int target, vec3_t destination, int flags) {
     aas_predictroute_t route;
@@ -1486,13 +1614,13 @@ int BotCTFRouteThreat(bot_state_t* bs, int area, vec3_t origin,
         VectorCopy(route.endpos, pos);
         room = BotRoomAt(pos);
         if (room >= 0 && room != startroom) {
-            danger = BotRoomEnemies(bs, pos);
+            danger = BotRouteKnownDanger(bs, pos);
             if (danger > peak) peak = danger;
         }
     }
     room = BotRoomAt(destination);
     if (room >= 0 && room != startroom) {
-        danger = BotRoomEnemies(bs, destination);
+        danger = BotRouteKnownDanger(bs, destination);
         if (danger > peak) peak = danger;
     }
     return peak;

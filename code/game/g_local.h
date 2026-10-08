@@ -1822,3 +1822,6 @@ void trap_SnapVector(float* v);
 void trap_IncrementSteamStat(int clientNum, int statID);
 int trap_GetSteamStat(int clientNum, int statID);
 uint64_t trap_GetSteamID(int clientNum);
+
+// Team route warning from confirmed enemy damage; does not reveal attacker.
+void BotRouteReportDamage(int client, vec3_t origin, qboolean fatal);

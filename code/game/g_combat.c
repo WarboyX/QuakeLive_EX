@@ -1942,6 +1942,12 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
         targ->client && attacker->client && targ != attacker) {
         attacker->client->ps.persistant[PERS_ATTACKEE_ARMOR]++;  // lethal-hit kill counter
     }
+    // Radio reports are local evidence, not access to the attacker position.
+    if (targ->client && attacker->client && targ != attacker && targ->health > 0 &&
+        (targ->r.svFlags & SVF_BOT) && !OnSameTeam(targ, attacker) &&
+        (take >= 5 || (take > 0 && targ->health - take <= 0))) {
+        BotRouteReportDamage(targ->s.number, targ->r.currentOrigin, targ->health - take <= 0);
+    }
     targ->health -= take;
     if (targ->client) {
         targ->s.health = targ->health;

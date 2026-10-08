@@ -6264,6 +6264,44 @@ Exact-source fixtures verify snapshot identity and invalidation, timing boundari
 
 Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
 
+### E228. Route Intel R1: carrier route risk from what the team has seen, not a global enemy count — APPLIED, experimental
+**Lives in:** our **server** (qagame `ai_tactics.c`, `g_combat.c` `G_Damage`, `g_local.h`) · **Seen by:** every client
+
+The second half of the same kit, on top of E227. Full report: `docs/bot-ai-changes-route-intel-r1.md`.
+
+`BotCTFRouteThreat` used `BotRoomEnemies`, the true count of enemies in each named room, which is knowledge no player has. It now reads team reports:
+- **Sightings:** enemies a bot actually sees. They come from `BotCountNearby`, after its existing `BotEntityVisible` check (360°), one entry per enemy so many observers do not multiply it.
+- **Incidents:** a bot taking 5+ enemy damage, or dying, reports its own position (weight 1, or 2 if fatal). The attacker's position is never passed.
+- **Decay and cap:** linear decay over 8 s, risk per room capped at 4.
+- **Scope:** CTF only, honours `bot_tacticsTeams` both ways, cleared on map load.
+
+The `bots` report prints per-team counters.
+
+Review: correct, bounded and per team. It is a fairness gain on its own: the carrier no longer routes on enemies nobody saw. Their evidence is no strength change:
+- B2: 8 matches × 600 s. R1 4–7 against A1 3–9 in captures, deaths about equal.
+- Carriers use alternate waypoints more (36% of samples against 24%) and are in the gardens more. No survival gain.
+
+**Heat maps of their 8 matches (A1 vs R1) and of 2 new matches on this build: see E229.**
+
+### E227. Aim sweep A1 (from the Route Intel kit): continuous tracking, no deadzone — APPLIED, experimental (verify on screen)
+**Lives in:** our **server** (qagame `ai_main.c` `BotAimSweep`, `ai_main.h`, `ai_dmq3.c` `BotAimAtEnemy`) · **Seen by:** every client
+
+A coworker's iteration on top of E226, reviewed and applied as supplied. Their full report is `docs/bot-ai-changes-aimsweep-a1.md`.
+
+Their tree was checked file by file against `e4036f1e`. The only differences were A1 and R1 (E228), their tests and their notes.
+
+What changes:
+- **Clock:** the sweep runs on the game clock (`level.time`), not botlib's stepped clock.
+- **Lead:** one rate filter, updated only on a fresh aim sample, gives a bounded 30 ms lead (±2°) that expires after 200 ms.
+- **When it restarts:** a new enemy, a lost one, or a jump over 45°.
+- **Tracking:** exponential correction at 12–20/s by skill, capped at 180–720°/s, with **no deadzone**.
+- **Drift with the sweep off:** `bot_aimDrift`'s error is now applied when `bot_aimSweep` is 0. Before, it was silently dropped, so sweep-off numbers from E226 and from now on are not directly comparable.
+
+Review:
+- The code is correct.
+- The rewrite dropped the old reasoning comments. One of them warned that fast correction with no deadzone glues the view to the 10 Hz think updates, which spectators see as jitter. A1 is that shape, and its author says spectator review was not done. A note pointing at the old reasoning is now in the function.
+- Their own evidence: synthetic tracking error falls (0.2° → 0.002° held still, 4.1° → 1.4° at 30°/s). In matches, the B2 batch (8 × 600 s) had the A1 layer still losing 3–9 in captures and dying 1.33× as often, so A1 does not recover what `bot_aimSweep 0` did in E226 (16–10).
+
 ### E226. Why the tactical layer loses: controlled side-swapped series at normal speed — aim sweep is most of it — FINDING (no default changed)
 **Lives in:** our **server** (qagame `ai_main.c` `BotAimSweep`; switches in `ai_dmq3.c`, `ai_tactics.c`) and test tools · **Seen by:** every client (bot behaviour)
 
