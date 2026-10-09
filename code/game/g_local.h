@@ -1503,6 +1503,7 @@ extern vmCvar_t bot_tacticsTeams;   // [QL] E224
 extern vmCvar_t bot_ctfIntercept;   // [QL] E224
 extern vmCvar_t bot_ctfDetours;     // [QL] E226
 extern vmCvar_t bot_ctfObjectiveMove;   // [QL] E226
+extern vmCvar_t bot_ctfRouteIntel;   // [QL] E232
 extern vmCvar_t bot_teamkill;
 extern vmCvar_t bot_training;
 extern vmCvar_t g_accessFile;

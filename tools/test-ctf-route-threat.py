@@ -18,7 +18,7 @@ static int foes[300];
 static int BotTacticsEnabled(void){return enabled;}
 static void BotRoomCensus(void){census++;}
 static int BotRoomAt(vec3_t p){return (int)p[0];}
-static int BotRouteKnownDanger(bot_state_t* b,vec3_t p){(void)b;return foes[(int)p[0]];}
+static int BotRouteDanger(bot_state_t* b,vec3_t p){(void)b;return foes[(int)p[0]];}  /* E232: the per-team dispatch */
 int trap_AAS_PredictRoute(aas_predictroute_t* r,int a,vec3_t p,int t,int flags,int max,int time,int stop,int contents,int travel,int stoparea){
  (void)p;(void)t;(void)flags;(void)time;(void)stop;(void)contents;(void)travel;(void)stoparea;
  assert(max==1);calls++;r->endarea=blocked?a:a+1;r->time=1;VectorSet(r->endpos,r->endarea,0,0);return 1;

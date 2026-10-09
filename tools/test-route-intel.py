@@ -22,7 +22,9 @@ static bot_state_t states[MAX_CLIENTS],*botstates[MAX_CLIENTS];
 gentity_t g_entities[MAX_GENTITIES];
 static gclient_t clients[MAX_CLIENTS];
 level_locals_t level;
-vmCvar_t bot_tactics={.integer=1},bot_tacticsTeams={.integer=3};
+vmCvar_t bot_tactics={.integer=1},bot_tacticsTeams={.integer=3},bot_ctfRouteIntel={.integer=3};
+static int censusfoes;   /* E232: what the pre-R1 global count would say */
+static int BotRoomEnemies(bot_state_t* b,vec3_t p){(void)b;(void)p;return censusfoes;}
 int gametype=GT_CTF;
 static void BotRoomCensus(void){}
 static int BotRoomAt(vec3_t p){return (int)p[0];}
@@ -35,7 +37,7 @@ int trap_AAS_PredictRoute(void* output,int a,vec3_t p,int t,int flags,int max,in
 int trap_AAS_AreaTravelTimeToGoalArea(int area,vec3_t origin,int goal,int flags) {
  (void)origin;(void)flags;return area==1 && goal==6?200:300;
 }
-'''+s[a:b]+ns['function'](s,'BotCTFRouteThreat')+ns['function']((ROOT/'code/game/ai_dmq3.c').read_text(),'BotCTFCarrierRouteCost')+r'''
+'''+s[a:b]+ns['function'](s,'BotRouteDanger')+ns['function'](s,'BotCTFRouteThreat')+ns['function']((ROOT/'code/game/ai_dmq3.c').read_text(),'BotCTFCarrierRouteCost')+r'''
 int main(void) {
  aas_altroutegoal_t alt={0};bot_goal_t home={0};
  int i; vec3_t room={3,0,0},other={4,0,0},from={1,0,0},end={5,0,0};

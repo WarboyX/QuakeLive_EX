@@ -1596,6 +1596,16 @@ static void BotRouteIntelReport(void) {
             routeIntelIncidentReports[t], routeIntelQueries[t]);
 }
 
+/* [QL] E232: bot_ctfRouteIntel off for a team puts it back on the pre-R1 risk,
+   the true enemy count per room, so R1 can be compared against A1 alone in one
+   match. Default 3 (both) is current behaviour. */
+static int BotRouteDanger(bot_state_t* bs, vec3_t origin) {
+    if (!(bot_ctfRouteIntel.integer & (BotTeam(bs) == TEAM_RED ? 1 : 2))) {
+        return BotRoomEnemies(bs, origin);
+    }
+    return BotRouteKnownDanger(bs, origin);
+}
+
 /* Carrier risk uses decaying team reports along the predicted route.
    Starting-room danger is unavoidable and excluded, as before. */
 int BotCTFRouteThreat(bot_state_t* bs, int area, vec3_t origin,
@@ -1614,13 +1624,13 @@ int BotCTFRouteThreat(bot_state_t* bs, int area, vec3_t origin,
         VectorCopy(route.endpos, pos);
         room = BotRoomAt(pos);
         if (room >= 0 && room != startroom) {
-            danger = BotRouteKnownDanger(bs, pos);
+            danger = BotRouteDanger(bs, pos);
             if (danger > peak) peak = danger;
         }
     }
     room = BotRoomAt(destination);
     if (room >= 0 && room != startroom) {
-        danger = BotRouteKnownDanger(bs, destination);
+        danger = BotRouteDanger(bs, destination);
         if (danger > peak) peak = danger;
     }
     return peak;

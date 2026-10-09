@@ -137,6 +137,7 @@ vmCvar_t bot_tacticsTeams;   // [QL] E224
 vmCvar_t bot_ctfIntercept;   // [QL] E224
 vmCvar_t bot_ctfDetours;     // [QL] E226
 vmCvar_t bot_ctfObjectiveMove;   // [QL] E226
+vmCvar_t bot_ctfRouteIntel;   // [QL] E232
 vmCvar_t bot_teamkill;
 vmCvar_t bot_training;
 vmCvar_t g_accessFile;
@@ -1189,6 +1190,9 @@ static cvarTable_t gameCvarTable[] = {
     */
     {&bot_ctfDetours, "bot_ctfDetours", "3", 0, 0, NULL},
     {&bot_ctfObjectiveMove, "bot_ctfObjectiveMove", "3", 0, 0, NULL},
+    // [QL] E232. Per team: carrier route risk from team reports (R1, E228) or, off,
+    // the pre-R1 true enemy count per room. 3 (both) is current behaviour.
+    {&bot_ctfRouteIntel, "bot_ctfRouteIntel", "3", 0, 0, NULL},
     {&bot_teamkill, "bot_teamkill", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_training, "bot_training", "0", CVAR_GAMERULE, 0, NULL},
     {&g_accessFile, "g_accessFile", "access.txt", 0, 0, NULL},
