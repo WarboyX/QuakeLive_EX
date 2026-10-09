@@ -6264,6 +6264,28 @@ Exact-source fixtures verify snapshot identity and invalidation, timing boundari
 
 Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
 
+### E232. Head-to-head isolation: R1 costs captures (5–18 against A1 alone); detours have no effect; A1 alone gives the 1.20× — FINDING, decision open
+**Lives in:** our **server** (`bot_ctfRouteIntel`, new per-team switch, default 3 = current) · **Seen by:** every client
+
+12 matches: japanesecastles, 15v15, skill 5, 600 s, timescale 1, build `e5063596`, route decisions logged, all PASS. Three questions, two side-swapped pairs each. Counts use the recorded live windows. Journal: `docs/bot-trials/e232/`.
+
+| question | captures | deaths (A/B) | per match |
+|---|---|---:|---|
+| R1: A1 alone vs A1 + R1 (both layer on) | **A1 alone 18, R1 5** | 0.94 | 4–2, 5–1, 4–1, 5–1 |
+| detours off vs on, assigned (both layer on) | 12–12 | 1.03 | 1–3, 5–3, 3–3, 3–3 |
+| A1 alone (R1 off) vs layer off | 6–3 | 1.20 | 2–2, 3–1, 1–0, 0–0 |
+
+**R1:**
+- A1 alone wins all four matches, on both sides. Sign test on the 23 captures: p ≈ 0.01.
+- The switch changes only where carrier route threat comes from. R1's damage and sighting hooks still run for both teams.
+- Possessions: A1 alone 72 (18 captured, median held 13.8 s, 53% of the way home, detours from the enemy base 50%). R1 64 (5 captured, 9.5 s, 37%, detours 35%).
+- R1 knows only what its team has recently seen, so it underestimates danger, goes direct into enemies it did not know about, and dies sooner. The pre-R1 count is perfect information no player has.
+- **R1 is fairer and measurably weaker.** Keeping it, dropping it, or keeping it with more evidence (longer decay, enemy spawn timing) is a design decision. Defaults are unchanged.
+
+**Detours:** none when assigned rather than chosen. With E226 B (5–6), two controlled tests show no effect. What seems to matter is detouring on good information (R1 vs census above), not detouring as such.
+
+**A1 alone:** 1.20× deaths and 6–3 in captures. E229's 1.22× was A1, not R1.
+
 ### E231. Route-decision logging and outcome per route: gardens are offered and eligible but mostly outscored; detours from the enemy base live longer, captures not shown — FINDING
 **Lives in:** our **server** (`bot_debugRoutes`, new, print only) and test tools (`route-candidates.py`, new; `ctf-possessions.py`) · **Seen by:** —
 
