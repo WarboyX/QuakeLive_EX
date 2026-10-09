@@ -6264,6 +6264,41 @@ Exact-source fixtures verify snapshot identity and invalidation, timing boundari
 
 Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
 
+### E231. Route-decision logging and outcome per route: gardens are offered and eligible but mostly outscored; detours from the enemy base live longer, captures not shown — FINDING
+**Lives in:** our **server** (`bot_debugRoutes`, new, print only) and test tools (`route-candidates.py`, new; `ctf-possessions.py`) · **Seen by:** —
+
+**The log.** `bot_debugRoutes 1` prints one `routepick` line per carrier route decision:
+- the direct travel time, route threat and cost;
+- every candidate waypoint with its position and either its cost or why it was refused: U unreachable, A already there, B not closer to home, L detour too long;
+- the pick.
+
+It recomputes and prints only, with no bot state written and no random draws. The fixture checks the log names exactly the waypoint chosen.
+
+**Place names.** Waypoints are named by their nearest `target_location`. japanesecastles names both gardens "Garden", told apart only by colour code (^1 red, ^4 blue), so the tools now keep the side.
+
+**Batch.** 8 matches, 15v15 CTF, both teams on the current layer (A1 + R1), skill 5, 600 s, timescale 1, all PASS. 1,730 decisions, 300 possessions. Journal: `docs/bot-trials/e231/`.
+
+**Are the gardens absent, refused or outscored? Outscored.**
+- They are a candidate in every decision.
+- Most are eligible: red carriers' own garden 1155 of 1666 times, blue's 783 of 1794 (274 refused as too long).
+- When eligible they beat the direct route about 10–14% of the time, and are picked in about 5% of decisions.
+- Carriers go straight home in 53% (red) and 63% (blue) of decisions.
+- The most-picked waypoint is in the enemy flag room: it is the step out of their base, so possessions are now labelled by the first choice outside it.
+
+**Outcome by way home, by where the possession started:**
+
+| from | way home | possessions | captured | median held | progress |
+|---|---|---:|---:|---:|---:|
+| enemy base | direct | 108 | 6 (6%) | 10.1 s | 33% |
+| enemy base | garden | 27 | 3 (11%) | 14.7 s | 48% |
+| enemy base | other detour | 59 | 7 (12%) | 15.8 s | 44% |
+| mid-map | direct | 71 | 16 (23%) | 5.2 s | 41% |
+| mid-map | garden | 11 | 2 (18%) | 3.2 s | 37% |
+
+From the enemy base, detouring carriers live longer and get further. The capture difference is not significant: detour against direct p = 0.19, garden against direct p = 0.38 (Fisher). It is also observational, because a carrier detours exactly when its estimate says direct is dangerous.
+
+Whether detours cause captures needs a controlled comparison: `bot_ctfDetours` per team, at a larger scale.
+
 ### E230. Corrections from review; spectator aim review, step 1: A1 moves like stock aim, the old sweep was the staircase — FINDING (demos for eyes)
 **Lives in:** test tools (`livewindow.py`, `aim-jitter.py`, new) and our **server** (`bot_debugAim`, new, off by default) · **Seen by:** —
 

@@ -47,6 +47,14 @@ cap = re.compile(r'"?(\w+)\^7 captured the (RED|BLUE) flag')
 rp = re.compile(r'routepick (\d+) (\d+) (\d+) (?:off|direct -?\d+ -?\d+ -?\d+ pick (\d+) -?\d+ \|(.*))')
 picks = {}        # client -> [(t, area, (x, y, z) or None)]
 
+
+def location_name(msg):
+    """[QL] E231: strip colour codes, but keep the side they encode - japanesecastles
+    names both gardens "Garden", red (^1) and blue (^4)."""
+    name = re.sub(r'\^.', '', msg).strip()
+    side = 'Red ' if msg.startswith('^1') else 'Blue ' if msg.startswith('^4') else ''
+    return name if not side or side.strip() in name else side + name
+
 def map_locations(bsp):
     import struct
     d = open(bsp, 'rb').read()
@@ -58,7 +66,7 @@ def map_locations(bsp):
         og = re.search(r'"origin"\s+"([^"]+)"', blk)
         ms = re.search(r'"message"\s+"([^"]+)"', blk)
         if cn and og and ms and cn.group(1) == 'target_location':
-            out.append((tuple(float(v) for v in og.group(1).split()), re.sub(r'\^.', '', ms.group(1))))
+            out.append((tuple(float(v) for v in og.group(1).split()), location_name(ms.group(1))))
     return out
 
 locations = map_locations(bsp_path)
@@ -150,8 +158,17 @@ for p in done:
             rev += 1; best = h       # count each climb once
     vias = [v for v in p['via']]
     mine = [k for k in picks.get(p['client'], []) if p['t0'] - 300 <= k[0] <= p['t1']]
+    seq = []
+    for k in mine:
+        name = place(k[2]) if k[1] else 'direct'
+        if not seq or seq[-1] != name:
+            seq.append(name)
     first = next((k for k in mine if k[1]), None)
     route = place(first[2]) if first else ('direct' if mine else 'no decision logged')
+    # the way home: the first choice outside the enemy flag room, which is only the
+    # step out of their base (a red carrier's enemy room is the Blue Flagroom)
+    enemy_room = 'Blue Flagroom' if p['team'] == 1 else 'Red Flagroom'
+    way_home = next((s for s in seq if s != enemy_room), 'direct' if mine else 'no decision logged')
     changes = sum(1 for a, b in zip(vias, vias[1:]) if a != b and b != 0)
     rows.append(dict(client=p['client'], team={1: 'red', 2: 'blue'}.get(p['team'], '?'),
                      start_ms=p['t0'], seconds=round((p['t1'] - p['t0']) / 1000, 2), end=p['end'],
@@ -159,7 +176,7 @@ for p in done:
                      progress=(home[0] - min(home)) if home else 0, start_home=home[0] if home else 0,
                      reversals=rev, waypoint_changes=changes,
                      mates_near=round(sum(p['mates']) / max(1, len(p['mates'])), 2), path=p['path'],
-                     route=route, route_picks=len(mine),
+                     route=route, route_picks=len(mine), route_seq=seq, way_home=way_home,
                      via=vias))
 
 def summary(team):

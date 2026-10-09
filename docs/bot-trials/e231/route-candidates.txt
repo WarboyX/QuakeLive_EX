@@ -1,0 +1,30 @@
+
+red carriers: 833 route decisions, straight home 440 (53%)
+  waypoint place              offered     ok     U     A      B      L  beat dir  picked
+  Blue Flagroom                  1666    257    46    14   1343      6       213     124
+  Red Garden                     1666   1155    46     2    408     55       161      87
+  Blue Back Entrance              833    266    23     0    544      0        90      77
+  Red Main Entrance              1666   1324    46     1    246     49        52      35
+  Blue Main Stairway              833    373    23    16    421      0        28      24
+  Blue Gator Trap                 833    493    23     4    313      0        34      22
+  Blue Garden                    1666    878    46     2    740      0       123      14
+  Red Gator Trap                  833    611    23     0    199      0        15       9
+  Blue Garden Hall                833    586    23     5    215      4         4       1
+  Blue Upper Hallway             1666    644    46     0    976      0         4       0
+  Blue Courtyard                  833    274    23     8    334    194         0       0
+  Red Upper Hallway               833    643    23     0    136     31        13       0
+  Blue Sword Room                 833     10    23     0    800      0         1       0
+
+blue carriers: 897 route decisions, straight home 563 (63%)
+  waypoint place              offered     ok     U     A      B      L  beat dir  picked
+  Red Flagroom                   1794    219    52     8   1513      2       199     144
+  Blue Garden                    1794    783    52     0    685    274        83      79
+  Red Gator Trap                  897    458    26     0    413      0        48      44
+  Blue Main Entrance              897    603    26     3    206     59        41      35
+  Red Back Entrance               897    256    26     0    615      0        21      16
+  Red Garden                     1794    808    52     1    931      2        38       8
+  Blue Garden Hall                897    532    26     4    334      1        40       6
+  Red Main Entrance               897    317    26    12    542      0         4       2
+  Red Upper Hallway              1794    552    52     0   1190      0         0       0
+  Red Courtyard                   897    223    26    11    448    189         0       0
+  Blue Gator Trap                 897    556    26     0    313      2         9       0
