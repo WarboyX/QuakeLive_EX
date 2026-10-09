@@ -6264,6 +6264,30 @@ Exact-source fixtures verify snapshot identity and invalidation, timing boundari
 
 Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
 
+### E230. Corrections from review; spectator aim review, step 1: A1 moves like stock aim, the old sweep was the staircase — FINDING (demos for eyes)
+**Lives in:** test tools (`livewindow.py`, `aim-jitter.py`, new) and our **server** (`bot_debugAim`, new, off by default) · **Seen by:** —
+
+**Corrections:**
+- **Capture counts.** My tools counted the whole log after the last map load. run.py measures between the snapshots it records (`result.json` initial and final). One A1 capture at about 609.3 s fell after the 608.35 s cut-off, which is why the kit said 3–9 and mine said 4–9.
+  - `heatmap.py`, `heatmap-compare.py` and `ctf-possessions.py` now read only that window (`livewindow.py`). Their B2 batch then gives 3–9 and 4–7, as they reported.
+  - Recounted on the windows: E226 pre-merge 0–4 (was 0–3), E226 batch 3 with sweep off 12–7 (was 12–8), so sweep off over 5 pairs is 16–9. Everything else is unchanged.
+- **E229's 1.22× is the combined A1 + R1 build**, not A1 alone.
+- **Heat maps:** `heatmap.py` allowed 600 ms between a carrier sample and a position, so the kit's 1-sample-a-second logs showed no carriers. Now 1.1 s.
+- **Their "development" was their local branch.** Our remote was never pushed to.
+
+**Spectator aim review, step 1: measured.** `bot_debugAim <client>` logs one bot's view and ideal aim every input frame. Six 300 s 15v15 CTF matches, timescale 1, two logged bots per variant, about 400 s of enemy tracking each, all PASS. `tools/test-environment/aim-jitter.py`:
+
+| | error | jerk | reversals/s >0.05° | >0.5° | frames held still | 10 Hz share |
+|---|---:|---:|---:|---:|---:|---:|
+| E226 sweep (deadzone) | 19.3° | 116 | 1.03 | 0.32 | **54.6%** | **33.7%** |
+| A1 (no deadzone) | 9.3° | 76 | 5.50 | **3.67** | 7.4% | 13.0% |
+| servo (sweep off, stock motion) | 9.0° | 73 | 5.42 | 2.84 | 5.8% | 12.7% |
+
+- **The staircase was the old sweep.** E226's deadzone held the view still for over half the frames, then stepped, with a third of its motion at the 10 Hz think rate.
+- **A1 moves almost exactly like stock aim.** It is not glued to the think rate: 13% at 10 Hz against stock's 12.7%.
+- **What A1 adds is shiver.** About 3.7 direction reversals a second of visible size (over 0.5° a frame), 30% more than stock and about 11× the old sweep.
+- Which of these reads as human is for eyes. Demos of a spectator following bot 0 under each variant are recorded for playback on real hardware.
+
 ### E229. A1 + R1 applied and played: the layer's deficit closes to near parity; heat maps — FINDING
 **Lives in:** test tools (`tools/test-environment/heatmap-compare.py`, new) · **Seen by:** —
 

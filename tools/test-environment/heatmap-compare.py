@@ -26,10 +26,12 @@ for a in args[3:]:
         d, t = a.rsplit(':', 1)
         groups[-1][1].append((d, {'red': 1, 'blue': 2}[t]))
 
+sys.path.insert(0, HERE)
+import livewindow   # [QL] E230
+
+
 def live_log(run):
-    log = open(os.path.join(run, 'server.log'), errors='replace').read().splitlines()
-    st = [i for i, l in enumerate(log) if 'InitGame:' in l[:40]]
-    return log[st[-1]:] if st else log
+    return [l for _, l in livewindow.lines(run)]
 
 bt = re.compile(r'bottrack (\d+) (\d+) (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+) (\w)')
 ct = re.compile(r'ctftrack (\d+) (\d+) hp(-?\d+) flag(\d)')

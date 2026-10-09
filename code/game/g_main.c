@@ -122,6 +122,7 @@ vmCvar_t bot_aimSweep;
 vmCvar_t bot_debugTactics;
 vmCvar_t bot_debugMovement;
 vmCvar_t bot_debugTrack;
+vmCvar_t bot_debugAim;   // [QL] E230
 vmCvar_t bot_crowdsteer;
 vmCvar_t bot_chatlimit;  // [QL] E139, see G_BotChatReachesHumans
 vmCvar_t bot_skill;      // [QL] E139: 0 rolls a D10 per bot, 1-10 fixes it (g_bot.c)
@@ -1155,6 +1156,8 @@ static cvarTable_t gameCvarTable[] = {
     {&bot_debugMovement, "bot_debugMovement", "0", 0, 0, NULL},
     // [QL] E133. Milliseconds between bot position lines ("bottrack"); 0 is off
     {&bot_debugTrack, "bot_debugTrack", "0", 0, 0, NULL},
+    // [QL] E230. Client number whose per-frame aim is logged ("botaim"); -1 is off
+    {&bot_debugAim, "bot_debugAim", "-1", 0, 0, NULL},
     // [QL] E133. Bots steer round each other before colliding (botlib BotCrowdSteer)
     {&bot_crowdsteer, "bot_crowdsteer", "1", 0, 0, NULL},
     {&bot_chatlimit, "bot_chatlimit", "1", 0, 0, NULL},

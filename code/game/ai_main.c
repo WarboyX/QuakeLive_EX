@@ -1107,6 +1107,14 @@ void BotUpdateInput(bot_state_t* bs, int time, int elapsed_time) {
     }
     // change the bot view angles
     BotChangeViewAngles(bs, (float)elapsed_time / 1000);
+    /* [QL] E230. bot_debugAim <client>: one "botaim" line per input frame for
+       that bot - game ms, enemy, the view it holds and the aim it wants - so
+       tracking jitter can be measured rather than argued about. -1 is off. */
+    if (bot_debugAim.integer == bs->client) {
+        G_Printf("botaim %d %d %d %.3f %.3f %.3f %.3f\n", level.time, bs->client, bs->enemy,
+                 bs->viewangles[YAW], bs->viewangles[PITCH],
+                 bs->ideal_viewangles[YAW], bs->ideal_viewangles[PITCH]);
+    }
     // retrieve the bot input
     trap_EA_GetInput(bs->client, (float)time / 1000, &bi);
     // respawn hack

@@ -66,10 +66,10 @@ nz = N[:, 2] / nl
 zc = (A[:, 2] + B[:, 2] + C[:, 2]) / 3
 
 # ---- match data -------------------------------------------------------------
-log = open(os.path.join(run_dir, 'server.log'), errors='replace').read().splitlines()
+sys.path.insert(0, os.path.dirname(os.path.abspath(globals().get('__file__', sys.argv[0]))))
+import livewindow   # [QL] E230: the recorded live window, not the whole log
+log = [l for _, l in livewindow.lines(run_dir)]
 # the live match starts at the last map load (warmup admits bots first, then map_restart)
-starts = [i for i, l in enumerate(log) if l.startswith('InitGame:') or 'InitGame:' in l[:40]]
-log = log[starts[-1]:] if starts else log
 track = []          # (t, client, team, x, y, z, state)
 carrier = []        # (t, client, x, y) while holding the flag - from bottrack + ctftrack flag1
 flagheld = {}
@@ -88,7 +88,7 @@ for line in log:
         rec = (t, c, tm, float(x), float(y), float(z), st)
         track.append(rec)
         fh = flagheld.get(c)
-        if fh and fh[1] and t - fh[0] <= 600:
+        if fh and fh[1] and t - fh[0] <= 1100:   # one sample interval at the slowest track rate used (1 s)
             carrier.append(rec)
 res = json.load(open(os.path.join(run_dir, 'result.json')))
 # live window only: the warmup admits bots before g_doWarmup 0

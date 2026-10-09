@@ -35,9 +35,8 @@ if '--json' in args:
     k = args.index('--json'); jout = args[k + 1]; del args[k:k + 2]
 bsp_path, run_dir, out_prefix, title = args[:4]
 
-log = open(os.path.join(run_dir, 'server.log'), errors='replace').read().splitlines()
-starts = [i for i, l in enumerate(log) if 'InitGame:' in l[:40]]
-log = log[starts[-1]:] if starts else log
+import livewindow   # [QL] E230: the recorded live window, not the whole log
+log = [l for _, l in livewindow.lines(run_dir)]
 
 bt = re.compile(r'bottrack (\d+) (\d+) (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+) (\w) (\d+) (\d+) (\S+)')
 ct = re.compile(r'ctftrack (\d+) (\d+) hp(-?\d+) flag(\d) mate(-?\d+) via(\d+) home(\d+) node(\w+)')
