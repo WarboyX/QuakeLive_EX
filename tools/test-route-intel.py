@@ -22,6 +22,7 @@ static bot_state_t states[MAX_CLIENTS],*botstates[MAX_CLIENTS];
 gentity_t g_entities[MAX_GENTITIES];
 static gclient_t clients[MAX_CLIENTS];
 level_locals_t level;
+int BotTeam(bot_state_t* bs){return clients[bs->client].sess.sessionTeam;}
 vmCvar_t bot_tactics={.integer=1},bot_tacticsTeams={.integer=3},bot_ctfRouteIntel={.integer=3};
 static int censusfoes;   /* E232: what the pre-R1 global count would say */
 static int BotRoomEnemies(bot_state_t* b,vec3_t p){(void)b;(void)p;return censusfoes;}
@@ -54,6 +55,11 @@ int main(void) {
  assert(BotRouteKnownDanger(&states[1],room)==0 && BotRouteKnownDanger(&states[1],other)==1);
  BotRouteReportSight(&states[0],3,other);
  assert(BotRouteKnownDanger(&states[1],other)==2);
+ assert(BotCTFRouteThreat(&states[1],1,from,5,end,0)==2);
+ /* E232: route intel off for red only - red reads the old global count, blue keeps its reports */
+ censusfoes=7; bot_ctfRouteIntel.integer=2;
+ assert(BotCTFRouteThreat(&states[1],1,from,5,end,0)==7);
+ bot_ctfRouteIntel.integer=3; censusfoes=0;
  assert(BotCTFRouteThreat(&states[1],1,from,5,end,0)==2);
  // With travel 400 direct / 500 alternative, two risk units reverse the choice.
  states[1].areanum=1;VectorCopy(from,states[1].origin);alt.areanum=6;alt.origin[0]=6;home.areanum=5;home.origin[0]=5;
