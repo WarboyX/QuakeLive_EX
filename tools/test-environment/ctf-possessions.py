@@ -42,6 +42,32 @@ bt = re.compile(r'bottrack (\d+) (\d+) (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+) (\w) 
 ct = re.compile(r'ctftrack (\d+) (\d+) hp(-?\d+) flag(\d) mate(-?\d+) via(\d+) home(\d+) node(\w+)')
 cap = re.compile(r'"?(\w+)\^7 captured the (RED|BLUE) flag')
 
+# [QL] E231: carrier route decisions (bot_debugRoutes) and the map's own place
+# names (target_location), to say which way each possession went
+rp = re.compile(r'routepick (\d+) (\d+) (\d+) (?:off|direct -?\d+ -?\d+ -?\d+ pick (\d+) -?\d+ \|(.*))')
+picks = {}        # client -> [(t, area, (x, y, z) or None)]
+
+def map_locations(bsp):
+    import struct
+    d = open(bsp, 'rb').read()
+    o, l = struct.unpack('<ii', d[8:16])
+    ents = d[o:o + l].decode('latin1')
+    out = []
+    for blk in re.findall(r'\{([^}]*)\}', ents):
+        cn = re.search(r'"classname"\s+"([^"]+)"', blk)
+        og = re.search(r'"origin"\s+"([^"]+)"', blk)
+        ms = re.search(r'"message"\s+"([^"]+)"', blk)
+        if cn and og and ms and cn.group(1) == 'target_location':
+            out.append((tuple(float(v) for v in og.group(1).split()), re.sub(r'\^.', '', ms.group(1))))
+    return out
+
+locations = map_locations(bsp_path)
+
+def place(xyz):
+    if not xyz or not locations:
+        return '?'
+    return min(locations, key=lambda L: sum((a - b) ** 2 for a, b in zip(L[0], xyz)))[1]
+
 pos = {}          # client -> (t, team, x, y, z, state)
 names = {}
 team_of = {}
@@ -92,6 +118,18 @@ for line in log:
                    and abs(q[0] - t) <= 300 and math.hypot(q[2] - x, q[3] - y) <= 600)
         p['mates'].append(near)
         continue
+    m = rp.search(line)
+    if m:
+        t, c = int(m.group(1)), int(m.group(2))
+        area = int(m.group(4) or 0)
+        xyz = None
+        if area and m.group(5):
+            for cand in m.group(5).split():
+                f = cand.split(':')
+                if f[0] == str(area):
+                    xyz = (float(f[1]), float(f[2]), float(f[3])); break
+        picks.setdefault(c, []).append((t, area, xyz))
+        continue
     m = cap.search(line)
     if m and m.group(1) in names:
         close(names[m.group(1)], 'capture', now)
@@ -111,6 +149,9 @@ for p in done:
         elif h - best >= 150:
             rev += 1; best = h       # count each climb once
     vias = [v for v in p['via']]
+    mine = [k for k in picks.get(p['client'], []) if p['t0'] - 300 <= k[0] <= p['t1']]
+    first = next((k for k in mine if k[1]), None)
+    route = place(first[2]) if first else ('direct' if mine else 'no decision logged')
     changes = sum(1 for a, b in zip(vias, vias[1:]) if a != b and b != 0)
     rows.append(dict(client=p['client'], team={1: 'red', 2: 'blue'}.get(p['team'], '?'),
                      start_ms=p['t0'], seconds=round((p['t1'] - p['t0']) / 1000, 2), end=p['end'],
@@ -118,6 +159,7 @@ for p in done:
                      progress=(home[0] - min(home)) if home else 0, start_home=home[0] if home else 0,
                      reversals=rev, waypoint_changes=changes,
                      mates_near=round(sum(p['mates']) / max(1, len(p['mates'])), 2), path=p['path'],
+                     route=route, route_picks=len(mine),
                      via=vias))
 
 def summary(team):
@@ -135,8 +177,24 @@ def summary(team):
 summ = [summary('red'), summary('blue')]
 for s in summ:
     print(json.dumps(s))
+
+# [QL] E231: outcome by the route the carrier first chose
+def by_route(rs):
+    out = {}
+    for x in rs:
+        out.setdefault(x['route'], []).append(x)
+    return {k: dict(possessions=len(v), captured=sum(y['end'] == 'capture' for y in v),
+                    died=sum(y['end'] == 'death' for y in v), held_at_end=sum(y['censored'] for y in v),
+                    median_seconds=sorted(y['seconds'] for y in v)[len(v) // 2],
+                    mean_damage=round(sum(y['damage'] for y in v) / len(v)),
+                    mean_progress=round(sum(y['progress'] for y in v) / len(v)))
+            for k, v in sorted(out.items(), key=lambda kv: -len(kv[1]))}
+routes = by_route(rows)
+if any(x['route_picks'] for x in rows):
+    for k, v in routes.items():
+        print('route', json.dumps(k), json.dumps(v))
 if jout:
-    json.dump(dict(summary=summ, possessions=[{k: v for k, v in x.items() if k not in ('path', 'via')} for x in rows]),
+    json.dump(dict(summary=summ, routes=routes, possessions=[{k: v for k, v in x.items() if k not in ('path', 'via')} for x in rows]),
               open(jout, 'w'), indent=1)
 
 # ---- drawing --------------------------------------------------------------

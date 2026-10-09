@@ -1489,6 +1489,7 @@ extern vmCvar_t bot_debugTactics;
 extern vmCvar_t bot_debugMovement;
 extern vmCvar_t bot_debugTrack;
 extern vmCvar_t bot_debugAim;   // [QL] E230
+extern vmCvar_t bot_debugRoutes;   // [QL] E231
 extern vmCvar_t bot_crowdsteer;
 extern vmCvar_t bot_chatlimit;
 extern vmCvar_t bot_skill;

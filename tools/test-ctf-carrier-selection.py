@@ -21,7 +21,7 @@ namespace['run_fixture']('CTF carrier complete route selection', r'''
 #include <stdio.h>
 ''' + define + r'''
 typedef struct {
-    int areanum, tfl, inuse, ltgtype, altrouteside;
+    int areanum, tfl, inuse, ltgtype, altrouteside, client;
     vec3_t origin; bot_goal_t altroutegoal;
     float reachedaltroutegoal_time;
     struct { int reportedstuck; } tac;
@@ -33,6 +33,15 @@ static int red_numaltroutegoals = 2, blue_numaltroutegoals = 2;
 static bot_goal_t ctf_redflag = {.areanum=99}, ctf_blueflag = {.areanum=88};
 static int gametype = GT_CTF, carrying = 1, direct = 500, queries;
 vmCvar_t bot_ctfDetours = {.integer = 3};
+/* E231: the route-decision log is print-only; here it records what it was told */
+vmCvar_t bot_debugRoutes;
+level_locals_t level;
+void QDECL G_Printf(const char* fmt, ...) { (void)fmt; }
+static int logcalls, logpick, logcost;
+static void BotRouteDecisionLog(bot_state_t* bs, aas_altroutegoal_t* g, int n, bot_goal_t* home, int tohome, int pick, int cost) {
+    (void)bs; (void)home; (void)tohome; (void)n;
+    logcalls++; logpick = pick >= 0 ? g[pick].areanum : 0; logcost = pick >= 0 ? cost : 0;
+}
 static int legs[2] = {100,50}, remaining[2] = {400,350};
 int BotTeam(bot_state_t* bs) { (void)bs; return TEAM_RED; }
 int BotCTFCarryingFlag(bot_state_t* bs) { (void)bs; return carrying; }
@@ -64,6 +73,8 @@ static bot_state_t reset(void) {
 int main(void) {
     bot_state_t bs = reset();
     assert(BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && bs.altroutegoal.areanum == 10);
+    /* E231: one log call per carrier decision, naming exactly the waypoint chosen */
+    assert(logcalls == 1 && logpick == 10 && logcost > 0);
     /* E226: detours off for the other team leave this one alone; off for its
        own team (red) the carrier goes straight home and asks nothing */
     bot_ctfDetours.integer = 1; bs = reset();
@@ -101,7 +112,7 @@ int main(void) {
     assert(BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && bs.altroutegoal.areanum == 10);
     bs = reset(); legs[0]=150; remaining[0]=400; remaining[1]=500;
     assert(!BotGetAlternateRouteGoal(&bs, TEAM_BLUE) && !bs.altroutegoal.areanum);
-    puts("Per-team detour switch (E226), complete selector: arrival boundary, meaningful savings, stuck/reached/invalid release, no-route fallback and legacy mode verified");
+    puts("Route-decision log names the choice (E231), per-team detour switch (E226), complete selector: arrival boundary, meaningful savings, stuck/reached/invalid release, no-route fallback and legacy mode verified");
     return 0;
 }
 ''')

@@ -6318,6 +6318,45 @@ static qboolean BotCTFKeepCarrierRoute(bot_state_t* bs, aas_altroutegoal_t* curr
     return cost >= 0 && bestcost + 100 > cost;
 }
 
+/*
+[QL] E231. bot_debugRoutes 1: one "routepick" line per carrier route decision -
+the direct cost, every candidate waypoint with its cost or why it was refused,
+and what was chosen - so a route's outcome can be traced to the choice that made
+it. Print only: it recomputes, writes no bot state and draws no random numbers,
+so turning it on does not change what bots do.
+
+  routepick <ms> <client> <team> direct <home tt> <threat> <direct cost>
+            pick <area> <cost> | <area>:<x>:<y>:<z>:<cost or reason> ...
+
+reasons: U unreachable, A already there (leg < 20), B not closer to home,
+L detour too long. pick 0 is straight home. "off" is bot_ctfDetours.
+*/
+static void BotRouteDecisionLog(bot_state_t* bs, aas_altroutegoal_t* g, int n, bot_goal_t* home,
+                                int tohome, int pick, int pickcost) {
+    char buf[1400];
+    int i, threat;
+
+    if (!bot_debugRoutes.integer) {
+        return;
+    }
+    threat = (bs->areanum && home->areanum) ?
+        BotCTFRouteThreat(bs, bs->areanum, bs->origin, home->areanum, home->origin, bs->tfl) : 0;
+    buf[0] = '\0';
+    for (i = 0; i < n && strlen(buf) < sizeof(buf) - 64; i++) {
+        int leg = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, g[i].areanum, bs->tfl);
+        int rem = trap_AAS_AreaTravelTimeToGoalArea(g[i].areanum, g[i].origin, home->areanum, bs->tfl);
+        int cost = BotCTFCarrierRouteCost(bs, &g[i], home, tohome);
+        const char* why = NULL;
+        if (cost < 0) {
+            why = (!tohome || !rem || !leg) ? "U" : leg < 20 ? "A" : rem >= tohome ? "B" : "L";
+        }
+        Q_strcat(buf, sizeof(buf), va(" %d:%.0f:%.0f:%.0f:%s", g[i].areanum, g[i].origin[0], g[i].origin[1],
+                                      g[i].origin[2], why ? why : va("%d", cost)));
+    }
+    G_Printf("routepick %d %d %d direct %d %d %d pick %d %d |%s\n", level.time, bs->client, BotTeam(bs),
+             tohome, threat, tohome + 300 * threat, pick >= 0 ? g[pick].areanum : 0, pick >= 0 ? pickcost : 0, buf);
+}
+
 int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     aas_altroutegoal_t* altroutegoals;
     bot_goal_t* goal;
@@ -6392,6 +6431,9 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
            straight home, no waypoint. Note this selection is not behind
            bot_tactics: it runs for a "tactics off" team too. */
         if (carrier && gametype == GT_CTF && !(bot_ctfDetours.integer & (BotTeam(bs) == TEAM_RED ? 1 : 2))) {
+            if (bot_debugRoutes.integer) {
+                G_Printf("routepick %d %d %d off\n", level.time, bs->client, BotTeam(bs));
+            }
             bs->altroutegoal.areanum = 0;
             return qfalse;
         }
@@ -6462,6 +6504,9 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
             if (bestcrowd >= directcost) best = -1;
         }
         rnd = best;
+        if (carrier && gametype == GT_CTF) {
+            BotRouteDecisionLog(bs, altroutegoals, numaltroutegoals, home, tohome, best, bestcrowd);   // E231
+        }
         if (rnd < 0 && (togo || tohome || (carrier && gametype == GT_CTF))) {
             bs->altroutegoal.areanum = 0;
             return qfalse;  // nothing left ahead: straight on
