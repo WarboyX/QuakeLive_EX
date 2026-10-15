@@ -1,0 +1,1159 @@
+#version 460
+
+/*
+[QL] Screen-space reflections, on the map's water planes.
+
+Water in these maps is a scrolling texture. This gives it back what it reflects.
+
+Why a plane and not a surface flag: the map has a handful of distinct water
+heights, collected once at load by vk_find_water_planes. Testing a reconstructed
+world position against a few planes costs a compare; marking water per surface
+at draw time costs new pipeline state or a stencil bit and makes every water
+surface special for the rest of the frame.
+
+Why screen space and not the acceleration structure: rtVertex_t is three floats.
+The structure knows where geometry is and nothing about what it looks like, so a
+ray hit cannot be shaded without UVs, a material index and texture indexing added
+to it. Marching the depth buffer needs none of that. The cost is the standard
+one - what is not on screen cannot be reflected - and the fade at the end is
+where that gets hidden rather than pretended away.
+
+Two variants, for the same reason rtao.tmpl has two: with r_ext_multisample on
+there is no single-sample depth image to read.
+*/
+
+#ifdef USE_RT
+/* [QL] E156: the ray-traced variant (r_ssrRayTrace). Same shader with a
+   world ray where the march comes back empty - see the block after it. */
+#extension GL_EXT_ray_query : require
+#endif
+
+#ifdef USE_MSAA
+layout(set = 0, binding = 0) uniform sampler2DMS depthMap;
+#else
+layout(set = 0, binding = 0) uniform sampler2D depthMap;
+#endif
+layout(set = 0, binding = 1) uniform sampler2D sceneMap;
+
+#define SSR_MAX_PLANES 32
+#define SSR_MAX_RIPPLES 48   /* matches MAX_WATER_RIPPLES */
+#define SSR_MAX_LIGHTS 16
+
+layout(set = 0, binding = 2) uniform SSR {
+	mat4 viewProj;      // world -> clip
+	mat4 invViewProj;   // clip -> world
+	vec4 eye;           // xyz = view origin
+	/*
+	  x  strength: how much of the reflection survives, r_ssrStrength
+	  y  how far a ray travels in world units before giving up
+	  z  how many steps it takes getting there
+	  w  thickness: how far behind a depth sample still counts as hitting it,
+	     in world units. Too small and rays tunnel through thin geometry; too
+	     large and a ray "hits" the empty space in front of a distant wall.
+	*/
+	vec4 params;
+	/*
+	  x  the value the depth buffer is cleared to
+	  y  where the weapon's squashed depth range begins
+	  z  +1 when near is 1.0 and far is 0.0 (USE_REVERSED_DEPTH), -1 otherwise
+	  w  r_ssrDebug: 0 normal, 1 the water mask, 2 the raw reflection,
+	     3 what the depth buffer was taken to mean
+	*/
+	vec4 depthInfo;
+	vec4 planes[SSR_MAX_PLANES];      // xyz = normal, w = dist
+	vec4 boundsMin[SSR_MAX_PLANES];   // xyz = world minimum of the water on it
+	vec4 boundsMax[SSR_MAX_PLANES];   // xyz = world maximum
+	vec4 planeCount;                  // x = how many are filled
+	/*
+	  x  slope: how far the surface normal is allowed to tilt, r_waterWaveSteepness
+	  y  world units per wavelength of the largest wave, r_waterWaveScale
+	  z  speed, r_waterWaveSpeed
+	  w  seconds, for the animation. x at 0 means flat water.
+	*/
+	vec4 wave;
+	/*
+	  x  crest-to-trough height in world units, r_waterWaveHeight
+	  y  how white a splash goes, r_waterFoam. 0 turns it off
+	  z..w  spare
+	*/
+	vec4 wave2;
+	/*
+	[QL] R28: the impact ripples' shape, all four player-tunable.
+
+	  x  seconds from impact to gone, r_waterRippleLife. The C side ages
+	     ripples out against this same value - one source, so a ripple cannot
+	     vanish while this is still drawing it.
+	  y  rings trailing the leading edge, r_waterRippleWaves
+	  z  multiplier on each ripple's strength, r_waterRippleHeight
+	  w  multiplier on reach, r_waterRippleSize. Already applied to ripple[i].w
+	     by the C side; here only so the slope can be corrected for it.
+	*/
+	vec4 rippleTune;
+	/*
+	[QL] Disturbances - splashes, impacts, footfalls. planeCount.y says how many
+	are filled.
+
+	  ripple[i]   xy = where, z = seconds since it started, w = how far it
+	              eventually spreads
+	  ripple2[i]  x  = strength, y = which water plane it belongs to
+
+	Matched to a plane on the C side rather than here: the renderer knows the
+	planes' heights and can do it once per ripple per frame instead of once per
+	ripple per pixel, and a ripple on the pool upstairs has no business
+	perturbing the one in the basement.
+	*/
+	vec4 ripple[SSR_MAX_RIPPLES];
+	vec4 ripple2[SSR_MAX_RIPPLES];
+	vec4 ripple3[SSR_MAX_RIPPLES];   // [QL] E144: mirror images 0, 1 (xy xy)
+	vec4 ripple4[SSR_MAX_RIPPLES];   // [QL] E144: mirror images 2, 3
+	vec4 ripple5[SSR_MAX_RIPPLES];   // [QL] E144: how much each sends back
+	vec4 ripple6[SSR_MAX_RIPPLES];   // [QL] E148: x ring tightening (>= 1)
+	/*
+	[QL] R19: the frame's dynamic lights, so emitters reflect. planeCount.z says
+	how many.
+
+	  emitter[i]   xyz = world position, w = radius
+	  emitter2[i]  rgb = colour, a = intensity
+
+	Why these are needed at all: the march finds what the depth buffer knows
+	about, and a plasma ball is an additive sprite that does not write depth. A
+	rocket does - it is an opaque model - which is why rockets already reflect
+	and plasma does not.
+	*/
+	vec4 emitter[SSR_MAX_LIGHTS];
+	vec4 emitter2[SSR_MAX_LIGHTS];
+	/*
+	[QL] E156: the ray-traced fallback. Present in every variant so the block
+	is one layout; only the USE_RT build reads it.
+
+	  rtInfo       x  r_ssrRayTrace: 0 off, 1 hits that are on screen, 2 also
+	                  an estimate for the ones that are not
+	               y  how far the ray may go, world units
+	               z  the albedo assumed for an estimated hit
+	               w  [QL] E165: nonzero when dynamic lights cast ray-traced
+	                  shadows - the instance mask to test emitters against
+	  gridOrigin   xyz the light grid's first point, w 1 if the map has one
+	  gridInvSize  xyz 1 / spacing
+	  gridBounds   xyz points per axis
+	*/
+	vec4 rtInfo;
+	vec4 gridOrigin;
+	vec4 gridInvSize;
+	vec4 gridBounds;
+};
+
+#ifdef USE_RT
+layout(set = 0, binding = 3) uniform accelerationStructureEXT topLevel;
+/* The map's light grid, as the BSP stores it: eight bytes a point - ambient
+   rgb, directed rgb, then the direction as two angle bytes - so two uints. */
+layout(set = 0, binding = 4, std430) readonly buffer LightGrid {
+	uint gridData[];
+};
+#endif
+
+/* [QL] R28: RIPPLE_LIFE and RIPPLE_WAVES were compile-time constants here, with
+   RIPPLE_LIFE duplicated in vk.c. Both now arrive in rippleTune. RIPPLE_SLOPE
+   stays a constant deliberately - it is the ratio between how far the surface
+   moves and how far its normal tilts, which is a property of the model rather
+   than a taste setting, and r_waterRippleHeight already scales both together. */
+#define RIPPLE_LIFE  rippleTune.x
+#define RIPPLE_WAVES rippleTune.y
+#define RIPPLE_SLOPE 0.35   /* see windSurface - keeps a splash near the chop */
+
+layout(location = 0) in vec2 frag_tex_coord;
+layout(location = 0) out vec4 out_color;
+
+ivec2 depthSize() {
+#ifdef USE_MSAA
+	return textureSize(depthMap);
+#else
+	return textureSize(depthMap, 0);
+#endif
+}
+
+float fetchDepth(ivec2 p) {
+	return texelFetch(depthMap, p, 0).r;
+}
+
+vec3 worldAt(ivec2 p, vec2 invSize) {
+	float d = fetchDepth(p);
+	vec2 uv = (vec2(p) + 0.5) * invSize;
+	vec4 clip = vec4(uv * 2.0 - 1.0, d, 1.0);
+	vec4 w = invViewProj * clip;
+	return w.xyz / w.w;
+}
+
+/*
+[QL] The direction the eye is looking through this pixel, from the pixel alone.
+
+Deliberately not normalize(worldAt(p) - eye). That answer is the same only when
+the depth buffer is trustworthy, and the whole difficulty here has been pixels
+where it is not: the view weapon is stored in a squashed depth range, so
+unprojecting it with the ordinary matrix gives a position that is not where the
+weapon is, and a pixel whose depth lands on the near plane unprojects to the eye
+itself, where normalize() is a division by zero.
+
+Unprojecting a fixed mid-frustum depth has neither problem. 0.5 is inside the
+frustum under both depth conventions and nowhere near a degenerate w, and the
+ray through a pixel does not depend on what was drawn there - so the plane test
+below now asks a question about geometry only.
+*/
+vec3 rayAt(ivec2 p, vec2 invSize) {
+	vec2 uv = (vec2(p) + 0.5) * invSize;
+	vec4 w = invViewProj * vec4(uv * 2.0 - 1.0, 0.5, 1.0);
+	return normalize(w.xyz / w.w - eye.xyz);
+}
+
+/*
+[QL] Waves, without moving a single vertex.
+
+R19 ruled out geometry waves and the reasoning still holds: deformVertexes moves
+the vertices a surface already has, and Quake Live's water is subdivided at map
+compile time from the shader's tessSize. A runtime override cannot retessellate
+it, so coarse water would heave in flat slabs.
+
+None of that matters here, because what sells a wave to the eye is not the
+silhouette - at these angles you can barely see it - it is what the surface
+*reflects*. The reflected direction is reflect(V, N). Tilt N and the reflection
+slides; tilt it in a travelling pattern and the reflection ripples. The surface
+stays geometrically flat and nobody can tell.
+
+Three directional waves rather than one, at 1x, 1.7x and 3.1x the base
+frequency. Non-integer ratios on purpose: with harmonics the pattern repeats
+visibly, and the eye finds a repeat in water immediately. Amplitudes sum to 1 so
+that r_waterWaveSteepness is the actual maximum slope and not an arbitrary
+scale - a number a person can reason about rather than tune blind.
+
+Computed in world XY with Z up, which is exact here rather than an
+approximation: vk_find_water_planes keeps only up-facing surfaces, and in
+practice a Quake water brush's top face is exactly (0,0,1). A tilted water plane
+would want a tangent basis; there is no such thing in this game.
+
+The perturbed normal is used for shading only - for the reflected direction and
+for the Fresnel term. Where the surface *is* stays the flat plane, because
+that is what the geometry and the depth buffer agree on, and moving it would put
+the reflection somewhere the water is not.
+*/
+/* The three waves, evaluated once. sin for the height, cos for the slope -
+   which is the actual derivative, so crests and flats stay in step however the
+   two are scaled. */
+const vec2 WAVE_D0 = vec2( 0.80,  0.60);
+const vec2 WAVE_D1 = vec2(-0.55,  0.84);
+const vec2 WAVE_D2 = vec2( 0.31, -0.95);
+
+vec3 wavePhase(vec2 p) {
+	float k0 = 6.2831853 / max(wave.y, 8.0);
+	float t = wave.w * wave.z;
+	return vec3(
+		dot(WAVE_D0, p) * k0         + t * 1.00,
+		dot(WAVE_D1, p) * k0 * 1.7   + t * 1.30,
+		dot(WAVE_D2, p) * k0 * 3.1   + t * 1.70 );
+}
+
+/*
+[QL] R19: the water surface at a point - height in x, slope in yz.
+
+Height and slope together, from one evaluation, because they are the same
+function and computing them apart is how they drift out of step. The wind waves
+scale the two independently (r_waterWaveHeight and r_waterWaveSteepness are
+separate controls) but they share the phases, so crests stay where the slope is
+zero however the two are set.
+
+Disturbances add to both. They are what makes the water look like it is being
+acted on rather than merely existing, and they cost a short loop over a list
+that is almost always empty.
+*/
+/*
+[QL] R19: the disturbances alone - height in x, slope in yz.
+
+Split out from the wind waves rather than folded in with them because two
+things need to ask about impacts specifically and cannot if the answer arrives
+already summed: the foam, which only whitewater should trigger and not an
+ordinary swell, and r_ssrDebug 5, which exists to answer "is anything arriving
+here at all".
+
+That question kept coming back with no way to answer it. The console said the
+events were arriving and the water looked unchanged, and a ripple that perturbs
+only the reflection is invisible wherever the reflection itself is subtle - so
+"no ripples" and "ripples too faint to see" looked identical. They are not the
+same problem and they do not have the same fix.
+*/
+/*
+[QL] E142: one ring, from a source at c - the impact itself, or its mirror
+image across a side of the pool. Adds its height, slope and energy.
+
+Split out of rippleSurface so the reflections are the same wave, not an
+imitation of it. A wave bouncing off a straight wall looks, on the near side
+of that wall, exactly like the same wave coming from the impact reflected
+across it: the distance to the image is the path out to the wall and back, so
+the bounced ring arrives late by exactly the right amount, with the right
+curvature, and nothing is needed but a second source.
+*/
+void rippleRing(vec2 p, vec2 c, float age, float reach, float strength, float tighten,
+                inout float h, inout vec2 grad, inout float energy) {
+	float d = distance(p, c);
+	if (d > reach) {
+		return;                 // outside where this one ever gets to
+	}
+
+	/*
+	An expanding ring, not a standing wobble. The leading edge travels out
+	to `reach` over the ripple's life, and behind it the rings trail off:
+	nothing has happened yet ahead of the front, which is what makes an
+	impact read as an impact rather than as the water suddenly vibrating
+	everywhere at once.
+	*/
+	/* [QL] E142. Each ring slows as its own radius grows - not the whole
+	   pattern slowing with age. E141 eased the front out over the ripple's
+	   life, which moved every ring together, so a fresh ring near the centre
+	   slowed as much as the leading edge and the animation simply ran down
+	   after a cycle or two.
+
+	   Instead the wave travels at a steady rate through a stretched distance,
+	   u = x + x*x with x = d / reach (0 to 2 over the ripple). Where a ring
+	   is, dd/dt is proportional to 1 / (1 + 2x): full speed at the impact, a
+	   third of it at the edge, whatever the ripple's age - and rings bunch up
+	   as they slow, as real ones do. The front crosses u at a steady rate and
+	   reaches `reach` exactly at the end of its life, so r_waterRippleLife
+	   still means what it says. */
+	float t = clamp(age / RIPPLE_LIFE, 0.0, 1.0);
+	float xf = (sqrt(1.0 + 8.0 * t) - 1.0) * 0.5;     // u(xf) = 2t
+	float front = xf * reach;
+	if (d > front) {
+		return;                 // it has not arrived here yet
+	}
+
+	/* three ways it dies: with age, with distance from the impact, and
+	   behind the front - so the oldest rings at the centre are gone while
+	   the leading edge is still going */
+	float fade = 1.0 - age / RIPPLE_LIFE;
+	float falloff = 1.0 - d / reach;
+	float trail = exp( -(front - d) * (3.0 / reach) );
+	float amp = strength * rippleTune.z * fade * falloff * falloff * trail;
+
+	/* [QL] E148: tighten > 1 packs the rings closer in water smaller than
+	   the ripple - see where vk.c sets ripple6 */
+	float k = RIPPLE_WAVES * 6.2831853 / reach * tighten;
+	float x = d / reach;
+	/* the phase runs in u, halved so RIPPLE_WAVES rings still span the
+	   ripple (u covers 0 to 2); the slope below needs du/dd = 1 + 2x */
+	float phase = ((x + x * x) - (xf + xf * xf)) * reach * k * 0.5;
+	float dudd = (1.0 + 2.0 * x) * 0.5;
+
+	h += amp * sin(phase);
+
+	/*
+	The envelope, kept apart from the height on purpose.
+
+	h oscillates through zero - that is what a wave is - so anything driven
+	off it is only present where the sine happens to be near a peak, and
+	flickers as the ring travels. Foam did exactly that: thin arcs blinking
+	on and off instead of a splash, which reads as nothing at all.
+
+	This is how much disturbance is here regardless of which way the surface
+	happens to be moving at this instant. A splash is a patch of churn that
+	fades, not a set of alternating bands.
+	*/
+	energy += abs(amp);
+
+	if (d > 0.001) {
+		/*
+		Scaled down hard, and it is not a fudge. The wind waves put their
+		slope through r_waterWaveSteepness, which is about 0.08 - and a
+		ripple's own amp*k lands near 0.4 for a rocket, five times steeper
+		than the water it is disturbing. Left alone the impact does not read
+		as a splash on the surface, it reads as a hole in it, and most of it
+		is then eaten by the facing guard further down anyway.
+		*/
+		/*
+		[QL] R28: times rippleTune.w, which undoes what k already did.
+
+		k is RIPPLE_WAVES/reach, so widening a ripple with
+		r_waterRippleSize makes k smaller and the slope gentler in exact
+		proportion. That is correct for a real wave and wrong for a
+		setting called "size": asking for bigger splashes would quietly
+		hand back fainter ones, and the obvious response is to raise
+		r_waterRippleHeight to compensate, which is the fix for a problem
+		that should not exist.
+
+		So size changes size and height changes strength. At the default
+		of 1 this multiplies by 1 and nothing moves.
+		*/
+		grad += ((p - c) / d) * amp * k * dudd * cos(phase) * RIPPLE_SLOPE * rippleTune.w;
+	}
+}
+
+vec4 rippleSurface(vec2 p, int planeIdx) {
+	float h = 0.0;
+	float energy = 0.0;
+	vec2 grad = vec2(0.0);
+
+	int n = int(planeCount.y);
+	for (int i = 0; i < n; i++) {
+		if (int(ripple2[i].y) != planeIdx) {
+			continue;               // a different pool
+		}
+
+		float age = ripple[i].z;
+		float reach = ripple[i].w;
+		vec2 c = ripple[i].xy;
+		float strength = ripple2[i].x;
+
+		float tighten = ripple6[i].x;
+		rippleRing(p, c, age, reach, strength, tighten, h, grad, energy);
+
+		/*
+		[QL] E142, E144. And off the sides of the pool, for a big enough wave:
+		ripple2.z is how much bounces (r_waterRippleReflect - every splash
+		since E148), ripple2.w how many walls it bounces off.
+		Each wall is a mirror image of the impact across a real face of the
+		map at the water's edge (vk_ripple_walls), weighted by how steep that
+		face is - a sloping bank sends less back than a sheer wall. Single
+		bounces only.
+		*/
+		float bounce = ripple2[i].z;
+		int walls = int(ripple2[i].w);
+		if (bounce > 0.0 && walls > 0) {
+			float s = strength * bounce;
+			rippleRing(p, ripple3[i].xy, age, reach, s * ripple5[i].x, tighten, h, grad, energy);
+			if (walls > 1) rippleRing(p, ripple3[i].zw, age, reach, s * ripple5[i].y, tighten, h, grad, energy);
+			if (walls > 2) rippleRing(p, ripple4[i].xy, age, reach, s * ripple5[i].z, tighten, h, grad, energy);
+			if (walls > 3) rippleRing(p, ripple4[i].zw, age, reach, s * ripple5[i].w, tighten, h, grad, energy);
+		}
+	}
+
+	return vec4(h, grad, energy);
+}
+
+/*
+[QL] R19: the water surface at a point - height in x, slope in yz.
+
+Height and slope together, from one evaluation, because they are the same
+function and computing them apart is how they drift out of step. The wind waves
+scale the two independently (r_waterWaveHeight and r_waterWaveSteepness are
+separate controls) but they share the phases, so crests stay where the slope is
+zero however the two are set.
+
+[QL] E149. The wind waves only. The splash field (rippleSurface) is evaluated
+once per pixel by main and added there. It used to be added here, and this was
+called four times per water pixel - two height refinements, the normal, and the
+foam/debug read - each one summing every live ripple and, since E144/E148, up
+to four wall echoes of each: 48 ripples was up to 960 ring evaluations per
+pixel, and one shotgun volley is 20 ripples.
+*/
+vec3 windSurface(vec2 p) {
+	vec3 ph = wavePhase(p);
+
+	float h = wave2.x * ( 0.55 * sin(ph.x) + 0.30 * sin(ph.y) + 0.15 * sin(ph.z) );
+
+	vec2 grad = ( WAVE_D0 * 0.55 * cos(ph.x)
+	            + WAVE_D1 * 0.30 * cos(ph.y)
+	            + WAVE_D2 * 0.15 * cos(ph.z) ) * wave.x;
+
+	return vec3(h, grad);
+}
+
+/* clip -> screen uv, and the depth that came with it */
+vec3 project(vec3 world) {
+	vec4 clip = viewProj * vec4(world, 1.0);
+	if (clip.w <= 0.0) {
+		return vec3(-1.0);          // behind the eye
+	}
+	vec3 ndc = clip.xyz / clip.w;
+	return vec3(ndc.xy * 0.5 + 0.5, ndc.z);
+}
+
+#ifdef USE_RT
+/*
+[QL] E156: roughly what a surface at p, facing the eye along -dir, would look
+like, from the light grid - the same data entities are lit by.
+
+The acceleration structure knows where a surface is and nothing about its
+texture (see the note at the top), so an off-screen hit cannot be shaded
+properly. What it can be is lit properly: a wall in shadow comes back dark and
+one in the sun comes back bright, which is most of what the eye reads in a
+rippled reflection. The texture is replaced by a flat albedo.
+
+Trilinear over the eight surrounding points, skipping points inside solid
+(all-zero, the same test R_SetupEntityLighting makes), and the directed term
+taken against the eye direction, since the hit's normal is not known either.
+*/
+vec3 gridLight(vec3 p, vec3 dir) {
+	vec3 v = (p - gridOrigin.xyz) * gridInvSize.xyz;
+	vec3 f = fract(v);
+	ivec3 i0 = ivec3(floor(v));
+	ivec3 b = ivec3(gridBounds.xyz);
+	vec3 sum = vec3(0.0);
+	float total = 0.0;
+
+	for (int k = 0; k < 8; k++) {
+		ivec3 o = ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+		ivec3 c = clamp(i0 + o, ivec3(0), b - ivec3(1));
+		int idx = c.x + c.y * b.x + c.z * b.x * b.y;
+		uint w0 = gridData[idx * 2];
+		uint w1 = gridData[idx * 2 + 1];
+		vec3 amb = vec3(float(w0 & 255u), float((w0 >> 8) & 255u), float((w0 >> 16) & 255u));
+		vec3 dirl = vec3(float(w0 >> 24), float(w1 & 255u), float((w1 >> 8) & 255u));
+		if (amb.r + amb.g + amb.b + dirl.r + dirl.g + dirl.b <= 0.0) {
+			continue;               // inside a wall
+		}
+		float lng = float((w1 >> 16) & 255u) * (6.2831853 / 256.0);
+		float lat = float(w1 >> 24) * (6.2831853 / 256.0);
+		vec3 ldir = vec3(cos(lat) * sin(lng), sin(lat) * sin(lng), cos(lng));
+
+		vec3 ww = mix(vec3(1.0) - f, f, vec3(o));
+		float w = ww.x * ww.y * ww.z;
+		sum += w * (amb + dirl * max(dot(-dir, ldir), 0.0));
+		total += w;
+	}
+
+	return total > 0.0 ? sum / (total * 255.0) : vec3(0.0);
+}
+#endif
+
+void main() {
+	ivec2 size = depthSize();
+	/* [QL] E151: wave2.z is r_ssrResolution's scale - full-resolution pixels
+	   per traced texel, 1 or 2 (0 from an older caller reads as 1). */
+	int traceScale = max(int(wave2.z + 0.5), 1);
+	ivec2 pix = clamp(ivec2(gl_FragCoord.xy) * traceScale, ivec2(0), size - ivec2(1));
+	vec2 invSize = 1.0 / vec2(size);
+
+	float depth = fetchDepth(pix);
+
+	out_color = vec4(0.0);
+
+	/*
+	[QL] r_ssrDebug 4: the depth buffer itself, before anything is decided about
+	it. Near is bright, far is dark, under either depth convention.
+
+	This should have existed before any of the others. Every debug view above
+	shows a *classification* - a threshold applied to this number - and a
+	threshold applied to bad data does not look like bad data. It looks like a
+	bad threshold, which is where four rounds of work went: at the water test,
+	at the plane bounds, at the weapon band, at two image layouts. Each was
+	answered with a picture that was itself downstream of the thing that was
+	wrong.
+
+	What this one shows cannot be argued with:
+
+	  a smooth distance field, the gun clearly in front - depth is sound, and
+	    whatever is wrong is in what this pass does with it
+	  the room's textures, the HUD, glyphs - this is not the depth image at all
+	  the previous frame, or several - the read is racing the next frame's
+	    writes, which is the "out of bounds smear" this looks like
+
+	Those three need completely different fixes and nothing above distinguishes
+	them.
+
+	The fourth root makes the reversed range visible: with near at 1.0 most of a
+	room sits close to 0 and a linear grey would be almost entirely black.
+	*/
+	if (depthInfo.w == 4.0) {
+		float d = clamp(depth, 0.0, 1.0);
+		float near1 = (depthInfo.z > 0.0) ? d : 1.0 - d;
+		out_color = vec4(vec3(pow(near1, 0.25)), 1.0);
+		return;
+	}
+
+	// nothing drawn here - sky, or outside the world
+	bool isSky = (depthInfo.z * (depth - depthInfo.x) <= 0.0);
+
+	/*
+	The view weapon lives in a squashed depth range and is not water.
+
+	>= and not >, to agree with the occlusion pass exactly. A fragment sitting on
+	the boundary of the weapon's range is the weapon, and the two passes
+	disagreeing about one value is the kind of difference that is invisible until
+	it is the thing you are chasing.
+	*/
+	bool isWeapon = !isSky && (depthInfo.z * (depth - depthInfo.y) >= 0.0);
+
+	/*
+	[QL] r_ssrDebug 3: what this pass thinks the depth buffer is telling it.
+
+	  red    sky, or nothing drawn
+	  blue   inside the weapon's squashed depth range
+	  green  ordinary world geometry
+
+	This exists because "the reflection is appearing on the gun" has two
+	completely different causes and they need opposite fixes. If the gun comes
+	out blue, this pass is rejecting it correctly and whatever is drawn over it
+	arrived from somewhere else - the composite, or the blend. If the gun comes
+	out green, the weapon band is not where this pass was told it is, and no
+	amount of work on the water test will help.
+
+	Reading it off the screen takes one screenshot. Reasoning about it from the
+	source has so far taken several rounds and got the wrong answer each time.
+	*/
+	if (depthInfo.w == 3.0) {
+		out_color = isSky    ? vec4(1.0, 0.0, 0.0, 1.0)
+		          : isWeapon ? vec4(0.0, 0.0, 1.0, 1.0)
+		                     : vec4(0.0, 1.0, 0.0, 1.0);
+		return;
+	}
+
+	if (isSky || isWeapon) {
+		return;
+	}
+
+	/*
+	[QL] Where is the water in this pixel? Ask the plane, not the depth buffer.
+
+	The first version reconstructed a world position from depth and tested it
+	against the plane. That fails on both sides at once, and the debug view made
+	both visible in one frame:
+
+	  - Quake Live's water does not write depth. It is a translucent surface, so
+	    the depth at a water pixel is the *pool floor*, metres below the surface.
+	    The water was therefore never detected at all - no tolerance around the
+	    plane could have helped, because the surface is simply not in the buffer.
+	  - The plane is infinite. Every *other* surface in the map at the water's
+	    height did match, which on this map is the wooden decking around the
+	    pool, painted in speckles and bands along the height lines.
+
+	Intersecting the view ray with the plane answers the question directly and
+	needs neither fix: it finds the water surface whether or not anything wrote
+	depth there, and it gives the true position rather than an approximation of
+	one. Depth is still needed - to know whether something opaque is in front of
+	the water - which is what the sceneDist test below is.
+	*/
+	vec3 sceneP = worldAt(pix, invSize);
+	float sceneDist = length(sceneP - eye.xyz);
+	vec3 dir = rayAt(pix, invSize);
+
+	int count = int(planeCount.x);
+	vec3 N = vec3(0.0);
+	float bestT = 1.0e30;
+	float bestW = 0.0;
+	int bestIdx = -1;
+	bool onWater = false;
+
+	for (int i = 0; i < count; i++) {
+		vec3 n = planes[i].xyz;
+		float dn = dot(dir, n);
+
+		/*
+		Facing away. For an up-facing plane this is the ray travelling upward,
+		which is either the underside of the surface or the camera being below
+		it - and neither reflects the world above. Underwater is handled here
+		rather than as a special case.
+		*/
+		if (dn >= -0.0001) {
+			continue;
+		}
+
+		float t = (planes[i].w - dot(eye.xyz, n)) / dn;
+		if (t <= 0.0) {
+			continue;                 // behind the eye
+		}
+		/*
+		There has to be a pool under it.
+
+		This started as "is anything opaque in front of the water", allowing a
+		few units of slack for the case where the water writes depth and t and
+		sceneDist are the same number. Quake Live's water does not write depth -
+		the debug view settled that - so the slack bought nothing and cost the
+		test its discrimination.
+
+		What it cost is specific: the decking around a pool tends to sit at the
+		water's own height, which is why the very first version of this test
+		painted the decking. For a decking pixel the distance to the plane and
+		the distance to the decking are nearly equal, so any slack lets it
+		through, and at a glancing angle that is most of the screen.
+
+		Requiring the surface to be meaningfully nearer than the geometry behind
+		it says "water has a pool under it" instead of "water is at this height",
+		and a floor at the water's height has nothing under it at all. It also
+		rejects everything in front of the water - the view weapon included -
+		without needing to know what any of it is.
+
+		The cost is a thin band where the surface meets the pool wall, which was
+		going to fade out there anyway.
+		*/
+		if (t > sceneDist - 8.0) {
+			continue;
+		}
+
+		/*
+		And whatever is under it has to be under it.
+
+		A straight ray that crosses a plane downward is below that plane for the
+		rest of its length, so for consistent data this follows from the test
+		above and rejects nothing. That is the point of it. It fires only when
+		the position reconstructed from depth does not belong to this ray, which
+		is a real failure mode rather than a hypothetical one: the view weapon is
+		stored in a squashed depth range, a multisampled buffer hands back one
+		sample that may belong to a different primitive than the pixel's
+		coverage, and either produces a distance that passes the test above for
+		no good reason.
+
+		One dot product to make an inconsistency visible as rejection instead of
+		as water in the wrong place.
+		*/
+		if (dot(sceneP, n) > planes[i].w + 1.0) {
+			continue;
+		}
+
+		/*
+		Inside the water surface - which is not the same as inside the pool, and
+		must not be mistaken for it.
+
+		A mapper builds the water brush larger than the hole it shows through
+		and tucks the overhang under the decking, in X and Y but rarely in Z.
+		There is nothing to gain from trimming it to the opening and something
+		to lose: a seam if the two ever disagree. So these bounds legitimately
+		run past the visible pool by however far that overhang goes, and no
+		tightening of them can be right - the surface really is out there.
+
+		What decides whether it can be *seen* out there is the test above: under
+		the decking the decking is in front of it, so the geometry at that pixel
+		is nearer than the plane crossing and the pixel is rejected. That is
+		where the real edge of the pool comes from. This test only says which
+		reflector, if any, the ray could have met.
+		*/
+		vec3 hit = eye.xyz + dir * t;
+		if (any(lessThan(hit, boundsMin[i].xyz - 1.0)) ||
+		    any(greaterThan(hit, boundsMax[i].xyz + 1.0))) {
+			continue;
+		}
+
+		if (t < bestT) {
+			bestT = t;
+			bestW = planes[i].w;
+			bestIdx = i;
+			N = n;
+			onWater = true;
+		}
+	}
+	if (!onWater) {
+		return;
+	}
+
+	/*
+	[QL] Put the surface on the wave, rather than only tilting it.
+
+	The tilt alone gives a rippling reflection on a surface that is still, in
+	every other respect, a sheet of glass at a fixed height. Solving the
+	intersection again against a plane displaced by the wave height gives real
+	Z variance, and two things follow from it that the tilt cannot produce: the
+	waterline against the pool wall rises and falls, and the reflection
+	parallaxes - it stretches over a trough and compresses over a crest, which
+	is most of what makes water read as a surface with a thickness rather than a
+	picture.
+
+	Two iterations. The height depends on where the ray lands and where the ray
+	lands depends on the height, so this is a fixed point; for amplitudes small
+	against the wavelength it is converged well inside a pixel after two.
+
+	Three guards, and each one is a real case rather than defensive habit:
+
+	  the grazing cutoff - as dot(dir, N) approaches zero the solve divides by
+	    it, and a two-unit change in height moves the intersection an unbounded
+	    distance along the ray. Physically that is true, a crest really does
+	    occlude a long way at grazing incidence, but it is not something to
+	    compute this way.
+	  the occlusion and bounds re-test - the displaced point is somewhere the
+	    flat point was not, and it has to earn its place by the same rules. A
+	    crest can lift the surface in front of the pool lip.
+	  falling back to the flat solve rather than discarding - the pixel is still
+	    water. It just gets this frame's reflection from the undisplaced
+	    surface, which is where it came from before any of this.
+	*/
+	/*
+	[QL] Keep the undisplaced hit. Anything that should look painted onto the
+	surface has to be sampled here and not at the point below.
+
+	The displacement solve moves the intersection along the view ray, and at a
+	glancing angle - which is most of how water is seen - two units of height
+	moves it a long way. For the reflection that is exactly right and reads as
+	parallax. For foam it is a shear: the splash stops lying flat on the water
+	and smears off in whatever direction the eye happens to be looking from,
+	which is not a thing water does.
+	*/
+	float flatT = bestT;
+
+	/* [QL] E149: the splash field, once, on the flat surface (see flatT).
+	   The refinement below and the shading normal take their ripple height
+	   and slope from this one evaluation - over the few units the refinement
+	   moves the point the difference cannot be seen, and it was three more
+	   full sums. */
+	vec4 rip = rippleSurface((eye.xyz + dir * flatT).xy, bestIdx);
+
+	if (bestIdx >= 0) {
+		float dn = dot(dir, N);
+		if (dn < -0.02) {
+			float t2 = bestT;
+			float eyeN = dot(eye.xyz, N);
+
+			t2 = (bestW + windSurface((eye.xyz + dir * t2).xy).x + rip.x - eyeN) / dn;
+			t2 = (bestW + windSurface((eye.xyz + dir * t2).xy).x + rip.x - eyeN) / dn;
+
+			if (t2 > 0.0 && t2 < sceneDist - 8.0) {
+				vec3 hp = eye.xyz + dir * t2;
+				if (!any(lessThan(hp, boundsMin[bestIdx].xyz - 1.0)) &&
+				    !any(greaterThan(hp, boundsMax[bestIdx].xyz + 1.0))) {
+					bestT = t2;
+				}
+			}
+		}
+	}
+
+	vec3 P = eye.xyz + dir * bestT;
+
+	/*
+	[QL] r_ssrDebug 1: where the water test passed, and nothing else.
+
+	This separates the three ways the feature can produce no visible change, and
+	they need completely different fixes:
+
+	  a black screen  - the pass is not running at all
+	  no green        - the plane test never matches, so the depth buffer does
+	                    not contain the water surface. That happens when the
+	                    water shader does not write depth, in which case the
+	                    depth there is the pool floor and no tolerance around
+	                    the plane will ever help
+	  green, no image - water is found and the march finds nothing, which is
+	                    distance, steps or thickness
+
+	Worth the eight lines. Guessing between those three from "the water looks
+	the same" is exactly the loop that has cost the most time on this project.
+	*/
+	if (depthInfo.w == 1.0) {
+		out_color = vec4(0.0, 1.0, 0.0, 1.0);
+		return;
+	}
+
+	/* The ray that found the plane is the view vector. Looking at the surface
+	   from beneath was already rejected by the facing test above. */
+	vec3 V = dir;
+
+	/*
+	Shading normal from here on: the waves live in this and nowhere else. P is
+	still on the flat plane, which is what the depth buffer and the geometry
+	agree about.
+
+	Kept facing the viewer. At a glancing angle - which is most of how water is
+	ever seen - a steep enough wave can tilt the normal past the view direction,
+	and reflect() about a normal facing away sends the ray into the surface
+	instead of off it. That is a black pixel in the middle of the water, and it
+	flickers, because the wave that caused it is moving.
+	*/
+	/* the disturbances alone, for the foam and for r_ssrDebug 5 */
+	/* on the flat surface, so it stays put - see flatT above */
+	/* (rip: computed once, above the refinement) */
+
+	/*
+	[QL] r_ssrDebug 5: where the disturbances are, and nothing else.
+
+	Red is a crest, blue a trough, black is undisturbed water. This settles the
+	question the console cannot: RE_AddWaterRipple printing an event proves cgame
+	called, and this proves the ripple reached the surface, is on the right
+	plane, and is where the splash was. "No ripples" and "ripples too faint to
+	see against a subtle reflection" look identical on screen and are not the
+	same problem.
+	*/
+	if (depthInfo.w == 5.0) {
+		float v = clamp(rip.x * 0.5, -1.0, 1.0);
+		/* red/blue is the height, green is the envelope the foam is driven off
+		   - if the rings are vivid and the green is dark, foam has nothing to
+		   work with no matter what the threshold is */
+		out_color = vec4(max(v, 0.0), clamp(rip.w * 0.7, 0.0, 1.0), max(-v, 0.0), 1.0);
+		return;
+	}
+
+	N = normalize(vec3(-(windSurface(P.xy).yz + rip.yz), 1.0));
+	if (dot(N, -V) <= 0.02) {
+		N = normalize(N - V * (dot(N, V) + 0.02));
+	}
+
+	vec3 R = reflect(V, N);
+
+	float maxDist = params.y;
+	int steps = int(params.z);
+	float thickness = params.w;
+
+	/*
+	March in world space and project each step, rather than interpolating a
+	screen-space line.
+
+	A screen-space march is cheaper per step and wrong at glancing angles: even
+	spacing on screen is wildly uneven in the world, so the first step off a
+	near-horizontal water surface can jump past a whole wall. Water is only ever
+	seen at glancing angles, so the cheap version fails exactly where this is
+	used.
+	*/
+	vec3 hitColor = vec3(0.0);
+	float hit = 0.0;
+	float stepLen = maxDist / float(steps);
+
+	/* Start a step out. At t=0 the ray is on the surface it came from and the
+	   first sample would find that surface, which is the classic self-hit. */
+	for (int i = 1; i <= steps; i++) {
+		float t = stepLen * float(i);
+		vec3 Q = P + R * t;
+		vec3 s = project(Q);
+
+		if (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
+			break;              // left the screen - nothing on screen to reflect
+		}
+
+		ivec2 sp = clamp(ivec2(s.xy * vec2(size)), ivec2(0), size - ivec2(1));
+		float sceneDepth = fetchDepth(sp);
+
+		if (depthInfo.z * (sceneDepth - depthInfo.x) <= 0.0) {
+			continue;           // sky at that pixel, keep going
+		}
+
+		/*
+		[QL] The view weapon is not in the world and must not be reflected.
+
+		It is drawn into a squashed depth range so it never clips through
+		anything, which means the depth recorded for it does not correspond to
+		where it appears to be. Reflect it and the player sees their own weapon a
+		second time, at a plausible-looking angle, from the same viewpoint - a
+		duplicate that tracks every movement of the real one.
+
+		The rejection is the same band the pixel-classification test at the top
+		uses, and it is deliberately `continue` rather than `break`: the weapon
+		fills a lot of the lower screen, and stopping the march there would cost
+		every reflection whose ray happens to cross it. Marching past it usually
+		finds nothing, since the weapon hides whatever is behind it, and that is
+		the honest answer - a reflection off-screen is a reflection we do not
+		have.
+		*/
+		if (depthInfo.z * (sceneDepth - depthInfo.y) >= 0.0) {
+			continue;
+		}
+
+		vec3 sceneP = worldAt(sp, invSize);
+
+		/*
+		Behind the recorded surface means the ray has gone past something.
+		Compared along the view direction rather than in depth-buffer units,
+		because the buffer is not linear and a fixed epsilon in it means a
+		different distance at every range.
+		*/
+		float rayDist = length(Q - eye.xyz);
+		float sceneDist = length(sceneP - eye.xyz);
+		float behind = rayDist - sceneDist;
+
+		if (behind > 0.0 && behind < thickness + stepLen) {
+			hitColor = texture(sceneMap, s.xy).rgb;
+			hit = 1.0;
+
+			/*
+			Fade out where the result stops being trustworthy, rather than
+			letting it end abruptly:
+
+			  - near the screen edge, because what is off-screen was never
+			    traced and the boundary would otherwise be a hard line
+			  - with distance, because a longer march found its hit with fewer
+			    effective samples
+			  - at steep viewing angles, where a real water surface reflects
+			    least and the march is most accurate - the Fresnel-ish term
+			    that makes it look like water rather than a mirror
+			*/
+			vec2 edge = min(s.xy, 1.0 - s.xy) / 0.12;
+			float edgeFade = clamp(min(edge.x, edge.y), 0.0, 1.0);
+			float distFade = 1.0 - clamp(t / maxDist, 0.0, 1.0);
+			float fresnel = pow(1.0 - clamp(dot(-V, N), 0.0, 1.0), 3.0);
+
+			hit = edgeFade * distFade * mix(0.15, 1.0, fresnel);
+			break;
+		}
+	}
+
+	/*
+	[QL] E156: where the march found nothing, ask the world.
+
+	The march fails for three reasons: the ray left the screen, it passed behind
+	the view weapon (which hides whatever is there), or it ran out of distance
+	or steps first. The first two are what made the water patchy around the
+	muzzle flash - pixels whose rays go down-screen or into the gun get nothing,
+	their neighbours get a reflection, and the border is a hard, stepped edge.
+
+	One ray against the acceleration structure answers where the reflection
+	actually lands. If that point is on screen and nothing is in front of it,
+	its colour is right there in the scene image - an exact reflection the
+	march missed. If it is not (off-screen, behind the gun, behind something
+	else), r_ssrRayTrace 2 shades it from the light grid instead: right in
+	brightness, flat in texture, and faded on the same terms as everything else
+	so the two sources meet without a line.
+	*/
+	int source = hit > 0.0 ? 1 : 0;   /* for r_ssrDebug 6 */
+#ifdef USE_RT
+	if (hit <= 0.0 && rtInfo.x > 0.0) {
+		vec3 O = P + N * 0.5;
+		rayQueryEXT rq;
+		/* Back faces culled for the same reason rtao does it: a ray that starts
+		   inside an entity proxy (a player standing in the water) has to get
+		   out of it. The world instance is not culled. */
+		rayQueryInitializeEXT(rq, topLevel,
+			gl_RayFlagsOpaqueEXT | gl_RayFlagsCullBackFacingTrianglesEXT,
+			0x03, O, 0.5, R, rtInfo.y);   /* [QL] E166: RT_MASK_OCCLUSION */
+		while (rayQueryProceedEXT(rq)) {}
+
+		if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+			float t = rayQueryGetIntersectionTEXT(rq, true);
+			vec3 Q = O + R * t;
+			vec3 s = project(Q);
+			float distFade = 1.0 - clamp(t / rtInfo.y, 0.0, 1.0);
+			float fresnel = pow(1.0 - clamp(dot(-V, N), 0.0, 1.0), 3.0);
+			float weight = distFade * mix(0.15, 1.0, fresnel);
+			float seen = 0.0;           // how much of the answer is on screen
+			vec3 seenColor = vec3(0.0);
+
+			if (s.x >= 0.0 && s.x <= 1.0 && s.y >= 0.0 && s.y <= 1.0) {
+				ivec2 sp = clamp(ivec2(s.xy * vec2(size)), ivec2(0), size - ivec2(1));
+				float sceneDepth = fetchDepth(sp);
+				if (depthInfo.z * (sceneDepth - depthInfo.x) > 0.0 &&
+				    depthInfo.z * (sceneDepth - depthInfo.y) < 0.0) {
+					/* Not sky, not the gun: is the surface there the one the
+					   ray hit, or something in front of it? */
+					float rayDist = length(Q - eye.xyz);
+					float gap = rayDist - length(worldAt(sp, invSize) - eye.xyz);
+					if (abs(gap) < max(thickness, rayDist * 0.02)) {
+						vec2 edge = min(s.xy, 1.0 - s.xy) / 0.12;
+						seen = clamp(min(edge.x, edge.y), 0.0, 1.0);
+						seenColor = texture(sceneMap, s.xy).rgb;
+					}
+				}
+			}
+
+			if (rtInfo.x >= 2.0 && gridOrigin.w > 0.0) {
+				vec3 guess = min(gridLight(Q, R) * rtInfo.z, vec3(1.0));
+				hitColor = mix(guess, seenColor, seen);
+				hit = weight;
+				source = seen > 0.5 ? 2 : 3;
+			} else if (seen > 0.0) {
+				hitColor = seenColor;
+				hit = weight * seen;
+				source = 2;
+			}
+		}
+	}
+#endif
+
+	/*
+	[QL] R19: emitters, which the march cannot find.
+
+	A plasma ball, a rocket's glow, a powerup's halo - these are additive
+	sprites and they do not write depth, so there is nothing in the buffer for
+	the march to hit. A rocket reflects already because it is an opaque model;
+	the light around it does not.
+
+	Tested as a ray against a sphere in world space rather than by mirroring the
+	light and projecting it to screen. The reflected ray is a real world-space
+	ray, so this places the glow where it actually belongs, and it works for
+	lights that are off-screen entirely - which screen-space anything cannot do,
+	and which is most of where a projectile is when its reflection is visible.
+
+	Added to whatever the march found rather than replacing it: a glow over a
+	reflected wall should light the wall, not erase it.
+	*/
+	{
+		int nl = int(planeCount.z);
+		for (int i = 0; i < nl; i++) {
+			vec3 toLight = emitter[i].xyz - P;
+			float along = dot(toLight, R);
+			if (along <= 0.0) {
+				continue;           // behind the reflection
+			}
+
+			float rad = emitter[i].w;
+			float perp2 = dot(toLight, toLight) - along * along;
+			if (perp2 >= rad * rad) {
+				continue;           // the ray misses it
+			}
+#ifdef USE_RT
+			/* [QL] E165: with the lights casting ray-traced shadows (rtInfo.w
+			   is their instance mask), a light the water cannot see does not
+			   glow in it - a rocket in the next room stays in the next room */
+			if (rtInfo.w > 0.0) {
+				float dist = length(toLight);
+				float tmax = dist - 8.0;
+				if (tmax > 1.0) {
+					rayQueryEXT eq;
+					rayQueryInitializeEXT(eq, topLevel,
+						gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT |
+						gl_RayFlagsCullBackFacingTrianglesEXT,
+						uint(rtInfo.w), P + N * 0.5, 0.0, toLight / dist, tmax);
+					while (rayQueryProceedEXT(eq)) {}
+					if (rayQueryGetIntersectionTypeEXT(eq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+						continue;
+					}
+				}
+			}
+#endif
+
+			/* squared so the centre is bright and the rim falls away, and faded
+			   along the ray on the same terms the march's own hits are */
+			float f = 1.0 - sqrt(max(perp2, 0.0)) / rad;
+			f = f * f;
+			f *= 1.0 - clamp(along / maxDist, 0.0, 1.0);
+
+			hitColor += emitter2[i].rgb * emitter2[i].a * f;
+			hit = max(hit, f * 0.85);
+		}
+	}
+
+	/* r_ssrDebug 2: the reflection itself, unfaded, and red where the march
+	   found nothing - which tells distance/steps/thickness apart from a bad
+	   reflection. */
+	if (depthInfo.w == 2.0) {
+		out_color = (hit > 0.0) ? vec4(hitColor, 1.0) : vec4(1.0, 0.0, 0.0, 1.0);
+		return;
+	}
+
+	/* [QL] E156 r_ssrDebug 6: where each pixel's reflection came from. Green
+	   the march, blue a ray-traced hit that is on screen, yellow the light-grid
+	   estimate, red nothing. Decided before the emitters are added, so a glow
+	   does not repaint the answer. */
+	if (depthInfo.w == 6.0) {
+		vec3 c = source == 1 ? vec3(0.0, 1.0, 0.0) : source == 2 ? vec3(0.0, 0.3, 1.0)
+		       : source == 3 ? vec3(1.0, 0.9, 0.0) : vec3(1.0, 0.0, 0.0);
+		out_color = vec4(c, 1.0);
+		return;
+	}
+
+	/*
+	[QL] R19: whitewater where the surface is being thrown about.
+
+	Everything else this pass does is a change to the *reflection*, and a
+	reflection is only as visible as what it is reflecting. Over a dark pool
+	floor with nothing overhead a rocket could land and perturb the normal
+	beautifully and look like almost nothing at all - which is exactly what a
+	splash that only tilts the normal did look like.
+
+	Foam does not depend on there being anything to reflect. It is driven off
+	the disturbance field on its own, not the wind waves: ordinary chop should
+	never whiten, only an impact should, so the threshold sits above anything
+	r_waterWaveHeight produces and the term rises sharply past it.
+
+	Written into the reflection's own colour and alpha, so it needs no second
+	pass and no second blend - it is the same source-alpha composite, arriving
+	white.
+	*/
+	float foam = smoothstep(0.25, 1.40, rip.w) * wave2.y;
+	if (foam > 0.0) {
+		/*
+		Aerated water, not a white light. Slightly cool rather than pure white,
+		and never fully opaque - foam sits on water and the water is still
+		visible through it, so leaving a little of the reflection underneath is
+		what keeps it looking like part of the surface instead of a decal laid
+		over the top.
+		*/
+		vec3 froth = vec3(0.88, 0.93, 0.96);
+		float cover = min(foam, 0.85);
+
+		hitColor = mix(hitColor, froth, cover);
+		hit = max(hit, cover);
+	}
+
+	if (hit <= 0.0) {
+		return;
+	}
+
+	out_color = vec4(hitColor, clamp(hit * params.x, 0.0, 1.0));
+}

@@ -61,6 +61,36 @@ cvar_t	*r_skipBackEnd;
 
 cvar_t	*r_greyscale;
 cvar_t	*r_dither;
+cvar_t	*r_fxaa;     // [QL] E157
+cvar_t	*r_sharpen;  // [QL] E157
+cvar_t	*r_toneMap;  // [QL] E158
+cvar_t	*r_rtDlightShadows;        // [QL] E161
+cvar_t	*r_rtDlightShadowStrength;
+cvar_t	*r_rtDlightShadowSoftness;
+cvar_t	*r_rtDlightShadowRays;
+cvar_t	*r_rtModelShadows;
+cvar_t	*r_rtModelShadowStrength;
+cvar_t	*r_rtModelShadowSoftness;
+cvar_t	*r_rtModelShadowRays;
+cvar_t	*r_rtModelShadowDistance;
+cvar_t	*r_rtShadowCasters;   // [QL] E165
+cvar_t	*r_rtActorShadows;    // [QL] E166
+cvar_t	*r_rtActorShadowStrength;
+cvar_t	*r_rtActorShadowLength;   // [QL] E167
+cvar_t	*r_rtActorShadowSoftness;
+cvar_t	*r_rtActorShadowRays;
+cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
+cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
+cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
+cvar_t	*r_rtLightField;           // [QL] E176
+cvar_t	*r_rtShadowSun;            // [QL] E178
+cvar_t	*r_rtActorCaps;            // [QL] E180
+cvar_t	*r_rtCull;                 // [QL] E203
+cvar_t	*r_rtActorLight;           // [QL] E211
+cvar_t	*r_rtActorRefit;           // [QL] E208
+cvar_t	*r_rtTimings;              // [QL] E177
+cvar_t	*r_rtLevelShadows;
+cvar_t	*r_bloomHDR; // [QL] E158
 cvar_t	*r_presentBits;
 
 static cvar_t *r_ignorehwgamma;
@@ -85,6 +115,8 @@ cvar_t	*r_vbo;
 #endif
 cvar_t	*r_fbo;
 cvar_t	*r_hdr;
+cvar_t	*r_shaderTimeSource;
+cvar_t	*r_verboseImageFallback;
 cvar_t	*r_bloom;
 cvar_t	*r_bloom_threshold;
 cvar_t	*r_bloom_intensity;
@@ -141,6 +173,42 @@ cvar_t	*r_picmip;
 cvar_t	*r_nomip;
 cvar_t	*r_showtris;
 cvar_t	*r_showsky;
+cvar_t	*r_rt;		// [QL] R13
+cvar_t	*r_rtao;
+cvar_t	*r_rtaoRadius;
+cvar_t	*r_rtaoIntensity;
+cvar_t	*r_rtaoSamples;
+cvar_t	*r_rtDynamic;
+cvar_t	*r_rtaoNormals;
+cvar_t	*r_rtaoWeapon;
+cvar_t	*r_rts;
+cvar_t	*r_rtaoDenoise;
+cvar_t	*r_rtaoTemporal;   // [QL] E196
+cvar_t	*r_rtShadowTemporal;   // [QL] E196
+cvar_t	*r_rtaoResolution;   // [QL] E150
+cvar_t	*r_ssrResolution;    // [QL] E151
+cvar_t	*r_ssrRayTrace;      // [QL] E156
+cvar_t	*r_pipelineCache;    // [QL] E152
+cvar_t	*r_ssao;             // [QL] E154
+cvar_t	*r_stencilSelfShadow;   // [QL] E155
+cvar_t	*r_rtaoLights;
+cvar_t	*r_ssr;
+cvar_t	*r_ssrDistance;
+cvar_t	*r_ssrSteps;
+cvar_t	*r_ssrThickness;
+cvar_t	*r_ssrDebug;
+cvar_t	*r_ssrEmitters;
+cvar_t	*r_waterWaves;
+cvar_t	*r_waterWaveScale;
+cvar_t	*r_waterWaveSpeed;
+cvar_t	*r_waterWaveSteepness;
+cvar_t	*r_waterWaveHeight;
+cvar_t	*r_waterFoam;
+cvar_t	*r_waterRippleSize;      // [QL] R28
+cvar_t	*r_waterRippleHeight;
+cvar_t	*r_waterRippleWaves;
+cvar_t	*r_waterRippleLife;
+cvar_t	*r_waterRippleReflect;
 cvar_t	*r_shownormals;
 cvar_t	*r_finish;
 cvar_t	*r_clear;
@@ -168,6 +236,19 @@ cvar_t	*r_defaultImage;
 
 cvar_t	*r_ambientScale;
 cvar_t	*r_directedScale;
+
+// [QL] R20 Stage A
+cvar_t	*r_qlNormalMaps;
+cvar_t	*r_qlNormalScale;
+cvar_t	*r_qlNormalMaxTilt;
+cvar_t	*r_deluxeMapping;
+cvar_t	*r_qlBumpScale;
+cvar_t	*r_qlParallax;
+cvar_t	*r_qlBumpSpecular;
+cvar_t	*r_qlNaturalTextures;
+cvar_t	*r_qlNaturalRotate;
+cvar_t	*r_qlNaturalContrast;
+cvar_t	*r_qlNormalFlipG;
 cvar_t	*r_debugLight;
 cvar_t	*r_debugSort;
 cvar_t	*r_printShaders;
@@ -252,7 +333,9 @@ static void R_ClearSymTables( void )
 
 // for modular renderer
 #ifdef USE_RENDERER_DLOPEN
-void QDECL Com_Error( errorParm_t code, const char *fmt, ... )
+// [QL PATCH] this tree declares Com_Error as (int, const char*, ...) and marks
+// it noreturn; Quake3e uses errorParm_t. Same values, incompatible declaration.
+void QDECL Com_Error( int code, const char *fmt, ... )
 {
 	char buf[ 4096 ];
 	va_list	argptr;
@@ -542,7 +625,7 @@ static void InitOpenGL( void )
 
 		ri.CL_SetScaling( 1.0, glConfig.vidWidth, glConfig.vidHeight );
 
-		if ( r_fbo->integer )
+		if ( vk_fbo_wanted() )
 		{
 			if ( r_renderScale->integer )
 			{
@@ -818,6 +901,15 @@ void RB_TakeScreenshot( int x, int y, int width, int height, const char *fileNam
 RB_TakeScreenshotJPEG
 ==================
 */
+/*
+[QL] The encoder is renderercommon/tr_image_jpg.c, which this renderer already
+links. Quake3e moved it into the engine and calls out through ri.CL_SaveJPG; the
+engine side of that here is a stub that only prints a warning, so screenshotJPEG
+and motion-JPEG video recorded nothing - while the backend still printed "Wrote".
+*/
+void RE_SaveJPG( char *filename, int quality, int image_width, int image_height, byte *image_buffer, int padding );
+size_t RE_SaveJPGToBuffer( byte *buffer, size_t bufSize, int quality, int image_width, int image_height, byte *image_buffer, int padding );
+
 void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fileName )
 {
 	byte *buffer;
@@ -830,7 +922,7 @@ void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fil
 	// gamma correction
 	R_GammaCorrect( buffer + offset, memcount );
 
-	ri.CL_SaveJPG( fileName, r_screenshotJpegQuality->integer, width, height, buffer + offset, padlen );
+	RE_SaveJPG( (char *)fileName, r_screenshotJpegQuality->integer, width, height, buffer + offset, padlen );
 	ri.Hunk_FreeTempMemory( buffer );
 }
 
@@ -1175,7 +1267,7 @@ const void *RB_TakeVideoFrameCmd( const void *data )
 
 	if ( cmd->motionJpeg )
 	{
-		memcount = ri.CL_SaveJPGToBuffer( cmd->encodeBuffer, linelen * cmd->height,
+		memcount = RE_SaveJPGToBuffer( cmd->encodeBuffer, linelen * cmd->height,
 			r_aviMotionJpegQuality->integer,
 			cmd->width, cmd->height, cBuf, padlen );
 		ri.CL_WriteAVIVideoFrame(cmd->encodeBuffer, memcount);
@@ -1453,6 +1545,27 @@ static void GfxInfo_f( void )
 
 
 #ifdef USE_VULKAN
+/*
+[QL] rtao_instances - what the occlusion structure was built from this frame.
+
+Requested rather than continuous: the interesting frame is the one the player
+is looking at when something is wrong, and that frame has a hundred entities in
+it. Type the command while standing in front of the problem and the next build
+prints its own contents.
+*/
+static void R_RTAOInstances_f( void )
+{
+	vk_rt_request_dump();
+	ri.Printf( PRINT_ALL, "RT: dumping the next dynamic structure build...\n" );
+}
+
+
+/* [QL] E194: GPU memory by heap, with use and budget where the driver says */
+static void VkMem_f( void )
+{
+	vk_print_memory( qfalse );
+}
+
 static void VkInfo_f( void )
 {
 	ri.Printf(PRINT_ALL, "max_vertex_usage: %iKb\n", (int)((vk.stats.vertex_buffer_max + 1023) / 1024) );
@@ -1460,6 +1573,37 @@ static void VkInfo_f( void )
 
 	ri.Printf(PRINT_ALL, "pipeline handles: %i\n", vk.pipeline_create_count );
 	ri.Printf(PRINT_ALL, "pipeline descriptors: %i, base: %i\n", vk.pipelines_count, vk.pipelines_world_base );
+
+	/*
+	[QL] R28. The health of the pipeline index, because it is the thing standing
+	between the static bump pass and a linear scan of every pipeline per surface
+	per frame - and a hash that has degenerated into one long chain performs
+	exactly like the scan it replaced while looking fine.
+
+	"longest chain" is the number that says so. It should be a small single
+	digit. Anything approaching the pipeline count means the hash is not
+	spreading and the lookup is linear again.
+
+	Walked here rather than maintained as a counter: this runs when someone types
+	/gfxinfo, and a statistic that costs something on every alloc to answer a
+	question nobody asks most days is the wrong trade.
+	*/
+	{
+		uint32_t i, len, longest = 0, used = 0;
+		for ( i = 0; i < ARRAY_LEN( vk.pipeline_hash ); i++ ) {
+			uint32_t n = vk.pipeline_hash[i];
+			if ( n == ~0U )
+				continue;
+			used++;
+			for ( len = 0; n != ~0U && len <= MAX_VK_PIPELINES; len++ )
+				n = vk.pipeline_next[n];
+			if ( len > longest )
+				longest = len;
+		}
+		ri.Printf(PRINT_ALL, "pipeline index: %i/%i buckets used, longest chain %i\n",
+			used, (int)ARRAY_LEN( vk.pipeline_hash ), longest );
+	}
+
 	ri.Printf(PRINT_ALL, "image chunks: %i\n", vk_world.num_image_chunks );
 }
 #endif
@@ -1487,9 +1631,160 @@ static void RE_SyncRender( void )
 R_Register
 ===============
 */
+
+/*
+============
+R_MapLights_f
+
+[QL] R20/R22: does this map still carry its light entities?
+
+The whole question of whether a Quake Live rock can be made to look round turns
+on one fact that cannot be reasoned out from here. Those rocks are brushwork -
+Quake levels are one BSP, there are no props - and q3map2 lights brush faces per
+face unless the shader asks for phong, so the faceting is baked into the
+lightmap texture. Nothing that changes a normal at runtime can un-bake a
+discontinuity by multiplying against it.
+
+Computing direct light at runtime instead could, and R13 already built the
+acceleration structure it would need. That requires knowing where the lights
+are. q3map2 strips `light` entities from the BSP after compiling unless it was
+run with -keeplights, and whether Quake Live's maps were is not something to
+guess at after the last several days of guessing.
+
+R_LoadEntities keeps the entire entity string and parses only worldspawn out of
+it, so if the lights are there they are already in memory and unread.
+
+Prints the lightgrid as well, because that is the fallback if they are gone, and
+its resolution is the thing that decides whether the fallback is usable at all -
+one sample every 64 x 64 x 128 units cannot shape a rock.
+============
+*/
+static void R_MapLights_f( void ) {
+	const char *p;
+	char *token;
+	int totalEnts = 0, lights = 0, shown = 0;
+
+	if ( tr.world == NULL || tr.world->entityString == NULL ) {
+		ri.Printf( PRINT_ALL, "No world loaded.\n" );
+		return;
+	}
+
+	p = tr.world->entityString;
+
+	while ( 1 ) {
+		char classname[MAX_TOKEN_CHARS];
+		char origin[MAX_TOKEN_CHARS];
+		char light[MAX_TOKEN_CHARS];
+		char color[MAX_TOKEN_CHARS];
+
+		token = R_ParseExt( &p, qtrue );
+		if ( !token[0] ) {
+			break;                  // end of the string
+		}
+		if ( Q_stricmp( token, "{" ) != 0 ) {
+			continue;               // not at a block yet
+		}
+
+		classname[0] = origin[0] = light[0] = color[0] = '\0';
+		totalEnts++;
+
+		while ( 1 ) {
+			char key[MAX_TOKEN_CHARS];
+
+			token = R_ParseExt( &p, qtrue );
+			if ( !token[0] || Q_stricmp( token, "}" ) == 0 ) {
+				break;
+			}
+			Q_strncpyz( key, token, sizeof( key ) );
+
+			token = R_ParseExt( &p, qfalse );
+			if ( !token[0] ) {
+				break;
+			}
+
+			if ( !Q_stricmp( key, "classname" ) ) {
+				Q_strncpyz( classname, token, sizeof( classname ) );
+			} else if ( !Q_stricmp( key, "origin" ) ) {
+				Q_strncpyz( origin, token, sizeof( origin ) );
+			} else if ( !Q_stricmp( key, "light" ) || !Q_stricmp( key, "_light" ) ) {
+				Q_strncpyz( light, token, sizeof( light ) );
+			} else if ( !Q_stricmp( key, "_color" ) || !Q_stricmp( key, "color" ) ) {
+				Q_strncpyz( color, token, sizeof( color ) );
+			}
+		}
+
+		if ( !Q_stricmp( classname, "light" ) ) {
+			lights++;
+			/* a handful is enough to see the shape of it; a map with lights has
+			   hundreds and printing them all buries the summary */
+			if ( shown < 8 ) {
+				shown++;
+				ri.Printf( PRINT_ALL, "  light at %s, intensity %s, colour %s\n",
+					origin[0] ? origin : "(none)",
+					light[0] ? light : "(default 300)",
+					color[0] ? color : "(white)" );
+			}
+		}
+	}
+
+	ri.Printf( PRINT_ALL, "%s: %i entities in the BSP, %i of them lights\n",
+		tr.world->baseName, totalEnts, lights );
+
+	if ( lights == 0 ) {
+		ri.Printf( PRINT_ALL, "  q3map2 stripped them - it does unless run with -keeplights.\n"
+			"  Runtime relighting is off the table for this map; the lightgrid below is\n"
+			"  the only directional light data left.\n" );
+	} else {
+		ri.Printf( PRINT_ALL, "  They survived. Runtime direct lighting against the R13\n"
+			"  acceleration structure is possible on this map.\n" );
+	}
+
+	/*
+	[QL] The surfaces have the other half of the deluxemap answer: with them
+	interleaved, every surface points at an even index. Counted during surface
+	parsing, because the BSP's index is not kept on the runtime surface.
+	*/
+	if ( tr.world->deluxeMaps ) {
+		const int odd = tr.world->oddLightmapRefs;
+
+		if ( odd > 0 ) {
+			tr.world->deluxeMaps = qfalse;
+			ri.Printf( PRINT_ALL, "Deluxemaps: no - %i lightmaps is even, but %i surface(s)\n"
+				"  reference an odd one, so they are all ordinary lightmaps.\n",
+				tr.world->numLightmapsInBsp, odd );
+		} else {
+			ri.Printf( PRINT_ALL, "Deluxemaps: YES - %i maps, every surface on an even index.\n"
+				"  Per-texel light direction exists in this BSP. A deluxemap path plus\n"
+				"  smoothed normals could shade that geometry under the baked light.\n",
+				tr.world->numLightmapsInBsp );
+		}
+	} else {
+		ri.Printf( PRINT_ALL, "Deluxemaps: no - %i lightmap(s), not interleaved.\n"
+			"  There is no per-texel light direction anywhere in this BSP.\n",
+			tr.world->numLightmapsInBsp );
+	}
+
+	if ( tr.world->lightGridData != NULL ) {
+		ri.Printf( PRINT_ALL, "Lightgrid: %i x %i x %i samples, one every %g x %g x %g units\n",
+			tr.world->lightGridBounds[0], tr.world->lightGridBounds[1], tr.world->lightGridBounds[2],
+			tr.world->lightGridSize[0], tr.world->lightGridSize[1], tr.world->lightGridSize[2] );
+	} else {
+		ri.Printf( PRINT_ALL, "Lightgrid: none in this map\n" );
+	}
+}
+
+
+
+/* [QL] E162: what the ray-traced shadow passes did last frame */
+static void R_RTShadows_f( void ) {
+	R_RTShadowReport( qtrue );
+}
+
+
 static void R_Register( void )
 {
 	// make sure all the commands added here are also removed in R_Shutdown
+	ri.Cmd_AddCommand( "maplights", R_MapLights_f );   /* [QL] R20/R22 probe */
 	ri.Cmd_AddCommand( "imagelist", R_ImageList_f );
 	ri.Cmd_AddCommand( "shaderlist", R_ShaderList_f );
 	ri.Cmd_AddCommand( "skinlist", R_SkinList_f );
@@ -1500,6 +1795,9 @@ static void R_Register( void )
 	ri.Cmd_AddCommand( "gfxinfo", GfxInfo_f );
 #ifdef USE_VULKAN
 	ri.Cmd_AddCommand( "vkinfo", VkInfo_f );
+	ri.Cmd_AddCommand( "vkmem", VkMem_f );   /* [QL] E194 */
+	ri.Cmd_AddCommand( "rtao_instances", R_RTAOInstances_f );
+	ri.Cmd_AddCommand( "rtshadows", R_RTShadows_f );   // [QL] E162
 #endif
 
 	//
@@ -1591,13 +1889,41 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_dynamiclight, "Enables dynamic lighting." );
 #ifdef USE_PMLIGHT
 #if arm32 || arm64 // RPi4 Vulkan driver have very poor GLSL shaders performance...
-	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "0", CVAR_ARCHIVE );
+	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "0", CVAR_ARCHIVE_ND );
 #else
-	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "1", CVAR_ARCHIVE );
+	/*
+	[QL] Left at 1 - do not "fix" the dim model glow by raising this to 2.
+	
+	I tried that and it is backwards. R_SetupEntityLighting (tr_light.c) folds
+	every dynamic light into ent->directedLight, which is what makes a quad glow
+	show up on a player or an item - and mode 2 is the one setting that SKIPS
+	that loop, on the theory that pmlight will light the model per-pixel instead.
+	renderergl2 runs that same loop unconditionally, with no mode gate at all.
+	
+	So mode 2 removes the very contribution that makes the two renderers match.
+	At mode 1 with r_dlightScale 1 the entity-lighting maths here is identical to
+	renderergl2's, same DLIGHT_AT_RADIUS and DLIGHT_MINIMUM_RADIUS.
+	
+	Flag changed to CVAR_ARCHIVE_ND, which is worth keeping: plain CVAR_ARCHIVE
+	is written to the user config even at its default, so a changed default would
+	never reach anyone who had already run a build - the trap in CLAUDE.md.
+	*/
+	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "1", CVAR_ARCHIVE_ND );
 #endif
 	ri.Cvar_CheckRange( r_dlightMode, "0", "2", CV_INTEGER );
 	ri.Cvar_SetDescription( r_dlightMode, "Dynamic light mode:\n 0: VQ3 'fake' dynamic lights\n 1: High-quality per-pixel dynamic lights, slightly faster than VQ3's on modern hardware\n 2: Same as 1 but applies to all MD3 models too" );
-	r_dlightScale = ri.Cvar_Get( "r_dlightScale", "0.5", CVAR_ARCHIVE_ND );
+	// [QL] Quake3e ships this at 0.5, which halves every dynamic light's radius
+	// (RE_AddLightToScene: intensity *= r_dlightScale, then dl->radius =
+	// intensity). renderergl2 has no such cvar and so runs at full radius, so
+	// the same scene was visibly dimmer under Vulkan than under OpenGL - the
+	// quad glow on a powered-up player and on the powerup itself are both plain
+	// dlights (cg_players.c and cg_ents.c, radius 200 + rand()&31), and both
+	// came out half size. 1 matches the OpenGL renderer and Quake Live.
+	//
+	// CVAR_ARCHIVE_ND, so this default is not overridden by an archived copy
+	// unless somebody set the cvar deliberately - changing it here does take
+	// effect, unlike a plain CVAR_ARCHIVE default.
+	r_dlightScale = ri.Cvar_Get( "r_dlightScale", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_dlightScale, "0.1", "1", CV_FLOAT );
 	ri.Cvar_SetDescription( r_dlightScale, "Scales dynamic light radius." );
 	r_dlightIntensity = ri.Cvar_Get( "r_dlightIntensity", "1.0", CVAR_ARCHIVE_ND );
@@ -1634,6 +1960,173 @@ static void R_Register( void )
 	r_directedScale = ri.Cvar_Get( "r_directedScale", "1", CVAR_CHEAT );
 	ri.Cvar_SetDescription( r_directedScale, "Light grid direct light scaling on entity models." );
 
+	/*
+	[QL] R20 Stage A. Both are CVAR_LATCH and neither is CVAR_ARCHIVE.
+
+	Latched because the perturbation is baked into image bytes at shader-parse
+	time, not applied by a uniform: changing either value only means anything
+	once the shaders are re-parsed, and CVAR_LATCH is the engine saying so
+	instead of the value appearing to take and doing nothing. Not archived
+	because these are defaults we choose, and an archived default stops being a
+	default the first time a config is written.
+	*/
+	r_qlNormalMaps = ri.Cvar_Get( "r_qlNormalMaps", "1", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNormalMaps, "[QL] Perturb dynamically lit world surfaces with a normal map derived from their own texture. Takes effect on vid_restart." );
+	r_qlNormalScale = ri.Cvar_Get( "r_qlNormalScale", "0.5", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNormalScale, "[QL] Strength of derived normal-map perturbation. 1.0 tilts 45 degrees at a luminance slope of 32 per texel. Takes effect on vid_restart." );
+	/*
+	[QL] The steepest angle a derived normal may reach, in degrees. Separate
+	from the scale on purpose: the scale says how much shaping a gentle gradient
+	gets, this says how hard a painted line is allowed to become. One knob could
+	not do both - a texture's seams outrun its shading by an order of magnitude,
+	so a scale low enough to tame the seams leaves the shading invisible.
+
+	15, not 30, and the difference is not taste. What matters is not the tilt
+	angle but the brightness ratio it produces, because diffuse is dot(N,L) and
+	a normal tilted +-t at light incidence phi spans cos(phi-t) to cos(phi+t).
+	A projectile flying along a wall lights it at grazing incidence, and there
+	the ratio runs away:
+
+	    cap     30deg incidence   45deg    60deg
+	    12deg        1.3x          1.5x     2.2x
+	    15deg        1.4x          1.7x     2.7x
+	    30deg        2.0x          3.7x    86.0x
+
+	At 30 the shaded face of a slat goes to black and every painted seam reads
+	as a hard band - reported from play, and directional, because which face of
+	an asymmetric slat meets the light depends on which side you fire from.
+	That is the perturbation behaving correctly on normals that were too steep.
+
+	The first version of this cap shipped at 30 because the tilt angle was the
+	thing measured. The angle was never the quantity that mattered.
+	*/
+	r_qlNormalMaxTilt = ri.Cvar_Get( "r_qlNormalMaxTilt", "15", CVAR_LATCH );
+	/*
+	[QL] R25. The static bump pass. Live, not latched, because unlike the R20
+	pair nothing here is baked into an image - both values are specialization
+	constants, so changing one allocates a pipeline and takes effect at once.
+
+	r_deluxeMapping: 0 off, 1 on, 2 draws the deluxemap's direction field, 3
+	draws the perturbed normal, 4 draws the modulation alone with mid-grey
+	meaning unchanged, 5 draws the normal map itself in the lavender every tool
+	shows one in. The debug views replace what is under them rather than
+	multiplying it, which is why there are two blends.
+
+	5 is the one that depends on nothing else - not the deluxemap, not the
+	tangent basis, not the light - so it is the first thing to look at when the
+	rest disagree, and the only one worth having on a map with no deluxemaps.
+	*/
+	r_deluxeMapping = ri.Cvar_Get( "r_deluxeMapping", "1", 0 );
+	ri.Cvar_SetDescription( r_deluxeMapping, "[QL] Light normal-mapped world surfaces with the deluxemap's per-texel light direction. 2-5 are debug views; 5 shows the normal map itself. Needs a map compiled with -deluxe." );
+	r_qlBumpScale = ri.Cvar_Get( "r_qlBumpScale", "1", 0 );
+	ri.Cvar_SetDescription( r_qlBumpScale, "[QL] Strength of static normal-map shading, 0 to 1." );
+
+	/*
+	[QL] R25. The two things that make a normal map read as depth rather than
+	as paint, and neither is the normal map's strength.
+
+	r_qlParallax marches the view ray through the height field in the normal
+	map's alpha and offsets the lookup, so a brick hides the mortar behind it at
+	a grazing angle. That self-occlusion is what a normal map structurally
+	cannot do - it changes how a flat surface answers light and never where its
+	detail sits. No vertex moves: geometry, silhouette and collision are
+	untouched, which is what separates it from R21.
+
+	r_qlBumpSpecular adds a Blinn-Phong highlight against the deluxemap's
+	direction. A lightmap was baked from a viewpoint that was not yours and can
+	never produce a highlight that moves when you do, and a moving highlight is
+	most of what the eye reads as relief.
+
+	Measured in uv units, so the right value depends on how far a texture tiles
+	over a surface. 0.04 is about a brick's depth at the test map's scale.
+	*/
+	r_qlParallax = ri.Cvar_Get( "r_qlParallax", "0.04", 0 );
+	ri.Cvar_SetDescription( r_qlParallax, "[QL] Parallax depth for static bump surfaces, in texture units. 0 disables. Needs height in the normal map's alpha." );
+	r_qlBumpSpecular = ri.Cvar_Get( "r_qlBumpSpecular", "0.5", 0 );
+	ri.Cvar_SetDescription( r_qlBumpSpecular, "[QL] Specular highlight strength on static bump surfaces. A highlight that moves with the view is most of what reads as depth." );
+
+	ri.Cvar_SetDescription( r_qlNormalMaxTilt, "[QL] Steepest angle a derived normal may reach, in degrees. Caps hard texture edges without flattening gentle shading; above about 20 a grazing light bands them. Takes effect on vid_restart." );
+
+	/*
+	[QL] R27. Stochastic hex-tiling - Minecraft's "natural textures" for a game
+	whose walls are polygons rather than blocks. hextile.glsl has the algorithm
+	and why OptiFine's own mechanism does not port.
+
+	LATCHED, unlike the R25 pair above, and the reason is worth recording because
+	it is not laziness. The static bump pass builds its pipeline at draw time, so
+	its knobs can be live; the generic path builds every stage's pipeline once, in
+	FinishShader, at map load. Changing a specialization constant after that
+	changes nothing until the shaders are re-finished, which is vid_restart. A
+	cvar that silently does nothing is the failure mode this tree has hit most
+	often, so it is declared as what it is.
+
+	0 off. 1 is the useful setting: shaders that ask for it with qlNaturalTexture
+	get it and nothing else does. 2 forces it on every world diffuse stage, which
+	is for seeing the effect across a whole map at once and is NOT a play setting
+	- it costs three texture fetches per surface and it destroys any texture with
+	structure in it, because blending three randomly offset copies of a brick
+	wall is three brick walls. OptiFine ships an allow-list for exactly this
+	reason and mode 1 is that allow-list.
+	*/
+	r_qlNaturalTextures = ri.Cvar_Get( "r_qlNaturalTextures", "1", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNaturalTextures, "[QL] Break up texture repetition with stochastic hex-tiling. 0 off, 1 shaders that ask (qlNaturalTexture), 2 force on all world diffuse stages - 2 costs 3x texture fetches and mangles structured textures. Takes effect on vid_restart." );
+
+	/*
+	Rotation strength. 0 offsets each hex cell without turning it, 1 turns it to
+	any angle. Offsets alone already break a repeat; rotation is what stops the
+	three blended copies sharing a direction, which is what gives a stone or a
+	grain away. Not latched - it is read when a shader's pipelines are built, so
+	it follows r_qlNaturalTextures and takes effect on the same vid_restart.
+	*/
+	r_qlNaturalRotate = ri.Cvar_Get( "r_qlNaturalRotate", "0.5", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNaturalRotate, "[QL] Per-cell rotation for natural textures, 0 to 1. 0 is offsets only. Takes effect on vid_restart." );
+
+	/*
+	Contrast on the blend weights, standing in for the histogram preservation the
+	original algorithm needs a precomputed per-texture lookup for. The reasoning
+	is that averaging three samples averages away their variance, so an averaged
+	texture reads flat and grey, and pushing the weights towards 0 and 1 keeps
+	most of the surface mostly one sample.
+
+	Measured on the cobble sheet at the corridor's scale, the received wisdom
+	overstates it: plain tiling has a luminance stddev of 26.2, and hex-tiling
+	gives 29.7 at 0.5 and 30.7 at 0.75 - a 3% difference between them, and BOTH
+	are above plain rather than below it. The variance never gets averaged away
+	here because the pow(w,7) falloff on the barycentrics has already made the
+	weights nearly one-hot before this runs; Gain3 is adjusting something that is
+	mostly decided.
+
+	So 0.75 is the reference's value and it is a fine default, but it is not
+	load-bearing, and anyone chasing a washed-out surface should look at the
+	rotation or the texture rather than here.
+	*/
+	r_qlNaturalContrast = ri.Cvar_Get( "r_qlNaturalContrast", "0.75", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNaturalContrast, "[QL] Blend contrast for natural textures, 0.5 to 0.95. Measured effect is small - the barycentric falloff already does this job. Takes effect on vid_restart." );
+
+	/*
+	[QL] E103. The green-channel convention, as a switch, because it is not
+	settleable by reasoning from this end.
+
+	A tangent-space normal map is authored against OpenGL (+G is up) or DirectX
+	(+G is down). They are the same data with Y negated, and the wrong one turns
+	every bump into a dent while everything else about the shading stays
+	plausible - which is why "you should be able to see the spheres sticking out
+	here, but you dont" survived several rounds unresolved.
+
+	Which is right depends on whether V increases up or down on the surface, a
+	property of the map's UVs rather than of the shader. So: look at it.
+	qltest_bump's dome panel shows hemispheres under one value and craters under
+	the other. Whichever shows domes is correct, and then this stops being a
+	cvar and becomes a constant.
+
+	Live, not latched - it is a specialization constant on a draw-time pipeline,
+	so it takes effect the moment it is set and you can flip it back and forth
+	while looking at the panel.
+	*/
+	r_qlNormalFlipG = ri.Cvar_Get( "r_qlNormalFlipG", "0", CVAR_LATCH );
+	ri.Cvar_SetDescription( r_qlNormalFlipG, "[QL] Flip the normal map's green channel (OpenGL vs DirectX convention). If bumps look like dents, set this to 1. Diagnostic - see qltest_bump's dome panel. Takes effect on vid_restart." );
+
+
 	//r_anaglyphMode = ri.Cvar_Get( "r_anaglyphMode", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	//ri.Cvar_SetDescription( r_anaglyphMode, "Enable rendering of anaglyph images. Valid options for 3D glasses types:\n 0: Disabled\n 1: Red-cyan\n 2: Red-blue\n 3: Red-green\n 4: Green-magenta" );
 
@@ -1642,9 +2135,51 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_greyscale, "Desaturate rendered frame, requires \\r_fbo 1." );
 	ri.Cvar_SetGroup( r_greyscale, CVG_RENDERER );
 
-	r_dither = ri.Cvar_Get( "r_dither", "0", CVAR_ARCHIVE_ND );
-	ri.Cvar_CheckRange( r_dither, "0", "1", CV_INTEGER );
-	ri.Cvar_SetDescription(r_dither, "Set dithering mode:\n 0 - disabled\n 1 - ordered\nRequires " S_COLOR_CYAN "\\r_fbo 1." );
+	/* [QL] E157. Both off by default - they change every pixel of the image.
+	   Live: the present pass is rebuilt when either changes. */
+	r_fxaa = ri.Cvar_Get( "r_fxaa", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_fxaa, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_fxaa, "Fast approximate anti-aliasing on the finished frame - smooths "
+		"jagged edges for almost no cost, for when multisampling (" S_COLOR_CYAN "\\r_ext_multisample"
+		S_COLOR_WHITE ") is off. Softens the image, and the HUD's text edges, a little; "
+		S_COLOR_CYAN "\\r_sharpen" S_COLOR_WHITE " puts detail back. Requires " S_COLOR_CYAN "\\r_fbo 1." );
+	ri.Cvar_SetGroup( r_fxaa, CVG_RENDERER );
+
+	r_sharpen = ri.Cvar_Get( "r_sharpen", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_sharpen, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_sharpen, "Contrast-adaptive sharpening of the finished frame, 0 (off) to 1 "
+		"(strongest). Sharpens soft areas more than hard edges, so it does not ring. For "
+		S_COLOR_CYAN "\\r_renderScale" S_COLOR_WHITE " upscaling and " S_COLOR_CYAN "\\r_fxaa"
+		S_COLOR_WHITE ". Requires " S_COLOR_CYAN "\\r_fbo 1." );
+	ri.Cvar_SetGroup( r_sharpen, CVG_RENDERER );
+
+	/* [QL] E158. 0 keeps what there was. Live. */
+	r_toneMap = ri.Cvar_Get( "r_toneMap", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_toneMap, "0", "3", CV_INTEGER );
+	ri.Cvar_SetDescription( r_toneMap, "The response curve applied to the finished frame:\n"
+		" 0 - automatic (default): the soft knee with " S_COLOR_CYAN "\\r_rts" S_COLOR_WHITE
+		", the plain clip without\n"
+		" 1 - clip: multiply by the overbright factor and cut at full brightness\n"
+		" 2 - soft knee: identical below 80%, the top rolled off instead of cut\n"
+		" 3 - filmic (ACES fit): reshapes the whole range - more contrast, softer highlights, "
+		"white slightly grey. Also applies to the HUD and menus\n"
+		"Most useful with " S_COLOR_CYAN "\\r_rts" S_COLOR_WHITE ", which keeps what is above "
+		"full brightness for the curve to work with. Requires " S_COLOR_CYAN "\\r_fbo 1." );
+	ri.Cvar_SetGroup( r_toneMap, CVG_RENDERER );
+
+	/* [QL] E198: 2 by default, and 2 exists. The menu row has always offered
+	   "Temporal (best)" 2 and OpenGL 2 defaults to it; here the range stopped
+	   at 1, so the row was refused, and the default was 0 - an 8-bit present
+	   with no dither at all, which on a dark gradient (the Quake Live sign on
+	   japanesecastles) shows every one of its 256 steps as a band. ARCHIVE_ND,
+	   so an install that never chose a value picks the new default up. */
+	/* [QL] E210: 1, not 2. Temporal dither moves its pattern every frame, so a
+	   still screen is never still - one of three frame-to-frame changes the
+	   tester saw as "scrolling noise" after the build he had signed off.
+	   Ordered dither removes the banding just as well and holds still. */
+	r_dither = ri.Cvar_Get( "r_dither", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_dither, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription(r_dither, "Set dithering mode:\n 0 - disabled\n 1 - ordered (default) - holds still\n 2 - temporal: the ordered pattern, shifted every frame so it averages away\nRequires " S_COLOR_CYAN "\\r_fbo 1." );
 	ri.Cvar_SetGroup( r_dither, CVG_RENDERER );
 
 	r_presentBits = ri.Cvar_Get( "r_presentBits", "24", CVAR_ARCHIVE_ND | CVAR_LATCH );
@@ -1768,9 +2303,22 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_ext_texture_filter_anisotropic, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription( r_ext_texture_filter_anisotropic, "Allow anisotropic filtering." );
 
-	r_ext_max_anisotropy = ri.Cvar_Get( "r_ext_max_anisotropy", "8", CVAR_ARCHIVE_ND | CVAR_LATCH );
-	ri.Cvar_CheckRange( r_ext_max_anisotropy, "1", NULL, CV_INTEGER );
-	ri.Cvar_SetDescription( r_ext_max_anisotropy, "Sets maximum anisotropic level for your graphics driver. Requires \\r_ext_texture_filter_anisotropic." );
+	/*
+	[QL] 16, not Quake3e's 8. Every desktop GPU of the last fifteen years
+	advertises maxSamplerAnisotropy 16 and the sampler clamps to the device
+	limit anyway, so the old default was leaving quality on the table for no
+	saving worth measuring.
+
+	Two things to know before assuming a change took. It is CVAR_LATCH, so it
+	needs a vid_restart - and this tree aliases CVAR_ARCHIVE_ND to plain
+	CVAR_ARCHIVE, so on any machine that has run an earlier build the old 8 is
+	already written into the config and wins over this default forever. Set it
+	by hand there. vk_init reports the value actually in use at startup, which
+	is how you tell which of those you are looking at.
+	*/
+	r_ext_max_anisotropy = ri.Cvar_Get( "r_ext_max_anisotropy", "16", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_ext_max_anisotropy, "1", "16", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ext_max_anisotropy, "Maximum anisotropic filtering level: 1 (off), 2, 4, 8 or 16. Clamped to what the device supports. Requires \\r_ext_texture_filter_anisotropic 1 and a \\vid_restart." );
 
 	//r_stencilbits = ri.Cvar_Get( "r_stencilbits", "8", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
@@ -1780,6 +2328,627 @@ static void R_Register( void )
 	r_showsky = ri.Cvar_Get( "r_showsky", "0", CVAR_LATCH );
 	ri.Cvar_SetDescription( r_showsky, "Forces sky in front of all surfaces." );
 #ifdef USE_VULKAN
+	/*
+	[QL] Read-only capability report, written by vk_init after device selection.
+	Registered here so it exists and reads 0 before the renderer has looked at
+	the device. It is a renderervk cvar only - an RT control in the menu has to
+	be gated on cl_renderer as well, which is the pattern R12 already uses for
+	every other Vulkan-only row. See R13.
+	*/
+	ri.Cvar_SetDescription( ri.Cvar_Get( "r_rtAvailable", "0", CVAR_ROM ),
+		"Read-only. 1 when this device supports ray queries (Vulkan renderer only)." );
+
+	/*
+	[QL] R13: the master switch.
+
+	CVAR_LATCH because the device is created once per vid_restart and a
+	mid-frame change would be a lie.
+
+	CVAR_ARCHIVE, which reverses what this said when it was console-only, and
+	the reversal is the point rather than a slip. The rule in CLAUDE.md is that
+	archive is for values a user sets and not for values we choose - the damage
+	case being a shipped default that gets frozen into a config on first run and
+	then wins forever (r_dlightMode, con_scale, two rounds each). The moment
+	this got a toggle in the ray tracing menu it became the first kind: a
+	setting someone deliberately turns on, and one that would otherwise be off
+	again every time they launched the game, which for a menu control is simply
+	broken. cl_renderer is ARCHIVE|LATCH for exactly this reason and is the
+	closest precedent in the tree.
+
+	The trade that buys is real and is worth writing down rather than
+	discovering later: once this archives, changing the *default* stops reaching
+	anyone who has already run the game. So if RT AO is ever good enough to be
+	on by default, that has to ship as a new cvar with its own default, not by
+	flipping this one under people - which is the better behaviour for a device
+	feature anyway.
+
+	Default 0 until there is a pass that uses it. Enabling the extensions
+	changes vkCreateDevice, and a device that fails to create is not a missing
+	effect, it is no renderer.
+	*/
+	r_rt = ri.Cvar_Get( "r_rt", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_SetDescription( r_rt, "Enable Vulkan ray query support on the device. "
+		"Requires r_rtAvailable 1 and a vid_restart. No visible effect yet - "
+		"this is the device plumbing the AO pass will be built on." );
+
+	ri.Cvar_Get( "r_rtActive", "0", CVAR_ROM );
+	ri.Cvar_SetDescription( ri.Cvar_Get( "r_rtActive", "0", CVAR_ROM ),
+		"Read-only. 1 when ray query is actually enabled on the device this run, "
+		"as opposed to merely supported." );
+
+	/*
+	[QL] R13 step 3: ambient occlusion.
+
+	Archived, because every one of these is a value somebody sets from the ray
+	tracing menu - the side of the archive rule that archiving is for. Only the
+	sample count latches: it is a specialization constant baked into the
+	pipeline, so changing it means rebuilding the pipeline, and a slider that
+	silently did nothing until the next vid_restart would be worse than one that
+	says it needs one.
+	*/
+	/*
+	[QL] r_normalMapping was registered here. It is gone with the feature it
+	controlled - a cvar nothing reads is worse than no cvar, because setting it
+	reports success and does nothing, and this one was CVAR_ARCHIVE as well, so
+	it would have persisted in everyone's config after the code behind it left.
+	*/
+
+	r_rtao = ri.Cvar_Get( "r_rtao", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_rtao, "Ray-traced ambient occlusion. Requires r_rtActive 1." );
+
+	r_rtaoRadius = ri.Cvar_Get( "r_rtaoRadius", "64", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoRadius, "8", "4096", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtaoRadius, "How far ambient occlusion rays travel, in world units. "
+		"Larger darkens broader spaces and costs more to trace - the cost is per ray and grows "
+		"with the distance each one has to traverse, so this multiplies with " S_COLOR_CYAN
+		"\\r_rtaoSamples" S_COLOR_WHITE " and with resolution. Occlusion also falls off linearly "
+		"over the radius, so a large value both reaches further and darkens near hits harder." );
+
+	r_rtaoIntensity = ri.Cvar_Get( "r_rtaoIntensity", "0.8", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoIntensity, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtaoIntensity, "How dark fully occluded areas become. 0 is no effect." );
+
+	r_rtaoSamples = ri.Cvar_Get( "r_rtaoSamples", "4", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_rtaoSamples, "1", "32", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoSamples, "Rays per pixel. Baked into the pipeline, so this "
+		"needs a vid_restart." );
+
+	/*
+	[QL] Not CVAR_LATCH, even though the kernel width is a specialization
+	constant and changing it needs new pipelines. Turning the denoise off and on
+	needs neither - that is a push constant - and latching the whole cvar to
+	serve the width would make the useful half of it require a vid_restart. The
+	width takes effect on the next one; off/on is immediate.
+	*/
+	/*
+	[QL] Live, not latched: the structures exist either way and the cvar only
+	decides whether entity instances go into the one built this frame.
+	*/
+	r_rtDynamic = ri.Cvar_Get( "r_rtDynamic", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDynamic, "0", "2", CV_INTEGER );   // [QL] E174: 2
+	ri.Cvar_SetDescription( r_rtDynamic, "Let players, items and movers cast ambient occlusion, "
+		"not just the map.\n 0 - the map only\n 1 - as a box or ball at their bounds (default)\n"
+		" 2 - by their real shapes: no round blob under an item, which the box version draws "
+		"and which reads as a second shadow" );
+
+	r_rtaoNormals = ri.Cvar_Get( "r_rtaoNormals", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoNormals, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoNormals, "Where the occlusion normal comes from:\n"
+		" 0 - the screen-space derivatives of position, which is exact on a flat surface "
+		"and wrong along every silhouette\n"
+		" 1 - the better of two depth neighbours on each axis, which is right at "
+		"silhouettes\n"
+		"Live, so the two can be compared in a frame." );
+
+	r_rtaoWeapon = ri.Cvar_Get( "r_rtaoWeapon", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoWeapon, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoWeapon, "Occlude the first person weapon.\n"
+		" 0 - leave it alone, as every build before this one did\n"
+		" 1 - un-map its squashed depth range and shade it with the rest of the scene\n"
+		"It darkens against the world - a corner, a low ceiling - but does not shadow "
+		"itself, because the view model is deliberately not an occluder: a box around "
+		"the camera would black out the whole screen from inside.\nLive." );
+
+	r_rtaoLights = ri.Cvar_Get( "r_rtaoLights", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoLights, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtaoLights, "How much a dynamic light clears ambient occlusion "
+		"inside the area it lights.\n"
+		"Occlusion estimates how much " S_COLOR_CYAN "ambient" S_COLOR_WHITE " light reaches a "
+		"point. Where a rocket, a plasma bolt or a powerup is the light, the ambient term is a "
+		"small part of what is there and its contact shadow should stop being drawn - otherwise "
+		"the occlusion reads as dirt on a lit surface.\n"
+		" 0 - off, occlusion is the same whatever is lighting the area\n"
+		" 1 - fully cleared where the light reaches\n"
+		"The area is the light's own falloff, so it matches what the light actually lit." );
+
+	/*
+	[QL] R19: reflections on the map's water.
+
+	Archived and not latched. Everything here is read per frame into a uniform
+	buffer, so all of it takes effect immediately - there is no pipeline to
+	rebuild and nothing to restart.
+	*/
+	r_ssr = ri.Cvar_Get( "r_ssr", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssr, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_ssr, "Reflect the scene in the map's water, by marching the depth "
+		"buffer.\n"
+		" 0   - off\n"
+		" 0.5 - half strength\n"
+		" 1   - full\n"
+		"Only what is on screen can be reflected: a wall behind you is not in the depth buffer "
+		"and cannot appear in the water. The reflection fades out toward the edges of the screen "
+		"rather than ending at them, which is where that shows.\n"
+		"Needs a map with a water plane - the count is printed at load." );
+
+	r_ssrDistance = ri.Cvar_Get( "r_ssrDistance", "1024", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrDistance, "64", "8192", CV_FLOAT );
+	ri.Cvar_SetDescription( r_ssrDistance, "How far a reflected ray travels before giving up, in "
+		"world units. Larger reaches further across a pool and spends the same number of steps "
+		"doing it, so each step is coarser and thin geometry is more likely to be stepped over." );
+
+	/* [QL] E151. Live: both sets of pipelines exist and this picks one. */
+	r_ssrResolution = ri.Cvar_Get( "r_ssrResolution", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrResolution, "1", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssrResolution, "Resolution the water reflection is traced at:\n"
+		" 1 - full (default)\n"
+		" 2 - half: a quarter of the traces, filtered up to the screen - a slightly softer "
+		"reflection. Takes effect immediately." );
+
+	/* [QL] E156. Off by default: it changes what the water shows, and that is
+	   the player's call. Live. */
+	r_ssrRayTrace = ri.Cvar_Get( "r_ssrRayTrace", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrRayTrace, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssrRayTrace, "Where the water reflection's screen march finds "
+		"nothing (the ray left the screen, went behind your weapon, or ran out of steps), trace "
+		"it through the world instead. Needs ray tracing (" S_COLOR_CYAN "\\r_rt" S_COLOR_WHITE ").\n"
+		" 0 - off (default): the march only\n"
+		" 1 - use the hit when it is on screen and unobstructed - an exact reflection the march missed\n"
+		" 2 - also the hits that are not, lit from the map's light grid: the right brightness, "
+		"no texture. Removes the hard edge between reflecting and non-reflecting water." );
+
+	r_ssrSteps = ri.Cvar_Get( "r_ssrSteps", "24", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrSteps, "4", "128", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssrSteps, "How many samples a reflected ray takes over "
+		S_COLOR_CYAN "\\r_ssrDistance" S_COLOR_WHITE ". This is the quality control and the "
+		"cost: it is taken per water pixel on screen, so it only costs anything where water is "
+		"visible." );
+
+	r_ssrThickness = ri.Cvar_Get( "r_ssrThickness", "24", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrThickness, "1", "512", CV_FLOAT );
+	ri.Cvar_SetDescription( r_ssrThickness, "How far behind a surface a ray may pass and still "
+		"count as having hit it, in world units.\n"
+		"The depth buffer records a front face and says nothing about what is behind it, so this "
+		"is a guess at how solid things are. Too small and rays tunnel through railings and "
+		"pillars; too large and a ray reflects the empty space in front of a distant wall." );
+
+	r_ssrDebug = ri.Cvar_Get( "r_ssrDebug", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrDebug, "0", "6", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssrDebug, "Show what the reflection pass is doing instead of its "
+		"result.\n"
+		" 0 - off\n"
+		" 1 - paint the water green. Nothing green means the depth buffer does not contain the "
+		"water surface, which happens when the water shader does not write depth - no amount of "
+		"tolerance will help and the approach needs changing\n"
+		" 2 - the reflection itself, unfaded, red where the march found nothing. Red means "
+		S_COLOR_CYAN "\\r_ssrDistance" S_COLOR_WHITE ", " S_COLOR_CYAN "\\r_ssrSteps"
+		S_COLOR_WHITE " or " S_COLOR_CYAN "\\r_ssrThickness" S_COLOR_WHITE "\n"
+		" 3 - what the pass thinks the depth buffer says: red is sky, blue is the view weapon's "
+		"squashed depth range, green is ordinary world geometry. Use this when the reflection "
+		"appears somewhere it cannot be - if the gun comes out blue it is being rejected "
+		"correctly and the fault is downstream of the water test, if it comes out green the "
+		"weapon range is not where this pass was told it is\n"
+		" 4 - the depth buffer itself, near bright and far dark, before anything is decided "
+		"about it. Start here. Every view above is a threshold applied to this, and a "
+		"threshold applied to bad data looks like a bad threshold rather than bad data. A "
+		"smooth distance field with the gun in front means depth is sound; the room's "
+		"textures or the HUD showing through means this is not the depth image; the previous "
+		"frame smeared across it means the read is racing the next frame's writes\n"
+		" 5 - where the impacts are: red a crest, blue a trough, black undisturbed. The "
+		"console printing a ripple event proves cgame called; this proves the ripple reached "
+		"the surface, landed on the right plane and is where the splash was\n"
+		" 6 - where each reflection came from: green the screen march, blue a ray-traced hit "
+		"that is on screen, yellow the light-grid estimate, red nothing (see "
+		S_COLOR_CYAN "\\r_ssrRayTrace" S_COLOR_WHITE ")\n"
+		"Needs " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " above 0 - this changes what the pass "
+		"draws, it does not turn it on." );
+
+	/*
+	[QL] R19 waves. CVAR_ARCHIVE_ND on all five, deliberately: these are numbers
+	still being tuned, and CVAR_ARCHIVE would write the current default into
+	every user's config on first run and then win forever, so a better default
+	later would reach nobody. Archive-if-changed keeps the user's choice and
+	lets the shipped value keep applying to everyone who has not made one. This
+	has cost two rounds elsewhere in this tree already - r_dlightMode, con_scale.
+	*/
+	/*
+	[QL] R19: emitters, which the march cannot find.
+
+	A plasma ball is an additive sprite and writes no depth, so there is nothing
+	in the buffer for the reflection to hit. A rocket is an opaque model and
+	already reflects; the glow around it does not. This tests the reflected ray
+	against the frame's dynamic lights directly, which also means it works for
+	lights that are off screen entirely - and that is most of where a projectile
+	is when you can see its reflection.
+	*/
+	r_ssrEmitters = ri.Cvar_Get( "r_ssrEmitters", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssrEmitters, "0", "4", CV_FLOAT );
+	ri.Cvar_SetDescription( r_ssrEmitters, "How brightly projectiles and powerups glow in "
+		"reflective water. 0 turns it off.\n"
+		"These have to be handled apart from everything else the reflection finds, because "
+		"they are additive sprites and write no depth - there is nothing in the depth buffer "
+		"to march into. Rockets reflect without this; the light around them does not." );
+
+	r_waterWaves = ri.Cvar_Get( "r_waterWaves", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaves, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_waterWaves, "Wave motion on reflective water.\n"
+		"The surface stays geometrically flat - Quake Live's water is subdivided at map "
+		"compile time and cannot be retessellated at runtime, so moving its vertices would "
+		"heave it in slabs. What moves is the reflection: the surface normal travels in a "
+		"wave pattern, and the reflected image ripples with it.\n"
+		"Costs nothing when " S_COLOR_CYAN "\\r_ssr" S_COLOR_WHITE " is 0, because the pass "
+		"this lives in does not run." );
+
+	r_waterWaveScale = ri.Cvar_Get( "r_waterWaveScale", "96", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaveScale, "8", "1024", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterWaveScale, "World units from one wave crest to the next, "
+		"for the largest of the three waves; the other two are 1.7 and 3.1 times finer.\n"
+		"Small values give choppy water, large values a slow swell. A Quake Live player is "
+		"about 56 units wide, for scale." );
+
+	r_waterWaveSpeed = ri.Cvar_Get( "r_waterWaveSpeed", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaveSpeed, "0", "8", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterWaveSpeed, "How fast the waves travel. 0 freezes them, "
+		"which is the easiest way to see the wave shape itself." );
+
+	r_waterWaveSteepness = ri.Cvar_Get( "r_waterWaveSteepness", "0.08", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaveSteepness, "0", "0.5", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterWaveSteepness, "The largest slope the surface tilts to, as a "
+		"rise over run - 0.08 is a little under five degrees.\n"
+		"This is what makes the reflection ripple, and it is the strongest of the four. Past "
+		"about 0.2 the reflection starts sampling wildly different parts of the screen from "
+		"one pixel to the next and reads as noise rather than water." );
+
+	// [QL] default 0: splashes read better without it at the 4/4 splash defaults below
+	r_waterFoam = ri.Cvar_Get( "r_waterFoam", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterFoam, "0", "2", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterFoam, "How white the water goes where something has just "
+		"hit it. 0 turns it off.\n"
+		"Driven off impacts alone and not the wind waves - ordinary chop should never whiten, "
+		"only a splash should. This is also the only part of a disturbance that does not "
+		"depend on there being something to reflect: over a dark pool with nothing overhead, "
+		"a ripple that tilts the normal has almost nothing to work with." );
+
+	r_waterWaveHeight = ri.Cvar_Get( "r_waterWaveHeight", "2", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterWaveHeight, "0", "32", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterWaveHeight, "How far the surface actually rises and falls, in "
+		"world units, crest to trough.\n"
+		"Unlike the steepness above this moves the surface rather than only its normal, so the "
+		"waterline against the pool wall rises and falls with it and the reflection stretches "
+		"over a trough and compresses over a crest. Keep it small against "
+		S_COLOR_CYAN "\\r_waterWaveScale" S_COLOR_WHITE ": the two are solved against each "
+		"other, and a height approaching the wavelength stops converging." );
+
+	/*
+	[QL] R28. The reactive side of the water - what a rocket, a shotgun pellet
+	or a footfall does to it.
+
+	Everything above tunes the wind chop, which is always there and is the same
+	everywhere on the surface. None of it touches an impact: those came through
+	RE_AddWaterRipple with a per-weapon radius and strength, and the shape they
+	spread in was three #defines compiled into ssr.tmpl. So "make the splashes
+	bigger" had no answer that was not a rebuild, and turning the chop up to get
+	there made the whole pool choppier without making a single impact larger.
+
+	These four are that missing half. They are multipliers on what the weapon
+	asked for rather than absolute sizes, so the per-weapon differences that
+	cg_weapons.c sets up - a rocket against a pellet - survive being scaled.
+	*/
+	// [QL] default 4 and range to 16: 1 was too small to read in play (tuned on a
+	// laptop, 4/4 with foam off); the menu offers larger from there.
+	r_waterRippleSize = ri.Cvar_Get( "r_waterRippleSize", "4", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleSize, "0.1", "16", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleSize, "How far an impact's rings spread, as a "
+		"multiple of what the weapon asked for. 2 makes every splash reach twice as far.\n"
+		"A multiplier and not a size, so a rocket stays bigger than a shotgun pellet.\n"
+		"The rings still take the same time to get there, so raising this also makes the "
+		"front travel outward faster - see " S_COLOR_CYAN "\\r_waterRippleLife"
+		S_COLOR_WHITE " to slow it back down." );
+
+	r_waterRippleHeight = ri.Cvar_Get( "r_waterRippleHeight", "4", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleHeight, "0", "16", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleHeight, "How hard an impact hits the water, as a "
+		"multiple of the weapon's own strength. 0 leaves the chop but kills every splash.\n"
+		"Drives both how far the surface moves and how far its normal tilts, so this is the "
+		"one to reach for to make impacts read more strongly. Foam follows it too, since "
+		"foam is driven off how much disturbance is present." );
+
+	r_waterRippleWaves = ri.Cvar_Get( "r_waterRippleWaves", "5", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleWaves, "1", "24", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleWaves, "How many rings trail behind the leading edge "
+		"of a splash - the frequency of the ripple.\n"
+		"Low values give a few fat rings, high values a fine dense ring pattern. This is "
+		"counted across the ripple's whole reach, so a ring stays the same shape when "
+		S_COLOR_CYAN "\\r_waterRippleSize" S_COLOR_WHITE " changes.\n"
+		"Past about 12 the rings get close to a pixel apart at any distance and start to "
+		"shimmer rather than read as rings." );
+
+	r_waterRippleLife = ri.Cvar_Get( "r_waterRippleLife", "2.2", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleLife, "0.25", "10", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleLife, "Seconds from impact to gone.\n"
+		"A ripple's leading edge reaches its full spread exactly at the end of its life - "
+		"fast from the impact, slowing as it spreads - so "
+		"this sets how fast the rings travel as well as how long they last. Longer means "
+		"slower and more lingering, not merely more of the same.\n"
+		"Only " S_COLOR_CYAN "48" S_COLOR_WHITE " ripples exist at once and the oldest is "
+		"dropped first, so a long life plus a busy fight means earlier splashes get evicted "
+		"before they fade." );
+
+	r_waterRippleReflect = ri.Cvar_Get( "r_waterRippleReflect", "0.5", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_waterRippleReflect, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_waterRippleReflect, "How strongly a big splash's rings bounce "
+		"back off the sides of the pool, as a fraction of the wave that hit them. 0 turns "
+		"it off.\n"
+		"Only big waves bounce - explosions, rail hits, somebody jumping in - not footsteps "
+		"or bullets. The walls are the pool's bounding box, so a pool that is not a "
+		"rectangle reflects off its box rather than its exact edge." );
+
+	r_rtaoDenoise = ri.Cvar_Get( "r_rtaoDenoise", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoDenoise, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoDenoise, "Denoise the occlusion term:\n"
+		" 0 - off, shows the raw per-pixel trace\n"
+		" 1 - on\n"
+		" 2 - wide (smoother, softer contact shadows)\n"
+		"The width needs a vid_restart; off and on do not." );
+
+	/* [QL] E196 */
+	/* [QL] E208: off by default. A shadow moves with its caster over a floor
+	   that does not, so the floor's history is accepted and the old shadow is
+	   carried along - smeared, warped own-shadows in the tester's screenshots -
+	   and E196 measured the gain after the denoise as nil (edge grain 4.5
+	   either way). ARCHIVE_ND: an install that never chose picks this up. */
+	r_rtShadowTemporal = ri.Cvar_Get( "r_rtShadowTemporal", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtShadowTemporal, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtShadowTemporal, "Accumulate the traced shadows' sampled soft edge over frames, "
+		"following the camera (with " S_COLOR_CYAN "\\r_rtActorShadowSoftMode" S_COLOR_WHITE " 0 and the "
+		"shadow denoise on):\n"
+		" 0 - off (default), each frame stands alone\n"
+		" 1 - on - smoother edges for the same rays\n"
+		" 2 - debug: dark where last frame could not be reused\n"
+		"A shadow that moves leaves no trail: where this frame's rays disagree with the "
+		"average, this frame wins. Applies at once." );
+	/* [QL] E210: off by default, as E192 had it. On, the AO pattern changes
+	   every frame for the average to work, and wherever the history is
+	   rejected - which in play is constantly - that change shows as flicker.
+	   ARCHIVE_ND: an install that never chose picks this up. */
+	r_rtaoTemporal = ri.Cvar_Get( "r_rtaoTemporal", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoTemporal, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoTemporal, "Accumulate the occlusion over frames, following the camera:\n"
+		" 0 - off (default), each frame stands alone\n"
+		" 1 - on - steadier and more detailed for the same rays when still, but flickers where history is rejected\n"
+		" 2 - debug: with r_rtao 2, white where last frame was reused, grey where it was\n"
+		"     rejected (newly in view, or something moved), black where there was none\n"
+		"Surfaces newly in view, or in front of something that moved, start fresh. Applies at once." );
+
+	/* [QL] E155. Your own player's stencil shadow (cg_shadows 2). */
+	r_stencilSelfShadow = ri.Cvar_Get( "r_stencilSelfShadow", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_stencilSelfShadow, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_stencilSelfShadow, "With stencil shadows (cg_shadows 2), also cast "
+		"your own player's shadow in first person. 0 is Quake 3's behaviour, which could not "
+		"because the eye is inside that shadow's volume." );
+
+	/*
+	[QL] E161. Ray-traced shadows cast by the level. Both off by default - they
+	change the look of every scene - and all live. Both need r_rt: the rays go
+	through the level's acceleration structure. The level only: players, items
+	and doors (movers) cast none of these.
+	*/
+	r_rtDlightShadows = ri.Cvar_Get( "r_rtDlightShadows", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDlightShadows, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtDlightShadows, "Dynamic lights (muzzle flashes, rockets, plasma, "
+		"explosions) are blocked by the level instead of lighting through walls and pillars. Needs "
+		S_COLOR_CYAN "\\r_rt" S_COLOR_WHITE " and per-pixel dynamic lights (" S_COLOR_CYAN "\\r_dlightMode"
+		S_COLOR_WHITE " 1 or 2).\n 0 - off (default)\n 1 - on\n 2 - debug: blocked light shows red instead "
+		"of going away\nThe console command " S_COLOR_CYAN "rtshadows" S_COLOR_WHITE " says what both "
+		"shadow passes did last frame." );
+	r_rtDlightShadowStrength = ri.Cvar_Get( "r_rtDlightShadowStrength", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDlightShadowStrength, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtDlightShadowStrength, "How much of a blocked dynamic light is removed, "
+		"0 (none) to 1 (all)." );
+	r_rtDlightShadowSoftness = ri.Cvar_Get( "r_rtDlightShadowSoftness", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDlightShadowSoftness, "0", "32", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtDlightShadowSoftness, "Size of a dynamic light in world units, for soft "
+		"shadow edges. 0 is a point (hard edges). Pair with more " S_COLOR_CYAN "\\r_rtDlightShadowRays"
+		S_COLOR_WHITE ", or the edge is grainy." );
+	r_rtDlightShadowRays = ri.Cvar_Get( "r_rtDlightShadowRays", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtDlightShadowRays, "1", "8", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtDlightShadowRays, "Rays per lit pixel per dynamic light. 1 is enough for "
+		"hard shadows; soft ones want 4 or more. Cost scales with it." );
+
+	r_rtModelShadows = ri.Cvar_Get( "r_rtModelShadows", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadows, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtModelShadows, "The level casts shadows on players, weapons and items: "
+		"where a wall or roof blocks the map's light, a model loses that light, with a sharp edge instead "
+		"of the light grid's gradual fade. Needs " S_COLOR_CYAN "\\r_rt.\n"
+		" 0 - off (default)\n 1 - on\n 2 - debug: tint models red where the level blocks their light, "
+		"blue where they face away from it" );
+	r_rtModelShadowStrength = ri.Cvar_Get( "r_rtModelShadowStrength", "0.85", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadowStrength, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtModelShadowStrength, "How much of the blocked light a model loses, 0 to 1." );
+	r_rtModelShadowSoftness = ri.Cvar_Get( "r_rtModelShadowSoftness", "0", CVAR_ARCHIVE_ND );
+	/* [QL] E207: world units, like every other softness - see tr_shade.c */
+	ri.Cvar_CheckRange( r_rtModelShadowSoftness, "0", "32", CV_FLOAT );
+	/* [QL] E221: a value saved before E207 is still the old angle in radians
+	   (the menu's 0.03 / 0.06 / 0.12 / 0.25). tr_shade.c reads it correctly,
+	   but the menu row lists 0 / 2 / 4 / 8 / 16 / 32 and drew blank over it
+	   ("not one of its 6 listed values"). Converted once here, to the size
+	   that angle is at 128 units, on the nearest listed step - 0.06 -> 8 - and
+	   saved, so the row shows it and the next start has nothing to convert. */
+	if ( r_rtModelShadowSoftness->value > 0.0f && r_rtModelShadowSoftness->value < 1.0f ) {
+		static const float steps[] = { 2.0f, 4.0f, 8.0f, 16.0f, 32.0f };
+		const float want = r_rtModelShadowSoftness->value * 128.0f;
+		float best = steps[0];
+		int k;
+		for ( k = 1; k < (int)ARRAY_LEN( steps ); k++ ) {
+			if ( fabsf( logf( steps[k] / want ) ) < fabsf( logf( best / want ) ) ) {
+				best = steps[k];
+			}
+		}
+		ri.Printf( PRINT_ALL, "r_rtModelShadowSoftness: %s was the old radians scale - now %g world units\n",
+			r_rtModelShadowSoftness->string, best );
+		ri.Cvar_Set( "r_rtModelShadowSoftness", va( "%g", best ) );
+	}
+	ri.Cvar_SetDescription( r_rtModelShadowSoftness, "Size of the light in world units, for soft "
+		"edges on models - the same scale as the other shadow softness settings. 0 is sharp. "
+		"Pair with more " S_COLOR_CYAN "\\r_rtModelShadowRays" S_COLOR_WHITE "." );
+	r_rtModelShadowRays = ri.Cvar_Get( "r_rtModelShadowRays", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadowRays, "1", "8", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtModelShadowRays, "Rays per model pixel. 1 for sharp shadows, 4 or more "
+		"for soft ones." );
+	/* [QL] E166. Live; Shadows: Traced turns it on too. */
+	r_rtActorShadows = ri.Cvar_Get( "r_rtActorShadows", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadows, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorShadows, "Players and items cast ray-traced shadows on the level, "
+		"from the map's light, with their real shapes - your own included. The ray-traced "
+		"replacement for Quake's stencil shadows (Lighting > Shadows: Traced turns this on). Needs "
+		S_COLOR_CYAN "\\r_rt.\n 0 - off (default)\n 1 - on\n 2 - debug: shadowed pixels red, the sun's blue (E186)" );
+	r_rtActorShadowStrength = ri.Cvar_Get( "r_rtActorShadowStrength", "0.7", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowStrength, "0", "1", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtActorShadowStrength, "How dark a player's traced shadow is: the share of "
+		"the map's light it removes where it falls, 0 to 1." );
+	r_rtActorShadowLength = ri.Cvar_Get( "r_rtActorShadowLength", "512", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowLength, "64", "2048", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtActorShadowLength, "The furthest the traced shadows on the level look for "
+		"something in the way, in world units. The ray also stops at the light itself, where the "
+		"light grid lets its position be estimated." );
+	r_rtActorShadowSoftness = ri.Cvar_Get( "r_rtActorShadowSoftness", "8", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowSoftness, "0", "64", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtActorShadowSoftness, "Size of the light the traced shadows on the level "
+		"come from, in world units: 0 is hard edges, larger is softer, and the edge softens more the "
+		"further the shadow falls from what casts it. Needs " S_COLOR_CYAN "\\r_rtActorShadowRays"
+		S_COLOR_WHITE " above 1 to look smooth." );
+	r_rtActorShadowRays = ri.Cvar_Get( "r_rtActorShadowRays", "5", CVAR_ARCHIVE_ND );   // [QL] E174: odd - one at the centre
+	ri.Cvar_CheckRange( r_rtActorShadowRays, "1", "16", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorShadowRays, "Rays per pixel for the traced shadows on the level. "
+		"More makes soft edges smoother and costs more." );
+	r_rtActorShadowDenoise = ri.Cvar_Get( "r_rtActorShadowDenoise", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowDenoise, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorShadowDenoise, "Smooths the soft edges of the traced shadows on the "
+		"level with the ambient occlusion's edge-aware blur, so a few rays make a gradient instead of "
+		"speckle. Only while " S_COLOR_CYAN "\\r_rtActorShadowSoftness" S_COLOR_WHITE " is above 0, and not "
+		"in the debug view.\n 0 - off: the raw rays\n 1 - on (default)" );
+	r_rtActorShadowSoftMode = ri.Cvar_Get( "r_rtActorShadowSoftMode", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorShadowSoftMode, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorShadowSoftMode, "How the soft edges of the traced shadows on the level "
+		"are made, while " S_COLOR_CYAN "\\r_rtActorShadowSoftness" S_COLOR_WHITE " is above 0.\n"
+		" 0 - sampled (default): several rays at points on the light, counted, then smoothed\n"
+		" 1 - projected: one ray at the light's centre, and the edge's width worked out from how far "
+		"the blocker is from the surface and from the light - sharp where it touches, wide where it is far, "
+		"strongest at the centre of the edge and fading out. No speckle; " S_COLOR_CYAN "\\r_rtActorShadowRays"
+		S_COLOR_WHITE " does not apply." );
+	r_rtWeaponSelfShadow = ri.Cvar_Get( "r_rtWeaponSelfShadow", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtWeaponSelfShadow, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtWeaponSelfShadow, "Whether players and items - your own body first of all - "
+		"cast traced shadows on your first-person weapon (model and dynamic-light shadows).\n"
+		" 0 - no (default): the weapon is shadowed by the level only\n"
+		" 1 - yes: your body shadows the gun, which reads as hard patches on it" );
+	r_rtLightField = ri.Cvar_Get( "r_rtLightField", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtLightField, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtLightField, "Where the traced shadows are cast from.\n"
+		" 0 - estimated per pixel from the light grid (E167): can jump between neighbouring pixels and "
+		"tear one shadow into pieces\n 1 - the light field, worked out once at map load and interpolated "
+		"(default)" );
+	r_rtShadowSun = ri.Cvar_Get( "r_rtShadowSun", "1", CVAR_ARCHIVE_ND );   // [QL] E178
+	ri.Cvar_CheckRange( r_rtShadowSun, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtShadowSun, "The sun casts its own traced shadow even where a nearer light "
+		"is brighter. The light grid keeps one light per place, so without this the strongest light gets "
+		"the only shadow. Maps with a q3map_sun only; costs a second set of rays where the sun reaches.\n"
+		" 0 - one shadow, from the strongest light\n 1 - also the sun's (default)" );
+	/* [QL] E203: leave players and items out of the ray-traced structures
+	   when nothing they do can reach the view - see rt_in_reach */
+	/* [QL] E208: E205's refit, switchable to rule it in or out */
+	r_rtActorRefit = ri.Cvar_Get( "r_rtActorRefit", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorRefit, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorRefit, "Refit the players' and items' ray-traced structure when the same "
+		"models are in it, instead of rebuilding it. 0 rebuilds every frame." );
+	r_rtCull = ri.Cvar_Get( "r_rtCull", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtCull, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtCull, "Skip players and items whose shadow or occlusion cannot reach the view "
+		"when building the ray-traced structures each frame. 0 traces every one the server sent, "
+		"for comparison." );
+	/* [QL] E211, E212 */
+	r_rtActorLight = ri.Cvar_Get( "r_rtActorLight", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtActorLight, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorLight, "Where a player's or item's traced shadow comes from:\n"
+		" 0 - the light each shadowed surface finds for itself (before E211). One shadow over a floor "
+		"and a wall could come from two lights and bend at the corner, and next to a lamp it swung "
+		"around the player\n"
+		" 1 - the light grid's direction at the player or item, as parallel rays and never flatter "
+		"than 30 degrees - Quake 3's rule. The shadow is the caster's own size and the same on every "
+		"surface it falls on (default)\n"
+		" 2 - the estimated light position at the player or item (E211). Truer near a real lamp, but a "
+		"wrong estimate next to a small item magnifies its shadow many times over\n" );
+	r_rtActorCaps = ri.Cvar_Get( "r_rtActorCaps", "1", CVAR_ARCHIVE_ND );   // [QL] E180
+	ri.Cvar_CheckRange( r_rtActorCaps, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtActorCaps, "Close the holes in player and item models (the waist, the neck, "
+		"open ends) in the shapes the traced shadows and AO use. Models are open shells where their parts "
+		"meet, and a light from above shone straight through them, leaving shadows hollow in the middle.\n"
+		" 0 - the models' triangles as they are\n 1 - holes closed (default)" );
+	r_rtTimings = ri.Cvar_Get( "r_rtTimings", "0", CVAR_TEMP );
+	ri.Cvar_CheckRange( r_rtTimings, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtTimings, "Print the GPU time of each ray-tracing pass every two seconds: "
+		"the structure build, ambient occlusion, the shadows on the level, the water reflections, the lit "
+		"surfaces (dynamic lights and their shadows) and the whole frame, in milliseconds a frame." );
+	r_rtLevelShadows = ri.Cvar_Get( "r_rtLevelShadows", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtLevelShadows, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtLevelShadows, "The level casts ray-traced shadows on itself - ledges, "
+		"beams and pillars from the same light the players' shadows use, so the two agree. The map's "
+		"own baked shadows are coarse; this adds sharp edges where they blur. Needs " S_COLOR_CYAN
+		"\\r_rt.\n 0 - off (default)\n 1 - on\n 2 - debug: shadowed pixels red, the sun's blue (E186)" );
+
+	/* [QL] E165. What blocks the traced shadows' rays. Live. */
+	r_rtShadowCasters = ri.Cvar_Get( "r_rtShadowCasters", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtShadowCasters, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtShadowCasters, "What casts the ray-traced shadows:\n"
+		" 0 - the level, including doors, lifts and platforms (default)\n"
+		" 1 - also players and items, with their real shapes (E166) - they block dynamic lights "
+		"and shadow each other" );
+
+	r_rtModelShadowDistance = ri.Cvar_Get( "r_rtModelShadowDistance", "1024", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtModelShadowDistance, "64", "8192", CV_FLOAT );
+	ri.Cvar_SetDescription( r_rtModelShadowDistance, "How far toward the light a model looks for "
+		"something in the way, in world units. The light grid has no distance to its light, so this "
+		"stands in for one: short keeps only nearby overhangs, long lets distant walls shadow too." );
+
+	/* [QL] E154. Off by default - it changes the look of every scene, and that
+	   is the player's call. Live. */
+	r_ssao = ri.Cvar_Get( "r_ssao", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_ssao, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_ssao, "Screen-space ambient occlusion - darkens creases and contact "
+		"from the depth buffer, with no ray tracing:\n"
+		" 0 - off (default)\n"
+		" 1 - on\n"
+		" 2 - debug: show the occlusion term instead of the scene\n"
+		"Used when ray-traced AO is off or unavailable; shares its radius, strength, "
+		"denoise and resolution settings. Needs Post-processing (r_fbo 1)." );
+
+	/* [QL] E150. Live: both pipelines exist, and this picks one per frame. */
+	/* [QL] E152. 1 is a pure saving - it only stops work being repeated - so
+	   it is the default; 0 is there to rule it out when chasing a driver bug. */
+	r_pipelineCache = ri.Cvar_Get( "r_pipelineCache", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_pipelineCache, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_pipelineCache, "Keep compiled pipelines between runs:\n"
+		" 0 - off: every pipeline is built the first time it is drawn\n"
+		" 1 - save them to vkpipelines.cache and reuse them next run (default)\n"
+		" 2 - as 1, and build all of a map's pipelines while it loads instead of on "
+		"first use in a frame - fewer hitches, a slightly longer load" );
+
+	r_rtaoResolution = ri.Cvar_Get( "r_rtaoResolution", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_rtaoResolution, "1", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rtaoResolution, "Resolution the occlusion is traced at:\n"
+		" 1 - full (default)\n"
+		" 2 - half: a quarter of the rays, upsampled against the full-resolution "
+		"depth so edges stay sharp. Takes effect immediately." );
+
 	r_device = ri.Cvar_Get( "r_device", "-1", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_device, "-2", NULL, CV_INTEGER );
 	ri.Cvar_SetDescription( r_device, "Select physical device to render:\n" \
@@ -1788,13 +2957,44 @@ static void R_Register( void )
 		" -2 - first integrated GPU" );
 	r_device->modified = qfalse;
 
+	r_rts = ri.Cvar_Get( "r_rts", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_rts, "0", "2", CV_INTEGER );
+	ri.Cvar_SetDescription( r_rts, "Real time shading.\n"
+		" 0 - the lighting response is baked into the assets at load. Overbright is "
+		"folded into lightmaps when it cannot be applied any later, the scene is drawn "
+		"into an 8 bit target, and everything above full brightness is thrown away "
+		"where it happens\n"
+		" 1 - the scene is drawn into a floating point target instead, so light that "
+		"adds past full brightness survives to be looked at, and the response curve is "
+		"applied per frame at the end rather than baked in\n"
+		" 2 - the same, on an unsigned float target (B10G11R11). Same headroom above full "
+		"brightness, but it cannot hold a value below zero, so anything writing a negative is "
+		"clamped at the point it is written - which is what the old fixed range target did. Use "
+		"this if 1 puts dark patches around dynamic lights\n"
+		"Implies " S_COLOR_CYAN "\\r_fbo 1" S_COLOR_WHITE ", which is what provides the pass to do it in. "
+		"Falls back to 0 if the device cannot blend to the chosen target." );
+
 	r_fbo = ri.Cvar_Get( "r_fbo", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_fbo, "Use framebuffer objects, enables gamma correction in windowed mode and allows arbitrary video size and screenshot/video capture.\n Required for bloom, HDR rendering, anti-aliasing and greyscale effects." );
+	r_verboseImageFallback = ri.Cvar_Get( "r_verboseImageFallback", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_verboseImageFallback, "Print a warning each time an image is found under a different extension than the one asked for.\n Off by default: Quake Live's menus ask for .tga while its paks ship .png, so this fires for nearly every image and buries the rest of developer output." );
+	r_shaderTimeSource = ri.Cvar_Get( "r_shaderTimeSource", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_shaderTimeSource, "Clock used for shader animation (animMap, tcMod, waveforms, deforms).\n  0: scene time - follows cg.time, so it matches demos and timescale but inherits any unevenness in snapshot interpolation\n  1: real time - independent of snapshots, smooth regardless of the server, but ignores timescale and demo scrubbing\n" );
+
 	r_hdr = ri.Cvar_Get( "r_hdr", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription(r_hdr, "Enables high dynamic range frame buffer texture format. Requires \\r_fbo 1.\n -1: 4-bit, for testing purposes, heavy color banding, might not work on all systems\n  0: 8 bit, default, moderate color banding with multi-stage shaders\n  1: 16 bit, enhanced blending precision, no color banding, might decrease performance on AMD / Intel GPUs\n" );
 	r_bloom = ri.Cvar_Get( "r_bloom", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_bloom, "0", "1", CV_INTEGER );
 	ri.Cvar_SetDescription(r_bloom, "Enables bloom post-processing effect. Requires \\r_fbo 1.");
+
+	/* [QL] E158. Off by default; needs vid_restart - the bloom targets are
+	   created with the attachments. */
+	r_bloomHDR = ri.Cvar_Get( "r_bloomHDR", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_bloomHDR, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_bloomHDR, "Bloom in the scene's floating-point format, so a highlight "
+		"blooms in proportion to how bright it is instead of everything above full brightness "
+		"blooming the same. Needs " S_COLOR_CYAN "\\r_rts" S_COLOR_WHITE " (which provides the format) and "
+		S_COLOR_CYAN "\\r_bloom" S_COLOR_WHITE ". Takes effect after vid_restart." );
 
 	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_ext_multisample, "0", "64", CV_INTEGER );
@@ -1943,6 +3143,7 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 #endif
 	ri.Printf( PRINT_ALL, "RE_Shutdown( %i )\n", code );
 
+	ri.Cmd_RemoveCommand( "maplights" );   /* [QL] R20/R22 probe */
 	ri.Cmd_RemoveCommand( "modellist" );
 	ri.Cmd_RemoveCommand( "screenshotBMP" );
 	ri.Cmd_RemoveCommand( "screenshotJPEG" );
@@ -1953,7 +3154,10 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	ri.Cmd_RemoveCommand( "gfxinfo" );
 	ri.Cmd_RemoveCommand( "shaderstate" );
 #ifdef USE_VULKAN
+	ri.Cmd_RemoveCommand( "rtao_instances" );
+	ri.Cmd_RemoveCommand( "rtshadows" );
 	ri.Cmd_RemoveCommand( "vkinfo" );
+	ri.Cmd_RemoveCommand( "vkmem" );
 #endif
 
 	//if ( tr.registered ) {
@@ -1962,7 +3166,17 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	//}
 
 #ifdef USE_VULKAN
-	vk_release_resources();
+	// [QL] vk_shutdown() just below guards itself against a Vulkan that was
+	// never brought up ("if ( qvkQueuePresentKHR == NULL ) goto __cleanup"),
+	// but vk_release_resources() does not, and it runs first. Upstream never
+	// reaches it in that state because Quake3e's engine does not tear the
+	// renderer down mid-init; this tree's Com_Error unwinds through
+	// CL_Shutdown -> CL_ClearMemory -> RE_Shutdown, so a failure inside
+	// VKimp_Init lands here with vk zeroed and dies on a null qvkDeviceWaitIdle
+	// instead of printing why. Same guard, same reason.
+	if ( vk.device != VK_NULL_HANDLE ) {
+		vk_release_resources();
+	}
 #endif
 
 	R_DoneFreeType();
@@ -1999,6 +3213,9 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 #endif
 	}
 
+#ifdef USE_VULKAN
+	vk_rt_caps_reset();   /* [QL] E188: its memory is about to go - see vk_rt_world.c */
+#endif
 	ri.FreeAll();
 
 	tr.registered = qfalse;
@@ -2014,6 +3231,33 @@ Touch all images to make sure they are resident
 =============
 */
 static void RE_EndRegistration( void ) {
+	vk_prewarm_pipelines();   // [QL] E152: r_pipelineCache 2
+
+	/*
+	[QL] What the material maps came to, counted here and not at world load.
+
+	At world load only the map's own shaders have been through FinishShader -
+	the player models, the weapons and everything cgame registers come after it,
+	and those are the shaders most likely to carry a normal map. Reporting there
+	counted the half of the set least likely to have any and called it the
+	answer. Registration ending is the first point at which the count is of
+	everything.
+	*/
+	ri.Printf( PRINT_ALL, "Materials: %i stage(s) with a normal map, %i with a specular map; %i derived, %i underivable (R20).\n",
+		tr.numNormalMappedStages, tr.numSpecularStages, tr.numDerivedNormalMaps, tr.numUnderivableStages );
+
+	/*
+	[QL] R25. A count rather than a wall to look at. Zero here and nothing the
+	static bump pass does can matter, which is a different problem from it
+	running and looking wrong - and the two are indistinguishable on screen.
+	*/
+	if ( tr.world != NULL && tr.world->deluxeMaps ) {
+		ri.Printf( PRINT_ALL, "Static bump: %i shader(s) have both a normal map and a lightmap (R25).\n",
+			tr.numStaticBumpShaders );
+	} else {
+		ri.Printf( PRINT_ALL, "Static bump: this map has no deluxemaps, so the pass cannot run (R25).\n" );
+	}
+
 #ifdef USE_VULKAN
 	vk_wait_idle();
 	// command buffer is not in recording state at this stage
@@ -2042,6 +3286,9 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 
 	ri = *rimp;
 
+	// [QL] windowing lives in this module, not the engine - see vk_window.c
+	VK_QL_FillImports( &ri );
+
 	Com_Memset( &re, 0, sizeof( re ) );
 
 	if ( apiVersion != REF_API_VERSION ) {
@@ -2052,7 +3299,17 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 
 	// the RE_ functions are Renderer Entry points
 
-	re.Shutdown = RE_Shutdown;
+	/*
+	[QL] Cast, and it is load-bearing rather than cosmetic.
+
+	Quake3e's RE_Shutdown takes a refShutdownCode_t where this tree's export
+	takes a qboolean. VK_QL_FillExports reads this slot back out to keep the
+	vendored function and installs its own wrapper that translates the two, so
+	the assignment has to happen AND has to be spelled as a deliberate
+	conversion - an implicit one is a warning that trains the eye to skip this
+	whole block, which is where a genuine mismatch was already hiding.
+	*/
+	re.Shutdown = (void (*)( qboolean ))RE_Shutdown;
 
 	re.BeginRegistration = RE_BeginRegistration;
 	re.RegisterModel = RE_RegisterModel;
@@ -2071,19 +3328,41 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.ModelBounds = R_ModelBounds;
 
 	re.ClearScene = RE_ClearScene;
-	re.AddRefEntityToScene = RE_AddRefEntityToScene;
+	/*
+	[QL] AddRefEntityToScene is filled by VK_QL_FillExports at the end of this
+	function and deliberately NOT here.
+
+	Quake3e's RE_AddRefEntityToScene takes a second argument; this tree's
+	refexport_t entry takes one. The vendored line assigned the two-argument
+	function to the one-argument slot, which is a type the compiler warns about
+	and a call that reads whatever was in the second argument register. The shim
+	passes the constant the tr_backend.c patches assume.
+
+	Left as a comment rather than deleted because the assignment being absent
+	from a list where every other export is assigned looks like an oversight,
+	and the next person to "fix" it would put the bug back.
+	*/
 	re.AddPolyToScene = RE_AddPolyToScene;
 	re.LightForPoint = R_LightForPoint;
 	re.AddLightToScene = RE_AddLightToScene;
 	re.AddAdditiveLightToScene = RE_AddAdditiveLightToScene;
 	re.AddLinearLightToScene = RE_AddLinearLightToScene;
+	re.AddWaterRipple = RE_AddWaterRipple;   // [QL] R19
 
 	re.RenderScene = RE_RenderScene;
 
 	re.SetColor = RE_SetColor;
 	re.DrawStretchPic = RE_StretchPic;
-	re.DrawStretchRaw = RE_StretchRaw;
-	re.UploadCinematic = RE_UploadCinematic;
+	/*
+	[QL] These two differ from the export only in const: the slot promises not
+	to write through data, the function takes a plain byte *. Neither writes to
+	it - both hand it straight to the uploader - but the uploader's own
+	signature is byte *, so adding const here would cascade through
+	R_CreateImage and vk_upload_image_data for no gain. Cast at the one place
+	the two types meet instead.
+	*/
+	re.DrawStretchRaw = (void (*)( int, int, int, int, int, int, const byte *, int, qboolean ))RE_StretchRaw;
+	re.UploadCinematic = (void (*)( int, int, int, int, const byte *, int, qboolean ))RE_UploadCinematic;
 
 	re.RegisterFont = RE_RegisterFont;
 	re.RemapShader = RE_RemapShader;
@@ -2096,9 +3375,36 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.ThrottleBackend = RE_ThrottleBackend;
 	re.FinishBloom = RE_FinishBloom;
 	re.CanMinimize = RE_CanMinimize;
-	re.GetConfig = RE_GetConfig;
+	// [QL] the export is const void * and this returns const glconfig_t *; the
+	// caller casts it back to exactly that.
+	re.GetConfig = (const void *(*)( void ))RE_GetConfig;
 	re.VertexLighting = RE_VertexLighting;
 	re.SyncRender = RE_SyncRender;
 
+	// [QL] the five refexport_t entries Quake3e does not have - see vk_ql_exports.c
+	VK_QL_FillExports( &re );
+
 	return &re;
+}
+
+
+/*
+=================
+R_ResolveRTFeatures - [QL] K8, see rtFeatures_t in tr_local.h
+=================
+*/
+rtFeatures_t rtf;
+
+void R_ResolveRTFeatures( void ) {
+	rtf.traced = R_SHADOWS_TRACED ? qtrue : qfalse;
+	rtf.modelShadows  = ( r_rtModelShadows->integer  || rtf.traced ) ? qtrue : qfalse;
+	rtf.dlightShadows = ( r_rtDlightShadows->integer || rtf.traced ) ? qtrue : qfalse;
+	rtf.actorShadows  = ( r_rtActorShadows->integer  || rtf.traced ) ? qtrue : qfalse;
+	rtf.levelShadows  = ( r_rtLevelShadows->integer  || rtf.traced ) ? qtrue : qfalse;
+	rtf.casters = r_rtShadowCasters->integer ? qtrue : qfalse;
+	rtf.actorMesh = ( rtf.actorShadows || rtf.casters ) ? qtrue : qfalse;
+	rtf.anyShadow = ( rtf.modelShadows || rtf.dlightShadows || rtf.actorShadows || rtf.levelShadows ) ? qtrue : qfalse;
+	rtf.modelDebug  = r_rtModelShadows->integer >= 2 ? qtrue : qfalse;
+	rtf.dlightDebug = r_rtDlightShadows->integer >= 2 ? qtrue : qfalse;
+	rtf.actorDebug  = ( r_rtActorShadows->integer >= 2 || r_rtLevelShadows->integer >= 2 ) ? qtrue : qfalse;
 }

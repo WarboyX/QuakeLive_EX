@@ -73,23 +73,69 @@ Returns scaled console character dimensions based on con_scale
 ================
 Con_Scale
 
-Console text is drawn through re.DrawStretchPic, and the renderer's 2D pass runs
-in a 640x480 ortho projection, so console glyphs already scale with the display -
-1.0 is the same apparent size at 720p and at 2160p. No resolution-derived factor
-is wanted here, and an earlier attempt to add one (vidHeight / 480, giving 4.0 at
-2160p) made the text four times too large.
+The comment that used to live here said the renderer's 2D pass runs in a 640x480
+ortho projection, so console glyphs scale with the display on their own and no
+resolution-derived factor was wanted. **That is not true**, and it is why this
+kept being got wrong. Both backends set up the 2D pass in *native pixels*:
+RB_SetGL2D does `GL_Ortho(0, glConfig.vidWidth, glConfig.vidHeight, 0, ...)` and
+the Vulkan path's get_mvp_transform uses `2.0f / glConfig.vidWidth` and
+`2.0f / glConfig.vidHeight`.
 
-The actual fault was the default: 0.5, clamped to [0.5, 1.0]. Half-size glyphs
-are hard to read on any display, and the ceiling of 1.0 meant they could not be
-made bigger. Default is now 1.0 - full size - with the range opened up so it can
-be tuned in both directions.
+So `con_scale 1` is an 8x16 glyph in *pixels*. That is correct on a 640x480
+display, which is what Quake 3 shipped on, and it is 8 pixels tall on a 2560x1600
+laptop panel - which is the report this fixes. The earlier attempt at
+`vidHeight / 480` was the right *shape* and was rejected for looking too large;
+by Quake 3's own standard it was right, since 480/16 is 80 columns, but 80
+columns is not what anyone wants from a console on a modern display.
+
+So scale to a **column count** instead of to an apparent size. CON_TARGET_COLUMNS
+is the one judgement call in here and it is stated rather than hidden: the
+console aims for that many characters across at any resolution, which is 2.0 at
+1080p, 2.67 at 1440/1600p and 4.0 at 2160p. Clamped at 1.0 below so a small
+window never gets *smaller* than Quake 3's glyph.
+
+The reference is 1080p, not a column count. An earlier version of this aimed for
+120 columns, which works out at scale 4.0 on a 3840x2160 display - 32x64 pixel
+glyphs, and reported as still far too large. Anchoring to a resolution instead of
+a column count is both more defensible and easier to reason about: scale 1.0 is
+the classic 8x16 glyph, which is what a 1080p display has always shown, and
+everything above that keeps the same apparent size. 2160p gets 2.0 (16x32,
+240 columns), 1600p gets 1.48, 1080p and below get 1.0.
+
+con_scale is a **multiplier on that**, not an absolute size, and that is the
+second thing this got wrong. Treating it as absolute meant the fix only reached a
+fresh install: con_scale is CVAR_ARCHIVE, so every machine that has run this
+before has a value already written into its config, that value wins over any new
+default forever, and the auto path was unreachable without knowing to type
+"con_scale 0". As a multiplier, an existing "1" *is* the auto size and a config
+that predates this gets the fix without being told. 2 is twice as big, 0.5 half.
 ================
 */
+// The display the 8x16 glyph was drawn for the last time it looked right.
+#define CON_REFERENCE_HEIGHT 1080
+
 static float Con_Scale(void) {
-    if (con_scale && con_scale->value > 0.0f) {
-        return con_scale->value;
+    float scale;
+
+    if (cls.glconfig.vidHeight <= 0) {
+        return 1.0f;   // before video init
     }
-    return 1.0f;
+
+    scale = (float)cls.glconfig.vidHeight / CON_REFERENCE_HEIGHT;
+    if (scale < 1.0f) {
+        scale = 1.0f;   // never smaller than Quake 3's own glyph
+    }
+
+    if (con_scale && con_scale->value > 0.0f) {
+        scale *= con_scale->value;
+    }
+
+    if (scale < 0.25f) {
+        scale = 0.25f;
+    } else if (scale > 8.0f) {
+        scale = 8.0f;
+    }
+    return scale;
 }
 
 static int Con_CharW(void) {
@@ -344,6 +390,12 @@ If the line width has changed, reformat the buffer.
 void Con_CheckResize(void) {
     int i, j, width, oldwidth, oldtotallines, numlines, numchars;
     short tbuf[CON_TEXTSIZE];
+    /* [QL] Say what the console worked out, once per size change. Three rounds
+       have now gone into console scaling and every one of them was reported as
+       "wrong" without a way to tell wrong-too-small from wrong-too-large, or
+       which build was running. This line settles all three at a glance. */
+    static int reportedWidth = -1;
+    static int reportedHeight = -1;
 
     // [QL] calculate linewidth from vidWidth and con_scale
     con.xadjust = 0;
@@ -354,6 +406,16 @@ void Con_CheckResize(void) {
     }
     if (width < 1) {
         width = 78;  // fallback before video init
+    }
+
+    if (cls.glconfig.vidWidth > 0 &&
+        (cls.glconfig.vidWidth != reportedWidth || cls.glconfig.vidHeight != reportedHeight)) {
+        reportedWidth = cls.glconfig.vidWidth;
+        reportedHeight = cls.glconfig.vidHeight;
+        Com_Printf("console: %ix%i, scale %.2f (%i columns, %ix%i px glyphs) - con_scale %g multiplies this\n",
+                   cls.glconfig.vidWidth, cls.glconfig.vidHeight, Con_Scale(),
+                   width, Con_CharW(), Con_CharH(),
+                   con_scale ? con_scale->value : 1.0f);
     }
 
     if (width == con.linewidth)
@@ -513,8 +575,11 @@ void Con_Init(void) {
     // 1.0, so they could not be made any bigger. Range opened both ways for
     // tuning; 2D drawing is already resolution independent, so this is a taste
     // setting rather than a per-display one.
-    con_scale = Cvar_Get("con_scale", "1", CVAR_ARCHIVE);
-    Cvar_CheckRange(con_scale, 0.25f, 4.0f, qfalse);
+    // [QL] 0 is auto - see Con_Scale. The range has to start at 0 for that to be
+    // reachable; it used to start at 0.25, which quietly clamped 0 up to a quarter
+    // size and made "auto" impossible to ask for.
+    con_scale = Cvar_Get("con_scale", "0", CVAR_ARCHIVE);
+    Cvar_CheckRange(con_scale, 0.0f, 4.0f, qfalse);
 
     con_speed = Cvar_Get("con_speed", "3", CVAR_ARCHIVE);
     Cvar_CheckRange(con_speed, 0.1f, 1000.0f, qfalse);
@@ -574,6 +639,34 @@ void Con_Linefeed(qboolean skipnotify) {
     if (con.display == con.current)
         con.display++;
     con.current++;
+
+    /*
+    [QL] E88: keep the scrollback position inside the buffer.
+
+    The line above follows the bottom only while the view is *at* the bottom.
+    Scroll up one notch and con.display stays put while con.current keeps
+    climbing - and once it has climbed a whole buffer's worth, every row fails
+    the "past scrollback wrap point" test in Con_DrawSolidConsole and is
+    skipped. The console then draws nothing at all, forever, because nothing
+    pulls con.display forward again. What is left on screen is the row of red
+    backscroll arrows and the version line, over an empty console.
+
+    That is stock Quake 3 behaviour and is survivable there, where the buffer is
+    32 KiB and a line is 78 columns. Here CON_TEXTSIZE is 524288 but a 4K
+    display gives 340-column lines, so the scrollback is 1542 lines - and with
+    developer 1 and sixty bots printing tactics, that is under a minute of
+    output. One scroll up during a match and the console is gone for the rest of
+    the session.
+
+    Clamping to the oldest line still in the buffer keeps the user as far back
+    as the data allows, which is the honest answer: the lines they were looking
+    at are genuinely overwritten, so the view follows the data rather than
+    pointing past it.
+    */
+    if (con.current - con.display >= con.totallines) {
+        con.display = con.current - con.totallines + 1;
+    }
+
     for (i = 0; i < con.linewidth; i++)
         con.text[(con.current % con.totallines) * con.linewidth + i] = (ColorIndex(COLOR_WHITE) << 8) | ' ';
 }
@@ -631,8 +724,14 @@ void CL_ConsolePrint(char* txt) {
         millis = (int)((time_sec - minutes * 60.0f - seconds) * 1000.0f);
         Com_sprintf(tsbuf, sizeof(tsbuf), "[%d:%02d.%03d] ", minutes, seconds, millis);
 
+        /* [QL] Bounded. This walked con.x forward with no test against
+           linewidth, so on a console narrow enough for the stamp not to fit -
+           a small window, or con_scale turned up - it wrote past the end of the
+           line, and on the last line of the ring past the end of con.text
+           itself. The stamp also grows: "[1234:56.789] " once a run passes a
+           thousand minutes. Truncating it is the right failure. */
         p = tsbuf;
-        while (*p) {
+        while (*p && con.x < con.linewidth) {
             y = con.current % con.totallines;
             con.text[y * con.linewidth + con.x] = (ColorIndex(COLOR_WHITE) << 8) | *p;
             con.x++;
@@ -709,6 +808,62 @@ Con_DrawInput
 Draw the editline after a ] prompt
 ================
 */
+/*
+================
+Con_DrawInputField
+
+[QL] Field_VariableSizeDraw at the console's glyph size. Same behaviour - the
+same visible window into the buffer, the same blinking cursor character and the
+same overstrike glyph - drawn through Con_DrawCharScaled so it matches the rest
+of the console.
+================
+*/
+static void Con_DrawInputField(int x, int y, int charW, int charH) {
+    field_t* edit = &g_consoleField;
+    int len, drawLen, prestep, i;
+    char str[MAX_STRING_CHARS];
+
+    drawLen = edit->widthInChars - 1;  // -1 so there is always room for the cursor
+    len = strlen(edit->buffer);
+
+    if (len <= drawLen) {
+        prestep = 0;
+    } else {
+        if (edit->scroll + drawLen > len) {
+            edit->scroll = len - drawLen;
+            if (edit->scroll < 0) {
+                edit->scroll = 0;
+            }
+        }
+        prestep = edit->scroll;
+    }
+
+    if (prestep + drawLen > len) {
+        drawLen = len - prestep;
+    }
+    if (drawLen >= MAX_STRING_CHARS) {
+        drawLen = MAX_STRING_CHARS - 1;
+    }
+    if (drawLen < 0) {
+        drawLen = 0;
+    }
+
+    Com_Memcpy(str, edit->buffer + prestep, drawLen);
+    str[drawLen] = 0;
+
+    for (i = 0; str[i]; i++) {
+        Con_DrawCharScaled(x + i * charW, y, charW, charH, str[i]);
+    }
+
+    // cursor, on the same blink as Field_VariableSizeDraw
+    if ((int)(cls.realtime >> 8) & 1) {
+        return;  // off blink
+    }
+    i = drawLen - (int)strlen(str);
+    Con_DrawCharScaled(x + (edit->cursor - prestep - i) * charW, y, charW, charH,
+                       key_overstrikeMode ? 11 : 10);
+}
+
 void Con_DrawInput(void) {
     int y;
 
@@ -725,8 +880,14 @@ void Con_DrawInput(void) {
 
     Con_DrawCharScaled(con.xadjust + 1 * charW, y, charW, charH, ']');
 
-    Field_Draw(&g_consoleField, con.xadjust + 2 * charW, y,
-               SCREEN_WIDTH - 3 * charW, qtrue, qtrue);
+    /*
+    [QL] This used to be Field_Draw, and Field_Draw is hardcoded to
+    SMALLCHAR_WIDTH - Field_VariableSizeDraw only knows two sizes and picks the
+    big font for anything that is not exactly 8. So the prompt scaled and the
+    text you typed next to it did not, at any resolution where the scale is not
+    1. Draw the field with the console's own glyph size instead.
+    */
+    Con_DrawInputField(con.xadjust + 2 * charW, y, charW, charH);
 }
 
 /*
@@ -743,6 +904,8 @@ void Con_DrawNotify(void) {
     int time;
     int skip;
     int currentColor;
+    int notifyW = Con_CharW();
+    int notifyH = Con_CharH();
 
     currentColor = 7;
     re.SetColor(g_color_table[currentColor]);
@@ -771,10 +934,14 @@ void Con_DrawNotify(void) {
                 currentColor = ColorIndexForNumber(text[x] >> 8);
                 re.SetColor(g_color_table[currentColor]);
             }
-            SCR_DrawSmallChar(cl_conXOffset->integer + con.xadjust + (x + 1) * SMALLCHAR_WIDTH, v, text[x] & 0xff);
+            /* [QL] scaled like the rest of the console - SCR_DrawSmallChar is a
+               fixed 8x16 pixels, so the notify lines stayed tiny while the
+               console body scaled. */
+            Con_DrawCharScaled(cl_conXOffset->integer + con.xadjust + (x + 1) * notifyW, v,
+                               notifyW, notifyH, text[x] & 0xff);
         }
 
-        v += SMALLCHAR_HEIGHT;
+        v += notifyH;
     }
 
     re.SetColor(NULL);
@@ -783,18 +950,27 @@ void Con_DrawNotify(void) {
         return;
     }
 
-    // draw the chat line
+    /*
+    [QL] The chat line is drawn in the notify font, not the big one.
+
+    Quake 3 drew "say:" and the field with SCR_DrawBigString / Field_BigDraw -
+    BIGCHAR_WIDTH is 16 in 640x480 space, so on a 1080p-and-up screen the prompt
+    came out around fifty pixels tall with the big font's wide fixed advance,
+    towering over the notify lines it sits under. Quake Live's is the size of
+    the rest of the notify area, which is what these small-font calls give, and
+    it lets a long message stay on one line instead of running off the screen.
+    */
     if (Key_GetCatcher() & KEYCATCH_MESSAGE) {
         if (chat_team) {
-            SCR_DrawBigString(8, v, "say_team:", 1.0f, qfalse);
+            SCR_DrawSmallStringExt(8, v, "say_team:", g_color_table[7], qtrue, qfalse);
             skip = 10;
         } else {
-            SCR_DrawBigString(8, v, "say:", 1.0f, qfalse);
+            SCR_DrawSmallStringExt(8, v, "say:", g_color_table[7], qtrue, qfalse);
             skip = 5;
         }
 
-        Field_BigDraw(&chatField, skip * BIGCHAR_WIDTH, v,
-                      SCREEN_WIDTH - (skip + 1) * BIGCHAR_WIDTH, qtrue, qtrue);
+        Field_Draw(&chatField, 8 + skip * SMALLCHAR_WIDTH, v,
+                   SCREEN_WIDTH - (skip + 1) * SMALLCHAR_WIDTH, qtrue, qtrue);
     }
 }
 

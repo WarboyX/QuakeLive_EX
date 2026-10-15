@@ -45,7 +45,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #endif
 #endif
 
+#include <locale.h>
+
 #include "sys_local.h"
+#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
+#include <cpuid.h>
+#endif
 #include "sys_loadlib.h"
 
 #include "../qcommon/q_shared.h"
@@ -329,11 +334,184 @@ cpuFeatures_t Sys_GetProcessorFeatures(void) {
 
 /*
 =================
+[QL] E222. The CPU: what it is, and where the game's main thread should run.
+
+Nothing reported the CPU, and nothing decided where the game ran on it. The
+whole game - server, sixty bots on a listen server, cgame, the renderer's front
+end - is one thread, so on a CPU whose cores are not all alike the core it
+lands on is most of the frame rate:
+
+  - Intel hybrid (12th gen on): performance cores and efficiency cores. The
+    scheduler can put the game thread on an efficiency core, or move it there
+    when the window loses focus for a moment.
+  - AMD dual-die X3D (7950X3D, 9950X3D...): one die carries the extra 3D
+    V-Cache. A game wants the cache; the other die clocks higher but misses
+    it. Without AMD's chipset driver and Game Bar steering, the thread lands
+    on whichever.
+
+sys_cpuPlacement 1 (default) keeps the main thread on the performance cores,
+or on the larger-cache die, when the CPU has such a split, and asks Windows not
+to power-throttle the process (EcoQoS). On a CPU whose cores are all alike it
+does nothing. 0 leaves all of it to the OS, as before.
+=================
+*/
+static cvar_t* sys_cpuPlacement;
+static sysCpuTopology_t sysCpu;
+static char sysCpuBrand[64];
+static char sysCpuSimd[64];
+
+static void Sys_CpuIdentify(void) {
+#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
+    unsigned int regs[12];
+    unsigned int a, b, c, d;
+    int i;
+
+    sysCpuBrand[0] = '\0';
+    if (__get_cpuid(0x80000000, &a, &b, &c, &d) && a >= 0x80000004) {
+        for (i = 0; i < 3; i++) {
+            __get_cpuid(0x80000002 + i, &regs[i * 4 + 0], &regs[i * 4 + 1], &regs[i * 4 + 2], &regs[i * 4 + 3]);
+        }
+        Com_Memcpy(sysCpuBrand, regs, 48);
+        sysCpuBrand[48] = '\0';
+    }
+    sysCpuSimd[0] = '\0';
+    if (__get_cpuid(1, &a, &b, &c, &d)) {
+        Q_strcat(sysCpuSimd, sizeof(sysCpuSimd), (c & (1u << 20)) ? "SSE4.2" : "SSE2");
+        if (c & (1u << 28)) {
+            Q_strcat(sysCpuSimd, sizeof(sysCpuSimd), " AVX");
+        }
+    }
+    if (__get_cpuid_count(7, 0, &a, &b, &c, &d)) {
+        if (b & (1u << 5)) {
+            Q_strcat(sysCpuSimd, sizeof(sysCpuSimd), " AVX2");
+        }
+        if (b & (1u << 16)) {
+            Q_strcat(sysCpuSimd, sizeof(sysCpuSimd), " AVX-512");
+        }
+    }
+#else
+    Q_strncpyz(sysCpuBrand, "unknown", sizeof(sysCpuBrand));
+    sysCpuSimd[0] = '\0';
+#endif
+    {   // the brand string comes padded with spaces
+        char* p = sysCpuBrand;
+        while (*p == ' ') {
+            p++;
+        }
+        memmove(sysCpuBrand, p, strlen(p) + 1);
+    }
+}
+
+static int Sys_CpuMaskCount(unsigned long long m) {
+    int n = 0;
+    while (m) {
+        n += (int)(m & 1);
+        m >>= 1;
+    }
+    return n;
+}
+
+#ifdef _WIN32
+#define SYS_CPU_THROTTLE "; process not power-throttled"
+#else
+#define SYS_CPU_THROTTLE ""
+#endif
+
+static void Sys_CpuApply(qboolean report) {
+    const qboolean on = sys_cpuPlacement->integer ? qtrue : qfalse;
+    const unsigned long long mask = on ? sysCpu.fastMask : 0;
+    const qboolean ok = Sys_CpuPlaceMainThread(mask, on);
+
+    if (!report) {
+        return;
+    }
+    if (!on && !ok) {
+        Com_Printf(S_COLOR_YELLOW "CPU placement: off, but the thread's original cores could not be given back\n");
+    } else if (!on) {
+        Com_Printf("CPU placement: off (sys_cpuPlacement 0) - the OS decides\n");
+    } else if (sysCpu.preferred == 1 && ok && sysCpu.qosOnly) {
+        Com_Printf("CPU placement: game thread marked user-interactive - macOS keeps it on the %i "
+                   "performance cores\n", sysCpu.fastCores);
+    } else if (sysCpu.preferred == 1 && ok) {
+        Com_Printf("CPU placement: game thread on the %i performance cores (%i threads)"
+                   SYS_CPU_THROTTLE "\n", sysCpu.fastCores, Sys_CpuMaskCount(mask));
+    } else if (sysCpu.preferred == 2 && ok) {
+        Com_Printf("CPU placement: game thread on the larger-cache die (%i threads)"
+                   SYS_CPU_THROTTLE "\n", Sys_CpuMaskCount(mask));
+    } else if (sysCpu.preferred && !ok) {
+        Com_Printf("CPU placement: could not be set - the OS decides\n");
+    } else {
+        Com_Printf("CPU placement: all cores alike - nothing to steer" SYS_CPU_THROTTLE "\n");
+    }
+}
+
+static void Sys_CpuInfo_f(void) {
+    int i;
+    char l3[128];
+
+    l3[0] = '\0';
+    for (i = 0; i < sysCpu.numL3; i++) {
+        Q_strcat(l3, sizeof(l3), va("%s%i MB (%i cores)", i ? " + " : "", sysCpu.l3KB[i] / 1024, sysCpu.l3Cores[i]));
+    }
+    Com_Printf("CPU: %s\n", sysCpuBrand[0] ? sysCpuBrand : "unknown");
+    Com_Printf("  %i cores, %i threads", sysCpu.physical, sysCpu.logical);
+    if (sysCpu.fastCores && sysCpu.slowCores) {
+        Com_Printf(" - %i performance + %i efficiency", sysCpu.fastCores, sysCpu.slowCores);
+    }
+    Com_Printf("\n");
+    if (l3[0]) {
+        Com_Printf("  L3: %s%s\n", l3, sysCpu.preferred == 2 ? " - one die has the extra cache (3D V-Cache)" : "");
+    }
+    if (sysCpuSimd[0]) {
+        Com_Printf("  %s\n", sysCpuSimd);
+    }
+    if (sysCpu.ramMB) {
+        Com_Printf("  %llu MB RAM\n", sysCpu.ramMB);
+    }
+    Sys_CpuApply(qtrue);
+}
+
+void Sys_CpuInit(void) {
+    sys_cpuPlacement = Cvar_Get("sys_cpuPlacement", "1", CVAR_ARCHIVE | CVAR_NODEFAULT);
+    Cvar_CheckRange(sys_cpuPlacement, 0, 1, qtrue);
+    Cvar_SetDescription(sys_cpuPlacement,
+        "Where the game's main thread runs:\n"
+        " 0 - wherever the OS puts it\n"
+        " 1 - on the performance cores of a hybrid CPU, or the larger-cache die of a dual-die X3D "
+        "(default). Windows: the process is also not power-throttled. macOS: the thread is marked "
+        "user-interactive, which is how macOS keeps it on the performance cores.\n"
+        "cpuinfo shows what was found and what was done.");
+    Com_Memset(&sysCpu, 0, sizeof(sysCpu));
+    Sys_CpuIdentify();
+    Sys_CpuTopology(&sysCpu);
+    if ((!sysCpuBrand[0] || !Q_stricmp(sysCpuBrand, "unknown")) && sysCpu.brand[0]) {
+        Q_strncpyz(sysCpuBrand, sysCpu.brand, sizeof(sysCpuBrand));
+    }
+#if defined(__aarch64__) || defined(__arm64__)
+    if (!sysCpuSimd[0]) {
+        Q_strncpyz(sysCpuSimd, "NEON", sizeof(sysCpuSimd));
+    }
+#endif
+    Cmd_AddCommand("cpuinfo", Sys_CpuInfo_f);
+    Sys_CpuInfo_f();
+    sys_cpuPlacement->modified = qfalse;
+}
+
+void Sys_CpuFrame(void) {
+    if (sys_cpuPlacement && sys_cpuPlacement->modified) {
+        sys_cpuPlacement->modified = qfalse;
+        Sys_CpuApply(qtrue);
+    }
+}
+
+/*
+=================
 Sys_Init
 =================
 */
 void Sys_Init(void) {
     Cmd_AddCommand("in_restart", Sys_In_Restart_f);
+    Sys_CpuInit();   // [QL] E222
     Cvar_Set("arch", OS_STRING " " ARCH_STRING);
     Cvar_Set("username", Sys_GetCurrentUser());
 }
@@ -562,6 +740,24 @@ void* Sys_LoadGameDll(const char* name,
 
     if (!libHandle) {
         Com_Printf("Sys_LoadGameDll(%s) failed:\n\"%s\"\n", name, Sys_LibraryError());
+#ifdef _WIN32
+        /*
+        [QL] The file having just been checksum-verified against the pak makes
+        this worth spelling out: if the bytes matched and the loader still says
+        no, the file is not the problem and reinstalling will not help. Windows
+        refuses to map an unsigned DLL out of a user-writable directory under
+        several policies, and %APPDATA% - where the engine extracts game modules
+        - is exactly such a directory.
+        */
+        Com_Printf(S_COLOR_YELLOW
+                   "If the module was verified against iobin.pk3 just above, the file is\n"
+                   "intact and Windows is declining to load it rather than failing to read\n"
+                   "it. That is usually a code-integrity policy - Smart App Control, an\n"
+                   "endpoint-protection product, or an AppLocker/WDAC rule - refusing an\n"
+                   "unsigned DLL from a user-writable folder. Check Windows Security >\n"
+                   "App & browser control, and Event Viewer > Applications and Services >\n"
+                   "Microsoft > Windows > CodeIntegrity for the matching block.\n");
+#endif
         return NULL;
     }
 
@@ -673,7 +869,39 @@ char* Sys_ParseProtocolUri(const char* uri) {
 Sys_SigHandler
 =================
 */
+/*
+SIGTERM and SIGINT only record the request; the main loop shuts down from the
+main thread. Shutting down inside the handler ran CL_Shutdown on top of whatever
+the interrupted frame was holding, and a Vulkan driver interrupted mid-frame
+deadlocks in its own teardown: the client hung on "kill" (seen with lavapipe,
+stuck in pthread_cond_destroy) and could only be removed with SIGKILL. A second
+signal exits at once, so a main loop that is itself stuck can still be stopped.
+*/
+static volatile sig_atomic_t sys_quitSignal = 0;
+
 void Sys_SigHandler(int signal) {
+    if (signal == SIGTERM || signal == SIGINT) {
+        if (sys_quitSignal) {
+            _Exit(1);
+        }
+        sys_quitSignal = signal;
+        return;
+    }
+
+    Sys_SigShutdown(signal);
+}
+
+/*
+=================
+Sys_SigShutdown
+
+Shut down right here, on whatever thread is running. Used for the crash
+signals, where the interrupted frame cannot be trusted to finish, and by the
+Windows console control handler, which Windows follows with termination
+shortly after it returns.
+=================
+*/
+void Sys_SigShutdown(int signal) {
     static qboolean signalcaught = qfalse;
 
     if (signalcaught) {
@@ -702,7 +930,27 @@ main
 */
 int main(int argc, char** argv) {
     int i;
-    char commandLine[MAX_STRING_CHARS] = {0};
+    // [QL] E223: was MAX_STRING_CHARS (1024), cut off without a word - a
+    // launcher's long line lost its trailing +connect, or ran half of it
+    static char commandLine[16384];
+
+    /*
+    [QL] Everything this engine parses and prints assumes a '.' decimal point.
+
+    Cvar values, shader files, configs, and - the one that showed the problem -
+    userinfo strings sent over the wire all go through atof and sprintf("%f").
+    On a machine whose locale uses a decimal comma those come out as "2,00",
+    and the bot userinfo configstrings on such a server literally read
+    "\\skill\\ 2,00". Anything reading that back under a C locale gets 2 and
+    silently drops the fraction; anything writing a config produces one the game
+    cannot read on the next machine.
+
+    The C runtime starts in the "C" locale, but SDL calls setlocale(LC_ALL, "")
+    during init on several platforms, so this is asserted here and again after
+    SDL_Init in GLimp_Init. LC_NUMERIC only - the rest of the locale is nobody's
+    business here.
+    */
+    setlocale(LC_NUMERIC, "C");
 #ifdef PROTOCOL_HANDLER
     char* protocolCommand = NULL;
 #endif
@@ -772,6 +1020,11 @@ int main(int argc, char** argv) {
         }
 
         containsSpaces = strchr(argv[i], ' ') != NULL;
+        // whole arguments only: half of "+map qltest_stone" is a different command
+        if (strlen(commandLine) + strlen(argv[i]) + (containsSpaces ? 3 : 1) >= sizeof(commandLine)) {
+            com_cmdlineTruncated = argc - i;
+            break;
+        }
         if (containsSpaces)
             Q_strcat(commandLine, sizeof(commandLine), "\"");
 
@@ -795,9 +1048,32 @@ int main(int argc, char** argv) {
     Com_Init(commandLine);
     NET_Init();
 
+    /*
+    [QL] On Windows the fault signals are deliberately left alone.
+
+    Sys_PlatformInit installs Sys_Win32ExceptionFilter, which writes
+    crashlog.txt with the faulting module, the offset within it and a stack of
+    return addresses. Registering SIGSEGV/SIGILL/SIGFPE here defeats it: the
+    CRT's own __except wrapper around main claims the access violation first
+    and raises the C signal from inside it, so the exception never reaches the
+    unhandled-exception filter and no crashlog is written.
+
+    What the user sees then is not a crash at all. Sys_SigHandler runs
+    CL_Shutdown and SV_Shutdown and exits cleanly, so the window closes with
+    "----- Client Shutdown (Received signal 11) -----" in qconsole.log and
+    nothing else - which is exactly how a segfault clicking "Return to match"
+    came in as "the client quits". A tidy shutdown is the worst possible
+    response to memory corruption anyway: it runs a great deal of code, and
+    every line of it is running on state we already know is bad.
+
+    SIGTERM and SIGINT are real signals rather than translated faults, and are
+    still ours to handle.
+    */
+#ifndef _WIN32
     signal(SIGILL, Sys_SigHandler);
     signal(SIGFPE, Sys_SigHandler);
     signal(SIGSEGV, Sys_SigHandler);
+#endif
     signal(SIGTERM, Sys_SigHandler);
     signal(SIGINT, Sys_SigHandler);
 
@@ -806,6 +1082,18 @@ int main(int argc, char** argv) {
 #else
     while (1) {
         Com_Frame();
+
+        if (sys_quitSignal) {
+            char reason[64];
+
+            Com_sprintf(reason, sizeof(reason), "Received signal %d", (int)sys_quitSignal);
+            Com_Printf("%s, quitting\n", reason);
+#ifndef DEDICATED
+            CL_Shutdown(reason, qtrue, qtrue);
+#endif
+            SV_Shutdown(reason);
+            Sys_Exit(1);
+        }
     }
 #endif
 

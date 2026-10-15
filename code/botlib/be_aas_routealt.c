@@ -114,6 +114,51 @@ int AAS_AlternativeRouteGoals(vec3_t start, int startareanum, vec3_t goal, int g
         return 0;
     // travel time towards the goal area
     goaltraveltime = AAS_AreaTravelTimeToGoalArea(startareanum, start, goalareanum, travelflags);
+    /*
+    [QL] Nothing can be found without this, and it is quietly allowed to be zero.
+
+    Every filter below is a fraction of goaltraveltime, so a zero makes
+    "starttime > 1.1 * goaltraveltime" true for every reachable area and the
+    function returns 0 having rejected the whole map. Zero means the router has
+    no route between the two points *yet* - the routing caches are built lazily -
+    which is entirely possible when this is called from the first bot's setup, a
+    fraction of a second into the map.
+
+    Saying so is the difference between "this map has no alternative routes" and
+    "you asked too early", which are the same silence and opposite problems.
+
+    [QL] E84: and there is a third thing a zero can mean, which is the one that
+    actually happened. AAS_AreaRouteToGoalArea refuses outright when either area
+    has no reachabilities of its own (the numreachableareas test in
+    be_aas_route.c) - that is a permanent no, not a cold cache. Saying "yet" to
+    it sent a field diagnosis after a warm-up problem that did not exist while
+    the real fault, a start area sitting on an entity nothing can walk to, was
+    printed 50 times in the same words and read as noise each time. Name the two
+    apart, and name which end is at fault, because the caller passes two areas
+    and only one of them is usually wrong.
+    */
+    if (!goaltraveltime) {
+        qboolean startdead = !aasworld.areasettings[startareanum].numreachableareas;
+        qboolean goaldead = !aasworld.areasettings[goalareanum].numreachableareas;
+
+        if (startdead || goaldead) {
+            botimport.Print(PRT_MESSAGE,
+                            "alt routes: %s area (start %d%s, goal %d%s) has no "
+                            "reachabilities - nothing can walk to or from it, and "
+                            "retrying will not change that\n",
+                            (startdead && goaldead) ? "both the start and goal"
+                                                    : (startdead ? "the start" : "the goal"),
+                            startareanum, startdead ? " DEAD" : "",
+                            goalareanum, goaldead ? " DEAD" : "");
+        } else {
+            botimport.Print(PRT_MESSAGE,
+                            "alt routes: no route from area %d to area %d yet "
+                            "(both areas are walkable, so this is a cold routing "
+                            "cache and should succeed on a retry)\n",
+                            startareanum, goalareanum);
+        }
+        return 0;
+    }
     // clear the midrange areas
     Com_Memset(midrangeareas, 0, aasworld.numareas * sizeof(midrangearea_t));
     numaltroutegoals = 0;
@@ -199,6 +244,12 @@ int AAS_AlternativeRouteGoals(vec3_t start, int startareanum, vec3_t goal, int g
 #ifdef ALTROUTE_DEBUG
     botimport.Print(PRT_MESSAGE, "alternative route goals in %d msec\n", Sys_MilliSeconds() - startmillisecs);
 #endif
+    if (!numaltroutegoals) {
+        // [QL] which half of the filter emptied it
+        botimport.Print(PRT_MESSAGE,
+                        "alt routes: none between areas %d and %d (direct %d, %d midrange areas)\n",
+                        startareanum, goalareanum, goaltraveltime, nummidrangeareas);
+    }
     return numaltroutegoals;
 #endif
 }  // end of the function AAS_AlternativeRouteGoals

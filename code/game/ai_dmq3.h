@@ -68,6 +68,9 @@ qboolean EntityHasKamikaze(aas_entityinfo_t* entinfo);
 void BotSetUserInfo(bot_state_t* bs, char* key, char* value);
 // set the team status (offense, defense etc.)
 void BotSetTeamStatus(bot_state_t* bs);
+// [QL] queue a teamtask; BotFlushTeamTasks publishes it once it has settled
+void BotQueueTeamTask(bot_state_t* bs, int teamtask);
+void BotFlushTeamTasks(void);
 // returns the name of the client
 char* ClientName(int client, char* name, int size);
 // returns a simplified client name
@@ -82,6 +85,8 @@ int BotSetLastOrderedTask(bot_state_t* bs);
 void BotTeamGoals(bot_state_t* bs, int retreat);
 // returns the aggression of the bot in the range [0, 100]
 float BotAggression(bot_state_t* bs);
+// [QL] the same answer without the tactical modifier, for long term goal choice
+float BotObjectiveAggression(bot_state_t* bs);
 // returns how bad the bot feels
 float BotFeelingBad(bot_state_t* bs);
 // returns true if the bot wants to retreat
@@ -134,6 +139,8 @@ int BotPopFromActivateGoalStack(bot_state_t* bs);
 void BotClearActivateGoalStack(bot_state_t* bs);
 // returns the team the bot is in
 int BotTeam(bot_state_t* bs);
+// [QL] the goal this bot's own team defends, in the CTF gametypes
+bot_goal_t* BotTeamFlag(bot_state_t* bs);
 // returns the opposite team of the bot
 int BotOppositeTeam(bot_state_t* bs);
 // returns the flag the bot is carrying (CTFFLAG_?)

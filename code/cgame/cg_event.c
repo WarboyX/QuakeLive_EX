@@ -500,13 +500,26 @@ static void CG_UseItem(centity_t* cent) {
         itemNum = 0;
     }
 
-    // print a message if the local player
+    /* [QL] E101. Two cvars, and the two branches below are exactly what they
+       name - cg_useItemWarning is the "No item to use" case, cg_useItemMessage
+       is the "Use <item>" case. Both were registered and read by nothing, so
+       both prints were unconditional and always big.
+
+       Quake Live's own menu gives the values: 0 "No", 1 "Yes (Large)",
+       2 "Yes (Small)" for each (docs/ql-cvar-semantics.txt). 1 is the default
+       and is what this did before, so nothing changes until somebody sets one.
+       Anything other than 2 draws large, which keeps an out-of-range value
+       behaving like the default rather than vanishing. */
     if (es->number == cg.snap->ps.clientNum) {
         if (!itemNum) {
-            CG_CenterPrint("No item to use", SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH);
-        } else {
+            if (cg_useItemWarning.integer) {
+                CG_CenterPrint("No item to use", SCREEN_HEIGHT * 0.30,
+                               cg_useItemWarning.integer == 2 ? SMALLCHAR_WIDTH : BIGCHAR_WIDTH);
+            }
+        } else if (cg_useItemMessage.integer) {
             item = BG_FindItemForHoldable(itemNum);
-            CG_CenterPrint(va("Use %s", item->pickup_name), SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH);
+            CG_CenterPrint(va("Use %s", item->pickup_name), SCREEN_HEIGHT * 0.30,
+                           cg_useItemMessage.integer == 2 ? SMALLCHAR_WIDTH : BIGCHAR_WIDTH);
         }
     }
 
@@ -663,7 +676,272 @@ also called by CG_CheckPlayerstateEvents
     if (cg_debugEvents.integer) { \
         CG_Printf(x "\n");        \
     }
+
+/*
+[QL] R19: tell the renderer something disturbed the water here.
+
+One place rather than a call at every event site, because every caller has the
+same two questions to get wrong: is this actually water, and where is its
+surface. An event's origin is whatever the game had to hand - a player's feet, a
+trace endpoint, a missile's last position - and none of those is reliably on the
+surface.
+
+So: walk up from the origin until the contents stop being liquid, and use that
+as the surface. A rocket that went in has its origin under the water and needs
+the ripple at the top; a grenade that went off just above it is already out and
+needs the first water below. Sixteen units a step over a short distance covers
+both without a trace call.
+
+Silent when there is no water within reach, which is the common case - most
+explosions in this game are nowhere near a pond.
+*/
+/*
+[QL] R19: how hard each weapon hits the water.
+
+One size for everything made the plasma gun the biggest splash in the game and
+the rocket launcher one of the smallest, which is backwards - and it was a rate
+effect rather than a strength one. Plasma puts out about ten projectiles a
+second and every one of them added a full-strength ripple, so they piled on top
+of each other; the rocket gets one.
+
+So each weapon is sized by what it should do on its own, and the ones that fire
+fast are sized down by roughly their rate so a stream of them adds up to
+something like a single heavy hit rather than a boiling pot.
+
+Radius is how far it eventually spreads and matters more to how it reads than
+strength does: a wide, gentle ring is a rocket, a tight sharp one is a bullet.
+*/
+void CG_WaterImpactSize(int weapon, float *radius, float *strength) {
+    switch (weapon) {
+        case WP_ROCKET_LAUNCHER:
+            *radius = 220.0f; *strength = 4.0f; break;
+        case WP_BFG:
+            *radius = 300.0f; *strength = 5.0f; break;
+        case WP_GRENADE_LAUNCHER:
+            *radius = 190.0f; *strength = 3.4f; break;
+        case WP_PLASMAGUN:
+            /* fast, so small - ten of these a second should read as a churn,
+               not as ten rockets */
+            *radius = 70.0f;  *strength = 0.7f; break;
+        case WP_RAILGUN:
+            *radius = 90.0f;  *strength = 1.8f; break;
+        case WP_LIGHTNING:
+            *radius = 55.0f;  *strength = 0.5f; break;
+        case WP_SHOTGUN:
+            /* per pellet, and there are twenty of them. Small and sharp: what
+               makes a shotgun read as a shotgun on water is the scatter, so
+               the individual hit wants to stay a point rather than grow into
+               something that merges with its neighbours. */
+            *radius = 34.0f;  *strength = 0.5f; break;
+        default:
+            *radius = 40.0f;  *strength = 0.6f; break;
+    }
+}
+
+/*
+[QL] R19: roughly where a shot came from, for the entry-point solve above.
+
+The attacker's eye rather than their origin, because a shot leaves at eye height
+and the difference is most of a player's height - enough to move the crossing
+point noticeably on a flat shot across a pool.
+
+es->otherEntityNum is the attacker for the bullet events. Where it is not a
+client, the local camera is the best guess available and is exactly right for
+the case that matters most: the shots the player is firing and watching land.
+Returns NULL only when there is nothing sensible to say, and the caller then
+keeps the impact position it already had.
+*/
+static const float *CG_ShotOrigin(const entityState_t *es) {
+    static vec3_t org;
+
+    /*
+    The local player's own shots start at the eye this frame is being rendered
+    from, which is exact. cg_entities[].lerpOrigin for one's own client is
+    filled from the predicted state during the same entity loop these events are
+    processed in, so reading it here can pick up whatever was there before the
+    loop reached it - and a shooter's own shots are the ones they are watching
+    land, so that is the case worth getting exactly right.
+    */
+    if (es->otherEntityNum == cg.predictedPlayerState.clientNum) {
+        VectorCopy(cg.refdef.vieworg, org);
+        return org;
+    }
+
+    if (es->otherEntityNum >= 0 && es->otherEntityNum < MAX_CLIENTS) {
+        VectorCopy(cg_entities[es->otherEntityNum].lerpOrigin, org);
+        org[2] += DEFAULT_VIEWHEIGHT;
+        return org;
+    }
+
+    VectorCopy(cg.refdef.vieworg, org);
+    return org;
+}
+
+/*
+[QL] Find the water surface at or under p, and move p onto it. qfalse when
+there is none to touch from here: too deep below it, nothing under it, or
+ground in the way (E199).
+*/
+static qboolean CG_WaterSurfaceAt(vec3_t p) {
+    int i;
+
+    if (trap_CM_PointContents(p, 0) & CONTENTS_WATER) {
+        /* under it - climb to the surface */
+        for (i = 0; i < 16; i++) {
+            p[2] += 16.0f;
+            if (!(trap_CM_PointContents(p, 0) & CONTENTS_WATER)) {
+                break;
+            }
+        }
+        if (i == 16) {
+            return qfalse;      // deeper than this looks; not a surface event
+        }
+    } else {
+        /*
+        Above it - look down for water, and stop at the first thing in the way.
+
+        [QL] E199: a trace, where this used to step down 16 units at a time
+        asking only "is this point water?". That walks straight through solid
+        ground, and a pond's water brush usually runs on under its banks past
+        the visible shore. Walking on the grass in japanesecastles' garden
+        found the water a few units under the turf, and every footstep and the
+        wake put a ring there whose edge spread onto the visible pond - the
+        water "reacting to us walking near it". A floor between the point and
+        the water means the water cannot be touched from here. The trace also
+        cannot hop over a floor thinner than a step the way the probes could.
+        World only, like the probes it replaces.
+        */
+        trace_t tr;
+        vec3_t end;
+
+        VectorCopy(p, end);
+        end[2] -= 128.0f;
+        trap_CM_BoxTrace(&tr, p, end, NULL, NULL, 0, CONTENTS_SOLID | CONTENTS_WATER);
+        if (tr.startsolid || tr.fraction == 1.0f || !(tr.contents & CONTENTS_WATER)) {
+            return qfalse;      // no water under this, or ground first
+        }
+        /* just inside the surface, so the refinement below starts in water's
+           column and climbs the last couple of units to it */
+        VectorCopy(tr.endpos, p);
+        p[2] += 2.0f;
+    }
+
+    /*
+    [QL] Refine it. The walk above steps 16 units at a time and stops at the
+    first point that is not water, so it lands anywhere up to a full step above
+    the real surface - and that error does not stay small. It goes into the
+    crossing solve below as a fraction of the shot's total drop, so on a flat
+    shot across a pool a 16-unit error in height becomes tens of units of error
+    along the ground.
+
+    Two units is finer than anything downstream can see.
+    */
+    for (i = 0; i < 8; i++) {
+        vec3_t q;
+        VectorCopy(p, q);
+        q[2] -= 2.0f;
+        if (trap_CM_PointContents(q, 0) & CONTENTS_WATER) {
+            break;
+        }
+        p[2] = q[2];
+    }
+    return qtrue;
+}
+
+/*
+[QL] E200: how far from a body's centre to look for water it is standing in.
+A player is 30 units across (mins/maxs +-15); 20 is that half-width and a
+little more, so a body straddling the shoreline - feet on the bank, half of it
+over the pond - still disturbs the water it is touching.
+*/
+#define WATER_BODY_REACH 20.0f
+
+void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float strength) {
+    vec3_t p;
+    float surfaceZ;
+
+    if (!cg_waterRipples.integer) {
+        return;
+    }
+
+    VectorCopy(impact, p);
+
+    if (!CG_WaterSurfaceAt(p)) {
+        /*
+        [QL] E200: the edge of the water, for bodies.
+
+        E199 made the test exact - water under this point, and no ground in
+        the way - and exact was too strict for a player. The point is the
+        centre of a 30-unit body; walking the shoreline with the centre over
+        the bank and half the body over the pond left the water still, where
+        it should have been disturbed. So for a body (no shot origin: the
+        wake, footsteps, swimming, entering and leaving) look again around its
+        footprint, and ripple at the first spot that is over open water.
+
+        Shots keep the exact test. An impact is a point; a rocket hitting the
+        bank beside a pond did not touch the pond.
+
+        Deep on a bank over a hidden water brush every one of these still meets
+        turf first, so E199 holds: only within reach of open water does this
+        find any.
+        */
+        static const float dirs[8][2] = {
+            {1, 0}, {0.7071f, 0.7071f}, {0, 1}, {-0.7071f, 0.7071f},
+            {-1, 0}, {-0.7071f, -0.7071f}, {0, -1}, {0.7071f, -0.7071f}
+        };
+        int k;
+
+        if (from != NULL) {
+            return;
+        }
+        for (k = 0; k < 8; k++) {
+            p[0] = impact[0] + dirs[k][0] * WATER_BODY_REACH;
+            p[1] = impact[1] + dirs[k][1] * WATER_BODY_REACH;
+            p[2] = impact[2];
+            /* and the feet have to reach it: the body's origin is 24 above
+               its feet (MINS_Z), and a player on top of a bank whose edge
+               overhangs the pond fifty units down is not touching it */
+            if (CG_WaterSurfaceAt(p) && p[2] >= impact[2] - 24.0f - 12.0f) {
+                break;
+            }
+        }
+        if (k == 8) {
+            return;
+        }
+    }
+
+    surfaceZ = p[2];
+
+    /*
+    [QL] Where it went IN, not where it stopped.
+
+    Water is not solid, so a bullet fired into a pool passes straight through
+    the surface and travels on to hit the floor - and the event carries that
+    floor impact. Walking up from it corrects the height and nothing else, so
+    the splash appeared directly above where the bullet stopped, which at any
+    angle other than straight down is somewhere else entirely. The steeper the
+    pool and the flatter the shot, the further out it lands.
+
+    So intersect the shot with the surface. `from` is the muzzle, or as near as
+    the event can say; the crossing is one lerp on Z once the surface height is
+    known, which the walk above has just established.
+
+    Guarded on the shot actually crossing the plane downward. A shot fired from
+    inside the water, or along it, has no entry point to find and keeps the
+    position it came with.
+    */
+    if (from != NULL && from[2] > surfaceZ && impact[2] < surfaceZ) {
+        float t = (from[2] - surfaceZ) / (from[2] - impact[2]);
+        p[0] = from[0] + (impact[0] - from[0]) * t;
+        p[1] = from[1] + (impact[1] - from[1]) * t;
+    }
+
+    trap_R_AddWaterRipple(p, radius, strength);
+}
+
+
 void CG_EntityEvent(centity_t* cent, vec3_t position) {
+    float rippleRadius, rippleStrength;   /* [QL] R19 */
     entityState_t* es;
     int event;
     vec3_t dir;
@@ -713,6 +991,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
+            CG_WaterRipple(NULL, cent->lerpOrigin, 48.0f, 0.4f);
             break;
         case EV_FOOTWADE:
             DEBUGNAME("EV_FOOTWADE");
@@ -720,6 +999,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
+            CG_WaterRipple(NULL, cent->lerpOrigin, 56.0f, 0.6f);
             break;
         case EV_SWIM:
             DEBUGNAME("EV_SWIM");
@@ -727,6 +1007,7 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
                 trap_S_StartSound(NULL, es->number, CHAN_BODY,
                                   cgs.media.footsteps[FOOTSTEP_SPLASH][rand() & 3]);
             }
+            CG_WaterRipple(NULL, cent->lerpOrigin, 64.0f, 0.5f);
             break;
 
         case EV_FALL_SHORT:
@@ -830,10 +1111,12 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
         case EV_WATER_TOUCH:
             DEBUGNAME("EV_WATER_TOUCH");
             trap_S_StartSound(NULL, es->number, CHAN_AUTO, cgs.media.watrInSound);
+            CG_WaterRipple(NULL, cent->lerpOrigin, 96.0f, 1.4f);
             break;
         case EV_WATER_LEAVE:
             DEBUGNAME("EV_WATER_LEAVE");
             trap_S_StartSound(NULL, es->number, CHAN_AUTO, cgs.media.watrOutSound);
+            CG_WaterRipple(NULL, cent->lerpOrigin, 80.0f, 1.0f);
             break;
         case EV_WATER_UNDER:
             DEBUGNAME("EV_WATER_UNDER");
@@ -1105,12 +1388,16 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_MISSILE_HIT");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitPlayer(es->weapon, position, dir, es->otherEntityNum);
+            CG_WaterImpactSize(es->weapon, &rippleRadius, &rippleStrength);
+            CG_WaterRipple(CG_ShotOrigin(es), position, rippleRadius, rippleStrength);
             break;
 
         case EV_MISSILE_MISS:
             DEBUGNAME("EV_MISSILE_MISS");
             ByteToDir(es->eventParm, dir);
             CG_MissileHitWall(es->weapon, 0, position, dir, IMPACTSOUND_DEFAULT);
+            CG_WaterImpactSize(es->weapon, &rippleRadius, &rippleStrength);
+            CG_WaterRipple(CG_ShotOrigin(es), position, rippleRadius, rippleStrength);
             break;
 
         case EV_MISSILE_MISS_METAL:
@@ -1158,6 +1445,8 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             if (es->eventParm != 255) {
                 ByteToDir(es->eventParm, dir);
                 CG_MissileHitWall(es->weapon, es->clientNum, position, dir, IMPACTSOUND_DEFAULT);
+                CG_WaterImpactSize(es->weapon, &rippleRadius, &rippleStrength);
+            CG_WaterRipple(CG_ShotOrigin(es), position, rippleRadius, rippleStrength);
             }
             break;
 
@@ -1165,6 +1454,8 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
             DEBUGNAME("EV_BULLET_HIT_WALL");
             ByteToDir(es->eventParm, dir);
             CG_Bullet(es->pos.trBase, es->otherEntityNum, dir, qfalse, ENTITYNUM_WORLD);
+            CG_WaterImpactSize(es->weapon, &rippleRadius, &rippleStrength);
+            CG_WaterRipple(CG_ShotOrigin(es), es->pos.trBase, rippleRadius, rippleStrength);
             break;
 
         case EV_BULLET_HIT_FLESH:
@@ -1175,6 +1466,9 @@ void CG_EntityEvent(centity_t* cent, vec3_t position) {
         case EV_SHOTGUN:
             DEBUGNAME("EV_SHOTGUN");
             CG_ShotgunFire(es);
+            /* [QL] R19: the splash is per pellet, in CG_ShotgunPellet - a
+               shotgun into a pond is a scatter of small hits in the shape of
+               the pattern, not one big ring in the middle of it. */
             break;
 
         case EV_GENERAL_SOUND:

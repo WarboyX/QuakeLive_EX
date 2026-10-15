@@ -66,6 +66,7 @@ extern vmCvar_t ui_dedicated;
 extern vmCvar_t ui_opponentName;
 extern vmCvar_t ui_debugMenus;
 extern vmCvar_t ui_menuFiles;
+extern vmCvar_t ui_inputDebug;
 extern vmCvar_t ui_currentMap;
 extern vmCvar_t ui_currentNetMap;
 extern vmCvar_t ui_mapIndex;
@@ -903,6 +904,7 @@ void trap_Cvar_Update(vmCvar_t* vmCvar);
 void trap_Cvar_Set(const char* var_name, const char* value);
 float trap_Cvar_VariableValue(const char* var_name);
 void trap_Cvar_VariableStringBuffer(const char* var_name, char* buffer, int bufsize);
+void trap_Cvar_LatchedStringBuffer(const char* var_name, char* buffer, int bufsize);  // [QL] E183
 void trap_Cvar_SetValue(const char* var_name, float value);
 void trap_Cvar_Reset(const char* name);
 void trap_Cvar_Create(const char* var_name, const char* var_value, int flags);

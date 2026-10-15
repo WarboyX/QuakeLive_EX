@@ -696,16 +696,16 @@ void LoadDrawVertToSrfVert(srfVert_t* s, drawVert_t* d, int realLightmapNum, flo
     } else {
         // hack: convert LDR vertex colors to HDR
         if (r_hdr->integer) {
-            v[0] = MAX(d->color[0], 0.499f);
-            v[1] = MAX(d->color[1], 0.499f);
-            v[2] = MAX(d->color[2], 0.499f);
+            v[0] = MAX(d->color.rgba[0], 0.499f);
+            v[1] = MAX(d->color.rgba[1], 0.499f);
+            v[2] = MAX(d->color.rgba[2], 0.499f);
         } else {
-            v[0] = d->color[0];
-            v[1] = d->color[1];
-            v[2] = d->color[2];
+            v[0] = d->color.rgba[0];
+            v[1] = d->color.rgba[1];
+            v[2] = d->color.rgba[2];
         }
     }
-    v[3] = d->color[3] / 255.0f;
+    v[3] = d->color.rgba[3] / 255.0f;
 
     R_ColorShiftLightingFloats(v, v);
     R_VaoPackColor(s->color, v);
@@ -2716,6 +2716,7 @@ Called directly from cgame
 =================
 */
 void RE_LoadWorldMap(const char* name) {
+    dheader_t q3Header;  // [QL] BSP 46 header with an empty 18th lump
     int bsp_version;
     int i;
     dheader_t* header;
@@ -2777,14 +2778,30 @@ void RE_LoadWorldMap(const char* name) {
     fileBase = (byte*)header;
 
     bsp_version = LittleLong(header->version);
-    if (bsp_version != BSP_VERSION) {
-        ri.Error(ERR_DROP, "RE_LoadWorldMap: %s has wrong version number (%i should be %i)",
-                 name, bsp_version, BSP_VERSION);
+    if (bsp_version != BSP_VERSION && bsp_version != BSP_VERSION_Q3) {
+        ri.Error(ERR_DROP, "RE_LoadWorldMap: %s has wrong version number (%i should be %i or %i)",
+                 name, bsp_version, BSP_VERSION, BSP_VERSION_Q3);
     }
 
-    // swap all the lumps
-    for (i = 0; i < sizeof(dheader_t) / 4; i++) {
-        ((int*)header)[i] = LittleLong(((int*)header)[i]);
+    // [QL] as many lumps as this version has; a Quake 3 header is one shorter,
+    // and this header is a pointer into the file rather than a copy, so
+    // swapping past its end byte-swaps the next lump's data in place
+    {
+        int numLumps = (bsp_version == BSP_VERSION_Q3) ? HEADER_LUMPS_Q3 : HEADER_LUMPS;
+
+        ((int*)header)[0] = LittleLong(((int*)header)[0]);  // ident
+        ((int*)header)[1] = LittleLong(((int*)header)[1]);  // version
+        for (i = 0; i < numLumps * (int)(sizeof(lump_t) / 4); i++) {
+            ((int*)header->lumps)[i] = LittleLong(((int*)header->lumps)[i]);
+        }
+        // E122: not in place - in a BSP 46 file lumps[17] is the first 8 bytes of
+        // the first lump's data (the shaders lump, as q3map2 writes it). Copy the
+        // header out and give the copy the empty lump.
+        if (bsp_version == BSP_VERSION_Q3) {
+            Com_Memcpy(&q3Header, header, (size_t)((byte*)&header->lumps[HEADER_LUMPS_Q3] - (byte*)header));
+            Com_Memset(&q3Header.lumps[LUMP_ADVERTISEMENTS], 0, sizeof(lump_t));
+            header = &q3Header;
+        }
     }
 
     // load into heap

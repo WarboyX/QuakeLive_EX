@@ -76,8 +76,34 @@ static void CG_Viewpos_f(void) {
               (int)cg.refdefViewAngles[YAW]);
 }
 
-// [QL] Binary-matched: simplified from Q3 version
+/*
+[QL] Hold +scores to get a mouse.
+
+The scoreboard's lists have always been real list boxes - scrollable, clickable,
+with working hit tests - but nothing ever gave cgame the mouse while they were
+on screen, so there was no cursor and nothing to click with. The machinery was
+only ever triggered from CG_ParseServerinfo's intermission branch, which is why
+the match summary took the mouse and the in-game board did not.
+
+Grabbing it for the duration of the hold is what makes that safe. KEYCATCH_CGAME
+costs mouselook, which would be wrong for a scoreboard you toggle and leave up
+and is fine for one you hold. The engine cooperates: CL_KeyEvent runs
+CL_ParseBinding before dispatching, on key *up* as well as key down, so -scores
+still fires while the catcher is set - the scoreboard cannot get stuck holding
+the mouse - and movement binds keep working underneath. Escape also always
+clears KEYCATCH_CGAME as a second way out.
+
+cg_scoreboardMouse 0 restores the old behaviour for anyone who would rather keep
+the view free.
+*/
 static void CG_ScoresDown_f(void) {
+    /* Unconditionally, and before anything else: this is the probe for "did
+       +scores reach cgame at all". It was inside the mouse-grab branch below,
+       which made it useless for the one question it exists to answer, because
+       turning the mouse grab off to test also turned the reporting off. It
+       gates on cg_scoreboardDebug internally. */
+    CG_ScoreboardDebugDump();
+
     CG_BuildSpectatorString();
     if (cg.scoresRequestTime + 2000 < cg.time) {
         cg.scoresRequestTime = cg.time;
@@ -87,12 +113,48 @@ static void CG_ScoresDown_f(void) {
         }
     }
     cg.showScores = qtrue;
+
+    if (cg_scoreboardMouse.integer && cgs.eventHandling == CGAME_EVENT_NONE) {
+        cgs.scoreboardHoldingMouse = qtrue;
+        cgs.cursorX = SCREEN_WIDTH / 2;
+        cgs.cursorY = SCREEN_HEIGHT / 2;
+        CG_EventHandling(CGAME_EVENT_SCOREBOARD);
+    }
+
+    /* [QL] Unthrottled, unlike the per-frame gates: a press and its release are
+       two events, not a state, and the throttle hid whichever of them mattered.
+       The pair of these lines says how long the hold actually lasted and what
+       the catcher did across it. */
+    if (cg_scoreboardDebug.integer) {
+        CG_Printf("scoreboardDebug: +scores at %i - showScores %i, mouse %i, "
+                  "holding %i, eventHandling %i, catcher 0x%x\n",
+                  cg.time, cg.showScores, cg_scoreboardMouse.integer,
+                  cgs.scoreboardHoldingMouse, cgs.eventHandling, trap_Key_GetCatcher());
+    }
 }
 
 // [QL] Binary-matched: no scoreFadeTime
 static void CG_ScoresUp_f(void) {
     if (cg.showScores) {
         cg.showScores = qfalse;
+    }
+
+    // [QL] E120. The right-click menu and stats panel belong to the held board.
+    CG_ScoreboardPopupsClose();
+
+    /* Only hand the mouse back if the scoreboard is why we have it. At
+       intermission CG_ParseServerinfo holds the same catcher for the match
+       summary, and releasing the key must not close that. */
+    if (cgs.scoreboardHoldingMouse && !cg.intermissionStarted) {
+        cgs.scoreboardHoldingMouse = qfalse;
+        CG_EventHandling(CGAME_EVENT_NONE);
+    }
+
+    if (cg_scoreboardDebug.integer) {
+        CG_Printf("scoreboardDebug: -scores at %i - showScores %i, holding %i, "
+                  "eventHandling %i, catcher 0x%x\n",
+                  cg.time, cg.showScores, cgs.scoreboardHoldingMouse,
+                  cgs.eventHandling, trap_Key_GetCatcher());
     }
 }
 
@@ -154,20 +216,92 @@ static void CG_LoadHud_f(void) {
     menuEndScoreboard = NULL;
 }
 
-static void CG_scrollScoresDown_f(void) {
-    if (menuScoreboard && cg.scoreBoardShowing) {
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_SCOREBOARD, qtrue);
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_REDTEAM_LIST, qtrue);
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_BLUETEAM_LIST, qtrue);
+/*
+=================
+Scoreboard scrolling
+
+The scoreboard list box shows ten rows. Past that the menu draws a scroll bar
+and nothing else: the bar is a decoration painted from startPos, there is no
+cursor in front of it to drag it with while +scores is held, and these commands
+were the only way to move it - unbound, so in practice there was no way at all
+to see anyone below tenth place.
+
+Two halves to the fix. Here, the commands move the list box that is actually on
+screen, which at intermission is the end-of-match menu rather than the in-game
+one, and cover a page and the ends of the list as well as single rows. In the
+client, CL_ScoreboardScrollKey routes the wheel and the page keys here while the
+scoreboard is up, so none of this has to be bound by hand.
+
+All three feeders are driven because the team scoreboards split the players
+across the red and blue lists; the feeder that is not in the current menu is a
+no-op.
+=================
+*/
+static void CG_ScrollScoreboard(int key) {
+    menuDef_t* menu;
+
+    if (!cg.scoreBoardShowing) {
+        return;
     }
+
+    if (cg.predictedPlayerState.pm_type == PM_INTERMISSION && menuEndScoreboard) {
+        menu = menuEndScoreboard;
+    } else {
+        menu = menuScoreboard;
+    }
+    if (!menu) {
+        return;
+    }
+
+    cg.scoreboardScrolled = qtrue;
+
+    /*
+    [QL] Scroll the list the cursor is over, not both of them.
+
+    A team board has two lists side by side and this drove all four feeders with
+    the same key, so the wheel moved red and blue in lockstep and there was no
+    way to look down one team without dragging the other along. With the mouse
+    held there is a cursor to ask, so ask it. Without one - cg_scoreboardMouse 0,
+    or the wheel used before the board takes the mouse - there is nothing to
+    disambiguate with and moving both is still the best answer.
+    */
+    if (cgs.eventHandling != CGAME_EVENT_NONE) {
+        int feeder = Menu_FeederAtPoint(menu, cgs.cursorX, cgs.cursorY);
+
+        if (feeder >= 0) {
+            Menu_ScrollFeederKey(menu, feeder, key);
+            return;
+        }
+    }
+
+    Menu_ScrollFeederKey(menu, FEEDER_SCOREBOARD, key);
+    Menu_ScrollFeederKey(menu, FEEDER_ENDSCOREBOARD, key);
+    Menu_ScrollFeederKey(menu, FEEDER_REDTEAM_LIST, key);
+    Menu_ScrollFeederKey(menu, FEEDER_BLUETEAM_LIST, key);
+}
+
+static void CG_scrollScoresDown_f(void) {
+    CG_ScrollScoreboard(K_DOWNARROW);
 }
 
 static void CG_scrollScoresUp_f(void) {
-    if (menuScoreboard && cg.scoreBoardShowing) {
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_SCOREBOARD, qfalse);
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_REDTEAM_LIST, qfalse);
-        Menu_ScrollFeeder(menuScoreboard, FEEDER_BLUETEAM_LIST, qfalse);
-    }
+    CG_ScrollScoreboard(K_UPARROW);
+}
+
+static void CG_pageScoresDown_f(void) {
+    CG_ScrollScoreboard(K_PGDN);
+}
+
+static void CG_pageScoresUp_f(void) {
+    CG_ScrollScoreboard(K_PGUP);
+}
+
+static void CG_scrollScoresTop_f(void) {
+    CG_ScrollScoreboard(K_HOME);
+}
+
+static void CG_scrollScoresBottom_f(void) {
+    CG_ScrollScoreboard(K_END);
 }
 
 /*
@@ -722,25 +856,51 @@ void CG_AddChat(const char *text, int teamOnly, int extraTime) {
     Q_strncpyz(cg.currentChatLine.text, text,
                len < CHAT_LINE_TEXT ? len + 1 : CHAT_LINE_TEXT);
 
-    // Also print to console
-    CG_Printf("%s", text);
+    /*
+    [QL] Also print to console - on a line of its own.
+
+    The server's chat payload has no trailing newline (G_SayTo sends the text
+    and nothing else), and this printed it with "%s", so every chat line ran
+    straight into whatever printed next: two bots talking and an obituary all
+    landed on one console line.
+
+    Only the console copy gets the newline. cg.currentChatLine.text is what the
+    chat overlay draws and must stay exactly as sent.
+    */
+    CG_Printf("%s\n", text);
 }
 
-// [QL] Draw chat overlay - binary at 0x10006A10
-// chatRect defaults to bottom-left area (x=1, y=350, h=120 from bottom)
+/*
+[QL] Draw chat overlay - binary at 0x10006A10
+chatRect defaults to bottom-left area (x=1, y=350, h=120 from bottom)
+
+Recent lines are on screen without being asked for. Before, the ring buffer was
+filled by CG_AddChat and only ever drawn while +chat was held or the scoreboard
+was up, so ordinary play showed one line for the two seconds of its endTime and
+then nothing - the buffer was written every time anyone spoke and read almost
+never. Anything said while you were looking elsewhere was gone.
+
+So the history is drawn either way, and what changes is how much and for how
+long: normally the last cg_chatHistoryLength lines that are still inside
+CHAT_HUD_TIME, and while +chat is held or the scoreboard is up, that many lines
+regardless of age. The newest line keeps its own slot at the bottom until its
+endTime passes and CG_AddChat rolls it into the buffer, which is the binary's
+arrangement and is left alone.
+*/
+#define CHAT_HUD_TIME 10000   // how long a line stays up unasked, in msec
+
 void CG_DrawChat(void) {
     int maxLines;
     float y;
     float x;
     float scale;
-    int i;
+    int i, drawn;
+    qboolean showAll;
 
     // Default chat area: bottom-left
     x = 1.0f;
     y = 478.0f;     // near bottom of 480-high screen
     scale = 0.18f;   // default chat text scale
-
-    maxLines = 8;    // default visible history lines
 
     // Draw the current (newest) chat line if active
     if (cg.currentChatLine.startTime != 0) {
@@ -758,30 +918,37 @@ void CG_DrawChat(void) {
         }
     }
 
-    // Determine how many history lines to show
-    if (cg.snap->ps.pm_type == PM_INTERMISSION) {
+    showAll = (cg.chatHistoryShowing || cg.showScores);
+
+    maxLines = cg_chatHistoryLength.integer;
+    if (maxLines > MAX_CHAT_LINES) {
+        maxLines = MAX_CHAT_LINES;
+    }
+    // asked for, and mid-round, the board and the intermission want less room taken
+    if (showAll && cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION && maxLines > 4) {
         maxLines = 4;
-    } else if (cg.showScores) {
-        maxLines = 2;
+    }
+    if (maxLines <= 0) {
+        return;
     }
 
-    // Draw chat history lines (when +chat held or scoreboard up)
-    if ((cg.chatHistoryShowing || cg.showScores) && maxLines > 0) {
-        i = cg.chatIndex;
-        do {
+    i = cg.chatIndex;
+    for (drawn = 0; drawn < maxLines; drawn++) {
+        const char *text = cg.chatLines[i].text;
+
+        if (text[0]) {
+            if (!showAll && cg.chatLines[i].startTime + CHAT_HUD_TIME < cg.time) {
+                break;   // older than this are older still
+            }
             y -= 13.0f;
-            if (cg.chatLines[i].text[0]) {
-                CG_SetWidescreen(WIDESCREEN_LEFT);
-                CG_DrawText(x, y, 1, scale, colorWhite,
-                            cg.chatLines[i].text, 0, 256, 3);
-                CG_SetWidescreen(WIDESCREEN_STRETCH);
-            }
-            i--;
-            if (i < 0) {
-                i = MAX_CHAT_LINES - 1;
-            }
-            maxLines--;
-        } while (maxLines != 0);
+            CG_SetWidescreen(WIDESCREEN_LEFT);
+            CG_DrawText(x, y, 1, scale, colorWhite, text, 0, 256, 3);
+            CG_SetWidescreen(WIDESCREEN_STRETCH);
+        }
+        i--;
+        if (i < 0) {
+            i = MAX_CHAT_LINES - 1;
+        }
     }
 }
 
@@ -935,6 +1102,17 @@ typedef struct {
 } consoleCommand_t;
 
 // [QL] Command table - matches cgamex86.dll binary at 0x10078DC0 (57 entries)
+/*
+[QL] E120. Every button on the scoreboard's right-click menu runs this. Menu
+scripts are fixed strings and cannot carry a client number, so the button names
+a verb and cgame supplies the player it was opened on.
+*/
+static void CG_ScoreboardAction_f(void) {
+    char verb[32];
+    trap_Argv(1, verb, sizeof(verb));
+    CG_ScoreboardAction(verb);
+}
+
 static consoleCommand_t commands[] = {
     {"viewpos", CG_Viewpos_f},
     // [QL] why the first-person weapon is framed the way it is
@@ -943,6 +1121,10 @@ static consoleCommand_t commands[] = {
     // so a scoreboard longer than its feeder could not be scrolled at all.
     {"scrollScoresDown", CG_scrollScoresDown_f},
     {"scrollScoresUp", CG_scrollScoresUp_f},
+    {"pageScoresDown", CG_pageScoresDown_f},
+    {"pageScoresUp", CG_pageScoresUp_f},
+    {"scrollScoresTop", CG_scrollScoresTop_f},
+    {"scrollScoresBottom", CG_scrollScoresBottom_f},
     // [QL] companions to the existing clientmute; see the ignore list above.
     {"clientunmute", CG_ClientUnmute_f},
     {"clientmutelist", CG_ClientMuteList_f},
@@ -952,10 +1134,26 @@ static consoleCommand_t commands[] = {
     {"clientfriendinvite", CG_SteamOnlyCommand_f},
     {"+scores", CG_ScoresDown_f},
     {"-scores", CG_ScoresUp_f},
+    {"io_sbaction", CG_ScoreboardAction_f},   // [QL] E120
     {"+acc", CG_AccDown_f},
     {"-acc", CG_AccUp_f},
     {"+pstats", CG_PStatsDown_f},
     {"-pstats", CG_PStatsUp_f},
+    // [QL] The zoom handlers were written, declared in cg_local.h, and
+    // registered nowhere - so MOUSE2 executed "+zoom", the engine found no
+    // such command, and nothing happened and nothing was reported. Quake
+    // Live's default.cfg binds MOUSE2 to it, which is why this reads as "right
+    // click does not zoom" rather than as a missing feature.
+    {"+zoom", CG_ZoomDown_f},
+    {"-zoom", CG_ZoomUp_f},
+    // [QL] nextframe/prevframe step the test model's animation and were
+    // already here, but the four commands that put a test model on screen in
+    // the first place were not, so both were inert. Same set, registered
+    // together.
+    {"testmodel", CG_TestModel_f},
+    {"testgun", CG_TestGun_f},
+    {"nextskin", CG_TestModelNextSkin_f},
+    {"prevskin", CG_TestModelPrevSkin_f},
     {"nextframe", CG_TestModelNextFrame_f},
     {"prevframe", CG_TestModelPrevFrame_f},
     {"sizeup", CG_SizeUp_f},

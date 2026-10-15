@@ -592,7 +592,9 @@ void ClientTimerActions(gentity_t* ent, int msec) {
             g_regenHealth.integer < level.time - client->lasthurt_time[0]) {
             client->timeResidualHealth += msec;
         }
-        while (client->timeResidualHealth >= g_regenHealthRate.integer) {
+        // [QL] a rate of 0 or less never drains the residual: the loop would spin
+        // forever and hang the server. Nothing clamps the cvar, so this does.
+        while (g_regenHealthRate.integer > 0 && client->timeResidualHealth >= g_regenHealthRate.integer) {
             ent->health += 1;
             client->timeResidualHealth -= g_regenHealthRate.integer;
         }
@@ -620,7 +622,9 @@ void ClientTimerActions(gentity_t* ent, int msec) {
              ent->health >= client->ps.stats[STAT_MAX_HEALTH])) {
             client->timeResidualArmor += msec;
         }
-        while (client->timeResidualArmor >= g_regenArmorRate.integer) {
+        // [QL] a rate of 0 or less never drains the residual: the loop would spin
+        // forever and hang the server. Nothing clamps the cvar, so this does.
+        while (g_regenArmorRate.integer > 0 && client->timeResidualArmor >= g_regenArmorRate.integer) {
             client->ps.stats[STAT_ARMOR] += 1;
             ent->s.armor = client->ps.stats[STAT_ARMOR];
             client->timeResidualArmor -= g_regenArmorRate.integer;
@@ -973,6 +977,65 @@ void ClientThink_real(gentity_t* ent) {
         client->ps.pm_type = PM_FREEZE;
     } else {
         client->ps.pm_type = PM_NORMAL;
+    }
+
+    /*
+    [QL] No firing while the match is starting.
+
+    Warmup in Freeze Tag comes in two halves and they want opposite things. The
+    open-ended practice period before a match - level.warmupTime == -1, nobody
+    counting down - is practice: shooting should work and a hit should still
+    freeze, on the short g_freezeWarmupThawTime fuse. The countdown that runs
+    once the match has been called, though, is not practice, and being frozen as
+    the round begins is nothing but a handicap carried into a round you had no
+    say in.
+
+    level.warmupTime > 0 is that countdown (g_main.c sets -1 for pre-game and a
+    real timestamp when the countdown starts); RS_COUNTDOWN is the round-based
+    equivalent. This is the same pair g_combat.c already tests to shorten the
+    respawn during a countdown.
+
+    PMF_RESPAWNED is the lockout PM_Weapon already honours - "don't allow attack
+    until all buttons are up" - and it lives in pm_flags, which is networked, so
+    the client predicts the same result and the gun stays quiet on both sides
+    rather than flashing locally for a shot the server discards. Re-set every
+    frame because PmoveSingle clears it as soon as attack is released. Movement
+    is deliberately left alone: GT_AD locks players in place during its countdown
+    and Freeze Tag does not, and that was not what was asked for.
+    */
+    if (g_gametype.integer == GT_FREEZE && client->ps.pm_type == PM_NORMAL &&
+        (level.warmupTime > 0 || level.roundState.eCurrent == RS_COUNTDOWN)) {
+        client->ps.pm_flags |= PMF_RESPAWNED;
+        // and drop the input outright, so the command never reaches the weapon
+        // code on either side - PMF_RESPAWNED alone stops the shot but the client
+        // still had a held trigger to react to. This is what client->freezePlayer
+        // does above, narrowed to the fire buttons so movement is unaffected.
+        ucmd->buttons &= ~(BUTTON_ATTACK | BUTTON_USE_HOLDABLE);
+        client->ps.eFlags &= ~EF_FIRING;
+    }
+
+    /*
+    [QL] Spawn protection ends the moment you ask to shoot.
+
+    Same shape as the Freeze Tag countdown lockout above - PMF_RESPAWNED stops
+    the shot on both sides, and the buttons are dropped outright so the weapon
+    code never sees a held trigger. The difference is that this is not a wait:
+    pressing attack gives the protection up there and then, so the player is
+    never stuck behind a shield, they just cannot be invulnerable and firing at
+    once. Movement is untouched, which is the point - the protection exists to
+    let them get off the pad.
+    */
+    if (client->spawnProtectTime > level.time && client->ps.pm_type == PM_NORMAL) {
+        if (ucmd->buttons & (BUTTON_ATTACK | BUTTON_USE_HOLDABLE)) {
+            client->spawnProtectTime = 0;   // given up on purpose
+        }
+        client->ps.pm_flags |= PMF_RESPAWNED;
+        ucmd->buttons &= ~(BUTTON_ATTACK | BUTTON_USE_HOLDABLE);
+        client->ps.eFlags &= ~EF_FIRING;
+    }
+    // lower the flag the moment the protection is gone, however it went
+    if (client->spawnProtectTime <= level.time) {
+        client->ps.eFlags &= ~EF_SPAWNPROTECT;
     }
 
     // [QL] PMF_PAUSED is handled above (early-return right after the intermission

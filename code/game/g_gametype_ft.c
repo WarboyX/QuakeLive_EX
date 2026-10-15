@@ -155,8 +155,44 @@ qboolean Freeze_GameIsOver(int *aliveCounts, int *healthTotals) {
 // Freeze_RoundStateTransition
 //
 // Handle state transitions for Freeze Tag rounds.
+/*
+============================================================================
+Freeze_InitRoundState
+
+[QL] Start the Freeze Tag round machine.
+
+Nothing did. GT_RR gets RR_InitRoundState() from G_InitGame's round-based
+switch and GT_FREEZE had no case at all, so level.roundState stayed at its
+zero-initialised state: eCurrent RS_WARMUP, tNext 0. Freeze_GetRoundState only
+promotes eNext into eCurrent when tNext is non-zero, and every one of the five
+Freeze_RoundStateTransition call sites is reachable only once the machine is
+already turning. So it never turned.
+
+The visible result was that nobody froze. Freeze_PlayerFrozen refuses unless
+roundState.eCurrent is RS_PLAYING, and the state sat at RS_WARMUP for the whole
+match - through warmup, through "MATCH IN PROGRESS", through every kill. A
+declined freeze is an ordinary death, so it looked like the freeze code was
+wrong rather than never reached.
+
+Same shape as RR's: park in RS_WARMUP if warmup is running, otherwise drop
+straight into the countdown, and let the transition do the rest.
+============================================================================
+*/
+void Freeze_InitRoundState(void) {
+    level.roundState.tNext = 0;
+    level.roundState.eCurrent = (level.warmupTime == 0) ? RS_COUNTDOWN : RS_WARMUP;
+    Freeze_RoundStateTransition();
+    level.roundState.round = 0;
+}
+
 // ============================================================================
 void Freeze_RoundStateTransition(void) {
+    if (g_debugFreeze.integer) {
+        G_Printf("freeze round state: current %i, next %i, tNext %i, level.time %i\n",
+                 level.roundState.eCurrent, level.roundState.eNext,
+                 level.roundState.tNext, level.time);
+    }
+
     int i;
 
     if (level.roundState.tNext != 0) {
@@ -250,6 +286,9 @@ void Freeze_RoundStateTransition(void) {
                 level.roundState.tNext = 0;
                 level.roundState.eCurrent = RS_PLAYING;
                 Freeze_RoundStateTransition();
+                /* [QL] the playing branch has published its own status; the
+                   countdown status below would overwrite it */
+                return;
             } else {
                 level.roundState.tNext = level.time + countdown;
                 level.roundState.eNext = RS_PLAYING;
@@ -423,6 +462,46 @@ void Freeze_Think(void) {
     if (level.intermissionQueued || level.intermissionTime || level.warmupTime)
         return;
 
+    /*
+    [QL] Warmup has ended - this function returns above while it is running - but
+    the round machine is still parked in RS_WARMUP with no pending transition,
+    so nothing would ever move it. Kick it into the countdown, which is what
+    schedules RS_PLAYING.
+    */
+    if (level.roundState.eCurrent == RS_WARMUP && level.roundState.tNext == 0) {
+        level.roundState.eCurrent = RS_COUNTDOWN;
+        Freeze_RoundStateTransition();
+    }
+
+    /*
+    [QL] Say so if the round machine is stuck, without needing g_debugFreeze.
+
+    Freeze_PlayerFrozen only freezes at RS_PLAYING, and a declined freeze is
+    indistinguishable from an ordinary death - the player dies and respawns, and
+    nothing anywhere says why. That has now cost two rounds of "freeze tag is
+    still not working" with no evidence in the log to work from.
+
+    This fires once per level, only when the mode is actually broken: the match
+    is live, the longest configured countdown has had time to elapse twice over,
+    and the state still is not RS_PLAYING. A working server never prints it.
+    */
+    {
+        static int reportedAtLevelTime;
+        int settleTime = 2 * (g_roundWarmupDelay.integer + g_freezeRoundDelay.integer) + 5000;
+
+        if (level.roundState.eCurrent != RS_PLAYING &&
+            level.roundState.eCurrent != RS_ROUND_OVER &&
+            reportedAtLevelTime != level.startTime &&
+            level.time - level.startTime > settleTime) {
+            reportedAtLevelTime = level.startTime;
+            G_Printf(S_COLOR_YELLOW "WARNING: Freeze Tag round state is stuck at %i after %i ms "
+                     "live (needs RS_PLAYING %i, next %i, tNext %i). Players will die instead of "
+                     "freezing - set g_debugFreeze 1 for the transition trace.\n",
+                     level.roundState.eCurrent, level.time - level.startTime, RS_PLAYING,
+                     level.roundState.eNext, level.roundState.tNext);
+        }
+    }
+
     // [QL] keep the round clock frozen during a pause/timeout: the binary bumps
     // roundState.startTime by this frame's msec (level.frametime) while paused so
     // elapsed time (level.time - startTime) does not advance.
@@ -457,6 +536,60 @@ void Freeze_Think(void) {
 // [QL] byte-faithful to the disassembly. Field offsets mapped to named reimpl
 // fields; DAT_105aac6c (InstaKill respawn delay) resolves to g_respawn_delay_min
 // (decl-phase cvar-table mapping; default "2100").
+/*
+============================================================================
+Freeze_DeathFinalize
+
+[QL] Thaw the statue and put the player back in the game.
+
+This is what the binary's death finalizer at 0x10046f60 does, and it is NOT
+Quake 3's Kamikaze_DeathActivate. Both call sites below used to call that one,
+because the port matched the two by name:
+
+    void Kamikaze_DeathActivate(gentity_t *ent) {
+        G_StartKamikaze(ent);
+        G_FreeEntity(ent);
+    }
+
+Quake 3's version is the think function of a temporary "kamikaze timer" entity -
+it detonates and then frees *that* entity. Handed a player instead, G_FreeEntity
+memsets the client's gentity and clears inuse while svs.clients[n].gentity still
+points at it and ent->client is left NULL. neverFree is only set on the body
+queue, so nothing stops it. The next thing to touch that client dereferences
+freed memory.
+
+In instagib Freeze Tag that is the first kill of the match:
+
+    Kill: 3 0 10: Keel killed Daemia by MOD_RAILGUN
+    ----- Server Shutdown (Received signal 11) -----
+
+A frozen player is not a corpse to dispose of - they are a live client whose
+statue is being broken. Clear the freeze state, announce the thaw, and respawn.
+============================================================================
+*/
+static void Freeze_DeathFinalize(gentity_t *ent) {
+    if (!ent || !ent->client) {
+        return;
+    }
+
+    // Only a frozen player is finalized here; the binary gates on PW_FREEZE.
+    if (ent->client->ps.powerups[PW_FREEZE] == 0) {
+        return;
+    }
+
+    ent->client->ps.powerups[PW_FREEZE] = 0;
+    ent->s.powerups &= ~(1 << PW_FREEZE);
+    ent->client->ps.freezetime = 0;
+    ent->client->ps.thawtime = 0;
+    ent->client->ps.thawClientNum_valid = 0;
+    ent->takedamage = qtrue;
+
+    G_TempEntity(ent->r.currentOrigin, EV_THAW_PLAYER);
+
+    ent->client->ps.pm_type = PM_NORMAL;
+    ClientSpawn(ent);
+}
+
 // ============================================================================
 void Freeze_InstaKill(gentity_t *self, int mode) {
     gclient_t *client = self->client;
@@ -495,12 +628,10 @@ void Freeze_InstaKill(gentity_t *self, int mode) {
     tent->r.svFlags |= SVF_BROADCAST;
     tent->s.eventParm = (team != TEAM_BLUE) + 2;            // RED->3, BLUE->2
 
-    // [QL] gib/death-finalizer; respawns iff still frozen (PW_FREEZE != 0).
-    // NOTE: the reimpl Kamikaze_DeathActivate body is the stale Q3 stand-in
-    // (g_combat.c: G_StartKamikaze + G_FreeEntity); it must be rewritten to the
-    // binary 0x10046f60 death-finalizer for thaw-respawn to work (VERIFY #1,
-    // combat scope).
-    Kamikaze_DeathActivate(self);
+    // [QL] death finalizer; respawns iff still frozen (PW_FREEZE != 0).
+    // NOT Kamikaze_DeathActivate - that one frees the entity, and handed a
+    // player it took the server down on the first kill. See Freeze_DeathFinalize.
+    Freeze_DeathFinalize(self);
     client->ps.freezetime = 0;                              // client+0x1f0
 }
 
@@ -546,6 +677,82 @@ void Freeze_AutoThaw(int team) {
     }
 }
 
+/*
+============================================================================
+Freeze_ThawVisible
+
+Can `thawer` see `frozen` well enough to thaw them?
+
+[QL] This is why thawing failed about half the time.
+
+The binary traces ps.origin to ps.origin - foot level to foot level - with a
+point trace against CONTENTS_SOLID, and rejects the thawer unless the trace is
+completely clear. On a flat floor that line is fine. It is not fine anywhere
+else, and Quake maps are mostly "anywhere else": a stair tread, a ramp, the lip
+of a jump pad, the edge of the crate you are standing on, or simply the frozen
+player having died half a step further down a slope, all put world geometry
+between two points that are 24 units off the ground and less than 96 apart. The
+two players are in plain sight of each other and the trace still comes back
+blocked, so the thaw silently never starts. Walk one step to the side and it
+works, which is exactly the "works half the time" shape that was reported.
+
+So test at chest height first, where a line between two players standing near
+each other actually is clear, and only fall back to the original foot-level
+trace if that one is blocked (that covers the reverse case: crouched, or under
+a low ceiling). Either one passing is enough.
+
+startsolid is treated as visible rather than blocked. It means the trace began
+inside a brush - a statue that ended up embedded in the floor or a func_ mover -
+and a trace that never left solid says nothing about what is between the two
+players. Blocking on it would strand that player frozen for the rest of the
+round with no way for anyone to reach them.
+============================================================================
+*/
+#define FREEZE_THAW_CHEST_HEIGHT 24.0f
+
+static qboolean Freeze_ThawVisible(gentity_t *frozen, gentity_t *thawer) {
+    trace_t tr;
+    vec3_t start, end;
+
+    VectorCopy(frozen->client->ps.origin, start);
+    VectorCopy(thawer->client->ps.origin, end);
+    start[2] += FREEZE_THAW_CHEST_HEIGHT;
+    end[2] += FREEZE_THAW_CHEST_HEIGHT;
+
+    trap_Trace(&tr, start, NULL, NULL, end, ENTITYNUM_NONE, CONTENTS_SOLID);
+    if (tr.fraction == 1.0f || tr.startsolid || tr.allsolid)
+        return qtrue;
+
+    // fall back to the binary's foot-level line
+    trap_Trace(&tr, frozen->client->ps.origin, NULL, NULL, thawer->client->ps.origin,
+               ENTITYNUM_NONE, CONTENTS_SOLID);
+    return (tr.fraction == 1.0f || tr.startsolid || tr.allsolid) ? qtrue : qfalse;
+}
+
+/*
+============================================================================
+Freeze_ThawerStillEligible
+
+The same per-frame filter the box scan applies, reused when re-resolving the
+thawer this frozen player is locked onto. The scan and the lock have to agree,
+or the lock keeps a teammate who has since been frozen, killed or switched
+teams credited with a thaw they are no longer performing.
+============================================================================
+*/
+static qboolean Freeze_ThawerStillEligible(gentity_t *frozen, gentity_t *cand) {
+    if (!cand->client)
+        return qfalse;
+    if (cand == frozen)
+        return qfalse;
+    if (cand->client->sess.sessionTeam != frozen->client->sess.sessionTeam)
+        return qfalse;
+    if (cand->client->ps.powerups[PW_FREEZE] != 0)
+        return qfalse;
+    if (cand->health <= 0)
+        return qfalse;
+    return qtrue;
+}
+
 // ============================================================================
 // Freeze_ClientThawCheck (binary: 0x1004cdc0, .so Freeze_ClientThawCheck 0x76a40)
 //
@@ -569,18 +776,37 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
     int entityList[MAX_GENTITIES];           // local_1010[1024]
     int numNearby = 0;
     int i;
-    int maxThaw = g_freezeThawTime.integer;  // DAT_105a472c
+    // [QL] warmup starts its fuse at g_freezeWarmupThawTime, so the progress
+    // display and the decay clamp have to measure against the same number
+    int maxThaw = level.warmupTime ? g_freezeWarmupThawTime.integer
+                                   : g_freezeThawTime.integer;  // DAT_105a472c
 
-    // --- (A) thaw-progress display bits (runs unconditionally, every frame) ---
+    /*
+    --- (A) thaw-progress display bits (runs unconditionally, every frame) ---
+
+    [QL] Clear both bits before setting the bucket.
+
+    These bits are the only thaw progress the client gets - cgame reads them off
+    the entity state to pick how thick the ice shell is drawn - and they only ever
+    accumulated. bit1 was set once thawtime fell below a third and nothing cleared
+    it until the timer climbed back above two thirds, so a statue whose thawer
+    walked away stayed drawn at its thinnest all the way back up. The progress bar
+    went one way.
+
+    Writing the bucket exactly costs nothing and makes the shell track the timer
+    in both directions.
+    */
     {
         int t = cl->ps.thawtime;             // client+0x1f4
         int one3 = maxThaw / 3;              // signed div
-        if (t > one3) {
-            if (t > one3 * 2) cl->ps.generic1 &= ~3;   // >2/3 left -> bits=0
-            else              cl->ps.generic1 |=  1;   // 1/3..2/3  -> bit0
-        } else {
-            cl->ps.generic1 |= 2;                       // <1/3 left -> bit1
+
+        cl->ps.generic1 &= ~3;
+        if (t <= one3) {
+            cl->ps.generic1 |= 2;            // <1/3 left  -> nearly thawed
+        } else if (t <= one3 * 2) {
+            cl->ps.generic1 |= 1;            // 1/3..2/3   -> halfway
         }
+        // >2/3 left: both bits clear, full thickness
     }
 
     // --- (B) gating ---
@@ -588,9 +814,27 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
         return;
 
     if (level.warmupTime != 0 && g_gametype.integer == GT_FREEZE) {
-        // warmup FT: bleed the timer, no thaw mechanics
+        /*
+        Warmup FT: bleed the timer, no thaw mechanics.
+
+        [QL] Note what this branch does *not* check: teams. Warmup is a self-thaw
+        on a fuse - nobody thaws anybody, the statue just expires - so a frozen
+        enemy standing near you comes back on its own, which is indistinguishable
+        from having thawed them if you happened to walk over at the right moment.
+        That is the reported "I can unfreeze enemy players", and it is warmup
+        behaviour rather than a hole in the team check: the live-round path tests
+        sess.sessionTeam in the box scan and again in the re-resolve, so a thaw
+        across teams cannot start or complete there.
+
+        It stops being reachable during the match-start countdown anyway, now
+        that firing is disabled for it (ClientThink_real).
+        */
         cl->ps.thawtime -= msec;
         if (cl->ps.thawtime >= 1) return;
+        if (g_debugFreeze.integer) {
+            G_Printf("freeze: %s self-thawed (warmup fuse, no teammate needed)\n",
+                     ent->client->pers.netname);
+        }
         goto do_thaw;                        // 0x1004d19d
     }
 
@@ -629,11 +873,13 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
             if (other->client->ps.powerups[PW_FREEZE] != 0) continue;          // teammate also frozen
             if (other->health <= 0)                        continue;
             if (g_freezeThawThroughSurface.integer == 0) {                     // DAT_105e1c2c
-                trace_t tr;
-                trap_Trace(&tr, ent->client->ps.origin, NULL, NULL,           // start = self ps.origin
-                           other->client->ps.origin,                          // end   = other ps.origin
-                           ENTITYNUM_NONE, CONTENTS_SOLID);
-                if (tr.fraction != 1.0f) continue;                             // require clear LOS
+                if (!Freeze_ThawVisible(ent, other)) {
+                    if (g_debugFreeze.integer) {
+                        G_Printf("freeze: %s cannot thaw %s - no line of sight\n",
+                                 other->client->pers.netname, ent->client->pers.netname);
+                    }
+                    continue;
+                }
             }
             thawer = other;                               // found a thawer (0x1004d1bb)
             break;
@@ -641,26 +887,43 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
     }
 
     if (thawer != NULL) {
-        // lock in the thawer clientNum the first frame
-        if (cl->ps.thawClientNum_valid == 0) {
-            cl->ps.thawClientNum       = thawer->client->ps.clientNum;   // client+0x1fc
-            cl->ps.thawClientNum_valid = 1;                              // client+0x1f8
-        }
-        // re-resolve the locked thawer inside the current box results.
+        // Re-resolve the locked thawer inside the current box results.
         // [QL] byte-faithful this is Freeze_PlayerFrozen(list, count, clientNum), a
         // LOOKUP helper (.so 0x76940). The reimpl Freeze_PlayerFrozen (g_local.h:932)
         // is still the freeze-on-death stand-in shape, so the lookup is inlined here.
+        //
+        // [QL] The lock is now dropped when it cannot be honoured. It used to be
+        // set once and never cleared while *any* teammate was in range, so if the
+        // locked teammate walked off, got frozen or died, the lookup below found
+        // nothing and left thawClientNum_valid set pointing at them. The thaw then
+        // ran to completion and credited the assist to a player who was not there,
+        // and on the frames where the lookup did find them the eligibility filters
+        // above were never re-applied. Both are fixed by re-checking and, on
+        // failure, re-locking onto whoever the scan actually found this frame.
         if (cl->ps.thawClientNum_valid != 0) {
+            gentity_t *locked = NULL;
             int k;
             for (k = 0; k < numNearby; k++) {
                 gentity_t *cand = &g_entities[entityList[k]];
                 if (cand->client &&
-                    cand->client->ps.clientNum == cl->ps.thawClientNum) {
-                    thawer = cand;
+                    cand->client->ps.clientNum == cl->ps.thawClientNum &&
+                    Freeze_ThawerStillEligible(ent, cand)) {
+                    locked = cand;
                     break;
                 }
             }
+            if (locked != NULL) {
+                thawer = locked;
+            } else {
+                cl->ps.thawClientNum_valid = 0;
+            }
         }
+        // lock in the thawer clientNum (first frame, or after the old lock lapsed)
+        if (cl->ps.thawClientNum_valid == 0) {
+            cl->ps.thawClientNum       = thawer->client->ps.clientNum;   // client+0x1fc
+            cl->ps.thawClientNum_valid = 1;                              // client+0x1f8
+        }
+        cl->lastThawContactTime = level.time;
         oldSeconds = (cl->ps.thawtime == 0) ? 0 : cl->ps.thawtime / 1000;
         cl->ps.thawtime -= msec;
         if (g_debugThawTime.integer != 0) {                    // DAT_10595aec
@@ -673,10 +936,33 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
             te->r.ownerNum = ent->client->ps.clientNum;        // te+0x238 (PVS-limited, not broadcast)
         }
     } else {
-        // no thawer this frame: thaw progress decays (refills toward max)
-        cl->ps.thawtime += msec;
-        cl->ps.thawClientNum_valid = 0;
-        if (cl->ps.thawtime > maxThaw) cl->ps.thawtime = maxThaw;
+        /*
+        No thawer this frame. Hold briefly, then reset to full.
+
+        [QL] Two different things look identical for one frame: a thawer who has
+        stepped behind a pillar or drifted to the edge of the radius, and a
+        thawer who has given up and walked off. Both previous attempts treated
+        them the same and were wrong in opposite directions. Undoing a frame of
+        progress per frame - the original - meant no thaw ever finished on uneven
+        ground, because the scan needs the teammate inside the radius AND passing
+        a line-of-sight trace every single frame. Refilling at a quarter rate
+        fixed that but made leaving almost free, so a statue could be chipped at
+        across a whole round.
+
+        The distinction is time, so time is what is measured.
+        lastThawContactTime is stamped on every frame with a valid thawer; inside
+        g_freezeThawGrace of that the progress simply holds, and past it it snaps
+        back to full. That is a real reset when someone walks away, and a corner
+        or a bad trace costs nothing.
+        */
+        if (level.time - cl->lastThawContactTime > g_freezeThawGrace.integer) {
+            if (cl->ps.thawtime < maxThaw && g_debugFreeze.integer) {
+                G_Printf("freeze: thaw on %s reset - no teammate for %ims\n",
+                         ent->client->pers.netname, level.time - cl->lastThawContactTime);
+            }
+            cl->ps.thawtime = maxThaw;
+            cl->ps.thawClientNum_valid = 0;
+        }
     }
 
     // check_complete (0x1004d080)
@@ -712,9 +998,8 @@ void Freeze_ClientThawCheck(gentity_t *ent, int msec) {
     }
 
 do_thaw:                                                       // 0x1004d19d
-    // still frozen (PW_FREEZE != 0) -> Kamikaze_DeathActivate fires EV_THAW_PLAYER +
-    // ClientSpawn. See the reimpl-body caveat in Freeze_InstaKill (VERIFY #1).
-    Kamikaze_DeathActivate(ent);
+    // still frozen (PW_FREEZE != 0) -> EV_THAW_PLAYER + ClientSpawn
+    Freeze_DeathFinalize(ent);
 }
 
 // ============================================================================
@@ -723,13 +1008,61 @@ do_thaw:                                                       // 0x1004d19d
 // Called when a player is "killed" in Freeze Tag. Freezes them instead.
 // ============================================================================
 void Freeze_PlayerFrozen(gentity_t *self) {
-    if (level.roundState.eCurrent != RS_PLAYING)
+    /*
+    [QL] Say why a player did not freeze, when asked.
+
+    This is the one gate on the whole mechanic, and it is invisible from the
+    outside: a declined freeze looks exactly like an ordinary death, which is
+    what "nobody is freezing" reports as. g_debugFreeze 1 names the round state
+    instead of leaving it to be guessed at - same approach as g_debugWarmup,
+    which is what settled the match-never-starts bug.
+    */
+    /*
+    [QL] Warmup freezes too, on a short fuse.
+
+    Warmup is practice, so being shot should still put you in a statue - it just
+    should not park you there. Freeze_ClientThawCheck has a warmup branch that
+    bleeds ps.thawtime down and thaws you when it reaches zero, with no teammate
+    needed, so the warmup fuse is simply how long that timer starts at:
+    g_freezeWarmupThawTime, five seconds.
+
+    In a live round the gate stays as it was - only RS_PLAYING freezes - and the
+    thaw timer is g_freezeThawTime, the length of a teammate's touch.
+    */
+    if (level.warmupTime == 0 && level.roundState.eCurrent != RS_PLAYING) {
+        if (g_debugFreeze.integer) {
+            G_Printf("freeze declined for %s: roundState.eCurrent is %i, needs RS_PLAYING (%i) "
+                     "[warmupTime %i, intermission %i]\n",
+                     self->client->pers.netname, level.roundState.eCurrent, RS_PLAYING,
+                     level.warmupTime, level.intermissionTime);
+        }
         return;
+    }
+
+    if (g_debugFreeze.integer) {
+        G_Printf("freeze: %s frozen (%s, thawtime %i)\n", self->client->pers.netname,
+                 level.warmupTime ? "warmup" : "round",
+                 level.warmupTime ? g_freezeWarmupThawTime.integer : g_freezeThawTime.integer);
+    }
 
     self->client->ps.stats[STAT_HEALTH] = 0;
     self->client->ps.pm_type = PM_FREEZE;
     self->takedamage = qfalse;
     self->health = -40;
+
+    /*
+    [QL] Stand the statue still.
+
+    pm_type stops the player moving but not the animation: whatever legs cycle
+    was playing when they were hit keeps looping, so someone shot mid-sprint
+    stayed frozen in a running stride. Park both halves on the idle pose and
+    flip ANIM_TOGGLEBIT so the client restarts the animation rather than
+    lerping out of the run.
+    */
+    self->client->ps.legsAnim =
+        ((self->client->ps.legsAnim & ANIM_TOGGLEBIT) ^ ANIM_TOGGLEBIT) | LEGS_IDLE;
+    self->client->ps.torsoAnim =
+        ((self->client->ps.torsoAnim & ANIM_TOGGLEBIT) ^ ANIM_TOGGLEBIT) | TORSO_STAND;
 
     // [QL] real playerState freeze fields (binary player_die FreezeTag fork,
     // 0x100473e0). The rewritten Freeze_ClientThawCheck operates on THESE, not the
@@ -741,7 +1074,19 @@ void Freeze_PlayerFrozen(gentity_t *self) {
     //     to the full thaw time (binary: ps.thawtime = DAT_105a472c)
     self->client->ps.powerups[PW_FREEZE] = 0x7fffffff;
     self->client->ps.freezetime = level.time;
-    self->client->ps.thawtime = g_freezeThawTime.integer;
+    // [QL] warmup runs the short self-thaw fuse; a live round needs a teammate
+    self->client->ps.thawtime =
+        level.warmupTime ? g_freezeWarmupThawTime.integer : g_freezeThawTime.integer;
+    // [QL] a fresh statue has never had a thawer; stamping now keeps the grace
+    // window from being measured against a contact time left over from the last
+    // time this client was frozen
+    self->client->lastThawContactTime = level.time;
+
+    // [QL] the networked presentation bit the client reads to draw the statue.
+    // g_combat.c's other freeze path sets s.powerups = 0x8000 for this; without
+    // it the playerState says frozen but nothing on the wire tells other
+    // clients, so the body would render as an ordinary corpse.
+    self->s.powerups |= (1 << PW_FREEZE);
 
     // legacy flag still read by ClientThink_real's pm_type block (g_active.c) to
     // keep PM_FREEZE instead of PM_DEAD; ps.thawtime above is now the real counter.
@@ -793,10 +1138,17 @@ void Freeze_ClientBegin(gentity_t* ent) {
         // [QL] binary Freeze_ClientBegin (0x1004bfa0) gates auto-follow on
         // g_teamSpecFreeCam==0 (DAT_104b202c), not level.warmupTime, and requires
         // both teams to have living players (both alive counts > 0).
+        // [QL] keep their team. This branch exists for a player who joined while
+        // a round was live: they watch until the next round and then play. Going
+        // through the ordinary follow moved them to TEAM_SPECTATOR permanently -
+        // SetTeam persists the session, so it survived the round ending, a map
+        // change and reconnecting, and the round restart only respawns players
+        // who still have a team, so nothing ever brought them back. Bots joining
+        // mid-round demoted themselves the same way.
         if (!g_teamSpecFreeCam.integer
             && client->sess.sessionTeam != TEAM_SPECTATOR
             && alive[TEAM_RED] > 0 && alive[TEAM_BLUE] > 0) {
-            Cmd_FollowCycle_f(ent, 1);
+            G_FollowCycleKeepTeam(ent, 1);
         }
     }
 }
@@ -819,8 +1171,11 @@ Fields per player (17):
 */
 void FreezeTagScoreboardMessage(gentity_t *ent) {
     char entry[1024];
-    char string[1024];
-    int stringlength;
+    char string[MAX_STRING_CHARS];
+    char header[512];
+    int stringlength, budget;
+    int chunkStart, numInChunk;
+    qboolean firstChunk;
     int i, j;
     gclient_t *cl;
     int viewerTeam;
@@ -828,6 +1183,9 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
 
     string[0] = 0;
     stringlength = 0;
+    chunkStart = 0;
+    numInChunk = 0;
+    firstChunk = qtrue;
 
     // Load team item stats (same 14 categories as TDM)
     redStats[0]  = level.numRedArmorPickups[TEAM_RED];
@@ -860,6 +1218,32 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
     blueStats[12] = level.hastePossessionTime[TEAM_BLUE];
     blueStats[13] = level.invisibilityPossessionTime[TEAM_BLUE];
 
+    // Hide opponent team's stats
+    //
+    // [QL] Hoisted out of the player loop, where it used to run once per
+    // player. The viewer does not change between iterations and the memset is
+    // idempotent, so the values sent are the same; the header is now built
+    // once, before the entries, because its length sets the chunk budget.
+    viewerTeam = ent->client->sess.sessionTeam;
+    if (viewerTeam == TEAM_RED && level.intermissionTime == 0) {
+        memset(blueStats, 0, sizeof(blueStats));
+    } else if (viewerTeam == TEAM_BLUE && level.intermissionTime == 0) {
+        memset(redStats, 0, sizeof(redStats));
+    }
+
+    // [QL] the twenty-eight team totals; the count and team scores are appended
+    // at send time, once a chunk knows how many entries it carries
+    Com_sprintf(header, sizeof(header),
+                "scores_ft %i %i %i %i %i %i %i %i %i %i %i %i %i %i "
+                "%i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+                redStats[0], redStats[1], redStats[2], redStats[3], redStats[4],
+                redStats[5], redStats[6], redStats[7], redStats[8],
+                redStats[9], redStats[10], redStats[11], redStats[12], redStats[13],
+                blueStats[0], blueStats[1], blueStats[2], blueStats[3], blueStats[4],
+                blueStats[5], blueStats[6], blueStats[7], blueStats[8],
+                blueStats[9], blueStats[10], blueStats[11], blueStats[12], blueStats[13]);
+    budget = G_ScoreboardBudget(strlen(header));
+
     for (i = 0; i < level.numConnectedClients; i++) {
         int ping, accuracy, bestWeapon;
         int alive;
@@ -882,14 +1266,6 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
 
         bestWeapon = STAT_GetBestWeapon(cl);
 
-        // Hide opponent team's stats
-        viewerTeam = ent->client->sess.sessionTeam;
-        if (viewerTeam == TEAM_RED && level.intermissionTime == 0) {
-            memset(blueStats, 0, sizeof(blueStats));
-        } else if (viewerTeam == TEAM_BLUE && level.intermissionTime == 0) {
-            memset(redStats, 0, sizeof(redStats));
-        }
-
         // 17 fields per player
         Com_sprintf(entry, sizeof(entry),
                     " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
@@ -908,23 +1284,38 @@ void FreezeTagScoreboardMessage(gentity_t *ent) {
                     cl->expandedStats.totalDamageDealt,
                     alive);
         j = strlen(entry);
-        if (stringlength + j >= (int)sizeof(string))
-            break;
+
+        // [QL] see the comment in g_gametype_ffa.c: flush a chunk rather than
+        // stop at the first message.
+        if (stringlength + j >= budget && numInChunk > 0) {
+            if (firstChunk) {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("%s %i %i %i%s", header, numInChunk,
+                                          level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+                firstChunk = qfalse;
+            } else {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_ft2 %i %i%s", chunkStart, numInChunk, string));
+            }
+            chunkStart = i;
+            numInChunk = 0;
+            stringlength = 0;
+            string[0] = '\0';
+        }
+
         strcpy(string + stringlength, entry);
         stringlength += j;
+        numInChunk++;
     }
 
-    trap_SendServerCommand(ent - g_entities,
-        va("scores_ft %i %i %i %i %i %i %i %i %i %i %i %i %i %i "
-           "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i%s",
-           redStats[0], redStats[1], redStats[2], redStats[3], redStats[4],
-           redStats[5], redStats[6], redStats[7], redStats[8],
-           redStats[9], redStats[10], redStats[11], redStats[12], redStats[13],
-           blueStats[0], blueStats[1], blueStats[2], blueStats[3], blueStats[4],
-           blueStats[5], blueStats[6], blueStats[7], blueStats[8],
-           blueStats[9], blueStats[10], blueStats[11], blueStats[12], blueStats[13],
-           i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE],
-           string));
+    if (firstChunk) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("%s %i %i %i%s", header, numInChunk,
+                                  level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+    } else if (numInChunk > 0) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_ft2 %i %i%s", chunkStart, numInChunk, string));
+    }
 }
 
 /*

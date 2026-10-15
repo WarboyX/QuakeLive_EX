@@ -31,6 +31,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <stdlib.h>
 #include <math.h>
 
+#include <locale.h>
+
 #include "../renderercommon/tr_common.h"
 #include "../sys/sys_local.h"
 #include "sdl_icon.h"
@@ -793,6 +795,12 @@ static qboolean GLimp_StartDriverAndSetMode(int mode, qboolean fullscreen, qbool
             return qfalse;
         }
 
+
+        // [QL] SDL calls setlocale(LC_ALL, "") during init on several
+        // platforms, and everything this engine parses assumes a '.' decimal
+        // point - see the note in sys_main.c's main().
+        setlocale(LC_NUMERIC, "C");
+
         driverName = SDL_GetCurrentVideoDriver();
         ri.Printf(PRINT_ALL, "SDL using driver \"%s\"\n", driverName);
         ri.Cvar_Set("r_sdlDriver", driverName);
@@ -973,6 +981,14 @@ void GLimp_Init(qboolean fixedFunction) {
     r_preferOpenGLES = ri.Cvar_Get("r_preferOpenGLES", "-1", CVAR_ARCHIVE | CVAR_LATCH);
 
     if (ri.Cvar_VariableIntegerValue("com_abnormalExit")) {
+        // [QL] Same reasoning as the Vulkan path in vk_window.c: these are
+        // archived cvars, so safe mode replaces them permanently and silently.
+        ri.Printf(PRINT_ALL, S_COLOR_YELLOW "Safe video settings applied: the last run did not exit cleanly "
+                             "and the startup dialog was answered yes.\n");
+        ri.Printf(PRINT_ALL, S_COLOR_YELLOW "Previous settings, to put them back: " S_COLOR_WHITE
+                             "\\r_mode %s; r_fullscreen %s; r_centerWindow %s; vid_restart\n",
+                  r_mode->string, r_fullscreen->string, r_centerWindow->string);
+
         ri.Cvar_Set("r_mode", va("%d", R_MODE_FALLBACK));
         ri.Cvar_Set("r_fullscreen", "0");
         ri.Cvar_Set("r_centerWindow", "0");

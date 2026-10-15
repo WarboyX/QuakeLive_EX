@@ -438,7 +438,37 @@ static void R_LoadLightmaps( const lump_t *l ) {
 
 	numLightmaps = l->filelen / (LIGHTMAP_SIZE * LIGHTMAP_SIZE * 3);
 
-	if ( r_mergeLightmaps->integer && numLightmaps > 1 ) {
+	/*
+	[QL] R20: deluxemap detection.
+
+	q3map2 -deluxe interleaves them with the lightmaps - even indices are light,
+	odd are direction - so a map that has them has an even count and every
+	surface referencing an even index. Neither test alone is enough: an ordinary
+	map can happen to have an even number of lightmaps, and a map with one
+	lightmap is even by accident.
+
+	Recorded only. This renderer has no deluxemap path, and the reason to know
+	is that with the light entities stripped from these maps, a deluxemap is the
+	only per-texel light direction a BSP can still contain - so whether it is
+	worth writing that path is exactly this question.
+	*/
+	s_worldData.numLightmapsInBsp = numLightmaps;
+	s_worldData.deluxeMaps = ( numLightmaps >= 2 && ( numLightmaps & 1 ) == 0 ) ? qtrue : qfalse;
+
+	/*
+	[QL] R25. Not when the map carries deluxemaps.
+
+	Merging atlases the lightmaps into tiles and rewrites every surface's
+	lightmap texcoords through a texmod to land on its tile. A deluxemap is the
+	odd-indexed map beside its lightmap, so finding it means reproducing that
+	tile arithmetic for a second texture - and getting it subtly wrong would
+	sample a neighbouring surface's light direction, which looks like a shading
+	bug and is not one.
+
+	Unmerged costs more texture binds. These are our own maps, they are small,
+	and a correct lookup is worth more than the binds.
+	*/
+	if ( r_mergeLightmaps->integer && numLightmaps > 1 && !s_worldData.deluxeMaps ) {
 		// check for low texture sizes
 		if ( glConfig.maxTextureSize >= LIGHTMAP_LEN * 2 ) {
 			tr.mergeLightmaps = qtrue;
@@ -667,6 +697,16 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, int numPoi
 	//static const int idx_pattern2[] = {5, 4, 3, 2, 3, 4};
 
 	lightmapNum = LittleLong( ds->lightmapNum );
+
+	/*
+	[QL] R20: the other half of the deluxemap test - see R_LoadLightmaps.
+	Interleaved deluxemaps mean every surface sits on an even index, so a single
+	odd one anywhere settles it. Counted here because this is where the BSP's
+	own index is read; the runtime surface does not keep it.
+	*/
+	if ( lightmapNum >= 0 && ( lightmapNum & 1 ) ) {
+		s_worldData.oddLightmapRefs++;
+	}
 	if ( lightmapNum >= 0 && tr.mergeLightmaps ) {
 		lightmapNum = R_GetLightmapCoords( lightmapNum, &lightmapX, &lightmapY );
 	} else {
@@ -2253,6 +2293,8 @@ static void R_LoadLightGrid( const lump_t *l ) {
 		R_ColorShiftLightingBytes( &w->lightGridData[i*8], &w->lightGridData[i*8], qfalse );
 		R_ColorShiftLightingBytes( &w->lightGridData[i*8+3], &w->lightGridData[i*8+3], qfalse );
 	}
+
+	R_BuildLightField( w );   // [QL] E176
 }
 
 
@@ -2279,7 +2321,7 @@ static void R_LoadEntities( const lump_t *l ) {
 	w->entityParsePoint = w->entityString;
 
 	p = w->entityString;
-	token = COM_ParseExt( &p, qtrue );
+	token = R_ParseExt( &p, qtrue );
 	if (*token != '{') {
 		return;
 	}
@@ -2287,7 +2329,7 @@ static void R_LoadEntities( const lump_t *l ) {
 	// only parse the world spawn
 	while ( 1 ) {	
 		// parse key
-		token = COM_ParseExt( &p, qtrue );
+		token = R_ParseExt( &p, qtrue );
 
 		if ( !*token || *token == '}' ) {
 			break;
@@ -2295,7 +2337,7 @@ static void R_LoadEntities( const lump_t *l ) {
 		Q_strncpyz(keyname, token, sizeof(keyname));
 
 		// parse value
-		token = COM_ParseExt( &p, qtrue );
+		token = R_ParseExt( &p, qtrue );
 
 		if ( !*token || *token == '}' ) {
 			break;
@@ -2349,7 +2391,7 @@ RE_GetEntityToken
 qboolean RE_GetEntityToken( char *buffer, int size ) {
 	const char	*s;
 
-	s = COM_Parse( &s_worldData.entityParsePoint );
+	s = R_Parse( &s_worldData.entityParsePoint );
 	Q_strncpyz( buffer, s, size );
 	if ( !s_worldData.entityParsePoint && !s[0] ) {
 		s_worldData.entityParsePoint = s_worldData.entityString;
@@ -2369,8 +2411,10 @@ Called directly from cgame
 */
 void RE_LoadWorldMap( const char *name ) {
 	int			i;
+	int			numLumps;
 	int32_t		size;
 	dheader_t	*header;
+	dheader_t	q3Header;	// [QL] BSP 46 header with an empty 18th lump, see below
 	union {
 		byte *b;
 		void *v;
@@ -2390,6 +2434,9 @@ void RE_LoadWorldMap( const char *name ) {
 	VectorNormalize( tr.sunDirection );
 
 	tr.worldMapLoaded = qtrue;
+
+	// [QL] Per-map, not per-session - see RE_AddWaterRipple.
+	R_ResetRippleDiag();
 
 	// load it
 	size = ri.FS_ReadFile( name, &buffer.v );
@@ -2418,13 +2465,50 @@ void RE_LoadWorldMap( const char *name ) {
 	header = (dheader_t *)buffer.b;
 	fileBase = (byte *)header;
 
-	// swap all the lumps
-	for ( i = 0; i < sizeof( dheader_t ) / 4; i++ ) {
-		( (int32_t *)header )[i] = LittleLong( ( (int32_t *)header )[i] );
+	/*
+	[QL] Ident and version first, then as many lumps as this version has.
+
+	It used to swap sizeof(dheader_t)/4 words unconditionally, which on a Quake
+	3 map is eight bytes past the end of its shorter header - and this header is
+	a pointer into the loaded file, not a copy, so those eight bytes are the
+	start of the next lump's data being byte-swapped in place. On a
+	little-endian machine LittleLong is the identity and nothing happens, which
+	is exactly the kind of bug that ships.
+	*/
+	( (int32_t *)header )[0] = LittleLong( ( (int32_t *)header )[0] );   // ident
+	( (int32_t *)header )[1] = LittleLong( ( (int32_t *)header )[1] );   // version
+
+	numLumps = ( header->version == BSP_VERSION_Q3 ) ? HEADER_LUMPS_Q3 : HEADER_LUMPS;
+	for ( i = 0; i < numLumps * ( sizeof( lump_t ) / 4 ); i++ ) {
+		( (int32_t *)header->lumps )[i] = LittleLong( ( (int32_t *)header->lumps )[i] );
 	}
 
-	if ( header->version != BSP_VERSION ) {
-		ri.Error( ERR_DROP, "%s: %s has wrong version number (%i should be %i)", __func__, name, header->version, BSP_VERSION );
+	if ( header->version != BSP_VERSION && header->version != BSP_VERSION_Q3 ) {
+		ri.Error( ERR_DROP, "%s: %s has wrong version number (%i should be %i or %i)", __func__, name,
+			header->version, BSP_VERSION, BSP_VERSION_Q3 );
+	}
+
+	/*
+	[QL] Quake 3 maps carry one lump fewer, and this one matters here in a way
+	it does not in the collision loader: header is a pointer into the file
+	rather than a copy, so lumps[LUMP_ADVERTISEMENTS] is genuinely the first
+	eight bytes of the next lump's data, already byte-swapped in place by the
+	loop above. The bounds check below would then reject the map for a lump
+	that does not exist, and R_LoadAdvertisements would read entity text as
+	geometry. Zeroing it says "empty", which is the truth.
+	*/
+	/*
+	E122: and for exactly that reason it must not be zeroed *there*. Those eight
+	bytes are the first bytes of the first lump in the file (q3map2 writes the
+	shaders lump first), so the memset that used to be here blanked the start of
+	the first shader's name on every Quake 3 map. The header is copied out and
+	the copy gets the empty lump instead; the file is left as it was read.
+	*/
+	if ( header->version == BSP_VERSION_Q3 ) {
+		Com_Memcpy( &q3Header, header, (size_t)( (byte *)&header->lumps[HEADER_LUMPS_Q3] - (byte *)header ) );
+		Com_Memset( &q3Header.lumps[LUMP_ADVERTISEMENTS], 0, sizeof( lump_t ) );
+		header = &q3Header;
+		ri.Printf( PRINT_ALL, "%s: Quake 3 map (BSP 46), no advertisements lump\n", name );
 	}
 
 	for ( i = 0; i < HEADER_LUMPS; i++ ) {
@@ -2459,6 +2543,25 @@ void RE_LoadWorldMap( const char *name ) {
 
 	// only set tr.world now that we know the entire level has loaded properly
 	tr.world = &s_worldData;
+
+#ifdef USE_VULKAN
+	/*
+	[QL] R13: build the ray-tracing acceleration structures for this world.
+
+	After tr.world is set and after R_BuildWorldVBO, because it walks the same
+	finished surfaces. A no-op unless r_rt enabled ray query on the device, so
+	there is no guard here - the one inside is the only one, which keeps the
+	"is RT on" test in a single place rather than at every call site.
+	*/
+	vk_rt_build_world( &s_worldData );
+
+	/* [QL] independent of ray tracing - this is geometry, not a structure */
+	vk_find_water_planes( &s_worldData );
+#endif
+
+	/* [QL] R19: what this map wants its water to look like. After the planes,
+	   so the report can say whether the map has any water to apply it to. */
+	R_LoadWaterProfile( s_worldData.baseName );
 
 	ri.FS_FreeFile( buffer.v );
 }

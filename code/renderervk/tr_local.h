@@ -92,12 +92,21 @@ typedef enum {
 
 typedef uint32_t glIndex_t;
 
+// [QL] Quake3e widens this to 12; this tree's renderercommon/tr_types.h - which
+// tr_public.h pulls in above - says 10, and renderergl2 uses that. Redefining
+// it here gave three "macro redefined" warnings and left the two renderers
+// disagreeing on MAX_REFENTITIES (4095 vs 1023) and REFENTITYNUM_WORLD. The
+// cgame is written against the smaller cap, so the tree's value wins; only the
+// internal drawsurf sort-key packing depends on it, and that is consistent
+// either way.
+#ifndef REFENTITYNUM_BITS
 #define	REFENTITYNUM_BITS	12	// as we actually using only 1 bit for dlight mask in opengl1 renderer
 #define	REFENTITYNUM_MASK	((1<<REFENTITYNUM_BITS) - 1)
 // the last N-bit number (2^REFENTITYNUM_BITS - 1) is reserved for the special world refentity,
 //  and this is reflected by the value of MAX_REFENTITIES (which therefore is not a power-of-2)
 #define	MAX_REFENTITIES		((1<<REFENTITYNUM_BITS) - 1)
 #define	REFENTITYNUM_WORLD	((1<<REFENTITYNUM_BITS) - 1)
+#endif
 // 14 bits
 // can't be increased without changing bit packing for drawsurfs
 // see QSORT_SHADERNUM_SHIFT
@@ -388,6 +397,51 @@ typedef struct {
 	qboolean		isDetail;
 	qboolean		depthFragment;
 
+	/*
+	[QL] The renderergl2 material maps Quake Live's shaders carry.
+
+	normalMap is used by the dynamic light pass; the stage lights with a
+	per-pixel perturbed normal instead of the interpolated vertex one. NULL
+	means "no map", and the light pass binds tr.flatNormalImage instead, which
+	perturbs by nothing.
+
+	specularMap is parsed and kept but not yet consumed - it is here so the
+	parser has one place to put it and the shading can use it without another
+	pass over every shader.
+	*/
+	image_t			*normalMap;
+	image_t			*specularMap;
+
+	/*
+	[QL] R20 Stage A opt-out, set by the qlNoPerturb shader keyword. When true
+	this stage never gets a derived normal map and lights with the flat
+	(identity) fallback, exactly as it does today.
+	*/
+	qboolean		noNormalPerturb;
+
+	/*
+	[QL] E104. Per-material green-channel convention, set by the shader keyword
+	qlNormalFlipG. A normal map is authored against one of two conventions and
+	the wrong one turns every bump into a dent; which one a given map used is a
+	property of that map's art, not a global look setting, so a third-party pk3
+	can declare its own here rather than asking the player to flip a cvar and
+	break every other material while they are at it.
+
+	r_qlNormalFlipG remains the global default; this overrides it per stage.
+	*/
+	qboolean		normalFlipG;
+
+	/*
+	[QL] R27, set by the qlNaturalTexture shader keyword. Opt IN, where
+	noNormalPerturb above is opt out, and the asymmetry is deliberate: deriving
+	a normal map from a texture that should not have one costs some shading
+	nobody asked for, while hex-tiling a texture that should not be hex-tiled
+	destroys it outright - a sign becomes three overlapping signs. So this waits
+	to be asked. r_qlNaturalTextures 2 overrides it for world surfaces, which is
+	a debug setting and says so.
+	*/
+	qboolean		naturalTexture;
+
 #ifdef USE_VULKAN
 	uint32_t		tessFlags;
 	uint32_t		numTexBundles;
@@ -564,6 +618,16 @@ typedef struct image_s {
 	int			uploadHeight;
 	imgFlags_t	flags;
 	int			frameUsed;			// for texture usage in frame statistics
+
+	/*
+	[QL] R20 Stage A: the normal map derived from this texture's luminance, or
+	NULL if none has been asked for yet. Cached here rather than on the stage
+	because several shaders share one texture and the derivation re-reads the
+	file - see R_DeriveNormalMap(). derivationFailed records that the re-read
+	was already tried and did not work, so it is not retried once per shader.
+	*/
+	struct image_s *derivedNormalMap;
+	qboolean	derivationFailed;
 
 #ifdef USE_VULKAN
 	int			internalFormat;
@@ -911,7 +975,10 @@ typedef struct {
 	int			numSurfaces;
 } bmodel_t;
 
-typedef struct {
+/* [QL] Tagged so it can be forward-declared. vk.h takes a const world_t* for
+   the ray-tracing acceleration structures and is included in places that do
+   not have tr_local.h; an untagged typedef cannot be named ahead of itself. */
+typedef struct world_s {
 	char		name[MAX_QPATH];		// ie: maps/tim_dm2.bsp
 	char		baseName[MAX_QPATH];	// ie: tim_dm2
 
@@ -938,11 +1005,28 @@ typedef struct {
 	int			numfogs;
 	fog_t		*fogs;
 
+	/*
+	[QL] R20: does this map carry deluxemaps?
+
+	q3map2 -deluxe writes a second map alongside every lightmap holding the
+	dominant light *direction* per texel. That is the only per-texel directional
+	data a compiled BSP can contain, and with the light entities stripped it is
+	the last thing that could shade a normal under baked light.
+
+	Detected at load and recorded rather than acted on: this renderer has no
+	deluxemap path, and whether writing one is worth anything depends entirely
+	on this being true.
+	*/
+	qboolean	deluxeMaps;
+	int			numLightmapsInBsp;
+	int			oddLightmapRefs;   // a single one rules deluxemaps out
+
 	vec3_t		lightGridOrigin;
 	vec3_t		lightGridSize;
 	vec3_t		lightGridInverseSize;
 	int			lightGridBounds[3];
 	byte		*lightGridData;
+	float		*lightField;	// [QL] E176/E178: LF_STRIDE floats per grid point, then the sun - see LF_Classify
 
 
 	int			numClusters;
@@ -1150,10 +1234,92 @@ typedef struct {
 
 	qboolean screenMapDone;
 	qboolean doneBloom;
+	/* [QL] R13: the AO pass runs once per frame, like bloom. The 3D-to-2D
+	   transition it hangs off can be reached more than once in a frame. */
+	qboolean doneRTAO;
+	qboolean doneSSR;			// [QL] R19, same lifetime as the two above
+	qboolean doneRTDynamic;		// [QL] E156: the entities' TLAS was rebuilt this frame
+	qboolean doneActorShadows;	// [QL] E175: the traced shadows on the level, once per frame
 
 } backEndState_t;
 
 typedef struct drawSurfsCommand_s drawSurfsCommand_t;
+
+/*
+[QL] R19: one disturbance on the water - a splash, an impact, a footfall.
+
+Held in world space rather than as an offset on a water plane. The caller is
+cgame, which knows a rocket hit something wet but has no idea which of the map's
+water surfaces that was, or that the renderer keeps a list of them at all. The
+reflection pass matches it to a plane by height when it uses it, which is also
+the only place that can do it correctly.
+
+`radius` is how far the disturbance eventually spreads, not how big it is now:
+the ring expands from nothing to this over its life. A footstep and a rocket
+differ in this far more than in strength.
+*/
+/*
+A shotgun is twenty pellets and each one that lands in water is its own small
+splash, so sixteen was one blast away from flushing everything else in the room.
+Forty-eight holds a full blast with room to spare.
+
+The shader walks this list per water pixel, so it is not free - but a pellet's
+ripple has a small reach and the distance test rejects it for almost every pixel
+on screen, which is why the cheap early-out in that loop is ordered the way it
+is.
+*/
+#define MAX_WATER_RIPPLES 48
+
+typedef struct {
+	vec3_t		origin;
+	float		radius;
+	float		strength;
+	int			startTime;   // tr.refdef.time when it was added
+} waterRipple_t;
+
+/*
+[QL] R19: per-map water settings, from scripts/water.cfg.
+
+A still pool in a dojo and a river running through a canyon want different
+numbers, and one global set of cvars cannot be right for both. So the map gets
+to say.
+
+The precedence rule is the whole design, and it is one comparison: **a map value
+applies only where the player has left that cvar at its shipped default.** Touch
+r_waterWaveHeight and your value wins on every map from then on; set it back to
+the default and the maps take over again.
+
+What that buys is everything the obvious implementation gets wrong. Nothing is
+ever written to a cvar, so nothing lands in the player's config and becomes
+sticky for maps that never asked for it. Nothing has to be saved on map load and
+restored on unload, so there is no path where a crash or a vid_restart leaves a
+map's numbers applied forever. And "why is my setting being ignored" has a
+single answer that is true every time.
+
+`valid` is per field, not per profile: a map that only wants to say "my water is
+choppier" says exactly that and inherits the rest.
+*/
+typedef struct {
+	qboolean	haveScale;
+	qboolean	haveSpeed;
+	qboolean	haveSteepness;
+	qboolean	haveHeight;
+	qboolean	haveStrength;
+	/* [QL] R28: the impact ripples, same precedence rule as the rest */
+	qboolean	haveRippleSize;
+	qboolean	haveRippleHeight;
+	qboolean	haveRippleWaves;
+	qboolean	haveRippleLife;
+	float		scale;
+	float		speed;
+	float		steepness;
+	float		height;
+	float		strength;
+	float		rippleSize;
+	float		rippleHeight;
+	float		rippleWaves;
+	float		rippleLife;
+} waterProfile_t;
 
 /*
 ** trGlobals_t 
@@ -1190,6 +1356,12 @@ typedef struct {
 	image_t					*flareImage;
 	image_t					*blackImage;
 	image_t					*whiteImage;			// full of 0xff
+	image_t					*flatNormalImage;		// [QL] (128,128,255): a tangent-space normal straight out of the surface
+	int						numNormalMappedStages;	// [QL] stages that carry a normal map, counted as shaders are finished
+	int						numSpecularStages;		// [QL] likewise, parsed but not yet shaded with
+	int						numDerivedNormalMaps;	// [QL] R20 Stage A: lighting stages given a map derived from their own texture
+	int						numUnderivableStages;	// [QL] R20 Stage A: lighting stages that asked and had nothing to derive from
+	int						numStaticBumpShaders;	// [QL] R25: shaders the static bump pass can run on
 	image_t					*identityLightImage;	// full of tr.identityLightByte
 
 	shader_t				*defaultShader;
@@ -1273,6 +1445,25 @@ typedef struct {
 #endif
 
 	qboolean				vertexLightingAllowed;
+
+	/*
+	[QL] R19: disturbances on the water, from RE_AddWaterRipple.
+
+	A ring buffer and not a per-frame list, which is the whole difference
+	between this and every other scene-add in this renderer. A dynamic light
+	exists for the frame that adds it; a ripple is added once, by an event that
+	happens in a single frame, and has to go on spreading for a second or two
+	after nothing is adding it any more. So these survive across frames and age
+	out on their own.
+
+	Oldest is overwritten when it is full. Sixteen is a lot of simultaneous
+	splashes - a rocket volley into a pond - and dropping the oldest is right
+	anyway, since it is the one closest to having faded out.
+	*/
+	waterRipple_t			waterRipples[ MAX_WATER_RIPPLES ];
+	int						numWaterRipples;   // total ever added; index with %
+
+	waterProfile_t			waterProfile;      // [QL] R19, from scripts/water.cfg
 } trGlobals_t;
 
 
@@ -1295,6 +1486,9 @@ extern Vk_World		vk_world;		// this data is cleared during ref re-init
 //
 // cvars
 //
+// [QL] E103. Read in vk.c's create_pipeline to set the green-flip spec constant.
+extern cvar_t	*r_qlNormalFlipG;
+
 extern cvar_t	*r_flareSize;
 extern cvar_t	*r_flareFade;
 extern cvar_t	*r_flareCoeff;			// coefficient for the flare intensity falloff function. 
@@ -1332,6 +1526,8 @@ extern cvar_t	*r_vbo;
 #endif
 extern cvar_t	*r_fbo;
 extern cvar_t	*r_hdr;
+extern cvar_t	*r_shaderTimeSource;
+extern cvar_t	*r_verboseImageFallback;
 extern cvar_t	*r_bloom;
 extern cvar_t	*r_bloom_threshold;
 extern cvar_t	*r_bloom_intensity;
@@ -1377,6 +1573,93 @@ extern	cvar_t	*r_vertexLight;					// vertex lighting mode for better performance
 
 extern	cvar_t	*r_showtris;					// enables wireframe rendering of the world
 extern	cvar_t	*r_showsky;						// forces sky in front of all surfaces
+extern	cvar_t	*r_rt;							// [QL] R13: enable ray query on the device (latched)
+extern	cvar_t	*r_rtao;						// [QL] R13: ray-traced ambient occlusion
+extern	cvar_t	*r_rtaoRadius;					// [QL] R13: trace length, world units
+extern	cvar_t	*r_rtaoIntensity;				// [QL] R13: how far the term may darken
+extern	cvar_t	*r_rtaoSamples;					// [QL] R13: rays per pixel (latched)
+extern	cvar_t	*r_rtDynamic;					// [QL] R13: entities occlude, not just the map
+extern	cvar_t	*r_rtaoNormals;					// [QL] R13: where the AO normal comes from
+extern	cvar_t	*r_rtaoWeapon;					// [QL] R13: occlude the first person weapon
+extern	cvar_t	*r_rts;							// [QL] real time shading: float target + tone curve
+extern	cvar_t	*r_stencilSelfShadow;			// [QL] E155
+/* [QL] E159: the own-player stencil shadow needs depth-fail, and depth-fail
+   needs the device's depth clamp (see SHADOW_EDGES) - the cvar alone is not
+   enough to cast it correctly */
+#ifdef USE_VULKAN
+#define R_STENCIL_SELF_SHADOW ( r_stencilSelfShadow->integer && vk.depthClamp )
+#else
+#define R_STENCIL_SELF_SHADOW 0
+#endif
+/*
+[QL] E163: cg_shadows 4, "Traced" - the ray-traced shadows (E161) in place of
+Quake's. Both ray-traced passes on, whatever their own toggles say (their
+strength, softness, rays, reach and debug settings still apply), and none of
+blob, stencil or projection.
+
+Without ray tracing - no ray query, or no level structure bound - it falls
+back to stencil rather than to no shadows at all, which is why every stencil
+test goes through R_STENCIL_SHADOWS instead of comparing r_shadows with 2.
+*/
+#ifdef USE_VULKAN
+#define R_RT_SHADOWS_READY ( vk.rt.world.mainTlasWritten )
+#else
+#define R_RT_SHADOWS_READY 0
+#endif
+#define R_SHADOWS_TRACED ( r_shadows->integer == 4 )
+#define R_STENCIL_SHADOWS ( r_shadows->integer == 2 || ( R_SHADOWS_TRACED && !R_RT_SHADOWS_READY ) )
+
+/*
+[QL] K8. Which ray-traced shadow features are on, resolved once.
+
+Each of these was worked out where it was used - "r_rtModelShadows or
+r_shadows 4", "actor shadows or traced or casters" - two dozen times over
+five files, and a pass that read the rule slightly differently from its
+neighbour ran when the other did not. R_ResolveRTFeatures fills this at the
+start of each frame (RE_BeginFrame) and when the world's structures are
+built; everything that asks reads it, so the dependency rules live in one
+place. The debug values are the cvars' own 2 = tint.
+*/
+typedef struct {
+	qboolean	traced;          // r_shadows 4: every traced shadow below on
+	qboolean	modelShadows;    // shadows on models (r_rtModelShadows)
+	qboolean	dlightShadows;   // dynamic lights trace their shadows (r_rtDlightShadows)
+	qboolean	actorShadows;    // players and items shadow the level (r_rtActorShadows)
+	qboolean	levelShadows;    // the level shadows itself (r_rtLevelShadows)
+	qboolean	casters;         // players and items in other passes' shadow rays (r_rtShadowCasters)
+	qboolean	actorMesh;       // the silhouette mesh is wanted for shadows
+	qboolean	anyShadow;       // any traced shadow at all this frame
+	qboolean	modelDebug, dlightDebug, actorDebug;
+} rtFeatures_t;
+extern rtFeatures_t rtf;
+void R_ResolveRTFeatures( void );
+extern	cvar_t	*r_ssao;						// [QL] E154: 0 off, 1 on, 2 debug
+extern	cvar_t	*r_pipelineCache;				// [QL] E152: 0 off, 1 disk, 2 disk + pre-build
+extern	cvar_t	*r_ssrResolution;				// [QL] E151: 1 full, 2 half (live)
+extern	cvar_t	*r_ssrRayTrace;				// [QL] E156: 0 off, 1 on-screen hits, 2 + estimates (live)
+extern	cvar_t	*r_rtaoResolution;				// [QL] E150: 1 full, 2 half (live)
+extern	cvar_t	*r_rtaoDenoise;					// [QL] R13: bilateral denoise width (latched)
+extern	cvar_t	*r_rtaoTemporal;				// [QL] E196: accumulate AO over frames
+extern	cvar_t	*r_rtShadowTemporal;			// [QL] E196: and the sampled shadow edge
+extern	cvar_t	*r_rtaoLights;					// [QL] dynamic lights clear occlusion where they reach
+
+extern	cvar_t	*r_ssr;							// [QL] R19: reflection strength on water, 0 = off
+extern	cvar_t	*r_ssrDistance;					// [QL] how far a reflected ray travels
+extern	cvar_t	*r_ssrSteps;					// [QL] how many steps it takes getting there
+extern	cvar_t	*r_ssrThickness;				// [QL] how far behind a sample still counts as a hit
+extern	cvar_t	*r_ssrDebug;					// [QL] 1 = water mask, 2 = raw reflection
+extern	cvar_t	*r_ssrEmitters;					// [QL] R19: how brightly emitters reflect, 0 = off
+extern	cvar_t	*r_waterWaves;					// [QL] R19: wave motion on the reflection, 0 = flat
+extern	cvar_t	*r_waterWaveScale;				// [QL] world units per wavelength
+extern	cvar_t	*r_waterWaveSpeed;				// [QL] how fast they travel
+extern	cvar_t	*r_waterWaveSteepness;			// [QL] how far the normal tilts
+extern	cvar_t	*r_waterWaveHeight;				// [QL] crest-to-trough, in world units
+extern	cvar_t	*r_waterFoam;					// [QL] R19: how white a splash goes
+extern	cvar_t	*r_waterRippleSize;				// [QL] R28: impact ripples, not the wind chop
+extern	cvar_t	*r_waterRippleHeight;
+extern	cvar_t	*r_waterRippleWaves;
+extern	cvar_t	*r_waterRippleLife;
+extern	cvar_t	*r_waterRippleReflect;
 extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
 
@@ -1395,6 +1678,37 @@ extern	cvar_t	*r_skipBackEnd;
 
 extern	cvar_t	*r_greyscale;
 extern	cvar_t	*r_dither;
+extern	cvar_t	*r_fxaa;				// [QL] E157: FXAA in the present pass (live)
+extern	cvar_t	*r_sharpen;			// [QL] E157: CAS strength 0..1 (live)
+extern	cvar_t	*r_toneMap;			// [QL] E158: 0 auto, 1 clip, 2 knee, 3 filmic (live)
+extern	cvar_t	*r_rtDlightShadows;		// [QL] E161: the level shadows dynamic lights (live)
+extern	cvar_t	*r_rtDlightShadowStrength;
+extern	cvar_t	*r_rtDlightShadowSoftness;
+extern	cvar_t	*r_rtDlightShadowRays;
+extern	cvar_t	*r_rtModelShadows;		// [QL] E161: the level shadows models (live)
+extern	cvar_t	*r_rtModelShadowStrength;
+extern	cvar_t	*r_rtModelShadowSoftness;
+extern	cvar_t	*r_rtModelShadowRays;
+extern	cvar_t	*r_rtModelShadowDistance;
+extern	cvar_t	*r_rtShadowCasters;		// [QL] E165: 0 the level and movers, 1 + players and items
+extern	cvar_t	*r_rtActorShadows;		// [QL] E166: players and items cast traced shadows on the level
+extern	cvar_t	*r_rtActorShadowStrength;
+extern	cvar_t	*r_rtActorShadowLength;		// [QL] E167: how far a player's shadow reaches
+extern	cvar_t	*r_rtActorShadowSoftness;		// [QL] E167: light size for the shadows on the level
+extern	cvar_t	*r_rtActorShadowRays;
+extern	cvar_t	*r_rtActorShadowDenoise;   // [QL] E169
+extern	cvar_t	*r_rtActorShadowSoftMode;  // [QL] E171
+extern	cvar_t	*r_rtWeaponSelfShadow;     // [QL] E174
+extern	cvar_t	*r_rtLightField;           // [QL] E176
+extern	cvar_t	*r_rtShadowSun;            // [QL] E178
+extern	cvar_t	*r_rtActorCaps;            // [QL] E180
+extern	cvar_t	*r_rtCull;                 // [QL] E203
+extern	cvar_t	*r_rtActorLight;           // [QL] E211
+extern	cvar_t	*r_rtActorRefit;           // [QL] E208
+extern	cvar_t	*r_rtTimings;              // [QL] E177
+extern	cvar_t	*r_rtLevelShadows;			// [QL] E167: the level's traced shadows on the level
+void R_RTShadowReport( qboolean force );   // [QL] E162, tr_shade.c
+extern	cvar_t	*r_bloomHDR;			// [QL] E158: bloom in the float format with r_rts (latched)
 extern	cvar_t	*r_presentBits;
 
 extern	cvar_t	*r_ignoreGLErrors;
@@ -1426,6 +1740,7 @@ void R_AddBeamSurfaces( trRefEntity_t *e );
 void R_AddRailSurfaces( trRefEntity_t *e, qboolean isUnderwater );
 void R_AddLightningBoltSurfaces( trRefEntity_t *e );
 
+qboolean R_GetEntityModelBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t maxs );   // [QL] for the RT structures
 void R_AddPolygonSurfaces( void );
 
 void R_DecomposeSort( unsigned sort, int *entityNum, shader_t **shader, 
@@ -1691,6 +2006,10 @@ void R_DlightBmodel( bmodel_t *bmodel );
 void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent );
 void R_TransformDlights( int count, dlight_t *dl, orientationr_t *or );
 int R_LightForPoint( vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir );
+float R_ShadowRayReach( const vec3_t origin, const vec3_t dir, float reach );   // [QL] E172
+void R_BuildLightField( world_t *w );   // [QL] E176
+qboolean R_LightFieldAt( const vec3_t p, vec3_t lightPos, float *sky );   // [QL] E176, sky E178
+#define LF_STRIDE 8   // [QL] E178: floats per grid point in world_t.lightField
 
 #ifdef USE_PMLIGHT
 void VK_LightingPass( void );
@@ -1762,6 +2081,7 @@ SCENE GENERATION
 */
 
 void R_InitNextFrame( void );
+void R_ResetRippleDiag( void );
 
 void RE_ClearScene( void );
 void RE_AddRefEntityToScene( const refEntity_t *ent, qboolean intShaderTime );
@@ -1769,6 +2089,9 @@ void RE_AddPolyToScene( qhandle_t hShader , int numVerts, const polyVert_t *vert
 void RE_AddLightToScene( const vec3_t org, float intensity, float r, float g, float b );
 void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, float g, float b );
 void RE_AddLinearLightToScene( const vec3_t start, const vec3_t end, float intensity, float r, float g, float b );
+void RE_AddWaterRipple( const vec3_t origin, float radius, float strength );
+void R_LoadWaterProfile( const char *mapName );
+float R_WaterSetting( const cvar_t *cv, qboolean haveMapValue, float mapValue );
 
 void RE_RenderScene( const refdef_t *fd );
 

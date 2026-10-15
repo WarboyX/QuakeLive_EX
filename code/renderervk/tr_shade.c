@@ -52,6 +52,17 @@ SURFACE SHADERS
 */
 
 shaderCommands_t	tess;
+
+// [QL] R25. Declared here rather than beside the pass, which sits above the
+// USE_PMLIGHT block that carries the other renderer cvars this file reaches for.
+extern cvar_t	*r_deluxeMapping;
+extern cvar_t	*r_qlBumpScale;
+extern cvar_t	*r_qlParallax;
+extern cvar_t	*r_qlBumpSpecular;
+// [QL] R27
+extern cvar_t	*r_qlNaturalTextures;
+extern cvar_t	*r_qlNaturalRotate;
+extern cvar_t	*r_qlNaturalContrast;
 #ifndef USE_VULKAN
 static qboolean	setArraysOnce;
 #endif
@@ -991,10 +1002,10 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 					R_ComputeColors( i, tess.svars.colors[i], pStage );
 				}
 				if ( tess_flags & (TESS_ENT0 << i) && backEnd.currentEntity ) {
-					uniform.ent.color[i][0] = backEnd.currentEntity->e.shader.rgba[0] / 255.0;
-					uniform.ent.color[i][1] = backEnd.currentEntity->e.shader.rgba[1] / 255.0;
-					uniform.ent.color[i][2] = backEnd.currentEntity->e.shader.rgba[2] / 255.0;
-					uniform.ent.color[i][3] = pStage->bundle[i].alphaGen == AGEN_IDENTITY ? 1.0 : (backEnd.currentEntity->e.shader.rgba[3] / 255.0);
+					uniform.ent.color[i][0] = backEnd.currentEntity->e.shaderRGBA[0] / 255.0;
+					uniform.ent.color[i][1] = backEnd.currentEntity->e.shaderRGBA[1] / 255.0;
+					uniform.ent.color[i][2] = backEnd.currentEntity->e.shaderRGBA[2] / 255.0;
+					uniform.ent.color[i][3] = pStage->bundle[i].alphaGen == AGEN_IDENTITY ? 1.0 : (backEnd.currentEntity->e.shaderRGBA[3] / 255.0);
 					pushUniform = qtrue;
 				}
 			}
@@ -1111,6 +1122,153 @@ void VK_SetFogParams( vkUniform_t *uniform, int *fogStage )
 }
 
 
+/*
+[QL] E162: what the ray-traced shadow passes did, per frame, and why not.
+
+E161 printed nothing, so "I see no shadows" could not be told apart from "the
+pass never ran" or "it ran and found nothing in the way" - on a machine that is
+not this one, from a log. rtShadowStats counts the current frame; the previous
+frame's numbers are what the report and the rtshadows command print.
+*/
+typedef struct {
+	int modelDrawn;            // model surfaces the shadow pass ran on
+	int modelNotEntity;        // world surfaces (lightmapped - nothing to do)
+	int modelTranslucent;      // first stage blends, so multiplying would darken what is behind
+	int modelNoGrid;           // no rgbGen lightingDiffuse stage - not lit from the light grid
+	int dlightTraced;          // dynamic-lit surfaces drawn with the shadow ray
+	int dlightPlain;           // ... drawn without it (feature off / not ready)
+} rtShadowStats_t;
+
+static rtShadowStats_t rtStatsCur, rtStatsLast;
+static int rtStatsFrame = -1;
+static int rtReportDue = -1;                  // frame at which a toggle gets reported
+
+static void RT_StatsFrame( void )
+{
+	if ( rtStatsFrame != tr.frameCount ) {
+		const qboolean first = ( rtStatsFrame < 0 );
+		rtStatsLast = rtStatsCur;
+		Com_Memset( &rtStatsCur, 0, sizeof( rtStatsCur ) );
+		rtStatsFrame = tr.frameCount;
+		if ( !first ) {
+			R_RTShadowReport( qfalse );   // says so once, the frame after a toggle
+		}
+	}
+}
+
+void R_RTShadowReport( qboolean force );
+
+static const char *RT_NotReadyReason( void )
+{
+	if ( !vk.rtActive ) {
+		return "ray query is not active (r_rt 1 and vid_restart, and a GPU that supports it)";
+	}
+	if ( !vk.rt.world.mainTlasWritten ) {
+		return "the level's acceleration structure is not bound (no map loaded, or it failed to build - see the RT: lines at map load)";
+	}
+	return NULL;
+}
+
+void R_RTShadowReport( qboolean force )
+{
+	const char *why = RT_NotReadyReason();
+	const rtShadowStats_t *s = &rtStatsLast;
+	const int modelOn = rtf.modelShadows ? 1 : 0;
+	const int dlOn = rtf.dlightShadows ? 1 : 0;
+
+	if ( !force ) {
+		const int state = r_rtActorShadows->integer * 64 + r_rtModelShadows->integer * 16 +
+			r_rtDlightShadows->integer * 4 + ( R_SHADOWS_TRACED ? 1 : 0 );
+		/* [QL] E194: -1 until the first frame, so the settings a session starts
+		   with are not mistaken for a toggle - that printed "NOT RUNNING" from
+		   the main menu on every launch, before any map could have been built */
+		static int lastState = -1;
+		if ( lastState < 0 ) {
+			lastState = state;
+			return;
+		}
+		if ( state != lastState ) {
+			/* a toggle is reported two frames on, so "last frame" is one that
+			   was drawn with the new setting from start to finish */
+			lastState = state;
+			rtReportDue = tr.frameCount + 2;
+			return;
+		}
+		if ( rtReportDue < 0 || tr.frameCount < rtReportDue ) {
+			return;
+		}
+		if ( !tr.worldMapLoaded ) {
+			return;   /* toggled in the menus with no map: nothing to report on yet */
+		}
+		rtReportDue = -1;
+	}
+
+	ri.Printf( PRINT_ALL, "RT shadows%s: model %s, dynamic light %s%s%s\n",
+		R_SHADOWS_TRACED ? " (Shadows: Traced)" : "",
+		modelOn ? ( r_rtModelShadows->integer >= 2 ? "debug" : "on" ) : "off",
+		dlOn ? ( r_rtDlightShadows->integer >= 2 ? "debug" : "on" ) : "off",
+		why ? " - NOT RUNNING: " : "", why ? why : "" );
+	if ( why && R_SHADOWS_TRACED ) {
+		ri.Printf( PRINT_ALL, "  Shadows: Traced is drawing Quake's stencil shadows instead until ray tracing can run\n" );
+	}
+	if ( modelOn ) {
+		ri.Printf( PRINT_ALL, "  models last frame: %i surface(s) shadowed; skipped %i translucent, "
+			"%i not lit from the light grid\n", s->modelDrawn, s->modelTranslucent, s->modelNoGrid );
+	}
+	if ( rtf.actorShadows ) {
+		ri.Printf( PRINT_ALL, "  players/items on the level: %u triangle(s) from %u model(s) in the silhouette "
+			"structure, %u out of reach left out (r_rtCull); %u refitted / %u built since the last report%s\n",
+			vk.rt.world.actorTris, vk.rt.world.actorEntities, vk.rt.world.actorCulled,
+			vk.rt.world.actorRefitFrames, vk.rt.world.actorBuildFrames,
+			vk.rt.world.actorReady ? "" : " - NOT AVAILABLE (see the RT: lines at map load)" );
+		vk.rt.world.actorRefitFrames = vk.rt.world.actorBuildFrames = 0;
+		/* [QL] E214/E219: casters, and what the structure had no room for */
+		ri.Printf( PRINT_ALL, "  casters: %i listed%s, %u left out whole for lack of room\n",
+			vk.rt.world.actorSphereCount,
+			vk.rt.world.actorListComplete ? "" : " (not all - the rest traced toward each pixel's own light)",
+			vk.rt.world.actorDropped );
+	}
+	if ( dlOn ) {
+		if ( r_dlightMode->integer == 0 ) {
+			ri.Printf( PRINT_ALL, "  dynamic lights: r_dlightMode is 0 (classic) - these shadows need "
+				"per-pixel dynamic lights, r_dlightMode 1 or 2\n" );
+		} else {
+			ri.Printf( PRINT_ALL, "  dynamic lights last frame: %i lit surface(s) ray-traced, %i without "
+				"(0 lit surfaces means no dynamic light was touching anything)\n", s->dlightTraced, s->dlightPlain );
+		}
+	}
+}
+
+/*
+[QL] E161: object-to-world for the shadow rays, from the current orientation -
+the entity's for a model, identity for the world. The ray-traced shaders work
+in object space like the rest of the light pass and bring the result into the
+world, where the acceleration structure is.
+*/
+static void VK_SetRTTransform( vkUniform_t *uniform )
+{
+	int i;
+
+	VectorCopy( backEnd.or.origin, uniform->rtOrigin );
+	/* [QL] E165: which instances cast - the level and its movers always,
+	   players and items with r_rtShadowCasters 1 */
+	uniform->rtOrigin[3] = (float)( RT_SHADOW_MASK );
+	/* [QL] E174: the first-person weapon sits inside your own body, which is
+	   in the silhouettes - it shadowed the gun with hard patches (tester
+	   confirmed it is their own shadow). Unless r_rtWeaponSelfShadow 1, the
+	   weapon traces the level only. Silhouettes are one instance, so this also
+	   leaves out other players and items between the gun and a light. */
+	if ( backEnd.currentEntity && backEnd.currentEntity != &tr.worldEntity &&
+		( backEnd.currentEntity->e.renderfx & RF_FIRST_PERSON ) && !r_rtWeaponSelfShadow->integer ) {
+		uniform->rtOrigin[3] = (float)RT_MASK_LEVEL;
+	}
+	for ( i = 0; i < 3; i++ ) {
+		VectorCopy( backEnd.or.axis[i], uniform->rtAxis[i] );
+		uniform->rtAxis[i][3] = 0.0f;
+	}
+}
+
+
 #ifdef USE_PMLIGHT
 static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 	float radius;
@@ -1127,7 +1285,19 @@ static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 	radius = dl->radius;
 
 	// vertex data
-	VectorCopy( backEnd.or.viewOrigin, uniform->eyePos ); uniform->eyePos[3] = 0.0f;
+	/*
+	[QL] E104. eyePos.w carries the per-material green flip on the dynamic light
+	path, because a specialization constant cannot: these pipelines are built once
+	at init, so anything per-stage has to travel in the uniform instead.
+
+	It is free. The vertex shader computes V = eyePos - vec4(position, 1.0) and
+	the fragment shader reads only V.xyz - V.w is never touched by anything.
+	Checked before using it rather than assumed.
+	*/
+	VectorCopy( backEnd.or.viewOrigin, uniform->eyePos );
+	uniform->eyePos[3] = (float)( ( r_qlNormalFlipG->integer ? 1 : 0 ) ^
+		( ( tess.shader->lightingStage >= 0 && tess.xstages[ tess.shader->lightingStage ] &&
+		    tess.xstages[ tess.shader->lightingStage ]->normalFlipG ) ? 1 : 0 ) );
 	VectorCopy( dl->transformed, uniform->light.pos ); uniform->light.pos[3] = 0.0f;
 
 	// fragment data
@@ -1140,6 +1310,16 @@ static void VK_SetLightParams( vkUniform_t *uniform, const dlight_t *dl ) {
 		ab[3] = 1.0f / DotProduct( ab, ab );
 		Vector4Copy( ab, uniform->light.vector );
 	}
+
+	/* [QL] E161: for the shadow ray - where this draw is in the world, and
+	   the r_rtDlightShadows settings. Harmless to the plain light shader,
+	   which does not declare them. */
+	VK_SetRTTransform( uniform );
+	uniform->rtParams[0] = rtf.dlightShadows ? r_rtDlightShadowStrength->value : 0.0f;
+	uniform->rtParams[1] = (float)r_rtDlightShadowRays->integer;
+	uniform->rtParams[2] = r_rtDlightShadowSoftness->value;
+	uniform->rtParams[3] = 8.0f;   // stop short of the light: what it sits against must not shadow it
+	uniform->rtLight[3] = rtf.dlightDebug ? 1.0f : 0.0f;   // [QL] E162: debug tint
 }
 #endif
 
@@ -1212,8 +1392,45 @@ void VK_LightingPass( void )
 	else
 		pipeline = vk.dlight_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light];
 
+	/* [QL] E161: the ray-traced twin, when asked for and the level's structure
+	   is bound for this map */
+	RT_StatsFrame();
+	if ( rtf.dlightShadows && vk.rt.world.mainTlasWritten &&
+		!( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) ) {   /* [QL] E175: not a UI model view */
+		const uint32_t rt = tess.light->linear
+			? vk.dlight1_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light]
+			: vk.dlight_rt_pipelines_x[cull][tess.shader->polygonOffset][fog_stage][abs_light];
+		if ( rt ) {
+			pipeline = rt;
+			rtStatsCur.dlightTraced++;
+		} else {
+			rtStatsCur.dlightPlain++;
+		}
+	} else {
+		rtStatsCur.dlightPlain++;
+	}
+
 	GL_SelectTexture( 0 );
 	R_BindAnimatedImage( &pStage->bundle[ tess.shader->lightingBundle ] );
+
+	/*
+	[QL] R20 Stage A: bind the lighting stage's normal map to set 3, or the flat
+	fallback when this surface has none.
+
+	The fallback is bound rather than skipped because the shader samples set 3
+	unconditionally: tr.flatNormalImage decodes to (0,0,1) in tangent space, and
+	perturbing by (0,0,1) is the interpolated normal back again. That is what
+	makes an un-perturbed surface light identically to before, and it is why
+	tr.flatNormalImage must keep IMGFLAG_NOLIGHTSCALE - see the note at the top
+	of light_frag.tmpl for what happened the time it did not.
+
+	r_qlNormalMaps is latched, so it cannot change between here and the parse
+	that decided whether pStage->normalMap exists; the test is on the pointer.
+	*/
+	{
+		const image_t *nmap = pStage->normalMap ? pStage->normalMap : tr.flatNormalImage;
+		vk_update_descriptor( VK_DESC_TEXTURE2, nmap->descriptor );
+	}
 
 #ifdef USE_VBO
 	if ( tess.vboIndex == 0 )
@@ -1227,6 +1444,330 @@ void VK_LightingPass( void )
 	vk_bind_lighting( tess.shader->lightingStage, tess.shader->lightingBundle );
 	vk_draw_geometry( tess.depthRange, qtrue );
 }
+
+/*
+===============
+VK_ModelShadowPass
+
+[QL] E161, r_rtModelShadows: the level's shadow on a model.
+
+Models are lit per vertex from the light grid - ambient plus a directed term
+along the grid's light direction (RB_CalcDiffuseColor). The grid is coarse, so
+a model under an overhang or half through a doorway is lit as if nothing were
+there, or fades over a whole cell. This pass redraws the model multiplying it
+by how much of that directed term actually arrives, found with a ray per pixel
+toward the light through the level's acceleration structure. See
+rtshadow_frag.tmpl for the arithmetic.
+
+Opaque shaders with a lightingDiffuse stage on entities only: the world has
+lightmaps, and multiplying a translucent or additive model would darken what
+is behind it.
+===============
+*/
+static void VK_ModelShadowPass( void )
+{
+	static vkUniform_t su;
+	const trRefEntity_t *ent = backEnd.currentEntity;
+	const shaderStage_t *pStage;
+	cullType_t cull;
+	uint32_t pipeline, offset;
+	int i, lit;
+
+	RT_StatsFrame();
+	if ( !rtf.modelShadows || !vk.rt.world.mainTlasWritten ) {
+		return;
+	}
+	if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
+		return;   /* [QL] E175: a UI model view floats in no world - nothing there to cast */
+	}
+	if ( ent == NULL || ent == &tr.worldEntity ) {
+		rtStatsCur.modelNotEntity++;
+		return;
+	}
+	/*
+	[QL] E162: opaque judged by the first stage, not by the shader's sort. The
+	sort is a draw-order hint a script can set for its own reasons; what matters
+	here is whether the surface covers what is behind it, which is whether its
+	first stage blends.
+	*/
+	if ( tess.xstages[0] == NULL || ( tess.xstages[0]->stateBits & GLS_BLEND_BITS ) ) {
+		rtStatsCur.modelTranslucent++;
+		return;
+	}
+	/* any bundle of any stage lit from the grid */
+	for ( i = 0, lit = 0; i < MAX_SHADER_STAGES && tess.xstages[i] && !lit; i++ ) {
+		int b;
+		for ( b = 0; b < NUM_TEXTURE_BUNDLES; b++ ) {
+			if ( tess.xstages[i]->bundle[b].rgbGen == CGEN_LIGHTING_DIFFUSE ) {
+				lit = 1;
+				break;
+			}
+		}
+	}
+	if ( !lit ) {
+		rtStatsCur.modelNoGrid++;
+		return;
+	}
+
+	cull = tess.shader->cullType;
+	if ( backEnd.viewParms.portalView == PV_MIRROR ) {
+		if ( cull == CT_FRONT_SIDED ) cull = CT_BACK_SIDED;
+		else if ( cull == CT_BACK_SIDED ) cull = CT_FRONT_SIDED;
+	}
+	pipeline = vk.rt_model_shadow_pipelines[cull][tess.shader->polygonOffset];
+	if ( pipeline == 0 ) {
+		return;
+	}
+
+	Com_Memset( &su, 0, sizeof( su ) );
+	VK_SetRTTransform( &su );
+	/* luminance of what RB_CalcDiffuseColor adds: ambient + directed * N.L */
+	su.rtAxis[0][3] = 0.299f * ent->ambientLight[0] + 0.587f * ent->ambientLight[1] + 0.114f * ent->ambientLight[2];
+	su.rtAxis[1][3] = 0.299f * ent->directedLight[0] + 0.587f * ent->directedLight[1] + 0.114f * ent->directedLight[2];
+	VectorCopy( ent->lightDir, su.rtLight );   // entity space, as RB_CalcDiffuseColor uses it
+	/* [QL] E172: stop short of the light and the room around it, not a fixed
+	   distance along it forever - see R_ShadowRayReach. The grid's direction
+	   back into the world: lightDir[i] is its dot with axis[i]. */
+	{
+		vec3_t worldDir, lightOrigin;
+		VectorScale( ent->e.axis[0], ent->lightDir[0], worldDir );
+		VectorMA( worldDir, ent->lightDir[1], ent->e.axis[1], worldDir );
+		VectorMA( worldDir, ent->lightDir[2], ent->e.axis[2], worldDir );
+		VectorNormalize( worldDir );
+		VectorCopy( ( ent->e.renderfx & RF_LIGHTING_ORIGIN ) ? ent->e.lightingOrigin : ent->e.origin, lightOrigin );
+		su.rtLight[3] = R_ShadowRayReach( lightOrigin, worldDir, r_rtModelShadowDistance->value );
+	}
+	su.rtParams[0] = r_rtModelShadowStrength->value;
+	su.rtParams[1] = (float)r_rtModelShadowRays->integer;
+	/*
+	[QL] E207: the light's size in world units, as the other two softness
+	settings are, turned into the angle this shader spreads its rays over by
+	seeing the light from 128 units - the distance actorshadow.tmpl uses for
+	the sun. It was an angle in radians, with menu steps 0.03 / 0.06 / 0.12 /
+	0.25, which at 128 units are 4 / 8 / 16 / 32: the same choices, now with
+	the same numbers as the other pages. A saved value below 1 is still the
+	old radians and is read as such.
+	*/
+	{
+		const float sz = r_rtModelShadowSoftness->value;
+		su.rtParams[2] = ( sz > 0.0f && sz < 1.0f ) ? sz : sz / 128.0f;
+	}
+	su.rtParams[3] = rtf.modelDebug ? 1.0f : 0.0f;   // debug tint
+
+	offset = VK_PushUniform( &su );
+	if ( offset == ~0U ) {
+		return;
+	}
+	/* the light pass pushes its own uniform when it next runs */
+	tess.dlightUpdateParams = qtrue;
+
+	/*
+	[QL] E162: texture coordinates are bound because the vertex layout has
+	them, not because this shader reads them. The lighting stage's when there
+	is one; the first stage's otherwise - E161 required a lighting stage and
+	skipped any model without one.
+	*/
+	{
+		const int st = tess.shader->lightingStage >= 0 ? tess.shader->lightingStage : 0;
+		const int bn = tess.shader->lightingStage >= 0 ? tess.shader->lightingBundle : 0;
+		pStage = tess.xstages[ st ];
+#ifdef USE_VBO
+		if ( tess.vboIndex == 0 )
+#endif
+		{
+			R_ComputeTexCoords( bn, &pStage->bundle[ bn ] );
+		}
+
+		vk_bind_pipeline( pipeline );
+		vk_bind_index();
+		vk_bind_lighting( st, bn );
+		vk_draw_geometry( tess.depthRange, qtrue );
+	}
+	rtStatsCur.modelDrawn++;
+}
+
+
+/*
+===============
+VK_BumpPass
+
+[QL] R25. Normal mapping on statically lit world surfaces.
+
+The lightmap says how much light reached a texel, not which way it came from,
+so a normal map has nothing to be dotted against and changes nothing. A map
+compiled with q3map2 -deluxe carries a second lightmap beside every lightmap
+holding the dominant direction per texel; this pass reads it, perturbs the
+normal, and multiplies the surface by how much that changed its response.
+
+A second pass, because the world already spends two of this backend's three
+texture slots on lightmap and diffuse and this needs two more. Multiplying what
+is in the framebuffer needs only the normal map and the deluxemap, costs one
+draw on surfaces that opt in, and cannot touch a surface that does not.
+
+Not what R20 ruled out. That was removing FACETING - a discontinuity baked
+across a face boundary, which no smooth term can divide out. This adds detail
+within a face.
+===============
+*/
+static void VK_BumpPass( void )
+{
+	const shaderStage_t *pStage;
+	const image_t *nmap, *dmap;
+	Vk_Pipeline_Def def;
+	uint32_t pipeline;
+	int lmIndex, debug;
+
+	if ( !r_deluxeMapping->integer )
+		return;
+
+	/*
+	Needs a map that carries them - every Quake Live map does not, measured in
+	R20 - except for the raw normal-map view, which reads only the normal map
+	and is the one thing worth being able to look at on a map with no
+	deluxemaps at all.
+	*/
+	if ( tr.world == NULL || ( !tr.world->deluxeMaps && r_deluxeMapping->integer != 5 && r_deluxeMapping->integer != 6 ) )
+		return;
+
+	if ( tess.shader->lightingStage < 0 || tess.shader->numUnfoggedPasses < 1 )
+		return;
+
+	// The deluxemap is the odd map beside this surface's lightmap. Lightmap
+	// merging is disabled on these maps precisely so this index is the literal
+	// one - see R_LoadLightmaps.
+	lmIndex = tess.shader->lightmapIndex;
+	if ( lmIndex < 0 || lmIndex + 1 >= tr.numLightmaps )
+		return;
+
+	pStage = tess.xstages[ tess.shader->lightingStage ];
+	if ( pStage == NULL || pStage->normalMap == NULL )
+		return;
+
+	// Only a real authored or derived map is worth a draw. The flat fallback
+	// perturbs by nothing, so the whole pass would multiply by 1.
+	if ( pStage->normalMap == tr.flatNormalImage )
+		return;
+
+	nmap = pStage->normalMap;
+	dmap = tr.lightmaps[ lmIndex + 1 ];
+	if ( dmap == NULL || dmap->descriptor == VK_NULL_HANDLE )
+		return;
+
+	debug = r_deluxeMapping->integer - 1;	// 2..6 -> 1..5, 1 -> 0
+	if ( debug < 0 )
+		debug = 0;
+	if ( debug > 5 )
+		debug = 5;
+
+	Com_Memset( &def, 0, sizeof( def ) );
+	def.shader_type = TYPE_BUMP;
+	def.face_culling = tess.shader->cullType;
+	def.polygon_offset = tess.shader->polygonOffset;
+	def.mirror = ( backEnd.viewParms.portalView == PV_MIRROR ) ? qtrue : qfalse;
+
+	/*
+	Depth EQUAL and no depth write: the surface is already there, this only
+	changes its colour. The real pass multiplies; the debug views replace, or
+	they would be multiplied by whatever they are describing and unreadable.
+	*/
+	if ( debug )
+		def.state_bits = GLS_DEPTHFUNC_EQUAL;
+	else
+		def.state_bits = GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO | GLS_DEPTHFUNC_EQUAL;
+
+	/*
+	Quantised, because the scale is a specialization constant and so part of
+	the pipeline's identity - vk_find_pipeline_ext memcmps the def. Without
+	this a cvar dragged through a range would allocate a pipeline per value.
+	*/
+	def.bump_scale = (float)( (int)( r_qlBumpScale->value * 100.0f + 0.5f ) ) / 100.0f;
+	if ( def.bump_scale < 0.0f ) def.bump_scale = 0.0f;
+	if ( def.bump_scale > 1.0f ) def.bump_scale = 1.0f;
+	def.bump_debug = debug;
+	def.bump_parallax = (float)( (int)( r_qlParallax->value * 1000.0f + 0.5f ) ) / 1000.0f;
+	if ( def.bump_parallax < 0.0f ) def.bump_parallax = 0.0f;
+	if ( def.bump_parallax > 0.25f ) def.bump_parallax = 0.25f;
+	def.bump_specular = (float)( (int)( r_qlBumpSpecular->value * 100.0f + 0.5f ) ) / 100.0f;
+	if ( def.bump_specular < 0.0f ) def.bump_specular = 0.0f;
+	if ( def.bump_specular > 4.0f ) def.bump_specular = 4.0f;
+
+	/*
+	Which texcoord set carries which. The vertex attributes arrive in bundle
+	order, and a collapsed world shader puts the lightmap in bundle 0 when its
+	lightmap stage came first - which is what R_CreateDefaultShading builds, so
+	it is the common case rather than the odd one.
+	*/
+	def.bump_tc_swap = ( tess.shader->lightingBundle != 0 ) ? 1 : 0;
+
+	/*
+	[QL] R27. Hex-tile the normal map exactly when the albedo is hex-tiled, and
+	the flag to read for that is the stage's, not the cvar's: mode 1 means "only
+	shaders that asked" and this pass must make the same choice FinishShader
+	made. Randomising one and not the other leaves a surface with scattered
+	paint over relief that still repeats on the old grid, which is a worse
+	artifact than the repeat because two periods are now visible instead of one.
+
+	Rotation is quantised for the same reason bump_scale is - it is part of the
+	pipeline's identity.
+	*/
+	if ( r_qlNaturalTextures->integer && ( pStage->naturalTexture || r_qlNaturalTextures->integer >= 2 ) ) {
+		def.hex_tile = 1;
+		def.hex_rot = (float)( (int)( r_qlNaturalRotate->value * 100.0f + 0.5f ) ) / 100.0f;
+		if ( def.hex_rot < 0.0f ) def.hex_rot = 0.0f;
+		if ( def.hex_rot > 1.0f ) def.hex_rot = 1.0f;
+		def.hex_contrast = (float)( (int)( r_qlNaturalContrast->value * 100.0f + 0.5f ) ) / 100.0f;
+		if ( def.hex_contrast < 0.05f ) def.hex_contrast = 0.05f;
+		if ( def.hex_contrast > 0.95f ) def.hex_contrast = 0.95f;
+	}
+
+	/*
+	[QL] E104. Effective green convention for this surface: the global default
+	XORed with the material's own declaration. A map that declares
+	qlNormalFlipG is saying "mine is the other way round from yours", so it has
+	to flip relative to whatever the global is rather than setting it absolutely -
+	otherwise turning the cvar on to fix one map silently un-fixes the other.
+	*/
+	def.bump_flip_green =
+		( ( r_qlNormalFlipG->integer ? 1 : 0 ) ^ ( pStage->normalFlipG ? 1 : 0 ) );
+
+	pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
+
+	/*
+	Parallax and specular both need to know where the eye is, and this pass has
+	no uniform block of its own - so it borrows the light path's. Only eyePos is
+	filled; bump.frag declares the same leading four vec4s so set 0 means the
+	same thing here as everywhere else, and reads the first.
+	*/
+	{
+		vkUniform_t u;
+		Com_Memset( &u, 0, sizeof( u ) );
+		VectorCopy( backEnd.or.viewOrigin, u.eyePos );
+		u.eyePos[3] = 0.0f;
+		if ( VK_PushUniform( &u ) == ~0U )
+			return;	// no uniform space left this frame
+	}
+
+	vk_update_descriptor( VK_DESC_TEXTURE0, nmap->descriptor );
+	vk_update_descriptor( VK_DESC_TEXTURE1, dmap->descriptor );
+
+#ifdef USE_VBO
+	// vk_bind_geometry reads the offsets off this stage in the VBO path, and
+	// RB_IterateStagesGeneric has left it wherever it finished.
+	tess.vboStage = tess.shader->lightingStage;
+	if ( tess.vboIndex == 0 )
+#endif
+	{
+		R_ComputeTexCoords( 0, &pStage->bundle[0] );
+		R_ComputeTexCoords( 1, &pStage->bundle[1] );
+	}
+
+	vk_bind_pipeline( pipeline );
+	vk_bind_geometry( TESS_XYZ | TESS_ST0 | TESS_ST1 | TESS_NNN );
+	vk_bind_index();
+	vk_draw_geometry( tess.depthRange, qtrue );
+}
+
+
 #endif // USE_PMLIGHT
 
 
@@ -1258,6 +1799,13 @@ void RB_StageIteratorGeneric( void )
 
 	// call shader function
 	RB_IterateStagesGeneric( &tess, fogCollapse );
+
+	// [QL] R25: normal-map shading from the deluxemap, before dlights and fog
+	// so those still sit on top of the result rather than under it.
+	VK_BumpPass();
+
+	// [QL] E161: the level's shadow on a model, likewise before dlights and fog
+	VK_ModelShadowPass();
 
 	// now do any dynamic lighting needed
 #ifdef USE_LEGACY_DLIGHTS

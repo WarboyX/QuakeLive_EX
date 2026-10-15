@@ -598,6 +598,41 @@ Console_Key
 Handles history and console scrollback
 ====================
 */
+/*
+[QL] Would this console line run as a command?
+
+The console sends anything without a leading slash to chat while con_autochat is
+on and you are in a game. That is Quake 3 behaviour and it is wrong for a Quake
+Live client: typing "logfile 2" at the console said nothing and silently became
+a chat message, and the only clue was that "\logfile 2" worked. A console that
+quietly does something else with a valid command is worse than one that refuses
+it.
+
+So the chat path now only takes lines that are not commands. The first token is
+tested against the registered commands and the cvars; anything that matches runs,
+anything that does not is chat, which is what con_autochat is actually for.
+*/
+static qboolean CL_ConsoleLineIsCommand(const char* text) {
+    char token[MAX_TOKEN_CHARS];
+    int i;
+
+    while (*text == ' ') {
+        text++;
+    }
+    for (i = 0; i < (int)sizeof(token) - 1 && text[i] && text[i] != ' ' && text[i] != ';'; i++) {
+        token[i] = text[i];
+    }
+    token[i] = '\0';
+
+    if (!token[0]) {
+        return qfalse;
+    }
+    if (Cmd_Exists(token)) {
+        return qtrue;
+    }
+    return (Cvar_Flags(token) != CVAR_NONEXISTENT);
+}
+
 void Console_Key(int key) {
     // ctrl-L clears screen
     if (key == 'l' && keys[K_CTRL].down) {
@@ -630,7 +665,8 @@ void Console_Key(int key) {
             if (!g_consoleField.buffer[0]) {
                 return;  // empty lines just scroll the console without adding to history
             } else {
-                if ((con_autochat->integer && cl_allowConsoleChat->integer)) {
+                if ((con_autochat->integer && cl_allowConsoleChat->integer) &&
+                    !CL_ConsoleLineIsCommand(g_consoleField.buffer)) {
                     Cbuf_AddText("cmd say ");
                 }
 
@@ -1185,11 +1221,81 @@ void CL_ParseBinding(int key, qboolean down, unsigned time) {
 
 /*
 ===================
+CL_ScoreboardScrollKey
+
+[QL] Give the wheel and the page keys to the scoreboard while it is on screen.
+
+The scoreboard is a list box with ten visible rows and a scroll bar that is
+painted, not driven: while +scores is held the cgame does not hold the key
+catcher, so there is no cursor to drag the bar with, and the scroll commands it
+does register are not bound to anything by default. On a full server that left
+everyone below tenth place unreachable.
+
+The cgame publishes cg_scoreboardActive every frame it draws the scoreboard, so
+this only takes a key when there is something to scroll - the wheel goes back to
+changing weapons the moment TAB is released. A key bound to a + command is left
+alone: swallowing its press while its release still fires would leave the action
+stuck on.
+
+Returns qtrue if the key was consumed.
+===================
+*/
+typedef struct {
+    int key;
+    const char* command;
+} scoreboardScrollKey_t;
+
+static const scoreboardScrollKey_t scoreboardScrollKeys[] = {
+    {K_MWHEELUP, "scrollScoresUp\n"},
+    {K_MWHEELDOWN, "scrollScoresDown\n"},
+    {K_PGUP, "pageScoresUp\n"},
+    {K_KP_PGUP, "pageScoresUp\n"},
+    {K_PGDN, "pageScoresDown\n"},
+    {K_KP_PGDN, "pageScoresDown\n"},
+    {K_HOME, "scrollScoresTop\n"},
+    {K_KP_HOME, "scrollScoresTop\n"},
+    {K_END, "scrollScoresBottom\n"},
+    {K_KP_END, "scrollScoresBottom\n"},
+};
+
+static qboolean CL_ScoreboardScrollKey(int key) {
+    int i;
+
+    if (!cgvm || clc.state != CA_ACTIVE) {
+        return qfalse;
+    }
+    if (Key_GetCatcher() & (KEYCATCH_CONSOLE | KEYCATCH_UI | KEYCATCH_MESSAGE)) {
+        return qfalse;
+    }
+    if (!Cvar_VariableIntegerValue("cg_scoreboardActive")) {
+        return qfalse;
+    }
+    if (keys[key].binding && keys[key].binding[0] == '+') {
+        return qfalse;
+    }
+
+    for (i = 0; i < ARRAY_LEN(scoreboardScrollKeys); i++) {
+        if (scoreboardScrollKeys[i].key == key) {
+            // queued rather than run here, the same as a binding: this is
+            // reached from event processing, and a wheel can report several
+            // clicks in one frame
+            Cbuf_AddText(scoreboardScrollKeys[i].command);
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+/*
+===================
 CL_KeyDownEvent
 
 Called by CL_KeyEvent to handle a keypress
 ===================
 */
+/* [QL] the key CL_KeyEvent is currently dispatching, or -1. See Key_ClearStates. */
+static int key_beingDispatched = -1;
+
 void CL_KeyDownEvent(int key, unsigned time) {
     keys[key].down = qtrue;
     keys[key].repeats++;
@@ -1250,6 +1356,11 @@ void CL_KeyDownEvent(int key, unsigned time) {
         }
 
         VM_Call(uivm, UI_KEY_EVENT, key, qtrue);
+        return;
+    }
+
+    // [QL] the scoreboard gets first refusal on the scroll keys while it is up
+    if (CL_ScoreboardScrollKey(key)) {
         return;
     }
 
@@ -1317,10 +1428,14 @@ Called by the system for both key up and key down events
 ===================
 */
 void CL_KeyEvent(int key, qboolean down, unsigned time) {
+    int saved = key_beingDispatched;
+
+    key_beingDispatched = key;
     if (down)
         CL_KeyDownEvent(key, time);
     else
         CL_KeyUpEvent(key, time);
+    key_beingDispatched = saved;
 }
 
 /*
@@ -1354,14 +1469,64 @@ void CL_CharEvent(int key) {
 Key_ClearStates
 ===================
 */
+/*
+===================
+Key_ClearStates
+
+[QL] Release every held key - except the one whose own press we are inside.
+
+Key_SetCatcher calls this whenever the catcher changes, so that movement keys
+cannot stick on when input is handed to a menu. That is right for a change made
+*by* a menu, and wrong for a change made by the key currently being processed,
+because the synthetic release below runs that key's own '-' binding while the
+player still has it physically held.
+
++scores with cg_scoreboardMouse is exactly that shape and it was fatal:
+
+  +scores -> cg.showScores = qtrue
+          -> CG_EventHandling(CGAME_EVENT_SCOREBOARD)
+          -> Key_SetCatcher(... | KEYCATCH_CGAME)
+          -> catcher changed, Key_ClearStates
+          -> the scores key is down, so CL_KeyEvent(key, qfalse)
+          -> -scores -> cg.showScores = qfalse, hold released
+
+all inside the original keypress. The board was switched off in the same frame
+it was switched on, the key was marked up so continuing to hold did nothing,
+and the result on screen was no scoreboard at all - only with the mouse
+enabled, because nothing else changed the catcher. It is also why the debug
+gates only ever reported "showScores 0" and never painted a frame.
+
+The key being dispatched is left down and its binding is not run. Its real
+release arrives as a normal event and fires '-scores' then, as it should.
+
+The release of every other held key runs its '-' binding directly rather than
+going through CL_KeyEvent. CL_KeyEvent also delivers the key-up to whichever
+VM currently holds the catcher, and the usual caller of this function is
+Key_SetCatcher, which is usually reached from inside that same VM - a menu
+script such as "uiScript closeingame" drops KEYCATCH_UI while the click that
+ran it is still on the stack inside the UI module. Re-entering a VM's key
+handler from within one of its own script commands is not something the menu
+code is written to survive, and there is nothing to gain from it: a menu never
+saw these keys go down, so a synthetic release means nothing to it. Only the
+'-' binding matters here, and that is what stops movement keys sticking on.
+===================
+*/
 void Key_ClearStates(void) {
     int i;
 
     anykeydown = 0;
 
     for (i = 0; i < MAX_KEYS; i++) {
+        if (i == key_beingDispatched) {
+            if (keys[i].down) {
+                anykeydown++;
+            }
+            continue;
+        }
         if (keys[i].down) {
-            CL_KeyEvent(i, qfalse, 0);
+            keys[i].down = qfalse;
+            keys[i].repeats = 0;
+            CL_ParseBinding(i, qfalse, 0);
         }
         keys[i].down = 0;
         keys[i].repeats = 0;
@@ -1384,10 +1549,45 @@ int Key_GetCatcher(void) {
 Key_SetCatcher
 ====================
 */
+/*
+===================
+Key_SetCatcher
+
+[QL] Clear held keys when input is taken away - but KEYCATCH_CGAME does not
+take it away.
+
+Key_ClearStates exists so movement keys cannot stick on when a menu or the
+console starts eating input: the player pressed forward, the menu opened, the
+key-up went to the menu, and the character kept walking. KEYCATCH_CGAME is not
+that. The cgame takes it while gameplay carries on underneath - CL_ParseBinding
+deliberately still runs '-' commands with a catcher set, precisely so nothing
+gets stuck - and clearing every held key for it releases keys the player is
+still holding.
+
+That is what killed the held scoreboard, and the first attempt at fixing it
+missed because of where the release actually happens. CL_ParseBinding does not
+run a binding, it queues one:
+
+    Cbuf_AddText("+scores <key> <time>")
+
+so +scores executes during a later Cbuf_Execute, outside the key event that
+produced it. Guarding CL_KeyEvent therefore guarded nothing by the time
+CG_ScoresDown_f called Key_SetCatcher; the key was no longer "being
+dispatched", so Key_ClearStates released it and fired '-scores' in the same
+millisecond as the press. Your trace showed exactly that - one press, a
+release sharing its timestamp, and the real release ~300ms later.
+
+Only a change to a catcher other than KEYCATCH_CGAME clears now. Taking or
+dropping the cgame catcher on its own leaves held keys alone, which is what the
+comment in CG_ScoresDown_f always claimed the engine did.
+===================
+*/
 void Key_SetCatcher(int catcher) {
-    // If the catcher state is changing, clear all key states
-    if (catcher != keyCatchers)
+    int changed = catcher ^ keyCatchers;
+
+    if (changed & ~KEYCATCH_CGAME) {
         Key_ClearStates();
+    }
 
     keyCatchers = catcher;
 }

@@ -1233,6 +1233,14 @@ static const char *R_LoadImage( const char *name, byte **pic, int *width, int *h
 #if 0
 			if ( orgNameFailed )
 			{
+				/* [QL] Behind its own cvar rather than plain developer output.
+				   Quake Live's menus and shaders ask for .tga throughout while
+				   its paks ship .png, so this fires for essentially every image
+				   in the game - hundreds of lines at load, which buries whatever
+				   else developer 1 was turned on to see. The fallback is correct
+				   and universal; it is not news. r_verboseImageFallback 1 to get
+				   it back. */
+				if ( r_verboseImageFallback->integer )
 				ri.Printf( PRINT_DEVELOPER, S_COLOR_YELLOW "WARNING: %s not present, using %s instead\n",
 						name, altName );
 			}
@@ -1243,6 +1251,219 @@ static const char *R_LoadImage( const char *name, byte **pic, int *width, int *h
 	}
 
 	return localName;
+}
+
+
+/*
+===============
+R_GenerateNormalMap
+
+Derives a tangent-space normal map from a source image's luminance.
+
+Pure array math, no engine state: reads w*h RGBA8 and writes w*h RGBA8 with
+alpha 255. Alpha is not sampled by the light pass, but the upload path below is
+four bytes per pixel throughout - ResampleTexture() and R_MipMap2() both walk it
+as uint32 - so a three-byte buffer would be read past its end.
+
+A flat input yields exactly (128,128,255): the identity in tangent space. That
+is what makes an un-perturbed surface light exactly as it does today, so the
+rounding here is deliberate and not cosmetic. Truncating instead of rounding
+gives 127, a systematic tilt toward -u/-v on every derived map in the game.
+
+The gradient is a separable 5-tap kernel rather than a 3x3 Sobel so that low
+frequency detail survives and single-texel noise does not: uniform regions read
+exactly flat and only real edges carry slope. Edges clamp.
+
+Gain is ~72 output units per luminance-unit-per-pixel of slope, so at strength
+1.0 essentially any real texture edge saturates to maximum tilt. That is why
+r_qlNormalScale exists and why its default is not 1.
+===============
+*/
+static const int R_NormalSmooth[ 5 ] = { 1, 2, 3, 2, 1 };	// perpendicular smoothing (sum 9)
+static const int R_NormalDiff[ 5 ]   = { -1, -2, 0, 2, 1 };	// gradient central difference (sum 0)
+
+void R_GenerateNormalMap( const byte *rgba, int w, int h, float strength, float maxTilt, byte *outRGBA ) {
+	int		x, y, dx, dy, xx, yy;
+	float	gx, gy, nx, ny, nz, inv, hv, gmag, soft;
+	const byte *p;
+	byte	*o;
+
+	for ( y = 0; y < h; y++ ) {
+		for ( x = 0; x < w; x++ ) {
+			gx = 0.0f;
+			gy = 0.0f;
+			for ( dy = -2; dy <= 2; dy++ ) {
+				yy = y + dy;
+				if ( yy < 0 ) yy = 0; else if ( yy >= h ) yy = h - 1;
+				for ( dx = -2; dx <= 2; dx++ ) {
+					xx = x + dx;
+					if ( xx < 0 ) xx = 0; else if ( xx >= w ) xx = w - 1;
+					p = rgba + ( yy * w + xx ) * 4;
+					hv = 0.299f * p[0] + 0.587f * p[1] + 0.114f * p[2];
+					gx += R_NormalSmooth[ dy + 2 ] * R_NormalDiff[ dx + 2 ] * hv;	// smooth in y, differentiate in x
+					gy += R_NormalDiff[ dy + 2 ] * R_NormalSmooth[ dx + 2 ] * hv;	// differentiate in y, smooth in x
+				}
+			}
+
+			nx = -gx * strength;
+			ny = -gy * strength;
+
+			/*
+			Soft-limit the slope. A luminance edge is not a height edge, and
+			this is where that difference stops being academic: a dark line
+			painted on metal - a louvre slat, a panel seam - runs black to white
+			in about two texels, which is a slope near 128 per texel where a
+			rock face's shading is nearer 10. Passed straight through, the
+			painted line tilts the normal about 63 degrees while the rock tilts
+			8, so every seam in the game becomes a cliff and the specular term
+			(pow(specFactor, 10.0) in light_frag.tmpl) turns each one into a
+			hard bright band. That is what was reported as banding, and turning
+			r_qlNormalScale down is the wrong answer to it: it flattens the rock
+			by the same factor it flattens the seam.
+
+			A knee, not a smooth roll-off. g/(1 + g/limit) is the obvious
+			curve and it is wrong here: it compresses everywhere, so it takes
+			21% off a rock's shading to cap a seam - measured, which is how it
+			was caught. Below half the limit this passes the slope through
+			untouched, and above it approaches the limit exponentially, so a
+			seam saturates smoothly instead of clipping at a threshold that
+			would band on its own account.
+
+			maxTilt is the tangent of the steepest angle any derived normal may
+			reach - r_qlNormalMaxTilt, in degrees.
+			*/
+			gmag = (float)sqrt( nx * nx + ny * ny );
+			if ( gmag > 0.0f && maxTilt > 0.0f ) {
+				float knee = maxTilt * 0.5f;
+				if ( gmag > knee ) {
+					soft = knee + ( maxTilt - knee ) *
+						( 1.0f - (float)exp( -( gmag - knee ) / ( maxTilt - knee ) ) );
+					nx *= soft / gmag;
+					ny *= soft / gmag;
+				}
+			}
+
+			nz = 1.0f;
+			inv = 1.0f / (float)sqrt( nx * nx + ny * ny + nz * nz );
+
+			o = outRGBA + ( y * w + x ) * 4;
+			o[0] = (byte)( ( nx * inv * 0.5f + 0.5f ) * 255.0f + 0.5f );
+			o[1] = (byte)( ( ny * inv * 0.5f + 0.5f ) * 255.0f + 0.5f );
+			o[2] = (byte)( ( nz * inv * 0.5f + 0.5f ) * 255.0f + 0.5f );
+			o[3] = 255;
+		}
+	}
+}
+
+
+/*
+===============
+R_DeriveNormalMap
+
+Returns the normal map derived from base's luminance, creating it on first ask
+and caching it on base. NULL when there is nothing to derive from.
+
+The source pixels are re-read from the pak rather than kept in memory. Retaining
+a CPU copy of every texture is the obvious implementation and it does not fit:
+the copy alone is four bytes per texel of h_low for every image the game loads,
+against a 256 MB hunk shared with the BSP, and only the handful of textures that
+end up on a shader's lighting bundle are ever asked for one. Re-reading costs a
+decode per lit texture at map load and nothing at all afterwards.
+
+Called from FinishShader() for the stage the dynamic light pass will actually
+bind, which is not knowable at ParseStage() time: the lighting stage and bundle
+are chosen after stage collapsing, and the bundle is not always bundle 0.
+===============
+*/
+image_t *R_DeriveNormalMap( image_t *base, float strength, float maxTiltDegrees ) {
+	char	nmName[ MAX_QPATH ];
+	byte	*pic, *out;
+	int		width, height;
+
+	if ( base == NULL || base->derivedNormalMap != NULL ) {
+		return base ? base->derivedNormalMap : NULL;
+	}
+
+	if ( base->derivationFailed ) {
+		return NULL;
+	}
+
+	/*
+	Lightmaps are light, not surface shape - deriving a normal from one carves
+	the baked lighting into the geometry. Both spellings have to be excluded:
+	the internal atlases carry IMGFLAG_LIGHTMAP, and the external maps/<map>/lm_
+	atlases come through R_FindImageFile as ordinary images and do not.
+	*/
+	if ( base->flags & IMGFLAG_LIGHTMAP ) {
+		base->derivationFailed = qtrue;
+		return NULL;
+	}
+	if ( Q_stristr( base->imgName, "maps/" ) == base->imgName && Q_stristr( base->imgName + 5, "/lm_" ) != NULL ) {
+		base->derivationFailed = qtrue;
+		return NULL;
+	}
+
+	// procedural images have no file to re-read
+	if ( base->imgName[0] == '*' ) {
+		base->derivationFailed = qtrue;
+		return NULL;
+	}
+
+	/*
+	imgName, not imgName2. imgName2 is only ever the base file name -
+	R_CreateImage() strips the directory off it deliberately, to record which
+	extension actually loaded without storing the path twice - so it is not
+	something R_LoadImage can open. imgName is the path the shader asked for,
+	and R_LoadImage does the same extension fallback here that it did when the
+	image was first loaded, so the two reads resolve to the same file.
+	*/
+	R_LoadImage( base->imgName, &pic, &width, &height );
+	if ( pic == NULL ) {
+		base->derivationFailed = qtrue;
+		return NULL;
+	}
+
+	/*
+	The kernel's gain is exact and worth writing down, because the scale is
+	meaningless without it. For a luminance ramp of slope s per pixel the inner
+	difference sums to s * SUM(Diff[dx]*dx) = 8s and the outer smoothing to
+	SUM(Smooth) = 9, so gx = 72s. Feeding that straight in saturates every real
+	texture edge to maximum tilt at a scale of 1.0.
+
+	Dividing by 72*32 puts the scale in surface terms: at r_qlNormalScale 1.0 a
+	luminance slope of 32 per pixel tilts the normal 45 degrees. Quake Live's
+	wall textures run roughly 10-30 per pixel across mortar lines and panel
+	seams, which is where the default of 0.5 comes from. That is arithmetic, not
+	a measurement - it is a starting point to tune against, not a result.
+	*/
+	out = ri.Malloc( width * height * 4 );
+	R_GenerateNormalMap( pic, width, height, strength / ( 72.0f * 32.0f ),
+		(float)tan( DEG2RAD( maxTiltDegrees ) ), out );
+
+	/*
+	R_CreateImage() drops with ERR_DROP on a name longer than MAX_QPATH, so the
+	prefix has to be built into a bounded buffer rather than through va() - a
+	handful of Quake Live's texture paths are long enough to hit it. Com_sprintf
+	truncates; two truncated names colliding costs nothing, since these are
+	never looked up by name.
+	*/
+	Com_sprintf( nmName, sizeof( nmName ), "*dnm_%s", base->imgName );
+
+	/*
+	IMGFLAG_NOLIGHTSCALE is not optional. This upload path gamma-corrects and
+	overbrights anything that does not say otherwise, and a normal map is data:
+	that is exactly how the previous attempt at this turned its flat fallback
+	into a 55 degree tilt. NO_COMPRESSION for the same reason - r_texturebits 16
+	would quantise the normals to five bits a channel.
+	*/
+	base->derivedNormalMap = R_CreateImage( nmName, NULL, out,
+		width, height, IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION |
+		( base->flags & ( IMGFLAG_MIPMAP | IMGFLAG_PICMIP | IMGFLAG_CLAMPTOEDGE ) ) );
+
+	ri.Free( out );
+	ri.Free( pic );
+
+	return base->derivedNormalMap;
 }
 
 
@@ -1597,6 +1818,34 @@ static void R_CreateBuiltinImages( void ) {
 	Com_Memset( data, 255, sizeof( data ) );
 	tr.whiteImage = R_CreateImage( "*white", NULL, (byte *)data, 8, 8, IMGFLAG_NONE );
 
+	/*
+	[QL] A flat tangent-space normal. Nothing samples it today - the light pass
+	stopped perturbing normals, and light_frag.tmpl records why - but it is kept
+	because it is where that failure lived and the fix belongs with it.
+
+	(128, 128, 255) decodes to (0, 0, 1), straight out of the surface, so
+	perturbing by it is the identity. That was true of the bytes written here
+	and false of the texels the shader read: without IMGFLAG_NOLIGHTSCALE the
+	upload runs R_LightScaleTexture, whose table folds in the overbright shift
+	(inf <<= tr.overbrightBits), and at the default r_overBrightBits 1 the 128s
+	came back as 255. The "flat" normal was a 55 degree tilt, oriented by each
+	surface's texture axes, and it striped every dynamically lit surface in the
+	game with slits of light that changed angle from room to room.
+
+	So the flag is the important half of this line. A normal map is data, not
+	colour; gamma-correcting and overbrighting it is meaningless. Any real
+	normal map loaded later needs the same flag, for the same reason.
+	*/
+	for ( x = 0; x < 8; x++ ) {
+		for ( y = 0; y < 8; y++ ) {
+			data[y][x][0] = 128;
+			data[y][x][1] = 128;
+			data[y][x][2] = 255;
+			data[y][x][3] = 255;
+		}
+	}
+	tr.flatNormalImage = R_CreateImage( "*flatnormal", NULL, (byte *)data, 8, 8, IMGFLAG_NOLIGHTSCALE );
+
 	// with overbright bits active, we need an image which is some fraction of full color,
 	// for default lightmaps, etc
 	for (x=0 ; x<DEFAULT_SIZE ; x++) {
@@ -1679,6 +1928,48 @@ void R_SetColorMappings( void ) {
 
 	tr.identityLight = 1.0f / ( 1 << tr.overbrightBits );
 	tr.identityLightByte = 255 * tr.identityLight;
+
+	/*
+	[QL] Say what the image pipeline actually ended up doing.
+
+	None of this is visible from a cvar. r_overBrightBits is what was asked for;
+	tr.overbrightBits is what survived, and the block above sets it to zero
+	whenever the renderer has no way to apply overbright at present time -
+	windowed, or no hardware gamma, and in both cases only when r_fbo is off.
+
+	That matters because R_ColorShiftLightingBytes shifts lightmaps by
+	r_mapOverBrightBits MINUS tr.overbrightBits. Zeroing the second term does not
+	remove the boost, it moves all of it into the lightmap: the intended shift of
+	1 becomes 2, the map is lit four times rather than twice, and bright surfaces
+	pin at white. A shoji screen that ate an additive lightning bolt whole is
+	what that looks like from the inside, and it cost several rounds of looking
+	at the bolt.
+
+	The gamma table line is the other half. Without hardware gamma and without an
+	FBO, overbright is baked into every texture at upload through a table that
+	folds the same shift in - which is what turned the flat normal map into a
+	55 degree tilt earlier on this branch. Two different bugs, one cause, and
+	neither was visible in any log.
+	*/
+	{
+		static int reported = -1;
+		const int state = ( tr.overbrightBits << 4 ) | ( r_mapOverBrightBits->integer << 1 ) |
+		                  ( vk.fboActive ? 1 : 0 );
+
+		if ( state != reported ) {
+			reported = state;
+			ri.Printf( PRINT_ALL, "Image pipeline: overbright %i of %i requested, "
+				"lightmap shift %i, textures %s, %s, %s\n",
+				tr.overbrightBits, abs( r_overBrightBits->integer ),
+				r_mapOverBrightBits->integer - tr.overbrightBits,
+				( glConfig.deviceSupportsGamma || vk.fboActive ) ? "unbaked" : "gamma-baked at upload",
+				vk.fboActive ? "fbo on" : "fbo off",
+				glConfig.isFullscreen ? "fullscreen" : "windowed" );
+			ri.Printf( PRINT_ALL, "Image pipeline: real time shading %s\n",
+				r_rts->integer ? "on - float scene target, response curve applied per frame"
+				               : "off - fixed range target, response baked at load" );
+		}
+	}
 
 	g = r_gamma->value;
 

@@ -77,13 +77,32 @@ Configstring indexes that have changed while the client was in CS_PRIMED
 void SV_UpdateConfigstrings(client_t* client) {
     int index;
 
-    // [QL] Only resend configstrings that actually changed while the client
-    // was in CS_PRIMED state. The gamestate already contained all configstrings
-    // at the time it was sent, so resending everything would overflow the
-    // 64-slot reliable command buffer.
+    /*
+    [QL] Only resend configstrings that actually changed while the client was in
+    CS_PRIMED. The gamestate already contained all of them at the time it was
+    sent, so resending everything would overflow the 64-slot reliable buffer.
+
+    Changed ones alone can overflow it too. A client loading into a server that
+    is filling with bots is in CS_PRIMED for several seconds, and every bot that
+    arrives in that window dirties CS_PLAYERS + n - so on a 64-slot server the
+    backlog can be larger than the whole ring, and firing it all at the moment
+    the client goes active cycles commands out from under it before cgame has
+    run a frame. That is the client-side half of "CL_GetServerCommand: a
+    reliable command was cycled out", and on a listen server it takes the server
+    down with it.
+
+    So the backlog is drained rather than flushed. Send until the unacknowledged
+    window is half full, leave the rest flagged, and SV_SendClientMessages calls
+    back once a frame until it is empty. Configstrings hold absolute values, not
+    deltas, so arriving over a few frames costs nothing but the ordering between
+    two indices - which nothing depends on.
+    */
     for (index = 0; index < MAX_CONFIGSTRINGS; index++) {
         if (!client->csUpdated[index]) {
             continue;
+        }
+        if (client->reliableSequence - client->reliableAcknowledge >= MAX_RELIABLE_COMMANDS / 2) {
+            return;   // resume next frame
         }
         client->csUpdated[index] = qfalse;
 
@@ -261,6 +280,41 @@ NOT cause this to be called, unless the game is exited to
 the menu system first.
 ===============
 */
+/*
+===============
+SV_SnapshotBackup
+
+[QL] How many frames of snapshot entities the ring has to hold per client.
+
+Stock code asked whether the server was dedicated and used PACKET_BACKUP if it
+was, or 4 if it was not, on the reasoning that "we don't need nearly as many
+when playing locally". That reasoning is about how many clients the server is
+feeding, not about where it is running, and a listen server full of bots feeds
+just as many as a dedicated one: the ring is shared, and every client's frame
+advances first_entity by the entities in it.
+
+At 64 slots the short ring covered only a handful of frames of traffic, so any
+hitch - a scoreboard request rebuilds and sends three ~1500-byte reliable
+commands for 63 players - let it wrap past a frame a client was still deltaing
+against. SV_WriteSnapshotToClient then logs "Delta request from out of date
+entities" and sends a full uncompressed snapshot instead, which is a bandwidth
+spike and a visible stutter. 94 of those in one match, 45 of them immediately
+after a score request.
+
+So the question is the client count. A small local game keeps the small ring
+and the memory that goes with it; anything big enough to be a server gets the
+full PACKET_BACKUP, and Com_InitHunkMemory raises the hunk floor to match.
+===============
+*/
+#define SV_SMALL_GAME_CLIENTS 8
+
+int SV_SnapshotBackup(void) {
+    if (sv_maxclients->integer > SV_SMALL_GAME_CLIENTS) {
+        return PACKET_BACKUP;
+    }
+    return 4;
+}
+
 static void SV_Startup(void) {
     if (svs.initialized) {
         Com_Error(ERR_FATAL, "SV_Startup: svs.initialized");
@@ -268,12 +322,7 @@ static void SV_Startup(void) {
     SV_BoundMaxClients(1);
 
     svs.clients = Z_Malloc(sizeof(client_t) * sv_maxclients->integer);
-    if (com_dedicated->integer) {
-        svs.numSnapshotEntities = sv_maxclients->integer * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
-    } else {
-        // we don't need nearly as many when playing locally
-        svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
-    }
+    svs.numSnapshotEntities = sv_maxclients->integer * SV_SnapshotBackup() * MAX_SNAPSHOT_ENTITIES;
 
     // [QL] The snapshot entity ring below is the biggest thing a server ever
     // puts on the hunk and it scales with sv_maxclients, so on a large server
@@ -372,12 +421,7 @@ void SV_ChangeMaxClients(void) {
     Hunk_FreeTempMemory(oldClients);
 
     // allocate new snapshot entities
-    if (com_dedicated->integer) {
-        svs.numSnapshotEntities = sv_maxclients->integer * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES;
-    } else {
-        // we don't need nearly as many when playing locally
-        svs.numSnapshotEntities = sv_maxclients->integer * 4 * MAX_SNAPSHOT_ENTITIES;
-    }
+    svs.numSnapshotEntities = sv_maxclients->integer * SV_SnapshotBackup() * MAX_SNAPSHOT_ENTITIES;
 }
 
 /*
@@ -476,6 +520,14 @@ void SV_SpawnServer(char* server, qboolean killBots) {
     qboolean isBot;
     char systemInfo[16384];
     const char* p;
+
+    /* [QL] The map that is ending still has its counters; report before the
+       game module goes away and sv is wiped below. The game module writes its
+       own half from G_ShutdownGame, which SV_ShutdownGameProgs is about to
+       call, so the two halves land together in the log. */
+    if (sv_mapEndReport && sv_mapEndReport->integer && sv.state == SS_GAME) {
+        SV_SnapStats_f();
+    }
 
     // shut down the existing game if it is running
     SV_ShutdownGameProgs();
@@ -660,7 +712,29 @@ void SV_SpawnServer(char* server, qboolean killBots) {
     cvar_modifiedFlags &= ~CVAR_SYSTEMINFO;
     SV_SetConfigstring(CS_SYSTEMINFO, systemInfo);
 
-    SV_SetConfigstring(CS_SERVERINFO, Cvar_InfoString(CVAR_SERVERINFO));
+    /*
+    [QL] Big buffer: this game's serverinfo does not fit in MAX_INFO_STRING.
+
+    The game module alone flags 45 cvars CVAR_SERVERINFO and the engine adds
+    more, which overruns the 1024-byte builder. Info_SetValueForKey then drops
+    every key that will not fit and prints "Info string length exceeded" - once
+    per key, on every rebuild, which is every time a serverinfo cvar changes:
+
+        Info string length exceeded          (x hundreds, between kills)
+
+    The dropped keys are the tail of the list, so g_levelStartTime was being cut
+    mid-key and everything after it never reached the client at all. The client
+    reads about thirty keys out of here - gametype, teamsize, the shotgun and
+    pmove values, the round timers - so losing the tail silently changes how the
+    client behaves.
+
+    Info_ValueForKey handles up to BIG_INFO_STRING, and CS_SYSTEMINFO already
+    goes out this way, so the configstring path can simply use the big builder.
+
+    SVC_Status keeps the small one on purpose: that reply goes to master servers
+    and the browser in a single out-of-band datagram, and is capped there.
+    */
+    SV_SetConfigstring(CS_SERVERINFO, Cvar_InfoString_Big(CVAR_SERVERINFO));
     cvar_modifiedFlags &= ~CVAR_SERVERINFO;
 
     // any media configstring setting now should issue a warning
@@ -678,6 +752,33 @@ void SV_SpawnServer(char* server, qboolean killBots) {
     }
 #endif
 
+    /*
+    [QL] What the network settings actually ended up as, said out loud at every
+    map load.
+
+    net_test.cfg sets sv_fps and sv_minRate and every mode config resets them -
+    which is deliberate, it is what makes the experiment switchable - so
+    exec'ing them in the wrong order silently loses the whole thing. It happened
+    on the first run: "exec net_test" then "exec a2m-instagib", and a2m-instagib
+    execs common.cfg, which put 40 and 0 straight back. Nothing said so, and a
+    whole match was played and logged at the wrong tick before anyone noticed.
+
+    So it is printed rather than left to be inferred, next to the tick that
+    1000/sv_fps actually produces - which is not always the number asked for,
+    since that division is integer.
+    */
+    {
+        int fps = sv_fps ? sv_fps->integer : 0;
+        int msec = (fps > 0) ? 1000 / fps : 0;
+
+        Com_Printf("Network: sv_fps %i", fps);
+        if (msec > 0) {
+            Com_Printf(" (%i ms per tick, %.1f Hz)", msec, 1000.0f / msec);
+        }
+        Com_Printf(", sv_minRate %i, sv_maxRate %i\n",
+                   sv_minRate ? sv_minRate->integer : 0,
+                   sv_maxRate ? sv_maxRate->integer : 0);
+    }
     Com_Printf("-----------------------------------\n");
 }
 
@@ -691,10 +792,30 @@ Only called at main exe startup, not for each game
 void SV_Init(void) {
     SV_AddOperatorCommands();
 
-    // serverinfo vars
-    Cvar_Get("dmflags", "0", CVAR_SERVERINFO);
-    Cvar_Get("fraglimit", "20", CVAR_SERVERINFO);
-    Cvar_Get("timelimit", "0", CVAR_SERVERINFO);
+    /* [QL] E92. The engine no longer registers the gamerule limits.
+
+       It never read them - nothing outside this function mentions dmflags,
+       fraglimit or timelimit anywhere in the engine - and qagame registers all
+       three itself, with CVAR_SERVERINFO, from Quake Live's own cvar table.
+       Two registrations of one name is not harmless: Cvar_Get keeps the value
+       the FIRST caller gave and only merges flags afterwards, so the engine
+       running first meant its default won and the game module's was discarded.
+
+       For fraglimit the two disagreed - engine 20 against qagame's 50 - so
+       every server shipped with a fraglimit of 20 while the game module, the
+       documentation and Quake Live all said 50. The engine announced it on
+       every single start and the line had been scrolling past for the life of
+       the tree:
+
+           Warning: cvar "fraglimit" given initial values: "20" and "50"
+
+       dmflags and timelimit agreed at 0, which is why only one of the three
+       ever warned and why this looked like a cosmetic complaint.
+
+       Removing rather than correcting the number: gamerules belong to the game
+       module, and a duplicate that happens to agree today is the same bug lying
+       dormant. Nothing is lost - a server with no map loaded is not in anyone's
+       browser, and by the time it is, qagame has registered all three. */
     sv_gametype = Cvar_Get("g_gametype", "0", CVAR_SERVERINFO | CVAR_LATCH);
     Cvar_Get("sv_keywords", "", CVAR_SERVERINFO);
     // [QL] Master servers the browser queries and dedicated servers heartbeat
@@ -710,6 +831,17 @@ void SV_Init(void) {
     sv_privateClients = Cvar_Get("sv_privateClients", "0", CVAR_SERVERINFO);
     sv_hostname = Cvar_Get("sv_hostname", "noname", CVAR_SERVERINFO | CVAR_ARCHIVE);
     sv_maxclients = Cvar_Get("sv_maxclients", "8", CVAR_SERVERINFO | CVAR_LATCH);
+    // [QL] MAX_CLIENTS is not a soft limit, and nothing was enforcing it.
+    //
+    // The server allocates svs.clients from this value, but the game module's
+    // client array is a fixed gclient_t g_clients[MAX_CLIENTS] and every loop
+    // in it runs to g_maxclients.integer. Set sv_maxclients above 64 and the
+    // game walks off the end of that array as soon as enough clients exist to
+    // reach past slot 63 - which is why it presented as "the server hard
+    // crashes after a certain number of bots" rather than as a bad cvar.
+    // botlib is the same shape: botchatstates, botgoalstates, botmovestates
+    // and botweaponstates are all [MAX_CLIENTS + 1].
+    Cvar_CheckRange(sv_maxclients, 1, MAX_CLIENTS, qtrue);
 
     sv_minRate = Cvar_Get("sv_minRate", "0", CVAR_ARCHIVE | CVAR_SERVERINFO);
     sv_maxRate = Cvar_Get("sv_maxRate", "0", CVAR_ARCHIVE | CVAR_SERVERINFO);
@@ -748,6 +880,18 @@ void SV_Init(void) {
     sv_lanForceRate = Cvar_Get("sv_lanForceRate", "1", CVAR_ARCHIVE);
     sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
     sv_altEntDir = Cvar_Get("sv_altEntDir", "", CVAR_ARCHIVE);
+    /* [QL] Write the snapshot and spawn numbers into the log at every map
+       change, so a log handed over after the fact contains them without anyone
+       having had to type snapstats while the match was still running.
+
+       Not CVAR_ARCHIVE: this is a value we choose, and an archived default is
+       written into a config on first run and then that config wins forever, so
+       changing the default later would do nothing. That trap has cost this
+       branch two rounds already (r_dlightMode, con_scale). */
+    sv_mapEndReport = Cvar_Get("sv_mapEndReport", "1", 0);
+    /* [QL] Off by default: a line a minute is right while testing and wrong on
+       a server nobody is watching. autoexec.cfg turns it on. */
+    sv_snapStatsInterval = Cvar_Get("sv_snapStatsInterval", "0", 0);
 
     // Load the bans the operator saved in a previous session so they are in
     // force before the first client can connect. Queued rather than called

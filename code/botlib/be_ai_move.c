@@ -98,6 +98,8 @@ typedef struct bot_movestate_s {
 #define MODELTYPE_FUNC_STATIC 4
 
 libvar_t* sv_maxstep;
+libvar_t* bot_crowdsteer;  // [QL] E133, see BotCrowdSteer
+static void BotCrowdSteer(bot_movestate_t* ms, vec3_t dir, float speed, float room);
 libvar_t* sv_maxbarrier;
 libvar_t* sv_gravity;
 libvar_t* weapindex_rocketlauncher;
@@ -736,7 +738,8 @@ void BotAddAvoidSpot(int movestate, vec3_t origin, float radius, int type) {
 //===========================================================================
 int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, int lastareanum, int* avoidreach, float* avoidreachtimes, int* avoidreachtries, bot_goal_t* goal, int travelflags, struct bot_avoidspot_s* avoidspots, int numavoidspots, int* flags) {
     int i, t, besttime, bestreachnum, reachnum;
-    aas_reachability_t reach;
+    int nextreachnum, backtime = 0, backreachnum = 0;  // [QL] E135
+    aas_reachability_t reach, nextreach;
 
     // if not in a valid area
     if (!areanum)
@@ -777,7 +780,8 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         if (!BotValidTravel(origin, &reach, travelflags))
             continue;
         // get the travel time
-        t = AAS_AreaTravelTimeToGoalArea(reach.areanum, reach.end, goal->areanum, travelflags);
+        if (!AAS_AreaRouteToGoalArea(reach.areanum, reach.end, goal->areanum, travelflags, &t, &nextreachnum))
+            t = 0;
         // if the goal area isn't reachable from the reachable area
         if (!t)
             continue;
@@ -790,6 +794,25 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         }
         // add the travel time towards the area
         t += reach.traveltime;  // + AAS_AreaTravelTime(areanum, origin, reach.start);
+        // [QL] E135. a route that steps into the next area only to come
+        // straight back into this one is not a way on. Travel times are
+        // measured between reachability points, so a step over a boundary
+        // and back can come out a few hundredths cheaper than walking on;
+        // the bot takes it, is then barred from going back ("don't return to
+        // the previous area" above), and picks the next-best way, and three
+        // areas make a circle - 3864/3866/3831 in japanesecastles' Blue
+        // Garden Hall, walked for ten seconds at a time. Kept only as a last
+        // resort, for an area with no other way out.
+        if (nextreachnum > 0) {
+            AAS_ReachabilityFromNum(nextreachnum, &nextreach);
+        }
+        if (nextreachnum > 0 && nextreach.areanum == areanum) {
+            if (!backtime || t < backtime) {
+                backtime = t;
+                backreachnum = reachnum;
+            }
+            continue;
+        }
         // if the travel time is better than the ones already found
         if (!besttime || t < besttime) {
             besttime = t;
@@ -797,7 +820,7 @@ int BotGetReachabilityToGoal(vec3_t origin, int areanum, int lastgoalareanum, in
         }  // end if
     }  // end for
     //
-    return bestreachnum;
+    return bestreachnum ? bestreachnum : backreachnum;
 }  // end of the function BotGetReachabilityToGoal
 //===========================================================================
 //
@@ -1111,6 +1134,20 @@ int BotWalkInDirection(bot_movestate_t* ms, vec3_t dir, float speed, int type) {
             return qtrue;
         // remove barrier jump flag
         ms->moveflags &= ~MFL_BARRIERJUMP;
+        // [QL] E133. round the crowd - see BotCrowdSteer
+        {
+            vec3_t steer;
+
+            steer[0] = dir[0];
+            steer[1] = dir[1];
+            steer[2] = 0;
+            if (VectorNormalize(steer) > 0.1f) {
+                BotCrowdSteer(ms, steer, speed, 128);
+                dir[0] = steer[0];
+                dir[1] = steer[1];
+                dir[2] = 0;
+            }
+        }
         // get the presence type for the movement
         if ((type & MOVE_CROUCH) && !(type & MOVE_JUMP))
             presencetype = PRESENCE_CROUCH;
@@ -1296,6 +1333,158 @@ void BotCheckBlocked(bot_movestate_t* ms, vec3_t dir, int checkbottom, bot_mover
     }  // end else
 }  // end of the function BotCheckBlocked
 //===========================================================================
+// [QL] E133. Crowd steering: step round the people ahead before walking into
+// them, rather than after.
+//
+// Quake 3's bots had one answer to another player in the way, and only once
+// they had already hit: BotCheckBlocked reports the body, and BotAIBlocked
+// steps sideways at right angles, at full speed. With thirty to a side every
+// bot hits another every few seconds, so every bot zig-zags - measured on
+// japanesecastles as travelling bots doubling back on themselves over and over
+// in the corridors outside each base.
+//
+// This is the idea behind DetourCrowd's local avoidance (zlib; nothing copied),
+// reduced to what a think every 100 ms can use. For each player within 200
+// units on the same level, the relative velocity predicts where the two will
+// be closest within the next second. If that is closer than two bodies and a
+// margin, the bot steers away from that point, weighted by how soon and how
+// close. Head on, each passes on its own right - and because each bot computes
+// the other's miss vector as the negative of its own, two bots running this
+// about each other always steer apart, never into each other, which is the
+// thing the old sidestep got wrong.
+//
+// Bodies already inside 40 units are pushed straight apart as well, whatever
+// their velocities say - two bots standing still at a spawn have no relative
+// velocity to predict from and would otherwise stay locked together.
+//
+// Also applied to BotWalkInDirection, which is how a FIGHTING bot moves (its
+// strafes) and how BotAIBlocked sidesteps; that path predicts every move for
+// ledges and gaps before committing, so a steered direction that is unsafe is
+// refused there and the caller picks another.
+//
+// Bounded so it never fights the route: at most sixty degrees off, less when
+// the point being walked to is near (a doorway or an item), and never into a
+// wall - the steered direction is traced first, and if it is blocked the bot
+// keeps its line. bot_crowdsteer 0 restores the stock behaviour exactly.
+//===========================================================================
+#define CROWD_RANGE 200.0f
+#define CROWD_RADIUS 64.0f   // centre to centre: two 32-wide bodies and a body's margin
+#define CROWD_HORIZON 1.5f   // seconds of look-ahead
+#define CROWD_GAIN 2.0f      // lateral per unit of threat, before the clamp
+#define CROWD_PERSONAL 40.0f // closer than this, push apart whatever the velocities
+#define CROWD_EF_DEAD 1      // EF_DEAD in bg_public.h
+
+static void BotCrowdSteer(bot_movestate_t* ms, vec3_t dir, float speed, float room) {
+    int i;
+    aas_entityinfo_t e;
+    vec3_t vd, lat, p, v, vj, m, newdir, end, mins, maxs;
+    float vv, t, d, dm, w, len, maxlat;
+    bsp_trace_t trace;
+
+    if (!bot_crowdsteer || !bot_crowdsteer->value) {
+        return;
+    }
+    if (!(ms->moveflags & MFL_ONGROUND) || (ms->moveflags & (MFL_SWIMMING | MFL_BARRIERJUMP))) {
+        return;
+    }
+    if (speed < 50 || room < 24) {
+        return;
+    }
+    VectorScale(dir, speed > 320 ? 320 : speed, vd);
+    vd[2] = 0;
+    VectorClear(lat);
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        if (i == ms->entitynum) {
+            continue;
+        }
+        AAS_EntityInfo(i, &e);
+        if (!e.valid || (e.flags & CROWD_EF_DEAD)) {
+            continue;
+        }
+        VectorSubtract(e.origin, ms->origin, p);
+        if (fabs(p[2]) > 64) {
+            continue;  // another floor
+        }
+        p[2] = 0;
+        d = VectorLength(p);
+        if (d > CROWD_RANGE || d < 1) {
+            continue;
+        }
+        if (d < CROWD_PERSONAL) {
+            // already touching: straight apart, hard
+            VectorMA(lat, -CROWD_GAIN * (1.0f - d / CROWD_PERSONAL) / d, p, lat);
+        }
+        VectorClear(vj);
+        if (e.update_time > 0.001f) {
+            VectorSubtract(e.origin, e.lastvisorigin, vj);
+            VectorScale(vj, 1.0f / e.update_time, vj);
+            vj[2] = 0;
+            if (VectorLength(vj) > 600) {
+                VectorClear(vj);  // a teleport or a respawn, not a velocity
+            }
+        }
+        VectorSubtract(vd, vj, v);
+        vv = DotProduct(v, v);
+        t = vv > 1 ? DotProduct(p, v) / vv : 0;
+        if (t <= 0) {
+            if (d > CROWD_RADIUS) {
+                continue;  // moving apart and not touching
+            }
+            t = 0;
+        }
+        if (t > CROWD_HORIZON) {
+            continue;
+        }
+        // where the other one will be, relative to me, at the closest point
+        VectorMA(p, -t, v, m);
+        dm = VectorLength(m);
+        if (dm >= CROWD_RADIUS) {
+            continue;
+        }
+        if (dm < 4) {
+            // dead ahead: step to the right of the relative velocity
+            len = sqrt(vv);
+            if (len < 1) {
+                continue;
+            }
+            // right of v is (v.y, -v.x); m is its negative, so -m is right
+            m[0] = -v[1] / len;
+            m[1] = v[0] / len;
+            m[2] = 0;
+        } else {
+            VectorScale(m, 1.0f / dm, m);
+        }
+        w = (1.0f - t / CROWD_HORIZON) * (1.0f - dm / CROWD_RADIUS);
+        VectorMA(lat, -w * CROWD_GAIN, m, lat);
+    }
+    len = VectorLength(lat);
+    if (len < 0.05f) {
+        return;
+    }
+    // tan(60) at full range, less close to the point being walked to
+    maxlat = 1.7f * (room >= 128 ? 1.0f : room / 128.0f);
+    if (len > maxlat) {
+        VectorScale(lat, maxlat / len, lat);
+    }
+    for (i = 0; i < 2; i++) {
+        VectorAdd(dir, lat, newdir);
+        newdir[2] = 0;
+        if (VectorNormalize(newdir) < 0.1f || DotProduct(newdir, dir) < 0.5f) {
+            return;
+        }
+        // not into a wall: trace a body along it, against the world only
+        AAS_PresenceTypeBoundingBox(ms->presencetype, mins, maxs);
+        mins[2] += sv_maxstep->value;
+        VectorMA(ms->origin, 40, newdir, end);
+        trace = AAS_Trace(ms->origin, mins, maxs, end, ms->entitynum, CONTENTS_SOLID | CONTENTS_PLAYERCLIP);
+        if (!trace.startsolid && trace.fraction >= 1.0f) {
+            VectorCopy(newdir, dir);
+            return;
+        }
+        VectorScale(lat, 0.5f, lat);  // half as far, once
+    }
+}  // end of the function BotCrowdSteer
+//===========================================================================
 //
 // Parameter:			-
 // Returns:				-
@@ -1343,6 +1532,14 @@ bot_moveresult_t BotTravel_Walk(bot_movestate_t* ms, aas_reachability_t* reach) 
         else
             speed = 400;
     }  // end else
+    // [QL] E133. round the crowd, then move
+    {
+        vec3_t to;
+
+        VectorSubtract(reach->start, ms->origin, to);
+        to[2] = 0;
+        BotCrowdSteer(ms, hordir, speed, VectorLength(to) < 10 ? Distance(ms->origin, reach->end) : VectorLength(to));
+    }
     // elemantary action move in direction
     EA_Move(ms->client, hordir, speed);
     VectorCopy(hordir, result.movedir);
@@ -2920,6 +3117,14 @@ bot_moveresult_t BotMoveInGoalArea(bot_movestate_t* ms, bot_goal_t* goal) {
         speed = 0;
     //
     BotCheckBlocked(ms, dir, qtrue, &result);
+    // [QL] E133. round the crowd - gently near the goal itself (see BotCrowdSteer)
+    if (!(ms->moveflags & MFL_SWIMMING)) {
+        vec3_t to;
+
+        VectorSubtract(goal->origin, ms->origin, to);
+        to[2] = 0;
+        BotCrowdSteer(ms, dir, speed, VectorLength(to));
+    }
     // elemantary action move in direction
     EA_Move(ms->client, dir, speed);
     VectorCopy(dir, result.movedir);
@@ -3469,6 +3674,7 @@ void BotResetMoveState(int movestate) {
 int BotSetupMoveAI(void) {
     BotSetBrushModelTypes();
     sv_maxstep = LibVar("sv_step", "18");
+    bot_crowdsteer = LibVar("bot_crowdsteer", "1");
     sv_maxbarrier = LibVar("sv_maxbarrier", "32");
     sv_gravity = LibVar("sv_gravity", "800");
     weapindex_rocketlauncher = LibVar("weapindex_rocketlauncher", "5");

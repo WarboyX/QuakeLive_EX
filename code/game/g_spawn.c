@@ -470,6 +470,77 @@ static qboolean G_ItemValidForGametype(const char* classname) {
 
 /*
 ====================
+G_IsSpawnPointClassname
+
+[QL] Is this classname a place a player can appear? Kept in one function because
+SelectRandomFurthestSpawnPoint's fallback list has to agree with it - a spawn
+point held in reserve that the selector never queries is worse than one deleted,
+because it looks like it is there.
+====================
+*/
+/*
+====================
+G_IsDevWeaponClassname
+
+[QL] The Team Arena weapons and their ammo - the items Quake Live removed from
+its maps in August 2014 and left reachable only through cheats and community
+modes. g_devWeapons is what turns them back on here.
+
+Classnames rather than weapon numbers because this is asked during entity spawn,
+before there is an item to consult, and because the ammo items have no weapon of
+their own to be identified by.
+
+Not the heavy machinegun: Quake Live *added* that one to maps in the same
+update, so it is current content and belongs on every map that carries it.
+====================
+*/
+qboolean G_IsDevWeaponClassname(const char* classname) {
+    static const char* const names[] = {
+        "weapon_nailgun",
+        "weapon_prox_launcher",
+        "weapon_chaingun",
+        "ammo_nails",
+        "ammo_mines",
+        "ammo_belt",
+    };
+    int i;
+
+    if (!classname) {
+        return qfalse;
+    }
+    for (i = 0; i < (int)ARRAY_LEN(names); i++) {
+        if (!Q_stricmp(classname, names[i])) {
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+
+qboolean G_IsSpawnPointClassname(const char* classname) {
+    static const char* const names[] = {
+        "info_player_deathmatch",
+        "info_player_start",
+        "team_CTF_redspawn",
+        "team_CTF_bluespawn",
+        "team_CTF_redplayer",
+        "team_CTF_blueplayer",
+    };
+    int i;
+
+    if (!classname) {
+        return qfalse;
+    }
+    for (i = 0; i < (int)ARRAY_LEN(names); i++) {
+        if (!Q_stricmp(classname, names[i])) {
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
+/*
+====================
 G_GametypeInList
 
 [QL] Returns qtrue if the current gametype's short name is a whitespace
@@ -516,6 +587,7 @@ void G_SpawnGEntityFromSpawnVars(void) {
     gentity_t* ent;
     char* value;
     qboolean itemValid;
+    qboolean keepAsReserve;
 
     // get the next free entity
     ent = G_Spawn();
@@ -533,32 +605,98 @@ void G_SpawnGEntityFromSpawnVars(void) {
     // 3. "not_gametype" negative filter - suppress if current gametype is listed
     // The item-valid override skips all of these. No notsingle/notta in QL, and
     // the binary does NOT touch areaportals on a filtered-out entity.
+    /*
+    [QL] A spawn point these filters reject is kept in reserve, not deleted.
+
+    thunderstruck is a team map. In free-for-all it reported "5
+    info_player_deathmatch + 0 team pads", which is five places to put sixty-four
+    players and 259 telefrags - and the reason for the zero is right here: its
+    team pads carry notfree / a gametype list, and every one of them was freed at
+    load before the spawn selector ever saw it. Nothing said so, because being
+    filtered out is the normal, intended path for an entity that does not belong
+    in this mode.
+
+    For most entities that is exactly right - a flag stand has no meaning in FFA.
+    For a *spawn point* it is right only while the map has enough of its own, and
+    when it does not the alternative is not "a slightly wrong spawn", it is a
+    guaranteed telefrag. A pad the mapper placed for players to appear on is
+    still a place a player can appear.
+
+    So they spawn, flagged FL_SPAWN_RESERVE, and SelectRandomFurthestSpawnPoint
+    ignores them until its own points are exhausted. Spawn points are not linked,
+    so keeping them costs nothing on the wire. Every other classname is filtered
+    exactly as before.
+    */
+    keepAsReserve = G_IsSpawnPointClassname(ent->classname);
+
     if (g_gametype.integer >= GT_TEAM) {
         G_SpawnInt("notteam", "0", &i);
         if (i && !itemValid) {
-            G_FreeEntity(ent);
-            return;
+            if (!keepAsReserve) {
+                G_FreeEntity(ent);
+                return;
+            }
+            ent->flags |= FL_SPAWN_RESERVE;
         }
     } else {
         G_SpawnInt("notfree", "0", &i);
         if (i && !itemValid) {
-            G_FreeEntity(ent);
-            return;
+            if (!keepAsReserve) {
+                G_FreeEntity(ent);
+                return;
+            }
+            ent->flags |= FL_SPAWN_RESERVE;
         }
     }
 
     if (G_SpawnString("gametype", "", &value)) {
         if (!G_GametypeInList(value) && !itemValid) {
-            G_FreeEntity(ent);
-            return;
+            if (!keepAsReserve) {
+                G_FreeEntity(ent);
+                return;
+            }
+            ent->flags |= FL_SPAWN_RESERVE;
         }
     }
 
     if (G_SpawnString("not_gametype", "", &value)) {
         if (G_GametypeInList(value) && !itemValid) {
-            G_FreeEntity(ent);
-            return;
+            if (!keepAsReserve) {
+                G_FreeEntity(ent);
+                return;
+            }
+            ent->flags |= FL_SPAWN_RESERVE;
         }
+    }
+
+    /*
+    [QL] The three Team Arena weapons, off unless g_devWeapons says otherwise.
+
+    Quake Live took these off its maps in the August 2014 update - the
+    proximity mine launcher from all of them, the nailgun and chaingun from
+    several - and added the heavy machinegun in their place. They stayed in the
+    game, reachable through cheats and through community modes, but they are not
+    part of normal play any more.
+
+    The entities are still in the shipped .bsp files, which is how this was
+    found: a nailgun on japanesecastles in a plain FFA warmup. Nothing here
+    filtered them, so every map that still carries one handed it out.
+
+    Deliberately last in this chain and deliberately ignoring itemValid. The
+    filters above answer "does this belong in this gametype", which is the
+    mapper's and the gametype's business; this answers "is this weapon enabled
+    at all", which is the server's, and a gametype that declares an item valid
+    should not be able to reintroduce a weapon the operator has switched off.
+
+    Ammo goes with the weapons. Leaving the nail boxes on a map with no nailgun
+    is litter, and it would also keep the item registered - which is enough on
+    its own to put the weapon back in everyone's hands during warmup, since the
+    warmup grant hands out whatever registered.
+    */
+    if (!g_devWeapons.integer && G_IsDevWeaponClassname(ent->classname)) {
+        level.devWeaponsSuppressed++;
+        G_FreeEntity(ent);
+        return;
     }
 
     // move editor origin to pos
@@ -780,6 +918,21 @@ void G_SpawnEntitiesFromString(void) {
     // parse ents
     while (G_ParseSpawnVars()) {
         G_SpawnGEntityFromSpawnVars();
+    }
+
+    /*
+    [QL] Say when a map lost items to g_devWeapons.
+
+    Without this the only symptom is a weapon that used to be on the map not
+    being there, which reads as a broken map or a broken build rather than as a
+    setting doing its job - and the reverse, a server operator who turned
+    developer weapons on and wants to know whether this map actually has any,
+    gets no answer either. One line, only when something was suppressed.
+    */
+    if (level.devWeaponsSuppressed) {
+        G_Printf("Team Arena weapons: %i entit%s on this map not spawned (g_devWeapons is 0).\n",
+                 level.devWeaponsSuppressed,
+                 level.devWeaponsSuppressed == 1 ? "y" : "ies");
     }
 
     level.spawning = qfalse;  // any future calls to G_Spawn*() will be errors

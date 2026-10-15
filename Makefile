@@ -37,6 +37,12 @@ endif
 ifndef BUILD_RENDERER_OPENGL2
   BUILD_RENDERER_OPENGL2=
 endif
+# [QL] Vulkan renderer (code/renderervk, vendored from Quake3e). Opt-in and off
+# by default until it works, so it cannot affect an OpenGL build:
+#   make BUILD_RENDERER_VULKAN=1
+ifndef BUILD_RENDERER_VULKAN
+  BUILD_RENDERER_VULKAN=0
+endif
 
 #############################################################################
 #
@@ -237,6 +243,28 @@ CDIR=$(MOUNT_DIR)/client
 SDIR=$(MOUNT_DIR)/server
 RCOMMONDIR=$(MOUNT_DIR)/renderercommon
 RGL2DIR=$(MOUNT_DIR)/renderergl2
+RVKDIR=$(MOUNT_DIR)/renderervk
+
+# [QL] The Vulkan renderer's shaders are GLSL here and a 1.4 MB C array of
+# SPIR-V in shaders/spirv/shader_data.c, which vk.c #includes - so what ships is
+# baked into the binary and a player never needs a shader compiler.
+#
+# Regenerating that array was a manual step, and a Windows-only one:
+# compile.bat wants %VULKAN_SDK%, and both platforms are built from Linux here,
+# so changing a shader was not actually possible. compile.sh is a byte-identical
+# port of it and this rule runs it when a shader source is newer than the
+# generated file - which for a checkout that has not touched one is never.
+GLSLANG ?= glslangValidator
+RVKSHADERDIR=$(RVKDIR)/shaders
+RVKSHADERDATA=$(RVKSHADERDIR)/spirv/shader_data.c
+RVKSHADERSRC=$(wildcard $(RVKSHADERDIR)/*.vert) \
+             $(wildcard $(RVKSHADERDIR)/*.frag) \
+             $(wildcard $(RVKSHADERDIR)/*.tmpl) \
+             $(wildcard $(RVKSHADERDIR)/*.glsl)
+# [QL] R27 added the fourth line, and it is the same class of bug as the
+# $(OBJ_D_FILES) one: hextile.glsl is #included by bump.frag and gen_frag.tmpl
+# and is not itself emitted, so without it here an edit to the shared shader
+# code rebuilds nothing and the binary keeps the old SPIR-V. Nothing says so.
 CMDIR=$(MOUNT_DIR)/qcommon
 SDLDIR=$(MOUNT_DIR)/sdl
 SYSDIR=$(MOUNT_DIR)/sys
@@ -1083,6 +1111,9 @@ ifneq ($(BUILD_CLIENT),0)
     ifneq ($(BUILD_RENDERER_OPENGL2),0)
       TARGETS += $(B)/opengl2$(SHLIBNAME)
     endif
+    ifneq ($(BUILD_RENDERER_VULKAN),0)
+      TARGETS += $(B)/vulkan$(SHLIBNAME)
+    endif
   else
     ifneq ($(BUILD_RENDERER_OPENGL2),0)
       TARGETS += $(B)/$(CLIENTBIN)_opengl2$(FULLBINEXT)
@@ -1242,7 +1273,7 @@ ifeq ($(BUILD_STANDALONE),1)
 endif
 
 ifeq ($(GENERATE_DEPENDENCIES),1)
-  DEPEND_CFLAGS = -MMD
+  DEPEND_CFLAGS = -MMD -MP   # -MP: a phony rule per header, so deleting a header cannot break an incremental build
 else
   DEPEND_CFLAGS =
 endif
@@ -1275,6 +1306,14 @@ endif
 define DO_CC
 $(echo_cmd) "CC $<"
 $(Q)$(CC) $(NOTSHLIBCFLAGS) $(CFLAGS) $(CLIENT_CFLAGS) $(OPTIMIZE) -o $@ -c $<
+endef
+
+# [QL] renderervk is vendored from Quake3e unmodified. It expects a few types
+# this tree does not have, so tr_q3e_compat.h is force-included for that
+# directory only - no vendored file is edited, and nothing else sees it.
+define DO_REF_VK_CC
+$(echo_cmd) "REF_VK_CC $<"
+$(Q)$(CC) $(SHLIBCFLAGS) $(CFLAGS) $(CLIENT_CFLAGS) $(OPTIMIZE) -include $(RVKDIR)/tr_q3e_compat.h -o $@ -c $<
 endef
 
 define DO_REF_CC
@@ -1477,6 +1516,7 @@ makedirs:
 	@$(MKDIR) $(B)/client/vorbis
 	@$(MKDIR) $(B)/renderergl2
 	@$(MKDIR) $(B)/renderergl2/glsl
+	@$(MKDIR) $(B)/renderervk
 	@$(MKDIR) $(B)/tools
 	@$(MKDIR) $(B)/ded
 	@$(MKDIR) $(B)/$(BASEGAME)/cgame
@@ -1500,7 +1540,7 @@ TOOLS_LIBS =
 TOOLS_LDFLAGS =
 
 ifeq ($(GENERATE_DEPENDENCIES),1)
-  TOOLS_CFLAGS += -MMD
+  TOOLS_CFLAGS += -MMD -MP
 endif
 
 STRINGIFY   = $(B)/tools/stringify$(TOOLS_BINEXT)
@@ -1521,6 +1561,7 @@ Q3OBJ = \
   $(B)/client/cl_input.o \
   $(B)/client/cl_keys.o \
   $(B)/client/cl_main.o \
+  $(B)/client/cl_gpuid.o \
   $(B)/client/cl_net_chan.o \
   $(B)/client/cl_parse.o \
   $(B)/client/cl_scrn.o \
@@ -1672,6 +1713,51 @@ Q3R2OBJ = \
   $(B)/renderergl2/sdl_gamma.o \
   $(B)/renderergl2/sdl_glimp.o
 
+Q3RVKOBJ = \
+  $(B)/renderervk/tr_animation.o \
+  $(B)/renderervk/tr_backend.o \
+  $(B)/renderervk/tr_bsp.o \
+  $(B)/renderervk/tr_cmds.o \
+  $(B)/renderervk/tr_curve.o \
+  $(B)/renderervk/tr_image.o \
+  $(B)/renderervk/tr_init.o \
+  $(B)/renderervk/tr_light.o \
+  $(B)/renderervk/tr_main.o \
+  $(B)/renderervk/tr_marks.o \
+  $(B)/renderervk/tr_mesh.o \
+  $(B)/renderervk/tr_model.o \
+  $(B)/renderervk/tr_model_iqm.o \
+  $(B)/renderervk/tr_scene.o \
+  $(B)/renderervk/tr_shade.o \
+  $(B)/renderervk/tr_shade_calc.o \
+  $(B)/renderervk/tr_shader.o \
+  $(B)/renderervk/tr_shadows.o \
+  $(B)/renderervk/tr_sky.o \
+  $(B)/renderervk/tr_surface.o \
+  $(B)/renderervk/tr_world.o \
+  $(B)/renderervk/vk.o \
+  $(B)/renderervk/vk_timing.o \
+  $(B)/renderervk/vk_ssr.o \
+  $(B)/renderervk/vk_rt_shadow.o \
+  $(B)/renderervk/vk_rt_ao.o \
+  $(B)/renderervk/vk_rt_world.o \
+  $(B)/renderervk/vk_flares.o \
+  $(B)/renderervk/vk_vbo.o \
+  $(B)/renderervk/tr_q3e_compat.o \
+  $(B)/renderervk/tr_stbtt.o \
+  $(B)/renderervk/tr_fontstash.o \
+  $(B)/renderervk/tr_font_vk.o \
+  $(B)/renderervk/tr_image_bmp.o \
+  $(B)/renderervk/tr_image_jpg.o \
+  $(B)/renderervk/tr_image_pcx.o \
+  $(B)/renderervk/tr_image_png.o \
+  $(B)/renderervk/tr_image_tga.o \
+  $(B)/renderervk/tr_noise.o \
+  \
+  $(B)/renderervk/sdl_gamma.o \
+  $(B)/renderervk/vk_window.o \
+  $(B)/renderervk/vk_ql_exports.o
+
 Q3R2STRINGOBJ = \
   $(B)/renderergl2/glsl/bokeh_fp.o \
   $(B)/renderergl2/glsl/bokeh_vp.o \
@@ -1710,6 +1796,19 @@ ifneq ($(USE_RENDERER_DLOPEN), 0)
     $(B)/renderergl2/puff.o \
     $(B)/renderergl2/q_math.o \
     $(B)/renderergl2/tr_subs.o
+endif
+
+# [QL] The Vulkan renderer needs the same self-contained copies. A shared object
+# links happily with these undefined and only fails at dlopen, so the missing
+# objects were invisible until the symbol tables were compared against
+# opengl2x86_64.so.
+ifneq ($(USE_RENDERER_DLOPEN), 0)
+  # No tr_subs.o: that is renderergl2's Com_Error/Com_Printf forwarding, and
+  # renderervk provides its own in tr_init.c under USE_RENDERER_DLOPEN.
+  Q3RVKOBJ += \
+    $(B)/renderervk/q_shared.o \
+    $(B)/renderervk/puff.o \
+    $(B)/renderervk/q_math.o
 endif
 
 ifneq ($(USE_INTERNAL_JPEG),0)
@@ -1985,6 +2084,11 @@ $(B)/opengl2$(SHLIBNAME): $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ)
 	$(echo_cmd) "LD $@"
 	$(Q)$(CC) $(CFLAGS) $(SHLIBLDFLAGS) -o $@ $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ) \
 		$(THREAD_LIBS) $(LIBSDLMAIN) $(RENDERER_LIBS) $(LIBS)
+
+$(B)/vulkan$(SHLIBNAME): $(Q3RVKOBJ) $(JPGOBJ)
+	$(echo_cmd) "LD $@"
+	$(Q)$(CC) $(CFLAGS) $(SHLIBLDFLAGS) -o $@ $(Q3RVKOBJ) $(JPGOBJ) \
+		$(THREAD_LIBS) $(LIBSDLMAIN) $(RENDERER_LIBS) $(LIBS)
 else
 $(B)/$(CLIENTBIN)_opengl2$(FULLBINEXT): $(Q3OBJ) $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ) $(LIBSDLMAIN)
 	$(echo_cmd) "LD $@"
@@ -2118,6 +2222,16 @@ $(B)/$(SERVERBIN)$(FULLBINEXT): $(Q3DOBJ)
 ## BASEQ3 CGAME
 #############################################################################
 
+# [QL] E119. cgame links $(B)/$(BASEGAME)/ui/ui_shared.o - the object compiled
+# for the UI module, WITHOUT -DCGAME - and that is load-bearing, not a slip.
+#
+# ui_shared.c sizes its menu pools with #ifdef CGAME: 128 KB when CGAME is set,
+# 4 MB otherwise. Quake Live's HUD and scoreboard menus need about 2.9 MB, so a
+# cgame-specific ui_shared.o built with -DCGAME would run out a few menus in and
+# UI_Alloc would drop every item after that. Confirmed on the built binary:
+# cgamex86_64.so has a 0x400000 memoryPool. Those pool sizes are the only
+# CGAME conditionals in ui_shared.c/.h, so nothing else differs. Do not "fix"
+# this by giving cgame its own ui_shared.o.
 Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_main.o \
   $(B)/$(BASEGAME)/cgame/bg_misc.o \
@@ -2164,6 +2278,7 @@ Q3GOBJ_ = \
   $(B)/$(BASEGAME)/game/ai_cmd.o \
   $(B)/$(BASEGAME)/game/ai_dmnet.o \
   $(B)/$(BASEGAME)/game/ai_dmq3.o \
+  $(B)/$(BASEGAME)/game/ai_tactics.o \
   $(B)/$(BASEGAME)/game/ai_main.o \
   $(B)/$(BASEGAME)/game/ai_team.o \
   $(B)/$(BASEGAME)/game/ai_vcmd.o \
@@ -2341,6 +2456,38 @@ $(B)/renderergl2/%.o: $(RCOMMONDIR)/%.c
 $(B)/renderergl2/%.o: $(RGL2DIR)/%.c
 	$(DO_REF_CC)
 
+$(B)/renderervk/%.o: $(CMDIR)/%.c
+	$(DO_REF_CC)
+
+$(B)/renderervk/%.o: $(SDLDIR)/%.c
+	$(DO_REF_CC)
+
+$(B)/renderervk/%.o: $(JPDIR)/%.c
+	$(DO_REF_CC)
+
+$(B)/renderervk/%.o: $(RCOMMONDIR)/%.c
+	$(DO_REF_CC)
+
+# [QL] Regenerate the SPIR-V blob from GLSL. Deliberately does NOT touch the
+# target when glslang is missing: marking it up to date would make a stale blob
+# look current, and a build that quietly ships the wrong shaders is the exact
+# silent-failure shape this tree keeps getting bitten by. It warns every build
+# instead, because it really is stale.
+$(RVKSHADERDATA): $(RVKSHADERSRC)
+	@if command -v $(GLSLANG) >/dev/null 2>&1; then \
+		echo "GLSL $(RVKSHADERDIR)"; \
+		GLSLANG=$(GLSLANG) $(RVKSHADERDIR)/compile.sh; \
+	else \
+		echo "$(RVKSHADERDIR): shader source is newer than spirv/shader_data.c, but"; \
+		echo "  $(GLSLANG) is not installed - building with the committed blob."; \
+		echo "  apt-get install glslang-tools (or set GLSLANG) to rebuild it."; \
+	fi
+
+$(B)/renderervk/vk.o: $(RVKSHADERDATA)
+
+$(B)/renderervk/%.o: $(RVKDIR)/%.c
+	$(DO_REF_VK_CC)
+
 
 $(B)/ded/%.o: $(SDIR)/%.c
 	$(DO_DED_CC)
@@ -2502,8 +2649,43 @@ ifneq ($(DEPEND_MAKEFILE),0)
 endif
 
 ifneq ($(B),)
-  OBJ_D_FILES=$(filter %.d,$(OBJ:%.o=%.d))
+  # [QL] Dependency files were generated and never read.
+  #
+  # OBJ is not assigned anywhere in this Makefile - the object lists are Q3OBJ,
+  # Q3R2OBJ, Q3RVKOBJ, JPGOBJ, Q3DOBJ and friends - so OBJ_D_FILES expanded to
+  # nothing and this -include included nothing. Every .c file carries -MMD and
+  # writes a .d next to its .o, and not one of them has ever been used.
+  #
+  # The effect: changing a header rebuilt nothing that included it. Usually that
+  # only costs a missing prototype and a link error. When the header defines a
+  # struct it silently corrupts the build - the files that happen to be
+  # recompiled see the new layout and the stale objects keep reading the old
+  # offsets.
+  #
+  # That is exactly what E81 hit: adding one qboolean to vk_t shifted every
+  # field after it, vk.c and tr_init.c were rebuilt because their .c files had
+  # changed, and tr_image.c was not - so tr_image.c:1663 went on reading
+  # vk.fboActive at the old offset, got the wrong answer, and flipped
+  # tr.overbrightBits from 0 to 1. The whole image came out dark, from a diff
+  # that only compared extension strings.
+  #
+  # Collected by find rather than by listing the object variables, because
+  # missing one of those lists is how this happened in the first place.
+  OBJ_D_FILES := $(shell find $(B) -name '*.d' 2>/dev/null)
   -include $(OBJ_D_FILES)
+
+  # The same failure is one typo away from coming back, and it is silent: a
+  # build with no dependency tracking looks exactly like a build with it, right
+  # up until something renders wrong. So say it out loud. Objects present but no
+  # .d files collected means this block expanded to nothing again.
+  ifneq ($(wildcard $(B)/client/*.o)$(wildcard $(B)/ded/*.o),)
+    ifeq ($(OBJ_D_FILES),)
+      $(warning [QL] No .d files were included - header changes will NOT)
+      $(warning [QL] trigger rebuilds. This is the E81 bug. Objects compiled)
+      $(warning [QL] against an old struct layout link cleanly and read the)
+      $(warning [QL] wrong offsets. Run "rm -rf build" and fix this block.)
+    endif
+  endif
 endif
 
 .PHONY: all clean clean2 clean-debug clean-release copyfiles \

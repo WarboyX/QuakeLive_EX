@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 #include "ui_local.h"
+#include "../cgame/cg_crosshaircolors.h"
 
 uiInfo_t uiInfo;
 
@@ -31,6 +32,17 @@ static char* netnames[] = {
 
 static int gamecodetoui[] = {4, 2, 3, 0, 5, 1, 6};
 
+// color1 indexes a seven-entry table, and Quake Live's color1 runs well past 7;
+// stock TA read gamecodetoui[color1 - 1] unchecked on every main-menu open.
+static int UI_EffectsColorFromCvar(void) {
+    int c = (int)trap_Cvar_VariableValue("color1") - 1;
+
+    if (c < 0 || c >= (int)ARRAY_LEN(gamecodetoui)) {
+        return 0;
+    }
+    return gamecodetoui[c];
+}
+
 static const char *skillLevels[] = {
     "I Can Win",
     "Bring It On",
@@ -39,6 +51,24 @@ static const char *skillLevels[] = {
     "Nightmare"
 };
 static const int numSkillLevels = ARRAY_LEN(skillLevels);
+
+/* [QL] E139. The add-bot picker on our 1-10 bot skill scale (g_bot.c), with a
+   D10 roll first and the default. Quake Live's five names sit where their
+   1-5 skill lands on the new scale. */
+static const char *botSkillLevels[] = {
+    "Random (roll a D10)",
+    "1 - I Can Win",
+    "2",
+    "3 - Bring It On",
+    "4",
+    "5",
+    "6 - Hurt Me Plenty",
+    "7",
+    "8 - Hardcore",
+    "9",
+    "10 - Nightmare"
+};
+static const int numBotSkillLevels = ARRAY_LEN(botSkillLevels);
 
 static void UI_FeederSelection(float feederID, int index);
 static const char* UI_GetGameTypeString(int gametype);
@@ -347,7 +377,8 @@ void Text_Paint(float x, float y, float scale, vec4_t color, const char* text, f
     UI_PaintText(x, y, 0, scale, color, text, limit, style);
 }
 
-void Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const char* text, int cursorPos, char cursor, int limit, int style) {
+static void UI_PaintTextWithCursor(float x, float y, int fontIndex, float scale, vec4_t color, const char* text,
+                                   int cursorPos, char cursor, int limit, int style) {
     // [QL] Draw the text through the engine glyph atlas, then draw the blinking
     // cursor glyph at the measured pen position (cursorPos chars into the text).
     char cbuf[2];
@@ -355,7 +386,7 @@ void Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const cha
     if (!text)
         return;
 
-    UI_PaintText(x, y, 0, scale, color, text, limit, style);
+    UI_PaintText(x, y, fontIndex, scale, color, text, limit, style);
 
     if (!((uiInfo.uiDC.realTime / BLINK_DIVISOR) & 1)) {
         int w640 = 0;
@@ -366,11 +397,15 @@ void Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const cha
         if (cp > tl)
             cp = tl;
         if (cp > 0)
-            UI_MeasureText(text, scale, 0, cp, &w640, NULL);
+            UI_MeasureText(text, scale, fontIndex, cp, &w640, NULL);
         cbuf[0] = cursor;
         cbuf[1] = '\0';
-        UI_PaintText(x + (float)w640, y, 0, scale, color, cbuf, 1, style);
+        UI_PaintText(x + (float)w640, y, fontIndex, scale, color, cbuf, 1, style);
     }
+}
+
+void Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const char* text, int cursorPos, char cursor, int limit, int style) {
+    UI_PaintTextWithCursor(x, y, 0, scale, color, text, cursorPos, cursor, limit, style);
 }
 
 static void Text_Paint_Limit(float* maxX, float x, float y, float scale, vec4_t color, const char* text, float adjust, int limit) {
@@ -418,9 +453,8 @@ static float UI_TextHeight_DC(const char* text, float scale, int limit, int font
 
 static void UI_DrawTextWithCursor_DC(float x, float y, float scale, vec4_t color, const char* text,
                                      int cursorPos, char cursor, int limit, int style, int fontIndex) {
-    (void)cursorPos;
-    (void)cursor;
-    UI_PaintText(x, y, fontIndex, scale, color, text, limit, style);
+    // this used to drop cursorPos and cursor, so a text field being edited drew no caret
+    UI_PaintTextWithCursor(x, y, fontIndex, scale, color, text, cursorPos, cursor, limit, style);
 }
 
 static void UI_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, float scale, vec4_t color, qhandle_t shader, int textStyle);
@@ -454,9 +488,81 @@ int frameCount = 0;
 int startTime;
 
 #define UI_FPS_FRAMES 125
+/*
+[QL] main_options is a tab bar with nothing behind it until a tab is clicked.
+
+The Settings panel in Quake Live is two tabs - Controls and Game Settings - over
+a page that the client fills with its embedded web view; that is what
+`exec "web_changeHash /settings"` in the nav button is for. We have no web view,
+and main_options carries no onOpen of its own, so opening it in a match drew the
+tabs over an empty panel. Clicking either tab ran `open ingame_controls` or
+`open ingame_options` and the page appeared - which is why it looked like the
+Controls list was broken and then healed itself, when in fact nothing had opened
+the page the first time. (The uiTrace of a first open shows no ingame_controls
+onOpen at all; the tab click shows the whole hide/show/loadControls run.)
+
+Checked once a frame rather than at any one call site, because main_options is
+reached both from _UI_SetActiveMenu and from a menu script's `open`, and this
+has to hold for both. It fires only while the tab bar is up with neither page
+visible, so a deliberate switch between the two tabs is untouched, and closing
+the panel does not bring it back.
+*/
+static void UI_DefaultOptionsPage(void) {
+    static const char *pages[] = {"ingame_controls", "ingame_options"};
+    menuDef_t *options;
+    int i;
+
+    options = Menus_FindByName("main_options");
+    if (!options || !(options->window.flags & WINDOW_VISIBLE)) {
+        return;
+    }
+    for (i = 0; i < (int)ARRAY_LEN(pages); i++) {
+        menuDef_t *page = Menus_FindByName(pages[i]);
+
+        if (page && (page->window.flags & WINDOW_VISIBLE)) {
+            return;   // a page is already up
+        }
+    }
+
+    /*
+    Run the Controls tab's own action rather than opening the page directly.
+    Its script is `open ingame_controls` followed by the setitemcolor run that
+    lights the tab and dims the other - so opening the page by hand left the
+    page correct and the tab bar showing neither tab selected. Doing what the
+    click does keeps the two in step, and keeps the colours Quake Live's rather
+    than a second copy of them here.
+    */
+    for (i = 0; i < options->itemCount; i++) {
+        itemDef_t *item = options->items[i];
+
+        if (item && item->window.name && !Q_stricmp(item->window.name, "navbtn2") && item->action) {
+            Item_RunScript(item, item->action);
+            return;
+        }
+    }
+
+    Menus_OpenByName(pages[0]);
+}
+
 void _UI_Refresh(int realtime) {
     static int index;
     static int previousTimes[UI_FPS_FRAMES];
+
+    /*
+    [QL] ui_inputDebug turns on ui_shared's breadcrumb trail for this module.
+
+    ui_shared.c is compiled into both cgame and ui, and the trace it carries has
+    only ever been reachable from the cgame side (cg_scoreboardDebug), so a
+    question about what the *menu* system did on a given click had no answer
+    beyond reading the menu file and guessing. It prints which menu took a key,
+    which item took focus, and every script statement as it runs, with the item
+    it ran against - enough to tell an onOpen that did not fire from one that
+    fired and was undone.
+    */
+    trap_Cvar_Update(&ui_inputDebug);
+    UI_SetInputTrace(ui_inputDebug.integer);
+
+    UI_DefaultOptionsPage();
 
     uiInfo.uiDC.frameTime = realtime - uiInfo.uiDC.realTime;
     uiInfo.uiDC.realTime = realtime;
@@ -857,20 +963,27 @@ static void UI_SetCapFragLimits(qboolean uiVars) {
 }
 // ui_gameType assumes gametype 0 is -1 ALL and will not show
 static void UI_DrawGameType(rectDef_t* rect, float scale, vec4_t color, int textStyle) {
+    if (ui_gameType.integer < 0 || ui_gameType.integer >= uiInfo.numGameTypes) {
+        return;  // unchecked index in stock TA
+    }
     Text_Paint(rect->x, rect->y, scale, color, uiInfo.gameTypes[ui_gameType.integer].gameType, 0, 0, textStyle);
 }
 
 static void UI_DrawNetGameType(rectDef_t* rect, float scale, vec4_t color, int textStyle) {
-    if (ui_netGameType.integer < 0 || ui_netGameType.integer > uiInfo.numGameTypes) {
+    // Stock TA tested > rather than >=, and resetting the cvar does not change
+    // .integer until the next update, so the index below was read out of range anyway.
+    if (ui_netGameType.integer < 0 || ui_netGameType.integer >= uiInfo.numGameTypes) {
         trap_Cvar_Set("ui_netGametype", "0");
         trap_Cvar_Set("ui_actualNetGametype", "0");
+        ui_netGameType.integer = 0;
     }
     Text_Paint(rect->x, rect->y, scale, color, uiInfo.gameTypes[ui_netGameType.integer].gameType, 0, 0, textStyle);
 }
 
 static void UI_DrawJoinGameType(rectDef_t* rect, float scale, vec4_t color, int textStyle) {
-    if (ui_joinGameType.integer < 0 || ui_joinGameType.integer > uiInfo.numJoinGameTypes) {
+    if (ui_joinGameType.integer < 0 || ui_joinGameType.integer >= uiInfo.numJoinGameTypes) {
         trap_Cvar_Set("ui_joinGametype", "0");
+        ui_joinGameType.integer = 0;  // see UI_DrawNetGameType
     }
     Text_Paint(rect->x, rect->y, scale, color, uiInfo.joinGameTypes[ui_joinGameType.integer].gameType, 0, 0, textStyle);
 }
@@ -928,7 +1041,7 @@ static void UI_DrawPreviewCinematic(rectDef_t* rect, float scale, vec4_t color) 
 
 static void UI_DrawMapPreview(rectDef_t* rect, float scale, vec4_t color, qboolean net) {
     int map = (net) ? ui_currentNetMap.integer : ui_currentMap.integer;
-    if (map < 0 || map > uiInfo.mapCount) {
+    if (map < 0 || map >= uiInfo.mapCount) {
         if (net) {
             ui_currentNetMap.integer = 0;
             trap_Cvar_Set("ui_currentNetMap", "0");
@@ -967,7 +1080,7 @@ static void UI_DrawMapTimeToBeat(rectDef_t* rect, float scale, vec4_t color, int
 
 static void UI_DrawMapCinematic(rectDef_t* rect, float scale, vec4_t color, qboolean net) {
     int map = (net) ? ui_currentNetMap.integer : ui_currentMap.integer;
-    if (map < 0 || map > uiInfo.mapCount) {
+    if (map < 0 || map >= uiInfo.mapCount) {
         if (net) {
             ui_currentNetMap.integer = 0;
             trap_Cvar_Set("ui_currentNetMap", "0");
@@ -1199,18 +1312,48 @@ static void UI_DrawRedBlue(rectDef_t* rect, float scale, vec4_t color, int textS
 }
 
 static void UI_DrawCrosshair(rectDef_t* rect, float scale, vec4_t color) {
+    // [QL] E130. Follow the cvar every frame. currentCrosshair was only read
+    // when the in-game menu opened, and the Crosshair page now changes
+    // cg_drawCrosshair from an ordinary value row, which would have left this
+    // preview showing the old style.
+    {
+        int c = (int)trap_Cvar_VariableValue("cg_drawCrosshair");
+
+        uiInfo.currentCrosshair = (c < 0 || c >= NUM_CROSSHAIRS) ? 0 : c;
+    }
     if (!uiInfo.currentCrosshair) {
         return;
     }
-    trap_R_SetColor(color);
+    // [QL] E131. In the crosshair's own colour and brightness, so the preview
+    // is what the game will draw. Colour-by-health has no health to show here,
+    // so it keeps the item's colour.
+    if (!trap_Cvar_VariableValue("cg_crosshairHealth")) {
+        vec4_t tint;
+        int c = (int)trap_Cvar_VariableValue("cg_crosshairColor");
+        float bright = trap_Cvar_VariableValue("cg_crosshairBrightness");
+
+        if (c < 1 || c > CROSSHAIR_COLORS) {
+            c = CROSSHAIR_DEFAULT_COLOR;
+        }
+        if (bright < 0.0f) {
+            bright = 0.0f;
+        } else if (bright > 1.0f) {
+            bright = 1.0f;
+        }
+        VectorScale(cg_crosshairColors[c - 1], bright, tint);
+        tint[3] = color[3];
+        trap_R_SetColor(tint);
+    } else {
+        trap_R_SetColor(color);
+    }
     UI_DrawHandlePic(rect->x, rect->y - rect->h, rect->w, rect->h, uiInfo.uiDC.Assets.crosshairShader[uiInfo.currentCrosshair]);
     trap_R_SetColor(NULL);
 }
 
 // [QL] Bot skill level display
 static void UI_DrawBotSkill(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    if (uiInfo.skillIndex >= 0 && uiInfo.skillIndex < numSkillLevels) {
-        Text_Paint(rect->x, rect->y, scale, color, skillLevels[uiInfo.skillIndex], 0, 0, textStyle);
+    if (uiInfo.skillIndex >= 0 && uiInfo.skillIndex < numBotSkillLevels) {
+        Text_Paint(rect->x, rect->y, scale, color, botSkillLevels[uiInfo.skillIndex], 0, 0, textStyle);
     }
 }
 
@@ -1232,7 +1375,7 @@ static void UI_DrawVoteString(rectDef_t *rect, float scale, vec4_t color, int te
 // indexes a 1-based table @0x1002ae20; skillLevels[] here is 0-based so subtract 1.
 static void UI_DrawSkill(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     int skill = (int)trap_Cvar_VariableValue("g_spSkill");
-    if (skill < 1 || skill > 5) {
+    if (skill < 1 || skill > numSkillLevels) {
         skill = 1;
     }
     Text_Paint(rect->x, rect->y, scale, color, skillLevels[skill - 1], 0, 0, textStyle);
@@ -1253,7 +1396,7 @@ static void UI_DrawNetSource(rectDef_t *rect, float scale, vec4_t color, int tex
 // UI_DrawServerFilter @0x100066d0: reset ui_serverFilterType to 0 when outside 0..7, then
 // draw "Filter: <description>".
 static void UI_DrawServerFilter(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    if (ui_serverFilterType.integer < 0 || ui_serverFilterType.integer > 7) {
+    if (ui_serverFilterType.integer < 0 || ui_serverFilterType.integer >= (int)ARRAY_LEN(serverFilters)) {  // was > 7: seven entries
         ui_serverFilterType.integer = 0;
     }
     Text_Paint(rect->x, rect->y, scale, color,
@@ -1365,6 +1508,87 @@ static void UI_DrawEnemyPlayerModel(rectDef_t *rect) {
     UI_DrawPlayer(rect->x, rect->y, rect->w, rect->h, &enemyInfo, uiInfo.uiDC.realTime / 2);
 }
 
+/*
+[QL] Weapon icon shaders, indexed by weapon_t.
+
+Checked against docs/pak-manifest.txt, which is what that file is for:
+RE_RegisterShader returns 0 for a name the pak does not hold and says nothing
+about it, so a wrong name here is a blank space and no error anywhere.
+
+Three of them were wrong. The team-arena weapons do not follow the iconw_
+naming at all - the pak has icons/nailgun128, icons/proxmine and
+icons/chaingun128, and holds no iconw_nailgun, iconw_proxlauncher or
+iconw_chaingun - so the MODIFIED WEAPONS grid below asked for all three of
+those and drew nothing where they should have been. The HMG had no entry at
+any name; it is icons/weap_hmg.
+
+No extension: RE_RegisterShader resolves the shader script first and falls
+back through the image extensions, which is how the rest of the game names
+these.
+*/
+static const char *ui_weaponIconNames[WP_NUM_WEAPONS] = {
+    NULL,                      /* WP_NONE            */
+    "icons/iconw_gauntlet",    /* WP_GAUNTLET        */
+    "icons/iconw_machinegun",  /* WP_MACHINEGUN      */
+    "icons/iconw_shotgun",     /* WP_SHOTGUN         */
+    "icons/iconw_grenade",     /* WP_GRENADE_LAUNCHER*/
+    "icons/iconw_rocket",      /* WP_ROCKET_LAUNCHER */
+    "icons/iconw_lightning",   /* WP_LIGHTNING       */
+    "icons/iconw_railgun",     /* WP_RAILGUN         */
+    "icons/iconw_plasma",      /* WP_PLASMAGUN       */
+    "icons/iconw_bfg",         /* WP_BFG             */
+    "icons/iconw_grapple",     /* WP_GRAPPLING_HOOK  */
+    "icons/nailgun128",        /* WP_NAILGUN         */
+    "icons/proxmine",          /* WP_PROX_LAUNCHER   */
+    "icons/chaingun128",       /* WP_CHAINGUN        */
+    "icons/weap_hmg",          /* WP_HMG             */
+};
+
+/*
+[QL] Owner-draw UI_STARTING_WEAPONS (558) - the loadout row on the in-game
+match page.
+
+ingame_about.menu draws a "Starting Weapons" heading, a rule under it and then
+an item at "rect 35 163 16 16" carrying this owner-draw. Nothing in the switch
+handled it, so the heading and the rule were drawn over an empty row.
+
+A note here previously read that QL has no id-558 owner-draw and that
+UI_SERVER_SETTINGS draws the weapon grid instead. UI_SERVER_SETTINGS does draw
+a grid, but it is the MODIFIED WEAPONS one, in a different panel higher up the
+same page; the menu file asks for both, and the menu file is the evidence.
+
+The bit convention is the server's: bit (w - 1) for weapon w, which is what
+g_client.c tests when it grants them.
+*/
+static void UI_DrawStartingWeapons(rectDef_t *rect, vec4_t color) {
+    char buf[32];
+    int bits, w;
+    float x, size, step;
+
+    trap_GetConfigString(CS_STARTING_WEAPONS, buf, sizeof(buf));
+    bits = atoi(buf);
+    if (bits == 0) {
+        return;
+    }
+
+    size = (rect->h > 0.0f) ? rect->h : 16.0f;
+    step = size + 2.0f;
+    x = rect->x;
+
+    trap_R_SetColor(color);
+    for (w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++) {
+        if (!(bits & (1 << (w - 1)))) {
+            continue;
+        }
+        if (!ui_weaponIconNames[w]) {
+            continue;
+        }
+        UI_DrawHandlePic(x, rect->y, size, size, trap_R_RegisterShaderNoMip(ui_weaponIconNames[w]));
+        x += step;
+    }
+    trap_R_SetColor(NULL);
+}
+
 // [QL] Server settings / rules panel (owner-draw UI_SERVER_SETTINGS 557).
 // Ported byte-for-byte from uix86.dll UI_DrawServerStatus @0x10007030. QL draws the whole
 // rules panel from this single owner-draw: the gametype name, the active limit lines, the
@@ -1390,7 +1614,7 @@ static void UI_DrawServerSettings(rectDef_t *rect, float scale, vec4_t color, in
         "Attack and Defend", // 11
         "Red Rover",         // 12
     };
-    char serverinfo[MAX_INFO_STRING];
+    char serverinfo[BIG_INFO_STRING];  // [QL] BIG_INFO_STRING: the serverinfo exceeds MAX_INFO_STRING (see SV_SpawnServer)
     char pmoveinfo[MAX_INFO_STRING];
     char armorinfo[MAX_INFO_STRING];
     char custombuf[MAX_INFO_STRING];
@@ -1554,7 +1778,7 @@ static void UI_DrawServerSettings(rectDef_t *rect, float scale, vec4_t color, in
     if (col > 7) { col = 0; x += 110.0f; y -= 84.0f; }
 
     // "MODIFIED WEAPONS:" starting-weapon icon grid (bits 0..12 of CS_CUSTOM_SETTINGS). @0x10007c6a
-    // Each present weapon draws its 8x8 icon plus an "icons/modified.tga" overlay (4x4 at +6,+4);
+    // Each present weapon draws its 8x8 icon plus an "icons/modified" overlay (4x4 at +6,+4);
     // icons advance x by +12, and within the grid the shared counter wraps every 8 icons
     // (col=0, x-=96, y+=12). Shotgun/grenade/rocket/railgun/plasma are hidden when the g_gravity
     // value == 2 (the binary gates these on gravity, not gametype; reproduced verbatim).
@@ -1566,85 +1790,85 @@ static void UI_DrawServerSettings(rectDef_t *rect, float scale, vec4_t color, in
         y += 6.0f;                                              // @0x10007cd1
         trap_R_SetColor(color);
         if (custom & 1) {                                       // gauntlet @0x10007cdb; resets col to 1
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_gauntlet.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_GAUNTLET]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col = 1;
         }
         if (custom & 2) {                                       // machinegun @0x10007d8a
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_machinegun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_MACHINEGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 4) && gravity != 2) {                     // shotgun @0x10007e32
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_shotgun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_SHOTGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 8) && gravity != 2) {                     // grenade @0x10007ee6
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_grenade.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_GRENADE_LAUNCHER]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 0x10) && gravity != 2) {                  // rocket @0x10007f99
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_rocket.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_ROCKET_LAUNCHER]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if (custom & 0x20) {                                    // lightning @0x1000804c (no gravity gate)
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_lightning.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_LIGHTNING]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 0x40) && gravity != 2) {                  // railgun @0x100080f5
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_railgun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_RAILGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
         }
         if ((custom & 0x80) && gravity != 2) {                  // plasma @0x100081a8; first icon with inner wrap
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_plasma.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_PLASMAGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x100) {                                   // bfg @0x1000827f
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_bfg.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_BFG]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x200) {                                   // grapple @0x10008350
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_grapple.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_GRAPPLING_HOOK]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x400) {                                   // nailgun @0x10008420
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_nailgun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_NAILGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x800) {                                   // proxlauncher @0x100084f0
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_proxlauncher.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_PROX_LAUNCHER]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             col++;
             x += 12.0f;
             if (col > 7) { y += 12.0f; col = 0; x -= 96.0f; }
         }
         if (custom & 0x1000) {                                  // chaingun @0x100085c1 (no col reset on wrap)
-            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip("icons/iconw_chaingun.tga"));
-            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified.tga"));
+            UI_DrawHandlePic(x, y, 8, 8, trap_R_RegisterShaderNoMip(ui_weaponIconNames[WP_CHAINGUN]));
+            UI_DrawHandlePic(x + 6, y + 4, 4, 4, trap_R_RegisterShaderNoMip("icons/modified"));
             x += 12.0f;
             col++;
             if (col > 7) { y += 12.0f; x -= 96.0f; }
@@ -1666,7 +1890,7 @@ UI_BuildPlayerList
 static void UI_BuildPlayerList(void) {
     uiClientState_t cs;
     int n, count, team, team2, playerTeamNumber;
-    char info[MAX_INFO_STRING];
+    char info[BIG_INFO_STRING];// [QL] BIG_INFO_STRING: the serverinfo exceeds MAX_INFO_STRING (see SV_SpawnServer)
 
     trap_GetClientState(&cs);
     trap_GetConfigString(CS_PLAYERS + cs.clientNum, info, MAX_INFO_STRING);
@@ -1807,7 +2031,11 @@ static void UI_DrawCrosshairColor(rectDef_t* rect, vec4_t color) {
         trap_R_SetColor(dim);
     }
     UI_DrawHandlePic(rect->x, rect->y - 14, 128, 8, uiInfo.uiDC.Assets.fxBasePic);
-    UI_DrawHandlePic(rect->x + (colorIndex << 4) + 8, rect->y - 16, 16, 12, uiInfo.uiDC.Assets.fxPic[colorIndex]);
+    // Only the first seven values have a swatch. The binary reads whatever handle sits
+    // past fxPic[] for the rest; here that is other fields of the Assets struct.
+    if (colorIndex < (int)ARRAY_LEN(uiInfo.uiDC.Assets.fxPic)) {
+        UI_DrawHandlePic(rect->x + (colorIndex << 4) + 8, rect->y - 16, 16, 12, uiInfo.uiDC.Assets.fxPic[colorIndex]);
+    }
     if (health) {
         trap_R_SetColor(color);
     }
@@ -2098,6 +2326,9 @@ static void UI_OwnerDraw(float x, float y, float w, float h, float text_x, float
             break;
         case UI_CROSSHAIR_COLOR:
             UI_DrawCrosshairColor(&rect, color);
+            break;
+        case UI_STARTING_WEAPONS:
+            UI_DrawStartingWeapons(&rect, color);
             break;
         case UI_ADVERT:
             // [QL] Advertisement display - no-op in standalone build
@@ -2670,10 +2901,10 @@ static qboolean UI_OwnerDrawHandleKey(int ownerDraw, int flags, float* special, 
             int select = UI_SelectForKey(key);
             if (select != 0) {
                 uiInfo.skillIndex += select;
-                if (uiInfo.skillIndex >= numSkillLevels) {
+                if (uiInfo.skillIndex >= numBotSkillLevels) {
                     uiInfo.skillIndex = 0;
                 } else if (uiInfo.skillIndex < 0) {
-                    uiInfo.skillIndex = numSkillLevels - 1;
+                    uiInfo.skillIndex = numBotSkillLevels - 1;
                 }
                 return qtrue;
             }
@@ -2905,7 +3136,8 @@ static void UI_RunMenuScript(char** args) {
             trap_Cvar_Set("g_redTeam", UI_Cvar_VariableString("ui_teamName"));
             trap_Cvar_Set("g_blueTeam", UI_Cvar_VariableString("ui_opponentName"));
             trap_Cmd_ExecuteText(EXEC_APPEND, va("wait ; wait ; map %s\n", uiInfo.mapList[ui_currentNetMap.integer].mapLoadName));
-            skill = trap_Cvar_VariableValue("g_spSkill");
+            // [QL] E139: g_spSkill is Quake Live's 1-5; addbot takes our 1-10
+            skill = 1.0f + (trap_Cvar_VariableValue("g_spSkill") - 1.0f) * 9.0f / 4.0f;
             // [QL] raise sv_maxclients to fit the occupied bot slots, then addbot each one.
             // Matches uix86.dll StartServer @0x1000b0e0: count non-empty ui_blueteam%i /
             // ui_redteam%i slots (i=1..5), sv_maxclients = max(count|8, current).
@@ -2931,22 +3163,28 @@ static void UI_RunMenuScript(char** args) {
             g = (int)trap_Cvar_VariableValue("g_gametype");
             for (i = 1; i <= 5; i++) {
                 v = (int)trap_Cvar_VariableValue(va("ui_blueteam%i", i));
+                botBuff[0] = '\0';
                 if (v > 1) {
                     if (g < GT_TEAM) {
                         Com_sprintf(botBuff, sizeof(botBuff), "addbot %s %f \n", UI_GetBotNameByNumber(v - 2), skill);
-                    } else {
+                    } else if (v < uiInfo.characterCount) {  // the slot value is a cvar, unchecked before
                         Com_sprintf(botBuff, sizeof(botBuff), "addbot %s %f %s\n", uiInfo.characterList[v].base, skill, "Blue");
                     }
-                    trap_Cmd_ExecuteText(EXEC_APPEND, botBuff);
+                    if (botBuff[0]) {
+                        trap_Cmd_ExecuteText(EXEC_APPEND, botBuff);
+                    }
                 }
                 v = (int)trap_Cvar_VariableValue(va("ui_redteam%i", i));
+                botBuff[0] = '\0';
                 if (v > 1) {
                     if (g < GT_TEAM) {
                         Com_sprintf(botBuff, sizeof(botBuff), "addbot %s %f \n", UI_GetBotNameByNumber(v - 2), skill);
-                    } else {
+                    } else if (v < uiInfo.characterCount) {
                         Com_sprintf(botBuff, sizeof(botBuff), "addbot %s %f %s\n", uiInfo.characterList[v].base, skill, "Red");
                     }
-                    trap_Cmd_ExecuteText(EXEC_APPEND, botBuff);
+                    if (botBuff[0]) {
+                        trap_Cmd_ExecuteText(EXEC_APPEND, botBuff);
+                    }
                 }
             }
         } else if (Q_stricmp(name, "resetDefaults") == 0) {
@@ -2963,7 +3201,15 @@ static void UI_RunMenuScript(char** args) {
         } else if (Q_stricmp(name, "updateCallvoteMapPreview") == 0) {
             // [QL] Re-filter map list by callvote gametype and reset selection
             UI_MapCountByCallvoteGameType();
+            /*
+            [QL] E110. Both menus, because the selection is reset by NAME.
+            Quake Live's ingame_callvote is still reachable (our Advanced tab
+            opens its menu), and ours is io_ig_vote. Naming only one leaves the
+            other showing a selection index into a map list it no longer has -
+            a list that looks fine and votes for the wrong map.
+            */
             Menu_SetFeederSelection(NULL, FEEDER_CVMAPS, 0, "ingame_callvote");
+            Menu_SetFeederSelection(NULL, FEEDER_CVMAPS, 0, "io_ig_vote");
         } else if (Q_stricmp(name, "saveControls") == 0) {
             Controls_SetConfig(qtrue);
         } else if (Q_stricmp(name, "loadControls") == 0) {
@@ -3144,9 +3390,9 @@ static void UI_RunMenuScript(char** args) {
             if (trap_Cvar_VariableValue("g_gametype") >= GT_TEAM) {
                 // [QL] .base holds the model name (see Character_Parse); .name is
                 // now the skin, so use base as the bot character identifier.
-                trap_Cmd_ExecuteText(EXEC_APPEND, va("addbot %s %i %s\n", uiInfo.characterList[uiInfo.botIndex].base, uiInfo.skillIndex + 1, (uiInfo.redBlue == 0) ? "Red" : "Blue"));
+                trap_Cmd_ExecuteText(EXEC_APPEND, va("addbot %s %i %s\n", uiInfo.characterList[uiInfo.botIndex].base, uiInfo.skillIndex, (uiInfo.redBlue == 0) ? "Red" : "Blue"));
             } else {
-                trap_Cmd_ExecuteText(EXEC_APPEND, va("addbot %s %i %s\n", UI_GetBotNameByNumber(uiInfo.botIndex), uiInfo.skillIndex + 1, (uiInfo.redBlue == 0) ? "Red" : "Blue"));
+                trap_Cmd_ExecuteText(EXEC_APPEND, va("addbot %s %i %s\n", UI_GetBotNameByNumber(uiInfo.botIndex), uiInfo.skillIndex, (uiInfo.redBlue == 0) ? "Red" : "Blue"));
             }
         } else if (Q_stricmp(name, "orders") == 0) {
             const char* orders;
@@ -3418,6 +3664,11 @@ static void UI_InsertServerIntoDisplayList(int num, int position) {
     int i;
 
     if (position < 0 || position > uiInfo.serverStatus.numDisplayServers) {
+        return;
+    }
+    // The shift below writes one slot past the new count, and the engine lists up to
+    // MAX_GLOBAL_SERVERS (4096) against 2048 display slots. Stock TA had no check.
+    if (uiInfo.serverStatus.numDisplayServers >= MAX_DISPLAY_SERVERS - 1) {
         return;
     }
     uiInfo.serverStatus.numDisplayServers++;
@@ -4607,11 +4858,70 @@ static qboolean MapList_Parse(char** p) {
     return qfalse;
 }
 
+/*
+[QL] The gametype lists have to exist even though gameinfo.txt does not.
+
+uiInfo.gameTypes[] is the map from a menu selection to a g_gametype value, and
+the only thing that has ever filled it is UI_ParseGameInfo reading
+"gameinfo.txt" - a Quake 3 file that Quake Live does not ship. Grep the pak
+manifest: there is no gameinfo.txt in pak00, and we do not ship one either. So
+numGameTypes stayed 0 and every entry stayed zeroed, and
+
+    trap_Cvar_SetValue("g_gametype",
+        Com_Clamp(0, GT_MAX_GAME_TYPE, uiInfo.gameTypes[ui_netGameType.integer].gtEnum));
+
+read gtEnum out of a zeroed struct and started every created server as
+GT_FFA - whatever the menu said. That is "Create Game does not set the game
+type": the selector worked, the table behind it was empty.
+
+Seeded so that **index equals gtEnum**. The table is consulted both ways round
+in this file - as an index by the owner-draw picker and its key handler, and for
+its gtEnum by StartServer and the callvote scripts - and our own create-game
+menu writes the enum straight into ui_netGameType through a cvarFloatList. With
+a contiguous 0..12 table both readings agree, which is what makes the fix one
+table rather than an audit of every call site.
+
+joinGameTypes keeps its "All" sentinel at index 0 with gtEnum -1, which is what
+UI_BuildServerDisplayList tests for.
+
+A real gameinfo.txt still wins: GameType_Parse resets the counts before it
+fills them, so anything that parses replaces this wholesale.
+*/
+static void UI_SeedDefaultGameTypes(void) {
+    // Names as Quake Live's own server-settings panel spells them
+    // (see UI_DrawServerSettings), indexed by gametype.
+    static const char *names[] = {
+        "Free For All", "Duel", "Race", "Team Deathmatch", "Clan Arena",
+        "Capture the Flag", "One Flag CTF", "Overload", "Harvester",
+        "Freeze Tag", "Domination", "Attack and Defend", "Red Rover"
+    };
+    int i;
+
+    uiInfo.numGameTypes = 0;
+    for (i = 0; i < (int)ARRAY_LEN(names) && i < MAX_GAMETYPES; i++) {
+        uiInfo.gameTypes[uiInfo.numGameTypes].gameType = names[i];
+        uiInfo.gameTypes[uiInfo.numGameTypes].gtEnum = i;
+        uiInfo.numGameTypes++;
+    }
+
+    uiInfo.numJoinGameTypes = 0;
+    uiInfo.joinGameTypes[uiInfo.numJoinGameTypes].gameType = "All";
+    uiInfo.joinGameTypes[uiInfo.numJoinGameTypes].gtEnum = -1;
+    uiInfo.numJoinGameTypes++;
+    for (i = 0; i < (int)ARRAY_LEN(names) && uiInfo.numJoinGameTypes < MAX_GAMETYPES; i++) {
+        uiInfo.joinGameTypes[uiInfo.numJoinGameTypes].gameType = names[i];
+        uiInfo.joinGameTypes[uiInfo.numJoinGameTypes].gtEnum = i;
+        uiInfo.numJoinGameTypes++;
+    }
+}
+
 static void UI_ParseGameInfo(const char* teamFile) {
     char* token;
     char* p;
     char* buff = NULL;
     // int mode = 0; TTimo: unused
+
+    UI_SeedDefaultGameTypes();
 
     buff = GetMenuBuffer(teamFile);
     if (!buff) {
@@ -4784,6 +5094,44 @@ static void UI_BuildQ3Model_List(void) {
 UI_Init
 =================
 */
+
+/*
+=================
+UI_CvarPending / UI_CvarPendingValue / UI_CvarPendingString
+
+[QL] E183. What the menus read a cvar's value through.
+
+A latched cvar (r_fbo, r_rt, cl_renderer, r_mode...) keeps its running value
+until a restart; what the player picked sits beside it as the latched string.
+The menus read the running value, so a row the player had just changed went
+on showing the old setting until Apply - and clicking a yes/no again could not
+flip it back, because the toggle was computed from a value that had not moved.
+They read the pending value now where there is one, every frame, so every row,
+toggle and cvarTest shows what has been chosen; Item_YesNo_Paint and
+Item_Multi_Paint add "(Apply)" while it is not yet what is running.
+=================
+*/
+static qboolean UI_CvarPending(const char* cvar) {
+    char buf[2];
+
+    trap_Cvar_LatchedStringBuffer(cvar, buf, sizeof(buf));
+    return buf[0] ? qtrue : qfalse;
+}
+
+static float UI_CvarPendingValue(const char* cvar) {
+    char buf[256];
+
+    trap_Cvar_LatchedStringBuffer(cvar, buf, sizeof(buf));
+    return buf[0] ? (float)atof(buf) : trap_Cvar_VariableValue(cvar);
+}
+
+static void UI_CvarPendingString(const char* cvar, char* buffer, int bufsize) {
+    trap_Cvar_LatchedStringBuffer(cvar, buffer, bufsize);
+    if (!buffer[0]) {
+        trap_Cvar_VariableStringBuffer(cvar, buffer, bufsize);
+    }
+}
+
 void _UI_Init(qboolean inGameLoad) {
     const char* menuSet;
 
@@ -4838,8 +5186,9 @@ void _UI_Init(qboolean inGameLoad) {
     uiInfo.uiDC.runScript = &UI_RunMenuScript;
     uiInfo.uiDC.getTeamColor = &UI_GetTeamColor;
     uiInfo.uiDC.setCVar = trap_Cvar_Set;
-    uiInfo.uiDC.getCVarString = trap_Cvar_VariableStringBuffer;
-    uiInfo.uiDC.getCVarValue = trap_Cvar_VariableValue;
+    uiInfo.uiDC.getCVarString = UI_CvarPendingString;   // [QL] E183
+    uiInfo.uiDC.getCVarValue = UI_CvarPendingValue;
+    uiInfo.uiDC.cvarPending = UI_CvarPending;
     uiInfo.uiDC.drawTextWithCursor = &UI_DrawTextWithCursor_DC;
     uiInfo.uiDC.setOverstrikeMode = &trap_Key_SetOverstrikeMode;
     uiInfo.uiDC.getOverstrikeMode = &trap_Key_GetOverstrikeMode;
@@ -4896,7 +5245,7 @@ void _UI_Init(qboolean inGameLoad) {
     UI_LoadBots();
 
     // sets defaults for ui temp cvars
-    uiInfo.effectsColor = gamecodetoui[(int)trap_Cvar_VariableValue("color1") - 1];
+    uiInfo.effectsColor = UI_EffectsColorFromCvar();
     uiInfo.currentCrosshair = (int)trap_Cvar_VariableValue("cg_drawCrosshair") % NUM_CROSSHAIRS;
     if (uiInfo.currentCrosshair < 0) {
         uiInfo.currentCrosshair = 0;
@@ -5006,7 +5355,7 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 // fine, which is what made this look like it came and went.
                 trap_Cvar_Set("ui_mainmenu", "1");
                 // [QL] Update UI state from cvars (binary-verified)
-                uiInfo.effectsColor = gamecodetoui[(int)trap_Cvar_VariableValue("color1") - 1];
+                uiInfo.effectsColor = UI_EffectsColorFromCvar();
                 uiInfo.currentCrosshair = (int)trap_Cvar_VariableValue("cg_drawCrosshair");
                 if (uiInfo.inGameLoad) {
                     UI_LoadNonIngame();
@@ -5043,7 +5392,7 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 return;
             case UIMENU_INGAME:
                 // [QL] Update UI state from cvars (binary-verified)
-                uiInfo.effectsColor = gamecodetoui[(int)trap_Cvar_VariableValue("color1") - 1];
+                uiInfo.effectsColor = UI_EffectsColorFromCvar();
                 uiInfo.currentCrosshair = (int)trap_Cvar_VariableValue("cg_drawCrosshair");
                 trap_Cvar_Set("ui_mousePitch", (trap_Cvar_VariableValue("m_pitch") >= 0) ? "0" : "1");
                 trap_Cvar_Set("ui_cvGameType", "-1");
@@ -5051,8 +5400,53 @@ void _UI_SetActiveMenu(uiMenuCommand_t menu) {
                 trap_Key_SetCatcher(KEYCATCH_UI);
                 UI_BuildPlayerList();
                 Menus_CloseAll();
-                Menus_ActivateByName("ingame");
-                Menus_ActivateByName("ingame_about");
+                /*
+                [QL] E108. Ours, not Quake Live's "ingame" + "ingame_about".
+
+                Everything this port adds lives in main.menu and is reached from
+                the main menu's RENDER entry. Quake Live's ingame nav has no
+                entry that could reach it, and no way to be given one: that menu
+                is in pak00, which is read-only to us. So in a game, none of it
+                was reachable - not because the menus were missing (_UI_Init
+                loads menus.txt AND ingame.txt, so they were in memory the whole
+                time) but because nothing on screen opened them.
+
+                Replacing rather than extending costs less than it sounds.
+                Quake Live's own ingame nav spends two of its seven entries on
+                "Settings" and "Main Menu", and both run `web_changeHash` - they
+                drive the Steam client's web overlay, so there is no native
+                panel behind them at all. The rest are still loaded, this menu
+                links to them, and its last entry opens Quake Live's ingame menu
+                itself for anything not surfaced here.
+                */
+                /*
+                [QL] E110. The frame and its first page, the same two-menu
+                arrangement Quake Live uses (ingame + ingame_about): io_ingame
+                draws the header, nav bar and content panel, and the page draws
+                inside it. Opening the frame alone is a menu with an empty
+                panel, so the first tab's page opens with it - and the nav bar's
+                first tab is defined already highlighted to match.
+                */
+                /*
+                [QL] E125. ESC always lands on Current Match with its tab lit,
+                by running that tab's own action: it closes every page, sets the
+                tab colours and opens io_ig_match. That reset used to be the
+                frame's onOpen, which also ran whenever anything reopened the
+                frame - so coming BACK from a render page to Advanced showed the
+                Advanced page under the Current Match tab. Here it runs only on
+                the way in from the game.
+                */
+                Menus_ActivateByName("io_ingame");
+                {
+                    menuDef_t* frame = Menus_FindByName("io_ingame");
+                    itemDef_t* first = frame ? Menu_FindItemByName(frame, "ignav1") : NULL;
+
+                    if (first && first->action) {
+                        Item_RunScript(first, first->action);
+                    } else {
+                        Menus_ActivateByName("io_ig_match");
+                    }
+                }
                 return;
         }
     }
@@ -5409,6 +5803,7 @@ vmCvar_t ui_netSource;
 vmCvar_t ui_serverFilterType;
 vmCvar_t ui_opponentName;
 vmCvar_t ui_menuFiles;
+vmCvar_t ui_inputDebug;
 vmCvar_t ui_currentMap;
 vmCvar_t ui_currentNetMap;
 vmCvar_t ui_mapIndex;
@@ -5550,6 +5945,9 @@ static cvarTable_t cvarTable[] = {
     {&ui_redteam, "ui_redteam", "Pagans", CVAR_ARCHIVE},
     {&ui_netSource, "ui_netSource", "0", CVAR_ARCHIVE},
     {&ui_menuFiles, "ui_menuFiles", "ui/menus.txt", CVAR_ARCHIVE},
+    // [QL] menu input/script trace - see _UI_Refresh. Not archived: it is a
+    // diagnostic, and one left on in a config is a console full of noise.
+    {&ui_inputDebug, "ui_inputDebug", "0", 0},
     {&ui_currentMap, "ui_currentMap", "0", CVAR_ARCHIVE},
     {&ui_currentNetMap, "ui_currentNetMap", "0", CVAR_ARCHIVE},
     {&ui_mapIndex, "ui_mapIndex", "0", CVAR_ARCHIVE},
@@ -5617,7 +6015,11 @@ static cvarTable_t cvarTable[] = {
 
     // [QL additions] - game settings
     {&ui_doWarmup, "ui_doWarmup", "0", CVAR_ARCHIVE},
-    {&ui_warmup, "ui_warmup", "0", CVAR_ARCHIVE},
+    /* [QL] Not CVAR_ARCHIVE. This is live match state published by cgame every
+       time CS_WARMUP changes; archiving it writes a stale value into the config
+       that then loads before any server does, which is the archived-default trap
+       from CLAUDE.md wearing a different hat. */
+    {&ui_warmup, "ui_warmup", "0", 0},
     {&ui_pure, "ui_pure", "1", CVAR_ARCHIVE},
     {&ui_friendlyFire, "ui_friendlyFire", "1", CVAR_ARCHIVE},
     {&ui_cvGameType, "ui_cvGameType", "-1", 0},
@@ -5754,11 +6156,11 @@ static void UI_OnAnnouncerChanged(void) {
     sfxHandle_t s;
 
     if (ui_cg_announcer.integer == 2) {
-        s = trap_S_RegisterSound("sound/misc/vo_evil.wav", 7);
+        s = trap_S_RegisterSound("sound/misc/vo_evil.ogg", 7);
     } else if (ui_cg_announcer.integer == 3) {
-        s = trap_S_RegisterSound("sound/misc/vo_female.wav", 7);
+        s = trap_S_RegisterSound("sound/misc/vo_female.ogg", 7);
     } else {
-        s = trap_S_RegisterSound("sound/misc/vo_default.wav", 7);
+        s = trap_S_RegisterSound("sound/misc/vo_default.ogg", 7);
     }
     trap_S_StartLocalSound(s, CHAN_ANNOUNCER);
     trap_Cvar_Set("ui_announcer", va("%i", ui_cg_announcer.integer));

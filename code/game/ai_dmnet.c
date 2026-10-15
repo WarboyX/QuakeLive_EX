@@ -41,9 +41,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "ai_main.h"
 #include "ai_dmq3.h"
+#include "ai_tactics.h"
 #include "ai_chat.h"
 #include "ai_cmd.h"
 #include "ai_dmnet.h"
+
+#define CARRIER_REPLAN 3.0f  // [QL] E137: seconds between a carrier's choices of way home
 #include "ai_team.h"
 // data file headers
 #include "chars.h"  //characteristics
@@ -185,6 +188,25 @@ int BotGoForAir(bot_state_t* bs, int tfl, bot_goal_t* ltg, float range) {
 BotNearbyGoal
 ==================
 */
+/* A travelling autonomous screen can take a short supply detour, but should
+   not inherit an ordinary roam's expanded item search. Preserve oxygen escape,
+   explicit orders, carriers and jobs whose followed teammate lost the flag. */
+static float BotCTFEscortItemRange(bot_state_t* bs, float range) {
+    float limit;
+    if (bs->ordered || bs->ltgtype != LTG_TEAMACCOMPANY || BotCTFCarryingFlag(bs) ||
+        !BotCTFKeepObjective(bs) || bs->lastair_time < FloatTime() - 6) return range;
+    limit = bs->inventory[INVENTORY_HEALTH] <= 40 ? 150 : 50;
+    return range < limit ? range : limit;
+}
+
+static float BotCTFEscortItemDuration(bot_state_t* bs, float range, float duration) {
+    float limit;
+    if (bs->ordered || bs->ltgtype != LTG_TEAMACCOMPANY || BotCTFCarryingFlag(bs) ||
+        !BotCTFKeepObjective(bs) || bs->lastair_time < FloatTime() - 6) return duration;
+    limit = BotCTFEscortItemRange(bs, range) / 100 + 1;
+    return duration < limit ? duration : limit;
+}
+
 int BotNearbyGoal(bot_state_t* bs, int tfl, bot_goal_t* ltg, float range) {
     int ret;
 
@@ -200,8 +222,31 @@ int BotNearbyGoal(bot_state_t* bs, int tfl, bot_goal_t* ltg, float range) {
             range = 50;
         }
     }
+    /*
+    [QL] range is an AAS travel time, not a distance - a hundred is a second of
+    walking - and the callers pass a constant. Scale it by what the bot is
+    actually short of, so a bot on thirty health hunts a medkit two rooms away
+    and the same bot at full health does not.
+    */
+    range = BotItemSearchRange(bs, range);
+    range = BotCTFEscortItemRange(bs, range);
     //
     ret = trap_BotChooseNBGItem(bs->gs, bs->origin, bs->inventory, tfl, ltg, range);
+    /*
+    [QL] And with an enemy about, refuse the ones that are not worth it. The
+    stock weights will send a bot with full armour across a room under fire for a
+    five point shard; there is nothing wrong with the weight, it just has no idea
+    anyone is shooting. The goal is already on the stack by now, so declining it
+    means popping it.
+    */
+    if (ret && bs->enemy >= 0) {
+        bot_goal_t nbg;
+
+        if (trap_BotGetTopGoal(bs->gs, &nbg) && !BotWantsItemGoal(bs, &nbg)) {
+            trap_BotPopGoal(bs->gs);
+            return qfalse;
+        }
+    }
     /*
     if (ret)
     {
@@ -275,6 +320,12 @@ BotGetItemLongTermGoal
 ==================
 */
 int BotGetItemLongTermGoal(bot_state_t* bs, int tfl, bot_goal_t* goal) {
+    // [QL] E137. already patrolling for want of an item: carry on until the
+    // next item choice (ltg_time) rather than re-asking every frame
+    if (bs->tac.roam_time > FloatTime() && bs->ltg_time > FloatTime() && !trap_BotGetTopGoal(bs->gs, goal) &&
+        BotRoamWaypoint(bs, goal)) {
+        return qtrue;
+    }
     // if the bot has no goal
     if (!trap_BotGetTopGoal(bs->gs, goal)) {
         // BotAI_Print(PRT_MESSAGE, "no ltg on stack\n");
@@ -314,7 +365,16 @@ int BotGetItemLongTermGoal(bot_state_t* bs, int tfl, bot_goal_t* goal) {
             trap_BotResetAvoidReach(bs->ms);
         }
         // get the goal at the top of the stack
-        return trap_BotGetTopGoal(bs->gs, goal);
+        if (trap_BotGetTopGoal(bs->gs, goal)) {
+            return qtrue;
+        }
+        // [QL] E137. no item it wants: patrol rather than stand (BotRoamWaypoint),
+        // and look for an item again in a few seconds
+        if (BotRoamWaypoint(bs, goal)) {
+            bs->ltg_time = FloatTime() + 5;
+            return qtrue;
+        }
+        return qfalse;
     }
     return qtrue;
 }
@@ -381,7 +441,8 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
         return qtrue;
     }
     // if the bot accompanies someone
-    if (bs->ltgtype == LTG_TEAMACCOMPANY && !retreat) {
+    // [QL] E137: a flag escort keeps its goal while fighting its way there
+    if (bs->ltgtype == LTG_TEAMACCOMPANY && (!retreat || (gametype == GT_CTF && !bs->ordered))) {
         // check for bot typing status message
         if (bs->teammessage_time && bs->teammessage_time < FloatTime()) {
             BotAI_BotInitialChat(bs, "accompany_start", EasyClientName(bs->teammate, netname, sizeof(netname)), NULL);
@@ -398,6 +459,35 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
         }
         // get entity information of the companion
         BotEntityInfo(bs->teammate, &entinfo);
+        /* [QL] E137. An escort whose carrier has died, capped or dropped the
+           flag has no job. BotCTFSeekGoals releases it, but only on the paths
+           that reach that check, and half of all escort time in a 30-a-side
+           match was spent escorting nobody. Ordered follows (a human's "follow
+           me") are not flag escorts and keep the stock behaviour. */
+        if (gametype == GT_CTF && !bs->ordered) {
+            gclient_t* mate = (bs->teammate >= 0 && bs->teammate < MAX_CLIENTS) ? g_entities[bs->teammate].client : NULL;
+
+            if (!mate || mate->ps.stats[STAT_HEALTH] <= 0 ||
+                !(mate->ps.powerups[PW_REDFLAG] || mate->ps.powerups[PW_BLUEFLAG])) {
+                bs->ltgtype = 0;
+                return qfalse;
+            }
+            /* home, and waiting on our stand for our flag: it needs our flag
+               back, which the base's defenders and the recovery job see to,
+               not a ring of escorts standing round it */
+            if (bot_tactics.integer ? !BotCTFEscortEligible(bs, bs->teammate) :
+                DistanceSquared(g_entities[bs->teammate].r.currentOrigin,
+                                (BotTeam(bs) == TEAM_RED ? ctf_redflag : ctf_blueflag).origin) < Square(600)) {
+                bs->ltgtype = 0;
+                return qfalse;
+            }
+            /* a flag carrier's escort gets ahead of it on its way home when it
+               can, and follows it (below) when it cannot */
+            if (BotEscortGoal(bs, goal)) {
+                bs->teammatevisible_time = FloatTime();
+                return qtrue;
+            }
+        }
         // if the companion is visible
         if (BotEntityVisible(bs->entitynum, bs->eye, bs->viewangles, 360, bs->teammate)) {
             // update visible time
@@ -473,6 +563,12 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
                 else if (random() < bs->thinktime * 0.8) {
                     BotRoamGoal(bs, target);
                     VectorSubtract(target, bs->origin, dir);
+                    /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+                       96 units in z on purpose - it is a navigation goal and the drop below
+                       finds the floor - but used raw as a view target that is up to forty
+                       degrees of pitch at the hundred-unit minimum offset, which is bots
+                       looking at the sky and the floor in a room with one storey. */
+                    dir[2] = 0;
                     vectoangles(dir, bs->ideal_viewangles);
                     bs->ideal_viewangles[2] *= 0.5;
                 }
@@ -543,6 +639,12 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
             BotAI_BotInitialChat(bs, "defend_stop", buf, NULL);
             trap_BotEnterChat(bs->cs, 0, CHAT_TEAM);
             bs->ltgtype = 0;
+        }
+        /* [QL] E134. A way into the flag room rather than the flag itself, held
+           rather than wandered away from - see BotDefendPostGoal. The defenders
+           left on the flag keep the stock behaviour below. */
+        if (BotDefendPostGoal(bs, goal)) {
+            return qtrue;
         }
         // if very close... go away for some time
         VectorSubtract(goal->origin, bs->origin, dir);
@@ -649,6 +751,12 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
             if (random() < bs->thinktime * 0.8) {
                 BotRoamGoal(bs, target);
                 VectorSubtract(target, bs->origin, dir);
+                /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+                   96 units in z on purpose - it is a navigation goal and the drop below
+                   finds the floor - but used raw as a view target that is up to forty
+                   degrees of pitch at the hundred-unit minimum offset, which is bots
+                   looking at the sky and the floor in a room with one storey. */
+                dir[2] = 0;
                 vectoangles(dir, bs->ideal_viewangles);
                 bs->ideal_viewangles[2] *= 0.5;
             }
@@ -743,6 +851,38 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
     if (gametype == GT_CTF) {
         // if going for enemy flag
         if (bs->ltgtype == LTG_GETFLAG) {
+            if (bot_tactics.integer && Team_GetFlagStatus(BotOppositeTeam(bs)) == FLAG_DROPPED) {
+                bs->altroutegoal.areanum = 0;
+                if (BotCTFEnemyFlagGoal(bs, goal)) return qtrue;
+                bs->ltgtype = 0;
+                bs->tac.roleredecide_time = 0;
+                return BotRoamWaypoint(bs, goal);
+            }
+
+            /*
+            [QL] The flag is already gone. Do not walk over there to find out.
+
+            The only thing that ever ended this goal was touching the stand -
+            "make sure the bot knows the flag isn't there anymore", a few lines
+            down. So every attacker walked the length of the map to an empty
+            pedestal, touched it, and only then gave up, even when a team mate
+            had been carrying that flag for a minute. At twenty-six attackers on
+            a thirty-two player team that is a pilgrimage, and it is most of the
+            pile-up in the enemy flag room.
+
+            Reported as: "bots seem to try to path to the enemy flag spawn, even
+            though the enemy flag is already taken... like they have to
+            physically check the flag isn't there."
+
+            The status is already tracked and already trusted by
+            BotCTFSeekGoals; this handler simply never asked.
+            */
+            if (bot_tactics.integer && !BotEnemyFlagAtBase(bs)) {
+                // Do not create another escort/recovery job behind the planner.
+                bs->ltgtype = 0;
+                bs->tac.roleredecide_time = 0;
+                return BotRoamWaypoint(bs, goal);
+            }
             // check for bot typing status message
             if (bs->teammessage_time && bs->teammessage_time < FloatTime()) {
                 BotAI_BotInitialChat(bs, "captureflag_start", NULL);
@@ -806,18 +946,63 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
                 // if the bot is still carrying the enemy flag then the
                 // base flag is gone, now just walk near the base a bit
                 if (BotCTFCarryingFlag(bs)) {
-                    trap_BotResetAvoidReach(bs->ms);
-                    bs->rushbaseaway_time = FloatTime() + 5 + 10 * random();
-                    // FIXME: add chat to tell the others to get back the flag
+                    /*
+                    [QL] Hold the stand, do not wander off it.
+
+                    Stock sets rushbaseaway_time and the carrier walks the base
+                    for five to fifteen seconds looking for a fight - carrying
+                    the flag that wins the match, away from the one square metre
+                    where it can be scored the instant our own flag comes home.
+
+                    Standing on the goal it is already touching means
+                    BotMoveToGoal has nothing to do, so the bot simply waits
+                    there, which is what a person does. The defence quota in
+                    BotCTFRoleMix is at its highest while our flag is out, so
+                    the bots holding the base are the guard.
+
+                    And the FIXME the stock code left here: ask for it back.
+                    */
+                    if (bot_tactics.integer) {
+                        if (bs->teammessage_time < FloatTime() - 10) {
+                            BotVoiceChat(bs, -1, VOICECHAT_RETURNFLAG);
+                            bs->teammessage_time = FloatTime();
+                        }
+                    } else {
+                        trap_BotResetAvoidReach(bs->ms);
+                        bs->rushbaseaway_time = FloatTime() + 5 + 10 * random();
+                    }
                 } else {
                     bs->ltgtype = 0;
                 }
+            }
+            /* [QL] E137. The way home is chosen again as it goes, not once at
+               the grab. Every CARRIER_REPLAN the carrier takes the waypoint
+               still ahead of it (nearer home than it is) with the fewest
+               enemies in its room - past the middle, that is which door of
+               our own base to come in by. Chosen once, the carrier took its
+               shortest way home whatever was standing in it: carrier deaths
+               over 25 matches lie along the Main Stairway and through Main
+               Entrance, and the median carrier never got within 3,400 u of
+               home. With nothing left ahead it goes straight for the stand. */
+            if (bot_tactics.integer && bs->tac.carrierplan_time < FloatTime()) {
+                bs->tac.carrierplan_time = FloatTime() + CARRIER_REPLAN;
+                BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
             }
             BotAlternateRoute(bs, goal);
             return qtrue;
         }
         // returning flag
         if (bs->ltgtype == LTG_RETURNFLAG) {
+            if (bot_tactics.integer) {
+                // A stale alternate route must not redirect a moving target.
+                bs->altroutegoal.areanum = 0;
+                if (BotCTFRecoveryGoal(bs, goal)) {
+                    return qtrue;
+                }
+                bs->ltgtype = 0;
+                bs->owndecision_time = 0;
+                return BotRoamWaypoint(bs, goal);
+            }
             // check for bot typing status message
             if (bs->teammessage_time && bs->teammessage_time < FloatTime()) {
                 BotAI_BotInitialChat(bs, "returnflag_start", NULL);
@@ -1072,6 +1257,16 @@ int BotGetLongTermGoal(bot_state_t* bs, int tfl, int retreat, bot_goal_t* goal) 
         }
     }
     // normal goal stuff
+    /*
+    [QL] Nothing to do at all. In a gametype with a place to lose, take a
+    defensive posting rather than wander off after items - but see
+    BotAutoDefendGoal for how hard that is capped, because putting a whole team
+    on defence is a bug this project has already had once.
+    */
+    if (!retreat && BotAutoDefendGoal(bs)) {
+        memcpy(goal, &bs->teamgoal, sizeof(bot_goal_t));
+        return qtrue;
+    }
     return BotGetItemLongTermGoal(bs, tfl, goal);
 }
 
@@ -1298,6 +1493,13 @@ int AINode_Respawn(bot_state_t* bs) {
     // if waiting for the actual respawn
     if (bs->respawn_wait) {
         if (!BotIsDead(bs)) {
+            /* [QL] E136. a new life on an attack is a new way across. The
+               waypoint was chosen once, when the job began, and once reached
+               every later life went the direct way - in instagib, where a
+               life is seconds long, that was nearly every run */
+            if (gametype == GT_CTF && bs->ltgtype == LTG_GETFLAG) {
+                BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+            }
             AIEnter_Seek_LTG(bs, "respawn: respawned");
         } else {
             trap_EA_Respawn(bs->client);
@@ -1638,6 +1840,12 @@ int AINode_Seek_ActivateEntity(bot_state_t* bs) {
         if (random() < bs->thinktime * 0.8) {
             BotRoamGoal(bs, target);
             VectorSubtract(target, bs->origin, dir);
+            /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+               96 units in z on purpose - it is a navigation goal and the drop below
+               finds the floor - but used raw as a view target that is up to forty
+               degrees of pitch at the hundred-unit minimum offset, which is bots
+               looking at the sky and the floor in a room with one storey. */
+            dir[2] = 0;
             vectoangles(dir, bs->ideal_viewangles);
             bs->ideal_viewangles[2] *= 0.5;
         }
@@ -1753,6 +1961,9 @@ int AINode_Seek_NBG(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -1772,6 +1983,12 @@ int AINode_Seek_NBG(bot_state_t* bs) {
         if (random() < bs->thinktime * 0.8) {
             BotRoamGoal(bs, target);
             VectorSubtract(target, bs->origin, dir);
+            /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+               96 units in z on purpose - it is a navigation goal and the drop below
+               finds the floor - but used raw as a view target that is up to forty
+               degrees of pitch at the hundred-unit minimum offset, which is bots
+               looking at the sky and the floor in a room with one storey. */
+            dir[2] = 0;
             vectoangles(dir, bs->ideal_viewangles);
             bs->ideal_viewangles[2] *= 0.5;
         }
@@ -1932,7 +2149,7 @@ int AINode_Seek_LTG(bot_state_t* bs) {
             // trap_BotGoalName(tmpgoal.number, buf, 144);
             // BotAI_Print(PRT_MESSAGE, "new nearby goal %s\n", buf);
             // time the bot gets to pick up the nearby goal item
-            bs->nbg_time = FloatTime() + 4 + range * 0.01;
+            bs->nbg_time = FloatTime() + BotCTFEscortItemDuration(bs, range, 4 + range * 0.01);
             AIEnter_Seek_NBG(bs, "ltg seek: nbg");
             return qfalse;
         }
@@ -1944,6 +2161,9 @@ int AINode_Seek_LTG(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -1964,6 +2184,12 @@ int AINode_Seek_LTG(bot_state_t* bs) {
         if (random() < bs->thinktime * 0.8) {
             BotRoamGoal(bs, target);
             VectorSubtract(target, bs->origin, dir);
+            /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+               96 units in z on purpose - it is a navigation goal and the drop below
+               finds the floor - but used raw as a view target that is up to forty
+               degrees of pitch at the hundred-unit minimum offset, which is bots
+               looking at the sky and the floor in a room with one storey. */
+            dir[2] = 0;
             vectoangles(dir, bs->ideal_viewangles);
             bs->ideal_viewangles[2] *= 0.5;
         }
@@ -1978,6 +2204,12 @@ int AINode_Seek_LTG(bot_state_t* bs) {
         } else if (random() < bs->thinktime * 0.8) {
             BotRoamGoal(bs, target);
             VectorSubtract(target, bs->origin, dir);
+            /* [QL] Look along it, not at it. BotRoamGoal jitters the target by up to
+               96 units in z on purpose - it is a navigation goal and the drop below
+               finds the floor - but used raw as a view target that is up to forty
+               degrees of pitch at the hundred-unit minimum offset, which is bots
+               looking at the sky and the floor in a room with one storey. */
+            dir[2] = 0;
             vectoangles(dir, bs->ideal_viewangles);
             bs->ideal_viewangles[2] *= 0.5;
         }
@@ -2012,6 +2244,27 @@ void AIEnter_Battle_SuicidalFight(bot_state_t* bs, char* s) {
     trap_BotResetLastAvoidReach(bs->ms);
     bs->ainode = AINode_Battle_Fight;
     bs->flags |= BFL_FIGHTSUICIDAL;
+    /*
+    [QL] And stop asking to retreat for a moment.
+
+    This node is where "I want to retreat" goes when there is nowhere to retreat
+    to, and the loop it makes is the twitching reported from spectating:
+
+      BotWantsToRetreat -> Battle_Retreat -> BotLongTermGoal finds no way out
+        -> SuicidalFight -> AIEnter_Battle_Fight clears BFL_FIGHTSUICIDAL
+        -> BotWantsToRetreat is asked again and says yes -> round again
+
+    several times a second, with AIEnter_Battle_Fight calling
+    trap_BotResetLastAvoidReach on every pass, so the movement state is thrown
+    away as fast as it is built. A map report from the field had 43 of 60 bots
+    sitting in "fight (suicidal)".
+
+    The hysteresis in BotWantsToRetreat cannot catch this because
+    BFL_FIGHTSUICIDAL bypasses the question entirely and then gets cleared on the
+    way back in. So the commitment lives here instead: having established there
+    is no way out, do not go looking for one again for a couple of seconds.
+    */
+    bs->tac.suicidal_time = FloatTime() + 2.0f;
 }
 
 /*
@@ -2259,7 +2512,7 @@ int AINode_Battle_Chase(bot_state_t* bs) {
         //
         if (BotNearbyGoal(bs, bs->tfl, &goal, range)) {
             // the bot gets 5 seconds to pick up the nearby goal item
-            bs->nbg_time = FloatTime() + 0.1 * range + 1;
+            bs->nbg_time = FloatTime() + BotCTFEscortItemDuration(bs, range, 0.1 * range + 1);
             trap_BotResetLastAvoidReach(bs->ms);
             AIEnter_Battle_NBG(bs, "battle chase: nbg");
             return qfalse;
@@ -2271,6 +2524,9 @@ int AINode_Battle_Chase(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -2419,10 +2675,19 @@ int AINode_Battle_Retreat(bot_state_t* bs) {
     BotTeamGoals(bs, qtrue);
     // use holdable items
     BotBattleUseItems(bs);
-    // get the current long term goal while retreating
-    if (!BotLongTermGoal(bs, bs->tfl, qtrue, &goal)) {
-        AIEnter_Battle_SuicidalFight(bs, "battle retreat: no way out");
-        return qfalse;
+    /*
+    [QL] Fall back towards the nearest team mate when there is one, rather than
+    towards whatever the long term goal happens to be. Retreating along the map's
+    item route takes a losing bot away from the only help it has; retreating onto
+    the person already fighting the same enemy is what makes two bots read as a
+    pair rather than as two bots who happen to be nearby.
+    */
+    if (BotPosture(bs) != TACTIC_FALLBACK || !BotRegroupGoal(bs, &goal)) {
+        // get the current long term goal while retreating
+        if (!BotLongTermGoal(bs, bs->tfl, qtrue, &goal)) {
+            AIEnter_Battle_SuicidalFight(bs, "battle retreat: no way out");
+            return qfalse;
+        }
     }
     // check for nearby goals periodicly
     if (bs->check_time < FloatTime()) {
@@ -2446,7 +2711,7 @@ int AINode_Battle_Retreat(bot_state_t* bs) {
         if (BotNearbyGoal(bs, bs->tfl, &goal, range)) {
             trap_BotResetLastAvoidReach(bs->ms);
             // time the bot gets to pick up the nearby goal item
-            bs->nbg_time = FloatTime() + range / 100 + 1;
+            bs->nbg_time = FloatTime() + BotCTFEscortItemDuration(bs, range, range / 100 + 1);
             AIEnter_Battle_NBG(bs, "battle retreat: nbg");
             return qfalse;
         }
@@ -2455,6 +2720,9 @@ int AINode_Battle_Retreat(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -2595,6 +2863,9 @@ int AINode_Battle_NBG(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the goal
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     // if the movement failed
     if (moveresult.failure) {
         // reset the avoid reach, otherwise bot is stuck in current area
@@ -2643,6 +2914,13 @@ FindInstaGibTarget
 [QL] Pick the nearest visible, reachable, live player for the InstaGib
 hunting node. Returns the target entity number or -1.
 (binary FindInstaGibTarget 0x10020200)
+
+Teammates are skipped. Without that this walks a bot at whoever is nearest,
+team or not, and at under 50 units it stops moving and just aims - so on a team
+server bots close to touching distance with their own side and their own human
+players and stay there, shuffling. That is the "they dance around each other
+and run into me, like they want to gauntlet each other" behaviour: they were
+hunting their own team.
 ==================
 */
 int FindInstaGibTarget(bot_state_t* bs) {
@@ -2674,6 +2952,9 @@ int FindInstaGibTarget(bot_state_t* bs) {
         if (i == bs->entitynum) {
             continue;
         }
+        if (BotSameTeam(bs, i)) {
+            continue;   // [QL] see BotSameTeam note below
+        }
         BotEntityInfo(i, &entinfo);
         if (!entinfo.valid) {
             continue;
@@ -2701,6 +2982,9 @@ int FindInstaGibTarget(bot_state_t* bs) {
     if (besttarget == -1) {
         for (i = 0; i < MAX_CLIENTS; i++) {
             if (i == bs->entitynum) {
+                continue;
+            }
+            if (BotSameTeam(bs, i)) {
                 continue;
             }
             BotEntityInfo(i, &entinfo);
@@ -2848,6 +3132,9 @@ int AINode_InstaGib(bot_state_t* bs) {
     BotSetupForMovement(bs);
     // move towards the target
     trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+    // [QL] E135. what bot_debugTrack reports: where the bot is actually going
+    bs->mstat.movegoalarea = goal.areanum;
+    bs->mstat.traveltype = moveresult.traveltype;
     if (moveresult.failure) {
         // reset the avoid reach and just face the target this frame
         trap_BotResetAvoidReach(bs->ms);

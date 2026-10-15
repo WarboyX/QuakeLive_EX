@@ -42,6 +42,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "ai_main.h"
 #include "ai_dmq3.h"
+#include "ai_tactics.h"
 #include "ai_chat.h"
 #include "ai_cmd.h"
 #include "ai_dmnet.h"
@@ -54,6 +55,27 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 // bot states
 bot_state_t* botstates[MAX_CLIENTS];
+
+/*
+[QL] Storage for the above, rather than G_Alloc.
+
+A bot_state_t is 9032 bytes and one is taken per client slot that has ever held
+a bot. The game's pool is a fixed 256KB shared with map entity strings, the
+arena list (167 entries on a full install) and the bot list, so somewhere past
+twenty-five bots the pool ran out and the server died with
+
+    ERROR: G_Alloc: failed on allocation of 9032 bytes
+
+which is the reported "adding more than 20 bots crashes the server". G_Alloc has
+no free, so this also meant bot capacity depended on how many entity strings the
+current map happened to need.
+
+Bots are bounded by MAX_CLIENTS by definition, so the storage may as well be
+too: 64 slots is 578KB of BSS, it is reused across maps and reconnects, and it
+takes the largest and most variable consumer out of the pool entirely. The
+pointer array stays so nothing else changes.
+*/
+static bot_state_t botstateStorage[MAX_CLIENTS];
 // number of bots
 int numbots;
 // floating point time
@@ -659,8 +681,22 @@ void BotInterbreeding(void) {
 BotEntityInfo
 ==============
 */
+// AAS client snapshots are stable between the world update and input submission.
+// Share reads across bots only during that interval; callers receive a copy.
+static qboolean botEntityCacheActive;
+static qboolean botEntityCacheValid[MAX_CLIENTS];
+static aas_entityinfo_t botEntityCache[MAX_CLIENTS];
+
 void BotEntityInfo(int entnum, aas_entityinfo_t* info) {
-    trap_AAS_EntityInfo(entnum, info);
+    if (!botEntityCacheActive || entnum < 0 || entnum >= MAX_CLIENTS) {
+        trap_AAS_EntityInfo(entnum, info);
+        return;
+    }
+    if (!botEntityCacheValid[entnum]) {
+        trap_AAS_EntityInfo(entnum, &botEntityCache[entnum]);
+        botEntityCacheValid[entnum] = qtrue;
+    }
+    *info = botEntityCache[entnum];
 }
 
 /*
@@ -742,12 +778,126 @@ float BotChangeViewAngle(float angle, float ideal_angle, float speed) {
 BotChangeViewAngles
 ==============
 */
+
+/*
+BotAimSweep: an eased acquisition followed by continuous corrective tracking.
+Timing uses the game/input clock, not FloatTime's stepped botlib clock. Angular
+velocity is measured only when BotAimAtEnemy supplies a fresh sample; random
+drift is applied afterwards, so it cannot become predicted target motion.
+These constants are engineering tuning, not a fitted model of human motor data.
+
+[QL] E227 (A1, from the Route Intel kit). This replaced a tracker that slowed
+as it closed and stopped inside a 0.35-degree deadzone, written to stop the view
+gluing itself to the 10 Hz ideal_viewangles staircase (see this function at
+e4036f1e for that reasoning). A1 tracks at 12-20/s with no deadzone, which is
+the shape that note warned against: if spectators see aim jitter, look here
+first. E226 measured the old version costing the layer most of its fights.
+*/
+static qboolean BotAimSweep(bot_state_t* bs, float frametime) {
+    float now = level.time * 0.001f;
+    float targetangles[2], dist = 0, t, skill, rate, delta;
+    qboolean acquire;
+    int i;
+
+    if (!bot_tactics.integer || !bot_aimSweep.integer || bs->enemy < 0) {
+        bs->tac.aimsweep_len = 0;
+        return qfalse;
+    }
+    if (frametime <= 0) return qtrue;
+    if (frametime > 0.2f) frametime = 0.2f;
+    skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_SKILL, 0, 1);
+    acquire = bs->tac.aimsweep_len <= 0 || bs->tac.aimenemy != bs->enemy ||
+              now < bs->tac.aimsweep_start;
+    delta = bs->tac.aimsample_time - bs->tac.aimfilter_time;
+    if (delta < 0 || delta > 0.5f) acquire = qtrue;
+    if (!acquire && delta > 0) {
+        for (i = 0; i < 2; i++) {
+            float d = fabs(AngleDifference(bs->ideal_viewangles[i], bs->tac.aimprev[i]));
+            if (d > dist) dist = d;
+        }
+        // A discontinuity starts a new acquisition; ordinary fast tracking
+        // no longer restarts the flick at every eight-degree think update.
+        if (dist > 45.0f) acquire = qtrue;
+    }
+    if (acquire) {
+        for (i = 0; i < 2; i++) {
+            bs->tac.aim1st[i] = 0;
+            bs->tac.aimprev[i] = bs->ideal_viewangles[i];
+        }
+        bs->tac.aimfilter_time = bs->tac.aimsample_time;
+        bs->tac.aimenemy = bs->enemy;
+    } else if (delta > 0) {
+        rate = 1.0f - expf(-delta / 0.08f);
+        for (i = 0; i < 2; i++) {
+            float raw = AngleDifference(bs->ideal_viewangles[i], bs->tac.aimprev[i]) / delta;
+            if (raw > 180) raw = 180;
+            if (raw < -180) raw = -180;
+            bs->tac.aim1st[i] += (raw - bs->tac.aim1st[i]) * rate;
+            bs->tac.aimprev[i] = bs->ideal_viewangles[i];
+        }
+        bs->tac.aimfilter_time = bs->tac.aimsample_time;
+    }
+    rate = 1.0f - expf(-frametime * 4.0f);
+    for (i = 0; i < 2; i++) {
+        float lead = skill * bs->tac.aim1st[i] * 0.03f;
+        // This compensates a little controller lag, not projectile flight.
+        // Do not extrapolate indefinitely when the aim sample stops updating.
+        if (now - bs->tac.aimsample_time > 0.2f) lead = 0;
+        if (lead > 2) lead = 2;
+        if (lead < -2) lead = -2;
+        bs->tac.aimoffset[i] += (bs->tac.aimoffsetgoal[i] - bs->tac.aimoffset[i]) * rate;
+        targetangles[i] = AngleMod(bs->ideal_viewangles[i] + bs->tac.aimoffset[i] + lead);
+    }
+    if (acquire) {
+        dist = 0;
+        for (i = 0; i < 2; i++) {
+            float d = fabs(AngleDifference(targetangles[i], bs->viewangles[i]));
+            bs->tac.aimfrom[i] = bs->viewangles[i];
+            if (d > dist) dist = d;
+        }
+        // Preserve the existing distance/skill-based flick duration.
+        bs->tac.aimsweep_len = (0.05f + dist * 0.004f) * (1.5f - skill);
+        if (bs->tac.aimsweep_len < 0.05f) bs->tac.aimsweep_len = 0.05f;
+        if (bs->tac.aimsweep_len > 1.0f) bs->tac.aimsweep_len = 1.0f;
+        bs->tac.aimsweep_start = now;
+    }
+    for (i = 0; i < 2; i++) bs->tac.aimto[i] = targetangles[i];
+    t = (now - bs->tac.aimsweep_start) / bs->tac.aimsweep_len;
+    if (t < 0) t = 0;
+    if (t < 1) {
+        t = t * t * (3.0f - 2.0f * t);
+        for (i = 0; i < 2; i++) {
+            bs->viewangles[i] = AngleMod(bs->tac.aimfrom[i] +
+                AngleDifference(targetangles[i], bs->tac.aimfrom[i]) * t);
+        }
+    } else {
+        // No permanent deadzone: small misses remain correctable. Exponential
+        // blending gives the same stationary response across input rates.
+        float maxstep = (180.0f + 540.0f * skill) * frametime;
+        rate = 1.0f - expf(-frametime * (12.0f + 8.0f * skill));
+        for (i = 0; i < 2; i++) {
+            float step = AngleDifference(targetangles[i], bs->viewangles[i]) * rate;
+            if (step > maxstep) step = maxstep;
+            if (step < -maxstep) step = -maxstep;
+            bs->viewangles[i] = AngleMod(bs->viewangles[i] + step);
+        }
+    }
+    if (bs->viewangles[PITCH] > 180) bs->viewangles[PITCH] -= 360;
+    trap_EA_View(bs->client, bs->viewangles);
+    return qtrue;
+}
+
 void BotChangeViewAngles(bot_state_t* bs, float thinktime) {
     float diff, factor, maxchange, anglespeed, disired_speed;
     int i;
 
     if (bs->ideal_viewangles[PITCH] > 180)
         bs->ideal_viewangles[PITCH] -= 360;
+    // [QL] the aim movement model; falls through to id's servos when off or when
+    // there is no enemy to sweep towards
+    if (BotAimSweep(bs, thinktime)) {
+        return;
+    }
     //
     if (bs->enemy >= 0) {
         factor = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_VIEW_FACTOR, 0.01f, 1);
@@ -761,7 +911,33 @@ void BotChangeViewAngles(bot_state_t* bs, float thinktime) {
     maxchange *= thinktime;
     for (i = 0; i < 2; i++) {
         //
-        if (bot_challenge.integer) {
+        /*
+        [QL] bot_viewSmooth picks the first branch, and defaults to on.
+
+        The second one is id's "over reaction view model" and it is a divergent
+        recurrence:
+
+            viewanglespeed += (viewanglespeed - disired_speed);
+
+        which is v = 2v - d - the speed is pushed *away* from the speed it wants,
+        then clamped, then damped by 0.45 * (1 - factor) afterwards. The damping
+        is what keeps it from running away, and what is left is a second-order
+        system that overshoots and rings. That is the crosshair drifting past a
+        target and swinging back, reported from spectating as "floating around
+        targets".
+
+        The first branch is a plain exponential approach - speed proportional to
+        the angle still to cover, clamped - which settles without overshoot. It
+        was reachable only through bot_challenge, which also makes accurate bots
+        snap their view straight onto the target in BotAimAtEnemy; that is the
+        opposite of what is wanted here, so this gets its own cvar rather than
+        borrowing that one.
+
+        Aim *error* is unaffected either way. It comes from the spread offset in
+        BotAimAtEnemy, not from the view model, so a bad bot is still a bad shot -
+        it just stops shaking.
+        */
+        if (bot_challenge.integer || (bot_tactics.integer && bot_viewSmooth.integer)) {
             // smooth slowdown view model
             diff = fabs(AngleDifference(bs->viewangles[i], bs->ideal_viewangles[i]));
             anglespeed = diff * factor;
@@ -931,6 +1107,14 @@ void BotUpdateInput(bot_state_t* bs, int time, int elapsed_time) {
     }
     // change the bot view angles
     BotChangeViewAngles(bs, (float)elapsed_time / 1000);
+    /* [QL] E230. bot_debugAim <client>: one "botaim" line per input frame for
+       that bot - game ms, enemy, the view it holds and the aim it wants - so
+       tracking jitter can be measured rather than argued about. -1 is off. */
+    if (bot_debugAim.integer == bs->client) {
+        G_Printf("botaim %d %d %d %.3f %.3f %.3f %.3f\n", level.time, bs->client, bs->enemy,
+                 bs->viewangles[YAW], bs->viewangles[PITCH],
+                 bs->ideal_viewangles[YAW], bs->ideal_viewangles[PITCH]);
+    }
     // retrieve the bot input
     trap_EA_GetInput(bs->client, (float)time / 1000, &bi);
     // respawn hack
@@ -984,6 +1168,52 @@ void RemoveColorEscapeSequences(char* text) {
 BotAI
 ==============
 */
+/*
+==============
+BotStripChatClientNum
+
+[QL] Quake Live's chat relay is not Quake 3's.
+
+G_SayTo emits
+
+    chat  "%02d <name>^7: <text>"
+    tchat "%02d <name>^7: <text>"
+
+where the leading two-digit field is the speaker's clientNum, added so the
+cgame can tie the line and its voice sound to a client (see g_cmds.c). Quake 3
+sent the payload starting at the name.
+
+Everything the bots understand of what is said to them is matched by
+be_ai_chat against the templates in botfiles/match.c, and those templates start
+at the speaker's name - MTCONTEXT_REPLYCHAT pulls NETNAME and MESSAGE out of
+the line, and BotMatchMessage then resolves the speaker with ClientFromName.
+With "39 " glued to the front, NETNAME comes out as "39 Bones", no template
+matches, and every order, request and reply is silently dropped.
+
+That is not only a chat problem. In team games the leader hands out roles - go
+for the flag, defend the base, escort the carrier - as tell messages, and a bot
+that never matches one never takes a task, so it falls through to
+AINode_Seek_LTG and roams. Whole teams roaming is what "they don't path to the
+objective" looks like, and it is also why they pile into each other.
+
+So take the field off before queueing. Only a run of digits followed by a
+single space is removed, so a message that happens to begin with a number is
+left alone if the format ever changes back.
+==============
+*/
+static void BotStripChatClientNum(char *msg) {
+    char *p = msg;
+
+    while (*p >= '0' && *p <= '9') {
+        p++;
+    }
+    if (p == msg || *p != ' ') {
+        return;   // not the clientNum field
+    }
+    p++;
+    memmove(msg, p, strlen(p) + 1);
+}
+
 int BotAI(int client, float thinktime) {
     bot_state_t* bs;
     char buf[1024], *args;
@@ -1024,11 +1254,13 @@ int BotAI(int client, float thinktime) {
             // remove first and last quote from the chat message
             memmove(args, args + 1, strlen(args));
             args[strlen(args) - 1] = '\0';
+            BotStripChatClientNum(args);
             trap_BotQueueConsoleMessage(bs->cs, CMS_CHAT, args);
         } else if (!Q_stricmp(buf, "tchat")) {
             // remove first and last quote from the chat message
             memmove(args, args + 1, strlen(args));
             args[strlen(args) - 1] = '\0';
+            BotStripChatClientNum(args);
             trap_BotQueueConsoleMessage(bs->cs, CMS_CHAT, args);
         } else if (!Q_stricmp(buf, "vchat")) {
             BotVoiceChatCommand(bs, SAY_ALL, args);
@@ -1057,6 +1289,22 @@ int BotAI(int client, float thinktime) {
     bs->areanum = BotPointAreaNum(bs->origin);
     // the real AI
     BotDeathmatchAI(bs, thinktime);
+    if (bs->inuse && bot_debugMovement.value > 0) {
+        BotMoveStatsSample(bs, thinktime);
+    }
+    if (bs->inuse && bot_debugTrack.integer > 0) {
+        BotTrackSample(bs);
+    }
+    /*
+    [QL] The think can end with the bot gone - it can remove itself, and until
+    the engine deferred overflow drops out of the game module it could also be
+    dropped from underneath itself by a configstring write several frames down.
+    BotAIShutdownClient memsets the state, so bs->client is 0 by now and the
+    calls below would aim at whoever holds slot 0.
+    */
+    if (!bs->inuse) {
+        return qtrue;
+    }
     // set the weapon selection every AI frame
     trap_EA_SelectWeapon(bs->client, bs->weaponnum);
     // subtract the delta angles
@@ -1174,8 +1422,13 @@ int BotAISetupClient(int client, struct bot_settings_s* settings, qboolean resta
     bot_state_t* bs;
     int errnum;
 
+    if (client < 0 || client >= MAX_CLIENTS) {
+        BotAI_Print(PRT_FATAL, "BotAISetupClient: client %d out of range\n", client);
+        return qfalse;
+    }
+
     if (!botstates[client])
-        botstates[client] = G_Alloc(sizeof(bot_state_t));
+        botstates[client] = &botstateStorage[client];
     bs = botstates[client];
 
     if (!bs) {
@@ -1337,6 +1590,9 @@ void BotResetState(bot_state_t* bs) {
     bs->entitynum = entitynum;
     bs->character = character;
     bs->entergame_time = entergame_time;
+    // [QL] the tactical picture zeroes to "ally 0 at distance 0", which is a
+    // team mate standing on top of the bot; it needs its own reset
+    BotTacticsReset(bs);
     // reset several states
     if (bs->ms)
         trap_BotResetMoveState(bs->ms);
@@ -1379,11 +1635,246 @@ int BotAILoadMap(int restart) {
 void ProximityMine_Trigger(gentity_t* trigger, gentity_t* other, trace_t* trace);
 
 /*
+==============
+[QL] E133. bot_debugMovement: how well bots MOVE, measured rather than watched.
+
+"Clunky, slow, they go in circles till they have a path" is three claims, and
+each is a number:
+
+  speed    mean horizontal speed while travelling - that is, in a seek node,
+           not fighting. A running player is at 320; strafe-jumping is more.
+  stalled  share of travelling time below 100 ups: standing, dithering, or
+           walking into a wall.
+  bumps    walked into another player's body (BotAIBlocked with a client in
+           the way) - what crowd steering exists to prevent
+  loops    came back to within 96 units of where it was 4-10 seconds earlier,
+           having been at least 256 away in between, while chasing the SAME
+           goal the whole time. A bot that fetched an item and came back has
+           changed goal; one that went round in a circle has not. Defending,
+           camping and patrolling are not counted: they circle a spot by design.
+
+Set bot_debugMovement to the report interval in seconds. Every report covers
+the interval since the last and prints one line per bot and a total.
+==============
+*/
+#define MSTAT_RING 24
+#define MSTAT_STEP 0.5f
+
+static float movestats_next;
+
+static int BotMoveStatsGoal(bot_state_t* bs) {
+    bot_goal_t goal;
+
+    if (trap_BotGetTopGoal(bs->gs, &goal)) {
+        return goal.areanum * 32 + bs->ltgtype;
+    }
+    return -1 - bs->ltgtype;
+}
+
+void BotMoveStatsSample(bot_state_t* bs, float thinktime) {
+    float now = FloatTime(), speed;
+    int travelling, goal, i, j, k, idx, jdx;
+
+    if (bs->cur_ps.pm_type != PM_NORMAL || bs->cur_ps.stats[STAT_HEALTH] <= 0) {
+        bs->mstat.n = 0;  // a respawn is not a loop
+        return;
+    }
+    travelling = bs->ainode == AINode_Seek_LTG || bs->ainode == AINode_Seek_NBG;
+    speed = sqrt(bs->cur_ps.velocity[0] * bs->cur_ps.velocity[0] +
+                 bs->cur_ps.velocity[1] * bs->cur_ps.velocity[1]);
+    if (!travelling) {
+        bs->mstat.fight += thinktime;
+        bs->mstat.n = 0;
+        return;
+    }
+    bs->mstat.travel += thinktime;
+    bs->mstat.speed += speed * thinktime;
+    if (speed < 100) {
+        bs->mstat.stalled += thinktime;
+    }
+    if (now < bs->mstat.next_sample) {
+        return;
+    }
+    bs->mstat.next_sample = now + MSTAT_STEP;
+    goal = BotMoveStatsGoal(bs);
+    // defending, camping and patrolling move round a spot on purpose
+    if (bs->ltgtype == LTG_DEFENDKEYAREA || bs->ltgtype == LTG_CAMP ||
+        bs->ltgtype == LTG_CAMPORDER || bs->ltgtype == LTG_PATROL) {
+        bs->mstat.n = 0;
+        return;
+    }
+    // a loop: some sample 4-10s back is close to here, every sample since has
+    // the same goal, and one of them was far from that spot
+    for (i = 0; i < bs->mstat.n; i++) {
+        idx = (bs->mstat.head - 1 - i + MSTAT_RING) % MSTAT_RING;
+        if (bs->mstat.goal[idx] != goal) {
+            break;
+        }
+        if (now - bs->mstat.t[idx] < 4 || now - bs->mstat.t[idx] > 10) {
+            continue;
+        }
+        if (Distance(bs->mstat.pos[idx], bs->origin) > 96) {
+            continue;
+        }
+        for (j = 0; j < i; j++) {
+            jdx = (bs->mstat.head - 1 - j + MSTAT_RING) % MSTAT_RING;
+            if (Distance(bs->mstat.pos[jdx], bs->mstat.pos[idx]) > 256) {
+                break;
+            }
+        }
+        if (j < i) {
+            bs->mstat.loops++;
+            bs->mstat.n = 0;
+            break;
+        }
+    }
+    k = bs->mstat.head;
+    VectorCopy(bs->origin, bs->mstat.pos[k]);
+    bs->mstat.t[k] = now;
+    bs->mstat.goal[k] = goal;
+    bs->mstat.head = (k + 1) % MSTAT_RING;
+    if (bs->mstat.n < MSTAT_RING) {
+        bs->mstat.n++;
+    }
+}
+
+/*
+[QL] E133. bot_debugTrack: one "bottrack" line per bot every N milliseconds of
+game time, for tools/bot-harness/render-tracks.py to draw over an overhead view
+of the map:
+
+  bottrack <ms> <client> <team> <x> <y> <z> <speed> <state> <ltg> <goalarea> <name> tt<traveltype>
+
+state is s(eek) or f(ight) or d(ead). The map picture shows where movement
+goes wrong - a doorway every bot stalls in, a loop that always happens in the
+same room - which a total cannot.
+*/
+void BotTrackSample(bot_state_t* bs) {
+    bot_goal_t goal;
+    char state;
+    int goalarea = 0;
+
+    if (level.time < bs->mstat_track_next) {
+        return;
+    }
+    bs->mstat_track_next = level.time + bot_debugTrack.integer;
+    if (bs->cur_ps.pm_type != PM_NORMAL || bs->cur_ps.stats[STAT_HEALTH] <= 0) {
+        state = 'd';
+    } else if (bs->ainode == AINode_Seek_LTG || bs->ainode == AINode_Seek_NBG) {
+        state = 's';
+    } else {
+        state = 'f';
+    }
+    // the goal the bot last moved towards, which is its real destination -
+    // the top of the goal stack is empty for most jobs (E135)
+    goalarea = bs->mstat.movegoalarea;
+    if (!goalarea && trap_BotGetTopGoal(bs->gs, &goal)) {
+        goalarea = goal.areanum;
+    }
+    G_Printf("bottrack %d %d %d %.0f %.0f %.0f %.0f %c %d %d %s tt%d\n", level.time, bs->client, BotTeam(bs),
+             bs->origin[0], bs->origin[1], bs->origin[2],
+             sqrt(bs->cur_ps.velocity[0] * bs->cur_ps.velocity[0] + bs->cur_ps.velocity[1] * bs->cur_ps.velocity[1]),
+             state, bs->ltgtype, goalarea, g_entities[bs->client].client->pers.netname, bs->mstat.traveltype);
+    // Optional CTF evidence: distinguish actual possession from a stale job,
+    // identify escorts' carriers, and record progress in AAS travel time.
+    if (gametype == GT_CTF && (BotCTFCarryingFlag(bs) || bs->ltgtype == LTG_TEAMACCOMPANY)) {
+        bot_goal_t* home = BotTeam(bs) == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+        int travel = bs->areanum && home->areanum ?
+            trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, home->areanum, bs->tfl) : 0;
+        G_Printf("ctftrack %d %d hp%d flag%d mate%d via%d home%d node%s\n",
+                 level.time, bs->client, bs->cur_ps.stats[STAT_HEALTH], BotCTFCarryingFlag(bs),
+                 bs->ltgtype == LTG_TEAMACCOMPANY ? bs->teammate : -1,
+                 bs->reachedaltroutegoal_time ? 0 : bs->altroutegoal.areanum, travel,
+                 bs->ainode == AINode_Battle_Retreat ? "retreat" :
+                 bs->ainode == AINode_Battle_NBG ? "item" :
+                 bs->ainode == AINode_Battle_Fight ? "fight" : "other");
+    }
+}
+
+static void BotMoveStatsReport(void) {
+    float now = FloatTime(), travel = 0, speed = 0, stalled = 0, fight = 0;
+    int i, loops = 0, bumps = 0, bots = 0;
+    bot_state_t* bs;
+
+    if (bot_debugMovement.value <= 0) {
+        movestats_next = 0;
+        return;
+    }
+    if (!movestats_next) {
+        movestats_next = now + bot_debugMovement.value;
+        return;
+    }
+    if (now < movestats_next) {
+        return;
+    }
+    movestats_next = now + bot_debugMovement.value;
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        bs = botstates[i];
+        if (!bs || !bs->inuse) {
+            continue;
+        }
+        if (bs->mstat.travel > 0) {
+            BotAI_Print(PRT_MESSAGE, "movestats %-16s travel %5.1fs  speed %3.0f  stalled %3.0f%%  loops %d  bumps %d  fight %5.1fs\n",
+                        g_entities[i].client ? g_entities[i].client->pers.netname : "?",
+                        bs->mstat.travel, bs->mstat.speed / bs->mstat.travel,
+                        100 * bs->mstat.stalled / bs->mstat.travel, bs->mstat.loops, bs->mstat.bumps, bs->mstat.fight);
+        }
+        travel += bs->mstat.travel;
+        speed += bs->mstat.speed;
+        stalled += bs->mstat.stalled;
+        fight += bs->mstat.fight;
+        loops += bs->mstat.loops;
+        bumps += bs->mstat.bumps;
+        bots++;
+        bs->mstat.travel = bs->mstat.speed = bs->mstat.stalled = bs->mstat.fight = 0;
+        bs->mstat.loops = bs->mstat.bumps = 0;
+    }
+    if (travel > 0) {
+        BotAI_Print(PRT_MESSAGE, "movestats TOTAL %d bots  travel %.0fs  speed %.0f  stalled %.1f%%  loops %d (%.2f per bot-minute)  bumps %d (%.2f per bot-minute)  fight %.0fs\n",
+                    bots, travel, speed / travel, 100 * stalled / travel, loops, loops * 60 / travel,
+                    bumps, bumps * 60 / travel, fight);
+    }
+}
+
+/*
 ==================
 BotAIStartFrame
 ==================
 */
-int BotAIStartFrame(int time) {
+static qboolean botTimingEnabled;
+
+static void BotTimingStage(char *stage) {
+    if (botTimingEnabled) {
+        trap_BotLibVarSet(BOT_TIMING_MARKER, stage);
+    }
+}
+
+/*
+[QL] E224: bot_tacticsTeams. Every reader of bot_tactics - 64 of them, across
+the planner, movement, combat and think rate - runs inside one bot's think or
+input, so the per-team policy is applied there: for that bot the cvar reads as
+its own team's setting, and the real value is put back straight after. Shared
+per-team caches stay consistent because a team is all one policy.
+*/
+static int botTacticsSaved;
+
+static void BotTacticsForClient(int client) {
+    const gclient_t* cl = g_entities[client].client;
+    botTacticsSaved = bot_tactics.integer;
+    if (bot_tactics.integer && cl &&
+        (cl->sess.sessionTeam == TEAM_RED || cl->sess.sessionTeam == TEAM_BLUE)) {
+        const int bit = cl->sess.sessionTeam == TEAM_RED ? 1 : 2;
+        if (!(bot_tacticsTeams.integer & bit)) {
+            bot_tactics.integer = 0;
+        }
+    }
+}
+
+static void BotTacticsRestore(void) {
+    bot_tactics.integer = botTacticsSaved;
+}
+
+static int BotAIStartFrameRun(int time) {
     int i;
     gentity_t* ent;
     bot_entitystate_t state;
@@ -1393,6 +1884,12 @@ int BotAIStartFrame(int time) {
     static int lastbotthink_time;
 
     G_CheckBotSpawn();
+
+    /*
+    [QL] Every server frame, not every bot think: the point is to spread
+    configstring writes across frames, so it has to run on the frame clock.
+    */
+    BotFlushTeamTasks();
 
     trap_Cvar_Update(&bot_rocketjump);
     trap_Cvar_Update(&bot_grapple);
@@ -1412,6 +1909,7 @@ int BotAIStartFrame(int time) {
     }
 
     if (bot_pause.integer) {
+        BotTimingStage("input");
         // execute bot user commands every frame
         for (i = 0; i < MAX_CLIENTS; i++) {
             if (!botstates[i] || !botstates[i]->inuse) {
@@ -1453,6 +1951,18 @@ int BotAIStartFrame(int time) {
     elapsed_time = time - local_time;
     local_time = time;
 
+    BotMoveStatsReport();  // [QL] E133, bot_debugMovement
+    {
+        // [QL] E133. botlib reads its own copy; keep it in step so it can be
+        // switched mid-match for an A/B
+        static int crowdsteer_mod = -1;
+
+        if (bot_crowdsteer.modificationCount != crowdsteer_mod) {
+            crowdsteer_mod = bot_crowdsteer.modificationCount;
+            trap_BotLibVarSet("bot_crowdsteer", bot_crowdsteer.string);
+        }
+    }
+
     botlib_residual += elapsed_time;
 
     if (elapsed_time > bot_thinktime.integer)
@@ -1460,6 +1970,7 @@ int BotAIStartFrame(int time) {
     else
         thinktime = bot_thinktime.integer;
 
+    BotTimingStage("world");
     // update the bot library
     if (botlib_residual >= thinktime) {
         botlib_residual -= thinktime;
@@ -1538,6 +2049,9 @@ int BotAIStartFrame(int time) {
 
     floattime = trap_AAS_Time();
 
+    BotTimingStage("ai");
+    memset(botEntityCacheValid, 0, sizeof(botEntityCacheValid));
+    botEntityCacheActive = qtrue;
     // execute scheduled bot AI
     for (i = 0; i < MAX_CLIENTS; i++) {
         if (!botstates[i] || !botstates[i]->inuse) {
@@ -1545,19 +2059,61 @@ int BotAIStartFrame(int time) {
         }
         //
         botstates[i]->botthink_residual += elapsed_time;
-        //
-        if (botstates[i]->botthink_residual >= thinktime) {
-            botstates[i]->botthink_residual -= thinktime;
+        /*
+        [QL] How often a bot thinks now scales with its skill.
 
-            if (!trap_AAS_Initialized())
-                return qfalse;
+        Everything else in this AI scales - aim, accuracy, reaction time,
+        alertness, attack skill - and the one thing that did not was *how often
+        the bot decides anything*. A skill 5 bot re-examined the world exactly as
+        rarely as a skill 1 bot: ten times a second, both of them. That is a
+        ceiling on tactics rather than on marksmanship, and no amount of
+        characteristic tuning gets past it, because a bot cannot respond to
+        something it has not looked at yet.
 
-            if (g_entities[i].client->pers.connected == CON_CONNECTED) {
-                BotAI(i, (float)thinktime / 1000);
+        Skill 1 keeps the stock interval. Skill 5 thinks at about 15 Hz. The
+        scaling is on the interval rather than on a separate timer so everything
+        expressed as "random() < bs->thinktime * x" - and there is a lot of it -
+        rescales with it automatically and keeps the same per-second rate.
+
+        Cost is real and bounded: at the top of the range this is half again as
+        much AI for the bots that have it, and BotScheduleBotThink already
+        staggers the residuals so the load stays spread across frames rather
+        than landing on one.
+        */
+        BotTacticsForClient(i);
+        {
+            int botthinktime = thinktime;
+
+            if (bot_tactics.integer) {
+                float sk = trap_Characteristic_BFloat(botstates[i]->character,
+                                                      CHARACTERISTIC_AIM_SKILL, 0, 1);
+
+                botthinktime = (int)(thinktime * (1.0f - 0.35f * sk));
+                if (botthinktime < 40) {
+                    botthinktime = 40;
+                }
+                if (botthinktime > thinktime) {
+                    botthinktime = thinktime;
+                }
+            }
+            if (botstates[i]->botthink_residual >= botthinktime) {
+                botstates[i]->botthink_residual -= botthinktime;
+
+                if (!trap_AAS_Initialized()) {
+                    BotTacticsRestore();
+                    return qfalse;
+                }
+
+                if (g_entities[i].client->pers.connected == CON_CONNECTED) {
+                    BotAI(i, (float)botthinktime / 1000);
+                }
             }
         }
+        BotTacticsRestore();
     }
 
+    botEntityCacheActive = qfalse;
+    BotTimingStage("input");
     // execute bot user commands every frame
     for (i = 0; i < MAX_CLIENTS; i++) {
         if (!botstates[i] || !botstates[i]->inuse) {
@@ -1567,11 +2123,27 @@ int BotAIStartFrame(int time) {
             continue;
         }
 
+        BotTacticsForClient(i);
         BotUpdateInput(botstates[i], time, elapsed_time);
+        BotTacticsRestore();
         trap_BotUserCommand(botstates[i]->client, &botstates[i]->lastucmd);
     }
 
     return qtrue;
+}
+
+int BotAIStartFrame(int time) {
+    int result;
+
+    // The wrapper closes timings and the cache on pause and AAS early returns.
+    botEntityCacheActive = qfalse;
+    botTimingEnabled = trap_Cvar_VariableIntegerValue("com_cpuTimings") != 0;
+    BotTimingStage("begin");
+    result = BotAIStartFrameRun(time);
+    botEntityCacheActive = qfalse;
+    BotTimingStage("end");
+    botTimingEnabled = qfalse;
+    return result;
 }
 
 /*
@@ -1606,6 +2178,7 @@ int BotInitLibrary(void) {
     trap_BotLibVarSet("g_gametype", buf);
     // bot developer mode and log file
     trap_BotLibVarSet("bot_developer", bot_developer.string);
+    trap_BotLibVarSet("bot_crowdsteer", bot_crowdsteer.string);  // [QL] E133
     trap_Cvar_VariableStringBuffer("logfile", buf, sizeof(buf));
     trap_BotLibVarSet("log", buf);
     // no chatting
@@ -1667,7 +2240,10 @@ BotAISetup
 int BotAISetup(int restart) {
     int errnum;
 
-    trap_Cvar_Register(&bot_thinktime, "bot_thinktime", "100", CVAR_CHEAT);
+    /* [QL] not CVAR_CHEAT. This is the single biggest lever on how responsive the
+   bots are and it was unsettable on a pure server, which is every server that
+   matters. It is a server-side tuning value, not a client advantage. */
+    trap_Cvar_Register(&bot_thinktime, "bot_thinktime", "100", 0);
     trap_Cvar_Register(&bot_memorydump, "bot_memorydump", "0", CVAR_CHEAT);
     trap_Cvar_Register(&bot_saveroutingcache, "bot_saveroutingcache", "0", CVAR_CHEAT);
     trap_Cvar_Register(&bot_pause, "bot_pause", "0", CVAR_CHEAT);

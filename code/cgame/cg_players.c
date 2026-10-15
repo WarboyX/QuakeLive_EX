@@ -355,7 +355,40 @@ static void CG_CalcModelScale(clientInfo_t* ci) {
     // [QL] factor is the server's g_playerModelScale (DAT_10a5fd98, from CS_PLAYERINFO),
     // NOT the cg_scalePlayerModelsToBB client toggle (that only gates whether the scale is
     // applied in CG_Player). Default 1.1 when the server did not send CS_PLAYERINFO.
+    /*
+    [QL] Guard the divisor, and say what came out.
+
+    This is the one place a player can end up added to the scene and not drawn.
+    CG_Player scales all three axes of legs, torso and head by ci->modelScale
+    under a "!= 1.0f" test, so 0 passes straight through it and collapses every
+    part to a point - while CG_PlayerShadow traces from cent->lerpOrigin with a
+    fixed +-15 box and knows nothing about the scale, so the shadow stays on the
+    floor under a player who is not there. That is the reported symptom exactly,
+    and it is renderer-independent, which the report also says.
+
+    totalHeight comes from two trap_R_LerpTag calls plus a model bound. LerpTag
+    returns an identity orientation when the tag is missing or the frame index
+    is out of range, so a model whose animation.cfg disagrees with its meshes
+    can drive this to zero or negative and take the scale to infinity or a
+    negative - all three are invisible. Clamp, and report rather than guess.
+    */
+    if (totalHeight < 1.0f) {
+        if (cg_debugPlayerModels.integer) {
+            CG_Printf(S_COLOR_YELLOW "modelScale: %s/%s measured %.2f units tall - "
+                      "tag_torso/tag_head missing or animation.cfg frames out of range. "
+                      "Using scale 1.0.\n", ci->modelName, ci->skinName, totalHeight);
+        }
+        ci->modelScale = 1.0f;
+        return;
+    }
+
     ci->modelScale = (56.0f / totalHeight) * cgs.playerModelScale;
+
+    if (cg_debugPlayerModels.integer) {
+        CG_Printf("modelScale: %s/%s height %.2f, g_playerModelScale %.2f -> scale %.3f%s\n",
+                  ci->modelName, ci->skinName, totalHeight, cgs.playerModelScale, ci->modelScale,
+                  (ci->modelScale < 0.05f) ? S_COLOR_YELLOW "  <- this player will not be visible" : "");
+    }
 }
 
 /*
@@ -415,12 +448,48 @@ static qboolean CG_RegisterClientModelname(clientInfo_t* ci, const char* modelNa
         return qfalse;
     }
 
-    // [QL] icon - direct path, .tga only
-    Com_sprintf(filename, sizeof(filename), "models/players/%s/icon_%s.tga", ci->headModelName, ci->headSkinName);
-    ci->modelIcon = trap_R_RegisterShaderNoMip(filename);
-    if (!ci->modelIcon) {
-        Com_Printf("Failed to load icon file: %s\n", filename);
-        return qfalse;
+    /*
+    [QL] The icon, and why it must not fail the registration.
+
+    Two bugs in four lines, both of the silent-failure shape CLAUDE.md warns
+    about, and together they were enough to stop every player in the game from
+    getting their own model.
+
+    First the name. This asked for icon_%s.tga. The shipped pak contains 186
+    icon_*.png and thirteen icon_*.tga, and not one of the thirteen is a
+    icon_default / icon_red / icon_blue - so `grep -c icon_default.tga
+    docs/pak-manifest.txt` is 0. RE_RegisterShader returns 0 for a name the pak
+    does not have and reports nothing, so the lookup failed for every model and
+    every skin.
+
+    Then the consequence. Failing here returns qfalse for the whole function,
+    and CG_LoadClientInfo reads that as "this model did not load" and walks its
+    fallback chain - preferred skin, then team skin, then sarge - every one of
+    which got as far as this same line and failed the same way. So the chain ran
+    to the end for every client in every match: modelloaded came out false,
+    custom player sounds were never loaded for anyone, and the model actually
+    left registered was whatever the last attempt set rather than the one the
+    player chose.
+
+    An icon is a scoreboard decoration. It is not a reason to have no player
+    model. So it is looked up across the extensions the pak actually uses and,
+    if it is still not found, noted once and stepped over - the models, skins
+    and animations that did load are kept.
+    */
+    {
+        static const char* iconExt[] = {".png", ".tga", ".jpg"};
+        int e;
+
+        ci->modelIcon = 0;
+        for (e = 0; e < (int)ARRAY_LEN(iconExt) && !ci->modelIcon; e++) {
+            Com_sprintf(filename, sizeof(filename), "models/players/%s/icon_%s%s",
+                        ci->headModelName, ci->headSkinName, iconExt[e]);
+            ci->modelIcon = trap_R_RegisterShaderNoMip(filename);
+        }
+        if (!ci->modelIcon && cg_debugPlayerModels.integer) {
+            Com_Printf(S_COLOR_YELLOW "no icon for %s/%s (tried png, tga, jpg) - "
+                       "model still loaded\n", ci->headModelName, ci->headSkinName);
+        }
     }
 
     // [QL] compute bounding-box model scale. "orbb" (the floating eyeball) is not a
@@ -541,6 +610,8 @@ static void CG_LoadClientInfo(int clientNum, clientInfo_t* ci) {
     }
 
     ci->deferred = qfalse;
+    // [QL] real handles now, so let CG_Player warn again if they are ever lost
+    ci->reportedNoModel = qfalse;
 
     // reset any existing players and bodies, because they might be in bad
     // frames for this new model
@@ -556,6 +627,33 @@ static void CG_LoadClientInfo(int clientNum, clientInfo_t* ci) {
 CG_CopyClientInfoModel
 ======================
 */
+/*
+[QL] Borrow another client's model - including the scale it is drawn at.
+
+modelScale was the one thing this did not copy, and it is not optional.
+CG_CalcModelScale only runs inside CG_RegisterClientModelname, which is the
+path this function exists to skip, so a client set up by copy kept the zero it
+was memset to in CG_NewClientInfo. CG_Player then does
+
+    if (cg_scalePlayerModelsToBB.integer && ci->modelScale != 1.0f)
+        VectorScale(legs.axis[k], ci->modelScale, legs.axis[k]);   // and torso, head
+
+and zero is not 1.0, so all three axes collapse to a point. The player is added
+to the scene and draws nothing. CG_PlayerShadow traces from cent->lerpOrigin
+with a fixed +-15 box and never looks at the scale, which is why the shadow
+stayed on the floor under a player who was not there.
+
+Both callers reach it: CG_ScanForExistingClientInfo when an identical
+model/skin is already loaded - a second bot of the same character - and
+CG_SetDeferredClientInfo when a client arrives while cg_deferPlayers is on and
+there is no reason to stall for them. That is exactly "players who connect, or
+who are not near me on a map change, are invisible": near or not is what
+decides whether the load is deferred.
+
+Nothing in the registration path is wrong, which is why the logs never showed a
+failure and the pak manifest came back clean - the model was loaded, by
+somebody else, and then drawn at zero size.
+*/
 static void CG_CopyClientInfoModel(clientInfo_t* from, clientInfo_t* to) {
     VectorCopy(from->headOffset, to->headOffset);
     to->footsteps = from->footsteps;
@@ -568,6 +666,7 @@ static void CG_CopyClientInfoModel(clientInfo_t* from, clientInfo_t* to) {
     to->headModel = from->headModel;
     to->headSkin = from->headSkin;
     to->modelIcon = from->modelIcon;
+    to->modelScale = from->modelScale;
 
     to->newAnims = from->newAnims;
 
@@ -1056,6 +1155,8 @@ void CG_NewClientInfo(int clientNum) {
     // bot skill
     v = Info_ValueForKey(configstring, "skill");
     newInfo.botSkill = atoi(v);
+    // [QL] E141: the server sends botlib's 1-5; ours is 1-10 (g_bot.c G_BotSkillToLib)
+    newInfo.botSkill10 = v[0] ? 1.0f + (atof(v) - 1.0f) * 9.0f / 4.0f : 0.0f;
 
     // handicap
     v = Info_ValueForKey(configstring, "hc");
@@ -1162,7 +1263,40 @@ void CG_NewClientInfo(int clientNum) {
 
     // replace whatever was there with the new one
     newInfo.infoValid = qtrue;
-    *ci = newInfo;
+    {
+        /*
+        [QL] E201: the Anarki "no such frame 151 to 151 / 151 to 123".
+
+        A player's animation state - cent->pe.legs/torso, the frame and old
+        frame the renderer is handed - is in the old model's frame numbers.
+        CG_LoadClientInfo resets the player when it loads a model, because
+        those numbers mean nothing in the new one. The two other ways a
+        client changes model did not: CG_ScanForExistingClientInfo copies a
+        model another client already has (a second bot of the same character,
+        a team change), and CG_SetDeferredClientInfo copies a stand-in. So a
+        bot whose stand-in had its torso stand at frame 151 became Anarki,
+        whose upper body has 146 frames, and went on asking for 151 until the
+        animation next advanced. The renderer draws an out-of-range frame as
+        frame 0: a torso that pops for a frame, and the developer warning.
+
+        Reset whenever the model actually changed, whichever path did it.
+        */
+        qboolean modelChanged = ci->infoValid &&
+            (ci->legsModel != newInfo.legsModel || ci->torsoModel != newInfo.torsoModel);
+
+        *ci = newInfo;
+
+        if (modelChanged) {
+            int e;
+
+            for (e = 0; e < MAX_GENTITIES; e++) {
+                if (cg_entities[e].currentState.clientNum == clientNum &&
+                    cg_entities[e].currentState.eType == ET_PLAYER) {
+                    CG_ResetPlayerEntity(&cg_entities[e]);
+                }
+            }
+        }
+    }
 
     // [QL] when the LOCAL player's own info changes (join a team, leave spectator, change follow
     // target - all rewrite our CS_PLAYERS configstring), re-resolve every other client's forced
@@ -1173,6 +1307,48 @@ void CG_NewClientInfo(int clientNum) {
         CG_ForceModelChange();
         CG_LoadDeferredPlayers();
     }
+}
+
+/*
+======================
+CG_LoadOneDeferredPlayer
+
+[QL] Load at most one deferred client, and report whether it did.
+
+A client that arrives mid-match is deferred: CG_SetDeferredClientInfo copies
+some *other* client's model to stand in, and the real one is loaded later. The
+only things that used to call CG_LoadDeferredPlayers were the scoreboard draw -
+and then only after it had been drawn eleven times - the local player's own info
+changing, and the first snapshot. So a bot joining a match in progress kept
+whatever stand-in it was given until the player happened to die and stare at the
+scoreboard, which is exactly the reported "sometimes the model loads and
+sometimes it doesn't".
+
+Deferring is worth keeping: a snapshot can bring eight clients in at once and
+loading eight player models in one frame is a visible hitch, which is the whole
+reason the mechanism exists. What it needs is to actually finish. One per frame
+spreads the cost the way deferring intended and bounds the wait at one frame per
+client rather than "until the scoreboard comes up".
+======================
+*/
+qboolean CG_LoadOneDeferredPlayer(void) {
+    int i;
+    clientInfo_t* ci;
+
+    for (i = 0, ci = cgs.clientinfo; i < cgs.maxclients; i++, ci++) {
+        if (!ci->infoValid || !ci->deferred) {
+            continue;
+        }
+        if (trap_MemoryRemaining() < 4000000) {
+            // Leave it deferred and say nothing: CG_LoadDeferredPlayers already
+            // prints the low-memory message, and this runs every frame.
+            return qfalse;
+        }
+        CG_LoadClientInfo(i, ci);
+        return qtrue;
+    }
+
+    return qfalse;
 }
 
 /*
@@ -1339,6 +1515,72 @@ static void CG_ClearLerpFrame(clientInfo_t* ci, lerpFrame_t* lf, int animationNu
 
 /*
 ===============
+CG_CheckLerpFrame
+
+[QL] E201: the Anarki "no such frame 151 to 151".
+
+A tester's log: an Anarki bot joined blue while the viewer spectated, was
+drawn with a stand-in model until "loaddeferred", and from then until its first
+shot - 2,159 lines of log - the renderer was asked for torso frame 151 of a
+146-frame model, every frame. Its first attack ended it ("151 to 123", 123
+being Anarki's own TORSO_ATTACK) and nothing recurred: Anarki's animation table
+was right all along. What was wrong was the running frame, which still held
+the stand-in's TORSO_STAND (151) and was never recomputed.
+
+Two causes were found and fixed at the source (the model-change reset in
+CG_NewClientInfo; see there). This is the net under them, because a frame is
+only ever meaningful inside the animation that produced it, and a stale one
+costs a visible pose - the renderer draws an out-of-range frame as frame 0, the
+first frame of a death - for as long as the stale state lasts.
+
+So: a current frame outside the current animation's range, more than a second
+from that animation's start, is rebuilt from the current table. Said once per client per map with the numbers that matter,
+so a recurrence names its own cause instead of showing up as a renderer
+warning that cannot say which entity or why.
+===============
+*/
+static qboolean CG_CheckLerpFrame(centity_t* cent, clientInfo_t* ci, lerpFrame_t* lf, const char* part) {
+    static int reported[MAX_CLIENTS];
+    const animation_t* anim = lf->animation;
+    int first, last, n;
+
+    if (!anim || anim->numFrames <= 0) {
+        return qfalse;
+    }
+    first = anim->firstFrame;
+    last = first + anim->numFrames - 1;
+    /* The current frame only. The old frame is a one-frame lerp source that
+       the next step replaces, and it is legitimately foreign for that frame
+       (a transition, or the frame 0 that CG_ResetPlayerEntity's memset leaves).
+       The tester's case had both stuck: "151 to 151". */
+    if (lf->frame >= first && lf->frame <= last) {
+        return qfalse;
+    }
+    /* A change of animation is out of range on purpose for a moment: until the
+       new animation's start time (frameTime + initialLerp) the frame still
+       belongs to the old one and is lerped from, and the first recomputed frame
+       lerps from it. So only state that stays out of range counts - more than
+       a second either side of the animation's start. The case this is for
+       lasted minutes; an animation start more than a second in the future is
+       a clock that went backwards (a map_restart under a held state). */
+    if (lf->animationTime > cg.time - 1000 && lf->animationTime < cg.time + 1000) {
+        return qfalse;
+    }
+
+    n = cent->currentState.clientNum;
+    if (n >= 0 && n < MAX_CLIENTS && reported[n] != cgs.levelStartTime + 1) {
+        reported[n] = cgs.levelStartTime + 1;
+        CG_Printf(S_COLOR_YELLOW "player %d (%s) %s frame %d->%d outside animation %d (%d..%d), "
+                  "times frame %d anim %d now %d - reset\n",
+                  n, ci->modelName, part, lf->oldFrame, lf->frame, lf->animationNumber & ~ANIM_TOGGLEBIT,
+                  first, last, lf->frameTime, lf->animationTime, cg.time);
+    }
+    CG_ClearLerpFrame(ci, lf, lf->animationNumber);
+    return qtrue;
+}
+
+/*
+===============
 CG_PlayerAnimation
 ===============
 */
@@ -1375,9 +1617,39 @@ static void CG_PlayerAnimation(centity_t* cent, int* legsOld, int* legs, float* 
 
     CG_RunLerpFrame(ci, &cent->pe.torso, cent->currentState.torsoAnim, speedScale);
 
+    /* [QL] E201: never hand the renderer a frame outside the animation it is
+       playing - see CG_CheckLerpFrame */
+    if (CG_CheckLerpFrame(cent, ci, &cent->pe.legs, "legs") |
+        CG_CheckLerpFrame(cent, ci, &cent->pe.torso, "torso")) {
+        *legsOld = cent->pe.legs.oldFrame;
+        *legs = cent->pe.legs.frame;
+        *legsBackLerp = cent->pe.legs.backlerp;
+    }
+
     *torsoOld = cent->pe.torso.oldFrame;
     *torso = cent->pe.torso.frame;
     *torsoBackLerp = cent->pe.torso.backlerp;
+
+    /*
+    [QL] A frozen player is a statue, so hold the frame.
+
+    The server parks a frozen player on LEGS_IDLE/TORSO_STAND, which stopped the
+    run cycle but did not stop movement - idle is still an animation, and the
+    model keeps breathing and swaying in place. There is no way to say "one
+    frame" from the server: an animation is a range in the model's animation.cfg
+    and the client lerps through it.
+
+    So it is pinned here instead. Collapsing oldFrame onto frame with zero
+    backlerp holds whatever pose the player was in when they were hit and stops
+    the interpolation dead, which is what a statue looks like. It also means the
+    pose is the one they froze in rather than a reset to a neutral stance.
+    */
+    if (cent->currentState.powerups & (1 << PW_FREEZE)) {
+        *legsOld = *legs;
+        *legsBackLerp = 0.0f;
+        *torsoOld = *torso;
+        *torsoBackLerp = 0.0f;
+    }
 }
 
 /*
@@ -1577,6 +1849,17 @@ static void CG_PlayerAngles(centity_t* cent, vec3_t legs[3], vec3_t torso[3], ve
             legsAngles[PITCH] = 0.0f;
             legsAngles[ROLL] = 0.0f;
         }
+    }
+
+    /*
+    [QL] E209: your own body in first person is never drawn (RF_THIRD_PERSON),
+    but the traced actor shadows still cast it - and its torso and head follow
+    your view pitch, so looking at the floor folded the invisible body over
+    and its shadow came out bent and smeared across the ground. Stand it up.
+    */
+    if (cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson) {
+        torsoAngles[PITCH] = 0.0f;
+        headAngles[PITCH] = 0.0f;
     }
 
     // pain twitch
@@ -2183,6 +2466,38 @@ Also called by CG_Missile for quad rockets, but nobody can tell...
 ===============
 */
 void CG_AddRefEntityWithPowerups(refEntity_t* ent, entityState_t* state, int team) {
+    /*
+    [QL] Spawn protection reads before the powerups because it is the more urgent
+    thing to communicate: it says "shooting this player achieves nothing", and it
+    lasts a second and a half. cg_spawnProtectAlpha is the strength, and the
+    shader takes it through alphaGen entity rather than baking a value in.
+
+    The eType test is not a nicety. EF_SPAWNPROTECT is EF_BOUNCE_HALF reused, and
+    this function is called from CG_Missile as well as from CG_Player - so without
+    it every grenade (g_missile.c sets EF_BOUNCE_HALF on the bolt) draws as a
+    white translucent ghost instead of a grenade. The bit only means spawn
+    protection on a player entity; anywhere else it still means bouncing.
+
+    The shader handle is checked too: RE_RegisterShader returns 0 for a name the
+    paks do not contain, and the point of the fallthrough is that a missing
+    spawnprotect.shader costs the effect and nothing else. It must never be able
+    to turn a player into a hole in the world.
+    */
+    if (state->eType == ET_PLAYER && (state->eFlags & EF_SPAWNPROTECT) && cgs.media.spawnProtectShader) {
+        int alpha = cg_spawnProtectAlpha.integer;
+
+        if (alpha < 16) {
+            alpha = 16;
+        } else if (alpha > 255) {
+            alpha = 255;
+        }
+        ent->customShader = cgs.media.spawnProtectShader;
+        ent->shaderRGBA[0] = ent->shaderRGBA[1] = ent->shaderRGBA[2] = 255;
+        ent->shaderRGBA[3] = (byte)alpha;
+        trap_R_AddRefEntityToScene(ent);
+        return;
+    }
+
     if (state->powerups & (1 << PW_INVIS)) {
         ent->customShader = cgs.media.invisShader;
         trap_R_AddRefEntityToScene(ent);
@@ -2216,10 +2531,50 @@ void CG_AddRefEntityWithPowerups(refEntity_t* ent, entityState_t* state, int tea
             ent->customShader = cgs.media.battleSuitShader;
             trap_R_AddRefEntityToScene(ent);
         }
-        // [QL] frozen player overlay (freeze tag)
+        // [QL] frozen player overlay (freeze tag) - drawn the way the quad shell
+        // is, a second pass of the model with a customShader, so the player stays
+        // fully drawn underneath and the ice is a coat over them rather than a
+        // repaint. cg_freezeShell picks which of the three shells to wear.
         if (state->powerups & (1 << PW_FREEZE)) {
-            ent->customShader = cgs.media.frozenShader;
+            int style = cg_freezeShellStyle.integer - 1;
+            int effect = cg_freezeShellEffect.integer - 1;
+            int tier = 0;
+
+            /*
+            [QL] Thinner ice the closer they are to coming free.
+
+            A shader cannot read game state, so the size is picked here from a
+            signal the server already publishes: Freeze_ClientThawCheck buckets
+            ps.thawtime into thirds and writes the bucket into the low bits of
+            generic1, BG_PlayerStateToEntityState copies it into the entity state
+            and msg.c networks it. Three buckets, three coats per style, thickest
+            first - so the shell visibly closes in while a teammate works on the
+            statue instead of holding one size until it pops.
+
+            The server writes the bucket exactly - both bits cleared first - so
+            the shell tracks the timer in both directions. It did not before: the
+            bits only accumulated, and a statue whose thawer walked away stayed
+            drawn at its thinnest all the way back up.
+            */
+            if (style < 0 || style >= (int)ARRAY_LEN(cgs.media.freezeCoatShaders)) {
+                style = 0;
+            }
+            if (state->generic1 & 2) {
+                tier = 2;
+            } else if (state->generic1 & 1) {
+                tier = 1;
+            }
+
+            ent->customShader = cgs.media.freezeCoatShaders[style][tier];
             trap_R_AddRefEntityToScene(ent);
+
+            // the halo, standing further off than the coat. Its own pass because
+            // one shader gets one deformVertexes. cg_freezeShellEffect 0 is off.
+            if (effect >= 0 && effect < (int)ARRAY_LEN(cgs.media.freezeGlowShaders) &&
+                cgs.media.freezeGlowShaders[effect]) {
+                ent->customShader = cgs.media.freezeGlowShaders[effect];
+                trap_R_AddRefEntityToScene(ent);
+            }
         }
     }
 }
@@ -2280,6 +2635,38 @@ the alpha byte is copied straight through. scale is 2 when r_colorCorrectActive 
 otherwise 1 (a brighten-only step), matching Color_UnpackScale at 0x10057740.
 ==============
 */
+/*
+[QL] A tint whose alpha byte is zero draws nothing.
+
+These colours are packed 0xRRGGBBAA and they land in shaderRGBA, so alpha 00
+means a fully transparent player - no error, no warning, just an invisible
+opponent. That is reachable by ordinary means: every cg_*Color cvar here is
+CVAR_ARCHIVE, so whatever value a config picked up once wins forever afterwards
+(the trap in CLAUDE.md), and a config written by a build with a different default
+keeps applying it long after the default changed. It also survives every
+reinstall, because it lives in the user's config rather than the game.
+
+So zero alpha is treated as "no value" and the shipped default is used instead,
+with one line saying which cvar it was. Nobody wants an invisible player; if
+somebody genuinely does, alpha 01 is indistinguishable and passes.
+*/
+static int CG_ValidTeamSkinColor(vmCvar_t* cv, const char* name, int fallback) {
+    static int warned;
+
+    if ((cv->integer & 0xff) != 0) {
+        return cv->integer;
+    }
+
+    if (!(warned & 1)) {
+        warned |= 1;
+        CG_Printf(S_COLOR_YELLOW "WARNING: %s is 0x%08x - alpha 0 draws players fully "
+                  "transparent. Using the default 0x%08x instead. It is an archived cvar, so "
+                  "the value came from your config, not from this build.\n",
+                  name, cv->integer, fallback);
+    }
+    return fallback;
+}
+
 static void Color_UnpackScale(refEntity_t* ent, int packed, int scale) {
     int c;
 
@@ -2308,6 +2695,7 @@ static void CG_PlayerTeamSkins(centity_t* cent, refEntity_t* legs, refEntity_t* 
     int playerTeam;
     qboolean useEnemy;
     int scale;
+    int legsDefault, torsoDefault, headDefault;
     vmCvar_t *legsColor, *torsoColor, *headColor;
 
     specTeam = cgs.clientinfo[cg.snap->ps.clientNum].team;
@@ -2343,9 +2731,10 @@ static void CG_PlayerTeamSkins(centity_t* cent, refEntity_t* legs, refEntity_t* 
 
     // dead bodies are darkened with cg_deadBodyColor rather than team-tinted.
     if (cg_deadBodyDarken.integer && (cent->currentState.eFlags & EF_DEAD)) {
-        Color_UnpackScale(legs, cg_deadBodyColor.integer, scale);
-        Color_UnpackScale(torso, cg_deadBodyColor.integer, scale);
-        Color_UnpackScale(head, cg_deadBodyColor.integer, scale);
+        int dead = CG_ValidTeamSkinColor(&cg_deadBodyColor, "cg_deadBodyColor", 0x101010FF);
+        Color_UnpackScale(legs, dead, scale);
+        Color_UnpackScale(torso, dead, scale);
+        Color_UnpackScale(head, dead, scale);
         return;
     }
 
@@ -2353,11 +2742,34 @@ static void CG_PlayerTeamSkins(centity_t* cent, refEntity_t* legs, refEntity_t* 
         legsColor = &cg_enemyLowerColor;
         torsoColor = &cg_enemyUpperColor;
         headColor = &cg_enemyHeadColor;
+        legsDefault = torsoDefault = headDefault = 0x2a8000FF;
     } else {
         legsColor = &cg_teamLowerColor;
         torsoColor = &cg_teamUpperColor;
         headColor = &cg_teamHeadColor;
+        legsDefault = torsoDefault = headDefault = 0x808080FF;
     }
+
+    /*
+    [QL] Catch an alpha-zero tint before it hides the player.
+
+    The existing test below covers a colour that is entirely zero, but not one
+    with real RGB and no alpha - and that is the shape a plausible config value
+    takes. These cvars are packed 0xRRGGBBAA; write the colour the natural way,
+    as six hex digits, and "0x2a8000" parses to 0x002a8000, which is alpha 00.
+    The player then draws fully transparent with nothing said anywhere.
+
+    Because the cvars are CVAR_ARCHIVE, a value like that survives in the user's
+    config indefinitely and follows them across builds. Falling back to the
+    shipped default - and naming the cvar once - turns an invisible-opponent bug
+    into a line in the console.
+    */
+    legsColor->integer = CG_ValidTeamSkinColor(legsColor,
+        useEnemy ? "cg_enemyLowerColor" : "cg_teamLowerColor", legsDefault);
+    torsoColor->integer = CG_ValidTeamSkinColor(torsoColor,
+        useEnemy ? "cg_enemyUpperColor" : "cg_teamUpperColor", torsoDefault);
+    headColor->integer = CG_ValidTeamSkinColor(headColor,
+        useEnemy ? "cg_enemyHeadColor" : "cg_teamHeadColor", headDefault);
 
     // a zero (unparsed/cleared) colour leaves the part untinted white rather than black.
     if (legsColor->integer == 0) {
@@ -2629,6 +3041,28 @@ void CG_Draw3DPlayerModel(float x, float y, float w, float h, int clientNum, int
     VectorCopy(origin, legs.lightingOrigin);
     trap_R_AddRefEntityToScene(&legs);
 
+    /*
+    [QL] The axis has to be an identity before the tag is applied.
+
+    CG_PositionRotatedEntityOnTag does not set entity->axis, it multiplies
+    *into* it:
+
+        MatrixMultiply(entity->axis, lerped.axis, tempAxis);
+        MatrixMultiply(tempAxis, parent->axis, entity->axis);
+
+    - which is why it carries a commented-out AxisClear at the top and Quake 3
+    relies on CG_PlayerAngles having filled legs, torso and head axes before
+    any of this is called. There is no CG_PlayerAngles here: the three
+    refEntities are memset to zero and only the legs got an axis, so the torso
+    was a zero matrix multiplied by a tag, which is still a zero matrix. A
+    model scaled to nothing draws nothing, and the head hanging off the torso
+    inherited the same.
+
+    That is the match summary showing a pair of legs and no body.
+    */
+    AxisClear(torso.axis);
+    AxisClear(head.axis);
+
     // torso on the legs' tag_torso
     torso.hModel = ci->torsoModel;
     torso.customSkin = ci->torsoSkin;
@@ -2650,6 +3084,7 @@ void CG_Draw3DPlayerModel(float x, float y, float w, float h, int clientNum, int
     if (weapon > 0 && weapon < MAX_WEAPONS && cg_weapons[weapon].weaponModel) {
         refEntity_t gun;
         memset(&gun, 0, sizeof(gun));
+        AxisClear(gun.axis);   // see the note above
         gun.hModel = cg_weapons[weapon].weaponModel;
         gun.renderfx = RF_NOSHADOW;
         VectorCopy(origin, gun.lightingOrigin);
@@ -2659,6 +3094,7 @@ void CG_Draw3DPlayerModel(float x, float y, float w, float h, int clientNum, int
         if (cg_weapons[weapon].barrelModel) {
             refEntity_t barrel;
             memset(&barrel, 0, sizeof(barrel));
+            AxisClear(barrel.axis);
             barrel.hModel = cg_weapons[weapon].barrelModel;
             barrel.renderfx = RF_NOSHADOW;
             VectorCopy(origin, barrel.lightingOrigin);
@@ -2687,6 +3123,48 @@ CG_Player
 ===============
 */
 void CG_Player(centity_t* cent) {
+    /*
+    [QL] R19: a wake, rather than a splash on entry and nothing after.
+
+    The water events - EV_WATER_TOUCH, EV_FOOTSPLASH, EV_SWIM - fire on
+    transitions and on footfalls, which is why wading across a pool produced one
+    ring as you went in and then a flat surface while you walked through it.
+    Something moving through water disturbs it continuously, and only the
+    renderer's own frame loop knows that; there is no event for "still moving".
+
+    So this emits from the player itself, throttled in time and gated on actually
+    having moved. Standing still in water leaves it alone, which is right: the
+    rings from arriving should settle.
+
+    The size is small and the rate is what carries it - a line of overlapping
+    little rings behind a moving player reads as a wake, where one big ring per
+    step reads as stamping.
+    */
+    {
+        static int      lastWake[MAX_CLIENTS];
+        static vec3_t   lastWakePos[MAX_CLIENTS];
+        int             n = cent->currentState.clientNum;
+
+        if (n >= 0 && n < MAX_CLIENTS && cg_waterRipples.integer) {
+            if (cg.time - lastWake[n] > 110 || cg.time < lastWake[n]) {
+                vec3_t  feet;
+                float   moved;
+
+                VectorCopy(cent->lerpOrigin, feet);
+                moved = Distance(feet, lastWakePos[n]);
+
+                /* 8 units between emissions: enough that standing still is
+                   silent and a walk still lays down a continuous line */
+                if (moved > 8.0f && moved < 600.0f) {
+                    CG_WaterRipple(NULL, feet, 60.0f, 0.8f);
+                }
+
+                lastWake[n] = cg.time;
+                VectorCopy(feet, lastWakePos[n]);
+            }
+        }
+    }
+
     clientInfo_t* ci;
     refEntity_t legs;
     refEntity_t torso;
@@ -2714,6 +3192,30 @@ void CG_Player(centity_t* cent) {
     // it is possible to see corpses from disconnected players that may
     // not have valid clientinfo
     if (!ci->infoValid) {
+        return;
+    }
+
+    /*
+    [QL] Say so when a client has no model to draw with.
+
+    A player whose legsModel handle is 0 is added to the scene and renders
+    nothing - an invisible player, with no error anywhere. Every route to that
+    goes through the deferred loader: a client arriving mid-match is given
+    another client's handles by CG_SetDeferredClientInfo until
+    CG_LoadOneDeferredPlayer gets to it, and if the client it copied from had
+    nothing loaded either, it inherits nothing.
+
+    Reported once per client so a match with sixty of them stays readable, and
+    reset in CG_LoadClientInfo when the client is finally given real handles.
+    */
+    if (!ci->legsModel) {
+        if (!ci->reportedNoModel) {
+            ci->reportedNoModel = qtrue;
+            CG_Printf(S_COLOR_YELLOW "WARNING: client %i (%s) has no player model loaded and is "
+                      "drawing nothing - model '%s', skin '%s', %s\n",
+                      clientNum, ci->name, ci->modelName, ci->skinName,
+                      ci->deferred ? "still deferred" : "not deferred");
+        }
         return;
     }
 
@@ -2760,6 +3262,19 @@ void CG_Player(centity_t* cent) {
     if (cgs.gametype == GT_HARVESTER) {
         CG_PlayerTokens(cent, renderfx);
     }
+    /* [QL] A scale of zero is not a scale, it is a player nobody can see.
+
+       ci->modelScale reaches CG_Player from three places and only one of them
+       computes it; anything that sets up a client by copying another's model
+       has to carry it across too. It does now, but the test below is
+       "!= 1.0f", which lets 0 through and collapses all three axes to a point,
+       so the failure is silent and total. Treat a non-positive scale as
+       unscaled - a player drawn at the wrong size is a bug worth seeing, a
+       player drawn at no size is a bug that hides itself. */
+    if (ci->modelScale <= 0.0f) {
+        ci->modelScale = 1.0f;
+    }
+
     // QL binary: cg_scalePlayerModelsToBB.integer enables bounding box scaling (vmCvar 0x10A6DB60)
     if (cg_scalePlayerModelsToBB.integer && ci->modelScale != 1.0f) {
         int k;
@@ -3000,7 +3515,10 @@ void CG_Player(centity_t* cent) {
         VectorCopy(cent->lerpOrigin, powerup.origin);
         powerup.origin[2] += -24 + (float)t * 80 / 500;
         if (t > 400) {
-            c = (float)(t - 1000) * 0xff / 100;
+            // fade out over the last 100ms. Stock TA wrote (t - 1000), which
+            // is -1530..-1275 here and put 1275..1785 into a byte channel:
+            // undefined, and on x86 a wrapped value that flickered.
+            c = (float)(t - 400) * 0xff / 100;
             powerup.shaderRGBA[0] = 0xff - c;
             powerup.shaderRGBA[1] = 0xff - c;
             powerup.shaderRGBA[2] = 0xff - c;

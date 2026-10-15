@@ -22,13 +22,18 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cl_main.c  -- client main loop
 
 #include "client.h"
+#include "cl_gpuid.h"
+#include "cl_gpulist.h"
 #include <limits.h>
+#include <float.h>
 
 #include "../sys/sys_local.h"
 #include "../sys/sys_loadlib.h"
 
 #ifdef USE_RENDERER_DLOPEN
 cvar_t* cl_renderer;
+cvar_t* com_qlex_firstlaunch;    // [QL] E126/E179 - CL_CheckHardwarePrompt
+cvar_t* com_qlex_lastgpu;        // [QL] E181 - the GPU the last launch ran on
 #endif
 
 cvar_t* cl_nodelta;
@@ -1420,6 +1425,45 @@ No-op in ioquakelive since we don't have a separate post-process pipeline.
 ==============
 */
 void CL_PostProcessRestart_f(void) {
+    /*
+    [QL] This was registered as "postprocess_restart" and did nothing at all -
+    typing it was silently ignored, which is worse than not having the command,
+    because the name promises something.
+
+    Checked properly rather than assumed, because "do we need this at all" is a
+    fair question: a post-process pipeline's only inputs are the renderer cvars,
+    the image set and the framebuffer geometry, and every way any of those can
+    change already rebuilds them. vk_update_post_process_pipelines() has exactly
+    three call sites:
+
+      tr_image.c   end of R_InitImages - renderer init and vid_restart
+      vk.c         inside the attachment/framebuffer rebuild - window resize,
+                   display change, alt-tab, swapchain lost
+      tr_cmds.c    gated on Cvar_CheckGroup( CVG_RENDERER ) - any video setting
+
+    If none of those happened, the pipelines are still valid and there is nothing
+    to rebuild. There is no fourth way for an input to change, so there is no gap
+    for a manual command to cover.
+
+    OpenGL2 does not raise the question: it has no bloom or post-process pipeline
+    object at all, and tone mapping is a per-frame shader selection in the
+    backend. Its one latched post cvar, r_hdr, is applied by vid_restart, which
+    is what CVAR_LATCH means.
+
+    Nothing invokes the command either - not the ui module, not cgame, not any
+    shipped menu - so it is not part of an apply-settings path.
+
+    So it reports rather than pretending. Keeping it leaves any existing bind
+    working; removing it would turn a silent no-op into "unknown command", which
+    is not an improvement for someone who has it bound. If a post-process stage
+    is ever added whose inputs are not cvars, images or framebuffer geometry,
+    this is where to wire it.
+    */
+    Com_Printf("postprocess_restart: nothing to do.\n"
+               "  Post-processing cvars that can change live (r_toneMap, r_cameraExposure,\n"
+               "  bloom) apply on the next frame. Latched ones (r_hdr) need vid_restart,\n"
+               "  which is what CVAR_LATCH means. The Vulkan renderer rebuilds its\n"
+               "  pipelines automatically whenever a renderer cvar changes.\n");
 }
 
 /*
@@ -2166,6 +2210,264 @@ void CL_CheckUserinfo(void) {
 
 /*
 ==================
+CL_GuessGPU
+
+[QL] E126/E127. What the GPU is, read from the strings the running OpenGL
+renderer already reports - no Vulkan, no driver calls, nothing loaded.
+
+E126 asked the Vulkan loader directly. That is the one thing a low-end or
+badly-driven machine should never be made to do just to be asked a question:
+a broken Vulkan ICD can crash in vkCreateInstance, and that crash would hit
+every launch on exactly the machines OpenGL is the default for. The OpenGL
+strings are already in cls.glconfig from renderer start-up, so this is pure
+string matching and cannot crash anything.
+
+The cost is that it is a guess from a name, not a capability query:
+  - software:  llvmpipe, softpipe, SwiftShader, "GDI Generic", "Microsoft
+               Basic Render" - never high-end;
+  - discrete:  NVIDIA (bar Tegra and the GT/MX/NVS entry lines), AMD/ATI with an RX / Pro / FirePro / R9 /
+               Vega 56/64 name, Intel Arc;
+  - ray query: NVIDIA RTX, AMD RX 6000/7000/9000, Radeon 6x0M-8x0M
+               integrated (RDNA2+), Intel Arc;
+and OpenGL 4.5 or newer, which every Vulkan-class desktop GPU reports.
+A wrong ray-query guess costs nothing: advanced.cfg's r_rt 1 on a card
+without it just reports "not available" in the Lighting page's status rows.
+==================
+*/
+typedef struct {
+    qboolean software, discrete, rayQuery, glModern;
+} gpuGuess_t;
+
+static qboolean CL_NameHas(const char* hay, const char* needle) {
+    return Q_stristr(hay, needle) != NULL;
+}
+
+static void CL_GuessGPU(const glconfig_t* gl, gpuGuess_t* g) {
+    const char* r = gl->renderer_string;
+    const char* v = gl->vendor_string;
+    int major = 0, minor = 0;
+    const char* p;
+    int i;
+
+    Com_Memset(g, 0, sizeof(*g));
+
+    g->software = CL_NameHas(r, "llvmpipe") || CL_NameHas(r, "softpipe") ||
+                  CL_NameHas(r, "SwiftShader") || CL_NameHas(r, "GDI Generic") ||
+                  CL_NameHas(r, "Basic Render") || CL_NameHas(r, "Software Rasterizer");
+
+    // "4.6.0 NVIDIA 551.23", "4.6 (Compatibility Profile) Mesa 24.0"
+    for (p = gl->version_string; *p && !(*p >= '0' && *p <= '9'); p++) {
+    }
+    if (sscanf(p, "%d.%d", &major, &minor) == 2) {
+        g->glModern = (major > 4 || (major == 4 && minor >= 5));
+    }
+
+    if (CL_NameHas(v, "NVIDIA") || CL_NameHas(r, "GeForce") || CL_NameHas(r, "Quadro")) {
+        // Discrete, bar Tegra - and bar the entry lines (GT 710, MX 450, NVS),
+        // which are discrete cards but not what "high-end" is asking about.
+        g->discrete = !CL_NameHas(r, "Tegra") && !CL_NameHas(r, " GT ") &&
+                      !CL_NameHas(r, " MX") && !CL_NameHas(r, "NVS ");
+        g->rayQuery = CL_NameHas(r, "RTX");
+    } else if (CL_NameHas(v, "AMD") || CL_NameHas(v, "ATI") || CL_NameHas(r, "Radeon")) {
+        g->discrete = CL_NameHas(r, "RX ") || CL_NameHas(r, "Radeon Pro") || CL_NameHas(r, "FirePro") ||
+                      CL_NameHas(r, " R9 ") || CL_NameHas(r, "Vega 56") || CL_NameHas(r, "Vega 64");
+        // RX 6xxx / 7xxx / 9xxx desktop, and RDNA2+ integrated (660M..890M)
+        for (i = 6; i <= 9 && !g->rayQuery; i++) {
+            if (i == 8) {
+                continue;   // there is no RX 8000 desktop series
+            }
+            g->rayQuery = CL_NameHas(r, va("RX %d", i));
+        }
+        // "Radeon 680M": RDNA2+ integrated, three digits starting 6-8 then M
+        if (!g->rayQuery && (p = Q_stristr(r, "Radeon ")) != NULL) {
+            p += 7;
+            if (p[0] >= '6' && p[0] <= '8' && p[1] >= '0' && p[1] <= '9' &&
+                p[2] >= '0' && p[2] <= '9' && (p[3] == 'M' || p[3] == 'm')) {
+                g->rayQuery = qtrue;
+            }
+        }
+    } else if (CL_NameHas(v, "Intel") || CL_NameHas(r, "Intel")) {
+        g->discrete = CL_NameHas(r, "Arc");
+        g->rayQuery = CL_NameHas(r, "Arc");
+    }
+}
+
+/*
+==================
+CL_CheckHardwarePrompt
+
+[QL] E126. OpenGL 2 is the default renderer so a low-end machine starts on
+something it can run. A machine that can do better is asked, once, from the
+main menu: switch to Vulkan? and if so, turn on the advanced rendering too?
+(ui: io_hwprompt, io_hwprompt2 - tools/gen-render-menu.py).
+
+Asked only when all of these hold:
+  - com_qlex_firstlaunch is 0 or missing: the first launch has not been
+    completed. Answering sets it to 1, and it is archived, because it records
+    that this player went through it, not a default of ours. [QL] E179: it was
+    cl_hwPrompt; renamed so it cannot be confused with anything a Steam Quake
+    Live config in the same home directory carries;
+  - the main menu is up, not connected, no local server, for 1.5 s, so the
+    question does not arrive under a loading screen or a +connect;
+  - the machine has a GPU worth it. E129: decided by PCI ID against
+    docs/gpu-list.txt (cl_gpuid.c, cl_gpulist.h) - tier rt or vulkan asks,
+    none does not. Only when no ID is known does CL_GuessGPU guess from the
+    OpenGL name: OpenGL 4.5+, not software, discrete or ray-query capable.
+
+A machine that does not qualify is not marked answered, so a new graphics
+card gets asked about on the next launch.
+
+[QL] E179: a player already on Vulkan (a config from an earlier build, or
+set by hand) is not asked to switch to it - the first launch goes straight to
+the second question, the advanced rendering. It used to skip the whole thing,
+which on a reinstall over an existing home directory looked like the first
+launch never happening.
+
+[QL] E181: every launch records the machine's GPU in com_qlex_lastgpu (its
+PCI ID, or the OpenGL renderer's name where no ID can be read), and compares
+it with the last launch's. A different GPU resets com_qlex_firstlaunch to 0, so
+the new card is asked about as on a first launch - including quitting with the
+question still open, which asks again next time. An empty record (a config
+from before this) is filled in without asking. A machine that changed to a GPU
+that is not offered Vulkan while still set to Vulkan gets a console warning,
+since the advanced rendering chosen for the old card may not run on it.
+==================
+*/
+static const gpuListEntry_t* CL_FindGpu(unsigned vendor, unsigned device) {
+    int i;
+
+    for (i = 0; i < (int)ARRAY_LEN(gpuList); i++) {
+        if (gpuList[i].vendor == vendor && gpuList[i].device == device) {
+            return &gpuList[i];
+        }
+    }
+    return NULL;
+}
+
+/*
+AMD's generic OpenGL name for an integrated GPU says nothing; the list's name
+does. Anything else the driver reports is the better label - it is what the
+player's own system calls the card.
+*/
+static qboolean CL_GenericGLName(const char* r) {
+    return Q_stristr(r, "Radeon(TM) Graphics") || !Q_stricmp(r, "AMD Radeon Graphics") ||
+           Q_stristr(r, "Radeon Graphics (");
+}
+
+static void CL_CheckHardwarePrompt(void) {
+    static qboolean done;
+    static int since;
+    gpuGuess_t g;
+    gpuId_t ids[8];
+    const gpuListEntry_t* best = NULL;
+    int nids, i;
+    qboolean ask, rayQuery;
+    char name[128];
+    char* cut;
+    char key[96];
+    qboolean changed;
+
+    if (done || !uivm || !com_qlex_firstlaunch || !com_qlex_lastgpu) {
+        return;
+    }
+    if (clc.state != CA_DISCONNECTED || com_sv_running->integer || !(Key_GetCatcher() & KEYCATCH_UI)) {
+        since = 0;
+        return;
+    }
+    if (!since) {
+        since = cls.realtime ? cls.realtime : 1;
+        return;
+    }
+    if (cls.realtime - since < 1500) {
+        return;
+    }
+    done = qtrue;
+
+    Q_strncpyz(name, cls.glconfig.renderer_string, sizeof(name));
+    if ((cut = strchr(name, '/')) != NULL) *cut = '\0';
+    if ((cut = strstr(name, " (")) != NULL) *cut = '\0';
+
+    /*
+    [QL] E129. The PCI IDs decide when the list knows one of them (cl_gpuid.c,
+    tools/gen-gpu-list.py): the best-tier GPU in the machine wins, since the
+    Vulkan renderer picks the discrete one on a hybrid laptop. Only when no ID
+    is known - macOS, or a GPU newer than the list - do the name rules guess.
+    */
+    nids = CL_ReadGpuIds(ids, ARRAY_LEN(ids));
+    for (i = 0; i < nids; i++) {
+        const gpuListEntry_t* e = CL_FindGpu(ids[i].vendor, ids[i].device);
+
+        Com_Printf("Hardware check: GPU %04x:%04x - %s\n", ids[i].vendor, ids[i].device,
+                   e ? e->name : "not in the list");
+        if (e && (!best || e->tier > best->tier)) {
+            best = e;
+        }
+    }
+
+    if (best) {
+        ask = (best->tier != GPU_TIER_NONE);
+        rayQuery = (best->tier == GPU_TIER_RT);
+        // Label: the driver's own name for this card when OpenGL is running
+        // on it and the name says something; otherwise the list's.
+        if (!(cls.glconfig.renderer_string[0] && !CL_GenericGLName(name) &&
+              ((best->vendor == 0x10de && Q_stristr(name, "NVIDIA")) ||
+               (best->vendor == 0x1002 && (Q_stristr(name, "AMD") || Q_stristr(name, "Radeon"))) ||
+               (best->vendor == 0x8086 && Q_stristr(name, "Intel"))))) {
+            Com_sprintf(name, sizeof(name), "%s%s",
+                        best->vendor == 0x10de ? "NVIDIA " : best->vendor == 0x1002 ? "AMD " : "Intel ",
+                        best->name);
+        }
+        Com_Printf("Hardware check: best known GPU is %s - %s\n", best->name,
+                   best->tier == GPU_TIER_RT ? "Vulkan, ray tracing"
+                   : best->tier == GPU_TIER_VULKAN ? "Vulkan" : "not offered");
+    } else {
+        if (!cls.glconfig.renderer_string[0]) {
+            return;
+        }
+        CL_GuessGPU(&cls.glconfig, &g);
+        Com_Printf("Hardware check: %s - %s%s%s (by name; no known GPU ID)\n",
+                   cls.glconfig.renderer_string,
+                   g.software ? "software renderer" : (g.discrete ? "discrete" : "integrated"),
+                   g.rayQuery ? ", ray tracing" : "", g.glModern ? "" : ", OpenGL below 4.5");
+        ask = !g.software && g.glModern && (g.discrete || g.rayQuery);
+        rayQuery = g.rayQuery;
+    }
+    /* [QL] E181: which GPU this is, against the last launch's */
+    if (best) {
+        Com_sprintf(key, sizeof(key), "%04x:%04x", best->vendor, best->device);
+    } else if (nids > 0) {
+        Com_sprintf(key, sizeof(key), "%04x:%04x", ids[0].vendor, ids[0].device);
+    } else {
+        Q_strncpyz(key, cls.glconfig.renderer_string, sizeof(key));
+    }
+    changed = com_qlex_lastgpu->string[0] && Q_stricmp(com_qlex_lastgpu->string, key);
+    if (changed) {
+        Com_Printf("Hardware check: GPU changed since the last launch (%s, was %s)%s\n", key,
+                   com_qlex_lastgpu->string, ask ? " - asking again" : "");
+        Cvar_Set("com_qlex_firstlaunch", "0");
+        if (!ask && !Q_stricmp(cl_renderer->string, "vulkan")) {
+            Com_Printf(S_COLOR_YELLOW "WARNING: this GPU is not one the Vulkan renderer is offered on. "
+                       "If the game runs badly, set cl_renderer opengl2 under Render Options.\n");
+        }
+    } else if (!com_qlex_lastgpu->string[0]) {
+        Com_Printf("Hardware check: recording GPU %s\n", key);
+    }
+    Cvar_Set("com_qlex_lastgpu", key);
+
+    if (!ask || com_qlex_firstlaunch->integer) {
+        return;
+    }
+
+    Cvar_Set("ui_hwGpuName", name);
+    Cvar_Set("ui_hwRayQuery", rayQuery ? "1" : "0");
+    Com_Printf("First launch: asking about %s\n", Q_stricmp(cl_renderer->string, "vulkan")
+               ? "the Vulkan renderer" : "the advanced rendering (already on Vulkan)");
+    Cbuf_AddText(Q_stricmp(cl_renderer->string, "vulkan") ? "menu_open io_hwprompt\n"
+                                                           : "menu_open io_hwprompt2\n");
+}
+
+/*
+==================
 CL_Frame
 
 ==================
@@ -2199,6 +2501,8 @@ void CL_Frame(int msec) {
         S_StopAllSounds();
         VM_Call(uivm, UI_SET_ACTIVE_MENU, UIMENU_MAIN);
     }
+
+    CL_CheckHardwarePrompt();
 
     // if recording an avi, lock to a fixed fps
     if (CL_VideoRecording() && cl_aviFrameRate->integer && msec) {
@@ -2317,9 +2621,17 @@ static __attribute__((format(printf, 2, 3))) void QDECL CL_RefPrintf(int print_l
     } else if (print_level == PRINT_ERROR) {
         Com_Printf(S_COLOR_RED "%s", msg);  // red
     } else if (print_level == PRINT_DEVELOPER) {
-#if DEBUG_RENDERER
+        // [QL] This was behind "#if DEBUG_RENDERER", a macro defined nowhere in
+        // the tree, so every PRINT_DEVELOPER line from either renderer was
+        // discarded at compile time and "developer 1" did nothing for renderer
+        // diagnostics. That is not a debug switch, it is a deleted one - and it
+        // silently threw away the two messages that answer most "why is this
+        // surface wrong" questions: "Couldn't find image file for shader %s"
+        // and "no shader for surface %s in skin %s".
+        //
+        // Com_DPrintf is already gated on the developer cvar, which is the
+        // gate this wanted.
         Com_DPrintf(S_COLOR_RED "%s", msg);  // red - developer only
-#endif
     }
 }
 
@@ -2420,6 +2732,160 @@ int CL_ScaledMilliseconds(void) {
 }
 
 /*
+=============================================================================
+
+[QL] Engine side of the Quake3e renderer imports.
+
+code/renderervk is vendored from Quake3e and calls a set of ri. entries this
+tree never had, because Quake3e splits engine and renderer differently. The
+declarations were appended to refimport_t; these are what fills them. Without
+them CL_InitRef leaves the pointers null and the renderer segfaults inside
+R_Init on the first call, which is exactly what it did.
+
+Several are honest no-ops rather than ports. Each says which, and why - a
+silent stub here is a feature that looks present and is not, which is the
+same trap as a registered cvar nothing reads.
+
+=============================================================================
+*/
+
+static void CL_RefFreeAll(void) { Z_FreeTags(TAG_RENDERER); }
+
+static qboolean CL_RefIsMinimized(void) { return com_minimized->integer ? qtrue : qfalse; }
+
+/*
+Quake3e scales mouse and 2D coordinates when the render target is a different
+size from the window - r_fbo with r_renderScale, or r_ext_supersample. This
+tree has no such indirection: it renders at window resolution and the client
+reads cls.glconfig directly. Ignoring it is correct as long as those cvars are
+off, and they are off by default. If render scaling is ever turned on for the
+Vulkan renderer, the mouse will be wrong until this does something.
+*/
+static void CL_RefSetScaling(float factor, int captureWidth, int captureHeight) {}
+
+/*
+Cvar groups are Quake3e's mechanism for "has any renderer cvar changed since
+the last frame", which drives its automatic vid_restart. This tree does not
+have the concept and its OpenGL renderer does not either - r_* changes here
+need a manual vid_restart. Keeping that behaviour for Vulkan is consistent;
+implementing groups would be a change to the OpenGL renderer's behaviour too,
+and belongs in its own piece of work rather than smuggled in with the port.
+*/
+/*
+[QL] Quake3e's cvar groups: the renderer tags the cvars it can apply without a
+restart (r_gamma, r_textureMode, r_greyscale, r_dither, the bloom settings) and
+asks once a frame whether any of them changed.
+
+These were stubs, and CheckGroup always said no. So none of those settings
+applied live on the Vulkan renderer - brightness only changed on vid_restart,
+which is what "we need vid_restart to apply brightness" was. The note above
+CL_PostProcessRestart_f counts this path as the third way post-process
+pipelines get rebuilt; it had never run.
+
+Tracked here rather than in cvar_t: only the renderer uses groups, and a
+modificationCount snapshot per member is all a check needs.
+*/
+#define REF_GROUP_MAX 128
+static struct {
+    cvar_t* cv;
+    int group;
+    int seen;   // modificationCount at the last reset
+} refGroup[REF_GROUP_MAX];
+static int refGroupCount;
+
+static void CL_RefCvarSetGroup(cvar_t* cv, int group) {
+    int i;
+
+    if (!cv) {
+        return;
+    }
+    for (i = 0; i < refGroupCount; i++) {
+        if (refGroup[i].cv == cv) {
+            refGroup[i].group = group;
+            refGroup[i].seen = cv->modificationCount;
+            return;
+        }
+    }
+    if (refGroupCount == REF_GROUP_MAX) {
+        Com_Printf(S_COLOR_YELLOW "WARNING: renderer cvar group full, %s will need vid_restart\n", cv->name);
+        return;
+    }
+    refGroup[refGroupCount].cv = cv;
+    refGroup[refGroupCount].group = group;
+    refGroup[refGroupCount].seen = cv->modificationCount;
+    refGroupCount++;
+}
+
+static int CL_RefCvarCheckGroup(int group) {
+    int i;
+
+    for (i = 0; i < refGroupCount; i++) {
+        if (refGroup[i].group == group && refGroup[i].cv->modificationCount != refGroup[i].seen) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void CL_RefCvarResetGroup(int group, qboolean resetModifiedFlags) {
+    int i;
+
+    for (i = 0; i < refGroupCount; i++) {
+        if (refGroup[i].group == group) {
+            refGroup[i].seen = refGroup[i].cv->modificationCount;
+            if (resetModifiedFlags) {
+                refGroup[i].cv->modified = qfalse;
+            }
+        }
+    }
+}
+
+/*
+Quake3e's Cvar_CheckRange takes string bounds and a validator enum where this
+tree's takes floats and a qboolean. Both are real; this is the adapter, and
+the compat header points the renderer's calls here. NULL means "unbounded on
+that side", which Quake3e uses freely.
+*/
+static void CL_RefCvarCheckRangeQ3E(cvar_t* cv, const char* minVal, const char* maxVal, int type) {
+    // CV_INTEGER is 2 in the compat header's cvarValidator_t
+    qboolean integral = (type == 2) ? qtrue : qfalse;
+    float min = minVal ? atof(minVal) : -FLT_MAX;
+    float max = maxVal ? atof(maxVal) : FLT_MAX;
+
+    Cvar_CheckRange(cv, min, max, integral);
+}
+
+/*
+Quake3e has a microsecond clock; this tree's finest is Sys_Milliseconds. The
+renderer uses it only for backend timing readouts, so the coarser source is
+reported honestly rather than faked with a scaled counter.
+*/
+static int64_t CL_RefMicroseconds(void) { return (int64_t)Sys_Milliseconds() * 1000; }
+
+// Quake3e copies a screenshot to the clipboard as a DIB. Windows-only there,
+// and nothing in this tree can receive it.
+static void CL_RefSetClipboardBitmap(const byte* bitmap, int length) {}
+
+/*
+Quake3e moved the JPEG encoder into the engine; here it is still inside the
+renderer, and renderervk links its own copy. These two exist because the
+vendored screenshot path calls out through ri. rather than calling its own
+encoder, so wiring them to nothing would silently produce empty screenshots.
+Say so instead.
+
+renderervk no longer calls either: its screenshot and AVI paths use the linked
+RE_SaveJPG directly. They stay filled in so the ri table has no NULL slots.
+*/
+static void CL_RefSaveJPG(const char* filename, int quality, int image_width, int image_height, byte* image_buffer, int padding) {
+    Com_Printf("^3WARNING:^7 JPEG screenshots are not wired up for this renderer - "
+               "use screenshotTGA, or cl_renderer opengl2\n");
+}
+
+static size_t CL_RefSaveJPGToBuffer(byte* buffer, size_t bufSize, int quality, int image_width, int image_height, byte* image_buffer, int padding) {
+    return 0;
+}
+
+/*
 ============
 CL_InitRef
 ============
@@ -2436,10 +2902,45 @@ void CL_InitRef(void) {
 
 #ifdef USE_RENDERER_DLOPEN
     cl_renderer = Cvar_Get("cl_renderer", "opengl2", CVAR_ARCHIVE | CVAR_LATCH);
+    // [QL] E126/E179. Archived on purpose: it records that the player has
+    // been through the first launch, not a default of ours (see
+    // CL_CheckHardwarePrompt).
+    com_qlex_firstlaunch = Cvar_Get("com_qlex_firstlaunch", "0", CVAR_ARCHIVE);
+    Cvar_SetDescription(com_qlex_firstlaunch, "0 or missing: the first launch experience (the "
+                        "renderer and advanced rendering questions) runs from the main menu. Set to 1 "
+                        "once it has been answered; set it back to 0 to see it again.");
+    com_qlex_lastgpu = Cvar_Get("com_qlex_lastgpu", "", CVAR_ARCHIVE);   // [QL] E181
+    Cvar_SetDescription(com_qlex_lastgpu, "The GPU the last launch ran on (PCI vendor:device, or the "
+                        "OpenGL renderer's name). Recorded every launch; when it differs, the first launch "
+                        "experience runs again for the new card.");
+    Cvar_Get("ui_hwGpuName", "", CVAR_ROM);
+    Cvar_Get("ui_hwRayQuery", "0", CVAR_ROM);
 
     Com_sprintf(dllName, sizeof(dllName), "%s" ARCH_STRING DLL_EXT, cl_renderer->string);
 
     if (!(rendererLib = Sys_LoadDll(dllName, qfalse)) && strcmp(cl_renderer->string, cl_renderer->resetString)) {
+        // [QL] Fall back to the default renderer rather than refusing to start.
+        //
+        // This tested for "the named renderer failed AND it is not the default"
+        // and then went straight to ERR_FATAL, so the test was pointless - the
+        // outcome was the same either way. ioquake3 uses that condition to
+        // decide it is *safe to retry*: reset the cvar and load the default.
+        //
+        // cl_renderer is CVAR_ARCHIVE, so without this, choosing a renderer
+        // that cannot load writes that choice to the config and the client
+        // then fails to start on every subsequent launch - unrecoverable
+        // without hand-editing the config. Selecting Vulkan from the render
+        // options menu did exactly that.
+        Com_Printf("failed:\n\"%s\"\n", Sys_LibraryError());
+        Com_Printf("^3falling back to the default renderer (%s)\n", cl_renderer->resetString);
+
+        Cvar_ForceReset("cl_renderer");
+
+        Com_sprintf(dllName, sizeof(dllName), "%s" ARCH_STRING DLL_EXT, cl_renderer->resetString);
+        rendererLib = Sys_LoadDll(dllName, qfalse);
+    }
+
+    if (!rendererLib) {
         Com_Printf("failed:\n\"%s\"\n", Sys_LibraryError());
         Com_Error(ERR_FATAL, "Failed to load renderer");
     }
@@ -2503,6 +3004,27 @@ void CL_InitRef(void) {
     ri.Sys_GLimpSafeInit = Sys_GLimpSafeInit;
     ri.Sys_GLimpInit = Sys_GLimpInit;
     ri.Sys_LowPhysicalMemory = Sys_LowPhysicalMemory;
+
+    // [QL] Quake3e renderer imports - see the block above CL_InitRef.
+    // The four VK_/VKimp_ entries and the two gamma ones are deliberately left
+    // null: the renderer owns the window in this tree, so it fills those in
+    // itself from its own SDL code (renderervk/vk_ql_exports.c).
+    ri.Cvar_VariableString = Cvar_VariableString;
+    ri.Cvar_VariableStringBuffer = Cvar_VariableStringBuffer;
+    ri.Cvar_SetGroup = CL_RefCvarSetGroup;
+    ri.Cvar_CheckRangeQ3E = CL_RefCvarCheckRangeQ3E;
+    ri.Cvar_CheckGroup = CL_RefCvarCheckGroup;
+    ri.Cvar_ResetGroup = CL_RefCvarResetGroup;
+
+    ri.Com_RealTime = Com_RealTime;
+    ri.Microseconds = CL_RefMicroseconds;
+    ri.FreeAll = CL_RefFreeAll;
+    ri.CL_IsMinimized = CL_RefIsMinimized;
+    ri.CL_SetScaling = CL_RefSetScaling;
+    ri.Sys_SetClipboardBitmap = CL_RefSetClipboardBitmap;
+
+    ri.CL_SaveJPG = CL_RefSaveJPG;
+    ri.CL_SaveJPGToBuffer = CL_RefSaveJPGToBuffer;
 
     ret = GetRefAPI(REF_API_VERSION, &ri);
 
@@ -2769,6 +3291,67 @@ void CL_InitAliases(void) {
     Cmd_AddCommand("unaliasall", CL_UnaliasAll_f);
 }
 
+/*
+===============
+CL_Video_f
+
+[QL] Start writing an AVI of the game.
+
+The whole writer was already here and complete - CL_OpenAVIForWriting,
+CL_WriteAVIVideoFrame, CL_WriteAVIAudioFrame, CL_CloseAVI - and already wired
+into everything that has to know about it: Com_Frame locks to cl_aviFrameRate
+while recording, the mixer feeds it audio, and disconnect, demo end and
+shutdown all close it. The only missing pieces were the two commands that turn
+it on and off, so none of it could ever run.
+
+That is the same silent shape as a registered cvar nothing reads: every part
+reports success and the feature does not exist.
+===============
+*/
+static void CL_Video_f(void) {
+    char filename[MAX_OSPATH];
+    int i;
+
+    if (!clc.demoplaying && clc.state != CA_ACTIVE) {
+        Com_Printf("The %s command needs a live game or a demo playing.\n", Cmd_Argv(0));
+        return;
+    }
+
+    if (Cmd_Argc() == 2) {
+        Com_sprintf(filename, sizeof(filename), "videos/%s.avi", Cmd_Argv(1));
+    } else {
+        // first videos/videoNNNN.avi that does not already exist
+        for (i = 0; i <= 9999; i++) {
+            Com_sprintf(filename, sizeof(filename), "videos/video%04i.avi", i);
+            if (!FS_FileExists(filename)) {
+                break;
+            }
+        }
+        if (i > 9999) {
+            Com_Printf(S_COLOR_RED "Could not find a free video filename.\n");
+            return;
+        }
+    }
+
+    if (CL_OpenAVIForWriting(filename)) {
+        Com_Printf("Recording to %s at %i fps. Type " S_COLOR_CYAN "stopvideo" S_COLOR_WHITE " to finish.\n",
+                   filename, cl_aviFrameRate->integer);
+    }
+}
+
+/*
+===============
+CL_StopVideo_f
+===============
+*/
+static void CL_StopVideo_f(void) {
+    if (!CL_VideoRecording()) {
+        Com_Printf("Not recording a video.\n");
+        return;
+    }
+    CL_CloseAVI();
+}
+
 // =====================================================================
 
 /*
@@ -2860,7 +3443,14 @@ void CL_Init(void) {
 
     // init autoswitch so the ui will have it correctly even
     // if the cgame hasn't been started
-    Cvar_Get("cg_autoswitch", "1", CVAR_ARCHIVE);
+    //
+    // [QL] "0", not id's "1", because this registration is the one that decides.
+    // cgame asks for "0" (Quake Live's default, not Quake 3's) but it runs
+    // second, and Cvar_Get keeps the first reset string it was given - it only
+    // logs "cvar cg_autoswitch given initial values: 1 and 0" and moves on. So
+    // the cgame default was never reaching anyone, and CVAR_ARCHIVE then wrote
+    // the 1 into the config where it wins for good. Both sides now say 0.
+    Cvar_Get("cg_autoswitch", "0", CVAR_ARCHIVE);
 
     m_pitch = Cvar_Get("m_pitch", "0.022", CVAR_ARCHIVE);
     m_yaw = Cvar_Get("m_yaw", "0.022", CVAR_ARCHIVE);
@@ -2904,6 +3494,26 @@ void CL_Init(void) {
 
     // userinfo
     Cvar_Get("name", "UnnamedPlayer", CVAR_USERINFO | CVAR_ARCHIVE);
+
+    /*
+    [QL] Tell the server this is an ioquakelive client.
+
+    The server has extra per-client commands that stock Quake Live has no handler
+    for - tinfo2, which carries the team overlay detail QL's flat tinfo dropped -
+    and sending one to a client that cannot parse it is not harmless: the stock
+    client prints "Unknown client game command" for every one, and tinfo2 goes out
+    twice a second per player. That is a console full of it on a vanilla client
+    connected to our server.
+
+    So the server needs to know who can parse what, and userinfo is the channel
+    that already exists and already arrives with the connect packet. Registered
+    here in the engine rather than in cgame so it is in the very first userinfo,
+    before any team overlay is sent.
+
+    CVAR_ROM: it identifies the binary, so a user setting it by hand would only be
+    lying to the server about what their client can parse.
+    */
+    Cvar_Get("iqlclient", "1", CVAR_USERINFO | CVAR_ROM);
     cl_rate = Cvar_Get("rate", "25000", CVAR_USERINFO | CVAR_ARCHIVE);
     Cvar_CheckRange(cl_rate, 8000, 25000, qtrue);
     Cvar_Get("model", "sarge", CVAR_USERINFO | CVAR_ARCHIVE);
@@ -2937,6 +3547,8 @@ void CL_Init(void) {
     Cmd_AddCommand("demo", CL_PlayDemo_f);
     Cmd_SetCommandCompletionFunc("demo", CL_CompleteDemoName);
     Cmd_AddCommand("stoprecord", CL_StopRecord_f);
+    Cmd_AddCommand("video", CL_Video_f);
+    Cmd_AddCommand("stopvideo", CL_StopVideo_f);
     Cmd_AddCommand("connect", CL_Connect_f);
     Cmd_AddCommand("reconnect", CL_Reconnect_f);
     Cmd_AddCommand("rcon", CL_Rcon_f);
@@ -3010,6 +3622,8 @@ void CL_Shutdown(char* finalmsg, qboolean disconnect, qboolean quit) {
     Cmd_RemoveCommand("record");
     Cmd_RemoveCommand("demo");
     Cmd_RemoveCommand("stoprecord");
+    Cmd_RemoveCommand("video");
+    Cmd_RemoveCommand("stopvideo");
     Cmd_RemoveCommand("connect");
     Cmd_RemoveCommand("reconnect");
     Cmd_RemoveCommand("rcon");

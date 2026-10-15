@@ -274,6 +274,21 @@ void trap_R_AddAdditiveLightToScene(const vec3_t org, float intensity, float r, 
     syscall(CG_R_ADDADDITIVELIGHTTOSCENE, org, PASSFLOAT(intensity), PASSFLOAT(r), PASSFLOAT(g), PASSFLOAT(b));
 }
 
+// [QL] a light along start..end rather than at a point; see CG_R_ADDLINEARLIGHTTOSCENE
+void trap_R_AddLinearLightToScene(const vec3_t start, const vec3_t end, float intensity, float r, float g, float b) {
+    syscall(CG_R_ADDLINEARLIGHTTOSCENE, start, end, PASSFLOAT(intensity), PASSFLOAT(r), PASSFLOAT(g), PASSFLOAT(b));
+}
+
+// [QL] R19: something hit the water here; see CG_R_ADDWATERRIPPLE
+void trap_R_AddWaterRipple(const vec3_t origin, float radius, float strength) {
+    syscall(CG_R_ADDWATERRIPPLE, origin, PASSFLOAT(radius), PASSFLOAT(strength));
+}
+
+// [QL] E198: a latched cvar's pending value, "" if none; see CG_CVAR_LATCHEDSTRINGBUFFER
+void trap_Cvar_LatchedStringBuffer(const char* var_name, char* buffer, int bufsize) {
+    syscall(CG_CVAR_LATCHEDSTRINGBUFFER, var_name, buffer, bufsize);
+}
+
 void trap_R_RenderScene(const refdef_t* fd) {
     syscall(CG_R_RENDERSCENE, fd);
 }

@@ -318,7 +318,10 @@ void SCR_DrawDemoRecording(void) {
     }
 
     pos = FS_FTell(clc.demofile);
-    sprintf(string, "RECORDING %s: %ik", clc.demoName, pos / 1024);
+    // [QL] Com_sprintf, not sprintf: clc.demoName is bounded today, so this
+    // cannot actually run past the buffer, but an unbounded write into a fixed
+    // stack buffer is not something to leave sitting in the code.
+    Com_sprintf(string, sizeof(string), "RECORDING %s: %ik", clc.demoName, pos / 1024);
 
     SCR_DrawStringExt(320 - strlen(string) * 4, 20, 8, string, g_color_table[7], qtrue, qfalse);
 }
@@ -500,6 +503,7 @@ void SCR_UpdateScreen(void) {
     if (uivm || com_dedicated->integer) {
         // XXX
         int in_anaglyphMode = Cvar_VariableIntegerValue("r_anaglyphMode");
+        int64_t t0 = com_cpuTimings->integer ? Sys_Microseconds() : 0, t1 = 0;   // [QL] E222
         // if running in stereo, we need to draw the frame twice
         if (cls.glconfig.stereoEnabled || in_anaglyphMode) {
             SCR_DrawScreenField(STEREO_LEFT);
@@ -507,11 +511,18 @@ void SCR_UpdateScreen(void) {
         } else {
             SCR_DrawScreenField(STEREO_CENTER);
         }
+        if (t0) {
+            t1 = Sys_Microseconds();
+            com_usScene += t1 - t0;   // cgame and the renderer's front end
+        }
 
         if (com_speeds->integer) {
             re.EndFrame(&time_frontend, &time_backend);
         } else {
             re.EndFrame(NULL, NULL);
+        }
+        if (t1) {
+            com_usSubmit += Sys_Microseconds() - t1;   // back end, submit, present
         }
     }
 

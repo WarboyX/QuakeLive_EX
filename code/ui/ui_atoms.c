@@ -103,7 +103,7 @@ UI_CalcPostGameStats
 static void UI_CalcPostGameStats(void) {
     char map[MAX_QPATH];
     char fileName[MAX_QPATH];
-    char info[MAX_INFO_STRING];
+    char info[BIG_INFO_STRING];  // [QL] BIG_INFO_STRING: the serverinfo exceeds MAX_INFO_STRING (see SV_SpawnServer)
     fileHandle_t f;
     int size, game, time, adjustedTime;
     postGameInfo_t oldInfo;

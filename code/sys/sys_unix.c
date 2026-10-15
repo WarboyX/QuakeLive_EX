@@ -115,20 +115,186 @@ char* Sys_DefaultHomePath(void) {
 Sys_SteamPath
 ================
 */
-char* Sys_SteamPath(void) {
-    // Disabled since Steam doesn't let you install Quake 3 on Mac/Linux
-#if 0  // #ifdef STEAMPATH_NAME
-	char *p;
+/*
+[QL] E109. Steam discovery on Unix, which was #if 0 with the comment "Steam
+doesn't let you install Quake 3 on Mac/Linux".
 
-	if( ( p = getenv( "HOME" ) ) != NULL )
-	{
+That is inherited ioquake3 reasoning about QUAKE 3, and it is not true of Quake
+Live. App 282440 installs on Linux, and even a Proton install puts the game
+under steamapps/common/Quake Live like any other. The consequence was that
+fs_steampath came up empty on Linux and nothing looked for the user's install at
+all - so a Linux build ran only if the player had already copied pak00.pk3 next
+to the binary by hand. Every Linux package would have inherited that.
+
+Nothing is copied. FS_InitFilesystem already does the rest: a non-empty
+fs_steampath is added to the search path with FS_AddGameDirectory, so the game
+reads pak00 out of the player's own Steam install where it sits. That matters
+beyond convenience - pak00.pk3 is not ours to move, let alone to ship.
+
+Three things this has to get right that the old two-line version did not:
+
+  - CASE. Steam writes "steamapps" lower-case on Linux and wrote "SteamApps"
+    years ago. Windows did not care; here the wrong one simply does not exist.
+  - LIBRARY FOLDERS. A second drive is normal on Linux, and the game is then
+    nowhere near ~/.steam. libraryfolders.vdf is where Steam records those, and
+    it is the same file the Windows path already parses.
+  - FLATPAK STEAM. Steam is commonly installed as a Flatpak, which relocates
+    everything under ~/.var/app/com.valvesoftware.Steam. A build of ours shipped
+    as a Flatpak talking to a Steam installed as a Flatpak is not an exotic
+    case, it is two of the likelier halves meeting.
+*/
+static qboolean Sys_DirExists(const char *path) {
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+}
+
+/*
+Try <root>/<steamapps>/common/<game> for both spellings of steamapps, and fill
+steamPath if one of them is there.
+*/
+static qboolean Sys_TrySteamLibrary(const char *root) {
+    static const char *const appsDirs[] = { "steamapps", "SteamApps" };
+    char candidate[MAX_OSPATH];
+    size_t i;
+
+    if (!root || !root[0]) {
+        return qfalse;
+    }
+
+    for (i = 0; i < ARRAY_LEN(appsDirs); i++) {
+        Com_sprintf(candidate, sizeof(candidate), "%s/%s/common/%s", root, appsDirs[i], STEAMPATH_NAME);
+        if (Sys_DirExists(candidate)) {
+            Q_strncpyz(steamPath, candidate, sizeof(steamPath));
+            return qtrue;
+        }
+    }
+
+    return qfalse;
+}
+
+/*
+Pull the "path" values out of libraryfolders.vdf and try each as a library root.
+
+Deliberately not a VDF parser. The file is small, the only thing wanted from it
+is the quoted value after each "path" key, and both the old flat format and the
+newer nested one write that the same way - so scanning for the key and taking
+the next quoted string reads both without knowing which it is looking at.
+*/
+static qboolean Sys_TrySteamLibraryFolders(const char *root) {
+    static const char *const appsDirs[] = { "steamapps", "SteamApps" };
+    char vdfPath[MAX_OSPATH];
+    char *buf, *p;
+    long len;
+    FILE *f = NULL;
+    size_t i;
+    qboolean found = qfalse;
+
+    for (i = 0; i < ARRAY_LEN(appsDirs) && f == NULL; i++) {
+        Com_sprintf(vdfPath, sizeof(vdfPath), "%s/%s/libraryfolders.vdf", root, appsDirs[i]);
+        f = fopen(vdfPath, "rb");
+    }
+    if (f == NULL) {
+        return qfalse;
+    }
+
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    /* A libraryfolders.vdf is a couple of KB. Anything huge is not one. */
+    if (len <= 0 || len > 256 * 1024) {
+        fclose(f);
+        return qfalse;
+    }
+
+    buf = malloc((size_t)len + 1);
+    if (buf == NULL) {
+        fclose(f);
+        return qfalse;
+    }
+    if (fread(buf, 1, (size_t)len, f) != (size_t)len) {
+        free(buf);
+        fclose(f);
+        return qfalse;
+    }
+    buf[len] = '\0';
+    fclose(f);
+
+    p = buf;
+    while (!found && (p = strstr(p, "\"path\"")) != NULL) {
+        char libRoot[MAX_OSPATH];
+        char *start, *end;
+        size_t n;
+
+        p += 6;
+        start = strchr(p, '"');
+        if (start == NULL) {
+            break;
+        }
+        start++;
+        end = strchr(start, '"');
+        if (end == NULL) {
+            break;
+        }
+
+        n = (size_t)(end - start);
+        if (n > 0 && n < sizeof(libRoot)) {
+            memcpy(libRoot, start, n);
+            libRoot[n] = '\0';
+            if (Sys_TrySteamLibrary(libRoot)) {
+                found = qtrue;
+            }
+        }
+        p = end + 1;
+    }
+
+    free(buf);
+    return found;
+}
+
+char* Sys_SteamPath(void) {
+#ifdef STEAMPATH_NAME
+    const char *home;
+    char root[MAX_OSPATH];
+    size_t i;
+    /* Every place Steam itself is normally found, most likely first. */
+    static const char *const steamRoots[] = {
 #ifdef __APPLE__
-		char *steamPathEnd = "/Library/Application Support/Steam/SteamApps/common/" STEAMPATH_NAME;
+        "/Library/Application Support/Steam",
 #else
-		char *steamPathEnd = "/.steam/steam/SteamApps/common/" STEAMPATH_NAME;
+        "/.steam/steam",
+        "/.steam/root",
+        "/.local/share/Steam",
+        /* Steam installed as a Flatpak relocates all of the above. */
+        "/.var/app/com.valvesoftware.Steam/.steam/steam",
+        "/.var/app/com.valvesoftware.Steam/.local/share/Steam",
 #endif
-		Com_sprintf(steamPath, sizeof(steamPath), "%s%s", p, steamPathEnd);
-	}
+    };
+
+    if (steamPath[0]) {
+        return steamPath;   // already resolved
+    }
+
+    home = getenv("HOME");
+    if (home == NULL || !home[0]) {
+        return steamPath;
+    }
+
+    /* the game sitting in one of the default libraries */
+    for (i = 0; i < ARRAY_LEN(steamRoots); i++) {
+        Com_sprintf(root, sizeof(root), "%s%s", home, steamRoots[i]);
+        if (Sys_TrySteamLibrary(root)) {
+            return steamPath;
+        }
+    }
+
+    /* otherwise ask Steam where its other libraries are */
+    for (i = 0; i < ARRAY_LEN(steamRoots); i++) {
+        Com_sprintf(root, sizeof(root), "%s%s", home, steamRoots[i]);
+        if (Sys_TrySteamLibraryFolders(root)) {
+            return steamPath;
+        }
+    }
 #endif
 
     return steamPath;
@@ -182,6 +348,46 @@ int Sys_Milliseconds(void) {
     curtime = (tp.tv_sec - sys_timeBase) * 1000 + tp.tv_usec / 1000;
 
     return curtime;
+}
+
+/*
+================
+Sys_Microseconds
+
+[QL] Monotonic microsecond clock, for the frame limiter only - see the
+com_framePacing block in Com_Frame. Deliberately NOT a finer Sys_Milliseconds:
+the engine's whole time base (cls.realtime, cl.serverTime, cg.time, level.time,
+and serverTime on the wire) is integer milliseconds, and this does not change
+that. It exists so the loop can sleep for the right *fraction* of a millisecond
+instead of rounding the interval to a whole one.
+
+CLOCK_MONOTONIC rather than gettimeofday because this is used for intervals, and
+gettimeofday jumps when the system clock is set.
+================
+*/
+int64_t Sys_Microseconds(void) {
+    static int64_t base = 0;
+    int64_t now;
+
+#ifdef CLOCK_MONOTONIC
+    struct timespec ts;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        now = (int64_t)ts.tv_sec * 1000000LL + (int64_t)ts.tv_nsec / 1000LL;
+    } else
+#endif
+    {
+        struct timeval tv;
+
+        gettimeofday(&tv, NULL);
+        now = (int64_t)tv.tv_sec * 1000000LL + (int64_t)tv.tv_usec;
+    }
+
+    if (base == 0) {
+        base = now;
+    }
+
+    return now - base;
 }
 
 /*
@@ -977,3 +1183,297 @@ qboolean Sys_DllExtension(const char* name) {
 
     return qfalse;
 }
+
+/*
+=================
+Sys_CpuTopology / Sys_CpuPlaceMainThread - [QL] E222, Linux and macOS. See sys_main.c.
+
+Linux reads sysfs. A hybrid CPU is found two ways: Intel's split PMU lists the
+performance cores under /sys/devices/cpu_core, and on ARM (and newer kernels on
+x86) the cores report different cpu_capacity. Distinct L3 caches are read from
+each CPU's cache/index* entries and told apart by their shared_cpu_list; sizes
+that differ are a dual-die X3D. Logical CPUs 0-63 only, as on Windows.
+
+macOS does not let a thread choose cores on Apple Silicon - affinity is ignored.
+What it honours is a QoS class: user-interactive keeps the thread on the
+performance cluster. hw.perflevel0 is the performance cluster, hw.perflevel1 the
+efficiency one (macOS 12+); no L3 is exposed, so there is nothing to compare.
+=================
+*/
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#include <pthread.h>
+
+static int Sys_SysctlInt(const char* name) {
+    int v = 0;
+    size_t len = sizeof(v);
+    return sysctlbyname(name, &v, &len, NULL, 0) == 0 ? v : 0;
+}
+
+void Sys_CpuTopology(sysCpuTopology_t* t) {
+    unsigned long long mem = 0;
+    size_t len = sizeof(t->brand);
+
+    if (sysctlbyname("machdep.cpu.brand_string", t->brand, &len, NULL, 0) != 0) {
+        t->brand[0] = '\0';
+    }
+    t->brand[sizeof(t->brand) - 1] = '\0';
+    t->logical = Sys_SysctlInt("hw.logicalcpu");
+    t->physical = Sys_SysctlInt("hw.physicalcpu");
+    if (Sys_SysctlInt("hw.nperflevels") > 1) {
+        t->fastCores = Sys_SysctlInt("hw.perflevel0.physicalcpu");
+        t->slowCores = Sys_SysctlInt("hw.perflevel1.physicalcpu");
+    }
+    len = sizeof(mem);
+    if (sysctlbyname("hw.memsize", &mem, &len, NULL, 0) == 0) {
+        t->ramMB = mem / (1024 * 1024);
+    }
+    t->qosOnly = qtrue;
+    t->preferred = (t->fastCores > 0 && t->slowCores > 0) ? 1 : 0;
+}
+
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
+    (void)mask;
+    return pthread_set_qos_class_self_np(noThrottle ? QOS_CLASS_USER_INTERACTIVE : QOS_CLASS_DEFAULT, 0) == 0
+               ? qtrue : qfalse;
+}
+
+#elif defined(__linux__)
+#include <sys/syscall.h>
+
+static int Sys_ReadSysfs(const char* path, char* buf, int size) {
+    FILE* f = fopen(path, "r");
+    int n;
+
+    buf[0] = '\0';
+    if (!f) {
+        return 0;
+    }
+    n = (int)fread(buf, 1, size - 1, f);
+    fclose(f);
+    if (n < 0) {
+        n = 0;
+    }
+    buf[n] = '\0';
+    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == ' ')) {
+        buf[--n] = '\0';
+    }
+    return n;
+}
+
+// "0-3,8,10-11" -> bitmask of CPUs 0-63
+static unsigned long long Sys_ParseCpuList(const char* s) {
+    unsigned long long m = 0;
+
+    while (*s) {
+        char* end;
+        long a = strtol(s, &end, 10), b;
+        if (end == s) {
+            break;
+        }
+        b = a;
+        s = end;
+        if (*s == '-') {
+            b = strtol(s + 1, &end, 10);
+            s = end;
+        }
+        for (; a <= b && a < 64; a++) {
+            if (a >= 0) {
+                m |= 1ULL << a;
+            }
+        }
+        if (*s == ',') {
+            s++;
+        } else {
+            break;
+        }
+    }
+    return m;
+}
+
+static int Sys_MaskCount(unsigned long long m) {
+    int n = 0;
+    for (; m; m &= m - 1) {
+        n++;
+    }
+    return n;
+}
+
+void Sys_CpuTopology(sysCpuTopology_t* t) {
+    char path[128], buf[256];
+    unsigned long long online, cores = 0, l3Mask[SYS_CPU_MAX_L3];
+    int capacity[64], capMax = 0, capMin = 0x7fffffff;
+    long pages = sysconf(_SC_PHYS_PAGES), pageSize = sysconf(_SC_PAGESIZE);
+    int cpu, k, i;
+    FILE* f;
+
+    if (pages > 0 && pageSize > 0) {
+        t->ramMB = (unsigned long long)pages * (unsigned long long)pageSize / (1024 * 1024);
+    }
+    // brand for CPUs without cpuid (ARM); x86 takes cpuid's in sys_main.c
+    if ((f = fopen("/proc/cpuinfo", "r")) != NULL) {
+        char line[256];
+        while (fgets(line, sizeof(line), f)) {
+            if (!Q_strncmp(line, "model name", 10) || !Q_strncmp(line, "Model", 5) || !Q_strncmp(line, "Hardware", 8)) {
+                char* p = strchr(line, ':');
+                if (p) {
+                    p++;
+                    while (*p == ' ' || *p == '\t') p++;
+                    p[strcspn(p, "\r\n")] = '\0';
+                    if (*p) {
+                        Q_strncpyz(t->brand, p, sizeof(t->brand));
+                        break;
+                    }
+                }
+            }
+        }
+        fclose(f);
+    }
+
+    if (Sys_ReadSysfs("/sys/devices/system/cpu/online", buf, sizeof(buf))) {
+        online = Sys_ParseCpuList(buf);
+    } else {
+        long n = sysconf(_SC_NPROCESSORS_ONLN);
+        online = (n >= 64) ? ~0ULL : (n > 0 ? (1ULL << n) - 1 : 1);
+    }
+    t->logical = Sys_MaskCount(online);
+
+    for (cpu = 0; cpu < 64; cpu++) {
+        if (!(online & (1ULL << cpu))) {
+            continue;
+        }
+        // a core is counted at its first sibling
+        Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/topology/thread_siblings_list", cpu);
+        if (Sys_ReadSysfs(path, buf, sizeof(buf))) {
+            unsigned long long sib = Sys_ParseCpuList(buf);
+            if (sib && (sib & (~sib + 1)) == (1ULL << cpu)) {
+                t->physical++;
+                cores |= 1ULL << cpu;
+            }
+        }
+        Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/cpu_capacity", cpu);
+        capacity[cpu] = Sys_ReadSysfs(path, buf, sizeof(buf)) ? atoi(buf) : 0;
+        if (capacity[cpu] > 0) {
+            if (capacity[cpu] > capMax) capMax = capacity[cpu];
+            if (capacity[cpu] < capMin) capMin = capacity[cpu];
+        }
+        for (k = 0; k < 8; k++) {
+            unsigned long long shared;
+            Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/cache/index%i/level", cpu, k);
+            if (!Sys_ReadSysfs(path, buf, sizeof(buf))) {
+                break;
+            }
+            if (atoi(buf) != 3) {
+                continue;
+            }
+            Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/cache/index%i/shared_cpu_list", cpu, k);
+            if (!Sys_ReadSysfs(path, buf, sizeof(buf))) {
+                continue;
+            }
+            shared = Sys_ParseCpuList(buf);
+            for (i = 0; i < t->numL3; i++) {
+                if (l3Mask[i] == shared) break;
+            }
+            if (i == t->numL3 && t->numL3 < SYS_CPU_MAX_L3) {
+                Com_sprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%i/cache/index%i/size", cpu, k);
+                Sys_ReadSysfs(path, buf, sizeof(buf));
+                l3Mask[t->numL3] = shared;
+                t->l3KB[t->numL3] = atoi(buf);   // "32768K"
+                if (strchr(buf, 'M')) {
+                    t->l3KB[t->numL3] *= 1024;
+                }
+                t->numL3++;
+            }
+        }
+    }
+    if (t->physical == 0) {
+        t->physical = t->logical;
+        cores = online;
+    }
+    for (i = 0; i < t->numL3; i++) {
+        t->l3Cores[i] = Sys_MaskCount(l3Mask[i] & cores);
+    }
+
+    // hybrid: Intel's cpu_core PMU, else differing cpu_capacity
+    if (Sys_ReadSysfs("/sys/devices/cpu_core/cpus", buf, sizeof(buf))) {
+        t->fastMask = Sys_ParseCpuList(buf) & online;
+    } else if (capMax > 0 && capMin < capMax) {
+        for (cpu = 0; cpu < 64; cpu++) {
+            if ((online & (1ULL << cpu)) && capacity[cpu] == capMax) {
+                t->fastMask |= 1ULL << cpu;
+            }
+        }
+    }
+    if (t->fastMask && t->fastMask != online) {
+        t->fastCores = Sys_MaskCount(t->fastMask & cores);
+        t->slowCores = t->physical - t->fastCores;
+        t->preferred = 1;
+    } else {
+        t->fastMask = 0;
+        if (t->numL3 > 1) {
+            int big = 0, alike = 1;
+            for (i = 1; i < t->numL3; i++) {
+                if (t->l3KB[i] != t->l3KB[0]) alike = 0;
+                if (t->l3KB[i] > t->l3KB[big]) big = i;
+            }
+            if (!alike) {
+                t->fastMask = l3Mask[big] & online;
+                t->preferred = 2;
+            }
+        }
+    }
+}
+
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
+    // The affinity this thread started with, all of it: room for 1024 CPUs, since
+    // the kernel refuses a buffer smaller than its CPU count. Only CPUs 0-63 can be
+    // in a preferred set, but restoring must give back every CPU, not the first 64.
+    static unsigned long long original[16];
+    static long originalLen;   // bytes the kernel filled, 0 = unknown
+    static qboolean saved, placed;
+    unsigned long long m[16];
+
+    (void)noThrottle;   // no per-process throttling on Linux; the governor is system-wide
+    if (!saved) {
+        Com_Memset(original, 0, sizeof(original));
+        originalLen = syscall(SYS_sched_getaffinity, 0, sizeof(original), original);
+        if (originalLen < 0) {
+            originalLen = 0;
+        }
+        saved = qtrue;
+    }
+    if (!mask) {
+        // never placed: the thread still has what it started with, leave it alone
+        if (!placed) {
+            return qtrue;
+        }
+        if (!originalLen || syscall(SYS_sched_setaffinity, 0, originalLen, original) != 0) {
+            return qfalse;
+        }
+        placed = qfalse;
+        return qtrue;
+    }
+    Com_Memset(m, 0, sizeof(m));
+    m[0] = originalLen ? (mask & original[0]) : mask;
+    if (!m[0]) {
+        return qfalse;
+    }
+    if (syscall(SYS_sched_setaffinity, 0, originalLen ? originalLen : (long)sizeof(m[0]), m) != 0) {
+        return qfalse;
+    }
+    placed = qtrue;
+    return qtrue;
+}
+
+#else
+void Sys_CpuTopology(sysCpuTopology_t* t) {
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    t->logical = t->physical = n > 0 ? (int)n : 1;
+}
+
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
+    (void)mask;
+    (void)noThrottle;
+    return qtrue;
+}
+#endif

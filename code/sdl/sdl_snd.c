@@ -194,7 +194,21 @@ qboolean SNDDMA_Init(void) {
 
     desired.freq = (int)s_sdlSpeed->value;
     if (!desired.freq)
-        desired.freq = 22050;
+        /*
+        [QL] 44100, not Quake 3's 22050.
+
+        Quake Live ships its audio at 44kHz. The mixer was opening the device at
+        22050 and snd_mem.c resampling everything down to meet it, which is what
+        the "sound/... is not a 22kHz audio file" lines in every log are - not a
+        complaint about the asset, the engine saying it is about to throw half of
+        it away.
+
+        The fallback constant rather than the cvar's default, because s_sdlSpeed
+        is CVAR_ARCHIVE and ships as "0": anyone who has ever run the game has
+        that 0 written into their config, so a new default would never reach
+        them. This is the value 0 means.
+        */
+        desired.freq = 44100;
     desired.format = ((tmp == 16) ? AUDIO_S16SYS : AUDIO_U8);
 
     // I dunno if this is the best idea, but I'll give it a try...

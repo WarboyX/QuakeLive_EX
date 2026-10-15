@@ -133,6 +133,23 @@ void TossClientItems(gentity_t* self) {
     int i;
     gentity_t* drop;
 
+    /*
+    [QL] No weapon drops in instagib.
+
+    Instagib gives everyone the same weapon and infinite ammo, so a dropped one
+    is worth nothing to pick up - it just litters the map with railguns and
+    gives the pickup sound and the item timers something to report that does not
+    matter. The A2M modes are all instagib and all had this.
+
+    Gated on the mode rather than on a new cvar: a server that hands out a fixed
+    loadout and no ammo pickups has already decided this question, and a cvar
+    nobody sets is a cvar nobody reads (see E8). Powerups below still drop -
+    those are still worth taking.
+    */
+    if (g_instaGib.integer || (g_dmflags.integer & DF_INSTAGIB)) {
+        goto dropPowerups;
+    }
+
     // drop the weapon if not a gauntlet or machinegun
     weapon = self->s.weapon;
 
@@ -158,6 +175,7 @@ void TossClientItems(gentity_t* self) {
         Drop_Item(self, item, 0);
     }
 
+dropPowerups:
     // drop all the powerups if not in teamplay
     if (g_gametype.integer != GT_TEAM) {
         angle = 45;
@@ -304,6 +322,31 @@ void GibEntity(gentity_t* self, int killer) {
     self->takedamage = qfalse;
     self->s.eType = ET_INVISIBLE;
     self->r.contents = 0;
+
+    /*
+    [QL] Let go of the entity once EV_GIB_PLAYER has been delivered.
+
+    id makes the gibbed body non-solid and invisible but leaves it *linked*, so
+    it stays in the world until the player respawns. Two costs, both measured:
+
+    - It occupies a snapshot slot in every client that can see it, for nothing.
+      cg_ents.c's entity switch is `case ET_INVISIBLE: break;` - the client
+      receives it and throws it away. The overflow breakdown from a full
+      instagib server read "invisible 60" out of 256: sixty of the slots were
+      corpses nobody could see, which is 23% of the snapshot and all of it
+      waste. Instagib gibs on every death, so on that server it is nearly
+      everyone, nearly always.
+    - trap_EntitiesInBox only returns linked entities, so SpotWouldTelefrag
+      counted these as occupying a spawn point. A dead player was reserving a
+      pad it was never going to stand on, which on a map with few points means
+      the spawn selector sees the map as full when it is not.
+
+    unlinkAfterEvent is the existing mechanism for exactly this shape - items
+    use it to disappear after their pickup event - and it fires from G_RunFrame
+    when the event expires, so EV_GIB_PLAYER still reaches everyone first.
+    ClientSpawn re-links on respawn.
+    */
+    self->unlinkAfterEvent = qtrue;
 }
 
 /*
@@ -520,11 +563,41 @@ void PlayerAwardEF(gentity_t* self, int persIdx, int efBit) {
 }
 
 /*
+[QL] Is the match young enough that a death should not be held against you?
+
+The first seconds of a round are the ones nobody controls: everybody arrives at
+once, spawn points are crowded, and a telefrag or a fall taken before you have a
+weapon in hand is not a mistake anyone made. Scoring those costs a player a
+frag and a death for being unlucky about where the game put them.
+
+g_matchStartGrace is that window in seconds; 0 turns it off. It suppresses the
+-1 for a suicide or a world death and the death that goes on the player's own
+record; the killer of a genuine frag still scores normally, because that is a
+real kill and not an artefact of the start.
+
+The window runs from level.graceEndTime, which G_InitGame sets on load and
+SetWarmupState sets again the moment the game state becomes IN_PROGRESS.
+Measuring it off level.startTime alone did not work: a server that sits in
+PRE_GAME while people warm up and frag each other - which is most of them - had
+spent the ten seconds long before the match began. Both moments arm it now,
+and warmup is no longer excluded, because a server whose scores are ticking
+over in PRE_GAME is scoring whatever the state machine calls it.
+==================
+*/
+static qboolean G_InMatchStartGrace(void) {
+    if (g_matchStartGrace.integer <= 0) {
+        return qfalse;
+    }
+    return level.time < level.graceEndTime;
+}
+
+/*
 ==================
 player_die
 ==================
 */
 void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int damage, int meansOfDeath) {
+    qboolean spawnTelefrag;   // [QL] see the note below
     gentity_t* ent;
     gentity_t* te;
     int anim;
@@ -580,12 +653,30 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
         self->activator->nextthink = level.time;
     }
 
-    // 7. set pm_type (Freeze-Tag fork)
+    /*
+    7. set pm_type (Freeze-Tag fork)
+
+    [QL] This used to set pm_type and thawtime by hand and stop there, which is
+    not enough to freeze anybody. What marks a frozen player is
+    ps.powerups[PW_FREEZE]: pmove treats a zero-health player as dead unless it
+    is set (bg_pmove.c), ClientThink_real keeps PM_FREEZE instead of PM_DEAD on
+    it (g_active.c), Freeze_ClientThawCheck counts down against it, and
+    Freeze_DeathFinalize refuses to respawn without it. None of that was ever
+    reached, so players in Freeze Tag simply died.
+
+    Freeze_PlayerFrozen sets all of it - and it was defined in g_gametype_ft.c
+    with no callers anywhere in the tree. Same shape as the unassigned ice
+    handles and the registered-but-unread cvars: written, never wired.
+
+    It declines to freeze outside a live round (RS_PLAYING), so a death during
+    warmup still falls through to PM_DEAD and an ordinary respawn, which is what
+    warmup should do.
+    */
     if (!level.intermissionTime && !level.intermissionQueued &&
         g_gametype.integer == GT_FREEZE && meansOfDeath != MOD_SWITCH_TEAMS) {
-        self->client->ps.pm_type = PM_FREEZE;
-        self->client->ps.thawtime = g_freezeThawTime.integer;
-    } else {
+        Freeze_PlayerFrozen(self);
+    }
+    if (self->client->ps.powerups[PW_FREEZE] == 0) {
         self->client->ps.pm_type = PM_DEAD;
     }
 
@@ -623,6 +714,17 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
     G_LogPrintf("Kill: %i %i %i: %s killed %s by %s\n",
                 killer, self->s.number, meansOfDeath, killerName,
                 self->client->pers.netname, obit);
+    // [QL] E136. where it happened, for tools/bot-harness/render-heat.py: the
+    // victim, then the killer (the victim's own spot for world and suicide),
+    // then both teams and the flag the victim carried (0 none, 1 red, 2 blue)
+    if (bot_debugTrack.integer > 0) {
+        gentity_t* k = (killer >= 0 && killer < MAX_CLIENTS) ? &g_entities[killer] : self;
+        G_Printf("botkill %d %d %d %d %.0f %.0f %.0f %.0f %.0f %.0f %d %d %d\n", level.time, killer, self->s.number,
+                 meansOfDeath, self->r.currentOrigin[0], self->r.currentOrigin[1], self->r.currentOrigin[2],
+                 k->r.currentOrigin[0], k->r.currentOrigin[1], k->r.currentOrigin[2],
+                 k->client ? k->client->sess.sessionTeam : 0, self->client->sess.sessionTeam,
+                 self->client->ps.powerups[PW_REDFLAG] ? 1 : self->client->ps.powerups[PW_BLUEFLAG] ? 2 : 0);
+    }
 
     // 12. EV_OBITUARY (gated on !scoringDisabled)
     if (!level.scoringDisabled) {
@@ -637,8 +739,24 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
     //     killStreak/per-weapon internally (when !scoringDisabled), so player_die must NOT
     //     increment numKills/numDeaths itself.
     self->enemy = attacker;
-    self->client->ps.persistant[PERS_KILLED]++;
-    STAT_AddPlayerDeathStat(self, attacker, meansOfDeath);
+
+    /*
+    [QL] A telefrag the server caused by spawning somebody on top of this player
+    is not their death to wear. G_NudgeSpawnClear tries to avoid it first; when
+    the map has nowhere to put the arriving player it happens anyway, and
+    charging the victim a death - and the arriving player a frag they did not
+    earn - is charging them for our problem. A telefrag through a teleporter is
+    somebody's decision and still scores; only the spawn-caused ones are marked.
+    */
+    spawnTelefrag = (self->client->spawnTelefragged && meansOfDeath == MOD_TELEFRAG);
+    self->client->spawnTelefragged = qfalse;
+
+    if (!G_InMatchStartGrace() && !spawnTelefrag) {
+        self->client->ps.persistant[PERS_KILLED]++;
+    }
+    if (!spawnTelefrag) {
+        STAT_AddPlayerDeathStat(self, attacker, meansOfDeath);
+    }
 
     // 14. scoring + award engine
     if (attacker && attacker->client) {
@@ -647,7 +765,9 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
 
         if (attacker == self) {
             // 14b. self kill
-            AddScore(attacker, self->r.currentOrigin, -1);
+            if (!G_InMatchStartGrace()) {
+                AddScore(attacker, self->r.currentOrigin, -1);
+            }
             if (meansOfDeath == MOD_SUICIDE) {   // [QL] binary increments unconditionally
                 self->client->expandedStats.numSuicides++;
             }
@@ -678,6 +798,9 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
                 if (g_gametype.integer == GT_RR && g_rrInfected.integer &&
                     self->client->sess.sessionTeam == TEAM_RED) {  // VERIFY C4: victim's team
                     score = g_rrInfectedZombieFragBonus.integer;
+                }
+                if (spawnTelefrag) {
+                    score = 0;   // [QL] the server put them there, not the player
                 }
                 AddScore(attacker, self->r.currentOrigin, score);
                 if (g_gametype.integer == GT_RR && g_rrDamageScoreBonus.integer) {
@@ -811,7 +934,9 @@ void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int 
         }
     } else {
         // 14a. world / non-client attacker
-        AddScore(self, self->r.currentOrigin, -1);
+        if (!G_InMatchStartGrace()) {
+            AddScore(self, self->r.currentOrigin, -1);
+        }
         if (meansOfDeath == MOD_WATER || meansOfDeath == MOD_SLIME || meansOfDeath == MOD_LAVA ||
             meansOfDeath == MOD_CRUSH || meansOfDeath == MOD_TELEFRAG || meansOfDeath == MOD_FALLING ||
             meansOfDeath == MOD_TARGET_LASER || meansOfDeath == MOD_TRIGGER_HURT) {
@@ -1413,6 +1538,18 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
             }
             return;
         }
+        /*
+        [QL] Spawn protection. Deliberately *not* reusing invulnerabilityTime:
+        that is the holdable powerup, it has its own bubble effect, and it blocks
+        MOD_TELEFRAG - which would leave two players standing in one spot when
+        G_KillBox failed to clear the pad. DAMAGE_NO_PROTECTION still gets
+        through here for exactly that reason, so telefrags, lava and trigger_hurt
+        behave normally.
+        */
+        if (client->spawnProtectTime > level.time && !(dflags & DAMAGE_NO_PROTECTION) &&
+            targ != attacker) {
+            return;
+        }
         if (client->ps.pm_type == PM_SPECTATOR) {  // VERIFY #1: pm_type==2 == PM_SPECTATOR
             return;
         }
@@ -1805,6 +1942,12 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
         targ->client && attacker->client && targ != attacker) {
         attacker->client->ps.persistant[PERS_ATTACKEE_ARMOR]++;  // lethal-hit kill counter
     }
+    // Radio reports are local evidence, not access to the attacker position.
+    if (targ->client && attacker->client && targ != attacker && targ->health > 0 &&
+        (targ->r.svFlags & SVF_BOT) && !OnSameTeam(targ, attacker) &&
+        (take >= 5 || (take > 0 && targ->health - take <= 0))) {
+        BotRouteReportDamage(targ->s.number, targ->r.currentOrigin, targ->health - take <= 0);
+    }
     targ->health -= take;
     if (targ->client) {
         targ->s.health = targ->health;
@@ -1868,8 +2011,32 @@ void G_Damage(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker, vec3_t
         targ->enemy = attacker;
         targ->die(targ, inflictor, attacker, take, mod);
         if (g_gametype.integer == GT_FREEZE && targ->client) {
+            /*
+            [QL] Destroy the frozen body only once the auto-thaw window has
+            *elapsed*. This read
+
+                level.time < targ->client->respawnTime + g_freezeAutoThawTime.integer
+
+            which is the opposite: true for the whole window and false after it.
+            targ->die() has just frozen this player, so respawnTime is around
+            level.time and the test passed on the very frame of the freeze -
+            every single freeze was destroyed immediately:
+
+                Biker was railed by Major
+                Biker was auto-thawed.
+                Wrack was railed by Klesk
+                Wrack was auto-thawed.
+
+            which is why Freeze Tag looked like players were dying normally even
+            once they were being frozen properly.
+
+            Measured from ps.freezetime, the stamp Freeze_PlayerFrozen sets, so
+            this agrees with the per-frame timeout in Freeze_ClientThawCheck
+            rather than inventing a second clock off respawnTime. On the freezing
+            frame the elapsed time is 0, so it no longer fires there.
+            */
             if (g_freezeAutoThawTime.integer &&
-                level.time < targ->client->respawnTime + g_freezeAutoThawTime.integer) {
+                level.time - targ->client->ps.freezetime >= g_freezeAutoThawTime.integer) {
                 Freeze_InstaKill(targ, 1);
                 return;
             }

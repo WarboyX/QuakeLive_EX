@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 #include "ai_main.h"
 #include "ai_dmq3.h"
+#include "ai_tactics.h"
 #include "ai_chat.h"
 #include "ai_cmd.h"
 #include "ai_dmnet.h"
@@ -94,12 +95,16 @@ bot_goal_t blueobelisk;
 bot_goal_t neutralobelisk;
 
 #define MAX_ALTROUTEGOALS 32
+#define ESCORT_NEAR 1000  // [QL] E137: a bot this close to our carrier escorts it past the quota
 
 int altroutegoals_setup;
+int altroutegoals_retry;  // [QL] next time it is worth trying again
 aas_altroutegoal_t red_altroutegoals[MAX_ALTROUTEGOALS];
 int red_numaltroutegoals;
 aas_altroutegoal_t blue_altroutegoals[MAX_ALTROUTEGOALS];
 int blue_numaltroutegoals;
+// [QL] E136: the side of the map each one's route crosses the middle on, -1/0/+1
+static int red_altroutesides[MAX_ALTROUTEGOALS], blue_altroutesides[MAX_ALTROUTEGOALS];
 
 /*
 ==================
@@ -110,6 +115,22 @@ void BotSetUserInfo(bot_state_t* bs, char* key, char* value) {
     char userinfo[MAX_INFO_STRING];
 
     trap_GetUserinfo(bs->client, userinfo, sizeof(userinfo));
+    /*
+    [QL] Only if it actually changed.
+
+    ClientUserinfoChanged rewrites the client's configstring, and a configstring
+    write is a reliable command broadcast to every client on the server. The only
+    caller of this is BotSetTeamStatus setting "teamtask", which runs every time a
+    bot reconsiders its goal - so sixty bots re-deciding produced a stream of
+    identical broadcasts. Queue dumps from the field show the same bot's
+    configstring three and four times over with only tt flipping 2, 1, 2.
+
+    Writing the same value was always a no-op on the receiving end. It was never
+    a no-op on the wire.
+    */
+    if (!strcmp(Info_ValueForKey(userinfo, key), value)) {
+        return;
+    }
     Info_SetValueForKey(userinfo, key, value);
     trap_SetUserinfo(bs->client, userinfo);
     ClientUserinfoChanged(bs->client);
@@ -410,7 +431,95 @@ void BotSetTeamStatus(bot_state_t* bs) {
             teamtask = TEAMTASK_PATROL;
             break;
     }
-    BotSetUserInfo(bs, "teamtask", va("%d", teamtask));
+    BotQueueTeamTask(bs, teamtask);
+}
+
+/*
+==================
+BotQueueTeamTask
+
+[QL] Ask for a teamtask. Does not write anything.
+
+A teamtask write goes through ClientUserinfoChanged, which rewrites the client's
+configstring, which is a reliable command broadcast to *every* client on the
+server. There are thirty-odd call sites, all of them inside per-think goal
+selection, so the cost of one bot changing its mind is one command times the
+player count - and the reliable command buffer is 64 deep per client.
+
+At sixty-three bots in CTF that overflowed the buffer and the server dropped
+every client for "Server command overflow" the moment the match left warmup:
+map_restart clears every bot's long-term goal at the same instant, all of them
+re-decide in the same think window, and the queue dump is a hundred and
+twenty-six configstring writes deep - each bot's own line twice over, tt flipping
+2 then 1.
+
+Deduplicating the write was not enough, because the value genuinely does flip:
+BotCTFSeekGoals hands out defend, and the goal is superseded before the bot has
+walked anywhere. So the value is queued instead, and BotFlushTeamTasks publishes
+it only once it has held still.
+
+Note this is a cosmetic field - it is the icon next to a name in the team
+overlay and nothing reads it for gameplay - so a second of lag costs nothing and
+never publishing a value the bot held for a fifth of a second costs less.
+==================
+*/
+void BotQueueTeamTask(bot_state_t* bs, int teamtask) {
+    if (bs->teamtask_want == teamtask) {
+        return;
+    }
+    bs->teamtask_want = teamtask;
+    bs->teamtask_settle = FloatTime();
+}
+
+/*
+==================
+BotFlushTeamTasks
+
+[QL] Publish settled teamtask values, a couple per server frame.
+
+Two limits, and they do different jobs.
+
+SETTLE is what kills the oscillation: a value that flips back before it has held
+for a second never reaches the wire at all, because teamtask_want returns to
+teamtask_sent and the two compare equal again.
+
+PER_FRAME is what survives the synchronised burst. Sixty-three bots re-deciding
+in the same think window is a legitimate thing to happen - it is exactly what
+map_restart causes - and sixty-three commands at once overflows a 64-deep buffer
+on its own, settled or not. Spreading them costs under a second of overlay lag
+and is the difference between a match starting and every client being dropped.
+
+Round-robin rather than from zero each frame, or the low client numbers would
+take the whole budget every time and the back half of the server would never
+publish anything.
+==================
+*/
+#define BOT_TEAMTASK_SETTLE 1.0f
+#define BOT_TEAMTASK_PER_FRAME 2
+
+void BotFlushTeamTasks(void) {
+    static int next;
+    bot_state_t* bs;
+    int n, i, budget;
+
+    budget = BOT_TEAMTASK_PER_FRAME;
+    for (n = 0; n < MAX_CLIENTS && budget > 0; n++) {
+        i = (next + n) % MAX_CLIENTS;
+        bs = botstates[i];
+        if (!bs || !bs->inuse) {
+            continue;
+        }
+        if (bs->teamtask_want == bs->teamtask_sent) {
+            continue;
+        }
+        if (FloatTime() - bs->teamtask_settle < BOT_TEAMTASK_SETTLE) {
+            continue;
+        }
+        bs->teamtask_sent = bs->teamtask_want;
+        BotSetUserInfo(bs, "teamtask", va("%d", bs->teamtask_want));
+        budget--;
+    }
+    next = (next + n) % MAX_CLIENTS;
 }
 
 /*
@@ -480,6 +589,102 @@ void BotRefuseOrder(bot_state_t* bs) {
     }
 }
 
+/* One autonomous CTF assignment path. Flag transitions invalidate obsolete
+   jobs immediately; otherwise hold a useful job long enough to make progress.
+   Explicit orders bypass this planner. The stock path remains below for
+   bot_tactics 0. Carriers are handled before this function is called. */
+static void BotCTFPlanGoals(bot_state_t* bs) {
+    int role, current = -1, carrier = BotTeamFlagCarrier(bs);
+    int team = BotTeam(bs);
+    qboolean ours = Team_GetFlagStatus(team) != FLAG_ATBASE;
+    qboolean enemyavailable = BotCTFEnemyFlagAvailable(bs);
+    qboolean escort = BotCTFEscortEligible(bs, carrier);
+    bot_goal_t* own = team == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+
+    if (bs->ordered) {
+        if (bs->ltgtype && bs->teamgoal_time > FloatTime()) return;
+        bs->ordered = qfalse;
+        bs->lastgoal_ltgtype = 0;
+    }
+    {
+        // A newly spotted drop must wake the planner even if the public
+        // flag status has remained DROPPED throughout the observation.
+        int phase = (Team_GetFlagStatus(team) * 4 + Team_GetFlagStatus(BotOppositeTeam(bs))) * 2 + enemyavailable;
+        if (bs->tac.ctfphase != phase) {
+            bs->tac.ctfphase = phase;
+            bs->tac.roleredecide_time = 0;
+        }
+    }
+    switch (bs->ltgtype) {
+        case LTG_GETFLAG: current = enemyavailable ? CTFROLE_ATTACK : -1; break;
+        case LTG_DEFENDKEYAREA: current = CTFROLE_DEFEND; break;
+        case LTG_RETURNFLAG: current = ours ? CTFROLE_RECOVER : -1; break;
+        case LTG_TEAMACCOMPANY:
+            current = escort && bs->teammate == carrier ? CTFROLE_ESCORT : -1;
+            break;
+        case 0: current = bs->tac.assignedrole == CTFROLE_ROAM ? CTFROLE_ROAM : -1; break;
+        default: break; // autonomous camp/other tasks yield to the team plan
+    }
+    // The closest screen assembles immediately on a grab. Surplus travelling
+    // escorts cannot retain their old ten-minute follow job.
+    if (escort) {
+        role = CTFROLE_ESCORT;
+    } else if (current >= 0 && bs->teamgoal_time > FloatTime() &&
+               (bs->tac.roleredecide_time > FloatTime() || !BotCTFRoleCrowded(bs, current))) {
+        return;
+    } else {
+        role = BotCTFPickRole(bs);
+    }
+    if (role < 0) return;
+    if (role == current) {
+        bs->teamgoal_time = FloatTime() + 60;
+        bs->tac.roleredecide_time = FloatTime() + 5;
+        return;
+    }
+    bs->decisionmaker = bs->client;
+    bs->ordered = qfalse;
+    bs->lastgoal_ltgtype = 0;
+    bs->teammessage_time = 0;
+    bs->altroutegoal.areanum = 0;
+    bs->tac.assignedrole = role;
+    bs->tac.roleredecide_time = FloatTime() + (role == CTFROLE_ATTACK ? 30 : 5);
+    bs->teamgoal_time = FloatTime() + 60;
+    bs->owndecision_time = 0;
+    bs->ctfroam_time = 0;
+    switch (role) {
+        case CTFROLE_ATTACK:
+            bs->ltgtype = LTG_GETFLAG;
+            if (BotEnemyFlagAtBase(bs)) BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+            break;
+        case CTFROLE_DEFEND:
+            bs->ltgtype = LTG_DEFENDKEYAREA;
+            bs->teamgoal = *own;
+            bs->defendaway_time = 0;
+            break;
+        case CTFROLE_RECOVER:
+            bs->ltgtype = LTG_RETURNFLAG;
+            break;
+        case CTFROLE_ESCORT:
+            bs->ltgtype = LTG_TEAMACCOMPANY;
+            bs->teammate = carrier;
+            // Drop an obsolete item task on a new escort assignment. A hurt
+            // bot may finish a short supply task; oxygen escape keeps its time.
+            if (bs->lastair_time >= FloatTime() - 6) {
+                if (bs->inventory[INVENTORY_HEALTH] > 40) bs->nbg_time = 0;
+                else if (bs->nbg_time > FloatTime() + 2.5f) bs->nbg_time = FloatTime() + 2.5f;
+            }
+            bs->teammatevisible_time = FloatTime();
+            bs->formation_dist = 112 + (bs->client % 4) * 56;
+            bs->arrive_time = 1;
+            break;
+        default:
+            bs->ltgtype = 0;
+            bs->ctfroam_time = FloatTime() + 5;
+            break;
+    }
+    BotSetTeamStatus(bs);
+}
+
 /*
 ==================
 BotCTFSeekGoals
@@ -521,7 +726,7 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 // don't use any alt route goal, just get the hell out of the base
                 bs->altroutegoal.areanum = 0;
             }
-            BotSetUserInfo(bs, "teamtask", va("%d", TEAMTASK_OFFENSE));
+            BotQueueTeamTask(bs, TEAMTASK_OFFENSE);
             BotVoiceChat(bs, -1, VOICECHAT_IHAVEFLAG);
         } else if (bs->rushbaseaway_time > FloatTime()) {
             if (BotTeam(bs) == TEAM_RED)
@@ -534,6 +739,17 @@ void BotCTFSeekGoals(bot_state_t* bs) {
             }
         }
         return;
+    }
+    if (bot_tactics.integer) {
+        BotCTFPlanGoals(bs);
+        return;
+    }
+    if (BotCTFReleaseEscort(bs)) {
+        bs->ltgtype = LTG_RETURNFLAG;
+        bs->teamgoal_time = FloatTime() + CTF_RETURNFLAG_TIME;
+        bs->owndecision_time = FloatTime() + 5;
+        bs->altroutegoal.areanum = 0;
+        BotSetTeamStatus(bs);
     }
     // if the bot decided to follow someone
     if (bs->ltgtype == LTG_TEAMACCOMPANY && !bs->ordered) {
@@ -558,6 +774,28 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                    bs->teamgoal.number == ctf_blueflag.number))) {
                 // if there is a visible team mate flag carrier
                 c = BotTeamFlagCarrierVisible(bs);
+                /*
+                [QL] ...and only if the team is not already full of escorts.
+
+                Without the cap every bot that can see the carrier takes this
+                branch, for ten minutes each. See BotCTFRoleCrowded for what
+                that looked like in the field. When the escort quota is full
+                this falls through to the role picker below instead, which is
+                where the bot finds out the team would rather it defended.
+                */
+                /*
+                [QL] E137. Except a bot already beside the carrier. The quota
+                fills with bots the role picker sent from across the map, so the
+                attackers who went into their base with the carrier - the only
+                team mates near it when it grabs, where most carriers die (the
+                median carrier never gets within 3,400 u of home) - were refused
+                and went on attacking a flag that had gone. Within
+                ESCORT_NEAR the cap does not apply: those are the cover it has.
+                */
+                if (c >= 0 && BotCTFRoleCrowded(bs, CTFROLE_ESCORT) &&
+                    DistanceSquared(bs->origin, g_entities[c].r.currentOrigin) > Square(ESCORT_NEAR)) {
+                    c = -1;
+                }
                 if (c >= 0 &&
                     // and not already following the team mate flag carrier
                     (bs->ltgtype != LTG_TEAMACCOMPANY || bs->teammate != c)) {
@@ -579,13 +817,28 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                     // get the team goal time
                     bs->teamgoal_time = FloatTime() + TEAM_ACCOMPANY_TIME;
                     bs->ltgtype = LTG_TEAMACCOMPANY;
-                    bs->formation_dist = 3.5 * 32;  // 3.5 meter
+                    /* [QL] Not all at 3.5 metres. Every escort pathing to the
+                       same point around one carrier is what wedges them
+                       together and stops the carrier moving; a stable per-bot
+                       spread makes it a loose shell instead. */
+                    bs->formation_dist = 112 + (bs->client % 4) * 56;
                     BotSetTeamStatus(bs);
                     bs->owndecision_time = FloatTime() + 5;
                 }
             }
         }
-        return;
+        /*
+        [QL] Return only if this bot now has a job. It used to return either
+        way, and that is why the role system below almost never ran: these three
+        branches cover every state except both flags at home, and a field log
+        with 540 flag grabs in one match reached the role picker 103 times in
+        45,000 lines. A bot with nothing to do sat in here being offered one
+        option - escort, if it could see the carrier - and took the early return
+        when it could not.
+        */
+        if (bs->ltgtype) {
+            return;
+        }
     }
     // if the enemy has our flag
     else if (flagstatus == 2) {
@@ -597,13 +850,34 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 // FIXME: fight enemy flag carrier
             }
             // if not already doing something important
+            /*
+            [QL] LTG_DEFENDKEYAREA belongs in this list and is not in it.
+
+            Without it, the moment the enemy takes our flag every defender on
+            the team is converted to get-flag or return-flag on a coin toss.
+            With 591 grabs in one match that is constant, and the field logs say
+            what it costs: the role picker chose "defend" 199 times, and
+            "have 17/0/2/11" - nought defenders - in every single role line of
+            every log so far. Both bases stood open for the whole match, through
+            six overtimes.
+
+            This is also what looked like bots switching task too often. They
+            were: told to defend, walking to the base, converted to attack on
+            the next steal, told to defend again.
+
+            Our flag being out is the state that wants defenders *most* - the
+            mix asks for 60% of the team - because the stand is where the flag
+            comes back to. Gated on the tactical layer so bot_tactics 0 keeps
+            the stock behaviour exactly.
+            */
             if (bs->ltgtype != LTG_GETFLAG &&
                 bs->ltgtype != LTG_RETURNFLAG &&
                 bs->ltgtype != LTG_TEAMHELP &&
                 bs->ltgtype != LTG_TEAMACCOMPANY &&
                 bs->ltgtype != LTG_CAMPORDER &&
                 bs->ltgtype != LTG_PATROL &&
-                bs->ltgtype != LTG_GETITEM) {
+                bs->ltgtype != LTG_GETITEM &&
+                !(bot_tactics.integer && bs->ltgtype == LTG_DEFENDKEYAREA)) {
                 BotRefuseOrder(bs);
                 bs->decisionmaker = bs->client;
                 bs->ordered = qfalse;
@@ -625,16 +899,40 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 bs->owndecision_time = FloatTime() + 5;
             }
         }
-        return;
+        /*
+        [QL] Return only if this bot now has a job. It used to return either
+        way, and that is why the role system below almost never ran: these three
+        branches cover every state except both flags at home, and a field log
+        with 540 flag grabs in one match reached the role picker 103 times in
+        45,000 lines. A bot with nothing to do sat in here being offered one
+        option - escort, if it could see the carrier - and took the early return
+        when it could not.
+        */
+        if (bs->ltgtype) {
+            return;
+        }
     }
     // if both flags Not at their bases
     else if (flagstatus == 3) {
         //
         if (bs->owndecision_time < FloatTime()) {
             // if not trying to return the flag and not following the team flag carrier
-            if (bs->ltgtype != LTG_RETURNFLAG && bs->ltgtype != LTG_TEAMACCOMPANY) {
+            /*
+            [QL] Defenders stay defenders here too, for the same reason as the
+            branch above - and with one extra: when both flags are out our own
+            carrier is waiting on our stand for the flag to come home, and the
+            bots holding the base are the only thing guarding it. Everyone else
+            converts to recovery, which is what peels a search party off.
+            */
+            if (bs->ltgtype != LTG_RETURNFLAG && bs->ltgtype != LTG_TEAMACCOMPANY &&
+                !(bot_tactics.integer && bs->ltgtype == LTG_DEFENDKEYAREA)) {
                 //
                 c = BotTeamFlagCarrierVisible(bs);
+                // [QL] same escort cap as the flagstatus 1 branch above; with
+                // both flags out this is the branch that fills up
+                if (c >= 0 && BotCTFRoleCrowded(bs, CTFROLE_ESCORT)) {
+                    c = -1;
+                }
                 // if there is a visible team mate flag carrier
                 if (c >= 0) {
                     BotRefuseOrder(bs);
@@ -654,7 +952,11 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                     // get the team goal time
                     bs->teamgoal_time = FloatTime() + TEAM_ACCOMPANY_TIME;
                     bs->ltgtype = LTG_TEAMACCOMPANY;
-                    bs->formation_dist = 3.5 * 32;  // 3.5 meter
+                    /* [QL] Not all at 3.5 metres. Every escort pathing to the
+                       same point around one carrier is what wedges them
+                       together and stops the carrier moving; a stable per-bot
+                       spread makes it a loose shell instead. */
+                    bs->formation_dist = 112 + (bs->client % 4) * 56;
                     //
                     BotSetTeamStatus(bs);
                     bs->owndecision_time = FloatTime() + 5;
@@ -676,7 +978,18 @@ void BotCTFSeekGoals(bot_state_t* bs) {
                 }
             }
         }
-        return;
+        /*
+        [QL] Return only if this bot now has a job. It used to return either
+        way, and that is why the role system below almost never ran: these three
+        branches cover every state except both flags at home, and a field log
+        with 540 flag grabs in one match reached the role picker 103 times in
+        45,000 lines. A bot with nothing to do sat in here being offered one
+        option - escort, if it could see the carrier - and took the early return
+        when it could not.
+        */
+        if (bs->ltgtype) {
+            return;
+        }
     }
     // don't just do something wait for the bot team leader to give orders
     if (BotTeamLeader(bs)) {
@@ -689,6 +1002,69 @@ void BotCTFSeekGoals(bot_state_t* bs) {
     // if the bot decided to do something on its own and has a last ordered goal
     if (!bs->ordered && bs->lastgoal_ltgtype) {
         bs->ltgtype = 0;
+    }
+    /*
+    [QL] Reconsider a job the team no longer needs.
+
+    TEAM_ACCOMPANY_TIME and TEAM_DEFENDKEYAREA_TIME are both ten minutes and the
+    gate below returns for the whole of it, so a bot decided once and then held
+    that decision for longer than most matches last. Sixty bots that all chose
+    "escort" in the first seconds of a flag being out stayed escorts through
+    three overtimes.
+
+    Only when the job is over-subscribed, only for a decision the bot made
+    itself, and only every 20 seconds - long enough that a bot walking to the
+    far side of the map arrives before being asked to reconsider, short enough
+    that the team reshapes within one flag run.
+    */
+    if (bot_tactics.integer && gametype == GT_CTF && !bs->ordered &&
+        bs->tac.roleredecide_time < FloatTime()) {
+        int role = -1;
+
+        switch (bs->ltgtype) {
+            case LTG_GETFLAG:
+            case LTG_ATTACKENEMYBASE:
+                role = CTFROLE_ATTACK;
+                break;
+            case LTG_DEFENDKEYAREA:
+                role = CTFROLE_DEFEND;
+                break;
+            case LTG_TEAMACCOMPANY:
+                role = CTFROLE_ESCORT;
+                break;
+            default:
+                break;
+        }
+        /*
+        [QL] How long a job is worth holding depends on the job, which is
+        Xonotic's shape rather than our flat twenty seconds. Their havocbot uses
+        offense 120s, defense 30s, escort 60 + random 30, middle 10, and the
+        reasoning is legible in the numbers: attacking means walking the length
+        of the map, so asking again on the way is how a bot never arrives, while
+        holding the middle is transient by definition.
+        */
+        switch (role) {
+            case CTFROLE_ATTACK:
+                bs->tac.roleredecide_time = FloatTime() + 120;
+                break;
+            case CTFROLE_DEFEND:
+                bs->tac.roleredecide_time = FloatTime() + 30;
+                break;
+            case CTFROLE_ESCORT:
+                bs->tac.roleredecide_time = FloatTime() + 60 + random() * 30;
+                break;
+            default:
+                bs->tac.roleredecide_time = FloatTime() + 10;
+                break;
+        }
+        if (role >= 0 && BotCTFRoleCrowded(bs, role)) {
+            if (bot_debugTactics.integer) {
+                BotAI_Print(PRT_MESSAGE, "%s: role %i over-subscribed, re-deciding\n",
+                            g_entities[bs->entitynum].client->pers.netname, role);
+            }
+            bs->ltgtype = 0;
+            bs->owndecision_time = 0;
+        }
     }
     // if already a CTF or team goal
     if (bs->ltgtype == LTG_TEAMHELP ||
@@ -715,7 +1091,7 @@ void BotCTFSeekGoals(bot_state_t* bs) {
     if (bs->ctfroam_time > FloatTime())
         return;
     // if the bot has enough aggression to decide what to do
-    if (BotAggression(bs) < 50)
+    if (BotObjectiveAggression(bs) < 50)
         return;
     // set the time to send a message to the team mates
     bs->teammessage_time = FloatTime() + 2 * random();
@@ -731,9 +1107,64 @@ void BotCTFSeekGoals(bot_state_t* bs) {
         l1 = 0.4f;
         l2 = 0.7f;
     }
+    /*
+    [QL] Which job, decided against what the team is already doing rather than by
+    a die roll. See BotCTFPickRole - the mix moves with the flags, so a team that
+    has just lost its own flag stops sending people to the far end of the map.
+
+    Falls through to the stock roll when the layer is off or the role system has
+    nothing to say.
+    */
+    {
+        int role = BotCTFPickRole(bs);
+
+        /*
+        [QL] E87: record what the team asked for, so BotCTFEnforceOffense can
+        tell a deliberate defender from a bot that wandered home.
+
+        Set before the branches below rather than inside each of them, because
+        the escort branch returns early and would otherwise be the one job the
+        enforcer never hears about.
+        */
+        if (role >= 0) {
+            bs->tac.assignedrole = role;
+        }
+
+        if (role == CTFROLE_ESCORT) {
+            int carrier = BotTeamFlagCarrier(bs);
+
+            if (carrier >= 0) {
+                bs->decisionmaker = bs->client;
+                bs->ordered = qfalse;
+                bs->ltgtype = LTG_TEAMACCOMPANY;
+                bs->teammate = carrier;
+                bs->teamgoal_time = FloatTime() + TEAM_ACCOMPANY_TIME;
+                bs->formation_dist = 96;
+                bs->arrive_time = 0;
+                BotSetTeamStatus(bs);
+                bs->owndecision_time = FloatTime() + 5;
+                return;
+            }
+            role = CTFROLE_DEFEND;
+        }
+        if (role == CTFROLE_ATTACK) {
+            rnd = 0.0f;
+        } else if (role == CTFROLE_DEFEND) {
+            rnd = (l1 + l2) * 0.5f;
+        } else if (role == CTFROLE_ROAM) {
+            rnd = 1.0f;
+        } else {
+            rnd = random();
+        }
+    }
     // get the flag or defend the base
-    rnd = random();
-    if (rnd < l1 && ctf_redflag.areanum && ctf_blueflag.areanum) {
+    /*
+    [QL] ...and only if there is a flag there to get. Without this the goal is
+    handed straight back the moment BotGetLongTermGoal drops it for the same
+    reason, and the bot oscillates instead of doing something useful.
+    */
+    if (rnd < l1 && ctf_redflag.areanum && ctf_blueflag.areanum &&
+        (!bot_tactics.integer || BotEnemyFlagAtBase(bs))) {
         bs->decisionmaker = bs->client;
         bs->ordered = qfalse;
         bs->ltgtype = LTG_GETFLAG;
@@ -759,7 +1190,20 @@ void BotCTFSeekGoals(bot_state_t* bs) {
     } else {
         bs->ltgtype = 0;
         // set the time the bot will stop roaming
-        bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
+        /*
+        [QL] Fifteen seconds, not sixty.
+
+        CTF_ROAM_TIME locks a bot out of re-deciding for a full minute, and the
+        gate above returns on sight of it - so a bot that rolls "roam" has no
+        long term goal at all for that minute and cannot be given one. In a
+        field log 34 of 59 stuck episodes were ltg 0, which is this: with roam
+        at a fifth of the mix, six bots a side are goalless in rotation, and on
+        an instagib map there are not even items to wander between.
+
+        A minute is a sensible dedication time for a job. Roaming is the absence
+        of one.
+        */
+        bs->ctfroam_time = FloatTime() + (bot_tactics.integer ? 15 : CTF_ROAM_TIME);
         BotSetTeamStatus(bs);
     }
     bs->owndecision_time = FloatTime() + 5;
@@ -964,7 +1408,7 @@ void Bot1FCTFSeekGoals(bot_state_t* bs) {
     if (bs->ctfroam_time > FloatTime())
         return;
     // if the bot has enough aggression to decide what to do
-    if (BotAggression(bs) < 50)
+    if (BotObjectiveAggression(bs) < 50)
         return;
     // set the time to send a message to the team mates
     bs->teammessage_time = FloatTime() + 2 * random();
@@ -1006,7 +1450,20 @@ void Bot1FCTFSeekGoals(bot_state_t* bs) {
     } else {
         bs->ltgtype = 0;
         // set the time the bot will stop roaming
-        bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
+        /*
+        [QL] Fifteen seconds, not sixty.
+
+        CTF_ROAM_TIME locks a bot out of re-deciding for a full minute, and the
+        gate above returns on sight of it - so a bot that rolls "roam" has no
+        long term goal at all for that minute and cannot be given one. In a
+        field log 34 of 59 stuck episodes were ltg 0, which is this: with roam
+        at a fifth of the mix, six bots a side are goalless in rotation, and on
+        an instagib map there are not even items to wander between.
+
+        A minute is a sensible dedication time for a job. Roaming is the absence
+        of one.
+        */
+        bs->ctfroam_time = FloatTime() + (bot_tactics.integer ? 15 : CTF_ROAM_TIME);
         BotSetTeamStatus(bs);
     }
     bs->owndecision_time = FloatTime() + 5;
@@ -1076,7 +1533,7 @@ void BotObeliskSeekGoals(bot_state_t* bs) {
     if (bs->ctfroam_time > FloatTime())
         return;
     // if the bot has enough aggression to decide what to do
-    if (BotAggression(bs) < 50)
+    if (BotObjectiveAggression(bs) < 50)
         return;
     // set the time to send a message to the team mates
     bs->teammessage_time = FloatTime() + 2 * random();
@@ -1126,7 +1583,20 @@ void BotObeliskSeekGoals(bot_state_t* bs) {
     } else {
         bs->ltgtype = 0;
         // set the time the bot will stop roaming
-        bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
+        /*
+        [QL] Fifteen seconds, not sixty.
+
+        CTF_ROAM_TIME locks a bot out of re-deciding for a full minute, and the
+        gate above returns on sight of it - so a bot that rolls "roam" has no
+        long term goal at all for that minute and cannot be given one. In a
+        field log 34 of 59 stuck episodes were ltg 0, which is this: with roam
+        at a fifth of the mix, six bots a side are goalless in rotation, and on
+        an instagib map there are not even items to wander between.
+
+        A minute is a sensible dedication time for a job. Roaming is the absence
+        of one.
+        */
+        bs->ctfroam_time = FloatTime() + (bot_tactics.integer ? 15 : CTF_ROAM_TIME);
         BotSetTeamStatus(bs);
     }
 }
@@ -1223,7 +1693,7 @@ void BotHarvesterSeekGoals(bot_state_t* bs) {
     if (bs->ctfroam_time > FloatTime())
         return;
     // if the bot has enough aggression to decide what to do
-    if (BotAggression(bs) < 50)
+    if (BotObjectiveAggression(bs) < 50)
         return;
     // set the time to send a message to the team mates
     bs->teammessage_time = FloatTime() + 2 * random();
@@ -1292,7 +1762,20 @@ void BotHarvesterSeekGoals(bot_state_t* bs) {
     } else {
         bs->ltgtype = 0;
         // set the time the bot will stop roaming
-        bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
+        /*
+        [QL] Fifteen seconds, not sixty.
+
+        CTF_ROAM_TIME locks a bot out of re-deciding for a full minute, and the
+        gate above returns on sight of it - so a bot that rolls "roam" has no
+        long term goal at all for that minute and cannot be given one. In a
+        field log 34 of 59 stuck episodes were ltg 0, which is this: with roam
+        at a fifth of the mix, six bots a side are goalless in rotation, and on
+        an instagib map there are not even items to wander between.
+
+        A minute is a sensible dedication time for a job. Roaming is the absence
+        of one.
+        */
+        bs->ctfroam_time = FloatTime() + (bot_tactics.integer ? 15 : CTF_ROAM_TIME);
         BotSetTeamStatus(bs);
     }
 }
@@ -1324,7 +1807,138 @@ void BotHarvesterRetreatGoals(bot_state_t* bs) {
 BotTeamGoals
 ==================
 */
+/*
+==================
+BotCTFEnforceOffense
+
+[QL] In CTF a bot goes for the enemy flag, and nothing else pulls it to its own.
+
+Quake 3's CTF bots split themselves between attack and defence, and the team
+leader hands out both roles: BotCTFSeekGoals gives roughly a third of the
+undecided bots LTG_DEFENDKEYAREA with their own flag as the goal, the
+"our team has the enemy flag" branch does the same, and BotCTFOrders assigns a
+share of the team as defenders. All of those send a bot to stand on its own
+flag, which is what "the bots touch their own flag first" was.
+
+Two goals still legitimately point at the bot's own base and are left alone:
+
+  - carrying the enemy flag. LTG_RUSHBASE is how a capture happens.
+  - recovering its own flag. With tactics enabled this includes pursuing an
+    enemy carrier using the team's sightings, as well as a dropped flag.
+    With tactics disabled the original dropped-only exception is preserved.
+
+Everything else that was aimed at the bot's own flag is cleared and replaced
+with LTG_GETFLAG. Goals that are neither offence nor own-base - following the
+flag carrier, camping, fetching an item - are left as they are.
+
+Applied after the seek/retreat logic rather than inside it, because those
+functions return early down several paths and orders arrive from ai_cmd.c as
+well.
+==================
+*/
+static void BotCTFEnforceOffense(bot_state_t* bs) {
+    int team = BotTeam(bs);
+    bot_goal_t* ownflag;
+
+    if (bot_tactics.integer) return; // the planner is the sole autonomous CTF writer
+
+    if (team != TEAM_RED && team != TEAM_BLUE) {
+        return;
+    }
+    if (BotCTFCarryingFlag(bs)) {
+        return;   // running it home
+    }
+    ownflag = (team == TEAM_RED) ? &ctf_redflag : &ctf_blueflag;
+
+    if (bs->ltgtype == LTG_RETURNFLAG) {
+        int status = Team_GetFlagStatus(team);
+        if (status == FLAG_DROPPED || (bot_tactics.integer && status != FLAG_ATBASE)) {
+            return;   // recover a dropped flag or pursue its carrier
+        }
+        bs->ltgtype = 0;
+        if (bot_tactics.integer) {
+            bs->owndecision_time = 0;
+        }
+    }
+
+    /*
+    [QL] E87: and a third thing legitimately points at the bot's own base -
+    being told to defend it.
+
+    This function was written before the role picker existed, when the only
+    thing that sent a bot to its own flag was the stock code's aimless third,
+    and "clear it and go on offence" was the right answer to that. It is the
+    wrong answer to a deliberate assignment, and because it runs after
+    everything else on every think it wins: a field log of 62 bots shows the
+    picker choosing defend 114 times and roam 35 times, and the end-of-map
+    census reading
+
+        red roles (31): attack 28/14.4 (full) defend 0/10.4 escort 0/0.0 roam 0/6.2
+
+    - every single bot on LTG_GETFLAG, nobody holding either base, because each
+    of those 149 decisions was undone on the think that followed it. That is the
+    staircase pile-up: a whole team with one goal and one destination.
+
+    So the assignment is honoured while the team still wants it - the quota,
+    not a timer. A timer would be wrong here: a defender only re-runs the picker
+    when its role is *crowded*, so a timestamp goes stale precisely while the
+    bot is doing the job correctly, and the enforcer would take it back for
+    being right for too long.
+
+    The quota is also what keeps the original fix alive. When defence is
+    over-subscribed the surplus falls through to the clear below and goes on
+    offence, which is exactly what should happen to the bot standing on its own
+    flag that nobody needs there.
+    */
+    if (bot_tactics.integer) {
+        /*
+        [QL] E134. Holding the base while the team still wants defenders is
+        defending, whoever handed out the job.
+
+        This used to require the role picker's own assignment. But defend jobs
+        also come from BotAutoDefendGoal ("nobody is holding the base") and
+        the flag-status branches of BotCTFSeekGoals, and those bots carry the
+        role they had before - usually roam. Traced at 30 a side: of 89 defend
+        jobs stripped here, 54 were roamers with defence NOT full, stripped
+        for their label. A defender lasted a median 2.6 s, and blue ended a
+        match with 0 defenders of 20 wanted. Now the job is kept and the
+        role follows it.
+        */
+        if (bs->ltgtype == LTG_DEFENDKEYAREA && bs->teamgoal.number == ownflag->number &&
+            !BotCTFRoleCrowded(bs, CTFROLE_DEFEND)) {
+            bs->tac.assignedrole = CTFROLE_DEFEND;
+            return;   // holding the base, and still wanted there
+        }
+        if (bs->tac.assignedrole == CTFROLE_ROAM && bs->ltgtype == 0 &&
+            !BotCTFRoleCrowded(bs, CTFROLE_ROAM)) {
+            return;   // having no long-term goal is the point of roaming, not an absence of one
+        }
+    }
+
+    if (bs->ltgtype == LTG_RUSHBASE ||
+        (bs->ltgtype == LTG_DEFENDKEYAREA && bs->teamgoal.number == ownflag->number)) {
+        bs->ltgtype = 0;
+    }
+    if (bs->ltgtype != 0) {
+        return;
+    }
+    if (!ctf_redflag.areanum || !ctf_blueflag.areanum) {
+        return;
+    }
+
+    bs->decisionmaker = bs->client;
+    bs->ordered = qfalse;
+    bs->ltgtype = LTG_GETFLAG;
+    bs->teamgoal_time = FloatTime() + CTF_GETFLAG_TIME;
+    BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
+    BotSetTeamStatus(bs);
+}
+
 void BotTeamGoals(bot_state_t* bs, int retreat) {
+    if (gametype == GT_CTF && bot_tactics.integer) {
+        bs->order_time = 0;
+        return; // planned once per think, before any combat node
+    }
     if (retreat) {
         if (gametype == GT_CTF) {
             BotCTFRetreatGoals(bs);
@@ -1346,6 +1960,9 @@ void BotTeamGoals(bot_state_t* bs, int retreat) {
         } else if (gametype == GT_HARVESTER) {
             BotHarvesterSeekGoals(bs);
         }
+    }
+    if (gametype == GT_CTF) {
+        BotCTFEnforceOffense(bs);
     }
     // reset the order time which is used to see if
     // we decided to refuse an order
@@ -1552,6 +2169,87 @@ int BotSynonymContext(bot_state_t* bs) {
 BotChooseWeapon
 ==================
 */
+/*
+==================
+BotCloseRangeWeapon
+
+[QL] E140. Not a splash weapon with the enemy in its face.
+
+5.5% of all deaths in standard CTF at 30 a side were bots killing
+themselves, most with their own rocket. E139 held a shot whose blast would
+kill the bot, which took own-rocket deaths from 298 to 273 - the rest come
+from shooting a launcher at close range at all, where every miss lands at
+the bot's feet. The fuzzy weapon weights do not look at range, so a bot with
+a rocket launcher keeps it for a fight at arm's length.
+
+So: enemy within CLOSEWEAPON_NEAR and the choice is a rocket, grenade, BFG or
+proximity launcher - take the best close-range gun it has ammo for, in the
+order below. It goes back to the weights' choice only past CLOSEWEAPON_FAR, so
+it does not swap at the boundary every think.
+==================
+*/
+#define CLOSEWEAPON_NEAR 250.0f
+#define CLOSEWEAPON_FAR 350.0f
+#define CLOSEWEAPON_HEALTH 60       // [QL] E141: below this health...
+#define CLOSEWEAPON_PERHEALTH 15.0f  // ...each point missing adds this much range
+
+static int BotCloseRangeWeapon(bot_state_t* bs, int chosen) {
+    static const int order[][3] = {
+        // weapon, inventory weapon, inventory ammo
+        {WEAPONINDEX_SHOTGUN, INVENTORY_SHOTGUN, INVENTORY_SHELLS},
+        {WEAPONINDEX_LIGHTNING, INVENTORY_LIGHTNING, INVENTORY_LIGHTNINGAMMO},
+        {WEAPONINDEX_CHAINGUN, INVENTORY_CHAINGUN, INVENTORY_BELT},
+        {WEAPONINDEX_MACHINEGUN, INVENTORY_MACHINEGUN, INVENTORY_BULLETS},
+        {WEAPONINDEX_PLASMAGUN, INVENTORY_PLASMAGUN, INVENTORY_CELLS},
+        {WEAPONINDEX_NAILGUN, INVENTORY_NAILGUN, INVENTORY_NAILS},
+        {WEAPONINDEX_RAILGUN, INVENTORY_RAILGUN, INVENTORY_SLUGS},
+    };
+    aas_entityinfo_t entinfo;
+    float dist, near;
+    int i;
+
+    if (!bot_tactics.integer) {
+        return chosen;
+    }
+    if (chosen != WEAPONINDEX_ROCKET_LAUNCHER && chosen != WEAPONINDEX_GRENADE_LAUNCHER &&
+        chosen != WEAPONINDEX_BFG && chosen != WEAPONINDEX_PROXLAUNCHER) {
+        bs->tac.closeweapon = qfalse;
+        return chosen;
+    }
+    if (bs->enemy < 0 || bs->enemy >= MAX_CLIENTS) {
+        bs->tac.closeweapon = qfalse;
+        return chosen;
+    }
+    BotEntityInfo(bs->enemy, &entinfo);
+    if (!entinfo.valid) {
+        bs->tac.closeweapon = qfalse;
+        return chosen;
+    }
+    dist = Distance(bs->origin, entinfo.origin);
+    /* [QL] E141. and further out the less health it has. Instrumented at
+       30 a side: of 57 bots killed by their own rocket, 51 fired along a
+       line the check saw clear for 120 to 750 u, and the rocket went off
+       0-100 u from them 125-250 ms later - a body stepped into its path,
+       which no check at the trigger can see. Every one of them had 1-35
+       health, where a glancing 20 points is the end. So below
+       CLOSEWEAPON_HEALTH the launcher waits for a target further away. */
+    near = CLOSEWEAPON_NEAR;
+    if (bs->inventory[INVENTORY_HEALTH] < CLOSEWEAPON_HEALTH) {
+        near += (CLOSEWEAPON_HEALTH - bs->inventory[INVENTORY_HEALTH]) * CLOSEWEAPON_PERHEALTH;
+    }
+    if (dist > (bs->tac.closeweapon ? near + (CLOSEWEAPON_FAR - CLOSEWEAPON_NEAR) : near)) {
+        bs->tac.closeweapon = qfalse;
+        return chosen;
+    }
+    for (i = 0; i < (int)ARRAY_LEN(order); i++) {
+        if (bs->inventory[order[i][1]] > 0 && bs->inventory[order[i][2]] > 0) {
+            bs->tac.closeweapon = qtrue;
+            return order[i][0];
+        }
+    }
+    return chosen;  // nothing else to use
+}
+
 void BotChooseWeapon(bot_state_t* bs) {
     int newweaponnum;
 
@@ -1560,6 +2258,7 @@ void BotChooseWeapon(bot_state_t* bs) {
         trap_EA_SelectWeapon(bs->client, bs->weaponnum);
     } else {
         newweaponnum = trap_BotChooseBestFightWeapon(bs->ws, bs->inventory);
+        newweaponnum = BotCloseRangeWeapon(bs, newweaponnum);
         if (bs->weaponnum != newweaponnum)
             bs->weaponchange_time = FloatTime();
         bs->weaponnum = newweaponnum;
@@ -1601,7 +2300,19 @@ void BotSetupForMovement(bot_state_t* bs) {
     else
         initmove.presencetype = PRESENCE_NORMAL;
     //
-    if (bs->walker > 0.5)
+    /*
+    [QL] The walker characteristic, but not while there is a job to do.
+
+    CHARACTERISTIC_WALKER makes a bot walk for the whole match - reported as
+    "some of the bots seem to walk instead of use default run". It is a
+    personality trait that makes sense in a four player deathmatch and is a
+    liability in a thirty-two a side objective mode: a walking bot is a free
+    kill, and in a corridor it is a cork.
+
+    Kept for a bot with nothing in particular to do, which is where the flavour
+    was worth having, and dropped the moment it has a long term goal.
+    */
+    if (bs->walker > 0.5 && (!bot_tactics.integer || !bs->ltgtype))
         initmove.or_moveflags |= MFL_WALK;
     //
     VectorCopy(bs->viewangles, initmove.viewangles);
@@ -1750,21 +2461,42 @@ void BotUpdateInventory(bot_state_t* bs) {
     }
     // powerups
     bs->inventory[INVENTORY_HEALTH] = bs->cur_ps.stats[STAT_HEALTH];
-    bs->inventory[INVENTORY_TELEPORTER] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_TELEPORTER;
-    bs->inventory[INVENTORY_MEDKIT] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_MEDKIT;
-    bs->inventory[INVENTORY_KAMIKAZE] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_KAMIKAZE;
-    bs->inventory[INVENTORY_PORTAL] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_PORTAL;
-    bs->inventory[INVENTORY_INVULNERABILITY] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_INVULNERABILITY;
+    /*
+    [QL] E132. By what the item IS, not by a hard-coded list position.
+
+    STAT_HOLDABLE_ITEM and STAT_PERSISTANT_POWERUP hold an index into
+    bg_itemlist (g_items.c), and these compared it against inv.h's
+    MODELINDEX_* numbers - Quake 3's. Quake Live inserted item_armor_jacket
+    at index 4, so from there on every Q3 number is one short: a bot holding
+    a medkit read as holding a teleporter, a kamikaze as a medkit, Guard as
+    Scout. Asking the list for the item's giTag cannot drift that way.
+    */
+    {
+        int hi = bs->cur_ps.stats[STAT_HOLDABLE_ITEM];
+        int tag = (hi > 0 && hi < bg_numItems && bg_itemlist[hi].giType == IT_HOLDABLE) ? bg_itemlist[hi].giTag : HI_NONE;
+
+        bs->inventory[INVENTORY_TELEPORTER] = tag == HI_TELEPORTER;
+        bs->inventory[INVENTORY_MEDKIT] = tag == HI_MEDKIT;
+        bs->inventory[INVENTORY_KAMIKAZE] = tag == HI_KAMIKAZE;
+        bs->inventory[INVENTORY_PORTAL] = tag == HI_PORTAL;
+        bs->inventory[INVENTORY_INVULNERABILITY] = tag == HI_INVULNERABILITY;
+    }
     bs->inventory[INVENTORY_QUAD] = bs->cur_ps.powerups[PW_QUAD] != 0;
     bs->inventory[INVENTORY_ENVIRONMENTSUIT] = bs->cur_ps.powerups[PW_BATTLESUIT] != 0;
     bs->inventory[INVENTORY_HASTE] = bs->cur_ps.powerups[PW_HASTE] != 0;
     bs->inventory[INVENTORY_INVISIBILITY] = bs->cur_ps.powerups[PW_INVIS] != 0;
     bs->inventory[INVENTORY_REGEN] = bs->cur_ps.powerups[PW_REGEN] != 0;
     bs->inventory[INVENTORY_FLIGHT] = bs->cur_ps.powerups[PW_FLIGHT] != 0;
-    bs->inventory[INVENTORY_SCOUT] = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP] == MODELINDEX_SCOUT;
-    bs->inventory[INVENTORY_GUARD] = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP] == MODELINDEX_GUARD;
-    bs->inventory[INVENTORY_DOUBLER] = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP] == MODELINDEX_DOUBLER;
-    bs->inventory[INVENTORY_AMMOREGEN] = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP] == MODELINDEX_AMMOREGEN;
+    {
+        // [QL] E132. Same as the holdables above: by giTag, not list position.
+        int pi = bs->cur_ps.stats[STAT_PERSISTANT_POWERUP];
+        int tag = (pi > 0 && pi < bg_numItems && bg_itemlist[pi].giType == IT_PERSISTANT_POWERUP) ? bg_itemlist[pi].giTag : -1;
+
+        bs->inventory[INVENTORY_SCOUT] = tag == PW_SCOUT;
+        bs->inventory[INVENTORY_GUARD] = tag == PW_GUARD;
+        bs->inventory[INVENTORY_DOUBLER] = tag == PW_DOUBLER;
+        bs->inventory[INVENTORY_AMMOREGEN] = tag == PW_AMMOREGEN;
+    }
     bs->inventory[INVENTORY_REDFLAG] = bs->cur_ps.powerups[PW_REDFLAG] != 0;
     bs->inventory[INVENTORY_BLUEFLAG] = bs->cur_ps.powerups[PW_BLUEFLAG] != 0;
     bs->inventory[INVENTORY_NEUTRALFLAG] = bs->cur_ps.powerups[PW_NEUTRALFLAG] != 0;
@@ -2195,7 +2927,7 @@ int TeamPlayIsOn(void) {
 BotAggression
 ==================
 */
-float BotAggression(bot_state_t* bs) {
+float BotObjectiveAggression(bot_state_t* bs) {
     // if the bot has quad
     if (bs->inventory[INVENTORY_QUAD]) {
         // if the bot is not holding the gauntlet or the enemy is really nearby
@@ -2250,6 +2982,50 @@ float BotAggression(bot_state_t* bs) {
 
 /*
 ==================
+BotAggression
+
+[QL] The weapon-and-health answer above, moved by how many people are in the
+room.
+
+Deliberately *not* used by the four "do I pick a team objective" gates in
+BotCTFSeekGoals and its 1FCTF, Overload and Harvester equivalents. Those read
+BotObjectiveAggression, the unmodified number, because each of them is a bare
+`return` on failure: a bot that does not clear 50 there picks no long term goal
+at all and spends the next stretch roaming. Deciding whether to go for the flag
+is not a moment-to-moment reading of who is standing nearby, and letting a
+transient two-on-one suppress it is how a team stops playing the objective. The stock number is entirely self-regarding: a bot with a railgun and full
+health is at 95 whether it is alone against three or standing in a group of four,
+and the four never push together because nothing tells any of them that the other
+three are there.
+==================
+*/
+float BotAggression(bot_state_t* bs) {
+    float aggression;
+
+    aggression = BotObjectiveAggression(bs);
+    if (!bot_tactics.integer) {
+        return aggression;
+    }
+    switch (BotPosture(bs)) {
+        case TACTIC_PUSH:
+            aggression += 20;
+            break;
+        case TACTIC_FALLBACK:
+            aggression -= 30;
+            break;
+        default:
+            break;
+    }
+    if (aggression < 0) {
+        aggression = 0;
+    } else if (aggression > 100) {
+        aggression = 100;
+    }
+    return aggression;
+}
+
+/*
+==================
 BotFeelingBad
 ==================
 */
@@ -2274,7 +3050,7 @@ float BotFeelingBad(bot_state_t* bs) {
 BotWantsToRetreat
 ==================
 */
-int BotWantsToRetreat(bot_state_t* bs) {
+static int BotWantsToRetreatRaw(bot_state_t* bs) {
     aas_entityinfo_t entinfo;
 
     if (gametype == GT_CTF) {
@@ -2315,10 +3091,74 @@ int BotWantsToRetreat(bot_state_t* bs) {
     // if the bot is getting the flag
     if (bs->ltgtype == LTG_GETFLAG)
         return qtrue;
+    // Recovery and escort fight while advancing; an enemy flag carrier above
+    // still takes priority over this movement policy.
+    if (BotCTFObjectiveMove(bs))
+        return qtrue;
+    /* [QL] E137. And a flag carrier's escort: "retreat" is the node that
+       fights while still moving to the long term goal, and the others stand
+       and trade shots where they are. Escorts spent three quarters of their
+       time fighting, a median 2,400 u from the carrier they were meant to be
+       covering - pinned in the middle of the map by whoever they saw first. */
+    if (gametype == GT_CTF && bs->ltgtype == LTG_TEAMACCOMPANY && !bs->ordered &&
+        bs->teammate >= 0 && bs->teammate < MAX_CLIENTS && g_entities[bs->teammate].client &&
+        (g_entities[bs->teammate].client->ps.powerups[PW_REDFLAG] ||
+         g_entities[bs->teammate].client->ps.powerups[PW_BLUEFLAG]))
+        return qtrue;
     //
     if (BotAggression(bs) < 50)
         return qtrue;
     return qfalse;
+}
+
+/*
+==================
+BotWantsToRetreat
+
+[QL] Two things on top of the answer above.
+
+The first is the room: being outnumbered where the bot is standing is a reason to
+back off that the stock code has no way to express.
+
+The second is that the answer is *held*. BotAggression sits either side of 50 as
+health and ammo tick, and AINode_Battle_Fight asks this every single think, so a
+bot on the boundary enters and leaves the retreat node several times a second -
+which is what the two-bots-circling-each-other complaint actually was. Once a bot
+decides, it lives with the decision for a second and a half.
+
+Carrying a flag or cubes is exempt: those answers are the gametype's, not a
+judgement call, and delaying them by a second would be a real loss of a real
+objective.
+==================
+*/
+int BotWantsToRetreat(bot_state_t* bs) {
+    int wants;
+
+    wants = BotWantsToRetreatRaw(bs);
+    if (!bot_tactics.integer) {
+        return wants;
+    }
+    if (BotCTFCarryingFlag(bs) || Bot1FCTFCarryingFlag(bs) || BotHarvesterCarryingCubes(bs)) {
+        return wants;
+    }
+    // a retreat that already found no way out; see AIEnter_Battle_SuicidalFight
+    if (bs->tac.suicidal_time > FloatTime()) {
+        return qfalse;
+    }
+    if (!wants && BotPosture(bs) == TACTIC_FALLBACK) {
+        if (bs->tac.foes >= bs->tac.allies + 2 ||
+            bs->inventory[INVENTORY_HEALTH] + bs->inventory[INVENTORY_ARMOR] < 100) {
+            wants = qtrue;
+        }
+    }
+    if (wants != bs->tac.retreating) {
+        if (bs->tac.retreat_time > FloatTime()) {
+            return bs->tac.retreating;
+        }
+        bs->tac.retreating = wants;
+        bs->tac.retreat_time = FloatTime() + 1.0f + random() * 0.5f;
+    }
+    return bs->tac.retreating;
 }
 
 /*
@@ -2366,6 +3206,34 @@ int BotWantsToChase(bot_state_t* bs) {
     // if the bot is getting the flag
     if (bs->ltgtype == LTG_GETFLAG)
         return qfalse;
+    if (BotCTFObjectiveMove(bs))
+        return qfalse;
+    /*
+    [QL] Whether chasing is worth it, rather than only whether the bot feels like
+    it. Three reasons not to follow someone who has broken line of sight:
+    */
+    if (bot_tactics.integer) {
+        vec3_t dir;
+
+        // the two standing behind the one that ran is how a bot dies for nothing
+        if (BotPosture(bs) == TACTIC_FALLBACK) {
+            return qfalse;
+        }
+        // hurt enough that the next fight should be on the bot's terms
+        if (bs->inventory[INVENTORY_HEALTH] + bs->inventory[INVENTORY_ARMOR] < 80) {
+            return qfalse;
+        }
+        // and the way there has to be walkable. Chasing across a gap is where a
+        // bot walks off a ledge with its eyes on somebody else - the pursuit is
+        // the reason it stopped looking where it was going
+        if (bs->lastenemyareanum) {
+            VectorSubtract(bs->lastenemyorigin, bs->origin, dir);
+            dir[2] = 0;
+            if (VectorNormalize(dir) > 64 && !BotRoomToMove(bs, dir, 96)) {
+                return qfalse;
+            }
+        }
+    }
     //
     if (BotAggression(bs) > 50)
         return qtrue;
@@ -2661,10 +3529,11 @@ BotAttackMove
 ==================
 */
 bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
-    int movetype, i, attackentity;
+    int movetype, i, attackentity, attempts;
+    qboolean backoff;
     float attack_skill, jumper, croucher, dist, strafechange_time;
     float attack_dist, attack_range;
-    vec3_t forward, backward, sideward, hordir, up = {0, 0, 1};
+    vec3_t forward, backward, sideward, hordir, dodgedir, up = {0, 0, 1};
     aas_entityinfo_t entinfo;
     bot_moveresult_t moveresult;
     bot_goal_t goal;
@@ -2725,9 +3594,22 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
             bs->attackjump_time = FloatTime() + 1;
         }
     }
+    /*
+    [QL] How far away to fight from, by the weapon in hand.
+
+    The stock code uses IDEAL_ATTACKDIST for everything, so a bot holding a
+    railgun closes to 140 units to use it and a bot holding a lightning gun backs
+    away past the 768 units the gun actually reaches. See BotIdealAttackRange.
+
+    Below half attack skill the old single distance stays: knowing the range your
+    weapon works at is a skill, and the bottom of the ladder is supposed to not
+    have it.
+    */
     if (bs->cur_ps.weapon == WP_GAUNTLET) {
         attack_dist = 0;
         attack_range = 0;
+    } else if (bot_tactics.integer && attack_skill > 0.5) {
+        BotIdealAttackRange(bs, &attack_dist, &attack_range);
     } else {
         attack_dist = IDEAL_ATTACKDIST;
         attack_range = 40;
@@ -2745,6 +3627,8 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
         }
         return moveresult;
     }
+    // [QL] two attempts is stock; the extra two are the strafe-only retries
+    attempts = bot_tactics.integer ? 4 : 2;
     // increase the strafe time
     bs->attackstrafe_time += bs->thinktime;
     // get the strafe change time
@@ -2760,8 +3644,68 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
             bs->attackstrafe_time = 0;
         }
     }
-    //
-    for (i = 0; i < 2; i++) {
+    /*
+    [QL] Two reasons to break that rhythm, which is otherwise a coin flip on a
+    timer and holds one direction for seconds at a stretch - long enough to be a
+    stationary target to anything hitscan.
+    */
+    if (bot_tactics.integer && attack_skill > 0.4) {
+        hordir[0] = forward[0];
+        hordir[1] = forward[1];
+        hordir[2] = 0;
+        VectorNormalize(hordir);
+        CrossProduct(hordir, up, sideward);
+        // something is in the air and about to arrive: step across its path,
+        // and commit the strafe to that side so the next think does not walk
+        // back into it
+        if (BotDodgeDirection(bs, dodgedir)) {
+            if (DotProduct(dodgedir, sideward) >= 0) {
+                bs->flags &= ~BFL_STRAFERIGHT;
+            } else {
+                bs->flags |= BFL_STRAFERIGHT;
+            }
+            bs->attackstrafe_time = 0;
+            if (trap_BotMoveInDirection(bs->ms, dodgedir, 400, movetype)) {
+                return moveresult;
+            }
+        }
+        // the enemy has been holding a hitscan weapon on the bot: juke
+        else if (bs->attackstrafe_time > 0.3 && BotEnemyTrackingMe(bs)) {
+            bs->flags ^= BFL_STRAFERIGHT;
+            bs->attackstrafe_time = 0;
+        }
+    }
+    /*
+    [QL] Is there anywhere behind the bot to back into.
+
+    A bot backing away has its back to where it is going and the stock AI never
+    looks. That barely mattered at IDEAL_ATTACKDIST 140, where backing off only
+    happened inside 100 units; with the weapon bands it happens constantly - a
+    railgun bot gives ground below 450 - so "walks backwards into a wall" went
+    from rare to the normal case. Checked once, used by both branches below.
+    */
+    backoff = qtrue;
+    if (bot_tactics.integer) {
+        backoff = BotRoomToMove(bs, backward, 96);
+    }
+
+    /*
+    [QL] Four attempts, not two.
+
+    The stock loop tries the composed direction, flips the strafe, and tries the
+    same composed direction again - so if the *forward or backward* part is what
+    is blocked, both attempts fail on the same axis and the bot returns having
+    moved nowhere. moveresult is still zeroed at that point, so moveresult.blocked
+    is false and the BotAIBlocked call in the caller does nothing either. The bot
+    stands there, and does it again next frame.
+
+    So the last two attempts drop the forward/backward component entirely and
+    strafe alone, which is a genuinely different direction rather than the same
+    blocked one twice.
+    */
+    for (i = 0; i < attempts; i++) {
+        int trymove = movetype;
+
         hordir[0] = forward[0];
         hordir[1] = forward[1];
         hordir[2] = 0;
@@ -2771,23 +3715,78 @@ bot_moveresult_t BotAttackMove(bot_state_t* bs, int tfl) {
         // reverse the vector depending on the strafe direction
         if (bs->flags & BFL_STRAFERIGHT)
             VectorNegate(sideward, sideward);
-        // randomly go back a little
-        if (random() > 0.9) {
-            VectorAdd(sideward, backward, sideward);
-        } else {
-            // walk forward or backward to get at the ideal attack distance
-            if (dist > attack_dist + attack_range) {
-                VectorAdd(sideward, forward, sideward);
-            } else if (dist < attack_dist - attack_range) {
-                VectorAdd(sideward, backward, sideward);
+        /*
+        [QL] The extra attempts walk, they do not jump.
+
+        BotWalkInDirection predicts two frames ahead for a walk and
+        PREDICTIONTIME_JUMP for a jump, and a jump is allowed to clear a gap that
+        a walk would refuse. That is fine as the *first* answer - bots are
+        supposed to jump - but as a retry it turns "the sensible move was
+        blocked" into "jump somewhere the sensible move would not go", which on
+        an open map is off it. Reported as bots jumping off and falling off the
+        map, and it arrived with these retries.
+        */
+        if (i >= 2) {
+            trymove &= ~MOVE_JUMP;
+        }
+        if (i < 2) {
+            // randomly go back a little
+            if (random() > 0.9) {
+                if (backoff) {
+                    VectorAdd(sideward, backward, sideward);
+                }
+            } else {
+                // walk forward or backward to get at the ideal attack distance
+                if (dist > attack_dist + attack_range) {
+                    VectorAdd(sideward, forward, sideward);
+                } else if (dist < attack_dist - attack_range && backoff) {
+                    VectorAdd(sideward, backward, sideward);
+                }
             }
         }
+        /*
+        [QL] And check the ground under every direction, not just backward.
+
+        BotWalkInDirection only gap-checks when its two-frame prediction actually
+        stops on ground, so on a wide drop - the void on a space map - the
+        prediction never lands, no gap check runs, and the move is allowed. The
+        bot walks off on the frame after. 695 of roughly 2,250 deaths in one
+        longestyard match were MOD_TRIGGER_HURT: bots stepping into the void,
+        nearly a third of everything that happened.
+
+        72 units is about two thinks of lookahead at combat speed. A bot on a
+        narrow walkway will now refuse to strafe off it, which is the intended
+        answer even though it costs some of the dodging.
+        */
+        if (bot_tactics.integer && !BotRoomToMove(bs, sideward, 72)) {
+            bs->flags ^= BFL_STRAFERIGHT;
+            bs->attackstrafe_time = 0;
+            continue;
+        }
         // perform the movement
-        if (trap_BotMoveInDirection(bs->ms, sideward, 400, movetype))
+        if (trap_BotMoveInDirection(bs->ms, sideward, 400, trymove))
             return moveresult;
         // movement failed, flip the strafe direction
         bs->flags ^= BFL_STRAFERIGHT;
         bs->attackstrafe_time = 0;
+    }
+    /*
+    [QL] Cornered. Move towards the enemy rather than stand in it - that is where
+    the bot came from, so it is the one direction known to have been walkable a
+    moment ago, and closing is a better answer to being trapped than presenting a
+    stationary target.
+    */
+    if (bot_tactics.integer) {
+        // and look before stepping into it - the enemy may be across a gap
+        if (BotRoomToMove(bs, forward, 96) &&
+            trap_BotMoveInDirection(bs->ms, forward, 400, movetype & ~MOVE_JUMP)) {
+            return moveresult;
+        }
+        /* Nothing worked. Say so, so BotAIBlocked in the caller gets a chance
+           rather than being handed a zeroed result that looks like success. */
+        moveresult.blocked = qtrue;
+        moveresult.blockentity = ENTITYNUM_WORLD;
+        VectorCopy(sideward, moveresult.movedir);
     }
     // bot couldn't do any useful movement
     //	bs->attackchase_time = AAS_Time() + 6;
@@ -3053,6 +4052,31 @@ int BotFindEnemy(bot_state_t* bs, int curenemy) {
             // if this enemy is further away than the current one
             if (curenemy >= 0 && squaredist > cursquaredist)
                 continue;
+            /*
+            [QL] And having a current enemy means something.
+
+            Stock switches to anything at all closer, and this runs every think.
+            In a sixty-four player room there is almost always somebody a little
+            closer than whoever the bot is shooting at, so it re-targets ten
+            times a second and never finishes an engagement - which from a
+            spectator is the "inhumanly switching between targets" part.
+
+            A person leaves a fight for a better one, not a marginally nearer
+            one. bot_targetCommit milliseconds since the last switch, and the new
+            enemy has to be meaningfully closer - 70% of the distance, which is
+            half the area - before it is worth turning around for. Neither
+            applies when the bot has no enemy, so first acquisition is as quick
+            as it ever was.
+            */
+            if (curenemy >= 0 && bot_tactics.integer && bot_targetCommit.integer > 0) {
+                if (bs->tac.enemyswitch_time >
+                    FloatTime() - (float)bot_targetCommit.integer * 0.001f) {
+                    continue;
+                }
+                if (squaredist > cursquaredist * 0.49f) {
+                    continue;
+                }
+            }
         }  // end if
         // if the bot has no
         if (squaredist > Square(900.0 + alertness * 4000.0))
@@ -3084,6 +4108,9 @@ int BotFindEnemy(bot_state_t* bs, int curenemy) {
             }
         }
         // found an enemy
+        if (bs->enemy != entinfo.number) {
+            bs->tac.enemyswitch_time = FloatTime();
+        }
         bs->enemy = entinfo.number;
         if (curenemy >= 0)
             bs->enemysight_time = FloatTime() - 2;
@@ -3581,10 +4608,46 @@ void BotAimAtEnemy(bot_state_t* bs) {
     }
     // set the ideal view angles
     vectoangles(dir, bs->ideal_viewangles);
-    // take the weapon spread into account for lower skilled bots
-    bs->ideal_viewangles[PITCH] += 6 * wi.vspread * crandom() * (1 - aim_accuracy);
+    /*
+    [QL] The aim error wanders instead of being redrawn from scratch.
+
+    Stock takes a fresh crandom() for pitch and yaw on every think - ten times a
+    second, each one unrelated to the last - so the crosshair teleports around
+    the target rather than sliding. A person's aim is wrong continuously and in
+    one direction at a time; this was wrong discontinuously, and it is most of
+    what "spasm" looks like from a spectator.
+
+    The spread and CHARACTERISTIC_AIM_ACCURACY still scale the error. The
+    low-pass filter correlates successive errors and reduces their variance;
+    it does not preserve the independent-noise distribution.
+    */
+    if (bot_tactics.integer && bot_aimDrift.integer) {
+        /*
+        The offset is handed to BotAimSweep as a destination in degrees rather
+        than added here, because this function runs on the think - ten times a
+        second - and anything applied here is a staircase at that rate no matter
+        how well it is smoothed between samples. The sweep runs every frame and
+        walks the applied offset towards this one, so what comes out is a
+        continuous wander at the tick rate instead of ten steps a second.
+        */
+        bs->tac.aimdrift[0] = bs->tac.aimdrift[0] * 0.7f + crandom() * 0.3f;
+        bs->tac.aimdrift[1] = bs->tac.aimdrift[1] * 0.7f + crandom() * 0.3f;
+        bs->tac.aimoffsetgoal[0] = 6 * wi.vspread * bs->tac.aimdrift[0] * (1 - aim_accuracy);
+        bs->tac.aimoffsetgoal[1] = 6 * wi.hspread * bs->tac.aimdrift[1] * (1 - aim_accuracy);
+        // The drift switch must retain its error when the sweep is disabled.
+        if (!bot_aimSweep.integer) {
+            bs->ideal_viewangles[PITCH] += bs->tac.aimoffsetgoal[0];
+            bs->ideal_viewangles[YAW] += bs->tac.aimoffsetgoal[1];
+        }
+    } else {
+        bs->tac.aimoffsetgoal[0] = bs->tac.aimoffsetgoal[1] = 0;
+        bs->tac.aimoffset[0] = bs->tac.aimoffset[1] = 0;
+        // take the weapon spread into account for lower skilled bots
+        bs->ideal_viewangles[PITCH] += 6 * wi.vspread * crandom() * (1 - aim_accuracy);
+        bs->ideal_viewangles[YAW] += 6 * wi.hspread * crandom() * (1 - aim_accuracy);
+    }
+    bs->tac.aimsample_time = level.time * 0.001f;
     bs->ideal_viewangles[PITCH] = AngleMod(bs->ideal_viewangles[PITCH]);
-    bs->ideal_viewangles[YAW] += 6 * wi.hspread * crandom() * (1 - aim_accuracy);
     bs->ideal_viewangles[YAW] = AngleMod(bs->ideal_viewangles[YAW]);
     // if the bots should be really challenging
     if (bot_challenge.integer) {
@@ -3706,6 +4769,24 @@ void BotCheckAttack(bot_state_t* bs) {
                 }
             }
             // FIXME: check if a teammate gets radial damage
+        }
+    }
+    /*
+    [QL] E139. And the case stock left out: the shot hits the enemy, but so
+    close that the blast takes the bot too. Over 25 standard-weapon matches
+    at 30 a side, 5.5% of all deaths were bots killing themselves - 522 of
+    them with their own rocket splash, 82 grenade, 38 plasma. Splash falls
+    off with distance from the blast (G_RadiusDamage) and is halved on
+    yourself (G_Damage); a shot whose splash would take everything the bot
+    has left is not fired. It still trades rockets at point blank when it
+    can take it, as a person would.
+    */
+    if (bot_tactics.integer && (wi.proj.damagetype & DAMAGETYPE_RADIAL) && wi.proj.radius > 0) {
+        float impact = trace.fraction * 1000;
+
+        if (impact < wi.proj.radius &&
+            wi.proj.damage * (1.0f - impact / wi.proj.radius) * 0.5f >= bs->inventory[INVENTORY_HEALTH]) {
+            return;
         }
     }
     // if fire has to be release to activate weapon
@@ -4501,6 +5582,35 @@ void BotAIBlocked(bot_state_t* bs, bot_moveresult_t* moveresult, int activate) {
         //
         return;
     }
+    // [QL] E133. bot_debugMovement counts bumps into bodies - once per contact,
+    // not once per think spent pressed against it
+    if (moveresult->blockentity >= 0 && moveresult->blockentity < MAX_CLIENTS &&
+        bs->mstat.bumped_time < FloatTime() - 0.5f) {
+        bs->mstat.bumps++;
+        if (bot_debugTrack.integer > 0) {
+            // for render-tracks.py: where bodies meet, and what with - a team
+            // mate or an enemy, going our way (+) or coming at us (-)
+            gentity_t* other = &g_entities[moveresult->blockentity];
+            float heading = 0;
+
+            if (other->client) {
+                vec3_t a, b;
+
+                VectorCopy(bs->cur_ps.velocity, a);
+                VectorCopy(other->client->ps.velocity, b);
+                a[2] = b[2] = 0;
+                if (VectorNormalize(a) > 50 && VectorNormalize(b) > 50) {
+                    heading = DotProduct(a, b);
+                }
+            }
+            G_Printf("botbump %d %d %.0f %.0f %.0f %d %d %.2f\n", level.time, bs->client,
+                     bs->origin[0], bs->origin[1], bs->origin[2], bs->ainode == AINode_Seek_LTG || bs->ainode == AINode_Seek_NBG,
+                     other->client && OnSameTeam(&g_entities[bs->client], other), heading);
+        }
+    }
+    if (moveresult->blockentity >= 0 && moveresult->blockentity < MAX_CLIENTS) {
+        bs->mstat.bumped_time = FloatTime();
+    }
     // get info for the entity that is blocking the bot
     BotEntityInfo(moveresult->blockentity, &entinfo);
 #ifdef OBSTACLEDEBUG
@@ -4540,6 +5650,29 @@ void BotAIBlocked(bot_state_t* bs, bot_moveresult_t* moveresult, int activate) {
         VectorSet(angles, 0, 360 * random(), 0);
         AngleVectors(angles, hordir, NULL, NULL);
     }
+    /*
+    [QL] E133. A body going our way is the queue, not an obstacle.
+
+    Blocked means pressed against a body three units ahead, and in a column of
+    thirty running bots the one behind is always pressed against the one in
+    front. Stock answered every such contact with a full-speed sidestep at
+    right angles - out of the column and into whoever runs beside it, which
+    blocks them in turn: the zig-zag every bot in a crowd was doing. If the
+    one in front is running the way we are, keep following; the sidestep is
+    for bodies that are standing still or coming the other way. BotCrowdSteer
+    (botlib) already bends the path round the queue where there is room.
+    */
+    if (bot_crowdsteer.integer && moveresult->blockentity >= 0 && moveresult->blockentity < MAX_CLIENTS &&
+        entinfo.update_time > 0.001f) {
+        vec3_t vel;
+
+        VectorSubtract(entinfo.origin, entinfo.lastvisorigin, vel);
+        VectorScale(vel, 1.0f / entinfo.update_time, vel);
+        vel[2] = 0;
+        if (DotProduct(vel, hordir) > 150) {
+            return;
+        }
+    }
     //
     // if (moveresult->flags & MOVERESULT_ONTOPOFOBSTACLE) movetype = MOVE_JUMP;
     // else
@@ -4556,15 +5689,42 @@ void BotAIBlocked(bot_state_t* bs, bot_moveresult_t* moveresult, int activate) {
     // if (bsptrace.fraction >= 1) movetype = MOVE_CROUCH;
     // get the sideward vector
     CrossProduct(hordir, up, sideward);
-    //
+    /*
+    [QL] Pick a side and keep it for a moment, and start on opposite sides.
+
+    Two bots meeting head on run this code against each other, and stock Q3
+    both starts them on the same side and flips the side on every frame the
+    sidestep fails. Mirrored and re-rolled ten times a second, that is the
+    dance: neither commits long enough to get past, and in a doorway with a
+    team's worth of bots behind them the whole queue stalls.
+
+    An odd client number starts on the other side, so a pair meeting head on
+    steps apart rather than into each other, and a side that has been chosen is
+    held for AVOIDSIDE_HOLD before it can flip again - long enough to actually
+    clear a body, short enough to still find the way out when the first side is
+    a wall.
+    */
+#define AVOIDSIDE_HOLD 0.7f
+    if (bs->notblocked_time > FloatTime() - 0.2f) {
+        // freshly blocked: start on this bot's own side
+        if (bs->client & 1) {
+            bs->flags |= BFL_AVOIDRIGHT;
+        } else {
+            bs->flags &= ~BFL_AVOIDRIGHT;
+        }
+        bs->avoidside_time = FloatTime();
+    }
     if (bs->flags & BFL_AVOIDRIGHT)
         VectorNegate(sideward, sideward);
     // try to crouch straight forward?
     if (movetype != MOVE_CROUCH || !trap_BotMoveInDirection(bs->ms, hordir, 400, movetype)) {
         // perform the movement
         if (!trap_BotMoveInDirection(bs->ms, sideward, 400, movetype)) {
-            // flip the avoid direction flag
-            bs->flags ^= BFL_AVOIDRIGHT;
+            // flip the avoid direction flag, but not more often than the hold
+            if (bs->avoidside_time < FloatTime() - AVOIDSIDE_HOLD) {
+                bs->flags ^= BFL_AVOIDRIGHT;
+                bs->avoidside_time = FloatTime();
+            }
             // flip the direction
             // VectorNegate(sideward, sideward);
             VectorMA(sideward, -1, hordir, sideward);
@@ -5122,23 +6282,241 @@ bot_goal_t* BotAlternateRoute(bot_state_t* bs, bot_goal_t* goal) {
 BotGetAlternateRouteGoal
 ==================
 */
+
+/* Return routes use travel in the direction actually being walked. Static
+   starttraveltime describes home -> waypoint, which can differ from the reverse
+   on lifts and jumps. Reject unreachable/backward points and bound the detour.
+   Route threat still matters, but an empty faraway room no longer wins a tie
+   against a short return route. Costs use AAS travel-time units. */
+static int BotCTFCarrierRouteCost(bot_state_t* bs, aas_altroutegoal_t* candidate,
+                                  bot_goal_t* home, int direct) {
+    int leg, remaining, cost, danger, tail;
+    if (!direct) return -1;
+    leg = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, candidate->areanum, bs->tfl);
+    remaining = trap_AAS_AreaTravelTimeToGoalArea(candidate->areanum, candidate->origin, home->areanum, bs->tfl);
+    // BotAlternateRoute treats travel below 20 as already reached. Do not
+    // re-arm that same arrived waypoint during a periodic carrier replan.
+    if (leg < 20 || !remaining || remaining >= direct) return -1;
+    cost = leg + remaining;
+    if (cost > direct * 3 / 2 + 100) return -1;
+    danger = BotCTFRouteThreat(bs, bs->areanum, bs->origin, candidate->areanum, candidate->origin, bs->tfl);
+    tail = BotCTFRouteThreat(bs, candidate->areanum, candidate->origin, home->areanum, home->origin, bs->tfl);
+    cost += (danger > tail ? danger : tail) * 300;
+    if (bs->altroutegoal.areanum == candidate->areanum) cost -= 50; // avoid gratuitous route switching
+    return cost < 0 ? 0 : cost;
+}
+
+static qboolean BotCTFKeepCarrierRoute(bot_state_t* bs, aas_altroutegoal_t* current,
+                                      bot_goal_t* home, int direct, int bestcost) {
+    int cost;
+    if (!bs->altroutegoal.areanum || current->areanum != bs->altroutegoal.areanum ||
+        bs->reachedaltroutegoal_time || bs->tac.reportedstuck) return qfalse;
+    cost = BotCTFCarrierRouteCost(bs, current, home, direct);
+    // Retain a useful pending leg unless replacing it saves at least 100
+    // score units beyond the existing 50-unit incumbent preference. An
+    // invalid/reached/stuck leg must not prevent escape or forward progress.
+    return cost >= 0 && bestcost + 100 > cost;
+}
+
+/*
+[QL] E231. bot_debugRoutes 1: one "routepick" line per carrier route decision -
+the direct cost, every candidate waypoint with its cost or why it was refused,
+and what was chosen - so a route's outcome can be traced to the choice that made
+it. Print only: it recomputes, writes no bot state and draws no random numbers,
+so turning it on does not change what bots do.
+
+  routepick <ms> <client> <team> direct <home tt> <threat> <direct cost>
+            pick <area> <cost> | <area>:<x>:<y>:<z>:<cost or reason> ...
+
+reasons: U unreachable, A already there (leg < 20), B not closer to home,
+L detour too long. pick 0 is straight home. "off" is bot_ctfDetours.
+*/
+static void BotRouteDecisionLog(bot_state_t* bs, aas_altroutegoal_t* g, int n, bot_goal_t* home,
+                                int tohome, int pick, int pickcost) {
+    char buf[1400];
+    int i, threat;
+
+    if (!bot_debugRoutes.integer) {
+        return;
+    }
+    threat = (bs->areanum && home->areanum) ?
+        BotCTFRouteThreat(bs, bs->areanum, bs->origin, home->areanum, home->origin, bs->tfl) : 0;
+    buf[0] = '\0';
+    for (i = 0; i < n && strlen(buf) < sizeof(buf) - 64; i++) {
+        int leg = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, g[i].areanum, bs->tfl);
+        int rem = trap_AAS_AreaTravelTimeToGoalArea(g[i].areanum, g[i].origin, home->areanum, bs->tfl);
+        int cost = BotCTFCarrierRouteCost(bs, &g[i], home, tohome);
+        const char* why = NULL;
+        if (cost < 0) {
+            why = (!tohome || !rem || !leg) ? "U" : leg < 20 ? "A" : rem >= tohome ? "B" : "L";
+        }
+        Q_strcat(buf, sizeof(buf), va(" %d:%.0f:%.0f:%.0f:%s", g[i].areanum, g[i].origin[0], g[i].origin[1],
+                                      g[i].origin[2], why ? why : va("%d", cost)));
+    }
+    G_Printf("routepick %d %d %d direct %d %d %d pick %d %d |%s\n", level.time, bs->client, BotTeam(bs),
+             tohome, threat, tohome + 300 * threat, pick >= 0 ? g[pick].areanum : 0, pick >= 0 ? pickcost : 0, buf);
+}
+
 int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     aas_altroutegoal_t* altroutegoals;
     bot_goal_t* goal;
+    int* sides;
     int numaltroutegoals, rnd;
+
 
     if (base == TEAM_RED) {
         altroutegoals = red_altroutegoals;
         numaltroutegoals = red_numaltroutegoals;
+        sides = red_altroutesides;
     } else {
         altroutegoals = blue_altroutegoals;
         numaltroutegoals = blue_numaltroutegoals;
+        sides = blue_altroutesides;
     }
     if (!numaltroutegoals)
         return qfalse;
-    rnd = (float)random() * numaltroutegoals;
-    if (rnd >= numaltroutegoals)
-        rnd = numaltroutegoals - 1;
+    /*
+    [QL] The emptiest way round, not a random one.
+
+    Stock rolls a die here. A die gives every bot the same distribution and no
+    knowledge of each other, so on a map with two ways through, sixty bots split
+    thirty-thirty by luck and both corridors jam - and the ones that roll the
+    same number as the bot in front of them queue behind it.
+
+    BotRoomCrowding counts the team already in the room a candidate sits in
+    *and* the team already walking towards it, so the second bot to ask gets a
+    different answer from the first. That is the whole mechanism: it is not that
+    any one bot is clever, it is that the count moves as they commit.
+
+    The random pick is kept as the tie-break, so identical candidates still
+    scatter and a map where every route is equally busy behaves as it used to.
+
+    [QL] E135. A flag carrier asks a different question - which way out has
+    the fewest of THEM in it - and counts the enemy in each candidate's room
+    instead. Its team there is cover, not a queue. On japanesecastles that
+    sends it out through Back Hall and the Garden when the defence is holding
+    the Main Stairway, and the other way round.
+
+    [QL] E136. And an attacker first picks a side of the map, then a waypoint
+    on it. Most waypoints do not choose a way across: one in their base or at
+    their door is reached by the shortest route, and the shortest route is the
+    same for a whole team - on japanesecastles red crossed between the
+    courtyards by the south hall 92% of the time in instagib, blue by the north
+    72%. So each waypoint carries the side of the map its whole route crosses
+    the middle on (BotAltRouteSide), and an attacker takes the side fewer of its
+    team are on, then the emptiest waypoint there. Two narrower fixes were
+    measured and lost: waypoints from the middle of the map only (the halls
+    evened out, but the door choice went, and flag grabs halved), and a middle
+    waypoint then a door waypoint (worse again).
+
+    It never offers a waypoint the bot has already passed - this is called from
+    eleven places, some of them half way to the flag - and when nothing is left
+    ahead the bot goes straight on. It is also asked again on every respawn
+    (AINode_Respawn): in instagib a life is seconds long, and a waypoint chosen
+    once per attack job steered only the first one.
+    */
+    {
+        int best = -1, bestcrowd = 0, ties = 0, i, pass, togo = 0, want = 0, tohome = 0;
+        qboolean carrier = BotCTFCarryingFlag(bs);
+        bot_goal_t* target = base == TEAM_RED ? &ctf_redflag : &ctf_blueflag;
+        bot_goal_t* home = base == TEAM_RED ? &ctf_blueflag : &ctf_redflag;
+
+        /* [QL] E137. The same for a carrier, measured the other way: the list
+           runs from its home flag to theirs, so starttraveltime is how far a
+           waypoint is from home, and one further from home than the carrier is
+           sends it back into their base. The stuck and crowded-room re-rolls
+           ask on the way home too, and a traced carrier spent 27 s turning
+           round in the south garden, twice, before it died there. */
+        /* [QL] E226: bot_ctfDetours off for this team - the carrier goes
+           straight home, no waypoint. Note this selection is not behind
+           bot_tactics: it runs for a "tactics off" team too. */
+        if (carrier && gametype == GT_CTF && !(bot_ctfDetours.integer & (BotTeam(bs) == TEAM_RED ? 1 : 2))) {
+            if (bot_debugRoutes.integer) {
+                G_Printf("routepick %d %d %d off\n", level.time, bs->client, BotTeam(bs));
+            }
+            bs->altroutegoal.areanum = 0;
+            return qfalse;
+        }
+        if (carrier && gametype == GT_CTF && bs->areanum && home->areanum) {
+            tohome = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, home->areanum, bs->tfl);
+        }
+
+        if (!carrier && gametype == GT_CTF) {
+            int count[3] = {0, 0, 0};
+
+            if (bs->areanum && target->areanum) {
+                togo = trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, target->areanum, bs->tfl);
+            }
+            for (i = 0; i < MAX_CLIENTS; i++) {
+                bot_state_t* other = botstates[i];
+
+                if (other && other->inuse && other != bs && BotTeam(other) == BotTeam(bs) &&
+                    other->ltgtype == LTG_GETFLAG && other->altroutegoal.areanum) {
+                    count[other->altrouteside + 1]++;
+                }
+            }
+            want = count[0] < count[2] ? -1 : count[2] < count[0] ? 1 : (random() < 0.5f ? -1 : 1);
+        }
+        for (pass = want ? 0 : 1; pass < 2 && best < 0; pass++) {
+            for (i = 0; i < numaltroutegoals; i++) {
+                int crowd;
+
+                if (!pass && sides[i] != want) {
+                    continue;
+                }
+                if (togo && altroutegoals[i].goaltraveltime >= togo) {
+                    continue;  // behind us
+                }
+                if (carrier && gametype == GT_CTF) {
+                    crowd = BotCTFCarrierRouteCost(bs, &altroutegoals[i], home, tohome);
+                    if (crowd < 0) continue;
+                } else {
+                    crowd = carrier ? BotRoomEnemies(bs, altroutegoals[i].origin)
+                                    : BotRoomCrowding(bs, altroutegoals[i].origin);
+                }
+                if (best < 0 || crowd < bestcrowd) {
+                    best = i;
+                    bestcrowd = crowd;
+                    ties = 1;
+                } else if (crowd == bestcrowd) {
+                    ties++;
+                    // reservoir sample, so ties are picked from evenly
+                    if (random() * ties < 1.0f) {
+                        best = i;
+                    }
+                }
+            }
+        }
+        if (carrier && gametype == GT_CTF && best >= 0 &&
+            altroutegoals[best].areanum != bs->altroutegoal.areanum) {
+            for (i = 0; i < numaltroutegoals; i++) {
+                if (altroutegoals[i].areanum == bs->altroutegoal.areanum &&
+                    BotCTFKeepCarrierRoute(bs, &altroutegoals[i], home, tohome, bestcrowd)) {
+                    best = i;
+                    bestcrowd = BotCTFCarrierRouteCost(bs, &altroutegoals[i], home, tohome);
+                    break;
+                }
+            }
+        }
+        if (carrier && gametype == GT_CTF && best >= 0) {
+            int directcost = tohome + 300 * BotCTFRouteThreat(bs, bs->areanum,
+                bs->origin, home->areanum, home->origin, bs->tfl);
+            if (bestcrowd >= directcost) best = -1;
+        }
+        rnd = best;
+        if (carrier && gametype == GT_CTF) {
+            BotRouteDecisionLog(bs, altroutegoals, numaltroutegoals, home, tohome, best, bestcrowd);   // E231
+        }
+        if (rnd < 0 && (togo || tohome || (carrier && gametype == GT_CTF))) {
+            bs->altroutegoal.areanum = 0;
+            return qfalse;  // nothing left ahead: straight on
+        }
+    }
+    if (rnd < 0 || rnd >= numaltroutegoals) {
+        rnd = (float)random() * numaltroutegoals;
+        if (rnd >= numaltroutegoals)
+            rnd = numaltroutegoals - 1;
+    }
     goal = &bs->altroutegoal;
     goal->areanum = altroutegoals[rnd].areanum;
     VectorCopy(altroutegoals[rnd].origin, goal->origin);
@@ -5148,6 +6526,7 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
     goal->iteminfo = 0;
     goal->number = 0;
     goal->flags = 0;
+    bs->altrouteside = sides[rnd];
     //
     bs->reachedaltroutegoal_time = 0;
     return qtrue;
@@ -5158,26 +6537,373 @@ int BotGetAlternateRouteGoal(bot_state_t* bs, int base) {
 BotSetupAlternateRouteGoals
 ==================
 */
+/*
+[QL] E135. Where each alternative route goal is, under bot_debugTactics:
+"altroute <toward> <x> <y> <z> <start tt> <goal tt> <extra tt>", for
+tools/bot-harness to put on the map. A waypoint is a place every bot given it
+walks to, so one in the wrong place is a traffic jam made to order.
+*/
+static void BotAltRoutesDump(aas_altroutegoal_t* g, int n, const char* what) {
+    int i;
+
+    if (!bot_debugTactics.integer) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        G_Printf("altroute %s %.0f %.0f %.0f %d %d %d\n", strstr(what, "red") ? "red" : "blue",
+                 g[i].origin[0], g[i].origin[1], g[i].origin[2],
+                 g[i].starttraveltime, g[i].goaltraveltime, g[i].extratraveltime);
+    }
+}
+
+/*
+==================
+BotAltRoutes
+
+[QL] Alternative route goals between two points, with a fallback that actually
+returns something.
+
+AAS_AlternativeRouteGoals normally only considers areas the map marked as
+cluster portals or view portals. Those come from brushes a mapper places, and
+plenty of maps have none at all - japanesecastles has none, which is why the
+first fix for E70 still printed "0 toward the red base, 0 toward the blue".
+
+ALTROUTEGOAL_ALL drops that filter and lets the travel-time window do the work
+instead: an area qualifies when it is no more than 1.1x the direct travel time
+from the start and no more than 0.8x from the goal, so what survives is
+genuinely a detour that still gets there. The function then floods each
+surviving region into a cluster and returns one area per cluster, so the results
+are separated ways round rather than a hundred points along the same corridor.
+
+It is O(areas) with two route queries each, which is why it is not the default -
+but this runs once, at map load, and a map with no portals otherwise gets no
+alternative routes at all for the whole match.
+==================
+*/
+/*
+==================
+BotAltRoutesMerge
+
+[QL] E136. The ways round, not the first 32 areas the AAS numbers.
+
+AAS_AlternativeRouteGoals walks the areas in number order and stops at the
+limit, and with portals every portal area is a "cluster" of its own - a room
+with eight portal areas in it is eight entries. On japanesecastles the south
+garden by Red Garden Hall filled 8 of both teams' 32 slots, and the list ran
+out before the areas numbered after it, which is where the north garden is.
+An attacker picks the emptiest waypoint, so a quarter of the choices were one
+room: red attackers crossed the courtyards by the south hall 80% of the time.
+
+So ask for all of them, rank by the detour each costs, and keep one per place
+- nothing within ALTROUTE_MERGE of one already kept. A goal on the direct route
+comes back with a negative detour, which the unsigned field wraps to ~65530;
+that is a detour of 0, not the longest on the map.
+==================
+*/
+#define ALTROUTE_ALL 512
+#define ALTROUTE_MERGE 500.0f
+
+static int BotAltRoutesMerge(aas_altroutegoal_t* all, int n, aas_altroutegoal_t* out) {
+    int i, j, k, best, kept = 0;
+    static qboolean used[ALTROUTE_ALL];
+
+    memset(used, 0, sizeof(used));
+    for (k = 0; k < n && kept < MAX_ALTROUTEGOALS; k++) {
+        best = -1;
+        for (i = 0; i < n; i++) {
+            int extra, bestextra;
+
+            if (used[i]) {
+                continue;
+            }
+            extra = all[i].extratraveltime >= 32768 ? 0 : all[i].extratraveltime;
+            bestextra = best < 0 ? 0 : (all[best].extratraveltime >= 32768 ? 0 : all[best].extratraveltime);
+            if (best < 0 || extra < bestextra) {
+                best = i;
+            }
+        }
+        if (best < 0) {
+            break;
+        }
+        used[best] = qtrue;
+        for (j = 0; j < kept; j++) {
+            if (Distance(out[j].origin, all[best].origin) < ALTROUTE_MERGE) {
+                break;
+            }
+        }
+        if (j == kept) {
+            out[kept++] = all[best];
+        }
+    }
+    return kept;
+}
+
+static int BotAltRoutes(vec3_t start, int startarea, vec3_t goal, int goalarea,
+                        aas_altroutegoal_t* out, const char* what) {
+    int n, found, pointarea;
+    static aas_altroutegoal_t all[ALTROUTE_ALL];
+
+    /*
+    [QL] Route from the floor the flag stands on, not from the flag's item area.
+
+    The field diagnostic said the same thing 244 times and never once otherwise:
+
+        alt routes: no route from area 1109 to area 1169 yet
+
+    The router reporting no route between the two bases, on a map whose bots walk
+    between them all match. So it is not the routing - it is the areas being
+    asked about. A level item's goal area is derived from the item entity, and a
+    flag sits on a pedestal; the area that lands in can be one with no
+    reachability of its own, which routes to nothing and from nothing.
+
+    The area under the flag's origin is the floor a player actually stands on.
+    Fall back to the item area if the point lookup fails, which is no worse than
+    what this did before.
+    */
+    pointarea = BotPointAreaNum(start);
+    if (pointarea) {
+        startarea = pointarea;
+    }
+    pointarea = BotPointAreaNum(goal);
+    if (pointarea) {
+        goalarea = pointarea;
+    }
+
+    if (!startarea || !goalarea) {
+        /*
+        [QL] Say so. This returned 0 quietly, and a field log on the build that
+        added the counter had no route line at all - not "0 routes", nothing -
+        which cost a round of guessing at why. A diagnostic that can decline to
+        speak is worse than no diagnostic, because its silence reads as success.
+        */
+        G_Printf("alternate routes %s: skipped, areas not resolved (start %i, goal %i)\n",
+                 what, startarea, goalarea);
+        return 0;
+    }
+    found = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
+                                           all, ALTROUTE_ALL,
+                                           ALTROUTEGOAL_CLUSTERPORTALS | ALTROUTEGOAL_VIEWPORTALS);
+    if (found > 0) {
+        n = BotAltRoutesMerge(all, found, out);
+        G_Printf("alternate routes %s: %i places of %i (from the map's portals)\n", what, n, found);
+        BotAltRoutesDump(out, n, what);
+        return n;
+    }
+    found = trap_AAS_AlternativeRouteGoals(start, startarea, goal, goalarea, TFL_DEFAULT,
+                                           all, ALTROUTE_ALL, ALTROUTEGOAL_ALL);
+    n = BotAltRoutesMerge(all, found, out);
+    G_Printf("alternate routes %s: %i places of %i (no portals on this map, using open areas)\n", what, n, found);
+    BotAltRoutesDump(out, n, what);
+    return n;
+}
+
+/*
+==================
+BotAltRouteSide
+
+[QL] E136. Which side of the map a route through a waypoint crosses the middle
+on: -1 or +1, 0 if it never crosses. The middle is the plane half way between
+the flags, square to the line joining them, and the side is which side of that
+line the route is on where it goes through the plane - left or right, seen
+from our flag. On a two-flag map with a north and a south way between the
+bases, that is which one the route takes, found from the routing itself rather
+than from any named place, so it is the same on any map.
+
+Our flag to the waypoint, then the waypoint to theirs, walked one area at a
+time with AAS_PredictRoute. It runs at map load, for each waypoint, once.
+==================
+*/
+static int BotAltRouteSide(bot_goal_t* from, bot_goal_t* to, aas_altroutegoal_t* via) {
+    vec3_t axis, mid, pos, rel;
+    int leg, step, area, goalarea;
+    float last = 0;
+    aas_predictroute_t route;
+
+    VectorSubtract(to->origin, from->origin, axis);
+    axis[2] = 0;
+    VectorAdd(to->origin, from->origin, mid);
+    VectorScale(mid, 0.5f, mid);
+    VectorCopy(from->origin, pos);
+    area = BotPointAreaNum(from->origin);
+    if (!area) {
+        area = from->areanum;
+    }
+    for (leg = 0; leg < 2; leg++) {
+        goalarea = leg ? to->areanum : via->areanum;
+        for (step = 0; step < 1024 && area && area != goalarea; step++) {
+            float d;
+
+            if (!trap_AAS_PredictRoute(&route, area, pos, goalarea, TFL_DEFAULT, 1, 0, RSE_NONE, 0, 0, 0) &&
+                route.stopevent == RSE_NOROUTE) {
+                return 0;
+            }
+            if (!route.endarea || route.endarea == area) {
+                break;
+            }
+            area = route.endarea;
+            VectorCopy(route.endpos, pos);
+            VectorSubtract(pos, mid, rel);
+            d = rel[0] * axis[0] + rel[1] * axis[1];
+            if (last < 0 && d >= 0) {
+                // through the middle: left or right of the flag line
+                VectorSubtract(pos, from->origin, rel);
+                return axis[0] * rel[1] - axis[1] * rel[0] > 0 ? 1 : -1;
+            }
+            last = d;
+        }
+        if (!leg) {
+            VectorCopy(via->origin, pos);
+            area = via->areanum;
+        }
+    }
+    return 0;
+}
+
 void BotSetupAlternativeRouteGoals(void) {
     if (altroutegoals_setup)
         return;
+    if (altroutegoals_retry > level.time)
+        return;
     if (gametype == GT_CTF) {
-        if (trap_BotGetLevelItemGoal(-1, "Neutral Flag", &ctf_neutralflag) < 0)
-            BotAI_Print(PRT_WARNING, "No alt routes without Neutral Flag\n");
-        if (ctf_neutralflag.areanum) {
-            //
-            red_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
-                ctf_neutralflag.origin, ctf_neutralflag.areanum,
-                ctf_redflag.origin, ctf_redflag.areanum, TFL_DEFAULT,
-                red_altroutegoals, MAX_ALTROUTEGOALS,
-                ALTROUTEGOAL_CLUSTERPORTALS |
-                    ALTROUTEGOAL_VIEWPORTALS);
-            blue_numaltroutegoals = trap_AAS_AlternativeRouteGoals(
-                ctf_neutralflag.origin, ctf_neutralflag.areanum,
-                ctf_blueflag.origin, ctf_blueflag.areanum, TFL_DEFAULT,
-                blue_altroutegoals, MAX_ALTROUTEGOALS,
-                ALTROUTEGOAL_CLUSTERPORTALS |
-                    ALTROUTEGOAL_VIEWPORTALS);
+        /*
+        [QL] Two-flag CTF has no neutral flag, so this built nothing at all.
+
+        The stock code keys the whole thing on "Neutral Flag", which is a One
+        Flag CTF entity. An ordinary CTF map does not have one, so
+        ctf_neutralflag.areanum is 0, both counts stay 0, and
+        BotGetAlternateRouteGoal returns qfalse on its first line - **every
+        time, at all eleven call sites**. The only mechanism the bots have for
+        not all taking the same route was silently absent on every normal CTF
+        map, including the stuck-triggered re-roll added for E67.
+
+        Reported as: "the bots will leave out the left side only, only enemy
+        bots will path through the right side sometimes." That is what
+        deterministic routing looks like. AAS returns the cheapest reachability
+        chain, it is the same chain for every bot with the same goal from the
+        same area, so a whole team files out of one door - and the other team,
+        approaching from the opposite base, has a different cheapest door.
+
+        The neutral flag was only ever a waypoint in the middle to route
+        *through*. Between two bases the other base serves as well, and better:
+        alternative route goals from their flag to ours are by definition the
+        different ways between the two, which is exactly the set an attacker
+        wants to pick an approach from. No midpoint to synthesise, no risk of
+        landing it inside a wall.
+        */
+        /*
+        [QL] E84: in two-flag CTF the neutral flag is not a waypoint, it is a
+        leftover, and routing through it produced no alternative routes at all.
+
+        The paragraph above says the other base serves as the midpoint "as well,
+        and better" - and then the code below kept the neutral branch as the
+        preferred one, so the better path was only ever taken on maps that had
+        no neutral flag to prefer. japanesecastles has one. Quake Live ships
+        several gametypes per map and the entity is in the map whether or not
+        the gametype uses it, so this is the common case, not the exotic one.
+
+        The field log is unambiguous once the two lines are read together:
+
+            alt routes: no route from area 1109 to area 1169 yet     (red base)
+            alt routes: no route from area 1109 to area 4040 yet     (blue base)
+
+        Both journeys start in area 1109. Base-to-base routing cannot do that -
+        it would read "1109 to 1169" and "1169 to 1109" - so 1109 is the neutral
+        flag, sitting wherever a gametype nobody is playing left it. Every route
+        query out of it returned 0, 50 retries in a row, and the match ran its
+        whole length with an empty alternative-route table. That is what the
+        report "bots still exit the left side only" is: with no alternatives,
+        AAS hands every bot with the same goal the same cheapest reachability
+        chain, so a team files out of one door.
+
+        And "yet" was the wrong word. AAS_AreaRouteToGoalArea rejects an area
+        with no reachabilities outright (be_aas_route.c, the numreachableareas
+        test), so this was never a cold cache that would warm up - it was a
+        permanent no, retried 50 times and then latched. The diagnostic in
+        be_aas_routealt.c now tells those two apart.
+
+        So: two-flag CTF routes base to base and never consults the neutral
+        flag. It is still resolved, because One Flag CTF genuinely uses it.
+        */
+        if (trap_BotGetLevelItemGoal(-1, "Neutral Flag", &ctf_neutralflag) < 0) {
+            // not a warning: an ordinary CTF map is not supposed to have one
+            ctf_neutralflag.areanum = 0;
+        }
+        /*
+        [QL] Re-resolve the flags here rather than trusting that
+        BotSetupDeathmatchAI got them. This runs from a bot's setup countdown,
+        which is a different moment, and an unresolved area silently produced no
+        routes for the whole match with nothing in the log to say so.
+        */
+        if (!ctf_redflag.areanum) {
+            trap_BotGetLevelItemGoal(-1, "Red Flag", &ctf_redflag);
+        }
+        if (!ctf_blueflag.areanum) {
+            trap_BotGetLevelItemGoal(-1, "Blue Flag", &ctf_blueflag);
+        }
+        red_numaltroutegoals = BotAltRoutes(
+            ctf_blueflag.origin, ctf_blueflag.areanum,
+            ctf_redflag.origin, ctf_redflag.areanum,
+            red_altroutegoals, "toward the red base");
+        blue_numaltroutegoals = BotAltRoutes(
+            ctf_redflag.origin, ctf_redflag.areanum,
+            ctf_blueflag.origin, ctf_blueflag.areanum,
+            blue_altroutegoals, "toward the blue base");
+        {
+            // [QL] E136. which side of the map each one takes you across
+            int i, n[2][3];
+
+            memset(n, 0, sizeof(n));
+            for (i = 0; i < red_numaltroutegoals; i++) {
+                red_altroutesides[i] = BotAltRouteSide(&ctf_blueflag, &ctf_redflag, &red_altroutegoals[i]);
+                n[0][red_altroutesides[i] + 1]++;
+            }
+            for (i = 0; i < blue_numaltroutegoals; i++) {
+                blue_altroutesides[i] = BotAltRouteSide(&ctf_redflag, &ctf_blueflag, &blue_altroutegoals[i]);
+                n[1][blue_altroutesides[i] + 1]++;
+            }
+            G_Printf("alternate routes by side of the map: toward red %d left, %d right, %d unknown; "
+                     "toward blue %d left, %d right, %d unknown\n",
+                     n[0][2], n[0][0], n[0][1], n[1][2], n[1][0], n[1][1]);
+            if (bot_debugTactics.integer) {
+                for (i = 0; i < red_numaltroutegoals; i++) {
+                    G_Printf("altside red %.0f %.0f %d\n", red_altroutegoals[i].origin[0], red_altroutegoals[i].origin[1], red_altroutesides[i]);
+                }
+                for (i = 0; i < blue_numaltroutegoals; i++) {
+                    G_Printf("altside blue %.0f %.0f %d\n", blue_altroutegoals[i].origin[0], blue_altroutegoals[i].origin[1], blue_altroutesides[i]);
+                }
+            }
+        }
+        /*
+        [QL] And do not latch a failure. If the flag areas were not resolved
+        there is nothing to remember, and the next bot to finish setting up
+        should try again rather than the map running for twenty minutes with an
+        empty route table.
+        */
+        if (!ctf_redflag.areanum || !ctf_blueflag.areanum) {
+            return;
+        }
+        /*
+        [QL] And do not latch an empty result either.
+
+        This runs from the first bot's setup countdown, a fraction of a second
+        into the map, and AAS builds its routing caches lazily - so a zero here
+        can simply mean the router had no route between the two bases *yet*.
+        Latching that was giving the map an empty route table for the whole
+        match. Retry until something is found or the match is a minute old, by
+        which point the caches are certainly warm and zero means zero.
+        */
+        if (!red_numaltroutegoals && !blue_numaltroutegoals && level.time < 60000) {
+            /*
+            [QL] Once a second, not once per bot setting up.
+
+            This is called from every bot's setup countdown, so sixty bots meant
+            122 retries inside the first minute - and each one is two route
+            queries over every area in the map. The log is 488 lines of it. A
+            second between attempts is plenty for a cache that is only waiting on
+            the router to warm up.
+            */
+            altroutegoals_retry = level.time + 1000;
+            return;
         }
     } else if (gametype == GT_1FCTF) {
         if (trap_BotGetLevelItemGoal(-1, "Neutral Obelisk", &neutralobelisk) < 0)
@@ -5234,6 +6960,15 @@ void BotSetupAlternativeRouteGoals(void) {
 BotDeathmatchAI
 ==================
 */
+static void BotCTFThinkGoals(bot_state_t* bs) {
+    // Assignment must run during fights too. Seek_LTG can switch to combat
+    // before reaching BotTeamGoals, and Retreat used a carrier-only helper.
+    if (bot_tactics.integer && gametype == GT_CTF &&
+        !BotIntermission(bs) && !BotIsObserver(bs) && !BotIsDead(bs)) {
+        BotCTFSeekGoals(bs);
+    }
+}
+
 void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
     char gender[144], name[144];
     char userinfo[MAX_INFO_STRING];
@@ -5280,6 +7015,8 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
         BotCheckSnapshot(bs);
         // check for air
         BotCheckAir(bs);
+        // [QL] refresh the tactical picture the nodes below read
+        BotTacticsUpdate(bs);
     }
     // check the console messages
     BotCheckConsoleMessages(bs);
@@ -5288,12 +7025,24 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
         // do team AI
         BotTeamAI(bs);
     }
-    // [QL] InstaGib: when g_instaGib is set and the bot has no enemy, drop into
-    // the InstaGib hunting node. (binary BotDeathmatchAI dispatch 0x1001f359)
-    // NOTE: the binary also gates this on a "busy" field (bs+0x1bd4) shared by the
-    // unported team-AI nodes; that gate is omitted here.
+    BotCTFThinkGoals(bs);
+    /*
+    [QL] InstaGib: when g_instaGib is set and the bot has no enemy, drop into
+    the InstaGib hunting node. (binary BotDeathmatchAI dispatch 0x1001f359)
+
+    The binary gates this on a "busy" field (bs+0x1bd4) shared by the unported
+    team-AI nodes. That gate used to be omitted, and omitting it is what stopped
+    instagib team games having any objective play at all: the hunt sets
+    ltg_time to FloatTime() + 99999 and takes ltgtype for itself, so every bot
+    with no enemy in sight abandoned whatever the team leader had given it and
+    went looking for a body instead. Flags sat on their stands for whole
+    matches.
+
+    A bot with no long term goal is the "not busy" case, so that is the gate:
+    the hunt fills idle time, it does not outrank a task.
+    */
     if (!BotIntermission(bs) && !BotIsObserver(bs) && !BotIsDead(bs)) {
-        if (g_instaGib.integer && bs->ltgtype != 21 && bs->enemy == -1) {
+        if (g_instaGib.integer && bs->ltgtype == 0 && bs->enemy == -1) {
             AIEnter_InstaGib(bs, "insta gib");
         }
     }
@@ -5315,10 +7064,28 @@ void BotDeathmatchAI(bot_state_t* bs, float thinktime) {
     for (i = 0; i < MAX_NODESWITCHES; i++) {
         if (bs->ainode(bs))
             break;
+        /*
+        [QL] ...and check between every node, not only after the loop.
+
+        The stock check below anticipates a bot removing itself, but a node can
+        do it part way through and the next iteration then calls bs->ainode
+        through a pointer BotAIShutdownClient has just memset to NULL. The drop
+        does not have to be the bot's own doing either: anything that writes a
+        configstring can overflow a reliable buffer, and until the engine
+        deferred that drop it re-entered the game module from inside this loop.
+        */
+        if (!bs->inuse)
+            return;
     }
     // if the bot removed itself :)
     if (!bs->inuse)
         return;
+    /*
+    [QL] After the node has decided where to go, not instead of it. This
+    re-issues the frame's movement with a sideways component, so it has to be the
+    last thing to touch it.
+    */
+    BotTeamSpacing(bs);
     // if the bot executed too many AI nodes
     if (i >= MAX_NODESWITCHES) {
         trap_BotDumpGoalStack(bs->gs);
@@ -5452,6 +7219,9 @@ BotSetupDeathmatchAI
 ==================
 */
 void BotSetupDeathmatchAI(void) {
+    // [QL] the room table holds pointers into the level's entities
+    BotRoomsReset();
+    BotDefendPostsReset();  // [QL] E134
     int ent, modelnum;
     char model[128];
 
@@ -5518,4 +7288,5 @@ BotShutdownDeathmatchAI
 */
 void BotShutdownDeathmatchAI(void) {
     altroutegoals_setup = qfalse;
+    altroutegoals_retry = 0;
 }

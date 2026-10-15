@@ -270,6 +270,10 @@ void Cmd_Exec_f(void) {
         return;
     }
     Com_Printf("execing %s\n", filename);
+    /* [QL] ...and from where. "execing autoexec.cfg" is the same line whether
+       it came from the release archive or from a stale copy in %APPDATA%, and
+       fs_homepath is searched first, so the stale one wins silently. */
+    FS_ReportShadowedFile(filename);
 
     Cbuf_InsertText(f.c);
 
@@ -284,7 +288,7 @@ Inserts the current value of a variable as command text
 ===============
 */
 void Cmd_Vstr_f(void) {
-    char* v;
+    const char* v;
 
     if (Cmd_Argc() != 2) {
         Com_Printf("vstr <variablename> : execute a variable command\n");
@@ -693,6 +697,31 @@ void Cmd_RemoveCommandSafe(const char* cmd_name) {
 Cmd_CommandCompletion
 ============
 */
+/*
+============
+Cmd_Exists
+
+[QL] Is there a registered command by this name?
+
+Added for the console: it has to know whether a typed line is a command before
+deciding to send it as chat instead. Q3 exposed only Cmd_CommandCompletion,
+which walks the list to offer completions but cannot answer a yes/no.
+============
+*/
+qboolean Cmd_Exists(const char* cmd_name) {
+    const cmd_function_t* cmd;
+
+    if (!cmd_name || !cmd_name[0]) {
+        return qfalse;
+    }
+    for (cmd = cmd_functions; cmd; cmd = cmd->next) {
+        if (!Q_stricmp(cmd_name, cmd->name)) {
+            return qtrue;
+        }
+    }
+    return qfalse;
+}
+
 void Cmd_CommandCompletion(void (*callback)(const char* s)) {
     cmd_function_t* cmd;
 

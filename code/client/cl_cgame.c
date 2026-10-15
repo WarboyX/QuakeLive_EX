@@ -416,7 +416,7 @@ intptr_t CL_CgameSystemCalls(intptr_t* args) {
             Cvar_Update(VMA(1));
             return 0;
         case CG_CVAR_SET:
-            Cvar_SetSafe(VMA(1), VMA(2));
+            Cvar_SetFromClientVM(VMA(1), VMA(2));   // [QL] E198: honours CVAR_LATCH
             return 0;
         case CG_CVAR_VARIABLESTRINGBUFFER:
             Cvar_VariableStringBuffer(VMA(1), VMA(2), args[3]);
@@ -560,6 +560,23 @@ intptr_t CL_CgameSystemCalls(intptr_t* args) {
             return 0;
         case CG_R_ADDADDITIVELIGHTTOSCENE:
             re.AddAdditiveLightToScene(VMA(1), VMF(2), VMF(3), VMF(4), VMF(5));
+            return 0;
+        case CG_R_ADDLINEARLIGHTTOSCENE:
+            /* [QL] beam weapons; the renderer has always had this, nothing could call it */
+            if (re.AddLinearLightToScene) {
+                re.AddLinearLightToScene(VMA(1), VMA(2), VMF(3), VMF(4), VMF(5), VMF(6));
+            }
+            return 0;
+        case CG_R_ADDWATERRIPPLE:
+            /* [QL] R19: null-checked like the one above, because a renderer
+               without it is a renderer without reflective water, not an error */
+            if (re.AddWaterRipple) {
+                re.AddWaterRipple(VMA(1), VMF(2), VMF(3));
+            }
+            return 0;
+
+        case CG_CVAR_LATCHEDSTRINGBUFFER:  // [QL] E198
+            Cvar_LatchedStringBuffer(VMA(1), VMA(2), args[3]);
             return 0;
         case CG_R_RENDERSCENE:
             re.RenderScene(VMA(1));

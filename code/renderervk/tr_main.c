@@ -1735,3 +1735,70 @@ void R_RenderView( const viewParms_t *parms ) {
 
 	R_SortDrawSurfs( tr.refdef.drawSurfs + firstDrawSurf, numDrawSurfs - firstDrawSurf );
 }
+
+
+/*
+=================
+[QL] R_GetEntityModelBounds
+
+The box an entity occupies, in its own model space.
+
+Model space and not world space, which is the whole point: the caller turns this
+into an instance transform for the ray tracing structures, and that transform is
+a full 3x4 that can carry the entity's rotation. Returning a world-space
+axis-aligned box instead would mean rotating the corners here and taking the box
+of the result - and the box of a rotated box is up to 41% wider on each
+horizontal axis than the thing inside it, which for an upright player spinning
+on the spot is a lot of occlusion coming from empty air.
+
+Frame bounds rather than the interpolated pose: a model's frames differ by the
+swing of a limb, and this is feeding an occlusion term measured in tens of
+units. The current frame's box is exact enough and cheaper than blending two.
+
+Returns qfalse for anything with no geometry to bound - sprites, beams, rails,
+the portal surface - which the caller skips.
+=================
+*/
+qboolean R_GetEntityModelBounds( const trRefEntity_t *ent, vec3_t mins, vec3_t maxs ) {
+	const model_t *model;
+
+	if ( ent->e.reType != RT_MODEL ) {
+		return qfalse;
+	}
+
+	model = R_GetModelByHandle( ent->e.hModel );
+	if ( model == NULL ) {
+		return qfalse;
+	}
+
+	switch ( model->type ) {
+	case MOD_BRUSH:
+		if ( model->bmodel == NULL ) {
+			return qfalse;
+		}
+		VectorCopy( model->bmodel->bounds[0], mins );
+		VectorCopy( model->bmodel->bounds[1], maxs );
+		return qtrue;
+
+	case MOD_MESH: {
+		const md3Header_t *header = model->md3[0];
+		const md3Frame_t *frame;
+		int frameNum;
+
+		if ( header == NULL || header->numFrames <= 0 ) {
+			return qfalse;
+		}
+		frameNum = ent->e.frame;
+		if ( frameNum < 0 || frameNum >= header->numFrames ) {
+			frameNum = 0;
+		}
+		frame = ( const md3Frame_t * )( ( const byte * )header + header->ofsFrames ) + frameNum;
+		VectorCopy( frame->bounds[0], mins );
+		VectorCopy( frame->bounds[1], maxs );
+		return qtrue;
+	}
+
+	default:
+		return qfalse;
+	}
+}

@@ -62,6 +62,20 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define WINDOW_POPUP 0x00200000          // popup
 #define WINDOW_BACKCOLORSET 0x00400000   // backcolor was explicitly set
 #define WINDOW_TIMEDVISIBLE 0x00800000   // visibility timing ( NOT implemented )
+// [QL] draw a vertical list box's scroll bar on the left edge instead of the
+// right. Quake Live's team scoreboards put the left-hand team's bar on the
+// outside, so the two lists mirror each other rather than both crowding the
+// middle. Set from cgame on the red-team feeder; no menu keyword.
+#define WINDOW_LB_LEFTSCROLL 0x01000000
+
+/* [QL] Draw a vertical list box's scroll bar as a position indicator rather
+   than a widget: a thin track with a proportional bar, no arrows and no
+   draggable thumb. The scoreboard's lists are scrolled with the wheel over the
+   list you want, so the arrows were three clickable regions that ate row
+   clicks and took a scroll bar's width away from every row for no gain. Set
+   from cgame on the scoreboard feeders; no menu keyword. */
+#define WINDOW_LB_SLIMSCROLL 0x02000000
+#define SLIMSCROLL_WIDTH 4
 
 // CGAME cursor type bits
 #define CURSOR_NONE 0x00000001
@@ -405,6 +419,9 @@ typedef struct {
     qhandle_t cursor;
     float FPS;
 
+    // [QL] E183: does this cvar have a value waiting for a restart. NULL in
+    // cgame, which has no menus that latch.
+    qboolean (*cvarPending)(const char* cvar);
 } displayContextDef_t;
 
 const char* String_Alloc(const char* p);
@@ -417,8 +434,13 @@ void Item_Init(itemDef_t* item);
 void Menu_PostParse(menuDef_t* menu);
 menuDef_t* Menu_GetFocused(void);
 void Menu_HandleKey(menuDef_t* menu, int key, qboolean down);
+void UI_SetInputTrace(int on);  // [QL] name each step the menu input path takes
+int  Menu_FeederAtPoint(menuDef_t* menu, float x, float y);  // [QL] feeder id under a point, or -1
 void Menu_HandleMouseMove(menuDef_t* menu, float x, float y);
 void Menu_ScrollFeeder(menuDef_t* menu, int feeder, qboolean down);
+void Menu_ScrollFeederKey(menuDef_t* menu, int feeder, int key);
+void Menu_ShowFeederIndex(menuDef_t* menu, int feeder, int index);
+void Menu_SetFeederCursor(menuDef_t* menu, int feeder, int index);
 qboolean Float_Parse(char** p, float* f);
 qboolean Color_Parse(char** p, vec4_t* c);
 qboolean Int_Parse(char** p, int* i);
@@ -432,8 +454,12 @@ qboolean PC_Rect_Parse(int handle, rectDef_t* r);
 qboolean PC_String_Parse(int handle, const char** out);
 qboolean PC_Script_Parse(int handle, const char** out);
 int Menu_Count(void);
+menuDef_t* Menu_GetByIndex(int index);
+void Menu_UpdatePosition(menuDef_t* menu);
 void Menu_New(int handle);
 void Menu_PaintAll(void);
+void Display_RunCapture(void);      // [QL] E132
+void Display_ReleaseCapture(void);  // [QL] E132
 menuDef_t* Menus_ActivateByName(const char* p);
 void Menu_Reset(void);
 qboolean Menus_AnyFullScreenVisible(void);
@@ -447,7 +473,9 @@ qboolean Display_MouseMove(void* p, int x, int y);
 int Display_CursorType(int x, int y);
 qboolean Display_KeyBindPending(void);
 void Menus_OpenByName(const char* p);
+void Item_RunScript(itemDef_t* item, const char* s);
 menuDef_t* Menus_FindByName(const char* p);
+itemDef_t* Menu_FindItemByName(menuDef_t* menu, const char* p);
 void Menus_ShowByName(const char* p);
 void Menus_CloseByName(const char* p);
 void Display_HandleKey(int key, qboolean down, int x, int y);

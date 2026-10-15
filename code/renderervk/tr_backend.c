@@ -547,7 +547,7 @@ static void RB_BeginDrawingView( void ) {
 	// clear relevant buffers
 	clearBits = GL_DEPTH_BUFFER_BIT;
 
-	if ( r_shadows->integer == 2 )
+	if ( R_STENCIL_SHADOWS )
 	{
 		clearBits |= GL_STENCIL_BUFFER_BIT;
 	}
@@ -676,10 +676,13 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 			if ( entityNum != REFENTITYNUM_WORLD ) {
 				backEnd.currentEntity = &backEnd.refdef.entities[entityNum];
-				if ( backEnd.currentEntity->intShaderTime )
-					backEnd.refdef.floatTime = originalTime - (double)(backEnd.currentEntity->e.shaderTime.i) * 0.001;
-				else
-					backEnd.refdef.floatTime = originalTime - (double)backEnd.currentEntity->e.shaderTime.f;
+				// [QL PATCH 1/1] Quake3e made refEntity_t.shaderTime a floatint_t
+				// union and added an intShaderTime flag to select the halves.
+				// This tree's refEntity_t has a plain float and no flag, and it
+				// is shared with cgame, so changing it here would be an ABI
+				// change across the game modules. Collapse to the float branch,
+				// which is what the integer path degrades to anyway.
+				backEnd.refdef.floatTime = originalTime - (double)backEnd.currentEntity->e.shaderTime;
 
 				// set up the transformation matrix
 				R_RotateForEntity( backEnd.currentEntity, &backEnd.viewParms, &backEnd.or );
@@ -903,10 +906,13 @@ static void RB_RenderLitSurfList( dlight_t* dl ) {
 			if ( entityNum != REFENTITYNUM_WORLD ) {
 				backEnd.currentEntity = &backEnd.refdef.entities[entityNum];
 
-				if ( backEnd.currentEntity->intShaderTime )
-					backEnd.refdef.floatTime = originalTime - (double)(backEnd.currentEntity->e.shaderTime.i) * 0.001;
-				else
-					backEnd.refdef.floatTime = originalTime - (double)backEnd.currentEntity->e.shaderTime.f;
+				// [QL PATCH 1/1] Quake3e made refEntity_t.shaderTime a floatint_t
+				// union and added an intShaderTime flag to select the halves.
+				// This tree's refEntity_t has a plain float and no flag, and it
+				// is shared with cgame, so changing it here would be an ABI
+				// change across the game modules. Collapse to the float branch,
+				// which is what the integer path degrades to anyway.
+				backEnd.refdef.floatTime = originalTime - (double)backEnd.currentEntity->e.shaderTime;
 
 				// set up the transformation matrix
 				R_RotateForEntity( backEnd.currentEntity, &backEnd.viewParms, &backEnd.or );
@@ -1199,6 +1205,24 @@ static const void *RB_StretchPic( const void *data ) {
 	RB_SetGL2D();
 
 #ifdef USE_VULKAN
+	/* [QL] R13: AO before bloom, deliberately. AO darkens the lit image and
+	   bloom decides what is bright enough to glow - the other order lets a
+	   corner bloom and then be darkened, which reads as light leaking out of a
+	   shadow. Both are no-ops when their cvar is off. */
+	vk_rt_ao();
+	/*
+	[QL] R19: water reflections, here rather than where AO now is.
+
+	The opposite requirement to occlusion. AO multiplies the ambient term and so
+	has to run before the dynamic lights are added; a reflection copies the
+	scene, so it has to run after everything that is in the scene - lit
+	surfaces, transparencies and all - or the water would reflect a half-drawn
+	frame.
+
+	Before bloom for the same reason AO is: the reflection is part of the image
+	bloom decides what is bright enough to glow in.
+	*/
+	vk_ssr();
 	if ( r_bloom->integer ) {
 		vk_bloom();
 	}
@@ -1220,6 +1244,16 @@ static void RB_LightingPass( void )
 	//tess.allowVBO = qfalse; // for now
 #endif
 
+	/* [QL] E194: timed here, where the work is. The call at the end of
+	   RB_DrawSurfs that used to carry the timer usually finds nothing left:
+	   once any surface sorts at or past SS_FOG this pass runs mid-list and
+	   zeroes num_dlights below, so "lit surfaces" read 0.00 whatever was lit */
+#ifdef USE_VULKAN
+	if ( backEnd.viewParms.num_dlights > 0 ) {
+		vk_timing_begin( RTT_LIT );
+	}
+#endif
+
 	tess.dlightPass = qtrue;
 
 	for ( i = 0; i < backEnd.viewParms.num_dlights; i++ )
@@ -1234,6 +1268,9 @@ static void RB_LightingPass( void )
 
 	tess.dlightPass = qfalse;
 
+#ifdef USE_VULKAN
+	vk_timing_end( RTT_LIT );   /* a no-op unless the begin above ran */
+#endif
 	backEnd.viewParms.num_dlights = 0;
 }
 #endif
@@ -1387,6 +1424,12 @@ static const void *RB_DrawSurfs( const void *data ) {
 	VBO_UnBind();
 #endif
 
+#ifdef USE_VULKAN
+	// [QL] E165: the ray-tracing structure the shadow rays trace, built outside
+	// the render pass and before the view is cleared - see the function
+	vk_rt_prebuild_dynamic();
+#endif
+
 	// clear the z buffer, set the modelview, etc
 	RB_BeginDrawingView();
 
@@ -1406,10 +1449,76 @@ static const void *RB_DrawSurfs( const void *data ) {
 	// add light flares on lights that aren't obscured
 	RB_RenderFlares();
 
+	/*
+	[QL] 3D is on screen from here. Moved up from the end of this function,
+	where it was set for bloom's benefit, because ambient occlusion now runs
+	below and uses the same flag to know there is a scene to darken.
+	*/
+	backEnd.doneSurfaces = qtrue;
+
+#ifdef USE_VULKAN
+	/*
+	[QL] Ambient occlusion goes before the dynamic lights, not after everything.
+
+	AO estimates how much *ambient* light reaches a point. It has no business
+	attenuating direct light, and it was doing exactly that: the pass ran at the
+	3D-to-2D transition, by which time every dynamic light was already summed
+	into the scene colour, so the whole lot got multiplied by the occlusion
+	term. A plasma ball lighting a corner had its own light darkened by that
+	corner's occlusion, which is backwards, and is a large part of why the
+	occlusion read as grime around bright sources rather than as shading.
+
+	Here, AO multiplies the lightmapped scene and the dynamic lights are added
+	on top of the result, untouched. That is not an approximation of the
+	behaviour - passing the light list into the AO shader and fading occlusion
+	where the light reaches would have been - it is the ordering the term is
+	defined by, it costs nothing, and it covers every light rather than however
+	many would fit in a push constant.
+
+	The depth buffer is complete here: the lit passes below are DEPTHFUNC_EQUAL
+	redraws and never write depth, so the trace sees exactly the surfaces it
+	would have seen at the end of the frame.
+
+	Safe against the render pass structure because vk_rt_ao ends the main pass
+	itself and leaves its own composite pass open in its place, and the two are
+	render-pass compatible - same attachments, formats and sample counts - so
+	the geometry pipelines built for the main pass draw into it unchanged. It
+	deliberately leaves vk.renderPassIndex alone for that reason.
+	RB_BeginDrawingLitSurfs below re-establishes the viewport and forces the
+	cull state, which is what a fullscreen pass in the middle needs.
+
+	The screenmap view is unaffected: vk_rt_ao returns on its first line when
+	the screenmap pass is the active one.
+
+	Portal and mirror views have to be skipped here, and that is not the same
+	condition. This function runs once per view, not once per frame, and a
+	portal is a view - it is drawn before the main one. Without the test, a
+	teleporter showing the room behind it meant the portal's view ran the
+	occlusion pass, set backEnd.doneRTAO, and the main view's call returned on
+	that flag: occlusion landed on the portal render and the scene went without.
+	It showed up as the debug view refusing to draw and the lighting shifting as
+	you walked up to a teleporter, and it only exists because the pass moved
+	from the 3D-to-2D transition - which happens once a frame, after every view
+	- into this function.
+
+	The two later calls are left where they are. They are no-ops once
+	backEnd.doneRTAO is set, and they still catch a frame that reaches the 2D
+	stage without having come through here - including one where every view was
+	a portal and this was skipped every time.
+	*/
+	if ( backEnd.viewParms.portalView == PV_NONE ) {
+		vk_rt_ao();
+		/* [QL] E166: players' and items' traced shadows on the level, into the
+		   lightmapped scene like AO and before the dynamic lights for the same
+		   reason - they block the map's light, not a rocket's */
+		vk_actor_shadows();
+	}
+#endif
+
 #ifdef USE_PMLIGHT
 	if ( backEnd.refdef.numLitSurfs ) {
 		RB_BeginDrawingLitSurfs();
-		RB_LightingPass();
+		RB_LightingPass();   /* timed inside (E194) */
 	}
 #endif
 
@@ -1425,7 +1534,7 @@ static const void *RB_DrawSurfs( const void *data ) {
 #endif
 
 	//TODO Maybe check for rdf_noworld stuff but q3mme has full 3d ui
-	backEnd.doneSurfaces = qtrue; // for bloom
+	// [QL] backEnd.doneSurfaces is set above now, before the occlusion pass.
 
 	return (const void *)(cmd + 1);
 }
@@ -1641,7 +1750,7 @@ static const void *RB_ClearDepth( const void *data )
 	RB_EndSurface();
 
 #ifdef USE_VULKAN
-	vk_clear_depth( r_shadows->integer == 2 ? qtrue : qfalse );
+	vk_clear_depth( R_STENCIL_SHADOWS ? qtrue : qfalse );
 #else
 	qglClear( GL_DEPTH_BUFFER_BIT );
 #endif
@@ -1686,6 +1795,12 @@ static const void *RB_FinishBloom( const void *data )
 	RB_EndSurface();
 
 #ifdef USE_VULKAN
+	/* [QL] R13: AO before bloom, deliberately. AO darkens the lit image and
+	   bloom decides what is bright enough to glow - the other order lets a
+	   corner bloom and then be darkened, which reads as light leaking out of a
+	   shadow. Both are no-ops when their cvar is off. */
+	vk_rt_ao();
+	vk_ssr();   /* [QL] R19 - see the note at the other call site */
 	if ( r_bloom->integer ) {
 		vk_bloom();
 	}
@@ -1774,6 +1889,10 @@ static const void *RB_SwapBuffers( const void *data ) {
 	backEnd.drawConsole = qfalse;
 #ifdef USE_VULKAN
 	backEnd.doneBloom = qfalse;
+	backEnd.doneRTAO = qfalse;	// [QL] R13, same lifetime as bloom
+	backEnd.doneSSR = qfalse;	// [QL] R19
+	backEnd.doneRTDynamic = qfalse;	// [QL] E156
+	backEnd.doneActorShadows = qfalse;	// [QL] E175
 #endif
 
 	return (const void *)(cmd + 1);

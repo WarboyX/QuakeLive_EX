@@ -54,6 +54,38 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define RF_WRAP_FRAMES 0x0200   // mod the model frames by the maxframes to allow continuous
                                 // animation without needing to know the frame count
 
+#define RF_OCCLUDE_ROUND 0x0400  // [QL] in the ray traced occlusion structure, stand this
+                                 // entity up as the ellipsoid inscribed in its model
+                                 // bounds rather than the box around them.
+                                 //
+                                 // The box is the default because most of what is in
+                                 // there suits it: a door is a box, and a player standing
+                                 // on the floor wants the whole footprint a box gives.
+                                 // A rocket is neither - the box is far larger than the
+                                 // rocket in it and has corners the rocket does not, so
+                                 // what it left on the floor was a hard-edged rectangle
+                                 // sliding across the room. The ellipsoid is strictly
+                                 // smaller, has no corners, and for anything round and
+                                 // moving is much the closer account of the volume.
+                                 //
+                                 // Only cgame can make this call. To the renderer a
+                                 // rocket and an ammo box are both a small model with
+                                 // bounds, and the ammo box is the one that wants the
+                                 // box.
+
+#define RF_NOOCCLUDE 0x0800  // [QL] keep this entity out of the occlusion structure
+                             // altogether. For things that are made of light rather
+                             // than matter - an explosion flash, a shockwave - where no
+                             // proxy shape is right, because the thing does not block
+                             // light, it is light.
+                             //
+                             // The explosion flash is why this exists. It is a flat dish
+                             // model given a random rotation about the impact normal, so
+                             // its box proxy landed on the wall as a hard-edged square
+                             // at a random angle, appearing on every impact and fading
+                             // with the flash. A round proxy would have made it a disc
+                             // instead of a square and still been wrong.
+
 // refdef flags
 #define RDF_NOWORLDMODEL 0x0001  // used for player configuration screen
 #define RDF_HYPERSPACE 0x0004    // teleportation effect

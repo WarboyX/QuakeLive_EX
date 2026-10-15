@@ -245,7 +245,8 @@ static void RB_SurfaceSprite( void ) {
 		VectorSubtract( vec3_origin, left, left );
 	}
 
-	RB_AddQuadStamp( backEnd.currentEntity->e.origin, left, up, backEnd.currentEntity->e.shader );
+	RB_AddQuadStamp( backEnd.currentEntity->e.origin, left, up,
+		*(const color4ub_t *)backEnd.currentEntity->e.shaderRGBA );
 }
 
 
@@ -274,7 +275,7 @@ static void RB_SurfacePolychain( const srfPoly_t *p ) {
 		VectorCopy( p->verts[i].xyz, tess.xyz[numv] );
 		tess.texCoords[0][numv][0] = p->verts[i].st[0];
 		tess.texCoords[0][numv][1] = p->verts[i].st[1];
-		tess.vertexColors[numv] = p->verts[ i ].modulate;
+		tess.vertexColors[numv] = *(const color4ub_t *)p->verts[ i ].modulate;
 
 		numv++;
 	}
@@ -491,34 +492,34 @@ static void DoRailCore( const vec3_t start, const vec3_t end, const vec3_t up, f
 	VectorMA( start, spanWidth, up, tess.xyz[tess.numVertexes] );
 	tess.texCoords[0][tess.numVertexes][0] = 0;
 	tess.texCoords[0][tess.numVertexes][1] = 0;
-	tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shader.rgba[0] * 0.25;
-	tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shader.rgba[1] * 0.25;
-	tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shader.rgba[2] * 0.25;
+	tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shaderRGBA[0] * 0.25;
+	tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shaderRGBA[1] * 0.25;
+	tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shaderRGBA[2] * 0.25;
 	tess.numVertexes++;
 
 	VectorMA( start, spanWidth2, up, tess.xyz[tess.numVertexes] );
 	tess.texCoords[0][tess.numVertexes][0] = 0;
 	tess.texCoords[0][tess.numVertexes][1] = 1;
-	tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shader.rgba[0];
-	tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shader.rgba[1];
-	tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shader.rgba[2];
+	tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shaderRGBA[0];
+	tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shaderRGBA[1];
+	tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shaderRGBA[2];
 	tess.numVertexes++;
 
 	VectorMA( end, spanWidth, up, tess.xyz[tess.numVertexes] );
 
 	tess.texCoords[0][tess.numVertexes][0] = t;
 	tess.texCoords[0][tess.numVertexes][1] = 0;
-	tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shader.rgba[0];
-	tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shader.rgba[1];
-	tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shader.rgba[2];
+	tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shaderRGBA[0];
+	tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shaderRGBA[1];
+	tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shaderRGBA[2];
 	tess.numVertexes++;
 
 	VectorMA( end, spanWidth2, up, tess.xyz[tess.numVertexes] );
 	tess.texCoords[0][tess.numVertexes][0] = t;
 	tess.texCoords[0][tess.numVertexes][1] = 1;
-	tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shader.rgba[0];
-	tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shader.rgba[1];
-	tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shader.rgba[2];
+	tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shaderRGBA[0];
+	tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shaderRGBA[1];
+	tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shaderRGBA[2];
 	tess.numVertexes++;
 
 	tess.indexes[tess.numIndexes++] = vbase;
@@ -574,9 +575,9 @@ static void DoRailDiscs( int numSegs, const vec3_t start, const vec3_t dir, cons
 			VectorCopy( pos[j], tess.xyz[tess.numVertexes] );
 			tess.texCoords[0][tess.numVertexes][0] = ( j < 2 );
 			tess.texCoords[0][tess.numVertexes][1] = ( j && j != 3 );
-			tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shader.rgba[0];
-			tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shader.rgba[1];
-			tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shader.rgba[2];
+			tess.vertexColors[tess.numVertexes].rgba[0] = backEnd.currentEntity->e.shaderRGBA[0];
+			tess.vertexColors[tess.numVertexes].rgba[1] = backEnd.currentEntity->e.shaderRGBA[1];
+			tess.vertexColors[tess.numVertexes].rgba[2] = backEnd.currentEntity->e.shaderRGBA[2];
 			tess.numVertexes++;
 
 			VectorAdd( pos[j], dir, pos[j] );
@@ -823,6 +824,62 @@ static void LerpMeshVertexes(md3Surface_t *surf, float backlerp)
 RB_SurfaceMesh
 =============
 */
+/*
+[QL] Refuse a frame index the surface does not have, and say so.
+
+LerpMeshVertexes turns e.frame into a byte offset -
+
+    newXyz = (short *)((byte *)surf + surf->ofsXyzNormals)
+           + (backEnd.currentEntity->e.frame * surf->numVerts * 4);
+
+- so a frame outside the surface reads somewhere else entirely. That is what
+the field reports show: an access violation inside RB_SurfaceMesh, reached
+through RB_LightingPass, reading a plausible-looking heap address rather than
+anything near null. It takes a long busy match to happen, which is why it has
+survived several builds.
+
+R_AddMD3Surfaces validates frame and oldframe when a surface is added, so this
+should be unreachable - but the crash says otherwise, and the interesting part
+is which of the two is wrong when it happens: an entity whose frames were never
+clamped, or a surface that does not belong to the entity currently set. Both
+are printed. Skipping the surface loses one model for one frame, which is
+nothing next to taking the client down, and the line names the model so the
+next report is a diagnosis rather than another address.
+*/
+static qboolean RB_ValidMeshFrames(const md3Surface_t *surface) {
+	const trRefEntity_t *ent = backEnd.currentEntity;
+	static int reported;
+
+	if ( !ent ) {
+		return qfalse;
+	}
+	if ( surface->numFrames <= 0 || surface->numVerts <= 0 ) {
+		return qfalse;
+	}
+	if ( (unsigned)ent->e.frame < (unsigned)surface->numFrames &&
+		 (unsigned)ent->e.oldframe < (unsigned)surface->numFrames ) {
+		return qtrue;
+	}
+
+	if ( reported < 8 ) {
+		reported++;
+		/* [QL] Name the entity's model as well as the surface. If they turn out
+		   to be different models the fault is the entity/surface pairing rather
+		   than the frame index, and those need different fixes - the pairing
+		   would point at the lit-surf sort, the index at whoever set the frame. */
+		const model_t *m = R_GetModelByHandle( ent->e.hModel );
+
+		ri.Printf( PRINT_WARNING, "RB_SurfaceMesh: frame %d/%d of %d on surface '%s'"
+				   " (%d verts), entity %d, model %d '%s'%s\n",
+				   ent->e.frame, ent->e.oldframe, surface->numFrames,
+				   surface->name, surface->numVerts,
+				   (int)(ent - backEnd.refdef.entities), ent->e.hModel,
+				   ( m && m->name[0] ) ? m->name : "?",
+				   tess.dlightPass ? ", during the lighting pass" : "" );
+	}
+	return qfalse;
+}
+
 static void RB_SurfaceMesh(md3Surface_t *surface) {
 	int				j;
 	float			backlerp;
@@ -831,6 +888,10 @@ static void RB_SurfaceMesh(md3Surface_t *surface) {
 	int				indexes;
 	int				Bob, Doug;
 	int				numVerts;
+
+	if ( !RB_ValidMeshFrames( surface ) ) {
+		return;
+	}
 
 #ifdef USE_VBO
 	VBO_Flush();

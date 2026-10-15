@@ -324,10 +324,10 @@ qboolean CG_DrawOldScoreboard(void) {
     // scoreboard
     y = SB_HEADER;
 
-    CG_DrawPic(SB_SCORE_X + (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardScore);
-    CG_DrawPic(SB_PING_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardPing);
-    CG_DrawPic(SB_TIME_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardTime);
-    CG_DrawPic(SB_NAME_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardName);
+    /* [QL] The four column-heading images came from a menu/tab/ directory, which
+       is a Quake 3 path Quake Live does not have. This whole function is
+       unreachable - the menu-driven scoreboard replaced it - so they were four
+       failed shader registrations per start feeding a drawer nobody calls. */
 
     y = SB_TOP;
 
@@ -531,11 +531,28 @@ TDM / FT extended stats. Wire: "tdmstats <client> <selfKills> <teamKills>
 =================
 */
 // Address: 0x10046610
+/*
+The slot is a client number from the server, used straight as an index into
+cg.teamStats[MAX_CLIENTS]. A bad or hostile server could otherwise write
+anywhere past the array.
+*/
+static int CG_TeamStatsSlot(void) {
+    int slot = atoi(CG_Argv(1));
+
+    if (slot < 0 || slot >= (int)ARRAY_LEN(cg.teamStats)) {
+        return -1;
+    }
+    return slot;
+}
+
 void CG_ParseTeamStats_TDM(void) {
     int slot;
     int* row;
 
-    slot = atoi(CG_Argv(1));
+    slot = CG_TeamStatsSlot();
+    if (slot < 0) {
+        return;
+    }
     row = cg.teamStats[slot].fields;
 
     row[0] = atoi(CG_Argv(2));    // 0x00 selfKills
@@ -569,7 +586,10 @@ void CG_ParseTeamStats_CA(void) {
     int* row;
     int k;
 
-    slot = atoi(CG_Argv(1));
+    slot = CG_TeamStatsSlot();
+    if (slot < 0) {
+        return;
+    }
     row = cg.teamStats[slot].fields;
 
     row[7] = atoi(CG_Argv(2));  // 0x1c damageDone
@@ -596,7 +616,10 @@ void CG_ParseTeamStats_CTF(void) {
     int slot;
     int* row;
 
-    slot = atoi(CG_Argv(1));
+    slot = CG_TeamStatsSlot();
+    if (slot < 0) {
+        return;
+    }
     row = cg.teamStats[slot].fields;
 
     row[0] = atoi(CG_Argv(2));    // 0x00 selfKills

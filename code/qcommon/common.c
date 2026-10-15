@@ -36,7 +36,10 @@ int demo_protocols[] = {0};
 #define MAX_NUM_ARGVS 50
 
 #define MIN_DEDICATED_COMHUNKMEGS 1
-#define MIN_COMHUNKMEGS 64
+// [QL] The stock client floor was MIN_COMHUNKMEGS 64. It is gone rather than
+// merely unused: the client floor is now DEF_COMHUNKMEGS (see
+// Com_InitHunkMemory), and a second, lower constant sitting next to it that
+// nothing reads is exactly the shape this codebase keeps getting caught by.
 
 // [QL] Headroom left for everything that is not the snapshot entity pool:
 // the BSP and collision model, the game module's entity/client arrays, and
@@ -65,6 +68,9 @@ fileHandle_t com_journalFile;      // events are written here
 fileHandle_t com_journalDataFile;  // config files are written here
 
 cvar_t* com_speeds;
+cvar_t* com_cpuTimings;   // [QL] E222
+int64_t com_usBots, com_usGame, com_usScene, com_usSubmit;
+int64_t com_usBotStages[BOT_TIMING_STAGES];
 cvar_t* com_developer;
 cvar_t* com_dedicated;
 cvar_t* com_timescale;
@@ -75,6 +81,18 @@ cvar_t* com_timedemo;
 cvar_t* com_sv_running;
 cvar_t* com_cl_running;
 cvar_t* com_logfile;  // 1 = buffer log, 2 = flush after each print
+cvar_t* com_logfileKeep;  // [QL] 0 = replace, 1 = append, 2 = one file per run
+static char com_logfileName[MAX_QPATH] = "qconsole.log";
+
+/*
+[QL] The log file actually being written, for anything that needs to tell
+someone where to look - the crash handler says "read this" and would otherwise
+name qconsole.log whatever logfile_keep chose.
+*/
+const char* Com_LogFileName(void) {
+    return com_logfileName;
+}
+
 cvar_t* com_pipefile;
 cvar_t* com_showtrace;
 cvar_t* com_version;
@@ -95,6 +113,7 @@ cvar_t* com_protocol;
 cvar_t* com_basegame;
 cvar_t* com_homepath;
 cvar_t* com_busyWait;
+cvar_t* com_framePacing;
 #ifndef DEDICATED
 cvar_t* con_autochat;
 cvar_t* cl_allowConsoleChat;
@@ -184,8 +203,23 @@ void QDECL Com_Printf(const char* fmt, ...) {
     // echo to dedicated console and early console
     Sys_Print(msg);
 
-    // logfile
-    if (com_logfile && com_logfile->integer) {
+    /*
+    [QL] Either cvar starts the log.
+
+    logfile says how to write it, logfile_keep says what to do with the
+    previous one, and gating on logfile alone made the second useless on its
+    own: "logfile_keep 2" by itself produced no log at all, silently, which is
+    exactly the shape of mistake somebody makes once and then cannot explain.
+
+    Asking for a log to be kept is asking for a log. Setting either is enough,
+    and the flush decision below treats logfile_keep the same way - a log you
+    asked to keep is a log you want to survive whatever you are about to
+    reproduce, so it is not buffered.
+
+    Both are CVAR_TEMP, so neither can be left on in a config by accident.
+    */
+    if ((com_logfile && com_logfile->integer) ||
+        (com_logfileKeep && com_logfileKeep->integer)) {
         // TTimo: only open the qconsole.log if the filesystem is in an initialized state
         //   also, avoid recursing in the qconsole.log opening (i.e. if fs_debug is on)
         if (!logfile && FS_Initialized() && !opening_qconsole) {
@@ -197,12 +231,57 @@ void QDECL Com_Printf(const char* fmt, ...) {
             time(&aclock);
             newtime = localtime(&aclock);
 
-            logfile = FS_FOpenFileWrite("qconsole.log");
+            /*
+            [QL] What happens to the log of the previous run - replace, keep,
+            or file it separately.
+
+            It was always truncated, which is the wrong default for the job the
+            log is mostly used for here. Chasing a crash means setting
+            logfile 2, reproducing, and reading what led up to it - and the
+            reproduce step is a relaunch, which threw away the log of the run
+            that had just crashed. The evidence was being deleted by the act of
+            going to collect it.
+
+            logfile_keep says what to do instead:
+
+              0  replace qconsole.log, the old behaviour and still the right
+                 one when the log means "what happened just now"
+              1  append to qconsole.log, with a separator so one run can be
+                 told from the next
+              2  a file per run, qconsole-YYYYMMDD-HHMMSS.log, which keeps runs
+                 apart without any one file growing forever
+
+            Two costs the header should state rather than let anyone discover:
+            appending means the file grows until it is deleted by hand, and a
+            file per run means one file per launch in fs_homepath.
+            */
+            {
+                int keep = com_logfileKeep ? com_logfileKeep->integer : 0;
+
+                if (keep >= 2) {
+                    Com_sprintf(com_logfileName, sizeof(com_logfileName),
+                                "qconsole-%04d%02d%02d-%02d%02d%02d.log",
+                                newtime->tm_year + 1900, newtime->tm_mon + 1, newtime->tm_mday,
+                                newtime->tm_hour, newtime->tm_min, newtime->tm_sec);
+                    logfile = FS_FOpenFileWrite(com_logfileName);
+                } else {
+                    Q_strncpyz(com_logfileName, "qconsole.log", sizeof(com_logfileName));
+                    logfile = (keep == 1) ? FS_FOpenFileAppend(com_logfileName)
+                                          : FS_FOpenFileWrite(com_logfileName);
+                }
+
+                if (logfile) {
+                    if (keep == 1) {
+                        Com_Printf("\n===== %s continued on %s", com_logfileName, asctime(newtime));
+                    } else {
+                        Com_Printf("%s opened on %s\n", com_logfileName, asctime(newtime));
+                    }
+                }
+            }
 
             if (logfile) {
-                Com_Printf("logfile opened on %s\n", asctime(newtime));
-
-                if (com_logfile->integer > 1) {
+                // Flush per line unless logfile 1 was asked for specifically.
+                if (com_logfile->integer != 1) {
                     // force it to not buffer so we get valid
                     // data even if we are crashing
                     FS_ForceFlush(logfile);
@@ -387,7 +466,11 @@ quake3 set test blah + map test
 ============================================================================
 */
 
-#define MAX_CONSOLE_LINES 32
+// [QL] E223: was 32, and the 33rd '+' and everything after it were dropped
+// without a word - a launcher's trailing +connect or +map simply did not run
+#define MAX_CONSOLE_LINES 128
+static int com_droppedConsoleLines;
+int com_cmdlineTruncated;
 int com_numConsoleLines;
 char* com_consoleLines[MAX_CONSOLE_LINES];
 
@@ -411,7 +494,11 @@ void Com_ParseCommandLine(char* commandLine) {
         // if commandLine came from a file, we might have real line seperators
         if ((*commandLine == '+' && !inq) || *commandLine == '\n' || *commandLine == '\r') {
             if (com_numConsoleLines == MAX_CONSOLE_LINES) {
-                return;
+                // counted, and reported once the console exists (Com_AddStartupCommands)
+                com_droppedConsoleLines++;
+                *commandLine = 0;
+                commandLine++;
+                continue;
             }
             com_consoleLines[com_numConsoleLines] = commandLine + 1;
             com_numConsoleLines++;
@@ -490,6 +577,14 @@ qboolean Com_AddStartupCommands(void) {
     qboolean added;
 
     added = qfalse;
+    if (com_cmdlineTruncated) {
+        Com_Printf(S_COLOR_YELLOW "WARNING: the command line is too long - its last %i argument(s) were ignored. "
+                   "Put them in a .cfg and +exec it.\n", com_cmdlineTruncated);
+    }
+    if (com_droppedConsoleLines) {
+        Com_Printf(S_COLOR_YELLOW "WARNING: the command line has more than %i '+' commands - the last %i were "
+                   "ignored. Put them in a .cfg and +exec it.\n", MAX_CONSOLE_LINES, com_droppedConsoleLines);
+    }
     // quote every token, so args with semicolons can work
     for (i = 0; i < com_numConsoleLines; i++) {
         if (!com_consoleLines[i] || !com_consoleLines[i][0]) {
@@ -591,7 +686,7 @@ int Com_Filter(char* filter, char* name, int casesensitive) {
         if (*filter == '*') {
             filter++;
             for (i = 0; *filter; i++) {
-                if (*filter == '*' || *filter == '?')
+                if (*filter == '*' || *filter == '?' || *filter == '[')
                     break;
                 buf[i] = *filter;
                 filter++;
@@ -1510,38 +1605,61 @@ void Com_InitHunkMemory(void) {
     if (com_dedicated && com_dedicated->integer) {
         nMinAlloc = MIN_DEDICATED_COMHUNKMEGS;
         pMsg = "Minimum com_hunkMegs for a dedicated server is %i, allocating %i megs.\n";
-
-        // [QL] A dedicated server's largest single allocation is the snapshot
-        // entity ring in SV_Startup, which scales linearly with sv_maxclients
-        // and is far and away the dominant hunk consumer on a big server. The
-        // stock floor of 1 MB is meaningless for it, so derive a real floor.
+    } else {
+        // [QL] The floor here is DEF_COMHUNKMEGS, not MIN_COMHUNKMEGS, and that
+        // is deliberate.
         //
-        // Command-line "+set sv_maxclients" is already applied at this point
-        // (Com_StartupVariable runs before us); a value set later in a config
-        // is not, which is what the SV_Startup check exists to catch.
-        {
-            int maxClients = Cvar_VariableIntegerValue("sv_maxclients");
+        // com_hunkMegs is CVAR_ARCHIVE, so the value is written into the user's
+        // config on first run and that config wins forever after. When the
+        // default went from 128 to 256 to make room for the snapshot entity
+        // pool, the new value reached fresh installs only - every existing
+        // install kept 128 MB and kept failing, and nothing on screen connected
+        // the two. This is the third time CVAR_ARCHIVE on a shipped default has
+        // cost a round here (r_dlightMode, con_scale, now this one).
+        //
+        // Treating what we ship as a floor rather than a first-run suggestion
+        // keeps the rule the codebase already follows: archive is for values a
+        // user sets, not values we choose. A user who asked for MORE still gets
+        // it, because this only raises. A user who asked for less loses that,
+        // which is the right trade - the saving is a fraction of the memory a
+        // map already needs, and the failure it causes is a hard drop to the
+        // menu partway through a load, not a graceful degradation.
+        nMinAlloc = DEF_COMHUNKMEGS;
+        pMsg = "Minimum com_hunkMegs is %i, allocating %i megs.\n";
+    }
 
-            if (maxClients > 0) {
-                int poolMegs;
+    // [QL] A server's largest single allocation is the snapshot entity ring in
+    // SV_Startup, which scales linearly with sv_maxclients and is far and away
+    // the dominant hunk consumer on a big server. The stock floors mean nothing
+    // next to it, so derive a real one.
+    //
+    // This is not only a dedicated-server concern. SV_SnapshotBackup sizes the
+    // ring from the client count rather than from whether the server is
+    // dedicated, because a listen server full of bots feeds as many clients as
+    // a dedicated one - so a listen server needs the same room.
+    //
+    // Command-line "+set sv_maxclients" is already applied at this point
+    // (Com_StartupVariable runs before us); a value set later in a config is
+    // not, which is what the SV_Startup check exists to catch.
+    {
+        int maxClients = Cvar_VariableIntegerValue("sv_maxclients");
 
-                if (maxClients > MAX_CLIENTS) {
-                    maxClients = MAX_CLIENTS;
-                }
+        if (maxClients > 0) {
+            int poolMegs;
 
-                poolMegs = (int)(((int64_t)maxClients * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES *
-                                  sizeof(entityState_t)) /
-                                 (1024 * 1024));
+            if (maxClients > MAX_CLIENTS) {
+                maxClients = MAX_CLIENTS;
+            }
 
-                if (poolMegs + SV_HUNK_HEADROOM_MEGS > nMinAlloc) {
-                    nMinAlloc = poolMegs + SV_HUNK_HEADROOM_MEGS;
-                    pMsg = "Minimum com_hunkMegs for this sv_maxclients is %i, allocating %i megs.\n";
-                }
+            poolMegs = (int)(((int64_t)maxClients * PACKET_BACKUP * MAX_SNAPSHOT_ENTITIES *
+                              sizeof(entityState_t)) /
+                             (1024 * 1024));
+
+            if (poolMegs + SV_HUNK_HEADROOM_MEGS > nMinAlloc) {
+                nMinAlloc = poolMegs + SV_HUNK_HEADROOM_MEGS;
+                pMsg = "Minimum com_hunkMegs for this sv_maxclients is %i, allocating %i megs.\n";
             }
         }
-    } else {
-        nMinAlloc = MIN_COMHUNKMEGS;
-        pMsg = "Minimum com_hunkMegs is %i, allocating %i megs.\n";
     }
 
     if (cv->integer < nMinAlloc) {
@@ -1679,6 +1797,33 @@ static void Hunk_SwapBanks(void) {
 
 /*
 =================
+Com_HunkState
+
+[QL] The hunk budget as one appendable clause, for the allocation-failure
+messages. Returns a pointer to a static buffer - one call per message.
+
+Deliberately reports low and high separately. They grow toward each other from
+opposite ends of one block, so "240 of 256 MB" does not say whether the map is
+too big or whether the server's snapshot pool took the other end; the split
+does, and that is the difference between raising com_hunkMegs and looking for
+what is really eating it.
+=================
+*/
+static const char* Com_HunkState(void) {
+    static char state[192];
+
+    Com_sprintf(state, sizeof(state),
+                " - hunk is %i MB (com_hunkMegs %i), %i MB already in use:"
+                " low %i KB, high %i KB, %i MB free",
+                s_hunkTotal / (1024 * 1024), Cvar_VariableIntegerValue("com_hunkMegs"),
+                (hunk_low.temp + hunk_high.temp) / (1024 * 1024), hunk_low.temp / 1024,
+                hunk_high.temp / 1024, (s_hunkTotal - hunk_low.temp - hunk_high.temp) / (1024 * 1024));
+
+    return state;
+}
+
+/*
+=================
 Hunk_Alloc
 
 Allocate permanent (until the hunk is cleared) memory
@@ -1718,9 +1863,17 @@ void* Hunk_Alloc(int size, ha_pref preference) {
         Hunk_Log();
         Hunk_SmallLog();
 
-        Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)", size, file, line, label);
+        Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)%s", size, file, line, label,
+                  Com_HunkState());
 #else
-        Com_Error(ERR_DROP, "Hunk_Alloc failed on %i", size);
+        // [QL] "Hunk_Alloc failed on <n>" on its own says only that a request
+        // was refused - not how big the hunk is, how much of it was already
+        // spent, or which end spent it. Every one of those is needed to tell a
+        // hunk that is too small from a hunk that something is filling, and
+        // none of them was recoverable from the message or from the log. The
+        // same failure had already cost a round on a dedicated server for
+        // exactly this reason. Print the budget with the refusal.
+        Com_Error(ERR_DROP, "Hunk_Alloc failed on %i%s", size, Com_HunkState());
 #endif
     }
 
@@ -1779,7 +1932,7 @@ void* Hunk_AllocateTempMemory(int size) {
     size = PAD(size, sizeof(intptr_t)) + sizeof(hunkHeader_t);
 
     if (hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal) {
-        Com_Error(ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size);
+        Com_Error(ERR_DROP, "Hunk_AllocateTempMemory: failed on %i%s", size, Com_HunkState());
     }
 
     if (hunk_temp == &hunk_low) {
@@ -2326,6 +2479,21 @@ void Com_ExecuteCfg(void) {
 #endif
         Cbuf_ExecuteText(EXEC_NOW, "exec autoexec.cfg\n");
         Cbuf_Execute();
+
+        /*
+        [QL] Say where autoexec came from again, now that a log exists.
+
+        exec already reports the path it used and any copies it shadowed - but
+        autoexec.cfg is the one config that cannot benefit from it, because
+        autoexec is what sets logfile_keep, so the log file is opened *during*
+        this exec and the line naming the file is printed before there is
+        anywhere to print it. A field log had no "execing" lines at all and
+        looked like autoexec had never run.
+
+        Repeated here, after Cbuf_Execute has finished, where it lands in the
+        file. Costs a few fopen calls once per launch.
+        */
+        FS_ReportShadowedFile("autoexec.cfg");
     }
 }
 
@@ -2433,6 +2601,22 @@ void Com_Init(char* commandLine) {
     Cmd_Init();
 
     // get the developer cvar set as early as possible
+    /*
+    [QL] developer defaults to 1 while this branch is under test.
+
+    A lot of what has gone wrong here has been silent - a shader that did not
+    load, a refEntity dropped past MAX_REFENTITIES, a model handle that came back
+    0 - and the diagnosis each time started with "turn on developer and do it
+    again". Defaulting it on means the first run already has the evidence, which
+    is worth the extra console noise while the thing is being built.
+
+    RELEASE: set this back to "0" before shipping a release build. It is
+    CVAR_TEMP, so it is never written to a config and a user can turn it off for
+    the session without it sticking - the default here is the only switch.
+
+    [QL] Alpha 2: set to "0" for the release. Set it back to "1" while the next
+    candidates are being tested.
+    */
     com_developer = Cvar_Get("developer", "0", CVAR_TEMP);
 
     // done early so bind command exists
@@ -2492,11 +2676,25 @@ void Com_Init(char* commandLine) {
     com_blood = Cvar_Get("com_blood", "1", CVAR_ARCHIVE);
 
     com_logfile = Cvar_Get("logfile", "0", CVAR_TEMP);
+    // [QL] CVAR_TEMP like logfile itself: both are things you turn on to chase
+    // something, and neither should survive into a config and quietly stay on.
+    com_logfileKeep = Cvar_Get("logfile_keep", "0", CVAR_TEMP);
+    Cvar_SetDescription(com_logfileKeep,
+        "what happens to the previous run's log, and starts one on its own: 0 replace "
+        "qconsole.log, 1 append to it, 2 write a new qconsole-YYYYMMDD-HHMMSS.log per "
+        "run. Setting this is enough - logfile does not also have to be set");
 
     com_timescale = Cvar_Get("timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO);
     com_fixedtime = Cvar_Get("fixedtime", "0", CVAR_CHEAT);
     com_showtrace = Cvar_Get("com_showtrace", "0", CVAR_CHEAT);
     com_speeds = Cvar_Get("com_speeds", "0", 0);
+    // [QL] E222
+    com_cpuTimings = Cvar_Get("com_cpuTimings", "0", 0);
+    Cvar_CheckRange(com_cpuTimings, 0, 1, qtrue);
+    Cvar_SetDescription(com_cpuTimings, "Print where the CPU's time goes, averaged every two seconds: "
+        "bots, game simulation, the rest of the server, building the scene (cgame and the renderer's "
+        "front end), submitting it and presenting (which includes waiting for the GPU or vsync), and "
+        "the frame limiter's idle time. The CPU-side companion to r_rtTimings.");
     com_timedemo = Cvar_Get("timedemo", "0", CVAR_CHEAT);
     com_cameraMode = Cvar_Get("com_cameraMode", "0", CVAR_CHEAT);
 
@@ -2514,11 +2712,22 @@ void Com_Init(char* commandLine) {
     com_maxfpsMinimized = Cvar_Get("com_maxfpsMinimized", "0", CVAR_ARCHIVE);
     com_abnormalExit = Cvar_Get("com_abnormalExit", "0", CVAR_ROM);
     com_busyWait = Cvar_Get("com_busyWait", "0", CVAR_ARCHIVE);
+
+    /* [QL] Sleep the frame limiter on a microsecond ruler rather than a whole
+       millisecond one - see the block in Com_Frame. On by default because the
+       millisecond loop can only place frame boundaries on millisecond edges, so
+       every rate that does not divide 1000 alternates between two intervals.
+       Set to 0 to get the old loop back if the spin cost matters. Not
+       CVAR_ARCHIVE: this is our default, not the user's setting, and archiving
+       a shipped default stops the default applying (CLAUDE.md). */
+    com_framePacing = Cvar_Get("com_framePacing", "1", 0);
     Cvar_Get("com_errorMessage", "", CVAR_ROM | CVAR_NORESTART);
 
     s = va("%s %s %s", FULL_PRODUCT_VERSION, PLATFORM_STRING, PRODUCT_DATE);
     com_version = Cvar_Get("version", s, CVAR_ROM | CVAR_SERVERINFO);
-    com_gamename = Cvar_Get("com_gamename", PRODUCT_NAME, CVAR_SERVERINFO | CVAR_INIT);
+    // [QL] GAMENAME_NETWORK, not PRODUCT_NAME: this is protocol identity and a
+    // stock client filters on it. See the note in q_shared.h.
+    com_gamename = Cvar_Get("com_gamename", GAMENAME_NETWORK, CVAR_SERVERINFO | CVAR_INIT);
     com_protocol = Cvar_Get("com_protocol", va("%i", PROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_INIT);
     Cvar_Get("protocol", com_protocol->string, CVAR_ROM);
 
@@ -2849,13 +3058,101 @@ int Com_TimeVal(int minMsec) {
 
 /*
 =================
+Com_TimeValUsec
+
+[QL] Com_TimeVal in microseconds. Same shape, finer ruler - returns how long is
+left before the next frame is due, or 0 if it is due now.
+=================
+*/
+static int64_t com_frameTimeUsec;
+
+static int64_t Com_TimeValUsec(int64_t minUsec) {
+    int64_t timeVal;
+
+    timeVal = Sys_Microseconds() - com_frameTimeUsec;
+
+    if (timeVal >= minUsec)
+        return 0;
+
+    return minUsec - timeVal;
+}
+
+
+/*
+=================
+Com_CpuTimingsReport
+
+[QL] E222. Where the CPU's frame goes (com_cpuTimings 1).
+
+com_speeds answered this in whole milliseconds, once per frame - at 200 fps
+every number is 0 or 5 and the console scrolls too fast to read. This keeps
+microsecond totals for each part of Com_Frame and prints their per-frame
+average every two seconds, like r_rtTimings does for the GPU.
+
+"submit + present" is re.EndFrame: handing the frame to the GPU and presenting
+it, which waits when the GPU (or vsync) is behind - a large number there means
+the GPU is the limit, not the CPU. "frame cap" is the limiter's idle wait: time
+the CPU had to spare.
+=================
+*/
+static struct {
+    int64_t whole, wait, server, client, bots, game, scene, submit, start;
+    int64_t botStages[BOT_TIMING_STAGES];
+    int frames;
+} cpuSum;
+
+// a window starts empty when timing is switched on, so frames from before it was
+// switched off do not count against the time since
+static void Com_CpuTimingsReset(void) {
+    Com_Memset(&cpuSum, 0, sizeof(cpuSum));
+}
+
+static void Com_CpuTimingsReport(int64_t whole, int64_t wait, int64_t server, int64_t client) {
+    const int64_t now = Sys_Microseconds();
+    int stage;
+
+    if (cpuSum.start == 0) {
+        cpuSum.start = now - whole;   // the window opens where this frame began
+    }
+    cpuSum.whole += whole; cpuSum.wait += wait; cpuSum.server += server; cpuSum.client += client;
+    cpuSum.bots += com_usBots; cpuSum.game += com_usGame; cpuSum.scene += com_usScene; cpuSum.submit += com_usSubmit;
+    for (stage = 0; stage < BOT_TIMING_STAGES; stage++) {
+        cpuSum.botStages[stage] += com_usBotStages[stage];
+    }
+    cpuSum.frames++;
+    if (now - cpuSum.start >= 2000000) {
+        const double f = 1000.0 * cpuSum.frames;   // microseconds -> ms per frame
+        Com_Printf("CPU timings (ms/frame over %i frames, %.0f fps): whole frame %.2f, frame cap (idle) %.2f, "
+                   "server %.2f [bots %.2f, game %.2f], client %.2f [scene %.2f, submit + present %.2f], other %.2f\n",
+                   cpuSum.frames, cpuSum.frames * 1000000.0 / (double)(now - cpuSum.start), cpuSum.whole / f,
+                   cpuSum.wait / f, cpuSum.server / f, cpuSum.bots / f, cpuSum.game / f, cpuSum.client / f,
+                   cpuSum.scene / f, cpuSum.submit / f,
+                   (cpuSum.whole - cpuSum.wait - cpuSum.server - cpuSum.client) / f);
+        Com_Printf("Bot CPU timings (ms/frame): setup %.2f, world update %.2f, AI %.2f, input %.2f\n",
+                   cpuSum.botStages[BOT_TIMING_SETUP] / f, cpuSum.botStages[BOT_TIMING_WORLD] / f,
+                   cpuSum.botStages[BOT_TIMING_AI] / f, cpuSum.botStages[BOT_TIMING_INPUT] / f);
+        Com_CpuTimingsReset();
+        cpuSum.start = now;
+    }
+}
+
+
+/*
+=================
 Com_Frame
 =================
 */
 void Com_Frame(void) {
     int msec, minMsec;
+    // [QL] E222: com_cpuTimings
+    static int64_t cpuLastEnd;
+    int64_t cpuEntry = 0, cpuWaitEnd = 0, cpuSvStart = 0, cpuSvEnd = 0, cpuClStart = 0, cpuClEnd = 0;
     int timeVal, timeValSV;
+    // [QL] the requested rate, hoisted out of the branch below so the
+    // microsecond limiter can derive its interval straight from it.
+    int targetFpsUsec = 0;
     static int lastTime = 0, bias = 0;
+    static float minMsecFrac = 0.0f;
 
     int timeBeforeFirstEvents;
     int timeBeforeServer;
@@ -2878,6 +3175,14 @@ void Com_Frame(void) {
     timeBeforeClient = 0;
     timeAfter = 0;
 
+    Sys_CpuFrame();   // [QL] E222: sys_cpuPlacement changes apply at once
+
+    if (com_cpuTimings->integer) {   // [QL] E222
+        cpuEntry = Sys_Microseconds();
+        com_usBots = com_usGame = com_usScene = com_usSubmit = 0;
+        Com_Memset(com_usBotStages, 0, sizeof(com_usBotStages));
+    }
+
     // write config file if anything changed
     Com_WriteConfiguration();
 
@@ -2893,14 +3198,51 @@ void Com_Frame(void) {
         if (com_dedicated->integer)
             minMsec = SV_FrameMsec();
         else {
+            int targetFps;
+
             if (com_minimized->integer && com_maxfpsMinimized->integer > 0)
-                minMsec = 1000 / com_maxfpsMinimized->integer;
+                targetFps = com_maxfpsMinimized->integer;
             else if (com_unfocused->integer && com_maxfpsUnfocused->integer > 0)
-                minMsec = 1000 / com_maxfpsUnfocused->integer;
+                targetFps = com_maxfpsUnfocused->integer;
             else if (com_maxfps->integer > 0)
-                minMsec = 1000 / com_maxfps->integer;
+                targetFps = com_maxfps->integer;
             else
+                targetFps = 0;
+
+            targetFpsUsec = targetFps;
+
+            // [QL] Carry the fractional millisecond instead of truncating it.
+            //
+            // This was minMsec = 1000 / fps in whole milliseconds, so the only
+            // rates it could actually produce were the ones that divide 1000
+            // exactly: 250, 200, 166, 142, 125... Everything from 201 to 250
+            // truncated to 4ms and ran at 250, which is why com_maxfps 210 and
+            // com_maxfps 240 both showed 250 on an fps overlay while 200 was
+            // right - the cvar was accepted and quietly ignored.
+            //
+            // Accumulating the remainder makes the frame interval alternate
+            // between the two neighbouring whole milliseconds in the right
+            // proportion: 240 fps asks for 4.1667ms and gets five 4ms frames
+            // then one 5ms frame, 25ms per six frames, which is 240.
+            //
+            // Sub-millisecond timing would be the other way to fix this, but it
+            // means replacing Com_TimeVal and Sys_Milliseconds throughout;
+            // this stays inside the existing millisecond loop.
+            if (targetFps > 0) {
+                minMsecFrac += 1000.0f / targetFps;
+                minMsec = (int)minMsecFrac;
+                minMsecFrac -= minMsec;
+
+                if (minMsec < 1) {
+                    // above 1000 fps there is no sub-millisecond sleep to give,
+                    // so stop carrying a debt that can never be paid off
+                    minMsec = 1;
+                    minMsecFrac = 0.0f;
+                }
+            } else {
                 minMsec = 1;
+                minMsecFrac = 0.0f;
+            }
 
             timeVal = com_frameTime - lastTime;
             bias += timeVal - minMsec;
@@ -2915,22 +3257,95 @@ void Com_Frame(void) {
     } else
         minMsec = 1;
 
-    do {
-        if (com_sv_running->integer) {
-            timeValSV = SV_SendQueuedPackets();
+    /*
+    [QL] com_framePacing - sleep on a microsecond ruler instead of a whole
+    millisecond one.
 
-            timeVal = Com_TimeVal(minMsec);
+    Com_TimeVal measures with Sys_Milliseconds, so the shortest interval it can
+    express is 1ms and every frame boundary lands on a millisecond edge. For a
+    rate that divides 1000 that is exact; for anything else the loop alternates
+    between two whole milliseconds. 240 fps wants 4.167ms and gets 4,4,4,4,5 -
+    right on average, uneven frame to frame, and it is the unevenness you see.
+    The minMsecFrac carry above fixes the *average* rate; this fixes the pacing.
 
-            if (timeValSV < timeVal)
-                timeVal = timeValSV;
-        } else
-            timeVal = Com_TimeVal(minMsec);
+    Only the sleep changes. msec is still Sys_Milliseconds-derived below, so
+    cls.realtime, cl.serverTime, cg.time and level.time all still advance in
+    whole milliseconds exactly as before, and nothing on the wire moves.
 
-        if (com_busyWait->integer || timeVal < 1)
-            NET_Sleep(0);
-        else
-            NET_Sleep(timeVal - 1);
-    } while (Com_TimeVal(minMsec));
+    THIS DOES NOT RAISE THE 1000 FPS CEILING, AND MUST NOT.
+
+    That ceiling is the clock, not a policy. Com_ModifyMsec floors msec at 1
+    whenever com_timescale is non-zero (it defaults to 1), so a frame that took
+    less than a millisecond still reports one. cls.realtime is a running sum of
+    those, cl.serverTime is cls.realtime + serverTimeDelta, and cg.time follows -
+    so at 2000 fps the client's sense of time would advance two milliseconds per
+    millisecond of wall clock and the whole game, shader animation included,
+    would run at double speed. The millisecond floor on minMsec is what stops
+    that, which is why it stays even here.
+    */
+    if (!com_dedicated->integer && !com_timedemo->integer && com_framePacing->integer) {
+        int64_t minUsec = (int64_t)minMsec * 1000;
+        int64_t timeValUsec;
+
+        if (targetFpsUsec > 0) {
+            // Whole microseconds straight from the target rate. At 240 fps that
+            // is 4166us against an ideal 4166.67 - a 0.16us error per frame,
+            // where the millisecond loop was out by up to 833us.
+            minUsec = 1000000 / targetFpsUsec;
+
+            // Carry the same overrun correction the millisecond path uses, so a
+            // frame that took too long does not push the average rate down.
+            minUsec -= (int64_t)bias * 1000;
+            if (minUsec < 1000) {
+                minUsec = 1000;  // the 1000 fps ceiling above, in microseconds
+            }
+        }
+
+        do {
+            if (com_sv_running->integer) {
+                timeValSV = SV_SendQueuedPackets();
+                timeValUsec = Com_TimeValUsec(minUsec);
+
+                if ((int64_t)timeValSV * 1000 < timeValUsec)
+                    timeValUsec = (int64_t)timeValSV * 1000;
+            } else
+                timeValUsec = Com_TimeValUsec(minUsec);
+
+            // NET_Sleep takes whole milliseconds, so it can only be used for
+            // the part of the wait that is at least a millisecond long. The
+            // sub-millisecond remainder is spun out, which is what makes the
+            // pacing exact; it is at most one millisecond of spin per frame.
+            if (com_busyWait->integer || timeValUsec < 2000)
+                NET_Sleep(0);
+            else
+                NET_Sleep((int)(timeValUsec / 1000) - 1);
+        } while (Com_TimeValUsec(minUsec));
+
+        com_frameTimeUsec = Sys_Microseconds();
+    } else {
+        do {
+            if (com_sv_running->integer) {
+                timeValSV = SV_SendQueuedPackets();
+
+                timeVal = Com_TimeVal(minMsec);
+
+                if (timeValSV < timeVal)
+                    timeVal = timeValSV;
+            } else
+                timeVal = Com_TimeVal(minMsec);
+
+            if (com_busyWait->integer || timeVal < 1)
+                NET_Sleep(0);
+            else
+                NET_Sleep(timeVal - 1);
+        } while (Com_TimeVal(minMsec));
+
+        com_frameTimeUsec = Sys_Microseconds();
+    }
+
+    if (com_cpuTimings->integer) {
+        cpuWaitEnd = Sys_Microseconds();   // [QL] E222: the limiter's idle time ends here
+    }
 
     IN_Frame();
 
@@ -2951,7 +3366,13 @@ void Com_Frame(void) {
         timeBeforeServer = Sys_Milliseconds();
     }
 
+    if (com_cpuTimings->integer) {
+        cpuSvStart = Sys_Microseconds();
+    }
     SV_Frame(msec);
+    if (com_cpuTimings->integer) {
+        cpuSvEnd = Sys_Microseconds();
+    }
 
     // if "dedicated" has been modified, start up
     // or shut down the client system.
@@ -2988,7 +3409,13 @@ void Com_Frame(void) {
         timeBeforeClient = Sys_Milliseconds();
     }
 
+    if (com_cpuTimings->integer) {
+        cpuClStart = Sys_Microseconds();
+    }
     CL_Frame(msec);
+    if (com_cpuTimings->integer) {
+        cpuClEnd = Sys_Microseconds();
+    }
 
     if (com_speeds->integer) {
         timeAfter = Sys_Milliseconds();
@@ -3002,6 +3429,18 @@ void Com_Frame(void) {
 #endif
 
     NET_FlushPacketQueue();
+
+    // [QL] E222
+    if (com_cpuTimings->integer) {
+        const int64_t now = Sys_Microseconds();
+        if (cpuLastEnd != 0 && cpuEntry != 0) {
+            Com_CpuTimingsReport(now - cpuLastEnd, cpuWaitEnd - cpuEntry, cpuSvEnd - cpuSvStart, cpuClEnd - cpuClStart);
+        }
+        cpuLastEnd = now;
+    } else if (cpuLastEnd != 0) {
+        cpuLastEnd = 0;
+        Com_CpuTimingsReset();
+    }
 
     //
     // report timing information

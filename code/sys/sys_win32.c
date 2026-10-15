@@ -209,6 +209,84 @@ int Sys_Milliseconds(void) {
 
 /*
 ================
+Sys_Microseconds
+
+[QL] Monotonic microsecond clock, for the frame limiter only - see the
+com_framePacing block in Com_Frame. Deliberately NOT a finer Sys_Milliseconds:
+the engine's whole time base (cls.realtime, cl.serverTime, cg.time, level.time,
+and serverTime on the wire) is integer milliseconds, and this does not change
+that. It exists so the loop can sleep for the right *fraction* of a millisecond
+instead of rounding the interval to a whole one.
+
+QueryPerformanceCounter rather than timeGetTime, which is what Sys_Milliseconds
+uses: timeGetTime's resolution is the system timer period - 1ms at best, and
+~15.6ms if nothing has called timeBeginPeriod - so it cannot measure the
+interval this needs to measure.
+================
+*/
+int64_t Sys_Microseconds(void) {
+    static LARGE_INTEGER freq;
+    static LARGE_INTEGER base;
+    LARGE_INTEGER now;
+
+    if (freq.QuadPart == 0) {
+        if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0) {
+            // No high-resolution counter. Fall back to the millisecond clock;
+            // the limiter then behaves exactly as it did before com_framePacing.
+            freq.QuadPart = 0;
+            return (int64_t)Sys_Milliseconds() * 1000LL;
+        }
+        QueryPerformanceCounter(&base);
+    }
+
+    QueryPerformanceCounter(&now);
+
+    // Scale before dividing would overflow after ~29 minutes at a 10MHz
+    // counter, so split the difference: whole seconds and remainder.
+    return ((now.QuadPart - base.QuadPart) / freq.QuadPart) * 1000000LL +
+           (((now.QuadPart - base.QuadPart) % freq.QuadPart) * 1000000LL) / freq.QuadPart;
+}
+
+/*
+================
+Sys_LibraryErrorWin32
+
+[QL] Report why LoadLibrary refused a module.
+
+sys_loadlib.h defined Sys_LibraryError() as the string "unknown" on Windows, so
+a dedicated server that could not load qagame printed exactly that and nothing
+else - while Windows itself had a specific reason waiting in GetLastError. A
+structurally valid DLL that the loader rejects is almost always a policy
+decision rather than a bad file, and the distinction is invisible without this.
+================
+*/
+const char* Sys_LibraryErrorWin32(void) {
+    static char buf[1024];
+    DWORD err = GetLastError();
+    DWORD len;
+
+    if (err == 0) {
+        return "no error reported by the OS";
+    }
+
+    len = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                         NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                         buf, sizeof(buf) - 32, NULL);
+    if (len == 0) {
+        Com_sprintf(buf, sizeof(buf), "error 0x%08lx (no description available)",
+                    (unsigned long)err);
+        return buf;
+    }
+
+    while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r' || buf[len - 1] == ' ')) {
+        buf[--len] = '\0';
+    }
+    Q_strcat(buf, sizeof(buf), va(" [0x%08lx]", (unsigned long)err));
+    return buf;
+}
+
+/*
+================
 Sys_RandomBytes
 ================
 */
@@ -721,10 +799,246 @@ Sys_PlatformInit
 Windows specific initialisation
 ==============
 */
+/*
+==============
+Sys_Win32ExceptionFilter
+
+[QL] Write crashlog.txt on Windows.
+
+sys_unix.c has had Sys_ErrorDialog writing a crashlog for as long as this tree
+has existed; sys_win32.c has never had anything, so a hard crash on Windows -
+the platform this actually ships on - left nothing behind at all. "Does the
+server have a log file" had no good answer.
+
+An address on its own is not much use without symbols, so this reports the
+module and the offset within it. That is enough to point at which of
+quakelive.exe, cgamex86_64.dll, qagamex86_64.dll or a renderer the fault was
+in, which is the question worth answering first, and enough to line up against
+a map file or a disassembly later.
+
+Written with the Win32 file API rather than FS_FOpenFileWrite: one of the ways
+to get here is exhausting the file handles, and recursing into the filesystem
+while unwinding a crash is how a crash handler becomes a second crash.
+
+A single address names the function that faulted but not the path that got
+there, which for a crash reached through a menu script - Item_Action ->
+Item_RunScript -> UI_RunMenuScript -> back into the engine - is the only part
+worth knowing. So the report also walks the return addresses on the stack and
+resolves each to module+offset. RtlCaptureStackBackTrace is resolved from
+kernel32 at call time rather than linked, so this adds no build dependency and
+degrades to the single address if it is not there.
+==============
+*/
+typedef USHORT(WINAPI *captureStackBackTrace_t)(ULONG, ULONG, PVOID *, PULONG);
+
+// Module + offset for a code address. buf is written in every case.
+static void Sys_Win32AddressName(void *address, char *buf, int bufSize) {
+    HMODULE module = NULL;
+    char full[MAX_OSPATH];
+    const char *name = "unknown";
+
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          (LPCSTR)address, &module) &&
+        module != NULL) {
+        if (GetModuleFileNameA(module, full, sizeof(full))) {
+            const char *slash = strrchr(full, '\\');
+            name = slash ? slash + 1 : full;
+        }
+        Com_sprintf(buf, bufSize, "%s+0x%llx", name,
+                    (unsigned long long)((DWORD_PTR)address - (DWORD_PTR)module));
+        return;
+    }
+
+    Com_sprintf(buf, bufSize, "unknown (0x%p)", address);
+}
+
+static LONG WINAPI Sys_Win32ExceptionFilter(EXCEPTION_POINTERS *ep) {
+    static volatile LONG entered;
+
+    char path[MAX_OSPATH * 2];
+    char text[8192];
+    char where[MAX_OSPATH + 32];
+    const char *homepath;
+    void *address;
+    HANDLE f;
+    DWORD written;
+    int len;
+    captureStackBackTrace_t capture;
+
+    // A fault inside this handler would otherwise loop forever.
+    if (InterlockedExchange(&entered, 1) != 0) {
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+
+    address = (void *)ep->ExceptionRecord->ExceptionAddress;
+    Sys_Win32AddressName(address, where, sizeof(where));
+
+    len = Com_sprintf(text, sizeof(text),
+                      "Quake Live crashed.\r\n\r\n"
+                      "exception : 0x%08lx\r\n"
+                      "address   : 0x%p\r\n"
+                      "faulted in: %s\r\n",
+                      (unsigned long)ep->ExceptionRecord->ExceptionCode, address, where);
+
+    /*
+    [QL] For an access violation, what was touched and how.
+
+    "faulted in" names the instruction; this names the memory. The two answer
+    different questions and the second is usually the one that identifies the
+    bug: an address a little above zero is a null pointer with a field offset
+    on it, one in the tens of megabytes past a known buffer is an index run
+    wild, and read-versus-write halves the candidates on its own. The record
+    has carried it all along - ExceptionInformation[0] is the access type and
+    [1] the address - and the first two reports from the field went without it.
+    */
+    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+        ep->ExceptionRecord->NumberParameters >= 2) {
+        ULONG_PTR kind = ep->ExceptionRecord->ExceptionInformation[0];
+        const char *what = (kind == 0) ? "reading" : (kind == 1) ? "writing"
+                                                                : (kind == 8) ? "executing" : "accessing";
+
+        len += Com_sprintf(text + len, sizeof(text) - len,
+                           "bad access: %s 0x%llx\r\n", what,
+                           (unsigned long long)ep->ExceptionRecord->ExceptionInformation[1]);
+    }
+
+    /*
+    [QL] The faulting thread's own registers, and what it was about to return to.
+
+    RtlCaptureStackBackTrace below runs inside this filter, so on x64 it reports
+    the filter's frames and ntdll's dispatch machinery and stops - which is what
+    the first crash report from the field came back with, eight frames and not
+    one of them ours.
+
+    The ContextRecord is the faulting thread, so use it. Two things matter:
+
+      Rip 0 means the fault was not a null *data* dereference at all - it means
+      execution jumped to address zero, i.e. a call through a null function
+      pointer. And on x64 a CALL pushes its return address before transferring
+      control, so when the target is null the word at Rsp is the instruction
+      immediately after the offending call site: the caller, named exactly.
+
+    Below that, the first stack words are scanned and any that land inside a
+    loaded module's code are printed. That is a guess, not an unwind - saved
+    registers and stale slots produce false entries - but it puts the module
+    names of the frames underneath in front of a human, which is what turns
+    "somewhere in cgame" into a place to look.
+    */
+    {
+        CONTEXT *ctx = ep->ContextRecord;
+
+        if (ctx) {
+#ifdef _WIN64
+            DWORD_PTR ip = (DWORD_PTR)ctx->Rip;
+            DWORD_PTR sp = (DWORD_PTR)ctx->Rsp;
+#else
+            DWORD_PTR ip = (DWORD_PTR)ctx->Eip;
+            DWORD_PTR sp = (DWORD_PTR)ctx->Esp;
+#endif
+            len += Com_sprintf(text + len, sizeof(text) - len,
+                               "ip        : 0x%llx\r\n"
+                               "sp        : 0x%llx\r\n",
+                               (unsigned long long)ip, (unsigned long long)sp);
+
+            if (ip == 0) {
+                len += Com_sprintf(text + len, sizeof(text) - len,
+                                   "\r\nExecution jumped to address 0 - a call through a null function\r\n"
+                                   "pointer, not a null dereference. The return address below names the\r\n"
+                                   "call site.\r\n");
+            }
+
+            if (sp && !IsBadReadPtr((void *)sp, sizeof(void *))) {
+                Sys_Win32AddressName(*(void **)sp, where, sizeof(where));
+                len += Com_sprintf(text + len, sizeof(text) - len,
+                                   "called from: %s\r\n", where);
+            }
+
+            // plausible return addresses further down the same stack
+            if (sp && !IsBadReadPtr((void *)sp, 256 * sizeof(void *))) {
+                void **slot = (void **)sp;
+                int i, shown = 0;
+
+                len += Com_sprintf(text + len, sizeof(text) - len,
+                                   "\r\ncode addresses on the stack (unverified - not an unwind):\r\n");
+                for (i = 0; i < 256 && shown < 24 && len < (int)sizeof(text) - 160; i++) {
+                    HMODULE mod = NULL;
+
+                    if (!slot[i]) {
+                        continue;
+                    }
+                    if (!GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                           (LPCSTR)slot[i], &mod) ||
+                        mod == NULL) {
+                        continue;
+                    }
+                    Sys_Win32AddressName(slot[i], where, sizeof(where));
+                    len += Com_sprintf(text + len, sizeof(text) - len, "  %s\r\n", where);
+                    shown++;
+                }
+            }
+        }
+    }
+
+    capture = (captureStackBackTrace_t)(void *)GetProcAddress(GetModuleHandleA("kernel32.dll"),
+                                                              "RtlCaptureStackBackTrace");
+    if (capture) {
+        void *frames[32];
+        USHORT count = capture(0, ARRAY_LEN(frames), frames, NULL);
+        USHORT i;
+
+        if (count > 0) {
+            len += Com_sprintf(text + len, sizeof(text) - len,
+                               "\r\nhandler stack (this filter, not the fault):\r\n");
+            for (i = 0; i < count && len < (int)sizeof(text) - 128; i++) {
+                Sys_Win32AddressName(frames[i], where, sizeof(where));
+                len += Com_sprintf(text + len, sizeof(text) - len, "  %2u  %s\r\n", (unsigned)i, where);
+            }
+        }
+    }
+
+    len += Com_sprintf(text + len, sizeof(text) - len,
+                       "\r\n"
+                       "Offsets are relative to each module's load address, so they stay valid\r\n"
+                       "across runs and can be matched against a build of the same revision.\r\n"
+                       "\r\n"
+                       "For the console output leading up to this, set \"logfile_keep 2\"\r\n"
+                       "before reproducing. That writes a qconsole-<date>-<time>.log per run\r\n"
+                       "next to this file, flushed after every line so it survives a crash,\r\n"
+                       "and keeps the log of the run that just crashed instead of replacing\r\n"
+                       "it on the relaunch. \"logfile 2\" is the same but reuses one file;\r\n"
+                       "\"logfile_keep 1\" appends to one file. This run wrote %s.\r\n",
+                       Com_LogFileName());
+
+    homepath = Cvar_VariableString("fs_homepath");
+    if (*homepath) {
+        Com_sprintf(path, sizeof(path), "%s\\crashlog.txt", homepath);
+    } else {
+        Q_strncpyz(path, "crashlog.txt", sizeof(path));
+    }
+
+    // Com_sprintf returns the untruncated length, so len can overshoot text[]
+    if (len < 0 || len >= (int)sizeof(text)) {
+        len = (int)strlen(text);
+    }
+
+    f = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f != INVALID_HANDLE_VALUE) {
+        WriteFile(f, text, len, &written, NULL);
+        CloseHandle(f);
+    }
+
+    Sys_Print(text);
+
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
 void Sys_PlatformInit(void) {
 #ifndef DEDICATED
     TIMECAPS ptc;
 #endif
+
+    SetUnhandledExceptionFilter(Sys_Win32ExceptionFilter);
 
     Sys_SetFloatEnv();
 
@@ -815,4 +1129,123 @@ Check if filename should be allowed to be loaded as a DLL.
 */
 qboolean Sys_DllExtension(const char* name) {
     return COM_CompareExtension(name, DLL_EXT);
+}
+
+/*
+=================
+Sys_CpuTopology / Sys_CpuPlaceMainThread - [QL] E222, Windows. See sys_main.c.
+
+Processor group 0 only: every consumer CPU fits in its 64 logical processors.
+EfficiencyClass is per core and higher is faster; where the classes differ the
+CPU is hybrid and the highest class is the performance cores. Distinct L3
+caches of different sizes are a dual-die X3D: the larger is the V-Cache die.
+=================
+*/
+void Sys_CpuTopology(sysCpuTopology_t* t) {
+    typedef BOOL(WINAPI * glpiex_t)(LOGICAL_PROCESSOR_RELATIONSHIP, PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, PDWORD);
+    glpiex_t glpiex = (glpiex_t)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetLogicalProcessorInformationEx");
+    DWORD len = 0;
+    BYTE* buf;
+    BYTE* p;
+    int maxClass = -1, minClass = 256;
+    unsigned long long coreMask[256];
+    int coreClass[256];
+    int ncores = 0, i, j;
+    unsigned long long l3Mask[SYS_CPU_MAX_L3];
+    MEMORYSTATUSEX mem;
+
+    mem.dwLength = sizeof(mem);
+    if (GlobalMemoryStatusEx(&mem)) {
+        t->ramMB = mem.ullTotalPhys / (1024 * 1024);
+    }
+    if (!glpiex) {
+        return;
+    }
+    glpiex(RelationAll, NULL, &len);
+    if (len == 0 || (buf = (BYTE*)malloc(len)) == NULL) {
+        return;
+    }
+    if (!glpiex(RelationAll, (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)buf, &len)) {
+        free(buf);
+        return;
+    }
+    for (p = buf; p < buf + len; p += ((PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)p)->Size) {
+        PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX e = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)p;
+        if (e->Relationship == RelationProcessorCore && e->Processor.GroupMask[0].Group == 0 && ncores < 256) {
+            const unsigned long long m = e->Processor.GroupMask[0].Mask;
+            coreMask[ncores] = m;
+            // EfficiencyClass is the byte after Flags; older mingw headers call it Reserved[0]
+            coreClass[ncores] = ((const BYTE*)&e->Processor)[1];
+            if (coreClass[ncores] > maxClass) maxClass = coreClass[ncores];
+            if (coreClass[ncores] < minClass) minClass = coreClass[ncores];
+            ncores++;
+            for (j = 0; j < 64; j++) {
+                if (m & (1ULL << j)) t->logical++;
+            }
+        } else if (e->Relationship == RelationCache && e->Cache.Level == 3 && e->Cache.GroupMask.Group == 0 &&
+                   t->numL3 < SYS_CPU_MAX_L3) {
+            l3Mask[t->numL3] = e->Cache.GroupMask.Mask;
+            t->l3KB[t->numL3] = (int)(e->Cache.CacheSize / 1024);
+            t->numL3++;
+        }
+    }
+    free(buf);
+    t->physical = ncores;
+
+    for (i = 0; i < t->numL3; i++) {
+        for (j = 0; j < ncores; j++) {
+            if (coreMask[j] & l3Mask[i]) t->l3Cores[i]++;
+        }
+    }
+    if (ncores > 0 && maxClass != minClass) {
+        for (j = 0; j < ncores; j++) {
+            if (coreClass[j] == maxClass) {
+                t->fastMask |= coreMask[j];
+                t->fastCores++;
+            } else {
+                t->slowCores++;
+            }
+        }
+        t->preferred = 1;
+    } else if (t->numL3 > 1) {
+        int big = 0, alike = 1;
+        for (i = 1; i < t->numL3; i++) {
+            if (t->l3KB[i] != t->l3KB[0]) alike = 0;
+            if (t->l3KB[i] > t->l3KB[big]) big = i;
+        }
+        if (!alike) {
+            t->fastMask = l3Mask[big];
+            t->preferred = 2;
+        }
+    }
+}
+
+qboolean Sys_CpuPlaceMainThread(unsigned long long mask, qboolean noThrottle) {
+    typedef BOOL(WINAPI * spi_t)(HANDLE, PROCESS_INFORMATION_CLASS, LPVOID, DWORD);
+    spi_t spi = (spi_t)GetProcAddress(GetModuleHandleA("kernel32.dll"), "SetProcessInformation");
+    DWORD_PTR procMask = 0, sysMask = 0;
+    qboolean ok = qtrue;
+
+    if (spi) {
+        PROCESS_POWER_THROTTLING_STATE st;
+        Com_Memset(&st, 0, sizeof(st));
+        st.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+        st.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+        st.StateMask = noThrottle ? 0 : PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+        if (!noThrottle) {
+            st.ControlMask = 0;   // hand the decision back to Windows
+            st.StateMask = 0;
+        }
+        spi(GetCurrentProcess(), ProcessPowerThrottling, &st, sizeof(st));
+    }
+    if (!GetProcessAffinityMask(GetCurrentProcess(), &procMask, &sysMask)) {
+        procMask = 0;
+    }
+    if (mask) {
+        DWORD_PTR m = (DWORD_PTR)mask & (procMask ? procMask : (DWORD_PTR)mask);
+        ok = (m && SetThreadAffinityMask(GetCurrentThread(), m) != 0) ? qtrue : qfalse;
+    } else if (procMask) {
+        SetThreadAffinityMask(GetCurrentThread(), procMask);
+    }
+    return ok;
 }

@@ -117,6 +117,76 @@ typedef struct bot_activategoal_s {
 } bot_activategoal_t;
 
 // bot state
+/*
+[QL] The tactical picture, recomputed a few times a second rather than per frame:
+counting visible players costs a trace each, and every bot pays it. Filled in by
+ai_tactics.c; TACTIC_* and the functions that read this are in ai_tactics.h.
+
+qagame-only memory - nothing here crosses the wire or reaches a client.
+*/
+typedef struct bot_tactics_s {
+    float update_time;  // next refresh of the counts below
+    int allies;         // visible team mates within bot_squadRange
+    int foes;           // visible enemies within bot_squadRange
+    int nearestally;    // client number of the closest one, -1 when alone
+    float nearestallydist;
+    vec3_t nearestallyorigin;
+    int posture;         // TACTIC_*
+    float posture_time;  // posture may not change again before this
+    int retreating;      // the held answer to "should I be retreating"
+    float retreat_time;  // and when that answer may next change
+    float threat_time;   // threatdir is worth acting on until this time
+    vec3_t threatdir;    // horizontal direction to step, away from a missile
+    float hurt_time;     // last time the bot lost health
+    int lasthealth;      // to notice that it did
+    float moved_time;      // last time the bot was going anywhere
+    vec3_t lastorigin;     // and where it was when it last did
+    float aimdrift[2];     // pitch/yaw aim error, wandering rather than resampled
+    float enemyswitch_time;  // last time the bot changed who it was shooting at
+    float suicidal_time;     // a retreat with no way out; stop asking until this
+    /* [QL] The aim sweep - see BotAimSweep in ai_main.c. A is where the view was
+       when the bot decided to look somewhere, B is where it is going, and the
+       clock between them is what makes it a movement rather than a jump. */
+    float aimfrom[2];
+    float aimto[2];
+    float aimsweep_start;
+    float aimsweep_len;
+    float aimoffsetgoal[2];  // where the aim error is heading, set on the think
+    float aimoffset[2];      // where it is now, walked there every frame
+    int reportedposture;     // last posture bot_debugTactics printed, so it can
+                             // print changes rather than every refresh
+    int reportedstuck;       // this stuck episode has already been reported
+    float roleredecide_time;
+    int defendpost;           // [QL] E134: guard post index, -1 the flag itself
+    float escort_time;        // [QL] E137: when escortgoal was worked out
+    float carrierplan_time;   // [QL] E137: when a flag carrier next picks its way home
+    float roam_time;          // [QL] E137: when a jobless bot next picks where to patrol
+    bot_goal_t roamgoal;      // [QL] E137: where it is patrolling to
+    int closeweapon;          // [QL] E140: holding a close-range gun instead of a launcher
+    bot_goal_t escortgoal;    // [QL] E137: where to screen the carrier from; areanum 0 = follow it
+    int defendleg;            // [QL] E135: 0 the post, 1 out along its hall toward the next room
+    float defendleg_time;     // [QL] E135: when to walk the other end of the lane
+    float defendpost_time;    // when to reconsider it  // [QL] CTF role may not be reconsidered before this
+    float reroute_time;       // [QL] and the route may not be reconsidered before this
+    /* [QL] E87: the job the role picker last handed this bot, and when.
+       BotCTFEnforceOffense clears every goal that points at the bot's own base
+       and replaces it with LTG_GETFLAG - which is right for a bot that drifted
+       home with no plan, and wrong for one the team deliberately made a
+       defender. Without a record of the difference the two are the same state
+       and the enforcer cannot tell them apart. -1 is "the picker has not
+       spoken", which is why this is reset rather than left at 0 - 0 is
+       CTFROLE_ATTACK and a zeroed struct would claim every fresh bot had been
+       assigned to attack. */
+    int assignedrole;
+    int ctfphase; // flag state used by the autonomous planner, -1 before first decision
+    /* Sampled angular velocity of the ideal aim, before drift is added. */
+    float aim1st[2];
+    int aimenemy;          // target identity for filter/acquisition reset
+    float aimsample_time; // game time of the last BotAimAtEnemy output
+    float aimprev[2];
+    float aimfilter_time;
+} bot_tactics_t;
+
 typedef struct bot_state_s {
     int inuse;                           // true if this state is used by a bot client
     int botthink_residual;               // residual for the bot thinks
@@ -193,6 +263,7 @@ typedef struct bot_state_s {
     float firethrottlewait_time;            // amount of time to wait
     float firethrottleshoot_time;           // amount of time to shoot
     float notblocked_time;                  // last time the bot was not blocked
+    float avoidside_time;                   // [QL] hold the chosen side to step around a blocker
     float blockedbyavoidspot_time;          // time blocked by an avoid spot
     float predictobstacles_time;            // last time the bot predicted obstacles
     int predictobstacles_goalareanum;       // last goal areanum the bot predicted obstacles for
@@ -228,10 +299,20 @@ typedef struct bot_state_s {
     bot_goal_t teamgoal;             // the team goal
     bot_goal_t altroutegoal;         // alternative route goal
     float reachedaltroutegoal_time;  // time the bot reached the alt route goal
+    int altrouteside;                // [QL] E136: side of the map its waypoint crosses on, -1/0/+1
     float teammessage_time;          // time to message team mates what the bot is doing
     float teamgoal_time;             // time to stop helping team mate
     float teammatevisible_time;      // last time the team mate was NOT visible
     int teamtaskpreference;          // team task preference
+    /*
+    [QL] teamtask is decided at bot think rate and published as a configstring,
+    which is a reliable command broadcast to every client. It is queued here and
+    flushed by BotFlushTeamTasks rather than written where it is decided. See
+    BotQueueTeamTask.
+    */
+    int teamtask_want;      // what the AI last asked for
+    int teamtask_sent;      // what was last actually published
+    float teamtask_settle;  // when teamtask_want last changed
     // last ordered team goal
     int lastgoal_decisionmaker;
     int lastgoal_ltgtype;
@@ -268,7 +349,28 @@ typedef struct bot_state_s {
     bot_waypoint_t* patrolpoints;    // patrol points
     bot_waypoint_t* curpatrolpoint;  // current patrol point the bot is going for
     int patrolflags;                 // patrol flags
+
+    bot_tactics_t tac;  // [QL] see ai_tactics.c
+
+    /* [QL] E133. bot_debugMovement - how well this bot is moving (ai_main.c) */
+    struct {
+        float next_sample;
+        vec3_t pos[24];
+        float t[24];
+        int goal[24];
+        int n, head;
+        float travel, speed, stalled, fight;
+        int loops;
+        int bumps;         // blocked by another player's body
+        int movegoalarea;  // the goal the last movement was towards (E135)
+        int traveltype;    // and how it was travelling
+        float bumped_time;
+    } mstat;
+    int mstat_track_next;  // [QL] E133, bot_debugTrack
 } bot_state_t;
+
+// the bot states, indexed by client number; NULL for a client that is not a bot
+extern bot_state_t* botstates[MAX_CLIENTS];
 
 // resets the whole bot state
 void BotResetState(bot_state_t* bs);
@@ -288,3 +390,5 @@ int BotAI_GetClientState(int clientNum, playerState_t* state);
 int BotAI_GetEntityState(int entityNum, entityState_t* state);
 int BotAI_GetSnapshotEntity(int clientNum, int sequence, entityState_t* state);
 int BotTeamLeader(bot_state_t* bs);
+void BotMoveStatsSample(bot_state_t* bs, float thinktime);  // [QL] E133
+void BotTrackSample(bot_state_t* bs);                       // [QL] E133

@@ -26,7 +26,8 @@ No items spawn on the map. Players spawn with full loadout and are governed by `
 |------|---------|-------|-------------|
 | `roundlimit` | `0` | SERVERINFO, ARCHIVE, NORESTART | Rounds to win for match victory. 0 = no limit. |
 | `g_roundWarmupDelay` | `10000` | SERVERINFO | Countdown duration (ms) between rounds before unfreeze. |
-| `g_accuracyFlags` | `0` | -- | Bitfield controlling damage/knockback filtering. Bit 1: suppress team damage. Bit 2: suppress team knockback. Bit 4: suppress self-damage. Bit 8: suppress self-knockback. |
+| `g_dmflags` | varies | SERVERINFO | Bitfield controlling damage/knockback filtering. Bit 1: suppress team damage. Bit 2: suppress team knockback. Bit 4: suppress self-damage. Bit 8: suppress self-knockback. |
+| `g_accuracyFlags` | `0` | -- | **Registered and read by nothing.** See below. |
 | `g_roundDrawLivingCount` | `1` | -- | If nonzero, round tiebreaker uses surviving player count. |
 | `g_roundDrawHealthCount` | `1` | -- | If nonzero, round tiebreaker uses total team health+armor when alive counts are equal. |
 | `g_lastManStandingWarning` | `0` | -- | If nonzero, enable last-man-standing announcements. |
@@ -102,7 +103,7 @@ State 2 (`RS_SHUFFLE`) is unused by CA (it is RR-only). Entering state 2 trigger
 
 - During warmup, all damage passes through.
 - Outside RS_PLAYING state, all damage is suppressed (returns `qfalse`).
-- `g_accuracyFlags` bitfield controls self-damage/knockback and team-damage/knockback suppression.
+- **`g_dmflags`**, not `g_accuracyFlags`, controls self-damage/knockback and team-damage/knockback suppression. This document said `g_accuracyFlags` until someone read `CA_AdjustDamage`, which opens with `int flags = g_dmflags.integer;` and carries the note *"the self/team suppression keys off g_dmflags (binary DAT_10597dcc), NOT g_accuracyFlags. All three round adjusters and G_Damage section 21 read the same 0x10597dcc."* The bit meanings above were right; the cvar name was not. `g_accuracyFlags` is registered and read by nothing - see `docs/cvar-manifest.txt`.
 - Score accumulation: damage to enemies is accumulated in `dmgAccumulator`. When it reaches 100, +1 score is awarded and `CalculateRanks()` is called.
 
 ## Spawn Behavior
@@ -147,7 +148,7 @@ scores_ca <numPlayers> <redScore> <blueScore> <playerData...>
 - **Clan Arena did not exist in Q3.** It is entirely a Quake Live addition (GT_CA = 4, occupying the slot that was unused in Q3).
 - The round state machine (`roundStateState_t`) is QL-specific infrastructure shared with Freeze Tag (GT_FT), Attack & Defend (GT_AD), and Red Rover (GT_RR).
 - Score-per-damage mechanic (100 dmg = +1 individual score) is QL-specific.
-- `g_accuracyFlags` damage filtering system is QL-specific.
+- The round-adjuster damage filtering (`CA_AdjustDamage`, off `g_dmflags`) is QL-specific. Q3 had `g_dmflags` but nothing consulted it per round.
 - Round tiebreakers by alive count and health totals are QL-specific.
 - Last-man-standing announcements are QL-specific.
 - The `CA_AccuracyMessage` function is also used by GT_RR (Red Rover) for its round-end sound indices.

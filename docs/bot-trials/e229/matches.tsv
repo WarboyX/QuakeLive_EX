@@ -1,0 +1,4 @@
+R1a	cur	bot_tacticsTeams=1	red layer ON (A1+R1) vs blue OFF
+R1b	cur	bot_tacticsTeams=2	blue layer ON (A1+R1) vs red OFF
+R1c	cur	bot_tacticsTeams=1	red layer ON (A1+R1) vs blue OFF (repeat)
+R1d	cur	bot_tacticsTeams=2	blue layer ON (A1+R1) vs red OFF (repeat)

@@ -264,6 +264,14 @@ void CG_SpawnIceShard(const vec3_t origin, const vec3_t velocity, qhandle_t hMod
     AxisCopy(axisDefault, re->axis);
     re->hModel = hModel;
 
+    // [QL] pak00 ships no ice meshes, so the shard is the generic gib sphere and
+    // the ice has to come from a shader over it. iceShardShader1 is registered
+    // in CG_RegisterGraphics and was read by nothing until now; if the shader is
+    // not in the pak its handle is 0 and the model keeps its own skin.
+    if (cgs.media.iceShardShader1) {
+        re->customShader = cgs.media.iceShardShader1;
+    }
+
     le->pos.trType = TR_GRAVITY;  // 5 in binary
     VectorCopy(origin, le->pos.trBase);
     VectorCopy(velocity, le->pos.trDelta);

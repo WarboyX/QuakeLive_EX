@@ -298,6 +298,10 @@ void RR_RoundStateTransition(void) {
             level.roundState.tNext = 0;
             level.roundState.eCurrent = RS_PLAYING;
             RR_RoundStateTransition();
+            /* [QL] the playing branch has published its own status; the
+               countdown status below would overwrite it (a "countdown"
+               showing while the round is live) */
+            return;
         } else {
             level.roundState.tNext = level.time + g_roundWarmupDelay.integer;
             level.roundState.eNext = RS_PLAYING;
@@ -330,7 +334,10 @@ void RR_RoundStateTransition(void) {
                 cl->round_damage = 0;
                 cl->expandedStats.killStreak = 0;
                 if (g_spawnArmor.integer != 0) {
-                    cl->ps.powerups[PW_QUAD] =
+                    /* [QL] the spawn-protection timer lives in powerups[0]
+                       (PW_NONE), as FT and AD have it and g_combat.c reads it;
+                       PW_QUAD here handed out quad damage instead */
+                    cl->ps.powerups[PW_NONE] =
                         (level.time / 1000) * 1000 + g_spawnArmor.integer;
                 }
             }
@@ -781,13 +788,18 @@ Fields per player (19):
 */
 void RedRoverScoreboardMessage(gentity_t *ent) {
     char entry[1024];
-    char string[1024];
+    char string[MAX_STRING_CHARS];
     int stringlength;
+    int chunkStart, numInChunk;
+    qboolean firstChunk;
     int i, j;
     gclient_t *cl;
 
     memset(string, 0, sizeof(string));
     stringlength = 0;
+    chunkStart = 0;
+    numInChunk = 0;
+    firstChunk = qtrue;
 
     for (i = 0; i < level.numConnectedClients; i++) {
         int ping, accuracy, perfect, bestWeapon, bestWeaponAccuracy;
@@ -838,14 +850,36 @@ void RedRoverScoreboardMessage(gentity_t *ent) {
                     cl->ps.persistant[PERS_CAPTURES],
                     alive);
         j = strlen(entry);
-        if (stringlength + j >= (int)sizeof(string))
-            break;
+
+        // [QL] see the comment in g_gametype_ffa.c: flush a chunk rather than
+        // stop at the first message.
+        if (stringlength + j >= MAX_SCOREBOARD_PAYLOAD && numInChunk > 0) {
+            if (firstChunk) {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_rr %i %i %i%s", numInChunk,
+                                          level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+                firstChunk = qfalse;
+            } else {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_rr2 %i %i%s", chunkStart, numInChunk, string));
+            }
+            chunkStart = i;
+            numInChunk = 0;
+            stringlength = 0;
+            string[0] = '\0';
+        }
+
         strcpy(string + stringlength, entry);
         stringlength += j;
+        numInChunk++;
     }
 
-    trap_SendServerCommand(ent - g_entities,
-        va("scores_rr %i %i %i%s", i,
-           level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE],
-           string));
+    if (firstChunk) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_rr %i %i %i%s", numInChunk,
+                                  level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+    } else if (numInChunk > 0) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_rr2 %i %i%s", chunkStart, numInChunk, string));
+    }
 }

@@ -38,6 +38,9 @@ static int			r_firstScenePoly;
 
 static int			r_numpolyverts;
 
+/* [QL] Ripples seen since the last world load - see RE_AddWaterRipple. */
+static int			r_rippleCount;
+
 
 /*
 ====================
@@ -215,6 +218,9 @@ void RE_AddRefEntityToScene( const refEntity_t *ent, qboolean intShaderTime ) {
 		return;
 	}
 	if ( r_numentities >= MAX_REFENTITIES ) {
+		// [QL] developer-only on purpose; `developer` defaults to 1 in this
+		// build (common.c) so it is visible without asking for it, and the
+		// release switch is that one default rather than this line.
 		ri.Printf( PRINT_DEVELOPER, "RE_AddRefEntityToScene: Dropping refEntity, reached MAX_REFENTITIES\n" );
 		return;
 	}
@@ -344,6 +350,324 @@ void RE_AddLinearLightToScene( const vec3_t start, const vec3_t end, float inten
 }
 
 
+/*
+=====================
+RE_AddWaterRipple
+
+[QL] R19: something disturbed the water here.
+
+Deliberately not stored in backEndData like the lights and the entities are.
+Those are the frame's scene and are rebuilt from nothing every frame; a ripple
+is added by an event that happens in one frame and has to keep spreading for a
+second or two afterwards, while nothing is adding it. So it lives in tr, ages
+out on its own, and the caller fires and forgets.
+
+No water test here, and that is on purpose. cgame knows it hit something wet -
+it already checked the contents to decide whether to play a splash sound - and
+the renderer's water planes are the wrong thing to test against anyway: an
+explosion a few units above the surface should still ripple it. The reflection
+pass decides what, if anything, a given ripple touches.
+=====================
+*/
+/*
+=====================
+R_WaterValue
+
+[QL] K1. One water.cfg value: a whole number token, finite, inside the range the
+matching cvar is registered with. A map value goes straight to the shader -
+R_WaterSetting hands it over without the cvar's own range check - so a typo,
+"nan", or an empty value (atof made that 0) used to reach the waves as it was.
+Rejected values leave the setting to the player's cvar; out-of-range ones are
+clamped. Either way the console names the map, the key and the value.
+=====================
+*/
+static qboolean R_WaterValue( const char *map, const char *key, const char *token, float lo, float hi, float *out ) {
+	char *end;
+	double v;
+
+	if ( token == NULL || token[0] == '\0' ) {
+		ri.Printf( PRINT_WARNING, "water.cfg: '%s' for '%s' has no value - ignored\n", key, map[0] ? map : "(no map yet)" );
+		return qfalse;
+	}
+	/* digits, one sign, a point - no exponent, "nan" or "inf". Checked as
+	   text: this file is built with -ffast-math, which may drop a v != v test */
+	for ( end = (char *)token; *end; end++ ) {
+		if ( !( ( *end >= '0' && *end <= '9' ) || *end == '.' || ( end == token && ( *end == '-' || *end == '+' ) ) ) ) {
+			break;
+		}
+	}
+	if ( *end != '\0' || end - token > 24 ) {
+		end = (char *)token;    /* rejected below */
+		v = 0.0;
+	} else {
+		v = strtod( token, &end );
+	}
+	if ( end == token || *end != '\0' ) {
+		ri.Printf( PRINT_WARNING, "water.cfg: '%s' for '%s' is \"%s\", not a number - ignored\n", key, map[0] ? map : "(no map yet)", token );
+		return qfalse;
+	}
+	if ( v < lo || v > hi ) {
+		ri.Printf( PRINT_WARNING, "water.cfg: '%s' for '%s' is %s, outside %g..%g - clamped\n", key, map[0] ? map : "(no map yet)", token, lo, hi );
+		v = v < lo ? lo : hi;
+	}
+	*out = (float)v;
+	return qtrue;
+}
+
+/*
+=====================
+R_LoadWaterProfile
+
+[QL] R19: per-map water settings, from scripts/water.cfg.
+
+Block format rather than one line per map, for the reason Quake's own shader
+files use it: a map can set one field and inherit the rest, and a field can be
+added later without every existing entry becoming malformed. Same reason a
+missing key is silent and an unknown key is loud - the first is a map that does
+not care, the second is a typo that would otherwise do nothing at all and say
+nothing about it, which is the same silent-failure shape as a registered cvar
+that nothing reads.
+
+A `map` of `default` applies to everything not named, so a sensible baseline
+does not have to be repeated. The named entry wins.
+
+No file is not an error. Neither is a map that is not in it.
+=====================
+*/
+void R_LoadWaterProfile( const char *mapName ) {
+	union { char *c; void *v; } buffer;
+	waterProfile_t defaults, named;
+	const char *p;
+	char *token;
+	int len, applied;
+
+	Com_Memset( &tr.waterProfile, 0, sizeof( tr.waterProfile ) );
+	Com_Memset( &defaults, 0, sizeof( defaults ) );
+	Com_Memset( &named, 0, sizeof( named ) );
+
+	len = ri.FS_ReadFile( "scripts/water.cfg", &buffer.v );
+	if ( len <= 0 || buffer.c == NULL ) {
+		return;         // nothing to say about any map
+	}
+
+	p = buffer.c;
+
+	while ( 1 ) {
+		waterProfile_t block;
+		char blockMap[ MAX_QPATH ];
+
+		token = R_ParseExt( &p, qtrue );
+		if ( !token[0] ) {
+			break;      // end of file
+		}
+		if ( Q_stricmp( token, "{" ) != 0 ) {
+			ri.Printf( PRINT_WARNING, "water.cfg: expected '{', found '%s' - "
+				"stopping here; everything after this point is ignored\n", token );
+			break;
+		}
+
+		Com_Memset( &block, 0, sizeof( block ) );
+		blockMap[0] = '\0';
+
+		while ( 1 ) {
+			token = R_ParseExt( &p, qtrue );
+			if ( !token[0] || Q_stricmp( token, "}" ) == 0 ) {
+				break;
+			}
+
+			if ( Q_stricmp( token, "map" ) == 0 ) {
+				token = R_ParseExt( &p, qfalse );
+				Q_strncpyz( blockMap, token, sizeof( blockMap ) );
+			}
+#define WATER_KEY( name, field, have, lo, hi ) \
+			else if ( Q_stricmp( token, name ) == 0 ) { \
+				token = R_ParseExt( &p, qfalse ); \
+				if ( R_WaterValue( blockMap, name, token, lo, hi, &block.field ) ) { \
+					block.have = qtrue; \
+				} \
+			}
+			/* [QL] K1: each bounded by its cvar's own registered range (tr_init.c) */
+			WATER_KEY( "scale",     scale,     haveScale,     8.0f, 1024.0f )
+			WATER_KEY( "speed",     speed,     haveSpeed,     0.0f, 8.0f )
+			WATER_KEY( "steepness", steepness, haveSteepness, 0.0f, 0.5f )
+			WATER_KEY( "height",    height,    haveHeight,    0.0f, 32.0f )
+			WATER_KEY( "strength",  strength,  haveStrength,  0.0f, 1.0f )
+			/* [QL] R28: impacts, as opposed to the wind chop above */
+			WATER_KEY( "ripplesize",   rippleSize,   haveRippleSize,   0.1f, 16.0f )
+			WATER_KEY( "rippleheight", rippleHeight, haveRippleHeight, 0.0f, 16.0f )
+			WATER_KEY( "ripplewaves",  rippleWaves,  haveRippleWaves,  1.0f, 24.0f )
+			WATER_KEY( "ripplelife",   rippleLife,   haveRippleLife,   0.25f, 10.0f )
+#undef WATER_KEY
+			else {
+				ri.Printf( PRINT_WARNING, "water.cfg: unknown key '%s' in block for '%s' - "
+					"ignored\n", token, blockMap[0] ? blockMap : "(no map named yet)" );
+				R_ParseExt( &p, qfalse );   // and its value
+			}
+		}
+
+		if ( !blockMap[0] ) {
+			ri.Printf( PRINT_WARNING, "water.cfg: a block with no 'map' - ignored\n" );
+		} else if ( Q_stricmp( blockMap, "default" ) == 0 ) {
+			defaults = block;
+		} else if ( Q_stricmp( blockMap, mapName ) == 0 ) {
+			named = block;
+		}
+	}
+
+	ri.FS_FreeFile( buffer.v );
+
+	/* the named entry over the default block, field by field */
+	tr.waterProfile = defaults;
+#define WATER_TAKE( field, have ) \
+	if ( named.have ) { tr.waterProfile.field = named.field; tr.waterProfile.have = qtrue; }
+	WATER_TAKE( scale,     haveScale )
+	WATER_TAKE( speed,     haveSpeed )
+	WATER_TAKE( steepness, haveSteepness )
+	WATER_TAKE( height,    haveHeight )
+	WATER_TAKE( strength,  haveStrength )
+	WATER_TAKE( rippleSize,   haveRippleSize )
+	WATER_TAKE( rippleHeight, haveRippleHeight )
+	WATER_TAKE( rippleWaves,  haveRippleWaves )
+	WATER_TAKE( rippleLife,   haveRippleLife )
+#undef WATER_TAKE
+
+	/*
+	[QL] Counted from the profile rather than tracked as the keys are read,
+	because the same field can be set by both blocks and must count once.
+	*/
+#define WATER_COUNT( p ) ( (p).haveScale + (p).haveSpeed + (p).haveSteepness + \
+	(p).haveHeight + (p).haveStrength + (p).haveRippleSize + (p).haveRippleHeight + \
+	(p).haveRippleWaves + (p).haveRippleLife )
+
+	applied = WATER_COUNT( tr.waterProfile );
+
+	if ( applied ) {
+		ri.Printf( PRINT_ALL, "Water: %i setting(s) for %s from water.cfg%s\n",
+			applied, mapName, WATER_COUNT( named ) ? "" : " (the default block)" );
+	}
+#undef WATER_COUNT
+}
+
+
+/*
+=====================
+R_WaterSetting
+
+[QL] R19: the map's value, or the player's, and the rule is one comparison.
+
+A map value applies only where the cvar is still at its shipped default. The
+moment a player sets it themselves, theirs wins - on this map and every other -
+and setting it back to the default hands control to the maps again.
+
+Compared against resetString rather than tracked with a snapshot at map load on
+purpose. There is no state to get out of step, nothing is ever written into a
+cvar so nothing reaches the player's config, and the question "why is my setting
+being ignored" has one answer that is true every time.
+=====================
+*/
+float R_WaterSetting( const cvar_t *cv, qboolean haveMapValue, float mapValue ) {
+	if ( haveMapValue && cv->resetString != NULL &&
+	     Q_stricmp( cv->string, cv->resetString ) == 0 ) {
+		return mapValue;
+	}
+	return cv->value;
+}
+
+
+void RE_AddWaterRipple( const vec3_t origin, float radius, float strength ) {
+	waterRipple_t *rp;
+
+	if ( !tr.registered || !tr.world ) {
+		return;
+	}
+	if ( strength <= 0.0f || radius <= 0.0f ) {
+		return;
+	}
+
+	/*
+	Overwrite the oldest when full rather than dropping the newest. A ripple
+	that has been spreading longest is the one closest to having faded out, and
+	the new one is the event the player just caused and is looking at.
+	*/
+	rp = &tr.waterRipples[ tr.numWaterRipples % MAX_WATER_RIPPLES ];
+	tr.numWaterRipples++;
+
+	VectorCopy( origin, rp->origin );
+	rp->radius = radius;
+	rp->strength = strength;
+	/*
+	[QL] Unstamped. The backend puts the time on it, and that is not fussiness.
+
+	tr.refdef.time is whatever the last scene set, and cgame renders 3D model
+	icons for the HUD through their own refdef - so by the time an event fires
+	this holds that refdef's clock, which is near zero, and not the world's.
+	The line above at floatTime shows this tree already has to special-case
+	such scenes.
+
+	The result was every ripple arriving stamped at about zero against a world
+	clock ten seconds in, and every one of them discarded as expired before it
+	drew a single frame. The console said the events arrived and the water said
+	nothing happened, and both were telling the truth.
+
+	So the only clock used is backEnd.refdef.time, at both ends. A negative
+	startTime means "not yet seen by the reflection pass"; it stamps it the
+	first time it looks.
+	*/
+	rp->startTime = -1;
+
+	/*
+	[QL] Loud enough to find, quiet enough to live with.
+
+	"I see no ripples" has two completely different causes - cgame never called,
+	or it called and the reflection pass did nothing with it - and no way to
+	tell them apart from the screen. One line settles it: if it appears, the
+	event arrived and the fault is downstream.
+
+	ONE line, though. This printed per ripple, and since `developer` defaults to
+	1 in this tree - and now stays that way through the Alpha 2 candidates,
+	which is a decision, not an oversight - a few seconds of shooting at water
+	pushed everything else out of the scrollback. A diagnostic that buries the
+	next diagnostic is a net loss, and the last three water bugs here were all
+	found by reading console output.
+
+	So: the first ripple after each world load prints and the rest are counted.
+	That still answers the question the line exists for, with no cvar to set and
+	no second run - which matters most for exactly the tester who cannot
+	reproduce on demand. r_ssrDebug restores the per-ripple detail for anyone
+	actually chasing placement, and the tail count means a silent console still
+	distinguishes "none arrived" from "many arrived".
+	*/
+	r_rippleCount++;
+
+	if ( r_ssrDebug->integer ) {
+		ri.Printf( PRINT_DEVELOPER, "water ripple: %.0f %.0f %.0f, reach %.0f, strength %.1f\n",
+			origin[0], origin[1], origin[2], radius, strength );
+	} else if ( r_rippleCount == 1 ) {
+		ri.Printf( PRINT_DEVELOPER, "water ripple: %.0f %.0f %.0f, reach %.0f, strength %.1f"
+			" (further ripples counted, not printed - r_ssrDebug 1 for each one)\n",
+			origin[0], origin[1], origin[2], radius, strength );
+	}
+}
+
+
+/*
+====================
+R_ResetRippleDiag
+
+[QL] Called from RE_LoadWorldMap. Without this the "first ripple" line is the
+first of the session rather than the first of the map, so a map where cgame
+never calls at all would look identical to one where it did - which is the
+single distinction the line is for.
+====================
+*/
+void R_ResetRippleDiag( void ) {
+	if ( r_rippleCount > 1 ) {
+		ri.Printf( PRINT_DEVELOPER, "water ripples last map: %i\n", r_rippleCount );
+	}
+	r_rippleCount = 0;
+}
+
+
 
 /*
 =====================
@@ -441,7 +765,40 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	// derived info
 
-	tr.refdef.floatTime = (double)tr.refdef.time * 0.001; // -EC-: cast to double
+	/*
+	[QL] Where shader animation gets its clock - r_shaderTimeSource.
+
+	Everything time-driven in a shader hangs off this one value: animMap frame
+	selection, every tcMod (scroll, rotate, turb, stretch), rgbGen/alphaGen wave
+	and deformVertexes all evaluate against tess.shaderTime, which is
+	refdef.floatTime minus the shader's own offset.
+
+	  0  scene time (default)  refdef.time, which cgame sets to cg.time. Correct
+	                           by construction: it follows demo playback and
+	                           timescale, and shader animation stays in step with
+	                           game events. But cg.time is snapshot-interpolated,
+	                           so if it advances unevenly - which it does when the
+	                           server is hitching, and is more visible the more
+	                           frames you draw between snapshots - the animation
+	                           inherits that unevenness.
+
+	  1  real time             the engine millisecond clock, independent of
+	                           snapshots entirely. World animation stays smooth
+	                           regardless of what the server is doing. The cost is
+	                           that it ignores timescale and does not pause or
+	                           rewind with a demo.
+
+	This exists because animation speed was reported as varying with framerate and
+	every path in the renderer reads from a clock rather than a frame counter - so
+	the coupling, if it is real, is in what feeds refdef.time rather than in how it
+	is used. Switching the source settles that: if 1 is smooth and 0 is not, the
+	problem is cg.time, not the shaders.
+	*/
+	if ( r_shaderTimeSource->integer ) {
+		tr.refdef.floatTime = (double)ri.Milliseconds() * 0.001;
+	} else {
+		tr.refdef.floatTime = (double)tr.refdef.time * 0.001; // -EC-: cast to double
+	}
 
 	tr.refdef.numDrawSurfs = r_firstSceneDrawSurf;
 	tr.refdef.drawSurfs = backEndData->drawSurfs;

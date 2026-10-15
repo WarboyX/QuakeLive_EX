@@ -603,13 +603,52 @@ qboolean trap_VerifySteamAuth(int clientNum) {
 // ============================================================
 
 int trap_Milliseconds(void) { return 0; }
-qboolean trap_InPVS(const vec3_t p1, const vec3_t p2) { (void)p1; (void)p2; return qfalse; }
-qboolean trap_InPVSIgnorePortals(const vec3_t p1, const vec3_t p2) { (void)p1; (void)p2; return qfalse; }
+/*
+[QL] Real PVS, and fail *open* if an engine ever turns up without it.
+
+These were stubbed to qfalse because Quake Live's import table has no PVS entry.
+Returning qfalse is the worst possible stub value here: every caller reads it as
+"cannot see", so Team_GetLocation rejected every candidate and returned NULL,
+which is why every player's location was 0 and the team overlay read ALIVE for
+the whole team. The engine has always had SV_inPVS; it simply was not reachable.
+
+The NULL guard returns qtrue rather than qfalse for the same reason. Without a
+PVS test Team_GetLocation falls back to plain nearest-by-distance, which is a
+slightly worse location; with the old value it reported no location at all.
+*/
+qboolean trap_InPVS(const vec3_t p1, const vec3_t p2) {
+    if (!imports->trap_InPVS) {
+        return qtrue;
+    }
+    return imports->trap_InPVS(p1, p2);
+}
+
+qboolean trap_InPVSIgnorePortals(const vec3_t p1, const vec3_t p2) {
+    if (!imports->trap_InPVSIgnorePortals) {
+        return qtrue;
+    }
+    return imports->trap_InPVSIgnorePortals(p1, p2);
+}
 qboolean trap_AreasConnected(int area1, int area2) { (void)area1; (void)area2; return qfalse; }
 qboolean trap_GetEntityToken(char* buffer, int bufferSize) {
     return imports->trap_GetEntityToken(buffer, bufferSize);
 }
-int trap_FS_GetFileList(const char* path, const char* extension, char* listbuf, int bufsize) { (void)path; (void)extension; (void)listbuf; (void)bufsize; return 0; }
+/*
+[QL] Real directory listing, fail *empty* if an engine turns up without it.
+
+Returning 0 unconditionally is indistinguishable from "there are no files", and
+both callers act on that silently: G_LoadArenas ends up with no arena data at
+all and G_LoadBots with no bots to look up by name. See gameImport_t.
+*/
+int trap_FS_GetFileList(const char* path, const char* extension, char* listbuf, int bufsize) {
+    if (!imports->trap_FS_GetFileList) {
+        if (listbuf && bufsize > 0) {
+            listbuf[0] = '\0';
+        }
+        return 0;
+    }
+    return imports->trap_FS_GetFileList(path, extension, listbuf, bufsize);
+}
 int trap_FS_Seek(fileHandle_t f, long offset, int origin) { (void)f; (void)offset; (void)origin; return 0; }
 int trap_DebugPolygonCreate(int color, int numPoints, vec3_t* points) { (void)color; (void)numPoints; (void)points; return 0; }
 void trap_DebugPolygonDelete(int id) { (void)id; }

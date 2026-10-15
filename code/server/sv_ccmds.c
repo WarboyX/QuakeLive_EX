@@ -284,6 +284,20 @@ static void SV_MapRestart_f(void) {
     // reset all the vm data in place without changing memory allocation
     // note that we do NOT set sv.state = SS_LOADING, so configstrings that
     // had been changed from their default values will generate broadcast updates
+    /* [QL] Report before the game module is restarted, for the same reason
+       SV_SpawnServer does: SV_RestartGameProgs calls G_ShutdownGame, which
+       prints the game half, and the two halves should land together.
+
+       Hooking this only to SV_SpawnServer was not enough. A map_restart is what
+       ends warmup, so it happens at the start of every match and takes this
+       path, not that one - and the warmup window is exactly the one worth
+       reading, because it is where sixty bots connect and decide what to do at
+       the same moment. Field logs from that transition carried the bot table
+       and no snapshot numbers at all. */
+    if (sv_mapEndReport && sv_mapEndReport->integer) {
+        SV_SnapStats_f();
+    }
+
     sv.state = SS_LOADING;
     sv.restarting = qtrue;
 
@@ -1097,7 +1111,7 @@ static void SV_Serverinfo_f(void) {
     }
 
     Com_Printf("Server info settings:\n");
-    Info_Print(Cvar_InfoString(CVAR_SERVERINFO));
+    Info_Print(Cvar_InfoString_Big(CVAR_SERVERINFO));
 }
 
 /*
@@ -1220,6 +1234,60 @@ static void SV_ReloadFactories_f(void) {
 
 /*
 ==================
+SV_SnapStats_f
+
+[QL] What the snapshots on this map actually contain.
+
+The overflow warning only speaks once the 256 cap is hit, so a map that runs at
+240 entities all match says nothing at all - and that is precisely the map where
+you want to know how much headroom is left. This reports the fullest snapshot
+built since the map loaded, what it was made of, and anything that has been
+dropped, at any moment, on any map.
+
+Read it as: if the peak is well under the cap, the ceiling is not the problem.
+If it is at the cap, the type breakdown says what to cull - events and items and
+map geometry are three different fixes.
+==================
+*/
+void SV_SnapStats_f(void) {
+    char buf[512];
+
+    if (!com_sv_running->integer) {
+        Com_Printf("Server is not running.\n");
+        return;
+    }
+
+    Com_Printf("Snapshot entities, this map (cap %i):\n", MAX_SNAPSHOT_ENTITIES);
+    Com_Printf("  peak in one snapshot: %i (client %i)\n",
+               sv.snapshotEntitiesPeak, sv.snapshotPeakClient);
+
+    SV_FormatSnapshotTypes(buf, sizeof(buf), sv.snapshotPeakByType);
+    Com_Printf("  that snapshot held:   %s\n", buf);
+
+    /* [QL] Which limit is actually biting: the tick or the wire. SV_RateMsec
+       lets a client through rate/(bytes+28) times a second, so a big snapshot
+       can hold the delivered rate well under sv_fps no matter what sv_fps is. */
+    Com_Printf("Delivery (sv_fps %i, %i ms per tick):\n",
+               sv_fps->integer, sv_fps->integer ? 1000 / sv_fps->integer : 0);
+    Com_Printf("  largest snapshot sent: %i bytes\n", sv.snapshotBytesPeak);
+    if (sv.snapshotBytesPeak > 0) {
+        Com_Printf("  a 25000-rate client sustains %i/s at that size, a 50000-rate client %i/s\n",
+                   25000 / (sv.snapshotBytesPeak + 28), 50000 / (sv.snapshotBytesPeak + 28));
+    }
+    Com_Printf("  snapshots sent %i, held back by rate %i\n",
+               sv.snapshotsSent, sv.snapshotsRateDelayed);
+
+    if (sv.snapshotEntitiesDropped) {
+        SV_FormatSnapshotTypes(buf, sizeof(buf), sv.snapshotDroppedByType);
+        Com_Printf("  dropped over the cap: %i total\n", sv.snapshotEntitiesDropped);
+        Com_Printf("  dropped, by type:     %s\n", buf);
+    } else {
+        Com_Printf("  dropped over the cap: none\n");
+    }
+}
+
+/*
+==================
 SV_AddOperatorCommands
 ==================
 */
@@ -1267,6 +1335,8 @@ void SV_AddOperatorCommands(void) {
     Cmd_AddCommand("reload_mappool", SV_ReloadMapPool_f);
     Cmd_AddCommand("reload_arenas", SV_ReloadArenas_f);
     Cmd_AddCommand("reload_factories", SV_ReloadFactories_f);
+
+    Cmd_AddCommand("snapstats", SV_SnapStats_f);
 }
 
 /*

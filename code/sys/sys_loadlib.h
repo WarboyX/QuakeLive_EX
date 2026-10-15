@@ -23,10 +23,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifdef DEDICATED
 #ifdef _WIN32
 #include <windows.h>
+/* [QL] Sys_LibraryError was the literal string "unknown" here, so every failure
+   to load a game module on a Windows dedicated server reported nothing at all -
+   the one place the operating system does say why. Implemented in sys_win32.c. */
+const char* Sys_LibraryErrorWin32(void);
 #define Sys_LoadLibrary(f) (void*)LoadLibrary(f)
 #define Sys_UnloadLibrary(h) FreeLibrary((HMODULE)h)
 #define Sys_LoadFunction(h, fn) (void*)GetProcAddress((HMODULE)h, fn)
-#define Sys_LibraryError() "unknown"
+#define Sys_LibraryError() Sys_LibraryErrorWin32()
 #else
 #include <dlfcn.h>
 #define Sys_LoadLibrary(f) dlopen(f, RTLD_NOW)

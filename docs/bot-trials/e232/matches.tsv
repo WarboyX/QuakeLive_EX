@@ -1,0 +1,12 @@
+ri1a	cur	bot_ctfRouteIntel=2 --set bot_debugRoutes=1	red A1 only vs blue A1+R1
+ri1b	cur	bot_ctfRouteIntel=1 --set bot_debugRoutes=1	blue A1 only vs red A1+R1
+dt1a	cur	bot_ctfDetours=2 --set bot_debugRoutes=1	red no detours vs blue full
+dt1b	cur	bot_ctfDetours=1 --set bot_debugRoutes=1	blue no detours vs red full
+a11a	cur	bot_tacticsTeams=1 --set bot_ctfRouteIntel=2 --set bot_debugRoutes=1	red A1-only layer vs blue layer OFF
+a11b	cur	bot_tacticsTeams=2 --set bot_ctfRouteIntel=1 --set bot_debugRoutes=1	blue A1-only layer vs red layer OFF
+ri2a	cur	bot_ctfRouteIntel=2 --set bot_debugRoutes=1	red A1 only vs blue A1+R1
+ri2b	cur	bot_ctfRouteIntel=1 --set bot_debugRoutes=1	blue A1 only vs red A1+R1
+dt2a	cur	bot_ctfDetours=2 --set bot_debugRoutes=1	red no detours vs blue full
+dt2b	cur	bot_ctfDetours=1 --set bot_debugRoutes=1	blue no detours vs red full
+a12a	cur	bot_tacticsTeams=1 --set bot_ctfRouteIntel=2 --set bot_debugRoutes=1	red A1-only layer vs blue layer OFF
+a12b	cur	bot_tacticsTeams=2 --set bot_ctfRouteIntel=1 --set bot_debugRoutes=1	blue A1-only layer vs red layer OFF

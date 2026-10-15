@@ -798,6 +798,74 @@ itemDef_t* Menu_ClearFocus(menuDef_t* menu) {
     return ret;
 }
 
+/*
+[QL] Name every step the menu input path takes, for one specific reason.
+
+A crash inside this file gives nothing back: the engine catches the signal,
+runs CL_Shutdown and the log ends. There is no stack and no faulting address.
+The scoreboards only started receiving mouse and key events at all recently,
+so when the client began dying a few seconds into the match summary the
+suspects were an entire code path that had never run before, with no way to
+narrow it by reading.
+
+So the path says where it is. The last line before the log stops is the item
+that killed it. Off by default and set from the owning module - cgame ties it
+to cg_scoreboardDebug.
+*/
+int uiInputTrace = 0;
+
+void UI_SetInputTrace(int on) {
+    uiInputTrace = on;
+}
+
+/*
+[QL] Not every display context fills in every callback.
+
+ui_shared.c is compiled into both cgame and ui, and cgame leaves several of the
+context's function pointers NULL because it has no trap behind them - overstrike
+mode is one. An unguarded call through one of those is not a no-op, it is a jump
+to address zero: that is exactly how `exec` in a cgame menu script crashed the
+client, via Script_Exec's tail call to a NULL executeText. Reading the mode
+through here means a missing callback reports insert mode rather than taking the
+process down.
+*/
+static void UI_SetBinding(int keynum, const char *binding) {
+    if (DC && DC->setBinding) {
+        DC->setBinding(keynum, binding);
+    }
+}
+
+static qboolean UI_OverstrikeMode(void) {
+    if (DC && DC->getOverstrikeMode) {
+        return DC->getOverstrikeMode();
+    }
+    return qfalse;
+}
+
+static const char *UI_ItemName(const itemDef_t *item) {
+    if (!item) {
+        return "(null)";
+    }
+    if (item->window.name && item->window.name[0]) {
+        return item->window.name;
+    }
+    return "(unnamed)";
+}
+
+static void UI_Trace(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void UI_Trace(const char *fmt, ...) {
+    va_list ap;
+    char buf[1024];
+
+    if (!uiInputTrace || !DC || !DC->Print) {
+        return;
+    }
+    va_start(ap, fmt);
+    Q_vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    DC->Print("uiTrace: %s", buf);
+}
+
 qboolean IsVisible(int flags) {
     return (flags & WINDOW_VISIBLE && !(flags & WINDOW_FADINGOUT));
 }
@@ -811,8 +879,27 @@ qboolean Rect_ContainsPoint(rectDef_t* rect, float x, float y) {
     return qfalse;
 }
 
-// [QL] Widescreen-aware hit-testing: adjusts rect to match where it was
-// actually rendered (shifted/scaled into 4:3 box) before testing the point.
+/*
+[QL] Widescreen-aware hit-testing: adjusts rect to match where it was
+actually rendered (shifted/scaled into 4:3 box) before testing the point.
+
+Everything in this file that tests the cursor against an item now goes through
+here. It used to be split: Menu_HandleMouseMove and Display_CaptureItem used
+this, while the handlers they hand the item to - Menu_HandleKey's K_MOUSE1
+branch, Item_ListBox_HandleKey, Item_ListBox_OverLB, the slider, the yes/no
+and multi handlers, Item_MouseEnter, Item_SetFocus - all tested the raw rect.
+
+On a 4:3 display the two agree and nothing shows. On anything wider they do
+not, and the result is an item that lights up under the cursor and then does
+nothing when clicked, because the code that decided it had focus and the code
+that decided whether the click landed on it were working in different
+coordinate spaces. That is the same fault that made the in-game team buttons
+dead, still present in every other menu: the scoreboard list boxes could not
+be scrolled and the match summary's vote buttons could not be pressed.
+
+widescreen == WIDESCREEN_STRETCH, or a 4:3 mode, is the identity mapping, so
+this changes nothing for those cases.
+*/
 static qboolean Rect_ContainsWidescreenPoint(const rectDef_t *rectIn, float x, float y, int widescreen) {
     rectDef_t rect;
     float aspect, width43, diff, diff640, newXScale;
@@ -845,6 +932,65 @@ static qboolean Rect_ContainsWidescreenPoint(const rectDef_t *rectIn, float x, f
     }
 
     return Rect_ContainsPoint(&rect, x, y);
+}
+
+/*
+[QL] The widescreen mode an item is actually painted in.
+
+item->widescreen means nothing on its own: Item_Paint only reads it when
+item->widescreenFlag says the item declared one, and otherwise leaves the
+parent menu's mode in force. Every hit test in this file passed the bare
+item->widescreen, which is 0 - WIDESCREEN_STRETCH - for the great majority of
+items, because almost nothing declares its own.
+
+So on a widescreen display an item inside a "widescreen WIDESCREEN_CENTER"
+menu - which is what Quake Live's scoreboards, the match summary and the
+in-game menu all are - was drawn in the centred, letterboxed space and
+hit-tested in the stretched one. The two disagree by half the extra width. Wide
+enough items still caught a click near their middle, narrow ones never did, and
+which was which changed with the display's aspect ratio: exactly the "works at
+1920x1080, dead at 3840x2160" shape this kept coming back as.
+*/
+static int Item_Widescreen(const itemDef_t* item) {
+    const menuDef_t* parent;
+
+    if (!item) {
+        return WIDESCREEN_STRETCH;
+    }
+    if (item->widescreenFlag) {
+        return item->widescreen;
+    }
+    parent = (const menuDef_t*)item->parent;
+    return parent ? parent->widescreen : WIDESCREEN_STRETCH;
+}
+
+/*
+[QL] Which list box, if any, is under a point - by feeder id.
+
+The scoreboard has two lists side by side and the wheel used to scroll both,
+because CG_ScrollScoreboard had no way to ask which one the cursor was over.
+Returns the item's "special" (its FEEDER_* id) or -1.
+*/
+int Menu_FeederAtPoint(menuDef_t* menu, float x, float y) {
+    int i;
+
+    if (menu == NULL) {
+        return -1;
+    }
+    for (i = 0; i < menu->itemCount; i++) {
+        itemDef_t* item = menu->items[i];
+
+        if (item->type != ITEM_TYPE_LISTBOX) {
+            continue;
+        }
+        if (!(item->window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+            continue;
+        }
+        if (Rect_ContainsWidescreenPoint(&item->window.rect, x, y, Item_Widescreen(item))) {
+            return item->special;
+        }
+    }
+    return -1;
 }
 
 int Menu_ItemsMatchingGroup(menuDef_t* menu, const char* name) {
@@ -1096,7 +1242,19 @@ void Menus_OpenByName(const char* p) {
 
 static void Menu_RunCloseScript(menuDef_t* menu) {
     if (menu && menu->window.flags & WINDOW_VISIBLE && menu->onClose) {
+        /*
+        [QL] Zeroed, not just given a parent.
+
+        A menu-level script has no item of its own, so one is faked on the
+        stack for the handlers to hang off. Stock code sets only .parent and
+        leaves the other ~90 fields holding whatever was on the stack, which is
+        fine only for as long as every reachable handler touches nothing else.
+        setitemcolor and the show/hide pair do not, but the same fake item is
+        handed to every command in commandList, several of which read
+        window.name, window.flags or the cvar fields.
+        */
         itemDef_t item;
+        memset(&item, 0, sizeof(item));
         item.parent = menu;
         Item_RunScript(&item, menu->onClose);
     }
@@ -1369,6 +1527,8 @@ void Item_RunScript(itemDef_t* item, const char* s) {
                 continue;
             }
 
+            UI_Trace("script '%s' on item '%s'\n", command, UI_ItemName(item));
+
             bRan = qfalse;
             for (i = 0; i < scriptCommandCount; i++) {
                 if (Q_stricmp(command, commandList[i].name) == 0) {
@@ -1477,6 +1637,7 @@ qboolean Item_EnableShowViaCvar4(itemDef_t* item, int flag) {
 qboolean Item_SetFocus(itemDef_t* item, float x, float y) {
     int i;
     itemDef_t* oldFocus;
+    UI_Trace("setFocus item '%s' type %i\n", UI_ItemName(item), item ? item->type : -1);
     sfxHandle_t* sfx = &DC->Assets.itemFocusSound;
     qboolean playSound = qfalse;
     menuDef_t* parent;
@@ -1521,7 +1682,7 @@ qboolean Item_SetFocus(itemDef_t* item, float x, float y) {
         rectDef_t r;
         r = item->textRect;
         r.y -= r.h;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             item->window.flags |= WINDOW_HASFOCUS;
             if (item->focusSound) {
                 sfx = &item->focusSound;
@@ -1547,23 +1708,60 @@ qboolean Item_SetFocus(itemDef_t* item, float x, float y) {
     }
 
     if (playSound && sfx) {
+        /* [QL] The focus sound is the one the scoreboard repeats. It should
+           fire once when the cursor arrives on an item; if the log shows it
+           over and over, the name here and the name it took focus from say
+           which two items are trading it. */
+        UI_Trace("FOCUS SOUND on '%s' (took it from '%s')\n",
+                 UI_ItemName(item), UI_ItemName(oldFocus));
         DC->startLocalSound(*sfx, CHAN_LOCAL_SOUND);
     }
 
-    for (i = 0; i < parent->itemCount; i++) {
-        if (parent->items[i] == item) {
-            parent->cursorItem = i;
-            break;
+    /* [QL] "this can be NULL" is written above where parent is taken, and then
+       it is dereferenced here without a test. Menus_Activate and the two
+       Item_EnableShowViaCvar helpers all build an itemDef_t on the stack and
+       set only .parent, so an item reaching this line with no menu behind it
+       is not hypothetical. */
+    if (parent) {
+        for (i = 0; i < parent->itemCount; i++) {
+            if (parent->items[i] == item) {
+                parent->cursorItem = i;
+                break;
+            }
         }
     }
 
     return qtrue;
 }
 
+/*
+[QL] An element size of zero is a divide, not a layout problem.
+
+listPtr comes straight from item->typeData and its element sizes straight from
+the menu file, so an ITEM_TYPE_LISTBOX that never declared elementwidth or
+elementheight arrives here as a plain integer division by zero - a hard fault,
+not a misdrawn list. Nothing reached these two functions while cgame's menus
+were invisible to the input path; now that the scoreboards take a mouse, every
+list on them does.
+*/
+static qboolean Item_ListBox_Usable(const itemDef_t* item, const listBoxDef_t* listPtr) {
+    if (!listPtr) {
+        return qfalse;
+    }
+    if (item->window.flags & WINDOW_HORIZONTAL) {
+        return listPtr->elementWidth > 0;
+    }
+    return listPtr->elementHeight > 0;
+}
+
 int Item_ListBox_MaxScroll(itemDef_t* item) {
     listBoxDef_t* listPtr = (listBoxDef_t*)item->typeData;
     int count = DC->feederCount(item->special);
     int max;
+
+    if (!Item_ListBox_Usable(item, listPtr)) {
+        return 0;
+    }
 
     if (item->window.flags & WINDOW_HORIZONTAL) {
         max = count - (item->window.rect.w / listPtr->elementWidth) + 1;
@@ -1692,7 +1890,7 @@ int Item_Slider_OverSlider(itemDef_t* item, float x, float y) {
     r.w = SLIDER_THUMB_WIDTH;
     r.h = SLIDER_THUMB_HEIGHT;
 
-    if (Rect_ContainsPoint(&r, x, y)) {
+    if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
         return WINDOW_LB_THUMB;
     }
     return 0;
@@ -1702,59 +1900,72 @@ int Item_ListBox_OverLB(itemDef_t* item, float x, float y) {
     rectDef_t r;
     int thumbstart;
 
+    /* [QL] A slim-scroll list draws a position indicator, not arrows and a
+       thumb, so there is nothing along its edge to be "over". Reporting a hit
+       here would make Item_ListBox_HandleKey treat a click near the right edge
+       as a page or arrow press instead of a click on the row under it. */
+    if (item->window.flags & WINDOW_LB_SLIMSCROLL) {
+        return 0;
+    }
+
     if (item->window.flags & WINDOW_HORIZONTAL) {
         // check if on left arrow
         r.x = item->window.rect.x;
         r.y = item->window.rect.y + item->window.rect.h - SCROLLBAR_SIZE;
         r.h = r.w = SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_LEFTARROW;
         }
         // check if on right arrow
         r.x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_RIGHTARROW;
         }
         // check if on thumb
         thumbstart = Item_ListBox_ThumbPosition(item);
         r.x = thumbstart;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_THUMB;
         }
         r.x = item->window.rect.x + SCROLLBAR_SIZE;
         r.w = thumbstart - r.x;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_PGUP;
         }
         r.x = thumbstart + SCROLLBAR_SIZE;
         r.w = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_PGDN;
         }
     } else {
-        r.x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE;
+        // [QL] mirror the hit test when the bar is drawn on the left edge
+        if (item->window.flags & WINDOW_LB_LEFTSCROLL) {
+            r.x = item->window.rect.x;
+        } else {
+            r.x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE;
+        }
         r.y = item->window.rect.y;
         r.h = r.w = SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_LEFTARROW;
         }
         r.y = item->window.rect.y + item->window.rect.h - SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_RIGHTARROW;
         }
         thumbstart = Item_ListBox_ThumbPosition(item);
         r.y = thumbstart;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_THUMB;
         }
         r.y = item->window.rect.y + SCROLLBAR_SIZE;
         r.h = thumbstart - r.y;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_PGUP;
         }
         r.y = thumbstart + SCROLLBAR_SIZE;
         r.h = item->window.rect.y + item->window.rect.h - SCROLLBAR_SIZE;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             return WINDOW_LB_PGDN;
         }
     }
@@ -1764,6 +1975,10 @@ int Item_ListBox_OverLB(itemDef_t* item, float x, float y) {
 void Item_ListBox_MouseEnter(itemDef_t* item, float x, float y) {
     rectDef_t r;
     listBoxDef_t* listPtr = (listBoxDef_t*)item->typeData;
+
+    if (!Item_ListBox_Usable(item, listPtr)) {
+        return;
+    }
 
     item->window.flags &= ~(WINDOW_LB_LEFTARROW | WINDOW_LB_RIGHTARROW | WINDOW_LB_THUMB | WINDOW_LB_PGUP | WINDOW_LB_PGDN);
     item->window.flags |= Item_ListBox_OverLB(item, x, y);
@@ -1776,7 +1991,7 @@ void Item_ListBox_MouseEnter(itemDef_t* item, float x, float y) {
                 r.y = item->window.rect.y;
                 r.h = item->window.rect.h - SCROLLBAR_SIZE;
                 r.w = item->window.rect.w - listPtr->drawPadding;
-                if (Rect_ContainsPoint(&r, x, y)) {
+                if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
                     listPtr->cursorPos = (int)((x - r.x) / listPtr->elementWidth) + listPtr->startPos;
                     if (listPtr->cursorPos >= listPtr->endPos) {
                         listPtr->cursorPos = listPtr->endPos;
@@ -1791,7 +2006,7 @@ void Item_ListBox_MouseEnter(itemDef_t* item, float x, float y) {
         r.y = item->window.rect.y;
         r.w = item->window.rect.w - SCROLLBAR_SIZE;
         r.h = item->window.rect.h - listPtr->drawPadding;
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             listPtr->cursorPos = (int)((y - 2 - r.y) / listPtr->elementHeight) + listPtr->startPos;
             if (listPtr->cursorPos > listPtr->endPos) {
                 listPtr->cursorPos = listPtr->endPos;
@@ -1803,6 +2018,7 @@ void Item_ListBox_MouseEnter(itemDef_t* item, float x, float y) {
 void Item_MouseEnter(itemDef_t* item, float x, float y) {
     rectDef_t r;
     if (item) {
+        UI_Trace("mouseEnter item '%s' type %i\n", UI_ItemName(item), item->type);
         r = item->textRect;
         r.y -= r.h;
         // in the text rect?
@@ -1834,7 +2050,7 @@ void Item_MouseEnter(itemDef_t* item, float x, float y) {
             return;
         }
 
-        if (Rect_ContainsPoint(&r, x, y)) {
+        if (Rect_ContainsWidescreenPoint(&r, x, y, Item_Widescreen(item))) {
             if (!(item->window.flags & WINDOW_MOUSEOVERTEXT)) {
                 Item_RunScript(item, item->mouseEnterText);
                 item->window.flags |= WINDOW_MOUSEOVERTEXT;
@@ -1877,7 +2093,7 @@ void Item_MouseLeave(itemDef_t* item) {
 itemDef_t* Menu_HitTest(menuDef_t* menu, float x, float y) {
     int i;
     for (i = 0; i < menu->itemCount; i++) {
-        if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, menu->items[i]->widescreen)) {
+        if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, Item_Widescreen(menu->items[i]))) {
             return menu->items[i];
         }
     }
@@ -1906,7 +2122,11 @@ qboolean Item_ListBox_HandleKey(itemDef_t* item, int key, qboolean down, qboolea
     int count = DC->feederCount(item->special);
     int max, viewmax;
 
-    if (force || (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) && item->window.flags & WINDOW_HASFOCUS)) {
+    if (!Item_ListBox_Usable(item, listPtr)) {
+        return qfalse;
+    }
+
+    if (force || (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) && item->window.flags & WINDOW_HASFOCUS)) {
         max = Item_ListBox_MaxScroll(item);
         if (item->window.flags & WINDOW_HORIZONTAL) {
             viewmax = (item->window.rect.w / listPtr->elementWidth);
@@ -2122,7 +2342,7 @@ qboolean Item_YesNo_HandleKey(itemDef_t* item, int key) {
     // [QL] Item_YesNo_HandleKey 0x100180a0: single gated condition over the mouse
     // buttons and ENTER only; no UI_SelectForKey arrow branch.
     if (item->cvar &&
-        Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+        Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) &&
         (item->window.flags & WINDOW_HASFOCUS) &&
         (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3)) {
         DC->setCVar(item->cvar, va("%i", !DC->getCVarValue(item->cvar)));
@@ -2171,11 +2391,80 @@ int Item_Multi_FindCvarByValue(itemDef_t* item) {
 // multi in ingame_options_advanced.menu, whose 3rd entry's pointer high dword is
 // clobbered), which would make the menu painter strlen a wild pointer and crash.
 // Reject any entry that is not inside the string pool and render nothing instead.
+/*
+===============
+Item_Multi_PoolString
+
+[QL] Transcribed from the binary: a multi item's display string is only
+returned if it lives in the string pool, otherwise the empty string.
+
+The check itself is defensive and fine. Returning "" silently is not - it
+renders as a blank value row with nothing to say why, which is exactly what
+"the renderer option is empty" looks like from the outside. String_Alloc hands
+back a non-pool pointer in two cases: the string was empty, or the pool was
+full and it returned NULL. Say which.
+===============
+*/
 static const char* Item_Multi_PoolString(const char* s) {
     if (s >= strPool && s < strPool + STRING_POOL_SIZE) {
         return s;
     }
+
+    if (DC && DC->Print) {
+        static const char* lastReported;
+
+        if (s != lastReported) {
+            lastReported = s;
+            DC->Print("^3WARNING:^7 multi item value \"%s\" is not in the string pool "
+                      "(%d of %d bytes used) - the row will draw blank\n",
+                      s ? s : "(null)", strPoolIndex, STRING_POOL_SIZE);
+        }
+    }
+
     return "";
+}
+
+/*
+===============
+Item_Multi_NoMatch
+
+[QL] The other way a multi row draws blank: the cvar holds a value that is not
+in the row's list, so nothing matches and the loop falls out. From the outside
+that is indistinguishable from a broken menu - the label is there, the value is
+missing, and there is nothing to go on. Name the cvar and the value.
+
+An empty value is the interesting case and is called out separately, because it
+means Cvar_VariableStringBuffer found no such cvar at all: the row is pointing
+at a cvar this build does not register.
+
+Once per item per value - this runs from the paint path, so printing every time
+would be a line per frame.
+===============
+*/
+static void Item_Multi_NoMatch(const itemDef_t* item, const char* value) {
+    static const itemDef_t* lastItem;
+    static char lastValue[256];
+
+    if (item == lastItem && Q_stricmp(value, lastValue) == 0) {
+        return;
+    }
+    lastItem = item;
+    Q_strncpyz(lastValue, value, sizeof(lastValue));
+
+    if (!DC || !DC->Print) {
+        return;
+    }
+
+    if (*value == '\0') {
+        DC->Print("^3WARNING:^7 multi item cvar \"%s\" is empty or unregistered "
+                  "- the row will draw blank\n",
+                  item->cvar ? item->cvar : "(none)");
+    } else {
+        DC->Print("^3WARNING:^7 multi item cvar \"%s\" is \"%s\", which is not one of its "
+                  "%d listed values - the row will draw blank\n",
+                  item->cvar ? item->cvar : "(none)", value,
+                  ((const multiDef_t*)item->typeData)->count);
+    }
 }
 
 const char* Item_Multi_Setting(itemDef_t* item) {
@@ -2200,6 +2489,11 @@ const char* Item_Multi_Setting(itemDef_t* item) {
                 }
             }
         }
+
+        if (!multiPtr->strDef) {
+            Com_sprintf(buff, sizeof(buff), "%g", value);
+        }
+        Item_Multi_NoMatch(item, buff);
     }
     return "";
 }
@@ -2210,7 +2504,7 @@ qboolean Item_Multi_HandleKey(itemDef_t* item, int key) {
     // stepping, no videoMode/r_mode special case).
     multiDef_t* multiPtr = (multiDef_t*)item->typeData;
     if (multiPtr && item->cvar &&
-        Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+        Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) &&
         (item->window.flags & WINDOW_HASFOCUS) &&
         (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3)) {
         int current = Item_Multi_FindCvarByValue(item) + 1;
@@ -2270,12 +2564,35 @@ qboolean Item_TextField_HandleKey(itemDef_t* item, int key) {
             }
 
             if (item->type == ITEM_TYPE_NUMERICFIELD) {
-                if (key < '0' || key > '9') {
+                /*
+                [QL] E113. Digits, plus ONE decimal point and a LEADING minus.
+
+                Stock Q3 took digits only, which makes this field useless for
+                most of the numbers a player would want to type: sensitivity 4.5,
+                r_gamma 1.2, a smoke radius, cg_impactSparksVelocity -96. The
+                in-game menu puts one of these beside every slider so the value
+                can be read and typed, and a box that refuses "." cannot hold
+                the value the slider next to it is showing.
+
+                Changed here rather than switching those boxes to EDITFIELD,
+                because an editfield accepts anything and a letter typed into
+                sensitivity reaches the cvar as 0. No menu used NUMERICFIELD
+                before this, so nothing that relied on digits-only is affected.
+                */
+                if (key == '.') {
+                    if (strchr(buff, '.')) {
+                        return qfalse;
+                    }
+                } else if (key == '-') {
+                    if (item->cursorPos != 0 || buff[0] == '-') {
+                        return qfalse;
+                    }
+                } else if (key < '0' || key > '9') {
                     return qfalse;
                 }
             }
 
-            if (!DC->getOverstrikeMode()) {
+            if (!UI_OverstrikeMode()) {
                 if ((len == MAX_EDITFIELD - 1) || (editPtr->maxChars && len >= editPtr->maxChars)) {
                     return qtrue;
                 }
@@ -2343,7 +2660,9 @@ qboolean Item_TextField_HandleKey(itemDef_t* item, int key) {
             }
 
             if (key == K_INS || key == K_KP_INS) {
-                DC->setOverstrikeMode(!DC->getOverstrikeMode());
+                if (DC->setOverstrikeMode) {
+                    DC->setOverstrikeMode(!UI_OverstrikeMode());
+                }
                 return qtrue;
             }
         }
@@ -2430,20 +2749,12 @@ static void Scroll_ListBox_ThumbFunc(void* p) {
         si->yStart = DC->cursory;
     }
 
-    if (DC->realTime > si->nextScrollTime) {
-        // need to scroll which is done by simulating a click to the item
-        // this is done a bit sideways as the autoscroll "knows" that the item is a listbox
-        // so it calls it directly
-        Item_ListBox_HandleKey(si->item, si->scrollKey, qtrue, qfalse);
-        si->nextScrollTime = DC->realTime + si->adjustValue;
-    }
-
-    if (DC->realTime > si->nextAdjustTime) {
-        si->nextAdjustTime = DC->realTime + SCROLL_TIME_ADJUST;
-        if (si->adjustValue > SCROLL_TIME_FLOOR) {
-            si->adjustValue -= SCROLL_TIME_ADJUSTOFFSET;
-        }
-    }
+    /* [QL] E132. The thumb follows the cursor and nothing else. Team Arena
+       also "clicked" the list on a timer here (copied from the arrow handler),
+       and that click lands on whatever the cursor has drifted over: off the
+       thumb onto the bar it paged, onto a row it selected it - fighting the
+       drag. nextScrollTime was never even set for a thumb capture, so the
+       first of those fired the moment the drag began. */
 }
 
 static void Scroll_Slider_ThumbFunc(void* p) {
@@ -2542,7 +2853,7 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
     if (item->cvar) {
         if (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3) {
             editFieldDef_t* editDef = item->typeData;
-            if (editDef && Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) && item->window.flags & WINDOW_HASFOCUS) {
+            if (editDef && Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) && item->window.flags & WINDOW_HASFOCUS) {
                 rectDef_t testRect;
                 width = SLIDER_WIDTH;
                 if (item->text) {
@@ -2558,7 +2869,7 @@ qboolean Item_Slider_HandleKey(itemDef_t* item, int key, qboolean down) {
                 // DC->Print("slider x: %f\n", testRect.x);
                 testRect.w = (SLIDER_WIDTH + (float)SLIDER_THUMB_WIDTH / 2);
                 // DC->Print("slider w: %f\n", testRect.w);
-                if (Rect_ContainsPoint(&testRect, DC->cursorx, DC->cursory)) {
+                if (Rect_ContainsWidescreenPoint(&testRect, DC->cursorx, DC->cursory, Item_Widescreen(item))) {
                     work = DC->cursorx - x;
                     value = work / width;
                     value *= (editDef->maxVal - editDef->minVal);
@@ -2603,7 +2914,7 @@ int Item_Combo_GetIndex(itemDef_t* item) {
 qboolean Item_Combo_HandleKey(itemDef_t* item, int key) {
     multiDef_t* multiPtr = (multiDef_t*)item->typeData;
     if (multiPtr && item->cvar) {
-        if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) &&
+        if (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item)) &&
             (item->window.flags & WINDOW_HASFOCUS) &&
             (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3 || key == K_ENTER)) {
             int index = Item_Combo_GetIndex(item) + 1;
@@ -2794,7 +3105,8 @@ static void Display_CloseCinematics(void) {
 void Menus_Activate(menuDef_t* menu) {
     menu->window.flags |= (WINDOW_HASFOCUS | WINDOW_VISIBLE);
     if (menu->onOpen) {
-        itemDef_t item;
+        itemDef_t item;  // [QL] see Menu_RunCloseScript - zero the fake item
+        memset(&item, 0, sizeof(item));
         item.parent = menu;
         Item_RunScript(&item, menu->onOpen);
     }
@@ -2819,6 +3131,8 @@ int Display_VisibleMenuCount(void) {
 }
 
 void Menus_HandleOOBClick(menuDef_t* menu, int key, qboolean down) {
+    UI_Trace("OOB click on menu '%s'\n",
+             menu && menu->window.name ? menu->window.name : "(unnamed)");
     if (menu) {
         int i;
         // basically the behaviour we are looking for is if there are windows in the stack.. see if
@@ -2930,8 +3244,12 @@ void Menu_HandleKey(menuDef_t* menu, int key, qboolean down) {
         }
     }
 
+    UI_Trace("handleKey menu '%s' key %i down %i focused '%s'\n",
+             menu->window.name ? menu->window.name : "(unnamed)", key, down, UI_ItemName(item));
+
     if (item != NULL) {
         if (Item_HandleKey(item, key, down)) {
+            UI_Trace("  -> Item_Action '%s'\n", UI_ItemName(item));
             Item_Action(item);
             return;
         }
@@ -2961,7 +3279,8 @@ void Menu_HandleKey(menuDef_t* menu, int key, qboolean down) {
 
         case K_ESCAPE:
             if (!g_waitingForKey && menu->onESC) {
-                itemDef_t it;
+                itemDef_t it;  // [QL] see Menu_RunCloseScript - zero the fake item
+                memset(&it, 0, sizeof(it));
                 it.parent = menu;
                 Item_RunScript(&it, menu->onESC);
             }
@@ -2976,17 +3295,18 @@ void Menu_HandleKey(menuDef_t* menu, int key, qboolean down) {
         case K_MOUSE2:
             if (item) {
                 if (item->type == ITEM_TYPE_TEXT) {
-                    if (Rect_ContainsPoint(Item_CorrectedTextRect(item), DC->cursorx, DC->cursory)) {
+                    if (Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(item), DC->cursorx, DC->cursory, Item_Widescreen(item))) {
                         Item_Action(item);
                     }
                 } else if (item->type == ITEM_TYPE_EDITFIELD || item->type == ITEM_TYPE_NUMERICFIELD) {
-                    if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory)) {
+                    if (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item))) {
                         item->cursorPos = 0;
                         g_editingField = qtrue;
                         g_editItem = item;
                     }
                 } else {
-                    if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory)) {
+                    if (Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item))) {
+                        UI_Trace("  -> default Item_Action '%s'\n", UI_ItemName(item));
                         Item_Action(item);
                     }
                 }
@@ -3341,11 +3661,19 @@ void Item_TextField_Paint(itemDef_t* item) {
 
     offset = (item->text && *item->text) ? 8 : 0;
     if (item->window.flags & WINDOW_HASFOCUS && g_editingField) {
-        char cursor = DC->getOverstrikeMode() ? '_' : '|';
+        char cursor = UI_OverstrikeMode() ? '_' : '|';
         DC->drawTextWithCursor(item->textRect.x + item->textRect.w + offset, item->textRect.y, item->textscale, newColor, buff + editPtr->paintOffset, item->cursorPos - editPtr->paintOffset, cursor, editPtr->maxPaintChars, item->textStyle, item->fontIndex);
     } else {
         DC->drawText(item->textRect.x + item->textRect.w + offset, item->textRect.y, item->textscale, newColor, buff + editPtr->paintOffset, 0, editPtr->maxPaintChars, item->textStyle, item->fontIndex);
     }
+}
+
+/* [QL] E183: a value chosen but not yet running reads "<value> (Apply)" */
+static const char* Item_PendingLabel(itemDef_t* item, const char* text) {
+    if (item->cvar && DC->cvarPending && DC->cvarPending(item->cvar)) {
+        return va("%s (Apply)", text);
+    }
+    return text;
 }
 
 void Item_YesNo_Paint(itemDef_t* item) {
@@ -3367,9 +3695,9 @@ void Item_YesNo_Paint(itemDef_t* item) {
 
     if (item->text) {
         Item_Text_Paint(item);
-        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x + item->textRect.w + Item_ValueOffset(item), item->textRect.y, item->textscale, newColor, Item_PendingLabel(item, (value != 0) ? "Yes" : "No"), 0, 0, item->textStyle, item->fontIndex);
     } else {
-        DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, (value != 0) ? "Yes" : "No", 0, 0, item->textStyle, item->fontIndex);
+        DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, Item_PendingLabel(item, (value != 0) ? "Yes" : "No"), 0, 0, item->textStyle, item->fontIndex);
     }
 }
 
@@ -3392,6 +3720,7 @@ void Item_Multi_Paint(itemDef_t* item) {
     if (text == NULL) {
         text = "";
     }
+    text = Item_PendingLabel(item, text);   // [QL] E183
 
     if (item->text) {
         Item_Text_Paint(item);
@@ -3647,10 +3976,10 @@ void Controls_SetConfig(qboolean restart) {
     // iterate each command, get its numeric binding
     for (i = 0; i < g_bindCount; i++) {
         if (g_bindings[i].bind1 != -1) {
-            DC->setBinding(g_bindings[i].bind1, g_bindings[i].command);
+            UI_SetBinding(g_bindings[i].bind1, g_bindings[i].command);
 
             if (g_bindings[i].bind2 != -1)
-                DC->setBinding(g_bindings[i].bind2, g_bindings[i].command);
+                UI_SetBinding(g_bindings[i].bind2, g_bindings[i].command);
         }
     }
 
@@ -3814,7 +4143,21 @@ void Item_SliderColor_Paint(itemDef_t* item) {
     } else {
         x = item->window.rect.x;
     }
-    DC->setColor(NULL);  // 0x1001b5c0 draws the colour bar in white
+    // [QL] E131. Dimmed while its disableCvar holds (cg_crosshairColor is
+    // greyed while colour-by-health overrides it). The item already refused
+    // focus then, but the bar drew at full colour and looked live.
+    if (item->enableCvar && *item->enableCvar && item->cvarTest && *item->cvarTest &&
+        (item->cvarFlags & (CVAR_ENABLE | CVAR_DISABLE)) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
+        // Fixed greys, not parent->disableColor: a menu that never sets one
+        // leaves it all zero, which would hide the thumb outright.
+        vec4_t dim = {0.35f, 0.35f, 0.35f, 0.6f};
+
+        DC->setColor(dim);
+        VectorSet(newColor, 0.5f, 0.5f, 0.5f);
+        newColor[3] = 1.0f;
+    } else {
+        DC->setColor(NULL);  // 0x1001b5c0 draws the colour bar in white
+    }
     DC->drawHandlePic(x, y, SLIDER_WIDTH, SLIDER_HEIGHT, DC->Assets.fxBasePic);
 
     x = Item_Slider_ThumbPosition(item);
@@ -3866,7 +4209,7 @@ qboolean Item_Bind_HandleKey(itemDef_t* item, int key, qboolean down) {
     int i;
 
     if (!g_waitingForKey) {
-        if (down && ((key == K_MOUSE1 && Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory)) || key == K_ENTER || key == K_KP_ENTER || key == K_JOY1 || key == K_JOY2 || key == K_JOY3 || key == K_JOY4)) {
+        if (down && ((key == K_MOUSE1 && Rect_ContainsWidescreenPoint(&item->window.rect, DC->cursorx, DC->cursory, Item_Widescreen(item))) || key == K_ENTER || key == K_KP_ENTER || key == K_JOY1 || key == K_JOY2 || key == K_JOY3 || key == K_JOY4)) {
             g_waitingForKey = qtrue;
             g_bindItem = item;
         }
@@ -3889,11 +4232,11 @@ qboolean Item_Bind_HandleKey(itemDef_t* item, int key, qboolean down) {
                 id = BindingIDFromName(item->cvar);
                 if (id != -1) {
                     if (g_bindings[id].bind1 != -1) {
-                        DC->setBinding(g_bindings[id].bind1, "");
+                        UI_SetBinding(g_bindings[id].bind1, "");
                         g_bindings[id].bind1 = -1;
                     }
                     if (g_bindings[id].bind2 != -1) {
-                        DC->setBinding(g_bindings[id].bind2, "");
+                        UI_SetBinding(g_bindings[id].bind2, "");
                         g_bindings[id].bind2 = -1;
                     }
                 }
@@ -3925,11 +4268,11 @@ qboolean Item_Bind_HandleKey(itemDef_t* item, int key, qboolean down) {
     if (id != -1) {
         if (key == -1) {
             if (g_bindings[id].bind1 != -1) {
-                DC->setBinding(g_bindings[id].bind1, "");
+                UI_SetBinding(g_bindings[id].bind1, "");
                 g_bindings[id].bind1 = -1;
             }
             if (g_bindings[id].bind2 != -1) {
-                DC->setBinding(g_bindings[id].bind2, "");
+                UI_SetBinding(g_bindings[id].bind2, "");
                 g_bindings[id].bind2 = -1;
             }
         } else if (g_bindings[id].bind1 == -1) {
@@ -3937,8 +4280,8 @@ qboolean Item_Bind_HandleKey(itemDef_t* item, int key, qboolean down) {
         } else if (g_bindings[id].bind1 != key && g_bindings[id].bind2 == -1) {
             g_bindings[id].bind2 = key;
         } else {
-            DC->setBinding(g_bindings[id].bind1, "");
-            DC->setBinding(g_bindings[id].bind2, "");
+            UI_SetBinding(g_bindings[id].bind1, "");
+            UI_SetBinding(g_bindings[id].bind2, "");
             g_bindings[id].bind1 = key;
             g_bindings[id].bind2 = -1;
         }
@@ -4072,6 +4415,9 @@ void Item_Image_Paint(itemDef_t* item) {
 
 void Item_ListBox_Paint(itemDef_t* item) {
     float x, y, size, thumb;
+    // [QL] scrollbar column and content column, computed once in the vertical
+    // branch below and used by the bar, the rows and the cursor fill alike.
+    float barX = 0.0f, contentX = 0.0f, contentW = 0.0f;
     int count, i;
     qhandle_t image;
     qhandle_t optionalImage;
@@ -4134,8 +4480,93 @@ void Item_ListBox_Paint(itemDef_t* item) {
             //
         }
     } else {
-        // draw scrollbar to right side of the window
-        x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
+        /*
+        [QL] Derive the bar column and the content column together, once.
+
+        These used to be worked out in three separate places - the bar here, the
+        row origin further down, and the cursor fill's width at the bottom - each
+        re-deriving the geometry from item->window.rect with its own arithmetic.
+        That is how the left-hand list ended up drawing its rows over its own
+        scrollbar: two of the three agreed and the third did not. Computing both
+        columns here and using them everywhere below makes the two sides mirror
+        images by construction rather than by three sums happening to match.
+
+        The content column is the same width whichever side the bar is on, so a
+        left-scroll list and a right-scroll list of equal rect.w now have equal
+        row widths. If they still look unequal on screen, the rects themselves
+        differ - cg_scoreboardDebug prints them.
+        */
+        if (item->window.flags & WINDOW_LB_SLIMSCROLL) {
+            /*
+            [QL] A position indicator, not a control.
+
+            The arrows and the thumb are three clickable regions along the edge
+            of the list, and Item_ListBox_OverLB claims a click anywhere in them
+            - so on the scoreboard they swallowed row clicks and cost every row
+            a scroll bar's width. The wheel scrolls the list under the cursor,
+            which is what people reach for anyway, so all this has to do is say
+            how far down the list you are.
+            */
+            /* Sit in the column the full-width bar used, centred in it, rather
+               than flush against the edge of the rect. The list rect is wider
+               than the panel art behind it - Quake Live's own bar was inset by
+               a whole SCROLLBAR_SIZE and landed inside the artwork - so a bar
+               hard against rect.x + rect.w hangs off the panel. contentW keeps
+               the same reservation, so the rows are exactly as wide as they
+               were. */
+            barX = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 2;
+            contentX = item->window.rect.x + 1;
+            contentW = item->window.rect.w - SCROLLBAR_SIZE - 2;
+
+            listPtr->endPos = listPtr->startPos;
+            size = item->window.rect.h - 2;
+
+            {
+                int viewmax = (listPtr->elementHeight > 0)
+                                  ? (int)(item->window.rect.h / listPtr->elementHeight)
+                                  : 0;
+                vec4_t track, bar;
+                int i;
+
+                for (i = 0; i < 3; i++) {
+                    track[i] = item->window.foreColor[i];
+                    bar[i] = item->window.foreColor[i];
+                }
+                track[3] = item->window.foreColor[3] * 0.20f;
+                bar[3] = item->window.foreColor[3] * 0.70f;
+
+                DC->fillRect(barX, item->window.rect.y + 1, SLIMSCROLL_WIDTH, size, track);
+
+                if (viewmax > 0 && count > viewmax) {
+                    float frac = (float)viewmax / (float)count;
+                    float barH = size * frac;
+                    float maxScroll = (float)(count - viewmax);
+                    float pos;
+
+                    if (barH < 4.0f) {
+                        barH = 4.0f;
+                    }
+                    pos = (maxScroll > 0.0f) ? (listPtr->startPos / maxScroll) : 0.0f;
+                    if (pos < 0.0f) {
+                        pos = 0.0f;
+                    } else if (pos > 1.0f) {
+                        pos = 1.0f;
+                    }
+                    DC->fillRect(barX, item->window.rect.y + 1 + (size - barH) * pos,
+                                 SLIMSCROLL_WIDTH, barH, bar);
+                }
+            }
+        } else {
+        if (item->window.flags & WINDOW_LB_LEFTSCROLL) {
+            barX = item->window.rect.x + 1;
+            contentX = item->window.rect.x + 1 + SCROLLBAR_SIZE;
+        } else {
+            barX = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
+            contentX = item->window.rect.x + 1;
+        }
+        contentW = item->window.rect.w - SCROLLBAR_SIZE - 2;
+
+        x = barX;
         y = item->window.rect.y + 1;
         DC->drawHandlePic(x, y, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarArrowUp);
         y += SCROLLBAR_SIZE - 1;
@@ -4154,6 +4585,8 @@ void Item_ListBox_Paint(itemDef_t* item) {
 
         // adjust size for item painting
         size = item->window.rect.h - 2;
+        }
+
         if (listPtr->elementStyle == LISTBOX_IMAGE) {
             // fit = 0;
             x = item->window.rect.x + 1;
@@ -4180,7 +4613,10 @@ void Item_ListBox_Paint(itemDef_t* item) {
                 // fit++;
             }
         } else {
-            x = item->window.rect.x + 1;
+            // [QL] content column computed with the bar column above, so the
+            // rows start after the bar when it is on the left and the bar is
+            // no longer painted over.
+            x = contentX;
             y = item->window.rect.y + 1;
             for (i = listPtr->startPos; i < count; i++) {
                 const char* text;
@@ -4190,6 +4626,17 @@ void Item_ListBox_Paint(itemDef_t* item) {
                 if (listPtr->numColumns > 0) {
                     int j;
                     for (j = 0; j < listPtr->numColumns; j++) {
+                        // [QL] E132. A zero-width column is a placeholder: a
+                        // list asks its feeder for field j by column index, so
+                        // io_scoreboard declares every field up to the last one
+                        // it shows and gives the rest "0 0 0". Painted anyway,
+                        // their text landed at the row's left edge with no
+                        // length limit - the first digit of CTF/CA damage and
+                        // accuracy, half under each head icon ("O", "B", "4").
+                        // No Quake Live menu declares a zero-width column.
+                        if (listPtr->columnInfo[j].width <= 0) {
+                            continue;
+                        }
                         text = DC->feederItemText(item->special, i, j, &optionalImage);
                         if (optionalImage >= 0) {
                             // [QL] icon vertically centered with slight downward nudge
@@ -4209,7 +4656,12 @@ void Item_ListBox_Paint(itemDef_t* item) {
                 }
 
                 if (i == item->cursorPos) {
-                    DC->fillRect(x + 2, y + 2, item->window.rect.w - SCROLLBAR_SIZE - 4, listPtr->elementHeight, item->window.outlineColor);
+                    // [QL] Width from the content column, not re-derived from
+                    // rect.w. The old expression was correct only when the row
+                    // origin was rect.x + 1 - with the bar on the left the rows
+                    // start SCROLLBAR_SIZE further in, so the same width ran the
+                    // highlight past the end of the list box.
+                    DC->fillRect(x + 2, y + 2, contentW - 4, listPtr->elementHeight, item->window.outlineColor);
                 }
 
                 size -= listPtr->elementHeight;
@@ -4552,14 +5004,126 @@ menuDef_t* Menu_GetFocused(void) {
     return NULL;
 }
 
-void Menu_ScrollFeeder(menuDef_t* menu, int feeder, qboolean down) {
+/*
+[QL] Drive a feeder's list box with an arbitrary key rather than only the two
+arrows.
+
+Item_ListBox_HandleKey already understands the wheel, the page keys and
+home/end; Menu_ScrollFeeder just never offered any of them, so a caller outside
+the menu system could move a list one row at a time and no further. The
+scoreboard is the case that needs the rest: it is a list box with ten visible
+rows, and with a server full of players the only way to reach anyone below tenth
+place is to page.
+
+force is passed on, so the item does not have to hold focus or sit under the
+cursor - the caller has already decided which list it means.
+*/
+void Menu_ScrollFeederKey(menuDef_t* menu, int feeder, int key) {
     if (menu) {
         int i;
         for (i = 0; i < menu->itemCount; i++) {
             if (menu->items[i]->special == feeder) {
-                Item_ListBox_HandleKey(menu->items[i], (down) ? K_DOWNARROW : K_UPARROW, qtrue, qtrue);
+                Item_ListBox_HandleKey(menu->items[i], key, qtrue, qtrue);
                 return;
             }
+        }
+    }
+}
+
+void Menu_ScrollFeeder(menuDef_t* menu, int feeder, qboolean down) {
+    Menu_ScrollFeederKey(menu, feeder, (down) ? K_DOWNARROW : K_UPARROW);
+}
+
+/*
+[QL] Scroll a feeder just far enough that a given row is on screen.
+
+Menu_SetFeederSelection records which row is selected but only touches startPos
+when the index is zero, so on a list longer than the window the selected row can
+sit outside the visible range with nothing to say so. The scoreboard sets the
+local player as the selection every time it opens; without this the player is
+simply not on the page they are shown.
+
+Leaves startPos alone when the row is already visible, so opening the scoreboard
+does not fight a scroll position the player chose.
+*/
+void Menu_ShowFeederIndex(menuDef_t* menu, int feeder, int index) {
+    int i;
+
+    if (menu == NULL || index < 0) {
+        return;
+    }
+
+    for (i = 0; i < menu->itemCount; i++) {
+        itemDef_t* item = menu->items[i];
+        listBoxDef_t* listPtr;
+        int viewmax, max;
+
+        if (item->special != feeder) {
+            continue;
+        }
+
+        listPtr = (listBoxDef_t*)item->typeData;
+        if (listPtr == NULL) {
+            return;
+        }
+
+        if (item->window.flags & WINDOW_HORIZONTAL) {
+            viewmax = (listPtr->elementWidth > 0) ? (int)(item->window.rect.w / listPtr->elementWidth) : 0;
+        } else {
+            viewmax = (listPtr->elementHeight > 0) ? (int)(item->window.rect.h / listPtr->elementHeight) : 0;
+        }
+        if (viewmax < 1) {
+            return;
+        }
+
+        if (index < listPtr->startPos) {
+            listPtr->startPos = index;
+        } else if (index >= listPtr->startPos + viewmax) {
+            listPtr->startPos = index - viewmax + 1;
+        }
+
+        max = Item_ListBox_MaxScroll(item);
+        if (listPtr->startPos > max) {
+            listPtr->startPos = max;
+        }
+        if (listPtr->startPos < 0) {
+            listPtr->startPos = 0;
+        }
+        return;
+    }
+}
+
+/*
+[QL] Move a feeder's highlight without moving the view.
+
+Menu_SetFeederSelection resets startPos when the index is zero, which is right
+when the caller is opening a menu and wrong when it is only refreshing which row
+is highlighted. The scoreboard needs the latter every frame: the list re-sorts
+as scores change, so a highlight recorded once at open drifts onto whoever
+happens to be standing at that row later - which is how the local player's
+highlight ended up on somebody else's line.
+*/
+/*
+[QL] index -1 means "no row selected", and is how the other team's list is told
+not to draw a highlight on its first entry. It sets cursorPos without calling
+feederSelection, which expects a real row.
+*/
+void Menu_SetFeederCursor(menuDef_t* menu, int feeder, int index) {
+    int i;
+
+    if (menu == NULL) {
+        return;
+    }
+
+    for (i = 0; i < menu->itemCount; i++) {
+        if (menu->items[i]->special == feeder) {
+            if (menu->items[i]->cursorPos != index) {
+                menu->items[i]->cursorPos = index;
+                if (index >= 0) {
+                    DC->feederSelection(menu->items[i]->special, index);
+                }
+            }
+            return;
         }
     }
 }
@@ -4628,6 +5192,17 @@ menuDef_t* Menus_ActivateByName(const char* p) {
             Menus[i].window.flags &= ~WINDOW_HASFOCUS;
         }
     }
+    /*
+    [QL] E128. Give the new menu the item under the cursor now, as if the
+    mouse had moved. Hover focus is only ever set from mouse movement, so a
+    menu that opens under a cursor that has not moved - a dialog opening in
+    the place the previous button was, like the hardware prompt's second
+    question under the first one's YES - had nothing focused, and the first
+    click on the button right under the pointer did nothing.
+    */
+    if (m) {
+        Menu_HandleMouseMove(m, DC->cursorx, DC->cursory);
+    }
     Display_CloseCinematics();
     return m;
 }
@@ -4654,6 +5229,9 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
     if (!(menu->window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
         return;
     }
+
+    UI_Trace("mouseMove menu '%s' (%i items) at %.0f,%.0f\n",
+             menu->window.name ? menu->window.name : "(unnamed)", menu->itemCount, x, y);
 
     if (itemCapture) {
         // Item_MouseMove(itemCapture, x, y);
@@ -4702,11 +5280,11 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
                 continue;
             }
 
-            if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, menu->items[i]->widescreen)) {
+            if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, Item_Widescreen(menu->items[i]))) {
                 if (pass == 1) {
                     overItem = menu->items[i];
                     if (overItem->type == ITEM_TYPE_TEXT && overItem->text) {
-                        if (!Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(overItem), x, y, overItem->widescreen)) {
+                        if (!Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(overItem), x, y, Item_Widescreen(overItem))) {
                             continue;
                         }
                     }
@@ -4716,9 +5294,31 @@ void Menu_HandleMouseMove(menuDef_t* menu, float x, float y) {
                         Item_MouseEnter(overItem, x, y);
                         // Item_SetMouseOver(overItem, qtrue);
 
-                        // if item is not a decoration see if it can take focus
+                        /*
+                        [QL] An item that already has the focus keeps it.
+
+                        Item_SetFocus returns qfalse for two unrelated reasons:
+                        "this item cannot take focus" and "this item already has
+                        it". Treating both as "focus not set yet" let the search
+                        carry on past the focused item to whatever else is under
+                        the cursor - and the scoreboard has plenty of overlap,
+                        a list box with header items and backing panels across
+                        it.
+
+                        The result was a two-item loop running at frame rate:
+                        A holds focus, so Item_SetFocus(A) returns qfalse,
+                        focusSet stays false, B takes focus and plays the focus
+                        sound; next frame B holds it, so A takes it back and
+                        plays the sound again. That is the mouse-over sound
+                        repeating for as long as the cursor sits on a player
+                        name, and it is a focus fight, not a sound bug.
+                        */
                         if (!focusSet) {
-                            focusSet = Item_SetFocus(overItem, x, y);
+                            if (overItem->window.flags & WINDOW_HASFOCUS) {
+                                focusSet = qtrue;
+                            } else {
+                                focusSet = Item_SetFocus(overItem, x, y);
+                            }
                         }
                     }
                 }
@@ -5626,6 +6226,26 @@ qboolean ItemParse_cvarStrList(itemDef_t* item, int handle) {
         }
 
         if (*token.string == '}') {
+            // [QL] An empty list is always a mistake, and it has exactly one
+            // cause: the entries were written without commas between them.
+            // botlib's PS_ReadString joins adjacent quoted strings the way a C
+            // compiler does, so
+            //     { "OpenGL 2" "opengl2" "Vulkan" "vulkan" }
+            // is one token, "OpenGL 2opengl2Vulkanvulkan", and the list ends up
+            // with nothing in it. Every cvarStrList in Quake Live's own menus
+            // is comma-separated for this reason. Left silent it costs a menu
+            // row that draws blank with no explanation - which it did.
+            if (multiPtr->count == 0) {
+                PC_SourceError(handle,
+                               "cvarStrList for \"%s\" is empty - separate the entries with "
+                               "commas, adjacent quoted strings are joined into one token",
+                               item->cvar ? item->cvar : "(no cvar)");
+            } else if (pass == 1) {
+                PC_SourceError(handle,
+                               "cvarStrList for \"%s\" has an odd number of entries - the last "
+                               "display name has no cvar value after it",
+                               item->cvar ? item->cvar : "(no cvar)");
+            }
             return qtrue;
         }
 
@@ -5942,7 +6562,7 @@ qboolean ItemParse_widescreen(itemDef_t* item, int handle) {
     }
 
     if (item->widescreen < WIDESCREEN_STRETCH || item->widescreen > WIDESCREEN_RIGHT) {
-        PC_SourceError(handle, "Invalid widescreen value %d", item->widescreen);
+        PC_SourceError(handle, "Invalid widescreen value %d", Item_Widescreen(item));
         item->widescreen = WIDESCREEN_STRETCH;
     }
 
@@ -6860,8 +7480,45 @@ void Menu_New(int handle) {
     }
 }
 
+/*
+[QL] Index accessor for the menu array, so callers outside this file can walk
+every loaded menu rather than only look one up by name.
+*/
+menuDef_t* Menu_GetByIndex(int index) {
+    if (index < 0 || index >= menuCount) {
+        return NULL;
+    }
+    return &Menus[index];
+}
+
 int Menu_Count(void) {
     return menuCount;
+}
+
+/*
+[QL] E132. The capture (a dragged list thumb or slider) for a caller that does
+not run Menu_PaintAll. cgame paints its scoreboard itself and deliberately not
+through Menu_PaintAll, so a drag on the scoreboard's scroll bar started and was
+then never advanced: the thumb could not be dragged, only the arrows clicked.
+*/
+void Display_RunCapture(void) {
+    if (captureFunc) {
+        captureFunc(captureData);
+    }
+}
+
+/*
+[QL] E132. Ends a capture on the button coming up. Item_HandleKey only ends one
+on the NEXT key event, which assumes key-ups arrive there; cgame's handler takes
+downs only, so a drag was never let go and the next click was spent ending it.
+*/
+void Display_ReleaseCapture(void) {
+    if (itemCapture) {
+        Item_StopCapture(itemCapture);
+        itemCapture = NULL;
+        captureFunc = 0;
+        captureData = NULL;
+    }
 }
 
 void Menu_PaintAll(void) {
@@ -6889,15 +7546,67 @@ displayContextDef_t* Display_GetContext(void) {
 }
 
 void* Display_CaptureItem(int x, int y) {
-    int i;
+    int i, j;
 
-    for (i = 0; i < menuCount; i++) {
-        // turn off focus each item
-        // menu->items[i].window.flags &= ~WINDOW_HASFOCUS;
+    /*
+    [QL] The topmost menu that actually has something under the cursor.
+
+    This decides which menu a click is delivered to (Display_HandleKey). It has
+    now been wrong in two different ways, and both were visible as buttons that
+    simply did nothing.
+
+    Originally it walked forwards and ignored WINDOW_VISIBLE, so the *first
+    loaded* menu whose rect contained the point won whether it was on screen or
+    not. A closed menu still caught clicks, and a panel drawn on top of a
+    full-screen menu was unclickable because the menu underneath was found
+    first.
+
+    Walking backwards instead - topmost paints last, so topmost should win -
+    fixed the panel and broke the page under it. Quake Live's in-game menu is
+    two overlapping full-screen menus: the tabs and the lower navigation live in
+    "ingame", which loads first, and "ingame_about" loads after and covers the
+    same area with the page content. Backwards handed every click in that region
+    to ingame_about, which has no item there, so Main Menu, Settings and the
+    Back buttons all stopped responding.
+
+    Neither order is the question. What a click wants is the menu that has an
+    item under the cursor, and only when no menu does should the bare rect
+    decide. So: walk from topmost down looking for a visible item containing the
+    point; failing that, fall back to the topmost visible menu whose rect
+    contains it, which preserves out-of-bounds click handling
+    (Menus_HandleOOBClick) for menus that are all background.
+    */
+    for (i = menuCount - 1; i >= 0; i--) {
+        if (!(Menus[i].window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+            continue;
+        }
+        if (!Rect_ContainsWidescreenPoint(&Menus[i].window.rect, x, y, Menus[i].widescreen)) {
+            continue;
+        }
+        for (j = 0; j < Menus[i].itemCount; j++) {
+            itemDef_t* item = Menus[i].items[j];
+
+            if (!item || !(item->window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+                continue;
+            }
+            if (item->window.flags & WINDOW_DECORATION) {
+                continue;   // decorations are painted, not pressed
+            }
+            if (Rect_ContainsWidescreenPoint(&item->window.rect, x, y, Item_Widescreen(item))) {
+                return &Menus[i];
+            }
+        }
+    }
+
+    for (i = menuCount - 1; i >= 0; i--) {
+        if (!(Menus[i].window.flags & (WINDOW_VISIBLE | WINDOW_FORCED))) {
+            continue;
+        }
         if (Rect_ContainsWidescreenPoint(&Menus[i].window.rect, x, y, Menus[i].widescreen)) {
             return &Menus[i];
         }
     }
+
     return NULL;
 }
 
@@ -7001,10 +7710,10 @@ static qboolean Menu_OverActiveItem(menuDef_t* menu, float x, float y) {
                     continue;
                 }
 
-                if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, menu->items[i]->widescreen)) {
+                if (Rect_ContainsWidescreenPoint(&menu->items[i]->window.rect, x, y, Item_Widescreen(menu->items[i]))) {
                     itemDef_t* overItem = menu->items[i];
                     if (overItem->type == ITEM_TYPE_TEXT && overItem->text) {
-                        if (Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(overItem), x, y, overItem->widescreen)) {
+                        if (Rect_ContainsWidescreenPoint(Item_CorrectedTextRect(overItem), x, y, Item_Widescreen(overItem))) {
                             return qtrue;
                         } else {
                             continue;

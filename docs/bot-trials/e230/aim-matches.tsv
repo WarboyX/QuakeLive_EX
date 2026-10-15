@@ -1,0 +1,6 @@
+A1c0	cur	bot_debugAim=0	A1 sweep, log client 0
+A1c5	cur	bot_debugAim=5	A1 sweep, log client 5
+OLDc0	old	bot_debugAim=0	E226 sweep, log client 0
+OLDc5	old	bot_debugAim=5	E226 sweep, log client 5
+SRVc0	cur	bot_debugAim=0 --set bot_aimSweep=0	servo (sweep off), log client 0
+SRVc5	cur	bot_debugAim=5 --set bot_aimSweep=0	servo (sweep off), log client 5

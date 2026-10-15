@@ -1,0 +1,4 @@
+                              frames   secs   error     jerk  rev/s  rev.5  still   10Hz
+E226 sweep (deadzone)          16812    420  19.31d    115.9   1.03   0.32  54.6%  33.7%
+A1 sweep (no deadzone)         15485    387   9.32d     75.9   5.50   3.67   7.4%  13.0%
+servo (sweep off)              16309    408   9.00d     72.7   5.42   2.84   5.8%  12.7%

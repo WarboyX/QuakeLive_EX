@@ -37,6 +37,25 @@ typedef struct teamgame_s {
 
 teamgame_t teamgame;
 
+/*
+[QL] Read a team's flag state.
+
+teamgame is private to this file, and the bot AI needs to tell a flag that has
+been dropped on the floor from one an enemy is carrying - "at base" is not
+enough. Team_SetFlagStatus already keeps this exactly, so expose it rather than
+have the AI re-derive it from CS_FLAGSTATUS.
+*/
+flagStatus_t Team_GetFlagStatus(int team) {
+    switch (team) {
+        case TEAM_RED:
+            return teamgame.redStatus;
+        case TEAM_BLUE:
+            return teamgame.blueStatus;
+        default:
+            return teamgame.flagStatus;
+    }
+}
+
 gentity_t* neutralObelisk;
 
 extern qboolean itemRegistered[];
@@ -430,7 +449,7 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
 
         // the target had the flag, clear the hurt carrier
         // field on the other team
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;
             if (ent->inuse && ent->client->sess.sessionTeam == otherteam)
                 ent->client->pers.teamState.lasthurtcarrier = 0;
@@ -448,7 +467,7 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
 
         // the target had the flag, clear the hurt carrier
         // field on the other team
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;
             if (ent->inuse && ent->client->sess.sessionTeam == otherteam)
                 ent->client->pers.teamState.lasthurtcarrier = 0;
@@ -510,7 +529,7 @@ void Team_FragBonuses(gentity_t* targ, gentity_t* inflictor, gentity_t* attacker
                 return;
         }
         // find attacker's team's flag carrier
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             carrier = g_entities + i;
             if (carrier->inuse && carrier->client->ps.powerups[flag_pw])
                 break;
@@ -834,7 +853,7 @@ int Team_TouchOurFlag(gentity_t* ent, gentity_t* other, int team) {
     Team_CaptureFlagSound(ent, team);
 
     // Ok, let's do the player loop, hand out the bonuses
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         player = &g_entities[i];
 
         // also make sure we don't award assist bonuses to the flag carrier himself.
@@ -1039,6 +1058,52 @@ qboolean Team_GetLocationMsg(gentity_t* ent, char* loc, int loclen) {
 /*---------------------------------------------------------------------------*/
 
 /*
+[QL] Is this spawn point a bad place to arrive right now?
+
+Used by the team spawn picker to keep players off a pad that somebody has just
+taken, and off one an enemy is standing over. Never used to reject a point in
+favour of the other team's base - a contested point of your own is still a
+better answer than the wrong end of the map.
+==================
+*/
+#define SPAWN_REUSE_COOLDOWN 1500    /* ms a point stays "just used" */
+#define SPAWN_ENEMY_RADIUS   700.0f  /* an enemy this close, with line of sight */
+
+static qboolean SpawnPointIsContested(gentity_t* spot, team_t team) {
+    int i;
+
+    if (level.time - spot->lastSpawnTime < SPAWN_REUSE_COOLDOWN) {
+        return qtrue;
+    }
+
+    for (i = 0; i < level.maxclients; i++) {
+        gentity_t* other = &g_entities[i];
+
+        if (!other->inuse || !other->client) {
+            continue;
+        }
+        if (other->client->pers.connected != CON_CONNECTED) {
+            continue;
+        }
+        if (other->client->sess.sessionTeam == team ||
+            other->client->sess.sessionTeam == TEAM_SPECTATOR) {
+            continue;
+        }
+        if (other->health <= 0) {
+            continue;
+        }
+        if (Distance(spot->s.origin, other->r.currentOrigin) > SPAWN_ENEMY_RADIUS) {
+            continue;
+        }
+        if (trap_InPVS(spot->s.origin, other->r.currentOrigin)) {
+            return qtrue;
+        }
+    }
+
+    return qfalse;
+}
+
+/*
 ================
 SelectRandomTeamSpawnPoint
 
@@ -1049,7 +1114,6 @@ go to a random point that doesn't telefrag
 gentity_t* SelectRandomTeamSpawnPoint(int teamstate, team_t team) {
     gentity_t* spot;
     int count;
-    int selection;
     gentity_t* spots[MAX_TEAM_SPAWN_POINTS];
     char* classname;
 
@@ -1072,21 +1136,85 @@ gentity_t* SelectRandomTeamSpawnPoint(int teamstate, team_t team) {
 
     spot = NULL;
 
-    while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
-        if (SpotWouldTelefrag(spot)) {
-            continue;
+    /*
+    [QL] Prefer a spawn point nobody has just used and nobody is watching.
+
+    Two passes over the same team's points, never anyone else's. "spots" holds
+    the ones that are clear on both counts; "warm" holds the ones that only fail
+    the contested test, so a base under pressure still spawns its own team in
+    its own base rather than falling through to somewhere neutral.
+
+    A point is contested when it was used inside SPAWN_REUSE_COOLDOWN - two
+    players arriving on the same pad a moment apart is how a spawn turns into a
+    telefrag or a free frag - or when a live enemy is within
+    SPAWN_ENEMY_RADIUS and can actually see it. The PVS test is what stops the
+    radius rejecting points that are close in a straight line but on the other
+    side of a wall; it is only useful now that trap_InPVS is wired through.
+    */
+    {
+        gentity_t* warm[MAX_TEAM_SPAWN_POINTS];
+        gentity_t* taken[MAX_TEAM_SPAWN_POINTS];
+        int numWarm = 0;
+        int numTaken = 0;
+
+        while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
+            if (SpotWouldTelefrag(spot)) {
+                if (numTaken < MAX_TEAM_SPAWN_POINTS) {
+                    taken[numTaken++] = spot;
+                }
+                continue;
+            }
+            if (SpawnPointIsContested(spot, team)) {
+                if (numWarm < MAX_TEAM_SPAWN_POINTS) {
+                    warm[numWarm++] = spot;
+                }
+                continue;
+            }
+            spots[count] = spot;
+            if (++count == MAX_TEAM_SPAWN_POINTS)
+                break;
         }
-        spots[count] = spot;
-        if (++count == MAX_TEAM_SPAWN_POINTS)
-            break;
+
+        if (count) {
+            return spots[rand() % count];
+        }
+        if (numWarm) {
+            return warm[rand() % numWarm];
+        }
+
+        /*
+        [QL] Every point of this team's would telefrag. Still this team's, never
+        the other side's - arriving on top of somebody is better than arriving
+        in their base - but the *least recently used* of them rather than
+        whichever the entity list happens to hold first.
+
+        `G_Find(NULL, ...)` is the same point every time, so once a base is
+        saturated every respawn is sent to it, telefrags the player it sent
+        there a moment ago, and that player respawns into it in turn. The
+        deathmatch path had the identical bug and it accounted for 98% of the
+        deaths on one map in the log; see SelectRandomFurthestSpawnPoint.
+        */
+        if (numTaken) {
+            int oldest = 0x7FFFFFFF;
+            int numTied = 0;
+            int i;
+            gentity_t* tied[MAX_TEAM_SPAWN_POINTS];
+
+            for (i = 0; i < numTaken; i++) {
+                if (taken[i]->lastSpawnTime < oldest) {
+                    oldest = taken[i]->lastSpawnTime;
+                }
+            }
+            for (i = 0; i < numTaken; i++) {
+                if (taken[i]->lastSpawnTime == oldest) {
+                    tied[numTied++] = taken[i];
+                }
+            }
+            return tied[rand() % numTied];
+        }
     }
 
-    if (!count) {  // no spots that won't telefrag
-        return G_Find(NULL, FOFS(classname), classname);
-    }
-
-    selection = rand() % count;
-    return spots[selection];
+    return G_Find(NULL, FOFS(classname), classname);
 }
 
 /*
@@ -1100,9 +1228,61 @@ gentity_t* SelectCTFSpawnPoint(team_t team, int teamstate, vec3_t origin, vec3_t
 
     spot = SelectRandomTeamSpawnPoint(teamstate, team);
 
+    /*
+    [QL] A map without the initial-spawn entities still has the respawn ones.
+
+    TEAM_BEGIN looks for team_CTF_redplayer / team_CTF_blueplayer, a separate
+    set from the team_CTF_redspawn / bluespawn used for every later respawn, and
+    plenty of maps ship only the latter. Missing them used to drop straight to
+    the team-agnostic info_player_deathmatch fallback, which is how a red player
+    ends up starting the match in the blue base.
+
+    The respawn points for that team are in the right base by definition, so
+    they are a far better answer than "anywhere on the map". Only the
+    team-agnostic fallback is left for a map that has neither.
+    */
+    if (!spot && teamstate == TEAM_BEGIN) {
+        spot = SelectRandomTeamSpawnPoint(TEAM_ACTIVE, team);
+    }
+
     if (!spot) {
+        /*
+        [QL] Say so. This fallback is team-agnostic.
+
+        SelectSpawnPoint picks from info_player_deathmatch without looking at
+        which side the player is on, so once a map sends anyone down this path
+        the teams spawn in each other's bases - which is what "players do not
+        spawn in the correct bases" looks like from inside the game, with no
+        clue as to why.
+
+        It happens when the map has no team_CTF_redspawn / team_CTF_bluespawn
+        for that team (or no team_CTF_redplayer / blueplayer for the initial
+        TEAM_BEGIN spawn, which is a separate set of entities that maps
+        routinely omit). Both are the map's doing rather than ours, but silence
+        makes it indistinguishable from a bug in the spawn code.
+
+        Once per team per level - this runs on every respawn, and a line per
+        death would bury everything else.
+        */
+        static int warned[TEAM_NUM_TEAMS];
+        static int warnedLevel = -1;
+
+        if (warnedLevel != level.startTime) {
+            memset(warned, 0, sizeof(warned));
+            warnedLevel = level.startTime;
+        }
+        if (team >= 0 && team < TEAM_NUM_TEAMS && !warned[team]) {
+            warned[team] = 1;
+            G_Printf(S_COLOR_YELLOW "CTF spawn: this map has no %s and no %s - "
+                     "falling back to info_player_deathmatch, which ignores teams, "
+                     "so both sides will spawn across the map\n",
+                     team == TEAM_RED ? "team_CTF_redplayer" : "team_CTF_blueplayer",
+                     team == TEAM_RED ? "team_CTF_redspawn" : "team_CTF_bluespawn");
+        }
         return SelectSpawnPoint(vec3_origin, origin, angles, isbot);
     }
+
+    spot->lastSpawnTime = level.time;
 
     VectorCopy(spot->s.origin, origin);
     origin[2] += 9;
@@ -1133,7 +1313,6 @@ void TeamOverlayMessage(gentity_t* ent) {
     int i, j;
     gentity_t* player;
     int cnt;
-    int h, a;
     int clients[TEAM_MAXOVERLAY];
     int team;
 
@@ -1157,7 +1336,7 @@ void TeamOverlayMessage(gentity_t* ent) {
     // figure out what client should be on the display
     // we are limited to 8, but we want to use the top eight players
     // but in client order (so they don't keep changing position on the overlay)
-    for (i = 0, cnt = 0; i < g_maxclients.integer && cnt < TEAM_MAXOVERLAY; i++) {
+    for (i = 0, cnt = 0; i < level.maxclients && cnt < TEAM_MAXOVERLAY; i++) {
         player = g_entities + level.sortedClients[i];
         if (player->inuse && player->client->sess.sessionTeam == team) {
             clients[cnt++] = level.sortedClients[i];
@@ -1171,23 +1350,32 @@ void TeamOverlayMessage(gentity_t* ent) {
     string[0] = 0;
     stringlength = 0;
 
-    for (i = 0, cnt = 0; i < g_maxclients.integer && cnt < TEAM_MAXOVERLAY; i++) {
+    /*
+    [QL] One client number per player - NOT Quake 3's six-field overlay row.
+
+    Quake Live's tinfo is a flat list: the count, then that many client numbers.
+    Teammate health, armour, location, weapon and powerups reach the client
+    through the snapshot, not through this message. CG_ParseTeamInfo (binary
+    0x100487b0) reads it that way and says so in its own comment; this emitter
+    was still the stock Quake 3 one, writing six fields per player.
+
+    So the client read every field as a client number. argv(3) is a location,
+    argv(4) a health value, argv(5) armour - and health is what showed up in the
+    error, which is why the numbers looked like nothing in particular:
+
+        CG_ParseTeamInfo: bad client number: 85
+        CG_ParseTeamInfo: bad client number: 90
+
+    It dropped the client on joining any team gametype. The parser is the side
+    matched against the binary, and a stock Quake Live client would expect the
+    same shape, so the emitter is what changes.
+    */
+    for (i = 0, cnt = 0; i < level.maxclients && cnt < TEAM_MAXOVERLAY; i++) {
         player = g_entities + i;
         if (player->inuse && player->client->sess.sessionTeam == team) {
-            h = player->client->ps.stats[STAT_HEALTH];
-            a = player->client->ps.stats[STAT_ARMOR];
-            if (h < 0)
-                h = 0;
-            if (a < 0)
-                a = 0;
-
-            Com_sprintf(entry, sizeof(entry),
-                        " %i %i %i %i %i %i",
-                        //				level.sortedClients[i], player->client->pers.teamState.location, h, a,
-                        i, player->client->pers.teamState.location, h, a,
-                        player->client->ps.weapon, player->s.powerups);
+            Com_sprintf(entry, sizeof(entry), " %i", i);
             j = strlen(entry);
-            if (stringlength + j >= sizeof(string))
+            if (stringlength + j >= MAX_SCOREBOARD_PAYLOAD)
                 break;
             strcpy(string + stringlength, entry);
             stringlength += j;
@@ -1195,17 +1383,107 @@ void TeamOverlayMessage(gentity_t* ent) {
         }
     }
 
-    trap_SendServerCommand(ent - g_entities, va("tinfo %i %s", cnt, string));
+    trap_SendServerCommand(ent - g_entities, va("tinfo %i%s", cnt, string));
+
+    /*
+    [QL] tinfo2 - the detail tinfo no longer carries.
+
+    Matching QL's flat tinfo above fixed the parse errors, but it also took away
+    everything the team overlay draws. Location, health, armour and weapon are
+    Quake 3 tinfo fields; QL's client gets teammate state from the snapshot
+    instead, and ours does not, so the overlay rendered a column of "unknown"
+    and a row of zeroes for every player. That is what "still not wired up"
+    was.
+
+    Rather than break tinfo again, the detail goes in its own command. tinfo
+    stays exactly the shape a stock Quake Live client expects; tinfo2 is ours,
+    and a client that does not know it ignores an unknown command. It also
+    carries the frozen flag, which is the one piece of Freeze Tag state the
+    overlay most needs and which no Quake 3 field ever had - the point of a team
+    overlay in Freeze Tag is seeing at a glance who needs thawing.
+
+    Six ints per player over at most TEAM_MAXOVERLAY (8) players is roughly 200
+    bytes, well inside the 1024-byte reliable command limit, and the same
+    MAX_SCOREBOARD_PAYLOAD guard as above stops it running over.
+    */
+    /*
+    [QL] Only to a client that can parse it.
+
+    "A client that does not know the verb ignores it" was wrong: stock Quake Live
+    prints "Unknown client game command: tinfo2" for every one it receives, and
+    this goes out twice a second per player, so a vanilla client on our server
+    gets a console full of nothing else. ClientUserinfoChanged sets
+    pers.extendedClient from the "iqlclient" userinfo key our engine registers.
+
+    Skipping it costs that client only the overlay detail - tinfo above is the
+    QL-shaped message and still goes to everyone - which is exactly the trade a
+    stock client should get.
+    */
+    if (!ent->client->pers.extendedClient) {
+        return;
+    }
+
+    string[0] = 0;
+    stringlength = 0;
+
+    for (i = 0, cnt = 0; i < level.maxclients && cnt < TEAM_MAXOVERLAY; i++) {
+        player = g_entities + i;
+        if (player->inuse && player->client->sess.sessionTeam == team) {
+            int health = player->client->ps.stats[STAT_HEALTH];
+            int armor = player->client->ps.stats[STAT_ARMOR];
+            int frozen = player->client->ps.powerups[PW_FREEZE] ? 1 : 0;
+
+            // a statue reads health 0; report it as frozen rather than dead so
+            // the overlay can say "thaw me" instead of "gone"
+            if (health < 0) {
+                health = 0;
+            }
+
+            Com_sprintf(entry, sizeof(entry), " %i %i %i %i %i %i", i,
+                        player->client->pers.teamState.location, health, armor,
+                        player->client->ps.weapon, frozen);
+            j = strlen(entry);
+            if (stringlength + j >= MAX_SCOREBOARD_PAYLOAD)
+                break;
+            strcpy(string + stringlength, entry);
+            stringlength += j;
+            cnt++;
+        }
+    }
+
+    trap_SendServerCommand(ent - g_entities, va("tinfo2 %i%s", cnt, string));
 }
 
 void CheckTeamStatus(void) {
     int i;
     gentity_t *loc, *ent;
 
-    if (level.time >= level.nextTeamInfoTime) {
-        level.nextTeamInfoTime = level.time + TEAM_LOCATION_UPDATE_TIME;
+    /*
+    [QL] g_teamOverlayInterval, default 250ms, replacing a hardcoded 1000.
 
-        for (i = 0; i < g_maxclients.integer; i++) {
+    **The cheap one.** tinfo and tinfo2 go to one client each - see the
+    trap_SendServerCommand calls in TeamOverlayMessage, which pass a client
+    number rather than -1 - so this is two reliable commands per client per
+    second at the old rate, into a queue 64 deep that drains every snapshot.
+    Four times that is still nothing.
+
+    A second was too slow for what it carries. tinfo2 is teammate health, armour
+    and weapon: in instagib a teammate's health from a second ago is not stale
+    information, it is wrong information - they have been alive and dead twice
+    since. The cost of fixing that is a few hundred bytes a second per client
+    against the half megabit the snapshots already use.
+    */
+    if (level.time >= level.nextTeamInfoTime) {
+        int interval = g_teamOverlayInterval.integer;
+
+        if (interval < 50) {
+            interval = 50;
+        } else if (interval > TEAM_LOCATION_UPDATE_TIME) {
+            interval = TEAM_LOCATION_UPDATE_TIME;
+        }
+        level.nextTeamInfoTime = level.time + interval;
+
+        for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;
 
             if (ent->client->pers.connected != CON_CONNECTED) {
@@ -1221,7 +1499,7 @@ void CheckTeamStatus(void) {
             }
         }
 
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             ent = g_entities + i;
 
             if (ent->client->pers.connected != CON_CONNECTED) {
@@ -1281,7 +1559,7 @@ static void ObeliskRegen(gentity_t* self) {
         self->health = g_obeliskHealth.integer;
     }
 
-    self->activator->s.modelindex2 = self->health * 0xff / g_obeliskHealth.integer;
+    self->activator->s.modelindex2 = self->health * 0xff / (g_obeliskHealth.integer > 0 ? g_obeliskHealth.integer : 1);  // [QL] 0 was an integer divide by zero
     self->activator->s.frame = 0;
 }
 
@@ -1366,7 +1644,7 @@ static void ObeliskPain(gentity_t* self, gentity_t* attacker, int damage) {
     if (actualDamage <= 0) {
         actualDamage = 1;
     }
-    self->activator->s.modelindex2 = self->health * 0xff / g_obeliskHealth.integer;
+    self->activator->s.modelindex2 = self->health * 0xff / (g_obeliskHealth.integer > 0 ? g_obeliskHealth.integer : 1);  // [QL] 0 was an integer divide by zero
     if (!self->activator->s.frame) {
         G_AddEvent(self, EV_OBELISKPAIN, 0);
     }

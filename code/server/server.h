@@ -33,6 +33,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define MAX_ENT_CLUSTERS 16
 
+// [QL] entityType_t buckets for the snapshot overflow breakdown. ET_EVENTS is
+// open-ended (ET_EVENTS + eventNum), so everything at or above it shares the
+// last bucket.
+#define SNAPTYPE_BUCKETS (ET_EVENTS + 1)
+
 typedef struct svEntity_s {
     struct worldSector_s* worldSector;
     struct svEntity_s* nextEntityInWorldSector;
@@ -83,6 +88,36 @@ typedef struct {
     // routinely on a well-populated server and otherwise fails silently.
     int snapshotEntitiesDropped;
     int nextSnapshotOverflowWarn;
+    // [QL] running tally of what was dropped, by entity type - "256 was not
+    // enough" is not actionable, "180 of them were events" is.
+    int snapshotDroppedByType[SNAPTYPE_BUCKETS];
+    // [QL] the fullest snapshot this map has produced, and what was in it. The
+    // overflow warning only fires once the cap is *hit*, which tells you nothing
+    // about the maps that come close and do not - which is most of the useful
+    // measurement. "snapstats" prints these at any time.
+    int snapshotEntitiesPeak;
+    int snapshotPeakByType[SNAPTYPE_BUCKETS];
+    int snapshotPeakClient;
+    // [QL] Is the tick rate or the rate limit the thing actually delivering
+    // fewer snapshots than sv_fps? SV_RateMsec allows a client
+    // rate/(bytes+28) snapshots a second, so on a busy board the wire can be
+    // the binding constraint long before the tick is - and there was no way to
+    // tell which. Peak message size and the rate-delay count say which.
+    int snapshotBytesPeak;
+    int snapshotsSent;
+    int snapshotsRateDelayed;
+    /* [QL] The same figures over a moving window. A since-map-load peak says
+       what the worst moment was and nothing about when it happened or whether
+       things are getting worse - and the log has no timestamps, so a periodic
+       line is also the only way to place a spike next to whatever else was
+       being printed at the time. sv_snapStatsInterval seconds, 0 for off. */
+    int snapWindowStart;
+    int snapWindowPeak;
+    int snapWindowPeakByType[SNAPTYPE_BUCKETS];
+    int snapWindowBytesPeak;
+    int snapWindowDropped;
+    int snapWindowSent;
+    int snapWindowRateDelayed;
 } server_t;
 
 typedef struct {
@@ -124,6 +159,7 @@ typedef struct client_s {
     int reliableAcknowledge;  // last acknowledged reliable message
     int reliableSent;         // last sent reliable message, not necessarily acknowledged yet
     int nextReliablePressureWarn;  // [QL] rate limit for the near-overflow warning
+    qboolean deferredDrop;         // [QL] overflowed; drop at the top of the next frame, not here
     int messageAcknowledge;
 
     int gamestateMessageNum;  // netchan->outgoingSequence of gamestate
@@ -261,6 +297,8 @@ extern cvar_t* sv_floodProtect;
 extern cvar_t* sv_lanForceRate;
 extern cvar_t* sv_banFile;
 extern cvar_t* sv_altEntDir;
+extern cvar_t* sv_mapEndReport;  // [QL] snapstats + map report at every map change
+extern cvar_t* sv_snapStatsInterval;  // [QL] seconds between rolling snapshot lines, 0 = off
 
 // [QL] sv_altEntDir entity override (sv_init.c)
 void SV_LoadAltEntityString(const char* mapname);
@@ -302,6 +340,8 @@ void QDECL SV_SendServerCommand(client_t* cl, const char* fmt, ...) __attribute_
 void SV_MasterHeartbeat(const char* message);
 void SV_MasterShutdown(void);
 
+void SV_SnapStats_f(void);  // [QL] also called at map end from SV_SpawnServer
+void SV_CheckSnapStatsInterval(void);  // [QL] the rolling line, called per frame
 void SV_AddOperatorCommands(void);
 void SV_RemoveOperatorCommands(void);
 
@@ -319,6 +359,7 @@ void SV_GetUserinfo(int index, char* buffer, int bufferSize);
 
 void SV_ChangeMaxClients(void);
 void SV_SpawnServer(char* server, qboolean killBots);
+int SV_SnapshotBackup(void);
 
 //
 // sv_client.c
@@ -334,6 +375,8 @@ void SV_UserinfoChanged(client_t* cl);
 void SV_ClientEnterWorld(client_t* client, usercmd_t* cmd);
 void SV_FreeClient(client_t* client);
 void SV_DropClient(client_t* drop, const char* reason);
+// [QL] perform the drops SV_AddServerCommand deferred, with the game VM off the stack
+void SV_ProcessDeferredDrops(void);
 
 void SV_ExecuteClientCommand(client_t* cl, const char* s, qboolean clientOK);
 void SV_ClientThink(client_t* cl, usercmd_t* cmd);
@@ -347,6 +390,8 @@ int SV_SendQueuedMessages(void);
 //
 void SV_AddServerCommand(client_t* client, const char* cmd);
 void SV_UpdateServerCommandsToClient(client_t* client, msg_t* msg);
+// [QL] format an entityType_t tally for the snapshot diagnostics
+void SV_FormatSnapshotTypes(char* out, int outSize, const int* counts);
 void SV_WriteFrameToClient(client_t* client, msg_t* msg);
 void SV_SendMessageToClient(msg_t* msg, client_t* client);
 void SV_SendClientMessages(void);

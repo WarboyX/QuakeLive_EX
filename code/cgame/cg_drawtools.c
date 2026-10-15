@@ -52,7 +52,7 @@ void CG_AdjustFrom640(float* x, float* y, float* w, float* h) {
     // scaling if the cgame key catcher is active (scoreboard, etc.)
     useWidescreen = cg_currentWidescreen;
     if (useWidescreen == 0) {
-        if (!(trap_Key_GetCatcher() & KEYCATCH_CGAME)) {
+        if (!CG_CgameUIOwnsScreen()) {
             goto stretch;
         }
     }
@@ -67,7 +67,7 @@ void CG_AdjustFrom640(float* x, float* y, float* w, float* h) {
         *y *= cgs.screenYScale;
         // apply x bias after y is processed (matches binary order)
         if (x) {
-            if (useWidescreen == 2 || (trap_Key_GetCatcher() & KEYCATCH_CGAME)) {
+            if (useWidescreen == 2 || CG_CgameUIOwnsScreen()) {
                 *x += cgs.widescreenBias;
             } else if (useWidescreen == 3) {
                 *x += cgs.widescreenBias * 2.0f;

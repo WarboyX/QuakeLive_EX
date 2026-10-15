@@ -606,6 +606,12 @@ void SetTeam(gentity_t* ent, const char* s) {
         team = TEAM_SPECTATOR;
     } else if (g_maxGameClients.integer > 0 &&
                level.numNonSpectatorClients >= g_maxGameClients.integer) {
+        // [QL] say so. This silently turned a join into a spectate, which looks
+        // from the outside exactly like the join being ignored - the same shape
+        // as the mid-round follow demotion, and just as hard to tell apart from
+        // a bug. Every other refusal above prints; this one did not.
+        trap_SendServerCommand(clientNum,
+            va("cp \"Arena is full. g_maxGameClients is %d.\n\"", g_maxGameClients.integer));
         team = TEAM_SPECTATOR;
     }
 
@@ -790,18 +796,37 @@ void Cmd_Follow_f(gentity_t* ent) {
 Cmd_FollowCycle_f
 =================
 */
-void Cmd_FollowCycle_f(gentity_t* ent, int dir) {
+/*
+[QL] G_FollowCycle - Cmd_FollowCycle_f with the team change made optional.
+
+Following normally means giving up: a player who asks to spectate is moved to
+TEAM_SPECTATOR first, which is right for the console command and for the
+follow-the-next-player cleanup when someone disconnects.
+
+It is wrong for a mid-round join. Freeze_ClientBegin puts a player who arrives
+while a round is live into a follow so they watch until the next round, and they
+are still on a team - but routing that through the team change moved them to
+TEAM_SPECTATOR permanently. SetTeam persists the session, so it survived the
+round ending, a map change, and reconnecting, and nothing ever moved them back:
+the round restart only respawns players who still have a team. Bots demoted
+themselves the same way, which is how they ended up in the spectator list.
+
+So the demotion is a parameter. keepTeam callers get the camera without the
+consequence.
+*/
+static void G_FollowCycle(gentity_t* ent, int dir, qboolean keepTeam) {
     int clientnum;
     int original;
 
     // if they are playing a tournement game, count as a loss
     // [QL] Binary (0x100414c0) also gates this on level.warmupTime == 0.
-    if ((level.warmupTime == 0) && (g_gametype.integer == GT_DUEL) && ent->client->sess.sessionTeam == TEAM_FREE) {
+    if (!keepTeam && (level.warmupTime == 0) && (g_gametype.integer == GT_DUEL) &&
+        ent->client->sess.sessionTeam == TEAM_FREE) {
         ent->client->sess.losses++;
     }
     // first set them to spectator
     // [QL] Binary tests sessionTeam != TEAM_SPECTATOR (not spectatorState).
-    if (ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
+    if (!keepTeam && ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
         SetTeam(ent, "spectator");
     }
 
@@ -863,11 +888,79 @@ void Cmd_FollowCycle_f(gentity_t* ent, int dir) {
     // leave it where it was
 }
 
+void Cmd_FollowCycle_f(gentity_t* ent, int dir) {
+    G_FollowCycle(ent, dir, qfalse);
+}
+
+// [QL] follow without giving up your team - see G_FollowCycle
+void G_FollowCycleKeepTeam(gentity_t* ent, int dir) {
+    G_FollowCycle(ent, dir, qtrue);
+}
+
 /*
 ==================
 G_Say
 ==================
 */
+
+/*
+==================
+G_BotChatReachesHumans
+
+[QL] E139. Whether a bot's broadcast chat or voice line goes to the human
+players, or to the bots only.
+
+Measured at 30 a side, 300 s of standard CTF with chat on: 471 team chat lines
+and 413 team voice lines - three a second on every human's screen, nearly all
+of it "I'm going to get the enemy flag" and "is there a team leader". But the
+bots read each other's team chat (leadership, orders), so dropping lines
+would change what they do. So nothing is dropped: past the budget a line
+still goes to every bot, and is only withheld from people.
+
+The budget is per channel (each team's chat, and all-chat), one line every
+BOTCHAT_INTERVAL ms per four bots on it, so a small game is untouched and a
+thirty-bot team says something about every eleven seconds. A carrier's "I
+have the flag" always gets through. bot_chatlimit 0 turns it off.
+==================
+*/
+#define BOTCHAT_INTERVAL 1500
+
+static int botChatNext[TEAM_NUM_TEAMS];
+
+static qboolean G_BotChatReachesHumans(gentity_t* ent, int mode, const char* voiceid) {
+    int channel, bots = 0, i, interval;
+
+    if (!(ent->r.svFlags & SVF_BOT) || !bot_chatlimit.integer || mode == SAY_TELL) {
+        return qtrue;
+    }
+    if (voiceid && !Q_stricmp(voiceid, "ihaveflag")) {
+        return qtrue;
+    }
+    channel = mode == SAY_TEAM ? ent->client->sess.sessionTeam : TEAM_FREE;
+    if (channel < 0 || channel >= TEAM_NUM_TEAMS) {
+        channel = TEAM_FREE;
+    }
+    for (i = 0; i < level.maxclients; i++) {
+        gentity_t* other = &g_entities[i];
+
+        if (other->inuse && other->client && (other->r.svFlags & SVF_BOT) &&
+            (mode != SAY_TEAM || other->client->sess.sessionTeam == channel)) {
+            bots++;
+        }
+    }
+    interval = BOTCHAT_INTERVAL * (bots > 4 ? bots : 4) / 4;
+    if (botChatNext[channel] > level.time + interval) {
+        botChatNext[channel] = 0;  // a map restart took level.time back
+    }
+    if (level.time < botChatNext[channel]) {
+        return qfalse;
+    }
+    botChatNext[channel] = level.time + interval;
+    if (bot_debugTactics.integer) {
+        G_Printf("botchat to humans: channel %d, every %d ms\n", channel, interval);
+    }
+    return qtrue;
+}
 
 static void G_SayTo(gentity_t* ent, gentity_t* other, int mode, int color, const char* name, const char* message) {
     if (!other) {
@@ -957,9 +1050,16 @@ void G_Say(gentity_t* ent, gentity_t* target, int mode, const char* chatText) {
     }
 
     // send it to all the appropriate clients
-    for (j = 0; j < level.maxclients; j++) {
-        other = &g_entities[j];
-        G_SayTo(ent, other, mode, color, name, text);
+    {
+        qboolean humans = G_BotChatReachesHumans(ent, mode, NULL);  // [QL] E139
+
+        for (j = 0; j < level.maxclients; j++) {
+            other = &g_entities[j];
+            if (!humans && !(other->r.svFlags & SVF_BOT)) {
+                continue;
+            }
+            G_SayTo(ent, other, mode, color, name, text);
+        }
     }
 }
 
@@ -1090,9 +1190,16 @@ void G_Voice(gentity_t* ent, gentity_t* target, int mode, const char* id, qboole
     }
 
     // send it to all the appropriate clients
-    for (j = 0; j < level.maxclients; j++) {
-        other = &g_entities[j];
-        G_VoiceTo(ent, other, mode, id, voiceonly);
+    {
+        qboolean humans = G_BotChatReachesHumans(ent, mode, id);  // [QL] E139
+
+        for (j = 0; j < level.maxclients; j++) {
+            other = &g_entities[j];
+            if (!humans && !(other->r.svFlags & SVF_BOT)) {
+                continue;
+            }
+            G_VoiceTo(ent, other, mode, id, voiceonly);
+        }
     }
 }
 
@@ -1590,7 +1697,7 @@ void Cmd_CallVote_f(gentity_t *ent) {
         if (ts < 0 || ts > 64) {
             trap_SendServerCommand(clientNum,
                 va("print \"Invalid team size. (Valid Range: %d - %d)\n\"",
-                   g_teamSizeMin.integer, g_maxclients.integer));
+                   g_teamSizeMin.integer, level.maxclients));
             return;
         }
     }
@@ -1778,22 +1885,26 @@ static void Cmd_IntermissionVote_f(gentity_t *ent) {
     int clientNum = ent - g_entities;
     char msg[64];
     int choice;
-    char nextmaps[MAX_STRING_CHARS];
 
     if (g_voteFlags.integer & VF_ENDMAP_VOTING) {
         return;
     }
 
-    trap_Cvar_VariableStringBuffer("nextmaps", nextmaps, sizeof(nextmaps));
-    if (!nextmaps[0]) {
+    /* [QL] The three arenas BeginIntermission published, not the "nextmaps"
+       cvar - they agree when an admin set it, and only these are filled when
+       the candidates were drawn from the installed maps instead. */
+    if (!level.intermissionMapNames[0][0]) {
         return;
     }
 
     trap_Argv(1, msg, sizeof(msg));
     choice = atoi(msg);
 
-    // 20-second voting window
-    if (level.time - level.voteTime >= 20000) {
+    /* [QL] The window the server published, not a second copy of the number.
+       level.mapVoteEndTime is what CS_ROTATIONMAPS carries to every client and
+       what CheckIntermissionExit acts on, so a vote accepted here is a vote the
+       countdown on screen still had time left for. */
+    if (level.time >= level.mapVoteEndTime) {
         trap_SendServerCommand(clientNum, "print \"Voting time has expired.\n\"");
         return;
     }
@@ -1840,11 +1951,10 @@ static void Cmd_IntermissionVote_f(gentity_t *ent) {
                : level.intermissionMapNames[choice - 1]));
 
     // Update map vote counts configstring
-    trap_SetConfigstring(CS_ROTATIONVOTES,
-        va("%d %d %d",
-           level.intermissionMapVotes[0],
-           level.intermissionMapVotes[1],
-           level.intermissionMapVotes[2]));
+    G_SendMapVoteTallies();
+
+    // [QL] everyone in? then stop making them wait out the clock
+    G_CheckMapVoteAllIn();
 }
 
 /*
@@ -1906,8 +2016,10 @@ void Cmd_SetViewpos_f(gentity_t* ent) {
         trap_SendServerCommand(ent - g_entities, "print \"Cheats are not enabled on this server.\n\"");
         return;
     }
-    if (trap_Argc() != 5) {
-        trap_SendServerCommand(ent - g_entities, "print \"usage: setviewpos x y z yaw\n\"");
+    // [QL] E192: an optional pitch, so a scripted camera can look down at a
+    // spot exactly; holding +lookdown for a time was never the same twice
+    if (trap_Argc() != 5 && trap_Argc() != 6) {
+        trap_SendServerCommand(ent - g_entities, "print \"usage: setviewpos x y z yaw [pitch]\n\"");
         return;
     }
 
@@ -1919,6 +2031,10 @@ void Cmd_SetViewpos_f(gentity_t* ent) {
 
     trap_Argv(4, buffer, sizeof(buffer));
     angles[YAW] = atof(buffer);
+    if (trap_Argc() == 6) {
+        trap_Argv(5, buffer, sizeof(buffer));
+        angles[PITCH] = atof(buffer);
+    }
 
     TeleportPlayer(ent, origin, angles);
 }
@@ -2019,21 +2135,38 @@ static void Cmd_PStats_f(gentity_t* ent) {
 Binary: qagamex86.dll 0x10045db0
 =================
 */
+/*
+[QL] Under g_debugWarmup, say why a readyup did nothing.
+
+Every early-out below is silent, and from the player's side they are all the
+same event: press the key, nothing happens, warmup reports "not enough ready".
+Six different reasons produce that, and none of them reaches the console.
+*/
+#define READYUP_REFUSED(reason)                                                        \
+    do {                                                                               \
+        if (g_debugWarmup.integer) {                                                   \
+            G_Printf("^3warmup^7 readyup from client %d refused: %s\n",                \
+                     (int)(ent - g_entities), reason);                                 \
+        }                                                                              \
+        return;                                                                        \
+    } while (0)
+
 static void Cmd_ReadyUp_f(gentity_t* ent) {
     gclient_t* cl;
 
     // Valid during warmup (warmupTime < 0) or intermission
     if (level.warmupTime >= 0 && level.intermissionTime == 0)
-        return;
+        READYUP_REFUSED(va("warmupTime is %d (readyup only applies in PRE_GAME or "
+                           "at intermission)", level.warmupTime));
 
     // [QL] Binary also runs a bot-only training pre-step here (g_isBotOnly +
     // Cmd_SkipTraining_f); ioquakelive has no Cmd_SkipTraining_f, so it is skipped.
     cl = ent->client;
     if (!cl) return;
-    if (cl->ps.pm_type == PM_SPECTATOR) return;
-    if (cl->sess.sessionTeam == TEAM_SPECTATOR) return;
+    if (cl->ps.pm_type == PM_SPECTATOR) READYUP_REFUSED("pm_type is PM_SPECTATOR");
+    if (cl->sess.sessionTeam == TEAM_SPECTATOR) READYUP_REFUSED("on the spectator team");
     // Binary tests pm_flags & 0x1000 (PMF_FOLLOW), not PMF_FROZEN.
-    if (cl->ps.pm_flags & PMF_FOLLOW) return;
+    if (cl->ps.pm_flags & PMF_FOLLOW) READYUP_REFUSED("following another client (PMF_FOLLOW)");
 
     if (level.warmupTime < 0) {
         // Validate minimum players
@@ -2052,13 +2185,13 @@ static void Cmd_ReadyUp_f(gentity_t* ent) {
                 trap_SendServerCommand(ent - g_entities,
                     "print \"Cannot ready up until more players are present.\n\"");
             }
-            return;
+            READYUP_REFUSED("TeamsPresent() is false");
         }
         // Validate team balance
         if (!G_CheckTeamBalance()) {
             trap_SendServerCommand(ent - g_entities,
                 "print \"Players cannot ready up until both teams are fully present.\n\"");
-            return;
+            READYUP_REFUSED("G_CheckTeamBalance() is false");
         }
     }
 
@@ -2069,6 +2202,12 @@ static void Cmd_ReadyUp_f(gentity_t* ent) {
     // Toggle ready state
     cl->pers.ready = !cl->pers.ready;
     ClientUserinfoChanged(ent - g_entities);
+
+    if (g_debugWarmup.integer) {
+        G_Printf("^3warmup^7 readyup: client %d is now %s (pers.ready read back as %d "
+                 "after ClientUserinfoChanged)\n",
+                 (int)(ent - g_entities), cl->pers.ready ? "READY" : "not ready", cl->pers.ready);
+    }
 
     // Announce during warmup
     if (level.warmupTime < 0) {

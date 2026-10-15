@@ -230,7 +230,7 @@ void SV_GetServerinfo(char* buffer, int bufferSize) {
     if (bufferSize < 1) {
         Com_Error(ERR_DROP, "SV_GetServerinfo: bufferSize == %i", bufferSize);
     }
-    Q_strncpyz(buffer, Cvar_InfoString(CVAR_SERVERINFO), bufferSize);
+    Q_strncpyz(buffer, Cvar_InfoString_Big(CVAR_SERVERINFO), bufferSize);
 }
 
 /*
@@ -326,7 +326,44 @@ static qboolean SV_GI_GetEntityToken(char *buf, int size) {
 
 // --- Bot library wrappers (runtime botlib_export check) ---
 
+static struct {
+    qboolean allowed, active;
+    botTimingStage_t stage;
+    int64_t last;
+} sv_botTiming;
+
+static void SV_BotTimingMark(const char *value) {
+    int64_t now;
+    botTimingStage_t next;
+
+    if (!sv_botTiming.allowed) return;
+    if (!strcmp(value, "begin")) {
+        if (sv_botTiming.active) return;
+        sv_botTiming.active = qtrue;
+        sv_botTiming.stage = BOT_TIMING_SETUP;
+        sv_botTiming.last = Sys_Microseconds();
+        return;
+    }
+    if (!sv_botTiming.active) return;
+    if (!strcmp(value, "world")) next = BOT_TIMING_WORLD;
+    else if (!strcmp(value, "ai")) next = BOT_TIMING_AI;
+    else if (!strcmp(value, "input")) next = BOT_TIMING_INPUT;
+    else if (!strcmp(value, "end")) next = BOT_TIMING_STAGES;
+    else return;
+
+    now = Sys_Microseconds();
+    com_usBotStages[sv_botTiming.stage] += now - sv_botTiming.last;
+    com_usBots += now - sv_botTiming.last;
+    sv_botTiming.last = now;
+    if (next == BOT_TIMING_STAGES) sv_botTiming.active = qfalse;
+    else sv_botTiming.stage = next;
+}
+
 static int SV_GI_BotLibVarSet(const char *n, const char *v) {
+    if (!strcmp(n, BOT_TIMING_MARKER)) {
+        SV_BotTimingMark(v);
+        return 0;
+    }
     return botlib_export ? botlib_export->BotLibVarSet((char*)n, (char*)v) : 0;
 }
 
@@ -1112,6 +1149,13 @@ static void SV_PopulateGameImports(void) {
     sv_gameImports.trap_IncrementSteamStat     = SV_GI_IncrementSteamStat;
     sv_gameImports.trap_GetSteamStat           = SV_GI_GetSteamStat;
     sv_gameImports.trap_VerifySteamAuth        = SV_GI_VerifySteamAuth;
+    /* [QL] see the note in gameImport_t: without these Team_GetLocation can
+       never resolve a location, so the team overlay reads ALIVE for everyone. */
+    sv_gameImports.trap_InPVS                  = SV_inPVS;
+    sv_gameImports.trap_InPVSIgnorePortals     = SV_inPVSIgnorePortals;
+    /* [QL] and the same for the file lister - see gameImport_t. Stubbed to 0 it
+       left G_LoadArenas and G_LoadBots believing scripts/ was empty. */
+    sv_gameImports.trap_FS_GetFileList         = FS_GetFileList;
 }
 
 //==============================================
@@ -1125,8 +1169,13 @@ void SV_GameShutdown(int restart) {
 }
 
 void SV_GameRunFrame(int serverTime) {
+    sv_botTiming.active = qfalse;
+    sv_botTiming.allowed = com_cpuTimings && com_cpuTimings->integer;
     if (sv_vmMainTable[GAME_RUN_FRAME])
         ((void (*)(int))sv_vmMainTable[GAME_RUN_FRAME])(serverTime);
+    // Also close a missing end marker from an older or interrupted game module.
+    SV_BotTimingMark("end");
+    sv_botTiming.allowed = qfalse;
 }
 
 void SV_GameRegisterCvars(void) {
@@ -1230,6 +1279,8 @@ SV_RestartGameProgs
 Called on a map_restart, but not on a normal map change
 ===================
 */
+static void SV_LoadGameDll(void);
+
 void SV_RestartGameProgs(void) {
     if (!sv_gameLibHandle) {
         return;
@@ -1241,8 +1292,26 @@ void SV_RestartGameProgs(void) {
     sv_gameLibHandle = NULL;
     memset(sv_vmMainTable, 0, sizeof(sv_vmMainTable));
 
-    // Reload
-    SV_InitGameProgs();
+    /*
+    [QL] Load the module, then run GAME_INIT exactly once, with restart=qtrue.
+
+    This called SV_InitGameProgs(), which ends in SV_InitGameVM(qfalse) and so
+    had already run GAME_INIT - and then ran SV_InitGameVM(qtrue) on top of it.
+    Every map_restart therefore initialised the game twice.
+
+    That is what stopped matches ever starting. g_restarted is a one-shot flag:
+    the warmup countdown sets it, map_restart fires, and SP_worldspawn reads it
+    to decide whether to come up IN_PROGRESS or in PRE_GAME - clearing it as it
+    goes. The first init consumed it and went live; the second saw 0 and went
+    straight back to warmup, taking every client's ready flag with it. From the
+    outside the countdown finished, the announcer fired, and warmup started
+    over, with no scoring because AddScore returns while warmupTime is non-zero.
+
+    ioquake3 has the same two-function split and does not have this problem
+    because its VM_Restart does not call GAME_INIT - only SV_InitGameVM does.
+    The native-DLL loader here folded the two together.
+    */
+    SV_LoadGameDll();
     SV_InitGameVM(qtrue);
 }
 
@@ -1253,7 +1322,13 @@ SV_InitGameProgs
 Called on a normal map change, not on a map_restart
 ===============
 */
-void SV_InitGameProgs(void) {
+/*
+[QL] Everything SV_InitGameProgs does except running GAME_INIT.
+
+Split out so SV_RestartGameProgs can reload the module and then initialise it
+once, rather than inheriting the qfalse init from here and adding a qtrue one.
+*/
+static void SV_LoadGameDll(void) {
     cvar_t *var;
     extern int bot_enable;
     typedef void (*dllEntryProc)(void **vmMainTable, gameImport_t *imports, int *apiVersion);
@@ -1300,7 +1375,18 @@ void SV_InitGameProgs(void) {
     dllEntry(sv_vmMainTable, &sv_gameImports, &sv_apiVersion);
 
     Com_Printf("Game DLL loaded, API version %d\n", sv_apiVersion);
+}
 
+/*
+===============
+SV_InitGameProgs
+
+Called for a fresh server. Loads the module and runs GAME_INIT once with
+restart=qfalse.
+===============
+*/
+void SV_InitGameProgs(void) {
+    SV_LoadGameDll();
     SV_InitGameVM(qfalse);
 }
 

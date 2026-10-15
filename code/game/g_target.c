@@ -211,7 +211,23 @@ void SP_target_speaker(gentity_t* ent) {
         ent->spawnflags |= 8;
     }
 
-    if (!strstr(s, ".wav")) {
+    /*
+    [QL] Add an extension only when there is not one already.
+
+    id's test was `!strstr(s, ".wav")`, written when .wav was the only sound
+    format there was. Quake Live's maps point their speakers at .ogg files, so
+    "sound/nctsdm1/waves.ogg" fails that test and is turned into
+    "sound/nctsdm1/waves.ogg.wav", which does not exist.
+
+    That is not a silent failure. S_RegisterSound returns 0 for a sound it could
+    not load, and handle 0 is not silence: S_BeginRegistration registers
+    sound/feedback/hit.wav first precisely so that slot is occupied. So every
+    ambient speaker on such a map ends up looping the hit beep at its own
+    position, attenuated by distance - a repeating sound that gets louder as you
+    walk towards nothing in particular. arkinholm has five of them (waves,
+    gulls, cave_drips, fire1, frogs) and the console names all five.
+    */
+    if (!COM_GetExtension(s)[0]) {
         Com_sprintf(buffer, sizeof(buffer), "%s.wav", s);
     } else {
         Q_strncpyz(buffer, s, sizeof(buffer));
@@ -467,6 +483,7 @@ void SP_target_position(gentity_t* self) {
 static void target_location_linkup(gentity_t* ent) {
     int i;
     int n;
+    int overflow = 0;
 
     if (level.locationLinked)
         return;
@@ -477,17 +494,80 @@ static void target_location_linkup(gentity_t* ent) {
 
     trap_SetConfigstring(CS_LOCATIONS, "unknown");
 
+    /*
+    [QL] Stop at MAX_LOCATIONS.
+
+    This loop had no bound on n, and wrote trap_SetConfigstring(CS_LOCATIONS + n)
+    for every target_location in the map. The block is only MAX_LOCATIONS (64)
+    entries - CS_LOCATIONS 593 through 656 - and everything the protocol needs
+    sits immediately after it:
+
+        657 CS_LAST_GENERIC      658 CS_FLAGSTATUS      659 CS_SCORES1PLAYER
+        661 CS_ROUND_WARMUP      662 CS_ROUND_START_TIME
+        663 CS_TEAMCOUNT_RED     664 CS_TEAMCOUNT_BLUE  665 CS_SHADERSTATE
+        666 CS_NEXTMAP           669 CS_PAUSE_START_TIME
+        671 CS_TIMEOUTS_RED      692 CS_REDTEAMBASE     693 CS_BLUETEAMBASE
+
+    So a map with more than 64 of them overwrote flag status, round state, team
+    counts, the next map, the pause and timeout clocks and the award slots with
+    location names - silently, because SetConfigstring does not care what it is
+    given. That is what put "Main Entrance" and "Blue Courtyard" on the CTF
+    scoreboard's team headers: those are CS 692 and 693, which is
+    CS_LOCATIONS + 99 and + 100, so they are simply the map's hundredth and
+    hundred-and-first locations landing where the base names belong.
+
+    Raising MAX_LOCATIONS is not the fix. The configstring layout is the wire
+    protocol, and moving CS_LAST_GENERIC would put every index after it at a
+    different number than a stock Quake Live client expects - the "Seen by:
+    stock QL only" trap from CLAUDE.md. The block is the size it is; what has to
+    change is writing past the end of it.
+
+    Locations past the limit keep index 0, which is the "unknown" entry set
+    above, so they degrade to an unnamed location instead of corrupting the
+    match. The warning names the map's count because a map quietly losing its
+    location names is worth knowing about.
+    */
     for (i = 0, ent = g_entities, n = 1;
          i < level.num_entities;
          i++, ent++) {
         if (ent->classname && !Q_stricmp(ent->classname, "target_location")) {
-            // lets overload some variables!
-            ent->health = n;  // use for location marking
-            trap_SetConfigstring(CS_LOCATIONS + n, ent->message);
-            n++;
-            ent->nextTrain = level.locationHead;
-            level.locationHead = ent;
+            if (n < MAX_LOCATIONS) {
+                // lets overload some variables!
+                ent->health = n;  // use for location marking
+                trap_SetConfigstring(CS_LOCATIONS + n, ent->message);
+                n++;
+                ent->nextTrain = level.locationHead;
+                level.locationHead = ent;
+            } else {
+                /*
+                [QL] Left out of the list entirely, not linked with index 0.
+
+                Linking them with the "unknown" index made Team_GetLocation able
+                to *win* with one: it picks the nearest entity in PVS, so a
+                player standing beside an over-limit location got location 0 and
+                the overlay read ALIVE - while a few steps away, next to a
+                location that did make the cut, it read properly. That is the
+                reported "blue base locations are less defined than red base":
+                the map's locations are numbered in spawn order, so the 22 that
+                overflow are not spread evenly around the map, they are whichever
+                end of it got built last.
+
+                Dropping them from the list makes the nearest *named* location
+                win instead, which is a slightly wrong name rather than no name.
+                */
+                ent->health = 0;
+                overflow++;
+            }
         }
+    }
+
+    if (overflow > 0) {
+        G_Printf("^3WARNING: this map has %i target_location entities, %i more than "
+                 "the %i the protocol has room for. The extra ones report "
+                 "\"unknown\" rather than being written past the end of the "
+                 "configstring block, which would overwrite flag status, round "
+                 "state, team counts and the next map.\n",
+                 n - 1 + overflow, overflow, MAX_LOCATIONS - 1);
     }
 
     // All linked together now

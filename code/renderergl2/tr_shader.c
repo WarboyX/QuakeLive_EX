@@ -509,6 +509,53 @@ static void ParseTexMod(char* _text, shaderStage_t* stage) {
 ParseStage
 ===================
 */
+/*
+===============
+R_ShaderKeywordIgnored
+
+[QL] Unknown shader keywords are ignored, not fatal.
+
+Both parsers answered an unrecognised keyword with "return qfalse", and
+ParseShader turns that into defaultShader on the *whole shader* - one keyword it
+has never heard of and the entire material becomes the black box with the white
+border, with nothing on screen to say why.
+
+That is the wrong trade for a renderer reading someone else's shader scripts.
+Skipping a keyword whose meaning we lack renders the shader slightly wrong;
+failing it renders the shader completely wrong and takes the model with it.
+
+This renderer already knew the keyword that caused the trouble in the Vulkan
+build (novlcollapse), so nothing visible changes here - but the next unknown
+keyword would have cost a material silently, and the console was already
+printing one warning per shader per keyword, which is 40 identical lines for one
+keyword across 40 player skins. Report each keyword once instead.
+===============
+*/
+#define MAX_IGNORED_KEYWORDS 64
+
+static char ignoredKeyword[MAX_IGNORED_KEYWORDS][32];
+static int numIgnoredKeywords;
+
+static void R_ShaderKeywordIgnored(const char* keyword, const char* shaderName, qboolean inStage) {
+    int i;
+
+    for (i = 0; i < numIgnoredKeywords; i++) {
+        if (Q_stricmp(ignoredKeyword[i], keyword) == 0) {
+            return;
+        }
+    }
+
+    if (numIgnoredKeywords < MAX_IGNORED_KEYWORDS) {
+        Q_strncpyz(ignoredKeyword[numIgnoredKeywords], keyword, sizeof(ignoredKeyword[0]));
+        numIgnoredKeywords++;
+    }
+
+    ri.Printf(PRINT_DEVELOPER,
+              "shader keyword '%s' is not known to this renderer and is being ignored "
+              "(first seen %s '%s')\n",
+              keyword, inStage ? "in a stage of" : "in", shaderName);
+}
+
 static qboolean ParseStage(shaderStage_t* stage, char** text) {
     char* token;
     int depthMaskBits = GLS_DEPTHMASK_TRUE, blendSrcBits = 0, blendDstBits = 0, atestBits = 0, depthFuncBits = 0;
@@ -1115,8 +1162,9 @@ static qboolean ParseStage(shaderStage_t* stage, char** text) {
 
             continue;
         } else {
-            ri.Printf(PRINT_WARNING, "WARNING: unknown parameter '%s' in shader '%s'\n", token, shader.name);
-            return qfalse;
+            R_ShaderKeywordIgnored(token, shader.name, qtrue);
+            SkipRestOfLine(text);
+            continue;
         }
     }
 
@@ -1709,8 +1757,9 @@ static qboolean ParseShader(char** text) {
             shader.lightmapIndex = LIGHTMAP_NONE;        // FIXME not actually sure if this works
             continue;
         } else {
-            ri.Printf(PRINT_WARNING, "WARNING: unknown general shader parameter '%s' in '%s'\n", token, shader.name);
-            return qfalse;
+            R_ShaderKeywordIgnored(token, shader.name, qfalse);
+            SkipRestOfLine(text);
+            continue;
         }
     }
 

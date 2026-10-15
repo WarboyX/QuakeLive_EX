@@ -29,6 +29,17 @@ def git(args):
 
 
 def detect_hash():
+    # [QL] An override, for a build whose tree is deliberately dirty at the moment
+    # it compiles. package-release.sh stamps the revision into
+    # content/pak01/ui/main.menu before building and restores it afterwards, so
+    # every packaged build reported itself as "-dirty" in the version string and
+    # in the serverinfo - in the one place people read to find out which build
+    # they are on. The packager computes the revision before it edits anything
+    # and passes it here.
+    override = os.environ.get('PRODUCT_GIT_HASH')
+    if override:
+        return override
+
     short = git(['rev-parse', '--short=10', 'HEAD'])
     if not short:
         return 'unknown'

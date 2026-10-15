@@ -22,13 +22,62 @@ if ! git diff-index --quiet HEAD -- 2>/dev/null; then
     REV="$REV-dirty"
 fi
 
+# The revision the engine reports in FULL_PRODUCT_VERSION and in serverinfo.
+# Computed here, before the pak01 stamp below edits a tracked file: without this
+# the header generator sees its own packager's edit as an uncommitted change and
+# every packaged build called itself "-dirty".
+PRODUCT_GIT_HASH=$(git rev-parse --short=10 HEAD)
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    PRODUCT_GIT_HASH="$PRODUCT_GIT_HASH-dirty"
+fi
+export PRODUCT_GIT_HASH
+
 L=build/release-linux-x86_64
 W=build/release-mingw32-x86_64
 
 # A mode config only sets what it cares about, so anything it does not mention
 # survives from whatever ran before it. common.cfg resets those; this fails the
 # build if a config sets something that reset block does not cover.
-python3 content/serverconfigs/check-configs.py
+
+# Every empty function body has to carry a reviewed verdict (tools/stub-report.py
+# and docs/stub-manifest.txt). This fails the build on an unclassified one, which
+# is the point: an empty function is indistinguishable from a finished one at the
+# call site, so a new one has to be looked at deliberately rather than joining the
+# seventy-odd that were already there.
+
+# The same idea for cvars. 240 are registered and read by nothing, and they are
+# staying - they are Quake Live's, transcribed from the real binary so a factory
+# file or a stock client finds the name it expects, and wiring one up means
+# implementing the feature rather than deleting the name. Each has a recorded
+# verdict in docs/cvar-manifest.txt; a 241st with no verdict fails here, which is
+# the whole point. g_spawnItemWeapons was registered, documented, set in the
+# shipped instagib configs and read by nothing, and instagib servers kept
+# spawning weapons.
+
+# And the same idea for assets. RE_RegisterModel and RE_RegisterShader return 0
+# for a name the paks do not contain - not an error code, a handle that draws
+# nothing - so a wrong name is invisible in the console and on screen. This
+# checks every literal model, sound and skin name against
+# docs/pak-manifest.txt. It found Overload's "your base is under attack" sound
+# registered under a Quake 3 name the paks have never contained.
+
+# And for menu rows. A multi-choice row draws blank when its cvar holds a value
+# the row does not list, and a "(default)" label on the wrong value sends every
+# reset somewhere else. r_ssrSteps/r_ssrThickness shipped blank on every
+# install; roundlimit and g_itemHeight did too. This compares every row with
+# the default the code registers.
+
+# And a row whose cvar nothing in the code names at all: it sets, shows and
+# saves a value that no code reads. The in-game Bloom & Post page carried eight
+# (E183) - "Post processing: Yes" while r_fbo, the real switch, was 0.
+
+# A menu that fails to parse merges into the next one and shows the wrong items,
+# loud only in the console (CLAUDE.md). And a scoreboard emitter and its parser
+# that disagree on the field count shift every column after the first mismatch.
+# Both were documented as "run after touching..." and never run here.
+
+# All of the above, in tools/validate.sh so CI runs the same list.
+tools/validate.sh
 
 echo "building $REV"
 
@@ -38,8 +87,23 @@ echo "building $REV"
 # actually loaded, so a screenshot settles it.
 sed -i "s/@@PAKSTAMP@@/$REV/g" content/pak01/ui/main.menu
 trap 'sed -i "s/pak01 $REV/pak01 @@PAKSTAMP@@/g" content/pak01/ui/main.menu' EXIT
-make -j"$JOBS"
-make PLATFORM=mingw32 ARCH=x86_64 -j"$JOBS"
+# BUILD_RENDERER_VULKAN is off in the Makefile's default so an ordinary build
+# cannot be affected by the port. It is on here because a renderer nobody can
+# select is a renderer nobody can test - and it is genuinely inert until
+# cl_renderer says otherwise: opengl2 is byte-identical either way.
+make BUILD_RENDERER_VULKAN=1 -j"$JOBS"
+make PLATFORM=mingw32 ARCH=x86_64 BUILD_RENDERER_VULKAN=1 -j"$JOBS"
+
+# Nothing above can tell whether the build it just did was correct. A stale
+# object links as happily as a fresh one; E81 shipped a half-brightness client
+# from a commit that only compared extension strings, because one object was
+# built against the previous layout of vk_t and nothing rebuilt it.
+#
+# This reads the .d files the compiler wrote and checks no object is older than
+# a header it includes. It runs after make, not before, because the question is
+# about what was produced and not about what the source says.
+python3 tools/check-stale-objects.py
+python3 tools/check-native-game-modules.py build/release-linux-x86_64
 
 rm -rf "$OUT/pkg"
 mkdir -p "$OUT/pkg" "$OUT/stage"
@@ -51,11 +115,40 @@ mkdir -p "$LD/baseq3" "$WD/baseq3"
 cp -p $L/quakelive.x86_64 $L/quakelive_dedicated.x86_64 $L/opengl2x86_64.so "$LD/"
 cp -p $W/quakelive.x86_64.exe $W/quakelive_dedicated.x86_64.exe $W/opengl2x86_64.dll $W/SDL2.dll "$WD/"
 
+# The Vulkan renderer sits next to the OpenGL one and is reached with
+# "cl_renderer vulkan" + "vid_restart". Nothing loads it otherwise. Copied
+# only if it was built, so the package still forms with the target off.
+# ("if" rather than "[ ... ] && cp": set -e would take the false test as a
+# failed command and abort the whole package.)
+if [ -f $L/vulkanx86_64.so ]; then cp -p $L/vulkanx86_64.so "$LD/"; fi
+if [ -f $W/vulkanx86_64.dll ]; then cp -p $W/vulkanx86_64.dll "$WD/"; fi
+
 # iobin.pk3 holds every platform's game modules, so one pak serves a linux
 # server and its windows clients and both pass the same sv_pure checksum.
+#
+# macOS is built separately - Apple's SDK is licensed for Apple hardware, so
+# there is no cross-toolchain here the way there is for Windows, and
+# build-macos.sh has to run on the Mac. That leaves the pak short of the three
+# dylibs a Mac client looks for, and a pak missing them has a *different
+# checksum*, which is the failure that matters: it is not that the Mac client
+# lacks its modules, it is that every platform then disagrees about the pak.
+#
+# So the Mac's modules get carried back and folded in here. Drop the .dylib
+# files build-macos.sh leaves in release/modules/ into content/modules/ and
+# re-run; the pak contents are printed at the end either way, which is the only
+# place a mismatch is visible before someone fails to connect.
 rm -rf "$OUT/stage"; mkdir -p "$OUT/stage"
 cp $L/baseq3/*.so $W/baseq3/*.dll "$OUT/stage/"
-(cd "$OUT/stage" && zip -q -9 "$LD/baseq3/iobin.pk3" *.so *.dll)
+
+EXTRA_MODULES=${EXTRA_MODULES:-content/modules}
+if [ -d "$EXTRA_MODULES" ]; then
+    for f in "$EXTRA_MODULES"/*.dylib "$EXTRA_MODULES"/*.so "$EXTRA_MODULES"/*.dll; do
+        [ -e "$f" ] || continue
+        cp -p "$f" "$OUT/stage/"
+    done
+fi
+
+(cd "$OUT/stage" && zip -q -9 "$LD/baseq3/iobin.pk3" *)
 cp -p "$LD/baseq3/iobin.pk3" "$WD/baseq3/iobin.pk3"
 cp -p $L/baseq3/pak01.pk3 "$LD/baseq3/"
 cp -p $L/baseq3/pak01.pk3 "$WD/baseq3/"
@@ -72,10 +165,113 @@ cp -p server.cfg.example "$WD/" 2>/dev/null || true
 cp -p content/serverconfigs/*.cfg "$LD/baseq3/"
 cp -p content/serverconfigs/*.cfg "$WD/baseq3/"
 
+# autoexec.cfg runs on every start and is what makes a test run produce a usable
+# log without anyone having to remember what to type first. A loose file rather
+# than pak01 content so it can be read, edited or deleted on the spot.
+cp -p content/autoexec.cfg "$LD/baseq3/"
+cp -p content/autoexec.cfg "$WD/baseq3/"
+
+# botnames.txt renames bots from a plain file. Ships empty (everything
+# commented) so behaviour is unchanged until somebody edits it, and loose next
+# to autoexec.cfg rather than inside pak01 so editing it does not mean repacking.
+cp -p content/botnames.txt "$LD/baseq3/"
+cp -p content/botnames.txt "$WD/baseq3/"
+
+# The test maps, in baseq3/ so "/devmap qltest_stone" works out of the archive
+# with nothing to move first. They are what the renderer work is judged against
+# and until now they only existed on the machine that compiled them, which made
+# every report about them a report about a build nobody else had.
+#
+# qltest_maps.pk3 is a pk3 name and NOT a map name - the maps inside it are
+# qltest_light, qltest_bump and qltest_stone. That has cost a round before.
+#
+# Safe to ship beside a real install: everything in it is namespaced under
+# textures/qltest/ and maps/qltest_*, so it collides with nothing in pak00, and
+# an unreferenced pak does not enter an sv_pure exchange - a normal game neither
+# loads nor checksums it.
+#
+# --if-stale does nothing when no map input changed, so this costs nothing on
+# most releases. It FAILS when the pk3 is missing or out of date and there is no
+# compiler to fix that, rather than quietly shipping yesterday's map or none at
+# all; SKIP_TESTMAPS=1 is the deliberate way out.
+#
+# The compiler is a separate build - see the header of build-testmap.sh. Point
+# MAPCOMPILER at it.
+if [ "${SKIP_TESTMAPS:-0}" = "1" ]; then
+    echo "package-release: SKIP_TESTMAPS=1, no test maps in this archive"
+else
+    ./content/testmaps/build-testmap.sh --if-stale
+    cp -p content/testmaps/out/qltest_maps.pk3 "$LD/baseq3/"
+    cp -p content/testmaps/out/qltest_maps.pk3 "$WD/baseq3/"
+fi
+
+# [QL] E109. The Linux launcher and desktop entry, staged here rather than by
+# tools/package-linux.sh so they are in place BEFORE checksums.txt is written
+# and before the .zip is made. Added afterwards they would be in the .tar.gz,
+# the .deb and the AppImage but not the .zip, and absent from the checksum
+# manifest in all of them - two archives of the same revision with different
+# contents, which is the sort of thing nobody notices until it matters.
+#
+# The launcher resolves its own location, so the same file serves every flavour
+# including a plain unzip.
+cp -p packaging/quakelive-launcher.sh "$LD/"
+cp -p packaging/quakelive.desktop "$LD/"
+chmod 755 "$LD/quakelive-launcher.sh"
+
+# A manifest of everything in the archive, so an install can be checked against
+# what was actually shipped without running the game. The engine verifies the
+# extracted game modules against iobin.pk3 on every start (FS_ExtractGamecode);
+# this covers the other half - the files on disk against the release they came
+# from, which is the question "am I running the build I think I am".
+for D in "$LD" "$WD"; do
+  (
+    cd "$D"
+    {
+      echo "# ioquakelive $REV"
+      echo "# sha256 of every file in this archive"
+      echo "#"
+      echo "# The game verifies the modules it extracts out of iobin.pk3 by itself."
+      echo "# This is for checking the archive: sha256sum -c checksums.txt"
+      find . -type f ! -name checksums.txt -print0 | sort -z | xargs -0 sha256sum
+    } > checksums.txt
+  )
+done
+
 mkdir -p "$OUT/out"
 rm -f "$OUT/out"/*-"$REV".zip
 (cd "$OUT/pkg" && zip -q -r -9 "$OUT/out/quakelive-linux-x86_64-$REV.zip" "quakelive-linux-x86_64-$REV")
 (cd "$OUT/pkg" && zip -q -r -9 "$OUT/out/quakelive-windows-x64-$REV.zip" "quakelive-windows-x64-$REV")
 
+# [QL] E109. Linux distribution flavours - .tar.gz, .deb, AppImage, and the
+# Flatpak manifest with this release's tarball name filled in.
+#
+# Run after the .zip so the zip is never at risk from a packaging tool that is
+# missing or unhappy: each flavour skips itself with a reason rather than
+# failing the release. SKIP_LINUX_FLAVOURS=1 opts out entirely.
+#
+# Deliberately after checksums.txt is written, and each flavour drops that file
+# from what it installs - it lists the archive's own contents, so carrying it
+# into a .deb would describe a layout that package no longer has.
+if [ "${SKIP_LINUX_FLAVOURS:-0}" = "1" ]; then
+    echo "package-release: SKIP_LINUX_FLAVOURS=1, .zip only"
+else
+    ./tools/package-linux.sh "$LD" "$REV" "$OUT/out"
+fi
+
 rm -rf "$OUT/stage"
-ls -lh "$OUT/out"/*-"$REV".zip
+
+# What actually went into the shared pak. A Mac client cannot run without a
+# .dylib in here, and - more importantly - a pak built with a different set of
+# modules has a different checksum, so mixing them across platforms fails
+# sv_pure rather than failing to load.
+echo
+echo "iobin.pk3 contains:"
+unzip -l "$LD/baseq3/iobin.pk3" | awk 'NR>3 && NF>3 {print "  " $4}' | grep -v '^  $' || true
+if ! unzip -l "$LD/baseq3/iobin.pk3" | grep -q '\.dylib'; then
+    echo "  (no macOS modules - see build-macos.sh)"
+fi
+
+echo
+# Every artefact for this revision, not only the zips - a flavour that silently
+# failed to build is otherwise invisible at exactly the moment it matters.
+ls -lh "$OUT/out"/*"$REV"* 2>/dev/null

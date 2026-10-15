@@ -136,7 +136,8 @@ typedef enum {
     UI_R_FONT_DRAWSTRING,  // [QL] fontstash/stb_truetype text rendering
     UI_R_FONT_TEXTEXTENTS,
     UI_R_GETGLYPHINFO,
-    UI_IME_SETCOMPOSITIONFONT
+    UI_IME_SETCOMPOSITIONFONT,
+    UI_CVAR_LATCHEDSTRINGBUFFER  // [QL] E183: a latched cvar's pending value, "" if none
 } uiImport_t;
 
 typedef enum {

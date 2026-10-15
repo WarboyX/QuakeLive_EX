@@ -9,6 +9,11 @@ It's really important to me that the Quake Live community prosper - it's such a 
 
 **Huge work in progress.** The codebase is being incrementally updated from ioquake3's baseline to match the behaviour/architecture of Quake Live.
 
+- [`IMPROVED.md`](IMPROVED.md) — what this build adds on top of the base fork: subsystems, protections and diagnostics, with verification status. ([Discord-sized version](docs/IMPROVED-discord.md).)
+- [`RELEASE-NOTES.md`](RELEASE-NOTES.md) — the current release body.
+- [`TRACKER.md`](TRACKER.md) — every tracked issue, with which binary it lives in and which clients see it.
+- [`Test environment`](docs/test-environment.md) — reusable headless bot matches on authored fixtures, score controls, and current-shader Vulkan checks.
+
 ### What works
 
 - Quake Live clients can connect to the ioquakelive server.
@@ -187,6 +192,24 @@ Individual projects: `cgame.vcxproj`, `ui.vcxproj`, `qagame.vcxproj`, `quakelive
 
 **Toolset:** v145 (VS 2022+), **Platform:** Win32/x64
 
+### Getting the source
+
+**Clone with submodules.** SDL2, libogg, libvorbis, curl, opus and opusfile are
+git submodules; a plain `git clone` leaves those directories empty and the build
+stops with `No rule to make target '.../bitwise.o'` (that file lives in
+`code/libogg`). Nothing is missing from the repository when this happens — the
+submodules simply have not been fetched.
+
+```
+git clone --recurse-submodules <url>
+```
+
+Already cloned without them:
+
+```
+git submodule update --init --recursive
+```
+
 ### Linux / macOS
 
 Standard ioquake3 Makefile build:
@@ -195,11 +218,21 @@ Standard ioquake3 Makefile build:
 make release -j$(nproc)
 ```
 
-Builds clean on Linux x86_64 (needs `libsdl2-dev`, plus the `code/libogg` and
-`code/libvorbis` submodules). This produces the engine, the dedicated server,
-the OpenGL2 renderer and `baseq3/iobin.pk3`. Running the game still requires a
-legitimate `pak00.pk3`; the dedicated server binary starts and accepts console
-commands without one, but cannot load a map.
+Builds clean on Linux x86_64 (needs `libsdl2-dev`). This produces the engine,
+the dedicated server, the OpenGL2 renderer and `baseq3/iobin.pk3`.
+
+**The Vulkan renderer is opt-in** — `BUILD_RENDERER_VULKAN` defaults to 0, so an
+ordinary `make` does not build it and you get no `vulkanx86_64.so`:
+
+```
+make BUILD_RENDERER_VULKAN=1 -j$(nproc)
+```
+
+`package-release.sh` always passes it, which is why release archives ship the
+Vulkan renderer even though a default build does not produce one.
+
+Running the game still requires a legitimate `pak00.pk3`; the dedicated server
+binary starts and accepts console commands without one, but cannot load a map.
 
 ## Directory Layout
 
@@ -279,19 +312,46 @@ https://discourse.ioquake.org
 
 # Credits
 
+### Quake III Arena and Quake Live
+
+**id Software** — the game, its engine and its assets.
+<https://github.com/id-Software/Quake-III-Arena>
+
+Quake III Arena's engine was released under the GPL (see `COPYING.txt`); the
+assets were not, and are never redistributed by this project. Quake Live and Quake III Arena are
+trademarks of id Software LLC, a ZeniMax Media company. This project is not
+affiliated with or endorsed by them.
+
+### ioquakelive
+
+**tjone270** — the Quake Live protocol, game, cgame and ui work this is built
+on. <https://github.com/tjone270/ioquakelive>
+
+### Quake Live Ex
+
+**Jonathan "Warboy" Imler**
+
+### ioquake3
+
+<https://github.com/ioquake/ioq3> · <https://ioquake3.org/>
+
 Maintainers
 
-  * James Canete <use.less01@gmail.com>
-  * Ludwig Nussel <ludwig.nussel@suse.de>
+  * James Canete <use.less01@gmail.com> — [@SmileTheory](https://github.com/SmileTheory)
+  * Ludwig Nussel <ludwig.nussel@suse.de> — [@lnussel](https://github.com/lnussel)
   * Thilo Schulz <arny@ats.s.bawue.de>
-  * Tim Angus <tim@ngus.net>
+  * Tim Angus <tim@ngus.net> — [@timangus](https://github.com/timangus)
   * Tony J. White <tjw@tjw.org>
   * Jack Slater <jack@ioquake.org>
-  * Zack Middleton <zturtleman@gmail.com>
+  * Zack Middleton <zturtleman@gmail.com> — [@zturtleman](https://github.com/zturtleman)
+
+Handles are given only where corroborated rather than recalled; the
+[contributors graph](https://github.com/ioquake/ioq3/graphs/contributors) is the
+authority, and the names above without one are not omissions.
 
 Significant contributions from
 
-  * Ryan C. Gordon <icculus@icculus.org>
+  * Ryan C. Gordon <icculus@icculus.org> — [@icculus](https://github.com/icculus)
   * Andreas Kohn <andreas@syndrom23.de>
   * Joerg Dietrich <Dietrich_Joerg@t-online.de>
   * Stuart Dalton <badcdev@gmail.com>

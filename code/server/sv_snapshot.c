@@ -232,8 +232,62 @@ Build a client snapshot structure
 
 typedef struct {
     int numSnapshotEntities;
+    // [QL] what is in this snapshot, by entity type - the composition at the
+    // moment it filled up, which is the only interesting moment.
+    int typeCount[SNAPTYPE_BUCKETS];
     int snapshotEntities[MAX_SNAPSHOT_ENTITIES];
 } snapshotEntityNumbers_t;
+
+// [QL] entityType_t names for the overflow breakdown, indexed by bucket.
+static const char* const sv_snapTypeNames[SNAPTYPE_BUCKETS] = {
+    "general", "players", "items", "missiles", "movers", "beams",
+    "portals", "speakers", "pushtrig", "teletrig", "invisible",
+    "grapple", "team", "events"
+};
+
+static int SV_SnapshotTypeBucket(int eType) {
+    if (eType < 0) {
+        return 0;
+    }
+    if (eType >= ET_EVENTS) {
+        return ET_EVENTS;   // ET_EVENTS + eventNum all land here
+    }
+    return eType;
+}
+
+/*
+[QL] "n dropped" says a limit was hit; it does not say what to do about it.
+
+Print the composition instead: what the full snapshot was made of when it
+overflowed, and what has been getting dropped since the map started. A snapshot
+that is mostly events is a different problem from one that is mostly items, and
+guessing between them is how you end up raising a ceiling that did not need
+raising.
+*/
+void SV_FormatSnapshotTypes(char* out, int outSize, const int* counts) {
+    int i;
+
+    out[0] = '\0';
+    for (i = 0; i < SNAPTYPE_BUCKETS; i++) {
+        if (counts[i]) {
+            Q_strcat(out, outSize, va("%s %i  ", sv_snapTypeNames[i], counts[i]));
+        }
+    }
+    if (!out[0]) {
+        Q_strncpyz(out, "(none)", outSize);
+    }
+}
+
+static void SV_PrintSnapshotBreakdown(const snapshotEntityNumbers_t* eNums) {
+    char kept[512];
+    char lost[512];
+
+    SV_FormatSnapshotTypes(kept, sizeof(kept), eNums->typeCount);
+    SV_FormatSnapshotTypes(lost, sizeof(lost), sv.snapshotDroppedByType);
+
+    Com_Printf("         in the snapshot: %s\n", kept);
+    Com_Printf("         dropped so far:  %s\n", lost);
+}
 
 /*
 =======================
@@ -278,18 +332,22 @@ static void SV_AddEntToSnapshot(svEntity_t* svEnt, sharedEntity_t* gEnt, snapsho
         // explain it. On a 32-48 player server this is reached routinely.
         // Count it, and say so occasionally so the cause is at least visible.
         sv.snapshotEntitiesDropped++;
+        sv.snapWindowDropped++;
+        sv.snapshotDroppedByType[SV_SnapshotTypeBucket(gEnt->s.eType)]++;
 
         if (svs.time >= sv.nextSnapshotOverflowWarn) {
             sv.nextSnapshotOverflowWarn = svs.time + 10000;
             Com_Printf("WARNING: snapshot entity limit (%i) reached - %i entities dropped so far.\n"
                        "         Players and items may be invisible to some clients this frame.\n",
                        MAX_SNAPSHOT_ENTITIES, sv.snapshotEntitiesDropped);
+            SV_PrintSnapshotBreakdown(eNums);
         }
         return;
     }
 
     eNums->snapshotEntities[eNums->numSnapshotEntities] = gEnt->s.number;
     eNums->numSnapshotEntities++;
+    eNums->typeCount[SV_SnapshotTypeBucket(gEnt->s.eType)]++;
 }
 
 /*
@@ -465,6 +523,7 @@ static void SV_BuildClientSnapshot(client_t* client) {
 
     // clear everything in this snapshot
     entityNumbers.numSnapshotEntities = 0;
+    Com_Memset(entityNumbers.typeCount, 0, sizeof(entityNumbers.typeCount));
     Com_Memset(frame->areabits, 0, sizeof(frame->areabits));
 
     // https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=62
@@ -501,6 +560,21 @@ static void SV_BuildClientSnapshot(client_t* client) {
     // in the list which will need to be resorted for the delta compression
     // to work correctly.  This also catches the error condition
     // of an entity being included twice.
+    /* [QL] Remember the fullest snapshot this map has produced. The overflow
+       warning only fires once the cap is *hit*, so on a map that comes close and
+       never crosses it there is nothing in the log at all - and "how much
+       headroom is there at 64 players" is exactly the question that needs
+       answering on those maps. "snapstats" prints this. */
+    if (entityNumbers.numSnapshotEntities > sv.snapshotEntitiesPeak) {
+        sv.snapshotEntitiesPeak = entityNumbers.numSnapshotEntities;
+        sv.snapshotPeakClient = (int)(client - svs.clients);
+        Com_Memcpy(sv.snapshotPeakByType, entityNumbers.typeCount, sizeof(sv.snapshotPeakByType));
+    }
+    if (entityNumbers.numSnapshotEntities > sv.snapWindowPeak) {
+        sv.snapWindowPeak = entityNumbers.numSnapshotEntities;
+        Com_Memcpy(sv.snapWindowPeakByType, entityNumbers.typeCount, sizeof(sv.snapWindowPeakByType));
+    }
+
     qsort(entityNumbers.snapshotEntities, entityNumbers.numSnapshotEntities,
           sizeof(entityNumbers.snapshotEntities[0]), SV_QsortEntityNumbers);
 
@@ -608,8 +682,36 @@ SV_SendClientMessages
 =======================
 */
 void SV_SendClientMessages(void) {
-    int i;
+    int i, snapshotMsec;
     client_t* c;
+
+    /*
+    [QL] The snapshot interval, derived here rather than cached at connect time.
+
+    It used to be written only by SV_UserinfoChanged, which had two consequences,
+    both found in the field.
+
+    **Bots never got one.** SV_BotAllocateClient sets state and netchan type and
+    returns; it does not call SV_UserinfoChanged, so a bot's snapshotMsec stayed
+    at whatever the slot held - zero for a fresh one. The gate below then reads
+    "svs.time - nextSnapshotTime < 0", which is never true, so every bot was sent
+    a snapshot on every pass of this function. This function runs once per
+    Com_Frame, not once per server tick, so on a listen server that is the
+    client's render rate: a 60-second window in the field reported 1,745,142
+    snapshots where 64 clients at 40 tick can produce at most 153,600. Eleven
+    times the work, and SV_BuildClientSnapshot - the PVS walk and entity cull, the
+    most expensive thing the server does - runs *before* the bot early-out, so
+    all of it was real work thrown away.
+
+    **And sv_fps could not take effect on a running match.** A client already
+    connected kept the old interval until something made it resend userinfo, so
+    changing the tick mid-match silently did nothing for everyone already playing.
+
+    Deriving it per frame fixes both and costs a divide. There is no per-client
+    component to negotiate - see SV_UserinfoChanged, snapshot rate is locked to
+    sv_fps on this build.
+    */
+    snapshotMsec = 1000 / (sv_fps->integer > 0 ? sv_fps->integer : 10);
 
     // send a message to each connected client
     for (i = 0; i < sv_maxclients->integer; i++) {
@@ -617,6 +719,8 @@ void SV_SendClientMessages(void) {
 
         if (!c->state)
             continue;  // not connected
+
+        c->snapshotMsec = snapshotMsec;
 
         if (svs.time - c->nextSnapshotTime < c->snapshotMsec * com_timescale->value)
             continue;  // It's not time yet
@@ -635,13 +739,77 @@ void SV_SendClientMessages(void) {
             if (SV_RateMsec(c) > 0) {
                 // Not enough time since last packet passed through the line
                 c->rateDelayed = qtrue;
+                sv.snapshotsRateDelayed++;
+                sv.snapWindowRateDelayed++;
                 continue;
             }
         }
 
+        // [QL] Drain any configstring backlog SV_UpdateConfigstrings had to
+        // leave behind rather than overflow the reliable buffer with. A no-op
+        // for a client that has none, which is nearly always.
+        if (c->state == CS_ACTIVE) {
+            SV_UpdateConfigstrings(c);
+        }
+
         // generate and send a new message
         SV_SendClientSnapshot(c);
+        sv.snapshotsSent++;
+        sv.snapWindowSent++;
+        if (c->netchan.lastSentSize > sv.snapshotBytesPeak) {
+            sv.snapshotBytesPeak = c->netchan.lastSentSize;
+        }
+        if (c->netchan.lastSentSize > sv.snapWindowBytesPeak) {
+            sv.snapWindowBytesPeak = c->netchan.lastSentSize;
+        }
         c->nextSnapshotTime = svs.time;
         c->rateDelayed = qfalse;
     }
+}
+
+/*
+==================
+SV_CheckSnapStatsInterval
+
+[QL] One line every sv_snapStatsInterval seconds, and then the window resets.
+
+snapstats answers "how bad did it ever get on this map". This answers "how bad
+is it right now, and is that changing" - which is a different question, and the
+one that matters while a match is in progress. It is also the only way to place
+a spike in time: the log carries no timestamps, so a periodic line is what lets
+a jump in the peak be read next to whatever else was being printed around it.
+==================
+*/
+void SV_CheckSnapStatsInterval(void) {
+	char types[512];
+	int interval;
+
+	if (!sv_snapStatsInterval || sv_snapStatsInterval->integer <= 0) {
+		return;
+	}
+	if (sv.state != SS_GAME) {
+		return;
+	}
+	interval = sv_snapStatsInterval->integer * 1000;
+	if (sv.snapWindowStart == 0) {
+		sv.snapWindowStart = svs.time;
+		return;
+	}
+	if (svs.time - sv.snapWindowStart < interval) {
+		return;
+	}
+
+	SV_FormatSnapshotTypes(types, sizeof(types), sv.snapWindowPeakByType);
+	Com_Printf("snap %is: peak %i/%i (%s) %i bytes max, %i sent, %i rate-delayed, %i dropped\n",
+	           sv_snapStatsInterval->integer, sv.snapWindowPeak, MAX_SNAPSHOT_ENTITIES,
+	           types[0] ? types : "empty", sv.snapWindowBytesPeak,
+	           sv.snapWindowSent, sv.snapWindowRateDelayed, sv.snapWindowDropped);
+
+	sv.snapWindowStart = svs.time;
+	sv.snapWindowPeak = 0;
+	sv.snapWindowBytesPeak = 0;
+	sv.snapWindowDropped = 0;
+	sv.snapWindowSent = 0;
+	sv.snapWindowRateDelayed = 0;
+	Com_Memset(sv.snapWindowPeakByType, 0, sizeof(sv.snapWindowPeakByType));
 }

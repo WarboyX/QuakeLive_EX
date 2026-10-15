@@ -447,6 +447,7 @@ typedef struct {
     uint64_t steamId;  // steam id for this client
 
     int botSkill;  // 0 = not bot, 1-5 = bot
+    float botSkill10;  // [QL] E141: our 1-10 bot skill (g_bot.c), 0 = not a bot
 
     vec3_t color1;
     vec3_t color2;
@@ -459,6 +460,7 @@ typedef struct {
     int health;    // you only get this info about your teammates
     int armor;
     int curWeapon;
+    qboolean frozen;  // [QL] Freeze Tag: teammate is a statue (from tinfo2)
 
     int handicap;
     int wins, losses;  // in tourney mode
@@ -485,6 +487,8 @@ typedef struct {
     char forcedHeadModel[MAX_QPATH];  // 0x254
     char forcedHeadSkin[MAX_QPATH];   // 0x294
     qboolean deferred;
+    // [QL] one-shot latch for the "no player model loaded" warning in CG_Player
+    qboolean reportedNoModel;
 
     qboolean newAnims;    // true if using the new mission pack animations
     qboolean fixedlegs;   // true if legs yaw is always the same as torso yaw
@@ -703,6 +707,18 @@ typedef struct {
     int teamScores[2];
     score_t scores[MAX_CLIENTS];
     qboolean showScores;
+    // [QL] set once the player scrolls the scoreboard by hand, so that
+    // CG_TrackLocalPlayerOnScoreboard stops dragging the view back to their own
+    // row. Cleared each time the scoreboard is opened.
+    qboolean scoreboardScrolled;
+    qboolean scoreboardSelected;    // [QL] a row was clicked; stop re-highlighting the local player
+    int scoreboardSelectedFeeder;   // [QL] which list that click landed in
+    // [QL] E120. The replacement scoreboard's right-click menu. sbCtxClient is the
+    // player it was opened on (-1 when closed); sbStatsClient the player whose
+    // stats panel is up; sbPending the admin verb waiting for its confirm click.
+    int sbCtxClient;
+    int sbStatsClient;
+    char sbPending[16];
     qboolean scoreBoardShowing;
 
     // [QL] team-kill complaint prompt (server "complaint" verb). complaintClient is the
@@ -793,6 +809,8 @@ typedef struct {
     int itemPickup;
     int itemPickupTime;
     int itemPickupBlendTime;  // the pulse around the crosshair is timed separately
+    int crosshairHitTime;     // [QL] E132. last enemy hit, for cg_crosshairHitStyle
+    int crosshairHitTier;     // [QL] E132. its damage tier 0..3 (top bits of ps.generic1)
 
     int weaponSelectTime;
     int weaponAnimation;
@@ -1005,9 +1023,9 @@ typedef struct {
     qhandle_t redFlagModel;
     qhandle_t blueFlagModel;
     qhandle_t neutralFlagModel;
-    qhandle_t redFlagShader[3];
-    qhandle_t blueFlagShader[3];
-    qhandle_t flagShader[4];
+    /* [QL] redFlagShader/blueFlagShader/flagShader removed: they were filled
+       from icons/iconf_* names the pak does not contain and no code read them.
+       The flag art in use is flagShaders[] and flagStatusHandles[] below. */
 
     qhandle_t flagPoleModel;
     qhandle_t flagFlapModel;
@@ -1057,7 +1075,7 @@ typedef struct {
     qhandle_t railRingsShader;
     qhandle_t railCoreShader;
 
-    qhandle_t lightningShader[5];
+    qhandle_t lightningShader[NUM_LIGHTNING_STYLES];
 
     qhandle_t grapplingChainShader;
 
@@ -1110,6 +1128,7 @@ typedef struct {
     qhandle_t redQuadShader;
     qhandle_t quadWeaponShader;
     qhandle_t invisShader;
+    qhandle_t spawnProtectShader;   // [QL] translucent spawn-protection overlay
     qhandle_t regenShader;
     qhandle_t battleSuitShader;
     qhandle_t battleWeaponShader;
@@ -1153,10 +1172,6 @@ typedef struct {
     qhandle_t invulnerabilityPowerupModel;
 
     // scoreboard headers
-    qhandle_t scoreboardName;
-    qhandle_t scoreboardPing;
-    qhandle_t scoreboardScore;
-    qhandle_t scoreboardTime;
 
     // [QL] medals/awards shown during gameplay (16 types)
     qhandle_t medalAccuracy;
@@ -1373,6 +1388,8 @@ typedef struct {
     qhandle_t iceShardShader2;   // powerups/ice2
     qhandle_t iceShardShader3;   // powerups/ice3
     qhandle_t frozenShader;      // sprites/frozen
+    qhandle_t freezeCoatShaders[4][3];  // [QL] [cg_freezeShellStyle][thaw tier from generic1]
+    qhandle_t freezeGlowShaders[4];  // [QL] animated overlays, chosen by cg_freezeShellEffect
     qhandle_t iceMarkShader;     // iceMark
 
     // [QL] gametype icons for scoreboard/HUD
@@ -1408,7 +1425,7 @@ typedef struct {
 
     // [QL] CTF flag-status HUD media (CG_DrawFlagStatus / CG_DrawFlagStatusBar).
     // flagStatusHandles indexed as [iconIndex + team*4] (icon 0=atbase,1=taken,2=dropped,3=neutral;
-    // team 0=neutral,1=red,2=blue). Distinct from the 4-entry flagShader[] above; base DAT_10a5fc2c.
+    // team 0=neutral,1=red,2=blue). base DAT_10a5fc2c.
     qhandle_t flagStatusHandles[12];
     qhandle_t flagStatusBarLeft;   // background left half-shader (DAT_10076354)
     qhandle_t flagStatusBarRight;  // background right half-shader (DAT_10076374)
@@ -1525,7 +1542,21 @@ typedef struct {
 
     int cursorX;
     int cursorY;
-    qboolean eventHandling;
+    /* [QL] One of the CGAME_EVENT_* values (cg_public.h), not a flag. It was
+       declared qboolean, which holds {qfalse, qtrue} - so CGAME_EVENT_SCOREBOARD
+       (2) and CGAME_EVENT_EDITHUD (3) were being stored in a type whose declared
+       range does not contain them. gcc reports it as "comparison between
+       'qboolean' and 'enum <anonymous>'". It survives on x86_64 and arm64
+       because both give an enum int width, but a toolchain that packs enums to
+       the smallest type that fits - which -fshort-enums does, and which is the
+       default on some bare ARM targets - would truncate both values to 1 and
+       make the scoreboard and the HUD editor indistinguishable. */
+    /* [QL] last value pushed to the ui_warmup cvar, so it is only written when
+       it changes rather than on every configstring update */
+    int lastPublishedWarmup;
+    int eventHandling;
+    /* [QL] set only while +scores holds the mouse - see CG_CgameUIOwnsScreen */
+    qboolean scoreboardHoldingMouse;
     qboolean mouseCaptured;
     qboolean sizingHud;
     void* capturedItem;
@@ -1570,7 +1601,7 @@ typedef struct {
     float dmgThroughDepth;
 
     // [QL] per-team alive count for CG_DrawTeamAliveCount (CA/FT). Binary indexes int array base DAT_10a404c8.
-    int teamAliveCount[TEAM_NUM_TEAMS];
+    int domOwnedPoints[TEAM_NUM_TEAMS];  // CS_DOM_OWNED_RED/BLUE, Domination only
 
     // [QL] freeze/timeout end time (DAT_10a403e0). Used by CG_GetOvertimeCount /
     // CG_GetLevelTimerMsec; 0 means "use cg.time".
@@ -1621,6 +1652,11 @@ extern vmCvar_t cg_swingSpeed;
 extern vmCvar_t cg_shadows;
 extern vmCvar_t cg_gibs;
 extern vmCvar_t cg_drawTimer;
+extern vmCvar_t cg_spawnProtectAlpha;
+extern vmCvar_t cg_scoreboardListOffset;
+extern vmCvar_t cg_scoreboardMouse;
+extern vmCvar_t cg_debugPlayerModels;
+extern vmCvar_t cg_scoreboardDebug;
 extern vmCvar_t cg_drawFPS;
 extern vmCvar_t cg_drawSnapshot;
 extern vmCvar_t cg_draw3dIcons;
@@ -1632,10 +1668,20 @@ extern vmCvar_t cg_drawRewards;
 extern vmCvar_t cg_flagStyle;
 extern vmCvar_t cg_drawTeamOverlay;
 extern vmCvar_t cg_teamOverlayUserinfo;
+extern vmCvar_t cg_teamOverlayMaxPlayers;
 extern vmCvar_t cg_crosshairX;
 extern vmCvar_t cg_crosshairY;
 extern vmCvar_t cg_crosshairSize;
+// [QL] E97. Three of the 222 QL-FEATURE cvars that turned out to be a missing
+// GATE rather than a missing feature - see docs/cvar-manifest.txt.
+extern vmCvar_t cg_crosshairPulse;
+extern vmCvar_t cg_waterWarp;
+extern vmCvar_t cg_lowAmmoWarningSound;
 extern vmCvar_t cg_crosshairHealth;
+extern vmCvar_t cg_crosshairColor;
+extern vmCvar_t cg_crosshairHitColor;
+extern vmCvar_t cg_crosshairHitStyle;
+extern vmCvar_t cg_crosshairHitTime;
 extern vmCvar_t cg_drawStatus;
 extern vmCvar_t cg_draw2D;
 extern vmCvar_t cg_animSpeed;
@@ -1647,6 +1693,8 @@ extern vmCvar_t cg_nopredict;
 extern vmCvar_t cg_noPlayerAnims;
 extern vmCvar_t cg_showmiss;
 extern vmCvar_t cg_footsteps;
+extern vmCvar_t cg_waterRipples;   // [QL] R19
+extern vmCvar_t cg_ioScoreboard;   // [QL] E119
 extern vmCvar_t cg_addMarks;
 extern vmCvar_t cg_brassTime;
 extern vmCvar_t cg_gun_frame;
@@ -1696,6 +1744,9 @@ extern vmCvar_t cg_noTaunt;
 extern vmCvar_t cg_noProjectileTrail;
 extern vmCvar_t cg_bubbleTrail;
 extern vmCvar_t cg_oldRail;
+extern vmCvar_t cg_railColorMode;
+extern vmCvar_t cg_freezeShellStyle;
+extern vmCvar_t cg_freezeShellEffect;
 extern vmCvar_t cg_oldRocket;
 extern vmCvar_t cg_oldPlasma;
 extern vmCvar_t cg_trueLightning;
@@ -1733,7 +1784,18 @@ extern vmCvar_t cg_hitBeep;
 extern vmCvar_t cg_killBeep;
 extern vmCvar_t cg_lightningImpactCap;
 extern vmCvar_t cg_lightningImpact;         // [QL] gate the LG impact flare
+extern vmCvar_t cg_beamLights;             // [QL] linear dlight along rail and lightning beams
 extern vmCvar_t cg_rocketTrailRadius;       // [QL] rocket smoke-trail radius (0 disables)
+// [QL] E101. The cvars Quake Live's own options menu drives - these are the ones
+// CG_MissileTrail and CG_NailTrail read. See docs/ql-cvar-semantics.txt.
+extern vmCvar_t cg_smokeRadius_RL;
+extern vmCvar_t cg_smokeRadius_GL;
+extern vmCvar_t cg_smokeRadius_NG;
+// [QL] E101. 0 = off, 1 = large, 2 = small - Quake Live's own menu values.
+extern vmCvar_t cg_useItemMessage;
+extern vmCvar_t cg_useItemWarning;
+// [QL] E102. RGB multiply on the crosshair, not alpha - see CG_DrawCrosshair.
+extern vmCvar_t cg_crosshairBrightness;
 extern vmCvar_t cg_grenadeTrailRadius;      // [QL] grenade smoke-trail radius (0 disables)
 extern vmCvar_t cg_nailTrailRadius;         // [QL] nail smoke-trail radius (0 disables)
 extern vmCvar_t cg_railReloadTime;          // [QL] railgun refire interval (ms) for view-model tint
@@ -1761,6 +1823,7 @@ extern vmCvar_t s_killBeepVolume;
 
 // QL cvars (binary-verified from cgamex86.dll)
 extern vmCvar_t cg_chatbeep;
+extern vmCvar_t cg_chatHistoryLength;
 extern vmCvar_t cg_deadBodyColor;
 extern vmCvar_t cg_deadBodyDarken;
 extern vmCvar_t g_training;  // [QL] server training flag; gates model forcing (CG_ResolveModelForClient)
@@ -1775,6 +1838,7 @@ extern vmCvar_t cg_impactSparksLifetime;
 extern vmCvar_t cg_impactSparksSize;
 extern vmCvar_t cg_impactSparksVelocity;
 extern vmCvar_t cg_muzzleFlash;
+extern vmCvar_t cg_muzzleFlashLight;
 extern vmCvar_t cg_plasmaStyle;
 extern vmCvar_t cg_railStyle;
 extern vmCvar_t cg_rocketStyle;
@@ -1817,9 +1881,16 @@ int CG_CrosshairPlayer(void);
 int CG_LastAttacker(void);
 void CG_LoadMenus(const char* menuFile);
 void CG_ParseMenu(const char* menuFile);
+qboolean CG_InWarmup(void);  // [QL] cg.warmup is -1 when live, not 0 - never test it bare
 void CG_KeyEvent(int key, qboolean down);
+void CG_ScoreboardPopupsClose(void);        // [QL] E120
+void CG_ScoreboardPopupsPaint(void);        // [QL] E120
+void CG_ScoreboardAction(const char* verb); // [QL] E120
+int CG_ScoreboardClientAt(int feeder, int index);  // [QL] E120
 void CG_MouseEvent(int x, int y);
 void CG_EventHandling(int type);
+void CG_ScoreboardDebugDump(void);
+qboolean CG_CgameUIOwnsScreen(void);
 void CG_RankRunFrame(void);
 void CG_SetScoreSelection(void* menu);
 score_t* CG_GetSelectedScore(void);
@@ -1929,6 +2000,7 @@ void CG_SelectNextPlayer(void);
 float CG_GetValue(int ownerDraw);
 qboolean CG_OwnerDrawVisible(int flags, int flags2);
 void CG_RunMenuScript(char** args);
+void CG_ExecuteText(int exec_when, const char* text);
 void CG_ShowResponseHead(void);
 void CG_SetPrintString(int type, const char* p);
 void CG_InitTeamChat(void);
@@ -1976,6 +2048,7 @@ void CG_Trace(trace_t* result, const vec3_t start, const vec3_t mins, const vec3
 void CG_CapsuleTrace(trace_t* result, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int skipNumber, int mask);
 void CG_PredictPlayerState(void);
 void CG_LoadDeferredPlayers(void);
+qboolean CG_LoadOneDeferredPlayer(void);
 void CG_ForceModelChange(void);
 
 //
@@ -2294,6 +2367,13 @@ void trap_R_AddPolyToScene(qhandle_t hShader, int numVerts, const polyVert_t* ve
 void trap_R_AddPolysToScene(qhandle_t hShader, int numVerts, const polyVert_t* verts, int numPolys);
 void trap_R_AddLightToScene(const vec3_t org, float intensity, float r, float g, float b);
 void trap_R_AddAdditiveLightToScene(const vec3_t org, float intensity, float r, float g, float b);
+void trap_R_AddLinearLightToScene(const vec3_t start, const vec3_t end, float intensity, float r, float g, float b);
+void trap_R_AddWaterRipple(const vec3_t origin, float radius, float strength);
+void trap_Cvar_LatchedStringBuffer(const char* var_name, char* buffer, int bufsize);  // [QL] E198
+/* [QL] R19: water disturbances - defined in cg_event.c, used from there and
+   from the shotgun's per-pellet trace in cg_weapons.c */
+void CG_WaterRipple(const vec3_t from, const vec3_t impact, float radius, float strength);
+void CG_WaterImpactSize(int weapon, float *radius, float *strength);
 int trap_R_LightForPoint(vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir);
 void trap_R_RenderScene(const refdef_t* fd);
 void trap_R_SetColor(const float* rgba);  // NULL = 1,1,1,1

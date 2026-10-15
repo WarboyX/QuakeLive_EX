@@ -11,12 +11,12 @@ Status key: **OPEN** · **IN PROGRESS** · **NEEDS INFO** · **BLOCKED** · **DO
 
 | Area | Progress | Notes |
 |---|---|---|
-| **Client / UI** (U) | `███████████████░░░░░  11/15` | U9 root-caused: a parser bug, not a menu bug |
-| **Client / cgame** (C) | `████████████████████  6/6` | C9 confirmed resolved in play |
-| **Renderer** (R) | `█████░░░░░░░░░░░░░░░  2/8` | Vulkan port in flight |
-| **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only — invisible in our client |
-| **Engine / server** (E) | `█████░░░░░░░░░░░░░░░  2/8` | 186 cvars registered but unread (E8) |
-| **Overall** | `██████████░░░░░░░░░░  22/42` | by binary: 8 server · 31 client · 3 both |
+| **Client / UI** (U) | `████████████████░░░░  14/17` | U11/U2 partial, U4 open; R24 is the live one - our own pages need a rebuild |
+| **Client / cgame** (C) | `█████████████████░░░  30/36` | C39 new: crouching bounces the view, one defect confirmed by reading |
+| **Renderer** (R) | `██████████░░░░░░░░░░  13/27` | E104: per-material convention + our first deployment into a stock QL map; E103 fixed the inverted green |
+| **Weapons** (W) | `░░░░░░░░░░░░░░░░░░░░  0/4` | W1/W3 are vanilla-only - invisible in our client, so untestable from here |
+| **Engine / server** (E) | `████████████████░░░░  81/104` | E126 hardware prompt; E124 render pages, live video cvars; E123 CA rounds, SIGTERM hang, imported gamma; E122 whole-project review, 26 fixes; E92 closed: fraglimit shipped at 20 not 50, found by running a server; E102/E101 cvar wiring |
+| **Overall** | `███████████████░░░░░  137/187` | by binary: 69 server · 100 client · 12 both |
 
 "DONE (verify)" counts as done — it means shipped and awaiting your confirmation,
 not finished-and-proven.
@@ -76,6 +76,10 @@ for stock clients until proven otherwise.
 | ○ | **E1** | Factory subsystem absent | OPEN |
 | ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
 | ● | **E6** | Players connect as spectators | DONE (verify) |
+| ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
+| ● | **E11** | The match never starts, and kills score nothing | DONE (verify) |
+| ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
+| ● | **E13** | More than ~25 bots crashed the server | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
 
 #### our client (cgame / ui / client engine)
@@ -88,9 +92,11 @@ for stock clients until proven otherwise.
 | ● | **U9** | Server browser painted over createserver | DONE, root cause found and verified |
 | ● | **U16** | Options BACK button disappears after joining a game | DONE (verify) |
 | ● | **U17** | iobin.pk3 has no visible build stamp | DONE (verify) |
-| ○ | **U10** | Controls menu is empty | NEEDS INFO |
+| ● | **U10** | Controls menu is empty | DONE (verify) |
 | ○ | **U11** | Cosmetic layout faults | PARTIAL (value offset fixed) |
 | ● | **U12** | Render options have no home in Quake Live's menus | DONE (verify) |
+| ● | **U18** | Renderer row in Render Options draws blank | DONE (verify) |
+| ● | **E9** | `com_maxfps` only lands on rates that divide 1000 | DONE (verify) |
 | ○ | **U2** | No player-name prompt while in a match | PARTIAL |
 | ● | **U3** | `ui/menudef.h` | DONE |
 | ○ | **U4** | `ui/ingame.txt` is orphaned | OPEN |
@@ -101,6 +107,16 @@ for stock clients until proven otherwise.
 | ● | **C4** | Console commands sent as chat in-game | DONE (verify), with a caveat |
 | ● | **C8** | Phantom pickup sound over taken items | DONE (verify) |
 | ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
+| ● | **C10** | `+zoom` does nothing | DONE (verify) |
+| ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
+| ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
+| ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
+| ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
+| ● | **C16** | Score tracker never shows the player's score | DONE (verify) |
+| ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
+| ○ | **C34** | Our own menus, so layout stops being someone else's | MILESTONE |
+| ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
+| ● | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | DONE (confirmed) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -108,7 +124,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ○ | **R5** | Vulkan renderer | IN PROGRESS |
+| ◐ | **R5** | Vulkan renderer | shader parsing no longer fatal on unknown keywords |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -120,6 +136,7 @@ for stock clients until proven otherwise.
 |---|---|---|---|
 | ○ | **E8** | 186 cvars are registered but read by nothing | OPEN, survey done |
 | ● | **E3** | No master server heartbeat / server queries | DONE (verify) |
+| ● | **E14** | Nothing verified that the loaded module matched the shipped one | DONE (verify) |
 | ○ | **E5** | Steam integration absent | OPEN |
 
 ---
@@ -143,7 +160,12 @@ for stock clients until proven otherwise.
 | ○ | **E1** | Factory subsystem absent | OPEN |
 | ○ | **E7** | Instagib is split across two cvars, and one branch is dead | PARTIAL |
 | ● | **E6** | Players connect as spectators | DONE (verify) |
+| ○ | **E10** | Bots: pool ceiling, fill rate, and matches that never start | PARTIAL |
+| ● | **E11** | The match never starts, and kills score nothing | DONE (verify) |
+| ● | **E12** | Nothing was written when Windows crashed | DONE (verify) |
+| ● | **E13** | More than ~25 bots crashed the server | DONE (verify) |
 | ○ | **E4** | ZMQ stats feed absent | OPEN |
+| ● | **E14** | Nothing verified that the loaded module matched the shipped one | DONE (verify) |
 | ○ | **E5** | Steam integration absent | OPEN |
 
 #### our client only
@@ -156,9 +178,11 @@ for stock clients until proven otherwise.
 | ● | **U9** | Server browser painted over createserver | DONE, root cause found and verified |
 | ● | **U16** | Options BACK button disappears after joining a game | DONE (verify) |
 | ● | **U17** | iobin.pk3 has no visible build stamp | DONE (verify) |
-| ○ | **U10** | Controls menu is empty | NEEDS INFO |
+| ● | **U10** | Controls menu is empty | DONE (verify) |
 | ○ | **U11** | Cosmetic layout faults | PARTIAL (value offset fixed) |
 | ● | **U12** | Render options have no home in Quake Live's menus | DONE (verify) |
+| ● | **U18** | Renderer row in Render Options draws blank | DONE (verify) |
+| ● | **E9** | `com_maxfps` only lands on rates that divide 1000 | DONE (verify) |
 | ○ | **U2** | No player-name prompt while in a match | PARTIAL |
 | ● | **U3** | `ui/menudef.h` | DONE |
 | ○ | **U4** | `ui/ingame.txt` is orphaned | OPEN |
@@ -169,6 +193,16 @@ for stock clients until proven otherwise.
 | ● | **C4** | Console commands sent as chat in-game | DONE (verify), with a caveat |
 | ● | **C8** | Phantom pickup sound over taken items | DONE (verify) |
 | ● | **C9** | Client dies the moment the server terminates | RESOLVED (confirmed in play) |
+| ● | **C10** | `+zoom` does nothing | DONE (verify) |
+| ● | **C11** | Mid-match arrivals keep a stand-in model | DONE (verify) |
+| ● | **C12** | Scoreboard picture panel drew a weapon icon | DONE (verify) |
+| ◐ | **C13** | Scoreboard is empty with a full server | PARTIAL |
+| ◐ | **C14** | Match summary: no cursor, no voting, no winner, no arena shots | PARTIAL |
+| ● | **C16** | Score tracker never shows the player's score | DONE (verify) |
+| ● | **C17** | A2M instagib dropped weapons on death | DONE (verify) |
+| ○ | **C34** | Our own menus, so layout stops being someone else's | MILESTONE |
+| ○ | **C18** | Scoreboard K/D, damage and accuracy wrong for everyone but you | OPEN |
+| ● | **C15** | HUD score tracker shows 1st and 2nd, not 1st and yours | DONE (confirmed) |
 | ● | **C3** | Weapon viewmodel barely visible | DONE (verify) |
 | ● | **C1** | Railgun draws two beams | DONE (verify, 3rd fix) |
 | ● | **C2** | Quad pickup now lights the room | DONE (verify) |
@@ -176,7 +210,7 @@ for stock clients until proven otherwise.
 | ○ | **R1** | Only renderergl2 ships | OPEN |
 | ● | **R2** | Classic look presets | DONE (verify) |
 | ○ | **R4** | Getting the metallic look back | routes, in cost order — OPEN |
-| ○ | **R5** | Vulkan renderer | IN PROGRESS |
+| ◐ | **R5** | Vulkan renderer | shader parsing no longer fatal on unknown keywords |
 | ○ | **R6** | Voodoo postfilter as a real post-process pass | OPEN |
 | ● | **R7** | Output dither | DONE (verify) |
 | ○ | **R3** | Quake Live art is not Quake 3 art | OPEN |
@@ -195,8 +229,11 @@ server and whatever stops was in our client.
 1. **C3** viewmodel is bigger and lower than it should be. `cg_fov` ruled out;
    next move is diffing `CG_AddPlayerWeapon` against upstream `1487e89` for the
    `MatrixMultiply` reorder.
-2. **R8** rocket blasts light far too weakly. My `r_dlightMode` diagnosis was
-   wrong; three leads recorded, none tried.
+2. ~~**R8** rocket blasts light far too weakly.~~ **Closed 2026-09-13** —
+   `dot(N,L)` was never clamped in `light_frag.tmpl`, so a dynamic light
+   subtracted from everything it did not reach. Only visible once `r_rts` gave
+   the scene a floating-point target, because a fixed-point attachment clamps
+   blend inputs to [0,1] and a floating-point one does not.
 
 *(U9 closed — see below. It was `ItemParse_cvarFloatList` eating the menu's
 closing brace, which merged two menus into one. Run the headless parse check
@@ -204,23 +241,115 @@ in U9 after touching any `.menu` file; parse errors are silent on screen and
 loud in the console.)*
 
 **P1 — in flight**
-3. **R5** Vulkan renderer, milestone 1. Text is *not* optional here — the console
+3. **C34** our own menus. Four faults this cycle were the same fault - the menu
+   we needed to change belongs to Quake Live. Start with the headless parse
+   check, then the scoreboards.
+4. **R5** Vulkan renderer, milestone 1. Text is *not* optional here — the console
    is the debugging surface, so a text-less Vulkan build cannot debug itself.
    Stub only long enough to prove the link, then do fonts immediately.
 
 **P2 — correctness unknowns, need evidence**
-4. **W1 / W2** shotgun pattern shape and the 30-radians-or-degrees constant.
-5. **U10** empty Controls panel — four causes eliminated, needs a menu-list dump.
+5. **W1 / W2** shotgun pattern shape and the 30-radians-or-degrees constant.
 6. **U11** cosmetic overlaps on QL's Advanced pages; **U13** widescreen bias.
 
 **P3 — absent subsystems, none started, none blocking**
 7. **E1** factory · **E2** teammate weapon icons · **E3** master heartbeat ·
    **E4** ZMQ stats · **E5** Steam.
 
+**P1b — consolidation roadmap:** see **K1–K22** below. Stages 1–2 come before
+any new renderer feature.
+
 **Deliberately parked**
 - **R1** restoring renderergl1 — likely moot if R5 lands, since Quake3e's Vulkan
   renderer is GL1-equivalent in output.
 - **R6** Voodoo postfilter — only meaningful at `r_colorbits 16`.
+
+---
+
+## Consolidation roadmap (K) — from two external reviews, 2026-10-05
+
+Two outside reviews read the abandoned `claude/ioquakelive-review-6756u2`, 25
+commits behind `development` (before E191's `vk.c` split). Every concrete claim
+was checked against `development` before it went in here. A claim that was wrong
+is listed at the bottom with the reason, so it is not raised again.
+
+The thread through all of it: the tracker is good at recording **what went
+wrong**. The code should start **guaranteeing** what the tracker explains —
+which pass may read depth and when, which cvar is actually wired, which
+message format a stock client parses.
+
+Sizes are in test rounds. "Neutral" means no visible change is intended, and it
+is proven with identical harness screenshots before and after.
+
+### Stage 1 — small, confirmed fixes (≈1–2 rounds together)
+
+| ID | Item | Lives in | Seen by | Size |
+|---|---|---|---|---|
+| **K1** | **Validate `water.cfg`.** Every key goes through a bare `atof` (`tr_scene.c:440`), and a map value skips the cvar's range check (`R_WaterSetting`). A typo or `nan` reaches the shader. Reject non-finite values, clamp to the cvar's own range, and warn naming the map and key. | client (renderervk) | our client | small |
+| **K2** | **Water-plane cap by area.** Past 32 planes, `vk_ssr.c:306` keeps whichever came first in BSP order. Collect the candidates, sort by area, then cap, so a puddle cannot cost the main pool its reflection. | client | our client | small |
+| **K3** | **Nearest 16 dynamic lights for water**, not the first 16 (`vk_ssr.c:1546`). At 30v30 a distant rocket can take a near one's slot. Rank by distance to the view, weighted by radius. | client | our client | small |
+| **K4** | **One `scores_ad` sender.** The same 22-integer `va()` is copied at `g_gametype_ad.c:62` and `:572`. Make it one helper. **The wire format must not change:** it is Quake Live's own, and the stock cgame parses it (`cg_servercmds.c` `CG_InitScores`). | server (qagame) | every client | small |
+| **K5** | **Say "not implemented" where the player can see it.** Every `QL-FEATURE` row in `docs/cvar-manifest.txt` gets a cvar description saying it is accepted for compatibility and does nothing yet. This is the cheapest guard against another `g_spawnItemWeapons`. | both | our client + server console | small |
+
+### Stage 2 — neutral restructuring (≈3–4 rounds)
+
+| ID | Item | Lives in | Size | Depends |
+|---|---|---|---|---|
+| **K6** | **Split `vk_ssr()`** (≈590 lines, `vk_ssr.c:1168–1757`) into static builders: can-run, view, planes, waves, ripples, emitters, RT, then trace and composite. The public function becomes a short list of calls. Neutral. | client | ~1 | — |
+| **K7** | **Water is not SSR.** Move profile, waves, ripples and foam into `vk_water.c`, which owns the surface state. SSR and the RT fallback only consume it. Later this lets waves drive normals, specular and foam with `r_ssr 0`. Neutral first; the `r_ssr 0` behaviour is a separate follow-up. | client | ~1 | K6 |
+| **K8** | **RT feature state, resolved once per frame.** One `rtFeatureState_t` (world shadows, actor shadows, dlight shadows, sun, AO, reflections, light field, dynamic geometry) is built from the cvars in one place, with the dependencies enforced there. It replaces the 22 scattered `r_rtActorShadows`/`r_rtDlightShadows`/`R_SHADOWS_TRACED` tests across five files. Neutral. | client | ~1 | — |
+| **K9** | **RT quality tiers:** Off / Performance / Quality / Ultra buttons on the Render page, like the existing CLASSIC/GLOSS presets, writing the individual cvars. **Every individual setting stays** and wins once set. Lives on K8. Defaults per tier come from the timings breakdown. | client (+ pak01) | ~1 | K8, user `r_rtTimings` |
+
+### Stage 3 — guarantees at pass boundaries (≈2–3 rounds)
+
+| ID | Item | Lives in | Size | Depends |
+|---|---|---|---|---|
+| **K10** | **Pass resource contracts.** Track depth layout, what the depth image currently holds (scene / cleared / undefined), the colour target's format and the active render pass. Every post/RT pass declares what it reads and writes, and a mismatch logs once with the pass name. Release builds log; they do not abort. This turns the depth-lifetime bugs in R19/E-series prose into a check. | client | ~2 | K6 |
+| **K11** | **One readiness state for each acceleration structure** (empty / building / ready / dirty) in place of `worldBuilt`, `dynReady`, `mainTlasWritten`, checked by every consumer through K10. | client | ½ | K10 |
+| **K12** | **Pass order written down in code:** AO → actor shadows → dlights → SSR → bloom → post as one table, which drives the order and the `r_rtTimings` sections. The comments that explain the order become the table's notes. | client | ½ | K10 |
+| **K13** | **`r_debugView`:** one entry point listing every debug view (depth, normals, AO, level shadow, actor shadow, SSR mask, SSR source, water planes, ripples, light field). It maps onto the existing `r_ssrDebug`/`r_rt*` debug values, which stay. | client | ~1 | K12 |
+
+### Stage 4 — tooling and data (≈2–3 rounds)
+
+| ID | Item | Lives in | Size |
+|---|---|---|---|
+| **K14** | **One cvar schema.** Generate `docs/cvar-schema` (name, default, range, flags, reader found, manifest verdict, menus that bind it) once. `dead-cvars.py`, `check-menu-cvars.py` and `check-menu-defaults.py` read it instead of each parsing the source their own way. | tools | ~1 |
+| **K15** | **Setting classes:** user / map / session / engine / debug, as a column in K14 first. A registration wrapper that picks the Quake3e flags from the class comes later, if the column shows the flags are being chosen wrongly. The flags themselves stay, for compatibility. | tools → both | ~1 |
+| **K16** | **The rendering coordinate spaces, written down:** world → camera/FOV → 3D viewport → 640×480 virtual HUD → aspect fit → framebuffer, with which layers may stretch. A prerequisite for R29 (Hor+) and for C34's layouts. | docs | ½ |
+
+### Stage 5 — gameplay architecture (large; several rounds each)
+
+| ID | Item | Lives in | Seen by | Size | Notes |
+|---|---|---|---|---|---|
+| **K17** | **Round lifecycle framework.** A shared `roundState_t` exists, but FT touches it 28 times, AD 14, CA 11 and RR 13, each driving its own transitions. That is how CA and AD missed FT's round setup. Target: init / begin / eliminated / time-up / winner / end / advance, with per-gametype rule callbacks. Migrate one gametype at a time: CA first, then AD, FT, RR. | server | every client | ~2 per gametype | The wire stays identical. Bot matches per gametype before and after. |
+| **K18** | **Bot perception cache.** Once per server frame, build per-room occupancy, team strength and visibility summaries. Bots query that instead of each walking every player (`ai_tactics.c`; missiles already work this way). Profile 30v30 first, to size the win. | server | — | ~2 | Measure first |
+| **K19** | **Bot tactical state:** sensing → decision → goal → movement, with role, posture, strengths, target/fallback rooms, confidence and next-decision time in one struct. | server | — | ~3 | After K18 |
+
+### Stage 6 — milestones already on the tracker, in this order
+
+| ID | Item | Notes |
+|---|---|---|
+| **C34** | Our own menus | Order: main → in-game → render → player setup → scoreboard → match summary → server browser. Then stop changing how QL menus are interpreted, except for compatibility. |
+| **R29** | Hor+ field of view | After K16. |
+| **R22 → R20 → R20B → R21** | Normals → surface detail → lighting → displacement | One surface representation, not three. R21 waits for the rest. |
+| **K20** | RT reads materials | After R20: RT reflection misses use the surface's albedo and normal, not the fixed 0.5 albedo (`vk_ssr.c:1314`). The same data feeds AO and shadows. |
+| **#43** | Unified RT pass (AO + shadows, shared denoise) | After K8, K10, and the user's `r_rtTimings` numbers. |
+
+### Debt — record it, do it only when a map needs it
+
+- **K21** Water-plane IDs, so a ripple belongs to a surface rather than to the nearest height within 48 units (`vk_ssr.c:1347`). Matters for stacked pools and water above water; no shipped map has either.
+- **K22** Ripple importance at insertion (strength × closeness × time left), only if `MAX_WATER_RIPPLES` is ever raised above the shader's limit.
+
+### Checked and rejected
+
+- **"`posture_time` is set twice in `ai_tactics.c`"** — it is set once (line 260), on both branches.
+- **"Replace `scores_ad` with a configstring"** — that breaks the stock client's A&D scoreboard. K4 is the part worth doing.
+- **"New ripples lose to old ones"** — this cannot happen. The ring and the shader limit are both 48 and the ring overwrites its oldest entry, so everything stored is drawn and the newest wins. A `r_waterRippleBudget` cvar has nothing to budget.
+- **"Show which reflections came from RT"** — that already exists: `r_ssrDebug 6`.
+- **"Move RT lifecycle out of `vk.c`"** — done in E191 (`vk_rt_world.c`).
+- **"Upload water planes once"** — they are 1.5 KB a frame; not worth the code.
+- **"`CVAR_ARCHIVE_ND` was invented here"** — it comes from Quake3e.
+- **Lua (R30), map rebuilds (R23), GL1 (R1), Voodoo (R6)** — already parked. The reviews agree.
 
 ---
 ## Weapons / gameplay
@@ -524,7 +653,7 @@ rather than a baked string that could disagree with it.
 
 `cgame`/`qagame` also print their build to the console at init.
 
-### U10. Controls menu is empty — NEEDS INFO
+### U10. Controls menu is empty — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
 Not `???` rows: **no rows at all**. The tabs draw, so the menu loaded and it is
@@ -564,10 +693,57 @@ further along.
    on a missing name fails silently.
 3. The six `grpControlbutton` tab buttons that switch groups.
 
-**Next step:** print the menu list at the moment OPTIONS is pressed and confirm
-`ingame_controls` is present. Suspect 2 is cheap to test and fits the evidence:
-the tab bar drew because that is `main_options`, and the panel below was empty
-because the menu meant to fill it was never loaded.
+**Narrowed by the repro.** It happens on the **first** open of Settings in a
+match only. Click any other tab (Game) and come back to Controls and the rows
+are there, for the rest of the session.
+
+That kills suspect 2 outright: a menu that was never loaded could not fill in
+later. It also rules out the show/hide machinery and the group matching, since
+the tab buttons run the same `hide grpControls ; show move` pair the `onOpen`
+does, against the same items, and theirs works.
+
+What is left is that `onOpen` does not run, or runs and is undone, on that first
+activation only. Reading has not settled which:
+
+- `Menus_ActivateByName` -> `Menus_Activate` -> `Item_RunScript(menu->onOpen)`
+  is stock and unconditional, so nothing there skips a first open.
+- `Controls_GetConfig`, which `uiScript loadControls` calls at the end of the
+  same script, only reads bindings - it touches no window flags.
+- The rows' parsed default is `visible 0`, so "no rows" and "`onOpen` never ran"
+  are the same observation. The tabs drawing proves only that the menu is
+  visible, not that its script ran.
+
+**Answered by the trace.** `ui_inputDebug 1` over a first open and a tab click:
+
+```
+handleKey menu 'ingame' key 178 down 1 focused 'navbtn6'      <- Settings
+  -> default Item_Action 'navbtn6'
+script 'open' on item 'navbtn6'
+...
+handleKey menu 'main_options' key 178 down 1 focused 'navbtn2' <- Controls tab
+  -> default Item_Action 'navbtn2'
+script 'open' on item 'navbtn2'
+script 'hide' on item '(unnamed)'      <- ingame_controls onOpen at last
+script 'show' on item '(unnamed)'
+script 'show' on item '(unnamed)'
+script 'uiScript' on item '(unnamed)'
+```
+
+The first open runs **no `ingame_controls` onOpen at all**; the tab click runs
+the whole hide/show/show/loadControls sequence. So the panel was never opened,
+rather than opened and left empty - every suspect above was aimed at the wrong
+half of the problem.
+
+`main_options` is a tab bar - Controls and Game Settings - over a page Quake
+Live fills with its embedded web view, which is what
+`exec "web_changeHash /settings"` in the nav button drives. We have no web view
+and main_options carries no `onOpen`, so the page stayed empty until a tab was
+clicked.
+
+**Fixed** by `UI_DefaultOptionsPage` in `_UI_Refresh`: while main_options is
+visible with neither page up, open `ingame_controls`. Once a frame rather than
+at a call site, because main_options is reached both from `_UI_SetActiveMenu`
+and from a menu script's `open`.
 
 ### U11. Cosmetic layout faults — PARTIAL (value offset fixed)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -617,6 +793,44 @@ menu did. The `createserver` rows had it right; these did not.
 
 **Open:** the proper home is still Quake Live's own tabs. If its
 `ui/*.menu` files turn up (U1, U10 need them too) these rows should move there.
+
+### U18. Renderer row in Render Options draws blank — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+The RENDER OPTIONS panel painted every row correctly except one: `Renderer:`
+had a label and no value. Two theories were wrong before the data arrived.
+
+Not the string pool — `ui_report` on a full menu load says *"String Pool is 9.3%
+full, 97697 bytes out of 1048576 used"*. Not the cvar either: the row's cvar
+`cl_renderer` exists and reads `opengl2`.
+
+The row's list was empty. `cvarStrList` was written as
+
+```
+cvarStrList { "OpenGL 2" "opengl2" "Vulkan" "vulkan" }
+```
+
+and botlib's `PS_ReadString` joins adjacent quoted strings the way a C compiler
+joins string literals, so all four arrived as **one** token,
+`"OpenGL 2opengl2Vulkanvulkan"`. The parser took it as a display name, waited
+for a value, hit `}` and returned with `count == 0`. `Item_Multi_Setting` then
+matched nothing and returned `""`.
+
+Every `cvarStrList` in Quake Live's own menus is comma-separated —
+`{ "Default", "globalpreset_default", ... }` — and that is why. Ours was the
+only one in this tree without commas, and the only broken row. The neighbouring
+rows are `cvarFloatList`, where the numbers sit between the strings and no two
+quoted strings are ever adjacent, which is why they were all fine.
+
+Fixed in the menu (commas added), and the parser now refuses to fail silently:
+an empty `cvarStrList` is a source error naming the cvar and the cause, and an
+odd-length one says the last name has no value. `Item_Multi_Setting` also warns
+once per value when a cvar holds something not in its row's list, separating
+"unregistered cvar" from "value not listed".
+
+Both diagnostics were what found this: the second one printed
+*"multi item cvar \"cl_renderer\" is \"opengl2\", which is not one of its 0
+listed values"*, and `0` was the whole answer.
 
 ### U2. No player-name prompt while in a match — PARTIAL
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -674,6 +888,37 @@ All the machinery was already implemented (`UI_BuildServerDisplayList`,
 ---
 
 ## Client / cgame
+
+### C16. Score tracker never shows the player's score — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+The two-bar tracker top-left read 39/38 while the player was 40th with 1, and
+0/0 while the player was on -1. Four samples, always the top two players, never
+the viewer — so this was never a negative-number bug, which is how it was first
+reported.
+
+**The HUD that loads is not the one I was reading.** `cg_hudFiles` defaults to
+`ui/hud.txt`, which loads `ui/hud.menu`, and that asks for
+`CG_1ST_PLACE_SCORE` and `CG_2ND_PLACE_SCORE` with **no ownerdrawflags at all**
+— both are plain `visible 1`. The four-item
+first-place/not-first-place arrangement I traced through `comp_hud.menu` is a
+different HUD and never applied. So the earlier round spent ruling out
+`ownerDrawVisible`, `PERS_RANK` and the flag gating was looking at the wrong
+file the whole time; all three were fine.
+
+Both owner-draws were mapped straight to `CG_DrawRedScore` / `CG_DrawBlueScore`,
+which read `cgs.scores1` / `cgs.scores2`. In a team game those are the team
+scores and it is correct; in a free-for-all they are 1st and 2nd place.
+
+`CG_DrawPlaceScore` now serves both: team gametypes keep red and blue, and
+free-for-all draws the leader on the top line and **your** score on the bottom,
+swapping the bottom line to the runner-up when you are the one leading. That is
+the same information `comp_hud.menu` builds from four gated items, expressed as
+two.
+
+This follows the reported intent rather than a binary trace — the behaviour was
+stated as "one should be the client's player, one should be the top fragger".
+
 
 ### C4. Console commands sent as chat in-game — DONE (verify), with a caveat
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -746,6 +991,3514 @@ here.
 at the top of `Com_Frame`, after the longjmp has completed. Everything else —
 normal shutdown, `VM_Clear`, any `VM_Free` at `callLevel` 0 — still unloads
 immediately, so the change only touches the pathological case.
+
+### C10. `+zoom` does nothing — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Right click on the railgun did not zoom. `CG_ZoomDown_f` and `CG_ZoomUp_f` were
+written, declared in `cg_local.h`, and registered in no command table, so the
+engine looked up `+zoom`, found nothing, and did nothing. Quake Live's
+`default.cfg` binds MOUSE2 to it, which is why this reads as a broken zoom
+rather than as a missing command.
+
+Registered. The same scan - every `CG_*_f` defined in cgame against every one
+in the table - turned up four more: `nextframe` and `prevframe` were registered
+but `testmodel`, `testgun`, `nextskin` and `prevskin` were not, so the two that
+were there had nothing to step. Registered as a set.
+
+This is the same trap as E8's 186 dead cvars, one layer over: a handler that
+exists and is reachable from nothing looks exactly like a working feature until
+someone presses the button.
+
+### C12. Scoreboard picture panel drew a weapon icon — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Reported as "the level image is not displayed on the scoreboard". It is not a
+level image: Quake Live's `ingame_scoreboard_*.menu` puts `ownerdraw UI_ADVERT`
+in that panel, with `style WINDOW_STYLE_SHADER` and
+`defaultContent "textures/ad_content/ad2x1.jpg"`.
+
+Our owner-draw table had `case UI_ADVERT` calling `CG_DrawWeaponIcon`, so the
+advertisement slot painted a weapon. It is now a no-op, which lets the menu
+system paint the item's own `defaultContent` — the same thing Quake Live shows
+without a live ad, and this build has no ad server (`RE_Get_Advertisements`
+reports none in both renderers).
+
+### C13. Scoreboard is empty with a full server — DONE (confirmed)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+With 40 players the in-game scoreboard and the end-of-match summary both draw
+no rows at all, and the client's own stats are wrong (a player with one frag was
+credited with fourteen kills).
+
+A scoreboard is **one reliable command**. `trap_SendServerCommand` lands it in
+`client->reliableCommands[][MAX_STRING_CHARS]` and it is truncated there,
+silently, at 1024 bytes. Every emitter declared its buffer at or above that
+(`char string[1400]` in FFA, `[1024]` in the other seven) and then guarded on
+`sizeof(that buffer)` — so the guard could not fire before the truncation did,
+and the command name plus three leading numbers were never counted at all.
+
+Truncation does not just drop the tail players. **The entry count is in the
+header**, so the client is told to read N players' worth of fields out of a
+string that stops mid-entry: every field past the cut is read from whatever
+follows, or from nothing. That is a scoreboard with garbage in it, which is why
+the local player's kills were wrong as well as the rows being missing.
+
+Fixed: a shared `MAX_SCOREBOARD_PAYLOAD` (`MAX_STRING_CHARS - 64`) that all
+eight emitters guard on, so the count and the entries always agree, and
+`G_ScoreboardTruncated` says once per level when players are being dropped
+instead of dropping them quietly.
+
+**Chunking is now built, for every emitter that can overflow.** Each one flushes
+a chunk whenever the next entry would cross the budget. The first chunk keeps
+the original verb's shape and reports only the entries *it* carries, so a stock
+Steam client still gets a correct — if short — scoreboard; the rest go out as
+`<verb>2 <startIndex> <count> ...`, which a stock client has no handler for and
+drops. Done for `scores_ffa`, `scores_tdm`, `scores_ca`, `scores_ctf`,
+`scores_ft`, `scores_rr`, `scores_race` and the broadcast `smscores`.
+(`scores_duel` is two players and `scores_ad` is a fixed score history, neither
+of which can overflow; `tinfo` is capped at `TEAM_MAXOVERLAY`.)
+
+On the client each parser's per-entry read is now a `CG_ParseScoreEntry_*`
+function and one `CG_ParseScoresCont(parser)` handles every continuation, so the
+first message and its continuations cannot read a row differently — which is how
+the parsers and emitters drifted apart in the first place.
+
+`MAX_SCOREBOARD_PAYLOAD` only ever described the FFA header. `scores_tdm` leads
+with twenty-eight team totals and `scores_ctf` with thirty-four, some of them
+possession times in milliseconds, so those four build their header first and take
+the budget from `G_ScoreboardBudget(strlen(header))`. Hiding the opposing team's
+totals moved out of the player loop at the same time — it ran once per player and
+the viewer does not change between iterations.
+
+`G_ScoreboardTruncated` now reports whenever the sent/total pair changes rather
+than once per level, so the log shows the point at which players start being
+dropped ("20 of 21", "20 of 22") instead of one line naming whatever the count
+happened to be the first time it overflowed. Only `tinfo`, `castats` and the
+end-of-match `smscores` per-weapon rows still reach it.
+
+One thing to watch: a full FFA scoreboard is now three or four reliable commands
+instead of one, against a 64-slot ring. Both broadcast sites are intermission
+only and the client throttles its own `score` request to one every two seconds,
+so nothing in normal play multiplies this — but a client that spams `score` costs
+four times what it used to.
+
+### E24. Every freeze was destroyed on the frame it happened — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+With the round machine finally running, players froze — and were thawed again
+instantly:
+
+```
+Biker was railed by Major
+Biker was auto-thawed.
+Wrack was railed by Klesk
+Wrack was auto-thawed.
+```
+
+`G_Damage`, right after `targ->die()`:
+
+```c
+if (g_freezeAutoThawTime.integer &&
+    level.time < targ->client->respawnTime + g_freezeAutoThawTime.integer) {
+    Freeze_InstaKill(targ, 1);
+```
+
+The comparison is the wrong way round — true for the whole auto-thaw window and
+false once it has passed, when the intent is to destroy the body *after* the
+window elapses. `targ->die()` has just frozen the player, so `respawnTime` is
+around `level.time` and the test passed on the very frame of the freeze. Every
+freeze was destroyed immediately, which is why the mode still looked like
+ordinary deaths.
+
+Now measured from `ps.freezetime` — the stamp `Freeze_PlayerFrozen` sets — so it
+agrees with the per-frame timeout in `Freeze_ClientThawCheck` instead of running
+a second clock off `respawnTime`. On the freezing frame the elapsed time is 0, so
+it no longer fires there.
+
+`Freeze_Think` also warns once per level, without needing `g_debugFreeze`, if the
+round state is still not `RS_PLAYING` well after the countdowns should have
+finished. A declined freeze is indistinguishable from a death, and that cost two
+rounds of "still not working" with nothing in the log to work from.
+
+### E25. Freeze Tag timings set to the intended rules — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+The rules the mode is meant to run, now that freezing works:
+
+| | before | now |
+|---|---|---|
+| `g_freezeThawTime` — teammate must stand over you | 2000 | **7000** |
+| `g_freezeAutoThawTime` — melt on your own, in a round | 120000 | **0 (off)** |
+| `g_freezeWarmupThawTime` — warmup self-thaw fuse | *did not exist* | **5000** |
+
+- **A live round has no auto-thaw at all.** The only way out of the ice is a
+  teammate, which is the mode. At 120000 a statue nobody reached melted by
+  itself after two minutes and a round could resolve with no thawing done.
+- **Thawing takes real commitment.** `Freeze_ClientThawCheck` counts down only
+  while a teammate is in range with line of sight, and lets the timer decay back
+  up when they leave, so this is continuous presence rather than a total. Two
+  seconds meant you thawed people in passing; seven leaves the thawer exposed,
+  which is the trade the mode is built on.
+- **Warmup freezes too, on a short fuse.** Warmup is practice, so a shot should
+  still put you in a statue — it just should not park you there.
+  `Freeze_ClientThawCheck` already had a warmup branch that bleeds the timer with
+  no teammate needed, so the fuse is just where that timer starts.
+  `Freeze_PlayerFrozen` no longer requires `RS_PLAYING` during warmup, and
+  `maxThaw` follows the same value so the thaw-progress display measures against
+  the right number.
+
+### C28. Frozen player presentation — DONE (verify)
+**Lives in:** our **client** (cgame) + `pak01` · **Seen by:** our client only
+
+Three things reported about a frozen player, all fixed:
+
+- **The ice looked wrong.** `sprites/frozen` was painted flat over the model as a
+  `customShader`, which washed the whole character out to a pale blue silhouette.
+  It is now drawn the way the *quad shell* is — the model rendered a second time
+  with an additive `tcGen environment` shader — so it reads as a coating catching
+  the light instead of a repaint, and the team colours underneath stay legible.
+  `powerups/freezeshell` is **our own shader**, shipped in
+  `content/pak01/scripts/freeze.shader`, referencing Quake Live's
+  `textures/effects/icemap.jpg` by name. Only the name — no asset content, same
+  rule as the pak manifest. Falls back to `frozenShader` if pak01 is missing.
+
+- **The statue kept running.** `pm_type` stops a player moving but not their
+  animation, so someone shot mid-sprint stayed frozen in a running stride.
+  `Freeze_PlayerFrozen` now parks both halves on `LEGS_IDLE` / `TORSO_STAND` with
+  `ANIM_TOGGLEBIT` flipped, so the client restarts the animation rather than
+  lerping out of the run.
+
+- **The scoreboard kept popping up.** It shows itself automatically while dead,
+  and a statue sits at zero health for its whole life. `PM_FREEZE` is its own
+  `pm_type`, but for a frame or two around the death `pm_type` is still `PM_DEAD`
+  while `PW_FREEZE` is already set — the "sometimes" in the report. The powerup
+  is the reliable test, so that is what the auto-show now checks.
+
+`g_freezeThawTime` is **3000** — the value asked for after playing it.
+
+### E26. Bot filler exhausts the slots in Freeze Tag — DONE (root cause found)
+**Lives in:** our **server** (qagame) · **Seen by:** server console
+
+```
+Unable to add bot. All player slots are in use.
+Start server with more 'open' slots (or check setting of sv_maxclients cvar).
+```
+
+Chased through three wrong answers before the slot table settled it. Sixteen bots
+on a sixteen-slot server, and five of them on `team 3` — TEAM_SPECTATOR:
+
+```
+   0 connected bot team 3 "Bones"     3 connected bot team 1 "Lucy"
+   1 connected bot team 3 "Visor"     4 connected bot team 2 "Stripe"
+   2 connected bot team 3 "Gorre"    14 connected bot team 3 "Phobos"
+                                     15 connected bot team 3 "Crash"
+```
+
+`G_ReadSessionData` (g_session.c) runs from `ClientConnect` immediately after
+`G_InitSessionData`, and this line overwrote the team `PickTeam` had just chosen:
+
+```c
+if (g_teamSpawnAsSpec.integer && g_gametype.integer >= GT_TEAM && level.warmupTime) {
+    sessionTeam = TEAM_SPECTATOR;
+}
+```
+
+For a human that is the whole point — reconnect during warmup and pick your own
+side. A bot has no menu, so it stays a spectator forever.
+`G_CheckMinimumPlayers` counts *per team*, so a spectator bot counts toward
+neither: the shortfall never closes, another bot goes in every second, and it
+runs until all sixteen slots are bots. A human trying to connect then finds the
+server full and the refusal spams the console — exactly as reported.
+
+`level.warmupTime` is `-1` while the server idles pre-game, which is nonzero, so
+this was live the whole time the server sat waiting for players. Fixed by
+exempting bots (`SVF_BOT`, which `G_AddBot` sets before calling `ClientConnect`).
+
+**Guard added on top**, because the *shape* of this failure recurs with any
+counting bug: every number `G_CheckMinimumPlayers` works from is per team, and a
+bot the per-team counts cannot see is a bot the filler tries to replace once a
+second forever. `G_FillBots` now enforces two limits that do not depend on the
+counting being right — leave `BOT_RESERVED_SLOTS` (1) free so a person can always
+get in, and when there is no room, kick a bot sitting in spectator rather than
+asking for a slot that does not exist (only when out of room, so an admin's
+deliberately-spectating bot survives on a server with space). Duel now routes
+through `G_FillBots` too, for the same guard.
+
+**Earlier fixes on the way, all real but none of them this:**
+
+- `G_CountBotPlayersWithQueued` skipped `CON_CONNECTING` bots and counted only
+  queued entries already due, so a bot inside its spawn delay was counted zero
+  times while holding a slot. Its queue loop also had no team filter.
+- `G_AddBot` returned on a refused `ClientConnect` without calling
+  `trap_BotFreeClient`, leaking the slot `trap_BotAllocateClient` had already
+  moved to `CS_ACTIVE`.
+- `SV_DropClient` parks a departing human in `CS_ZOMBIE` for `sv_zombietime` so
+  the final reliable message can be retransmitted, and `SV_BotAllocateClient`
+  only looked for `CS_FREE`. On a nearly full server that alone refused the
+  replacement bot. It now takes a zombie when nothing is free; live clients
+  untouched.
+
+**Diagnostics kept** on both sides — the game's slot table and the server's own
+`client_t` states. They are what found this, and together they show whether the
+game and the server disagree about who holds what. Refusals are throttled to one
+a second.
+
+### E27. Warmup countdown allowed firing — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Players could freeze each other during the countdown to match start, carrying a
+freeze into a round they had no say in.
+
+Warmup is two different things and they want opposite rules. The open-ended
+practice period before a match — `level.warmupTime == -1`, nobody counting down —
+is practice: shooting should work and a hit should freeze, on the short
+`g_freezeWarmupThawTime` fuse (an earlier request, unchanged). The countdown once
+the match has been called is not practice.
+
+`level.warmupTime > 0` is that countdown, `RS_COUNTDOWN` the round-based
+equivalent — the same pair `g_combat.c` already tests to shorten the respawn
+during a countdown. `ClientThink_real` now sets `PMF_RESPAWNED` for the duration,
+which is the lockout `PM_Weapon` already honours ("don't allow attack until all
+buttons are up") and lives in `pm_flags`, so it is networked and the client
+predicts the same result — the gun stays quiet on both sides instead of flashing
+locally for a shot the server discards. Re-set each frame because `PmoveSingle`
+clears it on release.
+
+Movement is deliberately untouched: `GT_AD` locks players in place during its
+countdown, Freeze Tag does not, and that was not what was asked for.
+
+### E28. "I can unfreeze enemy players" — explained, not a team-check hole
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+The warmup branch of `Freeze_ClientThawCheck` does not check teams, because in
+warmup nobody thaws anybody — the statue expires on its own fuse. A frozen enemy
+coming back five seconds after you walked over is indistinguishable from having
+thawed them.
+
+The live-round path tests `sess.sessionTeam` in the box scan *and* again in the
+re-resolve (`Freeze_ThawerStillEligible`), so a cross-team thaw cannot start or
+complete there. No third path clears `PW_FREEZE`: frozen players are damage-immune
+(`g_combat.c` step 22 sets `take = 0`), so shooting a statue cannot respawn it
+either.
+
+With firing disabled during the countdown (E27), the warmup branch stops being
+reachable at match start. `g_debugFreeze 1` now names a warmup self-thaw when it
+happens, so this is attributable rather than inferred.
+
+### C29. Thaw fails intermittently — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported as thawing working about half the time.
+
+Two causes, both in `Freeze_ClientThawCheck`, and the line-of-sight one is the
+one that matches the report.
+
+**The LOS trace was at foot level.** With `g_freezeThawThroughSurface 0` the
+binary traces `ps.origin` → `ps.origin`, a point trace against `CONTENTS_SOLID`,
+and rejects the teammate unless it is completely clear. Those origins sit 24
+units off the floor, and the two players are inside a 96-unit radius, so on flat
+ground the line is clear and thawing works. Everywhere else it does not: a stair
+tread, a ramp, a jump-pad lip, the edge of whatever you are standing on, or the
+statue having died a step further down a slope all put brush between two players
+who are looking straight at each other. The thaw then silently never starts, and
+one step sideways fixes it — which is what "half the time" was.
+
+`Freeze_ThawVisible` now tests at chest height first and falls back to the
+original foot-level line only if that is blocked (crouched, or a low ceiling);
+either passing is enough. `startsolid`/`allsolid` counts as visible — it means
+the trace began inside a brush, which says nothing about what is between the two
+players, and blocking on it would strand a statue for the rest of the round.
+
+**The thawer lock was never released.** `ps.thawClientNum` was set on the first
+frame a teammate was found and `thawClientNum_valid` was only cleared on a frame
+with no teammate at all. If the locked teammate walked off, got frozen or died
+while somebody else was still in range, the re-resolve loop searched for a client
+number that was no longer there, found nothing, and left the stale lock in place
+— so the thaw ran to completion crediting the assist to a player who was not
+performing it, and on frames where the lookup *did* find them the eligibility
+filters were never re-applied. The lookup now re-checks eligibility
+(`Freeze_ThawerStillEligible`) and drops the lock when it cannot be honoured,
+re-locking onto whoever the scan actually found this frame.
+
+`g_debugFreeze 1` now also prints the rejected-for-line-of-sight case by name.
+
+**Third cause, found after the LOS fix did not settle it** — reported back as
+thawing still taking a long time.
+
+Thaw progress did not pause when contact broke, it *reversed*, at the same rate
+it advanced: `ps.thawtime += msec` on any frame with no valid thawer. The scan
+demands the teammate be inside a 96-unit box *and* pass the line-of-sight trace
+every single frame, which is not a stable enough test to hang that on — a
+teammate circling the statue, clipping a pillar or drifting to the edge of the
+radius gives progress back as fast as they earn it, so three seconds of standing
+there completes nothing. Halved contact means net zero.
+
+**Settled with a grace window rather than a rate.** Two different things look
+identical for one frame: a thawer who has stepped behind a pillar or drifted to
+the edge of the radius, and one who has given up and walked off. Both earlier
+attempts treated them the same and were wrong in opposite directions — undoing a
+frame of progress per frame meant no thaw ever finished on uneven ground, and
+refilling at a quarter rate fixed that but made leaving almost free, so a statue
+could be chipped at across a whole round.
+
+The distinction is *time*, so time is what is measured. `lastThawContactTime` is
+stamped on every frame with a valid thawer; inside `g_freezeThawGrace` (default
+500 ms) the progress simply holds, and past it it snaps back to full. A real
+reset when someone walks away, and a corner or a bad trace costs nothing.
+`g_debugFreeze 1` names the reset and how long contact had been lost.
+
+**Fourth: the reach was too small.** `g_freezeThawRadius` is a real cvar —
+`Freeze_ClientThawCheck` reads it every frame to size the `trap_EntitiesInBox`
+scan, so it was always tunable and is not one of the 186 dead ones. The default
+was just mean: 96 units is a box of ±96 around the statue, and since
+`EntitiesInBox` tests bounding boxes rather than origins the effective reach was
+about 111 — roughly a player and a half. That does not survive either player
+drifting, which is the same brittleness that made the LOS test and the progress
+decay feel broken. Raised to **160** (about 175 effective): still a commitment
+with someone shooting at you, but circling the statue or backing off a step no
+longer drops the thaw.
+
+Verify: thaw a teammate on a staircase and on a ramp; `g_debugThawTime 1` prints
+the countdown to the thawer every frame if the rate needs measuring.
+
+### C30. Rail colour by gametype — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+The stock rail takes its colour from the shooter's own `color1`/`color2`
+userinfo. In a team mode that is backwards — the one thing a beam could tell
+you, whose side fired it, is replaced by a colour that player picked for
+themselves. In a free-for-all it is fine, and it is the player's own choice, so
+it stays there.
+
+QL's own `cg_forceTeamRailColor1`/`2` do not fill the team gap: they are a
+viewer-side friend/foe override with two arbitrary colours, and
+`CG_GetRailColorFloat` returns early for `viewer == owner`, so your own rail is
+never touched by them.
+
+`cg_railColorMode` (cgame, default 1):
+
+| value | team gametypes | FFA / Duel / Race |
+|-------|----------------|-------------------|
+| `0` | player's own colour | player's own colour |
+| `1` | **team colours** | player's own colour, or **yellow** if they never picked one |
+| `2` | **team colours** | **a distinct colour per player** |
+| `3` | white | white |
+
+**Yellow for an unset colour.** `CG_ColorFromString` gives white for anything
+outside 1..7, which is where an unset or missing `color1` lands — and 7 is white
+too, so a real choice of white and the no-choice default are indistinguishable.
+Yellow is the better thing to do with it either way: a white rail is the hardest
+to pick out against a bright skybox, and it is what a player gets by doing
+nothing, so it is what most rails on a public server end up being.
+
+The per-player colour is a hash of the client slot, not a random draw. Two
+constraints rule a draw out: every client has to agree on what colour a given
+player's rail is, or the same shot is a different colour on each screen and the
+colour stops meaning anything; and it has to hold still for the match, or the
+beam strobes and is worse than the one colour the player chose. `clientNum *
+0.618` and take the fraction as a hue — the golden-ratio trick, so neighbouring
+slots land far apart (orange, blue-green, purple, yellow) instead of walking a
+rainbow ramp.
+
+Applied in `CG_GametypeRailColor`, called from the top of `CG_GetRailColorFloat`
+and `CG_GetRailColorByte`, plus the railgun model tint and the muzzle blast — so
+the core beam, the ring sprites, the impact mark, the gun in your hands and its
+flash all agree. `>= GT_TEAM` is the team test; `GT_FFA`, `GT_DUEL` and
+`GT_RACE` sit below it in QL's enum and everything above is a team mode.
+
+Note on "let the player pick their colour": that already exists and always has —
+it is the `color1`/`color2` userinfo, which is what mode 0 and mode 1-in-FFA
+fall through to. QL's own player-options menu lives in `pak00.pk3`, which we
+cannot ship or edit; `/color1 <n>` and `/color2 <n>` at the console set the same
+values the menu would.
+
+### C31. Team overlay carried no data — DONE (verify)
+**Lives in:** our **client** (cgame) + **server** (qagame) · **Seen by:** our client only
+
+Every overlay row read `name / unknown / 0 / (red no-entry icon) / 0`.
+
+Matching QL's flat `tinfo` fixed the parse errors that were dropping clients on
+join, but it also removed everything the overlay draws. Location, health, armour
+and weapon are Quake 3 `tinfo` fields; QL's client gets teammate state from the
+snapshot instead and ours does not, so `ci->location` was 0 (`CS_LOCATIONS + 0`
+is empty, hence "unknown"), health and armour were 0, and `ci->curWeapon` 0 has
+no icon — which is what the red circle was, `cgs.media.deferShader` standing in
+for a missing weapon icon.
+
+Fixed with a companion command rather than by breaking `tinfo` again. `tinfo`
+keeps the exact shape a stock Quake Live client expects; `tinfo2` is ours, six
+ints per player — client number, location, health, armour, weapon, **frozen**.
+
+**Correction: "a client that does not know the verb ignores it" was wrong.** A
+stock Quake Live client prints `Unknown client game command: tinfo2` for every
+one it receives, and this goes out twice a second per player — a vanilla client
+on our server gets a console full of nothing else. Any command stock QL has no
+handler for has to be *gated*, not just assumed harmless.
+
+So the server now knows who can parse what. Our engine registers `iqlclient` as a
+`CVAR_ROM` userinfo cvar (`cl_main.c`), which arrives with the connect packet;
+`ClientUserinfoChanged` reads it into `pers.extendedClient`, and
+`TeamplayInfoMessage` returns before the `tinfo2` block for anyone without it.
+`CVAR_ROM` because it identifies the binary — a user setting it by hand would
+only be lying to the server about what their client can parse.
+
+A stock client loses the overlay detail and nothing else: `tinfo` is the
+QL-shaped message and still goes to everyone. That is the right trade, and
+`pers.extendedClient` is the gate for any future extension command. Roughly 200 bytes at
+`TEAM_MAXOVERLAY` 8, well inside the 1024-byte reliable limit, with the same
+`MAX_SCOREBOARD_PAYLOAD` guard.
+
+Frozen teammates show as an ice-blue row with **`FROZEN` in the location
+column** — the only text field on the row, so it is where a word belongs, and
+where a frozen player is matters far less than that they are frozen and need
+fetching.
+
+That column now reads **FROZEN → real location → ALIVE**. It answers a question
+with two useful states in Freeze Tag: is that teammate a statue, or still
+playing. Where they are is the bonus, and most maps do not offer it.
+
+The first attempt at this did not work, and for an instructive reason: index 0 is
+the sentinel, not an empty string. `G_LinkLocations` writes the literal
+`"unknown"` into `CS_LOCATIONS + 0` (g_target.c) and hands that index to every
+player the map has no `target_location` for, so testing the *returned string* for
+empty never fired — it came back with six characters in it every time. The test
+that works is `ci->location > 0`.
+
+Health and armour keep their real numbers (0 0 for a statue) rather than being
+replaced by the word. The row stays ice blue rather than going through
+`CG_GetColorForHealth`, which would paint a statue critical-red off its zero
+health — and red is already what a *dying* teammate looks like.
+
+**No weapon icon on those rows.** There is nothing to draw: `PM_Weapon` sets
+`ps.weapon` to `WP_NONE` while health is <= 0, so a statue's `curWeapon` is
+`WP_NONE` and the icon fell through to `deferShader` — the red no-entry circle.
+It also sat badly: the icon is placed three characters into a field sized for
+`"%3i %3i"`, landing in the gap between the two numbers.
+
+### C32. Frozen players kept animating — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Parking a frozen player on `LEGS_IDLE`/`TORSO_STAND` server-side stopped the run
+cycle but not the motion — idle is still an animation, so the statue breathed and
+swayed. There is no way to say "one frame" from the server: an animation is a
+range in the model's `animation.cfg` and the client lerps through it.
+
+`CG_PlayerAnimation` now collapses `oldFrame` onto `frame` with zero backlerp for
+any entity carrying `PW_FREEZE`. That holds the exact pose the player was hit in —
+which is better than a reset to a neutral stance — and stops the interpolation
+dead.
+
+### C33. Matching Quake Live's freeze visuals — IN PROGRESS
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Side by side with the Steam client, ours had **erased the player**: a pale
+white-pink silhouette with no team colour and no skin. Quake Live's frozen player
+stays completely readable — you can see the blue armour and the model detail
+through angular, semi-transparent ice.
+
+The layering was already right: `CG_AddRefEntityWithPowerups` draws the model
+normally and *then* adds a second pass with `customShader`, the same as the quad
+shell. The fault was entirely in the shader — two `GL_ONE GL_ONE` stages of a
+bright environment map add roughly twice the map's brightness on top of the
+model, which saturates to white.
+
+**Second miss: the shell has to stand off the model.** QL's ice *hovers* around
+the player rather than clinging to the surface, which is what makes it read as a
+block of ice with someone inside instead of a shiny skin. A second pass of the
+same mesh is skin-tight by definition, so the geometry has to be pushed outward,
+and the only way a shader moves geometry in idTech3 is `deformVertexes`:
+
+```
+deformVertexes wave <div> <func> <base> <amplitude> <phase> <freq>
+```
+
+moves each vertex along its own normal. The **base** is the constant push — the
+standoff — with the amplitude a slow breathing on top so a statue is not inert,
+and `div` spreading the phase by vertex position so the surface flexes rather
+than inflating as one rigid ball. Verified reachable on player models:
+`RB_CalcDeformVertexes` offsets along `tess.normal`, and `RB_DeformTessGeometry`
+runs in the generic stage iterator that MD3s use — the VBO fast path that skips
+deforms is world geometry only.
+
+Three variants ship in `content/pak01/scripts/freeze.shader`, selected by
+**`cg_freezeShell`** (default 1), sampling the two axes still open — how far the
+shell stands off, and whether it reads as glass or as glow:
+
+**Third: white, and no pulsing.** `textures/effects/icemap.jpg` carries its own
+blue and `rgbGen` only *scales* what a texture already has — there is no way to
+desaturate one in the fixed pipeline. So the coat is built on `$whiteimage`, the
+renderer's built-in 1×1 white, and the shape comes from `alphaGen
+lightingSpecular` instead of from the map: opacity follows the light, which is
+what reads as facets. The blue map is dropped rather than tinted down.
+
+Ice does not breathe, either, which takes some care because the deform is spelled
+as a wave. Amplitude 0 with frequency 0 is the constant case —
+`RB_CalcDeformVertexes` has a `frequency == 0` branch that evaluates the waveform
+once and pushes every vertex by that fixed amount — so the shell holds its shape.
+Same reason the sheen is `rgbGen const` rather than `rgbGen wave`, and there is no
+`tcMod` anywhere.
+
+**Fourth: the glow is a second shell.** One shader gets one `deformVertexes`, so a
+halo standing further off the model than the coat cannot be another stage — it has
+to be its own shader and its own `trap_R_AddRefEntityToScene`.
+`powerups/freezeglow` sits at 14 units with `blendfunc GL_SRC_ALPHA GL_ONE`,
+additive weighted by alpha so `lightingSpecular` concentrates it where light
+catches the hull and lets it fall away elsewhere; a flat additive shell that size
+reads as a pale silhouette rather than a glow. Faint on purpose — it is drawn
+three times per player (legs, torso, head) and accumulates where the parts
+overlap.
+
+**Fifth: too big, and the halo blew out.** All standoffs halved, and the halo
+dropped from `rgbGen const 0.55` to a twelfth of that — it is drawn once per model
+part (legs, torso, head), so it accumulates wherever those overlap and a value
+that looks mild on one surface saturates a whole player.
+
+**Sixth: the halo was the wrong idea entirely.** A glow around the silhouette
+reads as a powerup, not as ice — style 1 or 2 with the effect *off* looked best.
+Replaced with animated overlays: a stage just outside the coat that moves the
+texture while the shell itself stays still.
+
+**Seventh: the shell shrinks as the thaw progresses.** A shader cannot read game
+state, but the server already publishes it — `Freeze_ClientThawCheck` buckets
+`ps.thawtime` into thirds and writes the bucket into the low bits of `generic1`,
+`BG_PlayerStateToEntityState` copies it into the entity state and `msg.c` networks
+it. Each style ships three coats at decreasing standoff and cgame picks by
+`generic1 & 3`, so the ice closes in while a teammate works on the statue instead
+of holding one size until it pops.
+
+That needed a server fix too: the bits only ever *accumulated*. `bit1` was set
+once `thawtime` fell below a third and nothing cleared it until the timer climbed
+back above two thirds, so a statue whose thawer walked away stayed drawn at its
+thinnest all the way back up — the progress went one way. Both bits are now
+cleared before the bucket is written.
+
+| `cg_freezeShellStyle` (the coat) | |
+|---|---|
+| `1` | **blue, close** (default) — QL's ice environment map, 2 → 0.5 units |
+| `2` | **white, close** — flat white, 2 → 0.5 units |
+| `3` | **blue, wide** — as 1, 5 → 1.2 units |
+| `4` | **white, wide** — as 2, 5 → 1.2 units |
+
+| `cg_freezeShellEffect` (animated overlay) | |
+|---|---|
+| `0` | **off** (default) — static coat only |
+| `1` | slow swirl — the environment map rotating in place |
+| `2` | turbulent shimmer — `tcMod turb`, so the reflection ripples |
+| `3` | animated frames — a two-frame `animMap` over QL's `envmapblue`/`envmapblue2` pair |
+| `4` | crawling frost — `tcGen base` + scroll, fixed to the body rather than the view |
+
+Twenty combinations; every shader registers at load so neither cvar needs a
+`vid_restart`.
+
+All three are registered at load, so switching the cvar takes effect without a
+`vid_restart`, and a missing one is reported rather than silently drawing nothing
+(`RE_RegisterShader` returns 0 for a name the pak lacks).
+
+**Still not done — the damage layer.** From `docs/pak-manifest.txt`, QL swaps
+blood for ice on a frozen target and shatters with a ball sprite:
+
+| name | almost certainly |
+|------|------------------|
+| `gfx/damage/ice_spurt.png` | blood spurt replacement on a frozen player |
+| `gfx/damage/ice_stain.png` | blood stain / impact mark replacement |
+| `gfx/misc/iceball.png` | shatter / gib particle |
+| `icons/thaw.png` | thaw medal icon (the assist award reuses the generic one) |
+
+Three registrations plus a branch in the missile-hit path. Confirmed again that
+there are **no ice meshes** in the pak — the whole effect is shader and sprite
+over the ordinary player model, so anything model-shaped is the wrong direction.
+
+### C34. Our own menus, so layout stops being someone else's — MILESTONE, not started
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Four separate faults this cycle were all the same fault: the menu we needed to
+change belongs to Quake Live.
+
+- FFA scoreboard columns do not line up with their headers. *(Worked around in
+  C35 - the headings are now drawn from C at the list's own column positions.
+  The menu is still QL's.)*
+- Controls has no Back, Apply or Reset.
+- The Settings tab bar had no page behind it (U10) because QL fills that panel
+  with a web view we do not have.
+- The map-vote crash was reached through `exec "vote 1"` in QL's
+  `endgamevote.menu`, a script shape we cannot alter.
+
+Each got a code-side workaround - offsets nudged from C, a default page opened
+once a frame, a null callback wired. Those were the right immediate fixes and
+they are all still needed, but the pattern says the layout itself has to become
+ours before the next four arrive.
+
+`pak00.pk3` is not redistributable, so nothing in it can be copied or edited.
+Authoring replacements from scratch is a different thing and is allowed: pak01
+precedes pak00 in the search path, so a menu we write under the same name wins.
+`content/pak01/ui/main.menu` already proves the mechanism for a ui menu.
+
+**Two tracks, and they are not the same module.** The tracker's "lives in"
+split matters here more than usual:
+
+| Menu | Loaded by | What it blocks |
+|---|---|---|
+| `hud.menu` | cgame | HUD layout |
+| `ingame_scoreboard_*` (13) | cgame | column alignment, row height, position bars, click-to-select |
+| `end_scoreboard_*` (13) | cgame | the same, at intermission |
+| `endgamevote`, `endscore*` | cgame | vote panel layout, and the `exec` shapes |
+| `main_options`, `ingame_controls`, `ingame_options` | **ui** | Back / Apply / Reset, tab behaviour |
+
+So "our own cgame menus" covers the scoreboards and the vote; the Controls
+buttons are a ui-side job. Worth doing together, not worth confusing.
+
+**Phases, cheapest first:**
+
+1. **A headless menu parse check** (`tools/check-menus.py`), before writing any
+   of it. U9 is the reason: `ItemParse_cvarFloatList` ate a closing brace, two
+   menus merged into one, and nothing said so on screen - parse errors are
+   silent where you are looking and loud in a console you are not. We are about
+   to write a lot of menu files; a check that runs over them is the difference
+   between a typo and an afternoon.
+2. **Prove the override for a cgame menu.** pak01-over-pak00 is established for
+   `main.menu`, which the ui module loads. Confirm the same holds for a menu
+   cgame loads before building anything on it.
+3. **Scoreboards.** Highest value: it is where the open cosmetic faults are, and
+   the feeder plumbing behind them is already ours.
+4. **Vote and end-of-game.** Removes the dependency on QL's `exec "vote N"`.
+5. **Controls page (ui).** Back, Apply, Reset - the outstanding ask.
+
+**Traps already known, do not rediscover:**
+
+- `RE_RegisterShader` and `RE_RegisterModel` return **0** for a name the pak does
+  not contain, silently. Check `docs/pak-manifest.txt` before naming any asset.
+- cgame's display context has NULL callbacks where the ui's does not:
+  `getOverstrikeMode`, `setOverstrikeMode`, `getBindingBuf`, `setBinding`. They
+  are guarded now, and nothing QL ships for cgame reaches them - but an
+  `ITEM_TYPE_EDITFIELD` or `ITEM_TYPE_BIND` in a cgame menu of ours would, and
+  the guard would degrade silently rather than work. Wiring them means adding
+  syscalls to `cg_public.h`, **appended, never inserted**: the numbers are
+  shared with stock Quake Live's cgame under protocol 91.
+- Item rects are relative to the menu rect and are offset at parse time by
+  `Menu_UpdatePosition`. Comparing authored rects across two menus without
+  applying that is how the "Return to match" overlap was misdiagnosed.
+
+
+### C35. The FFA scoreboard, where the team boards look right — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+*"we made the scrollbars, we got the team scoreboard ones looking good, whats
+wrong with FFA?"* — and before that, "elements are misaligned", "the scroll bar
+... not aligned".
+
+Nothing in the scrollbar code. All three faults are the same shape: a correction
+that is right for the team boards was applied to menus whose geometry is not the
+team boards'.
+
+**1. The vertical nudge.** `CG_OffsetScoreboardList` pushes the rows down by
+`cg_scoreboardListOffset` (8) because the team menus put their headings *inside*
+the list rect — `ingame_scoreboard_ctf` has PLAYER/SCORE/K/D at y 170 with the
+list at `rect 73 165 284 130`, so row one lands on the header band. The non-team
+menus do not: `ingame_scoreboard_ffa` has its headings at y 156 and the list at
+`rect 77 161 486 180`, above the rows and clear of them. Shifting it anyway put
+the rows and the position bar 8 units below the panel: list bottom 311 against a
+panel body that ends at 306, so the bar ran out across the bottom frame art and
+into the stats bar. The shift now applies to `FEEDER_REDTEAM_LIST` /
+`FEEDER_BLUETEAM_LIST` only.
+
+**2. The bar column.** `Item_ListBox_Paint` hangs the bar off the right end of
+the list rect, and where that lands relative to the panel behind it is the
+menu's business. The team lists overhang their panel (rect right 332, panel
+outer right 318) so the bar sits on the frame — which is the look that was
+called good. The non-team lists stop short of theirs (rect right 563, panel
+outer right 569), so the same arithmetic left the bar floating 14 units inside
+the panel with the row highlight ending short of it. Both non-team layouts are
+inset from their panel identically — in game, list x 77 against a body of
+81..559; at the end, list x 122 against 126..604; each 486 wide against a 478+10
+panel — so one correction covers both: `rect.w += 20` for the non-team feeders.
+
+**3. The headings.** Not drift in our text code. Quake Live heads the number
+columns of the FFA / duel / race / RR boards with **one** item,
+
+```
+text "SCORE     K/D         DMG        WEAP        TIME     PING"
+```
+
+space-padded so the words land over the columns — counted against *their* font.
+We draw through a different one, so each label inherits the error of the ones
+before it and the gap grows across the row: SCORE about right, PING furthest
+out, exactly the progressive drift in the screenshot. The team boards escape it
+because they give every heading its own itemDef with its own rect.
+
+So the padded item is hidden and the six words are painted after `Menu_Paint` at
+`contentX + columnInfo[c].pos` — the list's own column positions, the same ones
+`Item_ListBox_Paint` puts the row text at, so a heading cannot drift from its
+column whatever the font does. Columns from `CG_FeederColumnsFfa`: 7 score,
+8 frags/deaths, 9 damage, 10 weapon icon, 12 time, 13 ping. Absolute x works out
+as 305 345 387 428 475 509, and QL's combined item starts at 305 — the first
+label was in the right place, which is why only the later ones looked wrong.
+
+Worth noting what this is not: none of it is a rendering bug, and none of it
+would be needed if the menus were ours. It is the third entry on C34's list.
+
+**To verify:** FFA, duel, race and RR, in game and at intermission — headings
+over their columns, position bar on the frame edge and inside the panel top to
+bottom, row highlight reaching it. The team boards must look exactly as they do
+now.
+
+### C36. "Accuracy:" on the player-stats bar was always blank — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+`CG_SELECTED_PLYR_ACCURACY` (93) shared a case label with
+`CG_FOLLOW_PLAYER_NAME`, under a note reading "CG_DrawFollowPlayerName (binary
+offset)" — mapped from a disassembly that had the two adjacent. So the field
+beside the Accuracy label drew a follow target, which is empty unless you are
+spectating: the label sat there with nothing after it while Best Weapon beside
+it worked, which is what made it look like a data problem rather than a
+dispatch one.
+
+Nothing was missing. `FreeForAllScoreboardMessage` computes
+`accuracy_hits * 100 / accuracy_shots` and sends it as field 5 of every scores
+entry; `CG_ParseScoreEntry_Ffa` reads it into `score_t.accuracy`. It now draws
+from `cg.selectedScore`, the same row Best Weapon uses, so the two always
+describe the same player.
+
+**To verify:** click a row on any scoreboard — Accuracy and Best Weapon must
+change together and describe the row you clicked.
+
+### C37. The end-of-game vote countdown ran off the screen — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+`endgamevote.menu` gives the timer `rect 610 370 150 10` and `align 2`
+(`ITEM_ALIGN_RIGHT`). `CG_DrawVoteTimer` ignored the alignment and drew from
+`rect->x`, so "Voting ends in 5 seconds." started at 610 in a 640-wide virtual
+screen and ran ~130 units past the edge of the display. The rect is 150 wide and
+ends at 760, well outside the screen, which is the tell that x is meant as the
+right-hand reference rather than the left: `CG_DrawLocalTime` sits in the same
+corner with the same shape of rect and already does it that way.
+
+Both strings go through it; "Voting has ended - next arena: <map>" is longer and
+was running off further.
+
+### E49. What is actually in the snapshot: 66% events, 23% invisible corpses — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** **every client**
+
+The per-type breakdown answered it on the first run, and neither answer was what
+I had been guessing at:
+
+```
+in the snapshot: general 1  players 10  movers 7  speakers 8  pushtrig 1  invisible 60  events 169
+dropped so far:  events 20417
+```
+
+- **events 169 of 256** — two thirds of the snapshot.
+- **invisible 60** — a quarter of it.
+- **players 5-10. items 0.**
+- **Every single dropped entity was an event.** 20,417 of them, no exceptions.
+
+That last line settles the thing that mattered: players and items were never
+being dropped. The overflow degrades *effects*, not the game. It is a cosmetic
+ceiling, not an integrity one, and the earlier framing of "players and items
+wink in and out" was wrong for this server.
+
+**`invisible 60` is pure waste, and it is fixed.** `ET_INVISIBLE` is what
+`BG_PlayerStateToEntityState` produces for a player below `GIB_HEALTH`, and
+`GibEntity` sets it too. Instagib gibs on every death, so on a full server that
+is most players most of the time. `cg_ents.c`'s entity switch is
+`case ET_INVISIBLE: break;` — the client receives these and throws them away.
+`GibEntity` makes the body non-solid and invisible but leaves it **linked**, so
+it sits in every snapshot until the player respawns.
+
+`self->unlinkAfterEvent = qtrue` is the fix: the existing mechanism, the one
+items use to disappear after their pickup event, firing from `G_RunFrame` once
+the event expires so `EV_GIB_PLAYER` still reaches everyone. `ClientSpawn`
+re-links.
+
+**It also frees spawn points, which is the part worth noticing.**
+`trap_EntitiesInBox` only returns *linked* entities, so `SpotWouldTelefrag` was
+counting gibbed corpses as occupying a pad. Dead players were reserving points
+they were never going to stand on — which on a map with few points makes the
+selector see a full map when it is not. One change, three effects: 23% of the
+snapshot back, spawn points that reflect reality, and less entity traffic.
+
+**Events are the remaining 66% and are not yet cut.** Worth recording what is
+known before touching it: `EVENT_VALID_MSEC` is 300 ms, and at `sv_fps 40` that
+is **twelve consecutive snapshots** holding a slot per event. id chose 300 ms
+when `sv_fps` was 20, i.e. six snapshots of redundancy for a client with packet
+loss. Scaling the constant so the redundancy stays six *snapshots* rather than
+300 *milliseconds* would halve event occupancy and preserve id's actual intent -
+but it is a client-visible timing change and wants its own measurement, so it is
+deliberately not in this round.
+
+### E50. citycrossings has two spawn points — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported as the spawn work having made citycrossings *worse*. The point count
+line, which is why it was added, says what is actually going on:
+
+```
+Spawn points: 12 info_player_deathmatch ... (trinity)
+Spawn points: 5  info_player_deathmatch ... (thunderstruck)
+Spawn points: 2  info_player_deathmatch ... (citycrossings)
+```
+
+**Two.** For sixty-four players. Every other pad on that map is under
+`team_CTF_redspawn` / `team_CTF_bluespawn`, and `SelectSpawnPoint` only ever
+looked at `info_player_deathmatch`. No selection strategy fixes two points, and
+the tiering could not have helped there.
+
+On the numbers the tiering is working where there is anything to work with -
+trinity went from 159 telefrags against 492 weapon deaths to **51 against
+1771**, and arkinholm from 192/290 to 552/4348, both large improvements in ratio.
+citycrossings went 859/28 to 3306/117, which is the same ratio over a map that
+ran three times longer: not worse per death, but not better either, because two
+points is two points.
+
+**Fixed by widening the search.** When the map's own `info_player_deathmatch`
+points are all occupied or in cooldown, the team pads are gathered as well —
+`SP_team_CTF_redspawn` and its blue twin are empty stubs, so those entities
+persist in every gametype with their classnames intact, and in a free-for-all
+there are no teams to be wrong about. Gated on there being nothing clear *or*
+warm, so a real deathmatch map whose points are merely in cooldown still uses
+its own. The point-count line now reports both pools.
+
+### E51. The score-cap crash, named — CAUSE IDENTIFIED
+**Lives in:** our **client** (renderervk / cgame) · **Seen by:** our client only
+
+`RB_ValidMeshFrames` fired, which E47 predicted it would:
+
+```
+RB_SurfaceMesh: frame 151/151 of 30 on surface 'dlc_gibs/gibs' (124 verts),
+                entity 181, model 74, during the lighting pass
+```
+
+A gib surface with **30 frames** being asked for **frame 151** — an
+out-of-range mesh frame, during the lighting pass, exactly the shape the
+symbolised call chain implied. The guard skipped the surface instead of reading
+past the frame array, so this is now a warning where it used to be
+`0xc0000005`.
+
+Two readings, and they need different fixes:
+
+- **The frame index is wrong.** 151 is a plausible *player* animation frame,
+  and `CG_LaunchGib` zeroes its `refEntity` through `CG_AllocLocalEntity`'s
+  memset and never sets `frame`, so a gib should be on frame 0. Something is
+  handing a gib model a frame it got from somewhere else.
+- **The entity and the surface are not the same model.** `RB_RenderLitSurfList`
+  re-derives `backEnd.currentEntity` from the lit-surf sort, which is a way for
+  an entity to be paired with a surface it does not own.
+
+The report now prints the entity's model *name* alongside the surface name. If
+they name different models it is the pairing; if both are gibs it is the frame.
+That is one line of the next log away.
+
+### R12. The render menu was showing the wrong renderer's options — DONE (verify)
+**Lives in:** our **client** (pak01 menu) · **Seen by:** our client only
+
+Asked for as "AF settings should be added or refined in the render menu", and
+the menu turned out to have a worse problem than a missing control.
+
+`io_renderoptions` in `content/pak01/ui/main.menu` is ours - it is reached from
+the RENDER button on the main menu and it already existed. But five of its
+controls are `renderergl2` cvars that **renderervk does not register at all**:
+
+| control | in renderervk | in renderergl2 |
+|---|---|---|
+| `r_cubeMapping`, `r_cubemapSize` | no | yes |
+| `r_specularMapping`, `r_normalMapping` | no | yes |
+| `r_toneMap`, `r_postProcess` | no | yes |
+| `r_bloom` | **yes** | no |
+| `r_renderScale` | **yes** | no |
+| `r_ext_max_anisotropy` | yes | yes |
+
+So on Vulkan the menu offered four or five switches that did nothing - the
+registered-cvar trap, on screen, in a menu of our own - while the two options
+that only Vulkan has had no control anywhere, and anisotropy had none in either.
+
+Both halves are now gated on `cl_renderer` with `cvarTest` + `showCvar` /
+`hideCvar`, sharing the same rows so only the applicable set is drawn:
+
+- **Vulkan:** Anisotropic Filter (Off/2x/4x/8x/16x), Antialiasing
+  (Off/2x/4x/8x MSAA), Texture Filter, Bloom, Lens Flares.
+- **OpenGL 2:** the cubemap/specular/normal block, unchanged.
+
+Every one of the new controls is `CVAR_LATCH`, which is what the existing
+APPLY (restart video) button is for. `tools/check-menus.py` clean.
+
+Still owed here: `r_toneMap` and `r_postProcess` in the POST PROCESSING section
+are GL-only too and want the same gate, and the Vulkan side has no
+supersampling control because `r_renderScale` needs `r_renderWidth`/`Height`
+alongside it rather than being a single switch.
+
+### R13. RT reflections and ambient occlusion — AO DONE (verify), reflections in R19
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**Status 2026-09-13.** The AO pass ships and works. Since it first drew:
+
+- **It ran after the dynamic lights**, so occlusion multiplied direct light as
+  well as ambient — a plasma bolt lighting a corner had its own light darkened
+  by that corner. Moved to just before the lit surface pass, where AO multiplies
+  the lightmapped scene and dynamic lights are added on top untouched. Not an
+  approximation of the physics; the ordering the term is defined by.
+- **A portal is a view.** `RB_DrawSurfs` runs once per view, so a teleporter
+  showing the room behind it ran the occlusion pass on the *portal's* view, set
+  `doneRTAO`, and the main view returned on the flag. Regression from the move
+  above; guarded on `portalView == PV_NONE` now. The screenmap test did not
+  cover it — screenmap has its own render pass, a portal uses the main one.
+- **Doors were in the static structure and the moving one.** Brush models keep
+  their surfaces in `world->surfaces`, so every door was baked in at its
+  compiled position *and* got a proxy that tracked it: two occluders, one door,
+  reported as the AO having an open state and a closed state rather than an
+  animation. The world structure is submodel 0 only now.
+- **`r_rtaoLights`** fades occlusion inside a dynamic light, using the light's
+  own falloff so the region cleared is the region lit.
+- **The debug view was being read through the tone curve**, so `r_rtao 2` at
+  `r_rts 1` showed only the deepest creases and looked like a much tighter
+  radius. It cancels `obScale` now.
+- **Cost is now printed.** `width x height x samples` ray queries in one draw
+  call: 133M at 4K with 16 rays, which is past what a driver watchdog allows and
+  was reported as the whole machine seizing for minutes. The menu called that
+  setting "best"; it is labelled by cost now.
+
+Original design notes follow.
+
+
+The hybrid from R10 - keep the baked lightmaps and lightgrid as the light field,
+ray trace only reflections and AO on top. Recording the design and the real
+costs before writing any of it, because two things about this tree change the
+plan.
+
+**The tractable design is ray queries, not a ray-tracing pipeline.**
+`VK_KHR_ray_query` allows tracing from inside an ordinary fragment or compute
+shader, so AO and reflections can be added to the existing rasteriser as extra
+passes rather than as a second renderer with its own pipeline layout, shader
+binding table and payload plumbing. That is the difference between "large" and
+"a rewrite".
+
+**What it needs, in build order:**
+
+1. **Device plumbing.** `VK_KHR_acceleration_structure`, `VK_KHR_ray_query`,
+   `VK_KHR_buffer_device_address`, `VK_KHR_deferred_host_operations`, SPIR-V 1.4.
+   `create_instance` currently asks for `VK_API_VERSION_1_1` at most and device
+   selection must keep working on hardware that has none of these - so this is a
+   capability flag and a fallback, touching `vk_create_device` and device
+   scoring.
+2. **A bottom-level acceleration structure for the world.** Static, built once
+   from the BSP surfaces at load. This is the bulk of the geometry and the
+   cheapest win.
+3. **A top-level structure per frame** with instances for models. Animated MD3s
+   need their BLAS rebuilt or refitted each frame, which is the expensive part
+   and can be deferred: world-only RT AO is already a visible improvement.
+4. **Shaders.** And here is the practical catch specific to this tree: shaders
+   are compiled **offline** by `code/renderervk/shaders/compile.bat` using the
+   Vulkan SDK's `glslangValidator`, converted to a C array by `bin2hex` and
+   vendored in as `shaders/spirv/shader_data.c`. The Makefile does not compile
+   shaders at all. Adding a ray-query shader means either a build-time glslang
+   dependency or regenerating that file by hand. **Done in E80** — `compile.sh` plus a
+   Makefile rule, so adding a ray-query shader is now a file edit.
+5. **Denoise.** AO tolerates a cheap spatial blur plus temporal reprojection.
+   Reflections do not, and want something closer to A-SVGF - which is why AO
+   should ship first and alone.
+
+**Order of work, smallest useful increment first:** device plumbing and
+capability reporting → world BLAS → `r_rtao` as a ray-query AO pass with a
+spatial denoise → temporal accumulation → dynamic BLAS for models →
+`r_rtreflections`. Each of the first three is testable on its own and the menu
+gate from R12 is already the right place to expose them.
+
+**Where it is now.** Step 1 is E85 (extensions enabled, feature bits proved,
+entry points loaded, `r_rt`/`r_rtAvailable`/`r_rtActive`). Step 2 is E86 (world
+BLAS + TLAS, built at map load). Both compile and link on both platforms and
+neither has been run on hardware from here - there is no `pak00.pk3` in this
+environment, so the client cannot reach a map.
+
+**Next: the AO pass.** It needs, in this order: a descriptor set layout carrying
+the TLAS (`VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR`), a depth/normal
+source to reconstruct world position and hemisphere from, a compute or fragment
+shader with `GL_EXT_ray_query` compiled to **SPIR-V 1.4** - note `compile.sh`
+currently emits the default, so that pass needs `--target-env spirv1.4` - and a
+spatial denoise before it is worth looking at. `r_rtao` gates it, on top of
+`r_rtActive`.
+
+**What it is not:** path tracing. The lighting stays baked, which is exactly
+what makes it possible without the emitter classification described in R10.
+
+### E52. How high can `sv_fps` go — the tick is not what is limiting it
+**Lives in:** our **server** (server engine) · **Seen by:** n/a
+
+Asked as "what's the fastest we could run the server fps wise without
+drawbacks", with 30/60/100 offered as the standards. Working it out from this
+tree rather than from convention, because two of the constraints are not where
+you would expect.
+
+**1. Only values that divide 1000 land where you asked.**
+`SV_UserinfoChanged` sets `cl->snapshotMsec = 1000 / sv_fps->integer` in integer
+milliseconds. So:
+
+| `sv_fps` | interval | actual |
+|---|---|---|
+| 30 | 33 ms | 30.3 |
+| 40 | 25 ms | **40** |
+| 50 | 20 ms | **50** |
+| **60** | **16 ms** | **62.5** |
+| 100 | 10 ms | **100** |
+| 125 | 8 ms | **125** |
+
+60 is the trap: it becomes 62.5. Same class of bug as E9, where `com_maxfps`
+could only ever produce rates dividing 1000 — fixed there by carrying the
+fractional millisecond, and not fixed here. Clean values are 40, 50, 100, 125.
+
+**2. The rate limit, not the tick, is what decides how many snapshots arrive.**
+`SV_RateMsec` gates each client to `rate / (bytes + 28)` messages a second, and
+`SV_UserinfoChanged` clamps `rate` to **4000-50000** (Quake 3 allowed 90000; the
+client default is 25000). So the per-snapshot byte budget is:
+
+| tick | at rate 25000 | at rate 50000 |
+|---|---|---|
+| 40 | 625 B | 1250 B |
+| 50 | 500 B | 1000 B |
+| 100 | 250 B | 500 B |
+
+A 256-entity snapshot is far past any of those. **On a full 64-player board the
+wire is already the binding constraint at `sv_fps 40`** — clients are being
+rate-delayed and `SNAPFLAG_RATE_DELAYED` set, and raising the tick cannot
+deliver more, only widen the gap. On a small server with small snapshots, 100 is
+comfortably deliverable.
+
+`snapstats` now measures this instead of estimating it: largest snapshot
+actually sent, the sustainable rate at that size for a 25000- and a 50000-rate
+client, and how many snapshots were held back by rate versus sent.
+
+**3. Raising the tick shrinks the packet-loss tolerance, because
+`PACKET_BACKUP` is a count.** `SV_WriteSnapshotToClient` gives up on delta
+compression and sends a full snapshot once `outgoingSequence - deltaMessage >=
+PACKET_BACKUP - 3` — 29 snapshots. As a *time* window that is 725 ms at 40,
+580 ms at 50, 290 ms at 100, 232 ms at 125. Full snapshots are the expensive
+ones, so a lossy client gets more expensive the higher the tick.
+
+**4. It multiplies the event problem from E49.** `EVENT_VALID_MSEC` is 300 ms
+against a tick, so each event holds a snapshot slot for 12 snapshots at 40 and
+**30 at 100** - directly worsening the thing that is already two thirds of the
+snapshot.
+
+**5. Bots are not a reason against it.** `bot_thinktime` gives each bot its own
+residual timer capped at 200 ms, so botlib does not run 2.5x more often at 2.5x
+the tick. This was the drawback I expected and it is not one.
+
+**So: 40 is the right answer today, and the lever worth pulling is `rate`, not
+`sv_fps`.** 50000 bytes/sec is 400 kbit — a 2026 connection is not the
+constraint, our own clamp is, and it is *our* clamp rather than stock Quake
+Live's. Raising the ceiling would let a full board's snapshot actually arrive at
+40 Hz, which is a real improvement where a higher tick is not. Deliberately not
+changed yet: it is a network governor and changing it mid-test would muddle the
+spawn and snapshot measurements. `sv_maxRate` already exists to cap the other
+direction.
+
+### R14. Console text is 8 pixels tall on a 1600p panel — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+*"the console text isn't scaling correctly on a 2560x1600"*. It is not, and the
+comment in `Con_Scale` explaining why no scaling was needed is the reason this
+kept being got wrong:
+
+> Console text is drawn through re.DrawStretchPic, and the renderer's 2D pass
+> runs in a 640x480 ortho projection, so console glyphs already scale with the
+> display.
+
+**Both backends say otherwise.** `RB_SetGL2D` does
+`GL_Ortho(0, glConfig.vidWidth, glConfig.vidHeight, 0, ...)`, and the Vulkan
+path's `get_mvp_transform` uses `2.0f / glConfig.vidWidth` and
+`2.0f / glConfig.vidHeight`. The 2D pass is in **native pixels**. `con_scale 1`
+is therefore an 8x16 glyph in pixels - correct on the 640x480 display Quake 3
+shipped for, and eight pixels tall on a 1600p laptop panel.
+
+The rest of the console is already consistent with native pixels
+(`con.linewidth = vidWidth / (scale * SMALLCHAR_WIDTH)`, `lines = vidHeight *
+frac`), so only the glyph size was wrong. The earlier `vidHeight / 480` attempt
+was the right *shape* and was rejected for looking too large - and by Quake 3's
+own standard it was right, since 480/16 is 80 columns. 80 columns is just not
+what anyone wants from a console now.
+
+**Scale to a column count instead of to an apparent size.** `con_scale 0` is now
+auto and means "aim for `CON_TARGET_COLUMNS` characters across", which works out
+at 2.0 on 1080p, 2.67 on 1440p and 1600p, 4.0 on 2160p, clamped at 1.0 so a
+small window never gets glyphs *smaller* than Quake 3's. The target is one
+judgement call and it is a named constant rather than a magic number.
+
+Any positive `con_scale` is still an explicit override used as-is - which
+matters, because `con_scale` is `CVAR_ARCHIVE` and every machine that has run
+this before has a value already written into its config. **`con_scale 0` by hand
+to get the auto behaviour**; the shipped default only reaches a fresh install.
+The range had to start at 0 for that to be askable at all: it was `[0.25, 4.0]`,
+which silently clamped 0 up to a quarter size.
+
+Out of scope but adjacent: `SCR_DrawSmallChar` has the same fixed-pixel problem
+for everything else that uses it - loading screens, the lagometer text - and
+those were not touched.
+
+### E58. Step aside instead of telefragging, and stop charging the victim — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Two suggestions, and one of them cannot work — worth writing down which and why,
+because the reason is not obvious.
+
+**Spawn invulnerability does not prevent telefrags.** `G_KillBox` passes
+`DAMAGE_NO_PROTECTION`, and it has to: a telefrag is not about damage, it is
+about two players trying to occupy the same space. A brief invulnerability stops
+the arriving player being *shot* the moment they appear - a real problem on a
+full server, and worth having for its own sake - but the player already standing
+on the pad still dies. It addresses the wrong half.
+
+**What does work is not arriving on top of them.** `G_NudgeSpawnClear` runs
+before the kill box: when somebody is already in the spawn box it tries a ring
+of offsets (8 directions at 40, 72 and 108 units) and takes the first that is
+
+- clear of world geometry (`startsolid` / `allsolid`),
+- reachable from the pad rather than through a wall (a box trace from the pad),
+- floored within 128 units - never trade a telefrag for a pit,
+- empty of other players.
+
+On a map with any room this turns a telefrag into a spawn a few units to one
+side, which nobody notices. When every candidate fails - and on thunderstruck's
+five points with sixty-four players it will - the kill box still runs, because
+somebody has to lose.
+
+**And when it does run, the victim is no longer charged for it.** A telefrag
+through a teleporter is a decision somebody made and still scores exactly as
+before. A telefrag because the map had nowhere to put the arriving player is the
+server failing, and taking a death off the victim - and handing the arriving
+player a frag they did not earn - is charging them for our problem. The
+spawn-caused ones are marked as they happen (`spawnKillBox` on the arriving
+player, `spawnTelefragged` on whoever it kills) and `player_die` skips
+`PERS_KILLED`, the death stat and the attacker's score for those only.
+
+The mark is a server-side flag rather than a new means-of-death on purpose:
+`MOD_` values go out on the wire and a stock Quake Live client would not know a
+new one, so the obituary stays `MOD_TELEFRAG` and looks normal to everyone.
+
+**To verify:** thunderstruck, which is where this is worst - telefrags should
+fall again beyond what the spawn tiering already achieved, and the ones that
+remain should not appear as deaths on the scoreboard.
+
+### E59. Spawn protection, with the firing lockout that makes it honest — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"a safe guard so the player can't fire during that moment of invincible ... we
+don't want spawn fragging"* - right, and the lockout is the half that makes the
+whole thing defensible. Invulnerability on its own is a licence to walk out and
+kill people for a second and a half.
+
+`g_spawnProtectionTime` (ms, default **1500**, 0 disables). While it is running
+the player takes no damage and fires nothing. **Pressing attack ends it
+immediately** rather than being ignored, so nobody is held behind a shield they
+do not want - they simply cannot be invulnerable and shooting at the same time.
+Movement is untouched, which is the point: the protection exists to let them get
+off the pad.
+
+Two implementation choices worth recording, because the obvious versions of both
+are wrong:
+
+- **Not `invulnerabilityTime`.** That is the holdable powerup, it has its own
+  bubble effect, and its check in `G_Damage` returns early for *everything* -
+  including `MOD_TELEFRAG`. Reusing it would mean `G_KillBox` could not clear an
+  occupied pad, leaving two players standing in one spot. The new check lets
+  `DAMAGE_NO_PROTECTION` through for exactly that reason, so telefrags, lava and
+  `trigger_hurt` still behave.
+- **The lockout copies the Freeze Tag countdown pattern** already in
+  `ClientThink_real`: `PMF_RESPAWNED` stops the shot on both sides, the buttons
+  are dropped so the weapon code never sees a held trigger, and `EF_FIRING` is
+  cleared. Doing only the first leaves the client with a trigger it still reacts
+  to.
+
+**This matters more since E58 than it would have before.** A player camping a
+spawn pad used to get telefragged for it; now the arriving player steps aside
+instead, so the camper is rewarded rather than punished. Protection is what
+covers that gap - the arriving player can no longer be shot on the pad, and has
+a moment to leave it.
+
+**On pushing the existing player instead of the arriving one** (the other half of
+the suggestion): `G_NudgeSpawnClear` moves the *arriving* player deliberately.
+Moving the player already there yanks someone out of a fight to an offset they
+did not choose, which reads as a bug from the inside; moving the one who is
+materialising anyway is invisible. Both avoid the telefrag equally, so the
+quieter one wins.
+
+**To verify:** spawn next to someone and try to shoot immediately - the first
+click should cost the shield and not fire, the second should fire normally. And
+`g_spawnProtectionTime 0` should restore exactly the old behaviour.
+
+### C38. A spawn-protected player is visibly protected — DONE (verify)
+**Lives in:** our **client** (cgame + pak01) and **server** (qagame) · **Seen by:** our client only
+
+Asked for as Counter-Strike's casual-mode translucency, and the interesting part
+was finding anywhere to say it on the wire.
+
+**Protocol 91 had no free bit.** All three obvious routes are full:
+
+| field | width | state |
+|---|---|---|
+| `entityState_t.eFlags` | 19 bits | `EF_AWARD_DENIED` is bit 18 - full |
+| `entityState_t.powerups` | 16 bits | all 16 `PW_` slots defined, up to `PW_FREEZE` |
+| `entityState_t.generic1` | 8 bits | harvester cubes in 0-5, damage tier in 6-7 |
+
+So `EF_SPAWNPROTECT` reuses **`EF_BOUNCE_HALF` (0x20), which is missile-only** -
+the same context-dependent reuse the engine already does with 0x10
+(`EF_PLAYER_EVENT` for players, `EF_BOUNCE` for missiles). A stock client reads
+that bit inside missile handling, which a player entity never reaches, so the
+worst it can do there is nothing. It is the one compromise in this change and it
+is deliberate; widening the protocol would have cost stock-client compatibility
+for a cosmetic.
+
+**The look is a translucent silhouette, not a translucent skin**, and that is a
+renderer limit rather than a choice. `refEntity_t.customShader` replaces the
+model's shader for the whole draw, so keeping the player's own texture while
+making it transparent would need either per-model translucent variants of every
+skin or renderer support for forcing alpha onto an opaque shader -
+`RF_FORCE_ENT_ALPHA` in upstream Quake3e, which this tree does not have. The
+silhouette is what Counter-Strike's version looks like anyway.
+
+**Correction to what this entry first said.** It claimed porting
+`RF_FORCE_ENT_ALPHA` would be "awkward in the Vulkan backend because pipeline
+state is baked". That is wrong. `vk_find_pipeline_ext()` searches
+`vk.pipelines[]` for a matching `Vk_Pipeline_Def` and calls `vk_alloc_pipeline()`
+when there is no match, so a blend-state variant produced by overriding a stage's
+`stateBits` is created on demand like any other. The port is tractable; it is not
+being done because the silhouette is what was asked for and it costs nothing to
+get wrong, whereas renderer state overrides on the player draw path do.
+
+#### The bit-sharing had one real cost, and it was paid the wrong way first
+
+`EF_SPAWNPROTECT` is `EF_BOUNCE_HALF`, and `CG_AddRefEntityWithPowerups` is
+called from **`CG_Missile` as well as `CG_Player`** - a fact its own header
+comment states ("Also called by CG_Missile for quad rockets"). The first version
+tested the flag with no idea what it was looking at, so every grenade
+(`g_missile.c` sets `bolt->s.eFlags = EF_BOUNCE_HALF`) drew as a white
+translucent ghost instead of a grenade.
+
+Fixed by gating on `state->eType == ET_PLAYER`. The general rule, now written
+into the `EF_SPAWNPROTECT` comment in `bg_public.h`: a stock client is careful
+about this bit by accident, because it only ever reads it inside missile code;
+ours has to be careful on purpose. Dropped items also carry `EF_BOUNCE_HALF`
+(`g_items.c`) but are drawn by `CG_Item`, which does not call this function.
+
+Corpses were already safe - `CopyToBodyQue` does `body->s.eFlags = EF_DEAD`,
+which clears everything.
+
+**Asset-failure behaviour was checked as well**, since a missing shader is the
+same silent-zero shape as a missing model name. `RE_RegisterShader` returns 0 for
+a name the paks do not contain, `cgs.media.spawnProtectShader` is tested
+alongside the flag, and the fallthrough draws the player normally - a missing
+`spawnprotect.shader` costs the effect and nothing else, and can never turn a
+player into a hole in the world. `CG_RegisterGraphics` now prints when the handle
+comes back 0, because `RE_RegisterShader`'s own message is developer-only. The
+shader itself depends on no pak00 asset (`$whiteimage`) and ships in
+`pak01.pk3` under `scripts/`.
+
+`cull none` was dropped: player meshes are closed, and drawing both sides blends
+the far side of the model through the near side, which reads as a muddier shape
+rather than a cleaner one.
+
+`content/pak01/scripts/spawnprotect.shader` is ours: `$whiteimage`,
+`blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA`, `rgbGen lightingDiffuse` so it
+still takes the room's light, and `alphaGen entity` so the strength lives in
+`cg_spawnProtectAlpha` (default 90, range 16-255) rather than being baked into
+the shader.
+
+It is checked *before* the powerup shells, because "shooting this achieves
+nothing" is the more urgent thing to communicate and it only lasts a second and
+a half.
+
+### E56. thunderstruck's team spawns were deleted at load — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"thunderstruck should have team spawn points because it's normally a team map"*
+— it does, and free-for-all was throwing them away before the spawn selector
+ever saw them.
+
+`G_SpawnGEntityFromSpawnVars` filters entities by gametype, and in a non-team
+gametype anything carrying `notfree 1`, or a `gametype` key that does not list
+ffa, is freed at load. Team spawn pads carry exactly those keys. So the count
+line's "5 info_player_deathmatch + 0 team pads" was accurate about what existed
+*by the time anything asked* — and completely misleading about what the map
+contains. Nothing was logged, because being filtered out is the normal, intended
+path for an entity that does not belong in this mode. (Confirmed it was the
+filter and not a missing spawn function: the log has no
+"doesn't have a spawn function" line at all.)
+
+For most entities that filter is right — a flag stand has no meaning in FFA. For
+a **spawn point** it is right only while the map has enough of its own, and when
+it does not, the alternative is not "a slightly wrong spawn" but a guaranteed
+telefrag. A pad the mapper placed for players to appear on is still a place a
+player can appear.
+
+So a filtered spawn point is now **kept in reserve rather than deleted**: it
+spawns with `FL_SPAWN_RESERVE`, `SelectRandomFurthestSpawnPoint` skips it while
+its own points have anything clear or warm, and reaches for it only in the
+widened pass. Spawn points are not linked, so holding them costs nothing on the
+wire, and every other classname is filtered exactly as before.
+`G_IsSpawnPointClassname` is the single list both the filter and the selector
+read, so the two cannot drift.
+
+The count line now reads "N info_player_deathmatch + M held in reserve for this
+gametype", which is the number that was actually wanted.
+
+**To verify:** thunderstruck in FFA should now report a non-zero reserve, and its
+259 telefrags should fall. If the reserve is still 0 the pads are under a
+classname `G_IsSpawnPointClassname` does not list, and that list is where to
+look.
+
+#### Verified, and the headline of this entry is wrong
+
+The 2026-09-03 20:05 log, thunderstruck, 64 players, free-for-all:
+
+```
+Spawn points: 5 info_player_deathmatch + 0 held in reserve for this gametype,
+              for up to 64 players - expect contested spawns
+```
+
+**Zero.** Not "the pads are under a classname the list is missing" — thunderstruck
+has no team pads at all. The reserve mechanism is fine and does what this entry
+describes; it just has nothing to hold on this map, and *"it does, and
+free-for-all was throwing them away"* was me asserting a cause without ever
+counting the entities. The map has five spawn points and that is the whole story
+of its 965 saturated spawns.
+
+What made the wrong claim survive is the second line in the same log:
+
+```
+Spawns: 965 so far found no free point - all 10 usable points
+        (deathmatch and team pads) were occupied.
+```
+
+Ten. Five points reported as ten, which reads exactly like "the five pads came
+back". They did not — `SelectRandomFurthestSpawnPoint` was **counting each point
+twice**. The widened pass re-walks `info_player_deathmatch` to pick up points a
+filter set aside, and the gather had no way to say "only the set-aside ones", so
+it re-collected everything the first pass already had. See E61.
+
+So: the reserve work stands, the diagnosis attached to it did not, and the number
+that would have caught it was itself wrong.
+
+### E57. Product name split from protocol name — DONE (ready for a rename)
+**Lives in:** our **client** and **server** (qcommon) · **Seen by:** every client if got wrong
+
+Groundwork for renaming the project at beta. `PRODUCT_NAME` was feeding both the
+cosmetic identity *and* `com_gamename`, and those must not move together:
+
+- **`PRODUCT_NAME`** — window title, the version stamps in the console and main
+  menu, the pid filename. Cosmetic. Rename here and nothing on the wire changes.
+- **`GAMENAME_NETWORK`** (new) — what `com_gamename` is registered with.
+  `CVAR_SERVERINFO`, so it goes out in the serverinfo string and is what server
+  browsers and **stock Quake Live clients** filter on, alongside
+  `com_protocol 91` and `BASEGAME "baseqz"`. Change it and a stock client stops
+  seeing our servers, which throws away the compatibility most of the
+  "seen by: every client" work exists to preserve. Stays "Quake Live" whatever
+  the product is called.
+- `GAMENAME_FOR_MASTER` in qcommon.h is a third, spelled `"QuakeLive"` without
+  the space because a dpmaster filters on a single token. Already separate.
+
+`CLIENT_WINDOW_TITLE` now derives from `PRODUCT_NAME` rather than repeating the
+string, so a rename is one line.
+
+**Named.** `PRODUCT_NAME` is now `"Quake Live Ex"` - Ex for extended, on the
+Doom 64 EX pattern, which is a source port that has carried that shape of name
+for close to twenty years. What moved: the window title, the version stamps in
+the console and main menu, and the pid filename. What deliberately did **not**:
+`GAMENAME_NETWORK` and `com_gamename` (stock clients filter on it),
+`GAMENAME_FOR_MASTER`, `BASEGAME`, `STEAMPATH_NAME` (how we find the Steam
+install), `PROTOCOL_HANDLER`, and `HOMEPATH_NAME_*` - that last one is where
+configs and the extracted game modules live, so changing it would orphan every
+existing config for no gain.
+
+**Also worth recording for the same plan:** a Steam listing that requires
+ownership of the base game is a real mechanism, and the engine already reads
+`pak00.pk3` out of the Steam install (`STEAMPATH_NAME "Quake Live"`, and the
+search path in any recent log shows
+`steam\SteamApps\common\Quake Live\baseq3\pak00.pk3` resolving). So the asset
+side of that plan works today and needs nothing from us.
+
+### R16. Console text rendering — the target was wrong, and the charset is the ceiling
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+The diagnostic line did its job on the first run:
+
+```
+console: 3840x2160, scale 4.00 (118 columns, 32x64 px glyphs)
+```
+
+Reported as still far too large, which is the *target* being wrong rather than
+the mechanism. The auto scale aimed for 120 columns, and a column count is a bad
+thing to anchor to - it says nothing about how big the text ends up.
+
+**Anchored to a resolution instead.** `scale = vidHeight / 1080`, floored at 1.0:
+scale 1.0 is Quake 3's own 8x16 glyph, which is what a 1080p display has always
+shown, and everything above keeps that apparent size rather than growing past it.
+
+| display | scale | glyph | columns |
+|---|---|---|---|
+| 3840x2160 | 2.00 | 16x32 | 238 |
+| 2560x1600 | 1.48 | 11x23 | 214 |
+| 2560x1440 | 1.33 | 10x21 | 238 |
+| 1920x1080 | 1.00 | 8x16 | 238 |
+| 1280x720 | 1.00 | 8x16 | 158 |
+
+Half the previous size at 2160p. `con_scale` multiplies it, and the printed line
+now says so - the attempt that prompted this was `con_font 0.5`, a cvar that does
+not exist, which is what happens when the knob is not named anywhere the user
+is looking.
+
+**The remaining ceiling is the charset, and it is not fixable by scaling.** The
+console draws `cls.charSetShader` - Quake 3's 16x16 bitmap atlas, one 8x16 pixel
+cell per glyph, blitted with `re.DrawStretchPic`. Making it bigger is
+magnification: a 2x stretch of an 8x16 source is a 2x bilinear blur, and it gets
+*softer as the display gets better*, which is the opposite of what scaling for
+DPI should do. No value of `con_scale` fixes that, because the pixels are not
+there.
+
+**The renderer already has the answer and the console is the only thing not
+using it.** `refexport_t` exposes `Font_DrawString`, `TextBounds` and
+`GetGlyphInfo` - fontstash/stb_truetype, added for the HUD and scoreboard, and
+reachable from the client engine as `re.` with no new syscall. It rasterises
+glyphs at the requested size, so they are crisp at any resolution. And the right
+font is already loaded: `tr_font_vk.c` maps `FONT_DEFAULT=0, FONT_SANS=1,
+FONT_MONO=2`, and a console wants monospace because the column grid is the whole
+point of `con.text` being a fixed-width buffer.
+
+**What that change involves:** cell metrics from the font rather than
+`SMALLCHAR_WIDTH/HEIGHT`, feeding `Con_CharW`/`Con_CharH` and `con.linewidth`
+unchanged; `Con_DrawSolidConsole` batching runs of same-coloured characters into
+`Font_DrawString` calls, which the colour-run loop already has the shape for;
+the same for `Con_DrawInputField` and `Con_DrawNotify`; and a `con_font` cvar
+(default on, 0 for the bitmap charset) so it is revertible without a build.
+
+Not started - the call is the user's.
+
+**Meanwhile `Con_CheckResize` now prints what it computed**, once per size
+change: resolution, scale, columns, glyph pixels, and `con_scale` when it is not
+1. Every previous report of "the console is wrong" arrived without a way to tell
+too-small from too-large, or which build was running. That is now one line.
+
+### E55. thunderstruck, the clean test — CONFIRMED, and the telefrag account was right
+**Lives in:** n/a (results) · **Seen by:** n/a
+
+E53 said the events comparison was not like-for-like and named thunderstruck as
+the map that would settle it. Here it is, same map, before and after:
+
+| thunderstruck | before (e4f240ff) | after (7f6022c) |
+|---|---|---|
+| telefrags | **877** | **259** |
+| weapon deaths | 67 | **825** |
+| telefrags as a share of deaths | **93%** | 24% |
+| snapshot peak | 256, overflowing | **119** |
+| `events` in that snapshot | **169** | **74** |
+| entities dropped | 20,417 | **0** |
+
+Same map, same geometry, same PVS. Telefrags down 3.4x, events down 2.3x with
+nothing done to events. **That is the original account confirmed** - the telefrag
+storm was generating the events, and removing it removed them. The correction in
+E45 was wrong to reject that, and the qualification in E53 that the comparison
+was not like-for-like no longer applies: this one is.
+
+The share is the striking number. 93% of deaths on that map were players landing
+on each other; a match in which almost nobody died to a weapon.
+
+**What has not changed, and cannot be fixed in code:** thunderstruck has **five**
+`info_player_deathmatch` and **zero team pads** for the fallback to find, so the
+saturation report still fires - 177 spawns with no free point. Five points cannot
+hold this many players, and 259 telefrags is what that costs once the selector is
+doing everything it can. The remaining fix for that map is a player cap or a map
+change, not code.
+
+Also worth noting from the same run: **beyondreality reports 9 deathmatch points
+plus 24 team pads**, which is the fallback finding real geometry on a map that
+would otherwise have been in citycrossings' position.
+
+### R15. Console scaling, second attempt — the archived value and the input line
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+R14 was right about the cause and wrong about the delivery: reported still
+broken on the same 2560x1600 panel. Two reasons, and the first is a repeat
+offence.
+
+**1. `con_scale` was treated as an absolute, so the fix could not reach anyone.**
+It is `CVAR_ARCHIVE`, so every machine that has run this before has a value
+written into its config which wins over the shipped default permanently - the
+trap named in CLAUDE.md, hit again. Making the *default* 0 (auto) meant the auto
+path was unreachable without knowing to type `con_scale 0`, and telling the user
+to type it is not a fix.
+
+`con_scale` is now a **multiplier on the resolution-derived base**, not an
+absolute. An existing `1` *is* the auto size, so a config that predates this gets
+the fix without being told; 2 is twice as big, 0.5 half. This is the shape any
+archived setting with a computed default wants, and it is worth generalising: a
+default that a config can override is only ever a fresh-install default.
+
+**2. The input line drew its text at a fixed 8 pixels while its prompt scaled.**
+`Con_DrawInput` drew `]` with the console's own glyph size and then called
+`Field_Draw` for the text - and `Field_Draw` is hardcoded to `SMALLCHAR_WIDTH`,
+because `Field_VariableSizeDraw` knows exactly two sizes and picks the *big* font
+for anything that is not 8. So the two halves of the same line disagreed at any
+scale but 1. `Con_DrawInputField` now renders the field through
+`Con_DrawCharScaled` with the same visible window, blink and overstrike glyph.
+
+**3.** `Con_DrawNotify` had the same fixed-8px problem for the messages that
+appear over the game, so those scale now too.
+
+### E53. Measured: the spawn and snapshot work landed — CONFIRMED
+**Lives in:** n/a (results) · **Seen by:** n/a
+
+trinity, full 64-slot server, build f5e60ac.
+
+| | before | after |
+|---|---|---|
+| telefrags | 159 (of 651 deaths) | **24** (of 1866) |
+| weapon deaths | 492 | **1842** |
+| snapshot peak | 256 (overflowing) | **103** |
+| `invisible` in snapshot | 60 | **23** |
+| `events` in snapshot | 169 | **30** |
+| entities dropped | 1,350,347 | **0** |
+
+Telefrags are **1.3% of deaths**, from roughly half. And the two counters agree
+exactly: the saturation report says 24 spawns found no free point, and there
+were 24 telefrags. That is the model confirmed rather than just the outcome
+improving - every telefrag on that map was a genuinely full map, and nothing
+else.
+
+**Correction to the table above: the events row is not a like-for-like.** `169`
+is thunderstruck mid-telefrag-storm; `30` is trinity playing normally. Different
+maps, different PVS. It was written as a before/after and it is not one.
+
+**On whether telefrags drove the events - they did, and the earlier correction
+in E45 went too far.** The evidence, stated properly:
+
+| map (build f5e60ac run) | telefrags | weapon deaths | overflowed? |
+|---|---|---|---|
+| trinity | 51 | 1771 | no |
+| **thunderstruck** | **877** | **67** | **yes** |
+| citycrossings | 3306 | 117 | no |
+| arkinholm | 552 | 4348 | no |
+
+The one map that overflowed is the one whose snapshot was two-thirds events, and
+it had 877 telefrags against 67 weapon deaths - the deaths were spawn collisions
+and the events were those deaths. That half of the original account is right.
+
+What does not follow is that telefrags predict overflow: citycrossings had a
+*worse* storm and never overflowed once. Overflow needs a high death rate **and**
+a map that shows you a lot at once; citycrossings has the deaths without the
+geometry. E45's cross-map correlation argued the opposite and was itself flawed -
+it compared telefrag counts against drop counts while implicitly treating map
+geometry as constant, which is the one thing that varies most between these four.
+
+**The clean test has not been run.** thunderstruck is the map that showed the
+problem, has five spawn points, and has not been played since the team-pad
+fallback went in. Its telefrag count and `snapstats` peak are what would settle
+this rather than the trinity numbers above.
+
+**The snapshot ceiling is no longer a live problem** - peak 103 of 256, zero
+drops - so E46's per-client cap stays shelved.
+
+**Delivery, measured.** Largest snapshot actually sent: **1308 bytes**. At that
+size `SV_RateMsec` allows a default-`rate` client (25000) **18 snapshots a
+second** and a maximum-`rate` client (50000) **37** - both under `sv_fps 40`.
+So the earlier reasoning holds with a real number: for a remote player the rate
+clamp, not the tick, is what decides how many snapshots arrive, and raising
+`sv_fps` would change nothing for them.
+
+`held back by rate 0` in the same report is an artifact and not a contradiction:
+`SV_SendClientMessages` skips rate control for `NA_LOOPBACK`, and bots never
+reach the wire, so on a listen server with 63 bots there is nobody for the
+limiter to act on. The 1308 bytes is the real measurement; the delay count needs
+a remote client to mean anything.
+
+### E54. `classic.cfg` turned anisotropic filtering off permanently — DONE (verify)
+**Lives in:** our **client** (pak01 presets + menu + renderervk) · **Seen by:** our client only
+
+The startup line added in R10 earned itself immediately:
+
+```
+...anisotropic filtering disabled
+```
+
+On an RTX 5080. The cause is ours: **`content/pak01/classic.cfg` sets
+`r_ext_texture_filter_anisotropic 0`** — deliberately, "Quake 3 had no
+anisotropic filter" — and none of the other three presets set it back. That cvar
+is `CVAR_ARCHIVE`, so one press of CLASSIC writes 0 into the config and nothing
+ever undoes it. A preset that leaves a setting behind is a one-way door.
+
+Worse in combination with R12: the new render menu offers an Anisotropic Filter
+control bound to `r_ext_max_anisotropy`, which is gated on that *other* cvar. So
+the control could be set to 16x and do nothing at all - a working-looking widget
+over a silent no-op, which is the exact shape this codebase keeps producing.
+
+Three fixes, because each one is a separate hole:
+
+- **The presets are complete sets now.** `gloss.cfg` and `modern.cfg` set
+  anisotropy on at 16x, `voodoo.cfg` at 4x; `classic.cfg` keeps it off on
+  purpose and now also sets `r_ext_max_anisotropy 1` so the two agree.
+- **The menu control turns the gate on.** `action { exec
+  "r_ext_texture_filter_anisotropic 1" }` on the level widget, so picking a
+  level cannot be a no-op. "Off" is level 1, which is no filtering either way.
+- **The startup line names the cvar** rather than saying "disabled", which is
+  what sent me looking at the level control first.
+
+### R10. Anisotropic filtering to x16 — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**AF was already implemented and already reaching the hardware.**
+`vk_create_sampler` sets `anisotropyEnable` and `maxAnisotropy` from
+`r_ext_texture_filter_anisotropic` and `r_ext_max_anisotropy`, clamped to the
+device's `maxSamplerAnisotropy`. x16 has worked all along; what was missing was
+any way to know it. Three things can each quietly lower it — the device not
+advertising `samplerAnisotropy`, its own limit, and `vk_create_sampler`'s
+`noAnisotropy` branch for nearest-filtered and unmipped samplers (correct, and
+always applies) — and the Vulkan path printed none of them, while the GL path
+prints its equivalent. Startup now reports the level in use and the device max.
+
+Default raised 8 → 16. **Two caveats on that.** It is `CVAR_LATCH`, so it needs
+a `vid_restart`; and this tree aliases `CVAR_ARCHIVE_ND` to plain `CVAR_ARCHIVE`,
+so any machine that has run an earlier build already has `r_ext_max_anisotropy 8`
+written into its config, where it wins over the shipped default permanently —
+the archive trap, again. Set it by hand there and check the startup line.
+
+Range now 1..16 with the useful values named, instead of unbounded.
+
+**A menu control needs C34.** The video settings menu belongs to `pak00` and
+cannot be edited; the dropdown has to arrive with menus of our own.
+
+**Path tracing: corrected assessment.** An earlier version of this entry said
+the assets made it impossible. That was too absolute and the legal half of it was
+wrong, so it is restated properly.
+
+*Where the objection does not hold.* Deriving material data - normal, roughness,
+height from diffuse - is a real technique, not a fantasy: NVIDIA's RTX Remix
+ships a texture pipeline that does exactly this. And the redistribution problem
+is soluble the same way `docs/pak-manifest.txt` already solves its own: **ship the
+generator, not the output.** A tool that runs on the user's own legally-owned
+`pak00.pk3` and writes derived maps into their install redistributes nothing. That
+is a normal remaster-project pattern and it was wrong to present it as a wall.
+
+*Where it does hold, in order of severity.*
+
+1. **Lights, not materials, are the hard half - and extrapolation does not solve
+   them.** Quake 3 lighting is baked: `q3map2` strips `light` entities from the
+   BSP entity lump, so shipped maps generally contain no light sources at all,
+   only lightmaps and a lightgrid. A path tracer needs emitters. They would have
+   to come from shader keys (`q3map_surfacelight`, `qer_lightimage`) or be
+   hand-classified per texture, which is what Q2RTX actually did. "Which surfaces
+   glow" is far less inferable from a diffuse texture than "how rough is this".
+2. **The renderer is a second renderer.** No `VK_KHR_acceleration_structure` or
+   `VK_KHR_ray_tracing_pipeline` are requested and the backend is built around
+   fixed graphics pipelines. BLAS per model, TLAS rebuilt per frame for animated
+   MD3s, RT pipelines and a temporal denoiser is the person-years part, and it is
+   the dominant cost whatever happens with the assets.
+3. **Source resolution caps the quality.** Extrapolation gives you what is in the
+   diffuse texture; Quake 3-era art has little to extrapolate from, so the result
+   is mediocre without artist passes. Remix's good-looking titles all have
+   community remasters doing that work by hand.
+
+*The version of this that is actually reachable* is the hybrid: keep the baked
+lightmaps and lightgrid as the light field and ray trace only reflections and
+ambient occlusion on top. That is a real, well-trodden design, it needs no
+emitter classification, and it would look like a genuine upgrade - but it is
+"RT reflections", not path tracing, and it still needs (2).
+
+*Not applicable, worth knowing:* **RTX Remix only hooks D3D8/D3D9 fixed-function
+titles.** Quake Live is OpenGL/Vulkan, so Remix cannot attach. Projects that want
+Remix write a D3D9 backend specifically so it can - which is, again, a whole
+renderer backend.
+
+### R11. ReShade on Vulkan — works already; layers now named at startup
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Nothing to "bake in". ReShade's Vulkan support is an **implicit layer** inserted
+by the Vulkan loader, not a per-application hook, and this renderer goes through
+the loader: `SDL_Vulkan_LoadLibrary` opens `vulkan-1` and
+`SDL_Vulkan_GetVkGetInstanceProcAddr` returns the loader's entry point rather
+than a driver's. So it attaches to our swapchain like any other Vulkan title,
+with no code from us.
+
+`vk_initialize` now lists the instance layers the loader found, implicit ones
+included, so "is ReShade actually attached?" has an answer in the console instead
+of being inferred from whether the picture changed.
+
+**What to expect, and the one setting that matters.** ReShade wraps
+`vkQueuePresentKHR`, so its effects run *after* our own post chain (`r_fbo`,
+bloom, dither, greyscale) - they compose, ours first. Its depth-buffer effects -
+SSAO, DoF, and the screen-space "RTGI" shader, which is not ray tracing - need a
+depth image it can read, and **a multisampled depth attachment is not one**: run
+`r_ext_multisample 0` if those are wanted. Colour-only effects (tonemapping,
+sharpening, LUTs) are unaffected.
+
+Worth being clear about what it can and cannot do, given the question it came
+from: ReShade sees the final image and the depth buffer. It has no scene, no
+geometry and no materials, so it cannot ray trace anything, and its RTGI shader
+approximates bounce lighting from screen contents only.
+
+### E48. `snapstats`, and a spawn-saturation report — TOOLING
+**Lives in:** our **server** (server engine + qagame) · **Seen by:** n/a
+
+Two measurements added because the existing ones only speak when something has
+already gone wrong, which is the wrong half of the data.
+
+**`snapstats`** (console, server). The overflow warning fires only once the 256
+cap is *hit*, so a map that runs at 240 entities all match produces nothing at
+all - and that is exactly the map where "how much headroom is there at 64
+players" needs answering. `snapstats` prints, at any moment on any map:
+
+- the fullest snapshot built since the map loaded, and which client it was for
+- what that snapshot was made of, by `entityType_t`
+- anything dropped over the cap, and its type breakdown
+
+Read it as: peak well under the cap means the ceiling is not the problem; peak
+at the cap means the type breakdown says what to cull, and events, items and map
+geometry are three different fixes.
+
+**Spawn saturation.** `SelectRandomFurthestSpawnPoint`'s third tier - every point
+on the map occupied - is what used to start the telefrag chain (E45). It now
+reports how often it is reached, rate limited to every 30 s, with the map's
+point count. That is the measurement that separates "the tiering was enough"
+from "this map cannot hold this many players", and those need different answers.
+`G_ReportSpawnPointCount` prints the point count once per level besides.
+
+### E47. The FFA score-cap crash, symbolised — WATCHING (guard shipped, cause unproven)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+*"Trinity was where we were getting client crashes near score cap the most"* -
+and trinity is also the map that overflowed its snapshots. Different faults, but
+worth having the first one nailed down, so the two crash logs were symbolised
+against a rebuild of the revision that produced them (ef15e19, in a worktree,
+same toolchain and flags).
+
+`vulkanx86_64.dll` is **our** renderervk module, so the offsets resolve:
+
+```
+RE_EndFrame                + 0x238
+  RB_ExecuteRenderCommands + 0xae4
+    RB_LightingPass        + 0x22f     (RB_RenderLitSurfList, inlined)
+      RB_SurfaceMesh       + 0xb17     <- 0xc0000005 reading 0x1f878a5804a
+```
+
+Both logs - "crashlog in FFA when rapidly getting kills" and "close to 50 points
+in FFA" - fault at `+0x3b700` and `+0x3b717`, 23 bytes apart in the same
+function. Same crash twice.
+
+**What that rules in and out.** `RB_SurfaceMesh` is only reached through
+`rb_surfaceTable[*surface]`, and `R_LoadMD3` overwrites each surface's ident with
+`SF_MD3` precisely to make that dispatch work - so `*surface` was read
+successfully before the call and the surface pointer itself is sound. The fault
+is on something derived inside the function, 0xb17 in, which is where
+`LerpMeshVertexes` inlines. That indexes `surface->xyzNormals + numVerts * frame`,
+so an out-of-range frame index produces exactly this: an arbitrary far address
+read, not a small overrun.
+
+`RB_LightingPass` in the chain means it happened during the dynamic light pass,
+which is a second pass over the surfaces with `backEnd.currentEntity` re-derived
+from the lit-surf sort - a plausible way for an entity and a surface to be paired
+that were never paired in the main pass.
+
+**Already guarded, after the fact.** `RB_ValidMeshFrames` (2869f0d) checks
+`e.frame` and `e.oldframe` against `surface->numFrames` before the lerp, skips
+the surface rather than faulting, and names the surface, the entity, the model
+handle and whether `tess.dlightPass` was set. It went in *after* the revision
+that crashed, so it has never been exercised. If this recurs the console will
+name the model instead of the console being silent and a crash log being the
+only artifact.
+
+**Not reproducing at present**, on builds from 6a3ba64 onward. Worth noting
+without leaning on it: 6a3ba64 is also the `AxisClear` fix for the match-summary
+model rendering as legs only - same screen, same moment in the match, and the
+same `frame`/`oldframe` plumbing. That may be coincidence.
+
+**If it comes back:** the console line from `RB_ValidMeshFrames` is the whole
+answer. Failing that, the symbolisation recipe is `git worktree add --detach
+<rev>`, `make PLATFORM=mingw32 ARCH=x86_64 BUILD_RENDERER_VULKAN=1`, take the
+image base from `objdump -h` (`.text` VMA minus 0x1000) and map `module+RVA`
+against `nm --defined-only`. Note the crash log's "code addresses on the stack"
+scan is mostly noise - several of those offsets are past the end of the module
+entirely; the reliable chain is the four frames under the fault in the handler
+stack.
+
+### E45. The spawn telefrag chain, and the entity spam behind it — DONE (verify)
+**Lives in:** our **server** (qagame + server engine) · **Seen by:** **every client**
+
+*"part of the issue came from the limit of spawn points, and cramming 64 players
+... the game just tries to spam the spawn and they explode and die with every
+spawn since their spawn is overlapping. Causing entity spam"* — right, and the
+log is unambiguous about it.
+
+**The evidence.** Obituaries from the four-map session:
+
+| map | telefrags | all other deaths |
+|---|---|---|
+| castledeathstalker | 0 | 414 |
+| **citycrossings** | **859** | **17** |
+| trinity | 159 | ~90 |
+| arkinholm | 192 | ~60 |
+
+On citycrossings **98% of the match was players landing on each other**. Almost
+nobody died to a weapon. 1210 telefrags across the session, roughly half of all
+deaths.
+
+**The mechanism, and it is not just "too few spawn points."**
+`SelectRandomFurthestSpawnPoint` collected every point that would not telefrag,
+sorted by distance from where you died, and picked out of the furthest half. If
+none was free it did this:
+
+```c
+spot = G_Find(NULL, FOFS(classname), "info_player_deathmatch");
+```
+
+The **first spawn entity in the map, deterministically, every single time.**
+Fine when it almost never happens. On a 64-slot server on a map with a dozen
+points it happens on most respawns — and then every player who dies is sent to
+the same point, telefrags whoever it sent there a moment ago, and *that* player
+respawns into the same point in turn. It is self-sustaining, which is why one
+map shows 98% and another shows 0%: it depends on whether the map's point count
+ever loses the race, and once it does the chain does not stop.
+
+`SelectRandomTeamSpawnPoint` ended in exactly the same line and had exactly the
+same bug.
+
+**Fixed with three tiers instead of one fallback:**
+
+1. **clear** — would not telefrag, not used within `SPAWN_REUSE_COOLDOWN_DM`
+   (1500 ms). id's furthest-half pick, unchanged.
+2. **warm** — would not telefrag but was just used. Same pick.
+3. **taken** — all of them would telefrag. The **least recently used**, random
+   among ties. Somebody still gets telefragged; the difference is that the next
+   player goes somewhere else, so the chain cannot form.
+
+The cooldown and `lastSpawnTime` are the mechanism `SelectRandomTeamSpawnPoint`
+already used for CTF. The deathmatch path simply never got it.
+
+`G_ReportSpawnPointCount` now prints the map's point count once per level, with
+a warning when `sv_maxclients` is more than twice it. A map built for sixteen
+does not say anywhere that it has twelve points, and that number is the
+difference between "the spawn code is broken" and "there is nowhere to put the
+sixty-fourth player."
+
+**It does NOT connect to the snapshot ceiling, and claiming it did was wrong.**
+Recorded because the correction is the useful part. The two do not correlate -
+they are close to anti-correlated:
+
+| map | telefrags | weapon deaths | snapshot entities dropped |
+|---|---|---|---|
+| castledeathstalker | 0 | 516 | 83,675 |
+| citycrossings | **859** | 28 | **1** |
+| trinity | 159 | 492 | **1,350,347** |
+| arkinholm | 192 | 290 | 0 |
+
+The map with the telefrag catastrophe had essentially **no** snapshot drops, and
+the two maps that overflowed had few telefrags. The reason is obvious in
+hindsight: a telefrag chain means nobody stays alive, so there is no combat and
+therefore no rail trails, no missiles, no impacts, no gibs - the drops follow
+*weapon* deaths, which is to say actual fighting, weighted heavily by how open
+the map is. Fixing the spawn chain will if anything make citycrossings' snapshot
+pressure **worse**, because players will now live long enough to fight.
+
+Two other things that reading deflates:
+
+- 83,675 on castledeathstalker over eight ten-second windows is ~0.4 entities
+  per client per snapshot. That is nothing. Only trinity had a real problem -
+  ~50 per client-snapshot - and only for one ten-second window in a whole map.
+- The counter is server-wide over 64 clients, 63 of which were bots.
+
+Worth knowing for whatever the cause turns out to be: temp entities come from
+`G_Spawn`'s free list, above the clients (0..maxclients-1) and above the map
+entities, and `SV_AddEntitiesVisibleFromPoint` walks in number order. So events
+are dropped **first** and players last. A snapshot that overflows has therefore
+already been filled by players plus map entities before a single effect got in -
+which points at map entity count in one PVS, not at event churn.
+
+**So the overflow warning now says what it dropped.** "256 was not enough" is
+not actionable; "180 of them were events" or "210 of them were items" is, and
+those two are different problems with different fixes. `SV_AddEntToSnapshot`
+tallies by `entityType_t` and the warning prints the composition of the snapshot
+that filled up alongside the running per-type drop count. That is the only
+honest next step; everything above this line is why guessing instead was a
+mistake.
+
+**To verify:** a full server on citycrossings for the telefrag half - it should
+fall from ~98% of deaths to a background rate. Then **trinity** for the snapshot
+half, which is a separate question: that is the map that overflowed, and the
+breakdown lines under the warning are the answer to what to cull.
+
+### E46. 256 snapshot entities is not a protocol limit — FINDING, reverted
+**Lives in:** **both** · **Seen by:** n/a
+
+Recorded because the reasoning is worth keeping, not because it shipped.
+
+`SV_EmitPacketEntities` writes a delta list terminated by `MAX_GENTITIES-1` and
+the client reads until it sees that. **There is no entity count on the wire**, so
+two clients on the same server can be given different numbers of entities and
+neither can tell. A per-client cap keyed off the `iqlclient` userinfo key - the
+same one qagame reads for `pers.extendedClient` - would give our clients and
+bots more while leaving a stock Steam client byte-for-byte unchanged.
+
+`MAX_ENTITIES_IN_SNAPSHOT` is a different kind of number and the trap in that
+plan: it is the size of an array inside a `snapshot_t` that *cgame* owns and the
+engine writes into. Our engine loading Quake Live's cgame is reachable - modules
+come from the first matching pak in the search path - and writing 512 entities
+into its 256-entry array corrupts it rather than failing. Any such change needs
+the engine to hold itself to 256 until the loaded cgame declares its capacity
+through an appended syscall.
+
+Built as 56a9ce7 and reverted in 9d73794. It raises the roof rather than asking
+why the room is full, and costs 236 MB of server hunk at `sv_maxclients 64`.
+E45 is the cause. Come back to this only if the per-type breakdown shows the
+count is legitimate.
+
+### E39. A map's ambient speakers looped the hit beep — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** **every client**
+
+*"there was a map that had a repeating sound (the last map played), and I
+couldn't figure where it was being caused by but it was proximity based so it
+changed on how close i was to it."*
+
+The last map was arkinholm, and the console named the cause five times:
+
+```
+Can't read sound file sound/nctsdm1/waves.ogg.ogg
+WARNING: Failed to load sound sound/nctsdm1/waves.ogg.wav!
+WARNING: could not find sound/nctsdm1/waves.ogg.wav - using default
+```
+
+`SP_target_speaker` decides whether to add an extension with
+`if (!strstr(s, ".wav"))`, which id wrote when .wav was the only sound format
+there was. Quake Live's maps point their speakers at .ogg files, so
+`sound/nctsdm1/waves.ogg` fails that test and becomes `...waves.ogg.wav`. (The
+double extension in the first line is the codec fallback working backwards from
+that name, not a second bug.)
+
+**Why it makes a noise instead of silence.** `S_RegisterSound` returns 0 for a
+sound it could not load — and handle 0 is not silence. `S_BeginRegistration`
+registers `sound/feedback/hit.wav` first, so slot 0 is the hit beep. A
+`target_speaker` is `ET_SPEAKER` and repeats client-side at its own origin with
+distance attenuation, so each broken ambient became the hit beep looping at a
+point in the map, louder as you walked towards it. Five on arkinholm: waves,
+gulls, cave_drips, fire1, frogs.
+
+Extension added only when there is not one already. Vorbis is compiled in
+(`USE_CODEC_VORBIS=1`, libVorbis 1.3.7 is in the shipped exe), so the corrected
+names load.
+
+This one is **seen by every client** — it is the server that indexes the sound,
+and a stock Steam client registering configstring `sound/x.ogg.wav` fails
+identically. Any map with .ogg ambients is affected, not just arkinholm.
+
+### E40. `cg_autoswitch` shipped at 1 although cgame asks for 0 — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+The console says it every map load:
+
+```
+Warning: cvar "cg_autoswitch" given initial values: "1" and "0"
+```
+
+`CL_InitCvars` registers it at "1" (id's default) so the ui has it before cgame
+starts; `cg_main.c` registers it at "0" marked "[QL] default 0 (was Q3 1)".
+`Cvar_Get` on an existing cvar keeps the first reset string and only logs the
+disagreement, so the cgame value never applied — and `CVAR_ARCHIVE` then wrote
+the 1 into the config, where it wins permanently. Both the registered-cvar trap
+and the archive trap in one line. The engine now registers "0" as well.
+
+Note for anyone testing: a config written by an earlier build already contains
+`cg_autoswitch 1` and will keep it. `cg_stereoSeparation` produces the same
+warning and is *not* the same thing — upstream deprecated it deliberately,
+registering it `CVAR_ROM` at 0 to keep cgame's 0.4 from taking effect.
+
+### E31. Joining mid-round demoted you to spectator, permanently — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported as: leave and reconnect and you are stuck in spectator, no join-team
+buttons, and it survives the round ending *and* a map change. The scoreboard
+showed two bots stuck there next to the player.
+
+`Freeze_ClientBegin`'s round-active branch puts a player who arrives while a
+round is live into a follow, so they watch until the next round. It did that
+through `Cmd_FollowCycle_f`, whose first act is:
+
+```c
+if (ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
+    SetTeam(ent, "spectator");
+}
+```
+
+That is right for the console command — asking to follow *is* giving up — and
+wrong here: the branch is explicitly guarded on the player still having a team.
+So joining mid-round moved you to `TEAM_SPECTATOR` for good. `SetTeam` writes the
+session, which is why it survived the round ending, a map change and
+reconnecting, and the round restart only respawns players who still have a team,
+so nothing ever brought you back. Bots joining mid-round demoted themselves
+identically — that is where the spectator bots came from, and the earlier
+`g_teamSpawnAsSpec` theory was wrong (that cvar defaults to 0 and never fired).
+
+Split into `G_FollowCycle(ent, dir, keepTeam)`; `Cmd_FollowCycle_f` passes
+`qfalse`, `Freeze_ClientBegin` calls `G_FollowCycleKeepTeam`. Mid-round joiners
+get the camera without the consequence and play the next round.
+
+**Also made a silent refusal audible.** `SetTeam`'s `g_maxGameClients` override
+turned a join into a spectate without a word, which from outside looks exactly
+like the join being ignored — the same shape, and just as hard to tell from a
+bug. Every other refusal in that function prints; this one now does too.
+
+**Hardened the session record while in here.** `G_ReadSessionData` sscanf'd into
+three uninitialised locals and assigned them unconditionally; a short or missing
+record left `sess.sessionTeam` holding whatever was on the stack, and
+`G_WriteSessionData` then persisted it. It now parses into an array, requires all
+13 fields and an in-range team, and otherwise keeps what `G_InitSessionData`
+chose. Not the cause of this bug, but the same failure shape.
+
+**Noted, not changed:** `g_teamAutoJoin` and `g_teamForceBalance` are registered
+`CVAR_ARCHIVE` on defaults we choose, which is the trap in CLAUDE.md — a stale
+server config pins them and changing the shipped default does nothing. Left alone
+so this build carries only the fix under test.
+
+### E32. Spurious kamikaze explosions on busy maps — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported on a CTF castle map: players dying to `MOD_KAMIKAZE` with nothing on
+screen to explain it, and movement feeling broken. One cause for both.
+
+`G_FreeEntity` calls `G_StartKamikaze` on **every** freed entity — temp entities,
+missiles, `info_null`, movers, triggers — so that function is the only thing
+standing between an ordinary entity being freed and a kamikaze going off. Its
+non-client guard was:
+
+```c
+} else if (!ent->activator) {
+    return;
+}
+```
+
+`activator` is an ordinary field. `G_UseTargets` stamps it on every entity a
+trigger fires, movers carry it, and plenty of map logic sets it. So on a map with
+real trigger and mover traffic — a castle, with doors and plats and teleporters —
+routine entity frees were detonating kamikazes. Which is also why it looked
+map-specific: quiet maps never accumulate enough of them to notice.
+
+The real detonator has a name. `player_die` spawns it as classname
+`"kamikaze timer"` with `think = G_FreeEntity`, so the free *is* the detonation,
+and `GibEntity` already finds the same entity by that name. The guard tests for
+it now.
+
+**And that is very likely the movement report too.** `KamikazeShockWave` does not
+add knockback, it *overwrites* velocity:
+
+```c
+ent->client->ps.velocity[0] = dir[0] * push;   // push = 400
+ent->client->ps.velocity[1] = dir[1] * push;
+ent->client->ps.velocity[2] = 100;
+```
+
+Whatever you were doing is discarded and replaced with a 400-unit shove away from
+the blast plus 100 up. With explosions firing off routine entity frees, that is
+players being yanked around at random — and the per-entity `kamikazeShockTime`
+cooldown of 3 s makes it intermittent rather than constant, which is what
+"movement seems broken" describes. Unconfirmed until retested: if movement is
+still wrong once the explosions stop, it is a separate problem and worth its own
+entry.
+
+### E33. a2m-instagib-ctf.cfg — DONE
+**Lives in:** content · **Seen by:** server admins
+
+Instagib CTF, following the same chain as the other A2M modes (`exec
+a2m-common.cfg`, railgun via `g_startingWeapons 64`, everything else locked out
+via `g_disableLoadout 32638`). Takes `capturelimit`/`timelimit` and the team
+cvars from `ctf.cfg` rather than instagib's `fraglimit`, since CTF has no
+fraglimit and a capture is worth more than a frag. Passes
+`content/serverconfigs/check-configs.py` — 9 mode configs now.
+
+### E34. Japanese-castle CTF map — several symptoms, one fix so far
+**Lives in:** our **server** (qagame) mostly · **Seen by:** every client
+
+Reported together: stuttering, doors misbehaving and crushing, wrong spawn bases,
+invisible players, buggy stairs, and a crash switching to the map "infinity".
+Recording what is settled and what each remaining one needs, rather than
+guessing at six things at once.
+
+**Settled — spurious kamikaze explosions (E32).** Has a direct mechanism for the
+stuttering *and* the doors. Each bogus explosion spawns an entity whose think runs
+`trap_EntitiesInBox` over the map and applies radius damage every frame for the
+kamikaze duration; a door-heavy map frees enough activator-carrying entities to
+have many running at once, which is a server frame-time problem, i.e. stuttering
+for everyone. And `Blocked_Door` calls `G_FreeEntity` on any non-client blocker —
+a gib, a dropped weapon, a missile — so a door crushing debris *was itself* a
+detonation trigger, going off at the doorway. `KamikazeShockWave` then overwrites
+velocity outright (400 out, 100 up) and `KamikazeRadiusDamage` does 400 damage,
+which is being shoved into the door you are standing in and taking damage for it.
+Retest before anything else here.
+
+**Settled — silent CTF spawn fallback.** `SelectCTFSpawnPoint` falls back to
+`SelectSpawnPoint(vec3_origin, ...)` when the map has no
+`team_CTF_redspawn`/`bluespawn` for that team — and that picker is *team-agnostic*,
+choosing any `info_player_deathmatch`. So both sides spawn across the map, which
+is exactly "blue player standing in the red castle". It did that without a word.
+It now warns once per team per level and names the entity the map is missing.
+`TEAM_BEGIN` uses a different set again (`team_CTF_redplayer`/`blueplayer`) that
+maps routinely omit, and the warning distinguishes them.
+
+**Not settled — invisible players.** The screenshot shows shadows and a floating
+name with no model, and that combination is informative: `CG_Player` returns
+early when `ci->legsModel` is 0, so nothing would draw at all. A name means the
+model handle is *not* zero and the models did load. So this is not the
+registration failure it looks like, and the candidates are elsewhere —
+`RF_THIRD_PERSON` being applied to the wrong entity, a forced-model/skin
+resolving to something invisible, or a renderer-side failure.
+
+Discriminator: `CG_Player` already prints
+`WARNING: client N (name) has no player model loaded and is drawing nothing` with
+the model and skin names. If that line is in the console it is a load failure; if
+it is absent, the model loaded and something is hiding it. Worth checking
+`com_hunkMegs` either way — it is `CVAR_ARCHIVE` on a default we choose, the trap
+in CLAUDE.md, so a stale config can pin it low and starve model loading on a big
+map.
+
+**Update — the stutter is on every CTF map, not just this one.** That makes it
+gametype-wide, and CTF is the mode with the most entity churn: flags dropped,
+returned and respawned constantly, and flag stands that fire targets (which is
+`G_UseTargets`, which is what stamps `activator`). Every one of those frees was a
+kamikaze candidate before E32, so "various degrees across CTF maps" fits how much
+churn each map generates. Retest before looking further. If it survives the fix,
+the next suspects are `CheckTeamStatus` — `Team_GetLocation` is O(clients ×
+locations) with a `trap_InPVS` per candidate, once a second — and the reliable
+command traffic from `tinfo`/`tinfo2`, which is two per client per second now.
+
+**Not settled — stairs.** `STEPSIZE` is 18 units; a castle with taller steps is
+map design rather than a bug. But stutter and a velocity overwrite both look like
+bad stair movement, so retest after the kamikaze fix.
+
+**Not settled — crash on "infinity".** Needs the server console output or
+`crashlog.txt`. Nothing to go on otherwise.
+
+### E35. Player rendering review — findings
+**Lives in:** our **client** (cgame + renderervk) · **Seen by:** our client only
+
+Requested review of the player render and entity paths before testing. Three
+findings, two acted on, plus one correction to something I said earlier.
+
+**Correction first.** I claimed a floating name proved `ci->legsModel` was
+non-zero, because `CG_Player` returns early when it is 0. That was wrong: the
+name comes from `CG_DrawCrosshairNames`, which reads `cg.crosshairClientNum` from
+a **trace** (cg_draw.c) and looks up `clientinfo[].name`. It never touches the
+model. So a name over an invisible player says nothing either way.
+
+**1. Alpha-zero team tint hides players silently — fixed.**
+`CG_PlayerTeamSkins` runs for every player in every gametype and writes
+`shaderRGBA` from packed `0xRRGGBBAA` cvars. There was a guard for a colour that
+is *entirely* zero (falls back to white) but not for one with real RGB and no
+alpha — and that is the shape a plausible config value takes: write the colour
+the natural way as six hex digits and `0x2a8000` parses to `0x002a8000`, alpha
+`00`, a fully transparent player with nothing said anywhere.
+
+Every one of these cvars is `CVAR_ARCHIVE` — the trap in CLAUDE.md — so such a
+value lives in the user's config and follows them across builds and reinstalls,
+long after the shipped default changed. It also fits "*most* players are
+invisible" exactly: team and enemy colours are separate cvars, so one bad value
+hides one side only.
+
+`CG_ValidTeamSkinColor` now treats alpha 0 as "no value", falls back to the
+shipped default, and names the cvar once.
+
+**2. Dropped scene entities were developer-only — fixed.**
+`RE_AddRefEntityToScene` drops everything past `MAX_REFENTITIES` (1023) with a
+`PRINT_DEVELOPER` line, i.e. invisible unless someone has already guessed the
+cause. The symptom is things missing from the scene with no explanation. Now a
+rate-limited `PRINT_WARNING` with a running count. It matters more than it did: a
+frozen player costs three refEntities per model part rather than one (model, ice
+coat, animated overlay), and every powerup shell is another pass.
+
+**3. Snapshot entity drops are already instrumented — no change.**
+`SV_AddEntToSnapshot` warns every 10 s with a count once `MAX_SNAPSHOT_ENTITIES`
+(256) is hit, which is the server-side version of the same failure. Worth knowing
+the ordering: `SV_AddEntitiesVisibleFromPoint` walks entities in number order and
+clients occupy 0..maxclients-1, so players are added first and are the *last*
+thing to be dropped. That is ordering luck rather than design, but it does mean
+snapshot overflow shows up as missing items before missing players.
+
+**Not a finding, but where to look next if the tint is not it:** `CG_Player`
+gates on `cent->currentState.number == cg.snap->ps.clientNum` for
+`RF_THIRD_PERSON`. That is correct while following (the followed player *should*
+be hidden in first person), but it is the one remaining path that hides a
+specific player rather than all of them.
+
+### E36. Codebase audit: incomplete calls, stubs, silent failures — DONE
+**Lives in:** **both** binaries + renderervk + tooling · **Seen by:** our client only
+
+**The system, not the sweep.** A one-off audit goes stale the day after it is
+written, so the deliverable is `tools/stub-report.py` plus
+`docs/stub-manifest.txt`, the same shape as `tools/dead-cvars.py` for the cvar
+version of this problem. `package-release.sh` runs it and **fails the build on an
+unclassified stub**.
+
+The point is not that every empty function is a bug — most are correct. The point
+is that each one should have been *looked at once* and the answer written down,
+so a genuinely missing implementation is on a list instead of in the game, and a
+new empty function added next month shows up as UNCLASSIFIED rather than blending
+into the seventy-odd that were already there.
+
+Four verdicts: **BY-DESIGN** (empty is correct), **UPSTREAM** (empty in Quake 3 /
+ioquake3 / Quake3e too, and filling it would diverge from the base for nothing),
+**WIRED-ELSEWHERE** (behaviour exists, in the function the reason names), **GAP**
+(genuinely missing — the list to work from).
+
+Current state, 76 empty bodies outside vendored trees:
+
+| verdict | count | |
+|---|---|---|
+| BY-DESIGN | 56 | 44 of them are `code/null/` — the headless drivers the dedicated server links instead of a client, renderer, sound and input layer. Implementing any would be *wrong*. The rest are marker entities (`SP_team_CTF_*`, `SP_misc_teleporter_dest`, `SP_info_player_intermission`), dispatch-table no-ops (`RB_SurfaceSkip`) and the passive console. |
+| UPSTREAM | 18 | `CG_RunMenuScript`, `CG_AddParticleShrapnel`, `Weapon_Gauntlet`'s siblings, `QAL_Shutdown`, `S_AL_SoundList`, the `Sys_GLimp*` hooks, `UI_Shutdown`, `Item_StopCapture`. |
+| WIRED-ELSEWHERE | 2 | `Weapon_Gauntlet` (damage is in `CheckGauntletAttack`), `DuelScoreboardMessage_impl` (duel goes out as `scores_duel`). |
+| GAP | 0 | |
+
+**The one GAP it found, now fixed.** `CL_PostProcessRestart_f` was registered as
+the `postprocess_restart` console command and did nothing — typing it was
+silently ignored, which is worse than not having the command, because the name
+promises something.
+
+There turns out to be nothing distinct for it to do on **either** renderer, and
+for different reasons. On Vulkan, `vk_update_post_process_pipelines()` runs from
+the renderer-cvar-modified block in `tr_cmds.c`, so bloom, HDR and capture rebuild
+the moment anything in `CVG_RENDERER` changes — no window in which a manual
+restart would help. On OpenGL2 the post cvars split two ways: `r_toneMap`,
+`r_cameraExposure` and the `r_forceToneMap*` cheats are read per frame in the
+backend so they apply on the next frame, and `r_hdr` is `CVAR_LATCH` — the engine
+already has a mechanism for applying it, `vid_restart`, and that is what latching
+means. A half-measure between the two would be a third path to maintain for no
+gain.
+
+So it reports rather than pretending. Keeping the command leaves any existing
+bind working; removing it would turn a silent no-op into "unknown command", which
+is not an improvement for someone who has it bound.
+
+**A note on the tool itself.** The first cut reported `UI_AdjustFrom640` as empty:
+it treated any line starting with `*` as a block-comment continuation, which is
+also what a pointer dereference looks like (`*x = *x * scale;`). Fixed with real
+comment stripping. A scanner with false positives is worse than no scanner,
+because it trains you to skim the output.
+
+**Separately — unchecked asset registration.** 276 raw `trap_R_RegisterShader` /
+`trap_R_RegisterModel` calls in cgame against 12 that use the checked
+`CG_RegisterShaderOr` / `CG_RegisterModelOr` helpers. Both return **0** for
+anything they cannot load and every caller treats 0 as "draw nothing", so a
+missing, misspelled or unloaded-pak asset is an invisible object with no message
+anywhere — the shape behind the invented Freeze Tag asset names, a missing menu
+shader and a weapon icon. Auditing 276 call sites is the wrong move; the only
+place that knows the name is the registration function, so **`RE_RegisterShader`,
+`RE_RegisterShaderNoMip` and `RE_RegisterModel` now print the name they failed
+on**, covering cgame, ui and the game module at once.
+
+**`developer` defaults to 1 on this branch** (`common.c`) so those lines and the
+`MAX_REFENTITIES` drop are visible without having to guess the cause and re-run.
+`CVAR_TEMP`, so it never reaches a config.
+
+**DECIDED: it stays at `1` through the Alpha 2 release candidates, and flips to
+`"0"` when a candidate becomes the actual Alpha 2.** The gate is that
+transition, not "before shipping" — the candidates *are* shipped, to testers,
+and they are exactly the builds where a tester hitting something odd should
+already have the evidence rather than needing a second run. Asking a tester to
+reproduce is how a one-off report becomes no report at all.
+
+Do not raise this again while the version string says release candidate. That
+default is the only switch — one line in `common.c`, no config to clear, because
+`CVAR_TEMP` means it never reached one. The `MAX_REFENTITIES` warning is back to
+`PRINT_DEVELOPER` to match.
+
+### E37. Doors never fully open or close, travel percentage jumps — DONE (confirmed)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Reported on the castle map: doors stuck part-open, rapidly shifting between
+percentages of travel. **Confirmed fixed in c80e8bf.** Testing narrowed it
+precisely — it happens with the
+**vanilla Steam client** (so not our rendering or interpolation) and **not** on
+the **vanilla Steam server** binary (so it is our `qagame` diverging from QL's).
+
+**The cause, found once the report narrowed to "closing works, opening does
+not".** Ordinary doors are triggered by `Touch_PlatCenterTrigger`, and its guard
+was:
+
+```c
+if (ent->parent->moverState != MOVER_POS2) {     // "not fully open"
+    Use_BinaryMover(ent->parent, ent, other);
+}
+```
+
+Stock Quake 3 guards on `!= MOVER_1TO2` — *not currently opening*. The touch
+fires **every frame** a player stands in the trigger, and `Use_BinaryMover` is a
+toggle: called while the mover is `MOVER_1TO2` it takes the "only partway up
+before reversing" branch and turns the door around. So walking up to a closed
+door opened it, and then every subsequent frame in the trigger reversed it —
+`1TO2` to `2TO1`, then back to `1TO2` the next frame, flipping at server frame
+rate. **That is the percentage jumping**, and it stops the moment you leave the
+trigger, which is why the close afterwards looked clean.
+
+With the stock guard the four states behave correctly:
+
+| state | | |
+|---|---|---|
+| `MOVER_POS1` | closed | open it |
+| `MOVER_1TO2` | already opening | **leave it alone** — the fix |
+| `MOVER_POS2` | fully open | `Use_BinaryMover` refreshes the auto-close wait, so standing in a doorway holds it open |
+| `MOVER_2TO1` | closing | reverse to opening, which is what walking into a closing door should do |
+
+The old guard also broke the `POS2` case: skipping the call there meant the wait
+timer was never refreshed, so a door would close on a player standing in the
+doorway.
+
+**Also fixed on the way (first attempt at this, correct but not the cause):**
+`SetMoverState` had been changed to walk `ent->teamchain` itself, reasoning that
+setting every part `STATIONARY` at once stops `G_MoverTeam` re-firing `reached()`
+on the slaves. That problem does not exist — `G_MoverTeam`'s success loop already
+skips anything that is not `TR_LINEAR_STOP` — and it made `Reached_BinaryMover`
+(the *per part* latch, called by `G_MoverTeam` for each part whose own
+`trTime + trDuration` has elapsed) drag every part after it to `POS1`/`POS2`
+early, then re-latch the whole team as the others reached in turn. Reverted to
+the stock split: `SetMoverState` latches one part, `MatchTeam` iterates.
+
+**Checked and cleared**, so they do not get re-suspected:
+
+- `G_MoverTeam`'s blocked branch reads
+  `part->s.pos.trTime += level.time - (level.time - level.frametime)`, which
+  looks like a botched rewrite of stock's `level.time - level.previousTime`. It
+  is algebraically identical: `G_RunFrame` assigns
+  `level.frametime = levelTime - level.time` *before* `level.time = levelTime`.
+- `Use_BinaryMover` matches stock exactly, including the partial-travel reversal
+  arithmetic and the `+50` ms offset on the open.
+- `BG_EvaluateTrajectory`'s `TR_LINEAR_STOP` case does clamp negative
+  `deltaTime` to 0, so the `+50` open offset holds the door at `pos1` for the
+  first 50 ms rather than running it backwards.
+- `Touch_DoorTrigger` (the key-door variant) already had the right shape.
+- `Blocked_Door` reversing on every blocked frame is stock behaviour; the
+  spurious kamikaze shockwaves that were shoving players into doorways are E32.
+
+### E38. Left team's scrollbar invisible; scoreboard scrolling and mouse — PART DONE
+**Lives in:** our **client** (cgame + ui) · **Seen by:** our client only
+
+**Fixed: the left team's scrollbar was being painted over.** `Item_ListBox_Paint`
+draws the vertical scrollbar first and the rows afterwards, and both were starting
+at `item->window.rect.x + 1` — so with `WINDOW_LB_LEFTSCROLL` on the red team's
+list, every row drew straight over the bar. The default right-hand case never had
+the problem because the bar sits past the end of the row content, which is also
+why the cursor fill below it already subtracts `SCROLLBAR_SIZE` from its width.
+The rows now shift right by `SCROLLBAR_SIZE` when the flag is set, mirroring the
+default case: the bar gets its own column.
+
+**Not a bug: scrolling has no default bind.** It is six console commands —
+`scrollScoresUp` / `scrollScoresDown`, `pageScoresUp` / `pageScoresDown`,
+`scrollScoresTop` / `scrollScoresBottom` — and `CG_ScrollScoreboard` already
+drives all four feeders (`FEEDER_SCOREBOARD`, `FEEDER_ENDSCOREBOARD`,
+`FEEDER_REDTEAM_LIST`, `FEEDER_BLUETEAM_LIST`), so the team lists are wired. With
+nothing bound there is simply no key to press. Deliberately not auto-bound:
+silently taking someone's keys is worse than the commands being undiscoverable,
+and the obvious candidates (mouse wheel) are weapon switching.
+
+**Open: mouse on the in-game scoreboard.** The machinery all exists —
+`CG_EventHandling(CGAME_EVENT_SCOREBOARD)` sets `KEYCATCH_CGAME`, and
+`CG_MouseEvent` / `CG_KeyEvent` are implemented and correct. It is currently
+triggered from one place only: `CG_ParseServerinfo`'s intermission branch, so the
+**match summary** takes the mouse and the in-game scoreboard does not.
+
+Extending it to the in-game board is a design decision rather than a fix, because
+`KEYCATCH_CGAME` takes mouselook and movement with it. That is fine for the
+intermission summary and wrong for a hold-to-view `+scores`. It needs either a
+toggled scoreboard mode (press to open, mouse works, press to close) or a
+modifier, and which one is a preference. Not guessed at.
+
+### E94. Animated textures run at a speed that varies with framerate — NEEDS TEST
+**Lives in:** our **client** (client engine / renderer) · **Seen by:** our client only
+
+Reported with two examples — a liquid pool and a set of jump pads — both visibly
+animating faster than they should at high framerates.
+
+**What the code says.** Every time-driven path in the renderer reads a clock, not
+a frame counter, and I traced all of them:
+
+| Path | Reads |
+|---|---|
+| `R_BindAnimatedImage` (`animMap` frame pick) | `tess.shaderTime * imageAnimationSpeed` |
+| every `tcMod` — scroll, rotate, turb, stretch | `tess.shaderTime` |
+| `rgbGen wave` / `alphaGen wave` | `tess.shaderTime` |
+| `deformVertexes` | `tess.shaderTime` |
+
+and `tess.shaderTime` is `backEnd.refdef.floatTime - shader->timeOffset`
+(`tr_shade.c:299`, `tr_backend.c:719`), `floatTime` is `refdef.time * 0.001`
+(`tr_scene.c`), `refdef.time` is `fd->time` which cgame sets to `cg.time`
+(`cg_view.c:1176`), and `cg.time` is the engine's `cl.serverTime`. Upstream of
+that, `cl.serverTime = cls.realtime + cl.serverTimeDelta - tn`, `cls.realtime`
+accumulates integer milliseconds from `Sys_Milliseconds()`, and
+`CL_AdjustTimeDelta` runs per *snapshot*, not per frame.
+
+So there is no multiply-by-frames anywhere on the path. Nothing in the chain is
+average-wrong either: drawing more frames samples the same clock more often, it
+does not advance it faster.
+
+**Which means the inspection is missing something, because the behaviour was
+measured and the inspection was not.** Rather than assert the code again, the
+build now carries the discriminator.
+
+**`r_shaderTimeSource`** (renderervk, default 0, not archived):
+
+- `0` — scene time. `refdef.time`, i.e. `cg.time`. What it has always done:
+  correct by construction, follows demo playback and `timescale`, and shader
+  animation stays in step with game events — but it inherits any unevenness in
+  how `cg.time` advances.
+- `1` — real time. The engine millisecond clock, sampled directly in
+  `RE_RenderScene`, independent of snapshots and of anything cgame does. This is
+  the "run off client ticks" behaviour asked for. Cost: ignores `com_timescale`
+  and does not pause or rewind with a demo, so it is not a candidate for the
+  default.
+
+The 2D pass already does exactly this — `RB_SetGL2D` sets
+`backEnd.refdef.time = ri.Milliseconds()` for menu and HUD shaders — so mode 1 is
+the same clock the UI has always animated on, not a new one.
+
+**The test that settles it:** stand in front of the pool at high framerate, watch
+it at `r_shaderTimeSource 0`, then `r_shaderTimeSource 1`, then cap framerate
+(`com_maxfps 60`) and watch both again.
+
+- 1 is steady and 0 is not → the problem is `cg.time`, and the fix belongs in
+  `CL_SetCGameTime`, not the renderer. Prime suspect there is our own
+  `cl_autoTimeNudge` block: `tn` shifts `cl.serverTime` by up to 20 ms against a
+  clamp that forbids time going backwards, so a change in `tn` either jumps time
+  forward or stalls it. (It also latches — `prevTimeNudge` holds the first
+  non-zero value permanently — which is a separate bug, and one that happens to
+  make it *stable* once set. On a local server ping is ~0 and `tn` is 0, so this
+  is not the whole story.)
+- both track framerate identically → the coupling is below `floatTime`
+  altogether, and the next place to look is the shader definitions themselves
+  rather than the clock.
+
+Left open until that comparison is run.
+
+### E95. macOS arm64 (Apple Silicon) build — BUILDABLE ON A MAC, NOT FROM HERE
+**Lives in:** build system · **Seen by:** n/a
+
+**Why it cannot be cross-compiled the way Windows is.** `package-release.sh`
+builds Windows from Linux because mingw-w64 is a complete, freely
+redistributable toolchain. macOS has no equivalent: building for Darwin needs
+Apple's SDK, and Apple licenses that SDK for use on Apple hardware, so it cannot
+be installed into a Linux build container. osxcross works and the Makefile
+already expects it (`arm64-apple-darwin20.4-cc`, `$(error Unable to find
+osxcross ...)`), but osxcross is built *from* an SDK extracted out of your own
+Xcode install — the chain still starts on a Mac. This container has no clang
+Darwin target, no SDK, no `xcrun`, no `lipo`.
+
+**The tree itself is arm64-clean — verified by building it, not by reading it.**
+Installed `gcc-aarch64-linux-gnu` and cross-compiled the dedicated server and all
+three game modules for aarch64. They link and produce real ARM binaries
+(`ELF 64-bit LSB, ARM aarch64`), with **no warnings that x86_64 does not also
+produce**. macOS arm64 is a different ABI and a different libc, so this is not
+proof the Mac client links — the client is the part that needs SDL, Cocoa and
+the Apple SDK, and none of that is testable here. But it does settle the
+portability question for everything above the platform layer, which is where
+arch bugs actually live. Supporting detail:
+
+| Risk | Finding |
+|---|---|
+| SSE intrinsics | `q_math_sse.c` is guarded on `__i386__ / __x86_64__` and falls back to `rintf`. Fine. |
+| Inline asm | Only `snd_mix.c`, under `#if !id386`, so arm64 takes the C path. `libvorbis/os.h` carries its own upstream guards. |
+| QVM JIT | There is no QVM layer left — `code/qcommon/` has `vm.c` and no `vm_*.c` backend, and nothing references `VM_Compile`. `HAVE_VM_COMPILED` is inert, so darwin/arm64 setting it true costs nothing. This also sidesteps Apple Silicon's W^X / `MAP_JIT` requirement entirely. |
+| `ARCH_STRING` | `q_platform.h:151` gives `arm64`, `:158` gives `.dylib`. |
+| Objective-C | `sys_osx.m` is wired with an ARC rule and is in both client and dedicated object lists. |
+| Vulkan / MoltenVK | `vk.c:1285/1334` already requests `VK_KHR_portability_enumeration` and sets `VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR`, which MoltenVK requires or `vkCreateInstance` returns `VK_ERROR_INCOMPATIBLE_DRIVER`. `vk_window.c` goes through `SDL_Vulkan_LoadLibrary` / `SDL_Vulkan_GetVkGetInstanceProcAddr`, so it finds MoltenVK if the Vulkan SDK is installed. |
+
+**`build-macos.sh` (new)** runs on the Mac and produces
+`release/out/quakelive-macos-<sha>.zip`, shaped like the other two, with the same
+`check-configs.py` and `stub-report.py` gates and the same `pak01` revision
+stamp. It detects MoltenVK and drops to OpenGL if it is absent, rather than
+building a renderer that has nothing to load at runtime.
+
+**It builds arm64 and x86_64 together** (`ARCHES=` to narrow), both in one
+archive, so the same download runs on an M-series and on an Intel Mac. The
+modules are separate files rather than fat binaries because the engine resolves
+them by its own architecture — `cgamearm64.dylib` and `cgamex86_64.dylib` both
+live in the pak and each engine picks its own, so no `lipo` step is needed.
+
+The one asymmetry worth knowing: **only the client links SDL.** The dedicated
+server and the three game modules do not, so those build for both architectures
+unconditionally; the client is a second pass that is allowed to fail. A Homebrew
+SDL2 is built for whichever architecture that Homebrew is (arm64 under
+`/opt/homebrew`, x86_64 under `/usr/local`), so on an M-series Mac with a plain
+`brew install sdl2` the x86_64 *client* has nothing to link against. That is a
+missing dependency rather than a broken tree, so the script keeps everything else
+and names what it skipped instead of throwing the build away. The universal
+`SDL2.framework` from libsdl.org builds both.
+
+**The trap it exists to make visible: `iobin.pk3` is one pak for every
+platform.** A Mac client looks for `cgamearm64.dylib` / `uiarm64.dylib` /
+`qagamearm64.dylib` *inside that same pak* — `files.c:1205-1209` and `:1372`
+build the name as `cgame{ARCH_STRING}{DLL_EXT}`. Building the Mac separately
+gives it a pak containing dylibs and nothing else, and the failure that follows
+is not "the Mac has no modules", it is that **the pak has a different checksum**,
+so every platform now disagrees and `sv_pure` rejects the odd one out. Same
+silent-failure shape as the rest of this file: nothing reports it until someone
+cannot connect.
+
+So the modules get carried across. `build-macos.sh` leaves its dylibs in
+`release/modules/`; both scripts read `content/modules/` (override with
+`EXTRA_MODULES=`) and fold anything found there into the pak. Round trip:
+
+```
+mac:    ./build-macos.sh                     -> release/modules/*.dylib
+        copy those to the linux box as content/modules/
+linux:  ./package-release.sh                 -> iobin.pk3 with .so + .dll + .dylib
+        copy that iobin.pk3 back into the mac archive's baseq3/
+```
+
+Both scripts now print the pak's contents at the end, and `package-release.sh`
+says so explicitly when there are no macOS modules in it. That listing is the
+only place a cross-platform mismatch is visible before a connection fails.
+
+**Not addressed:** the binaries are unsigned, so Gatekeeper quarantines them out
+of a downloaded zip (`xattr -dr com.apple.quarantine <folder>` clears it), and a
+Homebrew SDL2 build links against `/opt/homebrew/lib`, which is fine on the
+build machine and not portable to another Mac without bundling the dylib. Both
+are release-engineering, not build breakage.
+
+### E41. Four compiler warnings, one of them a real out-of-bounds read — DONE
+**Lives in:** our **client and server** both · **Seen by:** our client only
+
+R7 cleared every warning in project code (90 → 0). Four had crept back. They are
+recorded here rather than just fixed because one of them was an actual memory
+bug that had been sitting in the build output being scrolled past.
+
+**`Q_SnapVector` read four bytes off the end of every vector it was given.**
+`q_math_sse.c` did `_mm_loadu_ps(vec)` — a 16-byte load — on a `vec3_t`, which is
+12. gcc says so plainly: *"array subscript `__m128_u[0]` is partly outside array
+bounds of `vec_t[3]`"*. It survives in practice because most `vec3_t` sit inside
+a larger struct, so the stray lane lands on a neighbouring field and nothing is
+noticed; a `vec3_t` at the end of a mapping faults, and the compiler is entitled
+to optimise on the assumption that this never happens. Now three scalar
+`_mm_cvtss_si32` converts — same round-to-nearest-even, same results, no read
+past the end. This is also why the warning was x86-only: the ARM fallback uses
+`rintf` and never had it.
+
+**`cgs.eventHandling` was declared `qboolean` and holds a four-value enum.**
+`CGAME_EVENT_NONE / TEAMMENU / SCOREBOARD / EDITHUD` is 0-3; `qboolean` is
+`{qfalse, qtrue}`. It works on x86_64 and arm64 because both give enums int
+width, but a toolchain that packs enums to the smallest type that fits — which
+`-fshort-enums` does, and which is the default on some bare ARM targets — would
+truncate 2 and 3 to 1 and make the scoreboard and the HUD editor
+indistinguishable. Now `int`. Directly relevant to E95: this is the class of bug
+that only appears when you actually build for another architecture.
+
+**`Cvar_VariableString` returned `char *` into cvar-owned storage.** The
+renderer import (`tr_public.h:213`) declares it `const char *`, so wiring the two
+together warned about incompatible pointer types. The function's result must not
+be written through, so the declaration was the wrong one: it now returns
+`const char *`, and the three locals that caught it (`sv_main.c` `gamedir`,
+`cmd.c` `v`, `cvar.c` `curval`) are const too.
+
+**`CG_DrawWeaponIcon` was dead.** Its only caller was owner-draw `0x225`, which
+turned out to be the advertisement slot rather than a weapon icon and now
+deliberately paints nothing. Removed rather than left sitting there: an unused
+static drawer reads like a slot still waiting to be wired up, which is exactly
+what `docs/stub-manifest.txt` exists to stop.
+
+### E42. Upstream review: ioquake3 fixes worth taking — SIX APPLIED
+**Lives in:** our **client and server** both · **Seen by:** varies, see each item
+
+We are standalone, not tracking ioq3. That makes upstream a source to *mine*
+rather than merge: reviewed ~490 commits touching `qcommon` / `server` /
+`client` / `sys`, checked each against this tree, took six.
+
+**Taken:**
+
+| ioq3 | What | Why here |
+|---|---|---|
+| `7d6350b` | `MAX_PATCH_PLANES` 2048 → 4096 | **Candidate fix for the "infinity" map crash (C-series).** Overflow is not graceful: `cm_patch.c:489/543` calls `Com_Error(ERR_DROP, "MAX_PATCH_PLANES")`, which on a server is a failed map change. Quake Live's maps carry far more curved geometry than Quake 3's, so 2048 is a Q3-era number applied to bigger maps. Needs testing on `infinity` to confirm. |
+| `1e30978` | `MSG_WriteBits` overflow flag off by one | `>` should be `>=`. At exactly `maxsize` the write proceeded and the overflow flag stayed clear, so the caller believed a truncated message was intact. Same class as R10. |
+| `a6f949c` | Stricter `Info_Validate` | Old check caught `"` and `;` only; everything below 0x20 passed, newline included, and an infostring is line-structured — a name carrying one can forge a line in anything that re-parses or logs it. |
+| `9c29b25` | `Info_RemoveKey` / `_Big` case-insensitive | They compared with `strcmp` while `Info_ValueForKey` reads with `Q_stricmp`. So `Info_SetValueForKey(s, "Name", …)` failed to remove an existing `\name\`, leaving two keys where readers see one — a userinfo-spoofing primitive. Both call sites now `Q_stricmp`. |
+| `8cc9eb5` | `Com_Filter` character classes after `*` | `*[abc]` silently matched nothing. Reaches `cmdlist`/`cvarlist` filters and `FS_` path filtering. |
+| `693c1f1` | `FS_CreatePath` null/empty guard | The loop starts at `OSPath[1]`, so an empty string was read past its terminator. Callers build the path from `fs_homepath`/`fs_game`, which can be empty. |
+
+The `Info_Validate` one is applied **with the rejection reason printed**, which
+upstream does not do. Its only caller drops the client with a flat "Invalid
+userinfo", and `Q_isprint` is 0x20..0x7E — so a client sending a high-byte name
+that Quake Live itself accepts would now be kicked here and nowhere else. That
+is the "Seen by: stock QL only" shape: invisible from our side, wrong for
+everyone else. The print is what makes it findable; relaxing the range to allow
+`>= 0x80` is the one-line answer if it ever fires in anger.
+
+**Deliberately not taken:**
+
+- `c3a2aa4` "Make con_* variables CVAR_ARCHIVE" — this is precisely the trap
+  CLAUDE.md records as having cost two rounds, `con_scale` among them. Archiving
+  a shipped default writes it into a config on first run and that config then
+  wins forever, so changing the default later does nothing. Upstream walking
+  into it does not make it right here.
+- `8dfedc6` / `d07bf88` "Remove architecture from binary filenames" /
+  `USE_ARCHLESS_FILENAMES` — the engine finds its modules as
+  `cgame{ARCH_STRING}{DLL_EXT}` inside `iobin.pk3`, and that naming is what lets
+  one pak serve every platform at one `sv_pure` checksum (E95). Taking this
+  would break that on purpose.
+- `3e0b279` / `0912659` / `858ccc9` / `2c91b38`, all the VM and JIT work — there
+  is no QVM layer in this tree at all.
+- `170a052` `MIN_COMHUNKMEGS = DEF_COMHUNKMEGS` and `7003c9d` `DEF_COMZONEMEGS`
+  24 → 48 — both already superseded here by R8, which sized these deliberately
+  against player count (`DEF_COMHUNKMEGS` 256, `DEF_COMZONEMEGS` 64).
+- `2d7100d` HTTP download shutdown ordering — no `USE_HTTP` build here.
+- `56f9f94` `SV_RehashBans_f` running with no server — this tree never had the
+  guard, so there is nothing to remove.
+
+### E43. The 1000 fps ceiling is the clock, not a limiter — EXPLAINED + PACING FIXED
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+Reported as "there seems to be a hard fps cap of 1000". It is real, it is exact,
+and `com_maxfps 0` does not mean unlimited — it means 1000.
+
+**Where it comes from.** `Com_Frame` sleeps until `minMsec` has elapsed, and
+`minMsec` is floored at 1 (`common.c`, the `minMsecFrac` block). `Com_TimeVal`
+measures with `Sys_Milliseconds`, which is integer milliseconds. One frame per
+millisecond is therefore the ceiling, on every path — `com_maxfps 0`,
+`com_maxfps 2000` and `com_timedemo` all land on `minMsec = 1`.
+
+**Why it must stay.** This is the part that matters, because the floor looks
+like an arbitrary limiter and is not. Follow the time base:
+
+```
+Com_ModifyMsec:  if (msec < 1 && com_timescale->value) msec = 1;
+CL_Frame:        cls.frametime = msec;  cls.realtime += cls.frametime;
+CL_SetCGameTime: cl.serverTime = cls.realtime + cl.serverTimeDelta - tn;
+cgame:           cg.time = serverTime  ->  refdef.time  ->  tess.shaderTime
+```
+
+`com_timescale` defaults to 1, so that first line is always live: **a frame that
+took less than a millisecond still reports one.** Let frames through at 2000 fps
+and `cls.realtime` gains two milliseconds per millisecond of wall clock, so
+`cl.serverTime` does, so `cg.time` does — and the entire game runs at double
+speed, shader animation included. The millisecond floor on `minMsec` is the only
+thing preventing that.
+
+Raising the ceiling properly means moving `cls.realtime` / `cl.serverTime` /
+`cg.time` / `level.time` to microseconds. `serverTime` is on the wire in
+snapshots, so that is a protocol change — the same "deliberate protocol fork, not
+a one-line change" verdict as E3, and for the same reason. Not attempted.
+
+**What was wrong underneath it, and is now fixed: pacing.** Because
+`Com_TimeVal` can only measure whole milliseconds, every frame boundary landed
+on a millisecond edge. For a rate dividing 1000 that is exact; for anything else
+the loop alternated between two whole intervals — 240 fps wants 4.167ms and got
+4,4,4,4,5. The `minMsecFrac` carry already fixed the *average* rate (that was the
+`com_maxfps 210` and `240` both reading 250 bug); it could not fix the frame-to-
+frame spacing, because there was no sub-millisecond sleep to give.
+
+`Sys_Microseconds()` is new — `clock_gettime(CLOCK_MONOTONIC)` on unix,
+`QueryPerformanceCounter` on Windows, with a `Sys_Milliseconds` fallback if there
+is no high-resolution counter. Note Windows needed a different clock rather than
+a finer read of the old one: `Sys_Milliseconds` there is `timeGetTime`, whose
+resolution is the system timer period — 1ms at best, ~15.6ms if nothing has
+called `timeBeginPeriod`.
+
+`com_framePacing` (default 1) switches the limiter to it. At 240 fps the interval
+is now 4166us against an ideal 4166.67 — out by 0.16us per frame where the
+millisecond loop was out by up to 833us. `NET_Sleep` still takes whole
+milliseconds, so it covers the millisecond part and the sub-millisecond
+remainder is spun, at most 1ms of spin per frame. Set `com_framePacing 0` to get
+the old loop back if that spin costs more than the smoothness is worth.
+
+**Only the sleep changed.** `msec` is still derived from `Sys_Milliseconds`
+below, so `cls.realtime`, `cl.serverTime`, `cg.time` and `level.time` still
+advance in whole milliseconds exactly as before, and nothing on the wire moves.
+
+**Bearing on E94.** This is not the animated-texture bug, and checking ruled it
+out rather than confirming it: because `minMsec` is floored at 1, `msec` is never
+0 in the current code, so `Com_ModifyMsec`'s floor never fires and `cls.realtime`
+never outruns the wall clock. Worth stating explicitly, since "time runs fast in
+proportion to framerate" is exactly the shape E94 describes and this is the one
+mechanism in the engine that could produce it. It is disarmed today — and
+lifting the fps ceiling is precisely what would arm it.
+
+### E44. No way to change team from the in-game menu — DONE (verify)
+**Lives in:** our **client** (ui) · **Seen by:** our client only
+
+The in-game menu had no JOIN RED / JOIN BLUE / SPECTATE, so a player who did not
+know to type `cmd team r` into the console was stuck on whatever team they were
+first put on. Quake Live has these on the Current Match page.
+
+**The server side was never the problem.** `Cmd_Team_f` takes `r`/`red`,
+`b`/`blue`, `s`/`spectator` and `free`, and enforces its own rules — the
+five-second switch limit, team lock, the duel loss. These buttons are ordinary
+client commands, not a new code path.
+
+**`ui/io_teamselect.menu`** (new, in pak01) is the panel: red, blue, spectate and
+an auto-join, placed where Quake Live puts the same column. It is ours rather
+than an edit to Quake Live's `ui/ingame_join.menu` because pak00 is not ours to
+ship or modify. `ui/io_ingame.txt` lists it and `UI_LoadExtraMenus` reads that
+after Quake Live's own `ui/ingame.txt`, so our menus sit alongside theirs — a
+replacement `ingame.txt` would drop every menu it lists. The loader is separate
+from `UI_LoadMenus` because that one falls back to `ui/menus.txt` when a file is
+missing, which for an *addition* would silently load the whole main set a second
+time and give two of every menu.
+
+**Two ordering facts that decide whether this works, and are easy to get
+backwards:**
+
+- *Paint* order is load order — `Menu_PaintAll` walks the array. Ours loads after
+  Quake Live's set, so it paints on top however it is activated.
+- *Activation* order decides only `WINDOW_HASFOCUS`, and the focused menu is the
+  one that answers keyboard input including `onESC`. So the panel is activated
+  **first** and the page after it, leaving focus where it was: Escape and the
+  tabs behave exactly as before.
+
+**`Display_CaptureItem` had to be fixed for the panel to be clickable at all**,
+and the bug it had is general. It decides which menu a click goes to, and it
+walked *forwards* and ignored `WINDOW_VISIBLE`:
+
+- a **closed** menu still caught clicks — its rect is whatever it was when last
+  open, so a hidden menu over the cursor swallowed the click and the visible menu
+  underneath never saw it;
+- a panel over a full-screen menu was **unclickable**, because the earlier (lower)
+  menu won, so anything overlaying a full-screen page could be seen and not
+  pressed.
+
+It now walks backwards and skips menus that are not visible, so the pick agrees
+with the paint: last painted is topmost is what you clicked. This changes click
+routing for every menu in the game, which is worth watching for regressions —
+but "topmost visible wins" is strictly more correct than "first loaded wins,
+visible or not".
+
+**Not done:** the rest of the Current Match page — the tabs, server settings,
+starting weapons, RETURN to MATCH. This is the team buttons only.
+
+### C27. Voice chat verbs are unhandled — DONE
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+```
+Unknown client game command: vchat
+Unknown client game command: vtell
+```
+
+`G_VoiceTo` sends `vchat`, `vtchat` and `vtell`; there was no cgame handler, and
+bots taunt constantly — a full Freeze Tag console was more of that line than
+anything else, which pushes the lines you actually need off the top while
+diagnosing something else.
+
+Consumed silently now, like `pstats`. Playing them properly needs the voice-chat
+script files that map an id to a sound and a line of text (Quake 3 answers these
+with `CG_VoiceChat`); swallowing them loses nothing that was working, and the
+server side is unchanged, so an implementation drops straight in later.
+
+### C26. Scoreboard player list sat over its column headers — DONE (verify), now tunable
+**Update.** One element height overshot and left a visible gap, and I cannot see
+the result from here to judge it. The shift is `cg_scoreboardListOffset`, default
+8 — raise to push the rows down, lower to bring them up, 0 for the menu's own
+geometry. Not `CVAR_ARCHIVE`: it is our layout value, not the user's, and
+archiving a shipped default stops the default applying (CLAUDE.md).
+
+Also, the left-hand team's scroll bar now draws on the *outside* edge rather than
+between the two lists, so they mirror each other. That needed a new
+`WINDOW_LB_LEFTSCROLL` window flag — there is no menu keyword for it — honoured
+both by `Item_ListBox_Paint` and by the `Item_ListBox_OverLB` hit test, so clicks
+land on the bar where it is drawn. cgame sets it on `FEEDER_REDTEAM_LIST`.
+
+
+**Lives in:** our **client** (cgame / ui) · **Seen by:** our client only
+
+`Item_ListBox_Paint` draws the first row at `rect.y + 1`. Quake Live's scoreboard
+menus put the PLAYER / SCORE / K/D / THAWS labels *inside* the top of the list
+rect — in `ingame_scoreboard_ft.menu` the labels are at `y 170` and the list is
+`rect 73 165 284 130` — so row one was painted across the header band.
+
+Quake Live's own list box evidently starts its content below that. Changing
+`Item_ListBox_Paint` would move every list in the game (server browser, demo
+list, map list), so `CG_OffsetScoreboardList` nudges only the four scoreboard
+feeders: top down by one element height, height down by the same, leaving the
+bottom edge and the scroll bar where the menu put them. Applied once per menu —
+`Menus_FindByName` returns the same `menuDef` each call, so a gametype change
+would otherwise stack a second offset.
+
+One element height is the natural "one row for the header" reading and is tuned
+by eye against a screenshot, not measured against Quake Live. If it is still off,
+the shift is the one number to change.
+
+### C25. Team scoreboards drew one row and then blanks — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Headers read "3 Players" and "2 Players" with one row rendered, or none.
+
+`scores_ft` writes **17** fields per player. `CG_ParseScoreEntry_Ft` read
+**18**. This was my own regression: an earlier pass correctly added the missing
+`sp->tks` read but left the `i++; // unknown field` that had been standing in
+for it.
+
+One field of drift per entry compounds. From the second player on, `sp->client`
+was reading somebody's damage figure or alive flag; the range clamp turned that
+into client 0, `cgs.clientinfo[0]` is not the player that row belongs to, and
+`CG_FeederItemText` returns "" when `infoValid` is false — so the list drew one
+plausible row and then blanks. The team headers come from a different count,
+which is why they still said three.
+
+**Checked the rest mechanically rather than by eye, and Freeze Tag was the only
+one wrong:**
+
+| verb | emitter | parser |
+|---|---|---|
+| `scores_ffa` | 18 | 18 |
+| `smscores` | 8 | 8 |
+| `scores_tdm` | 15 | 15 |
+| `scores_ca` | 16 | 16 |
+| `scores_ctf` | 17 | 17 |
+| `scores_ft` | 17 | ~~18~~ 17 |
+| `scores_rr` | 19 | 19 |
+| `scores_race` | 4 | 4 |
+| `tinfo` | 1 | 1 |
+
+**`tools/check-score-fields.py`** now does this count on every emitter/parser
+pair and exits non-zero on a mismatch. Run it after touching either side. This
+class of bug has cost four rounds — the FFA WEAP column, the Freeze Tag tail,
+this over-read, and `tinfo`'s six-fields-for-one — and not one of them produced
+an error at runtime. A parser reads whatever is next in the argv list: a drift
+of one shows up as a wrong number, a blank row, or `bad client number: 85`,
+never as "the message is malformed". Counting is mechanical, so it should not be
+done by eye.
+
+### E23. Serverinfo overflowed 1024 bytes and dropped keys — DONE (verify)
+**Lives in:** our **server** (engine) · **Seen by:** every client
+
+The dedicated console, hundreds of lines between kills:
+
+```
+Info string length exceeded
+Info string length exceeded
+```
+
+`Cvar_InfoString` builds into a `MAX_INFO_STRING` (1024) buffer. The game module
+alone flags **45 cvars `CVAR_SERVERINFO`** and the engine adds more, so the
+string overruns; `Info_SetValueForKey` then drops every key that will not fit and
+prints, once per key, on every rebuild — and `SV_Frame` rebuilds whenever a
+serverinfo cvar changes.
+
+The drops are the tail of the list, which is why an earlier `InitGame` line was
+cut mid-key at `g_levelStartTi`. **The client reads about thirty keys out of
+CS_SERVERINFO** — gametype, teamsize, the shotgun and pmove values, the round
+timers — so anything past the cut silently never arrived.
+
+`Info_ValueForKey` already handles `BIG_INFO_STRING`, and `CS_SYSTEMINFO`
+already goes out that way, so the configstring path now uses
+`Cvar_InfoString_Big`. `SVC_Status` deliberately keeps the small builder: that
+reply goes to master servers and the browser in one out-of-band datagram and is
+capped there. The three ui buffers that copy CS_SERVERINFO were `MAX_INFO_STRING`
+and would have truncated it themselves; they are `BIG_INFO_STRING` now.
+
+### E22. Nobody froze in Freeze Tag — DONE (verify), second cause found
+**Update.** Wiring `Freeze_PlayerFrozen` into `player_die` was necessary but not
+sufficient — it still declined every freeze, because **the Freeze Tag round
+state machine was never started.**
+
+`G_InitGame`'s round-based switch had `case GT_RR: RR_InitRoundState()` and a
+bare `default:`. `GT_FREEZE` had no case, so `level.roundState` stayed
+zero-initialised: `eCurrent` RS_WARMUP, `tNext` 0. `Freeze_GetRoundState` only
+promotes `eNext` into `eCurrent` when `tNext` is non-zero, and all five
+`Freeze_RoundStateTransition` call sites are reachable only once the machine is
+already turning. It never turned.
+
+So `eCurrent` sat at RS_WARMUP for the whole match — through warmup, through
+"MATCH IN PROGRESS", through every kill — and `Freeze_PlayerFrozen` refuses
+unless it is RS_PLAYING. A declined freeze is an ordinary death, which is why it
+read as the freeze code being wrong rather than never reached.
+
+`Freeze_InitRoundState` now mirrors RR's: park in RS_WARMUP while warmup runs,
+otherwise drop into the countdown. `Freeze_Think` also kicks RS_WARMUP into
+RS_COUNTDOWN once warmup ends, since it returns early during warmup and nothing
+else would move it.
+
+`g_debugFreeze 1` traces every state transition and names the reason whenever a
+freeze is declined — same approach as `g_debugWarmup`.
+
+### E22-original. Nobody froze in Freeze Tag — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Players shot in Freeze Tag just died and respawned. No statue, no thawing.
+
+`Freeze_PlayerFrozen` — the function that actually freezes somebody — was
+**defined in `g_gametype_ft.c` and called from nowhere in the tree.**
+`player_die`'s Freeze Tag fork did this instead:
+
+```c
+self->client->ps.pm_type = PM_FREEZE;
+self->client->ps.thawtime = g_freezeThawTime.integer;
+```
+
+which is not enough to freeze anyone. What marks a frozen player is
+`ps.powerups[PW_FREEZE]`, and everything downstream gates on it: pmove treats a
+zero-health player as dead without it (`bg_pmove.c:2275`), `ClientThink_real`
+keeps `PM_FREEZE` instead of `PM_DEAD` on it (`g_active.c:962`),
+`Freeze_ClientThawCheck` counts down against it, and `Freeze_DeathFinalize`
+refuses to respawn without it. None of that was ever reached.
+
+Same shape as the unassigned ice handles (C23) and the registered-but-unread
+cvars (E8): written, never wired. The fork now calls `Freeze_PlayerFrozen`, and
+falls back to `PM_DEAD` when it declines — it refuses outside a live round
+(`RS_PLAYING`), so a warmup death is still an ordinary respawn.
+
+`Freeze_PlayerFrozen` also now sets the networked `s.powerups` freeze bit, which
+`g_combat.c`'s other freeze path already set. Without it the playerState says
+frozen but nothing on the wire tells other clients, so the body would draw as an
+ordinary corpse.
+
+### E21. Joining any team gametype dropped the client — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client, stock included
+
+```
+CG_ParseTeamInfo: bad client number: 85
+CG_ParseTeamInfo: bad client number: 90
+```
+
+`tinfo` in Quake Live is a flat list — a count, then that many client numbers.
+Teammate health, armour, location, weapon and powerups reach the client through
+the snapshot, not through this message. `CG_ParseTeamInfo` (binary `0x100487b0`)
+reads it that way and its own comment in `cg_servercmds.c` says so explicitly.
+
+`TeamplayInfoMessage` was still the **stock Quake 3 emitter**, writing six fields
+per player. So the client read every field as a client number: argv(3) a
+location, argv(4) a health value, argv(5) armour. 85 and 90 are health — which
+is why the numbers in the error looked like nothing in particular.
+
+Fatal, via `CG_Error`, on joining any team gametype. Freeze Tag is where it was
+reported because that is what was being tested; TDM, CA, CTF and the rest were
+equally broken. A stock Steam client would also expect the flat list, so the
+emitter is the side that was wrong, and the parser was right all along.
+
+### E20. Freeze Tag killed the server on the first frag — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+```
+Kill: 3 0 10: Keel killed Daemia by MOD_RAILGUN
+----- Server Shutdown (Received signal 11) -----
+```
+
+Instagib Freeze Tag on `trinity`, twelve bots, dead on the first kill of the
+match.
+
+Both Freeze Tag thaw paths — `Freeze_InstaKill` and the `do_thaw` tail of the
+thaw-progress function — called **`Kamikaze_DeathActivate(player)`**. The port
+matched that name to Quake 3's function of the same name, which is the *think
+function of a temporary "kamikaze timer" entity*:
+
+```c
+void Kamikaze_DeathActivate(gentity_t *ent) {
+    G_StartKamikaze(ent);
+    G_FreeEntity(ent);
+}
+```
+
+It detonates and then frees **that** entity. Handed a player instead,
+`G_FreeEntity` memsets the client's `gentity` and clears `inuse` while
+`svs.clients[n].gentity` still points at it and `ent->client` is left NULL.
+`neverFree` is set only on the body queue (`InitBodyQue`), so nothing stops it.
+The next thing to touch that client reads freed memory — and in instagib every
+kill goes through `Freeze_InstaKill`, so that is the first frag of the match.
+
+The two are unrelated functions that happen to share a name: the binary's
+finalizer at `0x10046f60` is a *thaw* finalizer, and its own comments in this
+file said so ("respawns iff still frozen (PW_FREEZE != 0)", "fires
+EV_THAW_PLAYER + ClientSpawn"). `Freeze_DeathFinalize` now does that — clear
+`PW_FREEZE` and the freeze timers, restore `takedamage`, fire `EV_THAW_PLAYER`,
+`ClientSpawn` — and never frees a player. `Kamikaze_DeathActivate` stays where it
+belongs, as the kamikaze timer's think in `g_combat.c`.
+
+This is the tracker's own E7/C3 note ("the reimpl body is the stale Q3 stand-in,
+must be rewritten") and the outside review's C3. Both described it as blocking
+thaw-respawn. It was considerably worse than that: the mode could not survive one
+kill.
+
+### C23. Freeze Tag had no ice at all — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Five `cgs.media` handles were declared in `cg_local.h` and read by the effect
+code but **assigned nowhere**, so all five were zero:
+
+| handle | read by | what was drawn |
+|---|---|---|
+| `freezeModel` | `CG_FreezeEffect` (`cg_effects.c:220`) | `RT_MODEL` with `hModel` 0 |
+| `iceWhiteModel` / `iceBlueModel` | `CG_ThawPlayer` (`cg_effects.c:291`) | seven shards, `hModel` 0 |
+| `freezeShader` | `FE_FREEZE` effect (`cg_players.c:2583`) | billboard with shader 0 |
+| `frozenFlagShader` | nothing yet | — |
+
+A zero handle renders nothing and reports nothing, so Freeze Tag had no ice
+overlay on frozen players and no thaw effect, with no error anywhere.
+
+The mirror image was there too: `iceShardModel` and `iceShardShader1..3` were
+registered and **read by nothing**. The port registered one set of names and
+wrote the effects against another, and the two halves never met. That is the
+same shape as the "registered cvar is not an implemented feature" trap in
+CLAUDE.md, one layer down — a registered *asset* is not a drawn one.
+
+Fixed by assigning all five. `RE_RegisterShader` and `RE_RegisterModel` both
+return 0 for an asset they cannot find, so `CG_RegisterModelOr` /
+`CG_RegisterShaderOr` name the miss on the console and fall back to an asset
+this build is known to have.
+
+**The dedicated Quake Live ice model names are not identified** — `pak00.pk3` is
+not readable from the build environment, so `models/freeze/ice.md3`,
+`ice_white.md3`, `ice_blue.md3` and `sprites/frozenflag` are the names tried
+first, not names that have been confirmed. If the console prints
+
+```
+WARNING: model 'models/freeze/ice.md3' not found, falling back
+```
+
+then that name is wrong and wants correcting — but the effect renders either
+way, which is the point. `sprites/frozen` (the `freezeShader` fallback) is
+already registered elsewhere in the same block and is known good.
+
+### C24. SCR_DrawDemoRecording used sprintf — DONE (verify)
+**Lives in:** our **client** (engine) · **Seen by:** our client only
+
+`sprintf` into a fixed 1024-byte stack buffer. `clc.demoName` is `MAX_QPATH`, so
+it cannot actually overrun today and the reported severity was overstated — but
+an unbounded write into a fixed buffer is not worth leaving in place. Now
+`Com_sprintf` with `sizeof(string)`.
+
+### C19. The scoreboard could not be scrolled — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+*"It has a scrollbar on the right side, but there's no way to scroll and find
+where someone not in the top players is."*
+
+The scoreboard list box shows ten rows (`rect ... 180` over `elementheight 18`).
+The scroll bar beside it is painted from `startPos` and nothing moves it: while
+`+scores` is held the cgame does not hold the key catcher, so there is no cursor
+in front of the bar to drag, and `scrollScoresUp` / `scrollScoresDown` — the only
+things that could move it — are not bound to anything by default. So on a full
+server everyone below tenth place was unreachable.
+
+Three parts:
+
+- **The commands now move the list box that is on screen.** They were hardcoded
+  to `menuScoreboard`, which at intermission is the wrong menu — the end-of-match
+  summary is `menuEndScoreboard`. And they only ever sent an arrow key, one row
+  at a time. `Menu_ScrollFeederKey` forwards any key to a feeder's list box, so
+  `pageScoresUp` / `pageScoresDown` (a page) and `scrollScoresTop` /
+  `scrollScoresBottom` (the ends) join them. `Item_ListBox_HandleKey` already
+  understood all of these; `Menu_ScrollFeeder` just never offered them.
+
+- **The client routes the keys without anyone binding them.**
+  `CL_ScoreboardScrollKey` gives the wheel, the page keys and home/end to the
+  scoreboard while `cg_scoreboardActive` is set — the cgame writes that cvar
+  every frame it draws the scoreboard, so the wheel goes back to changing
+  weapons the moment TAB is released. A key bound to a `+` command is left
+  alone: swallowing the press while the release still fires would leave the
+  action stuck on.
+
+- **The view follows the local player's row.** `CG_SetScoreSelection` records
+  the local player as the selection, but `Menu_SetFeederSelection` only touches
+  `startPos` when the index is zero, so on a list longer than the window the
+  selected row could sit off screen with nothing to say so.
+  `Menu_ShowFeederIndex` scrolls just far enough to bring it into view and
+  leaves `startPos` alone when the row is already visible.
+
+  This runs every frame the scoreboard is drawn, not once when it opens: the
+  list re-sorts as scores change, so a row index recorded at open drifts within
+  seconds and the view is left on a page the player is no longer on. Scrolling
+  by hand takes the view back (`cg.scoreboardScrolled`) until the board is
+  closed and reopened. `Menu_SetFeederCursor` is the highlight half of the same
+  job — `Menu_SetFeederSelection` cannot be used per-frame because its
+  index-zero `startPos` reset would stop a first-place player scrolling away.
+
+- **The board refreshes while it is held.** `CG_ScoresDown_f` sends `score` on
+  the key press and nothing after it, so holding TAB showed whatever had arrived
+  at the moment it opened — visibly stale within a second on a sixty-player
+  instagib server. `CG_RefreshScoreboard` re-requests on the same two-second
+  throttle the key press already used, so it costs no more than tapping TAB.
+
+### E16. Clients dropped for "Server command overflow" at match start — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+A sixty-player server dropped three clients — including the human — seconds
+after `map_restart`. The pending-command dump is almost entirely the same two
+configstrings, rewritten over and over with different values:
+
+```
+cmd 1388: cs 659 "Klesk"
+cmd 1389: cs 659 "Grunt"
+cmd 1393: cs 659 "Klesk"
+cmd 1396: cs 659 "Phobos"
+```
+
+659 and 660 are `CS_SCORES1PLAYER` / `CS_SCORES2PLAYER`, the leader and
+runner-up names on the HUD. `CalculateRanks` writes them, and it runs on every
+frag; each write is a reliable command **broadcast to every client**, against a
+64-slot ring. A client that stops acknowledging for a moment — loading the map
+after a restart, which is exactly when this fired — overflows and is dropped.
+
+Two causes, both fixed:
+
+- **`SortRanks` returned 0 for tied players.** `qsort` is not stable and the
+  array it sorts changes every time somebody connects, so the order among a
+  field of tied players was arbitrary and different on each call. At match start
+  everyone is tied on zero while sixty bots are still connecting, so the
+  "leader" changed several times a second and each change broadcast two
+  configstrings for a lead that had not moved. Ties now break by client number,
+  which also makes `PERS_RANK` stable.
+
+- **Nothing bounded the broadcast rate.** The score configstrings moved out of
+  `CalculateRanks` into `G_UpdateScoreConfigstrings`, behind
+  `G_ScheduleScoreConfigstrings`, which writes at most once every 250 ms and
+  otherwise sets a pending flag that `G_RunFrame` flushes. Intermission bypasses
+  the limit, since the final figures have to be right and nothing follows them.
+  Four updates a second is more than the eye follows on a HUD, and it caps what
+  `CalculateRanks` can cost no matter how fast frags arrive.
+
+Note the scoreboard chunking (C13) pushed in the same direction — a full FFA
+scoreboard is now three or four reliable commands instead of one. That is per
+request and throttled client-side to one every two seconds, so it is a much
+smaller contributor than the per-frag broadcast was, but it is the reason to
+keep an eye on this queue.
+
+### E18. The engine ran in the machine's locale, so floats used a decimal comma — DONE (verify, not reproducible here)
+**Lives in:** our **client** and our **server** (both come out of one binary) · **Seen by:** every client
+
+Console lines like `CL_InitCGame: 0,53 seconds` looked like a font quirk. They
+were not. The give-away is in the bot userinfo configstrings going out over the
+wire:
+
+```
+cs 549 "\n\Keel\t\0\model\keel\...\skill\ 2,00\tt\0\tl\0"
+```
+
+Everything this engine parses and prints assumes a `.` decimal point — cvar
+values, shader scripts, configs, `atof`, `sprintf("%f")`. On a machine whose
+locale uses a decimal comma the whole engine switches over: floats are written
+with commas, and anything reading them back under a C locale gets the integer
+part and silently drops the fraction.
+
+It also corrupts configs. The startup warning
+
+```
+Warning: cvar "cg_stereoSeparation" given initial values: "0" and "0,4"
+```
+
+is a value that was written into `q3config.cfg` by an earlier run under the
+comma locale and read back as a cvar default. **Anyone who has run an affected
+build should check their config for comma decimals** — those values are being
+read as truncated integers.
+
+The C runtime starts in the `"C"` locale, so this is not the default state: SDL
+calls `setlocale(LC_ALL, "")` during init on several platforms and takes the
+process with it. `setlocale(LC_NUMERIC, "C")` is now asserted at the top of
+`main()` — which covers the dedicated server and the game module too, since they
+share the process — and again after each `SDL_Init(SDL_INIT_VIDEO)`, in both
+`GLimp_Init` and `VKimp_Init`. `LC_NUMERIC` only; the rest of the locale is
+nobody's business here.
+
+Not reproducible in the build container, which has no comma locale installed, so
+this was shipped verified by inspection only.
+
+**Confirmed fixed in play.** The same server log that showed
+`\skill\ 2,00` before now reads `\skill\ 3.00` on build `ffedf1d`.
+
+### E19. Console noise at startup — PARTLY DONE
+**Lives in:** our **client** (cgame / renderer) · **Seen by:** our client only
+
+Reported as a batch of warnings on the console. Sorted by what they actually are:
+
+- **`unknown general shader parameter 'novlcollapse'`, forty-odd lines** —
+  already fixed, in `645b80e`. The build in the screenshots was stamped
+  `16:15:06` and that commit landed at `16:28`; the later screenshots show none.
+  Nothing to do, and a good argument for the build stamps.
+
+- **`Failed to load sound new_high_score.ogg!`** — real, fixed. `cg_main.c`
+  registered the bare filename with no directory, straight from the binary's
+  path string. `S_RegisterSound` takes the name as given and there is nothing at
+  the root of the pak. Every other voice line there lives under `sound/vo`, and
+  the ui module already asks for this one by that path. Now matches.
+
+- **`CM_AddFacetBevels... invalid bevel`** and **`reused image ... with mixed
+  flags`** — already `Com_DPrintf` / `PRINT_DEVELOPER`. They only appear because
+  `developer 1` is set; that is what asking for developer output means. Left
+  alone.
+
+- **`R_FindImageFile could not find 'gfx/misc/console01.tga' in shader
+  'console'`** and **`Can't read sound music/sonic5.wav`** — both are Quake Live
+  assets referenced by Quake Live content (the `console` shader, and the map's
+  worldspawn music key) that Quake Live does not ship. Not ours to add, and the
+  fallbacks are harmless. Could be silenced by shipping our own `console` shader
+  in `pak01`; not done, because that means drawing console art.
+
+### E17. Returning after a drop mid-match leaves you spectating — OPEN
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+Reported straight after E16: reconnecting during a live match came back as a
+spectator rather than a player.
+
+Not yet reproduced, and the obvious path does not explain it. For FFA,
+`G_InitSessionData` gives `TEAM_FREE` when `g_autoJoin` is set (it is, in
+`common.cfg`) unless `g_maxGameClients` is non-zero and the server is at that
+cap. `g_maxGameClients` ships as `"0"` — but it is **`CVAR_ARCHIVE`**.
+
+**Confirmed from the server's own InitGame line:** `\g_maxGameClients\60\`
+alongside `\bot_minplayers\60\` and `\sv_maxclients\64\`. Sixty bots fill
+all sixty playing slots, so a returning player is at the cap and
+`G_InitSessionData` puts them in spectator. Either lower `bot_minplayers` below
+`g_maxGameClients`, or raise `g_maxGameClients` — and note it is `CVAR_ARCHIVE`,
+so whatever it is set to now was written into the server config and will win
+over the shipped default until it is changed explicitly.
+
+There is a second, definite defect underneath it either way: **a human sitting
+in spectator never displaces a bot.** `G_CheckMinimumPlayers` counts humans with
+`G_CountHumanPlayers(TEAM_FREE)`, so someone who has been put in spectator is
+not counted, `humanplayers + botplayers` stays equal to `bot_minplayers`, and no
+bot is ever removed to make room. The logs show bots taking the vacated slots
+immediately (`ClientDisconnect: 11` then `ClientBegin: 47`, `ClientBegin: 48`),
+so on a bot-filled server the seat is gone before the player is back. Not
+changed yet — trimming bots for anyone spectating would also trim them for
+people who mean to spectate, and that needs deciding rather than assuming.
+
+### C20. Chat ran into the next console line — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+```
+Hossman: You have to run out of ammo sometime, camper.Demona: Camping AGAIN
+stripe?Phobos was railed by Anarki
+```
+
+`CG_AddChat` printed its console copy with `CG_Printf("%s", text)`. The server's
+chat payload carries no trailing newline — `G_SayTo` sends the text and nothing
+else — so every chat line ran straight into whatever printed next. Only the
+console copy gets the newline; `cg.currentChatLine.text` is what the chat overlay
+draws and has to stay exactly as sent.
+
+(The trailing "commas" in the same screenshot are full stops. The obituary
+strings end in `.` and print with `\n`; at that font size the two are hard to
+tell apart. The decimal commas in E18 were real — those were confirmed in a
+plain-text log, not read off a screenshot.)
+
+### C21. Players invisible on enclosed maps — INSTRUMENTED, cause not yet confirmed
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Reported as bots and players turning invisible, more often on maps with corridors
+than on open ones like Longest Yard.
+
+Not reproduced yet. The suspicion is the deferred loader rather than culling: a
+client arriving mid-match is deferred, and `CG_SetDeferredClientInfo` hands it
+another client's model handles to draw with until `CG_LoadOneDeferredPlayer`
+gets round to it. The final fallback loop takes the first `infoValid` client
+without checking whether that client is itself deferred, so handles can be
+copied from a client that has nothing loaded. A `legsModel` of 0 is then added
+to the scene and renders nothing, with no error anywhere — which is exactly what
+an invisible player looks like. The map-shape correlation fits: on an enclosed
+map players enter the PVS suddenly and at close range, so a client is far more
+likely to be drawn during the window before its models are loaded.
+
+`CG_Player` now says so instead of drawing nothing:
+
+```
+WARNING: client 47 (Bones) has no player model loaded and is drawing nothing -
+model 'bones', skin 'default', still deferred
+```
+
+Once per client, reset in `CG_LoadClientInfo` when real handles arrive. If that
+line appears when a player goes invisible, the deferred chain is the cause and
+the fix is to make the fallback loop skip deferred clients. If it does not
+appear, the models are loaded and it is a culling problem, which is a different
+search.
+
+### C22. Client crashed instead of going to intermission — OPEN
+**Lives in:** our **client** · **Seen by:** unknown
+
+Reported: "client crashed when winning conditions were met, instead of going to
+intermission."
+
+No diagnosis yet, and guessing at it is not worth the round trip when the build
+already writes `crashlog.txt` on Windows (E12) with the faulting module and
+offset. That file is the next step.
+
+Worth noting what changed near that path recently, so it can be ruled in or out
+quickly: `CG_TrackLocalPlayerOnScoreboard` now runs every frame the scoreboard
+is drawn (including the intermission board), `CG_EventHandling` takes the key
+catcher on `CS_INTERMISSION`, and `BeginIntermission` sends every client a
+chunked scoreboard — which at sixty players is three or four reliable commands
+each rather than one.
+
+### C14. Match summary: no cursor, no voting, no winner, no arena shots — PARTIAL
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+**Fixed — the mouse.** `CG_EventHandling`'s `CGAME_EVENT_SCOREBOARD` branch was
+empty, and nothing anywhere in cgame ever set `KEYCATCH_CGAME`; the only calls
+were `Key_SetCatcher(0)`. The cgame never asked the engine for mouse or key
+input, so there was no cursor and nothing was clickable — the "Vote for Next
+Arena" panels were drawn and could not be reached. `CG_MouseEvent` and
+`CG_KeyEvent` were both already written and correct; nothing was ever routed to
+them. `CG_EventHandling` now takes and releases the catcher, and entering
+intermission (`CS_INTERMISSION`) calls it with the cursor centred.
+
+That is why there was no voting. Whether the vote then works is untested.
+
+**Fixed — the cursor, in two goes.** With the catcher taken, the mouse moved and
+hovered *audibly* — items play a sound on mouse-enter — but nothing was drawn,
+because the ui module draws its own cursor and cgame never drew one.
+`CG_DrawIntermission` now draws it while `cgs.eventHandling` is active.
+
+The first attempt still drew nothing, because it guarded on `cgs.media.cursor`
+and that handle was **0**: `CG_RegisterGraphics` registered
+`"menu/art/3_cursor2"`, which is Quake 3's path and does not exist in Quake
+Live. `RegisterShaderNoMip` returns 0 for a shader that resolved to the default,
+so the guard silently skipped the draw every frame. Quake Live's menus declare
+`ui/assets/3_cursor3` in their assets block, which `CG_ParseMenu` already parses
+into `cgDC.Assets.cursor` — that is now preferred, with `cgs.media.cursor`
+(re-pointed at the QL path, Q3's kept as a fallback) behind it.
+
+Worth noting as a class: a dozen other `menu/art/...` registrations remain in
+cgame. Any of them that Quake Live does not ship are silently 0 in the same way.
+
+**Still open:**
+
+- the winner's model draws **legs only** — no torso, no head. A player model is
+  three md3s joined on tags; legs-only means the torso lerp or the tag lookup is
+  failing on whatever entity the summary builds, not that the model is missing.
+- the three arena vote panels are solid white. `CG_DrawVoteMapShot` registers
+  `levelshots/<mapname>` and falls back to `levelshots/preview/default`; white
+  rather than blank suggests it is drawing *something*, so the fallback or the
+  panel's own background is what is visible.
+
+The empty scoreboard on that screen was C13.
+
+### C18. Scoreboard K/D, damage and accuracy only ever showed the current life — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+In a 60-player instagib FFA the local player's row is self-consistent — 102
+score, 90/0, 7.2k damage, which is 80 damage per kill and exactly one railgun
+hit each. Every bot's row is not: scores of 65 to 97 alongside **1 to 5 kills**,
+damage equal to 72 × kills, and **0 deaths** for all but one of them.
+
+Nobody goes 97-0 in instagib on Longest Yard. Either the kill and death counters
+are losing almost everything for bots, or the scores are inflated; the 0 deaths
+says the counters.
+
+**Found — the WEAP column.** `CG_ParseScores_Ffa` read field 17 into
+`sp->powerUps` where the emitter writes `bestWeaponAccuracy`. `score_t` has a
+`bestWeaponAccuracy` field and the WEAP column renders from it
+(`cg_main.c:2541`), so it was never filled and drew **0% for every player,
+including the local one** — which is exactly what the screenshots show. The
+same field also overwrote `cgs.clientinfo[].powerups` with an accuracy
+percentage.
+
+FFA was the only parser with this; the CA and CTF ones fill
+`bestWeaponAccuracy` correctly. The function's own doc comment listed the 17th
+field as "powerups", which is presumably how the parser and the emitter drifted
+apart — the parser followed the comment rather than the code that writes the
+message. Both corrected.
+
+**Full audit of every scoreboard verb**, emitter format against parser reads,
+after being asked to check them all rather than the one that was reported:
+
+| verb | emitter fields | parser reads | result |
+|---|---|---|---|
+| `scores_ffa` | 18 | 18 | field 17 was misread — **fixed** |
+| `smscores` | 8 | 6 + 2 skipped | captures and alive were skipped as "unknown" — **fixed** |
+| `scores_tdm` | 15 | 15 | aligned |
+| `scores_ca` | 16 | 16 | aligned |
+| `scores_ctf` | 17 | 17 | aligned |
+| `scores_ft` | 17 | **16** | one field short — **fixed** |
+| `scores_rr` | 19 | 19 | aligned |
+| `scores_race` | 4 | 4 | aligned |
+
+**Freeze Tag was a whole shifted tail.** The emitter writes
+`... GAUNTLET, ASSIST_COUNT, numTeamKills, numTeamKilled, totalDamageDealt,
+alive` and the parser read one fewer, missing `numTeamKills`. So team-kill
+deaths showed team kills, damage showed team-kill deaths, and `alive` was
+handed the damage figure — which made every player read as alive. (In Freeze
+Tag the assist count *is* the thaw count: thawing a teammate awards an assist.)
+
+`smscores`, the compact end-of-match FFA form, skipped two fields with
+`i++; // unknown`. They are `PERS_CAPTURES` and the alive flag, and `score_t`
+has a field for each.
+
+That accounts for the accuracy column and two more gametypes. The field
+alignment was never the cause of the K/D and damage numbers, though — those
+fields do line up between emitter and parser.
+
+**Root cause — `ClientSpawn` wipes `expandedStats` on every respawn.**
+
+```c
+Com_Memset(client, 0, sizeof(*client));
+```
+
+Q3 clears the whole `gclient_t` on spawn and restores by hand everything that
+has to outlive a life: `pers`, `sess`, `ps.persistant[]`, the ping,
+`accuracy_hits` / `accuracy_shots`. `expandedStats` is a Quake Live addition —
+kills, deaths, suicides, team kills, and the per-weapon shot, hit and damage
+arrays, 812 bytes of match totals — and it was never added to that list. Every
+counter behind the K/D, DMG and WEAP columns was reset each time the player
+respawned.
+
+That explains the whole shape of the report:
+
+- **Score was right and everything beside it was wrong.** `PERS_SCORE` lives in
+  `persistant[]` and is restored; the columns next to it only ever showed the
+  current life.
+- **Every player read 0 deaths.** `numDeaths` is incremented at the moment of
+  death and wiped by the respawn immediately after, so a death could never be
+  displayed at all — not for bots, not for anyone.
+- **Damage was exactly 72 × kills.** Both counters covered the same single life,
+  so the ratio came out as one railgun hit per kill every time.
+- **The one row that looked right belonged to a player who had not died.**
+  A 35-0 local player showed 35 kills and 2.8k damage because nothing had
+  cleared them yet. That is why this first looked like a bots-only fault.
+
+Fixed by saving and restoring `expandedStats` across the memset alongside
+`pers` and `sess`. `killStreak` is not exempted: `STAT_AddPlayerDeathStat`
+already zeroes it on death, which is where a streak is meant to end.
+
+A correction to the previous round of this entry, which listed "`expandedStats`
+is zeroed only on connect and on team change, not on respawn" among the things
+ruled out. `STAT_InitClient` is indeed the only *named* reset and has no callers
+— but `ClientSpawn`'s blanket memset was the reset, and it was not looked for.
+The clue that settled it was the 0 deaths being universal rather than
+bot-specific: no gate in the stat path can produce that, only a wipe timed to
+the respawn.
+
+Still standing from that round:
+
+- `STAT_AddPlayerDeathStat` and `STAT_AddDamageStat` are called unconditionally
+  from `player_die` and `G_Damage`, and both read correctly.
+- `OnSameTeam` returns qfalse below `GT_TEAM`, so the FFA case is not being
+  treated as friendly fire and skipped.
+
+Two things to look at next. Bots on this map die to `<world>` constantly
+(`MOD_TRIGGER_HURT`, `MOD_FALLING` — the earlier logs are full of it); the
+killer side is correctly skipped when `attacker->client` is NULL, but the victim
+side should still count and apparently does not. And 72 damage per bot kill
+against 80 for the player is its own discrepancy — 72 is the *clamped* victim-side
+figure, so the two sides of `STAT_AddDamageStat` may be feeding the wrong field.
+
+**Time on server** is reported as suspect in the same breath. `(level.time -
+cl->pers.enterTime) / 60000` is minutes, and the column read 7 on a 7-minute
+match, so it may be correct and simply coarse; not investigated.
+
+### C17. A2M instagib dropped weapons on death — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+Instagib gives everyone the same weapon and infinite ammo, so a dropped one is
+worth nothing to pick up — it just litters the map with railguns and gives the
+pickup sound and the item timers something to report that does not matter. All
+three A2M modes are instagib and all had it.
+
+`TossClientItems` now skips the weapon when `g_instaGib` (or `DF_INSTAGIB`) is
+set. Gated on the mode rather than on a new cvar: a server handing out a fixed
+loadout with no ammo pickups has already decided this, and a cvar nobody sets is
+a cvar nobody reads (E8). Powerups still drop — those are still worth taking.
+
+### C15. HUD score tracker shows 1st and 2nd, not 1st and yours — DONE (confirmed)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+The two-bar tracker top-left read 39 / 38 while the player was 40th with 1. It
+should read 39 / 1.
+
+Quake Live's `comp_hud.menu` draws it as four items, gated in pairs:
+
+```
+OpponentInFirst      CG_1STPLACE      CG_SHOW_IF_PLYR_IS_NOT_FIRST_PLACE
+OpponentTrailingMe   CG_2NDPLACE      CG_SHOW_IF_PLYR_IS_FIRST_PLACE
+MyScoreWhenTrailing  CG_PLAYER_SCORE  CG_SHOW_IF_PLYR_IS_NOT_FIRST_PLACE
+MyScoreWhenInFirst   CG_PLAYER_SCORE  CG_SHOW_IF_PLYR_IS_FIRST_PLACE
+```
+
+So a trailing player should get 1STPLACE over PLAYER_SCORE. Seeing 1st and 2nd
+means the `IF_PLYR_IS_FIRST_PLACE` half is drawing when it should not.
+`CG_OwnerDrawVisible` tests `PERS_RANK == 0` for first place and returns qfalse
+by default, both of which look right, so the fault is not located yet —
+`PERS_RANK` itself, or which HUD file is actually loaded (`hud3.menu` lays these
+out differently from `comp_hud.menu`), are the two things to check next.
 
 ### C3. Weapon viewmodel barely visible — DONE (verify)
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -982,7 +4735,1066 @@ path fault it will affect this light too.
 
 ## Renderer
 
-### R8. Dynamic light glow is weak or absent — OPEN, my earlier diagnosis was wrong
+### R18. Real time shading (`r_rts`) — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The scene target was 8-bit UNORM, so everything above full brightness was
+discarded at the moment it was written and no curve applied later could recover
+it. `r_rts 1` draws into `R16G16B16A16_SFLOAT` instead and applies a response
+curve in the present pass — identity below a knee of 0.8, rolling off above it,
+so turning it on changes nothing except where the image used to clip.
+
+`r_rts 2` is the same on `B10G11R11_UFLOAT` — same headroom, no sign bit.
+
+**What it mostly did was expose four older bugs.** This is the entry's real
+value: a floating-point attachment removes clamping the fixed-point one had
+been applying silently for years, and anything relying on that clamp surfaces
+at once. When something looks like an `r_rts` fault, ask first what the old
+target was quietly fixing.
+
+1. **A crash on every launch.** `r_rts` implies the offscreen target, but the
+   implication only reached `vk.fboActive` — the render passes, framebuffers,
+   present format and render scale each still read `r_fbo`, which defaults to
+   0. Result: a draw path resolving an offscreen image against framebuffers
+   pointing at the swapchain. Every Vulkan object created successfully; the
+   process died on the first frame with nothing logged, and because `r_rts` is
+   archived it did it again next launch. One accessor now, `vk_fbo_wanted()`,
+   plus a tripwire that errors if the built topology and the draw path
+   disagree.
+2. **A second crash waiting on the way back out.** `vk.msaaActive` was only
+   ever assigned `qtrue` and `vk` is a global a `vid_restart` does not zero, so
+   turning `r_rts` off again left multisampled attachments under a swapchain
+   draw path. Same shape, and toggling the feature off is exactly what someone
+   does when they suspect it.
+3. **Dynamic lights subtracting.** See R8 — the real one.
+4. **Entity lighting in the wrong space.** `R_SetupEntityLighting` builds every
+   term in `identityLight` space except the dynamic light contribution to
+   `ent->directedLight`, which was absolute 0–255. The two coincide only while
+   `identityLight` is 1.0, which it had been because overbright is forced to 0
+   in a window without an offscreen target.
+
+Also fixed here: safe video mode now prints what it overwrote and the line to
+put it back. Answering yes to the abnormal-exit dialog silently replaces three
+`CVAR_ARCHIVE` cvars and the originals are gone — a crash loop left the game at
+1024x768 windowed with nothing connecting it to a dialog answered before the
+window opened.
+
+---
+
+### R21. Real tessellation and displacement on world geometry — SCOPED, not started
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Earlier scoping said no to this, on the grounds that subdividing a flat wall
+leaves a flat wall and there is no height data to displace along. The first half
+still holds. The second half stops being true if R20 lands: luminance-derived
+height maps are exactly the displacement data that was missing.
+
+Vulkan has the stages. `tessellationShader` is an optional device feature and is
+**not requested at device creation in this tree** — same position ray query was
+in before R13, so it is a real prerequisite with a capability check and a
+fallback path, not a flag to flip.
+
+**What it is for.** Bezier patches already tessellate at load
+(`R_SubdividePatchToGrid`, `r_subdivisions`, already shipped at 1 where stock
+ioquake3 is 4 — no headroom left there). The gap is **planar faces**: a rock
+face or a brick wall arrives as two triangles and stays that way. Those are the
+surfaces that read as flat photographs.
+
+**The safety property that makes this possible at all: displace INWARD ONLY.**
+
+The server traces against the BSP brushes and those never move. Any displacement
+is client-side, so a surface pushed *outward* means the player visually clips
+into rock that the game says is not there — a disagreement between what is drawn
+and what is solid, and precisely the `Seen by` trap. Clamp the displacement to
+be zero or negative along the face normal and that cannot happen: the visible
+surface never leaves the collision hull. The worst case becomes a small gap
+where a player stands over a dip, which is invisible in practice and always safe.
+
+That also settles the "only decorative geometry" question. With inward-only
+displacement there is no need to restrict this to surfaces players cannot reach;
+the constraint does the work that a whitelist would have done, and does it
+everywhere.
+
+**Opt in per texture, through our own shader scripts.** pak01 loads after pak00,
+so a shader we ship under the same name wins — the console shader already works
+this way. A `qlDisplace <scale>` keyword in our own script marks rock, brick and
+gravel and leaves everything else alone. No edit to Quake Live's files, and the
+list of what is displaced is a checked-in file rather than a heuristic.
+
+**Four things that will bite, all known in advance:**
+
+- **Cracks at shared edges.** Two faces that tessellate to different factors
+  split along the edge they share. The fix is to compute each edge's factor from
+  the edge's own endpoints only, so both sides derive the same number without
+  knowing about each other.
+- **The pipeline matrix.** `MAX_VK_PIPELINES` is 2304 and the world pipelines
+  are a combinatorial set. Adding tessellation stages to all of them is not
+  viable; this wants a second, small set of pipelines used only by opted-in
+  surfaces.
+- **Lighting will not follow the new shape.** Displaced vertices still sample
+  the lightmap at the same UVs, so a bump moves without its shading changing —
+  which looks worse than no bump. **R20 Stage B is a hard dependency, not a
+  nice-to-have**: the perturbed-normal lighting is what makes displaced geometry
+  read as geometry.
+- **Cost, and where it is not paid.** Tessellation factors must fall off with
+  distance or this subdivides a wall across the map to no purpose. Distance-based
+  LOD, and a hard cap.
+
+**What this does NOT fix, and it is the case it was first proposed for.** A
+Quake Live boulder is on the order of seven polygons. Tessellated to thousands
+of triangles and displaced inward it is still a seven-sided lump, now with
+texture-shaped dents in it. Rounding a silhouette needs Phong or PN tessellation
+pushing geometry *outward* - which puts the visible surface outside the collision
+hull and has the player clipping into rock the server says is not there. The
+inward-only constraint above and a rounded outline are mutually exclusive, so
+this cannot be the answer for low-poly props. It is for large textured planes:
+brick walls, decking, floors.
+
+---
+
+### R23. Rebuilding Quake Live's maps from decompiled BSPs — TESTED, not recommended
+**Lives in:** offline tooling · **Seen by:** nobody, if it stays offline
+
+The idea: decompile a shipped `.bsp` to `.map`, work out what the author meant
+by the lighting, and recompile with better settings - phong on the rock shaders
+and `-deluxe` - so the *data* is fixed rather than worked around at runtime. It
+would make R20 Stage B unnecessary.
+
+Four things were measured with id-tech-3-tools/map-compiler rather than reasoned
+about, and together they close it.
+
+**1. Re-lighting a shipped BSP in place is impossible.** The obvious shortcut -
+skip the decompile, just re-run `-light` on the `.bsp` - does not work. The light
+phase opens the `.map` and the `.srf` next to it, and the `.srf` is written by
+the BSP phase. A shipped map has neither:
+
+```
+Loading .../relit.srf
+************ ERROR ************
+Error opening .../relit.srf: No such file or directory
+```
+
+A first attempt at this appeared to succeed and report zero lightmap change. It
+had not run at all. Grepping the output for the lines expected on success, and
+finding none, is what caught it.
+
+**2. So the decompile is mandatory, and it degrades the geometry.**
+`-convert -format map` works and produces a valid `.map`. But a BSP holds the
+*result* of CSG - brushes split, clipped and merged against each other - not the
+brushes the author drew. What comes back is a fragment soup with texture
+alignment to match. Fine as reference, not as a source to rebuild from.
+
+**3. Most of the lighting intent is simply gone.** `/maplights` measured it: zero
+`light` entities in either map tested. Rebuilding means *inventing* lighting and
+calling it the author's.
+
+What does survive is worth knowing: **`q3map_sun` and `q3map_surfacelight` are
+shader keywords, not entities**, and the shaders are in pak00. On a sunlit
+outdoor map or one lit by glowing panels, that may be most of the light in the
+scene - so a rebuild would not start from black. It would still be a
+reconstruction.
+
+**4. It cannot be distributed.** A rebuilt `.bsp` is derived from Quake Live's
+map content, which is the same rule that keeps pak00 out of this repo. The only
+shippable form is a script that runs against the user's own installation and
+writes into their own baseq3 - the shape texture-upscaling mods use. Defensible,
+but it makes the feature "run this and wait" rather than something that works on
+first launch.
+
+**Against R20 Stage B**, which needs no decompile, no recompile, no distribution
+question and no invented lighting - this is the worse path for a worse result.
+
+Recorded because it is a reasonable idea that looks better than it is, and
+because points 1 and 2 are the kind of thing worth knowing before spending a day
+on it.
+
+---
+
+### R29. Natural aspect ratios (16:9, 16:10, 21:9, 32:9) instead of 4:3 stretched or cropped — SCOPED, not started
+**Lives in:** our **client** (cgame, ui, client engine) · **Seen by:** our client only
+
+Asked for: wide displays should look natural rather than stretched or based on 4:3. Today it is right in some places and not in others.
+
+**What happens now, by layer:**
+
+| Layer | Today | Where |
+|---|---|---|
+| 3D view | `cg_fov` is the horizontal FOV across the full screen width, so a wider screen shows the same width over less height ("Vert−"). 21:9 and 32:9 look zoomed in. | `cg_view.c` `CG_CalcFov`; zoom and spectator FOV go through the same lines |
+| View weapon | E-era fix `cg_gunAspect` moves the gun forward on wide screens so it is not cropped. Correct for today's Vert− view; would need re-deriving under Hor+. | `cg_weapons.c` (comment at the `cg_gunAspect` block) |
+| HUD (cgame) | 640×480 grid with per-item anchoring: left, right, centre, stretch. The bias is computed from the real width (`cgs.widescreenBias`), so any aspect including 32:9 anchors correctly. Items drawn `WIDESCREEN_STRETCH` are stretched: 11 places in `cg_draw.c`, 2 in `cg_consolecmds.c`, 1 each in `cg_info.c` and `cg_weapons.c`. | `cg_draw.c` |
+| Menus (ui) | Aspect-correct: 4:3 scale from the height, centred with `uiInfo.uiDC.bias`; the cursor is clamped to the full width. | `ui_main.c` |
+| Engine 2D | `SCR_AdjustFrom640` scales x by width and y by height separately, so the console background, loading and connect screens and cinematics stretch. | `cl_scrn.c`, `cl_console.c`, `cl_cin.c` |
+| Narrower than 4:3 (5:4, 1280×1024) | The bias is clamped to 0, so everything stretches vertically. | `cg_main.c`, `ui_main.c` |
+
+**Work, in order of value:**
+1. **Hor+ field of view, as an option** (for example `cg_fovAspect`, default off so nobody's aim changes unannounced). Read `cg_fov` as the horizontal FOV *at 4:3*, derive the vertical FOV from it, then widen the horizontal FOV to the real aspect: `fovY = 2·atan(tan(fov/2)·3/4)`, `fovX = 2·atan(tan(fovY/2)·aspect)`.
+   - Applies to `cg_zoomfov` and the spectator FOV too.
+   - Clamp near 170° for 32:9.
+   - Re-derive `cg_gunAspect` under it: with Hor+ the vertical FOV is constant, so the gun crop it corrects should mostly vanish.
+   - The gun and sensitivity: `cg_zoomScaling` already scales by FOV; check it uses the same angle.
+   - About a day including testing at 16:9, 21:9 and 32:9.
+2. **Audit the 15 `WIDESCREEN_STRETCH` uses.** Keep stretch for full-screen tints and fades (damage, underwater, the vignette); switch icons, text and bars to left, right or centre.
+   - Also Quake Live's own hud.menu items without a `widescreen` keyword fall back to stretch; list them via the menu parser.
+   - One to two days; screenshots at each aspect are the test, and the harness can render 21:9 and 32:9.
+3. **Engine 2D:** a 4:3 pillarbox mode for the loading and connect screens and cinematics, with the console background tiled or aspect-fit and its text already scaled (`con_scale`). Half a day.
+4. **5:4 and other narrow screens:** letterbox rather than stretch. Rare; last.
+
+**Risks:**
+- A FOV change alters what players see and feel. That is why it is an option, and why the menu label must say what 100 means.
+- Quake Live's own HUD layouts were designed for 16:9 at most; at 32:9 the anchored corners sit very far apart. That is a layout taste question for the tester, not a bug.
+
+### R30. Lua modding support, Garry's Mod–style — SCOPED, parked for QLEX-CE
+**Parked, concept for later:** stays scope-only. If built, it goes into a separate client, **QLEX-CE** (Quake Live EX — Custom Edition), probably on its own branch in this repo (not decided), so this client stays stock-compatible and the mod work is free to extend the protocol. See "QLEX-CE" at the top of the scope doc.
+
+**Lives in:** our **server** (qagame) for tiers A/B; our **client** (cgame) for tier C, plus engine networking for the protocol extension · **Seen by:** every client for tiers A/B; **our client only** for tier C
+
+Asked for: mod support "similar to Garry's Mod: models, scripts, game logic". Full scope in **`docs/lua-modding-scope.md`**; this is the summary.
+
+- **Lineage:** Quake 3 already has the same skeleton as Source: classname entities with think/touch/use, a server/client split, shared predicted code, configstrings, and three model formats including skeletal IQM. GMod leans on four things Source added that we lack: rigid-body physics, server-sent client code, an extensible network format, and a runtime UI toolkit.
+- **Tiers:**
+  - **A** is server logic, seen by every client.
+  - **B** is server logic plus content (stock cgame draws any `ET_GENERAL` model, and `TR_INTERPOLATE` lets the server move it), seen by every client that has the files. Server-simulated physics props fall here.
+  - **C** is client Lua (HUD, predicted weapons and movement, UI), seen by our client only.
+- **Protocol-91 ceilings for stock clients:**
+  - 1024 entities, 256 models (8-bit index), 256 sounds.
+  - About 300 free configstrings.
+  - **One** free weapon slot.
+  - No new entity types or fields.
+  - A 64-slot reliable command buffer.
+- **Runtime:** Lua 5.4 (sandbox guarantees for downloaded client code), GMod-style addon layout, `lua_restart`, per-hook error isolation.
+- **Stages:** L1 runtime and server API → L2 scripted entities → L3 gamemodes → L4 content download → L5 client realm and sandbox → L6 client hooks → L7 weapons → L8 Jolt physics → L9 UI toolkit → L10 protocol extension → L11 ragdolls → L12 the Sandbox gamemode. L1–L4 is a scriptable server for all players; L5–L9 makes it GMod-like on our client.
+- **Decisions open:**
+  - D1: stock clients on client-Lua servers.
+  - D2: player consent for downloaded client Lua.
+  - D3: Lua 5.4 or LuaJIT.
+  - D4: GMod syntax extensions.
+  - D5: Jolt or Bullet.
+  - D6: starting stage.
+
+### R22. Smoothed vertex normals on world geometry — SCOPED, not started
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The cheapest large return available on Quake Live's low-poly props, and the
+right answer to "that rock is seven polygons".
+
+Those faces are uniformly shaded, which is hard per-face normals. Averaging
+vertex normals across adjacent faces at load, above an angle threshold, makes
+the shading continuous across the form. The outline stays faceted - nothing in a
+renderer can add silhouette that the BSP does not contain - but the rock stops
+reading as folded paper and starts reading as a rounded mass. A load-time pass
+over the surfaces, nothing at runtime.
+
+**The threshold is the entire design.** Too permissive and it smooths across
+edges that are meant to be hard: crates, steps, door frames and trim go soft,
+which is a worse failure than the flatness it set out to fix. The standard
+smoothing-group angle is about 45 degrees. Per-surface opt-out through our own
+shader scripts, the same mechanism R21 uses for `qlDisplace`.
+
+**Correction, and it changes what this is worth on its own.** An earlier draft
+of this entry claimed it was the one item that changes a static scene without
+touching the lighting path. That is wrong. World surfaces are lit by a **baked
+lightmap**; vertex normals are read by the dynamic light pass and by little
+else. Smoothing them changes nothing at all in a still frame - the same
+limitation R20 Stage A has, for the same reason.
+
+So this is not a standalone improvement. It is the **input** that makes R20
+Stage B worth anything on low-poly geometry: modulating the lightmap by a
+constant per-face normal gives a constant per face and no sense of form, while
+modulating it by a smoothly varying one gives the gradient across the mass that
+makes a seven-sided rock look round. The two are a pair, and neither is much use
+without the other.
+
+Cheap either way - no new data, no new pipeline, no device feature.
+
+---
+
+**Order:** R22 and R20 Stage A (either way round - both feed the same place),
+then R20 Stage B, which is the first point at which any of it shows up in a
+still frame, then this. Each is testable on its own
+and each is useless without the one before it — displacement without the
+lighting is worse than nothing, and the lighting without the height maps has
+nothing to read.
+
+---
+
+### R20. Surface detail from the textures we already have — STAGE A BUILT, untested in play
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Quake Live's rock, brick and gravel read as flat planes with a photograph on
+them. The bumps are in the diffuse texture as light and dark; nothing in the
+lighting knows about them.
+
+**The idea:** derive a normal map from each diffuse texture at load — luminance
+to height, Sobel to normal — and light with it. No new assets, no geometry, no
+collision change.
+
+**The plumbing is half-built and the missing half was removed on purpose.**
+`stage->normalMap` is parsed (`normalMap`/`bumpMap` in `tr_shader.c`) and stored
+and **nothing consumes it at draw time**. `light_frag.tmpl` says why: the count
+printed at registration has been 0 on every map, because Quake Live's shaders
+carry the keywords and ship no images, so the perturbation cost a fetch and was
+wrong. That is the "registered but not implemented" shape, correctly identified
+and correctly removed rather than left to rot.
+
+**Two traps already documented, both from that removal:**
+
+- A constant **tangent-space** tilt is not a constant world-space one. Tangent
+  space is built from the surface's texture axes, so the previous attempt tilted
+  a different way on every face and produced slits of light whose angle changed
+  room to room with the mapper's texture alignment. Q3 BSP carries no tangents;
+  derive the basis in the fragment shader from screen-space derivatives of the
+  texture coordinates rather than adding per-vertex tangents — no vertex format
+  change, no BSP change, works on all three surface types.
+- **`IMGFLAG_NOLIGHTSCALE` is mandatory** on every derived map and on the flat
+  fallback. A normal map is data; this path gamma-corrects and overbrights
+  anything that does not say otherwise.
+
+**Two stages, and the difference matters more than it sounds.**
+
+*Stage A — dynamic lights.* Restore the perturbation in the dynamic light pass.
+A rocket flying past a rock wall lights every bump and self-shadows between
+them. Self-contained, and it de-risks the tangent basis where a mistake is
+obvious and temporary rather than baked into every frame.
+
+**This changes nothing in a static scene.** The sunlight and shadow on those
+rocks is a baked lightmap. Standing still with nothing flying past, the rocks
+look exactly as they do now. Worth saying plainly, because "make the rocks look
+better" usually means the static case.
+
+**Stage A is built and compiles; it has not been seen running.** Derivation in
+`R_DeriveNormalMap` (tr_image.c), the tangent basis and perturbation in
+`light_frag.tmpl`, the bind in `VK_LightingPass`, `r_qlNormalMaps` and
+`r_qlNormalScale` in tr_init.c. Both cvars are `CVAR_LATCH` and neither is
+archived: the strength is baked into image bytes at parse time, so the value
+means nothing until the shaders are re-parsed, and latching is the engine saying
+that rather than the value appearing to take and doing nothing.
+
+A first draft of this arrived as a written handoff from another model. Four
+things in it were right and are kept, and four were wrong. Recording both,
+because the wrong ones are the kind a build does not catch.
+
+*Right, and verified here rather than taken:* Cramer's rule on the 2x2 UV
+Jacobian is `T = (duv2.y*dPdx - duv1.y*dPdy)/det`, and the `duv2.x` version an
+earlier draft had agrees with it on axis-aligned UVs, mirrors it on rotated ones
+and skews it on sheared ones — so an axis-aligned test wall proves nothing about
+it. Writing the derived map as RGB would have been a buffer overrun:
+`ResampleTexture` and `R_MipMap2` both walk the upload buffer as uint32.
+`IMGFLAG_NOLIGHTSCALE` is mandatory. The kernel's gain really is 72 per
+luminance-unit per pixel — inner `SUM(Diff[dx]*dx)` = 8, outer `SUM(Smooth)` = 9
+— which is why a strength of 1.0 saturates every real texture edge.
+
+*Wrong 1 — the derivation was in the wrong place.* The draft derived at the end
+of `ParseStage()` from `bundle[0].image[0]`. The dynamic light pass binds
+`pStage->bundle[shader.lightingBundle]`, and both the stage and the bundle are
+chosen *after* parsing, by `FindLightingStage()` and `FindLightingBundle()`,
+after multitexture collapsing. On a collapsed shader bundle 0 is frequently the
+lightmap. It would also have derived a map for every HUD icon, sprite and player
+skin in the game in order to use a handful of them. Moved to just after
+`FindLightingBundle()`, keyed on the stage and bundle that actually get bound.
+
+*Wrong 2 — retaining a CPU copy of every texture.* The draft kept
+`image->cpuPixels` for every non-lightmap image, forever, so a normal map could
+be derived later. That is 4 bytes per texel of `h_low` per image against a
+256 MB hunk shared with the BSP — and the draft's derived-map path then
+allocated a second never-freed buffer and, because it created the derived image
+through `R_CreateImage` with `pic != NULL`, made that image retain a third copy.
+Roughly 12 bytes per texel per texture, none of it freed. Replaced with a re-read
+of the file at derivation time: one decode per lit texture at map load, nothing
+retained afterwards.
+
+*Wrong 3 — truncation.* `(byte)((n*0.5+0.5)*255.0)` gives **127** on a flat
+input, not 128, so every derived map in the game would carry a systematic tilt
+toward -u/-v. The draft measured this and called it acceptable. Rounding is free,
+and the identity is the whole basis of "a surface without a map lights exactly as
+it did", so it is now exact: verified 128,128,255 on every pixel of a flat field.
+
+*Wrong 4 — differentiating a centroid varying.* `frag_tex_coord` is declared
+`centroid` in `light_frag.tmpl`. Centroid interpolation moves the sample point
+inside the covered part of a partly covered pixel, which makes its screen-space
+derivative wrong on exactly the pixels along every triangle edge — with MSAA on,
+a thin wrong-tangent line around every face, which is the same *shape* of
+artifact as the slits of light that got this feature removed the first time.
+Sampling wants the centroid value; differentiating wants the plain one. They are
+now two varyings, `frag_tex_coord` and `tc_lin`.
+
+**The scale is arithmetic, not a measurement.** Gain 72 per luminance-unit per
+pixel, divided by 72*32 so that `r_qlNormalScale 1.0` means "a luminance slope of
+32 per texel tilts the normal 45 degrees" — verified at exactly 45.00 degrees.
+Quake Live's wall textures run roughly 10-30 per texel across mortar lines, hence
+the default of 0.5. That is a starting point to tune against and nothing more.
+
+**CONFIRMED ACTIVE IN PLAY**, on a stock Quake Live map, with both a rocket
+impact and a plasma bolt as the light: the dynamic light picks out ribbing on a
+corridor wall that the lightmap alone never showed, and the bump pattern follows
+the texture's own ribs rather than sitting at an unrelated angle. That settles
+that the derivation runs, the map is bound and the light pass samples it.
+
+It settles nothing about **handedness**, and the screenshots cannot. The wall in
+them is vertical ribbing - a luminance gradient on one axis, axis-aligned, which
+is exactly the case a mirrored tangent survives unnoticed: flip the sign and the
+other side of each rib lights, and on near-symmetric ribbing that looks the same.
+That is what the 90 degree and sheared panels in `qltest_light` are for and they
+have not been run yet.
+
+**BANDING, reported and fixed - and the cause is the premise, not the scale.**
+A third screenshot showed hard bright bands along every slat of a louvre wall.
+
+A luminance edge is not a height edge, and this is where that stops being
+academic. A dark line painted on metal runs black to white in about two texels:
+a slope near 128 per texel, where a rock face's own shading is nearer 10. The
+scale is defined so 32 per texel is 45 degrees, so at `r_qlNormalScale 0.5` the
+painted line tilted the normal 63 degrees while the rock tilted 9 - every seam in
+the game became a cliff, and `pow(specFactor, 10.0)` in `light_frag.tmpl` turned
+each cliff into a glint.
+
+Turning the scale down is the wrong answer: it flattens the rock by exactly the
+factor it flattens the seam. The fix is a second control - `r_qlNormalMaxTilt`,
+degrees, default 30, latched - that limits how steep any derived normal may get,
+leaving the scale to say how much shaping a gentle gradient receives. Two
+different questions, so two knobs; one could never have done both.
+
+**The curve took two attempts and the first was caught by measuring it.** The
+obvious `g / (1 + g/limit)` compresses everywhere, not just near the limit, and
+cost 21% of a rock's shading to cap a seam. Replaced with a knee: below half the
+limit the slope passes through untouched, above it approaches the limit
+exponentially so a seam saturates smoothly rather than clipping at a threshold
+that would band on its own account. Measured, at scale 0.5 and 30 degrees:
+
+```
+                          slope   before      after
+rock/brick shading           10     8.9deg     8.9deg   <- unchanged
+strong mortar line           30    25.1deg    22.9deg
+panel seam                   64    45.0deg    28.9deg
+louvre slat edge            128    63.4deg    30.0deg   <- was the banding
+black->white in 1 texel     255    75.9deg    30.0deg
+```
+
+**The cap then shipped at the wrong value, and the reason is worth keeping: I
+measured the angle, and the angle was never the quantity that mattered.**
+
+Banding was reported again at 30 degrees, with two details that identified it.
+It was **directional** - present firing right-to-left, absent left-to-right -
+and it was **only on particular panels**. Both follow from the perturbation
+behaving *correctly* on normals that are too steep: diffuse is dot(N,L), a
+normal tilted +-t at light incidence phi spans cos(phi-t) to cos(phi+t), and
+which face of an asymmetric slat meets the light depends on which side the shot
+came from. Nothing about it implicates the tangent frame.
+
+What runs away is the brightness ratio, and it runs away at grazing incidence -
+which is exactly how a projectile flying along a wall lights it:
+
+```
+cap        30deg incidence   45deg    60deg
+ 8deg           1.2x          1.3x     1.6x
+12deg           1.3x          1.5x     2.2x
+15deg           1.4x          1.7x     2.7x
+22deg           1.6x          2.4x     5.7x
+30deg           2.0x          3.7x    86.0x   <- shipped here
+```
+
+At 30 the shaded face of a slat goes to black. Default is now **15**, worst case
+2.7x, and rock shading lands at 8.9 degrees so no cap above that touches it.
+
+That is twice now on this feature that a number was chosen by computing the
+quantity that was easy to compute rather than the one that is seen: first the
+scale against a luminance slope, then the cap against a tilt angle. The thing to
+measure is the brightness ratio a surface ends up with.
+
+**What a build cannot tell us, and what to look at first:** whether the bumps
+point the right way. A mirrored tangent still produces finite, plausible-looking
+bumps lit from the wrong side, and it is invisible on an axis-aligned wall. Take
+a rocket past a wall whose texture is rotated or sheared and check the lit side
+of each bump against the texture's own light and dark. `r_qlNormalMaps 0` plus
+`vid_restart` must restore the previous lighting exactly.
+
+**Counted separately on purpose.** The registration line now reads
+`Materials: N stage(s) with a normal map, M with a specular map, K derived (R20)`.
+N has been 0 on every map and that fact is worth keeping visible; folding the
+derived maps into it would make the next reader think the art had changed.
+
+**The test map now tests it, which it previously could not.**
+`content/testmaps/qltest_light.map`, built by `content/testmaps/build-testmap.sh`
+into `qltest_light.pk3`. The name matters: the pk3 was `qltest.pk3` for one
+round and `/map qltest` finds nothing, because the map inside is
+`qltest_light.bsp`. Pk3 and map share a name now.
+
+The map had 48 faces, all at texture rotation 0, and an axis-aligned UV is
+exactly where a mirrored tangent is invisible — so it could not have failed the
+one check that matters. Seven panels stand against the +Y wall, all on the same
+texture so the derived map is a constant and the tangent basis is the only
+variable:
+
+| panel | UV | what it catches |
+|---|---|---|
+| 0 | 0° | baseline the rest are read against |
+| 1-3 | 45°, 90°, 135° | mirrored tangent; 90° is the case 0° hides |
+| 4 | 30° at 0.25 x 0.125 | a real shear, not just anisotropy |
+| 5 | `qlNoPerturb` | the opt-out; must stay flat |
+| 6 | lightmap stage first | lighting bundle 1, not 0 — the ParseStage defect |
+
+Read with a rocket fired along the row, not with the static lighting: the map's
+two lights are entities, baked at compile time, and Stage A does not touch them.
+
+The texture is **ours** — `textures/qltest/tangent`, generated, a sawtooth that
+ramps over 16 texels then drops off a cliff, horizontally in the top half and
+vertically in the bottom. A ramp is a constant luminance slope, so it derives to
+a constant tilt and lights as a flat band, and *which* band is bright is the
+sign of the tangent. A photograph of brick does not answer that. It also removes
+the pak00 dependency, which is not only a licensing point: q3map2 converts the
+`.map`'s texture axes into UVs using the image's real dimensions, so compiling
+against a texture it cannot find silently gives the wrong scale.
+
+**Verified by compiling and reading the result back**, because the last time
+geometry went in here uncompiled all 48 planes were wound backwards and made a
+1188-byte BSP with zero surfaces. This one: IBSP v47, 51 surfaces, 2 lights
+kept, and the panels' UV spans read out of the drawvert lump as 0.94x2.00 at 0°,
+2.00x0.94 at 90°, 2.08 square at 45° and 135°, 1.81x4.40 sheared, with panels 5
+and 6 identical to panel 0 so they are directly comparable. `CM_LoadMap`
+succeeds on our own dedicated server.
+
+**BSP version 47 needs no patched compiler.** `-game quakelive` is a stock
+profile in id-tech-3-tools/map-compiler (`src/game_quakelive.h`, `47 /* bsp file
+version */`). Our loader takes 46 as well — v47 is v46 plus
+LUMP_ADVERTISEMENTS, `qfiles.h` says so — so a `-game quake3` build also loads;
+47 is simply what the real maps are.
+
+**Two silent compile traps, both found by compiling rather than reading:**
+
+- q3map2 loads **only** the `.shader` files named in `scripts/shaderlist.txt`.
+  Without it the test shaders are never parsed and their panels come out at the
+  wrong UV scale, reported as one `Couldn't find image for shader` line. The
+  engine has no such list and loads every `.shader` it finds, so this is a
+  compile-time requirement with no run-time symptom to lead you back to it.
+- The `textures/` prefix rule is **inverted** between the two files. A face in
+  the `.map` writes `qltest/tangent` and q3map2 adds the prefix; a shader block
+  in the `.shader` must be named `textures/qltest/noperturb` in full.
+
+**MEASURED, by `/maplights`.** Two maps, both the same answer:
+
+```
+japanesecastles: 469 entities in the BSP, 0 of them lights
+  Deluxemaps: no - 34 lightmap(s), not interleaved.
+  Lightgrid: 93 x 65 x 20 samples, one every 64 x 64 x 128 units
+
+longestyard: 138 entities in the BSP, 0 of them lights
+  Deluxemaps: no - 8 lightmaps is even, but 657 surface(s) reference an odd one
+```
+
+No light entities, no deluxemaps. The `longestyard` line is why the deluxemap
+test had two halves: an even lightmap count alone would have been a false
+positive there.
+
+**Correction, and it reverses a conclusion recorded an hour earlier.** The first
+reading of that result was "the lightgrid is one sample per 64 x 64 x 128 units,
+too coarse to shape a rock, so this cannot be done". That confuses two different
+things. **The light direction does not need to vary across the rock; the normal
+does.** A rock is smaller than a single grid cell, and one light direction across
+it is not an approximation - it is what a distant light actually looks like. The
+variation that makes a surface read as shaped comes from the normals, which is
+precisely what Stage A and R22 supply. The grid is sufficient and Stage B is
+alive.
+
+What the measurement did kill is the *implementation* scoped for Stage B.
+
+*Stage B — static light.* The one that changes the screenshot. Light direction
+comes from the **lightgrid** (`R_LoadLightGrid`, already parsed - 8 bytes a
+cell: ambient RGB, directed RGB, lat/long direction, trilinearly interpolated).
+
+**TESTED, not assumed.** `content/testmaps/qltest_light.map` compiled twice with
+id-tech-3-tools/map-compiler - identical geometry, identical lights, the only
+difference being `q3map_shadeAngle 179` on the rock shader:
+
+```
+lightmap bytes: plain=49152 phong=49152
+bytes differing: 13907 of 49152 (28.3%), max delta 252
+```
+
+Nearly the full 0-255 range, over more than a quarter of the lightmap. The
+surface's response to its own orientation is baked at compile time, and Quake
+Live's shaders do not carry the keyword. Reproduce with the two shader variants
+described in that map file; the compiler builds from source with everything
+vendored, so this needs no toolchain beyond cmake and a C++ compiler.
+
+That is the first assumption in this whole line of work to be measured rather
+than argued, and it is the one the design below depends on.
+
+**Not by modulating the lightmap, which was the original plan and does not
+work.** q3map2 lights brush faces per face unless the shader asks for phong, so
+the faceting on those rocks is baked into the lightmap texture itself.
+Multiplying a faceted base by a smooth term leaves it faceted - a discontinuity
+cannot be divided out.
+
+Instead: take **intensity and shadowing** from the lightmap, which is what it is
+genuinely good for and what nothing else can supply, and take **direction** from
+the grid. Shade the lightmap's luminance against
+`ambient + directed * max(0, dot(N, gridDir))` with N perturbed. The facets go
+because the lightmap's own directional variation is no longer what shapes the
+surface; the shadows stay because its intensity still is.
+
+Higher risk than Stage A regardless: it touches every world surface in every
+frame, and getting the normalisation wrong washes out or darkens the whole map.
+
+**Where luminance-as-height is wrong, and it has to be opt-out-able.** It is
+honest for rock, brick, gravel, plate — surfaces whose light and dark *is*
+geometry. It is wrong wherever albedo varies for other reasons: the wave
+painting on japanesecastles, signs, posters, decals, anything with lettering.
+Those would grow bumps that track the artwork. Skip sky, liquids and 2D
+outright, and give shaders a keyword to decline.
+
+**What it cannot do:** the silhouette. Those rocks are low-poly with hard edges
+and will stay faceted against the sky — see the tessellation note in R19 for why
+displacing world geometry is not on the table (no height data, and it desyncs
+the render from the collision the server traces against).
+
+---
+
+### R19. Reflective water — IN PROGRESS
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Water is essentially a scrolling texture. Wanted: reflection and some motion.
+
+**Ruled out first, so nobody re-proposes them:**
+
+- **Ray-traced reflection.** `rtVertex_t` is `float xyz[3]`. The acceleration
+  structure knows where geometry is and nothing about what it looks like, so a
+  hit cannot be shaded without UVs, a material index and texture indexing added
+  to the BLAS. Large.
+- **Geometry waves.** `deformVertexes wave` moves the vertices a surface already
+  has, and planar BSP faces are subdivided at map compile time from the
+  shader's `tessSize`. A runtime override cannot retessellate QL's water; on
+  coarse water it would heave in flat slabs. This is why it reads as "mostly a
+  texture" — at the geometry level it largely is one.
+- **The engine's own mirror path.** `R_GetPortalOrientations` already
+  implements a plane mirror needing no camera, but it only triggers on a
+  `misc_portal_surface` entity, and the portal scan only reaches surfaces
+  sorted at or below `SS_PORTAL`. Forcing water there moves it from transparent
+  to near-first in draw order. The reflection is not the risky part; the sort
+  is.
+
+**Step 1, done:** `vk_find_water_planes` collects the map's distinct liquid
+planes at load. Per-pixel "is this water" from a plane costs a few floats and a
+compare; per surface it costs pipeline state or a stencil bit.
+
+Premise confirmed on japanesecastles:
+
+```
+Water: 4 plane(s) from 4 up-facing water surface(s), 18 liquid surface(s) in all
+  plane 0: normal 0.00 0.00 1.00 at -356, spanning 2460 0 to 2748 136
+  plane 1: normal 0.00 0.00 1.00 at -340, spanning 115 1276 to 862 1826
+  plane 2: normal 0.00 0.00 1.00 at -340, spanning -858 -1786 to -111 -1236
+  plane 3: normal 0.00 0.00 1.00 at -356, spanning -2744 -96 to -2456 40
+```
+
+Flat, horizontal, and the 14 rejected surfaces are the sides and bottoms. Built
+and reported *before* anything depends on it precisely because pak00 is not in
+this tree and the manifest is names only — fifty lines to test the premise
+rather than five hundred.
+
+A plane on its own is infinite, so each record carries the world bounds of the
+surface that made it. One record per face and no merging: a water brush usually
+continues under the decking, those faces touch the visible ones, and a merged
+box covers ground the water cannot be seen on.
+
+**Step 2, done:** the reflection pass, `r_ssr`. Two passes in the shape of the
+AO pass — a march into an offscreen target, then a source-alpha blend over the
+scene, because a pass cannot read the attachment it writes. Marching the depth
+buffer rather than the TLAS sidesteps the missing material data entirely; the
+cost is the standard screen-space one, and the edge fade is where that is hidden
+rather than pretended away. Cvars: `r_ssr`, `r_ssrDistance`, `r_ssrSteps`,
+`r_ssrThickness`, `r_ssrDebug`.
+
+**Step 3, in progress:** the mask. Three wrong answers so far, each a *different
+question* rather than a tolerance that wanted turning:
+
+1. *Reconstruct a world position from depth and test it against the plane.*
+   Fails on both sides at once. QL's water does not write depth, so the water
+   was never found; and the plane is infinite, so the decking at the water's
+   height was found instead.
+2. *Intersect the view ray with the plane, allowing slack against the depth
+   behind it.* Decking at the water's own height slips through, and at a
+   glancing angle that is most of the screen. Replaced with "there has to be a
+   pool under it" — the geometry behind must be meaningfully further away — 
+   which also rejects everything in front of the water without knowing what it
+   is.
+3. *Merge the bounds of touching faces.* Water tucked under decking inflates the
+   box. One record per face instead.
+
+**Step 7, waves — and the R19 "geometry waves are impossible" finding turns out
+not to matter.**
+
+That finding stands and is still correct: `deformVertexes` moves the vertices a
+surface already has, Quake Live's water is subdivided at map compile time from
+`tessSize`, and a runtime override cannot retessellate it.
+
+It only matters if the silhouette is what sells a wave, and it is not. At the
+angles water is actually seen, what sells it is **what the surface reflects** —
+and the reflected direction is `reflect(V, N)`. Tilt `N` in a travelling pattern
+and the reflection ripples on a surface that never moves a vertex.
+
+Three directional waves at 1×, 1.7× and 3.1× the base frequency. Non-integer
+ratios deliberately: harmonics repeat visibly, and the eye finds a repeat in
+water instantly. Amplitudes sum to 1 so `r_waterWaveSteepness` is the true
+maximum slope rather than an arbitrary scale.
+
+**Real Z as well as tilt.** Solving the ray/plane intersection again against a
+plane displaced by the wave height gives two things the tilt cannot: the
+waterline against the pool wall rises and falls, and the reflection parallaxes —
+stretching over a trough, compressing over a crest. Two fixed-point iterations,
+with a grazing-angle cutoff (the solve divides by `dot(dir, N)`), a re-test of
+the occlusion and bounds rules for the displaced point, and a fall back to the
+flat solve rather than a discard when it fails — the pixel is still water.
+
+Cvars: `r_waterWaves`, `r_waterWaveScale`, `r_waterWaveSpeed`,
+`r_waterWaveSteepness`, `r_waterWaveHeight`. All `CVAR_ARCHIVE_ND`, because they
+are still being tuned and `CVAR_ARCHIVE` would freeze today's defaults into
+every config on first run — the `r_dlightMode` / `con_scale` lesson.
+
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only. Worth
+stating because event-driven ripples are the obvious next step and they change
+nothing about that: cgame already knows about water impacts, and drawing them is
+a client-side redraw. A *server* cvar that changed what water looks like would
+be the `Seen by` trap, and is not what this is.
+
+**Step 8, event-driven ripples, foam and wake — BUILT, NOT VALIDATED IN PLAY.**
+Shipped in `7895ff8`. Everything below is written and compiles; none of it has
+been confirmed on screen, and the last four times something in this feature
+looked finished it was not.
+
+`RE_AddWaterRipple(origin, radius, strength)` queues a ripple; `ssr.tmpl`'s
+`rippleSurface()` sums the live ones into the same height/gradient the waves
+feed, so a ripple is a wave with a moving envelope rather than a second system.
+Emitters (rockets, plasma in flight) add a ray/sphere glow. Foam comes off the
+ripple's **envelope**, `rip.w`, not its instantaneous height.
+
+Who raises them: `CG_WaterRipple()` in `cg_event.c` on impacts, sized per weapon
+by `CG_WaterImpactSize()`; `CG_ShotgunPellet()` raises one per pellet so the
+pattern is the spread rather than one big disc; `CG_Player()` raises a wake on a
+110 ms throttle behind an 8-unit movement gate.
+
+**Five wrong answers, all mine, all recorded because none of them were visible
+as wrong:**
+
+1. *Ripples never drew at all.* `RE_AddWaterRipple` stamped `startTime` from
+   `tr.refdef.time`, which is whatever the last scene set — and cgame renders
+   3D HUD icons through their own refdefs, so the stamp came from an icon's
+   clock and every ripple was already expired. Found by a diagnostic line
+   printing `1 dropped as expired (now 10.21s)`, not by reading the code. Now
+   stamped lazily from `backEnd.refdef.time` behind a `startTime < 0` sentinel.
+2. *Ripples landed in the wrong place.* The impact event carries the **floor**
+   position, not where the shot crossed the water. Walking the surface upward
+   only corrected Z, so they sat short of the entry point. Fixed by lerping the
+   ray from the shooter's eye against the water plane.
+3. *Foam invisible — three separate causes, in sequence.* Gated inside
+   `r_waterWaves` so it vanished with the waves; driven off `abs(rip.x)`, the
+   instantaneous height, instead of the envelope, so it flickered at the
+   wave rate; and sampled at the **displaced** point, so it sheared along the
+   view ray and tilted instead of lying flat on the surface.
+4. *Rocket impacts weaker than plasma.* The per-weapon table had them the wrong
+   way round.
+5. *Shotgun made one disc.* It fired a single ripple from the shot origin
+   instead of one per pellet.
+
+**What to check, since none of it is confirmed:** foam placement and whether it
+reads as level rather than tilted; ripple entry point against where the shot
+actually crossed; the per-weapon sizes against each other; whether the wake
+follows a swimming player or only fires once; whether the shotgun's pattern
+matches its spread. `r_waterFoam` exists as its own cvar so foam can be isolated
+from the rest.
+
+**The per-ripple console spam — FIXED.** `tr_scene.c` printed a developer line
+per ripple, and `developer` defaults to `1` in this tree, so a few seconds of
+shooting at water pushed everything else out of the scrollback. This was tracked
+rather than left as a TODO in the file because the last three water bugs here
+were found by reading console output, and the diagnostic had started burying the
+next diagnostic.
+
+It became urgent when `developer 1` was confirmed to stay on through the Alpha 2
+release candidates (see the `developer` note above) — the spam was previously
+survivable only on the assumption it would go quiet at release, and that
+assumption is now wrong for every build a tester will actually run.
+
+Fixed by keeping the line and dropping the repetition: **the first ripple after
+each world load prints, the rest are counted**, and the count is printed at the
+next map load. `r_ssrDebug` (any non-zero value) restores the per-ripple detail
+for anyone chasing placement. The reset lives in `RE_LoadWorldMap` and is
+per-map deliberately — session-scoped, a map where cgame never calls at all
+would look identical to one where it did, which is the single distinction the
+line exists to draw. The tail count means a quiet console still separates "none
+arrived" from "many arrived", so nothing diagnostic was traded away for the
+quiet.
+
+**Step 6, the cause: the occlusion pass declared depth `STORE_OP_DONT_CARE`.**
+
+```c
+attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+```
+
+`vk.render_pass.rtao` is not merely the occlusion pass. It is **the pass the
+rest of the frame is drawn in** — `vk_rt_ao` ends the main pass and leaves this
+one open in its place, and the lit surfaces, the 2D and bloom all inherit it. So
+the moment that pass ends, `DONT_CARE` makes the depth contents **undefined by
+declaration**. No error, no validation warning: it is precisely what the pass
+asked for.
+
+Harmless while occlusion was the only depth reader — it reads depth *during*
+that pass and nothing afterwards cared. The reflection pass reads it *after*, at
+the 2D transition.
+
+**Which is why `r_rtao 0` fixed it and nothing else did.** The user found that,
+after six rounds: depth sound with occlusion off, noise with it on, shown
+directly by `r_ssrDebug 4`. Everything blamed on the reflection pass came from
+here — the mask spilling past the pool, the view weapon painted as water, and
+the smearing that looked exactly like a buffer holding what was there before,
+because that is what undefined contents are.
+
+Now `STORE`, on the same reasoning as the line below it that keeps the
+multisampled colour alive for bloom. Cost: a store of an image the frame already
+holds.
+
+**Note the near-miss.** The corruption in the bottom right of the screen, fixed
+earlier, was the *other* half of this same relationship: the occlusion pass
+sampling depth before the main pass's writes were visible — a missing subpass
+dependency. Ordering there, preservation here, three lines apart in the same
+function, both invisible to the validation layers. **Any pass that reads depth
+has to answer both questions: is the write visible yet, and is the content still
+declared to exist.**
+
+---
+
+The four faults below were all real and all found on the way. None of them was
+the cause.
+
+**Step 5: the reflection target was never initialised.**
+
+The target was `LOAD_OP_DONT_CARE` with `initialLayout = UNDEFINED`, justified
+by "the trace writes every pixel" — which is a claim about the *shader*. The
+shader is not the only thing that decides whether a pixel is written; the render
+area, the viewport and the scissor do too, and a pixel none of them reach keeps
+whatever was in that memory.
+
+Uninitialised memory here does not read as noise, because **the composite blends
+by the alpha it finds**. Garbage alpha is almost never 0, so the discard does not
+fire and the garbage *colour* is what goes on screen. That single fact accounts
+for every symptom that survived the layout fixes:
+
+- font-atlas glyphs and old framebuffer contents appearing on the water
+- the effect spilling past the pool onto the decking
+- the debug views washing over the whole screen instead of showing flat colours
+- correct immediately after a `vid_restart`, while the memory is still fresh,
+  and degrading from there as the rest of the renderer churns it
+- unaffected by `r_ext_multisample`, which is why that test said nothing
+
+Cleared to transparent black, "not written" now means alpha 0, which is the one
+value the composite already treats as nothing to do.
+
+**And the same bug had a second entrance.** The target took `vk.color_format`,
+and `r_rts 2` selects `B10G11R11_UFLOAT` — **no alpha channel**. Vulkan reads a
+missing channel back as 1.0, so every pixel arrives fully opaque, the discard
+never fires, and the whole screen is replaced by the reflection image. The
+target now picks its own format (`vk.ssr.format`), falling back to
+`R16G16B16A16_SFLOAT` and reporting it. Coverage lives in alpha; a target
+without one cannot carry it.
+
+The lesson worth keeping: **an alpha-blended offscreen target is not
+`DONT_CARE`-safe, and its format is not free.** Alpha is not decoration there,
+it is the mask, and both "what is in it before we write" and "does it have the
+channel at all" have to be answered before the first pixel is traced.
+
+**And a second, structural one, paid for immediately.** The format choice went
+into `vk_ssr_create_render_pass`, where it belongs by subject. It does not
+belong there by *order*:
+
+```
+vk_create_attachments();    /* images   */
+vk_create_render_passes();  /* passes   */
+```
+
+Attachments are built **first**. So the format was being chosen after the image
+that needed it had already been created — or rather skipped, since the image was
+guarded on a render pass that does not exist yet. The feature disabled itself on
+every launch, reporting `SSR: not running - the pass was not created` from the
+function whose only job is to create it.
+
+The rule: **anything an attachment depends on has to be decided before
+`vk_create_attachments` runs**, not in the pass that describes it. The failure
+paths now name which of the two pieces is missing, because "no pass" and "no
+image" have completely different causes and the single shared message sent a
+round of work at the wrong one.
+
+**Step 4, two wrong image layouts, both real, neither sufficient.**
+
+The second one is the one that mattered, and it is worth reading before adding
+any pass that samples depth:
+
+`DEPTH_STENCIL_READ_ONLY_OPTIMAL` is for an image that is **still bound as a
+depth attachment** while being sampled. That is the occlusion composite's
+situation and why it uses that layout. A pass that only samples wants
+`SHADER_READ_ONLY_OPTIMAL`. The difference is not pedantry: in the depth layout
+a driver may keep the image in its depth-optimised form, and a fully covered
+tile in that form is *metadata*, not samples — so a raw read comes back as the
+value the buffer was cleared to. Transitioning to `SHADER_READ_ONLY_OPTIMAL` is
+what forces the decompression.
+
+The symptom: flat surfaces classified as sky, while geometry **edges** and
+anything that had **just moved** read correctly — tiles that cannot be
+compressed. On screen it was a wireframe over a red field. Nothing about that
+shape suggests a layout, which is why it survived `r_ext_multisample 0` and four
+rounds of reading the mask. What ended it was `r_ssrDebug 3` plus a health orb
+bouncing on the spot **with the camera still**: that one observation killed every
+explanation involving the camera, the matrices, or the march.
+
+The first one, found the round before: the pass sampled depth with no barrier at
+all, leaving the image in `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` while the
+descriptor named a read-only layout. Undefined contents, reported nowhere.
+
+**And this is also why the mask ran past the pool**, which had looked like a
+second, separate fault. Two facts meet:
+
+- A mapper builds the water brush larger than the hole it shows through and
+  tucks the overhang under the decking — in X and Y, rarely in Z. So the
+  surface bounds legitimately extend past the visible pool, and no tightening of
+  them is correct: the water really is out there. What decides whether it can be
+  *seen* out there is the occlusion test, because under the decking the decking
+  is in front of it.
+- The decking is flat, and flat fully covered tiles are exactly the ones depth
+  compression turns into metadata. So the geometry that was supposed to stop the
+  effect was the geometry reading back as the cleared value.
+
+The bounds were never going to be the answer and the overshoot was never a
+second bug. One layout, two symptoms.
+
+
+
+The mask exceeded the pool at glancing angles and appeared over the view weapon.
+The bounds were never the cause — the report above is the shipped build, and
+those spans are the four pools' own footprints.
+
+`vk_ssr` ends the main render pass and samples depth outside any render pass, so
+nothing transitions the image implicitly. Its descriptor names
+`DEPTH_STENCIL_READ_ONLY_OPTIMAL`; the main pass leaves the image in
+`DEPTH_STENCIL_ATTACHMENT_OPTIMAL`. Sampling an image in a layout the descriptor
+does not name is **undefined contents, not an error** — nothing in the log,
+nothing from the validation layers at draw time, and a depth buffer that reads
+back as structured garbage. The occlusion pass makes that barrier explicitly and
+its own comment says why; the reflection pass was written from the same shape
+and did not copy the one line that mattered.
+
+Every symptom follows from depth that could not be trusted: water found where
+the pool is not, the view weapon not recognised as the view weapon, and both
+worse at glancing angles, where one depth tile covers more geometry.
+
+`r_ssrDebug 3` is what caught it, on its first frame. A room should classify
+flat green. It came back a fine red/green speckle over the whole screen — world
+pixels reading as the cleared depth value. That is not a mask that needs
+tightening, and no amount of further reading of the mask would have said so.
+Four rounds went into the mask; the classification view answered it in one
+screenshot, which is the same lesson as E81 in a different costume: **when the
+source cannot explain the behaviour, stop reading the source and look at what
+was actually produced.**
+
+**Also in, and kept — they are correct independently of the above:**
+
+- the view-ray direction now comes from the pixel, not from the position
+  reconstructed at that pixel. The two agree only when the depth buffer is
+  trustworthy, and the pixels in question are exactly the ones where it is not.
+- the weapon-band test is `>=`, matching the occlusion pass exactly.
+- the geometry behind the water must be *below* the water. For consistent data
+  this follows from the test above and rejects nothing; it fires only when the
+  position reconstructed from depth does not belong to the ray, which is the
+  failure the other two guard against.
+- `r_ssrDebug 3` paints the depth classification: red sky, blue weapon band,
+  green world. Kept permanently — it is the instrument that found the layout
+  bug, and it is the first thing to reach for if the mask ever misbehaves again.
+
+---
+
+### R9. Quad glow dimmer under Vulkan than OpenGL — DONE (verify, second pass)
+**Lives in:** our **client** (renderer) · **Seen by:** our client only, Vulkan only
+
+Reported after switching to Vulkan: the quad glow is less intense, both on the
+powered-up player and on the powerup lying on the floor.
+
+Both are plain dynamic lights — `cg_players.c:1948` for the carrier and
+`cg_ents.c:473` for the item, each `radius 200 + (rand() & 31)`, blue. Quake3e's
+`RE_AddLightToScene` does
+
+```c
+intensity *= r_dlightScale->value;   /* tr_scene.c:272, :323 */
+...
+dl->radius = intensity;
+```
+
+and ships `r_dlightScale` at **0.5**, so every dynamic light in the Vulkan
+renderer had half the radius. `renderergl2` has no such cvar and runs at full
+radius, so the same scene really was dimmer under Vulkan — not a perceptual
+difference. The gate is `r_dlightMode != 0`, and `USE_PMLIGHT` is defined with
+`r_dlightMode` defaulting to 1 on x86_64, so it was always active.
+
+Default is now 1, matching the OpenGL renderer. It is `CVAR_ARCHIVE_ND`, so
+unlike the `CVAR_ARCHIVE` trap in CLAUDE.md the new default does apply — an
+archived copy only exists if somebody set the cvar deliberately.
+
+**Second pass — the radius was only half of it.** With `r_dlightScale` corrected
+the glow was still dim, because `r_dlightMode` was the bigger cause:
+
+```c
+/* tr_mesh.c:350 */
+if ( r_dlightMode->integer >= 2 && ( !personalModel || ... ) ) {
+```
+
+Mode 1 applies per-pixel dynamic lights to **world surfaces only**. MD3 models
+are gated on `>= 2`. Every glow a player actually sees — on another player, on a
+powerup lying on the floor — is a light falling on an MD3, so at mode 1 those
+models were lit by the ambient grid alone while the floor around them lit up
+correctly. The OpenGL renderer lights models through the legacy path regardless,
+hence the difference. Default is now 2.
+
+Its flag was plain `CVAR_ARCHIVE`, which is the trap in CLAUDE.md: written to the
+user's config even at its default, so anyone who had already run a build would
+keep the old value forever and a changed default would do nothing for them. Now
+`CVAR_ARCHIVE_ND`, which only writes when the value differs from the default.
+Anyone whose config already contains an explicit `r_dlightMode` line still needs
+to remove it or set `r_dlightMode 2` by hand.
+
+Note this is a different question from R8, which is about dynamic lights being
+weak in *both* renderers. R8 stays open.
+
+### R8. Dynamic lights subtracted light from what they did not reach — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**Root cause, found 2026-09-13.** `light_frag.tmpl` computed
+`float diffuse = dot(nN, nL);` and never clamped it. That is negative for every
+fragment on the far side of a surface from the light, and the per-pixel light
+pass blends `ONE/ONE` — so a dynamic light darkened the geometry it did not
+reach by as much as it brightened what it did. `specFactor` had the same fault
+and went straight into `pow()`, which is undefined for a negative base. Both are
+clamped now, after the `abs_light` branch rather than before, since that mode
+deliberately takes the absolute value of each and `max(abs(x), 0)` is `abs(x)`.
+
+Invisible while the scene target was fixed-point: Vulkan clamps blend source and
+destination to [0,1] before evaluating when the attachment is fixed-point, and
+does not clamp at all when it is floating-point. `r_rts` supplies a
+floating-point target. That is the whole of why it appeared with `r_rts` and
+only with `r_rts`, and why `r_rts 2` did not help — `B10G11R11` is
+floating-point too, unclamped at blend time, clamping only at write.
+
+**How it was found is worth keeping.** Six settings that did *not* fix it did
+the work — `r_dlightBacks 0`, `r_dlightMode 2`, `r_ext_multisample 0`,
+`r_rts 2`, `r_rtao 0`, and `r_overBrightBits` — eliminating AO, MSAA, the colour
+format, the back-facing projection and the entity fold-in in turn. The one that
+turned it was volunteered: **`r_dlightMode 0` does not show it.** Mode 0 is the
+legacy projected path and 1 and 2 are both per-pixel, which cut the search to
+one shader. Three rounds had gone into reading `RB_ProjectDlightTexture`, a
+function that was never running on the reporter's machine.
+
+Five wrong theories preceded it, each one plausible and each one killed by a
+single cheap test. The pattern to copy is the tests, not the theories.
+
+---
+
+### R8a. Earlier notes on this item — superseded
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
 **Correction.** I claimed `r_dlightMode 0` keeps dynamic lights off world surfaces
@@ -1077,91 +5889,138 @@ screen-space effect. It cannot do the reflective half.
 3. **Screen-space reflections** — needs a normal/depth G-buffer that renderergl2
    does not currently write. Real work, and still approximate at surface edges.
 
-### R5. Vulkan renderer — IN PROGRESS
+### R5. Vulkan renderer — RUNS, no text yet
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
 
-**Started.** `code/renderervk` is vendored from ec-/Quake3e (GPLv2, 29 files),
-with `code/renderervk/README.ioquakelive.md` carrying the plan. **Not wired up:**
-`BUILD_RENDERER_VULKAN` defaults to 0, no Makefile rule references the directory,
-so the OpenGL build cannot be affected.
+`code/renderervk` is vendored from ec-/Quake3e (GPLv2, 29 files) plus two files
+of ours. `code/renderervk/README.ioquakelive.md` carries the detail.
+`BUILD_RENDERER_VULKAN` still defaults to 0 and no default-build rule touches
+the directory, so an OpenGL build cannot be affected — `opengl2x86_64.so` is
+byte-identical with the target added.
 
-`cl_renderer` is exposed in the render options menu (OpenGL 2 / Vulkan). Picking
-Vulkan before the renderer exists falls back to `opengl2` through the existing
-reset-string path rather than failing to start, so the row is safe to ship now.
+**It runs.** Verified end to end against Mesa lavapipe under Xvfb: instance,
+physical device, swapchain (IMMEDIATE, 3 images, `B8G8R8A8_UNORM`), shaders, 60
+frames of the main menu, clean shutdown, and a screenshot with the menu
+background art in it. Select it with `\cl_renderer vulkan` then `\vid_restart`.
 
-**Interface gap now measured** (see `code/renderervk/README.ioquakelive.md`):
-5 exports to add, but **24 imports** — including four Vulkan windowing entries
-(`VK_CreateSurface`, `VK_GetInstanceProcAddr`, `VKimp_Init`, `VKimp_Shutdown`)
-and six `GLimp_*` / `GL_GetProcAddress` entries, because Quake3e drives the
-window from the engine side and this tree drives it from inside the renderer.
+**Text works.** `tr_font_vk.c` is the Vulkan backend for the fontstash atlas.
+Verified: the main menu renders its buttons, both build stamps and the
+copyright line, antialiased and in the right colours. renderergl2 keeps the
+atlas as a single-channel `GL_R8` texture read as coverage through a swizzle
+(1,1,1,R); Vulkan has no swizzle to lean on without a second image view and its
+own descriptor, so this expands each dirty rect to RGBA on the way in — white
+with coverage in alpha, which is what that swizzle produces.
 
-That is the real cost, and it is bigger than the "stub five exports" framing I
-gave before measuring. 14 of the 24 are trivial wrappers; the 6 windowing ones
-mean restructuring `sdl_glimp.c` so the engine owns the window — shared code the
-OpenGL renderer also uses, which has to keep working throughout.
+**Six rendering faults were reported; three root causes found, all fixed, none
+of them confirmed in play yet.**
 
-**Next, in order:**
-1. `Makefile` target producing `vulkan<arch>.so` / `.dll`, behind
-   `BUILD_RENDERER_VULKAN=1` so it stays opt-in until it works.
-2. A shim satisfying this tree's `refexport_t` (v9) from Quake3e's (v8),
-   stubbing `Font_DrawString`, `TextBounds`, `GetGlyphInfo`,
-   `SetCompositionFont` and `Get_Advertisements`.
-3. `sdl_glimp.c` split so it can request `SDL_WINDOW_VULKAN` and a surface
-   rather than a GL context unconditionally.
-4. Milestone 1: builds, links, clears the screen.
-5. **Milestone 2, immediately after: text.** Stubbing the font exports is only
-   valid long enough to prove the link. The console *is* the debugging surface for
-   this renderer, so a Vulkan build that cannot draw text cannot be debugged from
-   inside itself — and every diagnostic added this far (`cg_debugShotgun`,
-   `con_scale`, cvar readouts) becomes unusable. Treat fonts as part of the first
-   usable build, not as polish.
+| | symptom | cause |
+|---|---|---|
+| 1 | item pads, wall teleporters, the lightning beam and grenades draw as a near-black box with a white border | material keywords |
+| 2 | quad damage glow missing | material keywords (assumed) |
+| 3 | in-game text is fragments of the wrong glyphs; the menu and console are fine | font atlas resize |
+| 4 | `vid_restart` opens a second window and leaves the first | `Shutdown` argument |
+| 5 | player models do not draw | `novlcollapse` |
 
-**Read `renderergl2/tr_font_gl.c` before estimating anything past milestone 1** —
-it is the GL half of the QL TrueType path and has no Vulkan counterpart. It is
-the largest unknown in the whole port.
+**`novlcollapse`, and the rule that made it fatal.** The console said it
+outright: *"unknown general shader parameter 'novlcollapse'"*, on every player
+skin in the game, both flags, the race markers and a map texture. `novlcollapse`
+is Quake Live's "do not collapse the vertex lighting stage" hint. renderergl2
+has always known it; renderervk did not.
 
-#### Original scoping
-Wanted. Feasible. Not small — this is a multi-session project, and worth being
-honest about that up front rather than starting it and stalling.
+That alone should have cost a lighting hint. It cost the whole model, because
+**both** parsers answered an unrecognised keyword with `return qfalse`, and
+`ParseShader` turns that into `defaultShader` on the entire shader. One keyword
+it has never heard of and the material is replaced by the black box, with
+nothing on screen to say why.
 
-**What makes it tractable:** `cl_renderer` already dispatches by DLL name
-(`cl_main.c`, default `"opengl2"`, `CVAR_ARCHIVE | CVAR_LATCH`, falls back to its
-reset string when the named library is missing) and `USE_RENDERER_DLOPEN=1`. A
-third renderer needs no engine change at all — it needs to build as
-`vulkan<arch>.so/.dll` and export `GetRefAPI`. `renderercommon` is already shared,
-so image loading, the shader-script parser, skins, models and the font core come
-along for free.
+That is the wrong trade for a renderer reading someone else's shader scripts,
+and chasing the keywords one at a time was the wrong shape of fix. **Unknown
+keywords are now skipped rather than fatal, in both renderers** — skipping a
+keyword whose meaning we lack renders a shader slightly wrong, failing it
+renders the shader completely wrong and takes the model with it. Each unknown
+keyword is reported once, with the first shader it appeared in, instead of once
+per shader: one keyword across forty player skins was forty identical lines, and
+that is what the console looked like.
 
-**Base to port from:** Quake3e (`ec-/Quake3e`), `code/renderervk`. Mature,
-maintained, and a faithful reimplementation of the *classic* renderer — which
-suits the goal here, since the classic look is what we are chasing anyway.
+**`developer 1` did nothing for the renderer.** `CL_RefPrintf` handled
+`PRINT_DEVELOPER` behind `#if DEBUG_RENDERER`, a macro defined nowhere in the
+tree — so every developer-level line from either renderer was discarded at
+compile time. That is not a debug switch, it is a deleted one, and it threw away
+the two messages that answer most "why is this surface wrong" questions:
+*"Couldn't find image file for shader %s"* and *"no shader for surface %s in
+skin %s"*. It now goes through `Com_DPrintf`, which is gated on the cvar, which
+is the gate it wanted. (This is also why asking for a `developer 1` trace last
+round produced nothing — the instruction was useless as given.)
 
-**Known work beyond a straight copy:**
-1. `REF_API_VERSION 9`. This port's `refexport_t` adds Quake Live's TrueType text
-   path — `Font_DrawString`, `TextBounds`, `GetGlyphInfo`, `SetCompositionFont` —
-   and `Get_Advertisements`. The font core is shared in `renderercommon`
-   (`tr_fontstash.c`, `tr_stbtt.c`) but the GL-specific half,
-   `renderergl2/tr_font_gl.c`, has no Vulkan equivalent. That file is the single
-   biggest unknown; it wants reading before committing to an estimate.
-2. Quake3e's renderer expects Quake3e's engine-side helpers in places. Each
-   needs checking against this tree rather than assumed.
-3. The widescreen bias handling and anything else this port changed in the
-   refexport surface.
-4. `R_ExportCubemaps_f` and the cubemap path (R4) have no classic-renderer
-   equivalent — a Vulkan build would simply not have `r_cubeMapping`.
-5. SDL window creation currently requests a GL context unconditionally
-   (`sdl_glimp.c`); Vulkan needs `SDL_WINDOW_VULKAN` and a surface instead.
+**Material keywords.** That black box with a white border is
+`R_CreateDefaultImage`'s output — those surfaces were resolving to
+`tr.defaultShader`, so it was never a missing texture. Quake Live's shaders
+carry the renderergl2 material set: `stage`, `diffuseMap`, `normalMap`,
+`bumpMap`, `specularMap`, `normalScale`, `specularScale`, `gloss`, `roughness`,
+`parallaxDepth`, `vertexLit` and the rest — 18 keywords renderergl2 knows and
+Quake3e's parser has never seen. An unknown keyword in `ParseStage` does not
+skip a line: it returns `qfalse`, and `ParseShader` then marks the **whole
+shader** default. Ordinary map surfaces carry no material keywords, which is
+why the world looked right and only the effects were wrong.
 
-**Suggested first milestone:** get it building and clearing the screen, with text
-rendering stubbed, before touching anything else. That answers the two real
-questions — whether the `refexport_t` surface can be satisfied and whether the
-SDL path can be split cleanly — and everything after it is incremental.
+This renderer has no material pipeline, so it now does what a non-material
+renderer should: accept the keywords, consume their arguments, render the
+diffuse. A stage explicitly declared a normal or specular map is dropped rather
+than drawn — painting a normal map on as if it were colour is worse than
+leaving it out.
 
-**What it will and will not give you.** Expect better frame pacing, far better
-driver behaviour on Intel Arc and on Linux/Mesa, and a renderer that is
-GL1-equivalent in output — so closer to Quake 3 than renderergl2 is. Expect it to
-add no gloss and no cubemaps: an API is not an aesthetic. If the goal is the
-metallic look, R4 is the route, not this.
+**Font atlas resize.** A `VkImage`'s extent is fixed at creation, so a bigger
+atlas means a new image — but `RE_RegisterShaderFromImage` looks the shader up
+by name and returns the existing one, still pointing at the **old** image.
+fontstash re-uploaded every glyph into the new image while the draw path kept
+sampling the old one. The menu and console survived because their glyphs were
+rasterised before the first growth past 512x512; a match needs far more glyphs,
+so it was the first thing to trip it. `renderResize` now reuses the image when
+the size is unchanged and re-points the shader when it is not.
+
+**Shutdown's argument.** This tree's `refexport_t` entry is
+`Shutdown(qboolean destroyWindow)`; Quake3e's takes a `refShutdownCode_t`,
+where 1 is `REF_KEEP_WINDOW`. `CL_ShutdownRef` passes `qtrue`, so renderervk
+read "keep the window", left `SDL_window` alive, and the engine then unloaded
+the module out from under it — the next renderer opened a second window beside
+the orphaned first. `CL_ShutdownRef` unloads the library immediately afterwards
+regardless, so `REF_UNLOAD_DLL` is the honest translation.
+
+**None of this could be reproduced here.** All of it needs a map, and maps live
+in `pak00.pk3`, which is Quake Live's and is not ours to hold. The three causes
+were found by reading, and the evidence for each is in the fix; only play will
+confirm them.
+
+Two real defects were found looking for these, neither of which is the cause:
+`RE_AddRefEntityToScene` was being called through a one-argument pointer while
+its definition takes two, and `REFENTITYNUM_BITS` was redefined from the tree's
+10 to Quake3e's 12 *after* `tr_types.h` had defined it, leaving the two
+renderers disagreeing on `MAX_REFENTITIES` (1023 vs 4095). Both fixed.
+
+**The windowing question is answered.** The measured gap was 24 imports, of
+which the six windowing ones meant "restructure `sdl_glimp.c` so the engine owns
+the window" — shared code the OpenGL renderer depends on. It did not need
+restructuring: the renderer keeps ownership of its window, `vk_window.c`
+provides the same four `VK*imp_` entry points from inside the Vulkan module, and
+`GetRefAPI` points `ri` at them after copying the engine's import table. The
+vendored source still calls `ri.VKimp_Init()` and simply reaches code in its own
+module. Two lines of patch instead of a restructure.
+
+**Two things that were live bugs, now fixed:**
+
+- Picking a renderer that cannot load wrote the choice to the config *before*
+  trying it, and `CL_InitRef` then went straight to `ERR_FATAL` — unrecoverable
+  without hand-editing the config. It now resets and loads the default. Verified
+  against a deliberately unloadable `vulkanx86_64.so`.
+- The same trap one layer down: a machine with no Vulkan driver got as far as
+  loading the module and then died creating the window, on every launch
+  thereafter. `VKimp_Init` now resets `cl_renderer` before erroring, and says
+  why.
+
+**Also open:** renderervk's own `r_dither` is 0–1 where this tree's is 0–2, so
+the temporal setting logs *"cvar 'r_dither' out of range (max 1), setting to
+1"*. The Windows build of the Vulkan target has not been exercised.
 
 ### R6. Voodoo postfilter as a real post-process pass — OPEN
 **Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
@@ -1228,6 +6087,4663 @@ Live's `pak00.pk3` is **shadowed by it** — it has to sort last (e.g.
 ---
 
 ## Engine / server
+
+### E121. Code review: a server could set any cvar on our client
+**Lives in:** our **client** (client engine, `cl_parse.c`) · **Seen by:** our client only
+
+Found in the whole-tree review. `CL_SystemInfoChanged` had been changed to apply
+every systeminfo key with `Cvar_Set`, to match the Quake Live binary. `Cvar_Set`
+forces, which walks through ROM, INIT and **PROTECTED**. So any server we joined
+could send `fs_homepath` or `fs_basepath`, and `CL_ParseGamestate` restarts the
+filesystem right after, rooting downloads, logs and extracted modules wherever
+the server chose. It could also archive `cl_allowDownload 1` into the player's
+config.
+
+The fix does not restore ioquake3's allow-list, because that refuses VM-registered
+cvars and QL servers rely on those. It refuses two classes instead:
+
+- anything PROTECTED, systeminfo or not;
+- an engine cvar the server does not own (no SYSTEMINFO, not created by a VM or by
+  `set`) that is archive, init, ROM, latch or cheat.
+
+Everything a QL server actually sends (sv_* ids, pak lists, timescale, sv_cheats,
+fs_game through its own guard, g_training) still applies. A refused key prints
+`server is not allowed to set`. **Not yet seen against a stock server:** if that
+line ever appears for a key that matters, the key needs SYSTEMINFO on our side,
+not a looser rule.
+
+The same pass fixed two small bugs:
+
+- **Medkit-use fade** (`cg_players.c`, stock Team Arena): `(t - 1000)` put 1275–1785
+  into a byte colour channel over the effect's last 100 ms. That is undefined
+  behaviour, and on x86 the value wrapped and flickered.
+- **Negative score counts** from a server are now clamped to 0 in the three
+  parsers that kept the raw count.
+
+Checked and **not** bugs, so nobody re-reads them:
+
+- cppcheck's 101 findings. Every index error at a network boundary already has an
+  `Error` guard; cppcheck does not know `Com_Error` and `CG_Error` never return.
+- `snd_codec.c` returns `rtn`, not the local buffer.
+- `ColorBytes3` and `ColorBytes4` write every byte they return.
+- The ping-list slot is guaranteed by `CL_GetPingQueueCount`.
+- The console `width < 1` branch is dead now that width is clamped to at least 1.
+  The first-resize path through `else` has `oldtotallines` = 0, so it copies
+  nothing and does not divide.
+- Callvote injection is closed: `;`, `\n` and `\r` are filtered on both arguments,
+  later arguments are never used, and unknown vote names are refused.
+- `botsay` is bot-only.
+
+### E122. Whole-project review, second pass — DONE (verify)
+**Lives in:** both — see each row · **Seen by:** see each row
+
+A second full read of every file we changed against the fork base (ce9c927), plus
+an ASan/UBSan build of the client and bots through every gametype. Each row is
+fixed. The HUD rows are the ones to look at in game.
+
+| # | Lives in | Seen by | Fix |
+|---|---|---|---|
+| F1 | both (`msg.c`) | every client | Playerstate move chars were read and written as ints. That clobbered `ping` on receive and resent a spurious tail. |
+| F2 | both (`files.c`) | — | An empty path read `path[-1]` (reached from `UI_LoadTeams`). |
+| F3 | both (`files.c`) | — | `qsort(NULL, 0)` on an empty game directory. |
+| F4 | client (renderervk) | our client | `screenshotJPEG` and AVI motion-JPEG wrote nothing but printed "Wrote". They now use the linked `RE_SaveJPG`. |
+| F5 | server (`ai_tactics.c`) | — | `BotTacticsReport` leaked the level pool on every call. Repeated rcon `bots` ended in a fatal `G_Alloc`. |
+| F6 | server (`g_active.c`) | every client | `g_regenHealthRate`/`g_regenArmorRate` of 0 or less looped forever and hung the server. |
+| F7 | server (`g_team.c`) | every client | `g_obeliskHealth 0` divided by zero. |
+| F8 | server (duel) | every client | Spectator TAB on an empty duel server read `level.clients[-1]`. |
+| F9 | client (cgame) | our client | CA/FT/RR "players remaining" slots drew team **scores**, and the red slot drew the blue score. They now draw `CS_TEAMCOUNT_RED/BLUE`, which the server always sent and nothing read. |
+| F10 | both | our client | The Domination owned-points counter read a field nothing wrote, so it always showed 0. It now reads CS 700/701, which are now named `CS_DOM_OWNED_RED/BLUE`. |
+| F11 | client (cgame) | our client | Team-stats parsers used the server-sent slot as an unchecked index. A hostile server could write client memory. |
+| F12 | client (cgame) | our client | The voice-chat ring walked off its end. The path is currently dead. |
+| F13 | client (cgame) | our client | Rail tint divided by zero at `cg_railReloadTime 0`, and cast out-of-range floats to bytes. |
+| F14 | client (cgame) | our client | A `country.txt` line over 31 characters overran its buffer. |
+| F15 | client (ui + cgame) | our client | Text fields drew no caret while editing. |
+| F16–F21 | client (ui) | our client | Off-by-one and unchecked indexes: server filter, crosshair colour, net/join gametype, map preview, `color1` effects, StartServer bot slots (plus a skipped slot re-ran the previous bot), and server list capacity. |
+| F22 | client (both renderers) | our client | Text measuring read past the end of the string. |
+| F23 | client (both renderers) | our client | Loading a BSP 46 (Quake 3) map zeroed 8 bytes of the first lump's data in the file buffer. |
+| F24 | client (renderervk) | our client | The SSR done-flag was never reset, so SSR ran once per session. |
+| F25 | client + server (Windows) | — | The crash log could write past its own buffer. |
+| F26 | server (botlib) | every client | A negative `bot_routespread` became a huge route jitter. |
+
+Open for a decision, not changed:
+
+- **S2.** The Steam ID in `getchallenge` is trusted, because `SV_ValidateSteamAuth` is a stub. That allows admin impersonation and ban evasion.
+- **C1.** `team_dom_point` radius has no default.
+- **C2.** `g_matchStartGrace` is `CVAR_ARCHIVE` (the archive trap).
+- **C3.** Duel forfeit's `clientNum` defaults to 0, not -1.
+- **C4.** Scoreboard award heads read CS 692–699 by raw number, and that doesn't match what the server writes.
+- **C5.** The muzzle point uses the viewer's crouch state for other players.
+- **C6.** `CVAR_ARCHIVE_ND` is aliased to `CVAR_ARCHIVE`, so the `r_rtao*`/`r_ssr*`/`r_water*` defaults get archived.
+- **C7.** `cl_autoTimeNudge` latches its first value for the whole session.
+
+### E123. Clan Arena rounds never ended, the washed-out laptop, and six smaller fixes — DONE (verify)
+**Lives in:** both — see each row · **Seen by:** see each row
+
+Found by running the client headless (Xvfb and lavapipe) and reading the console
+and a few screenshots, plus two reports from a 2560x1600 laptop.
+
+| # | Lives in | Seen by | Fix |
+|---|---|---|---|
+| F27 | server (`g_gametype_ca.c`, `g_gametype_ad.c`, `g_main.c`) | every client | **Clan Arena and Attack & Defend rounds never ended.** `G_InitGame`'s round switch started RR and FT only. CA/AD sat in `RS_WARMUP`: no countdown freeze, no round over when a team died, and no match end, since CA's exit rules belong to the round logic. The FT fix (Freeze_InitRoundState) had missed the other two. Seen headless: blue eliminated, round clock kept running. After the fix: "RED TEAM WINS", 1-0, next countdown. |
+| F28 | client (cgame) | our client | A tied team score hid every team frame on the HUD. hud.menu draws each frame under `CG_SHOW_IF_RED_IS_FIRST_PLACE` or `..._BLUE_...`, and both were a strict `>`. So at 0-0 (every CA/CTF/TDM start) the CA/FT players-remaining counts, the team bars and the CTF flag status all vanished. A tie now counts as red first. |
+| F29 | client + server (`sys_main.c`) | — | **`kill` / Ctrl+C could hang the game.** The SIGTERM/SIGINT handler ran the whole shutdown inside the signal handler, on top of whatever the interrupted frame held. The Vulkan driver deadlocked in its own teardown (seen with lavapipe, in `pthread_cond_destroy`), and only SIGKILL removed it. Now the handler sets a flag and the main loop shuts down; a second signal exits at once. Crash signals and the Windows console handler (`Sys_SigShutdown`) keep the old path. |
+| F30 | client (`files.c`, Windows) | our client | **Washed-out image on a fresh install.** The first-run copy from Steam brings over Quake Live's qzconfig.cfg, including its `r_gamma` (1.3 on the reporting laptop). Quake Live applied that as a hardware ramp together with overbright; here overbright is off (E81) and gamma is our own pass, so 1.3 washes out, and it is archived from then on. The copy now leaves out `r_gamma`, `r_overBrightBits`, `r_mapOverBrightBits` and `r_intensity`. **Already-affected installs keep 1.3: `r_gamma 1` once.** |
+| F31 | client (pak01, `gen-scoreboard.py`) | our client | The scoreboard's map name, gametype and clock sat above their info strip, on the red header's edge (reported at 2560x1600, but the same at any resolution). Text ownerdraws draw at the rect's y as the BASELINE; the generator gave them the box top. Team scores had the same offset. |
+| F32 | client (pak01, `gen-ingame-menu.py`) | our client | In-game Lighting and Bloom pages had no Apply, so brightness and overbright changes did nothing until a restart. Every in-game sub-page with an `r_` row now has Apply (`vid_restart`) + Back, like Video. |
+| F33 | client (pak01) | our client | Render > Water showed blank "Trace steps" and "Thickness" rows: both cvars default to 24, and the lists offered 16/32/64/128 and 4/8/16/32 with "(default)" on the wrong values. The engine's own console warning ("not one of its listed values") said so. 24 added and labelled as the default. |
+| F34 | client (pak01) | our client | Credits line "…icculus, and many more" ran past the panel edge; shortened. |
+
+Open, not changed:
+
+- **C8.** With `g_doWarmup 0`, an empty match forfeits at map start ("Game has been forfeited", scores -999). No shipped config uses it.
+- **C9.** The ACC column on the scoreboard was blank at 0 shots, in the laptop screenshot. Not investigated.
+- **Visual checks are out of scope** by decision. The headless screenshot script lives outside the repo.
+
+### Local runtime test environment — READY; CA regression retained
+**Lives in:** test tools for our **server**, plus Vulkan shader fixtures · **Seen by:** whoever runs the tests
+
+`tools/test-environment/verify.py` runs actual native bot matches on authored BSP/AAS/bot data, with isolated binaries/paks/homes and recorded commands, module hashes, scores, events and tracks. Live bot-only tests use `g_doWarmup 0` after admitting the whole population; no human ready-up. FFA/TDM progress, CTF captures and the zero-score warmup control pass. `run-shadow.py` recompiles the current shadow shader and runs 13 synthetic views on software Vulkan with zero validation errors. Production maps, NVIDIA fast updates and representative 30v30 performance are separate. Instructions and raw outcome scope: `docs/test-environment.md`.
+
+**New reproducible CA failure — fixed in E224** (both calls now keep the team; CA also gained its round time limit): normal and zero round delay runs move playing bots to the spectator team and auto-forfeit. The shared CA/AD begin/respawn paths call `Cmd_FollowCycle_f`, which changes the team, instead of the existing `G_FollowCycleKeepTeam` used by FT. CA is runtime-reproduced; AD shares the suspicious source path but was not played. The zero-delay restart/begin order also needs verification. `verify.py --rounds` retains nonzero exit codes; this is not classified as missing human ready-up.
+
+### Local CTF carrier selection trial — `387d68a6-ctf11` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmq3.c`) and test tools · **Seen by:** every client
+
+Carrier selection rejects a waypoint whose first leg is already below the movement arrival threshold of 20 AAS units. A valid pending route is retained unless a replacement saves another 100 score units beyond the existing 50-unit preference; reached/stuck/invalid routes get no extra protection. No accepted candidate clears the detour instead of reviving a random rejected waypoint when direct home travel is zero. Complete-selector fixtures and ctf10 before-behavior reproductions pass. Original botfiles remain unchanged.
+
+**Played:** Japanese Castles, bot-only `g_doWarmup 0`, 15v15. Two 15-minute simulated matches at 4x per build: ctf11 **5 captures**, ctf10 **6**, ctf3 **7**. Ten minutes normal speed: ctf11 **1 / 2**, ctf10 **1 / 0**, ctf3 **0 / 0**. 1 objective-progress failures retained. No dependable capture-rate gain established; remains experimental. Linux/Windows dedicated builds, validators and dependency/nonempty-object checks pass; Windows was not played. FFA/warmup controls pass. Detailed cumulative original-build handoff, incremental changes, patches and evidence: `docs/bot-ai-changes-ctf11.md`. Two saved engine findings remain deferred.
+
+### Local CTF escort item trial — `387d68a6-ctf10` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmnet.c`, `ai_dmq3.c`) and test tools · **Seen by:** every client
+
+Autonomous live escorts cap the already-scaled optional item range at 50 AAS units, or 150 at health at most 40. All three item entry deadlines are bounded at 1.5/2.5 seconds. New healthy escort assignments expire old item tasks; critical health allows up to 2.5 seconds and oxygen escape preserves its deadline. Orders, other jobs/modes and tactics-off retain ordinary item behavior. Exact-source fixtures pass. Original botfiles assets remain unchanged.
+
+**Played:** Japanese Castles, bot-only `g_doWarmup 0`, 15v15. Two 15-minute simulated matches at 4x per build: ctf10 **8 captures**, ctf9 **9**, ctf3 **6**. Ten minutes at normal speed: ctf10 **1 / 0**, ctf9 **0 / 0**, ctf3 **0 / 1**. 1 objective-progress failure(s) retained. No dependable capture-rate gain established. Linux/Windows dedicated builds, validators and dependency/nonempty-object checks pass; Windows was not played. FFA/warmup controls pass. Detailed cumulative original-upload comparison, incremental changes, file/function inventory, patches, evidence and handoff instructions: `docs/bot-ai-changes-ctf10.md`. The two saved engine findings remain deferred.
+
+### Local CTF navigation trial — `387d68a6-ctf9` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_tactics.c`) and test tools · **Seen by:** every client
+
+Escorts now rank reachable AAS travel time to their teammate carrier instead of straight-line proximity, with per-frame cost sharing and a small incumbent preference. Orders, vacant-slot checks, quotas and disabled/other-mode behavior remain intact. Exact-source fixtures reproduce the wall-proximity failure and cover both teams, cache reuse, flags, stability, orders and airborne/same-area fallbacks. Optional trace analysis now verifies actual followed flag carriers and excludes stale/dead/opposing-team targets.
+
+**Played:** Japanese Castles, bot-only `g_doWarmup 0`, 15v15. Two 15-minute simulated matches at 4x per build: ctf9 **8 captures**, ctf8 **6**, ctf3 **9**. One 10-minute normal-speed match per build: each **red 0 / blue 1**. No dependable capture gain established; ctf3 remains the preferred baseline. All nine CTF runs and FFA/warmup controls pass. Linux/Windows dedicated builds, validators, dependency checks and nonempty objects verified; Windows was not played. Linked escort proximity increased against ctf8 in this sample, but about 28% of ctf9 accelerated escort samples still used the item node. Full evidence and limitations: `docs/ctf-navigation-follow-up.md`. Two saved engine findings remain deferred.
+
+### Local CTF escort trial — `387d68a6-ctf8` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_tactics.c`, `ai_main.c`), plus test tools · **Seen by:** every client
+
+Escort prediction now follows the carrier's pending alternate route and then home, with its travel flags. It scans the bounded route for a reachable early interception instead of rejecting it solely on final arrival time and using a binary search. Exact-source fixtures reproduce the failures and pass with the fixes. Optional CTF traces identify actual possession, health, carrier target, route and direct home travel time; analysis adds escort proximity/progress proxies.
+
+**Played:** Japanese Castles, bot-only `g_doWarmup 0`, 15v15, two 15-minute simulated matches at 4x per build: ctf8 **7 total captures**, ctf7 **8**, ctf3 **8**. One 10-minute normal-speed match each: ctf8 **2 / 2**, ctf7 **2 / 2**, ctf3 **1 / 1**. No dependable capture-rate gain established; keep ctf3 as the preferred baseline. All nine CTF runs and FFA/warmup controls pass. Linux/Windows dedicated builds and all validators/dependency checks pass; Windows was not played. Overlapping traced matches are not CPU benchmarks. Raw evidence, build scope and limitations: `docs/ctf-escort-follow-up.md`. The two saved engine findings remain deferred.
+
+### Local CTF planner trial — `387d68a6-ctf7` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmq3.c`, `ai_dmnet.c`, `ai_tactics.c`, `ai_main.h`) · **Seen by:** every client
+
+One autonomous decision path now runs before combat each think. Recovery and carriers have their own census roles; intentional roaming no longer looks like defense just because the bot is near spawn. Explicit orders are preserved. Travelling escorts use one/two/four slots, waiting carriers one/two; replacements wait for a vacancy. A ctf6 runtime diagnostic exposed the fifth-escort transition, covered by a compiled-source fixture and corrected in ctf7. Return routes check actual reverse travel, progress and a detour budget.
+
+Actual Japanese Castles, 15v15, 15 simulated minutes at timescale 4: **final ctf7 red 3 / blue 0 and red 0 / blue 2**, versus **ctf3 red 2 / blue 2 and red 3 / blue 1**. Five versus eight captures: **no capture-rate improvement established; retain the baseline as preferred**. Final diagnostics never sampled more than four active flag escorts. The final build has not been tested at 30v30; the earlier drafts still scored zero there. Linux runtime, Windows cross-compile, source validators, 302 dependency checks and module hashes verified. Final FFA/live score and Japanese Castles zero-score warmup controls passed. Full source, failed trials and measurement limits: `docs/ctf-planner-follow-up.md`.
+
+### Local CTF planner trial — `387d68a6-ctf7` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmq3.c`, `ai_dmnet.c`, `ai_tactics.c`, `ai_main.h`) · **Seen by:** every client
+
+One autonomous decision path now runs before combat each think. Recovery and carriers have their own census roles; intentional roaming no longer looks like defense just because the bot is near spawn. Explicit orders are preserved. Travelling escorts use one/two/four slots, waiting carriers one/two; replacements wait for a vacancy. A ctf6 runtime diagnostic exposed the fifth-escort transition, covered by a compiled-source fixture and corrected in ctf7. Return routes check actual reverse travel, progress and a detour budget.
+
+Actual Japanese Castles, 15v15, 15 simulated minutes at timescale 4: **final ctf7 red 3 / blue 0 and red 0 / blue 2**, versus **ctf3 red 2 / blue 2 and red 3 / blue 1**. Five versus eight captures: **no capture-rate improvement established; retain the baseline as preferred**. Final diagnostics never sampled more than four active flag escorts. The final build has not been tested at 30v30; the earlier drafts still scored zero there. Linux runtime, Windows cross-compile, source validators, 302 dependency checks and module hashes verified. Final FFA/live score and Japanese Castles zero-score warmup controls passed. Full source, failed trials and measurement limits: `docs/ctf-planner-follow-up.md`.
+
+### Local CTF AI follow-up — `387d68a6-ctf3` (experimental, not pushed)
+**Lives in:** our **server** qagame (`ai_dmq3.c`, `ai_dmnet.c`, `ai_tactics.c`) · **Seen by:** every client
+
+Recovery no longer gets cancelled while an enemy carries our flag, targets a dropped flag or a shared last-seen carrier position, and cannot be redirected by an obsolete alternate-route waypoint. Objective runs retain their destination during squad fallback; recovery and escort do not chase ordinary opponents away from the objective. Surplus autonomous escorts of a waiting home carrier switch to recovery, leaving one/two nearest guards. Shared sightings expire after 15 seconds and never target a hidden carrier's current position. Tactics-disabled behavior remains unchanged.
+
+Actual Japanese Castles 4v4 tests: **red 3 / blue 1 and red 2 / blue 0, each in five minutes at normal speed**, versus zero in the original bot1 run and two in its repeat. The tactics-disabled control also scored two. This is a small sample, not a proven capture-rate improvement. Latest 30v30: **zero captures in 15 simulated minutes**, 31 grabs and 30 carrier kills. Crowded matches remain **OPEN**, with travelling escort overflow and the missing recovery role confirmed in source/reports. One earlier large test stalled and timed out; cause unresolved. Linux/Windows compile, exact-source fixtures and all validators pass; final objects and tested module hashes verified. Full changes, failed runs, reproduction and prioritized planner rewrites: `docs/ctf-ai-review.md`.
+
+### Local bot performance follow-up — `387d68a6-bot1` (not pushed)
+**Lives in:** our **server** engine and qagame (`sv_main.c`, `sv_game.c`, `common.c`, `ai_main.c`, `g_svcmds.c`) · **Seen by:** server operator; bots' behavior is seen by every client
+
+The old CPU bots subtotal measured the empty `SV_BotFrame` hook. Actual AI ran inside `G_RunFrame`, under game. Timings now bracket the native game AI and split setup/world/AI/input, excluding that cost from game. Existing imports carry internal markers; no import or network layout changes. Scheduled AI shares stable client AAS snapshots within one tick, without sharing visibility results or changing bot think intervals. `botscores` reports live score and match-state diagnostics on a bot-only server.
+
+Exact-source fixtures verify snapshot identity and invalidation, timing boundaries and accounting, and bot scoring guards. A synthetic 60-bot workload reduces 18,000 repeated queries to 60 botlib reads; this is not a measured live frame-time gain. Linux and Windows x64 compile. Actual authored-data runtime matches now verify FFA/TDM/CTF progress and expose the CA failure above. At that stage original map/bot assets were unavailable. The later Japanese Castles review below uses the supplied original assets. Bot-only tests must use `g_doWarmup 0`; a missing human ready-up is not an explanation with that setting. Full procedure and limitations: `docs/bot-performance-follow-up.md`. The broad K18 cache remains open.
+
+Two review edge cases are deferred at the user's request: failed initial Linux affinity capture, and the empty leading command-line segment consuming a slot. Reproductions and proposed changes: `docs/deferred-review.md`.
+
+### E232. Head-to-head isolation: R1 costs captures (5–18 against A1 alone); detours have no effect; A1 alone gives the 1.20× — FINDING, decision open
+**Lives in:** our **server** (`bot_ctfRouteIntel`, new per-team switch, default 3 = current) · **Seen by:** every client
+
+12 matches: japanesecastles, 15v15, skill 5, 600 s, timescale 1, build `e5063596`, route decisions logged, all PASS. Three questions, two side-swapped pairs each. Counts use the recorded live windows. Journal: `docs/bot-trials/e232/`.
+
+| question | captures | deaths (A/B) | per match |
+|---|---|---:|---|
+| R1: A1 alone vs A1 + R1 (both layer on) | **A1 alone 18, R1 5** | 0.94 | 4–2, 5–1, 4–1, 5–1 |
+| detours off vs on, assigned (both layer on) | 12–12 | 1.03 | 1–3, 5–3, 3–3, 3–3 |
+| A1 alone (R1 off) vs layer off | 6–3 | 1.20 | 2–2, 3–1, 1–0, 0–0 |
+
+**R1:**
+- A1 alone wins all four matches, on both sides. Sign test on the 23 captures: p ≈ 0.01.
+- The switch changes only where carrier route threat comes from. R1's damage and sighting hooks still run for both teams.
+- Possessions: A1 alone 72 (18 captured, median held 13.8 s, 53% of the way home, detours from the enemy base 50%). R1 64 (5 captured, 9.5 s, 37%, detours 35%).
+- R1 knows only what its team has recently seen, so it underestimates danger, goes direct into enemies it did not know about, and dies sooner. The pre-R1 count is perfect information no player has.
+- **R1 is fairer and measurably weaker.** Keeping it, dropping it, or keeping it with more evidence (longer decay, enemy spawn timing) is a design decision. Defaults are unchanged.
+
+**Detours:** none when assigned rather than chosen. With E226 B (5–6), two controlled tests show no effect. What seems to matter is detouring on good information (R1 vs census above), not detouring as such.
+
+**A1 alone:** 1.20× deaths and 6–3 in captures. E229's 1.22× was A1, not R1.
+
+### E231. Route-decision logging and outcome per route: gardens are offered and eligible but mostly outscored; detours from the enemy base live longer, captures not shown — FINDING
+**Lives in:** our **server** (`bot_debugRoutes`, new, print only) and test tools (`route-candidates.py`, new; `ctf-possessions.py`) · **Seen by:** —
+
+**The log.** `bot_debugRoutes 1` prints one `routepick` line per carrier route decision:
+- the direct travel time, route threat and cost;
+- every candidate waypoint with its position and either its cost or why it was refused: U unreachable, A already there, B not closer to home, L detour too long;
+- the pick.
+
+It recomputes and prints only, with no bot state written and no random draws. The fixture checks the log names exactly the waypoint chosen.
+
+**Place names.** Waypoints are named by their nearest `target_location`. japanesecastles names both gardens "Garden", told apart only by colour code (^1 red, ^4 blue), so the tools now keep the side.
+
+**Batch.** 8 matches, 15v15 CTF, both teams on the current layer (A1 + R1), skill 5, 600 s, timescale 1, all PASS. 1,730 decisions, 300 possessions. Journal: `docs/bot-trials/e231/`.
+
+**Are the gardens absent, refused or outscored? Outscored.**
+- They are a candidate in every decision.
+- Most are eligible: red carriers' own garden 1155 of 1666 times, blue's 783 of 1794 (274 refused as too long).
+- When eligible they beat the direct route about 10–14% of the time, and are picked in about 5% of decisions.
+- Carriers go straight home in 53% (red) and 63% (blue) of decisions.
+- The most-picked waypoint is in the enemy flag room: it is the step out of their base, so possessions are now labelled by the first choice outside it.
+
+**Outcome by way home, by where the possession started:**
+
+| from | way home | possessions | captured | median held | progress |
+|---|---|---:|---:|---:|---:|
+| enemy base | direct | 108 | 6 (6%) | 10.1 s | 33% |
+| enemy base | garden | 27 | 3 (11%) | 14.7 s | 48% |
+| enemy base | other detour | 59 | 7 (12%) | 15.8 s | 44% |
+| mid-map | direct | 71 | 16 (23%) | 5.2 s | 41% |
+| mid-map | garden | 11 | 2 (18%) | 3.2 s | 37% |
+
+From the enemy base, detouring carriers live longer and get further. The capture difference is not significant: detour against direct p = 0.19, garden against direct p = 0.38 (Fisher). It is also observational, because a carrier detours exactly when its estimate says direct is dangerous.
+
+Whether detours cause captures needs a controlled comparison: `bot_ctfDetours` per team, at a larger scale.
+
+### E230. Corrections from review; spectator aim review, step 1: A1 moves like stock aim, the old sweep was the staircase — FINDING (demos for eyes)
+**Lives in:** test tools (`livewindow.py`, `aim-jitter.py`, new) and our **server** (`bot_debugAim`, new, off by default) · **Seen by:** —
+
+**Corrections:**
+- **Capture counts.** My tools counted the whole log after the last map load. run.py measures between the snapshots it records (`result.json` initial and final). One A1 capture at about 609.3 s fell after the 608.35 s cut-off, which is why the kit said 3–9 and mine said 4–9.
+  - `heatmap.py`, `heatmap-compare.py` and `ctf-possessions.py` now read only that window (`livewindow.py`). Their B2 batch then gives 3–9 and 4–7, as they reported.
+  - Recounted on the windows: E226 pre-merge 0–4 (was 0–3), E226 batch 3 with sweep off 12–7 (was 12–8), so sweep off over 5 pairs is 16–9. Everything else is unchanged.
+- **E229's 1.22× is the combined A1 + R1 build**, not A1 alone.
+- **Heat maps:** `heatmap.py` allowed 600 ms between a carrier sample and a position, so the kit's 1-sample-a-second logs showed no carriers. Now 1.1 s.
+- **Their "development" was their local branch.** Our remote was never pushed to.
+
+**Spectator aim review, step 1: measured.** `bot_debugAim <client>` logs one bot's view and ideal aim every input frame. Six 300 s 15v15 CTF matches, timescale 1, two logged bots per variant, about 400 s of enemy tracking each, all PASS. `tools/test-environment/aim-jitter.py`:
+
+| | error | jerk | reversals/s >0.05° | >0.5° | frames held still | 10 Hz share |
+|---|---:|---:|---:|---:|---:|---:|
+| E226 sweep (deadzone) | 19.3° | 116 | 1.03 | 0.32 | **54.6%** | **33.7%** |
+| A1 (no deadzone) | 9.3° | 76 | 5.50 | **3.67** | 7.4% | 13.0% |
+| servo (sweep off, stock motion) | 9.0° | 73 | 5.42 | 2.84 | 5.8% | 12.7% |
+
+- **The staircase was the old sweep.** E226's deadzone held the view still for over half the frames, then stepped, with a third of its motion at the 10 Hz think rate.
+- **A1 moves almost exactly like stock aim.** It is not glued to the think rate: 13% at 10 Hz against stock's 12.7%.
+- **What A1 adds is shiver.** About 3.7 direction reversals a second of visible size (over 0.5° a frame), 30% more than stock and about 11× the old sweep.
+- Which of these reads as human is for eyes. Demos of a spectator following bot 0 under each variant are recorded for playback on real hardware.
+
+### E229. A1 + R1 applied and played: the layer's deficit closes to near parity; heat maps — FINDING
+**Lives in:** test tools (`tools/test-environment/heatmap-compare.py`, new) · **Seen by:** —
+
+**New matches on `46fc571d` (A1 + R1).** japanesecastles, 15v15, skill 5, 600 s, timescale 1, two side-swapped pairs of layer on vs layer off. All 4 PASS with no errors. Journal: `docs/bot-trials/e229/`.
+
+| match | layer on | red–blue |
+|---|---|---|
+| R1a | red | 1–1 |
+| R1b | blue | 3–3 |
+| R1c | red | 1–3 |
+| R1d | blue | 0–1 |
+
+Totals:
+- **Captures:** layer on 6, off 7. The E226 baseline was 4–32 over 5 pairs.
+- **Deaths:** 963 vs 789, a ratio of **1.22**. E226 baseline about 1.68; E226 with `bot_aimSweep 0` about 1.25.
+- **Reading:** A1 recovers what turning the sweep off did. That disagrees with the kit's own B2 batch (A1 at 1.33× and 3–9 in captures). It is two pairs each way, so still small.
+
+**Heat maps:**
+- Their 8 B2 matches, A1 vs R1, layer-on team pooled. R1's one visible effect is carriers going through both gardens, which A1's almost never enter. Presence and deaths look the same.
+- Per possession, 60 each: R1 carriers hold longer (median 17.4 s vs 13.3 s) and get home more (12 vs 7), with the same 4 captures. Their logs sample once a second, so "reached home" is rough.
+- Before/after on our builds (E226 baseline vs A1 + R1, 4 matches each): captures 2–13 against 6–7. Deaths 1007 vs 963. Carrier paths tighter along the two main lanes.
+
+Still open:
+- spectator check of A1's tracking for jitter (E227);
+- a second map;
+- the remaining 1.22× death ratio;
+- R1's garden routing has not been shown to help.
+
+### E228. Route Intel R1: carrier route risk from what the team has seen, not a global enemy count — APPLIED, experimental
+**Lives in:** our **server** (qagame `ai_tactics.c`, `g_combat.c` `G_Damage`, `g_local.h`) · **Seen by:** every client
+
+The second half of the same kit, on top of E227. Full report: `docs/bot-ai-changes-route-intel-r1.md`.
+
+`BotCTFRouteThreat` used `BotRoomEnemies`, the true count of enemies in each named room, which is knowledge no player has. It now reads team reports:
+- **Sightings:** enemies a bot actually sees. They come from `BotCountNearby`, after its existing `BotEntityVisible` check (360°), one entry per enemy so many observers do not multiply it.
+- **Incidents:** a bot taking 5+ enemy damage, or dying, reports its own position (weight 1, or 2 if fatal). The attacker's position is never passed.
+- **Decay and cap:** linear decay over 8 s, risk per room capped at 4.
+- **Scope:** CTF only, honours `bot_tacticsTeams` both ways, cleared on map load.
+
+The `bots` report prints per-team counters.
+
+Review: correct, bounded and per team. It is a fairness gain on its own: the carrier no longer routes on enemies nobody saw. Their evidence is no strength change:
+- B2: 8 matches × 600 s. R1 4–7 against A1 3–9 in captures, deaths about equal.
+- Carriers use alternate waypoints more (36% of samples against 24%) and are in the gardens more. No survival gain.
+
+**Heat maps of their 8 matches (A1 vs R1) and of 4 new matches on this build: see E229.**
+
+### E227. Aim sweep A1 (from the Route Intel kit): continuous tracking, no deadzone — APPLIED, experimental (verify on screen)
+**Lives in:** our **server** (qagame `ai_main.c` `BotAimSweep`, `ai_main.h`, `ai_dmq3.c` `BotAimAtEnemy`) · **Seen by:** every client
+
+A coworker's iteration on top of E226, reviewed and applied as supplied. Their full report is `docs/bot-ai-changes-aimsweep-a1.md`.
+
+Their tree was checked file by file against `e4036f1e`. The only differences were A1 and R1 (E228), their tests and their notes.
+
+What changes:
+- **Clock:** the sweep runs on the game clock (`level.time`), not botlib's stepped clock.
+- **Lead:** one rate filter, updated only on a fresh aim sample, gives a bounded 30 ms lead (±2°) that expires after 200 ms.
+- **When it restarts:** a new enemy, a lost one, or a jump over 45°.
+- **Tracking:** exponential correction at 12–20/s by skill, capped at 180–720°/s, with **no deadzone**.
+- **Drift with the sweep off:** `bot_aimDrift`'s error is now applied when `bot_aimSweep` is 0. Before, it was silently dropped, so sweep-off numbers from E226 and from now on are not directly comparable.
+
+Review:
+- The code is correct.
+- The rewrite dropped the old reasoning comments. One of them warned that fast correction with no deadzone glues the view to the 10 Hz think updates, which spectators see as jitter. A1 is that shape, and its author says spectator review was not done. A note pointing at the old reasoning is now in the function.
+- Their own evidence: synthetic tracking error falls (0.2° → 0.002° held still, 4.1° → 1.4° at 30°/s). In matches, the B2 batch (8 × 600 s) had the A1 layer still losing 3–9 in captures and dying 1.33× as often, so A1 does not recover what `bot_aimSweep 0` did in E226 (16–10).
+
+### E226. Why the tactical layer loses: controlled side-swapped series at normal speed — aim sweep is most of it — FINDING (no default changed)
+**Lives in:** our **server** (qagame `ai_main.c` `BotAimSweep`; switches in `ai_dmq3.c`, `ai_tactics.c`) and test tools · **Seen by:** every client (bot behaviour)
+
+An external review of E225 corrected four readings, and every one held up:
+- the carrier plot overlaid possessions, so it could not show loops;
+- `f` in `bottrack` is any battle node, retreat-following included;
+- objective movement selects the retreat node, it does not disable retreat;
+- proximity is not protection.
+
+The review asked for a controlled series in five steps. All runs: japanesecastles, 15v15, skill 5, 600 s, **timescale 1**, every match PASS. 34 matches in all. The journal is in `docs/bot-ai-changes-e226.md`.
+
+1. **Normal speed:** the deficit holds. Layer on 1 capture, off 10. Deaths 1.70×.
+2. **Switch audit:** `docs/bot-tactics-switch-audit.md`.
+   - The baseline is "tactical layer off", not stock Quake 3. Crowd steering, the E135 routing fixes and carrier route selection (CTF16–18 travel cost) run for both teams.
+   - The layer itself also changes think rate, aim, view, dodge and target commitment.
+3. **Carrier detours off** (`bot_ctfDetours`, new): no effect. 5–6 captures, deaths mixed.
+   - Per-possession trajectories (`ctf-possessions.py`, new) show layer-on carriers reverse *less* than layer-off ones. No looping.
+   - The real deficit: 28 pickups against 50, and home carriers dying while their own flag is away (1 of 5 captured, against 10 of 12).
+4. **Objective movement off** (`bot_ctfObjectiveMove`, new): small. 10–7 captures, deaths 289 vs 303.
+   - One aim or view piece at a time, removed from the layer-on team only. **`bot_aimSweep 0` alone flips the result.**
+   - Replicated over 4 more pairs: baseline 3–22, aim sweep off 12–8. Over all 5 pairs each: **4–32 against 16–10**. Death ratio about 1.68 against about 1.25.
+   - aimDrift, viewSmooth and dodge show no change. targetCommit is 1.42 in a single pair.
+5. **Pre-merge build** (`387d68a6` + switch): the same 1.70× death ratio and 0–3 captures. **Inherited, not a CTF18 regression.**
+
+`BotAimSweep` is human-like on purpose: eased sweeps, slowing corrections, and a deadzone that leaves residual error. Against servo aim it loses fights. **Nothing was changed by default.** Keeping, tuning or dropping it is a design call.
+
+Open:
+- the remaining 1.25× (think rate has no switch yet; targetCommit; attack pickups);
+- a second map.
+
+### E225. Heat maps of two head-to-head CTF matches: the stock bots won both, 6–0 and 4–0 — OPEN (finding)
+**Lives in:** our **server** (qagame tactical layer) and test tools (`tools/test-environment/heatmap.py`) · **Seen by:** every client
+
+Setup: japanesecastles, 15v15 bots, skill 5, 600 game seconds at 4x. Match 1 had `bot_tacticsTeams 1` (red ours, blue stock). Match 2 had `bot_tacticsTeams 2`, sides swapped. Both PASS, no errors.
+
+| match | team | captures | flag grabs | deaths | fighting | escorts within 600u |
+|---|---|---:|---:|---:|---:|---:|
+| 1 | red, ours | 0 | 17 | 236 | 71% | 71% |
+| 1 | blue, stock | 6 | 24 | 78 | 63% | 25% |
+| 2 | red, stock | 4 | 22 | 102 | 63% | 23% |
+| 2 | blue, ours | 0 | 21 | 189 | 74% | 67% |
+
+What the maps show:
+- **Our team reaches the flag about as often** (17 and 21 grabs against 24 and 22) and keeps its escorts close (67–71% within 600 units, against 23–25%).
+- **But it dies two to three times as often, and its carriers never get home.** Their paths wander round the middle courtyard loop, the detours the route-risk scoring picks. The stock carriers run one line home.
+- So the loss is in surviving, not in reaching the flag.
+
+This is not yet a verdict on any one change, because `bot_tactics` gates more than the CTF planner:
+- think rate by skill;
+- aim sweep and view smoothing;
+- squad fallback;
+- "fight while moving" (`BotCTFKeepObjective` turns chase and retreat off for objective bots).
+
+The last is the first suspect for the death rate. Two matches at 4x is a small sample, but 10–0 and 2–3x the deaths is not a small effect.
+
+Next: the same head-to-head with only parts of the layer switched, to find which part costs the deaths. Run each on `387d68a6` as well, to tell whether the ctf11–18 merge made it worse or the layer already lost to stock.
+
+### E224. CTF18 bot AI merged; per-team policy switch for head-to-head tests; CA rounds no longer demote the dead or run forever — DONE (verify)
+**Lives in:** our **server** (qagame `ai_*.c`, `g_gametype_common.c`, `g_gametype_ca.c`; engine `sv_game.c`, `sv_main.c`, `common.c`) and test tools · **Seen by:** every client (bot behaviour, CA rounds)
+
+**The merge.** The ctf11 → ctf16 → ctf17 → ctf18 bot work was developed on a copy of `387d68a6` (this branch's previous head), so it applied as a straight diff with no conflict against E222/E223. It was reviewed before merging:
+- **CTF planner.** One planner owns autonomous CTF jobs (`BotCTFPlanGoals`): attack, defend, escort, recover and roam, with carrier route risk, recovery of a carried flag from team sightings, a dropped enemy flag acted on once a teammate has seen it, and escorts ranked by where they can meet the carrier. Everything is behind `bot_tactics`; 0 is stock.
+- **Bot CPU timing.** The game reports its stages (setup / world / AI / input) to the engine through the existing `BotLibVarSet` import, so there is no ABI change. It fills E222's `bots` figure, which previously timed `SV_BotFrame` while the AI actually runs inside `G_RunFrame`. A per-frame entity-info cache serves AI reads.
+- **Tools.** A `botscores` server command, 8 source-level fixtures in `tools/validate.sh`, `check-native-game-modules.py` in packaging, the headless match runner `tools/test-environment/`, and the docs `docs/bot-ai-changes-ctf*.md`.
+- **One loss restored.** The rewrite of the role census dropped the E67/E83 reasoning for "a declared job outranks position". The rule was kept; the explanation is now back on `BotCTFClientRole`.
+
+**Head-to-head switch (new).** Capture counts from six games per build cannot tell builds apart, so comparisons now run inside one match.
+- `bot_tacticsTeams` (1 red, 2 blue, 3 both; default 3) gives the tactical layer to one team only. While a bot thinks, `bot_tactics` reads as its own team's setting and is restored after, so all 64 readers follow without being edited. Shared caches are per team.
+- `bot_ctfIntercept` (same bits) switches only CTF18's meeting-point escort choice, which is the ctf17-vs-ctf18 question.
+- `run.py --set NAME=VALUE` passes either cvar.
+- Verified: a 12-bot CTF run with `bot_tacticsTeams 1` logged 18 planner role decisions, all from red, none from blue. The intercept fixture now covers one team off and the other on.
+
+**CA: dead players moved to spectator for good.** The merged handoff reported it; confirmed in source. Both CA/AD round paths in `g_gametype_common.c` (a mid-round join, and every respawn after a mid-round death) called `Cmd_FollowCycle_f`, whose first act is `SetTeam(ent, "spectator")`. Teams emptied death by death and the match forfeited. That, not the missing human ready-up, is the likelier cause of our bot-only CA forfeits. FT had exactly this and was fixed with `G_FollowCycleKeepTeam`; these two calls were missed and now use it.
+
+**CA: a round nobody finished never ended.** `CA_Think` ended a round only on elimination. `roundtimelimit` (180) was read by RR, FT and AD but not CA, although CA's round-over branch already holds the both-alive draw rules a timeout needs. Now applied.
+
+Runs (japanesecastles, bot-only, `g_doWarmup 0`, 4x):
+- CTF 10v10 head-to-head: PASS, 1–1.
+- CA 6v6, 420 s: before, 17 kills and no round ever ended. After, PASS: rounds end at the limit, 2–0, all 12 bots still on their teams.
+- AD 6v6, 420 s: rounds end, 44 kills, no demotions. No score, by AD's rules: points come only from touches, captures and elimination bonuses, and these bots never took the flag.
+
+Not done: no capture-rate claim for CTF18. That needs the head-to-head runs above, sides swapped, measuring escort arrival and carrier survival as well as captures.
+
+### E223. Review of `4a0e77fe`: affinity restore, timing window, and three caster-shadow follow-ups — DONE (verify)
+**Lives in:** our **client and server** engine (`sys_unix.c`, `sys_main.c`, `common.c`) and our **client** (renderervk `vk_rt_world.c`, `actorshadow.tmpl`) · **Seen by:** our client only (shadows); whoever runs the binary (CPU)
+
+An external review of `4a0e77fe` with build logs and source probes. Each finding was confirmed in the source first.
+
+- **Linux affinity lost CPUs above 63, even with placement off.** E222 read the thread's whole affinity but saved only the first 64 bits, and `sys_cpuPlacement 0` "restored" that at startup without ever having changed anything. The whole mask is now kept (up to 1024 CPUs) and written back with the length the kernel gave. Placement off at startup touches nothing, and a restore that fails says so in yellow instead of reporting success. Probe with a mocked kernel, starting on CPUs 2 and 70: off at startup → 2 70; placed → 2; off → 2 70; failing restore → reported as failed.
+- **`com_cpuTimings` kept samples across off/on.** The two-second window carried frames from before it was switched off into the next report, which skewed its fps. Switching it off now empties the window, and a new window starts where its first frame began.
+- **Dropped casters took candidate slots.** A caster left out for room keeps its sphere (for the early-out) but has an empty triangle range. It still ranked among the four candidates, so four of them could crowd out the caster actually shading the pixel. An empty range is now skipped before ranking, in both the caster-light and the sun loops.
+- **Mode 2 counted the sun twice.** The sun loop skipped a caster whose light is the sun only in mode 1. In mode 2 a caster without a clear point light falls back to its grid direction, and when that direction was the sun it was traced again as the sun. Both loops now ask the same function (`casterPointLight`) which light the caster resolved to.
+- **Casters past the 64 listed were fitted part by part.** An unlisted player could keep its legs and lose its head when the mesh filled. Unlisted parts are now grouped by the same key as listed casters and fitted whole or not at all.
+- **Found while testing this: a long command line lost its end without a word.** `main()` joined the arguments into 1024 characters, and the engine kept only 32 `+` commands. Everything past either limit was dropped silently, so a launcher's trailing `+connect` or `+map` simply did not run (the harness hit it: two more `+set`s and `+devmap` never happened). The limits are now 16384 characters (whole arguments only, never half of one) and 128 commands. Anything past them prints a yellow warning naming how many were ignored. Dedicated server: 100 `+set`s then `+map` loads the map; 130 and 2000 print the warnings.
+
+Harness (japanesecastles, red-base back wall and the hallway, first person, `r_rtActorLight` 1 and 2 with the sun on), against `4a0e77fe`'s renderer: 20–21 casters listed, none dropped, and old and new differ by no more than two shots of the same build do (mean luminance 0.02–0.48 vs 0.05–0.49). The fixes change nothing where nothing was dropped and no mode-2 caster falls back to the sun. The reviewer's fixtures for those cases were not in this session.
+
+### E222. CPU detection, main-thread placement, and a per-frame CPU breakdown — DONE (verify)
+**Lives in:** our **client and server** engine (`sys_main.c`, `sys_win32.c`, `sys_unix.c`, `common.c`, `sv_main.c`, `cl_scrn.c`) · **Seen by:** whoever runs the binary
+
+The tester's RT timings (`qconsole-20261005-164528.log`) put the whole ray-traced frame at 4–5.6 ms on an RTX 5080, so a 30v30 listen server that still drops frames is spending them on the CPU. The engine is one thread — server, bots, game and client in turn — so the core that thread lands on matters.
+
+**What it finds** (`cpuinfo`, also printed at startup): brand, cores and threads, performance/efficiency split, L3 per die, SIMD level, RAM.
+- **Windows:** `GetLogicalProcessorInformationEx` — per-core `EfficiencyClass` (hybrid Intel) and L3 caches (a dual-die X3D shows as two L3s of different size).
+- **Linux:** sysfs — `/sys/devices/cpu_core/cpus` for hybrid Intel, else differing `cpu_capacity` (ARM big.LITTLE), `cache/index*` for L3.
+- **macOS:** `sysctlbyname` — `machdep.cpu.brand_string`, `hw.perflevel0/1.physicalcpu` (Apple Silicon P/E clusters), `hw.memsize`. Apple Silicon exposes no L3; NEON is always there.
+
+**What it does** (`sys_cpuPlacement`, default 1, 0 leaves everything to the OS, changeable live):
+- Hybrid CPU: the main thread is pinned to the performance cores. Dual-die X3D: to the larger-cache die. All cores alike: nothing.
+- Windows also opts the process out of power throttling (EcoQoS), which otherwise lets Windows park a background-looking game on E-cores.
+- macOS ignores thread affinity on Apple Silicon; the thread is marked `QOS_CLASS_USER_INTERACTIVE`, which is what keeps it on the P cluster.
+
+**What it measures** (`com_cpuTimings 1`, every 2 s): ms per frame for the whole frame, the frame-cap idle, server (bots / game), client (scene build / submit + present) and the rest. That says which part a 30v30 frame goes to before anything is threaded.
+
+Harness (Linux, 4-core Xeon VM, dedicated server on `qltest_stone`): `cpuinfo` reports 4 cores / 33 MB L3 / AVX-512 / 16 GB and "all cores alike"; toggling `sys_cpuPlacement` reports at once; the timing line prints with server/game populated. Bots read 0 here (no botfiles in the test pak). With no map loaded a dedicated server sleeps inside `SV_Frame`, so "server" then shows the sleep — only read it with a map running.
+
+**Not seen here:** hybrid, X3D and Apple Silicon paths — there is no such CPU in this container, and the macOS file is compiled by nobody here. The Windows path is compiled by the mingw build.
+
+### E221. "r_rtModelShadowSoftness is 0.06, not one of its 6 listed values" — DONE (verify)
+**Lives in:** our **client** (renderervk `tr_init.c`) · **Seen by:** our client only
+
+Tester's console on `c7ba822a`: `WARNING: multi item cvar "r_rtModelShadowSoftness" is "0.06", which is not one of its 6 listed values - the row will draw blank`.
+
+E207 moved this setting from an angle in radians (menu steps 0.03 / 0.06 / 0.12 / 0.25) to world units (0 / 2 / 4 / 8 / 16 / 32). It kept reading an old saved value correctly (below 1 is read as radians), but the menu row could not show it.
+
+A saved value between 0 and 1 is now converted once at startup to the size that angle is at 128 units, on the nearest listed step (0.06 → 7.7 → 8). It is saved, so the next start has nothing to convert, and the console says what it did.
+
+The other two softness rows E207 touched only gained values (the light's 32, the players' 2), so every value saved under their old lists is still listed.
+
+Harness, started with `r_rtModelShadowSoftness 0.06`: the conversion line printed, the cvar reads 8, and no blank-row warning appeared.
+
+### E220. Pre-test sweep: r_rtActorLight on the Cast Shadows page — DONE (verify)
+**Lives in:** our **client** (pak01 render menus, `gen-render-menu.py`) · **Seen by:** our client only
+
+Before the tester's round, a last pass.
+- **Console:** harness logs from gameplay, menus, debug views and a disconnect. Every warning left is the harness, not the build: pak00 art it does not have (explosion animMaps, weapon hand models, icons), no IPv6 in the container, and japanesecastles' known 85-of-63 target_location entities.
+- **Menus:** the settings this session added. `r_rtActorLight` had no menu row and is the one to flip at a spot (0 per surface, 1 grid direction, 2 estimated point), so it is now on Render > Cast Shadows after "Light position". It fits the panel. `r_rtCull` and `r_rtActorRefit` are diagnostic switches and stay console-only.
+- **Checks:** `tools/validate.sh` passes.
+
+### E219. Caster shadows no longer cut by the pixel's own light; darkness from one direction; candidates ranked; casters whole or not at all; mode 2 without push-out — DONE (verify)
+**Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_world.c`, `vk.h`, `tr_shade.c`) · **Seen by:** our client only
+
+An external review of `fbae71b9`, with a shader fixture, found E214 left these. Each was confirmed in the source first.
+
+1. **An early return still gated casters on the pixel's own light.** `if (!firstLit && soft.z <= 0.5) return;` ran before any caster was considered. Where this pixel's grid direction faced away, every caster shadow vanished; the sun option re-enabled them, which the sun-on tests could not see. Fixture: 64 shadow pixels with the grid pointing up, 0 pointing down, 64 again with the sun option on. It now returns only when no caster could apply.
+2. **The darkness mixed two directions.** Caster light × N·L on top, this pixel's grid direction underneath: past 1 where they disagreed, a brightness of −4.14 in the fixture. It is now `directed·nl / (ambient + directed·nl)`, the same direction above and below, which cannot reach 1. When a caster's shadow is the first light's, the sun's share is taken out of that same total: `(directed·nl + 0.8·ambient) / (ambient + directed·nl) < 1`, so the sum stays below 1 by construction, not by a clamp.
+3. **"The first four" casters.** The budget went in list order, and a near miss used a slot. Every caster passing the sphere test is now ranked by how squarely the ray passes it (closest approach over radius + margin), and the best four are traced, deterministically. The sun's casters are ranked the same way. Per-tile candidate lists are the fuller answer and are left for later.
+4. **Half-built casters.** The mesh could fill up partway through a caster (a player cut off at the waist), or drop its caps when cap room ran out (a hollow shadow). What a caster needs, every part plus its caps, is now counted before any of it is written. A caster that does not fit is left out entirely and counted; unlisted parts past 64 casters are checked the same way. `rtshadows` reports "casters: N listed, M left out whole for lack of room".
+5. **Mode 2's push-out.** A light estimated within the caster's bounds + 16 was moved out along an unstable direction (a 2-unit move could swing it 94 units). Such a light is now not used: that caster falls back to its grid direction. Real light positions are never moved.
+
+Not changed: caster identity is still the lighting origin, so two objects at exactly the same origin would share a caster. Explicit ownership needs a submission-interface change and is noted for later.
+
+**Test.** Flag room ×2 and the yellow armour, `r_rtShadowSun` 0 and 1, normal and debug, against E218: the same shapes, with darkness differing where the two directions differed. "casters: 21 listed, 0 left out whole". 0 validation errors.
+
+Not reproduced in game: a floor whose own grid light faces away while a caster's light reaches it. That is the fixture's case, and this fix is checked by reading and by the algebra above.
+
+### E218. K8: RT shadow features resolved once per frame; K10: passes state what they need — DONE, no visible change
+**Lives in:** our **client** (renderervk `tr_init.c`, `tr_local.h`, `tr_cmds.c`, `tr_shade.c`, `vk_rt_*.c`, `vk_ssr.c`, `vk_timing.c`) · **Seen by:** nobody, by design
+
+- **K8.** Whether each traced shadow feature was on was worked out where it was used: "`r_rtModelShadows` or `r_shadows 4`", "actor shadows or traced or casters", 24 times over five files. A pass that read the rule slightly differently from its neighbour could run when the other did not.
+  - `R_ResolveRTFeatures()` now fills `rtf` once, at the start of each frame (`RE_BeginFrame`, after registration) and when the world's structures are built.
+  - `rtf` holds: traced, model, dlight, actor and level shadows, casters, whether the silhouette mesh is needed, whether any traced shadow is on, and the three debug flags.
+  - Every one of those sites now reads it.
+- **K10.** `vk_pass_check(pass, needs)` is called where ambient occlusion, the shadows on the level and the water reflections commit to running.
+  - Each says what it needs: the world's depth this frame, the level's structure, and (when it traces players) this frame's player/item structure.
+  - If one is missing the console says so once, naming the pass and the need. It only reports; the passes' own checks still decide.
+  - It turns the tracker's depth-layout and stale-structure history into a line in the log instead of a picture to diagnose.
+
+**Proof.**
+- **K8:** traced shadows on, AO off, three views (flag room twice, pool), normal and the shadow debug view, against the E214 renderer and against itself: **0 differing pixels in all six shots**, no fuzz.
+- **K10:** gameplay with AO, SSR with its RT fallback, traced shadows and a bot, then the in-game menu, the debug views and a disconnect to the main menu (whose player model is a world-less view): no contract line, 0 validation errors. A real violation was not induced, so the message itself is checked by reading only.
+
+### E217. K6: vk_ssr() split into one function per job — DONE, no visible change
+**Lives in:** our **client** (renderervk `vk_ssr.c`) · **Seen by:** nobody, by design
+
+`vk_ssr()` was about 600 lines doing everything in a row. Each section was moved as-is into a static function, in the order it runs:
+- `ssr_build_view`: matrices, eye, strength, depth convention
+- `ssr_build_planes`, `ssr_build_waves`, `ssr_build_rt`
+- `ssr_build_ripples`: matching, bounce, report
+- `ssr_build_emitters`: K3's light choice
+- `ssr_report`: the once-per-map lines
+- `ssr_trace`: depth hand-off, march pass
+- `ssr_composite`: blend, state restore
+
+`vk_ssr()` is now its eligibility checks plus that list. The one value that crossed sections, the plane count the ripple report prints, is read back from the uniform.
+
+**Proof.** The pool below the bridge, camera settled and position logged, waves and foam off. The normal view and `r_ssrDebug` 1, 4 and 6 were compared against the E214 renderer:
+- With AO and traced shadows on, both builds differ from themselves run to run, in sparse speckles along shading edges. That is per-frame sampling, not this change.
+- With those off: **0 differing pixels in all four views**, no fuzz.
+
+### E216. K4: one scores_ad sender, pinned by the field check; one validator script for packaging and CI — DONE (verify)
+**Lives in:** our **server** (qagame `g_gametype_ad.c`); tools, CI · **Seen by:** every client (wire format unchanged)
+
+- **One `scores_ad` sender.** The A&D round history went out from two hand-written copies of the same 22-field `va()`. One sent the sorted history; the reset sent every slot as −1. Both now go through `AD_SendScores()`, and the reset clears the sorted history to −1 first, so its message is byte-for-byte what it was. The shape stays Quake Live's: the stock cgame parses it.
+- **`check-score-fields.py` pins it.** It now checks `scores_ad`: exactly one sender; 22 fields; `CG_InitScores` reading 20 in its loop and then arguments 21 and 22, contiguous. Unlike the per-row boards this is checked against a fixed 22, not just matched, because a stock client fixes it.
+- **`tools/validate.sh`** runs every source-level check: server configs, stubs, dead cvars, assets, menu defaults, menu cvars, menu parse, score fields. `package-release.sh` calls it in place of its own list (its comments explaining each check stay), and the CI workflow runs it before compiling. CI ran none of them before.
+
+### E215. K1–K3: water.cfg values checked; the largest water faces kept; the dynamic lights that matter reflected — DONE (verify)
+**Lives in:** our **client** (renderervk `tr_scene.c`, `vk_ssr.c`) · **Seen by:** our client only
+
+- **K1, `water.cfg`.** Every value went through a bare `atof`, and `R_WaterSetting` hands a map's value to the shader without the cvar's range check, so `nan`, a typo or an empty value (0) reached the waves. Each value now has to be a whole token of digits, one sign and a point. That is checked as text, because the renderer is built with `-ffast-math`, which may remove a `v != v` NaN test. It is then clamped to the range its cvar is registered with (scale 8–1024, speed 0–8, steepness 0–0.5, height 0–32, strength 0–1, ripplesize 0.1–16, rippleheight 0–16, ripplewaves 1–24, ripplelife 0.25–10). A rejected value leaves the setting to the player's cvar. The console names the map, key and value.
+  - Probe built with the same flags: `64` taken; `nan`, `inf`, `1e5`, `12abc`, empty and over-long rejected; `99999` and `-3` clamped.
+  - In game, a deliberately bad japanesecastles block produced all four warnings.
+- **K2, the water-plane cap.** Past 32 faces the first ones in BSP order won, so which water reflected depended on how the compiler split the map. Every face is now a candidate (deduplicated as before), and the 32 largest by the box the shader tests are kept, BSP order breaking ties so it is the same every load. The warning says how many were left out and their area. japanesecastles has 4, unchanged.
+- **K3, dynamic lights for water.** The shader holds 16, and the first 16 found won. When there are more, they are now scored by brightness × radius, discounted by distance to the nearest water box. It is not camera distance: reflections show off-screen lights. The best 16 are kept, in frame order. With 16 or fewer, nothing changes.
+
+Pool view against the E214 renderer: RMSE 0.015, which is water animation. 0 validation errors.
+
+### E214. One record per caster, each traced toward its own light, with only its own triangles counting — DONE (verify)
+**Lives in:** our **client** (renderervk `vk_rt_world.c`, `vk_rt_shadow.c`, `vk.h`, `actorshadow.tmpl`) · **Seen by:** our client only
+
+The external shadow diagnosis of `6bc976c5` found E211/E212 did not do what their entries said. Each point was checked against the source:
+
+1. **Gated by the wrong light.** Players and items were only traced where the *receiving pixel's own* grid light passed `N·L > 0.02`. Wherever that light turned away, the shadow was cut off along a line, even when the caster's own light still reached the surface. That is a source of the wedge cutoffs.
+2. **Regrouped per pixel.** Each pixel picked its nearest model *part* and grouped everything within 64 units, so neighbouring pixels could pick different centres (and lights) for one body, and a pickup beside a player could join them. Every ray also counted hits on *any* actor. The entries said "once at the caster"; the code did it per pixel.
+3. **Overflow switched it off.** The list held 64 *parts*, not players. Past that, `-1` switched off the per-pixel early-out *and* the caster light, for the whole frame.
+4. **Culling bounds ignored the previous frame.** Bounds came from the current animation frame only, though the mesh is lerped from the previous one, and from axis 0's scale only.
+
+**Now:**
+- **Grouped once, on the CPU.** The silhouette build groups parts by the lighting origin cgame gives every part of one player (`RF_LIGHTING_ORIGIN`), or by the entity's origin, into one caster:
+  - a sphere around every part over both animation frames, using the largest axis scale;
+  - the light grid's direction at it, from `R_LightForPoint` (the sample Quake 3 lights the model itself with), at least 30° above the ground;
+  - a contiguous triangle range: triangles are emitted caster by caster.
+- **Up to 64 casters** (players and items, not parts). More than that are emitted last and traced the old way, and only the early-out is switched off.
+- **In the shader:**
+  - Each caster within reach whose light faces the surface, up to 4, is traced toward its own light. The query runs non-opaque and confirms only that caster's triangles.
+  - The darkness is this surface's directed light × N·L toward the caster's light, not the pixel's own.
+  - The level keeps the pixel's own light. A pixel in both shadows takes the darker of the two; they do not add.
+  - The sun is traced per caster too, skipped where the caster's own light already is the sun, so it is not cast twice.
+- **`r_rtActorLight`:** 1 casts along the direction (default), 2 toward the light field's point at the caster (E211), 0 the per-pixel light.
+
+**Test.** Red flag room, both shard groups and the yellow armour, first person, all three modes. A first pass waited 3 s per shot and lavapipe lagged a settings change behind; re-run at 8–10 s.
+- Looking down: one body silhouette (mode 0: a broken smear).
+- No smears at the shard groups.
+- Lamp (red) and sun (blue) shadows both present where both lights reach.
+- The shadow takes the debug tint, so this pass draws it.
+- 0 validation errors.
+
+Not covered: a scene with more than 64 casters, and timing on a real GPU.
+
+### E213. Review findings: access reload, spawn armour as Quad, AD/CA/FT/RR status after a zero countdown; packaging checks — DONE (verify)
+**Lives in:** our **server** (qagame `g_svcmds.c`, `g_gametype_{ca,rr,ad,ft}.c`); tools · **Seen by:** every client
+
+From the external review of `6bc976c5`, each claim confirmed against the source first.
+
+- **F1, `reload_access` missed sparse slots.** It walked `[0, level.numConnectedClients)` as if that were a slot range; the binary does the same. With players in slots 0, 5 and 63 it touched 0, 1 and 2, so an admin removed from the access file in slot 5 or 63 kept their rights. It now walks every slot and skips disconnected ones.
+- **F2, CA and RR spawn armour gave Quad.** The `g_spawnArmor` timer went into `powerups[PW_QUAD]`. FT and AD put it in `powerups[0]`, which is what `g_combat.c` reads, and their comments say the binary does too. With `g_spawnArmor` set, CA and RR handed out quad damage at round start. Now `PW_NONE`. Off by default, so it only affected servers that set it.
+- **F3, a zero countdown overwrote the playing status.** With no countdown, all four round modes switched to playing, which published its own status, and the countdown code then wrote its countdown status on top. AD ended up saying `state\1` (countdown) during a live round. Each now returns straight after the immediate switch. Wire formats unchanged.
+- **Packaging** now also runs `check-menus.py` and `check-score-fields.py`. Both were documented as "run after touching…" and never run.
+
+**Smoke test:** dedicated server, 8 bots, `g_spawnArmor 3000`, current qagame.
+- CA, AD and RR play rounds with kills, no errors.
+- Historical FT and zero-delay CA runs forfeited repeatedly on both releases. The earlier explanation that bot-only tests require a human was incorrect: `g_doWarmup 0` bypasses readiness. The reusable runtime environment now reproduces a separate CA spectator-demotion/forfeit regression with both normal and zero round delay; see `docs/test-environment.md`. FT was not rerun in that environment, and these historical runs do not verify round transitions.
+- Not checked: the published configstring itself. A dedicated server cannot print it; this needs a client.
+
+### E212. E211 was wrong where it mattered: shadows now along the light grid's direction, Quake 3's rule — DONE (verify)
+**Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `tr_init.c`) · **Seen by:** our client only
+
+Tester, on E211, with screenshots from the red flag room facing the armour wall, the flag room to garden hallway and its jump pad: "that's not true at all". Shards, the yellow armour and the ammo pack threw large smears. The player's own shadow came out as an upside-down L, as curved arcs, and in two places at once.
+
+**Why E211's test missed it.** The harness had no item models (Quake Live's are in pak00) and was never run in that room. It now loads OpenArena's armour, ammo and health models, test only, from the scratchpad, never shipped. The flag room floor and back wall were traced from the BSP.
+
+**Why E211 was wrong.** It took the estimated light *position* at the caster. Next to a small item, or with the estimate near the player's head, a point light a few dozen units away magnifies the shadow many times over and swings it with every unit of error. Holding the point just outside the caster's bounds does not help a 10-unit shard.
+
+**The rule now (`r_rtActorLight 1`, default).** A player's or item's shadow goes along the light grid's direction at the caster: the direction the model itself is lit from, as parallel rays. That is Quake 3's own rule for model shadows. Like Quake 3's `RB_ProjectionShadowDeform`, it is never flatter than 30° above the ground, so it cannot run off across the floor.
+- The shadow is the caster's own size whatever any estimate says about distance.
+- It is straight: one direction for every pixel, so it cannot curve.
+- It is the same on every surface it falls on.
+- `2` keeps E211's point. `0` is the per-pixel light from before E211, which is what drew the curved arcs: a light direction that changes across the floor turns a straight body into a curve.
+
+**Flag room result** (same standing position, modes back to back; teleport flashes in some mode-0 shots are the harness, not shadows):
+
+| What | Mode 0 | Mode 2 (E211) | Mode 1 |
+|---|---|---|---|
+| Own shadow looking down | two shapes | stretched and turned aside | one compact silhouette under the player |
+| Floor ahead | two offset copies (lamp red, sun blue) | two offset copies | one shadow |
+| Near the shard line | — | large smear | does not smear |
+| Yellow armour on its pedestal | smeared over the pad | smeared over the pad | compact, under the armour |
+
+0 validation errors.
+
+**Re-run at the right wall.** Tester: the earlier spots faced the flag base, not the back wall. The shards are two groups of three (y −300…−204 and 148…244), each by a side corner, 32 units in front of the wall at x −2204. The harness also had to change: Quake 3's teleport gives a forward push, which slid the player onto the shards and launched it off the pads. Moves now go through noclip, and the player then drops and stands; logged positions land within 10 units of target.
+
+What lights this corner, from the BSP: a `flame2` torch on the side wall at (−2515, −588, −197), about 390 units away and about 50 units above head height, low and behind-left of a player facing the shards.
+
+| What | Mode 0 | Mode 2 (E211) | Mode 1 |
+|---|---|---|---|
+| Player's shadow | thrown sideways, toward the torch: the "upside-down L" | compact blob underfoot, as if lit from overhead | long, forward-left, away from the torch, as this light casts it |
+| Shards' shadows | a streak up the paper window above them, impossible for a light below it | — | at the wall base under them |
+
+### E211. A player's shadow bent across surfaces and swung around near lamps — DONE (verify)
+**Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `tr_init.c`) · **Seen by:** our client only
+
+Tester:
+- "when we get too close to the light the shadow will warp around it";
+- "when we apply a single shadow across multiple surfaces, that's where the wonkiness in bending comes from".
+
+**Cause.** The shadow pass looked the light up separately for every pixel receiving a shadow:
+- from the grid and the light field at that pixel;
+- or, where those could not say, from the per-pixel estimate.
+
+That is right for the level shadowing itself, and wrong for a player. The floor and the wall beside them each found their own light, so one shadow was cast from two places and bent or broke at the crease. Next to a lamp, neighbouring grid points disagree most, and a few units of error is a large angle, so the shadow swung around the player. With the light inside the body's bounds, it wrapped.
+
+**Fix: the light at the caster.**
+- For a pixel near a player or item, the nearest cluster of silhouette spheres is found. Legs, torso, head and gun are separate models of one body.
+- The light field is looked up once, at that cluster's centre.
+- Players and items are traced toward that point from every surface their shadow reaches. The level is still traced toward the pixel's own light.
+- A light closer to the caster than its bounds + 16 units is moved out to that distance, along the same direction.
+- A surface facing away from the caster's light takes no shadow from it.
+- `r_rtActorLight 0` restores the old per-pixel light (default 1).
+- The silhouette spheres are now sent whenever they are known. The E204 early-out still follows `r_rtCull`.
+
+**Test (rebuilt to the tester's spec).**
+- **Spots:** next to the map's real torches (light emitters recovered from the BSP, `flame2`) at 32, 64 and 128 units, chosen where the shadow falls on floor and wall or steps; plus beside both jump pads.
+- **Player:** first person, on foot, view panned −10 / 25 / 55 / 85° and a side view.
+- **Comparison:** `r_rtActorLight 0` and `1` shot back to back at the same standing position (`viewpos` logged). Each pair is split into 8×6 sectors and diffed.
+
+Result: 21 of 45 views changed.
+- **Own shadow looking down:** the legs' shadow, broken into blobs with 0, is one silhouette with 1.
+- **Side view:** a shadow cut off along a straight diagonal (the "wedge") continues.
+- **Over a step edge:** keeps its shape.
+- **Lit grass:** an own shadow missing with 0 appears.
+- **Other changed sectors** are the jump pad's animated glow, flames and water.
+
+0 validation errors.
+
+Harness note: an earlier E192-vs-current run let the player land differently per build at the jump pads and spot G. Those pairs were discarded. Position is now logged, and the pad spots stand outside the trigger.
+
+### E210. "Shadows came back broken after I said they were fixed" — what changed, measured — DONE (verify)
+**Lives in:** our **client** (renderervk `tr_init.c`; pak01 render page) · **Seen by:** our client only
+
+Tester: shadows were confirmed fixed on E192 (`13e26fe8`, 10-04), then "something popped up after your recent builds".
+
+**Bisect.** Each build since E192 is kept in `release/out`. On japanesecastles I rendered the same views with E192 and E209, in traced mode (`cg_shadows 4`), normal and with `r_rtActorShadows 2`:
+- seven lamp-lit spots;
+- the indoor torch halls at both ends of the map, from four sides and looking down.
+
+Level and lamp shadows match **pixel for pixel** in every view. The shadow code did not regress.
+
+**Two things did change.**
+1. **Your own shadow, looking down.** The bent own-body shadow is identical on E192, E194 and E208. It was there on the signed-off build, and shows only when you look down near a lamp. E209 fixed it.
+2. **Three new defaults change the picture every frame on a still screen:**
+
+| Cvar | Since | Effect |
+|---|---|---|
+| `r_rtaoTemporal 1` | E196 | AO pattern changes every frame; flickers wherever the history is rejected |
+| `r_rtShadowTemporal 1` | E196 → E208 | the same for shadows; already off again since E208 |
+| `r_dither 2` | E198 | dither pattern moves every frame |
+
+That is the "noise and flickering" and the "scrolling noise even when the camera is stationary".
+
+**Fix:** `r_rtaoTemporal` defaults to 0 and `r_dither` to 1 (ordered: same banding fix, holds still). All three can still be turned on, with menu rows and labels updated. ARCHIVE_ND, so an install that never chose a value picks these up.
+
+**Not covered by the harness:** lavapipe cannot show what a real GPU does differently, such as E205's refit, which lavapipe likely rebuilds. To reproduce a spot exactly, type `viewpos` there and send the line together with `rtshadows`.
+
+0 validation errors; menu checks pass.
+
+### E209. Your own shadow bent over when you looked down — DONE (verify)
+**Lives in:** our **client** (cgame `cg_players.c` `CG_PlayerAngles`, ships in iobin) · **Seen by:** our client only
+
+Tester: "that bottom left red is all player shadow that's warped around" (`r_rtActorShadows 2`); `r_rtCull 0` and `r_rtActorRefit 0` changed nothing, which put it outside the renderer.
+
+In first person your body is never drawn (`RF_THIRD_PERSON`), but it is in the scene and the traced shadows cast it. Its torso pitches with your view at 0.75× and its head at the full angle, so looking at the floor folded the invisible body forward and its shadow came out as a wide hunched blob, changing shape with every look up or down. The own body now stands upright in first person (torso and head pitch 0). Third person, and every other player, are unchanged.
+
+Harness, same spot and angle, old iobin vs new, looking 75° down: old casts a broad, smeared shape; new casts a narrow upright silhouette. Trade-off: in a mirror or portal view your reflection no longer tilts with your view. 0 validation errors; menu checks pass.
+
+### E208. Noise that scrolled on a still screen; smeared player shadows; E202 fully reverted — DONE (verify)
+**Lives in:** our **client** (renderervk `rtao.tmpl`, `actorshadow.tmpl`, `vk_rt_ao.c`, `tr_init.c`; pak01) · **Seen by:** our client only
+
+Tester: "still a lot of noise and flickering", "even when the camera is stationary, there's like a scrolling noise on it", and "this whole red area is the player shadow, that is broken as well... warped around" (`r_rtActorShadows 2` debug view).
+
+**Scrolling.** Since E196, while frames are averaged, the ray pattern changes each frame, and the way it changed was itself a pattern.
+- **AO:** rotated each pixel by `hash12(pixel + frame)`, which is the same noise shifted one pixel diagonally per frame. Whatever survives the average slides across a still image.
+- **Shadows:** turned every pixel's pattern by the same golden angle, so the whole residue rotated at once.
+- **Fix:** both now use a PCG hash of (x, y, frame), per pixel per frame, so the residue does not travel. With averaging off, the fixed patterns are as before.
+
+**Flicker.** E202's AO stride (one ray of four per frame) is reverted too, after E207 reverted the shadow half. In play the history is rejected constantly, and the one-ray frames flickered on a four-frame cycle. The shader still takes a stride; the engine passes 1. E203/E204 (culling, early-out) stay: they skip only work that cannot change a pixel.
+
+**Smeared player shadows: shadow accumulation off by default.** A shadow moves with its caster over a floor that does not, so the floor's history passes the depth test and the old shadow is carried along. E196's own measurement put the gain after the denoise at nil (edge grain 4.5 either way). `r_rtShadowTemporal` now defaults to 0 (ARCHIVE_ND, so installs that never chose pick it up); the menu still offers it.
+
+**`r_rtActorRefit`** (default 1) switches E205's refit off, to rule it in or out for the warped own-shadow. The harness cannot: lavapipe's refit is likely a rebuild underneath.
+
+0 validation errors; menu checks pass.
+
+**To verify:**
+1. The noise no longer scrolls on a still view.
+2. Player shadows follow without smearing.
+3. If an own-shadow still looks warped, try `r_rtActorRefit 0` and say whether it changes.
+
+### E207. Shadow noise after E202; one softness scale on every page — DONE (verify)
+**Lives in:** our **client** (renderervk `vk_rt_shadow.c`, `tr_shade.c`, `tr_init.c`; pak01 render pages) · **Seen by:** our client only
+
+**Noise.** Tester: "the noise on the floor here", with soft shadow edges showing streaks and blotches. E202 had halved the sampled shadow-edge rays (5 to 2) while `r_rtShadowTemporal` averaged them. A still camera hid that; a shadow edge moves with every step its caster takes, so history is rejected far more often than for occlusion, and two rays showed through the blur. Reverted for shadows (AO keeps E202). E204's early-out already made the pass cheap where there is nothing to shadow: in the next harness run the shadow trace was 12.8 ms.
+
+**Softness.** "Level shadows on models softness and level shadows on lights softness are stated as two different values." They were:
+
+| page | old scale |
+|---|---|
+| lights | world units: Hard / 2 / 4 / 8 / 16 |
+| models | radians: Sharp / 0.03 / 0.06 / 0.12 / 0.25 |
+| player shadows on the level | world units: Hard / 4 / 8 / 16 / 32 |
+
+All three now mean the light's size in world units, with one list: Hard / 2 / 4 / 8 / 16 / 32. The model shader still spreads by an angle, size / 128 (the distance `actorshadow.tmpl` sees the sun from). The old radian steps were exactly 4/8/16/32 at 128. A saved value below 1 is read as old radians.
+
+**Gun grain.** Not the denoiser. "Level shadows on models" traces in the model's own forward shader, with a fixed per-pixel pattern and no blur pass, so a soft edge there is as grainy as its ray count allows. Hard, or more rays, until it gets a denoise of its own.
+
+### E206. RT timings split each pass into trace and composite — DONE
+**Lives in:** our **client** (renderervk `vk_timing.c`, `vk_rt_ao.c`, `vk_rt_shadow.c`) · **Seen by:** our client only
+
+`r_rtTimings 1` now ends with "[AO trace, AO composite, shadow trace, shadow composite]". These are parts of the AO and shadow totals before them. What remains of a total after its parts is the temporal pass and the horizontal blur.
+
+**Why.** After E202–E205, the next step is merging work the two passes do separately. Both run back to back before the dynamic lights, and both multiply the scene, so scene × AO × shadow in one composite would be exact. The first measurement (lavapipe, 6 bots):
+
+| | AO | shadows |
+|---|---|---|
+| total | 187 ms | 93–101 ms |
+| trace | 117 ms | 30–38 ms |
+| composite | 21 ms | 21.5 ms |
+| temporal + blur | ~49 ms | ~40 ms |
+
+So the fixed full-screen passes are now about half of the RT cost on lavapipe. Lavapipe traces in software, though, so real hardware's split will differ. The tester's log decides between merging only the two composites (each round-trips the 4x MSAA framebuffer) and a fully shared temporal/blur/composite with two-channel targets.
+
+### E205. RT performance, step 4: refit the players' structure instead of rebuilding it — DONE (verify on NVIDIA)
+**Lives in:** our **client** (renderervk `vk_rt_world.c`) · **Seen by:** our client only
+
+**What changed.** The silhouette structure (players' and items' real triangles) was built from scratch every frame. When the same models are in it in the same order, only vertex positions have moved: the triangles and their index order are identical. A structure built with `ALLOW_UPDATE` can then be refitted in place, which keeps the tree and recomputes its boxes — several times cheaper than a build on real GPUs.
+- **Signature per command buffer:** a hash of the ordered model handles plus the vertex and triangle counts. It is compared with what that buffer's own structure was last built from (the two buffers alternate).
+- **Forced rebuild** every 30 refits, because a tree shaped for one pose gets looser as models animate away from it.
+- **Invalidated** whenever the structures are destroyed (map change, vid_restart).
+- **Scratch** sized for the larger of build and update.
+- **Report:** `rtshadows` gives "N refitted / M built since the last report".
+
+The CPU work per frame (lerping the vertices) is unchanged; only the GPU build is cheaper.
+
+**Measured** (lavapipe, 6 bots): 165 refits / 23 builds in one report window; 0 validation errors on the update path. Lavapipe's structure build time did not change (about 7.8 ms either way): its build runs on the CPU and refit costs it about the same. The saving is the GPU's, and only a real GPU will show it.
+
+**To verify:** `r_rtTimings 1` "structure build" in a bot match against build 3b88f72e.
+
+### E204. RT performance, step 3: the shadow pass only works near players — DONE (verify)
+**Lives in:** our **client** (renderervk `actorshadow.tmpl`, `vk_rt_shadow.c`, `vk_rt_world.c`) · **Seen by:** our client only
+
+**The waste.** The players'-shadow pass ("shadows on the level", 1.1 ms of the tester's 3.8) did the whole job for every pixel on screen before any ray: five depth taps for the normal, the light grid, the light field, the light-distance search, then the rays. Most of those pixels are floor and wall with no player anywhere near, and they came out unshadowed.
+
+**The fix.** The silhouette builder now records the bounding sphere of every model it put in the mesh this frame (up to 64; more disables the test that frame). They go to the pass's uniform block. Without the level in the shadow mask, a pixel farther than the ray bound from every sphere returns at once, unshadowed, which is what it would have come out as.
+
+**The ray bound, from the shader's own geometry.**
+- The light is at most the reach (`r_rtActorShadowLength`) from the surface.
+- A soft light's rays spread over a disc: the softness, times reach/128 for the sun (`discScale`).
+- Lamps trace players to 1.25 × the light's distance + 32 (E186).
+- So: 1.25 × (reach + disc + 8) + 32 — about 700 units at the defaults. Nothing farther can be hit by this pixel's rays.
+
+**E203 corrected.** Its cull reach was the shadow length + 16, which underestimated the same bound. A player behind the camera near a wall lamp could have lost a shadow edge. It now uses the same bound.
+
+**`r_rtCull 0`** also turns this test off, for comparison.
+
+**Measured** (lavapipe, 6 bots, same build and camera):
+
+| | shadow pass | frames in 30 s |
+|---|---|---|
+| `r_rtCull 0` | 171–191 ms | 59 |
+| `r_rtCull 1` | 21–72 ms, depending on how near the players are | 80 |
+
+0 validation errors. A same-camera screenshot comparison was attempted and failed on harness camera drift, so correctness rests on the bound above.
+
+**To verify:** shadows of players near and just off screen, under lamps and sun, look the same with `r_rtCull 0` and 1. `r_rtTimings 1` "shadows on the level" should now track how much of the screen is near a player.
+
+### E203. RT performance, step 2: leave out players and items that cannot reach the view — DONE (verify)
+**Lives in:** our **client** (renderervk `vk_rt_world.c`) · **Seen by:** our client only
+
+Tester: "could we apply culling to stop RT from being done to unseen parts of the map and for unseen players?"
+
+**Players and items: yes, and they were the cost.** The server sends every entity in the potentially visible set, including those behind the camera and across the room. Each was lerped on the CPU into the silhouette mesh and built into the structure every frame. `rt_in_reach` keeps an entity only if its bounding sphere meets the four side planes of the view frustum, each pushed out by the entity's reach. The sphere is the md3 frame radius plus its local-origin offset, scaled with the axis.
+- **Silhouette mesh** (shadows, `r_rtDynamic 2`): reach is the shadow length (`r_rtActorShadowLength`, 512) when traced shadows are on, else the AO radius, plus 16. A player just behind the camera whose shadow falls into view stays in.
+- **Proxy boxes/balls** (occlusion): reach is the AO radius. Not culled while the ray-traced reflection fallback is on (`r_ssr` and `r_ssrRayTrace`), because a reflection can show things outside the frustum. Reflections trace mask 0x03, not the silhouettes, so silhouette culling never removes anyone from a reflection.
+- **`r_rtCull`** (default 1; 0 for comparison). The `rtshadows` report now says how many were left out.
+
+**The level: no, deliberately.** It is built once at map load. Rays only start from visible pixels, so unseen geometry costs only when a visible ray reaches it — a pillar behind the camera shadowing the floor in front — which is exactly when it must be there.
+
+**Measured** (lavapipe, 6 bots, same camera, both temporals on):
+
+| | silhouette mesh | structure build | frames in 30 s |
+|---|---|---|---|
+| `r_rtCull 0` | 6 models, 1,756 triangles | 7.9–8.2 ms | 64 |
+| `r_rtCull 1` | 3 models in, 6 out, 1,128 triangles | 6.2–6.4 ms | 72 |
+
+The CPU lerp saved grows with the player count: a 30-bot match culls far more of them. 0 validation errors.
+
+**To verify:** a bot match with `r_rtTimings 1`; structure build should drop. Shadows from players just behind you should still land in view. `r_rtCull 0` to compare.
+
+### E202. RT performance, step 1: stop re-tracing what the temporal pass already averages — DONE (verify)
+**Lives in:** our **client** (renderervk: `rtao.tmpl`, `vk_rt_ao.c`, `vk_rt_shadow.c`) · **Seen by:** our client only
+
+Tester: "we easily lose 4/5th of our performance with the RT set".
+
+**Their log (2560x1440, 4x MSAA, RTX 5080).**
+
+| | reports/s | GPU ms per frame |
+|---|---|---|
+| `r_rt 1`, features on | ~250 | 3.8 |
+| `r_rt 0` | ~850 | 0.9–1.4 |
+
+The gap is the three ray-traced passes: ambient occlusion 1.4 ms, shadows on the level 1.1 ms, structure build 0.55 ms. The log has no stretch with `r_rt 1` and every feature off, so that case is still unmeasured.
+
+**The waste.** E196 averages AO and the sampled shadow edge over about eight frames, but every frame still traced the full ray count. That bought nothing the average did not already have.
+- **AO:** with `r_rtaoTemporal 1`, each pixel traces every K-th of its stratified directions, the phase stepping with the frame. At the default 4 rays: 1 ray a frame, and about 8 samples averaged where it had 4. `res.z` carries K.
+- **Sampled shadow edge:** with `r_rtShadowTemporal 1`, half the rays a frame, never fewer than 2 (one ray is the light's centre and has no softness). The pattern already turns each frame (E196).
+- **Accumulation off** is the old behaviour exactly.
+
+**Measured** (lavapipe, japanesecastles, 6 bots, 1280x720, both temporals on; previous build 539ded5e against this one; ratios only):
+
+| pass | before | after |
+|---|---|---|
+| ambient occlusion | 286–294 ms | 123–133 ms |
+| level shadows | 125–142 ms | ~106 ms |
+| whole frame | ~460 ms | ~280 ms |
+| frames in the same 30 s | 55 | 94 |
+
+AO falls about 2.3×, not 4×, because the denoise and the temporal pass are fixed costs. 0 validation errors.
+
+**Quality.** Same session and same camera, AO debug view (`r_rtao 2`), denoise off:
+- 1 ray/frame accumulated: high-pass grain 29.0;
+- the old 4 rays/frame, not accumulated: 35.3.
+
+The new path is cleaner, as it averages more samples.
+
+**Harness note.** The derived bot scripts had included an.sh's own `client host` line, so two games shared one port and fifo. The Anarki false-positive runs of E201 are affected and need redoing with the fixed header (first 267 lines).
+
+**To verify:** `r_rtTimings 1`, same scene as before. Expect AO well under its old 1.4 ms and shadows somewhat lower. Watch for grain trailing behind fast-moving players, where history is rejected.
+
+### E201. Anarki "no such frame 151 to 151": the followed player drawn with the previous viewed player's animation state — DONE (root cause found and fixed; verify)
+**Lives in:** our **client** (cgame `cg_players.c`) · **Seen by:** our client only
+
+**What the log says** (tester's 01:40 bot CTF, `R_AddMD3Surfaces: no such frame`).
+- **The count:** 1,883 × "151 to 151" for `anarki/upper.md3`, which has 146 frames. Continuous from the moment an Anarki bot joined blue and `loaddeferred` ran, just after the viewer went spectator.
+- **The end:** four "151 to 123", where 123 is Anarki's own TORSO_ATTACK, and then never again.
+- **So the table was right:** Anarki's (stand 144/145, attack 123). After its first attack the bot stood at 144 without complaint.
+- **What was wrong was the running frame:** the bot's torso still held the stand-in's TORSO_STAND, 151, and was not recomputed for the whole time it stood still. An out-of-range frame draws as frame 0 — a torso in the first frame of a death, for as long as it lasts.
+
+**A real gap, fixed.** A player's animation state is in the current model's frame numbers. `CG_LoadClientInfo` resets the player's entities when it loads a model. The two other ways a client changes model did not:
+- `CG_ScanForExistingClientInfo` copies a model another client already has.
+- `CG_SetDeferredClientInfo` copies a stand-in.
+
+`CG_NewClientInfo` now resets the client's entities whenever the legs or torso model actually changed, by any of the three paths.
+
+**The guard, `CG_CheckLerpFrame`.** After each animation step, a current frame outside the current animation's range is rebuilt from the table.
+- **Not flagged:** within a second of the animation's start. The first frames of a change still belong to the old animation, and that blend is normal.
+- **Diagnostic:** one line per client per map with the frame, the animation and both timers. If it recurs, the log names the route.
+- **First version over-fired, now fixed:** it flagged the normal initial-lerp window, and the frame-0 old frame `CG_ResetPlayerEntity`'s memset leaves for one frame. The shipped version judges only the current frame, outside that window.
+- **Measured:** 0 reports in a 6-Anarki bot CTF; 0 in another with seven `map_restart`s.
+
+**Not reproduced.** The harness never produced the stuck frame:
+- six Anarki bots with a penguin stand-in (OpenArena's penguin stands at 151, the same number);
+- spectator transitions;
+- map restarts.
+
+So which route left it stuck in the tester's match is unknown. The guard removes the symptom whatever the route, and its log line will say.
+
+**Root cause, found after the above (same day).** Once the harness stopped starting two games (see E202), the scenario reproduced: 144 × "151 to 151" and "151 to 123", the tester's exact signature. A debug print on the drawn entities showed the route.
+- **The mechanism:** the viewed player is drawn through `cg.predictedPlayerEntity`, whose `pe.legs` / `pe.torso` belong to whoever was viewed before, in that model's frame numbers.
+- **The trigger:** going spectator as a penguin (TORSO_STAND 151), then following an Anarki bot, handed Anarki's 146-frame torso frame 151. The tester went spectator, then followed the Anarki bot that had just joined.
+- **The fix:** `CG_TransitionPlayerState` clears that state when `ps->clientNum` changes (follow target), with yaw and pitch set from the new view.
+
+**Measured:**
+
+| cgame | "no such frame" |
+|---|---|
+| previous build | 178 |
+| fixed, 3 runs, each with the spectate-and-follow switch | 0 |
+
+The model-change reset and the guard above stay. The guard reported nothing in those runs.
+
+**To verify:** a bot match with Anarki joining mid-match, as spectator. There should be no "no such frame" lines. A yellow "outside animation ... reset" line is the guard working; please send that log.
+
+### E200. E199 was too strict at the shoreline: a body half over the water left it still — DONE (verify)
+**Lives in:** our **client** (cgame `CG_WaterRipple`) · **Seen by:** our client only
+
+Tester: "if I walk the line because my body is half on the water and half on the ground, the animation doesnt play... a small buffer zone".
+
+**Cause.** E199 tests the single point under the body's centre. A player is 30 units across, so straddling the shoreline with the centre over the bank fails the test while half the body is over the pond.
+
+**Fix.**
+- **Footprint test:** for bodies only, when the centre finds no water, it looks again at 8 points 20 units out (half-width 15 plus 5) and ripples at the first that is over open water. Bodies means calls with no shot origin: the wake, footsteps, swimming, entering and leaving water.
+- **Feet check:** a buffer point counts only if the water surface there is within 12 units below the feet (origin −24). A player on top of a bank whose edge overhangs the pond 50 units down is not touching it.
+- **Shots unchanged:** they keep the exact test, so a rocket on the bank does not ripple the pond.
+- **E199 still holds:** deep on turf over a hidden water brush, every buffer point meets turf first.
+
+**Measured over the whole garden pond.** The same logic runs against japanesecastles' BSP: every standable spot on land around pond 1 (12-unit grid, 3,374 spots), with the player's origin 25 above the ground and the trace done as a 2-unit vertical scan.
+
+| | ripples |
+|---|---|
+| E199 (centre only) | **0** of 3,374 — the complaint |
+| buffer, no feet check | 383 — included tops of the steep banks, 30–50 units above the water |
+| **buffer + feet check (shipped)** | **87**, all on low shore 2–12 units above the water, all within 20 units of open water |
+
+The turf strip over the hidden water stays silent.
+
+**Not tested in-game:** the beach strips are about 24 units long, and at lavapipe's few frames a second the wake (one check per ~110 ms after 8 units of movement) did not fire inside one. The steep banks at y 1620 / x 760 and x 400 / y 1800 are not shores you can straddle.
+
+**To verify:** walk the low edge of the garden ponds with half the body over the water; it ripples. Walk the grass a step further in; it does not.
+
+### E199. Water rippled when walking on the grass beside the garden ponds — DONE (verify)
+**Lives in:** our **client** (cgame `CG_WaterRipple`) · **Seen by:** our client only
+
+Tester: "the under side of our water past the visible range of the coast in the garden area is reacting to us since we're over it". Exactly right.
+
+**Cause.**
+- **The probe.** `CG_WaterRipple` runs for every moving player's wake (every ~110 ms), every footstep splash and every swim stroke. From a point that is not in water it looked *down* for water in 16-unit steps, up to 128 units, asking only "is this point water?".
+- **The map.** That walks straight through solid ground, and both garden ponds' water brushes run on under their banks. Read from the BSP:
+  - **How much:** water top at z −340, with 384 and 383 sample points of each pond covered by turf, 4 units above it.
+  - **Where:** a strip at x 780–840 covers water along its whole length.
+- **The result.** Walking on that grass placed a ring under the turf, at whatever depth the 16-unit step landed on (−345 to −352, not the surface). Its edge spread onto the visible pond.
+
+**Fix.** A world trace down from the point (solid or water mask, 128 units). It ripples only if water is reached before anything solid, and it starts the 2-unit surface refinement from where the trace met the water. A floor thinner than one probe step can no longer be hopped over either. Unchanged:
+- impacts and positions already in water (the climb-to-surface branch);
+- the shot-entry solve.
+
+**Measured** (lavapipe, `developer 1` ripple report, old cgame from e36b593a against new):
+
+| | old | new |
+|---|---|---|
+| walking the turf strip over water (x 810, y 1350 → north) | **5 ripples**, at z −345 / −352 under the grass | **0** |
+| walking into the open pond at x 615 | rippled | rippled, at −340, the true surface |
+
+**To verify:** walk the grass along the garden ponds; the water stays flat. Wading in and shooting the water still ripple.
+
+### E198. Menu clicks bypassed CVAR_LATCH: bloom crash on NVIDIA, and r_rts / HDR bloom "on in the menu, off in the game" — DONE (verify); dither on by default
+**Lives in:** our **client** (engine `cvar.c`, `cl_ui.c`, `cl_cgame.c`; cgame menus; renderervk) · **Seen by:** our client only
+
+Two long-running reports, one cause. "We've had this issue a few times."
+
+**The cause.** ui and cgame set cvars with `trap_Cvar_Set`, which the engine routed to `Cvar_SetSafe`, a *forced* set. Two consequences:
+- **It ignored `CVAR_LATCH`.** A latched renderer cvar changed live, inside a renderer built for the old value.
+  - Clicking Bloom on set `r_bloom->integer` to 1 in a renderer that had never created the bloom render passes or framebuffers. The next frame began the extraction pass on two null handles.
+  - **Tester's crash:** `nvoglv64.dll`, reading `0xf0`, return address `vk_bloom.part.0+0xb7`, immediately after `qvkCmdBeginRenderPass` (mapped against the shipped DLL).
+  - Lavapipe tolerates the null handles, which is why every repro here stayed clean.
+- **On a cvar that did not exist yet, it recorded the value as the default.** A forced set creates the cvar with `Cvar_Get(name, value, 0)`: the value just set becomes the *default*, and the cvar is not user-created. This happens to a Vulkan setting changed while OpenGL 2 runs, or anything set before its module registers it.
+  - The renderer's real default could then never replace it. The tester's 1 October log shows the engine saying so: `cvar "r_rts" given initial values: "1" and "0"`.
+  - The config writer leaves out a `CVAR_ARCHIVE_ND` cvar equal to its default, so `r_rts 1` was never saved. The next launch came up at 0, every time, while the session that set it had shown it on.
+
+**Proven, not inferred.** `cvar.c` compiled alone against stubs, the same two steps run through the old and new paths:
+
+| | old (`Cvar_SetSafe`) | new (`Cvar_SetFromClientVM`) |
+|---|---|---|
+| menu sets `r_rts 1`, then the renderer registers it | the tester's exact warning; default 1; **not written to qzconfig** | default 0; `seta r_rts "1"` written |
+| menu turns `r_bloom` on in a running renderer | live **1** at once | live 0, pending 1, "will be changed upon restarting" |
+
+**Fix.**
+- **`Cvar_SetFromClientVM`:** the console's set, which is what a player choosing a value is. Latched cvars wait for the restart, and a new cvar is user-created, so the code that registers it later supplies the real default. Protected cvars are refused as before. ui (`UI_CVAR_SET`, `UI_CVAR_SETVALUE`) and cgame (`CG_CVAR_SET`) use it; qagame keeps `Cvar_SetSafe`, because game init corrects latched cvars like `g_gametype` and needs that at once.
+- **cgame's menus show pending values** like the ui's (E183): new `CG_CVAR_LATCHEDSTRINGBUFFER`, appended at the end of the import list. A latched row now shows the chosen value and "(Apply)" instead of appearing to ignore the click.
+- **`vk_bloom` guard:** returns, with one warning, if the bloom pass, framebuffer or pipeline was not built, so no other route reaches the driver with null handles.
+
+**Already-affected installs:** the lost values are not in qzconfig to recover. Set `r_rts` / `r_bloomHDR` once more, then APPLY. They now stick.
+
+**Also: `devmap` is not a renderer restart.** It reloads with `RE_Shutdown( 0 )`, which does not rebuild for latched renderer cvars. Typing `r_rts 1` then `devmap` (tester's 03:34 log) left it pending; `vid_restart` or APPLY applies it.
+
+**Dither (the banding on the Quake Live sign).**
+- **The default was off.** The Vulkan renderer defaulted `r_dither` to 0 and accepted only 0–1. The menu row has always offered "Temporal (best)" 2 and OpenGL 2 defaults to it, so the row was refused and the 8-bit present undithered. On a dark gradient every one of the 256 steps shows as a band.
+- **Now:** default 2, range 0–2. Mode 2 shifts the ordered threshold by the golden-ratio fraction each frame, so the pattern averages out.
+- **Mechanism:** the frame number reaches `gamma.frag` as a 4-byte push constant on the post-process layout, pushed before the present and capture draws.
+- **Inherent limit:** with `r_rts 0` the scene itself is 8-bit, and banding baked into it during multi-stage blending cannot be dithered away afterwards. `r_rts 1` is what removes that.
+
+**Checked:** the Linux build is clean. The validation-layer run on japanesecastles with MSAA 4, bloom on, `r_rts 0` and dither 2 rendered with 0 errors. The menu, menu-defaults, menu-cvars and dead-cvars checks pass. The render page shows "Dither: Temporal (default)".
+
+**To verify:**
+1. Turn Bloom on in-game: the row reads "Yes (Apply)" and nothing changes until APPLY.
+2. APPLY, and bloom runs without a crash.
+3. Set Real-time shading on, APPLY, quit and relaunch: it is still on.
+4. Check that the sign's gradient no longer bands.
+
+### E196. Temporal accumulation for ray-traced AO and sampled shadows; the AO "frame counter" never counted — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**What it does.** A few rays a pixel is a noisy estimate, and the spatial denoise can only average neighbours, which blurs detail. A new pass blends each frame's trace into a running average kept from earlier frames, before the denoise, following the camera.
+- **Following the camera:** each texel is reprojected with last frame's view-projection × this frame's inverse.
+- **Rejecting stale history:** each history texel keeps the view depth it was written at. A tap whose depth does not match where this surface was last frame is another surface (newly revealed, or something moved), and is dropped. With no matching tap the average starts over.
+- **No trails:** the history is clamped to the spread of this frame's raw trace around the texel, so a shadow or crease that has moved does not linger.
+- **Blend:** this frame weighs 0.12, about the last eight frames.
+
+**Two channels, one shader** (`rtao_temporal.tmpl`, `vk_rt_temporal` in `vk_rt_ao.c`):
+- **`r_rtaoTemporal`:** the ambient occlusion, full or half trace resolution.
+- **`r_rtShadowTemporal`:** the traced shadows' *sampled* soft edge (soft mode 0 with the shadow denoise on, which already runs through AO's targets, E169). Projected edges (mode 1) are not noisy and are untouched.
+- **Values:** 1 on (default), 0 off, 2 a diagnostic. In the AO debug view (`r_rtao 2`), white = last frame reused, grey = rejected, black = no history.
+- **Menu:** each has a row, Lighting & RT and Cast Shadows, "Accumulate over frames". Both apply at once.
+
+**Found on the way: the AO's per-frame rotation was never per frame.**
+- **Cause:** `rtao.tmpl` rotates its rays by a hash of the pixel and `params.z`, documented as "a frame counter... so successive frames use different sets". It was fed `vk.frame_count`, which is `vk_begin_frame`'s nesting guard, 1 throughout every frame. The pattern had been identical every frame since R13: two frames 20 apart differed in 180 pixels.
+- **Fix:** now `tr.frameCount`, but only while accumulation is on. Alone, a moving pattern is shimmer where a fixed one is grain, so AO with accumulation off looks exactly as before.
+- **Shadows:** the shadow trace turns its pattern by the golden angle per frame on the same terms (`soft.w`, previously unused).
+
+**Format.**
+- **Targets:** the occlusion targets went from R8_UNORM to R16G16_SFLOAT, plus four history targets. Sharing the format lets everything share the render pass, framebuffers and denoise layout.
+- **Clamping:** R8 clamped every write to 0..1 for free. The temporal pass and the denoise now clamp what they read, and treat a non-finite value as unshadowed (the E175 NaN-through-bloom rule).
+- **Pool:** `MAX_ATTACHMENTS_IN_POOL` +4 (its startup guard caught the first attempt).
+
+**Bug found in testing, fixed before commit:** the reprojected point went in as screen coordinates (w = 1), so the w that came out was last frame's depth divided by this frame's, 1 for a still camera. Every history tap failed the depth test until it was multiplied back.
+
+**Measured (lavapipe, japanesecastles):**
+- **Raw AO, 4 rays, denoise off, still camera:** grain 24.2 → **6.1** with accumulation, and mean brightness unchanged (905.5 → 906.8).
+- **Diagnostic, still camera:** history reused on all but 460 of 921,600 pixels.
+- **Turning and strafing at lavapipe's few frames a second:** rejected exactly at the newly visible edge and at uncovered edges, with no smear.
+- **Own shadow strafing on the moat deck:** no trail.
+- **Sampled shadow edge after the denoise:** already smooth at 4 rays (edge grain 4.5 either way), so the gain there is small. It matters more with fewer rays or at high frame rates.
+- **Regression:** screenshots within the noise floor, 0 validation errors.
+
+**To verify:** look for smearing behind moving players and at doorways while turning fast. `r_rtaoTemporal 2` with `r_rtao 2` shows what is being reused.
+
+### E195. Bot skill tag cut off on the team scoreboards — DONE (verify)
+**Lives in:** our **client** (pak01 scoreboard) · **Seen by:** our client only
+
+E141's "[7]" after a bot's name (developer 1) was cut on every name over four letters: "TankJr [", "Phobos [". The red/blue name column allowed 10 characters in a width that fits about 20 at its text scale. Now 18 (`gen-scoreboard.py`). Photographed: "Bitterman [7]" fits with room to spare.
+
+### E197. Bot CTF match review: no captures, and two log findings — NOTE
+**Lives in:** our **server** (qagame bots) and our **client** (cgame, renderer) · **Seen by:** every client (bots); our client only (overlay, frame warnings)
+
+Tester's 21v22 instagib CTF on japanesecastles, 20 minutes, "bots never scored".
+
+**Not a scoring bug** (the tester's words too).
+- The last `scores_ctf` gives bots 290, 289, 250 points, with 30-80 kills each.
+- The team score stayed 0 because nobody captured: about 30 flag grabs, about 25 carriers fragged, about 25 returns, 0 captures.
+- The screenshot of a board full of zeros was taken 27 s into the match (19:33 of 20:00 left).
+
+**It is the known weakness, at its worst setting.**
+- E132-E141 measured this at 30 a side: 1-4% of grabs become captures, and instagib 0.08 per 5-minute match (about one an hour).
+- A carrier dies to one rail hit, and the escort and route work (E135-E138) raised standard CTF, not instagib.
+- The bots' own status table in the log shows 0 escorts.
+- Next lever, untested: instagib-specific carrier behaviour (cover-to-cover routing, never stopping in open courtyards), measured with the 30v30 batch harness.
+
+**Log findings:**
+- `R_AddMD3Surfaces: no such frame 151 to 151 for 'models/players/anarki/upper.md3'` 1,883 times. One frame past the end of Anarki's torso model, so that animation draws frame 0 instead. Probably Quake Live's own animation.cfg running one frame long; it needs that file from pak00 to confirm. Printed only with `developer 1`.
+- 650 lines a bot of "N allies, N foes, posture even/push": bot debug output at `developer 1`.
+- The **old team overlay** (`cg_drawTeamOverlay`, top right) draws fixed-width cells from the console character sheet. Quake Live's sheet has narrow glyphs, so names read "W a r b o y". Not fixed; it should draw with the font system like the rest of the HUD.
+
+### E194. "Lit surfaces" timed 0.00; light grid in GPU memory; vkmem; a false "NOT RUNNING" at startup — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**1. `r_rtTimings` "lit surfaces (dynamic lights)" always read 0.00.**
+- **Cause:** the timer wrapped the lighting-pass call at the end of `RB_DrawSurfs`. Once any surface sorts at or past `SS_FOG` (fog, glass, smoke, effects: nearly every frame), the pass runs earlier, in the middle of the surface list, and zeroes `num_dlights`. The timed call then found nothing to do.
+- **Fix:** the timer now sits inside `RB_LightingPass`, around the real work, and only when there are lights.
+- **Not checked:** the harness cannot fire weapons (no weapon assets), so this needs a reading while firing plasma or rockets.
+
+**2. Light grid and light field in GPU memory.** Written once at map load and read by every shadow ray several times. It lived in host-visible memory, so each of those reads crossed the PCIe bus.
+- **Now:** a device-local buffer filled through the staging buffer.
+- **Fallback:** if the card has no room, the old host-visible buffer is used, with a warning.
+- **Map-load line:** "RT: light grid and light field in GPU memory (4722 KiB)" on japanesecastles.
+
+**3. `vkmem`, and a GPU-memory line at map load.**
+- **What it reports:** with `VK_EXT_memory_budget` (now enabled where the driver has it), each heap's size, this process's use and the driver's budget.
+- **Map-load line:** "GPU memory: N MiB used, budget M MiB".
+- **No leak:** under lavapipe, use settles at about 1.1 GiB after three loads and stays there through six map loads. Two `vid_restart`s bring it back to about 1.0 GiB. Lavapipe's "GPU" heap is system RAM; an RTX card reports its own.
+
+**4. "RT shadows … NOT RUNNING: the level's acceleration structure is not bound" printed on every launch, in the main menu** (tester's log). The shadow report treated the settings a session starts with as a toggle, and reported it two frames later with no map loaded. The first frame now records the state without reporting, and a toggle made in the menus with no map waits for one.
+
+**Checked in the tester's log (E192 build):** no errors, validation messages or failed passes. Light field 68.7%, built in 313 ms. The red "Pipeline cache: saved" line is a developer-only print (developer prints are red), not an error.
+
+**Checked:** harness regression within the noise floor (site 1 caught the spawn flash), through `vid_restart` and a second map load; 0 validation errors.
+
+### E193. Real lamp list: prototype results — NOTE (not built into the engine)
+**Lives in:** test prototype only (scratchpad scripts) · **Seen by:** nobody yet
+
+Asked for: replace the light field's per-point light estimate with a real list of lamps.
+
+**What the map gives:** no light entities, because the compiler strips them. Only two shaders emit light: `textures/sfx/flame2` (q3map_surfacelight 5500, the torches) and `gothic_light_round_500` (500). The paper lanterns emit nothing; their light came from stripped light entities placed in or near them.
+
+**Why one light position per point keeps failing:** the light grid stores one *averaged* direction per point. A point lit by two lanterns points between them, at neither. Only about 5% of lamp-lit grid points have a visible lamp within 10° of their direction, and that holds even for the lantern and torch positions taken from shader names. A lamp list has to give each point a *blend* of lamps.
+
+**Candidate lists, scored the strict way.** Each lamp gets one brightness for the whole map (falloff 1/d², visibility traced), fitted on 400 lamp-lit grid points. The light direction is then predicted at 200 held-out points.
+
+| List | Held out: within 10° | Within 20° | Median error |
+|---|---|---|---|
+| 181 random open-space points (control) | 2.5% | 8% | 63–68° |
+| 106 named fittings (lantern/torch/flame shaders) | 2.5% | 6.5% | 158° |
+| 94 small objects the grid votes for (generic, no names) | 3.5% | 8.5% | 105° |
+| 99 grid-convergence peaks | 13% | 27% | 45° |
+| peaks + small objects (181) | 14% | 28% | 37° |
+
+- **Fixture positions do no better than random.** A lenient per-point blend test (no global brightness) had flattered them: 25% against 40% for random and 60% for the combined list. Random scoring 40% is what showed that test was too easy.
+- **All the signal is in the convergence peaks,** and even they explain under a third of the grid. Likely missing from the model: q3map2's real falloff, area lights for the flames, and bounce light in the grid.
+- **Not built:** a lamp list this weak would draw shadows from lamps that are not there, the failure E190 exists to suppress. The light field (E176–E190, 68.6% of lamp points see their estimated light) stays.
+- **Next, if pursued:** model q3map2's light falloff and its grid "directed" projection, add surface-light area emitters, and re-score. Build it into the engine only when held-out accuracy clearly beats the light field on the same points.
+
+The tester's shadow reports that started this round were the sun path (E192), not the lamp estimates.
+
+### E192. Sun shadows came out hard and cut off in the soft-shadow mode; FPS cap when unfocused on the menu — DONE (verify)
+**Lives in:** our **client** (renderervk shaders; pak01 menu; `setviewpos` in qagame for the harness) · **Seen by:** our client only
+
+**1. Sun shadows (tester: the own-player shadow on a deck was hard and broken off along a jagged line; "Strongest light only", `r_rtShadowSun 0`, made it soft and whole again).**
+- **Cause 1, the hard edge:** the projected soft shadows (`r_rtActorShadowSoftMode 1`, E171) blur the shadow's occlusion. `penumbra.tmpl` then multiplied the blurred value by the light the *centre* pixel would lose. A lit pixel beside the sun's shadow carried its lamp's loss, which is near zero outdoors, so the sun's soft edge spread at almost no strength. The shadow ended at its hard core. A lamp's own shadow was fine, because its neighbours lose the same lamp's light.
+- **Fix 1:** what is blurred is now the darkness itself (loss × occlusion, from `actorshadow.tmpl`), so an edge spreads as dark as the shadow it comes from, whichever light cast it.
+- **Cause 2, the cut:** the sun cast only where the map-load sun visibility, a 64-unit grid interpolated, was over 0.5. That is a contour line across the floor, with the sun's shadow whole on one side and gone on the other.
+- **Fix 2:** the sun's share now fades in over 0.35–0.65.
+- **Checked:**
+  - The harness player was given an OpenArena model, so the own shadow casts.
+  - `setviewpos` takes an optional pitch (cheat-only), so the camera looks down at an exact spot. Before, timing a `+lookdown` was never the same twice.
+  - On the moat decks (−304, −1540/−1650), the old shaders give a hard sun shadow and the new ones a soft one at every angle; lamp-only shadows are unchanged. 0 validation errors.
+- **Not changed:** where a point's *first* light is itself the sun (outdoors, sky ≥ 0.5) and its neighbour's is a lamp plus the sun as a second light, the sun's darkness is computed two ways. A seam is still possible there. Report it if seen.
+
+**2. FPS cap when the window loses focus.** The engine already had it: ioquake3's `com_maxfpsUnfocused` (0 off, otherwise the cap), switched by the SDL focus events. It was never on a menu. Now: Video → "FPS cap when unfocused", Off (default) / 30 fps. It applies at once, and minimising has its own `com_maxfpsMinimized`.
+
+### E191. vk.c split by subsystem — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** nobody: no behaviour change intended
+
+`vk.c` was 16,589 lines. The ray-tracing passes had grown inside it, and the next planned feature, temporal accumulation, touches AO, shadows and timing at once. Code was moved, not rewritten:
+
+| File | Lines | What it holds |
+|---|---|---|
+| `vk.c` | 10,518 | Device, swapchain, pipelines, attachments, frame, post-process, bloom |
+| `vk_rt_world.c` | 2,378 | Acceleration structures: static world, round proxies, players and items as triangles with hole caps (E166/E180/E184), the per-frame structure, world build and teardown with the light grid and light field upload |
+| `vk_rt_ao.c` | 1,212 | AO pipeline, descriptors, denoise, the shared depth view (E153), the per-frame AO pass |
+| `vk_rt_shadow.c` | 605 | The traced shadow pass and its penumbra setup (E166 onwards) |
+| `vk_ssr.c` | 1,757 | Water planes and walls found at map load, and the reflection pass |
+| `vk_timing.c` | 128 | `r_rtTimings` (E177) |
+| `vk_local.h` | 219 | What those files share: Vulkan entry points, `VK_CHECK`, and the vk.c helpers more than one of them calls. Not for `tr_*.c`. |
+
+- **Deviation from the plan:** the shared header is `vk_local.h`, not `vk_rt_local.h`. Most of what it carries is the Vulkan entry points, which are not RT-specific.
+- **Each step was its own commit** (`vk split 0/5` … `5/5`). The only code changes were dropping `static` where a second file now calls something, and moving forward declarations into the header.
+- **A new `vk_*.c` file needs a line in the Makefile's renderervk object list.** A bare `make` still does not build any of these (CLAUDE.md, `BUILD_RENDERER_VULKAN`).
+
+**Checked, after every step:**
+- **Build and symbols:** warning-free. Every function the original `vk.c` defined is still defined (`nm`), and code size is within 50 bytes of the start.
+- **Variables:** no file-scope variable is defined in two files.
+- **Harness:** japanesecastles, all RT features on, 7 spots plus the shadow debug view, `vid_restart` and a second map load. Screenshots are within the run-to-run noise floor measured from two unchanged runs: the animated sky, flicker lights and a static-noise panel. Map-load reports and timings are unchanged, with 0 validation errors.
+
+**To verify:** nothing should look or time differently from E190. Any change is a bug in this entry.
+
+### E190. The light field, scored: each lamp point checks it can see its own light; level shadows are scaled by that trust — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported (E186/E187 rounds): level shadows that the lightmap does not have. Examples are the column's curved shadow across the flag-room tatami and the jagged edges in the blue base. These are shadows cast from a light the light field estimated in the wrong place.
+
+**The score.** The map compiler built the light grid with occlusion: a grid point's directed light came from a lamp that point can see. So an estimate the point *cannot* see is wrong.
+- **Prototype first** (CPU copy of japanesecastles, 400 lamp points): the share that can see their estimated light, by setting.
+
+| Setting | Can see their light |
+|---|---|
+| Neighbour agreement 0.80, two smoothing passes (current) | **72.2%** |
+| 0.80, no smoothing | 72.2% |
+| 0.90 | 64.2–68.5% |
+| 0.95 | 56.8–59.5% |
+| Two-cell neighbourhood, 0.90 | 63.8–65.5% |
+
+- The current settings are already the best of these; nothing was retuned.
+- **In the engine (`LF_Trust`):** every lamp point traces five rays to its estimated light and four points 12 units round it, against the level, stopping 24 short so the lamp's own fitting does not count. The share that get through is the point's trust, stored in the field (slot 6).
+- **Map-load log:** "Light field: 4782 of 6973 lamp points (68.6%) see their estimated light, mean trust 0.68". It agrees with the prototype; the triangle sets differ slightly. Map load takes about 0.25 s longer (275 to 522 ms).
+
+**Use:** the shadow pass interpolates trust like the rest of the field and scales level hits toward a lamp by `smoothstep(0.3, 0.8, trust)`. Where the field's light is a guess, the lightmap's own shadow stands instead of a second, wrong one being drawn.
+- **Not scaled:** players' and items' shadows (a few degrees off still reads as a shadow on them), sky and sun light (sun shadows use the exact sun direction), and the per-pixel estimate.
+- **The score is now a number to improve:** the real lamp list (glowing surfaces, fitted lanterns) should raise it, and each step can be measured the same way.
+
+**Checked:** lavapipe with pak00's textures (E189), level debug and normal views at 4 spots, validation 0 errors. Level shadows from unverified lamps no longer draw; the cubes' shadows are unchanged. The flag-room column and blue base are not among the harness spots, so those are for the tester.
+
+### E189. Test-only assets for the harness: pak00 textures and OpenArena players — NOTE (not shipped)
+**Lives in:** test harness only · **Seen by:** nobody
+
+So the visual harness can show japanesecastles as it really looks and test shadows against real multi-part player models. Neither is committed or packaged.
+- **`/home/user/qlref/zz_qltextures.pk3`**: pak00's `textures/` (3,743 files), supplied by the tester for internal testing only. Repacked from Deflate64, which the engine's zip reader cannot read, to plain Deflate.
+- **`/home/user/qlref/oa/zz_oaplayers.pk3`**: OpenArena 0.8.8's `pak2-players.pk3` (GPL v2), for testing only.
+  - `beret`'s parts have real open holes (head 32, legs 52, torso 64 open edges).
+  - `major` is fully closed, so the two make a test case and a control for the hole caps (E180/E184).
+
+Harness scripts link both into their temporary game directory with `ln -s`; nothing is copied. The menu click sound stays Quake Live's own `sound/misc/menu2.wav` from pak00 (E188); nothing of OpenArena's ships.
+
+### E188. Crash on the second map load of a session; menu clicks played a missing sound; a bot warning repeated hundreds of times — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) and our **server** (qagame) · **Seen by:** our client only (crash, clicks); server log (bot warning)
+
+**1. Crash: "Z_Free: freed a pointer without ZONEID"** (tester: `devmap`, then `exec ffa`, then `devmap`; the crash log shows a fault in the NVIDIA driver).
+- E180/E184's model-holes cache (`rtCaps`) is a static table whose edge lists are renderer zone memory (`TAG_RENDERER`).
+- A map change is `RE_Shutdown( REF_KEEP_CONTEXT )`. That releases resources without destroying the ray-tracing world, so the cache was not cleared, and then `ri.FreeAll()` freed every `TAG_RENDERER` block.
+- On the next load, `vk_rt_build_world` cleared the cache and passed the freed pointers back to `Z_Free`.
+- **Second hazard on the same path:** the cache is keyed by model address, and after a map change a different model can sit at an old address and be capped with the wrong edges. That means out-of-range triangles in the structure, which is consistent with the driver fault.
+- **Fix:** `vk_rt_caps_reset()` empties the cache in `RE_Shutdown` just before `ri.FreeAll()`, while that memory can still be freed.
+- **Checked:** lavapipe, three `devmap`s in one session with the open two-surface tube in view, so the cache holds memory.
+  - **Unfixed build:** died at the second load. Only the first map's screenshot exists and the log was never written out.
+  - **Fixed build:** three loads, no fatal error, validation 0.
+  - The harness had never changed maps, and its closed cubes put nothing in the cache, which is how this got out.
+
+**2. Every menu click played a sound the paks do not contain.**
+- 285 `play "sound/misc/menu1.wav"` actions in our menus, generated and hand-written. Quake Live ships `menu2.wav`, not `menu1.wav`.
+- Each click logged three warnings (15 in one session) and played the engine's default sound.
+- Now `menu2.wav`, in the generators and in the hand-written menus.
+- **`tools/check-assets.py`** now scans our `.menu` files' `play` actions against the pak manifest, so a missing menu sound fails the build like a missing sound in C does.
+
+**3. "bot_minplayers N capped to M" printed on every bot check, 369 times in one session.** The team-game path already printed once per value; the FFA path now does the same.
+
+**Found in the same log review, not changed:**
+- **`sprites/foe2.png`:** registered by Quake Live's own `hud.menu` / `spectator.menu` in pak00, which do not ship it. Their gap, not ours.
+- **`ui/assets/selectcursor.png`:** already falls back to the arrow cursor (`cg_main.c`); the warning is cosmetic.
+- **The red "SSR ripples" text in screenshots:** developer output (`PRINT_DEVELOPER`), shown because `developer` is on.
+
+**Timings (tester, 5080, 2560×1440, 4× MSAA, japanesecastles):**
+
+| | Whole GPU frame | AO | Shadows on the level | Structure build | Water | Lit surfaces |
+|---|---|---|---|---|---|---|
+| Empty map | 3.2 ms | 1.21 | 1.02 | 0.37 | 0.10 | 0.00 |
+| 6 bots (`sv_maxclients 8` capped 30) | 3.1 ms | 1.21 | 0.84 | 0.42 | 0.09 | 0.00 |
+
+- About 2.7 ms of the 3.2 ms frame is ray tracing, and the frame rate (about 306–322 fps) matches the GPU time, so the game is GPU-bound at that point.
+- "Lit surfaces" reads 0.00 throughout, including with bots firing. Either no dynamic light reached the timed pass or the marker misses where they are drawn. To check before trusting that line.
+
+### E187. The sun's shadow lost on "Per pixel" light position; level shadows darkened twice at their edges — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+**1. `r_rtShadowSun` did nothing with Light position: Per pixel (`r_rtLightField 0`).** Found in the code review, and confirmed by the tester ("per pixel seems broken, but light field are projecting shadows from the sun").
+- One flag (`gridBounds.w`) gated both the light field's positions and everything else stored in the field, including the sun's direction and where it reaches. Turning the positions off turned the sun's shadow off with no sign.
+- **Fix:** the flag has three states: 0 no field, 1 field with positions, 2 field without positions (`lightFieldAt` still returns where the sun reaches; the light is estimated per pixel).
+
+**2. Hollow level shadows (railings, beams, pillars), round two.** The tester's guess that it is the darkness clamp was close.
+- A shadow's darkness comes from the light grid's directed light at the pixel. For the level shadowing itself, the grid already holds that shadow, baked like the lightmap, but as a point every 64 units, blended.
+- Inside a baked shadow the grid says there is nothing left to lose and the pixel is left alone, which is right.
+- In a band along the edge, the grid still reads partly lit over a lightmap that is already dark, so the edge was darkened twice: a dark outline about a grid cell wide round a normal interior.
+- **Fix:** a level hit now counts in full only where the grid at the pixel is about as lit as the grid just beyond the occluder (`occluderHides` now reports that value), which is where the baked shadow has not begun. It fades to nothing by half that value, where the lightmap's own edge stands.
+- **The sun's level hits** are weighted by how surely the sun reaches the pixel.
+- **Players and items** are not in the lightmap and count in full everywhere.
+
+**Checked:** lavapipe, the E186 level-debug run repeated, validation 0 errors.
+
+| Spot | Tinted pixels before | After |
+|---|---|---|
+| 2 | 3,255 | 891 |
+| 4 | 2,676 | 2,209 |
+| 6 | 63,763 | 34,904 |
+| 7 | 2,202 | 1,915 |
+
+The sun's level shadows at spot 6 now fade where the lightmap is already dark, and the cubes' shadows are unchanged.
+
+### E186. Level shadows hollow (and holing the players' shadows), the sun's shadow hard, hallway shadow split — DONE (verify)
+**Lives in:** our **client** (renderervk shaders, pak01 menus) · **Seen by:** our client only
+
+Reported with screenshots after E184:
+- **Hollow level shadows:** the level casts "hollow" shadows (outlines with lit floor inside).
+- **Holes in player shadows:** a player's shadow goes hollow where it meets one.
+- **A hard second copy:** there is a sharp second silhouette beside the soft player shadow.
+- **A split shadow:** a hallway shadow is cut in two under a wall torch ("the light has a casting radius, it should give us a complete shadow regardless").
+
+**1. Level shadows were outlines.**
+- `occluderHides` decides whether a level hit really blocks the light by reading the light grid just past the hit.
+- For a thick occluder (pillar, beam, wall end), the grid just past the near face is inside solid for the whole 96 units sampled. The hit was then thrown away as "the room's shell", except where a ray clipped a thin edge.
+- **Fix:** the grid is read past the occluder's far face: the next level surface along the ray within 256 units, which with culling off is the back of the same occluder. A wall bigger than that is a room's shell, and that rule stands.
+
+**2. Players' shadows went hollow inside them.** This is a consequence of 1, not a second bug.
+- A player's hit is rejected when level geometry lies between the surface and the player (`levelBetween`, E170). That rule stops shadows through ceilings.
+- Inside a pillar's shadow the pillar is that geometry, so the player's shadow is correctly dropped there: the pillar already blocks that light.
+- But the pillar's own shadow had been dropped too, so the floor came out lit. With 1 fixed, the area is in the pillar's shadow.
+
+**3. The sun's shadow came out hard whatever the softness.** E178 sized a directional light's disc as a light of size `r_rtActorShadowSoftness` seen from 512 units, about 1°. It is now seen from 128 units, close to a lamp's softness, and the projected mode's width uses the same distance.
+
+**4. A shadow cut in two under a wall torch.**
+- Player and item rays stopped 8 units short of the light's *estimated* position.
+- The estimate can come up hundreds of units short near a lamp's fitting (E183's measurement: a heavy tail to -452), and a ray that stops short of someone's shoulders casts only their legs.
+- **Fix:** they now run to 1.25 × the estimate + 32. Something between a surface and a light shadows it however far the light is.
+- Past a wall lamp is the wall it hangs on, and `levelBetween` rejects anyone behind it. The level's own shorter cut (E170, about the fitting) is unchanged.
+
+**Debug view:** `r_rtActorShadows 2` / `r_rtLevelShadows 2` now colour the first light's shadow red, the sun's blue and both magenta, so a screenshot says which light cast what. The menu labels read "Debug (red; sun blue)".
+
+**Checked:** lavapipe, 7 spots, level shadows in the debug view and actor + level, validation layer 0 errors. Level shadows show as filled patches, and the cubes' shadows are solid. The hallway torch is not in the harness, so the cut shadow is for the tester to confirm.
+
+### E185. Menu rows bound to cvars nothing reads: Bloom & Post rebuilt, two wrong names fixed, a check that fails the build — DONE (verify)
+**Lives in:** our **client** (pak01 menus, tools) · **Seen by:** our client only
+
+Reported after E183: post-processing still read as on in the menus, and only `r_fbo 1` plus `vid_restart` in the console turned it on.
+
+**Cause:** not the Render Options row (E183 checked it on screen: it reads `r_fbo` live). It was the in-game Advanced > **Bloom & Post** page.
+- That page's "Post processing" row was bound to `r_enablePostProcess`. With it were `r_enableBloom`, `r_bloomIntensity`, `r_bloomBrightThreshold`, `r_bloomSaturation`, `r_bloomSceneIntensity`, `r_bloomSceneSaturation` and `r_enableColorCorrect`.
+- These are Quake Live's names, and neither of our renderers registers or reads any of them.
+- Every row on the page set, showed and saved a value nothing used. "Post processing: Yes" was most likely a value from a Steam Quake Live config, shown while `r_fbo`, the real switch, was 0.
+
+**Fix:**
+- **Bloom & Post rebuilt** from what the Vulkan renderer reads: post-processing (`r_fbo`), bloom, HDR bloom, bloom intensity and threshold, tone curve, FXAA and sharpening. These are the same cvars Render Options and its Image page set.
+- **Scanning every menu of ours for the same thing** found five more rows bound to a cvar no code names:
+  - **Create-server page, wrong names:** `g_teamsize` is now `teamsize` (what the game registers and votes on), and `pmove_HookPullVelocity` is now `pmove_velocity_gh`.
+  - **Advanced pages, removed:** `r_windowedMode`, `s_voiceVolume` and `cl_demoRecordMessage`. They are Quake Live names nothing here reads. Following E111's rule, no row until the feature exists.
+- **`tools/check-menu-cvars.py`** fails when any of our menus binds a cvar that no C code of ours names as a string. It is the menu-side twin of `dead-cvars.py`, and `package-release.sh` runs it.
+
+### E184. Hollow shadows, again: caps per model, not per surface — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported after E180 with screenshots: still "weird / hollow" shadows. One showed a solid player shadow next to a second one that was only an outline.
+
+**Cause:** E180 closed holes per MD3 **surface**, but a player part is several surfaces stitched together.
+- Welded per surface, each surface's "hole" was its whole outline, including the seams to its neighbours.
+- A fan from the centre of a half-ring like that covers most of the opening but leaves a lens down the middle, and light went through the lens.
+- E180's test model was one tube made of one surface, which closed perfectly, so the test could not see this.
+
+**Fix:** `rt_caps_for` now works per **model**.
+- Vertices are welded by frame-0 position across all of the model's surfaces (a sort, not the old n²).
+- Edges come from every surface's triangles, in the same vertex order the actor mesh writes.
+- A seam between surfaces is then an ordinary shared edge, and only real holes are capped: waist, neck, open ends.
+- The fans are built after the model's last surface, from the entity's first vertex.
+
+**Checked:** lavapipe, a tube split into two surfaces along two seams, debug view, validation layer 0 errors.
+
+| Caps | Shadow at spot 1 |
+|---|---|
+| None | A ring |
+| E180 (per surface) | Filled except a lit wedge down the middle: the reported shape |
+| E184 (per model) | Solid |
+
+The one-surface tube from E180 is still solid.
+
+### E183. Advanced rendering left water plain (`r_fbo`); menus show pending values; lamp clamp removed — DONE (verify)
+**Lives in:** our **client** (pak01 configs and menus, ui, client engine, renderervk) · **Seen by:** our client only
+
+Reported with a log, on the first-launch build:
+- the first launch prompted, but after "yes" the water was not drawn with its shader;
+- the render menu showed post-processing as enabled while it was not;
+- shadows warp and compact near edges, "where our AO is".
+
+**1. "Yes" turned everything on except the thing it all runs through.**
+- `advanced.cfg` and `advanced_norq.cfg` set `r_rt`, `r_rtao`, `r_ssr` and `r_waterWaves`, but not `r_fbo`, which defaults to 0 (E147).
+- The log shows it: `fbo off` after the restart, `RT AO: r_fbo is 0` and `SSR: not running - the pass was not created`. The water shader and reflections render through that framebuffer.
+- Both configs now set `r_fbo 1`.
+
+**2. The menus showed the running value, not the chosen one.**
+- Investigated first: every yes/no and list row reads the live cvar every frame, nothing is cached, and on screen the r_fbo row read "No" while it was 0. The reported case could not be reproduced from the code or on screen.
+- What was wrong is the latched cvars (`r_fbo`, `r_rt`, `cl_renderer`, `r_mode`…). Those keep their running value until a restart, so a row the player had just changed went on showing the old setting until Apply.
+- Clicking a latched yes/no a second time could not flip it back either: the toggle was computed from the value that had not moved.
+- **Fix:** a new UI call (`UI_CVAR_LATCHEDSTRINGBUFFER` → `Cvar_LatchedStringBuffer`, appended to the end of the UI call table). The UI's value reads (`UI_CvarPendingValue` / `UI_CvarPendingString`) return the pending value where there is one. Every row, toggle and cvarTest now shows what has been chosen, and yes/no and list rows add "(Apply)" while that is not yet what is running.
+- **On screen:** the post-processing row reads "No" with `r_fbo 0`, "Yes (Apply)" after setting 1, and "No" again after setting 0 (pending cleared).
+
+**3. E178's lamp clamp made light positions worse, near walls.**
+- E178 clamped each lamp point's light to no further than the first wall its direction meets. It was not measured before shipping.
+- Measured now on the CPU replica, against the 106 lamp fittings on japanesecastles:
+
+| | Median error | Middle 50% |
+|---|---|---|
+| Without the clamp | 26 units | -84 to +7 |
+| With the clamp | 66 units | -164 to -6 |
+
+- It moved a third of lamp points, all near geometry. A blended direction runs into the lamp's own fitting or a nearby edge first, putting the light far too close, which bends and stretches shadows near walls and corners.
+- Removed. Whether it accounts for all of the reported warping is for the tester to confirm.
+
+### E182. Advanced hub: buttons for every render page, from one list — DONE (verify)
+**Lives in:** our **client** (pak01 menus) · **Seen by:** our client only
+
+Reported: the new render options were missing as selectable buttons in Advanced.
+
+**Cause:** the in-game Advanced hub's "Exclusive Options" named four render pages by hand: Render Options, Water, Ray Tracing, Surface Detail. Four pages added later had a tab in the render frame and no button on the hub:
+- Shadows (E161)
+- Cast Shadows (E167), where every shadow option since then lives (sun shadow, solid model shadows, light position, soft edges…)
+- Splashes (E147)
+- Image (E152)
+
+They were only reachable by opening one of the four and switching tabs.
+
+**Fix:** `RENDER_PAGES` in `tools/gen-ingame-menu.py` is now the one list of render pages: suffix, tab label, hub label. `gen-render-menu.py` builds its tab bar from it and the hub builds its buttons from it, so a page added to one cannot be missing from the other.
+- **Layout:** the hub lays all eight out on the same 3-wide centred grid as Normal Options (rows at y 176/204/232). Original Menu moves down to y 288, inside the 340-high page.
+- **Guard:** the generator now fails if the hub ever runs past its page.
+
+**Checked:** `check-menus.py` reports 0 problems and 0 unresolved references, and every button's `open io_igr_<page>` resolves. It was not looked at on screen: the harness cannot open in-game menus.
+
+### E181. The GPU is recorded every launch; a different one runs the first launch again (`com_qlex_lastgpu`) — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+Asked for: detect when the GPU differs from the last launch.
+
+**What it does:** every launch, once the main menu has been up 1.5 s, `CL_CheckHardwarePrompt` records the machine's GPU in `com_qlex_lastgpu` (archived).
+- **What is recorded:** the PCI `vendor:device` of the best GPU the list knows (the one the Vulkan renderer uses on a hybrid laptop). Failing that, the first PCI ID read, then the OpenGL renderer's name.
+- **Different from last time:** the console says "GPU changed since the last launch (new, was old)" and `com_qlex_firstlaunch` goes back to 0.
+  - If the new card qualifies, it is asked about as on a first launch.
+  - Quitting with the question open asks again next time.
+- **Empty record** (a config from before this): it is filled in without asking.
+- **Changed to a GPU that is not offered Vulkan while still on Vulkan:** a console warning, since the advanced rendering chosen for the old card may not run on the new one. Nothing is switched for the player.
+
+**Checked:** in the harness, a client started with `com_qlex_lastgpu 10de:2c59` and `com_qlex_firstlaunch 1` on lavapipe:
+- logged the change;
+- reset `com_qlex_firstlaunch` to 0 and recorded the new GPU;
+- printed the warning (the harness runs Vulkan on a software renderer).
+
+### E180. Hollow shadows: the holes in player and item models closed for tracing (`r_rtActorCaps`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported with screenshots: some shadows are "hollow". There is an outline on the floor, the floor shows through inside it, and a player's shadow has lit gaps through the body.
+
+**Cause:** the models are open shells. A Quake player is three MD3s (legs, torso, head), each with a hole where it meets the next: the waist, the neck, the top of the legs. Weapons and many items have open ends too. Drawn, the holes never show. Traced from the floor toward a light high overhead, a ray under the player went up the inside of the legs, out through the neck and on to the light without touching a triangle. Only the rim, where rays graze the walls, came out dark.
+
+**Fix:** `rt_caps_for` (`vk.c`) closes each surface's holes in the shapes the traced shadows and AO use. The models as drawn are unchanged.
+- **Finding the holes, once per surface, then cached:**
+  - Vertices are welded by their frame-0 position, because MD3 duplicates vertices along texture seams and a seam is not a hole.
+  - Edges used by only one triangle are hole edges.
+  - Hole edges are grouped into holes by which welded vertices they share.
+- **Each frame:** a triangle fan from each hole's current centre, using the same lerped positions as the rest of the surface, so the cap moves with the animation.
+- **Cache lifetime:** cleared with the dynamic structures, which happens every map load.
+- **Toggle:** `r_rtActorCaps` (default 1, menu row "Solid model shadows"); `0` traces the triangles as they are.
+
+**Checked:** lavapipe, a test model made to match: an open tube (radius 40, height 24, with a texture seam), 7 sites, debug view, validation layer on, 0 errors.
+- **Caps off:** at every site with light from above, the tube casts a red **ring**, which is the reported shape.
+- **Caps on:** a filled disc.
+- **The seam** does not produce a cap: the tube's only holes are its top and bottom.
+
+### E179. First launch: its own flag (`com_qlex_firstlaunch`), and RTX 50-series cards were never asked — DONE (verify)
+**Lives in:** our **client** (client engine, pak01 menus, GPU list) · **Seen by:** our client only
+
+Reported: the first launch experience did not appear on a fresh install. The guess was that files made by Steam Quake Live were in the way.
+
+**Found two causes, both fixed:**
+1. **The GPU list classed every RTX 50-series card as "not offered".**
+   - `tools/gen-gpu-list.py` excluded data-centre chips with `GB2[01]\d`, which also matches GB202–GB207, the consumer Blackwell chips.
+   - So the tester's RTX 5080 Laptop GPU (`10de:2c59`) was listed under "data-centre part" and never prompted, whatever the config held.
+   - The pattern is now `GB1` only, and `GK2` was narrowed to `GK210`: it had also matched GK208 (GT 710/730), which were correctly not offered but listed for the wrong reason.
+   - Regenerated from pci.ids 2026.10.01: 380 rt, 263 vulkan, 1672 none. Every RTX 50 card is now tier `rt`.
+2. **Its own flag.** The first launch is now gated on `com_qlex_firstlaunch`, archived:
+   - **0 or missing:** it runs from the main menu.
+   - **Either answer:** sets it to 1.
+   - It replaces `cl_hwPrompt`.
+   - A player already on Vulkan (a config from an earlier build) used to skip the whole thing. Now they go straight to the second question, the advanced rendering.
+   - A machine that does not qualify is still not marked done, so a new graphics card is asked about on the next launch.
+   - Set `com_qlex_firstlaunch 0` to see it again.
+
+### E178. Multiple shadows, step 1: sky and sun told apart from lamps, and the sun casts its own shadow (`r_rtShadowSun`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported: "I haven't seen effective multiple shadows ... It seems like strongest shadow gets dominance/preference." That is exactly what the data allows. The light grid keeps **one** direction per point, a blend weighted toward the brightest light, so every traced shadow came from that one light, and a second light's shadow was never cast.
+
+**What the level's light actually is.** On a CPU copy of japanesecastles, each grid point's direction was traced against the level's triangles. Weighted by light:
+
+| Where the grid's light comes from | Share |
+|---|---|
+| Open sky | 65% |
+| The sky shader's `q3map_sun` (within 20°) | 10% |
+| Glowing surfaces (flames, portal) | 5% |
+| Nothing left in the map: the lanterns' point lights, compiled out | 20% |
+
+So most of the map is lit by parallel light. The light field (E176) treated all of it as a lamp: it found a "position" a few hundred units away and cast shadows from there, at the wrong angle and cut short.
+
+**The lamp list, first half: `LF_Classify` (`tr_light.c`), at map load.**
+- **Sky or lamp.** Every lit grid point traces its own direction, plus four rays about 5° around it, against the same opaque level the GPU traces, with the sky surfaces added (the GPU structure leaves them out). The share of rays that reach sky is the point's sky fraction, averaged once with like-directed neighbours.
+- **Sky points** (fraction ≥ 0.5) become directions. The shader traces them as parallel light, and snaps them to the exact `q3map_sun` direction within 20°. Only toward the exact sun is the level also traced (for `r_rtLevelShadows`), because only that direction is not a blend.
+- **Lamp points** keep their field position, clamped to no further than the first wall their direction hits (+8 units). A light cannot be behind the wall it lights the point through. This moved 2290 of 6961 lamp points.
+- **Sun reach.** Separately, every open point traces the exact sun direction to see whether the sun reaches it.
+- **Sun brightness** is the median of the grid's directed light where the sun dominates, taken from the map's own numbers rather than a guess at q3map2's units.
+- The field grows to 8 floats per point, plus the sun at the end, in the same buffer.
+- japanesecastles: 48,173 triangles, **399 ms** at load, 10,146 sky / 6,961 lamp points, and the sun reaches 8,170.
+
+**Second shadow: the sun, `r_rtShadowSun` (default 1, menu row "Sun shadow").** Where the sun reaches a point and its strongest light is something else (a lantern), the sun gets its own rays and its own share of the light. Its shadow is cast alongside the lamp's, not instead of it.
+- **Its share:** sun brightness × N·L, taken out of the grid's ambient (where a non-dominant light's contribution sits) and capped at 80% of the ambient.
+- **Floor:** a point in both shadows keeps at least a fifth of its ambient. That is the HDR floor rule applied here: no shadow darker than the level's own light allows.
+- **Faces away:** a surface facing away from the lamp but toward the sun now gets the sun's shadow. It used to return early.
+- **Projected soft mode:** carries one edge per pixel, the first light's if blocked, otherwise the sun's.
+- **`0`:** restores one shadow from the strongest light.
+- **Model shadows:** `R_ShadowRayReach` now gives a sky-lit point the full reach instead of stopping at an invented lamp.
+
+**Checked** (lavapipe, synthetic cube cluster, 7 sites, 5 rays, validation layer on: 0 errors):
+- **Site 1**, a corridor whose strongest light is a lamp behind the camera: with the sun off, the cubes cast **nothing**; with it on, they cast sun shadows. The debug view shows them red.
+- **Sites 2, 4, 7:** no change.
+- **Sites 5 and 6:** the pixel differences are the animated water, not shadows.
+
+**Not yet (the lamp list's second half):**
+- **Two lamps.** The grid cannot say where a second lamp is, and the lanterns' own lights were compiled out of the map. Recovering them needs the emitter surfaces (`q3map_surfacelight`, which the renderer does not parse yet) or fitting positions from the lightmap. That is the next step.
+- **Cost.** The sun's rays cost a second set where it applies. `r_rtTimings 1` will show it.
+
+### E177. GPU time per ray-tracing pass (`r_rtTimings 1`) — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Unification step 1: measure. The tester reported the shadows costing a lot, and nothing could say how much or where.
+
+**What it does:** a timestamp query pool, two queries per section per command buffer, written at the start and end of each pass. The sections are the dynamic structure build, AO, the shadows on the level, the water reflections, the lit-surface pass (dynamic lights and their shadows) and the whole frame.
+- Each section is written at most once a frame, so a pass that runs twice is not double counted.
+- The queries are read back in `vk_begin_frame`, where that command buffer's fence has just been waited on, so no extra stall.
+- Averages print every two seconds: "RT timings (GPU ms/frame over N frames): ...".
+- The start-up log says whether the device has graphics-queue timestamps.
+- `r_rtTimings` is CVAR_TEMP: a diagnostic, never saved.
+
+**Found on the way:** reading the whole range at once returns VK_NOT_READY for all of it whenever one pass did not run that frame, because its queries were never written. It now reads section by section.
+
+**First numbers** (lavapipe, CPU-emulated, so only the proportions mean anything; the tester's settings plus Shadows: Traced): whole frame about 210–240 ms. Of that:
+
+| Pass | ms/frame |
+|---|---|
+| Shadows on the level | 74–99 |
+| AO | 69–71 |
+| Water reflections | 18–19 |
+| Structure build | 1.3 |
+
+The shadow pass costs at least as much as AO: 5 rays a pixel with up to three queries each, plus its own depth reconstruction and denoise. This is the pass the next unification steps target.
+
+**Please run** `r_rtTimings 1` on the RTX 5080 and send the lines. The real ratios decide what merges first.
+
+### E176. Shadows no longer tear apart: the light field, worked out once per map (`r_rtLightField`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported with screenshots over the last rounds: the player's shadow comes apart. It shows gaps between parts of one body, a smeared streak, and "some spots still break up the shadow unnaturally". This is also step 1 of the unification plan: work that every pixel repeated, done once.
+
+**Cause:** every pixel estimated its light's position for itself, from where four nearby grid directions crossed (E167). That answer jumped between neighbouring pixels: found here, not found a few pixels over, a different crossing past a grid cell boundary. One body's shadow was then cast from two or three light positions at once and came apart. It also cost about 40 buffer reads a pixel.
+
+**Fix:** `R_BuildLightField` (`tr_light.c`), run at map load after the grid.
+- **Per grid point:** the point nearest, in the least-squares sense, to its own direction line and those of its 26 neighbours that see the same light (within about 37°), each weighted by its directed light. A slight pull toward 512 units along its own line keeps a point whose neighbours are all parallel (a distant light) from running off. Then two rounds of averaging with like-directed neighbours.
+- **Stored after the grid in the same GPU buffer**, four floats a point, so there is no new binding and the water's reflection shader never sees it. `actorshadow.tmpl` interpolates it between grid points like the grid itself, so the light moves smoothly across a floor.
+- **Fallback:** the per-pixel estimate stays where the field has no answer, or its light is behind the surface or disagrees with the point's own direction by more than about 45°.
+- **The model-shadow rays** (`R_ShadowRayReach`) read the same field, so a player and the shadow they cast use one light.
+- Rays still stop at 55% of the way, and every E170 rule stays.
+
+**Measured, on the CPU against the map's lanterns and torches:**
+- median error −34 units (the four-sample estimate was +91), short of the lamp, which is the safe side;
+- neighbouring grid points agree to a median 24 units after smoothing (50 before);
+- in game, "Light field: 17107 of 120900 grid points locate their light" (the rest are inside walls or unlit).
+
+**Checked** (0 validation errors), a player-shaped test model (legs, torso, head, gun), `r_rtLightField` 0 against 1 at four spots:
+- on the lit floor, per pixel throws a long distorted smear, and the field a compact figure;
+- in the courtyard, per pixel is notched and the field is one piece;
+- the multi-cube test at seven spots is clean.
+
+**Option:** Cast Shadows → "Light position": Per pixel / Light field (default).
+
+### E175. Coloured noise over the frame on the in-game Player page: the shadow pass ran for the UI's model view — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported twice, with screenshots, on 1fd32fc and again on ccb85b4: the whole 3D view turns to coloured per-pixel noise under the in-game menu. On the second report the tester narrowed it down to the **Player tab only**; closing the menu clears it.
+
+**Cause:**
+- The Player tab has a player-model preview (`UI_PLAYERMODEL`), which the UI draws as a scene of its own, with no world (`RDF_NOWORLDMODEL`), after the world view.
+- `RB_DrawSurfs` runs once per view. AO and the water reflections return when they have already run this frame (`doneRTAO`, `doneSSR`), but `vk_actor_shadows` had no such flag.
+- It ran a second time, as a fullscreen pass, with the model view's camera over the whole screen's world depth. The positions it reconstructed were nonsense, NaN among them, and it multiplied them into the scene.
+- In the float scene target, NaN goes through bloom and the tone curve as exactly that speckle.
+- E173's depth hazards were real, and fixed, but they were not this.
+
+**Fix:**
+- `vk_actor_shadows` runs once a frame (`backEnd.doneActorShadows`) and never for a view without the world.
+- AO and the water also refuse a view without the world explicitly, and so do the model and dynamic-light shadow rays: a floating UI model has nothing to be shadowed by.
+- `actorshadow.tmpl` returns on a NaN or infinite reconstructed position, so a bad view cannot poison the frame again.
+
+**Not reproduced here:** the harness cannot open in-game menus this round, and the case needs the world and a model view in one frame. The cause is read from the code path; please confirm on the Player tab.
+
+### E174. Own body off the gun; items' AO blob; 1 ray is a clean hard shadow — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Tester's reports:
+- awkward hard shadows on the first-person weapon, which the tester tested and confirmed is their own body;
+- items having "two shadows", the traced one plus a faded blob that follows the item as it bobs, which no shadow option changes;
+- with 1 ray, shadows' shapes are "really bad".
+
+**Own body on the gun:** `r_rtWeaponSelfShadow` 0/1, default 0 (Cast Shadows → "Players shadow your gun").
+- The first-person weapon sits inside your own body, which is in the silhouettes (E166).
+- With 0, the weapon's model and dynamic-light shadow rays trace the level only (`VK_SetRTTransform`, RF_FIRST_PERSON).
+- The silhouettes are one instance, so this also leaves out other players between your gun and a light. Splitting your own body into an instance of its own would allow the finer toggle; not done.
+
+**The item blob is ambient occlusion, not a shadow.** `r_rtDynamic 1` traces players and items as proxy boxes and balls. The ball under an item occludes the floor as a round blob that follows it, and no shadow option touches it.
+- New `r_rtDynamic 2` (Lighting & RT → "Players/items in AO: Real shapes") uses their real triangles (the silhouettes) instead.
+- The silhouettes are traced from both sides, so a second query starting 4 units out keeps a model from occluding itself.
+- AO takes the mask from a spare push-constant field. 1 stays the default.
+
+**1 ray:** the golden-angle spiral put ray 0 at √(0.5) of the light's radius, turned per pixel. With one ray, every pixel aimed at a different point on the light and the outline shredded.
+- Now an odd count puts ray 0 at the centre and the rest on the disc (the tester's rule): 1 ray is exactly the hard shadow.
+- Same in the shadows on the level, dynamic-light and model shadows.
+- Menus offer odd counts; `r_rtActorShadowRays` defaults to 5.
+
+**Checked** (0 validation errors): 1 ray is a clean hard shadow, 3 and 5 are soft. AO debug view: `r_rtDynamic 1` draws the blob under the cube cluster, and 2 does not.
+- **Correction to earlier rounds:** the test cube was wound counter-clockwise, and Quake 3 winds clockwise. The renderer drew the insides of its far faces, which is why the cubes' own faces read as shadowed or occluded in E167–E172's debug views. Rewound; real models are unaffected.
+- **Not checked:** the weapon toggle (the harness draws no gun).
+
+### E173. Depth synchronisation around the composite pass; RESET no longer switches features off; Traced comes back — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Three reports from the tester (RTX 5080, 2x MSAA):
+- the whole 3D view turned to coloured per-pixel noise under the in-game menu on 1fd32fc, without a crash;
+- after using RESET in the menus, ray tracing, RT AO and the water reflections were off although the menus showed them on;
+- "Traced" was missing from Shadows, even with r_rt 1.
+
+**1. Synchronisation.** Your log had no errors. The run re-done with Vulkan's synchronisation validation (`VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT`) reported 1,151 hazards in about a minute. All were on depth, in the composite pass (`render_pass.rtao`, which AO, the water and the shadow passes use to multiply into the scene):
+- **READ_AFTER_WRITE at its begin.** The barrier before it named only the fragment-shader stage. The pass also loads depth and tests against it, in the fragment-test stages. Now all three.
+- **WRITE_AFTER_READ at its end.** Depth is read-only in this pass, but its store op was STORE, which counts as a write after the pass's own sampling. Now `STORE_OP_NONE` (`VK_EXT_load_store_op_none`, or KHR, enabled where present): keep the contents, write nothing.
+- **WRITE_AFTER_WRITE at its end.** Its final layout transition back to ATTACHMENT_OPTIMAL had nothing ordering it against the reads. The pass now leaves depth read-only, and `vk_end_composite_render_pass` makes the transition with a barrier that names both sides.
+
+The pass may carry no dependencies of its own (it must stay compatible with main, E145). Store ops and final layouts do not count for compatibility, so none of this changes that.
+
+**After:** 0 validation errors with synchronisation validation, the same run. The EXT name is preferred because this validation layer rejects the token under the KHR name.
+
+**Honest limit:** lavapipe runs commands in order and cannot show the noise itself. Races like these are the kind that a GPU running passes concurrently turns into garbage, but that this was the tester's noise is inferred, not seen.
+
+**2. RESET.** The Render → Lighting & RT page's RESET ran `reset r_rt ; reset r_rtao ; ...`, and the Water page's `reset r_ssr`. Their defaults are Off.
+- `r_rt` is latched, so the menu kept showing it on, while the next vid_restart turned ray tracing off.
+- RESET now leaves the on/off switches alone (`RESET_KEEPS` in `tools/gen-ingame-menu.py`, used by both generators): r_rt, r_rtao, r_ssao, r_ssr, cg_shadows, r_rtActorShadows, r_rtLevelShadows, r_rtDlightShadows, r_rtModelShadows.
+- It restores how a feature looks, not whether it runs.
+
+**3. Traced.** A start without ray tracing switched Traced to Stencil (E164), and cg_shadows is archived, so it stayed Stencil on every start after. The row with Traced in it shows only while r_rtActive is 1, which needs a vid_restart after r_rt 1.
+- The switch is now remembered (`r_shadowsWasTraced`). The next start with ray tracing puts Traced back and says so.
+- Checked: start with r_rt 0 and cg_shadows 4 gives "switched to Stencil until ray tracing is back", cg_shadows 2, r_shadowsWasTraced 1. Then `r_rt 1`, vid_restart gives "Shadows: ray tracing is back - Traced again", cg_shadows 4, r_rtActive 1.
+- **Not checked:** the menu row itself on screen. The harness's in-game menu shots failed this round, with keystrokes dropped under load.
+
+### E172. Model shadows stop short of the light and the room around it — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The shadow the level casts on a player or item (`r_rtModelShadows`) still did what E167 removed from the pass that draws shadows on the level: it traced along the grid's direction as if the light were the sun, the full `r_rtModelShadowDistance` (1024). A player under a lantern could be darkened by the ceiling above it.
+
+**Fix:** `R_ShadowRayReach` (`tr_light.c`) runs once per model draw, on the CPU. The model pass has no light grid on the GPU, and the renderer has CPU access to it through `R_LightForPoint`. It applies the same rules as E170:
+- **Where four grid samples around the model locate the light:** the ray gets 55% of the way there, less 16 units.
+- **Otherwise:** march toward the light through the grid. The ray stops 32 units before the first point that is solid all round (the room's shell), or at 80% of the first point whose direction points back (past the light).
+- In both cases it is capped by `r_rtModelShadowDistance`.
+
+**Checked** (0 validation errors), the six-cube cluster given a grid-lit shader:
+- **The engine's own numbers** (temporary print) matched the CPU replica for the flag room: origin (-2443,77,-269), direction (0.03,-0.17,0.99), reach 640 by the "room's shell" rule. Above that spot the roof is open, so the light is the sky.
+- **Debug view with "Players block lights" off:** one cube stays red. A beam 150 units above it (`wood_planks_02`, found by tracing the map) sits between it and the sky, so that shadow is real.
+- **With "Players block lights" on:** the cubes also shadow each other, as that setting asks.
+- **Not checked:** a real player standing under a lantern. That needs pak00's player models.
+
+### E171. Soft shadows by projection: one ray, the edge worked out from the distances (`r_rtActorShadowSoftMode`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for (the "option A" discussion): instead of approximating a light with a size by a few random rays, treat it as a radius and project the gradient. The light is strongest at the centre, half way out at half, and weakest at the rim.
+
+**How** (`r_rtActorShadowSoftMode 1`, Cast Shadows → "Soft edges: Projected"; the sampled edge stays the default):
+1. `actorshadow.tmpl` with `USE_PEN`: **one ray at the light's centre.** It uses E170's rules (level at 55%, fittings rejected, no player through a wall). It writes four values to an RGBA16F target: occlusion, the blocker's distance t, the light's distance len, and the light the pixel loses if shadowed.
+2. `penumbra.tmpl` mode 0, **the search:** each pixel looks round it (7×7 taps) for blocked pixels on its own surface. It takes the edge's half-width from theirs, R·t/(len−t), in pixels at that depth. This spreads the edge onto lit pixels too, which have no blocker of their own.
+3. Mode 1, **across:** a weighted average over that width. Weights run 1 − |x|/(r+1): full at the centre, half at half, least at the rim.
+4. Mode 2, **down:** the same average, multiplied into the scene as 1 − lost·occlusion.
+
+Every tap is also weighted by depth agreement, like the AO denoise.
+
+**Result:** the edge is sharp where the blocker touches the surface and wide where it is far from it. There is no speckle, and it costs one ray per pixel instead of 4–16.
+- **New objects:** two RGBA16F attachments, a single-attachment render pass (the AO offscreen pass, generalised), their framebuffers, a descriptor set per target, and three pipelines (22–24).
+- **Optional:** if any of it fails, the sampled edge stays.
+
+**Found on the way:** the renderer's fixed table of buffer memory (`MAX_ATTACHMENTS_IN_POOL`) had no room for the two new targets. The client stopped at start-up with "Attachments array overflow", and the test harness sat waiting for a map that never loaded. The limit now counts them.
+
+**Checked** (the tester's settings, 0 validation errors, six-cube cluster, courtyard and flag room):
+- hard, sampled at 16, projected at 16, projected at 32, and 16 raw rays as reference;
+- projected at 16 is smooth and close to the 16-ray reference;
+- 32 is wider;
+- the edge is narrow where a cube is near the floor.
+
+**Limits:**
+- **Thin shadows:** the search's taps are up to 64/3 pixels apart, so a very thin shadow can be missed and keep a hard outer edge.
+- **Overlapping shadows** from blockers at different distances share one width.
+- **The screen edge:** the edge is cut off there.
+
+### E170. Specks and streaks on the flag room floor: false level shadows from the lamps' own fittings — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported in E169's check: small sharp specks and thin streaks on the flag room's floor, the same at every softness and with 16 rays. Asked for: "Deep dive that issue and figure it out."
+
+**How it was found:** the level-shadow calculation was rebuilt on the CPU against the map itself, and scored against the map's own baked lightmap. The lightmap was traced by the map compiler from the real lights, so it says where a shadow really is.
+- **Tools** (scratch): Python reads the BSP's triangles, patches, light grid and lightmaps. It does exactly what `actorshadow.tmpl` does, with a ray/triangle test against the map's geometry.
+- **Where the lights are:** the map's light entities are compiled out, but the fittings are not.
+  - Flag room: two paper lanterns (`rice_paper_lantern`), 235 units above the floor at (-2388,-28) and (-2756,-28), with the ceiling about 20 units above them.
+  - Torch cages (`gratetorch2`/`flame2`) along the walls.
+- **Result:** 81 floor points traced as shadowed, and the lightmap has 72% of them lit. Their blockers were:
+  - the paper lanterns (114 of the first pass's 329 hits), hit 180–290 units out;
+  - the ceiling planks just above the lanterns, hit at 255–340;
+  - short hits on 16-unit steps (real contact shadows) and on floor hidden under a platform (a sampling artefact, not on screen).
+
+**The cause: the light-distance estimate runs long.**
+- Where the grid clearly points at one lamp (within 10°), the four-sample convergence estimate overshoots the real distance by a median 37% (91 units), up to +49%.
+- A level ray cut at 75% of an estimate 37% long ends at about 103% of the real distance. That is inside the lantern's shade, or the ceiling above it.
+- Marching the grid for the point where its direction flips undershoots by 26% instead, but finds the flip only half the time: the grid is 128 units tall, and the lamp sits 20 units under the ceiling.
+
+**Fix** (`actorshadow.tmpl`):
+- **Level rays go 55% of the way, less 16 units** (was 75%).
+- **A level hit counts only if lit space continues behind it toward the light** (`occluderHides`). The first grid sample 16–96 units past the hit must still point onward.
+  - If it points back, the ray has passed the light, and the hit was the lamp's fitting.
+  - If it is solid for 96 units, the ray hit the room's shell, which a light inside the room is in front of.
+  - The level query now takes the closest hit, so it knows where the hit is.
+- **A player or item counts only if no level geometry is in front of it** (`levelBetween`). The rays aim past the light when the estimate runs long, and without this a player upstairs, above a lantern, would have shadowed the floor below through the ceiling.
+
+**Measured** (CPU, against the lightmap, hard shadows):
+
+| Area | Before | After |
+|---|---|---|
+| Flag room | 81 shadowed points, 72% false | 1, which the lightmap confirms dark |
+| Rocket-launcher room | 3, all real | the same 3 |
+| Courtyard | 18, mostly real | 16 |
+| Side room | nothing to shadow | nothing |
+
+The stair hall's lightmap coordinates did not read in the script, so it gives no verdict there.
+
+**GPU** (0 validation errors), level debug in the flag room: the floor is clean; a small patch remains on the wall screen. Player/item debug: the cubes shadow the floor as before. The courtyard's shadows remain.
+
+**What this means for level shadows:** on a lightmapped map the baked lightmap already has the level's shadows, traced from the real lights. Traced level shadows can only sharpen them, and only where the grid locates the light well. With these rules they are sparse, but a shadow they draw now agrees with the lightmap. Players' and items' shadows, which the lightmap cannot have, are unchanged apart from the wall check.
+
+### E169. Soft traced shadows: smooth instead of speckled (`r_rtActorShadowDenoise`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported: "What about shadow softness? Because they didn't seem to be working like it should on the previous build."
+
+**What was wrong:** softness was implemented, but at the ray counts anyone runs it looked broken.
+- A soft shadow is a few rays aimed at different points on the light. With 4 rays each pixel is one of five shades, and each pixel picked its points with a random hash. So the penumbra was a speckle, not a gradient: raw 4-ray softness 16, zoomed, is a cross-hatched dither.
+- The points were scattered through a cube around the light, so part of every spread ran along the ray and softened nothing.
+
+**Fix:**
+- **Players/items/level (`actorshadow.tmpl`):**
+  - The points now lie on a disc facing the pixel, in a golden-angle spiral (even coverage at any ray count). Each pixel turns the spiral by interleaved gradient noise, so neighbouring pixels sample different points.
+  - With softness above 0, the pass then goes through the ambient-occlusion denoise, which stops at depth edges. It is drawn into AO's first target, blurred across into the second, then blurred down and multiplied into the scene by AO's composite. AO has finished with both targets by then.
+  - It runs whether AO is on or off, and costs two fullscreen passes. Hard shadows (softness 0) and the debug views are drawn straight in, as before.
+- **Dynamic-light and model shadows (`light_frag.tmpl`, `rtshadow_frag.tmpl`):** same spiral and noise. They are drawn per surface, so they cannot take the fullscreen denoise. The speckle is finer and more even, but still a dither at 4 rays.
+
+**Option:** `r_rtActorShadowDenoise` 0/1 (default 1), Render → Cast Shadows → "Soft edge denoise". 0 shows the raw rays, for comparison.
+
+**Checked** (the tester's settings, including RT AO at half resolution with its wide denoise; 0 validation errors; six-cube cluster):
+- Courtyard spawn point:
+  - softness 0 gives sharp shadows, 16 gives soft;
+  - 16 with 4 rays: raw is cross-hatched, denoised is a smooth gradient about as clean as 16 raw rays;
+  - 32 is softer again;
+  - with AO off, the denoise still runs.
+- Flag room: the level's shadows soften the same way.
+- Dynamic lights, three coloured lights around the cluster: softness 16 at 4 rays softens and 32 more.
+  - A first run seemed to show 16 at 4 rays as hard as 0. With the order changed it did not repeat: the shot had been taken before the cvar took effect.
+
+**Seen, not fixed:** small sharp specks and thin streaks on the flag room's floor, the same at every softness and at 16 rays. They were already in E168's frames. They look like grazing light catching the floor's seams. That is a separate item: needs a look with the debug view on the real textures.
+
+### E168. Traced level shadows: no false shadows on lit walls; tested with several casters and several lights — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Asked for: "Your test should use multiple cubes and light sources. Along with 4 rays at least". E167's test used one cube, one light and one spot, and that hid a real bug.
+
+**The test** (scratch harness, lavapipe, the tester's settings, 0 validation errors):
+- **Casters:** one test model holding six cubes of different sizes, from the floor up to 150 units above it. They shadow the level and each other.
+- **Seven spots, each under different lights:** the stair hall, and six of the map's deathmatch spawn points (courtyards, the flag room, the side rooms), so the view faces open space.
+- **Rays:** 4 for every traced shadow (players/level, model, dynamic light), plus 8 for the softness shot.
+- **Views:** each spot shot with shadows off, player debug, and players plus level on.
+- **Dynamic lights:** a second run puts three coloured lights around the cluster (a temporary test-only hook, not in the build), with `r_rtDlightShadows` 0/2/1, softness 16, and everything on.
+
+**The bug it found:** with level shadows in debug view, the stair hall's lit wall came out mostly red, in blotches. A temporary view coloured each blocked ray by how far along it hit, and showed the hits all at the end of the ray.
+- This map's lights are lanterns, torches, round wall lights and the sky; its point-light entities are compiled out.
+- A ray aimed at the estimated light ends on the fitting the light sits in, and E167 counted that as a shadow.
+- Where the grid could not locate a light, the ray ran the full 512 units, passed the lamp, and found the far wall.
+
+**Fix** (`actorshadow.tmpl`):
+- **Level rays stop at 75% of the way to the light, less 16 units.** Player and item rays still go almost the whole way: a player cannot be the lamp.
+- **The level is traced only toward a light that was located.** The estimate now samples the grid on four sides, not two; at least two of the four must agree, and within the reach. Where they don't, players still cast shadows but the level does not.
+- The blotches were also the two-sample estimate wandering from pixel to pixel. Four samples settle it.
+
+**After the fix:**
+- The walls are clean.
+- At every spot each cube casts its own shadow, and at each spot they fall in one consistent direction.
+- The cubes shadow each other, and the player's own body shadows the floor in front of the camera.
+- With the three coloured lights, each cube casts a shadow per light. Where one light is blocked, the other two colour the shadow, and softness blurs the edges.
+
+**Not checked:** real player and item models (pak00), and the mega health room. Outdoors under sun, the grid cannot place the sun, so there are no level shadows there. The map's baked lightmap already has those.
+
+### E167. Traced shadows on the level: cast from where the light is, by the level too, and soft (`r_rtLevelShadows`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported on E166, with screenshots from the hallway and the mega health room:
+- shadows land in the wrong places: long streaks, high on walls, and on the mega health room's ceiling. The ceiling one is cast by the **item**, not the player;
+- softness does nothing;
+- the level casts no shadows, e.g. the hallway drop-off onto the floor below. "My shadow should match the shadow it should be casting."
+
+**Why the E166 shadows were wrong:** E166 treated the light grid's direction at each pixel as sunlight. It traced parallel rays 1024 units toward it, whatever the real light's distance. Two problems:
+- A ceiling lit by a lamp below it has a grid direction pointing down. The ray went down past the lamp and found the mega health sitting on the floor, so the item shadowed the ceiling.
+- Every short-range light threw shadows up to 1024 units long.
+
+**Fix: estimate where the light is, and stop there** (`actorshadow.tmpl`, `lightDistance`).
+- The grid gives a direction but no distance. The pass samples the grid at two points 48 units either side of the pixel, across the light direction.
+- It then takes the closest approach of the three direction lines. Where they converge is the light.
+- Where they don't converge (parallel, i.e. a distant or sky light), it falls back to `r_rtActorShadowLength`. That is the new cap, default 512 (was the shared 1024).
+- Rays now end 8 units short of that point. A lamp below the ceiling is behind nothing, and a shadow is only as long as the light's geometry makes it.
+
+**Level shadows** (`r_rtLevelShadows` 0/1/2, default 0):
+- The same rays, from the same estimated light, also test the level's own geometry (mask 0x01, which includes doors and lifts).
+- So a ledge or a beam shadows the floor below it, and the player's shadow and the ledge's shadow come from the same place and agree.
+- The map's baked lighting already has coarse shadows. This adds the sharp edges it blurs, and it darkens only the grid's directed share, the same as the players' shadows, so a spot already in baked shadow does not go darker twice.
+
+**Softness:**
+- `r_rtActorShadowSoftness` (8) is the light's size in world units. Each ray aims at a jittered point on it.
+- `r_rtActorShadowRays` (4) is rays per pixel, averaged.
+- 0 is hard. The penumbra grows with the distance from caster to receiver, as a real one does.
+
+**Menu:** a new **Cast Shadows** tab (Render → Cast Shadows). It holds:
+- Player shadows, Level shadows, Strength, Softness, Rays;
+- "Players block lights" (`r_rtShadowCasters`), moved from the Shadows tab.
+
+To make room for the tab, "Render Options" is now "Render" and "Ray Tracing" is now "Lighting & RT". **Shadows: Traced** (`cg_shadows 4`) turns on both players and level. Everything is live.
+
+**Checked** (the tester's settings, lavapipe, 0 validation errors, local test cube as the caster):
+- The cube on the stairs casts a short shadow right behind and below it, not E166's long streak up the steps.
+- Softness 32 with 16 rays blurs its edge.
+- Level shadows, debug view, in the stair hall and the flag room: the ceiling pipes and beams shadow the floor and the walls, and open floor stays unshadowed.
+
+**Not checked:**
+- Real player and item models, and the mega health room itself. Those need pak00's models; please look at the ceiling there.
+- How good the light-position estimate is under every light in the map. Where two lights overlap, the grid's direction is their blend, and the estimate lands between them.
+- Known: a model can be darkened by both the model pass (`r_rtModelShadows`) and this pass. If a player looks too dark in shadow, lower one strength.
+
+### E166. Players and items cast traced shadows on the level, with their real shapes (`r_rtActorShadows`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Step two of "do all that next": what Shadows: Traced was missing to replace Quake's stencil shadows. Players and items cast shadows onto the level.
+
+**Silhouettes, not boxes** (`rt_build_actor_mesh`):
+- Each frame, the visible MD3 models are lerped on the CPU (the same lerp `RB_SurfaceMesh` draws them with, so the shadow matches the frame on screen), put into world space, and built into one bottom-level structure per command buffer. It is sized once, for up to 262,144 triangles a frame.
+- It sits in the per-frame top level as mask 0x04 (`RT_MASK_SILHOUETTE`), both sides.
+- Your own body is in it: not drawn in first person, but it casts.
+- Left out: the view weapon, RF_NOOCCLUDE/RF_NOSHADOW, and custom-shader shells.
+- AO and the water keep tracing the level plus the boxes (0x03). The silhouettes add nothing inside the boxes but cost time.
+
+**The pass** (`actorshadow.tmpl`, `vk_actor_shadows`): a fullscreen multiply after the opaque surfaces, in the occlusion composite pass like AO and, like AO, before the dynamic lights.
+- From each pixel, one ray toward the light grid's light against the silhouettes. Where one is in the way, the pixel loses the grid's directed share of its light: directed·N·L / (ambient + directed·N·L).
+- It shares the model shadows' Reach.
+
+**Options** (Render → Shadows → "Player shadows on the level"; live):
+- `r_rtActorShadows` 0/1/2 (2 = debug, shadowed pixels red), and `r_rtActorShadowStrength` (0.7).
+- Shadows: Traced turns it on.
+- **`r_rtShadowCasters` 1** ("Players block lights") now uses the silhouettes instead of E165's boxes, so players block dynamic lights and shadow each other with their real shapes.
+- `rtshadows` reports the triangle and model counts.
+
+**Checked** (the tester's settings, 0 validation errors), with a local test cube as the "player", floating over the stairs:
+- Debug paints its shadow on the steps red. On darkens the same patch, and Traced does the same with the stencil shadow off.
+- The report says "12 triangle(s) from 1 model(s)".
+- Not checked: real player models (pak00 is not here), and the CPU cost of the lerp with 60 players. It is a few thousand vertices a model; watch the frame time with `r_rtActorShadows 1` in a full match.
+
+### E165. Traced shadows see doors, lifts and (optionally) players; AO and water reflections respect them — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for ("do all that next"), following the review of how the traced shadows interact with AO and water. This entry is step one; players casting onto the level is E166.
+
+**1. The per-frame structure is built before the 3D:** `vk_rt_prebuild_dynamic`.
+- The shadow rays traced the static level only. The structure with doors, lifts and players in it was built later in the frame, by AO or the water, in the same command buffer. Reading it earlier would have read a stale one that a later command rewrote.
+- Now, when any traced shadow is on, the main pass is paused before the view is cleared. The structure is built, and the frame continues in the after-composite pass, which is identical to main except that it loads.
+- AO and the water find it built (`backEnd.doneRTDynamic`) and do not build it again.
+- The main pass's shadow binding names the per-frame structure.
+- The shadow rays now cull back faces like AO's, so a ray leaving a model's own proxy box gets out.
+
+**Instance masks:** 0x01 is the level and its movers (brush models: doors, lifts, platforms); 0x02 is players and items. AO and the water still trace 0xFF.
+
+**`r_rtShadowCasters`** (Render → Shadows → "Cast by"; live):
+- 0 = the level, doors and lifts (the default).
+- 1 = also players and items, as the rough boxes AO uses. Blocky up close, hence opt-in.
+
+**2. AO's "Lights clear AO" respects the shadows.** With light shadows on, a light clears occlusion only where one ray reaches it, the same test the light shader makes. Before, a rocket behind a wall still brightened the corner on this side.
+
+**3. Water glow respects them.** The water's reflected glow of a dynamic light is tested for line of sight from the water surface. The ray-traced water variant is used for this whenever light shadows are on, even with `r_ssrRayTrace 0`; `rtInfo.x` still says whether the fallback itself runs.
+
+**Checked** (harness, the tester's settings: MSAA, float target, HDR bloom, RT AO at half resolution, ray-traced water; 0 validation errors):
+- A light behind a wall leaks with shadows off, and not with them on, in both caster modes.
+- The AO debug view changes (94k pixels) when light shadows change. By eye the difference is slight, so treat it as measured rather than seen.
+- The model debug tint still shows.
+- Traced shows no leak.
+- Not checked in the harness: a door in the way (none in the test view), and the water glow test (needs a visible light over water).
+
+### E164. "Traced" shadows offered only while ray tracing is active — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for: the fourth Shadows option "should only be visible when ray tracing is enabled".
+
+**Menu:** a multi cannot hide one of its own values, so the Lighting page's Shadows row is now two controls in the same place.
+- The five-value list (with Traced) is shown while `r_rtActive` is 1.
+- The four-value list (without it) is shown otherwise.
+- New generator row kind `multi_gated` in `gen-ingame-menu.py`. check-menus already treats a `showCvar`/`hideCvar` pair on one cvar as exclusive, so the overlap needs no waiver.
+- `r_rtActive` is the renderer's own read-only "ray query is enabled this run", not `r_rt`, which only asks for it.
+
+**A leftover 4:** a `cg_shadows 4` saved from a run with ray tracing would draw a blank row in the list that does not offer it. So at renderer start, without ray tracing, it becomes 2 (Stencil) with a warning. Stencil is what Traced was falling back to anyway.
+
+**Checked:**
+- `r_rt 0` with `cg_shadows 4`: "Shadows: Traced needs ray tracing ... switched to Stencil", and `cg_shadows` reads 2.
+- `r_rt 1`: stays 4.
+- check-menus and check-menu-defaults pass.
+- Not looked at on screen: the swap is the same cvarTest mechanism the render pages' status rows use.
+
+### E163. Lighting > Shadows: a fourth option, "Traced" (`cg_shadows 4`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for: "Our shadows should supersede Quake's default ones, so we should add a 4th option 'traced'". Two shadow settings on two pages had been confusing: Lighting > Shadows (Quake's shadows cast by models) and Render > Shadows (ours, cast by the level).
+
+**`cg_shadows 4` "Traced":**
+- None of Quake's shadows: blob, stencil and simple all test for exactly 1, 2 or 3.
+- Both ray-traced passes (E161) on, whatever their own toggles say. Their strength, softness, rays, reach and debug settings still apply.
+- **Without ray tracing** (no ray query, or no level structure bound), it draws stencil shadows rather than none, and the report says so.
+- The renderer reads `cg_shadows` as its `r_shadows`, so this needed no cgame change. cgame's own checks (blob for 1, projection for 3) already draw nothing for 4.
+- Every stencil test in the renderer, 11 of them, goes through `R_STENCIL_SHADOWS` instead of comparing with 2, which is what makes the fallback work.
+
+**Menu:** in-game Settings → Lighting → Shadows gains "Traced". The Render → Shadows tab's help says Traced turns both passes on.
+
+**What Traced does not do yet:** players and items do not cast ray-traced shadows onto the level, so in Traced your own ground shadow is gone. That needs the per-frame structure (which has player stand-ins) built before the main pass.
+
+**Checked** (test cube, Khronos validation layer, 0 errors):
+- With ray tracing, Traced draws no stencil shadow and the model pass runs: the report reads "RT shadows (Shadows: Traced): model on, dynamic light on - 1 surface(s) shadowed".
+- With `r_rt 0`, Traced draws the same stencil shadow as Stencil; the only pixel difference is the report text.
+
+### E162. Ray-traced shadows report what they did; debug view for light shadows; looser model conditions — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Reported on E161 (5476555) with a console log from the RTX 5080 laptop: "I don't see level shadows or model shadows."
+
+**What the log showed:** ray query enabled, and the level's structures built after both the map load and the vid_restart. It could not show anything else, because neither pass printed a line. That is the failure this entry fixes first.
+
+**Reproduction attempt:** the log's own settings (MSAA, float target, HDR bloom, RT AO at half resolution with 8 rays, ray-traced water fallback) in the harness, with 4x MSAA since llvmpipe has no 2x.
+- Both features work there: the debug tint shows, and a light behind a wall stops leaking through it when dynamic-light shadows are on.
+- Two early "reproductions" were harness mistakes. The command line was too long and dropped the map. `+exec` set the latched `r_rt` too late, so ray query was off. Recorded so neither is trusted again.
+- So the cause is not visible from here. These changes make it visible from there.
+
+**Changes:**
+- **At map load:** "RT shadows: level structure bound - model and dynamic light shadows can run", or nothing if it is not.
+- **Two frames after either option changes** (so the counted frame was fully drawn with the new setting): a report of what each pass did.
+  - Models: surfaces shadowed, and skipped as translucent or as not lit from the light grid.
+  - Dynamic lights: lit surfaces ray-traced or not, or that `r_dlightMode` is 0.
+  - Or NOT RUNNING, with the reason (ray query off, structure not bound).
+- **Console command `rtshadows`:** the same report on demand.
+- **`r_rtDlightShadows 2`:** a debug view where blocked light turns red instead of going away, like the model tint. Menu rows for both debug modes.
+- **Model pass conditions loosened:**
+  - Opaque is judged by whether the first stage blends, not by the shader's sort, which is a draw-order hint a script may set for its own reasons.
+  - A grid-lit stage is looked for in every bundle.
+  - A lighting stage is no longer required (texture coordinates come from the first stage when there is none).
+  - Each of those, in E161, could silently exclude Quake Live's own models.
+
+**Checked** (harness, the log's settings, 0 validation errors):
+- The report reads right, e.g. "models last frame: 1 surface(s) shadowed; skipped 11 translucent, 7 not lit from the light grid" and "13 lit surface(s) ray-traced, 0 without".
+- The dynamic-light debug turns the leaked light red.
+- **Open:** the actual cause on the 5080 laptop. Next step is the report lines from that machine.
+
+### E161. Ray-traced shadows cast by the level: on dynamic lights and on models (`r_rtDlightShadows`, `r_rtModelShadows`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+Asked for after E160: "we need to come up with a way for the level geometry to cast shadows". Your own stencil shadow looked out of place, because it was the only dynamic shadow in a level whose shadows are all baked. Options 1 and 2 of the three proposed.
+
+**New tab: Render → Shadows.** Everything is live. Everything needs ray tracing (`r_rt 1`) and is inert without it; the Lighting & Ray Tracing tab's STATUS rows say whether it can run. Off by default.
+
+**Level shadows on lights** (`r_rtDlightShadows`, with Strength, Softness and Rays):
+- Muzzle flashes, rockets, plasma and explosions no longer light through walls and pillars.
+- The per-pixel light shader gained ray-query variants (`light_frag.tmpl -DUSE_RT`, four of them). Each lit fragment traces to the light and loses the light if the level is in the way.
+- Softness gives the light a size in world units, and rays sample over it.
+- The ray stops 8 units short of the light, so what a light sits against (a rocket touching a wall) does not shadow it.
+- Needs per-pixel dynamic lights (`r_dlightMode` 1 or 2). With mode 2, models are shadowed from dynamic lights too.
+
+**Level shadows on models** (`r_rtModelShadows`, with Strength, Softness, Rays and Reach, plus 2 = a debug tint):
+- Models are lit per vertex from the light grid: ambient plus a directed term along the grid's light direction. The grid is coarse (about 64 units), so a model under an overhang or half through a doorway was lit as if nothing were there.
+- A new multiplicative pass after each opaque, light-grid-lit entity traces a ray per pixel toward the grid's light. It removes the directed term where the level blocks it: exactly (a + d·N·L·vis) / (a + d·N·L) of what was drawn.
+- Pixels facing away had no directed term to lose and are untouched.
+- Covers players, the view weapon and items. Translucent and additive shaders are left alone.
+- Reach stands in for the distance to the light, which the grid does not have.
+- Debug (2) tints models red where the level blocks their light and blue where they face away from it.
+
+**Cast by the level only, not players, items or doors.** The rays trace the static world structure, not the per-frame one with entity proxies in it. That one is rebuilt later in the same command buffer, so the main pass would read a stale structure that a later command then rewrites. The level is what was asked for, and the static structure is exactly the level.
+
+**How:**
+- The structure is binding 1 of the uniform set every main-pass pipeline already binds. There is no new set and no layout change for anything else; shaders that do not declare binding 1 are unaffected. It is written per map (`vk_rt_update_main_descriptor`), and the ray-traced pipelines are used only once it has been (`mainTlasWritten`).
+- The object-to-world transform and the settings ride in `vkUniform_t` after the fog block, at fixed offsets 128+ in the shaders, so the layout matches with or without fog.
+- Model-shadow pipelines: `TYPE_RT_MODEL_SHADOW`, `[cull][polygonOffset]`, blend DST_COLOR·ZERO, depth EQUAL.
+
+**Checked** (llvmpipe with ray query, Khronos validation layer, 0 errors in every run including `r_rt 0` with both options on). Local test assets only: a grey test cube, and a temporary injected dynamic light (a test-only hook, removed).
+- A light just behind the flag room's east wall: without shadows its warm light leaks onto the floor and far wall inside the room; with them, none.
+- The cube under the corridor ceiling: the debug view tints the face toward the light red and the face away blue. With the effect on, that face darkens (0.338 → 0.194). Softness gives partial visibility.
+- `r_rt 0`: both options inert and the game unchanged.
+- Not checked: the look on real player models and art (pak00 is not here), and performance on a real GPU.
+
+### E160. Stencil shadows: a black line through the floor from the floating shotgun (stray volume faces) — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported on E159 with two screenshots: a thin black line runs from the floating shotgun down through the floor past its spawn pad. It is part of the shotgun's stencil shadow.
+
+**Cause:** Quake 3 finds silhouette edges by pairing. Each vertex keeps up to 32 edge records (`MAX_EDGE_DEFS`), and an edge is a silhouette when no light-facing triangle runs along it the other way.
+- A vertex shared by more than 32 triangles silently dropped the rest, so interior edges lost their partner.
+- An edge shared by three or more triangles ("overfanned", the old comment's word) also went unpaired.
+- Either way a single stray face was extruded from an interior edge: a blade, not a closed volume.
+- Depth-pass, Quake 3's counting, only sees such a blade in front of the visible surface. Depth-fail (E155) also counts what is behind it, so a blade under the floor became a line across it. Quake Live's denser models (the shotgun, the pad) hit this where Quake 3's did not.
+
+**Fix:** silhouette edges by signed count.
+- Each light-facing triangle adds +1 to its edges walked one way and -1 walked the other, in a hash keyed on the vertex pair.
+- Interior edges cancel whatever the mesh looks like. What remains is the silhouette: the sign gives the direction, the magnitude how many sides it needs.
+- There is no per-vertex limit, and the volume closes on any mesh, open or overfanned.
+- Only light-facing triangles are looked at now. The others never produced anything.
+
+**Checked:**
+- A local 48-segment coin, whose centre vertex is in 48 triangles: the E159 code draws a dark wedge below it (12,647 pixels change with shadows on), the new code does not (145).
+- The cube test from E155/E159 is unchanged: the shadow is cast from outside, the frame is unchanged from inside the volume, and the Khronos layer reports 0 validation errors.
+
+### E159. Stencil shadows: black spike through the floor under items, speckled self-shadow (E155 regression) — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported with a screenshot: stencil shadows drew incorrectly on floating weapons, sometimes, during the weapon bob. They were also wrong on your own player under some lighting. The symptom is a thin black spike running down from the floating weapon, through the floor under its pad. (A first reading of the screenshot took the dark doorway beside it for the artifact; that is level geometry.)
+
+**Cause 1, the spike (most likely - not yet confirmed on the real model):** E155's depth-fail counting only balances if every face of a volume is drawn, *including the far cap* (up to 512 units past the model).
+- Quake's far plane is sized to the visible world. In a small room an item's or the player's far cap crossed it and was clipped.
+- The uncancelled side faces then painted the volume black wherever something was in front of it - here the part of the weapon's volume below the floor, seen through the floor.
+- An item bobbing moves its volume back and forth across the plane, hence "sometimes".
+- Depth-pass (Quake 3's method) never needed the far cap, so this is new with E155.
+
+**Fix:** the shadow-volume pipelines use depth **clamp**. The device feature is now enabled when present, which is every desktop GPU. A face beyond the far plane lands on it instead of vanishing, and still fails the depth test where it should.
+
+**Cause 2, the self-player speckle:** the near cap is the model's own triangles, at exactly the depth the model wrote. Whether it fails the depth test was down to rounding, so the side away from the light speckled in and out of shadow.
+
+**Fix:** the near end of the volume is lifted one unit away from the light, where it always passes.
+
+**Without depth clamp** (no known desktop GPU): the pipelines fall back to Quake 3's depth-pass with no caps, and your own shadow is not cast (`R_STENCIL_SELF_SHADOW`), rather than drawing the columns.
+
+**Checked:** reproduced with a local test cube and a temporarily forced short far plane (a test-only hook, removed before commit).
+- Without the clamp, a dark streak runs down from the cube across the stairs - the same shape as the reported spike.
+- With it, only the cube's own shadow.
+- The E155 checks still hold: the shadow is cast from outside, and the frame is unchanged from inside the volume.
+- 0 validation errors.
+
+### E158. Tone curve choice (`r_toneMap`) and HDR bloom (`r_bloomHDR`); two leaked shader modules — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G5).
+
+**`r_toneMap`** (live). Menu: Render → Image → "Tone & bloom".
+- 0 automatic (the default, the old rule): the soft knee with `r_rts`, plain clip without.
+- 1 clip.
+- 2 soft knee: identical below 80%, the top rolled off instead of cut.
+- 3 filmic, Narkowicz's ACES fit. It reshapes the whole range and also tints the HUD and menus, which share the frame; the description and menu help say so.
+
+**Latent bug fixed with it:** the curve was chosen as `toneMap = r_rts`, and the shader only knows 1 as the knee. So `r_rts 2`, documented as "the same" as 1 on another format, got the plain clip and never rolled off. Automatic now gives the knee for both.
+
+**`r_bloomHDR`** (0 off, the default; latched, APPLY).
+- The bloom targets were always the swapchain's 8-bit format, so with `r_rts` everything above full brightness was cut to 1.0 on extraction. A rocket's core and a lit wall bloomed the same.
+- On, the bloom targets use the scene's floating-point format. It needs `r_rts` and says so in the log if that is off.
+- The Image page gained an APPLY button for it.
+
+**Shader-module leak (older than all of this):** `bump_vs`/`bump_fs` were created and never destroyed. That is two validation errors on every `vid_restart`, with or without any of these options. Found while validating this, and added to E153's cleanup list.
+
+**Checked** (Khronos validation layer, 0 errors including across `vid_restart`):
+- All four curves compared on the same view: auto matches the knee under `r_rts 1`, clip blows out the bright floor, and filmic compresses toward grey.
+- HDR bloom toggled in one session: the log reads "Bloom: floating-point targets", and the bloom around the brightest panels changes (about 52k pixels differ at 1% fuzz).
+
+### E157. FXAA and contrast-adaptive sharpening (`r_fxaa`, `r_sharpen`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G4). With MSAA off there was no anti-aliasing at all, and `r_renderScale` upscaled with a plain filter.
+
+**`r_fxaa`** (0 off, the default; 1 on) and **`r_sharpen`** (0 off, the default, up to 1). Menu: Render → Image → "Anti-aliasing & sharpness". **Live**, since both are in `CVG_RENDERER`, which rebuilds the present pipeline. Both need `r_fbo 1`, like the rest of the post-processing.
+
+**How:** both run in `gamma.frag`, the present pass. That pass is also the upscaler, so offsets are in the source image's texels, which is where the edges are. Both are specialization constants (ids 12 and 13), so with both off the shader compiles to what it was. Screenshots go through the same pass and include them.
+- FXAA is the 3.11 quality algorithm: an edge-end search plus sub-pixel blending. The first, compact variant turned one-pixel lines into dashes.
+- The blend taps are filtered by hand because this pass's sampler is *nearest* at 1:1 (`vk.blitFilter`). Through a nearest sampler, FXAA's between-texel taps snap to one side, which also dotted thin lines.
+- Sharpening is a CAS-style cross, weighted down where local contrast is already high, so soft areas sharpen and hard edges do not ring. Values above 1.0 (the float target) are left alone.
+
+**Known limitation:** FXAA runs on the finished frame, so the HUD's text edges soften slightly too. There is no pass between 3D and 2D to put it in.
+
+**Checked:** the same view with FXAA off/on, sharpening 1, and FXAA + sharpening 0.5, compared in 3x crops.
+- Stair-stepped diagonals are smoothed, and one-pixel lines stay continuous.
+- Sharpening adds visible detail in the lit panels.
+- 0 validation errors.
+
+### E156. Water reflection: ray-traced fallback where the screen march misses (`r_ssrRayTrace`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G3). Probably also the "awkward cutoff" of the muzzle flash on water. The `r_ssr 0` / `cg_muzzleFlashLight 0` test is still unanswered, so that link is unconfirmed.
+
+**The gap:** the water reflection marches the depth buffer, so it can only reflect what is on screen. A pixel whose reflected ray leaves the screen, passes behind the view weapon, or runs out of steps gets nothing. Its neighbour gets a reflection, and the border is a hard, stepped edge.
+
+**`r_ssrRayTrace`** (0 off, the default; 1; 2). Menu: Render → Water → "Ray-traced misses". **Live.** Needs ray tracing (`r_rt`); without it the row does nothing and the log says "fallback not available".
+- **1:** where the march misses, one ray goes through the world's acceleration structure. If what it hits is on screen and nothing is in front of it, its colour comes from the scene image. That is an exact reflection the march missed.
+- **2:** also the hits that are off-screen or hidden, shaded from the map's light grid (the same data entities are lit by) with a mid-grey albedo. The brightness is right but there is no texture, since the structure holds positions only. It blends into the on-screen colour near the screen edge, so the two sources meet without a line.
+- The rest (fades, Fresnel, emitters, foam, the half-resolution option) is the march's own.
+
+**How:** `ssr.tmpl` gains a `USE_RT` variant (SPIR-V 1.4, ray query; the file moved to GLSL 460 for it, and the plain variants are still 1.0). It has its own set with the TLAS at binding 3 and the light grid as a storage buffer at binding 4, uploaded per map as the BSP stores it. Pipelines are program indices 18 and 19 (full and half).
+
+**Bug found and fixed on the way:** the per-frame top-level structure (world plus entities) was only rebuilt by the ambient-occlusion pass. With `r_rtao 0` the reflection's rays traced a structure that had never been filled and hit nothing. The reflection pass now builds it when AO has not that frame (`backEnd.doneRTDynamic`), and not twice when both run.
+
+**Menu fix:** the water Debug view labels were wrong for 2-4 ("ray hit", "reflection", "waves"). They are the raw reflection, the depth classes and the depth buffer, as the cvar's own description says. The labels now match, plus **6 "reflection source"**: green the march, blue an on-screen ray hit, yellow the light-grid estimate, red nothing.
+
+**Checked** (llvmpipe with ray query, Khronos validation layer: 0 errors):
+- Flag-room pool looking down: mode 0 all red (nothing reflected). Mode 2 is yellow under the roof beams, blue along the far edge, and red only where the ray goes out through the open roof to the sky.
+- The garden pool gains hits where the march missed.
+- Mode 1 shows only the blue band.
+- Half resolution works, and so does `r_rtao 1` alongside it.
+- The raw reflection view shows mid-grey estimates that follow the waves, with no step against the on-screen hits.
+- Not checked: the look with real textures (pak00 is not here). The albedo (0.5) is a guess to tune by eye.
+
+### E155. Stencil shadows on your own player: depth-fail volumes (`r_stencilSelfShadow`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G2). Reported: "stencil shadows aren't drawn on our own player, only on other players."
+
+**Cause:** that was Quake 3's own exclusion, not a bug. `R_AddMD3Surfaces` (and the MDR/IQM equivalents) skipped `personalModel` for `r_shadows 2` ("stencil shadows can't do personal models unless I polyhedron clip").
+- The volumes were counted depth-pass: +1 entering a front face and -1 leaving a back face, in front of the scene.
+- With the eye inside a volume, the entry face is behind the eye, so the count is wrong everywhere. A first-person player's eye is always inside their own shadow's volume.
+
+**Fix:** depth-fail (Carmack's reverse), which counts behind the scene instead and does not care where the eye is.
+- `tr_shadows.c` now also closes each volume, with a near cap (the light-facing triangles) and a far cap (the same triangles pushed along the light). Depth-fail needs closed volumes.
+- The edge pipelines count on depth fail, back faces +1 and front faces -1, with WRAP ops.
+- Same two passes, same darkening quad, same menu value.
+
+**`r_stencilSelfShadow`** (1 on, the default; 0 is Quake 3's exclusion, back as it was). Menu: in-game Settings → Lighting → "Own stencil shadow". Live. Applies only with Shadows = Stencil.
+
+**Checked:**
+- A throwaway 48-unit cube model (local only, deleted after) with `testmodel`, compared at `cg_shadows 0` and `2`.
+- From outside the volume, the shadow is cast.
+- With the camera inside the volume, the frame is unchanged apart from the shadow itself (1373 differing pixels, no whole-screen darkening). That is the case depth-pass got wrong.
+- 0 validation errors with the Khronos layer.
+- Not checked: the harness has no player models (pak00 is not here), so the shadow on the actual player model needs your eyes.
+
+### E154. Screen-space ambient occlusion for GPUs without ray tracing (`r_ssao`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G1, second half).
+
+**`r_ssao`** (0 off - the default, since it changes the look of every scene; 1 on; 2 debug view). Menu: Lighting & Ray Tracing → Ambient occlusion → "Screen-space AO". **Live.**
+- It runs when ray-traced AO is off or unavailable, so a player with ray query can still choose it by turning `r_rtao` off.
+- It shares the ray-traced AO's radius, strength, denoise and **trace resolution** (half works too).
+
+**How:** `ssao.tmpl` is `rtao.tmpl`'s code - depth reconstruction, the neighbour normal, the weapon band, the hemisphere, the output - with the ray query replaced by the screen-space test:
+- project each sample point back into the frame and read the depth buffer there;
+- count occlusion if that surface is nearer the eye than the sample point (by more than depth precision allows at that distance), weighted by the usual view-depth range check so a wall far behind a thin pole does not darken the floor under it.
+
+It is SPIR-V 1.0 with 12 samples, and its descriptor set is depth alone, so it runs on any GPU that can sample depth. Everything after the trace (denoise, depth-aware upsample, composite, debug view) is the ray-traced path's.
+
+**Restructured `vk_rt_create_ao`:** RT-only pieces (the TLAS set, the light list, the ray-traced trace pipelines) are made only with ray query. The occlusion targets and their render pass are now made whenever depth is sampleable.
+
+**Checked:**
+- `r_rt 0`: "AO: pass ready (... screen-space only - no ray query)"; the debug view at full and half resolution; on/off live; 0 validation errors.
+- Side by side with the ray-traced debug view from the same spot, it matches along floor-wall and corridor corners.
+- It is weaker where the occluder's depth extent is off-screen or unknown (a pillar edge in front of a wall). That is the screen-space limitation, not a fault.
+- A first version was far weaker (a squared sample spread and a fixed 2-unit same-surface allowance swallowed the close samples, and a 3D-distance weight shrank corner occlusion); tuned against the ray-traced view.
+- Found by the validation layer while writing this: the shared descriptor-layout struct was set up inside the RT-only block, so without ray query the denoise layout was built from an uninitialised struct. Fixed before commit.
+
+### E153. Water reflections without ray tracing; shared depth view; three leaks and misuses on the non-RT path — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (G1, first half). The water pass reads depth and colour and fires no rays, but it could only run with ray query active. On a GPU without it there were no reflections, waves or splashes at all. Four things tied it to ray tracing:
+1. **Depth sampleability** was only worked out when ray query was active. Now it is also worked out with the offscreen target (`r_fbo` / `r_rts`).
+2. **The depth view and sampler** were created and destroyed inside the ray-traced AO setup, and the water borrowed them. Worse, an AO setup that disabled itself on any error destroyed the view the water was still using. They now have their own `vk_depth_sampling_create/destroy`, run before either pass.
+3. **The water and AO-denoise shader modules** were created inside the ray-query block, although only the AO trace is SPIR-V 1.4. With RT off, the first water pipeline was built from a null module: a fatal `VK_ERROR_UNKNOWN` at start-up, which is what the first no-RT test produced. They are now created always.
+4. **The main pass's depth and MSAA colour** were kept only for bloom or ray tracing. They are now also kept when depth is sampleable, which is what the water reads.
+
+**Found on the way (pre-existing):**
+- The water's uniform buffer came from the RT host-buffer helper, which always asked for a device address - invalid without the `bufferDeviceAddress` feature, which only ray query enables (`VUID-VkMemoryAllocateInfo-flags-03331`). It now asks only with ray query.
+- The AO and water shader modules were never destroyed: leaked on every `vid_restart` (`VUID-vkDestroyDevice-device-05137`).
+
+**Menu:** the Water/Splashes "needs ray query" note is removed; the Post-processing note stays.
+
+**Checked with the Vulkan validation layer:**
+- `r_rt 0`: the water pass starts, and `r_ssrDebug` 1/3/2 show the mask, the depth classes and the reflection over the pool; 0 errors.
+- `r_rt 1`: the full scene (MSAA, AO, water, bloom) and the AO scene both have 0 errors.
+
+### E152. Pipeline cache kept between runs, optional build-on-load (`r_pipelineCache`) — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (P3). Every pipeline is built the first time something draws with it, mid-frame, and the `VkPipelineCache` lived only in memory, so each run started cold. The first explosion of a kind, or the first time a shader appeared, compiled on the spot and could hitch. NVIDIA's own driver disk cache hides much of this; not every driver has one.
+
+**`r_pipelineCache`** (menu: the new **Image** tab → Performance):
+- **0:** off - build on first use, as before.
+- **1** (default - it only saves work): load `vkpipelines.cache` at start-up and write it at shutdown.
+- **2:** as 1, plus build every pipeline the loaded shaders registered at the end of registration (`RE_EndRegistration`), main render pass only. The compile happens behind the loading screen instead of in the first fight.
+
+Before the driver sees a loaded cache, its header is checked: vendor, device, and the cache UUID, which changes with the driver. A mismatch (new GPU, driver update) starts the cache empty and says so.
+
+**Checked:** two runs sharing one home folder. Run 1 pre-built 93 pipelines in 227 ms and wrote the file on quit; run 2 loaded it and passed the header check. On lavapipe the file is only its 32-byte header - that driver does not store compiled pipelines in the cache - so the saving itself shows only on real GPU drivers.
+
+**New Image tab.** The Render Options and Surface Detail pages are full, so settings about the finished image and about performance go here. The coming anti-aliasing, sharpening and tone-mapping rows (G4, G5) belong on it too.
+
+### E151. Water reflection at half resolution (option); E150's half-size AO pipelines got the wrong constants — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+**P4, `r_ssrResolution`** (1 full, the default; 2 half). Menu: Water → Reflection → "Trace resolution". **Live**, changeable in-game with no restart.
+- The march draws a half-size area of its target through a half-size pipeline and reads depth at the full-resolution pixel each texel stands for (`ssr.tmpl`, scale in the spare `wave2.z`).
+- The composite reads the top-left quarter through its own pipelines (normal and debug), using a specialization constant `uvScale`. It uses id 20, because these pipelines are also handed the gamma shader's block, which maps ids 0-11.
+- Bilinear filtering is the upsample. The sample point is clamped inside the quarter so it never blends in texels an earlier full-resolution frame left there.
+- Result: a quarter of the traces and a slightly softer reflection.
+- Checked: `r_ssrDebug 2` and the normal view at both settings put the reflection over the pool in the same place; 0 validation errors.
+
+**A bug in E150, found writing this.** Specialization constants in `vk_create_post_process_pipeline` are chosen by program index, and the AO branch covered 4-7 only. E150's half-size AO trace and denoise (11, 12) were handed the gamma/bloom block, so their constant 0 - the trace's sample count and the denoise's radius, both ints - held a float's bit pattern.
+- The half-resolution test passed only because lavapipe evidently did not act on it; a real GPU could have run a loop in the billions.
+- **Fix:** 11 and 12 now take the AO block (the trace its sample count, the denoise its radius). **E150's build must not be used with `r_rtaoResolution 2`.**
+
+### E150. RT AO at half resolution (option); the HUD drew into read-only depth after AO/water — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+**P2, `r_rtaoResolution`** (1 full, the default; 2 half). Menu: Lighting & Ray Tracing → Ambient occlusion → "Trace resolution". **Live**, no restart.
+- The trace and the horizontal denoise draw into the top-left quarter of the full-size occlusion images. They have their own half-size pipelines, because the viewport is baked into a pipeline, and both pairs are created up front.
+- The trace reads depth at the full-resolution pixel each texel stands for (`rtao.tmpl`, new `res` push constant, 112 bytes).
+- The composite is also the upsample. Every occlusion tap, the centre included, is weighted by how close the depth it was traced at is to the full-resolution pixel's depth, so a half-size texel straddling an edge does not bleed a wall's occlusion onto the floor in front of it (`rtao_blur.tmpl`, using the two unused push fields).
+- Result: a quarter of the rays. The console reports it: "3.7M rays/frame at 1280x720" becomes "0.9M ... at 640x360 (half resolution)", printed again when the setting changes.
+- Side by side in the AO debug view, the two are near-identical; edges stay sharp and the half version's noise is slightly smoother.
+
+**Found while validating it - predates this build (reproduced on E148).** After the AO or water composite, the frame carried on inside the composite pass, which holds depth **read-only** because the composite samples it. The rest of the frame is mostly the HUD, and a Quake 3 stage without a blend writes depth, so every opaque HUD image drew with depth writes into read-only depth: `VUID-vkCmdDrawIndexed-None-06886`, on every frame with AO or water. That is undefined behaviour of the same kind as E145's crash.
+- **Fix:** a new `after_composite` render pass - the composite pass with depth writable again, everything loaded and kept, the same dependencies as main so every pipeline is compatible.
+- AO and the water pass end their composite pass after the one draw and continue in it.
+
+**Checked:** the Vulkan validation layer reports 0 errors both in the AO debug scene switching full → half → full, and in the full scene (4x MSAA, AO, water, bloom, HUD).
+
+### E149. Water ripples evaluated once per pixel; AO and water ran only if something drew in 2D; dynamic-light labels — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+From the renderer review (P1), and two things found while checking it.
+
+**P1, ripple cost (`ssr.tmpl`).** The water shader built the whole splash field four times per water pixel: two height refinements, the shading normal, and the foam/debug read. Each sum covers up to 48 ripples, and since E144/E148 up to four wall echoes each - up to about 960 ring evaluations per pixel, and a shotgun volley is 20 ripples.
+- The field is now evaluated **once**, on the flat surface point.
+- The height refinements use the wind waves plus that one ripple height, and the normal uses the wind slope plus the same ripple slope.
+- Visually the same: the refinement moves the point by a few units at most. No setting is involved.
+
+**AO and water vanished with the HUD off (`vk.c` `vk_end_frame`).** Both passes start at the first 2D draw of the frame (or at `RB_FinishBloom`). A frame with no 2D - `cg_draw2d 0`, no console text, bloom off - never ran them, so screenshots, demo capture or a clean view had no reflections, ripples or occlusion.
+- Found because `r_ssrDebug 3` painted nothing in the harness, and did as soon as a debug print put text on screen.
+- They now also run at the end of the frame. Each skips itself if it already ran.
+
+**Dynamic lights labels.** `r_dlightMode` 2 was labelled "With shadows" and casts none. The renderer's own description: 0 Quake 3's vertex lights, 1 per-pixel on the world, 2 per-pixel on models too. Now "Classic / Per-pixel (default) / Per-pixel + models".
+
+**Checked:**
+- `r_ssrDebug` 1/3/5 with the HUD off draw the water mask, the depth classes and the ripple view.
+- The Vulkan validation layer reports 0 errors with the HUD on and off, with RT AO and the water pass running.
+
+### E148. Every splash bounces; small pools tighten their rings instead of shrinking the ripple — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+*"I've tried HMG, rocket, shotgun, grenade, none bounce on my screen"*, *"I see a bounce on the garden water area, but not in the flagroom area"*, *"a ripple bounce should happen even on low power guns if the ripple takes place near the edge."*
+
+**E147's cap was the wrong knob.**
+- It shrank a ripple's reach to fit its water. The envelope fades to zero at the reach, and an echo travels at least twice the distance to the wall, so in the flag pool an echo arrived at about a seventh of the ring that caused it.
+- Garden ponds are too big to be capped, which is exactly the split reported: a bounce in the garden, none in the flag room.
+- The flag pool itself is one shallow 288 x 136 rectangle (floor -376, water -356, rim -348); the square and strips in it are floor decals. The 4 walls found are its real edges.
+
+**Now (`vk.c` ripple packing, `ssr.tmpl` `rippleRing`):**
+- **Reach untouched.** The envelope, the speed and where the ripple stops are left as they were.
+- **Rings tightened.** Only the spacing changes: a new per-ripple `ripple6.x` multiplies the wavenumber until the ring pattern fits 1.5 x the distance to the far corner of the water. Strength is divided by the same factor, so the visible slope (strength x wavenumber) is what the height settings make it. Large water is unaffected.
+- **No bounce threshold.** `RIPPLE_REFLECT_MIN` (1.2) is gone, so every splash bounces. Distance is the limit: a wall must be within half the splash's reach. A bullet (reach 160-240) echoes only when it lands within 80-120 units of a wall - near the edge, as a real one does.
+
+**Checked:**
+- Python replica on the real BSP, at the real settings (size 4, 5 rings):
+  - a rocket mid-pool fills the flag pool with the crossing pattern of echoes off all four walls;
+  - a rocket near the west wall shows a strong echo off it;
+  - a bullet 30 units from the wall shows its ring coming back off the wall.
+- Validation layer clean (0 errors) with a rocket-sized and a bullet-sized splash on the flag pool.
+- Not seen in the client here: no water art in the visual pass, and the `r_ssrDebug 5` view did not show in the attempt.
+
+### E147. Post-processing (r_fbo) in the menu; ripple bounce made visible — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus) · **Seen by:** our client only
+
+*"r_ssrdebug does literally nothing"* → *"water shader works after changing fbo to 1, but we need a clear menu option for it"* → *"the water ripple deflection doesnt seem to be working still, I tried flag room and garden areas."*
+
+**r_fbo had no menu row.** It defaults to 0 and latches. The whole water pass (reflection, waves, splashes, bounce) and bloom need it, so for anyone who had not set it in the console every water row and the Bloom row did nothing, with nothing saying why. `r_ssrDebug 3`/`4`, which paint the whole screen when the pass runs, were the proof that it was not running.
+- **New row:** "Post-processing (bloom, water)", Render Options → POST PROCESSING, latched (APPLY).
+- **Dead row removed:** it takes the slot of a "Post processing" row bound to `r_postProcess`, which nothing registers or reads - a switch that did nothing.
+- **Status notes:** Water and the new Splashes page open with a gold note shown only while `r_fbo` is 0 ("needs Post-processing (Render Options) on"), and another while ray query is not active.
+- **Water split:** its IMPACTS section is now the **Splashes** tab. Water had no room for the notes; the generator stops at the panel's edge.
+- Checked by screenshot of all three pages, with the note showing at `r_fbo 0`.
+
+**The bounce was working and could not be seen.** Traced with a test splash of rocket size in the red flag pool:
+- the splash arrives at strength 4.0, qualifies to bounce, and finds all 4 walls;
+- the first mirror image lands exactly across the east wall.
+
+So the E144 data reaches the shader correctly. The trouble is scale. At the default `r_waterRippleSize 4` a rocket ring reaches 880 units, with rings about 176 apart, and the pool is 288 x 136. One ring was wider than the pool, so the echo lay almost exactly on the outgoing wave and the pool only heaved as a whole (simulated from the real map at real settings: no visible echo).
+
+**Fix (`vk.c`, where ripples are packed) - replaced by E148, which keeps the reach and tightens the rings instead:**
+- A ripple now reaches at most 1.5 x the distance from the splash to the far corner of its water's footprint.
+- When capped, its strength is scaled by the same factor. The visible slope goes as strength / reach, so the ripple height settings mean what they did.
+- The rings become tight enough to cross the pool, hit a wall and come back. The simulation shows echoes off all four walls crossing inside the pool.
+- Large water is unaffected: a garden pond's footprint already exceeds a rocket's reach.
+- Whether a wave may bounce is still judged on the strength cgame asked for.
+
+Not seen in the client here: the visual pass has no water art.
+
+### E146. "Simple" shadows did nothing; muzzle-flash light slider — DONE (verify)
+**Lives in:** our **client** (renderervk, pak01 menus, cgame) · **Seen by:** our client only
+
+*"Simple shadows do not work (predates previous builds)"* / *"theres 3 shadow options in game, blob, stencil, and simple"*
+
+**Two bugs, one on top of the other.**
+1. **The menu labels were swapped.** Our Shadows row read `"Off" 0 "Blob" 1 "Simple" 2 "Stencil" 3`, but in the renderer 2 is Quake 3's stencil-volume path and 3 is the flat projected shadow (`projectionShadow`, which pak00 ships in gfx.shader). So "Simple" selected stencil, and "Stencil" was the projection, which worked. Now `"Stencil" 2 "Simple" 3` (`tools/gen-ingame-menu.py`, regenerated).
+2. **Stencil could never have worked on Vulkan.**
+   - `VKimp_Init` never filled in `colorBits`/`depthBits`/`stencilBits`; the GL path gets them from SDL. Every log reads `PIXELFORMAT: color(0-bits) Z(0-bit) stencil(0-bits)`, the tester's included.
+   - With `stencilBits` 0, `get_depth_format` chose a depth format without stencil, stencil clears were skipped, and `RB_ShadowTessEnd`/`RB_ShadowFinish` both returned at `stencilBits < 4`.
+   - **Fix:** they are now set to 32/24/8, which is what `get_depth_format` asks for first (D24S8, then D32S8).
+   - The depth view that RT AO and SSR sample is created depth-aspect only, so a stencil-bearing format is safe there.
+
+Not seen drawn here: without Quake Live's player models nothing casts a shadow in the visual pass. Checked:
+- the labels against the renderer's own tests (`r_shadows == 2` stencil, `== 3` projection);
+- `markShadow` and `projectionShadow` both exist in pak00's gfx.shader;
+- the stencil gate now passes.
+
+**Muzzle-flash light.** *"a slider with cvar for the dynamic lighting muzzle flashes for the machine gun / heavy machinegun / plasma gun"*
+- New `cg_muzzleFlashLight`, ours, 0 to 1, default 1 (unchanged), `CVAR_ARCHIVE | CVAR_NODEFAULT` so the default is not stamped into configs.
+- It scales the brightness of the flash dlight (not its radius) for `WP_MACHINEGUN`, `WP_HMG` and `WP_PLASMAGUN`, for every player's flashes. At 0 no light is added.
+- Other weapons are untouched. `cg_muzzleFlash 0` still turns the local player's flash light off entirely, as in Quake Live.
+- Slider "Rapid-fire flash light" on the in-game LIGHTING tab and the render options' DYNAMIC LIGHTS section.
+- The plasma **ball's** own travelling light (`missileDlight` 100) is not a muzzle flash and is not affected.
+
+Not seen in the client: the flash light is placed on the weapon model's `tag_flash`, and without pak00's models the weapon is never drawn in the visual pass.
+
+### E145. Tester crash on NVIDIA with RT AO + bloom; vignette drew a grey box — DONE (verify)
+**Lives in:** our **client** (Vulkan renderer; cgame for the vignette) · **Seen by:** our client only
+
+A tester's crash log (RTX 4080, driver 617.14, build 7cca354 = E140): access violation in `nvoglv64.dll` reading 0xf0. The run had 4x MSAA, RT AO on, bloom on, on campgrounds (no water, so SSR was off), and crashed with the in-game menu open.
+
+**Where.** The Windows build of 7cca354 was rebuilt here and the offsets resolved against it:
+- `vulkanx86_64.dll+0xc738` returns from `RB_ExecuteRenderCommands`.
+- `+0x3d25` returns from `vk_bloom`.
+- `+0x5b8d7` returns from bloom's first `vkCmdBeginRenderPass` (the extract pass), issued right after bloom ended the RT AO composite pass.
+- The addresses at +0x19xxxx are in `.bss` (the `vk` global). They are data the stack scanner picked up, not code.
+
+**Why.** Running the same frame on lavapipe under the Khronos validation layer (MSAA 4, RT AO, SSR, bloom, the menu opened over the game) gave 1,752 errors from the tester's revision in three classes, all real:
+1. **`VUID-VkRenderPassBeginInfo-renderPass-00904`** (702).
+   - `render_pass.rtao` had three subpass dependencies of its own; `render_pass.main` has two (one without FBO).
+   - Render passes that differ in anything except layouts and load/store ops are incompatible.
+   - The AO/SSR composite pass is begun on `framebuffers.main`, and the rest of the frame is drawn in it with pipelines built for `main`, so both uses were undefined behaviour.
+   - Mesa tolerates it. The NVIDIA driver faulted on the next render-pass transition, which is bloom's.
+   - **Fix:** the pass now keeps the caller's dependencies unchanged. What they said (the main pass's depth writes are visible before AO/SSR sample depth; colour writes land before the pass loads and blends into them) is now a global `vkCmdPipelineBarrier` in `vk_begin_rtao_render_pass`, recorded before the pass begins.
+2. **`VUID-vkCmdBindDescriptorSets-pDescriptorSets-06563` / `-dynamicOffsetCount-00359`** (693 + 342).
+   - `vk_rt_ao` and `vk_ssr` repair their layout clobbering by marking descriptor slots 0-4 dirty.
+   - `vk_bind_descriptor_sets` only gap-filled the slots strictly between start and end, so a null uniform or fog slot at either end was bound as `VK_NULL_HANDLE`, with a dynamic offset for a set that was not there.
+   - **Fix:** empty end slots are trimmed off the range before binding.
+3. **`VUID-vkCreateDevice-ppEnabledExtensionNames-01387`**, plus every ray-query shader rejected as SPIR-V 1.4 on a 1.1 device.
+   - `VK_KHR_ray_query` needs `VK_KHR_spirv_1_4` (which needs `VK_KHR_shader_float_controls`); `VK_KHR_acceleration_structure` needs `VK_EXT_descriptor_indexing`.
+   - All three are core only from 1.2, and the instance asks for 1.1.
+   - **Fix:** they are now detected, required for `vk.rayQuery`, and enabled with the RT extensions.
+
+After the fixes, the same run gives **0** validation errors.
+
+Not proven on NVIDIA hardware, which this environment does not have. Evidence for the cause:
+- the crash address is the first render-pass transition after the incompatible pass;
+- the incompatibility is on every frame with RT AO on;
+- the tester's settings are exactly the ones that leave that pass open.
+
+**Vignette.** *"Enabling Vignette is borked"* (screenshot: a blurred dark rectangle inside a light frame covering the whole screen).
+- `cg_vignette` drew `cgs.media.vignetteShader`, which nothing ever registered. It was 0, the renderer's default shader, stretched over the screen opaque.
+- **Fix:** it now registers Quake Live's own `gfx/misc/vignette` (gfx.shader: one `blendfunc blend` stage; pak00 ships the image as .png).
+- Another registered-but-never-wired case: a field in the media struct that nothing registered, drawn as if it had been.
+
+### E144. Ripples bounce off the pool's real shore, sloped banks included — DONE (verify)
+**Lives in:** our **client** (Vulkan renderer) · **Seen by:** our client only
+
+*"I dont see the water shader ripple deflecting off the sides of the container"*, *"the size of the pool exceeds the size of the container normally"*, *"japanese castles has the garden's area which the water pool has some slopes around it"*, *"water physics should still echo off the sides even with slopes"*.
+
+**This corrects E142.** E142 reflected off the water brush's axis-aligned box. The brush runs on under decking and into walls, so its box is not where the water stops, and in the gardens it is nowhere near the shore.
+
+**Now.** At map load `vk_find_water_walls` takes the level geometry that crosses each water plane's height beside it: every drawn, solid face no flatter than about 15°, sheer or sloped.
+- The shoreline is cut where each triangle of the face crosses the water height. It works per triangle, not round the face's outline, because q3map2 `-meta` faces are unordered triangle batches. Walking their vertices as a polygon found only fragments of the sloped banks.
+- Pieces on one line that touch are merged into one wall.
+- Anything under 24 units (posts, rocks standing in the pond) is dropped: an obstacle that small scatters a wave, it does not mirror it.
+
+Per ripple, `vk_ripple_walls` picks up to 4 nearest walls that meet all of these:
+- the splash is on the wall's water side;
+- the wall is within half the ripple's reach;
+- the foot of the perpendicular from the splash lands on that wall's shoreline segment.
+
+The shader adds one mirror-image ring for each (`ripple3`-`ripple5`), weighted 1 for a sheer wall down to 0.6 for a 15° bank.
+
+**japanesecastles:** 4 walls per flag-room pool, 16 per garden pond. At first the ponds showed 64 faces each, mostly posts; the per-triangle cut then found the whole west bank.
+
+**Checked:**
+- A Python replica of the wall finder and `rippleRing`, run on the map's BSP, gives the same counts as the engine.
+- Top-down height-field frames show the direct and bounced rings:
+  - red flag pool: north, south and west walls at 56/72/80 u; the east wall at 204 u is correctly out of reach;
+  - garden: the sloped west bank (weight 0.7) and the south bank.
+- The in-engine screenshots cannot show it: without pak00 art the visual pass draws no water surface.
+
+**Note:** all of the water work (SSR, ripples, bounces) runs only with ray tracing on (`r_rt 1`, `r_fbo 1`). `vk_ssr` needs `vk.rtDepthSampled`, set only when RT is active, and composites in the RT AO render pass. On a GPU without ray query there are no water effects at all.
+
+### E143. Ripples slow with radius, not with age — DONE (verify)
+**Lives in:** our **client** (Vulkan renderer) · **Seen by:** our client only
+
+*"The ripple gradient... is not working as intended. It slows the animation after a few cycle repeats. Not on the rings themselves"* and *"as the radius of a single ripple gets bigger, it should also slow."*
+
+**The bug.** E141 eased the front out over the ripple's life, and the rings are locked to the front. So every ring slowed together with age: a fresh ring beside the impact slowed as much as the leading edge, and late in a ripple's life the inner rings stood still. That was the animation running down.
+
+**The fix.** The wave now travels at a steady rate through a stretched distance, u = x + x² with x = d / reach (`rippleRing`, `ssr.tmpl`).
+- Wherever a ring is, its speed goes as 1 / (1 + 2x): full at the impact, a third at the edge, at any age. Rings bunch up as they slow.
+- The phase runs in u, so each ring keeps its own speed rather than borrowing the front's.
+- The slope carries du/dd.
+- The front still reaches `reach` exactly at the end of the ripple's life.
+
+**Checked** with a space-time plot of a Python port of both versions (radius across, time down):
+- before: the crests near the centre turn vertical, i.e. stationary, late in the ripple;
+- after: every crest keeps moving, shallow (fast) near the impact and steepening (slower) outwards.
+
+Not yet watched in the client, for the reason E142 gives.
+
+### E142. Big ripples bounce off the sides of the pool — DONE (verify)
+**Lives in:** our **client** (Vulkan renderer, pak01) · **Seen by:** our client only
+
+*"Any chance we could add deflecting off the sides of the water pool if the wave is big enough?"*
+
+**How it works: mirror images.** A wave bouncing off a straight wall looks, on the near side of the wall, exactly like the same wave coming from the impact reflected across it. The distance to that image is the path out to the wall and back, so the bounced ring arrives late by the right amount and with the right curvature.
+- The ring maths moved into `rippleRing` (`ssr.tmpl`), called once for the impact.
+- For a big enough wave it is called again for each side of the pool's box within half the ripple's reach. Any further and nothing still alive comes back.
+- Single bounces only.
+
+**"Big enough"** is `RIPPLE_REFLECT_MIN` 1.2 (`vk.c`) on the strength the cgame asks for (`CG_WaterImpactSize`):
+- bounce: explosions 3.4-5, a rail 1.8, somebody jumping in 1.4;
+- don't: bullets, plasma, footsteps and swimming (0.4-1.0).
+
+**Amount:** `r_waterRippleReflect` (new, 0-1, default 0.5; 0 off), with a "Bounce off sides" row on the Water page.
+
+**Superseded by E144**, which reflects off the real shore. **Approximation (as first shipped).** The walls were the pool's axis-aligned bounds (`boundsMin`/`boundsMax`, which the shader already had). A rectangular pool is exact; any other shape reflects off its box.
+
+**Checked** by porting `rippleRing`/`rippleSurface` to Python and drawing the height field from above: a rocket in the red flag room pool (250 x 98 u), bounce off and at 0.5. From about 0.35 s the reflected rings come back off the long sides and cross the outgoing ones.
+
+**Not seen in the client yet.** The visual pass (lavapipe, no Quake Live art) finds no water surface to run the reflection pass on; `r_ssrDebug 5` stays blank there. That was already so for E141's ease-out.
+
+### E141. Mid-range rocket self-kills; ripple ease-out; scoreboard count vs clock; bot skill on the board — DONE (verify)
+**Lives in:** our **server** (qagame) and our **client** (cgame, renderer, pak01) · **Seen by:** every client (bots); our client only (ripples, scoreboard)
+
+#### Mid-range rocket self-kills
+*"Work on the mid-range rocket self-kills next."*
+
+**Instrumented first.** Four standard matches at 30 a side logged every bot rocket fired and every self-splash (both radius-damage paths).
+- Of 57 bots killed by their own rocket, 51 had fired along a line the pre-fire check saw clear for 120 to 750 u.
+- The rocket then went off 0-100 u from them 125-250 ms later: a body stepped into its path, which no check at the trigger can see.
+- **Every one of them had 1-35 health**, where a glancing 20 points is the end.
+- A through-wall path exists in `G_RadiusDamageThrough`, but none of these went through it.
+
+**The change.** E140's close-range switch now scales with health: below 60 health, each missing point adds 15 u to the range inside which the launcher is swapped for a gun (700 u at 30 health, 1,000 at 10).
+
+**Result** (standard CTF, 12 matches each, D10 skills):
+
+| | E140 | E141 |
+|---|---|---|
+| bots killing themselves | 4.1% of deaths | **2.6%** |
+| own-rocket deaths | 108 | **48** |
+| own-grenade deaths | 34 | 14 |
+| grabs per match | 15.2 | 17.5 |
+| captures per match | 0.58 | 1.08 |
+
+The two instrumentation lines were removed afterwards.
+
+#### Water ripples: fast, then slowing
+*"We should have a gradient on the water ripple lifetime, fast initial, then slows as it moves further away. Right now it's fixed."*
+- The leading edge was `(age / life) * reach`, a constant speed. It is now an ease-out, `(1 - (1 - t)^3) * reach` (`ssr.tmpl`).
+- It leaves the impact at three times its average speed and comes to rest at the full reach exactly at the end of its life, so `r_waterRippleLife` keeps its meaning.
+- The compiled blob (`spirv/shader_data.c`) is rebuilt and committed.
+- Not yet watched in motion; the visual pass takes stills.
+
+#### Scoreboard: the player count ran into the clock
+*Reported on a full FFA server: "63/64 (62 + 1 ..." over the clock.*
+- The count was right-aligned against the clock. A cvar item's text width is measured when the board opens, so a count that grew afterwards was placed for its old width and ran right.
+- Now it is left-aligned, which needs no width, and the clock is moved right (`gen-scoreboard.py`; every board, not only FFA).
+- Photographed with 60 bots and a spectator: "61/64 (60 + 1 spec)" sits clear of the clock.
+
+#### Bot skill on the scoreboard, with developer 1
+*"If developer 1 is enabled, our scoreboard can also display the bot's skill level in the row."*
+- With `developer` set, a bot's name on every board reads "Slash [7]": our 1-10 skill (E139), converted back from botlib's 1-5 in the player config string.
+- In that mode the name is shown without its colour codes. The name column's character limit counts them, and "Anarki [" was cut off mid-tag.
+- Photographed both ways.
+
+### E140. Close range: a gun, not a launcher — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"If the bot wants to fire but it's close range, switch to a close range weapon. Something to reduce self kills."*
+
+**The problem.** E139's check held a splash shot that would kill the bot, but own-rocket deaths only fell from 298 to 273. The rest come from shooting a launcher at close range at all, where every miss lands at the bot's feet. The fuzzy weapon weights do not look at range.
+
+**The change.** `BotCloseRangeWeapon`, applied to every fight-weapon choice:
+- If the enemy is within 250 u and the choice is a rocket, grenade, BFG or proximity launcher, the bot takes the best close-range gun it has ammo for.
+- The order is shotgun, lightning gun, chaingun, machine gun, plasma, nailgun, railgun.
+- It goes back to the weights' choice only once the enemy is past 350 u, so it does not swap at the boundary every think.
+
+**Result** (standard CTF, 12 matches each, D10 skills):
+
+| | E139 | E140 |
+|---|---|---|
+| bots killing themselves | 6.9% of deaths | **4.1%** |
+| own-rocket deaths | 273 | **108** |
+| shotgun kills | 652 | 909 |
+| rocket-splash kills (all) | 1,556 | 900 |
+| grabs per match | 15.1 | 15.2 |
+
+- Captures went 0.75 → 0.58 per match, within noise at twelve.
+- Instagib is untouched: the railgun is the only weapon.
+
+### E139. Bot skill 1-10 on a D10; chat budget for humans; defender cap; self-splash — DONE (verify)
+**Lives in:** our **server** (qagame) and our **client** (ui) · **Seen by:** every client (bots, chat); our client only (add-bot menu)
+
+*"Try capping defenders next, work on making them less chatty in chat when we have that many... We should also have a set skill... make ours 1-20. Roll a D20 and that sets skill if none is manually assigned"* - then *"or do you think 1-10 is better? on a D10?"* - and *"if all bots skills are equal, no flags should ever be capped, but if we put them on a range, caps should happen."*
+
+All measurements below are japanesecastles, 30v30, timescale 5, 300 s matches, alternating instagib and standard CTF.
+
+#### Skill: 1-10, a D10 when none is given
+- **Why 10.** The character files hold skill 1, 4 and 5, and botlib interpolates between them. Twenty steps of that would be hard to tell apart. Every distinct skill of a bot is also another cached character that is never freed (`be_ai_char.c`).
+- **Mapping.** 1-10 maps evenly onto botlib's 1.0-5.0: 1 is stock "I Can Win", 10 is "Nightmare". `BOT_SKILL_SIDES` in `g_bot.c` is the one constant to change for a D20.
+- **`addbot <name> <skill>`** takes 1-10, fractions allowed. With no skill, or `0` / `random` (so a team can still be named), the bot rolls a D10, and the console says so: "Sarge rolls a D10: skill 7".
+- **`bot_skill`** (new, default 0) sets a fixed skill for bots added without one, 1-10.
+- `bot_minplayers` fill-ins roll too.
+- **Menus.** The add-bot picker reads "Random (roll a D10)" and then 1-10, with Quake Live's five names where they land. The skirmish setup converts Quake Live's 1-5 `g_spSkill`.
+- **The test harness** takes `SKILL`: default 7.75, the old skill 4; 0 rolls.
+
+The scale does something. Kills per death by rolled skill, 24 matches:
+
+| skill | 1 | 3 | 5 | 7 | 9 | 10 |
+|---|---|---|---|---|---|---|
+| instagib | 0.63 | 0.73 | 0.83 | 0.91 | 1.58 | 1.52 |
+| standard | 0.57 | 0.59 | 0.64 | 1.08 | 1.51 | 1.51 |
+
+On "a range should produce caps", 12 matches each against all bots at the old skill 4:
+- Captures per match: standard 1.08 → 1.16, instagib 0.08 → 0. Both within noise.
+- Carriers do get further: within 1,000 u of home 10% → 15% of carrier runs.
+- At 30 a side the number of bodies still dominates.
+
+#### Chat: a budget for people, not for bots
+One 300 s standard match with chat on produced 471 team chat lines and 413 team voice lines, three a second, nearly all "I'm going to get the enemy flag" and "is there a team leader".
+- **The bots read each other's team chat** (leadership, orders), so nothing is dropped. Past a budget, a bot's broadcast still goes to every bot and is only withheld from the human players (`G_BotChatReachesHumans`, `g_cmds.c`).
+- **The budget** is per channel: one line every 1.5 s per four bots on it. A small game is untouched; thirty bots on a team say something to people about every 11 s.
+- A carrier's "I have the flag" always gets through, as does a private message to a human.
+- **Measured:** about 22 lines per team reached people in the same 300 s, against ~440 before.
+- `bot_chatlimit 0` turns the budget off.
+
+#### Defenders: capped at 8
+Like escorts (E135's `CTF_MAX_ESCORTS`), with the surplus going to attack; auto-defend is held to the same ceiling.
+- **It barely binds.** Measured defenders were 6-7 per team already, not the 10-18 the role mix implies (the E138 estimate was wrong). The cap takes them to 5-6.
+- **Results (12 matches, against E137's 25):**
+  - standard: captures 0.76 → 1.08 per match, grabs 14.2 → 14.4;
+  - instagib: captures 0.08 → 0.08, grabs 10.4 → 12.5.
+- Small and within noise, not worse. Kept as a ceiling for bigger teams.
+
+#### Self-splash
+5.5% of standard-CTF deaths were bots killing themselves, mostly their own rocket (522 in 25 matches).
+- Stock only holds a splash shot that would miss the enemy and hit something close. It fires a point-blank rocket into an enemy in its face whatever its own health.
+- Now a shot whose blast (falloff from `G_RadiusDamage`, halved on yourself in `G_Damage`) would take everything the bot has left is not fired.
+- **Measured (24 matches):** self-kills 7.4% → 6.9% of deaths, own-rocket deaths 298 → 273.
+- A small gain. Most of the remaining suicides happen some other way; one guess is health dropping between the shot and the blast.
+
+### E138. Grabbing together (a staging line before their base) — MEASURED, REJECTED
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"Work on grabbing together next."*
+
+**The premise.** Over E137's 50 matches, half of the grabs at the enemy stand were made with at most one team mate within 1,000 u, against a median 6-8 defenders.
+
+**What was built.** An attacker stopped about 5 s of travel short of their flag and held there, fighting whatever it saw. When 4 attackers had gathered within 900 u, or the first had waited 10 s, all of them were released together, and not held again until their next life.
+
+**It worked as built:** 20-27 waves per match, most of them gathering the full 4. More grabs came with 4+ team mates close by.
+
+**It made the game worse** (24 matches, against E137's 50):
+
+| per match | E137 | grab waves |
+|---|---|---|
+| standard: grabs | 14.2 | 11.7 |
+| standard: captures | 0.76 | 0.33 |
+| instagib: grabs | 10.4 | 7.7 |
+| instagib: captures | 0.08 | 0 |
+
+**Why.**
+- The number of team mates at the grab barely predicts whether the carrier gets home. In E137, among grabs at the stand, 9% of carriers with 0-1 team mates nearby got within 2,000 u of home, and 12% of those with 7+.
+- A group of four does not change a fight against six to eight defenders.
+- The wait costs the attack its time, and gives the defence time to regroup.
+
+Reverted. The number to move is the defence at the stand, not the size of the group arriving there. At 30 a side the role mix asks for 10-18 defenders.
+
+### E137. Carrier escorts; attackers and escorts that stood still — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"Work on carrier escorts next"*, *"and try to make the bots smarter"*.
+
+Measured as in E136: japanesecastles, 30v30, timescale 5, 300 s matches alternating instagib and standard weapons, with kill positions logged. Final figures are 50 matches against E136's 50.
+
+#### What escorts were doing
+In standard CTF, **6.3 of the carrier's team were on the escort job on average, and 0.8 of them were within 600 u of it.** Carrier kills came from both directions: 45% from ahead of the carrier (between it and home) and 34% from behind.
+
+1. **Chasing.** Stock escorting walks to where the carrier is now. The carrier walks away at the same speed, so an escort that starts behind never catches up.
+   - Now `BotEscortGoal` walks the carrier's route home (`AAS_PredictRoute`, once per carrier per 0.5 s).
+   - Each escort takes the first point on that route it can reach before the carrier does, at least 0.8 s ahead: a screen on the way it is going. The point is found by binary search, a handful of route queries rather than one per area.
+   - An escort that cannot get ahead anywhere follows, as before; that is the rear guard.
+2. **Escorting nobody.** Half of all escort time had no live carrier on the team. The release check only ran on some paths.
+   - The escort job now checks the teammate's flag and health itself.
+   - It also ends when the carrier is back on our stand, waiting for our flag.
+3. **Pinned in fights.** Escorts fought 76% of the time, a median of 2,400 u from the carrier. The stock fight nodes stand and trade shots.
+   - An escort of a live carrier now uses the retreat node, which fights while still moving to its goal.
+4. **The escort quota turned away the bots beside the carrier.** The quota is 4, filled by bots the role picker sent from across the map. So the attackers who went into the base with the carrier were refused, and carried on attacking a flag that had gone.
+   - A bot within 1,000 u of the carrier now escorts past the quota.
+
+#### Carriers
+- **Turning back.** The stuck and crowded-room re-rolls could hand a carrier a waypoint back in the enemy base. A traced carrier turned round in the south garden twice in 27 s.
+  - A carrier is now only offered waypoints nearer home than it is.
+  - Carriers turning back more than 800 u: 6% → 2%.
+- **Re-planning.** The way home was chosen once, at the grab. Now it is chosen again every 3 s, from the waypoints still ahead, by fewest enemies in the room. Past the middle, that decides which door of our own base to come in by.
+
+#### Bots standing still
+**13.5% of all bot time in standard CTF was spent jobless, not fighting, at speed 0.** An instrumented run found the cause: 16,068 of 16,095 such samples entered the seek node holding the get-flag job, and left with no goal.
+
+This one was ours. The earlier fix "the flag is already gone, do not walk over there" cancels the job and returns no goal, and the team logic hands the same job back on the next frame. The attacker stood there for as long as the enemy flag was away from its stand.
+
+Now an attacker whose flag has gone does one of three things:
+- **Our carrier is still out:** it escorts the carrier, within the quota, or past it if already beside the carrier.
+- **Our carrier is waiting at home for our flag:** it goes to get our flag back. The first attempt skipped this case, and twenty escorts stood round a waiting carrier while nobody went for our flag.
+- **Otherwise:** it patrols (`BotRoamWaypoint`). A jobless bot with no item it wants does the same, walking between the route waypoints instead of standing where it is.
+
+Two ideas were tested first and made no difference: skipping the 5 s decision cooldown for jobless bots, and the patrol fallback on its own.
+
+#### Result (25 + 25 matches each)
+| | instagib E136 | E137 | standard E136 | E137 |
+|---|---|---|---|---|
+| captures | 0 | 2 | 9 | **19** |
+| flag grabs | 245 | 260 | 463 | 357 |
+| kills | 18,559 | 19,021 | 9,288 | **12,061** |
+| standing still, share of bot time | 0.2% | 0.2% | 13.5% | **0.4%** |
+| escorts within 600 u of the carrier | 0.2 | **1.0** | 0.8 | **2.2** |
+| carriers turning back > 800 u | 2% | 1% | 6% | 2% |
+
+- The halls between the courtyards stay as E136 left them.
+- Standard CTF grabs fewer flags and captures twice as many: fewer attackers, but carriers have cover.
+
+#### Still open
+- **Carriers still die mostly on the way out of the enemy base.** The median carrier still never gets within about 3,400 u of home (the flags are ~4,500 u apart).
+- **Instagib captures are rare.** At railgun range a carrier lives seconds.
+- The next lever is probably grabbing together: the attack arriving as a group, so that the carrier has cover at the stand rather than meeting it later.
+
+### E136. Hallway bias between the courtyards; carriers on real CTF; 50-match heat maps — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"There seems to be a hallway bias for which hall they take connecting the courtyards."* Also: test carriers with a non-instagib config, and run 50 matches mixed instagib and regular, at 5x, tracking bots and kills, with heat maps.
+
+#### How it was measured
+- **50 matches on japanesecastles, 30v30, timescale 5, 300 s each,** alternating `a2m-instagib-ctf.cfg` and `ctf64.cfg` (standard weapons). Every match reached its full game time.
+- **Kills are now logged with positions.** Under `bot_debugTrack`, `g_combat.c` prints a `botkill` line: the victim's position, the killer's position, both teams, and the flag the victim carried.
+- **`tools/bot-harness/render-heat.py`** (new) draws heat maps over the AAS overhead view, from any number of logs, of where bots are, where they die, where kills are made from, and where carriers die. Telefrags and team changes are left out.
+- The Center Room is for non-objective modes, and no CTF route crossed it in any match. So the courtyards join by the north hall (Blue Garden Hall) or the south hall (Red Garden Hall).
+
+#### The bias
+Share of courtyard crossings by attackers heading for the enemy flag:
+
+| | instagib | standard |
+|---|---|---|
+| red, heading east: north / south | 7% / 92% | 32% / 67% |
+| blue, heading west: north / south | 72% / 27% | 41% / 58% |
+
+Each team took the hall on its own side.
+
+#### Causes (all in the alternative-route waypoints)
+1. **The waypoint list was the first 32 areas the AAS numbers, not 32 places.** `AAS_AlternativeRouteGoals` walks the areas in number order and stops at the limit. With portals, every portal area is a "cluster" of its own.
+   - The south garden's eight portal areas took 8 of both teams' 32 slots.
+   - The list ran out before the north garden's area numbers came up.
+   - Now `BotAltRoutesMerge` fetches all of them (55 and 65 here), ranks them by detour, and keeps one per place within 500 u. That leaves 15 and 18.
+   - A goal on the direct route comes back with a negative detour, which the unsigned field wraps to ~65530. It is now treated as 0.
+2. **Most waypoints don't choose a way across.** A waypoint in our base or at their door is reached by the shortest route, and that route is the same for a whole team.
+   - Each waypoint now carries the side of the map its whole route crosses the middle on (`BotAltRouteSide`). The route is walked from our flag, through the waypoint, to theirs. The side is left or right of the flag-to-flag line, where the route passes the plane half way between the flags.
+   - This comes from the routing, not from place names, so it works the same on any two-flag map.
+   - An attacker takes the side fewer of its team are on, then the emptiest waypoint on that side.
+3. **A waypoint steered only the first life of an attack.** It was chosen when the job began. In instagib a life is seconds long, so most runs went the direct way.
+   - Now it is chosen again on every respawn.
+   - A waypoint the bot has already passed is never offered, since the choice is called from eleven places, some of them half way to the flag. With nothing left ahead, the bot goes straight on.
+
+#### Measured and rejected (12 matches each)
+| variant | problem |
+|---|---|
+| Middle-of-map waypoints only | The halls came out even, but flag grabs halved. Everyone went direct from the middle and met the defence at one door. |
+| A middle waypoint, then a door waypoint | Grabs 2.8 and 8 per match. When re-rolled, bots were sent back to the middle. |
+| Detour cost doubled | Grabs 0.5 and 5.3 per match. |
+
+#### Result (25 instagib + 25 standard matches, before and after)
+| | instagib before | after | standard before | after |
+|---|---|---|---|---|
+| red east: north / south | 7 / 92 | **37 / 62** | 32 / 67 | **50 / 49** |
+| blue west: north / south | 72 / 27 | **52 / 47** | 41 / 58 | 37 / 62 |
+| flag grabs | 230 | 245 | 266 | **463** |
+| captures | 1 | 0 | 4 | **9** |
+| attack runs through a garden | 35% | 36% | 33% | 29% |
+| attack runs reaching their flag room | 3% | 3% | 4% | **6%** |
+
+#### Carriers on standard CTF (900 s, 30v30, E134 vs E135 build)
+- Carriers live longer than in instagib: up to 38 s.
+- 28% and 33% of carrier runs go through a garden, and fewer carriers die in the flag room (8 → 3).
+- **They still almost never get home.** Most die 3,000 u or more from their own flag, still in the enemy half.
+- A lone carrier does not outlive 30 defenders, and nothing escorts it. That is the next thing to look at, not the route.
+
+### E135. Chokepoints: three botlib routing bugs, defender lanes, carrier exits — DONE (verify)
+**Lives in:** our **server** (botlib + qagame) · **Seen by:** every client
+
+*"Work on the narrow passage chokepoints next."* Also: about 30% of bots should path through the gardens over time. Carriers should come home the lower-risk way. A good share of defenders should check the flagroom-to-garden halls.
+
+Measured as before: japanesecastles, 30 a side, `a2m-instagib-ctf.cfg`, Quake Live's own AAS and botfiles (local only), 600 s, `bot_debugTrack 500`.
+
+#### Blue Garden Hall: bots walking a circle for ten seconds at a time
+In the baseline, Blue Garden Hall (E) had **356 of the map's 532 loops and 526 of its 3,864 bumps**, while its mirror, Red Garden Hall, had 9 loops. Almost every bot in it was a blue attacker. Each one kept the same movement goal the whole time, a waypoint in the red base, and walked at 300 ups.
+
+`bottrack` now reports the goal the bot is actually moving to and the travel type (`tt`). A temporary botlib trace of each reachability chosen showed a three-area circle: **3864 → 3866 → 3831 → 3864**. All three are plain walks, on the same goal.
+
+There were three causes, all in stock botlib:
+
+1. **A portal area was routed with the crossing left out** (`AAS_AreaRouteToGoalArea`).
+   - 3866 is a cluster portal. For a portal area, stock read the portal cache directly. That cache holds the time from the portal's *far edge*: the crossing is only ever added for the *next* portal. It also used `portalcache->reachabilities`, which is never filled in, so the exit was just the area's first reachability.
+   - The portal therefore looked up to one crossing nearer the goal than any of its own exits.
+   - Now a portal area is routed as an area of each cluster it joins (`AAS_ClusterRouteViaPortals`, split out of the same function), and the better of the two wins.
+   - The portal cache also records which side the goal lies on (in the array it never used). A portal whose route runs back through the cluster being routed is not a way out of that cluster.
+2. **A step over a boundary and back looked cheaper than walking on** (`BotGetReachabilityToGoal`).
+   - Travel times are measured between reachability points, so stepping into the next area and straight back could come out a few hundredths cheaper.
+   - The bot took that step. It was then barred from going back ("don't return to the previous area"), and took the next best. Three areas make a circle.
+   - Now a candidate whose route turns straight back into the bot's own area is skipped. It is kept as a last resort, for an area with no other way out.
+3. **`AAS_PredictRoute` measured every step from the route's origin** instead of from where that step starts. The time grew with the square of the distance, so a route "1 s ahead" stopped a few rooms short.
+   - E134's guard posts were tuned against that, so their constants are rescaled: 350/150 → 160/100. The posts are the same doorways as before.
+   - The only other caller, mover prediction, now looks as far ahead as its comment says.
+
+Fixes 1 and 2 were measured in turn over 240 s: hall loops **979 → 586 → 0**.
+
+#### Defenders check the halls
+Each guard post is now one end of a lane: the same route, followed out to 4.5 s.
+- A post's defender walks to the far end, holds 4–8 s, then walks back.
+- On japanesecastles the lanes run to the top of the Main Stairway, and down Back Hall toward the Garden.
+- A 5.5 s lane was tried first. It ended inside Main Entrance and doubled the stalls there (7% → 15%).
+
+#### Carriers leave by the emptier exit
+A carrier picking its way out of the enemy base now counts **enemies** in each candidate's room (`BotRoomEnemies`). Before, like every other bot, it counted teammates.
+
+#### Result (600 s, 30v30)
+| | before (E134) | after |
+|---|---|---|
+| loops, whole map | 532 | **59** |
+| bumps, whole map | 3,864 | **2,963** |
+| Blue Garden Hall: loops / bumps | 356 / 526 | **0 / 26** |
+| Blue Garden Hall fight % (Red Garden Hall) | 32% (54%) | **58% (59%)** |
+| attack runs through Garden or Balcony | 37% | 36% |
+| defender time in the flag rooms | 71% | **47%** |
+| defender time in Back Hall | ~1% | **9%** |
+
+The garden share was already above the 30% asked for, and stays there.
+
+Before/after overhead maps come from `render-tracks.py` (`--mode paths|fight|defend`). **`tools/bot-harness/zone-report.py`** (new) gives, by the map's own place names, samples, fight %, stall %, loops and bumps. `--via REGEX` gives the share of attack and carrier runs that pass a place.
+
+#### Still open
+- **Carriers still never reach a garden.** In instagib against 30 defenders, every carrier in both runs died within 8 s of the grab: 16 and 17 runs.
+  - The exit choice shows only in which door they die at (Back Hall 2 of 17, against 1 of 13).
+  - A fair test of "comes home through the garden" needs a non-instagib config or fewer defenders.
+- **Back Hall stall % is 21–35%.** That is almost entirely defenders holding their lane end (522 of 572 slow samples), not a jam.
+
+### E134. Scoreboard counts and spectator ticker; defenders hold both ways in — DONE (verify)
+**Lives in:** our **client** (cgame + pak01) and our **server** (qagame) · **Seen by:** our client only (scoreboard); every client (bots)
+
+#### Scoreboard
+- **Player counts.** Each team banner reads "29 players". The info strip reads **"63/64 (59 + 4 spec)"**: everyone against the slots, spectators apart. Without spectators it is "59/64 players". Counted from client info, not the score list (which lags up to two seconds), and written to `io_sb_redcount`, `io_sb_bluecount` and `io_sb_total` only when they change. The board shows them as cvar text.
+- **Spectator ticker.** A strip across the foot of every board, under both lists, reading SPECTATORS followed by the names scrolling. It is Team Arena's `CG_SPECTATORS` ownerdraw, still in our cgame and fed on every join and team change; it only needed placing. Quake Live's scrolling notices use the same line while they run. The lists are one row shorter to make room.
+- Checked on screen with 9 players and 4 spectators: "5 players" / "4 players", "13/64 (9 + 4 spec)", and the names scrolling.
+
+#### Defenders held only the Main Stairway
+*"Defense bots aren't protecting the right hall of the flagroom, only the left hall stairway."*
+
+Measured with `render-tracks.py --mode defend --bsp` (new: the map's own `target_location` names on the picture) at 30 a side on japanesecastles. Defender time near the Back Hall end of each flag room was **42 samples to the Main Stairway's 678**, and the same on both teams.
+
+There were two causes:
+
+1. **Nothing sends a defender to a door.** Stock defending walks to the flag, then within 70 units "goes away for some time" to wander, so defenders pile into the room and the nearest corridor.
+   - Now **guard posts** (`BotDefendPostGoal`, `ai_tactics.c`), computed per map: from our flag, the route toward each alternative-route goal (they lie on the different routes from the enemy flag) is followed out 3.5 s, and each place it stops, merged within 300 u, is a post.
+   - On japanesecastles that is two per team, one at each way into the flag room.
+   - Defenders spread over the flag and the posts, fewest defenders first, re-balanced every 20–25 s, and hold their post rather than wandering.
+2. **Defenders were being stripped within seconds.** A defend job lasted a **median 2.6 s**, and blue ended a match with **0 defenders of 20 wanted**.
+   - Traced: `BotCTFEnforceOffense` kept a defend job only for bots the role picker had labelled defenders. But defend jobs also come from `BotAutoDefendGoal` and the flag-status branches of `BotCTFSeekGoals`, and those bots were still labelled roam.
+   - 54 of 89 strips were exactly that, with defence not full. Now a held defend job with room on defence adopts the role.
+
+**After** (same measure): Main Stairway post 1,522 / Back Hall post **861** (red); 1,081 / **611** (blue). Total defender time is about twice what it was.
+
+A bot team leader's CTF orders were also A/B'd: turning them off gave *less* defence. They stay.
+
+#### "More combat in one garden than the other"
+That was the build before E133. Garden fights north/south were **392 / 1,164** with the old router, and are **943 / 1,082** now. The one-sided routing E133 removed was sending the traffic, and so the fighting, down one side.
+
+#### Still open
+A human on a team becomes its leader and gives no orders, so a team with a human runs on the role mix alone, while an all-bot team also gets its leader's orders. With the fixes above both paths hold defenders, but they are still two paths.
+
+### E133. Bots went in circles: the router, then real crowd steering — DONE (verify)
+**Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
+
+*"Bot movement still feels like the problem, it's clunky, slow, they go in circles till they have a path."*
+
+Measured, not guessed, on **japanesecastles at 30 a side** (`a2m-instagib-ctf.cfg`, Quake Live's own botfiles and AAS, all local only) with the E132 harness and three new tools.
+
+#### Seeing it
+- **`bot_debugMovement <s>`** prints, per bot and in total:
+  - **speed**: mean speed while travelling (not fighting);
+  - **stalled**: travelling time under 100 ups;
+  - **loops**: back within 96 u of where it was 4–10 s earlier, having been 256 u away, on the same goal. Defend, camp and patrol are excluded, because they circle a spot by design.
+  - **bumps**: walked into a player's body.
+- **`bot_debugTrack <ms>`** logs every bot's position, speed, state and job (`bottrack` lines), and each bump (`botbump`).
+- **`tools/bot-harness/render-tracks.py`** draws those over an overhead map built from the AAS: every grounded area at its floor height, on every level. It works on a game's shipped, optimized AAS, which has no face geometry. Team-coloured paths, yellow stalls, magenta loops, cyan bumps.
+
+#### Cause 1: E75's per-bot route preference
+The overhead view showed each team circling in the corridors outside its own base, and **no flag grabs in five minutes of 30v30**. Every travelling bot had the job "get the enemy flag".
+
+- A/B'd, each piece switched off alone: the alternative-route waypoints made no difference (loops 3.3 vs 3.3 per bot-minute). **`BotRouteJitter`** took loops from 3.5 to 1.0 on its own.
+- Why: it added a per-bot bonus to the **first step** of a route and not the rest. So in area A a bot chose door B for its bonus, and from B the way back through A looked cheaper. An inconsistent cost is a loop generator.
+- The crowd cost (`AVOID_COST`, same first-step-only shape, and changing every think as the crowd moved) was A/B'd over ten minutes: removing it too was better (0.98 vs 1.29 loops per bot-minute, more grabs).
+- **Both removed.** `be_ai_move.c/.h` are back to the fork base, and `BotAvoidCrowdedRoute` is gone.
+- Found on the way: `be_interface.c` declared `BotGetReachabilityToGoal` with the old 12-parameter signature while the definition took 13. Calls through it passed a register's leftover value as the route seed. Gone with the rest.
+
+#### Cause 2: no crowd steering at all
+Quake 3's only answer to a body in the way came after contact: a full-speed sidestep at 90°. At 30 a side that is every bot, every few seconds.
+
+**`BotCrowdSteer`** (botlib) is local avoidance in the spirit of DetourCrowd's (zlib; nothing copied):
+- For each player within 200 u on the same level, the relative velocity predicts the closest approach in the next 1.5 s. Closer than 64 u between centres, the bot steers away from that point, weighted by how soon and how close.
+- Bodies already within 40 u are pushed straight apart.
+- Head on, each passes on its own right. The maths is symmetric, so two bots always steer apart, never into each other.
+- It never fights the route: at most 60° off, less near a doorway or item, and never into a wall (the steered line is traced first).
+- It is applied to route walking, to walking inside the goal area, and to `BotWalkInDirection`: fight strafes and the blocked sidestep. That path checks ledges and gaps before committing, so an unsafe steer is simply refused.
+
+`BotAIBlocked` also no longer sidesteps out of a **moving queue**. A body running our way is the column, not an obstacle.
+
+`bot_crowdsteer` (default 1; 0 is stock), live-switchable for A/B.
+
+#### Results (30v30, five minutes, same measure throughout)
+
+| build | travel time | stalled | loop samples / bot-minute |
+|---|---|---|---|
+| 60ffa60 | 178 bot-min | 8.8% | 23.2 |
+| router fix | 106 bot-min | 8.3% | 5.0 |
+| router fix + crowd steering | 110 bot-min | 7.2% | 2.8 |
+
+**Circling down about 88%.** Travel time dropped because bots now reach the fight instead of wandering behind their own lines.
+
+Steering on vs off, same build: speed 279 vs 273, stalled 7.5% vs 8.4%, loops 0.63 vs 0.88, bumps 17.2 vs 22.0 per bot-minute.
+
+#### Still open
+The bump map shows where bodies still meet:
+- **the narrow north passage off the centre**, which carries two-way traffic and is where most remaining loops are too;
+- the base gates;
+- the corridors out of each base.
+
+Steering needs room to steer. A narrow two-way passage needs a rule for who gives way, and that is the next piece. Bump counts also still include harmless contact inside a moving queue.
+
+#### Correction to E132
+Quake Live's own `botfiles/inv.h` uses Quake Live's numbering (red flag 35) and matches ours exactly (`fix-inv.py --check`: no differences). The flag swap was only ever in the harness's OpenArena botfiles. The bug in our own code (holdables read by Quake 3's numbers) was real and stays fixed.
+
+### E132. Crosshair hit styles; three scoreboard bugs; bots measured in a headless CTF harness — DONE (verify)
+**Lives in:** our **client** (cgame, ui + pak01) and our **server** (qagame) · **Seen by:** our client only (crosshair, scoreboard); every client (bots)
+
+#### Crosshair hit reaction (`cg_crosshairHitStyle`, `cg_crosshairHitTime`, `cg_crosshairHitColor`)
+Quake Live's own menu answers what the values mean. It lists 0 No, 1 Damage Color, 2 Color Flash, 6 Pulse, 7 Damage Pulse, 8 Color Pulse, and enables the hit-colour slider only for styles 2, 5 and 8. So the value is two fields, not a list:
+- `style % 3`: 0 = no colour, 1 = colour by damage, 2 = `cg_crosshairHitColor`;
+- `style / 3 == 2`: pulse.
+- 3–5 are never offered by QL's menu and are drawn as colour only.
+
+On each enemy hit, the colour starts full and blends back to normal over the hit time. The pulse starts at 1.5× size and settles the same way.
+
+"By damage" uses the tier the server already sends with every hit: the top two bits of `ps.generic1`, which QL's binary notes are "for the crosshair hit-marker". So it works on stock servers too. The colours match the damage numbers: blue under 25, then yellow, orange, and red from 75.
+
+The Player page gains **On hit / Hit time / Hit colour**, greyed exactly as QL greys them. To fit the shared 560×340 frame, short controls now pair two to a line (pulse with colour-by-health, hit style with hit time), and RESET moved to the right edge. Pages now set a `disableColor`; unset, a greyed row vanished instead of greying.
+
+#### Scoreboard
+- **"O", "B", "4" over the head icons:** the first digits of CTF/CA damage and accuracy. A list asks its feeder for field *j* by column index, so `io_scoreboard` declares every field up to the last shown and gives the unused ones `0 0 0`. The painter drew those anyway, at the row's left edge with no length limit, under the icon. Zero-width columns are now skipped; no Quake Live menu declares one.
+- **Scroll thumb could not be dragged**, for two reasons:
+  - The drag's per-frame update ran only from `Menu_PaintAll`, which cgame deliberately does not call while the board is up.
+  - cgame's key handler dropped key-ups, so a drag was never released and the next click was spent releasing it.
+
+  `Display_RunCapture` now runs from the board's paint, and `Display_ReleaseCapture` runs on mouse-up. The thumb drag also no longer "clicks" the list on a timer; that Team Arena leftover paged or selected whatever the cursor drifted over.
+- **Click / right-click selected a row but showed nothing:** the lists had no `outlinecolor`, so the selection fill was all zero. Now gold at 28%.
+
+#### Bots: a harness, then a root cause
+"Scrap the AI" was a question the code could not answer by reading it, so this built something that could: **`tools/bot-harness/`**.
+- A generated symmetric three-lane CTF map (`gen-ctf-map.py`, with a `swap` mode that mirrors the bases).
+- Its AAS from `bspc`.
+- A script that runs a 4v4 headless match at timescale 8 and counts grabs, captures and carrier frags (`run-match.sh`).
+- A setup script (`build-harness.sh`).
+
+Botfiles are supplied locally: Quake Live's from your own pak00, or OpenArena's (GPLv2+). Nothing from either is committed.
+
+**First result: one team attacked all match and the other never did** (flag grabs 25 vs 1), with 0–3 captures in 15 minutes. It followed the *team*, not the base side (swap), and not the bots (swapped personalities). It also appeared with `bot_tactics 0` and with **the original ioquakelive AI built in**, so it was not in anything this branch wrote.
+
+Traced to the item list:
+- Quake Live inserts `item_armor_jacket` at index 4 of `bg_itemlist`, so every later item is one higher than Quake 3's numbering (red flag 35, not 34).
+- `botfiles/inv.h` carried Quake 3's numbers. botlib ties map entities to item definitions by that number, so **the red flag entity was read as the "Blue Flag"**. Red attackers walked to their own flag, touched it, concluded the blue flag was gone, and dropped their job for the rest of the match.
+- **Our own code had the same mistake:** `ai_dmq3.c` identified a bot's holdable item and persistent powerup against `MODELINDEX_*`, so a medkit read as a teleporter, a kamikaze as a medkit, Guard as Scout. It now asks the item list for `giTag`, which cannot drift, and `code/game/inv.h` carries QL's numbers.
+
+**With the numbering corrected** (15 game-minutes, 4v4):
+
+| variant | grabs | caps | caps red/blue |
+|---|---|---|---|
+| ours, tactics on | 42 | 11 | 5/6 |
+| ours, tactics on, bots swapped | 38 | 14 | 7/7 |
+| ours, tactics off (stock behaviour) | 56 | 12 | 8/4 |
+| original ioquakelive AI | 55 | 14 | 6/8 |
+
+Balanced, and roughly 4× the captures. The four are within the noise of one run each. **On this map, the tactics layer is neither measurably better nor worse than the original.** That is the honest verdict on it so far, and the harness is how to settle the rest.
+
+**Also fixed:** two stock Quake 3 orders whose *voice* message went to a different bot than the text named (`BotCTFOrders_FlagNotAtBase`'s getflag, 1FCTF's second defender). `BotSayTeamOrder` discards text ("voice chats only"), so the voice order is the only one. With four or more on a team whose flag was stolen, no attacker was ever told to attack.
+
+**Open: does Quake Live's own `botfiles/inv.h` in pak00 use Quake Live's numbering?** If it uses Quake 3's, the real game has this exact flag swap, and it is the likeliest reason for 0 captures in a 15-minute CTF match. `tools/bot-harness/fix-inv.py --check <its inv.h>` answers it in one line.
+
+### E131. Crosshair back on Player only; crosshair colour works; scoreboard switch — DONE (verify)
+**Lives in:** our **client** (cgame, ui + pak01) · **Seen by:** our client only
+
+E130 read the report the wrong way round: it moved the crosshair settings *to* Advanced. The ask was the opposite.
+
+- **Advanced > Crosshair is gone.** Every crosshair option is on the **Player** tab: style (with the preview beside it), size, brightness, pulse on pickup, colour by health, **crosshair colour**, and player names. RESET there covers them all. The Advanced grid centres its now-partial last row.
+- **`cg_crosshairColor` works.** Before this, only the menu's slider read it and every crosshair drew white. It is Quake Live's own control, a colour bar (`ITEM_TYPE_SLIDER_COLOR`, 1..26, default 25) drawn over `menu/art/fx_base`, and it is greyed out while colour-by-health is on, as in QL. cgame now colours the crosshair from a 26-entry table sampled from that bar at the thumb's position for each value (`tools/crosshair-colors.py`). Only the numbers are checked in, never the image. Brightness still dims it.
+  - The **style preview** beside the Crosshair row now draws in that colour and brightness, so it shows what the game will draw. The table is in `code/cgame/cg_crosshaircolors.h`, which cgame and ui both include.
+  - While colour-by-health is on, the bar is **dimmed** as well as locked. The item already refused focus, but the painter drew the bar at full colour, so it looked live.
+  - The bar is shaded (bright in the middle, dim at both ends), so each hue is taken at full strength.
+  - The bar's grey tail has no hue to measure, so **25 (default) = white, 26 = black** are set by hand from the bar's shape. If Quake Live draws 26 differently, only that row changes.
+- **Scoreboard switch** on Advanced > HUD (last row): "Replacement (default)" or "Quake Live original" (`cg_ioScoreboard`). The replacement is now the default in code; it used to be 0 and turned on only by the shipped `autoexec.cfg`, which no longer sets it (it would undo the player's choice every launch). Saved only once changed (`CVAR_NODEFAULT`).
+- **Checked in a game,** from the packaged build, with a local-only test pak holding a plain white crosshair of our own:
+  - values 14/5/25/21 draw blue, yellow, white and magenta;
+  - the Player page fits its panel with every row;
+  - the HUD page has the Scoreboard row.
+- **Still not implemented, so still no rows:** hit colour/style/time (`cg_crosshairHit*`), teammate health (`cg_drawCrosshairTeamHealth*`), teammate/enemy name options, `cg_forceDrawCrosshair`. Registered for Quake Live's sake and drawn by nothing.
+
+### E130. Crosshair row lined up and in one place; RESET on the settings pages — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Reported from the in-game Player page.
+
+- **The crosshair preview drew one row above its label**, over the Music slider. `UI_DrawCrosshair` paints at `rect.y - rect.h`, Team Arena's convention, and Quake Live's own menus are laid out for it, so the engine stays as it is. The crosshair row is now an ordinary value ("Style 1–29", "Off") that cycles on click like every other row, with the preview as a decoration beside it, placed for that offset. The preview also follows `cg_drawCrosshair` every frame; it used to be read only when the menu opened.
+- **Crosshair settings were in two places.** Style and size were on Player *and* Advanced > Crosshair. Everything crosshair is now on Advanced > Crosshair, and the Player page's footnote says so.
+- **RESET buttons:**
+  - every Advanced sub-page (Video, Lighting, Bloom, Crosshair, HUD, Weapons, Effects, Sound, Game);
+  - Player (sliders only; name, model and handicap are never touched);
+  - Controls (runs Quake Live's `default.cfg`, which is exactly `unbindall` plus its default binds);
+  - the Lighting & Ray Tracing, Water and Surface Detail render pages.
+
+  Each one runs the engine's own `reset` for the cvars on that page, which restores the default the code registered, and is **generated** from the page's rows. No value is written in any menu, so a RESET can't drift from the code, as RESET WATER had (it reset SSR to 2048/32/8 against the code's 1024/24/24). Render Options keeps its presets rather than a reset, because a reset there would also switch the renderer and resolution back.
+- **Checked:** `reset cg_fov` from 120 gave "100, the default". Both pages were photographed in a game: the preview is level with its row, and the RESET buttons are placed.
+
+### E129. The hardware prompt decides by PCI ID, from a real GPU list — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+E127's name rules couldn't see through AMD's generic OpenGL name. On Windows, most AMD integrated GPUs report "AMD Radeon(TM) Graphics", so a 780M (ray tracing) and a Vega 8 read identically.
+
+- **The list:** `tools/gen-gpu-list.py` classifies every NVIDIA, AMD and Intel GPU in the PCI ID database (pci.ids, the one `lspci` uses; this copy is dated 2026-09-25) by **chip generation**. It writes `code/client/cl_gpulist.h` (compiled in) and **`docs/gpu-list.txt`** (the reviewable list). 335 GPUs are "rt", 263 "vulkan", 1709 "none", each "none" with a reason.
+  - **rt:** NVIDIA Turing RTX, Ampere, Ada, Blackwell; AMD RDNA2/3/4 (Navi 2x–4x, plus the 680M, 780M, 880M/890M, 8060S, 840M/860M and Steam Deck integrated parts); Intel Arc.
+  - **vulkan:** NVIDIA GTX 16, Pascal, Maxwell 2, Volta; AMD RDNA1, Vega (including Radeon VII), Polaris, GCN3.
+  - **none:** NVIDIA GT/MX/NVS/Tegra, Kepler and older; AMD Vega-based integrated, the 2-CU RDNA2 integrated parts (610M), Lexa, GCN1–2.
+- **Runtime:** `code/client/cl_gpuid.c` reads the PCI IDs without Vulkan or OpenGL: sysfs on Linux, DXGI's adapter list on Windows (software adapters skipped). The best-tier GPU in the machine decides, since the Vulkan renderer picks the discrete one (`r_device -1`). Name rules are used only when no ID is known (macOS, or a GPU newer than the list).
+- **The dialog's label:** the driver's own name when it means something; otherwise the list's (e.g. "AMD Radeon 740M / 760M / 780M (Phoenix)").
+- **Checked end to end** in the real client, with a shim faking both the OpenGL strings and the sysfs IDs:
+  - 780M behind "AMD Radeon(TM) Graphics": asked, with ray tracing;
+  - Vega 8 behind the identical name: not asked;
+  - GTX 1650: asked, Vulkan only.
+- **Refresh the list after new GPUs ship:** fetch pci.ids and run `tools/gen-gpu-list.py` (instructions in its header).
+
+### E128. Hardware prompt: a lost first click, and the empty band — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Found in the E127 visual check, with a shim making the OpenGL driver report an RTX 3060 so the real detection path ran.
+
+- **A click on a just-opened menu could be lost.** Hover focus was only set from mouse movement, so the second dialog opened under a still cursor with its YES unfocused, and the first click did nothing. `Menus_ActivateByName` now gives a newly opened menu the item under the cursor straight away. Checked: YES is highlighted on opening, and a click without moving runs `advanced.cfg` and restarts on Vulkan.
+- **Empty band between text and buttons:** the dialogs were a fixed 200 tall. The height now follows the text (162) and the dialog is centred.
+
+### E127. The hardware prompt no longer touches Vulkan — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+E126 detected the GPU by loading the Vulkan loader and creating an instance. A broken Vulkan driver can crash right there, and it would do so on every launch, on exactly the low-end machines OpenGL 2 is the default for. **Removed.** `CL_GuessGPU` now reads the vendor, renderer and version strings the running OpenGL renderer already reported (`cls.glconfig`). It's pure string matching, with nothing loaded and no driver calls.
+
+- **Asked:** OpenGL 4.5+, not a software renderer, and either a discrete card or ray-tracing capable. Discrete means NVIDIA (except Tegra and the GT/MX/NVS entry lines), AMD RX/Pro/FirePro/R9/Vega 56/64, or Intel Arc. Ray tracing means RTX, RX 6000/7000/9000, Radeon 6x0M–8x0M integrated, or Arc.
+- **Checked:** against 15 real renderer strings in a test harness: RTX 3060 Laptop, GTX 1060, RX 6600M, RX 580, Radeon 680M and Arc A770 are asked. GT 710, MX450, Vega 8, Radeon(TM) Graphics, UHD 620, HD 4000, Tegra, llvmpipe and GDI Generic are not. Headless on llvmpipe: "software renderer", no prompt, nothing Vulkan in the log.
+- **It's a guess from a name, not a capability query.** A wrong ray-tracing guess costs nothing: `r_rt 1` on a card without it just reports "not available".
+- **Build fix found on the way:** the Makefile used `-MMD` without `-MP`, so removing a header broke every incremental build that had included it ("No rule to make target sdl_vkprobe.h"). `-MP` added.
+
+### E126. OpenGL 2 stays the default; high-end machines are offered Vulkan once — DONE (verify)
+**Lives in:** our **client** (client engine, ui + pak01) · **Seen by:** our client only
+
+Decision: `cl_renderer` stays `opengl2`, to be friendly to low-end systems. Instead, the first time the main menu is up on a capable machine, the player is asked:
+
+1. **"High-end hardware detected: switch to Vulkan?"** The dialog shows the GPU's name. NO: nothing changes. YES: `cl_renderer vulkan`, then question 2.
+2. **"Advanced rendering as well?"** This means ray-traced AO, water reflections and waves. YES runs `advanced.cfg`, or `advanced_norq.cfg` (no ray-traced AO) on a card without ray query; NO keeps the defaults. Either answer runs `vid_restart`. If Vulkan fails to start, the renderer's existing fallback puts `cl_renderer` back to opengl2.
+
+- **Detection:** `code/sdl/sdl_vkprobe.c` asks the Vulkan loader directly, through SDL, without loading the Vulkan renderer. It creates a bare instance, reads each GPU's type, API version and extensions, and tears it all down. "High-end" means a real GPU with Vulkan 1.1+ that is **discrete, or has ray query**. CPU implementations (llvmpipe, SwiftShader) never qualify, and neither do integrated GPUs without ray query: those are the machines the OpenGL default is for.
+- **Asked once:** `cl_hwPrompt` is archived because it is the player's answer, and either answer sets it. A machine that doesn't qualify is not marked, so a new graphics card is asked about on the next launch. Nobody already on Vulkan is asked.
+- **Timing:** once per launch, 1.5 s after the main menu comes up with nothing connected and no local server running.
+- **Checked headless:** on a machine with only lavapipe, the probe correctly declined ("no Vulkan-capable GPU found - staying on OpenGL 2"), and both dialogs open without menu errors. **Not seen on a real GPU,** which is the path that asks.
+
+### E125. One menu shape: the in-game frame and the render pages flow into each other — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Reported with two screenshots. Opened from the in-game Advanced page, a render page sat **on top of** the in-game frame instead of replacing it:
+- the in-game tabs showed through its tab bar ("Cur", "Call Vote", "Add Bot") and the Advanced page showed through its panel;
+- the game was dimmed twice;
+- the render footer sat lower than the in-game footer, because the two frames were different heights.
+
+- **One geometry.** Both frames now use header 0-64, tab bar 63-81, panel 82-440 and footer 444-478. The RESUME and render footer buttons are the same size.
+- **Replace, don't stack.** Each render page is generated twice. `io_*` is the main-menu copy; CLOSE shows the main menu. `io_igr_*` is the in-game copy: Advanced closes `io_ingame` before opening it, and its BACK reopens `io_ingame` and `io_ig_advanced`. There is one dim and one tab bar at any moment. ESC from a render page in a game resumes play, like every other in-game page.
+- **The tab highlight survives the round trip.** The frame's onOpen reset the tabs to Current Match every time the frame opened, including on BACK. `_UI_SetActiveMenu` now runs tab 1's own action on ESC-in instead, and nothing else resets the tabs.
+
+### E124. Render pages in the in-game menu's style; renderer settings that never applied live — DONE (verify)
+**Lives in:** our **client** (client engine, ui/pak01) · **Seen by:** our client only
+
+- **Brightness, texture filter, dither, greyscale and bloom settings only applied on `vid_restart`** on the Vulkan renderer. The renderer tags those cvars with Quake3e's cvar group and rebuilds its gamma and post-process pipelines when one changes. The engine's group hooks were stubs, and `CL_RefCvarCheckGroup` always returned 0, so that branch never ran. The note above `CL_PostProcessRestart_f` counted it as a rebuild path; it had never fired. Implemented: members are tracked by `modificationCount`. Not yet seen changing live on a real GPU.
+- **The four render pages** (Render Options, Lighting & Ray Tracing, Water, Surface Detail) are now generated by `tools/gen-render-menu.py` from the in-game menu's own helpers:
+  - header art and logo, a tab bar across the four pages (it replaces the "LIGHTING >" links), the centred two-column form, gold section headings, and boxed APPLY/RESET/CLOSE buttons in a footer bar;
+  - they keep their menu names, so the main menu's RENDER entry and the in-game Advanced page open them unchanged;
+  - Brightness is added to Render Options.
+- **Water splash defaults** are 4/4 with foam off, ranges go to 16, and RESET WATER matches the code; the SSR values it reset were wrong too.
+- **`CVAR_ARCHIVE_ND` made real** (`CVAR_NODEFAULT`): a renderer cvar still at its default is no longer written to qzconfig.cfg, so a later default change reaches existing installs. Our `r_rt*`/`r_rtao*`/`r_ssr*` cvars use it now. Configs from earlier builds keep what they already hold.
+- **`tools/check-menu-defaults.py`**, run by package-release.sh, compares every multi row with the default the code registers. It found:
+  - roundlimit and g_itemHeight drawing blank;
+  - pmove_JumpVelocity's 275 missing, with the Q3/QL labels swapped;
+  - r_ssrDistance labelled 2048 as its default.
+
+Not done yet: Player Setup, Credits, Create Server and Join Server are still in the older style.
+
+### R25b. The static bump pass, first run — the ratio was the wrong shape
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Built, shipped, and looked at. It draws, and the modulation view shows real
+relief on the brick, so the plumbing is right end to end: deluxemap bound,
+normal map bound, tangent basis built, pass running. Two things were wrong.
+
+**The sign convention was NOT one of them, and it is worth writing down so
+nobody re-opens it.** Read out of the compiler rather than guessed: in
+`light.cpp`, `trace->direction` is what `angle = DotProduct(trace->normal,
+trace->direction)` uses as the N.L term, line 936 rejects samples where that is
+negative, and `trace->hit = origin + depth * direction` traces from the surface
+toward the light. `directionContribution` is that direction scaled. So a
+deluxemap stores the direction **toward** the light and `dot(N, dir)` is
+positive where lit. The shader's convention is correct.
+
+**Wrong 1 - a ratio where a difference belongs.** The tempting form is
+`bumped/flat`: the lightmap has `dot(geomN, dir)` baked in, so dividing it back
+out and multiplying the bumped term in looks exact. It is not. A lightmap is not
+intensity times one N.L - it is every light, plus shadowing, plus ambient - so
+there is no single term in there to divide out. And the quotient runs away
+exactly where the light is shallowest: floored at 0.35 it still pinned at the
+2.0 clamp across most of a room, which is what "everything is white" was on
+screen.
+
+`1 + (bumped - flat) * scale` cannot run away. It is zero where the normal map
+is flat, so an unperturbed surface is untouched to the bit; it is symmetric
+about 1, so a bump brightens by as much as its far side darkens; and both terms
+are bounded, so the result is bounded before any clamp. The clamp is now a guard
+rather than the mechanism - if it is doing work, the scale is too high.
+
+That is the **third** time on this pair of features that a quantity was chosen
+by computing the convenient thing rather than the visible one: the R20 scale
+against a luminance slope, the R20 cap against a tilt angle, and now this
+against an algebraic identity that the data does not actually satisfy.
+
+**Wrong 2 - the one debug view that existed to answer a question could not
+answer it.** Empty deluxemap texels returned white before the debug branch, and
+white is also what an untouched surface looks like, so "the deluxemap did not
+arrive" and "the deluxemap arrived and says do nothing" were the same colour.
+Empty now reads black in the direction view.
+
+**Also:** the brick was authored at 16 x 8 world units a brick, which reads as
+tiling noise rather than masonry. Now 32 x 16. Reported before it was measured,
+and correct.
+
+**Wrong 3, and it was the real one - found from a LOG, not from the screen.**
+The registration line read:
+
+```
+Materials: 0 stage(s) with a normal map, 0 with a specular map; 44 derived, 2 underivable (R20).
+```
+
+**Zero shipped normal maps**, on a map whose shaders plainly declare three. The
+panels were wearing R20's derived maps instead, so none of the authored art was
+ever being tested.
+
+`CollapseMultitexture` merges the lightmap and diffuse stages into one and then
+memmoves the second out of existence - and it never carried `normalMap`,
+`specularMap` or `noNormalPerturb` across. A shader writes `normalMap` on the
+stage that has the texture on it, and with the lightmap stage first (which is
+what `R_CreateDefaultShading` builds and what most world shaders are) that is
+exactly the stage being discarded. The map was dropped on the floor with no
+diagnostic at all bar a count of 0, and R20 then derived a replacement because
+`normalMap` was NULL by the time it looked.
+
+`qlNoPerturb` travelled the same road, which is how the "control" panel in
+qltest_bump quietly stopped being a control - the 44 derived maps include every
+flat grey wall that had explicitly declined perturbation.
+
+**This is the single strongest argument yet for counting things rather than
+looking at them.** Nothing on screen distinguishes "the authored normal map was
+discarded and a derived one substituted" from "the authored normal map is
+working". One line of load-time output did it immediately. There is now a
+matching count for this pass:
+`Static bump: N shader(s) have both a normal map and a lightmap (R25).`
+
+**Wrong 4 - the test map was lit into saturation.** Lights of 700 and 200 put
+every surface at or near white, where a modulation can only darken: half the
+range was invisible and the panels read as inert. Now 300 and 90, so surfaces
+sit near mid-grey and brightening is visible too. A test scene that cannot show
+something being made brighter is not a test scene.
+
+**`r_deluxeMapping 5`** draws the normal map itself, in the lavender every tool
+shows one in. It depends on nothing else - not the deluxemap, not the tangent
+basis, not the light - so it is the first thing to look at when the other views
+disagree, and the only one worth having on a map with no deluxemaps at all. It
+is also what would have caught the BGR channel swap immediately.
+
+### R25c. Parallax and specular — the two reasons a normal map reads as paint
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported as "the bumpmaps aren't adding depth", and the report is right for
+reasons that are not about the normal map's strength at all. Three causes, and
+only the third is what anyone would call a bug.
+
+**1. No self-occlusion, and a normal map structurally cannot have any.** It
+changes how a flat surface answers light and changes nothing about *where its
+detail sits*. At a grazing angle a brick never hides the mortar behind it, so
+the wall stays visibly flat however hard the shading is pushed. Only moving the
+lookup fixes that.
+
+`r_qlParallax` marches the view ray through a height field in tangent space and
+offsets the texture lookup - steep parallax, with a linear step back across the
+crossing so it does not stair-step. Height rides in the normal map's **alpha**,
+so it costs no extra texture and no extra binding.
+
+Nothing displaces a vertex. Geometry, silhouette and collision are untouched,
+which is exactly what separates this from R21 - no `tessellationShader` device
+feature, and no desync between what is drawn and what the server traces against.
+R21 remains parked and this does not unpark it.
+
+**2. No specular, and a lightmap can never supply one.** A diffuse-only bump is
+a smooth gradient across each bump, and the eye reads a smooth gradient as
+paint. What says "relief" is a highlight that *moves when you move* - and a
+lightmap was baked from a viewpoint that was not yours, so it cannot contain
+one. `r_qlBumpSpecular` adds Blinn-Phong against the deluxemap's direction.
+
+It modulates rather than adds, which keeps the pass single-blend and has a
+defensible side effect: the highlight can brighten what is already lit but
+cannot light what the lightmap left dark. An unlit crevice should not glint.
+
+Both need the eye position, which this pass had no uniform for. It borrows the
+light path's block - `bump.frag` declares the same leading four vec4s so set 0
+means the same thing here as everywhere else, and reads only `eyePos`.
+
+**3. And the map being tested could not run the pass at all.** The screenshots
+were a stock Quake Live map. Those carry no deluxemaps and never can, measured
+in R20, so the static pass returns on its second line. The load-time count says
+so now in as many words rather than leaving it to be inferred from a wall.
+
+**Also:** authored normal maps now load with `IMGFLAG_NO_COMPRESSION` as well as
+`NOLIGHTSCALE`. The alpha is a height field now, and a 16-bit format quantising
+it to four bits would turn a smooth surface into terraces. The derived maps
+already set both.
+
+`r_deluxeMapping 6` draws how far parallax moved the lookup.
+
+---
+
+**Still unverified:** whether the shading is right, as opposed to present and
+bounded. And handedness, which neither this nor R20 has yet tested - the dome
+panel is still the only thing that can.
+
+---
+
+### E114. One palette, and button text that sits in the middle — DONE (verify)
+**Lives in:** our **client** (pak01) · **Seen by:** our client only
+
+**Text sat low in every box.** Measured off the screenshot rather than guessed
+again: the engine draws a label's baseline about **1.2px below** its
+`textaligny`, so the values E113 chose put Apply/Back 2px low in a 22px box and
+Resume 2px low in a 26px one. Now 14 and 17, which centre the cap height, and 16
+for the 24px buttons.
+
+**Three reds on one screen.** E113 gave its buttons a dark red copied from
+Quake Live's Apply button, under a header that is a different, lighter red; the
+Leave page added a pink "danger" text colour. Nearly-matching reds read as a
+mistake, not a scheme. The only red now is the header art.
+
+Everything else uses the vocabulary the frame already had: translucent black, the
+muted gold of the page rules, and full gold for "this one" - which is exactly
+how the selected tab is drawn. Idle buttons are the nav bar's black with a muted
+gold edge; hover is the selected tab's black with a gold edge and gold text.
+`setitemcolor ... bordercolor` is supported, so the edge lights on hover too.
+
+**One button style.** Boxed Apply/Back/Resume sat beside bare-text buttons on the
+other pages - two styles on one screen reads as unfinished. Every button in the
+generated menu is now the same box, text centred. The Leave page's safeguard is
+that it asks first; the colour was not doing that job, only clashing.
+
+**Unverified:** not run.
+
+---
+
+### E113. Layout, a real RESUME button, and sliders you can read and type — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+**Tab bar.** Eight equal 70px tabs put *Current Match* - ~65px at `textscale
+.18` - in a 70px cell, centred, so it sat about two pixels from the frame's left
+border: no padding, and visibly further left than every other tab. Equal widths
+only look even when the labels are. Each tab is now its label plus 14px either
+side, inside a bar inset 6px from both frame edges. The per-character width was
+measured off the built menu's screenshot, not assumed.
+
+**RESUME** was bare text floating under the panel with nothing around it. It is
+now a boxed button centred in a footer bar the width of the frame, in Quake
+Live's own button language - the dark red fill and light edge of the Apply button
+on its player options page. Sub-page actions (Apply, Back) use the same box.
+
+**Centred form.** Labels are right-aligned to end at a gutter just left of the
+page's centre line, controls start just right of it, and titles, subtitles and
+footnotes are centred. Before, labels hugged the left edge and values floated at
+x=290: two ragged columns with a gap that grew with the shortest label.
+
+**Sliders, with the number.** Continuous quantities presented as a few stops were
+wrong the same way sensitivity was in E111. Converted to sliders: crosshair size
+and brightness, brass time, rail trail time, rail width, rail core width, rail
+segment length, the three smoke radii, impact spark speed and view kick - 14 rows.
+Kept as lists on purpose: resolution, texture detail, model detail, curve detail,
+refresh rate, lagometer and the other genuinely discrete choices, where a
+position between two stops means nothing.
+
+Every slider now has a **value box** beside it: an `ITEM_TYPE_NUMERICFIELD` bound
+to the same cvar. The field re-reads its cvar every frame, so it follows the thumb
+while dragging, and it takes a typed value on Enter. That needed an engine change:
+**stock `NUMERICFIELD` accepted digits only**, so it could not hold 4.5, 1.2 or
+-96 - the values the slider beside it was showing. It now takes one decimal point
+and a leading minus. No menu used `NUMERICFIELD` before this, so nothing relying on
+digits-only is affected. It is used rather than `EDITFIELD` because an editfield
+accepts anything, and a letter typed into `sensitivity` reaches the cvar as 0.
+
+**Three rows that were lying, found while choosing what to convert:**
+
+- `cg_specFov` is a **boolean** - use the followed player's FOV (`cg_view.c:491`)
+  - and E111 had made it a 75-130 slider that could never turn it off. Now yes/no.
+- `r_ambientScale` is **`CVAR_CHEAT`**. Outside `sv_cheats 1` the engine refuses
+  the write. Removed from Lighting. The same slider in Surface Detail stays -
+  cheat-protection is right, since it lifts models in shadow - but is relabelled
+  *Ambient (devmap only)*, which is where the test maps are judged.
+- **Quake Live's `r_ambientScale` labels are 1 / 10 / 100; ours is a 0-2 scale
+  with default 0.6.** Same name, different meaning. A row built from Quake Live's
+  list would have set 100. `docs/ql-cvar-semantics.txt` is authoritative about
+  what Quake Live's values mean, not about what ours do - worth remembering for
+  every renderer cvar the two do not share an implementation of.
+
+Also corrected defaults that were wrong in E111: `r_gamma` is 1 with a 0.5-3
+range, not 1.3 over 1-3; `cg_zoomfov` defaults to 30, not 22.5.
+
+**Cheat and latch flags are a failure class the manifest check does not see.**
+`docs/cvar-manifest.txt` answers "does our code read it"; it cannot answer "will
+the engine let a menu write it". All 92 cvars in the generated menu were audited
+for `CVAR_CHEAT` / `CVAR_ROM` / `CVAR_INIT` / `CVAR_LATCH`: one cheat (above),
+seven latched, and all seven sit on the Video page beside its Apply. Worth making
+a check-menus gate rather than a one-off audit.
+
+**Unverified:** not run. Typing into a value box and pressing Enter is the check
+most likely to surprise.
+
+---
+
+### E112. The model grid, and two menus drawn on top of each other — FIXED (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+**The model list drew one huge head per row.** `Item_ListBox_Paint`'s
+`LISTBOX_IMAGE` path advances **`y` only** - it is a single column, and
+`elementwidth` is not what decides how many fit. The giveaway is in that same
+loop: `size` is taken from `rect.h` and then has **`elementWidth`** subtracted
+from it, which is a horizontal layout flattened into a vertical one.
+
+There is a separate horizontal branch a few hundred lines up that lays images
+left to right, and it is reached by one keyword: **`horizontalscroll`**, which
+sets `WINDOW_HORIZONTAL`. Quake Live's own `ingame_options_basic.menu` uses it,
+which is why its picker is a row of eight heads with arrows at each end. Ours
+did not, so it fell into the vertical path.
+
+Fixed by adding the keyword and adopting Quake Live's proven geometry for both
+pickers - `210 x 43` with `26 x 26` elements, which is exactly eight across.
+Not derived: copied from the menu that demonstrably renders that way.
+
+**Video (and every other Advanced sub-page) drew on top of Advanced.**
+`Menu_PaintAll` paints every menu whose visible flag is set - no stack, no
+topmost - so opening a sub-page without closing the hub left both drawing in the
+same 560×292 rectangle, two sets of rows superimposed. This is the same fact
+about this menu system that caused the E108 draw-order bug, in a second
+disguise: there, definition order decided who won; here, nothing closed the
+loser at all.
+
+Two different fixes, because the two cases genuinely differ:
+
+- **Sub-pages** share the hub's exact geometry, so the hub button now closes
+  `io_ig_advanced` before opening one, and the sub-page's `BACK` reopens it.
+- **Our full-size menus** (Render Options, Water, Ray Tracing, Surface Detail,
+  Player Setup) are opaque `520 × 468` panels that cover the hub completely, so
+  they deliberately do **not** close it - leaving it open is what makes closing
+  them return to Advanced, with no extra wiring and nothing to get out of step.
+
+Also: a tab press now closes the sub-pages as well as the pages. Without that,
+switching tabs while a sub-page was open left it drawing over the new tab -
+the same bug one step removed. 16 closes per tab action, generated.
+
+**Unverified:** not run. Eight heads in a row and a single page at a time are
+the checks.
+
+---
+
+### E111. The options that were missing — sliders, models, resolution — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Four faults in E110's menu, all correct.
+
+**Sliders.** Mouse sensitivity, master volume and music were `cvarFloatList`s,
+which is wrong twice: a value between the listed stops **displays as blank** -
+the screenshot shows an empty Mouse sensitivity row, because the real value was
+not one of the five offered - and a continuous quantity presented as five stops
+is not the setting the player has. All three are now `ITEM_TYPE_SLIDER`, matching
+what Quake Live does (`ingame_controls.menu`: `cvarfloat "sensitivity" 5 1 30`).
+
+**Model picking.** Added to `io_playersetup` (enlarged 400×240 → 480×350) and to
+the in-game Settings tab: a `LISTBOX_IMAGE` over `FEEDER_Q3HEADS` with a
+`UI_PLAYERMODEL` preview - the same construction Quake Live's own basic options
+use. Both halves were confirmed implemented in `ui_main.c` first.
+
+**Resolution.** The render menu had none. It now carries Fullscreen and
+Resolution in the OUTPUT section, above the `APPLY (restart video)` button that
+was already there and is exactly what they need. The value list is Quake Live's
+own from `docs/ql-cvar-semantics.txt` - `r_mode -2` is Native Desktop, `-1`
+Custom, `0..27` its fixed modes - not a guessed mapping.
+
+**"Missing a lot of options."** Quake Live's `ingame_options_basic.menu` and
+`ingame_options_advanced.menu` name **134 cvars**. Those two files are now the
+specification, and the generator emits nine sub-pages from a table: Video,
+Lighting, Bloom & Post, Crosshair, HUD, Weapons, Effects, Sound, Game.
+
+**34 of those 134 are deliberately absent, and that is the interesting part.**
+Cross-referenced against `docs/cvar-manifest.txt`, they are `QL-ASSET`:
+registered so a config or a stock client finds the name, and **read by nothing
+in our code**. A row for one takes a value, displays it, persists it and changes
+nothing - the failure this tree has already paid for twice. `cg_railStyle` is on
+that list, which is why the rail style row Quake Live puts on its *basic* page is
+not on ours. The 34 are the backlog, not a gap in the menu.
+
+Value labels come from `docs/ql-cvar-semantics.txt` at generation time rather
+than being written by hand, so the generator **fails** on a cvar it has no list
+for instead of inventing one. That file exists precisely because `cg_hitBeep`
+defaults to 2 and nothing about the name says whether 1 and 3 are louder,
+different or off.
+
+**check-menus caught every layout error on the way** - row pitch against row
+height, a subtitle two pixels into the first row, a model preview under the name
+field, buttons past the frame. 0 problems now, 127 menus, 1820 generated lines.
+
+**Unverified:** not run. The sliders and the model list are the checks.
+
+---
+
+### E110. Replacing Quake Live's in-game menu, in its own style — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+E108 put a plain panel in front of the player. Asked for Quake Live's look
+rather than a box, and for the whole menu rather than a shortcut to ours.
+
+**The look is Quake Live's, and measured from it rather than approximated.**
+Frame `rect 40 0 560 480`, header 64 tall, nav bar at 63, content panel at 82,
+gold `0.964 0.815 0 1`, selected tab backed with black at 0.9 and underlined -
+every number read out of `pak00/ui/ingame.menu`. The art is Quake Live's own
+`header.tga`, `ql_logo.tga` and `content_background.tga`, loaded **by name** out
+of the player's pak00, the same arrangement as the shader overrides in
+`ql_enhanced.shader`: nothing copied, nothing shipped. Checked against
+`docs/pak-manifest.txt` first, because `RE_RegisterShaderNoMip` returns 0 for a
+name the pak lacks and then draws nothing while reporting nothing.
+
+**Eight tabs, each a page drawn inside the panel:** Current Match (player list
+and team change), Call Vote (map list via `FEEDER_CVMAPS`, kick via
+`FEEDER_PLAYER_LIST`, quick votes), Admin (eight actions on the selected
+player), Add Bot (`UI_BOTNAME`/`UI_BOTSKILL`/`UI_REDBLUE` ownerdraws), Controls
+(twelve bindable keys plus save/reload), Settings, Advanced, Leave.
+
+**Generated, not hand-written** - `tools/gen-ingame-menu.py`. A tab is four
+itemDefs sharing a rect, and every tab's action recolours three parts of all
+eight tabs: 24 `setitemcolor` lines per tab, ~200 for the bar alone, in which
+one wrong index is a tab that highlights its neighbour. Quake Live writes all of
+this by hand and spends 486 lines on seven tabs with no content. The tab table
+in the generator is now the whole definition; the block it emits is 1010 lines.
+
+**What was checked before being used, rather than after.** Every feeder,
+ownerdraw and uiScript referenced was confirmed implemented in `ui_main.c`
+first - `FEEDER_PLAYER_LIST`, `FEEDER_CVMAPS`, `UI_BOTNAME`, `UI_BOTSKILL`,
+`UI_REDBLUE`, `UI_CROSSHAIR`, and the `voteMap` / `voteKick` / `addBot` /
+`kickPlayer` / `putred` / `saveControls` family. **`UI_VOTE_KICK` is the one
+that is declared and not implemented**, so kick-by-vote uses the player-list
+feeder and the `voteKick` script instead of that ownerdraw. This is the
+registered-cvar failure shape in another costume: the constant exists, a menu
+referencing it parses, and it draws nothing.
+
+**Two code couplings this forced out.** `_UI_SetActiveMenu` opens the frame
+*and* its first page, the same two-menu arrangement Quake Live uses, because the
+frame alone is an empty panel. And `updateCallvoteMapPreview` reset the map
+feeder selection by menu *name* - hardcoded `"ingame_callvote"` - so it now
+names ours as well; Quake Live's menu is still reachable from the Advanced tab,
+and resetting only one leaves the other holding an index into a list it no
+longer has, which looks fine and votes for the wrong map.
+
+**check-menus caught 116 problems in the first generated draft** and they were
+all real: labels 18px tall stacked 16 apart, a heading 300 wide running under
+the next column, controls running past the bottom of the page, and - again - a
+`check-menus: overlap-ok` waiver written at the top of a 20-line comment instead
+of against the `menuDef`, where the positional match can see it. Same mistake as
+E108, same tool caught it. 0 problems now.
+
+**Unverified:** none of it has been run. Structure, names and geometry are
+checked; that the lists populate and the buttons act is not.
+
+---
+
+### E109. Linux flavours — and the Steam path that had to be fixed first — DONE (verify)
+**Lives in:** our **client** and our **server** (engine `sys_unix.c`, packaging) · **Seen by:** our client only
+
+Asked for Flatpak and friends. The packaging was the easy half; it would have
+shipped four broken packages.
+
+**The blocker.** `Sys_SteamPath()` on Unix was `#if 0`, under the comment
+*"Disabled since Steam doesn't let you install Quake 3 on Mac/Linux"*. That is
+inherited ioquake3 reasoning about **Quake 3**, and it is not true of Quake
+Live: app 282440 installs on Linux, and even a Proton install lands in
+`steamapps/common/Quake Live` like anything else. The whole Steam-discovery and
+pak00-copy machinery in `files.c` is `#ifdef _WIN32`, so on Linux **nothing
+looked for the player's install at all** - a Linux build ran only if pak00.pk3
+had already been copied next to the binary by hand. Every package would have
+inherited that: installs cleanly, finds no assets, dead.
+
+`fs_steampath` already did the rest - `FS_InitFilesystem` adds it with
+`FS_AddGameDirectory` when it is non-empty - so the fix is confined to
+`Sys_SteamPath` and **copies nothing**. The game reads pak00 out of the player's
+own Steam install where it sits, which matters beyond convenience: pak00 is not
+ours to move, let alone to ship.
+
+Three things the two-line version it replaces would have got wrong:
+
+- **Case.** Steam writes `steamapps` lower-case on Linux and wrote `SteamApps`
+  years ago. Windows did not care; here the wrong one simply does not exist.
+- **Library folders.** A second drive is normal, and the game is then nowhere
+  near `~/.steam`. `libraryfolders.vdf` records those - the same file the
+  Windows path already parses. Scanned for `"path"` keys rather than parsed as
+  VDF, which reads both the old flat and new nested formats without knowing
+  which it is looking at.
+- **Flatpak Steam**, which relocates everything under
+  `~/.var/app/com.valvesoftware.Steam`. Our build as a Flatpak talking to a
+  Steam installed as a Flatpak is two of the likelier halves meeting.
+
+**Verified by running it**, four ways: game in the default library, game on a
+second drive reached through `libraryfolders.vdf`, game under a Flatpak Steam,
+and no Steam at all - the last printing no `steamapps` line and falling through
+to the existing "pak00 not found" message rather than misbehaving.
+
+**The flavours**, all produced by `package-release.sh` beside the existing zips:
+
+| | built here | notes |
+|---|---|---|
+| `.tar.gz` | yes | verified byte-identical file list to the `.zip` |
+| `.deb` | yes | `/usr/lib/quakelive` payload, `/usr/bin/quakelive` launcher |
+| `.AppImage` | yes | type-2 runtime + squashfs, no appimagetool dependency |
+| Flatpak | **no** | manifest only - needs flatpak-builder and a runtime download |
+
+One launcher serves all of them and resolves its own location, because the three
+prefixes differ and a path baked in per flavour is three places for one bug.
+It sets `fs_basepath` and deliberately leaves `fs_homepath` alone: the engine's
+default is already the right writable location and is where modules are
+extracted from `iobin.pk3` at run time, which is what lets `/usr` and a Flatpak
+sandbox stay read-only.
+
+**Caught while testing:** the launcher and desktop entry were being staged
+*after* `checksums.txt` and the `.zip` were written, so they were in the tarball,
+deb and AppImage but not the zip, and in no checksum manifest - two archives of
+one revision with different contents. Staged earlier; the zip and tarball file
+lists are now identical and `sha256sum -c checksums.txt` passes clean.
+
+**Unverified:** the Flatpak has never been built, only written. The `.deb` and
+AppImage were both run here and reached the Steam pak00 from an unrelated
+working directory; neither has been run on a real desktop with a GPU.
+
+---
+
+### E108. Our own in-game menu, and the water menu's missing half — DONE (verify)
+**Lives in:** our **client** (ui + pak01) · **Seen by:** our client only
+
+Two reports, one root: everything this port adds is reachable only from the
+main menu.
+
+**1. "We can't access our menus while in-game."**
+
+Not a loading failure, which is what it looks like. `_UI_Init` loads
+`ui/menus.txt` **and** `ui/ingame.txt` unconditionally, so every menu we ship is
+in memory the whole time a map is running. `tools/check-menus.py` was clean
+throughout. The problem was that ESC calls
+`_UI_SetActiveMenu(UIMENU_INGAME)`, which opened Quake Live's own `ingame`, and
+**that menu's nav has no entry that could reach ours and no way to be given
+one** - `ingame.menu` and `ingame_lowernav.menu` are in pak00, which is
+read-only to us and not ours to ship.
+
+So the menu is built rather than extended. What makes that cheap rather than
+wasteful: **two of Quake Live's seven in-game nav entries, "Settings" and "Main
+Menu", run `web_changeHash`** - they drive the Steam client's *web overlay*, and
+there is no native panel behind either one. There was never an in-game settings
+menu here to hook into, which is the actual reason this had to be written.
+
+`io_ingame`: RESUME, RENDER OPTIONS, PLAYER SETUP, CALL VOTE, ADD BOT, QUAKE
+LIVE MENU, LEAVE MATCH. Quake Live's own panels are still loaded and still work,
+so it links to them rather than replacing them, and the sixth entry opens Quake
+Live's ingame menu itself so nothing not surfaced here is lost.
+
+Two details that are not decoration:
+
+- It opens **without closing anything**, as do the submenus it opens. Menus
+  stack, so ESC out of `io_renderoptions` reveals this one underneath. The
+  alternative - closing the parent first - ends with `KEYCATCH_UI` still set and
+  no menu on screen, which is a captured cursor and no way back.
+- `onESC` runs `uiScript closeingame`, the same script Quake Live's own ingame
+  menu uses. It drops `KEYCATCH_UI`, clears key states and unpauses, so resuming
+  behaves identically to before.
+
+Checked while here: `uiInfo.inGameLoad` is **never set true anywhere** - only
+cleared in `UI_LoadNonIngame` - so both call sites gating on it are dead and
+`UI_LoadNonIngame` never runs. That is consistent rather than broken, because
+`_UI_Init` already loads both lists, but it means there is no lazy-load path to
+double-load `menus.txt` and no duplicate-menu risk from this change.
+
+**2. "You didn't add the new cvars to the water menu."** Correct - E107 shipped
+four cvars with no menu rows.
+
+The water menu was already full to y=399 in a 468-tall panel, so this needed a
+layout decision rather than four more lines. `WAVES` moved up one slot and
+**foam moved out of its own heading and under the new `IMPACTS (SPLASHES)`
+section**, which is where it belonged the whole time: foam is driven off impact
+energy alone and ordinary chop never whitens. It had been sitting under its own
+heading next to the waves - filed with the one thing that cannot cause it.
+
+The headings now say `WAVES (WIND CHOP)` and `IMPACTS (SPLASHES)`, because the
+two share no setting and "the water is too calm" and "the splashes are too
+small" were both leading to the same five rows, where only the first has an
+answer. RESET WATER now restores the four new cvars too.
+
+**Two things the first screenshot of it caught.**
+
+*Draw order is DEFINITION order.* `Menu_PaintAll` walks `Menus[]` by index and
+paints every visible menu; there is no stack and no z-order. Defined next to the
+render menus, `io_ingame` therefore painted **on top of the submenu it had just
+opened** - PLAYER SETUP opened correctly, behind it, and read as a dead button.
+Moving the `menuDef` to be the **first in the file** fixes it, because every
+other menu then paints over it, which is what a parent should do. Worth noting
+the header comment at the top of `main.menu` already warns about exactly this
+for a different pair of menus; the warning was there and was not applied to a
+new menu.
+
+*Where it was moved to mattered as much as that it moved.* The first attempt
+inserted it immediately before the first `menuDef`, which put it **between the
+main menu's `check-menus: overlap-ok` waiver comment and the `menuDef` it
+waives.** `check_geometry` matches a page waiver within a few lines of the
+`menuDef` line, so orphaning it turned 18 deliberate main-menu overlaps into 18
+reported problems. The check caught it immediately - the tool did its job - but
+it is a reminder that a waiver is positional and that inserting anything near a
+`menuDef` can silently detach one. It now sits above the MAIN TITLE SCREEN
+banner, leaving the waiver adjacent to `main`.
+
+**Also added: team and spectator rows**, which the first version had no answer
+for at all. `JOIN GAME` / `SPECTATE` / `JOIN RED` / `JOIN BLUE`, using
+`cmd team free|s|red|blue` followed by `closeingame` - the exact form Quake
+Live's own `ingame_join.menu` uses, so the behaviour matches. `cmd team free`
+auto-picks in a team game and joins the free-for-all pool otherwise, so one
+JOIN GAME entry is right in every gametype; `SetTeam` ignores `red`/`blue`
+outside team games and falls through to the same auto-pick, so those two are
+safe rather than needing a gametype test that would have to be kept in step with
+the gametype list.
+
+**Two columns**, on request, and grouped by what a button does rather than by
+where it fit: `JOIN` left, `MATCH` right, `SETTINGS` spanning below, `RESUME`
+full width at the bottom. 500 × 318 centred, replacing the 300 × 462 strip.
+
+The 226-wide columns are measured, not guessed. The widest label is
+`QUAKE LIVE MENU` at 15 characters, and the buttons already in this file
+calibrate the font at ~13.6px per character at `textscale .25` - `RESET WATER`
+is 11 characters in a 150-wide button. 15 characters plus the 8px `textalignx`
+inset needs ~212, so 226 holds it without dropping one button to a smaller
+scale and leaving the column ragged.
+
+`RESUME` spans the full width deliberately: it is the most-used action in the
+panel, and a quarter-row target sharing an edge with `LEAVE MATCH` - the one
+button here that cannot be undone - is a misclick waiting to happen.
+
+**Unverified:** the single-column panel read correctly in a screenshot; the
+two-column one has not been seen at all, and no button has been confirmed to do
+what it says. The team rows are the interesting check.
+
+---
+
+### E107. Cvars for the reactive water — impacts, not the wind chop — DONE (verify)
+**Lives in:** our **client** (renderervk + pak01) · **Seen by:** our client only
+
+Reported as: the water cvars only affect the non-reactive waves, and there is no
+way to change how the water answers being shot or blown up.
+
+**That was exactly right, and the split was structural.** The water is two
+systems that happen to share a surface:
+
+- the **wind chop** - always present, the same everywhere on the plane, fully
+  exposed through `r_waterWave{Scale,Speed,Steepness,Height}` and `r_waterFoam`
+  since R19;
+- the **impacts** - `RE_AddWaterRipple`, one event per shot or explosion with a
+  per-weapon radius and strength from `cg_weapons.c`.
+
+Every cvar we had tuned the first. The second's *shape* was three `#define`s
+compiled into `ssr.tmpl` (`RIPPLE_LIFE 2.2`, `RIPPLE_WAVES 5.0`,
+`RIPPLE_SLOPE 0.35`), with `RIPPLE_LIFE` duplicated a second time in `vk.c` as
+`SSR_RIPPLE_LIFE` under a comment telling the next person to keep the two equal.
+So "make the splashes bigger" had no answer short of a rebuild, and the nearest
+available lever - turning the chop up - made the whole pool choppier without
+making a single impact any larger.
+
+**Four cvars, and they are multipliers rather than absolute sizes** so the
+per-weapon differences survive being scaled - a rocket stays bigger than a
+shotgun pellet:
+
+| cvar | default | what it does |
+|---|---|---|
+| `r_waterRippleSize` | 1 | how far the rings spread, × what the weapon asked |
+| `r_waterRippleHeight` | 1 | how hard the impact hits, × the weapon's strength |
+| `r_waterRippleWaves` | 5 | rings trailing the leading edge - the frequency |
+| `r_waterRippleLife` | 2.2 | seconds from impact to gone |
+
+The defaults reproduce the old constants exactly, so **nothing changes until
+something is set.**
+
+**Two things that needed deciding rather than just plumbing.**
+
+*The duplicated lifetime is now one value.* `vk.c` ages ripples out of the ring
+buffer and the shader fades them; on different numbers a ripple either vanishes
+while the shader is still drawing it or holds one of the 48 slots after it is
+invisible. Both now read `rippleTune.x`, so the comment telling you to keep them
+equal is unnecessary rather than merely obeyed, and `SSR_RIPPLE_LIFE` is deleted
+rather than left unread.
+
+*Size no longer quietly weakens the splash.* The ring frequency is
+`RIPPLE_WAVES / reach`, so widening a ripple makes the slope gentler in exact
+proportion - correct for a real wave, wrong for a setting called "size", because
+asking for bigger splashes would hand back fainter ones and the obvious response
+is to raise the height to compensate. The slope is multiplied by the size factor
+to cancel it, so size changes size and height changes strength. At the default
+of 1 it multiplies by 1 and nothing moves.
+
+`RIPPLE_SLOPE` deliberately stays a constant: it is the ratio between how far
+the surface moves and how far its normal tilts, a property of the model rather
+than a taste setting, and `r_waterRippleHeight` already scales both together.
+
+**Also in `water.cfg`,** as `ripplesize` / `rippleheight` / `ripplewaves` /
+`ripplelife`, under the same precedence rule as the rest: a map's value applies
+only where the player has left that cvar at its shipped default. No map block
+sets any of them, so this changes nothing on its own. The header now says
+plainly that the chop keys and the impact keys are separate systems, because
+"the water is too calm" and "the splashes are too small" have no setting in
+common and that was not discoverable.
+
+**Unverified:** none of it has been seen. `r_waterRippleHeight 4` on a map with
+water is the one-command check - if impacts do not visibly change, the uniform
+is not arriving. Note also that a long `r_waterRippleLife` plus a busy fight
+evicts earlier splashes, since only 48 ripples exist at once and the oldest goes
+first.
+
+---
+
+### E106. `Hunk_Alloc failed` at map load — the archived hunk size — FIXED (cause unconfirmed)
+**Lives in:** our **client** and our **server** (engine, `common.c`) · **Seen by:** our client only
+
+Reported as "I can't load any maps", with two screenshots: `Hunk_Alloc failed on
+1567488` and `Hunk_Alloc failed on 6969696`, both dropping to the main menu.
+Then, without any change, **it started working again.**
+
+**What the two numbers said.** 1.5 MB and 6.9 MB are small requests. A small
+request failing does not mean a big allocation went wrong; it means the hunk was
+already nearly full when the map arrived. So the question was never "what asked
+for 6.9 MB" but "what spent the other 250".
+
+**What was ruled out.** The report initially looked like a regression from E105,
+since that was the only build between working and broken. It was not, and the
+check that settled it was the one this file already prescribes - compare what
+the compiler produced, not the diff. Unpacking both archives and diffing every
+member by size: only `vulkanx86_64.dll` differed, by 580 bytes, and the engine
+binary that owns the hunk was **byte-identical**. E105 changed a ripple counter
+in the renderer and cannot shrink a hunk the engine allocates. Two minutes of
+`unzip -l` beat any amount of re-reading the diff.
+
+**The real defect, which was there the whole time.** `com_hunkMegs` is
+`CVAR_ARCHIVE`. `93a083f` raised the shipped default 128 → 256 specifically
+because the snapshot entity pool was leaving no room for the map - and that
+raise reached **fresh installs only**. Every install that had already run once
+had 128 written into its config, and a config beats a default forever. This is
+the third time `CVAR_ARCHIVE` on a shipped default has cost a round here
+(`r_dlightMode`, `con_scale`, now this), and the trap is listed in `CLAUDE.md`.
+
+That also explains the intermittency, which a simple "too small" would not: at
+64 clients the snapshot pool alone is ~118 MB, so on a 128 MB hunk whether a map
+fits depends on the map and on `sv_maxclients` at the moment the server starts.
+Some maps load, some don't, and the same map can do both.
+
+**Fixed two ways.**
+
+1. **The shipped default is now a floor, not a suggestion.** The non-dedicated
+   floor is `DEF_COMHUNKMEGS`, so a stale archived value is raised to what we
+   ship and the raise is printed. A user who asked for *more* keeps it - this
+   only raises. A user who asked for less loses it, which is the right trade:
+   the saving is a fraction of what a map needs, and the failure it buys is a
+   hard drop to the menu partway through a load. The old `MIN_COMHUNKMEGS 64`
+   is deleted rather than left unread, because a second lower constant next to
+   the live one is exactly the shape this codebase keeps getting caught by.
+
+2. **The failure message now carries the budget.** `Hunk_Alloc failed on <n>`
+   said nothing about how big the hunk was, how much was already spent, or which
+   end spent it - so neither the screenshots nor a full console log could
+   distinguish "hunk too small" from "something filled it". Both hunk errors now
+   append hunk size, the `com_hunkMegs` behind it, usage split low/high, and
+   free. Low and high are reported separately on purpose: they grow toward each
+   other, so a single total cannot say whether the map is too big or the
+   server's snapshot pool took the other end.
+
+**Verified here, not assumed.** The message was driven to fire for real:
+
+```
+Hunk_AllocateTempMemory: failed on 4900016 - hunk is 1 MB (com_hunkMegs 1),
+0 MB already in use: low 0 KB, high 0 KB, 1 MB free
+```
+
+and the floor was confirmed against a config genuinely holding
+`seta com_hunkMegs "32"` - it printed `Minimum com_hunkMegs is 256, allocating
+256 megs.` Separately, a dedicated server at `com_hunkMegs 20` was caught by the
+existing `sv_maxclients`-derived floor (`...is 110, allocating 110 megs`), so
+that guard works too.
+
+**Honest status:** the cause is *unconfirmed*. The failure cleared up on its own
+and the console log supplied was from a working session, so nothing proves the
+archived value was what bit. What is certain is that the mechanism is real, was
+reachable, matches every observable (small allocations failing, intermittent,
+unaffected by the build), and is now both prevented and self-describing. **If it
+recurs, the error line itself now names the cause** - which is the part that was
+missing.
+
+---
+
+### E104. Per-material green convention, and deploying into a stock map — DONE (verify)
+**Lives in:** our **client** (renderervk + pak01) · **Seen by:** our client only
+
+Two pieces: the keyword E103 said was the right shape, and an answer to whether
+any of this reaches a map we did not compile.
+
+**The keyword.** `qlNormalFlipG` on a stage declares "this material's normal map
+is baked the other way round from yours". It **XORs** against `r_qlNormalFlipG`
+rather than setting absolutely — a map saying "mine is the other way" must stay
+the other way when the global default moves, or turning the cvar on to fix one
+map silently un-fixes another. Travels across a multitexture collapse like
+`normalMap` and `qlNaturalTexture` do, because it sits on the diffuse stage,
+which is the one discarded when the lightmap stage came first.
+
+**The obstacle from E103, solved rather than worked around.** I recorded that a
+per-stage value cannot reach the dynamic light pipelines, since those are built
+once at init and a specialization constant is fixed at build. It travels in
+**`eyePos.w`** instead. That slot is free and it was checked, not assumed: the
+vertex shader computes `V = eyePos - vec4(position, 1.0)` and the fragment
+shader reads only `V.xyz`. The bump pass keeps its spec constant, because its
+pipeline *is* built per draw.
+
+**Both conventions now sit side by side.** `qltest_bump`'s dome panel is split
+into two halves of what was one face — left `domes`, right `domes_flipped` —
+so light, UV scale and view angle are identical by construction and the only
+difference is the keyword. One of them shows hemispheres, the other craters.
+**One screenshot answers it** instead of two `vid_restart`s.
+
+---
+
+**Deploying into a stock Quake Live map.** The answer splits three ways, and
+two of the three need nothing but a shader file:
+
+| | into a stock map? | why |
+|---|---|---|
+| R27 natural textures | **yes, anywhere** | hex-tiling is a texture-space operation; it needs no map data, only a shader that asks |
+| R20 derived normals | **yes, under a dynamic light** | the normal map is derived from the diffuse at load; a rocket lights it, the baked lightmap cannot |
+| R25 static bump | **no** | it reads a deluxemap, and only `q3map2 -deluxe` writes one. Quake Live's maps carry none. Recompiling them is R23, tested and not recommended |
+
+`content/pak01/scripts/ql_enhanced.shader` is the demonstration:
+`textures/stone/rockcliff_01` and `_02` with `qlNaturalTexture` added. Cliff
+faces are the best candidate there is — stochastic, large, and the repeat reads
+immediately.
+
+**Two things checked rather than hoped.** First, that an override actually wins:
+`ScanAndLoadShaderFiles` fills each hash bucket **backwards**
+(`shaderTextHashTable[hash][--size]`) and `FindShaderInShaderText` returns entry
+0, so the last definition in the concatenated text wins — and the text is
+appended in reverse list order, putting the higher-priority pak last. pak01
+beats pak00. Second, that the override reproduces Quake Live's own stage bodies
+exactly: diffed against `pak00/scripts/stone.shader` and identical modulo the
+added keyword. That matters because a wrong override does not fail visibly, it
+draws the surface wrongly.
+
+**It ships no art.** Every name is Quake Live's own texture out of Quake Live's
+own pak; all that is added is the keyword.
+
+**Still unverified:** which half of the dome panel is right, and whether the
+cliff override reads as less repetitive in a real map. Both are one look.
+
+---
+
+### E103. The green-channel bug, found by asking why I said "OpenGL vs DirectX" — FIXED
+**Lives in:** our **client** (renderervk + the texture generator) · **Seen by:** our client only
+
+Prompted by a question about the terminology: we are on Vulkan, so why was the
+convention being described as OpenGL versus DirectX?
+
+The jargon is real but it describes how a texture was **authored**, not which API
+draws it — and pulling that thread found an actual bug in our own generators.
+
+**Two separate questions live under this name, and I conflated them.** The first
+is whether our own generators agree with each other, which is a fact about two
+functions rather than a convention choice — and they did not agree. The second
+is what convention an *authored* map uses, which is a genuine coin flip and does
+not go away.
+
+For a height field `h(u,v)` the tangent-space normal is `(-dh/du, -dh/dv, 1)`.
+
+| | encodes | |
+|---|---|---|
+| `R_GenerateNormalMap` (C, R20 derived) | `nx = -dL/dx`, `ny = **-dL/dy**` | correct |
+| `gen-testmap-textures.py` (R25 authored) | `nx = -dh/dx`, `ny = **+dh/dy**` | **green inverted** |
+
+Measured rather than argued, at a point below a dome's centre: the C path gave
+`ny = +0.0321` and the generator `-0.0321`. Opposite.
+
+It survived because **every sheet the generator makes shared the error**, so
+they all agreed with each other and looked internally consistent. `domes()` even
+carries a comment explaining its own negation in terms of "v runs down" — and
+that negation is what made the dome panel agree with the other sheets while all
+of them disagreed with the derived path.
+
+**This is the explanation for "you should be able to see the spheres sticking
+out here, but you dont."** Inverted green is exactly what turns domes into
+craters. It was reported twice and I twice recorded it as unsettleable.
+
+Fixed in the generator, since the C path follows the textbook form and serves
+every Quake Live texture through R20. All three encoders now agree — verified
+numerically before regenerating.
+
+**Correction, and it reverses a decision.** I wrote that "nothing in this engine
+loads an authored normal map", and that is false. The shader parser accepts
+`normalMap`, `bumpMap`, `normalParallaxMap` and `bumpParallaxMap` in both the
+stage and inline forms, so any third-party Quake Live map can ship a normal map
+baked in whichever convention its artist's tool used. Our tree contains none
+today — which is exactly what made it easy to convince myself the question was
+settled.
+
+So `r_qlNormalFlipG` is **not** a temporary diagnostic to be folded into a
+constant once the dome panel is looked at. It has to stay for as long as the
+engine can load somebody else's normal map, which is always.
+
+The right long-term shape is **per-material, not global**: a shader keyword
+beside `normalMap` so a map declares its own convention, with the cvar as the
+global default. Not done, and the obstacle is worth naming now rather than
+discovering later — the dynamic light pipelines are built once at init, so a
+per-stage value cannot reach them through a specialization constant the way it
+reaches the draw-time bump pass. That is the same structural split that made
+this switch latched rather than live.
+
+**A second bug, caught while wiring that switch.** It first went on
+specialization constant 7, which the generic table calls *discard mode* — and
+discard mode is written **later** in `create_pipeline`, from `allow_discard`.
+The bump pass survived only because its def never sets `allow_discard`; the
+lighting path would have been clobbered outright, flipping a surface's green
+depending on its blend mode. Moved to a dedicated constant 14 and read straight
+from the cvar, which also makes one rule cover both paths (`CVAR_LATCH`,
+vid_restart) rather than live on one and latched on the other.
+
+**Prior review content, still valid:** a full cppcheck pass produced 6843
+findings that were essentially all noise — 849 `variableScope`, 677
+const-parameter suggestions, 138 `selfAssignment` that are all `x =
+LittleLong(x)`. Of ~40 in dangerous categories, the three most serious are
+false positives, the closest being `cl_main.c`'s apparent `cl_pinglist[32]`
+overflow, which `CL_GetPingQueueCount`'s matching predicate makes impossible.
+Only real finding: `q_math.c`'s `ColorBytes3` returns a word whose top byte was
+never written — upstream, callers use the low three. Conclusion: not worth a
+build gate on a tree this mature.
+
+**Still unverified:** whether 0 or 1 is right *for our own content*.
+`/devmap qltest_bump`, dome panel, `r_qlNormalFlipG` 0 vs 1 with a
+`vid_restart` between. Third-party maps stay a separate question that only a
+per-material keyword answers properly.
+
+---
+
+### E92. `fraglimit` registered twice, with different defaults — FIXED, verified
+**Lives in:** our **server** (engine + qagame) · **Seen by:** every client
+
+Open since it was first noticed by reading. Now confirmed by running a server,
+fixed, and confirmed again the same way.
+
+`SV_Init` did `Cvar_Get("fraglimit", "20", CVAR_SERVERINFO)`; `g_main.c`
+registers the same name at **50**. `Cvar_Get` keeps the value the FIRST caller
+gave and only merges flags afterwards, and the engine runs first — so every
+server shipped with a fraglimit of **20** while the game module, the
+documentation and Quake Live itself all said 50.
+
+It was never silent. The engine printed it on every single start:
+
+    Warning: cvar "fraglimit" given initial values: "20" and "50"
+
+`dmflags` and `timelimit` are registered twice as well and both agree at 0,
+which is why only one of the three ever warned — and why the warning read like a
+cosmetic complaint rather than a gameplay default being overwritten.
+
+Fixed by removing all three engine-side registrations rather than correcting the
+number. The engine reads none of them — nothing outside `SV_Init` mentions any
+of the three anywhere in the engine — and qagame registers all three itself with
+`CVAR_SERVERINFO` from Quake Live's own table. Gamerules belong to the game
+module, and a duplicate that happens to agree today is the same bug lying
+dormant.
+
+**Verified by running it**, which is what finally caught it: the dedicated
+server now reports `fraglimit 50` in serverinfo and prints no warning. That was
+this session's first actually-executed test — `default.cfg` out of pak00 plus
+`qltest_maps.pk3` was enough to get a headless server onto a real map without
+Quake Live's assets.
+
+---
+
+### E102. cg_crosshairBrightness — brightness or transparency? — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+Raised as a question: with values 0 "No" / .3 "Low" / .6 "Medium" / 1 "Bright"
+and no separate alpha cvar anywhere in Quake Live's crosshair set, wouldn't this
+be transparency?
+
+Reasonable, and the name does not settle it. The shader does.
+
+`gfx/2d/crosshair%i` in pak00's `scripts/gfx.shader` is `blendfunc blend` with
+`rgbGen exactVertex` and **no alphaGen**, so alphaGen stays `AGEN_IDENTITY`. The
+"decide which agens we can skip" step in `tr_shader.c` only demotes that to
+`AGEN_SKIP` for `CGEN_IDENTITY` / `CGEN_LIGHTING_DIFFUSE`, and this is
+`CGEN_EXACT_VERTEX`, so it does not apply. At draw time `CGEN_EXACT_VERTEX`
+memcpys the full RGBA out of the vertex colours — and the `AGEN_IDENTITY` branch
+immediately overwrites `rgba[3]` with 255.
+
+**An alpha handed to `trap_R_SetColor` is discarded.** Only RGB reaches the
+blend, so transparency is not something this cvar could be doing through this
+path, whatever it is called.
+
+Why the question is a good one anyway: over a dark scene, scaling RGB toward 0
+and fading alpha toward 0 look nearly identical. They part company against a
+bright background, where brightness 0 leaves a **black** crosshair rather than
+no crosshair — and Quake Live labels that value "No", not "Invisible". A black
+crosshair is a thing people deliberately run.
+
+So: an RGB multiply, clamped 0..1, applied to the health colour as well since
+dimming a colour is the same operation as dimming white. Default 1.0 is exactly
+what `trap_R_SetColor(NULL)` already meant, so nothing changes until set.
+
+This is the one from E101's "not wired" list that had a determinable answer
+after all. The reason it was on that list — "the formula for a boost is exactly
+what is not written down" — was right about the menu and wrong about where to
+look. The shader had it.
+
+**Still unverified:** `cg_crosshairBrightness 0` should give a black crosshair,
+not an absent one. That is the check that distinguishes this from the
+transparency reading, and it takes one command.
+
+---
+
+### E101. Wiring from pak00's own menus — a setting that lied — DONE (verify)
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+With `docs/ql-cvar-semantics.txt` in hand the wiring question changed from "what
+might this mean" to "what does Quake Live say it means". Three wirings, and the
+first is a real user-visible bug rather than a missing nicety.
+
+**Smoke trail radius read the wrong cvars entirely.** Quake Live's options menu
+drives `cg_smokeRadius_RL` / `_GL` / `_NG`. `CG_MissileTrail` and `CG_NailTrail`
+read `cg_rocketTrailRadius` / `cg_grenadeTrailRadius` / `cg_nailTrailRadius` —
+names that appear nowhere in pak00's UI. So the menu control took the player's
+value and nothing downstream ever looked at it.
+
+The defaults settle which set is real, and they also show how it happened:
+
+| | ours | Quake Live's | QL menu "Thick" |
+|---|---|---|---|
+| rocket | `cg_rocketTrailRadius` 64 | `cg_smokeRadius_RL` **32** | 32 |
+| grenade | `cg_grenadeTrailRadius` 32 | `cg_smokeRadius_GL` **64** | 64 |
+| nail | `cg_nailTrailRadius` 16 | `cg_smokeRadius_NG` **16** | 16 |
+
+Quake Live's defaults are exactly its own "Thick" entries. Ours are the same two
+numbers with rocket and grenade **swapped** — transcribed wrong, then read
+instead of the originals. The three duplicates are now SUPERSEDED rather than
+removed, per the standing decision to keep names.
+
+**`cg_useItemMessage` and `cg_useItemWarning`** map exactly onto the two branches
+already in `CG_UseItem` — the "Use <item>" print and the "No item to use" print.
+Both were unconditional and always `BIGCHAR_WIDTH`. Quake Live gives each
+0 "No" / 1 "Yes (Large)" / 2 "Yes (Small)", 1 is the default, so the behaviour is
+unchanged until somebody sets one. Anything other than 2 draws large, so an
+out-of-range value degrades to the default rather than vanishing.
+
+**What was NOT wired, and why**, because the semantics file makes the temptation
+worse rather than better:
+
+- `cg_crosshairBrightness` 0 "No" / .3 / .6 / 1 "Bright". The label at 0 is "No",
+  not "Invisible", so it is a boost and not a multiplier — and the formula for a
+  boost is exactly the thing that is not written down. Guessing it makes the
+  crosshair wrong at three of four settings.
+- `cg_specItemTimers` 0 / 1 "Power-ups Only" / 7 "PU/MH/RA" / 15 "All" is three
+  bits, and there is no spectator item-timer display to attach them to.
+- `cg_killBeep`'s nine sounds do not exist under any name in the pak manifest
+  beyond `chaching.ogg`; `sound/feedback/` holds `impact1`..`impact6`, which is
+  six, not eight.
+- `cg_railStyle` 1 "Beam" / 2 "Spiral" needs a second rail effect that is not in
+  the tree.
+
+**Still unverified:** the smoke change is the one worth looking at — set *Smoke
+Radius* to Thin and Thick in the menu and the rocket trail should now actually
+differ.
+
+---
+
+### E99. Dead ends: every call path that can silently go nowhere — AUDITED
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+"Make sure everything has proper calls, no dead ends." Four classes of silent
+dead end are checkable in this tree. Three came back clean, one did not, and one
+more could not be answered honestly with the tools available - which is recorded
+rather than dressed up.
+
+**1. Asset registrations — ONE REAL DEAD END, fixed.**
+
+`RE_RegisterModel` and `RE_RegisterShader` return **0** for a name the paks do
+not contain. Zero is not an error code anyone checks; it is a handle that draws
+nothing. CLAUDE.md names this as a trap that already cost a round.
+`tools/check-assets.py` now resolves every literal asset name against
+`docs/pak-manifest.txt`: **397 registrations against 9024 pak names.**
+
+The find: `sound/teamplay/voc_base_attack.ogg`, registered for Overload. The
+paks contain **no `voc_` file at all**, and `sound/teamplay/` holds six sounds,
+none of them this - it is Quake 3's name. So the handle was 0 every time, and
+`GTS_REDOBELISK_ATTACKED` / `GTS_BLUEOBELISK_ATTACKED` announced nothing.
+`CG_AddBufferedSound` drops a 0 handle silently, so there was nothing to hear
+and nothing to see. Overload is selectable in our own menu, so this was reachable.
+
+No right name exists to substitute - the paks ship no base-attack voiceover - so
+nothing is registered now, which is the same call already made a few hundred
+lines below for the Overload gametype *icon*, for the same reason.
+
+The checker is honest about its own limits: 69 shader names have no matching
+file, and that is **not** a failure list. A shader can be defined inside a
+`scripts/*.shader` file and the manifest holds file names, not script contents.
+They are reported separately, and 50 of the 69 are bare names with no `/` in
+them - the classic script-defined shape. The two file-like ones worth checking,
+`ui/assets/selectcursor.png` and `menu/art/unknownmap`, both already have
+explicit `if (!handle)` fallbacks written by whoever hit them first.
+
+**2. Events — clean.** All 101 `entity_event_t` members: every one the game
+raises has a `case` in cgame, and no cgame handler is unreachable. The two
+without handlers, `EV_BULLET` and `EV_DEBUG_HITBOX`, are already annotated in
+`bg_public.h` as server-side only.
+
+**3. Static functions — clean.** `-Wall` is already in `BASE_CFLAGS`, so
+`-Wunused-function` has been on the whole time, and a full rebuild produces
+**zero** unused-function and unused-variable warnings. Every static function in
+the tree is called within its translation unit.
+
+**4. Cross-binary dead code — NOT ANSWERED, and the attempt is worth recording.**
+Tried `-ffunction-sections` with `--gc-sections --print-gc-sections`: the linker
+discarded 2965 sections, 891 of them functions defined in our own sources. The
+result is unusable. This tree links four separate binaries plus three VM modules,
+and a function absent from one link is not dead - `CL_Frame` and
+`Weapon_BFG_Fire` both appear in that list because the *dedicated server* does
+not contain them. Reporting 891 findings would have been 891 false ones.
+Answering this properly needs per-binary reachability with the VM exports as
+roots, which is a tool, not a grep.
+
+`package-release.sh` runs `check-assets.py` beside `stub-report.py` and
+`dead-cvars.py`, so a wrong asset name now fails a release rather than drawing
+nothing on somebody's screen.
+
+**Still unverified:** the Overload change removes a registration that was
+returning 0, so by construction nothing that worked stops working. Not observed
+in game - Overload needs a map and two teams.
+
+---
+
+### E98. A second pass over the dead cvars — every lead followed — DONE (verify)
+**Lives in:** our **client** (cgame/ui) and our **server** (qagame) · **Seen by:** our client only
+
+Asked again to work out purpose and wiring, so this time every evidence source in
+the repo got swept rather than sampled: all 1898 text files, not just the C.
+Fourteen of the 236 are mentioned somewhere outside their own registration -
+gametype docs, other source files, the README - and each of those leads was read.
+
+The result is not more wirings. It is that **the obvious wiring was wrong in
+every case where the evidence was good enough to check**, which is worth more
+than the wirings would have been.
+
+| cvar | what the evidence said |
+|---|---|
+| `cg_noProjectileTrail` | Q3 legacy. Three binary-cited comments in cg_effects.c and cg_weapons.c: QL replaced its early-return with `cg_bubbleTrail`, `cg_rocketTrailRadius`, `cg_grenadeTrailRadius`, `cg_nailTrailRadius`, `cg_plasmaStyle`. The binary checks this cvar nowhere. |
+| `cg_bob` | Q3 legacy master switch; QL uses `cg_bobpitch` / `cg_bobroll` / `cg_bobup`, all live in CG_OffsetFirstPersonView. |
+| `cg_teamChatBeep` | Defaults to **0**. The beep it names is already gated on `cg_chatbeep`, which defaults to **on**, binary-cited. Wiring it by name silences team chat beeps by default. |
+| `cg_trueShotgun` | Removed **on purpose**. cg_weapons.c: it changed the pattern the player was shown without changing the pattern the server traced - "a desync by construction". Exactly the hazard CLAUDE.md's "Seen by" axis names, and it names the shotgun specifically. |
+| `cg_ignore` | The ignore feature is here and works - `cg_ignoredClients[]`, `CG_IsClientIgnored`, mute/unmute commands. This cvar is simply not its interface. |
+| `ui_debug`, `ui_*_fraglimit`, `ui_ctf_capturelimit`, `g_suddenDeathRespawn` | All superseded by live replacements: `ui_debugMenus`, `ui_fragLimit`, `ui_captureLimit`, `g_suddenDeathRespawnStart/Max/Increment/Tick`. |
+
+New verdicts to carry that, because "QL-FEATURE" was actively misleading for
+them - it invites exactly the wiring that would break things:
+
+| verdict | n | |
+|---|---|---|
+| QL-FEATURE | 206 | still the backlog |
+| **SUPERSEDED** | 10 | QL replaced it; wiring it diverges FROM Quake Live |
+| **VESTIGIAL** | 1 | feature present, reached another way |
+| **REFUSED** | 1 | wiring it is known wrong, reason in the row |
+| QL-ASSET | 12 | pak00's menus read it |
+| NETWORKED | 5 | the wire is the reader |
+| **GAP** | 1 | a real defect - see below |
+
+**The one real defect.** `sv_mapname` is registered game-side as
+`CVAR_ROM | CVAR_SERVERINFO` with default `""` and is never set by anything.
+Everything real - cg_info.c, cg_servercmds.c, ai_chat.c, ai_dmq3.c - reads the
+`"mapname"` key, which the *engine* sets in sv_init.c. So the game-side twin
+publishes an empty `sv_mapname` key into serverinfo and does nothing else. Found
+by following a lead, not by flag class, which is the argument for following
+leads.
+
+**A documentation error, corrected.** `docs/gametypes/ca.md` said
+`g_accuracyFlags` is the bitfield controlling CA damage and knockback
+suppression, with the bit meanings spelled out. `CA_AdjustDamage` opens with
+`int flags = g_dmflags.integer;` and carries the note *"the self/team
+suppression keys off g_dmflags (binary DAT_10597dcc), NOT g_accuracyFlags."*
+The bit meanings were right and the cvar name was wrong. Anyone wiring
+`g_accuracyFlags` from that table would have built a duplicate `g_dmflags` under
+the wrong name and had a document agreeing with them. Fixed in three places.
+
+**No further wirings.** The four from E97 stand; nothing in this pass met the
+bar. `cg_teammatePOIs` came closest - `cg_teammatePOIsMaxWidth` and `MinWidth`
+are live beside it - but its only plausible gate is `CG_PlayerFloatSprite`,
+which draws every head sprite including the voice-chat indicator, so gating
+there would hide things the cvar does not name.
+
+**Still unverified:** the reclassifications are reasoning over code and cited
+comments, which is the same standard the comments themselves were written to.
+Nothing here changes a byte of behaviour - it is all manifest rows and one doc.
+
+---
+
+### E97. Wiring up the unread cvars — 4 done, and why the other 218 are not a wiring job
+**Lives in:** our **client** (cgame) · **Seen by:** our client only
+
+The ask was to go through the list and wire everything up by reading the names
+and inferring how each should operate. Four went in. The rest should not, and
+the reason is not caution — it is that the premise turns out to be wrong for
+almost all of them.
+
+**What "unread" actually means here.** I expected mostly missing *gates*:
+behaviour sitting in the tree, unconditional, with a cvar that nobody consults.
+That shape is a real wiring job with a verifiable answer. Sampling found it is
+the rare case. The common case is a missing *feature*:
+
+- `cg_itemTimers` — the only mention of item timers in cgame is
+  `cgs.itemTimers` parsed out of serverinfo. There is no timer display to gate.
+- `cg_drawTieredArmorAvailability` — same shape: `cgs.armorTiered` is read from
+  serverinfo, nothing draws anything.
+- `cg_oldRocket`, `cg_oldPlasma` — would select a second effect that does not
+  exist in the tree.
+- `cg_buzzerSound` — cg_event.c already carries a TODO saying the match-win
+  buzzer belongs to `cg_teamEventSounds`.
+
+Wiring those means implementing Quake Live features from their names. That is
+not wiring, and the result would not be Quake Live's behaviour — it would be
+mine, wearing Quake Live's cvar name, which is worse than the cvar doing
+nothing because it looks finished.
+
+**The concrete near-miss, and it is the whole argument.** `cg_teamChatBeep`
+defaults to **0** and looks exactly like "gate the team chat beep". The team
+chat beep is already gated — on `cg_chatbeep`, which defaults to on, with a
+binary citation beside it in cg_servercmds.c. Wiring `cg_teamChatBeep` by its
+name would have silenced team chat beeps by default: a regression, in working
+code, produced entirely by a confident guess. `cg_noTaunt` is the same story —
+superseded by `cg_allowTaunt`, which is live and cited.
+
+**The standard of evidence this tree already uses.** Every cvar gate anyone has
+established here cites the binary: *"QL binary: cg_chatbeep.integer gates the
+chat sound (vmCvar 0x10A6A9E0)"*, *"binary tests DAT_10a68eec, exact-nonzero"*.
+Twenty-odd such citations across cgame and game. That standard exists because
+guessing was already rejected once. The `ql-decompiled` tree those citations
+come from is **not in this environment** — files were ported from it, it is gone
+— so I cannot meet the standard the tree sets for itself, and inventing a looser
+one for 218 cvars in one pass is not an improvement.
+
+**What went in, and the filter.** Three conditions, all three required:
+behaviour exists in-tree and is unconditional; the name maps onto exactly that
+code with no value ambiguity; and the default preserves current behaviour, so
+wiring it changes nothing until someone sets it. That last one is what makes
+these zero-risk rather than merely plausible.
+
+| cvar | default | gate |
+|---|---|---|
+| `cg_waterWarp` | 1 | the underwater fov wobble in CG_CalcFov. `inwater` still gets set - it drives the underwater sound and tint, which the cvar does not name |
+| `cg_crosshairPulse` | 1 | the item-pickup crosshair pulse, both draw sites |
+| `cg_lowAmmoWarningSound` | 1 | the transition sound only; the on-screen warning is a separate thing and stays |
+| `cg_hitBeep` | 2 | **partial** - see below |
+
+`cg_hitBeep` defaults to "2", so it is not a boolean: Quake Live has at least
+0/1/2/3 and 2 is the shipped choice. What 1 and 3 select is not knowable from
+here. 0 meaning off is the one value that is not a guess, so it is the only one
+implemented; every non-zero value behaves as it did. Recorded in the code as a
+partial rather than left to look finished. Gating the enemy-hit branch alone
+would have left the team-hit sound firing on its `else`, so the whole block is
+gated.
+
+**What would make the other 218 tractable**, in order of how much they buy:
+1. The `ql-decompiled` tree back in the environment. That is what the existing
+   citations were written from and it settles semantics per cvar.
+2. A Quake Live install for `dead-cvars.py` to read - resolves the 12 QL-ASSET
+   rows outright and would reclassify an unknown number of others.
+3. Per-cvar, one at a time, against a live QL server to compare behaviour. That
+   is the honest path without the first two, and it is a cvar a session, not
+   218 in one.
+
+**Still unverified:** the four gates compile and default to current behaviour by
+construction, but none has been observed. `cg_waterWarp 0` in water and
+`cg_crosshairPulse 0` over an item are the two that take five seconds to check.
+
+---
+
+### E96. 240 cvars registered and read by nothing — MANIFESTED, not deleted
+**Lives in:** our **server** (qagame) and our **client** (cgame/ui) · **Seen by:** our client only
+
+Kept deliberately, on your call: they are the shape of the features that are not
+here yet, and deleting a name only makes its absence harder to find.
+
+The problem was never that they exist, it was that 240 of anything is the same
+list every time. Nobody reads it, so the 241st - the one added last week and
+never wired - disappears into it. That is exactly how `g_spawnItemWeapons` got
+registered, exposed as a gamerule, documented, set to 0 in the shipped instagib
+configs and read by no code at all, while instagib servers kept spawning
+weapons.
+
+So they are now manifested the way the 76 empty function bodies already were.
+`docs/cvar-manifest.txt` carries a verdict per cvar and `tools/dead-cvars.py`
+fails on an unread cvar with no row. `package-release.sh` runs it beside
+`stub-report.py`.
+
+| verdict | count | meaning |
+|---|---|---|
+| **QL-FEATURE** | 222 | Quake Live feature not implemented here. The backlog. |
+| QL-ASSET | 12 | our VM sets it for Quake Live's own menus and HUD to display; pointing the tool at a QL install resolves these |
+| NETWORKED | 6 | goes out in the server info string - the wire is the reader, and unread by our C is correct |
+| GAP | 0 | nothing reads it and no QL feature behind it - a real defect |
+
+The first pass at these got two rules wrong, both worth not repeating.
+`CVAR_USERINFO` does not make a client setting NETWORKED: it sends the value to
+the server, but the behaviour is still cgame's and cgame is what does not
+implement it, so `cg_autoAction` is QL-FEATURE. And `CVAR_ROM` means different
+things either side - in the game it is qagame reporting something, on the client
+it is our VM setting something for pak00's menus to display. A flag-class rule
+is only as good as the classes.
+
+Nothing is GAP, and that is a checked claim rather than an assumption: every
+unread cvar in the tables was present at or added by the Quake Live port work,
+verified against the root commit. A newly invented one should get GAP.
+
+**What the verdicts are worth.** They are assigned BY FLAG CLASS, not by
+investigating each cvar. A QL-FEATURE row asserts "this carries CVAR_GAMERULE or
+CVAR_USERSAVE and our code never reads it" - a fact - and asserts nothing about
+what the feature does or what wiring it would cost. Recording that limit is the
+point; a manifest that overclaims is worse than none. Replace a reason with what
+you found when you look at one.
+
+The largest single group is 101 cgame `CVAR_USERSAVE | CVAR_REPLICATE |
+CVAR_ARCHIVE` client settings - `cg_hitBeep`, `cg_railStyle`, `cg_itemTimers`,
+`cg_crosshairPulse` and the rest. A player can set every one of them, they
+persist to config, and cgame acts on none of them. Next is 50 `CVAR_GAMERULE`
+server rules a factory file can set to no effect.
+
+Both directions tested: adding an unread cvar fails the build and names it;
+wiring one up reports the manifest row as stale so the backlog shrinks when the
+work is done rather than drifting.
+
+---
+
+### R28. Codebase cleanup — a per-frame linear scan, and 102 warnings hiding one — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Two findings, and the second explains why the first kind of thing keeps
+happening.
+
+**1. vk_find_pipeline_ext was a linear memcmp scan, and R25 made it per-draw.**
+
+Every call site in vk.c and tr_shader.c runs once — at renderer start or when a
+shader is finished. So a linear scan over every pipeline ever allocated was
+free, and had been for as long as the file existed. R25's static bump pass broke
+that: the def carries the live cvars as specialization constants, so the
+pipeline has to be looked up again for **every bump surface, every frame**.
+`tr_shade.c:1394` is now the only hot call site in the tree, and it is mine.
+
+Measured, at the real `sizeof(Vk_Pipeline_Def)` of 84 bytes:
+
+| pipelines | lookups/frame | linear | hashed |
+|---|---|---|---|
+| 400 | 400 | 0.269 ms | 0.036 ms |
+| 1200 | 400 | 0.782 ms | 0.038 ms |
+| 2304 | 400 | 1.472 ms | 0.040 ms |
+
+0.78 ms/frame at 125 fps is a tenth of the budget spent deciding something that
+had not changed. Fixed with a 4096-bucket FNV-1a index over the same bytes the
+memcmp compares, chained through a `uint32` per pipeline — no allocation. Safe
+for the same reason the memcmp is: every def is memset before use, so padding is
+zero rather than stack garbage.
+
+Two things that had to be got right and would have been silent if not:
+- the empty bucket value is `~0U`, not 0, so the zeroed `vk` struct does not
+  start out claiming every bucket holds pipeline 0
+- both places that *shrink* the array rebuild the index, or a chain points at a
+  destroyed pipeline and hands back a `VK_NULL_HANDLE` that nothing checks
+
+`/gfxinfo` now prints buckets used and longest chain, because a hash that has
+degenerated into one long chain performs exactly like the scan it replaced while
+looking fine from the outside.
+
+**2. 109 build warnings, 102 of them one benign thing, and something real inside.**
+
+`tr_shader.c` and `tr_bsp.c` hold shader text as `const char *`; this tree's
+q_shared.h is ioquake3's and declares the parsers as `char **`, where Quake3e's
+declares them const. Neither writes through the pointer. 102 warnings, all
+noise.
+
+That is the problem rather than the finding. A hundred warnings that are always
+there is the same as none, and one that mattered had already hidden in them: the
+vendored `GetRefAPI` assigned a two-argument `RE_AddRefEntityToScene` to a
+one-argument export slot, and the note in `vk_ql_exports.c` records that it
+"compiled with a warning" and shipped, calling with a garbage second argument
+for every entity in every frame. That one was found and shimmed earlier; it
+should never have got as far as shipping, and the reason it did is sitting in
+this warning count.
+
+So: four `const`-taking inline shims in `tr_common.h`, one documented cast each,
+and the 102 call sites renamed. The rest were cast explicitly where the
+conversion is deliberate (`RE_Shutdown`'s enum-vs-qboolean, the cinematic
+uploaders' missing const, `GetConfig`'s return type, `VK_CreateSurface`'s
+deliberately Vulkan-header-free `void **`).
+
+**109 warnings to 7, and all 7 remaining are vendored libvorbis.** renderervk
+builds clean on both platforms.
+
+**Still unverified:** the pipeline index has not been run. The arithmetic is
+measured and the invariants are argued; what has not happened is a frame.
+
+---
+
+### R27. Hard cuts and visible repetition — "natural textures" — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Two complaints, one round apart, that turned out to be two different faults with
+the same symptom. Both are now fixed and the second one is the interesting one.
+
+**1. The wrap seam.** *"along the right wall, you see a line break between
+them."* `fbm()` in `tools/gen-testmap-textures.py` built a `(freq+1)^2` lattice
+of independent randoms, so the value it interpolates towards at the right edge
+had nothing to do with the value at the left. Every material lays fbm grain over
+its blocks, so every one of them carried one vertical and one horizontal
+discontinuity — regardless of whether its cells divided 256, which is what the
+first two attempts at this chased. `wrap_grid()` repeats the first row and column
+as the last; `rocknoise()` had its own copy of the lattice with the same bug.
+
+`tools/check-tiling.py` measures it now, and the measurement is the deliverable
+as much as the fix is: the wrap step against the 99th percentile of the sheet's
+own interior steps. Not the median — brick's wrap column lands on a mortar joint
+and measures 14.4 against joints of 14.6, so it tiles, and against a median every
+masonry texture ever made fails forever. On the sheets as they were: 8 fail. As
+they are: none. `build-testmap.sh` runs it before compiling.
+
+**2. Repetition, which is not a seam.** *"there's modifications for minecraft
+called natural textures... so we don't have hard cuts in the textures."*
+
+Researched, and the honest finding is that the Minecraft mechanism does not
+port. OptiFine's Natural Textures rotates and flips a block's texture from the
+block's coordinates — 4, 2 or 8 symmetries per texture, listed in
+`natural.properties`. That works because Minecraft's world is blocks: "the
+texture of this block" is a thing you can rotate independently, and the seam it
+creates falls on a block boundary you were going to see anyway. A Quake Live wall
+is ONE polygon with continuous UVs. There is no boundary to hide a rotation on,
+so rotating part of it produces a visible cut — the problem, not the fix.
+
+The continuous-surface form of the same idea is stochastic tiling: Heitz and
+Neyret, *High-Performance By-Example Noise using a Histogram-Preserving Blending
+Operator* (HPG 2018), in the real-time form Mikkelsen published as *Practical
+Real-Time Hex-Tiling* (JCGT 11(3), 2022). Lay a triangle lattice over UV space,
+give each hexagon a random offset and rotation from its integer index, and blend
+the three nearest — so the texture is randomised per cell exactly as OptiFine
+does it, and there is never an edge between cells.
+
+Mikkelsen's version is the one that is usable here, and specifically because it
+drops the histogram preservation. The original needs a precomputed lookup texture
+per source image; we have neither the pipeline nor the licence to bake one for
+Quake Live's art. Mikkelsen samples the ORIGINAL texture and puts a contrast ramp
+on the blend weights instead, so it works on any image the engine has loaded.
+
+Built as `code/renderervk/shaders/hextile.glsl`, included by `bump.frag` (the
+normal map, in derivative space — averaging three unit normals gives the wrong
+slope, so they are converted to dh/du before blending and back after) and by
+`gen_frag.tmpl` (the albedo). Specialization constants, so a surface that does
+not use it compiles to exactly what it compiled to before.
+
+**Measured**, on the cobble sheet over the corridor's 34 repeats. Luminance
+autocorrelation at a lag of exactly one texture repeat:
+
+| | autocorr @1 repeat | @2 | stddev |
+|---|---|---|---|
+| plain tiling | **+0.880** | +0.755 | 26.2 |
+| hex-tiled | **+0.035** | −0.019 | 30.7 |
+
+0.880 *is* the visible repeat — the surface one tile over is nearly the same
+signal. It is gone, and the contrast is not lost doing it.
+
+One received belief did not survive measurement and is recorded rather than
+repeated: the contrast ramp is supposed to be what saves the variance from a
+three-way average. It is worth 3% here (29.7 at r=0.5 against 30.7 at 0.75) and
+both are *above* plain tiling, because `pow(w,7)` on the barycentrics has
+already made the weights nearly one-hot before Gain3 runs. Kept at the
+reference's 0.75 because it is free, not because it is load-bearing.
+
+**Where it is wrong, and this is the part to read before turning it on.**
+Blending three randomly offset copies assumes a stochastic texture — moss,
+granite, sand, rubble. Give it structure and it destroys the structure: brick
+courses stop lining up, rivets smear, a sign becomes three overlapping signs.
+That is why OptiFine ships an allow-list rather than a switch, and why
+`r_qlNaturalTextures 1` waits for a shader to ask with `qlNaturalTexture`. Mode 2
+forces it on every world diffuse stage — for seeing the effect across a map at
+once, not for playing.
+
+The trap the C side had to avoid: after a multitexture collapse one of the two
+bundles is the LIGHTMAP, and which one depends on stage order in the `.shader`.
+Hex-tiling a lightmap is not a subtle mistake — a lightmap is a unique unwrapped
+atlas, so randomising its lookup scrambles the surface's lighting and bleeds in
+neighbouring surfaces' texels. `hex_tile` names the bundle rather than being a
+flag, for that reason.
+
+Latched, and declared as such: the generic path builds every stage's pipeline
+once in `FinishShader` at map load, so a live cvar would be a cvar that silently
+does nothing — the failure this tree has hit most often.
+
+**To see it:** `/devmap qltest_stone`. The corridor floor is split at x = −128
+into `mat_cobble` (west) and `mat_cobble_natural` (east), same texture, same
+scale, same offsets, UVs continuous across the join. Stand at the join and look
+each way.
+
+**Still unverified:** everything above is measured or compiled, not looked at.
+
+---
+
+### R26. Ray-traced player shadows, instead of the blob — SCOPED, most of the machinery exists
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+Reported in play: players still have the Quake 3 blob under them.
+
+**Two different problems wear the same name, and only one of them is cheap.**
+Keeping them apart is the whole of the scoping, because the machinery they need
+is not the same.
+
+*(a) Shadows from DYNAMIC lights.* A rocket flies past a player and the player
+throws a moving shadow. Everything this needs already exists and was built for
+R13:
+
+- Players are already in the acceleration structure. `vk.c` rebuilds a dynamic
+  top level every frame from entity proxies - a box for anything that rests on
+  the floor, an inscribed ball for projectiles and gibs via `RF_OCCLUDE_ROUND` -
+  so a player is already a box in the structure the AO pass traces against.
+- The frame's dynamic lights are already uploaded and bound to the trace set,
+  because `r_rtaoLights` already fades occlusion inside a light and needs them.
+- Both are doubled per command buffer already, for the two-frames-in-flight
+  reason.
+
+So this is a shadow ray per light per pixel against a structure that is already
+built and already bound. Cheap next to AO, which is 8 rays a pixel.
+
+*(b) Shadows under STATIC light - which is what the blob is standing in for.* A
+player standing in a lit room casting a shadow on the floor. This is harder and
+the reason Quake 3 shipped a blob: the lightmap is baked, players are not in it,
+and there is no runtime light to shadow from.
+
+There is a direction available, and `R_SetupEntityLightingGrid` already computes
+it - the lightgrid gives an ambient term, a directed term and a dominant
+direction per cell, and `ent->lightDir` is that direction sampled at the
+entity's own origin. That is enough to cast from, and a player is small next to
+a 64 x 64 x 128 cell, so one direction per caster is not an approximation worth
+apologising for.
+
+What it is NOT enough for is the general case, where every receiving pixel wants
+its own light direction. That needs the lightgrid as a GPU texture, which is R20
+Stage B - a real dependency, and worth noticing before starting rather than
+halfway through.
+
+**The order to build them in is (a) then (b)**, and not only because (a) is
+easier. (a) puts a shadow ray through the whole path - trace set, dynamic
+structure, compositing - against lights that already exist, so when (b) arrives
+the only new thing is where the direction comes from.
+
+**What the receiving surface is, and why a screen-space mask.** The world is
+drawn through the generic multitexture path and darkening it there would mean a
+fourth texture slot on a three-slot layout. A full-screen mask composited the
+way AO already is avoids that entirely and mirrors a pass that works.
+
+**The existing paths, for completeness.** `r_shadows` is registered from
+`cg_shadows` and `tr_shadows.c` carries Quake 3's stencil volume path at
+`cg_shadows 2`, gated behind `r_dlightMode 2`. It is not what we want - hard
+edged, and correct only against the world - but it should be checked rather than
+assumed dead, because if it still works it is a free comparison for whatever
+replaces it.
+
+---
+
+### R25. Authored bump maps on our own maps — SCOPED, and most of it already works
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only — a stock client ignores the keyword and draws the diffuse, so it degrades rather than breaks
+
+The question: if we build the map and we own the renderer, can we ship real
+authored normal maps instead of deriving them from luminance? Yes, and the
+honest framing is that **R20 Stage A built the consumer** — what was missing was
+never the asset pipeline, it was something that reads `stage->normalMap`.
+
+**Working today, no new code.** `normalMap`/`bumpMap` in a shader is parsed
+(tr_shader.c), loaded with `IMGFLAG_NOLIGHTSCALE | MIPMAP | PICMIP`, and bound
+to set 3 by `VK_LightingPass`. An explicit map beats the derived one — the
+derivation in `FinishShader` only runs when `normalMap == NULL`. So a shader in
+our own map's pk3 can carry a hand-authored normal map right now and the dynamic
+light pass will use it.
+
+One gap in that path: no `IMGFLAG_NO_COMPRESSION`, so `r_texturebits 16` would
+quantise an authored map to five bits a channel. The derived maps already set
+it; the authored path should match.
+
+**What it will not do, and this is the part that matters for a rock.** It only
+touches the *dynamic* light pass. A rock lit by the baked lightmap looks exactly
+as it does now until a rocket goes past. Deriving or authoring makes no
+difference to that — the limitation is which pass reads the map, not where the
+map came from.
+
+**Which is what makes `-deluxe` the real unlock, for our maps specifically.**
+q3map2's `-deluxe` writes a second lightmap alongside every lightmap holding the
+dominant light *direction* per texel. With it, static lighting can be re-shaded
+against a normal map: intensity from the lightmap, direction from the deluxemap,
+normal from the bump map. That is exactly what normal mapping needs and exactly
+what Quake Live's maps cannot supply — measured, in R20: no light entities, no
+deluxemaps, which is why Stage B was designed around the lightgrid instead.
+
+**The data is already loaded.** `R_LoadLightmaps` creates every lightmap in the
+BSP as `tr.lightmaps[i]`, including the odd-index direction maps, and
+`lightmapFlags` already carries `IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION`
+— which happens to be exactly right for direction data rather than colour. In a
+`-deluxe` BSP, `tr.lightmaps[n+1]` is the direction map for `tr.lightmaps[n]`,
+uploaded and sitting unused. `tr_bsp.c` detects the case and says in as many
+words that it records it only because whether the path is worth writing is this
+question.
+
+So the work is: bind the odd map as a second sampler on the world path, and
+shade `lightmapIntensity * max(0, dot(N_perturbed, deluxeDirection))`. The
+complication is `r_mergeLightmaps`, which atlases them — light and direction end
+up interleaved in one texture and the tc offsets have to account for it.
+
+**Strictly better than Stage B where it applies:** per-texel direction against
+the lightgrid's one sample per 64 x 64 x 128 units. Stage B does not go away —
+it is what Quake Live's own maps get, since they have no deluxemaps and we
+cannot recompile them. Two paths for two situations, and `tr.world->deluxeMaps`
+already says which one a map is in.
+
+**The licensing line, which is not the same for the two cases.** Our maps use
+our textures, so authoring normal maps for them and shipping them is ours to do.
+Authoring or baking a normal map *for a pak00 texture* and shipping it is a
+derivative of Quake Live's art and is not. That is precisely why Stage A derives
+at runtime and ships nothing — the distinction is shipping, not generating.
+
+**Handedness gets more important, not less.** A map derived from luminance is
+forgiving; an authored or baked map carries real directional detail, and a
+mirrored tangent puts it visibly the wrong way round. Q3 BSP drawverts carry no
+tangents and that format is fixed even for our own maps, so the screen-space
+derivative basis is what we have. For our own maps the mitigation is in the
+authoring: avoid mirrored UVs on bump-mapped faces.
+
+**Silhouette is still untouched.** A seven-polygon rock with a superb normal map
+is still seven polygons against the sky. That is R21, still parked on the
+`tessellationShader` device feature not being requested at device creation.
+
+**Companion, nearly free:** `specularMap` is parsed and stored on the stage and
+consumed by nothing — the same shape `normalMap` was in before Stage A. The
+light pass already computes a specular term; giving it a map is a small change
+once this is being touched.
+
+---
+
+### R24. The Render and Ray Tracing menus have outgrown their layout — OPEN
+**Lives in:** our **client** (`content/pak01/ui/main.menu`) · **Seen by:** our client only
+
+Reported with a screenshot, and it is not a matter of taste: on the Ray Tracing
+page the two help lines at y=398 and y=414 draw **on top of** the "Lights clear
+AO" row at y=400 and the "Water reflections" row at y=422, and `APPLY` sits at
+y=452 with height 24 inside a window that is 468 tall, so it renders outside its
+own border.
+
+**The cause is the method, not the numbers.** Every `rect` on the page is a hand
+-picked absolute coordinate. Rows were appended as cvars landed - AO, then beam
+lights, then denoise, then `r_ssr` - and nothing checks that a new y does not
+already belong to something else. `tools/check-menus.py` catches unbalanced
+braces and unresolvable open/close targets, which is the failure that makes a
+menu silently merge into the next one, but it has never had an opinion about
+geometry. So the parser is happy, the console is quiet, and the page is wrong
+only where you are looking.
+
+Two things follow, and the second matters more than the first:
+
+- Lay both pages out on a computed row grid rather than by hand, so a row's y
+  is derived from its index and collisions are not expressible.
+- Teach `check-menus.py` to fail on overlapping item rects and on any item that
+  extends past its `menuDef`'s rect. This is exactly the shape of defect the
+  other checkers in `tools/` exist for - loud in principle, silent where you
+  look - and it is the only one of them that has no check.
+
+The Render page also needs filling out: the renderer keeps gaining cvars
+(`r_qlNormalMaps`, `r_qlNormalScale`, `r_waterFoam` and the five `r_waterWave*`)
+and none of them have a home in the menus, which is how a shipped default
+becomes something only the console knows about.
+
+---
+
+### E92. `fraglimit` is registered twice, with different defaults — OPEN
+**Lives in:** our **server** (engine and qagame) · **Seen by:** every client — it is a `CVAR_SERVERINFO` value
+
+`sv_init.c:797` registers it `"20"` `CVAR_SERVERINFO`; `g_main.c:661` registers
+it `"50"` `CVAR_GAMERULE | CVAR_NORESTART | CVAR_SERVERINFO`. Which default wins
+depends on which runs first, and `Cvar_Get` keeps the existing value when a cvar
+already exists, so the engine's 20 wins on a cold start and the game's 50 is
+never seen - but a `game_restart` or a VM reload can reorder that.
+
+Not yet reproduced in play; found by reading. Worth settling either way, because
+a server whose advertised fraglimit depends on startup order is the kind of
+thing that gets noticed as "the server said 20 and the match ended at 20" long
+after anyone would connect it to two registrations.
+
+---
+
+### E93. `crouchTime` is networked and read by nothing — OPEN
+**Lives in:** our **server** (`bg_pmove.c`, `msg.c`) · **Seen by:** every client — it is a `playerState_t` field
+
+`q_shared.h:1115` declares it, `msg.c:1148` sends it as 32 bits of every
+`playerState_t`, and `bg_pmove.c:1706` writes it. **Nothing reads it.**
+
+It is also written wrong for what its comment claims. The guard is
+`if (crouchTime == 0) crouchTime = pm->cmd.serverTime;` and nothing anywhere
+sets it back to 0, so it records the first crouch of a life and then never
+changes - it is not "crouch start time", it is "time of first ever crouch".
+
+This is E8's shape moved into the playerState: a field that looks like a
+setting, costs wire space, and changes nothing. Either give it a reader and a
+reset or delete it - but note it is a **networked** field, so removing it
+changes the `playerState_t` layout and both binaries have to ship together.
+
+---
+
+### C39. Crouching bounces the view — OPEN, one confirmed defect and two candidates
+**Lives in:** our **server** (`bg_pmove.c`) and possibly our **client** (`cg_view.c`) · **Seen by:** every client if it is pmove, our client only if it is view smoothing
+
+Reported in play: "if I crouch, I bounce".
+
+**Confirmed by reading, independent of whether it is the cause.** In
+`PM_CheckDuck` (`bg_pmove.c:1720`):
+
+```c
+if (pm->ps->crouchSlideTime == 0 && (pm->ps->pm_flags & PMF_CROUCH_SLIDE)
+    && pm->ps->speed < 400) {
+    pm->ps->speed = 400;
+}
+```
+
+The comment says "ensure minimum speed of 400 when **starting** a slide", and it
+does not start anything. `crouchSlideTime` is only ever *incremented* in
+`PM_AirMove` (line 996) and that path requires `cmd.upmove >= 0` - it cannot run
+while crouch is held. `PM_DropTimers` only *decrements* it, and only when it is
+already non-zero. So while you hold crouch on the ground it stays 0 and this
+branch re-applies `speed = 400` **every frame**, permanently, instead of once.
+`PM_WalkMove` then clamps `wishspeed` to `speed * 0.75`. A speed floor that
+re-arms every frame fighting friction is exactly the shape that produces a
+stutter.
+
+**Two candidate mechanisms for the bounce itself, not yet separated:**
+
+1. *Physics.* The above, driving a velocity oscillation, which reaches the view
+   through `cg.xyspeed` (`cg_view.c:833`, from `ps->velocity`) and the bob cycle.
+2. *View smoothing.* `cg_view.c:394` offsets the view by
+   `cg.duckChange * (DUCK_TIME - timeDelta) / DUCK_TIME`. If `PMF_DUCKED` is
+   being set and cleared repeatedly, `duckTime` re-arms and the view rocks with
+   nothing wrong in the physics at all.
+
+**The test that separates them is `cg_thirdPerson 1`.** If the player model
+bounces, it is pmove and every client sees it. If only the camera moves, it is
+`cg_view.c` and it is ours alone. That distinction is the whole "Lives in" /
+"Seen by" split and it has not been run yet, so both lines above are provisional.
+
+---
 
 ### E8. 186 cvars are registered but read by nothing — OPEN, survey done
 **Lives in:** our **client and server** both · **Seen by:** every client, vanilla included — game cvars are server side, cgame/ui cvars client side
@@ -1325,7 +10841,7 @@ with a real map, so that part is yours to confirm.
 **Still absent:** the Valve/Steam server query protocol (A2S). Only the Quake
 master protocol is implemented.
 
-### E7. Instagib is split across two cvars, and one branch is dead — PARTIAL
+### E7. Instagib is split across two cvars, and one branch is dead — DONE (confirmed)
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client, vanilla included
 
 `g_instaGib` and the `DF_INSTAGIB` dmflag were two halves of one feature keyed
@@ -1378,6 +10894,2927 @@ we choose.
 The server does not announce itself, so it cannot appear in any public list. The
 client's browser can still reach it by direct connect or LAN.
 
+### E9. `com_maxfps` only lands on rates that divide 1000 — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+Reported as "com_maxfps 210 to 240 defaults to 250, but 200 does 200". Nothing
+is defaulting — the frame limiter was
+
+```c
+minMsec = 1000 / com_maxfps->integer;
+```
+
+in whole milliseconds. `1000/210` and `1000/240` are both `4`, and so is
+`1000/250`. The only rates the limiter could ever produce were the ones that
+divide 1000 exactly: 1000, 500, 333, 250, 200, 166, 142, 125, 111, 100. Every
+value in between was accepted, archived, and quietly rounded to the next one up.
+
+144 is the one worth calling out: it was running at 166.
+
+Fixed by carrying the fractional millisecond across frames instead of
+truncating it, so the interval alternates between the two neighbouring whole
+milliseconds in the right proportion — 240 fps asks for 4.1667 ms and gets five
+4 ms frames then one 5 ms frame, 25 ms per six frames, exactly 240.
+
+Verified over 100000 frames per rate against the old expression:
+
+| com_maxfps | before | after |
+|---|---|---|
+| 333 | 333.33 | 333.00 |
+| 240 | 250.00 | 240.00 |
+| 210 | 250.00 | 210.00 |
+| 200 | 200.00 | 200.00 |
+| 144 | 166.67 | 144.00 |
+| 90 | 90.91 | 90.00 |
+| 60 | 62.50 | 60.00 |
+
+Above 1000 fps there is still no sub-millisecond sleep to hand out, so the cap
+stays at 1 ms and the remainder is dropped rather than accumulated as a debt
+that can never be paid. Sub-millisecond timing throughout is the other fix and a
+much larger one — it means replacing `Com_TimeVal` and `Sys_Milliseconds`.
+
+### E10. Bots: pool ceiling, fill rate, and matches that never start — DONE (confirmed)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+Three separate faults reported together.
+
+**Fixed — the 21-bot ceiling.** `MAX_BOT_CHARACTERS` was `MAX_CLIENTS + 1`, so
+bot 22 onward failed with *"couldn't load skill 2.000000 from bots/\*_c.c"*
+while the console simultaneously said it had *"loaded cached skill 2.000000 from
+bots/major_c.c"* — the cache hit was found only after the free-slot search had
+already bailed out. The pool is now `4 * MAX_CLIENTS` and the cache lookup runs
+before the bailout; `BotInterpolateCharacters` returns 0 cleanly on a full pool
+instead of erroring.
+
+**Fixed — the hard crash, and it was not the bots.** `sv_maxclients` had no
+range check on it at all. The server sizes `svs.clients` from the cvar, but the
+game module's client array is a fixed `gclient_t g_clients[MAX_CLIENTS]` (64)
+and every loop in it ran to `g_maxclients.integer`. Setting `sv_maxclients`
+above 64 and then filling with bots walks off the end of that array the moment a
+client lands past slot 63 — which is why it presented as "the server hard
+crashes after a certain number of bots" and looked like a bot-naming problem.
+botlib is the same shape: `botchatstates`, `botgoalstates`, `botmovestates` and
+`botweaponstates` are all `[MAX_CLIENTS + 1]`.
+
+`Cvar_CheckRange(sv_maxclients, 1, MAX_CLIENTS, qtrue)` on the engine side, and
+the game module clamps `level.maxclients` and says so rather than silently, in
+case it is ever loaded by a server that does not. The 30 loops that read
+`g_maxclients.integer` directly now read `level.maxclients`, so the clamp
+actually protects something — the cvar is read once, where it is validated.
+
+**Fixed — the fill rate, and the earlier revert was on a wrong attribution.**
+`G_CheckMinimumPlayers` is throttled to once a second and added one bot per
+call, so `bot_minplayers 40` took forty seconds and looked stalled. Raising it
+to four per tick was blamed for crashing dedicated servers while filling; the
+crash was `G_Alloc` pool exhaustion at bot 26 (E13), which a faster fill only
+reached sooner. It is now `bot_fillRate`, default 1, clamped 1..16 — a setting
+rather than a number, so reproducing anything that only happens at a high player
+count is one cvar away.
+
+**Open — the match does not start.** The countdown runs, the announcer talks
+about frags and leaderboard position, and the round never begins. `g_debugWarmup`
+is shipped and traces every `SetWarmupState` transition, names the gate in
+`WarmupBlocked()`, and logs countdown-elapsed and auto-forfeit. No trace has come
+back yet, so this is still unlocated.
+
+### E67. Nobody ever defended, in any match, in any log — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"I think theyre switching tasks too often, they are getting stuck in hallways
+together... As well as there still seems to be pathing issues, alterative routes
+and tactics issues"* — and it went to a **sixth** overtime.
+
+E66 got the role picker running; this is what it found when it did. Every role
+line in every log, across three builds:
+
+```
+ctf role 1 (want 0.4/0.4/0.0/0.2 of 31, have 17/0/2/11)
+                                              ^ defenders
+```
+
+`have[DEFEND]` is **0**. Not low - zero, in all 199 role lines of the last log,
+and the final map report has 24 bots on "get flag", 13 escorting, 2 roaming and
+**not one defending**, on either team. Both bases stood open for the whole match.
+`BotAutoDefendGoal`, the safety net for exactly this, fired **0 times**, because
+it requires `!bs->ltgtype` and every bot always had a goal.
+
+#### The one missing line
+
+`BotCTFSeekGoals`, the branch for "the enemy has our flag":
+
+```c
+if (bs->ltgtype != LTG_GETFLAG &&
+    bs->ltgtype != LTG_RETURNFLAG &&
+    bs->ltgtype != LTG_TEAMHELP &&
+    bs->ltgtype != LTG_TEAMACCOMPANY &&
+    bs->ltgtype != LTG_CAMPORDER &&
+    bs->ltgtype != LTG_PATROL &&
+    bs->ltgtype != LTG_GETITEM) {          // LTG_DEFENDKEYAREA is not here
+    bs->ltgtype = random() < 0.5 ? LTG_GETFLAG : LTG_RETURNFLAG;
+```
+
+**Every defender on the team is converted to attack on a coin toss the moment
+the enemy takes our flag.** With 591 grabs in one match that is continuous, and
+it is self-reinforcing: the role picker sees nought defenders, tells the next bot
+to defend, and that bot is converted at the next steal. 199 picks of "defend",
+none of which survived.
+
+That is also what looked like task switching. They were switching - told to
+defend, walking to the base, converted to attack, told to defend again.
+
+Our flag being out is the state that wants defenders *most*: the mix asks for
+60% of the team, because the stand is where the flag comes back to. Now excluded
+like the others, gated on `bot_tactics` so the stock behaviour is unchanged with
+the layer off.
+
+#### Escort is a job for four, not for a third of the team
+
+E66 capped escorts to the mix's share. At 32 a side, 30-35% is still nine to
+eleven bots converging on one player, and **575 of 1094 stuck episodes were
+still `LTG_TEAMACCOMPANY`**.
+
+Escorting does not scale. The useful part is two or three bodies between the
+carrier and whatever is chasing; past that each extra escort is one more body in
+the same corridor. `BotCTFRoleWanted` turns the mix into head counts and caps
+escort at **4 in absolute terms**. At four a side the cap never binds and the
+mix is untouched; at thirty-two a side it is the whole difference between a
+screen and a scrum.
+
+#### They never tried a second route because they never re-asked
+
+`BotGetAlternateRouteGoal` is called once, when a flag goal is set, and never
+again. Thirty bots heading for the same flag pick the same route and queue in
+the same corridor, and nothing in the stock AI reconsiders. Sidestepping cannot
+help: the route is not blocked by one body, it is blocked by the twenty ahead of
+it going the same way.
+
+The stuck detector already knows when a bot has been standing still for three
+seconds. It now re-rolls the alternate route there for a bot on a flag goal -
+the cheapest thing that answers it, and because bots reach three seconds at
+different moments they spread across the map's alt route goals rather than all
+switching to the same second route.
+
+#### Checked and not the cause
+
+- **The 20-second role re-decide from E66.** 205 role decisions across the whole
+  match with 62 bots is about a tenth of one per bot per minute. Not the churn.
+- **The instagib hunt node.** `AIEnter_InstaGib` takes `ltgtype` for itself with
+  sentinel 21, which would fight the CTF goals - but the `bs->ltgtype == 0` gate
+  added earlier holds. 8 bots in the node at the end, all showing goal "other",
+  which is the sentinel behaving.
+
+### E66. The CTF role system was running about twice a minute — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"theyre still grouping up and getting stuck. Maybe massing around a flag
+carrier or getting conflicting orders. Also look at how long they were trying to
+get a single capture. They werent trying to find alternative tactics."* — and
+the match went to a **third overtime**.
+
+All three complaints are one fault, and the log measures it.
+
+#### What the match looked like
+
+| | count |
+|---|---|
+| flag grabs | 540 |
+| carriers fragged | 534 |
+| flag returns | 291 |
+| stuck episodes | 842 |
+| **of those, bots in `LTG_TEAMACCOMPANY`** | **562 (67%)** |
+| `BotCTFPickRole` decisions, whole match | **103** |
+| role lines where the team had *any* defender | **0 of 103** |
+
+Ninety-nine percent of carriers died before scoring, two thirds of everything
+that got stuck was escorting, and the role picker ran a hundred times in
+forty-five thousand lines with sixty-two bots on the server.
+
+#### Why the role system almost never ran
+
+`BotCTFSeekGoals` handles the flag states first and **every branch returned
+unconditionally**:
+
+```c
+if (flagstatus == 1) { ...escort the carrier... return; }
+else if (flagstatus == 2) { ...chase or go for theirs... return; }
+else if (flagstatus == 3) { ...escort or return ours... return; }
+...
+/* the role picker lives down here */
+```
+
+Those three cover every state except both flags at home. With 540 grabs in a
+match, both flags are at home almost never — so the role code, `BotCTFRoleMix`,
+the whole of E60's CTF work, was unreachable for most of the match. A bot with
+nothing to do reached this, was offered exactly one option — escort, if it could
+see the carrier — and took the early return when it could not.
+
+That is also the "conflicting orders": a bot with a job kept it, and a bot
+without one could not be given a different one.
+
+**Fixed:** each branch returns only if the bot now has a goal (`if (bs->ltgtype)
+return;`). A bot the branch declined to give a job falls through to the role
+picker, which is what it is for. A bot that took one returns exactly as before.
+
+#### Why they massed on the carrier
+
+The stock escort branch has **no cap**. Any bot that can see its own flag
+carrier and is not already defending switches to `LTG_TEAMACCOMPANY` for
+`TEAM_ACCOMPANY_TIME` — ten minutes — and every one of them sets
+`formation_dist = 3.5 * 32`, so they all path to the same point three metres
+from one player. At four a side that is a plan. At thirty-two a side the carrier
+is inside a crowd it cannot walk out of, and in instagib a crowd is a rail
+magnet. Hence 534 dead carriers.
+
+**Fixed** in three parts:
+
+- `BotCTFRoleCrowded` — the escort branches (`flagstatus` 1 and 3) now decline
+  when the team already holds the mix's share of escorts, and fall through to
+  the role picker instead. Half a bot of slack so a team exactly on quota does
+  not flicker.
+- `formation_dist` is `112 + (client % 4) * 56` — 112 to 280 — so escorts form a
+  loose shell rather than a point. Stable per bot, no extra computation.
+- Both remain no-ops with `bot_tactics 0`; `BotCTFRoleCrowded` returns qfalse
+  when the layer is off, which restores the stock behaviour exactly.
+
+#### Why there were no alternative tactics
+
+`TEAM_ACCOMPANY_TIME` and `TEAM_DEFENDKEYAREA_TIME` are both **600 seconds**, and
+the "already a CTF or team goal" gate returns for the whole of it. A bot decided
+once and held that decision for longer than most matches last. Sixty bots that
+all chose escort in the first seconds of a flag being out were still escorting
+three overtimes later.
+
+**Fixed:** a bot reconsiders when its job is over-subscribed — its own decision
+only, and at most every 20 seconds. Long enough that a bot walking to the far
+side of the map arrives before being asked to think again; short enough that the
+team reshapes within one flag run.
+
+#### The report could not have told us this
+
+Every one of the 62 rows in the map report read `team goal` in the goal column,
+because the column only distinguished defence from everything else — and
+everything else is every CTF job there is. The one question the report exists to
+answer, *are they all escorting one carrier*, was the one it could not say.
+`BotLongTermGoalName` now names all fifteen.
+
+### E65. Dropping a client re-entered the game module mid-think — DONE (verify)
+**Lives in:** our **server** (server engine + qagame) · **Seen by:** every client
+
+The tail of the same log as E64, seven lines after the last drop:
+
+```
+SV_DropClient: dropping client 2 (Hossman), state=4, reason='Server command overflow'
+WarboyX: no one defending (0 of 0), taking it
+Fatal: character handle 0 out of range
+Fatal: goal state handle 0 out of range     (x3)
+Fatal: move state handle 0 out of range     (x3)
+```
+
+Three things are wrong in that. `BotAutoDefendGoal` is bot code and it names the
+human. It reports a team of nought out of nought on a server that had 64 people
+in it a moment ago. And botlib is being handed handle 0, which is not a handle.
+
+They are one fault. **`bs` had been memset while its own think was on the
+stack**, so `entitynum` read 0 and printed slot 0's name, the loop over
+`g_entities` found nobody because everyone had just been dropped, and every
+botlib handle in the struct was zero.
+
+#### How the state got freed underneath itself
+
+`SV_AddServerCommand` called `SV_DropClient` directly. `SV_DropClient` does
+`VM_Call(gvm, GAME_CLIENT_DISCONNECT)`. Nearly everything that can overflow a
+reliable buffer is *already inside* the game module when it does it — a
+`trap_SetConfigstring` from a bot changing its mind, an obituary, a chat line —
+so the call stack was:
+
+```
+BotAIStartFrame -> BotAI -> BotDeathmatchAI -> ainode -> ... -> trap_SetConfigstring
+  -> SV_SetConfigstring -> SV_AddServerCommand -> SV_DropClient
+    -> VM_Call(GAME_CLIENT_DISCONNECT) -> ClientDisconnect -> BotAIShutdownClient
+      -> memset(bs, 0, sizeof(bot_state_t))
+```
+
+and then control returned *up* into the think, which carried on with a zeroed
+state.
+
+botlib refuses handle 0, so those seven lines are survivable in themselves. What
+follows is not: the rest of the think uses `bs->client`, which is now 0, so it
+drives whoever holds slot 0.
+
+#### The fix, in two places
+
+**Engine, the root.** `SV_AddServerCommand` sets `client->deferredDrop` instead
+of dropping. `SV_ProcessDeferredDrops` runs from `SV_Frame` after
+`SV_GameRunFrame` has returned, with nothing of the game's own frame on the
+stack. It sweeps repeatedly because dropping is contagious — `SV_DropClient`
+broadcasts its reason to everybody, and on a server already at the ceiling that
+broadcast is what tips the next client over — bounded by the slot count, since
+each pass drops at least one and a dropped client goes to `CS_ZOMBIE`.
+
+The doomed client gets one more frame of writes into a ring it was never going
+to have delivered. That is the whole cost.
+
+**Game, so the other paths are safe too.** `BotDeathmatchAI` now checks
+`bs->inuse` between AI nodes rather than only after the loop — a node can remove
+the bot part way through, and the next iteration would call `bs->ainode` through
+a pointer that has just been memset to NULL. `BotAI` checks again after
+`BotDeathmatchAI` returns, before `trap_EA_SelectWeapon(bs->client, ...)` aims
+at slot 0.
+
+That guard matters beyond this bug: `trap_DropClient` re-enters the same way, and
+`G_RemoveRandomBot` calls it every time `bot_minplayers` comes down.
+
+### E64. The same eviction, a second writer: bot teamtask — DONE (verify)
+**Lives in:** our **server** (qagame + server engine) · **Seen by:** every client
+
+*"japanese castles failed to start the match"* — 60 bots, `a2m-instagib-ctf`.
+The gameState reaches `IN_PROGRESS`, and then all 64 clients are dropped for
+**`Server command overflow`**, one after another, ending the listen server.
+
+This is E62's failure shape exactly, with a different configstring behind it, and
+it went unnoticed because every high-bot-count test until now was FFA. The
+writer here is only reachable in team gametypes.
+
+#### The count, from the field
+
+Every pending-queue dump is the same thing: each bot's own player configstring,
+twice, back to back, differing in one field.
+
+```
+cmd   767: cs 547 "n\Angel\t\2\model\lucy/angel\...\tt\2\tl\0"
+cmd   768: cs 547 "n\Angel\t\2\model\lucy/angel\...\tt\1\tl\0"
+cmd   769: cs 548 "n\Stripe\t\1\model\grunt/stripe\...\tt\2\tl\0"
+cmd   770: cs 548 "n\Stripe\t\1\model\grunt/stripe\...\tt\1\tl\0"
+```
+
+`tt` is `teamtask` — `TEAMTASK_DEFENSE` then `TEAMTASK_OFFENSE`. 63 bots × 2 =
+126 reliable commands against a 64-deep buffer. `map_restart` is what ends
+warmup, so it clears every bot's long-term goal at the same instant and every
+bot re-decides in the same think window. The queue cannot survive that.
+
+64 `SV_DropClient ... 'Server command overflow'` lines in one log, which is every
+slot on the server.
+
+#### Why the E62 fix did not cover it
+
+`BotSetUserInfo` already skipped a write when the value was unchanged (E62). That
+is not enough here, because the value genuinely does change: `BotCTFSeekGoals`
+hands a bot defence, something supersedes it before the bot has walked anywhere,
+and both transitions are real. Deduplication cannot help with an honest
+oscillation.
+
+There are about thirty `BotSetTeamStatus` call sites and they are all inside
+per-think goal selection. Finding which one oscillates is the wrong question:
+**any** of them can broadcast to every client at think rate, and the cost is one
+reliable command times the player count.
+
+#### The fix
+
+`teamtask` is queued, not written. `BotQueueTeamTask` records the wanted value
+and when it changed; `BotFlushTeamTasks` publishes it from `BotAIStartFrame`,
+once per server frame, under two limits that do different jobs:
+
+- **settle, 1.0s** — a value that flips back before it has held for a second
+  never reaches the wire at all, because `teamtask_want` returns to
+  `teamtask_sent` and they compare equal again. This is what kills the
+  oscillation.
+- **2 per server frame**, round-robin — 63 bots re-deciding at once is a
+  legitimate thing to happen, and 63 commands in one frame overflows a 64-deep
+  buffer whether they are settled or not. This spreads the `map_restart` burst
+  over about 0.8s. Round-robin because starting from client 0 each frame would
+  give the whole budget to the low slots forever.
+
+Steady state is nowhere near the ceiling: `owndecision_time` already gates a
+bot's own decisions to one per five seconds, so 63 bots is about 13 writes a
+second against a budget of 80.
+
+Safe to lag, and safe to drop: `teamtask` is the icon beside a name in the team
+overlay. Nothing reads it for gameplay.
+
+#### Two things found alongside
+
+**The map report was losing half of itself on the transition that matters.**
+The engine half (`SV_SnapStats_f`) was hooked only to `SV_SpawnServer`. A
+`map_restart` restarts the game module without going through it, so warmup
+ending — the exact window where sixty bots connect and decide at once — printed
+the bot table and no snapshot numbers at all. Now reported from
+`SV_MapRestart_f` as well, before `SV_RestartGameProgs`, so the halves land
+together.
+
+**`bot_minplayers` announced its cap once a second, forever.** The check runs on
+a one-second throttle and the cap does not clear itself, so `bot_minplayers 60`
+on a 64-slot CTF server wrote ~2,600 identical lines — a fifth of the log file.
+Announced once per value now, and the message says what the number means: in a
+team gametype `bot_minplayers` is *per team*, so 60 asks for 120 players and is
+capped to 32 a side.
+
+### E63. Bots were rebuilt eleven times per tick — DONE (verify)
+**Lives in:** our **server** (server engine) · **Seen by:** every client
+
+Found by not believing a number in our own diagnostic. The rolling snapshot line
+from the 2026-09-04 02:43 log:
+
+```
+snap 60s: peak 138/256 (...) 1308 bytes max, 1745142 sent, 0 rate-delayed, 0 dropped
+```
+
+**1,745,142 snapshots in sixty seconds.** Sixty-four clients at 40 tick can
+produce 153,600. Eleven times too many, so either the counter was wrong or the
+server was doing something it should not.
+
+It was the second one.
+
+`SV_SendClientMessages` skips a client with
+
+```c
+if (svs.time - c->nextSnapshotTime < c->snapshotMsec * com_timescale->value)
+    continue;   // it's not time yet
+```
+
+and `snapshotMsec` was written in exactly one place: `SV_UserinfoChanged`.
+**`SV_BotAllocateClient` does not call it.** It sets `cl->state = CS_ACTIVE`, sets
+the netchan type to `NA_BOT`, and returns - so a bot's `snapshotMsec` stayed at
+whatever the slot held, which is zero for a fresh one. The test then reads
+`svs.time - nextSnapshotTime < 0`, which is never true, so the skip never fired.
+
+And `SV_SendClientMessages` runs **once per `Com_Frame`, not once per server
+tick**. On a listen server that is the client's render rate. Fifty-nine bots at
+roughly 450 fps is about 26,000 snapshot builds a second against the 2,560 the
+tick calls for - which is the ratio in the log.
+
+The cost is not the counter. `SV_SendClientSnapshot` calls
+`SV_BuildClientSnapshot` - the PVS walk and entity cull, the most expensive thing
+the server does - **before** the `SVF_BOT` early-out:
+
+```c
+    // build the snapshot
+    SV_BuildClientSnapshot(client);
+
+    // bots need to have their snapshots build, but
+    // the query them directly without needing to be sent
+    if (client->gentity && client->gentity->r.svFlags & SVF_BOT) {
+        return;
+    }
+```
+
+So all of it was real work, ten times in eleven thrown away, and it scaled with
+the *client's* framerate - a faster machine made the server work harder.
+
+**Fixed by deriving the interval per frame** in `SV_SendClientMessages` rather
+than caching it at connect. That closes the bot hole at every path rather than
+just `SV_BotAllocateClient`, and it fixes a second thing for free: `sv_fps` now
+takes effect on a running match. It previously reached only clients that resent
+userinfo, so changing the tick mid-match silently did nothing for everyone
+already playing - and a test without a `map_restart` measured the old tick and
+looked like the change had done nothing. `net_test.cfg` no longer asks for one.
+
+**What this does not change:** bots still get a snapshot every tick, which is
+what the AI reads through `BotAI_GetSnapshotEntity`. They were getting eleven
+identical ones per tick and using the last.
+
+**To verify:** the rolling line should report roughly `clients x sv_fps x 60`
+sent per window - about 150,000 at 64 players and 40 tick, not 1.7 million. Any
+CPU headroom estimate for raising the tick was made against the wrong baseline
+and is now worth remeasuring.
+
+### E62. Filling the server and starting a match evicted everyone — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"we would fill up the server then start a match, the server would crash just as
+the match was coming out of warm up"* — and the workaround was to start with six
+per team and add bots after the match was live.
+
+It is not a crash. Every client is dropped, one after another, for **`Server
+command overflow`** — including client 0, which ends the listen server and
+presents exactly as the server dying at the end of warmup:
+
+```
+SV_DropClient: dropping client 11 (Demona), state=4, reason='Server command overflow'
+SV_DropClient: dropping client 45 (Gorre),  state=4, reason='Server command overflow'
+SV_DropClient: dropping client 1  (TankJr), state=4, reason='Server command overflow'
+...
+```
+
+`MAX_RELIABLE_COMMANDS` is 64 and a client whose queue fills is dropped. The
+warning added earlier fired first and named the moment — `reliable command buffer
+48/64 full` — and the queue dump that goes with it says what filled it.
+
+#### The count, from the field
+
+First pending-queue dump, 40 commands:
+
+| command | count |
+|---|---|
+| `cs 663` (CS_TEAMCOUNT_RED) | 14 |
+| `cs 664` (CS_TEAMCOUNT_BLUE) | 14 |
+| player configstrings (`cs 548`–`cs 586`) | 8 |
+| everything else | 4 |
+
+**Twenty-eight of thirty-nine were two configstrings.**
+
+#### Why those two
+
+`Team_LivingTeamCounts` writes `CS_TEAMCOUNT_RED` and `CS_TEAMCOUNT_BLUE`, and is
+called **on every spawn and on every death** (`g_client.c` ×3, `g_combat.c`). A
+configstring write is a reliable command **broadcast to every client**, and the
+engine only skips it when the value is unchanged — which an alive count never is.
+
+At 64 players in instagib that is two broadcasts to 64 clients on every single
+death, into a 64-deep queue. Filling a server makes it worse in a burst: 60 bots
+joining is 60 spawns, each changing a count, each a broadcast, on top of the
+player configstring and score traffic the join itself generates. Hence the
+workaround working — six per team is a burst the queue can drain.
+
+**Fixed: round-based gametypes only.** The number means "how many are still alive
+this round", which is a real thing in Clan Arena, Freeze Tag, Attack & Defend and
+Red Rover and nothing at all in CTF, TDM or free-for-all, where it only tracks
+how many people happen to be respawning. Those modes have all the deaths, so they
+were paying the entire cost for a number with no meaning in them.
+
+Worth recording: `cgs.teamCountRed` and `cgs.teamCountBlue` are assigned by our
+own cgame and then **read by nothing**. On this client the flood was feeding two
+dead variables — the same silent shape as a registered cvar nothing reads.
+
+#### The second contributor
+
+Player configstrings for the same bot, three and four times over, with only `tt`
+flipping 2, 1, 2. `BotSetUserInfo` called `ClientUserinfoChanged` unconditionally,
+and its only caller is `BotSetTeamStatus` writing `teamtask` every time a bot
+reconsiders its goal. Writing an unchanged value was always a no-op at the
+receiving end; it was never a no-op on the wire. It now returns early when the
+key already holds that value.
+
+#### What was already right
+
+The recursion guard from the earlier fix held — there is no stack overflow in
+these logs, which is what this used to be. `sv_droppingClient` stops a drop that
+happens *inside* a drop's broadcast from broadcasting again. What it cannot stop
+is the next client going over on the following frame, because by then everyone's
+queue is full for the same reason. The flood had to be fixed at the source.
+
+#### Gametype gating was not enough on its own
+
+Raised in review, and correct: *"we could tell the bots to be passive and wait
+for warmup to complete, that way they're not flipping during warmup."*
+
+The instinct - stop sixty bots doing the same thing in the same instant - is the
+right one. The place to apply it is not the bots.
+
+`map_restart` respawns **every client in one frame**. Each respawn calls
+`Team_LivingTeamCounts`, so on a full server the count walked 1, 2, 3 ... 30
+inside that single frame and every step was its own broadcast. Gating on
+round-based gametypes fixed CTF, TDM and free-for-all, and left the burst
+untouched in Clan Arena, Freeze Tag, Attack & Defend and Red Rover - which do it
+at the start of **every round**, not once a map. Those are the modes the
+instagib configs use.
+
+So the write is queued and flushed once per frame, which is the treatment
+`G_ScheduleScoreConfigstrings` already gives the HUD scores for exactly the same
+reason. Sixty writes in a frame become one, whatever caused them.
+
+Making bots passive during warmup would not have reached this: the burst is
+`map_restart`, not bot decisions, and it happens whether the bots are thinking or
+standing still. The teamtask churn it *would* have covered is already fixed at
+the source, where an unchanged value no longer writes at all. And bots that stop
+playing during warmup take away the thing warmup is for.
+
+**To verify:** fill to 64 with `bot_minplayers` and start a match in CTF or FFA.
+No `reliable command buffer` warnings, no drops. Then the same in Clan Arena,
+which is the case the per-frame flush is for - the counts should still update
+between rounds, once each, rather than thirty times in a frame.
+
+### E61. The spawn search counted every point twice — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+From the thunderstruck log: a map with **five** spawn points reporting *"all 10
+usable points were occupied"*.
+
+`SelectRandomFurthestSpawnPoint` gathers the deathmatch points, and when none of
+them is clear or warm it widens - the team pad classnames, and then
+`info_player_deathmatch` again for anything a gametype filter set aside (E56).
+That second pass took a `qboolean allowReserve`, which *permits* reserved points
+rather than *restricting* to them, so it re-collected every ordinary point the
+first pass already had.
+
+Two consequences, and the second is the one that matters:
+
+- **The capacity number was wrong**, in the diagnostic whose only job is to be
+  right about capacity. It is the number an operator reads to decide a player cap.
+- **The least-recently-used pick was skewed.** `G_PickLeastRecentSpawnPoint`
+  breaks ties among equal timestamps at random, and a point present twice wins
+  twice as often. That tie-break is the mechanism that stops the telefrag chain
+  re-forming (E45), so a duplicate list weakens the exact property the tier
+  exists for.
+
+The gather now takes a mode - `SPAWNGATHER_KEPT`, `SPAWNGATHER_RESERVE`,
+`SPAWNGATHER_ANY` - and the widened re-walk asks for reserves only. The fallback
+classnames still use ANY, which is safe because a different classname cannot
+return an entity an earlier pass already saw.
+
+**To verify:** thunderstruck should report 5 usable points, not 10.
+
+### E91. R13 step 3b: the AO pass is wired up — DONE (verify on hardware)
+**Lives in:** our **client** (renderervk + ui) · **Seen by:** our client only
+
+The ray query now runs. Descriptor set, render pass, pipeline, push constants,
+the per-frame draw, four cvars and the menu rows behind them.
+
+```
+r_rt 1            (needs APPLY / vid_restart)
+r_rtao 1
+```
+
+#### Where it sits in the frame, and why
+
+Asked for as *"AO should come after the main frame buffer but before
+vksamples"*, and that is what it does — but the reason it falls out so cleanly
+is worth recording, because the first read of the code suggested otherwise.
+
+`desc`, `subpass` and `attachments` are **mutated in place** as each render pass
+is built, and are not reset between them. So when MSAA is on, `colorRef0` is
+still attachment **2** — the multisampled image — with `pResolveAttachments`
+pointing at attachment 0, and any pass built from that state inherits both. The
+AO pass therefore multiplies the **samples**, and the resolve happens at the end
+of its own subpass. Anti-aliasing applies on top of AO rather than AO being
+painted over an already-resolved image.
+
+The one change from the post-bloom pass it is otherwise a copy of: `depthRef0`
+is `DEPTH_STENCIL_READ_ONLY_OPTIMAL`. Sampling an attachment the subpass can
+also write is a feedback loop and is not allowed; a read-only depth attachment
+is the sanctioned exception, and it is what lets the shader read the depth it is
+reconstructing world positions from. The framebuffer is reused unchanged —
+render pass compatibility is about attachment count, formats and sample counts,
+not layouts.
+
+And it runs **before bloom**, at the same 3D-to-2D hook. Bloom decides what is
+bright enough to glow; the other order lets a corner bloom and *then* be
+darkened, which reads as light leaking out of a shadow.
+
+#### A dependency that would have failed as a black screen
+
+`attachments[2].storeOp` was `STORE` only `if ( r_bloom->integer )` — otherwise
+`DONT_CARE`, and the driver may discard the multisampled colour the moment the
+main pass ends. The AO pass would then load undefined contents, multiply them by
+the occlusion term and resolve *that* to the screen. Now keyed on
+`r_bloom->integer || vk.rtActive`.
+
+Keyed on `rtActive` and not `r_rtao` on purpose: `r_rtao` is not latched and can
+be toggled mid-match, so the render pass has to be ready for AO at any time.
+
+#### Things that are easy to get wrong and are not
+
+- **The specialization block.** The eleven existing entries map constant ids
+  belonging to the gamma and bloom shaders, and id 0 there is a *float* gamma.
+  `rtao` declares id 0 as an *int* sample count. Handing it the shared block
+  feeds a float's bit pattern to an int and asks for millions of rays per pixel.
+  It gets its own block.
+- **The blend is multiplicative** (`DST_COLOR`/`ZERO`), not the additive
+  `ONE`/`ONE` every other post pass here uses. AO darkens what is already there;
+  an additive blend of a term near 1.0 washes the scene out instead.
+- **Alpha is masked out of the write.** The shader writes the occlusion value to
+  all four channels and only rgb should act on it.
+- **The acceleration structure rides in `pNext`** of the descriptor write, not
+  in `pImageInfo` or `pBufferInfo` — it is neither. A write with the right
+  `descriptorType` and no such `pNext` is silently nothing.
+- **The descriptor is rewritten on every map load**, because the TLAS is rebuilt
+  then and the old handle is freed. Pointing at the destroyed one is a
+  use-after-free the validation layers catch and a driver may not.
+- **A depth-aspect-only image view.** `vk.depth_image_view` carries
+  `DEPTH|STENCIL` where the format has stencil, and a combined image sampler
+  must name exactly one aspect — so this is a second view of the same image.
+- **`NEAREST` filtering, and it matters.** Averaging two depths describes a
+  surface that is not there, half way between them, and AO would trace from
+  inside geometry along every silhouette.
+- **Rebuilt on swapchain restart.** A resize recreates the depth image and the
+  render pass, so the view, descriptor and pipeline all point at destroyed
+  objects.
+
+#### The matrix inverse is verified, not assumed
+
+Reconstructing world position from depth needs clip→world, the opposite of every
+other matrix here, and there was no inverse in the tree. Written as a **general**
+4×4 inverse rather than by unpicking the projection's form — this renderer uses
+reversed depth, and hand-derived projection maths is exactly the thing that is
+right on one machine and subtly wrong after the next change.
+
+Tested standalone against a reversed-depth projection times a rotated,
+translated view: `VP * inv(VP)` comes back as the identity to 1e-4.
+
+#### What is not here yet
+
+**No denoise.** Four rays per pixel with a per-pixel rotation is noisy by
+construction — the rotation turns banding into noise, and something has to
+remove the noise afterwards. A spatial blur is the next step and is what will
+make this look finished rather than grainy. Expect it to look rough.
+
+**Static world only.** Players and models are not in the acceleration structure,
+so they neither occlude nor receive. That is step 4.
+
+**To verify:** `RT AO: pass ready` at startup, then `r_rtao 1` in a map. Corners
+and the undersides of things should darken. If the whole screen goes black the
+surface bias is too small for this map's scale; if nothing at all changes,
+`r_rtActive` and the `RT:` lines are where the answer is.
+
+### E90. A ray tracing page under Render Options — DONE (verify)
+**Lives in:** our **client** (`ui`) · **Seen by:** our client only
+
+`RAY TRACING >` in Render Options, gated on `cl_renderer vulkan` the same way
+every other Vulkan-only row on that page is. A button that opens a page of
+controls none of which can apply is the registered-cvar trap wearing a hat.
+
+**Every control on the page is backed by a cvar the renderer reads.** That is
+why there are no ambient-occlusion sliders yet: `r_rtao` and its radius and
+intensity do not exist, because the pass that would read them is not written.
+Adding them early gives a menu where moving a control does nothing and says
+nothing — the trap `CLAUDE.md` names first, in a menu of our own, which is what
+R12 existed to get out of. The page says so in place of the controls, rather
+than leaving a gap that looks like an oversight.
+
+#### The status block, and why it is two rows rather than four lines
+
+The obvious layout is one line per outcome — *not supported*, *active*,
+*supported but not active*. It does not work: `cvarTest` takes a **single**
+cvar, and "supported but not active" is a condition on two of them. Written that
+way, the not-supported line and the not-active line both draw, **at the same
+y**, on the machine that has neither. Caught by re-reading the block rather than
+by the parser, which has no opinion about two items sharing a rect.
+
+Split by cvar instead — one row each, two mutually exclusive variants per row —
+and four readable combinations fall out of four items with nothing able to
+overlap:
+
+```
+This GPU:   supports ray queries   /  does not support ray queries     (r_rtAvailable)
+This run:   ACTIVE                 /  not active                       (r_rtActive)
+```
+
+#### `r_rt` becomes CVAR_ARCHIVE, reversing what E85 said
+
+E85 registered it `CVAR_LATCH` only, and argued the archive rule at length: an
+archived *default we choose* gets frozen into a config on first run and wins
+forever (`r_dlightMode`, `con_scale`, two rounds each).
+
+A menu toggle changes which side of that rule it is on. The moment somebody can
+click it, it is a value a user sets — the first kind, the kind archive is for —
+and without archive they turn it on, restart, and find it off again, which for a
+menu control is simply broken. `cl_renderer` is `ARCHIVE|LATCH` for the same
+reason and is the closest precedent here.
+
+**The cost is real and is worth stating before it surprises anyone:** once this
+archives, changing its *default* stops reaching anyone who has already run the
+game. So if RT AO is ever good enough to be on by default, that ships as a new
+cvar with its own default, not by flipping this one underneath people — which is
+better behaviour for a device feature regardless.
+
+**Checks run** (both required by `CLAUDE.md` after this kind of edit):
+
+```
+tools/check-menus.py    107 menus, 0 problems, 0 unresolved references
+tools/dead-cvars.py     no r_rt* cvar reported dead
+```
+
+**To verify:** Render Options → `RAY TRACING >` under Vulkan, and the button
+absent under OpenGL. The two status rows should agree with the `Ray query:` lines
+in the console.
+
+### E89. R13 step 3a: the AO shader, and a build trap that would have shipped a broken one
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+The ray-query ambient occlusion shader, the build-system work to compile it
+correctly, and the depth attachment it needs. **The pass that runs it is not
+wired up yet** — see below for exactly what is left.
+
+This part is *verified here*, unlike E86: `glslangValidator` is in this
+environment, so the shader genuinely compiles and the guard genuinely fires.
+
+#### The trap: glslang emits a broken module and says nothing
+
+A `GL_EXT_ray_query` shader needs **SPIR-V 1.4**. Compile it without
+`--target-env` and glslang produces a **SPIR-V 1.0** module full of ray-query
+opcodes, exits 0, and prints nothing. Measured, not assumed:
+
+```
+rtao.spv           magic=07230203 spirv=1.4     (with --target-env spirv1.4)
+rtao_default.spv   magic=07230203 spirv=1.0     (without)
+```
+
+No driver will accept the second one. It is the same silent-wrong-artifact shape
+as a registered cvar nothing reads or a shader name the pak does not contain —
+success reported, wrong thing produced.
+
+And `compile.sh` walks `*.frag` in a loop with the default target, so **merely
+adding the file would have produced the broken module automatically.** The
+generic loop now skips `rtao.frag`, it is emitted explicitly with the right
+target, and `compile.sh` **reads the version word out of the result and fails
+the build if it is not 1.4**. Verified by removing the flag: the build stops with
+`produced SPIR-V version bytes 00000100, expected 00040100 (1.4)`.
+
+The shader is `rtao.tmpl`, not `rtao.frag`, and the extension is load-bearing
+twice over: it keeps the file out of the `*.frag` loop with no special case to
+forget, and `.tmpl` is already this tree's convention for a shader with build
+variants. `compile.bat` carries the same explicit emits, because a shader in one
+script and not the other is one that silently does not exist in half the builds.
+
+#### The shader
+
+Fullscreen pass over the depth buffer: reconstruct world position, get a normal,
+fire short rays into the hemisphere, return the fraction that hit nothing.
+
+- **No G-buffer.** This is a forward renderer with no normal buffer and adding
+  one means touching every pipeline. The normal comes from `cross(dFdx(P),
+  dFdy(P))` — free, and exact for the flat surfaces most of a Quake map is.
+- **Cosine-weighted directions**, not uniform. AO *is* a cosine-weighted
+  integral; sampling uniformly spends rays near the horizon where the weight is
+  smallest.
+- **Distance falloff on hits**, so AO does not paint a hard edge exactly at the
+  trace radius, which reads as a ring around the player.
+- **Surface bias**, or every ray re-hits the triangle it left at t≈0 and the
+  whole world comes out uniformly black — AO's version of shadow acne.
+- Sky (`depth >= 1.0`) returns unoccluded without tracing. Not just cheaper:
+  a ray from the far plane starts outside the world.
+
+#### The depth attachment had to change, and the cost is probably zero
+
+It was created with `DEPTH_STENCIL_ATTACHMENT_BIT` and, when bloom was off,
+`TRANSIENT_ATTACHMENT_BIT` — which lets the driver keep it in tile memory and
+never back it with real allocation. Free and correct for a buffer nothing reads
+afterwards, and **unsampleable by construction**. The two flags are effectively
+mutually exclusive, so this is an either/or, not an addition.
+
+This was first written up as "costs a full-resolution depth allocation". **That
+is probably wrong on any desktop card**, and the correction is worth recording
+because it was an assumption presented as a fact. `VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT`
+is a tile-based-GPU feature; where no such memory type exists, the code already
+falls through to
+
+```c
+memoryTypeIndex = find_memory_type( memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+```
+
+— an ordinary device-local allocation of exactly the same size. The transient
+flag was buying nothing, so losing it costs nothing.
+
+Rather than argue that from the outside, `vk_alloc_attachments` now says which
+case it is, once, at startup. The answer was previously behind `#ifdef _DEBUG`
+where no field log would ever carry it:
+
+```
+attachment memory: 32400 KiB, device local - this card has no lazily-allocated
+memory type, so transient buys nothing here
+```
+
+#### MSAA is handled, not excluded
+
+The first write-up called MSAA and RT AO mutually exclusive. They are not.
+Vulkan allows sampling a multisampled image directly — it needs `sampler2DMS`
+and `texelFetch`, not a resolve — so there are **two builds of the AO shader**,
+`rtao_frag_spv` and `rtao_frag_ms_spv`, chosen by the sample count.
+
+Sample 0 rather than an average: AO is a low-frequency term that gets denoised
+anyway, and the sample positions within one pixel differ by orders of magnitude
+less than the trace radius. Resolving N depths to feed a 4-ray estimate is
+precision nobody can see, paid for N times.
+
+What *does* have to be checked is whether the driver supports the combination —
+adding `SAMPLED_BIT` can narrow the sample counts a depth format offers, and
+that is a per-device answer. Both questions are now asked at startup, before
+`vk_create_attachments` runs, so `create_depth_attachment` acts on the answer
+instead of guessing:
+
+| check | fails how |
+|---|---|
+| `VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT` on the depth format | this format cannot be sampled at all |
+| `vkGetPhysicalDeviceImageFormatProperties` with attachment+sampled usage | this *combination* is unsupported |
+| `imgProps.sampleCounts & vkSamples` | supported, but not at this MSAA level |
+
+Each prints its own reason, because the remedy differs — the third is the only
+one where lowering `r_ext_multisample` helps.
+
+```
+Ray query: depth is sampleable (multisampled - AO uses the MS shader)
+```
+
+#### What is left for step 3b
+
+1. Descriptor set layout and pool for `{depth sampler, TLAS}` —
+   `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` is a new type for this tree.
+2. Pipeline and render-pass wiring for the pass — picking `rtao_frag_ms_spv`
+   when `vkSamples > 1` — plus the layout transition of depth to
+   `SHADER_READ_ONLY_OPTIMAL` and back.
+3. Push constants: inverse view-projection, eye position, radius/intensity/
+   frame/bias.
+4. Compositing the AO term into the lit image.
+5. `r_rtao`, `r_rtaoRadius`, `r_rtaoIntensity`, `r_rtaoSamples`, gated on
+   `r_rtActive`.
+
+### E88. The console stopped drawing text and could never recover — DONE (verify)
+**Lives in:** our **client** (client engine) · **Seen by:** our client only
+
+Reported as *"console broke and isn't rendering text after a certain point."* The
+screenshot is the diagnosis: a row of evenly spaced red marks across the top of
+an otherwise empty console. That row is this, in `Con_DrawSolidConsole`:
+
+```c
+if (con.display != con.current) {
+    // draw arrows to show the buffer is backscrolled
+    for (x = 0; x < con.linewidth; x += 4)
+        Con_DrawCharScaled(..., '^');
+```
+
+A red `^` every four columns — the console saying *you are scrolled back*.
+
+`Con_Linefeed` follows the bottom only while the view is already **at** the
+bottom (`if (con.display == con.current) con.display++`). Scroll up one notch
+and `con.display` stays put while `con.current` keeps climbing. Once it has
+climbed a whole buffer's worth, every row fails the *past scrollback wrap point*
+test in the draw loop and is skipped — and nothing ever pulls `con.display`
+forward again. The console draws the arrows, the version line, and nothing else,
+for the rest of the session.
+
+**Why it bites here and not in stock Quake 3.** Stock has a 32 KiB buffer and
+78-column lines: 420 lines of scrollback, and you have to work to lose it. Here
+`CON_TEXTSIZE` is 524288, but a 4K display gives **340-column lines**, so the
+scrollback is 1542 lines — and with `developer 1` and sixty bots printing
+tactics, that is under a minute of output. One scroll up mid-match and the
+console is gone.
+
+**Fix:** clamp `con.display` to the oldest line still in the buffer as lines are
+added. That keeps the view as far back as the data allows, which is the honest
+answer — the lines being looked at really were overwritten, so the view follows
+the data instead of pointing past it.
+
+**Also fixed while reading it:** the `con_timestamps` block walked `con.x`
+forward with no test against `con.linewidth`, so on a console too narrow for the
+stamp it wrote past the end of the line, and on the last line of the ring past
+the end of `con.text` itself. The stamp grows, too — `[1234:56.789] ` once a run
+passes a thousand minutes.
+
+**Not a bug, for the record:** `WARNING: R_FindImageFile could not find
+'gfx/misc/console01.tga' in shader 'console'` appears in every log and is noise.
+`con_background` defaults to 0, so the console draws a solid fill at
+`con_opacity` and the shader is registered at startup but never used. The dark
+console in the screenshot is working as designed.
+
+**To verify:** open the console mid-match, scroll up, wait, scroll back down —
+text throughout, and `shift+End` returns to the bottom.
+
+### E87. Deliberate defenders were converted to attackers on the next think — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+E83 fixed the census and it worked: `over-subscribed, re-deciding` fires 83 times
+where it fired 0 before, and the picker chose **defend 114 times and roam 35**
+against only 13 attack. And the end-of-map census still read:
+
+```
+red roles (31): attack 28/14.4 (full) defend 0/10.4 escort 0/0.0 roam 0/6.2
+```
+
+Every bot on `LTG_GETFLAG`. All 149 non-attack decisions were undone on the
+think that followed them.
+
+**`BotCTFEnforceOffense` did it**, and it runs after everything else on every
+think:
+
+```c
+if (bs->ltgtype == LTG_RUSHBASE ||
+    (bs->ltgtype == LTG_DEFENDKEYAREA && bs->teamgoal.number == ownflag->number)) {
+    bs->ltgtype = 0;
+}
+if (bs->ltgtype != 0) return;
+... bs->ltgtype = LTG_GETFLAG;
+```
+
+It clears exactly the goal the picker gives a defender, and `ltgtype == 0` —
+which is what *roaming* is — falls straight through to the forced GETFLAG. So
+defend and roam were both impossible, by construction.
+
+It was written before the role picker existed, to fix *"the bots touch their own
+flag first"*, when the only thing sending a bot to its own flag was the stock
+code's aimless third. It is the right answer to a bot that drifted home with no
+plan and the wrong one to a deliberate assignment, and it had no way to tell
+them apart because they are the same state.
+
+**Fix:** `bs->tac.assignedrole` records what the picker last asked for, and the
+enforcer honours a defender holding the base or a roamer with no long-term goal.
+
+**Gated on the quota, not a timer** — and the timer is the tempting wrong
+answer. A defender only re-runs the picker when its role is *crowded*, so a
+timestamp goes stale precisely while the bot is doing its job correctly, and the
+enforcer would take it back for being right for too long. `BotCTFRoleCrowded`
+is self-correcting instead: when defence is over-subscribed the surplus falls
+through to the clear and goes on offence, which is exactly what should happen to
+the bot standing on its own flag that nobody needs there.
+
+`assignedrole` resets to **-1**, not 0 — `CTFROLE_ATTACK` is 0, so a zeroed
+struct would have every fresh bot claiming it had been assigned to attack, which
+is the one answer that needs no special handling and so would never be noticed.
+
+**What E84 already bought**, from the same log: room spread went from 13-in-one
+across 5 rooms to a maximum of 10 across **17 rooms**, and the Garden — which
+nothing used before — held 10 bots. Alternative routes went from `0` to
+`32 (from the map's portals)` both ways.
+
+**To verify:** `defend` should climb off zero and `roam` off zero in the map
+report, and attack should sit near its quota rather than at double it.
+
+### E86. R13 step 2: acceleration structures for the static world — DONE (verify on hardware)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+A BLAS holding every opaque world triangle and a TLAS with one instance of it at
+identity, built when the map loads and freed when it unloads. **Nothing traces
+against it yet** — that is the AO pass — but this is the bulk of the geometry
+work and what everything after it stands on.
+
+**Positions and indices only.** A ray query for ambient occlusion asks "is
+anything in the way". Normals, texcoords and lightmap coordinates would be bytes
+no trace ever reads, on the largest buffer in the renderer.
+
+**What it says when it works:**
+
+```
+RT: world geometry 41230 triangles from 2891 of 4102 surfaces (1102 KiB)
+RT: world acceleration structure ready
+```
+
+The gap between 2891 and 4102 is the skip list, and it is deliberately
+conservative — missing an occluder makes a corner slightly too bright, while
+including the wrong thing makes whole rooms wrong:
+
+| skipped | why |
+|---|---|
+| sky | a backdrop at infinity, not a ceiling. In the structure it occludes the whole outdoors |
+| portal / mirror | you see through it; q3map already put real geometry behind it |
+| nodraw, nonsolid | clip, hint, trigger, caulk. In the BSP, never drawn, and would occlude from inside a wall |
+| translucent | glass and fog blend rather than block. Absent is a small wrong answer; opaque is a visible one |
+
+#### A trap in the sort test, caught while writing it
+
+The obvious filter is `shader->sort > SS_OPAQUE` for "not opaque". It is wrong,
+and wrong in the worst direction: the enum runs `SS_BAD, SS_PORTAL,
+SS_ENVIRONMENT, SS_OPAQUE, SS_DECAL, …`, so **mirrors and the sky box sort
+*lower* than opaque** and that test lets both straight through while reading as
+though it excluded them. The check is `!= SS_OPAQUE`.
+
+#### Things that had to be right and are easy to get wrong
+
+- **`VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT` on the allocation**, not just
+  `SHADER_DEVICE_ADDRESS` on the buffer. Without it `vkGetBufferDeviceAddress`
+  is undefined behaviour, and it fails by returning a plausible garbage address
+  rather than an error.
+- **Scratch alignment** is `minAccelerationStructureScratchOffsetAlignment`,
+  which is 128 on some drivers and 256 on others. The scratch buffer is
+  over-allocated by the alignment and the address rounded up into it, rather
+  than hoping the allocator returned something aligned.
+- **Grids are taken at full resolution, not the LOD-stitched triangulation**
+  `tr_surface.c` draws. That one varies with `r_lodCurveError` and view
+  distance; an occluder that changes shape as you walk toward it would make AO
+  crawl.
+- **The instance transform is an explicit identity.** The world is already in
+  world space so there is nothing to transform, but the field is not optional
+  and a zeroed matrix collapses every triangle onto the origin.
+- **Scratch is freed immediately** after the build. `end_command_buffer` calls
+  `vk_queue_wait_idle`, so it is finished with — and it is the largest
+  allocation in the build.
+
+`PREFER_FAST_TRACE` rather than `FAST_BUILD`: built once at map load, traced
+every frame for the length of the match.
+
+**Verified at the object level, not the source level** (E82's lesson):
+`tr_bsp.o` carries `U vk_rt_build_world` and `vk.o` defines it `T`, so the call
+is genuinely linked rather than sitting inside an `#ifdef` that is off.
+
+**Not run on hardware here** — no `pak00.pk3` in this environment, so the client
+stops at `Couldn't load default.cfg` long before a map loads. Compiles and links
+clean on both platforms; the two lines above are what confirms it.
+
+**To verify:** `r_rt 1`, `vid_restart`, load any map, and look for the two `RT:`
+lines. A triangle count in the tens of thousands is right for a QL map; zero
+surfaces used means the skip list is wrong and is worth a log.
+
+### E85. R13 step 1: ray query is enabled on the device, not just detected — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+E81 compared four extension names and left them alone. This enables them, proves
+the feature bits, loads the entry points, and reports the result. Still no
+acceleration structure and no pass — what it establishes is that a ray query
+*would* work, which is the thing worth confirming on real hardware before any
+geometry work is written against it.
+
+**Three cvars, because there are three different answers:**
+
+| cvar | | |
+|---|---|---|
+| `r_rtAvailable` | ROM | the card advertises all four extensions |
+| `r_rt` | LATCH, default 0 | the master switch |
+| `r_rtActive` | ROM | it is actually on this run |
+
+`r_rtAvailable 1` with `r_rtActive 0` is the ordinary state: the card can, and
+nobody asked. Collapsing those would make *"your card cannot"* and *"you did not
+switch it on"* print the same line — one ends the conversation, the other is one
+cvar away.
+
+**To test:**
+
+```
+r_rt 1
+vid_restart
+```
+
+```
+Ray query: supported by this device
+Ray query: ENABLED - extensions on, feature bits confirmed, entry points loaded
+```
+
+#### Three things that had to be fixed to get there
+
+**1. Shipped builds asked for Vulkan 1.0.** `appInfo.apiVersion` was 1.1 under
+`_DEBUG` and 1.0 everywhere else. `VK_KHR_acceleration_structure` lists 1.1 as a
+hard dependency, so every release build was asking the card for ray tracing and
+then being told no *by our own instance*. Now `vkEnumerateInstanceVersion` — a
+1.1 entry point, so a NULL return is itself the answer — picks 1.1 when the
+loader has it. Raising it unconditionally would answer a 1.0 loader with
+`VK_ERROR_INCOMPATIBLE_DRIVER`, turning "no ray tracing" into "no renderer".
+
+**2. An advertised extension is not an enabled feature.** This is the
+Vulkan-shaped version of the trap in `CLAUDE.md`: enumerating the name only says
+the driver knows it. `vkCreateDevice` will happily succeed with `rayQuery` off
+and every trace silently returns a miss — renders nothing, reports nothing, the
+same shape as a dead cvar or a shader name the pak does not contain. So
+`vkGetPhysicalDeviceFeatures2` is asked and all three bits checked before
+anything is enabled.
+
+**3. `device_extension_list` was `[8]`** and a debug build already used seven.
+Four more would have written past a stack array with pointers the driver then
+dereferences. Now `[16]`.
+
+#### A bug found in this change before it shipped
+
+`init_vulkan_library` zeroes the whole `vk` struct on **every** init, but calls
+`create_instance` only when `vk_instance == VK_NULL_HANDLE` — i.e. once. An
+instance version stored in `vk` therefore reads 1.1 on first init and **0 on
+every `vid_restart` after it**, and 0 means "1.0 loader", so ray query would have
+switched itself off on the second `vid_restart` while blaming the driver. The
+version now lives in a static beside `vk_instance`, which is what it describes,
+and is published onto `vk` at the one point where the instance definitely exists.
+
+Worth recording because the failure needs two `vid_restart`s to appear and would
+have read as "it works, then it randomly stops".
+
+#### Deliberately still off by default
+
+`r_rt` defaults to 0. Enabling extensions changes `vkCreateDevice`, and a device
+that fails to create is not a missing effect — it is no renderer. Until a pass
+uses ray query, turning it on buys nothing and risks the renderer people
+actually run. Not `CVAR_ARCHIVE` either: an archived default is written to a
+config on first run and wins forever, which cost this tree two rounds already
+(`r_dlightMode`, `con_scale`) and would pin every tester to whatever the value
+was the first time they launched.
+
+`vkCreateDevice` failing with RT on prints the connection and the way out
+(`r_rt 0` + `vid_restart`) rather than a bare `VkResult`.
+
+**To verify:** the two lines above, then `vid_restart` twice more — `r_rtActive`
+must still read 1.
+
+### E84. Two-flag CTF routed its alternative routes through the neutral flag — DONE (verify)
+**Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
+
+*"bots are still not pathing to the right side of flag room and to the garden
+area."* This is why, and it is not the same bug as E83 — it is the other half.
+
+**The log said it in two lines that had to be read together:**
+
+```
+alt routes: no route from area 1109 to area 1169 yet     <- toward the red base
+alt routes: no route from area 1109 to area 4040 yet     <- toward the blue base
+```
+
+Both journeys start in **area 1109**. Base-to-base routing cannot produce that —
+it would read `1109 to 1169` and `1169 to 1109`, the same pair reversed. One
+shared start means the start is the *neutral flag*, and `BotSetupAlternativeRouteGoals`
+preferred the neutral-flag midpoint whenever the map defined one.
+
+japanesecastles defines one. Quake Live ships several gametypes per map and the
+entity is in the `.bsp` whether or not the gametype uses it, so **this is the
+common case on QL maps, not the exotic one.** The E70 comment already argued the
+other base is the better midpoint — and then the code kept the neutral branch as
+the preferred one, so the better path only ever ran on maps that had no neutral
+flag to prefer.
+
+**Result: 50 retries, 50 zeros, then latched.** The alternative-route table was
+empty for the entire match. With no alternatives AAS hands every bot with the
+same goal the same cheapest reachability chain, so a whole team files out of one
+door — exactly the reported symptom, going back to *"the bots will leave out the
+left side only."*
+
+**Fix:** `GT_CTF` routes base to base unconditionally. The neutral flag is still
+resolved, because One Flag CTF genuinely uses it.
+
+#### And "yet" was the wrong word
+
+`AAS_AreaRouteToGoalArea` rejects an area with **no reachabilities** outright —
+the `numreachableareas` test in `be_aas_route.c`. That is a permanent no, not a
+cold cache that will warm up. The diagnostic said "yet" to it 50 times, which
+sent the diagnosis after a warm-up problem that did not exist while the real
+fault — a start area sitting on an entity nothing can walk to — printed in the
+same words and read as noise.
+
+`be_aas_routealt.c` now tells the two apart and names **which end** is at fault,
+since the caller passes two areas and usually only one is wrong:
+
+```
+alt routes: the start area (start 1109 DEAD, goal 1169) has no reachabilities -
+nothing can walk to or from it, and retrying will not change that
+```
+
+**To verify:** `alternate routes toward the red base: N` with **N > 0**, once,
+early, and no `DEAD` in the log. Then bots should use both exits.
+
+### E83. The CTF role census counted attackers as defenders, and could not recover — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+62 bots, and every one of them on `LTG_GETFLAG`. Twenty-two shuffling on one
+staircase. 87 role decisions in the match, of which **87 chose attack**, and not
+one `over-subscribed, re-deciding` line in four thousand lines of log.
+
+**The census measured where bodies were, not what they were doing**, and those
+two diverge in exactly one place: the start of an attacking run. An attacker
+always begins inside its own base, because that is where it spawns. Position
+calls it a defender.
+
+The last decision before the pile-up:
+
+```
+Lucy: ctf role 0 (team 32, want 12.9/12.7/0.0/6.4, have 3/28/0/0)
+```
+
+`have[ATTACK]` is 3 and `have[DEFEND]` is 28, while the map report has all 62
+bots holding `LTG_GETFLAG`. The order is `attack, defend, escort, roam`, so that
+line reads: *three attackers on a team of 32 where everybody is attacking.*
+
+**It is a loop, and it tightens:**
+
+```
+bots jam in their own base
+  -> position counts the jam as 28 defenders, 3 attackers
+    -> attack looks 10 short of quota, so every decision picks attack
+      -> BotCTFRoleCrowded never fires, so no bot ever re-decides
+        -> another attacker joins the jam, which is in its own base
+```
+
+The fuller the jam gets, the emptier attack looks. `CTF_GETFLAG_TIME` is ten
+minutes and the "already has a team goal" gate returns for all of it, so once
+the loop closes nothing reopens it. The role decisions in the log stop dead at
+line 3115 — every one of them is a bot *joining* — and the remaining thousand
+lines contain none.
+
+**Fix:** a declared job decides for a bot that has one; position decides for
+everyone else.
+
+This reverses the E67 fix, so both halves of that history matter. Position came
+from Xonotic's `havocbot_ctf_teamcount`, and it fixed a real bug: defenders were
+being converted the moment our flag was taken, the census read nought defenders
+because it was reading intentions, and the picker reissued an order destroyed
+before anyone acted on it. **That protection is kept, not traded away** — a bot
+whose goal was destroyed has `ltgtype` 0 and still falls through to position, so
+a body standing in the flag room with no declared goal is still counted as
+holding it. What changes is only that a *declared* goal is no longer overridden
+by standing where that goal starts.
+
+Escort was already carved out of the position test for the same reason (E67's
+cap read `have 26/5/0/0` with 148 of 228 stuck episodes in `LTG_TEAMACCOMPANY`,
+so the cap silently stopped capping). This makes the other three consistent with
+it rather than leaving escort the exception.
+
+#### The census now prints
+
+Nothing printed `have`/`want` unless a bot re-decided — which in the failing case
+is precisely what stopped happening, so the only trace of a match-long fault was
+**the absence of a line**. Nobody notices an absence in a four-thousand-line log.
+The map report now carries it per team:
+
+```
+red roles (32): attack 24/12.9^3(full)^7 defend 4/12.7 escort 0/0.0 roam 4/6.4
+```
+
+`(full)` marks a role over quota, which is what makes a bot re-decide — the
+difference between a mix that is working and one that cannot correct itself.
+
+**To verify:** `attack` should go over quota and pick up `(full)`, `defend`
+should climb off zero, and `over-subscribed, re-deciding` should appear in the
+log. Room spread should follow.
+
+### E82. The build never read its own dependency files — TOOLING ERROR, FIXED
+**Lives in:** the **build**, both binaries · **Seen by:** anyone running a build
+made incrementally — which is every build made while working
+
+This is the cause of the darkness reported against E81, and it is not a bug in
+E81's code. E81's diff was inert, as claimed. The build was not.
+
+**What happened.** E81 added one field to `vk_t`:
+
+```c
+qboolean dedicatedAllocation;
+qboolean rayQuery;          /* <- added here */
+...
+qboolean fboActive;
+```
+
+Every field after `rayQuery` moved. `make` rebuilt `vk.c` and `tr_init.c`,
+because those two `.c` files had changed. It did not rebuild `tr_image.c`, whose
+only change was the header. So `tr_image.o` kept reading `vk.fboActive` at the
+offset it had before the insertion, found whatever now lives there, and took the
+wrong branch at `code/renderervk/tr_image.c:1663`:
+
+```c
+if ( !glConfig.deviceSupportsGamma && !vk.fboActive ) {
+    tr.overbrightBits = 0;      // need hardware gamma for overbright
+```
+
+`tr.overbrightBits` went 0 → 1, `tr.identityLight` is `1.0f / (1 <<
+overbrightBits)` so it went 1.0 → 0.5, and every surface in the game and every
+panel in the menu rendered at half brightness. The two logs differ on exactly
+one line:
+
+```
+control 4506b63:  GAMMA: software w/ 0 overbright bits
+bad     4506b63:  GAMMA: software w/ 1 overbright bits
+```
+
+Same commit, same source, different binaries. That is only possible if the
+objects differ, which is the whole tell and was there from the first log.
+
+**Why no header change had ever rebuilt anything.** The dependency block read:
+
+```make
+OBJ_D_FILES=$(filter %.d,$(OBJ:%.o=%.d))
+-include $(OBJ_D_FILES)
+```
+
+`OBJ` is never assigned in this Makefile. The object lists are `Q3OBJ`,
+`Q3R2OBJ`, `Q3RVKOBJ`, `Q3R2STRINGOBJ`, `JPGOBJ`, `Q3DOBJ`; the only other bare
+`$(OBJ)` is the `rm -f` in `clean`. So `OBJ_D_FILES` expanded to nothing and the
+`-include` included nothing. Every `.c` in the tree has been compiled with
+`-MMD` and has been writing a `.d` next to its `.o` this whole time, and not one
+of those files had ever been read — by this commit or any commit before it.
+
+Most of the time that costs a link error, which is loud. When the changed header
+defines a struct it silently produces a binary whose objects disagree about
+memory layout, links cleanly, and misbehaves somewhere unrelated to the change.
+
+**The fix.**
+
+```make
+OBJ_D_FILES := $(shell find $(B) -name '*.d' 2>/dev/null)
+-include $(OBJ_D_FILES)
+```
+
+Collected with `find` rather than from the object variables, because missing one
+of those lists is how this happened. Measured: `touch code/renderervk/vk.h`
+rebuilt **2** files before and **28** after, `tr_image.c`, `tr_shade.c` and
+`tr_backend.c` among them.
+
+**The safeguards**, because the fix is one typo from silently reverting and the
+failure does not look like a build failure:
+
+1. `tools/check-stale-objects.py` — parses the `.d` files the compiler wrote and
+   fails if any object is older than a header it includes. It checks the
+   *outcome*, so it holds regardless of how the dependency mechanism breaks next
+   time. `package-release.sh` runs it after `make` and before packaging, so a
+   stale object cannot reach an archive.
+2. A `$(warning)` in the Makefile when objects exist but no `.d` files were
+   collected — the exact shape of the original bug.
+
+Verified by reproducing it: with the old line restored, `touch vk.h` rebuilt 2
+files and the checker failed naming `tr_image.o` against `code/renderervk/vk.h`.
+With the fix, a clean build reports 860 objects up to date.
+
+Two classes are exempt, both deliberately: `win_resource.o` comes from `windres`
+and has no `.d`, but the Makefile lists its prerequisites by hand; and
+prerequisites *inside* the build tree are generated intermediates —
+`renderergl2`'s GLSL becomes `.c` under `$(B)`, is compiled, and is then deleted
+by make, so its absence afterwards is normal.
+
+**What went wrong in the diagnosis, separately from the build.** The diff was
+read, re-read, and asserted inert three times. It was inert. The question "then
+why do the binaries differ" was never asked, and it is the only question that
+could have resolved it: two builds that behave differently have different
+objects, and `size`/`nm`/a rebuild count answers that in seconds. Source review
+cannot answer it at all. Written down in `CLAUDE.md` under the traps, because
+the next struct field will do this again.
+
+**To verify:** a build from `4506b63` should report `GAMMA: software w/ 0
+overbright bits` and look identical to the control.
+
+### E81. Ray query capability is reported, so there is something to gate on — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** our client only
+
+*"how am I suppose to test it if theres nothing gating it from the client
+perspective yet?"* — fair. R13 step 1 is device plumbing and capability
+reporting, and it is the half that is testable on its own.
+
+**Capability only. Nothing is enabled.** The four extension names are compared
+against what the device reports and then left alone — they are never added to
+`device_extension_list`, no feature struct is chained, no acceleration structure
+is built. Device creation is byte-for-byte what it was.
+
+The detection rides the loop in `vk_create_device` that was already enumerating
+extensions for `glConfig.extensions_string`, so it costs nothing and cannot
+change the outcome. All four are required, because
+`VK_KHR_acceleration_structure` pulls in `deferred_host_operations` and
+`buffer_device_address` as hard dependencies — any one missing means no:
+
+```
+VK_KHR_acceleration_structure
+VK_KHR_ray_query
+VK_KHR_deferred_host_operations
+VK_KHR_buffer_device_address
+```
+
+**How to see it.** At startup, next to the device name:
+
+```
+Ray query: supported by this device
+```
+
+and as a read-only cvar:
+
+```
+] r_rtAvailable
+"r_rtAvailable" is:"1"
+```
+
+`r_rtAvailable` is registered in `tr_init.c` so it exists and reads 0 before the
+renderer has looked, and written by `vk_init` after device selection. It is a
+**renderervk cvar only** — an RT control in the menu has to be gated on
+`cl_renderer` as well, which is the pattern R12 already uses for every
+Vulkan-only row. Offering a switch that does nothing is the registered-cvar
+trap, in a menu of our own, which R12 existed to fix.
+
+Checked rather than assumed: `ri.Cvar_Set` is `Cvar_Set`, which is
+`Cvar_Set2( ..., qtrue )` — forcing, so it writes through `CVAR_ROM`. Had it
+been the non-forcing variant this would have been a dead cvar reporting 0 on
+every machine.
+
+**Not verified at runtime here**, and cannot be: `pak00.pk3` is not in this
+environment, so the client stops at `Couldn't load default.cfg` long before the
+renderer initialises. One launch confirms it.
+
+#### Two things R13's plan will need that it does not mention
+
+1. **`device_extension_list` is `[8]`** in `vk_create_device`, and a debug build
+   already uses seven. Enabling ray query adds four. It has to grow before
+   anything is enabled.
+2. **A release build asks for `VK_API_VERSION_1_0`** — the 1.1 request is inside
+   `#ifdef _DEBUG`. Ray query needs 1.1 and `vkGetPhysicalDeviceFeatures2` to
+   read the feature bits, so enabling means either raising `appInfo.apiVersion`
+   or going through `VK_KHR_get_physical_device_properties2` and the `KHR`
+   entry point. Raising it is simpler and rules out pre-1.1 drivers; the
+   extension route keeps them. **That is a decision to make deliberately**, not
+   to discover halfway through the AO pass.
+
+### E80. The shader build could not run on the machine that builds the releases — DONE (verify)
+**Lives in:** our **client** (renderervk) · **Seen by:** nobody — build only
+
+Raised as *"nobody is gonna know to execute compile.bat"*, which is right about
+there being a problem and one layer off about where it is.
+
+`vk.c:2803` is `#include "shaders/spirv/shader_data.c"` — a 1.4 MB C array of
+SPIR-V, tracked in git and compiled into the binary. **Players never touch a
+shader compiler**; what ships is already inside the executable. So the manual
+step was never in anyone's way but ours.
+
+Ours, though, it was very much in. `compile.bat` is a Windows batch file wanting
+`%VULKAN_SDK%\Bin\glslangValidator.exe`, and both platforms are built from
+Linux here — so changing a shader was not merely undocumented, it was **not
+possible**. That is a blocker sitting directly in front of R13, which needs a
+new ray-query shader before it can do anything at all.
+
+**`compile.sh`** is a port of it, and the port is verified the only way worth
+trusting: regenerating from the GLSL produces a file **byte-identical** to the
+one that has been shipping. Same 74 arrays, same order, same contents. So
+turning the rule on changes nothing about what a player runs.
+
+**The Makefile rule** runs it when a `.vert`, `.frag` or `.tmpl` is newer than
+`shader_data.c` — which, on a checkout nobody has touched, is never. Three paths,
+all tested:
+
+| | |
+|---|---|
+| sources unchanged | silent, no glslang needed |
+| shader touched, glslang present | `GLSL code/renderervk/shaders` → 74 shaders |
+| shader touched, glslang absent | names the problem, builds with the committed blob, does not fail |
+
+The third one deliberately **does not `touch` the target**. Marking it up to date
+would make a stale blob look current, and a build that quietly ships the wrong
+shaders is the exact silent-failure shape this tree keeps getting bitten by — a
+dead cvar, a menu that fails to parse, `RE_RegisterShader` returning 0. It warns
+on every build instead, because it really is stale.
+
+One wart: a fresh clone gives every file the same checkout time, so the rule may
+fire once on the first build. Harmless — it regenerates byte-identically, or
+prints the notice.
+
+`compile.bat` is kept for anyone working from a Windows checkout. **The two must
+stay in step**: a shader added to one and not the other is a shader that
+silently does not exist in half the builds.
+
+#### Why not compile shaders in the client at menu load
+
+Asked, and worth recording the reasoning rather than re-deriving it later.
+
+It means linking glslang or shaderc into the client — several MB of C++, against
+a Makefile with no C++ rule at all (the same wall the Recast survey in R17 hit).
+It trades a build-time dependency for a **runtime** one shipped as a DLL, adds a
+compile hitch at menu load, and moves shader failures from our build to the
+player's machine.
+
+And it buys nothing here. The thing it would be *for* — picking shader
+permutations from capabilities discovered at runtime — is not needed when the
+permutation count is small: precompile both variants and gate pipeline creation
+on `VK_KHR_ray_query` at device selection, which R13 needs anyway. The one real
+case for runtime compilation is user-authored shaders, and R11 records that
+ReShade already works on Vulkan.
+
+### E79. Bot names from a file — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Asked for as: *"could you make it so bot names are replaced by a cfg or txt
+file? like if I wanted a bot to be named [a2m] War"*.
+
+Bots take their name from their character entry in `scripts/bots.txt` — Klesk,
+Sarge, Anarki — and the only override was the **fifth argument to `addbot`**,
+which `bot_minplayers` never passes because it fills the server through
+`G_AddRandomBot`. So on a server that populates itself there was no way to name
+a bot at all, short of editing `pak00`, which is not ours to edit.
+
+`baseq3/botnames.txt`, one name per line. The bot keeps its own model, skin,
+skill and behaviour; only the name changes.
+
+- Loose next to `autoexec.cfg`, not inside `pak01`, so editing it does not mean
+  repacking and nothing in the pak shadows it.
+- Read at every map load, since `G_LoadBots` already runs then — edit, change
+  map, done. The strings come from the level pool that is freed with it.
+- Handed out **in file order, skipping any name a player already holds**. That
+  makes the file read as a roster rather than a bag, and the in-use test is also
+  the whole of the duplicate protection: two bots called `[a2m] War` is
+  confusing in a way two bots called Klesk never was, because nobody expects
+  these to repeat. A bot that disconnects hands its name back.
+- Running out is not a failure — the rest keep their character names, so eight
+  names on a sixty-bot server gives eight named bots and fifty-two ordinary
+  ones, which is a reasonable thing to want.
+- `^1`-`^8` colour codes work. They count toward the 36-character limit.
+- `g_botNamesFile` points it elsewhere; `""` turns it off. **Not `CVAR_ARCHIVE`**
+  — it is a default we choose, and archiving it would freeze the first value
+  into a config that then wins forever.
+
+Ships with every line commented out, so behaviour is unchanged until somebody
+edits it.
+
+An explicit `addbot <name> <skill> <team> <delay> <altname>` still wins over the
+file: somebody who typed a name meant it.
+
+### E78. Alt routes were asking about the wrong areas, and E76 was a regression — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+The diagnostic added in E76 answered on its first run, and the answer was not
+"this map has no alternative routes":
+
+```
+alt routes: no route from area 1109 to area 1169 yet
+```
+
+**244 times. Never once otherwise.** The router reporting no route between the
+two bases, on a map whose bots walk between them all match.
+
+So it was never the routing. It is the areas being asked about. A level item's
+goal area comes from the item entity, and a flag sits on a pedestal — the area
+that lands in can be one with no reachability of its own, which routes to nothing
+and from nothing. Every `AAS_AlternativeRouteGoals` call since the fork has been
+asking about a point players cannot stand on.
+
+`BotAltRoutes` now takes the area under the flag's **origin** — the floor a
+player actually stands on — falling back to the item area if that lookup fails.
+
+Also rate-limited: this runs from every bot's setup countdown, so sixty bots
+produced **122 retries inside the first minute**, each two route queries over
+every area in the map, and 488 lines of log. One second between attempts.
+
+#### And E76 made the match worse, which the same log says plainly
+
+| | E75 build | E76 build |
+|---|---|---|
+| flag grabs | 93 | **15** |
+| stuck on `LTG_GETFLAG` | 6 | **30** |
+| stuck total | 73 | 67 |
+
+A six-fold collapse in objective play, and the stuck bots moved from "no goal" to
+"trying to get the flag". E76 weighted enemies at three to one in the crowd
+avoidance while it was still `AVOID_ALWAYS` — so two enemies ahead were enough to
+make a bot refuse its route, and enemies are ahead constantly. Bots spent the
+match declining to move.
+
+E77 is the fix, and it was written before this log arrived from the same
+symptom described from the other side: *"they watch as the hallway from the left
+side gets full, hangback at flagroom till the bots in left stairway empty out."*
+`AVOID_COST` keeps the route and prices it, so refusing is no longer something a
+bot can do to itself.
+
+The lesson is the one this branch keeps relearning: **a movement change that can
+remove a bot's only option needs the option kept, not the refusal tuned.**
+
+### E77. The hang-back was mine, and teleporters never learned to step aside — DONE (verify)
+**Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
+
+*"they watch as the hallway from the left side gets full, hangback at flagroom
+till the bots in left stairway empty out."*
+
+That is not bots failing to find the right-hand path. That is **E75's avoid spot
+working exactly as written**, and it is a description precise enough to name the
+bug from.
+
+`AVOID_ALWAYS` makes `BotGetReachabilityToGoal` *skip* a reachability. When the
+crowd sits where every exit from the room passes it, every reachability is
+skipped, `bestreachnum` comes back 0, and the bot has no route — so it stands
+still. Then `bs->tac.moved_time` stops advancing (it only updates when the bot
+moves), the five-second give-up eventually fires, avoidance switches off, and the
+bot follows the crowd down the left stairway.
+
+Wait in the flag room, then go left. Which is what was reported, in that order.
+
+**Fixed by making the crowd expensive rather than forbidden.** New `AVOID_COST`
+type: `BotGetReachabilityToGoal` adds `bot_routecrowdcost` (default 400, four
+seconds of AAS travel time) to that route instead of discarding it. The route
+stays available and the router weighs it — four seconds is far more than
+`BotRouteJitter`'s tie-break and enough to prefer a genuinely longer way round,
+while a route worse than that still wins. A bot always has somewhere to go.
+
+`AVOID_ALWAYS` is left alone for what it was for: prox mines, which really are
+worth standing still to avoid.
+
+#### Telefrags: E58 fixed one of the two places
+
+The same log:
+
+```
+spawns: every player got a free point
+```
+
+Spawn saturation **zero**, and only four nudges in 19,000 lines — so the
+telefrags being reported are not spawn telefrags at all.
+
+`G_NudgeSpawnClear` was put in front of the kill box in `ClientSpawn` and nowhere
+else. `TeleportPlayer` calls `G_KillBox` bare:
+
+```c
+// kill anything at the destination
+if (player->client->sess.sessionTeam != TEAM_SPECTATOR) {
+    G_KillBox(player);
+}
+```
+
+A teleporter is used far more often than a spawn point, and on a full server the
+far pad is rarely empty. Same function in front of it now, same reasoning: if
+there is anywhere clear, reachable and floored within a hundred units, take it
+and nobody dies; when there is not, the kill box still runs.
+
+### E76. Per-bot route preference, and why a navmesh would not have fixed this — DONE (verify)
+**Lives in:** our **server** (qagame + botlib) · **Seen by:** every client
+
+*"the bots still exit on the left side, even after they get the enemy flag.
+instead of going through the right side and pathing to avoid combat heavy
+areas."* And: *"maybe we need to figure out navmesh from the other AIs to get alt
+routes working."*
+
+#### The log settled the alt route question
+
+```
+alternate routes toward the red base: 0 (no portals on this map, using open areas)
+alternate routes toward the blue base: 0 (no portals on this map, using open areas)
+```
+
+Zero even with the portal filter dropped. **Everything built in E70, E72 and E73
+that depends on alternative route goals is inert on japanesecastles**, which is
+worth saying plainly after three entries spent on it.
+
+The room diagnostics were more useful:
+
+| | |
+|---|---|
+| stuck episodes | 73 |
+| of those in one room, **Garden** | **40** |
+| of those in one AAS area, **1572** | **18** |
+| `NO REACHABILITY` in the whole log | 6 |
+| Red Courtyard, at map end | **20 players** |
+
+So it is not an AAS hole — 6 unreachable areas in 19,000 lines. It is eleven to
+thirteen team mates standing in one spot, which is exactly the case E75's crowd
+avoidance was built for and did not fire on. Three reasons, all mine:
+
+- `if (bs->enemy >= 0) return;` — several of those lines read `enemy yes`
+- `if (FloatTime() - bs->tac.moved_time > 2.0f) return;` — the stuck report
+  fires at three seconds, so avoidance had already been off for a second by the
+  time we could see it
+- it counted **team mates only**, so the thing a flag carrier needs to route
+  around was the one thing it never looked at
+
+#### On the navmesh
+
+Worth being direct: **a navmesh would not fix this.** Recast builds the mesh and
+Detour queries it, and `dtNavMeshQuery::findPath` is as deterministic as AAS —
+same start, same goal, same corridor, for every agent. Swapping the graph does
+not make sixty bots choose different doors; it makes each door prettier.
+
+What Recast genuinely buys is DetourCrowd's local avoidance and smoother paths.
+The team spacing in E71 already approximates the first, and the measurements say
+it worked: stuck episodes 228 → 10 across those builds.
+
+What actually produces route diversity is **cost perturbation**, and that is
+thirty lines against the router we already have.
+
+#### BotRouteJitter
+
+`BotGetReachabilityToGoal` takes the cheapest reachability out of the current
+area. Every bot in a room, given the same goal, gets the same answer — that *is*
+"most still exit the left path", and no amount of intermediate goals changes it,
+because the leg to an intermediate goal is itself a cheapest chain.
+
+Each bot now carries a stable per-reachability offset worth up to
+`bot_routespread` in AAS travel time (default 60, so 0.6 seconds). Two doors
+within that of each other are chosen between by preference rather than by a
+shared rounding; a route that is genuinely much longer still loses.
+
+Stable is the load-bearing word. The offset is a hash of the client and the
+reachability, not a `random()`, so a bot picks the same door every time it stands
+in that spot and commits instead of dithering in the doorway.
+
+#### And the carrier
+
+- Counts **enemies as well as team mates**, at three to one. A team mate in the
+  way is a queue; an enemy in the way is a fight, and a carrier is trying not to
+  have one.
+- **Keeps avoiding with an enemy in sight** when it is carrying. Everyone else
+  still hands movement to `BotAttackMove`.
+- **1.6x the avoid radius** while carrying.
+- The give-up is five seconds rather than two.
+
+#### One more reason alt routes may have been empty
+
+`AAS_AlternativeRouteGoals` derives every filter from `goaltraveltime`, and
+silently tolerates it being zero — at which point `starttime > 1.1 * 0` is true
+for every reachable area and the whole map is rejected. Zero means the router has
+no route between the two points *yet*; AAS builds its caches lazily and this is
+called from the first bot's setup, a fraction of a second into the map.
+
+It says so now, and `BotSetupAlternativeRouteGoals` **no longer latches an empty
+result** — it retries until something is found or the match is a minute old, by
+which point the caches are warm and zero means zero.
+
+### E75. Refuse the crowded door at the router, and let skill drive think rate — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"Theres still too many bots occupying the same room and pathing the same way.
+Just like the flag room, most still exit the left path."*
+
+#### Why alternative route goals could not have fixed this
+
+Worth stating plainly, because three entries have now been spent on them. An
+alternative route goal changes the **middle** of a journey. The leg from the flag
+room to that goal is still the cheapest reachability chain, and out of one room
+towards anywhere on the far side of the map, that is the same door for every bot
+on the team. Route diversity has to be injected where the *door* is chosen.
+
+That is `BotGetReachabilityToGoal`, and it already has the hook. It walks the
+reachabilities leading out of the current area, takes the cheapest that survives
+its filters, and one of those filters is `BotAvoidSpots` — a **per-movestate**
+list of places this bot will not route through, which is what the prox mine code
+uses.
+
+**A spot on the crowd queued in a doorway makes that doorway's reachability fail
+the filter, and the bot takes the next cheapest way out.** Per bot, so the team
+does not move as one.
+
+`BotCheckSnapshot` clears the avoid list every think and `BotTacticsUpdate` runs
+immediately after it, so the decision is remade from scratch several times a
+second and can never go stale.
+
+Three guards, because refusing every exit leaves a bot with no reachability at
+all, which is worse than a queue:
+
+- the crowd must be **ahead** — a centroid behind or on top of the bot would
+  reject the reachabilities leading away from it as readily as those leading in
+- not while fighting; `BotAttackMove` owns the movement then
+- and **if the bot has not moved for two seconds, stop avoiding**. If going round
+  were working it would be moving. Standing still politely is not better than
+  taking the crowded door.
+
+#### Skill scaled everything except how often a bot thinks
+
+*"are we missing any skill scaling that we could change?"* — yes, one, and it is
+the one that caps tactics rather than marksmanship.
+
+Aim, accuracy, reaction time, alertness, attack skill, camper, jumper, walker:
+all scale. `bot_thinktime` is **100 ms flat for every bot at every skill**. A
+skill 5 bot re-examined the world exactly as rarely as a skill 1 bot — ten times
+a second, both of them — and no amount of characteristic tuning gets past that,
+because a bot cannot respond to something it has not looked at yet.
+
+Now scaled by `CHARACTERISTIC_AIM_SKILL`: skill 1 keeps the stock interval, the
+top of the range thinks at about 15 Hz. The scaling is on the interval rather
+than a separate timer, so the many expressions of the form
+`random() < bs->thinktime * x` rescale with it and keep the same per-second rate.
+
+`BotScheduleBotThink` already staggers the residuals, so the extra load spreads
+across frames rather than landing on one.
+
+**And `bot_thinktime` is no longer `CVAR_CHEAT`.** It is the single biggest lever
+on bot responsiveness and it was unsettable on a pure server, which is every
+server that matters. It is a server-side tuning value, not a client advantage.
+
+#### Two knobs that need no code
+
+- **`g_spSkill` is 3** in `content/serverconfigs/common.cfg`, out of 5. That is
+  what every `bot_minplayers` bot is added at, via `G_AddRandomBot`. Raising it
+  is the cheapest experiment available and now moves think rate with it.
+- **`bot_thinktime`** can be lowered directly for all bots at once.
+
+#### What the last two logs showed
+
+The room work is measurably doing its job even before this:
+
+| build | rooms occupied | fullest | stuck episodes |
+|---|---|---|---|
+| before | 5 | 13 | 228 |
+| E72 | 16 | 11 | 59 |
+| E73 | **18** | 12 | **10** |
+
+Of the ten that remain, eight are `ltg 0` — which is E74's roam lock, fixed in
+the same build as this.
+
+### E74. A diagnostic that declined to speak, and a minute of doing nothing — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Field log of the E72 build. The room census works and the spread is visibly
+better — 16 rooms occupied, the fullest holding 11, against the 5 rooms and 13
+in one stairwell that prompted it. Two things it turned up.
+
+#### The route line was not in the log at all
+
+Not "0 routes". **Nothing** — no occurrence of "route" or "portal" anywhere in
+18,368 lines, on a build whose binary demonstrably contains the format strings.
+
+`BotAltRoutes` opens with
+
+```c
+if (!startarea || !goalarea) {
+    return 0;
+}
+```
+
+before either of its prints. So the one path that most needed announcing itself
+was the one that said nothing, and its silence read as "this code did not run",
+which cost a round of guessing at call sites, `#ifdef CTF`, `altroutegoals_setup`
+and the commit contents before the early return was the answer.
+
+**A diagnostic that can decline to speak is worse than no diagnostic**, because
+absence looks like success. It reports now, with the area numbers.
+
+Two more fixes behind it, since the failure is real and not only unlogged:
+
+- The flag goals are **re-resolved here** rather than trusted from
+  `BotSetupDeathmatchAI`. This runs from a bot's setup countdown, which is a
+  different moment.
+- **A failure is no longer latched.** `altroutegoals_setup` was set at the end
+  unconditionally, so an unresolved area meant an empty route table for the rest
+  of the map with no retry. Now it returns without latching and the next bot to
+  finish setting up tries again.
+
+#### Thirty-four of fifty-nine stuck bots had no goal at all
+
+`ltg 0` is the dominant stuck category now, where it used to be `LTG_TEAMACCOMPANY`
+— the escort pile-up is gone and this was underneath it.
+
+```c
+bs->ltgtype = 0;
+bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;   // 60 seconds
+```
+
+and, at the top of the same function,
+
+```c
+if (bs->ctfroam_time > FloatTime())
+    return;
+```
+
+A bot that rolls "roam" therefore has **no long term goal for a full minute and
+cannot be given one**. With roam at a fifth of the mix that is six bots a side
+goalless in rotation, and on an instagib map there are not even items for them to
+wander between — so they wander into each other.
+
+Fifteen seconds under `bot_tactics`. A minute is a sensible dedication time for a
+job; roaming is the absence of one.
+
+### E73. Bots know which room is full, and go the other way — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"theyre shuffling up the stairs and are still taking the same path, maybe they
+should be aware of what room theyre in. So they can be like 'Theres a lot already
+in that room or heading to that room, maybe I should go a different way.'"*
+
+The scoreboard in that report is the measurement E72 said to wait for:
+
+```
+Main Stairway   13
+Flagroom         5
+Main Entrance    4
+Blue Courtyard   2
+Blue Garden Hall 1
+```
+
+Thirteen bots in one stairwell, single file. AAS hands every one of them the same
+cheapest reachability chain and nothing in the AI has ever been able to say *that
+way is full*.
+
+#### The census
+
+`target_location` entities are the map's own names for its rooms, already used
+for the HUD, and japanesecastles has 85. They are a linked list through
+`nextTrain` with no index of their own, so the list is walked once per map into
+`roomEnt[]` and everything after that is an ordinal.
+
+Recounted twice a second — up to 85 rooms against 64 players is a few thousand
+distance tests, nothing at that interval and noticeable every frame for every
+bot. Two numbers per room per team:
+
+- **here** — bodies in it now
+- **bound** — bots whose current goal is in it, who are not there yet
+
+Counting only the first is how a queue re-forms one corner further on: a room
+that is empty *because eleven bots are walking into it* is not a way round.
+
+`BotRoomAt` deliberately does not do the `trap_InPVS` test `Team_GetLocation`
+does. That test is right for labelling a player on the scoreboard and wrong
+here, because this is asked about goal positions the bot cannot see yet — which
+is the entire point of asking.
+
+#### What it changes
+
+**`BotGetAlternateRouteGoal` picks the emptiest way round, not a random one.**
+Stock rolls a die, which gives every bot the same distribution and no knowledge
+of the others: on a map with two ways through, sixty bots split thirty-thirty by
+luck and jam both. Now each candidate is scored by the crowding of the room it
+sits in, and *the counts move as team mates commit* — so the tenth bot to ask
+gets a different answer from the second. It is not that any one bot is clever.
+The random pick survives as the tie-break, so equal candidates still scatter.
+
+**And they ask before they are stuck, not after.** The E67 re-roll fires at three
+seconds of not moving, which is the right response once a bot is in the queue and
+the wrong moment to notice one. A bot on a flag goal standing in a room holding
+more than six of its own team now re-picks its route, at most once every four
+seconds — re-picking more often than it takes to walk any of it is how a bot
+oscillates between two corridors and arrives on neither.
+
+#### Why this only works now
+
+Both of the above choose among `red_altroutegoals` / `blue_altroutegoals`, which
+were **empty on every ordinary CTF map** until E70 (the neutral-flag gate) and
+E72 (maps with no cluster portals). Occupancy-aware selection over an empty list
+is nothing at all; that is why this is the third entry in the chain rather than
+the first.
+
+### E72. Alternative routing needed a second fix, and the bots can name the room — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+E70 fixed the neutral-flag gate and added a count at map load. The count said:
+
+```
+CTF alternate routes: 0 toward the red base, 0 toward the blue
+```
+
+Which is precisely why that line exists. The gate was one of two reasons the
+subsystem produced nothing.
+
+#### Why it was still zero
+
+`AAS_AlternativeRouteGoals` only considers areas the map marked
+`AREACONTENTS_CLUSTERPORTAL` or `AREACONTENTS_VIEWPORTAL`. Those come from
+brushes a mapper places, and **japanesecastles has none**, so no area ever
+passed the first filter no matter what start and goal it was given.
+
+`ALTROUTEGOAL_ALL` drops that filter and leaves the travel-time window to do the
+work: an area qualifies at no more than 1.1x the direct travel time from the
+start and no more than 0.8x from the goal, so what survives is genuinely a
+detour that still arrives. The function then floods each surviving region into a
+cluster and returns one area per cluster, so the results are separate ways round
+rather than a hundred points strung along the same corridor.
+
+It is O(areas) with two route queries each, which is why it is not the default —
+but this runs **once, at map load**, and the alternative is a map with no
+alternative routes for the entire match. Portals first, open areas as the
+fallback, and the log says which was used.
+
+#### The bots can name the room they are in
+
+*"maybe have the bots asses what room theyre in"* — the map already knows.
+`target_location` entities are what the HUD prints beside a player's name, and
+japanesecastles has 85 of them: Flagroom, Main Entrance, Red Courtyard, Blue
+Garden Hall, Main Stairway, Balcony.
+
+Wired into both diagnostics, because an AAS area number tells a reader nothing
+and a room name tells them where to look:
+
+```
+Grunt: stuck 3.4s in Main Entrance, area 1163, ltg 2, 21 allies 0 foes, enemy no
+rooms: Main Entrance 19, Red Courtyard 11, Flagroom 6, Balcony 3, ...
+```
+
+The room census is one line at map end and answers the question the sixty-line
+bot table cannot: *are they all in the same place*.
+
+**Not yet behavioural.** Using room occupancy to steer — declining a goal in a
+room the team already fills, or searching named rooms for an enemy carrier — is
+the obvious next step and is deliberately not in this build. Two rounds of
+speculative movement changes have needed correcting already; this measures first.
+
+#### What the same log confirmed
+
+Team spacing works. Stuck episodes went from **228 to 25** on a log half again as
+long — and 15 of the 25 are still `LTG_TEAMACCOMPANY`, which is the escort cap
+being re-enabled in the same build rather than spacing failing.
+
+### E71. Four movement faults, all stock, all visible in one match — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Four separate reports from one session, four separate causes, none of them ours.
+
+#### 1. The pilgrimage to an empty flag stand
+
+*"bots seem to try to path to the enemy flag spawn, even though the enemy flag is
+already taken... Like they have to physically check the flag isn't there."*
+
+Exactly that, and the stock comment says so:
+
+```c
+// if touching the flag
+if (trap_BotTouchingGoal(bs->origin, goal)) {
+    // make sure the bot knows the flag isn't there anymore
+    ...
+    bs->ltgtype = 0;
+}
+```
+
+**Touching the stand is the only thing that ever ended `LTG_GETFLAG`.** The
+handler never looks at `bs->redflagstatus` / `blueflagstatus`, which are tracked
+from the team sound events and which `BotCTFSeekGoals` has always trusted. So
+every attacker walked the length of the map to an empty pedestal, touched it,
+and only then gave up — while a team mate had been carrying that flag for a
+minute.
+
+The last log had **26 of 32 bots in the enemy flag zone**. That is the pile-up,
+and this is why.
+
+Fixed at both ends: the handler drops the goal when the flag is not on its
+stand, and `BotCTFSeekGoals` will not assign it in the first place — without the
+second the goal is handed straight back and the bot oscillates.
+
+#### 2. Bots looking up and down at nothing
+
+*"sometimes bots look up or down, without having a reason to. Its not like theres
+multiple floors in the outdoor area of japanesecastles."*
+
+`BotRoamGoal` deliberately jitters its target in z:
+
+```c
+// add a random value to the z-coordinate (NOTE: 48 = maxjump?)
+bestorg[2] += 2 * 48 * crandom();
+```
+
+That is right for a *navigation* goal — it is looking for somewhere to walk and
+the trace below it finds the floor. It is wrong for a **view** target, and six
+call sites use it as one, `vectoangles` and all. The horizontal offset has a
+minimum of 100 units, so ±96 in z is up to **forty degrees of pitch** at a point
+the bot has no reason to look at.
+
+The waiting branch is the one that shows: a bot queued behind a crowd hits
+`MOVERESULT_WAITING`, picks a roam point, and stares at the sky. Fixed by
+zeroing `dir[2]` before `vectoangles` at all six sites — look *along* it, not
+*at* it.
+
+#### 3. Bots that walk
+
+*"Some of the bots seem to walk instead of use default run."*
+
+```c
+if (bs->walker > 0.5)
+    initmove.or_moveflags |= MFL_WALK;
+```
+
+`CHARACTERISTIC_WALKER` is a personality trait read once from the bot's
+character file, and a bot that has it **walks for the entire match**. Fine in a
+four player deathmatch; in a thirty-two a side objective mode a walking bot is a
+free kill and, in a corridor, a cork.
+
+Kept for a bot with no long term goal — which is where the flavour was worth
+having — and dropped the moment it has one.
+
+#### 4. The carrier that wanders off its own stand
+
+*"the flag holder should wait at friendly flag spawn for the flag to respawn
+while being guarded... more friendlies should peel off to go search and recover
+the friendly flag."*
+
+Stock, when the carrier reaches its own base and finds its own flag gone:
+
+```c
+if (BotCTFCarryingFlag(bs)) {
+    trap_BotResetAvoidReach(bs->ms);
+    bs->rushbaseaway_time = FloatTime() + 5 + 10 * random();
+    // FIXME: add chat to tell the others to get back the flag
+}
+```
+
+It walks the base for five to fifteen seconds looking for a fight, carrying the
+flag that wins the match, away from the one square metre where it can be scored
+the instant our own flag comes home.
+
+Now it holds. Standing on the goal it is already touching means `BotMoveToGoal`
+has nothing to do, so the bot simply waits there — which is what a person does.
+It is guarded for free: `BotCTFRoleMix` puts defence at its highest while our own
+flag is out, so the bots holding the base *are* the guard.
+
+And the search party, which is the FIXME the stock code left: defenders are now
+protected from conversion in the both-flags-out branch as well as the
+ours-is-out one, so everyone who is **not** defending and **not** escorting
+converts to `LTG_RETURNFLAG`. Defence holds the waiting carrier, escort is
+capped at four, and the remainder peel off to recover. The carrier also asks,
+once every ten seconds — `VOICECHAT_RETURNFLAG`.
+
+### E70. Every bot took the same route out of the base, forever — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+*"the bots will leave out the left side only, only enemy bots will path through
+the right side sometimes"* — with a screenshot of twenty-one blue bots stacked in
+one flag room, `21 allies 0 foes`, several reporting `stuck 3.1s`.
+
+Three separate faults, and the first is the one that made the other two visible.
+
+#### 1. Alternate routes were never built on any normal CTF map
+
+`BotSetupAlternativeRouteGoals`, `GT_CTF` branch:
+
+```c
+if (trap_BotGetLevelItemGoal(-1, "Neutral Flag", &ctf_neutralflag) < 0)
+    BotAI_Print(PRT_WARNING, "No alt routes without Neutral Flag\n");
+if (ctf_neutralflag.areanum) {
+    red_numaltroutegoals  = trap_AAS_AlternativeRouteGoals(...);
+    blue_numaltroutegoals = trap_AAS_AlternativeRouteGoals(...);
+}
+```
+
+**A two-flag CTF map has no neutral flag.** `team_CTF_neutralflag` is a One Flag
+CTF entity. So `ctf_neutralflag.areanum` is 0, both counts stay 0, and
+`BotGetAlternateRouteGoal` returns qfalse on its first line — **every time, at
+all eleven call sites**, including the stuck-triggered re-roll added in E67.
+
+The only mechanism the bots have for not all taking the same route has been
+absent on every ordinary CTF map since the fork. AAS returns the cheapest
+reachability chain; it is the same chain for every bot with the same goal from
+the same area; so a whole team files out of one door. The other team, coming
+from the opposite base, has a different cheapest door — which is exactly the
+"only enemy bots use the right side" half of the report.
+
+Classic instance of this project's own trap: a mechanism that silently does
+nothing.
+
+**Fixed** by routing between the two bases instead. The neutral flag was only
+ever a waypoint in the middle to route *through*; between two bases the other
+base serves better, because alternative route goals from their flag to ours are
+by definition the different ways between the two — the exact set an attacker
+wants to pick an approach from. No midpoint to synthesise and no risk of landing
+one inside a wall. The count is printed at map load, because zero here is
+invisible from inside the game and was invisible in the log for as long as it
+was broken.
+
+#### 2. Team spacing — DetourCrowd's one useful force, written for our movement
+
+AAS has no concept of another player being in the way, so a team converging on
+one point converges on one *point*.
+
+`BotTeamSpacing` sums a push away from each team mate within 72 units, weighted
+by closeness, and blends it into the direction the bot is already going —
+RecastNavigation's DetourCrowd separation idea (zlib, R17), not a port: there is
+no crowd simulation and no navmesh here, and at this scale the useful part is
+that one force.
+
+Deliberately narrow, because movement is the part of this AI that has broken
+most often:
+
+- **carrying an objective overrides it entirely**, as asked. A flag carrier
+  shoved sideways by its own escort is worse than an escort standing too close,
+  and the carrier is the one player whose exact path matters.
+- both feet on the ground only, so a jump pad, lift or ledge hop is never
+  redirected mid-air.
+- no enemy only — in a fight `BotAttackMove` already chooses where to stand and
+  the two would argue. The pile-ups are in transit.
+- never into a wall or off an edge: `BotRoomToMove`, the same check the dodge
+  and the sidestep use.
+- standing still and stacked gets the whole push; moving gets a nudge, so a
+  corridor is walked down rather than bounced along.
+
+#### 3. The position census was hiding escorts
+
+E68's census classifies by position first. That is right for attack and defence,
+which are about holding ground, and **wrong for escort**, which is about who the
+bot is following — an escort standing in the enemy flag room is doing its job,
+not attacking.
+
+The first field log of that census reads `have 26/5/0/0` while **148 of 228
+stuck episodes were in `LTG_TEAMACCOMPANY`**. Nought escorts counted, so
+`BotCTFRoleCrowded` saw nought, so E67's escort cap silently stopped capping.
+Escort is now taken from `ltgtype` before position is consulted.
+
+#### What that log did confirm
+
+`have[DEFEND]` is **5 and 6**, not zero. E67 and E68 worked: bots defend now.
+Still short of the 13 the mix wants, which is what 1 and 2 above are for.
+
+### E69. Xonotic's aim model: lead the target, and settle by distance — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Asked to examine their engagement, aiming and pathing. Read
+`qcsrc/server/bot/default/aim.qc`, `havocbot/havocbot.qc` and `navigation.qc`
+(GPLv2). Two things taken into the aim model; the engagement and pathing
+findings are recorded below and mostly **not** taken, with reasons.
+
+#### Aiming: what they do that we did not
+
+`bot_aimdir` is three stages, and the middle one is the one we were missing.
+
+1. **Error** — `bot_badaimoffset`, resampled every `0.2 + 0.3 * random()`
+   seconds, vertical scaled to 0.7, multiplied by 5 with an enemy and 2 without,
+   and folded into the *desired angle*. We already do this; we arrived at the
+   same "fold it into the destination, do not post-add it" conclusion the hard
+   way a few builds ago.
+
+2. **Anticipation** — a cascade of exponential filters on the **rate of change**
+   of the desired angle, blended back into it by skill:
+
+   ```c
+   this.bot_1st_order_aimfilter += (diffang * (1 / delta_t) - this.bot_1st_order_aimfilter)
+                                   * autocvar_bot_ai_aimskill_order_filter_1st;
+   ...
+   desiredang += blend * (this.bot_1st_order_aimfilter * mix_1st + ...);
+   ```
+
+   **We had nothing for this**, and it is the likeliest source of the residual
+   jitter. Against a strafing target the destination moves every think; a view
+   that only chases where the target *was* trails it by a fixed lag, the error
+   grows until it crosses `AIM_RESWEEP_DEGREES`, the sweep restarts from wherever
+   the view had reached, and it repeats. A sawtooth, which from outside is
+   exactly "still some jitter while aiming, getting smoother but not there".
+
+   Taken, with two orders instead of five: their defaults mix the 1st at 0.01 and
+   the 2nd at 0.075, and the 3rd through 5th at 0.01 to 0.0375, so the top of the
+   cascade buys very little for three more filters' worth of state. Filter
+   constants are theirs (0.2 / 0.2).
+
+   The lead is small by design. At a hundred degrees a second and full skill it
+   is under a degree — anticipation, not aimbotting.
+
+3. **Turn rate scaled by distance — read, and deliberately inverted.**
+
+   Their form is `r = max(fixedrate / dist, blendrate)` (`fixedrate 15`,
+   `blendrate 2`), so the rate is *inversely* proportional to the angle
+   remaining and a small residual is closed almost instantly.
+
+   **Ported as-is that made things worse, and it was corrected before shipping.**
+   The jitter is caused by tracking that is too fast, not too slow, and a fast
+   tracker is also the inhuman one.
+
+   The reason their form is safe in their engine and not in ours is a stage of
+   theirs we do not have. `bot_aimdir` maintains a separate `bot_mouseaim` that
+   only moves on `bot_aimthinktime`, every `0.5 - 0.05 * skill` seconds, and the
+   angle it finally turns toward has been pulled most of the way to that:
+
+   ```c
+   if (time >= this.bot_aimthinktime) {
+       this.bot_aimthinktime = max(this.bot_aimthinktime + 0.5 - 0.05 * (skill + ...), time);
+       this.bot_mouseaim += diffang * (1 - random() * 0.1 * bound(1, 10 - (skill + ...), 10));
+   }
+   ...
+   desiredang += diffang * bound(0, autocvar_bot_ai_aimskill_think, 1);
+   ```
+
+   By the time their turn calculation runs, the thing being chased is **already
+   slow and stepped**, so chasing it hard is safe. Ours has no intermediary:
+   `aimto` is the live destination, rebuilt from `ideal_viewangles`, which is
+   recomputed when the bot thinks — ten times a second. Closing the last
+   fraction of a degree every frame glues the view to a ten-hertz staircase and
+   reproduces it exactly.
+
+   So the curve here runs the other way, which is also how a hand behaves — a
+   correction gets slower as it gets smaller, and below a threshold is not made
+   at all. Real aim sits *near* the target with residual error; it does not
+   drive the error to zero and hold it there.
+
+   ```
+   rate = frametime * (AIM_TRACK_BASE + remaining * AIM_TRACK_GAIN)   // 3.0, 1.0
+   if (remaining < AIM_DEADZONE) leave it alone                       // 0.35 deg
+   ```
+
+   Per-frame correction at 40 tick, with the discarded port for contrast:
+
+   | residual | now | Xonotic's form ported | before any of this |
+   |---|---|---|---|
+   | 0.2° | none | 100% | 30% |
+   | 0.5° | 8.8% | 100% | 30% |
+   | 2° | 12.5% | 77% | 30% |
+   | 5° | 20% | 31% | 30% |
+   | 30° | 82.5% | 20% | 30% |
+
+   The deadzone is the part that matters most: it is what stops the view chasing
+   ten-hertz updates at all. Their `bot_mouseaim` stage is the principled fix and
+   is worth porting later; the deadzone gets most of it for a line.
+
+#### Engagement: read, not taken
+
+- **`findtrajectorywithleading`** solves for a firing arc by trace-tossing a
+  fake projectile up to **ten times**, raising `test_dir.z` by 0.1 each attempt
+  until one hits. That is a real firing solution for arcing weapons. We do
+  nothing of the kind — worth having for grenades, and irrelevant to the
+  instagib testing in front of us, so not now.
+- **The fire decision is separate from the aim.** A `maxfiredeviation` cone
+  gate, then a probabilistic hold: fire only if the trace lands within
+  `500 + 500 * skill` units, *or* `random() * random() > skill * 0.05`. Low-skill
+  bots therefore do not spray at range, which is a characterisation we get for
+  free from `CHARACTERISTIC_FIRETHROTTLE` and do not need.
+- **Random jinking in combat** — at top skill, a new random direction every 0.35
+  seconds held for 0.3, with a 15% chance of not generating one so the bot still
+  drifts toward its goal. Our `BotAttackMove` dodge block covers the same ground
+  differently.
+
+#### Pathing: one clear gap, one architectural difference
+
+**`ignoregoal` / `ignoregoaltime`** (`bot_ai_ignoregoal_timeout 3`). When a goal
+is not working the bot **blacklists that specific goal for three seconds** and
+picks another. Their stuck-on-a-jumppad recovery also picks the *farthest
+visible* waypoint with `random() < 0.8` mixed in, so different bots take
+different ways out.
+
+We have nothing equivalent. E67's alt-route re-roll on a stuck bot is a weaker
+cousin: it changes the route, but the bot can pick the same failing goal again
+immediately. **This is the next pathing item worth doing**, and it is small.
+
+**The architectural difference, which is not a port.** Their movement is a sum
+of normalised steering vectors —
+
+```c
+dir = normalize(dir + dodge + do_break + evadedanger);
+CS(this).movement_x = dir * v_forward * maxspeed;
+```
+
+— followed by `havocbot_keyboard_movement`, which quantises that continuous
+vector into discrete key states on a timer and blends it in by distance to the
+goal (`bot_ai_keyboard_distance 250`, full 360-degree movement when close). The
+continuous vector is what makes their steering composable; the quantiser is what
+makes it look like hands on keys rather than an analog stick.
+
+Ours is Q3's: choose one of a handful of discrete `MOVE_*` directions and retry
+in sequence. That is the reason side-stepping reads as flip-flop — it is a
+discrete choice re-made every think, not a blended vector. Converting is a
+rewrite of `BotAttackMove` and `BotAIBlocked` against `bot_input_t`, not a
+port, and it should not be started in the middle of a run of CTF fixes.
+
+### E68. Taken from Xonotic's havocbot: count bodies, not intentions — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Acting on R17. Read Xonotic's `qcsrc/common/gametypes/gametype/ctf/sv_ctf.qc`
+(GPLv2, same licence as us). Two ideas taken, one design noted, nothing copied
+verbatim — it is QuakeC against a different engine, so this is a rewrite from
+the idea, not a port.
+
+#### 1. The role census counts positions, not goals
+
+```c
+// havocbot_ctf_reset_role
+cmiddle  = havocbot_ctf_teamcount(this, havocbot_middlepoint, radius * 0.5);
+cdefense = havocbot_ctf_teamcount(this, mf.dropped_origin,    radius * 0.5);
+coffense = havocbot_ctf_teamcount(this, ef.dropped_origin,    radius);
+
+if (cdefense <= coffense)     havocbot_role_ctf_setrole(this, DEFENSE);
+else if (coffense <= cmiddle) havocbot_role_ctf_setrole(this, OFFENSE);
+else                          havocbot_role_ctf_setrole(this, MIDDLE);
+```
+
+`havocbot_ctf_teamcount` counts **live team mates within a radius of a point**.
+It never asks another bot what its goal is.
+
+That is the direct antidote to E67, which hid for three builds. Every defender
+was being converted to attack the moment our flag was taken; our census read
+`have[DEFEND] = 0` because it was reading `ltgtype`; and the role picker kept
+issuing an order that was destroyed before anyone acted on it. **A census of
+bodies cannot be lied to that way.** A bot standing in the flag room is
+defending it whatever `ltgtype` says, and one that is converted and walks away
+stops counting when it leaves.
+
+`BotCTFRoleCounts` now classifies by position first — inside our flag zone is
+defence, inside theirs is attack — and falls back to `ltgtype` only for bots in
+neither zone, which is exactly where escorting and roaming differ and position
+cannot tell them apart. Corpses are skipped.
+
+The zone radius scales with the map, as theirs does: a quarter of the distance
+between the flag stands, floor 256. That is a flag room and its approach on a
+small map and still a flag room on a big one, which a constant in units is not.
+
+#### 2. Role timeouts belong to the role
+
+Theirs: offense 120s, defense 30s, escort `60 + random() * 30`, retriever 20s,
+middle 10s. Ours was a flat 20 seconds for everything.
+
+The reasoning is legible in the numbers. Attacking means walking the length of
+the map, so asking again on the way is how a bot never arrives; holding the
+middle is transient by definition. Adopted as-is.
+
+#### 3. Noted, not taken: `havocbot_previous_role`
+
+Escort there is a **temporary** role entered from offense when the carrier is
+more than 700 units from home, and when the enemy flag returns to base the bot
+goes back to *what it was doing before* rather than re-deciding from scratch:
+
+```c
+this.havocbot_role = this.havocbot_previous_role;
+this.havocbot_role_timeout = 0;
+```
+
+Worth having, and a bigger change than it looks in a system where the role is
+implied by `ltgtype` rather than stored. Our escort quota cap (E67) plus the
+per-role timeouts cover most of what it buys. Left for when the tactical layer
+gets an explicit role field.
+
+#### What is still outstanding from R17
+
+**DetourCrowd's local avoidance** (RecastNavigation, zlib) for the crowd
+blocking AAS cannot express. Untouched — the position census and the escort cap
+attack the *cause* of the crowds, and it is worth measuring that before adding a
+steering system to move bodies out of a crowd that should not have formed.
+
+### R17. Other open-source FPS bot AI, and what we can legally take — SURVEY
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Asked for: find open-source bot AI for FPS games, check the licences, and take
+what we can. Surveyed 2026-09-04.
+
+#### Where we stand licence-wise, first, because it decides everything
+
+Our headers say *"either version 2 of the License, or (at your option) any later
+version"* and `COPYING.txt` is GPLv2. That is **GPLv2-or-later**, which is more
+permissive to build on than it looks:
+
+| their licence | can we merge it | what it costs |
+|---|---|---|
+| GPLv2 | yes | nothing |
+| zlib / MIT / BSD | yes | an attribution line |
+| GPLv3 | yes | the combined work becomes GPLv3 - we lose "or later" |
+| Apache-2.0 | yes, via GPLv3 | same as above |
+| GPLv3 + undisclosed extra terms | **no, not without reading them** | unknown |
+
+#### The candidates
+
+**[RecastNavigation](https://github.com/recastnavigation/recastnavigation) —
+zlib. The one to actually use.**
+Recast builds navmeshes, Detour queries them at runtime, and **DetourCrowd does
+agent movement with local avoidance** - which is precisely the thing AAS has no
+concept of and precisely the bug reported twice this week as bots getting stuck
+on each other. C++98, no dependencies, and the licence has no strings beyond
+attribution. It is what Unity, Unreal and Godot use.
+
+Two ways in, and the cheap one is worth doing first: port the *idea* of
+DetourCrowd's separation and local steering into `BotAIBlocked`, which currently
+handles two bots meeting head-on and has nothing for a crowd. Replacing AAS
+outright is the expensive one and is not a prerequisite.
+
+**[Warsow / qfusion](https://github.com/Warsow/qfusion) `source/server/game/ai`
+— GPLv2. The architecture to steal.**
+Six subsystems - awareness, combat, movement, navigation, planning, teamplay -
+plus trajectory prediction and a weight-config system. Same licence as us, and
+the most developed bot AI in the Quake family by a distance. It is C++ against
+their own engine so nothing lifts across directly, but the shape is the answer to
+a problem this branch has been working around all week: I have been bolting a
+tactical layer onto Q3's node machine, and they replaced the node machine with a
+planner. Worth reading before any further work on `ai_tactics.c`.
+
+Note the older [Qfusion/qfusion](https://github.com/Qfusion/qfusion)
+`source/game/ai` is a different, simpler thing - ACEBOT-derived, A* over
+nodes and links. Historical interest only.
+
+**[Xonotic](https://gitlab.com/xonotic/xonotic-data.pk3dir) havocbot — GPLv2
+QuakeC. Read it against what we just built.**
+Its CTF roles are **carrier, defense, escort, middle, offense, retriever**, and
+it has role sets for Domination, Freeze Tag and Keep Away as well. That is the
+same problem E64 solves here, solved by people who have shipped it for years, so
+their thresholds and switching timers are worth comparing against ours. QuakeC to
+C is a rewrite rather than a port, so this is a design reference.
+
+**[RTCW-SP](https://github.com/id-Software/RTCW-SP) / iortcw `ai_cast_*` — GPLv3
+**plus additional id terms**. Read-only.**
+Technically the closest fit in the survey: C, id Tech 3 idioms, and a genuinely
+richer AI than Q3's - cover, alertness, scripted behaviour. And the worst licence
+of the set. GPLv3 alone would relicense our combined work; worse, the README says
+the release *"is also subject to certain additional terms"* which are **not in the
+repository** and have to be obtained from id. Until somebody has read those, this
+is a thing to learn from and not a thing to copy a line out of.
+
+**OpenArena** — GPLv2 and the same Q3 bot code we already have. Nothing to take.
+
+#### What this survey concludes
+
+"Use some or all of the code" mostly does not survive contact with the engines:
+navigation systems are not interchangeable, and two of the three best candidates
+are C++ or QuakeC against a game module that is C. The value is architecture and
+specific algorithms rather than files.
+
+In order of what it would actually buy us:
+
+1. **DetourCrowd's local avoidance**, for the crowd-blocking that AAS cannot
+   express. zlib, so no licence question at all.
+2. **Xonotic's role thresholds**, as a check on E64's mix.
+3. **Warsow's separation of concerns**, if the tactical layer keeps growing -
+   which on the evidence of this week it will.
+
+### E60. Bots fight one at a time, at one distance, in a straight line — DONE (verify)
+**Lives in:** our **server** (qagame) · **Seen by:** every client
+
+Asked for as attack, defence, pushing as a small group, retreating, item
+awareness and side-stepping. They are six symptoms of the same thing: the Quake 3
+bot decides everything from its own inventory and knows nothing about the room it
+is standing in.
+
+The whole layer is `code/game/ai_tactics.c`, and **`bot_tactics 0` restores the
+stock behaviour exactly** — every entry point returns the old answer. That is not
+politeness, it is how this gets tested: two matches on the same map, one cvar
+apart, no restart.
+
+#### What was actually wrong
+
+| behaviour | the stock code |
+|---|---|
+| engagement range | `IDEAL_ATTACKDIST` **140 for every weapon** — a railgun bot walks to shotgun range, a lightning gun bot backs out of the gun's own 768-unit reach |
+| side-stepping | strafe direction flips only when a timer expires **and** `random() > 0.935`, so one direction is held for seconds at a time |
+| dodging | none. A rocket in the air is not an input to anything |
+| group play | none. `BotAggression` is identical whether the bot is alone against three or standing in a group of four |
+| retreating | `BotAggression(bs) < 50`, asked every think, with nothing holding the answer |
+| items | goal weights are excellent and have no idea anyone is shooting |
+| defence | only ever from a team leader's order |
+
+#### The engagement-range fix
+
+`BotIdealAttackRange` gives each weapon the band it is good in — gauntlet 0,
+shotgun 220±130, lightning 380±200 (inside its 768-unit cutoff), rocket 400±220,
+rail 900±450. Below 0.5 `CHARACTERISTIC_ATTACK_SKILL` the old single distance
+stays: knowing where your weapon works is a skill, and the bottom of the ladder is
+supposed to not have it.
+
+#### Side-stepping, which is two different things
+
+**Reactive.** `BotScanForMissiles` finds missiles that are moving (>100 ups),
+heading at the bot (`dot > 0.85`), passing within 140 units, arriving in
+0.08–1.2 s, and **in line of sight** — that last test is the one that matters,
+because without it a bot dodges a rocket fired through a wall two rooms away,
+which reads as a bot that knows things it should not. The bot steps across the
+missile's path and *commits the strafe flag to that side*, so the next think does
+not walk back into it.
+
+**Anticipatory.** `BotEnemyTrackingMe` — the enemy is holding a hitscan weapon
+with the bot inside `dot > 0.97` of their view. Nothing has been fired yet; this
+is what breaks the strafe rhythm before the shot rather than after it.
+
+Cost mattered here. Scanning every entity per bot per think is 2.5 M entity tests
+a second at 64 bots and 40 Hz, so the missile list is built **once per server
+frame** and every bot reads it.
+
+#### Pushing as a group, and falling back as one
+
+`BotCountNearby` counts each side within `bot_squadRange` (800) and weighs them:
+a bot at 25 health is standing in the room but is not a whole body, and counting
+it as one is how two nearly dead bots talk each other into a push they lose. A
+quad or battle suit counts as 1.5.
+
+That yields `TACTIC_PUSH` / `TACTIC_EVEN` / `TACTIC_FALLBACK`, which feeds
+`BotAggression` (+20 / −30). Because aggression is what four separate gametype
+paths already test, a group of bots becomes aggressive *at the same time* without
+any of them being told to — the group push is emergent, not scripted.
+
+Three details that took thought:
+
+- **Hysteresis in one direction only.** Deciding to push is held 0.6 s before it
+  takes effect, because the counts flicker as people move behind each other.
+  Deciding to fall back is immediate: by the time a bot is outnumbered, waiting to
+  be sure is how it dies mid-deliberation.
+- **Free-for-all needs a different margin.** `BotSameTeam` returns false for
+  everyone in FFA, so every visible player is a foe and "outnumbered" is the
+  normal state of a busy map. Falling back there requires roughly two healthy
+  opponents to one healthy bot; in a team game being down one body is already
+  enough.
+- **Team mates are not traced.** A team knows roughly where its own people are.
+  Skipping the visibility trace for them halves the cost of a loop every bot runs
+  several times a second against every other player on the server.
+
+#### Retreating
+
+Two additions. Being outnumbered *here* is now a reason to give ground, which the
+stock code had no way to express. And the answer is **held for 1.5 s**:
+`BotAggression` sits either side of 50 as health and ammo tick, and
+`AINode_Battle_Fight` asks every single think, so a bot on the boundary entered
+and left the retreat node several times a second. That oscillation is what the
+"bots dancing around each other" complaint partly was.
+
+Carrying a flag or cubes bypasses the hold — those answers belong to the gametype,
+not to a judgement call, and delaying them by a second loses a real objective.
+
+`AINode_Battle_Retreat` now falls back **towards the nearest team mate** when
+there is one. Retreating along the map's item route takes a losing bot away from
+the only help it has.
+
+A bot taking hits with nothing visible also falls back now, which is the shape of
+being sniped and which the stock AI answers by standing still. Guarded on a 5+
+point drop and not being in lava, because a bad landing is not incoming fire.
+
+#### Item awareness
+
+The stock weights are good and stay in charge. Two things sit on top:
+
+- **Search range scales with need.** The `range` the callers pass is an AAS
+  *travel time*, not a distance — 100 is a second of walking — and it is a
+  constant. A bot on 30 health now looks twice as far for a medkit.
+- **With an enemy about, junk is refused.** Full armour and a five-point shard
+  across a room under fire is a real thing the stock code does. `BotWantsItemGoal`
+  reads `g_entities[goal->entitynum].item` rather than matching pickup names, so
+  it is exact: powerups and mega health always yes, armour by what the bot has,
+  a weapon it already carries only for the ammo, ammo for a weapon it does not
+  carry never. The goal is already on botlib's stack by then, so declining means
+  popping it.
+
+#### Defence
+
+`BotAutoDefendGoal` takes a defensive posting when a bot has nothing to do at all
+and nobody on the team is holding the base. It is capped hard and deliberately: at
+most a quarter of the team, only bots with no order and no long-term goal, only in
+gametypes that have a place to lose (CTF, 1FCTF, obelisk, harvester), and for 60
+seconds rather than `TEAM_DEFENDKEYAREA_TIME`'s ten minutes — that is right for an
+order from a leader and wrong for a job a bot gave itself because the base
+happened to be empty when it looked. **A default voice order once put an entire
+team on defence for a whole match (E31); this must not undo that fix.**
+
+Known limitation: it counts bot defenders only, because `botstates[]` is the only
+place that answer exists. On a mixed team, bots may over-defend behind a human who
+is already holding the base.
+
+#### Cvars
+
+| cvar | default | what it does |
+|---|---|---|
+| `bot_tactics` | 1 | the whole layer; 0 is stock Quake 3 |
+| `bot_dodge` | 1 | missile sidestep and hitscan juke |
+| `bot_squadRange` | 800 | radius for counting the room |
+| `bot_debugTactics` | 0 | prints each posture change and defence claim |
+
+#### Not verified, and there was no way to verify it
+
+The 2026-09-03 20:05 log is a 64-bot instagib free-for-all on this build. It
+contains no crash, no `switched more than N AI nodes` error — which is the first
+thing a broken node flow produces — and no bot telemetry whatsoever, because
+`bot_debugTactics` was 0 and nothing else reports a bot decision.
+
+That is a gap in the work rather than in the testing. `BotTeamplayReport` exists
+and prints one line per bot, but it walks the red team and then the blue team, so
+in a free-for-all it prints two headings and nothing at all — the gametype the
+layer was first tested in. Shipping a bot change with no way to see what the bots
+chose is most of the reason this entry cannot be closed.
+
+There is a **`bots`** console command now: every bot in every gametype, with its
+posture, the ally/foe counts behind that posture, whether it has an enemy, which
+AI node it is in and what its long term goal is, plus totals. The node name comes
+from comparing `bs->ainode` against the `AINode_*` pointers, because
+`BotRecordNodeSwitch` takes the name as an argument and throws it away.
+
+"The bots feel better" still is not something reading the code can establish. But
+"twelve pushing, thirty-one even, seventeen falling back, three dodging" is, and
+that is now one command away.
+
+### C11. Mid-match arrivals keep a stand-in model — DONE (verify)
+**Lives in:** our **client** (cgame / ui / client engine) · **Seen by:** our client only
+
+"Sometimes when a bot joins it doesn't load their model, sometimes it does."
+
+A client that arrives mid-match is *deferred*: `CG_SetDeferredClientInfo` copies
+some other client's model as a stand-in, and the real one is meant to load
+later. The only things that called `CG_LoadDeferredPlayers` were the scoreboard
+draw — and then only after it had been drawn eleven times
+(`cg.deferredPlayerLoading > 10`) — the local player's own info changing, and
+the first snapshot. So a bot joining a match in progress kept its stand-in until
+the player happened to die and look at the scoreboard. Whether the model was
+right came down to whether that had happened yet, which is exactly what
+"sometimes" means.
+
+Deferring is worth keeping: a snapshot can bring eight clients in at once and
+loading eight player models in one frame is a visible hitch, which is the whole
+reason it exists. It just never finished. One deferred client is now loaded per
+frame, which spreads the cost the way deferring intended and bounds the wait at
+one frame per client.
+
+### E13. More than ~25 bots crashed the server — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+`qconsole.log` named it on the first capture:
+
+```
+Forcing disconnect on active client: 26
+ERROR: G_Alloc: failed on allocation of 9032 bytes
+```
+
+9032 is `sizeof(bot_state_t)`. `BotAISetupClient` took one per client slot that
+had ever held a bot, out of the game module's `G_Alloc` pool — a fixed **256KB**
+with no free, shared with every entity key and value string on the map
+(`G_NewString`), the arena list (167 entries on a full install), the bot list
+and the unlagged history rings. Twenty-five bots is ~226KB of that pool before
+anything else, so it ran out mid-match.
+
+It also meant bot capacity depended on the *map*: a level with more entity
+strings left less room, and nothing said so.
+
+Two halves:
+
+- Bot states now live in a static `bot_state_t[MAX_CLIENTS]` in `ai_main.c`.
+  Bots are bounded by `MAX_CLIENTS` by definition, so the storage may as well be
+  — 578KB of BSS, reused across maps and reconnects, and the largest and most
+  variable consumer is out of the pool entirely.
+- `POOLSIZE` raised from Quake 3's 256KB to 1MB, because the ceiling was still
+  map-dependent for everything else, and the failure now reports how much was in
+  use rather than naming one allocation.
+
+**The second capture showed the same crash, from a `qagame` that predates the
+fix.** The error line read `G_Alloc: failed on allocation of 9032 bytes` with no
+`(N of M already in use)` suffix — that suffix was added by the same commit as
+the fix, and the shipped `iobin.pk3` was checked to confirm it carries the new
+string. `sizeof(bot_state_t)` was also confirmed to be exactly 9032 by static
+assert, so the fix targets the right allocation, and in the new module that
+allocation cannot happen at all.
+
+**Which module ran is not the same question as which build was installed, and
+conflating the two was a mistake.** Game modules are extracted from the *first*
+matching pak in the search path, and the homepath is searched before the
+basepath — so a stale `iobin.pk3` left in `%APPDATA%\quakelive\baseq3` wins over
+the one just installed next to the executable, for as long as it is there, and
+the only symptom is that a fix "did not work".
+
+`FS_ExtractGamecode` now says so: if more than one `iobin.pk3` is loaded it
+names every copy and which one modules come from. Not resolved automatically —
+which one an admin wants is genuinely ambiguous, and choosing for them would be
+a worse surprise than saying what is going on.
+
+The failure message and `gamemem` also carry the qagame build date now.
+
+**Also seen in that log, unexplained:** *"Forcing disconnect on active client:
+N"* is logged for every bot added, on slots that have never held a client.
+`ClientConnect` logs it when `ent->inuse` is already set and then calls
+`ClientDisconnect`, which is a safe no-op on a slot with no `ent->client` — so
+this is noise rather than damage, but something is setting `inuse` on fresh
+client slots and it is worth knowing what.
+
+### E14. Nothing verified that the loaded module matched the shipped one — DONE (verify)
+**Lives in:** **both** of our binaries · **Seen by:** every client
+
+Two rounds of a real bug hunt went into "the fix is in the build and the crash
+says otherwise", and neither the game nor the log could settle it. The extracted
+module in the homepath is what actually gets loaded, and nothing ever compared
+it against the `iobin.pk3` it was supposed to come from — the log said
+*"Extracted ..."* whether or not the bytes were the ones in the pak, so a stale
+module was indistinguishable from a fix that had not worked.
+
+`FS_ExtractGamecode` now checksums both sides on every start and says which case
+it is:
+
+```
+Verified 'uix86_64.so' (364984 bytes, checksum 0xe0de03e9) against 'baseq3/iobin.pk3'
+MISMATCH: '<homepath>/uix86_64.so' on disk is 364984 bytes / checksum 0x4413021b,
+          'baseq3/iobin.pk3' has 364984 bytes / checksum 0xe0de03e9 - replacing it
+```
+
+The replacement is the repair, and it is read back and re-checksummed
+afterwards — a write that reports success and produces different bytes is
+exactly the failure this exists to catch, so it is not taken on trust. If the
+readback disagrees the engine refuses to continue rather than loading a module
+that is not the one that shipped, and a target that cannot be opened for writing
+now says *why* that matters instead of just failing.
+
+Verified by corrupting an extracted module by hand: clean start reports
+`Verified`, corrupted start reports `MISMATCH` with both checksums and replaces
+it, next start reports `Verified` again.
+
+**Confirmed in the field on the first run.** It caught a stale `qagame`:
+
+```
+MISMATCH: 'C:\Users\...\quakelive\baseq3\qagamex86_64.dll' on disk is 1192502 bytes
+          / checksum 0xed0bf242, 'baseq3/iobin.pk3' has 1192536 bytes / checksum
+          0x39a7771f - replacing it
+```
+
+34 bytes apart, not corrupt — that is a *different build* of the same source
+(the `__DATE__`/`__TIME__` strings and one changed format string account for the
+difference). So a module from an earlier build genuinely was being loaded while a
+newer `iobin.pk3` sat next to it, which is what the previous two rounds were
+arguing about.
+
+**How it got stale is still not established.** The old code removed and rewrote
+the file unconditionally and errors out if the write fails, so none of the
+obvious paths explain it. What has changed is that it can no longer persist
+quietly: every start now compares and repairs.
+
+The archives also carry `checksums.txt` — sha256 of every shipped file, so an
+install can be checked against the release it came from without running the
+game (`sha256sum -c checksums.txt`). The engine covers modules against the pak;
+this covers the files on disk against the build.
+
+### E11. The match never starts, and kills score nothing — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+Reported twice from different angles: the countdown runs, the announcer talks
+about frags and leaderboard position, and the round never begins — and
+separately, TDM/FFA kills add no points. One fault. `AddScore` opens with
+`if (level.warmupTime) return;`, which is correct, so "no score" was never a
+scoring bug: it was evidence that warmup had not ended.
+
+`g_debugWarmup` traced it end to end, and the log is unambiguous:
+
+```
+warmup countdown elapsed at 77750, issuing map_restart 0
+==== ShutdownGame ====
+InitGame: ...
+warmup -1 -> 0    (level.time 77750)      <- match live
+------- Game Initialization -------
+InitGame: ...
+warmup -1 -> -1   (level.time 77750)      <- straight back to warmup
+Warmup:
+```
+
+**`map_restart` initialised the game twice.** `SV_RestartGameProgs` called
+`SV_InitGameProgs`, which ends in `SV_InitGameVM(qfalse)` and so had already run
+`GAME_INIT` — and then ran `SV_InitGameVM(qtrue)` on top of it.
+
+`g_restarted` is a one-shot flag. The countdown sets it, `map_restart` fires, and
+`SP_worldspawn` reads it to decide whether to come up IN_PROGRESS or in
+PRE_GAME, clearing it as it goes. The first init consumed it and went live; the
+second saw 0 and went back to warmup, taking every client's ready flag with it.
+Hence the loop: countdown, announcer, warmup again, and no scoring throughout.
+
+ioquake3 has the same two-function split and does not have this problem, because
+its `VM_Restart` does not call `GAME_INIT` — only `SV_InitGameVM` does. The
+native-DLL loader in this tree folded the two together. Split into
+`SV_LoadGameDll` (load only) and `SV_InitGameProgs` (load + init once), so a
+restart initialises exactly once, with `restart=qtrue`.
+
+**Not a bug, from the same log:** 57 `MOD_TELEFRAG` kills in a chain at the
+restart. That is 40 players on `longestyard`, which has about ten spawn points —
+`SelectSpawnPoint` has nowhere free to put them and they spawn on top of each
+other. Quake doing what it does when the player count far exceeds the spawns.
+
+### E12. Nothing was written when Windows crashed — DONE (verify)
+**Lives in:** our **server** (qagame / server engine) · **Seen by:** every client
+
+`sys_unix.c` has had `Sys_ErrorDialog` writing `crashlog.txt` for as long as
+this tree has existed. `sys_win32.c` had nothing, so a hard crash on the
+platform this actually ships on left nothing behind — which is why "does the
+server have a log file?" had no good answer.
+
+`SetUnhandledExceptionFilter` now writes the exception code, the faulting
+address, and the module plus offset within it. Module-and-offset is the part
+worth having: it says whether the fault was in `quakelive.exe`,
+`cgamex86_64.dll`, `qagamex86_64.dll` or a renderer, and the offset stays valid
+across runs.
+
+For the console output leading up to a crash: **`logfile 2`**, not `logfile 1`.
+1 buffers and loses exactly the tail worth reading; 2 flushes after every line.
+`qconsole.log` lands in `fs_homepath/baseq3`.
+
+The >20-bot crash is still open and this is what it needs.
+
+### E15. Raising MAX_CLIENTS above 64 — DEFERRED
+**Lives in:** **both** of our binaries · **Seen by:** every client
+
+Asked for (64 -> 100) and set aside for a future version. Recording the cost so
+it does not have to be re-derived.
+
+It is not a constant bump. `MAX_CLIENTS` sets the width of every client-number
+field in the network protocol and the layout of the configstring table, so a
+server built at 100 and a **stock Steam Quake Live client** disagree about where
+things are in every snapshot — the "Seen by: stock QL only" trap. It also moves
+`MAX_GENTITIES` pressure, grows the bot-state array from 578KB to ~903KB
+(E13), and the scoreboard message is already capped near 20 players per
+reliable command (C13), so more players would not be visible without the
+chunking sketched there first.
+
+Doable as a deliberate protocol fork. Not doable as a one-line change.
+
 ### E4. ZMQ stats feed absent — OPEN
 **Lives in:** our **server** (qagame / server engine) · **Seen by:** every client, vanilla included
 
@@ -1422,6 +13859,38 @@ compiler warnings in engine code).
 | Command | Scope | What it reports |
 |---|---|---|
 | `cg_debugShotgun 1` | client, in-map | Per blast: fire direction vs view axis, muzzle vs camera, resolved pattern parameters, pellet spread off the crosshair |
+| `r_shaderTimeSource 0/1` | client, in-map | Switches shader animation between scene time (`cg.time`) and the real-time clock. If 1 is steady where 0 is not, uneven animation is `cg.time`, not the renderer (E94) |
+| `com_framePacing 0/1` | client | Frame limiter ruler: 1 sleeps in microseconds (even spacing at any rate), 0 is the old whole-millisecond loop. Does not change the 1000 fps ceiling — see E43 for why that is the clock and not a limiter |
 | `menu_open <name>` | client | Opens any loaded menu by name |
 | `menu_close <name>` | client | Closes it |
 | `ui_report` | client | Dumps menu/item state |
+
+## CTF16 — route-risk trial (measured gain)
+
+**Lives in:** server qagame; native build/test tooling.
+**Seen by:** every client observing these server bots.
+
+Compare carrier direct-home and detour scores using peak enemy population
+along predicted AAS routes. Preserve return progress, detour bounds, arrival
+threshold and meaningful replacement margin. Original botfiles unchanged.
+Twelve600-second normal-speed Japanese Castles15v15 matches completed:
+candidate16 captures in6 games versus saved ctf11's10 in6 (+60%). Cohorts
+10–4 and6–6; the second tied, so capture superiority needs further replication; candidate scored every game, baseline had one no-progress failure.
+All validators, native import checks and dependency checks passed. Final
+rebuild matched the played qagame SHA256 exactly. This is a measured gain on
+one map, not a general proof or a CPU benchmark. Original151 botfile entries
+unchanged. Practice CTF team captures are permitted by unchanged scoring code;
+an exploratory stricter warmup criterion was rejected and its failure retained.
+Detailed original-relative and incremental handoff: docs/bot-ai-changes-ctf16.md.
+
+## CTF17 — spotted dropped-flag relay trial
+
+**Lives in:** server qagame; test tooling.
+**Seen by:** every client observing these server bots.
+
+Living teammates must see a dropped enemy flag before the planner assigns it.
+Share the last observed point, invalidate reused entities and wake planning on
+new sight. Original 151 botfile assets unchanged. ctf17 made 17 captures versus ctf16's 16, across six ten-minute matches per build.
+All matches and failures, source checks and limits are recorded in
+docs/bot-ai-changes-ctf17.md and the saved match evidence.
+No upstream push/main merge, Windows build or GPU validation is claimed.

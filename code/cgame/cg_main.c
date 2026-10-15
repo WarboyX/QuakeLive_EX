@@ -115,6 +115,11 @@ vmCvar_t cg_swingSpeed;
 vmCvar_t cg_shadows;
 vmCvar_t cg_gibs;
 vmCvar_t cg_drawTimer;
+vmCvar_t cg_spawnProtectAlpha;
+vmCvar_t cg_scoreboardListOffset;
+vmCvar_t cg_scoreboardMouse;
+vmCvar_t cg_debugPlayerModels;
+vmCvar_t cg_scoreboardDebug;
 vmCvar_t cg_drawFPS;
 vmCvar_t cg_drawSnapshot;
 vmCvar_t cg_draw3dIcons;
@@ -137,6 +142,8 @@ vmCvar_t cg_nopredict;
 vmCvar_t cg_noPlayerAnims;
 vmCvar_t cg_showmiss;
 vmCvar_t cg_footsteps;
+vmCvar_t cg_waterRipples;   // [QL] R19
+vmCvar_t cg_ioScoreboard;   // [QL] E119 - see CG_SetEndScoreboardMenu
 vmCvar_t cg_addMarks;
 vmCvar_t cg_brassTime;
 vmCvar_t cg_viewsize;
@@ -168,6 +175,7 @@ vmCvar_t cg_predictItems;
 vmCvar_t cg_deferPlayers;
 vmCvar_t cg_drawTeamOverlay;
 vmCvar_t cg_teamOverlayUserinfo;
+vmCvar_t cg_teamOverlayMaxPlayers;
 vmCvar_t cg_teamChatsOnly;
 
 vmCvar_t cg_hudFiles;
@@ -246,6 +254,7 @@ vmCvar_t cg_itemTimers;
 vmCvar_t cg_killBeep;
 vmCvar_t cg_levelTimerDirection;
 vmCvar_t cg_lightningImpact;
+vmCvar_t cg_beamLights;  // [QL] linear dynamic light along rail and lightning beams
 vmCvar_t cg_rocketTrailRadius;
 vmCvar_t cg_grenadeTrailRadius;
 vmCvar_t cg_nailTrailRadius;
@@ -253,6 +262,7 @@ vmCvar_t cg_railReloadTime;
 vmCvar_t cg_lowAmmoWarningPercentile;
 vmCvar_t cg_lowAmmoWarningSound;
 vmCvar_t cg_muzzleFlash;
+vmCvar_t cg_muzzleFlashLight;   // [QL] E146: ours, 0-1
 vmCvar_t cg_obituaryRowSize;
 vmCvar_t cg_playerLean;
 vmCvar_t cg_plasmaStyle;
@@ -483,6 +493,64 @@ int cg_teamRailColor2[1];
 // defaults on; distinct from the cg_announcerLastStandingVO voice-set cvar.
 vmCvar_t cg_announcerLastStanding;
 
+/*
+[QL] Rail colour chosen by gametype.
+
+The stock rail takes its colour from the shooter's own color1/color2 userinfo.
+In a team mode that is backwards - the one thing a beam could tell you, whose
+side fired it, is replaced by a colour that player picked for themselves. In a
+free-for-all it is fine, and it is the player's own choice, so it stays there.
+
+QL's own cg_forceTeamRailColor1/2 do not fill the team gap: they are a
+viewer-side friend/foe override with two arbitrary colours, and they skip your
+own rail entirely.
+
+  0  off     - stock, every player's own colour1/colour2 everywhere
+  1  auto    - team colours in team gametypes; own colour in FFA/Duel/Race,
+               falling back to yellow for a player who never picked one (an
+               unset colour1 reads as white, which is also the hardest rail to
+               see)
+  2  varied  - team colours in team gametypes; a distinct colour per player in
+               FFA/Duel/Race, hashed from the client slot so every client agrees
+               and it holds still for the match
+  3  white   - every rail white, everywhere
+
+Not CVAR_ARCHIVE on purpose. This is a default we choose, and archiving one
+writes it into a config on first run that then wins forever, so changing it
+later would do nothing (see r_dlightMode and con_scale).
+*/
+vmCvar_t cg_railColorMode;
+
+/*
+[QL] How a frozen player looks - see pak01/scripts/freeze.shader.
+
+Two axes, because the coat and the halo are independent and the right pairing is
+a judgement made by looking. Neither is CVAR_ARCHIVE: both are defaults we
+choose, and archiving one writes it into a config that then wins forever.
+
+cg_freezeShellStyle - the coat, hugging the model. Each style ships three
+sizes and the thaw progress picks between them, so the ice closes in as a
+teammate works on the statue:
+  1  blue, close  (default)  Quake Live's ice environment map, 2 -> 0.5 units
+  2  white, close             flat white, 2 -> 0.5 units
+  3  blue, wide               as 1, 5 -> 1.2 units
+  4  white, wide              as 2, 5 -> 1.2 units
+
+cg_freezeShellEffect - an animated overlay just outside the coat. A wider halo
+was the wrong idea: a glow around the silhouette reads as a powerup rather than
+as ice, so these move the texture instead and leave the shell still.
+  0  off (default)            static coat only
+  1  slow swirl               the environment map rotating in place
+  2  turbulent shimmer        tcMod turb, so the reflection ripples
+  3  animated frames          a real two-frame animMap over QL's blue env pair
+  4  crawling frost           tcGen base + scroll, fixed to the body
+
+Twenty combinations. Both take effect immediately - every shader is registered at
+load, so there is no vid_restart between tries.
+*/
+vmCvar_t cg_freezeShellStyle;
+vmCvar_t cg_freezeShellEffect;
+
 typedef struct {
     vmCvar_t* vmCvar;
     char* cvarName;
@@ -506,6 +574,55 @@ static cvarTable_t cvarTable[] = {
     {&cg_draw2D, "cg_draw2D", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawStatus, "cg_drawStatus", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawTimer, "cg_drawTimer", "0", CVAR_ARCHIVE},
+    /* [QL] see CG_OffsetScoreboardList - how far the scoreboard player list is
+       pushed below its column headers. Not CVAR_ARCHIVE: it is our layout value,
+       not the user's, and archiving a shipped default stops the default applying.
+
+       DEFAULT 0. This shipped at 8 to keep row one off the header band, on the
+       reading that Item_ListBox_Paint puts the first row at rect.y + 1. It does
+       not: the row's text baseline is rect.y + 1 + elementHeight * 4/5. Against
+       Quake Live's own numbers - list "rect 73 165 284 130", elementheight 16,
+       header text at y 170 - that is a baseline of 178 against a header at 170.
+       The rows already clear the headers, and the offset was spending a row of
+       an eight-row list to solve a collision that was not happening.
+
+       Raise it if rows do sit on the headers on some other scoreboard. */
+    // [QL] Half an element height. The lists sit hard against their column
+    // header with a whole element of slack left under the last row; this
+    // splits that slack so the block of names sits in the panel rather than
+    // at the top of it. Raise to push the rows further down, 0 for the menu's
+    // own geometry.
+    // [QL] how solid a spawn-protected player looks, 16-255. Not archived: a
+    // shipped default written into a config is a default that stops applying.
+    {&cg_spawnProtectAlpha, "cg_spawnProtectAlpha", "90", 0},
+    {&cg_scoreboardListOffset, "cg_scoreboardListOffset", "8", 0},
+    /* [QL] Take the mouse while +scores is held, so the scoreboard's lists can
+       be scrolled and clicked.
+
+       DEFAULT 0 until you confirm it. Turning this on has cost the scoreboard
+       three times: the widescreen bias shifting the board off screen
+       (CG_CgameUIOwnsScreen), the menu never carrying WINDOW_VISIBLE so nothing
+       in the input path would look at it, and Key_SetCatcher clearing every
+       held key when the cgame catcher changed - which released the +scores key
+       that took the catcher and switched the board off in the frame it went on.
+
+       The last of those is the one your trace caught, and it is fixed in
+       Key_SetCatcher rather than here: KEYCATCH_CGAME does not take input away,
+       so a change to it must not clear held keys. Confirmed working, so the
+       default is back on. Set it to 0 to keep the view free while the
+       scoreboard is held. */
+    {&cg_scoreboardMouse, "cg_scoreboardMouse", "1", 0},
+    /* [QL] Report player-model registration problems that are otherwise silent -
+       a missing icon, a skin that would not load. RE_RegisterModel and
+       RE_RegisterShader both return 0 for a name the pak does not contain and
+       say nothing, so without this an invisible player has no evidence at all. */
+    {&cg_debugPlayerModels, "cg_debugPlayerModels", "0", 0},
+    /* [QL] Print each scoreboard feeder's rect and the scrollbar/content
+       columns derived from it, once per scoreboard open. The two team lists
+       come out of Quake Live's own menus, which are read-only here, so when
+       they look asymmetric this is how to find out whether the rects differ or
+       our arithmetic does. */
+    {&cg_scoreboardDebug, "cg_scoreboardDebug", "0", 0},
     {&cg_drawFPS, "cg_drawFPS", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawSnapshot, "cg_drawSnapshot", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_draw3dIcons, "cg_draw3dIcons", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -544,6 +661,17 @@ static cvarTable_t cvarTable[] = {
     {&cg_noPlayerAnims, "cg_noplayeranims", "0", CVAR_CHEAT},
     {&cg_showmiss, "cg_showmiss", "0", 0},
     {&cg_footsteps, "cg_footsteps", "1", CVAR_CHEAT},
+    /* [QL] R19: whether impacts and footfalls disturb reflective water.
+       CVAR_ARCHIVE and not ARCHIVE_ND, which the VM headers do not expose -
+       and it is the right flag regardless: an on/off toggle is a value a user
+       sets, which is what archive is for. The r_waterWave* tuning numbers are
+       the other case and are archived only when changed. */
+    {&cg_waterRipples, "cg_waterRipples", "1", CVAR_ARCHIVE},
+    // [QL] E119's replacement scoreboard. E131: now the default, with the
+    // switch back to Quake Live's own on Advanced > HUD. Saved once changed
+    // (NODEFAULT), so the player's choice sticks and a changed default still
+    // reaches everyone else. Was "0" and unsaved, on only via autoexec.cfg.
+    {&cg_ioScoreboard, "cg_ioScoreboard", "1", CVAR_ARCHIVE | CVAR_NODEFAULT},
     {&cg_tracerChance, "cg_tracerchance", "0.4", CVAR_CHEAT},
     {&cg_tracerWidth, "cg_tracerwidth", "1", CVAR_CHEAT},
     {&cg_tracerLength, "cg_tracerlength", "100", CVAR_CHEAT},
@@ -556,6 +684,16 @@ static cvarTable_t cvarTable[] = {
     {&cg_deferPlayers, "cg_deferPlayers", "1", CVAR_USERSAVE | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0")
     {&cg_drawTeamOverlay, "cg_drawTeamOverlay", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0")
     {&cg_teamOverlayUserinfo, "teamoverlay", "0", CVAR_ROM | CVAR_USERINFO},
+    /* [QL] rows in the team status overlay, including yourself. Was hardcoded
+       to 8 - a full team in most gametypes, half of one on a large CTF server,
+       and the rest were dropped without a word. CVAR_ARCHIVE because this is a
+       value the player picks, not one we ship. */
+    // [QL] Rows in the team status overlay. Was "8" with CVAR_ARCHIVE, which is
+    // the trap: the shipped default is written into the config on first run and
+    // that config wins forever, so raising it here would do nothing for anyone
+    // who had already launched the game. CVAR_USERSAVE writes it only once a
+    // user sets one, so this default applies - see the note in CLAUDE.md.
+    {&cg_teamOverlayMaxPlayers, "cg_teamOverlayMaxPlayers", "32", CVAR_USERSAVE},
     {&cg_stats, "cg_stats", "0", CVAR_CHEAT},  // [QL] binary: CVAR_CHEAT
     {&cg_teamChatsOnly, "cg_teamChatsOnly", "0", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     // the following variables are created in other parts of the system,
@@ -587,6 +725,9 @@ static cvarTable_t cvarTable[] = {
 
     {&cg_noProjectileTrail, "cg_noProjectileTrail", "0", CVAR_ARCHIVE},
     {&cg_oldRail, "cg_oldRail", "1", CVAR_ARCHIVE},
+    {&cg_railColorMode, "cg_railColorMode", "1", 0},
+    {&cg_freezeShellStyle, "cg_freezeShellStyle", "1", 0},
+    {&cg_freezeShellEffect, "cg_freezeShellEffect", "0", 0},
     {&cg_oldRocket, "cg_oldRocket", "1", CVAR_ARCHIVE},
     {&cg_oldPlasma, "cg_oldPlasma", "1", CVAR_ARCHIVE},
     {&cg_trueLightning, "cg_trueLightning", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},  // [QL] default 1 (was Q3 "0.0")
@@ -638,6 +779,7 @@ static cvarTable_t cvarTable[] = {
     {&cg_killBeep, "cg_killBeep", "7", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_levelTimerDirection, "cg_levelTimerDirection", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lightningImpact, "cg_lightningImpact", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    {&cg_beamLights, "cg_beamLights", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_rocketTrailRadius, "cg_rocketTrailRadius", "64", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_grenadeTrailRadius, "cg_grenadeTrailRadius", "32", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_nailTrailRadius, "cg_nailTrailRadius", "16", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -645,6 +787,13 @@ static cvarTable_t cvarTable[] = {
     {&cg_lowAmmoWarningPercentile, "cg_lowAmmoWarningPercentile", "0.20", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_lowAmmoWarningSound, "cg_lowAmmoWarningSound", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_muzzleFlash, "cg_muzzleFlash", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    /* [QL] E146: how bright the dynamic light of a machine gun, heavy machine
+       gun or plasma gun muzzle flash is, 0 (none) to 1 (as it was). Ours, not
+       Quake Live's. Those three fire ten or more times a second, so their
+       flash light strobes the whole room; the other weapons' flashes are one
+       per shot and are left alone. NODEFAULT (ARCHIVE_ND): the default is
+       ours to change, so it is saved only once someone moves it. */
+    {&cg_muzzleFlashLight, "cg_muzzleFlashLight", "1", CVAR_ARCHIVE | CVAR_NODEFAULT},
     {&cg_obituaryRowSize, "cg_obituaryRowSize", "5", CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_playerLean, "cg_playerLean", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_ARCHIVE},
     {&cg_plasmaStyle, "cg_plasmaStyle", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -733,7 +882,13 @@ static cvarTable_t cvarTable[] = {
     {&cg_specTeamVitalsY, "cg_specTeamVitalsY", "85", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
 
     // [QL] HUD/UI cvars
-    {&cg_chatHistoryLength, "cg_chatHistoryLength", "6", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
+    // [QL] How many chat lines the overlay shows. Registered but read by nothing
+    // until CG_DrawChat started drawing the history unasked, so no config can
+    // meaningfully carry an old value for it. Not CVAR_ARCHIVE: that writes the
+    // shipped default into a config on first run and the config wins from then
+    // on, so the default could never be changed again. CVAR_USERSAVE only writes
+    // it once a user actually sets one.
+    {&cg_chatHistoryLength, "cg_chatHistoryLength", "10", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE},
     {&cg_complaintWarning, "cg_complaintWarning", "1", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawCrosshairTeamHealthSize, "cg_drawCrosshairTeamHealthSize", "0.12", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
     {&cg_drawInputCmdsSize, "cg_drawInputCmdsSize", "24", CVAR_USERSAVE | CVAR_VM_CREATED | CVAR_REPLICATE | CVAR_ARCHIVE},
@@ -800,7 +955,13 @@ static cvarTable_t cvarTable[] = {
     {&cg_cameraSmartMode, "cg_cameraSmartMode", "0", CVAR_CHEAT},  // [QL] binary: CVAR_CHEAT
     {&cg_cameraThirdPersonSmartMode, "cg_cameraThirdPersonSmartMode", "1", CVAR_CHEAT},  // [QL] binary: CVAR_CHEAT
     {&cg_filter_angles, "cg_filter_angles", "0", 0},
-    {&cg_stereoSeparation, "cg_stereoSeparation", "0.4", CVAR_ARCHIVE},
+    /* [QL] 0, not the Quake Live binary's 0.4. ioquake3 deliberately deprecated
+       this cvar and pins it with Cvar_Get(..., CVAR_ROM) in CL_InitCvars before
+       cgame ever loads, so the 0.4 could never apply and the two defaults just
+       printed a disagreement on every start. Nothing in cgame reads it either
+       way (tools/dead-cvars.py), so parity on the default string was buying
+       nothing. */
+    {&cg_stereoSeparation, "cg_stereoSeparation", "0", CVAR_ARCHIVE},
 
     // [QL] loadout disable cvars - CVAR_ROM (set by server via CS_DISABLE_LOADOUT, must not persist)
     {&cg_disableLoadout_bfg, "cg_disableLoadout_bfg", "0", CVAR_ROM},
@@ -919,6 +1080,24 @@ void CG_RegisterCvars(void) {
     // see if we are also running the server on this machine
     trap_Cvar_VariableStringBuffer("sv_running", var, sizeof(var));
     cgs.localServer = atoi(var);
+
+    /*
+    [QL] Publish it as ui_singleplayeractive - the in-game menu's "Add Bot" tab.
+
+    Same shape as ui_warmup and the missing team buttons. ingame.menu gates the
+    Add Bot button and its highlight on
+
+        cvarTest "ui_singleplayeractive" / showCvar { "1" }
+
+    and nothing anywhere set that cvar, so the button was never shown. The
+    *label* next to it is hideCvar { "0" }, which an unset cvar does not match,
+    so the word "Add Bot" was drawn over a tab that did not exist and could not
+    be clicked - which reads as a broken menu rather than a missing cvar.
+
+    Running the server is exactly what the name means: you can add bots to your
+    own game and not to somebody else's.
+    */
+    trap_Cvar_Set("ui_singleplayeractive", cgs.localServer ? "1" : "0");
 
     (void)CG_ForceModelCvarsChanged();  // seed the force-model modcount cache
 
@@ -1139,7 +1318,7 @@ void CG_CacheCountryFlags(void) {
             }
             code[0] = '\0';
             p = code;
-        } else {
+        } else if (p < code + 31) {  // a line longer than the name slot would run into the path scratch
             *p++ = c;
         }
     }
@@ -1470,9 +1649,21 @@ static void CG_RegisterSounds(void) {
             cgs.media.holyShitSound = trap_S_RegisterSound("sound/vo/holy_shit", qtrue);
         }
 
-        if (cgs.gametype == GT_OBELISK) {
-            cgs.media.yourBaseIsUnderAttackSound = trap_S_RegisterSound("sound/teamplay/voc_base_attack.ogg", qtrue);
-        }
+        /* [QL] E99. No registration for Overload's "your base is under attack".
+           sound/teamplay/voc_base_attack.ogg is Quake 3's name and the paks do
+           not contain it - they contain no voc_ file at all, and sound/teamplay/
+           holds six sounds, none of them this. So the handle was 0, every time,
+           and GTS_REDOBELISK_ATTACKED / GTS_BLUEOBELISK_ATTACKED in cg_event.c
+           announced nothing. CG_AddBufferedSound drops a 0 handle silently, so
+           there was nothing to see or hear either way.
+
+           There is no right name to substitute: the paks ship no base-attack
+           voiceover. Registering nothing is the same call made for the Overload
+           gametype ICON a few hundred lines below, for the same reason - a name
+           the pak cannot contain buys a failure line per start and no sound.
+
+           If Quake Live ever ships one, this is where it goes; check
+           docs/pak-manifest.txt first, which is what found this. */
     }
 
     cgs.media.tracerSound = trap_S_RegisterSound("sound/weapons/machinegun/buletby1.ogg", qfalse);
@@ -1613,7 +1804,13 @@ static void CG_RegisterSounds(void) {
     // [QL] moved from sound/feedback/voc_youwin to sound/vo/you_win
     cgs.media.winnerSound = trap_S_RegisterSound("sound/vo/you_win.ogg", qfalse);
     cgs.media.loserSound = trap_S_RegisterSound("sound/vo/you_lose.ogg", qfalse);
-    cgs.media.newHighScoreSound = trap_S_RegisterSound("new_high_score.ogg", qfalse);  // [QL] binary path string 0x1006cfa4
+    // [QL] The binary's path string (0x1006cfa4) is the bare filename, with no
+    // directory, which is why the console says "Failed to load sound
+    // new_high_score.ogg!" on every map load - S_RegisterSound takes the name
+    // as given and there is nothing at the root of the pak. Every other voice
+    // line registered here lives under sound/vo, and the ui module already asks
+    // for this one by that path (ui_main.c, uiInfo.newHighScoreSound).
+    cgs.media.newHighScoreSound = trap_S_RegisterSound("sound/vo/new_high_score.ogg", qfalse);
 
     cgs.media.wstbimplSound = trap_S_RegisterSound("sound/weapons/proxmine/wstbimpl.ogg", qfalse);
     cgs.media.wstbimpmSound = trap_S_RegisterSound("sound/weapons/proxmine/wstbimpm.ogg", qfalse);
@@ -1657,6 +1854,35 @@ CG_RegisterGraphics
 This function may execute for a couple of minutes with a slow disk.
 =================
 */
+/*
+[QL] Register an asset, and say so when the name does not resolve.
+
+RE_RegisterShader and RE_RegisterModel both return 0 for an asset they could not
+find - the registration fails silently and whatever draws with the handle draws
+nothing. These name the miss once and hand back a fallback that this build is
+known to have, so a wrong asset name costs the right artwork rather than the
+whole effect.
+*/
+static qhandle_t CG_RegisterModelOr(const char* name, qhandle_t fallback) {
+    qhandle_t h = trap_R_RegisterModel(name);
+
+    if (!h) {
+        CG_Printf(S_COLOR_YELLOW "WARNING: model '%s' not found, falling back\n", name);
+        return fallback;
+    }
+    return h;
+}
+
+static qhandle_t CG_RegisterShaderOr(const char* name, qhandle_t fallback) {
+    qhandle_t h = trap_R_RegisterShader(name);
+
+    if (!h) {
+        CG_Printf(S_COLOR_YELLOW "WARNING: shader '%s' not found, falling back\n", name);
+        return fallback;
+    }
+    return h;
+}
+
 static void CG_RegisterGraphics(void) {
     int i;
     char items[MAX_ITEMS + 1];
@@ -1699,28 +1925,36 @@ static void CG_RegisterGraphics(void) {
 
     cgs.media.deferShader = trap_R_RegisterShaderNoMip("gfx/2d/defer.png");
 
-    cgs.media.scoreboardName = trap_R_RegisterShaderNoMip("menu/tab/name.tga");
-    cgs.media.scoreboardPing = trap_R_RegisterShaderNoMip("menu/tab/ping.tga");
-    cgs.media.scoreboardScore = trap_R_RegisterShaderNoMip("menu/tab/score.tga");
-    cgs.media.scoreboardTime = trap_R_RegisterShaderNoMip("menu/tab/time.tga");
+    /* [QL] E145. cg_vignette drew this handle and nothing ever registered it,
+       so it was 0 - the renderer's default shader, the small grey square with a
+       light border, stretched over the whole screen opaque. That was the
+       tester's "enabling vignette is borked". gfx/misc/vignette is Quake
+       Live's own script shader (gfx.shader: one stage, blendfunc blend over
+       gfx/misc/vignette, which pak00 ships as .png). */
+    cgs.media.vignetteShader = trap_R_RegisterShaderNoMip("gfx/misc/vignette");
+
+    /* [QL] menu/tab/{name,ping,score,time}.tga were the Quake 3 scoreboard's
+       column headings. Quake Live has no menu/tab/ at all, and the only code
+       that drew them is CG_DrawOldScoreboard, which nothing has called since the
+       menu-driven scoreboard replaced it. Four guaranteed failures per start for
+       a picture nothing was going to draw. */
 
     cgs.media.smokePuffShader = trap_R_RegisterShader("smokePuff");
     cgs.media.smokePuffRageProShader = trap_R_RegisterShader("smokePuffRagePro");
     cgs.media.shotgunSmokePuffShader = trap_R_RegisterShader("shotgunSmokePuff");
 
-    // [QL] impact spark burst and wallbang debris. Both handles were declared
-    // and referenced by the impact paths but never registered, so they resolved
-    // to 0 and nothing would have drawn even once the spawner existed. Fall
-    // back to the smoke puff sprite, which is always present, if the QL-named
-    // shaders are missing from the loaded paks.
-    cgs.media.sparkParticleShader = trap_R_RegisterShader("sparkParticle");
-    if (!cgs.media.sparkParticleShader) {
-        cgs.media.sparkParticleShader = cgs.media.smokePuffShader;
-    }
-    cgs.media.debrisPuffShader = trap_R_RegisterShader("debrisPuff");
-    if (!cgs.media.debrisPuffShader) {
-        cgs.media.debrisPuffShader = cgs.media.smokePuffShader;
-    }
+    /* [QL] Impact spark burst and wallbang debris. Both handles were declared and
+       referenced by the impact paths but never registered, so they resolved to 0
+       and nothing would have drawn even once the spawner existed.
+
+       "sparkParticle" and "debrisPuff" are Quake 3 names and Quake Live has
+       neither - the only spark in docs/pak-manifest.txt is one map's wall
+       texture. Registering them anyway resolved to the default shader, returned
+       0, and printed two failure lines on every single start, which is how a
+       diagnostic stops being read. The smoke puff is the fallback either way, so
+       it is now just assigned. */
+    cgs.media.sparkParticleShader = cgs.media.smokePuffShader;
+    cgs.media.debrisPuffShader = cgs.media.smokePuffShader;
 
     cgs.media.nailPuffShader = trap_R_RegisterShader("nailtrail");
     cgs.media.blueProxMine = trap_R_RegisterModel("models/weaphits/proxmineb.md3");
@@ -1756,6 +1990,14 @@ static void CG_RegisterGraphics(void) {
     cgs.media.battleSuitShader = trap_R_RegisterShader("powerups/battleSuit");
     cgs.media.battleWeaponShader = trap_R_RegisterShader("powerups/battleWeapon");
     cgs.media.invisShader = trap_R_RegisterShader("powerups/invisibility");
+    // [QL] ours, from content/pak01/scripts/spawnprotect.shader. Say so if it did
+    // not load: RE_RegisterShader's own message is developer-only, and the
+    // fallthrough in CG_AddRefEntityWithPowerups is deliberately quiet.
+    cgs.media.spawnProtectShader = trap_R_RegisterShader("models/players/spawnprotect");
+    if (!cgs.media.spawnProtectShader) {
+        CG_Printf("^3models/players/spawnprotect did not load - spawn-protected players "
+                  "will render normally (is pak01.pk3 current?)\n");
+    }
     cgs.media.regenShader = trap_R_RegisterShader("powerups/regen");
     cgs.media.hastePuffShader = trap_R_RegisterShader("hasteSmokePuff");
 
@@ -1767,7 +2009,10 @@ static void CG_RegisterGraphics(void) {
     cgs.media.gametypeIcon[GT_CA]         = trap_R_RegisterShaderNoMip("ui/assets/hud/ca");
     cgs.media.gametypeIcon[GT_CTF]        = trap_R_RegisterShaderNoMip("ui/assets/hud/ctf");
     cgs.media.gametypeIcon[GT_1FCTF]      = trap_R_RegisterShaderNoMip("ui/assets/hud/1f");
-    cgs.media.gametypeIcon[GT_OBELISK]    = trap_R_RegisterShaderNoMip("ui/assets/hud/ob");
+    /* [QL] No GT_OBELISK entry: ui/assets/hud/ holds twelve gametype icons and
+       Overload is not one of them (docs/pak-manifest.txt). The handle stays 0,
+       which every drawer already treats as "no icon" - registering a name the
+       pak cannot contain only produced a failure line per start. */
     cgs.media.gametypeIcon[GT_HARVESTER]  = trap_R_RegisterShaderNoMip("ui/assets/hud/har");
     cgs.media.gametypeIcon[GT_FREEZE]     = trap_R_RegisterShaderNoMip("ui/assets/hud/ft");
     cgs.media.gametypeIcon[GT_DOMINATION] = trap_R_RegisterShaderNoMip("ui/assets/hud/dom");
@@ -1784,12 +2029,14 @@ static void CG_RegisterGraphics(void) {
     if (cgs.gametype == GT_CTF || cgs.gametype == GT_1FCTF || cgs.gametype == GT_HARVESTER) {
         cgs.media.redFlagModel = trap_R_RegisterModel("models/flags/r_flag.md3");
         cgs.media.blueFlagModel = trap_R_RegisterModel("models/flags/b_flag.md3");
-        cgs.media.redFlagShader[0] = trap_R_RegisterShaderNoMip("icons/iconf_red1");
-        cgs.media.redFlagShader[1] = trap_R_RegisterShaderNoMip("icons/iconf_red2");
-        cgs.media.redFlagShader[2] = trap_R_RegisterShaderNoMip("icons/iconf_red3");
-        cgs.media.blueFlagShader[0] = trap_R_RegisterShaderNoMip("icons/iconf_blu1");
-        cgs.media.blueFlagShader[1] = trap_R_RegisterShaderNoMip("icons/iconf_blu2");
-        cgs.media.blueFlagShader[2] = trap_R_RegisterShaderNoMip("icons/iconf_blu3");
+        /* [QL] The eight icons/iconf_* registrations that used to be here asked
+           for names the pak does not contain - a check against
+           docs/pak-manifest.txt turns up only menu/icons/iconf_red.png,
+           iconf_blue.png and iconf_ntrl.png, and no numbered variants at all.
+           RegisterShaderNoMip returns 0 for a name it cannot find and reports
+           nothing, so redFlagShader/blueFlagShader/flagShader were arrays of
+           zeros - and nothing anywhere read them either way. The flag status
+           art the HUD actually draws is flagStatusHandles, below. */
 
         cgs.media.flagPoleModel = trap_R_RegisterModel("models/flag2/flagpole.md3");
         cgs.media.flagFlapModel = trap_R_RegisterModel("models/flag2/flagflap3.md3");
@@ -1805,10 +2052,6 @@ static void CG_RegisterGraphics(void) {
 
     if (cgs.gametype == GT_1FCTF) {
         cgs.media.neutralFlagModel = trap_R_RegisterModel("models/flags/n_flag.md3");
-        cgs.media.flagShader[0] = trap_R_RegisterShaderNoMip("icons/iconf_neutral1");
-        cgs.media.flagShader[1] = trap_R_RegisterShaderNoMip("icons/iconf_red2");
-        cgs.media.flagShader[2] = trap_R_RegisterShaderNoMip("icons/iconf_blu2");
-        cgs.media.flagShader[3] = trap_R_RegisterShaderNoMip("icons/iconf_neutral3");
     }
 
     if (cgs.gametype == GT_OBELISK) {
@@ -1896,13 +2139,95 @@ static void CG_RegisterGraphics(void) {
     cgs.media.medalRampage = trap_R_RegisterShaderNoMip("medal_rampage");
     cgs.media.medalRevenge = trap_R_RegisterShaderNoMip("medal_revenge");
 
-    // [QL] freeze tag
-    cgs.media.iceShardModel = trap_R_RegisterModel("models/gibs/sphere.md3");
-    cgs.media.iceShardShader1 = trap_R_RegisterShader("powerups/ice1");
-    cgs.media.iceShardShader2 = trap_R_RegisterShader("powerups/ice2");
-    cgs.media.iceShardShader3 = trap_R_RegisterShader("powerups/ice3");
-    cgs.media.frozenShader = trap_R_RegisterShader("sprites/frozen");
-    cgs.media.iceMarkShader = trap_R_RegisterShader("iceMark");
+    /*
+    [QL] Freeze Tag.
+
+    Five handles were declared in cg_local.h and read by the effect code but
+    assigned nowhere, so they were all zero: CG_FreezeEffect added an RT_MODEL
+    with hModel 0, CG_ThawPlayer spawned seven shards with hModel 0, and the
+    FE_FREEZE floating effect drew with shader 0. A zero handle renders nothing
+    and reports nothing, so Freeze Tag simply had no ice on screen.
+
+    The reverse of that is also here: iceShardModel and iceShardShader1..3 were
+    registered and read by nothing. The port registered one set of names and
+    wrote the effects against another, and the two halves never met.
+
+    RE_RegisterShader and RE_RegisterModel both return 0 when the asset is not
+    found, so CG_RegisterModelOr / CG_RegisterShaderOr name what did not resolve
+    and fall back to an asset this build is known to have. The dedicated Quake
+    Live ice models have not been identified - if the console names one of these,
+    that is the name to correct, not a reason for the effect to be invisible.
+    */
+    cgs.media.iceShardModel = CG_RegisterModelOr("models/gibs/sphere.md3", 0);
+    // [QL] shader names, not files - these can exist in a .shader script without
+    // a matching image path, so they are reported rather than assumed. If they
+    // do not resolve, the shards fall back to the model's own skin.
+    cgs.media.iceShardShader1 = CG_RegisterShaderOr("powerups/ice1", 0);
+    cgs.media.iceShardShader2 = CG_RegisterShaderOr("powerups/ice2", 0);
+    cgs.media.iceShardShader3 = CG_RegisterShaderOr("powerups/ice3", 0);
+    cgs.media.frozenShader = CG_RegisterShaderOr("sprites/frozen", 0);
+    /*
+    [QL] The ice shell drawn over a frozen player - our own shader, shipped in
+    pak01/scripts/freeze.shader, drawn as a second pass over the model the way
+    the quad shell is.
+
+    Two things had to be right and the early attempts missed both. Brightness:
+    two full additive stages saturated to white and erased the player underneath,
+    where Quake Live's stays completely readable. Standoff: Quake Live's ice
+    hovers around the player rather than clinging to the model, which is what
+    makes it read as a block of ice with someone inside - a second pass of the
+    same mesh is skin-tight by definition, so the shell is pushed out along the
+    vertex normals with deformVertexes.
+
+    Three variants, chosen by cg_freezeShell, sampling the axes still open - how
+    far the shell stands off, and whether it reads as glass or as glow. Which one
+    is right is a judgement made by looking, not by reasoning, and selecting
+    between shaders already in the pak settles it in game instead of over a
+    rebuild each time.
+
+    Registered eagerly, all three, so switching the cvar mid-game takes effect
+    without a vid_restart and so a missing one is reported at load rather than
+    silently drawing nothing - RE_RegisterShader returns 0 for a name the pak
+    does not have.
+    */
+    {
+        int i;
+        // every variant registers up front so switching either cvar takes effect
+        // without a vid_restart, and so a name the pak lacks is reported at load
+        // rather than silently drawing nothing - RE_RegisterShader returns 0.
+        for (i = 0; i < 4; i++) {
+            int t;
+            for (t = 0; t < 3; t++) {
+                cgs.media.freezeCoatShaders[i][t] =
+                    CG_RegisterShaderOr(va("powerups/freezecoat%i_%i", i + 1, t + 1),
+                                        cgs.media.frozenShader);
+            }
+        }
+        for (i = 0; i < 4; i++) {
+            cgs.media.freezeGlowShaders[i] =
+                CG_RegisterShaderOr(va("powerups/freezeglow%i", i + 1), 0);
+        }
+    }
+    cgs.media.iceMarkShader = CG_RegisterShaderOr("iceMark", 0);
+
+    /*
+    [QL] There are no ice models in pak00 - a scan of the whole pak for
+    ice/freeze/frozen returns sprites/frozen.png, gfx/damage/ice_spurt.png,
+    gfx/damage/ice_stain.png, gfx/misc/iceball.png, textures/effects/icemap.jpg
+    and textures/ql/ice.jpg, and no .md3 among them. So the three model handles
+    take the shard model that is already registered here rather than a name
+    invented to look plausible; the ice comes from the shader on it, not from
+    the mesh.
+
+    sprites/frozen is confirmed present, which is what freezeShader wants. There
+    is no frozen-flag sprite in the pak, so frozenFlagShader takes the same one -
+    nothing reads it yet in any case.
+    */
+    cgs.media.freezeModel = cgs.media.iceShardModel;
+    cgs.media.iceWhiteModel = cgs.media.iceShardModel;
+    cgs.media.iceBlueModel = cgs.media.iceShardModel;
+    cgs.media.freezeShader = CG_RegisterShaderOr("sprites/frozen", cgs.media.frozenShader);
+    cgs.media.frozenFlagShader = cgs.media.frozenShader;
 
     memset(cg_items, 0, sizeof(cg_items));
     memset(cg_weapons, 0, sizeof(cg_weapons));
@@ -1961,12 +2286,32 @@ static void CG_RegisterGraphics(void) {
     cgs.media.teamLeaderShader = trap_R_RegisterShaderNoMip("ui/assets/statusbar/team_leader.png");
     cgs.media.retrieveShader = trap_R_RegisterShaderNoMip("ui/assets/statusbar/retrieve.png");
     cgs.media.escortShader = trap_R_RegisterShaderNoMip("ui/assets/statusbar/escort.png");
-    cgs.media.cursor = trap_R_RegisterShaderNoMip("menu/art/3_cursor2");
+    // [QL] "menu/art/3_cursor2" is Quake 3's path and does not exist in Quake
+    // Live; RegisterShaderNoMip returns 0 for a shader that resolved to the
+    // default, so this was 0 and anything guarding on it drew nothing. Quake
+    // Live's menus declare "ui/assets/3_cursor3" in their assets block. The Q3
+    // path stays as a fallback for a pure-Q3 asset set.
+    cgs.media.cursor = trap_R_RegisterShaderNoMip("ui/assets/3_cursor3");
+    if (!cgs.media.cursor) {
+        cgs.media.cursor = trap_R_RegisterShaderNoMip("menu/art/3_cursor2");
+    }
     cgs.media.sizeCursor = trap_R_RegisterShaderNoMip("ui/assets/sizecursor.png");
+    /* [QL] "ui/assets/selectcursor.png" is Quake 3's, and Quake Live ships
+       sizecursor.png next to it but not this one - so CURSOR_ARROW, which is
+       every ordinary cursor in a cgame menu, was drawing nothing. Same fault the
+       main cursor had. The arrow is 3_cursor3, already registered above. */
     cgs.media.selectCursor = trap_R_RegisterShaderNoMip("ui/assets/selectcursor.png");
-    cgs.media.flagShaders[0] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_in_base.tga");
-    cgs.media.flagShaders[1] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_capture.tga");
-    cgs.media.flagShaders[2] = trap_R_RegisterShaderNoMip("ui/assets/statusbar/flag_missing.tga");
+    if (!cgs.media.selectCursor) {
+        cgs.media.selectCursor = cgs.media.cursor;
+    }
+    /* [QL] CG_OneFlagStatus draws these for the neutral flag in 1FCTF. They were
+       registered from ui/assets/statusbar/, a directory the pak does not have -
+       there is no statusbar/ under ui/assets at all - so all three handles were
+       0 and the one-flag HUD indicator drew nothing. The art is the neutral set
+       of gfx/2d/flag_status, the same files flagStatusHandles[0..3] uses. */
+    cgs.media.flagShaders[0] = trap_R_RegisterShaderNoMip("gfx/2d/flag_status/flag_at_base");
+    cgs.media.flagShaders[1] = trap_R_RegisterShaderNoMip("gfx/2d/flag_status/flag_taken");
+    cgs.media.flagShaders[2] = trap_R_RegisterShaderNoMip("gfx/2d/flag_status/flag_dropped");
 
     // [QL] flag-status HUD icon set for CG_DrawFlagStatus / CG_DrawOneFlagStatus.
     // Indexed [icon + team*4]: team 0 neutral, 1 red, 2 blue; icon 0 at-base, 1 taken,
@@ -2285,10 +2630,28 @@ void CG_ParseMenu(const char* menuFile) {
     int handle;
 
     handle = trap_PC_LoadSource(menuFile);
-    if (!handle)
+    if (!handle) {
+        /*
+        [QL] Say when a menu file is missing.
+
+        This fell back to ui/testhud.menu and, failing that, returned - both
+        without a word. Every menu cgame looks up later goes through here, so a
+        missing file surfaces much later and somewhere else entirely: the
+        scoreboard, for instance, is Menus_FindByName("teamscore_menu_ctf")
+        coming back NULL at draw time, with nothing anywhere connecting that to
+        a file that never loaded. Same silent-failure shape as a shader that
+        never registered.
+        */
+        Com_Printf(S_COLOR_YELLOW "CG_ParseMenu: %s not found, trying ui/testhud.menu\n",
+                   menuFile);
         handle = trap_PC_LoadSource("ui/testhud.menu");
-    if (!handle)
-        return;
+        if (!handle) {
+            Com_Printf(S_COLOR_RED "CG_ParseMenu: ui/testhud.menu not found either - "
+                       "%s is simply not loaded, and anything that looks up a menu "
+                       "defined in it will find nothing\n", menuFile);
+            return;
+        }
+    }
 
     while (1) {
         if (!trap_PC_ReadToken(handle, &token)) {
@@ -2506,6 +2869,41 @@ static clientInfo_t* CG_InfoFromScoreIndex(int index, int team, int* scoreIndex)
 }
 
 // [QL] Format damage with "k" suffix for scoreboard display (binary-verified)
+/*
+[QL] E120. The client on row `index` of a scoreboard list, or -1.
+
+Not CG_InfoFromScoreIndex, deliberately: when a team row is not found that
+falls through to cg.scores[index] regardless of team, which on the blue list
+can name a red player. Harmless for drawing text, and exactly wrong for a menu
+whose options include kick and ban. This one returns -1 instead of guessing.
+*/
+int CG_ScoreboardClientAt(int feeder, int index) {
+    int i, count = 0, team;
+
+    if (index < 0 || index >= cg.numScores) {
+        return -1;
+    }
+    if (feeder == FEEDER_REDTEAM_LIST) {
+        team = TEAM_RED;
+    } else if (feeder == FEEDER_BLUETEAM_LIST) {
+        team = TEAM_BLUE;
+    } else if (feeder == FEEDER_SCOREBOARD) {
+        return cg.scores[index].client;
+    } else {
+        return -1;
+    }
+    for (i = 0; i < cg.numScores; i++) {
+        if (cg.scores[i].team != team) {
+            continue;
+        }
+        if (count == index) {
+            return cg.scores[i].client;
+        }
+        count++;
+    }
+    return -1;
+}
+
 static const char* CG_FormatDamage(int dmg) {
     if (dmg >= 10000) return va("%.0fk", (float)dmg / 1000.0f);
     if (dmg >= 1000) return va("%.1fk", (float)dmg / 1000.0f);
@@ -2609,6 +3007,30 @@ static const char* CG_FeederColumnsCtf(score_t* sp, clientInfo_t* info, int colu
 }
 
 // [QL] Race scoreboard columns 0-6 (7 total, different layout) - binary FUN_10027c40
+/*
+[QL] E141. A bot's name on the scoreboard, with its skill after it when
+developer is set: "Slash ^3[7]". The skill is our 1-10 (a D10 roll unless
+the server fixed it) - the number that explains a row, which is what a
+developer is looking at the board for.
+*/
+static const char* CG_ScoreboardName(clientInfo_t* info) {
+    char dev[8];
+    char clean[MAX_QPATH];
+
+    if (info->botSkill10 <= 0) {
+        return info->name;
+    }
+    trap_Cvar_VariableStringBuffer("developer", dev, sizeof(dev));
+    if (atoi(dev) <= 0) {
+        return info->name;
+    }
+    /* without its colour codes: the name column's character limit counts
+       them, and a colourful name plus the tag was cut off mid-tag */
+    Q_strncpyz(clean, info->name, sizeof(clean));
+    Q_CleanStr(clean);
+    return va("%s ^3[%d]", clean, (int)(info->botSkill10 + 0.5f));
+}
+
 static const char* CG_FeederItemTextRace(clientInfo_t* info, score_t* sp, int column, qhandle_t* handle) {
     switch (column) {
         case 0:
@@ -2617,14 +3039,14 @@ static const char* CG_FeederItemTextRace(clientInfo_t* info, score_t* sp, int co
         case 1:
             return "";
         case 2:
-            if (cg.warmup) {
+            if (CG_InWarmup()) {
                 *handle = (cg.snap->ps.stats[STAT_CLIENTS_READY] & (1 << sp->client))
                     ? trap_R_RegisterShader("ui/assets/score/arrowg")
                     : trap_R_RegisterShader("ui/assets/score/arrowr");
             }
             return "";
         case 3:
-            return info->name;
+            return CG_ScoreboardName(info);
         case 4:
             if (sp->score > 0 && sp->score != 0x7FFFFFFF)
                 return va("%d:%02d.%03d", sp->score / 60000, (sp->score / 1000) % 60, sp->score % 1000);
@@ -2652,7 +3074,7 @@ static const char* CG_FeederItemTextStats(float feederID, int index, int column,
         case GT_CA:
             // CA stats: 17 columns
             switch (column) {
-                case 0: return info->name;
+                case 0: return CG_ScoreboardName(info);
                 case 1: return va("%d", sp->score);
                 case 2: return va("%d", sp->frags);
                 case 3: return va("%d", sp->deaths);
@@ -2666,7 +3088,7 @@ static const char* CG_FeederItemTextStats(float feederID, int index, int column,
         case GT_FREEZE:
             // TDM/FT stats: 18 columns
             switch (column) {
-                case 0: return info->name;
+                case 0: return CG_ScoreboardName(info);
                 case 1: return va("%d", sp->score);
                 case 2: return va("%d", sp->frags);
                 case 3: return va("%d", sp->deaths);
@@ -2683,7 +3105,7 @@ static const char* CG_FeederItemTextStats(float feederID, int index, int column,
         default:
             // CTF/etc stats: 19 columns
             switch (column) {
-                case 0: return info->name;
+                case 0: return CG_ScoreboardName(info);
                 case 1: return va("%d", sp->score);
                 case 2: return va("%d", sp->frags);
                 case 3: return va("%d", sp->deaths);
@@ -2739,7 +3161,7 @@ static const char* CG_FeederItemText(float feederID, int index, int column, qhan
         case 2:
             return "";
         case 3:
-            if (cg.warmup) {
+            if (CG_InWarmup()) {
                 *handle = (cg.snap->ps.stats[STAT_CLIENTS_READY] & (1 << sp->client))
                     ? trap_R_RegisterShader("ui/assets/score/arrowg")
                     : trap_R_RegisterShader("ui/assets/score/arrowr");
@@ -2752,7 +3174,7 @@ static const char* CG_FeederItemText(float feederID, int index, int column, qhan
         case 4:
             return "";
         case 5:
-            return info->name;
+            return CG_ScoreboardName(info);
     }
 
     // Gametype-specific columns 6+ for team feeders
@@ -2810,11 +3232,36 @@ static void CG_FeederSelection(float feederID, int index) {
     }
 }
 
+/*
+[QL] E198. What cgame's menus read cvars through - the ui's E183 rule
+(UI_CvarPendingValue): a latched cvar shows the value chosen for the next
+restart where there is one, and Item_PendingLabel adds "(Apply)". Menu sets
+of a latched cvar wait for that restart now (Cvar_SetFromClientVM); read
+live, an in-game row would go on showing the old value after a click and a
+second click could not flip it back.
+*/
 static float CG_Cvar_Get(const char* cvar) {
     char buff[128];
     memset(buff, 0, sizeof(buff));
-    trap_Cvar_VariableStringBuffer(cvar, buff, sizeof(buff));
+    trap_Cvar_LatchedStringBuffer(cvar, buff, sizeof(buff));
+    if (!buff[0]) {
+        trap_Cvar_VariableStringBuffer(cvar, buff, sizeof(buff));
+    }
     return atof(buff);
+}
+
+static void CG_CvarPendingString(const char* cvar, char* buffer, int bufsize) {
+    trap_Cvar_LatchedStringBuffer(cvar, buffer, bufsize);
+    if (!buffer[0]) {
+        trap_Cvar_VariableStringBuffer(cvar, buffer, bufsize);
+    }
+}
+
+static qboolean CG_CvarPending(const char* cvar) {
+    char buf[2];
+
+    trap_Cvar_LatchedStringBuffer(cvar, buf, sizeof(buf));
+    return buf[0] ? qtrue : qfalse;
 }
 
 void CG_Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const char* text, int cursorPos, char cursor, int limit, int style) {
@@ -2885,8 +3332,9 @@ void CG_LoadHudMenu(void) {
     cgDC.runScript = &CG_RunMenuScript;
     cgDC.getTeamColor = &CG_GetTeamColor;
     cgDC.setCVar = trap_Cvar_Set;
-    cgDC.getCVarString = trap_Cvar_VariableStringBuffer;
+    cgDC.getCVarString = CG_CvarPendingString;   // [QL] E198
     cgDC.getCVarValue = CG_Cvar_Get;
+    cgDC.cvarPending = CG_CvarPending;
     cgDC.drawTextWithCursor = &CG_DrawTextWithCursor_DC;
     // cgDC.setOverstrikeMode = &trap_Key_SetOverstrikeMode;
     // cgDC.getOverstrikeMode = &trap_Key_GetOverstrikeMode;
@@ -2899,7 +3347,7 @@ void CG_LoadHudMenu(void) {
     // cgDC.setBinding = &trap_Key_SetBinding;
     // cgDC.getBindingBuf = &trap_Key_GetBindingBuf;
     cgDC.keynumToStringBuf = &trap_Key_KeynumToStringBuf;
-    // cgDC.executeText = &trap_Cmd_ExecuteText;
+    cgDC.executeText = &CG_ExecuteText;
     cgDC.Error = &Com_Error;
     cgDC.Print = &Com_Printf;
     cgDC.ownerDrawWidth = &CG_OwnerDrawWidth;
@@ -2957,6 +3405,7 @@ void CG_LoadHudMenu(void) {
     CG_ParseMenu("ui/end_scoreboard_ffa.menu");
     CG_ParseMenu("ui/end_scoreboard_duel.menu");
     CG_ParseMenu("ui/end_scoreboard_race.menu");
+
     CG_ParseMenu("ui/end_scoreboard_tdm.menu");
     CG_ParseMenu("ui/end_scoreboard_ca.menu");
     CG_ParseMenu("ui/end_scoreboard_ctf.menu");
@@ -2966,6 +3415,19 @@ void CG_LoadHudMenu(void) {
     CG_ParseMenu("ui/end_scoreboard_dom.menu");
     CG_ParseMenu("ui/end_scoreboard_ad.menu");
     CG_ParseMenu("ui/end_scoreboard_rr.menu");
+
+    // [QL] E119. Our scoreboards, used only while cg_ioScoreboard is set. Parsed
+    // unconditionally so the cvar can be flipped mid-game without a reload.
+    CG_ParseMenu("ui/io_scoreboard.menu");
+
+    // [QL] One line saying how many menus cgame ended up with. menuScoreboard
+    // resolving to NULL later is otherwise indistinguishable from the whole set
+    // having failed to parse.
+    //
+    // E119: moved to the end. It sat partway down this list, before the last
+    // nine files, so it undercounted every time - a diagnostic whose number was
+    // always wrong in the direction that looks like a partial load.
+    Com_Printf("cgame: %i menus loaded\n", Menu_Count());
 }
 
 void CG_AssetCache(void) {
@@ -3173,4 +3635,9 @@ Called before every level change or subsystem restart
 void CG_Shutdown(void) {
     // some mods may need to do cleanup work here,
     // like closing files or archiving session data
+
+    // [QL] CG_PublishScoreboardState writes this every frame the scoreboard is
+    // drawn; nothing draws after this point, so clear it rather than leave the
+    // client holding the wheel and page keys for a scoreboard that is gone.
+    trap_Cvar_Set("cg_scoreboardActive", "0");
 }

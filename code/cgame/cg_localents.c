@@ -333,6 +333,31 @@ void CG_AddFadeRGB(localEntity_t* le) {
     re->shaderRGBA[2] = le->color[2] * c;
     re->shaderRGBA[3] = le->color[3] * c;
 
+    /*
+    [QL] The rail shot lights the room it crosses.
+
+    A rail beam is a column of light from the muzzle to the impact, and until
+    now it lit nothing at all - the only dynamic light on the shot was the
+    muzzle flash, a point at one end of a beam that can be a thousand units
+    long. The renderer has always been able to do this properly: a linear light
+    has a start and an end, and the per-pixel light shader projects the fragment
+    onto that axis before applying falloff, so the whole corridor lights rather
+    than one end of it.
+
+    Here rather than in CG_RailTrail because a light has to be added every frame
+    it is visible and CG_RailTrail runs once, when the shot happens. This
+    handler is what runs per frame for that beam, and c is already the fade, so
+    the light dies with the beam it belongs to - a quick flash, which is what a
+    rail shot is.
+
+    Gated on reType because LE_FADE_RGB also carries the teleport effect, which
+    is a model and has no second endpoint.
+    */
+    if (cg_beamLights.integer && re->reType == RT_RAIL_CORE) {
+        trap_R_AddLinearLightToScene(re->origin, re->oldorigin, 200.0f * (c / 255.0f),
+                                     le->color[0], le->color[1], le->color[2]);
+    }
+
     trap_R_AddRefEntityToScene(re);
 }
 
@@ -556,6 +581,9 @@ void CG_AddKamikaze(localEntity_t* le) {
         VectorScale(axis[1], c * KAMI_SHOCKWAVE_MAXRADIUS / KAMI_SHOCKWAVEMODEL_RADIUS, shockwave.axis[1]);
         VectorScale(axis[2], c * KAMI_SHOCKWAVE_MAXRADIUS / KAMI_SHOCKWAVEMODEL_RADIUS, shockwave.axis[2]);
         shockwave.nonNormalizedAxes = qtrue;
+        // a room-sized expanding flash, scaled well past its model bounds - light,
+        // not matter, and the box around it would darken half the map
+        shockwave.renderfx |= RF_NOOCCLUDE;
 
         if (t > KAMI_SHOCKWAVEFADE_STARTTIME) {
             c = (float)(t - KAMI_SHOCKWAVEFADE_STARTTIME) / (float)(KAMI_SHOCKWAVE_ENDTIME - KAMI_SHOCKWAVEFADE_STARTTIME);
@@ -625,6 +653,9 @@ void CG_AddKamikaze(localEntity_t* le) {
         VectorScale(axis[1], c * KAMI_SHOCKWAVE2_MAXRADIUS / KAMI_SHOCKWAVEMODEL_RADIUS, shockwave.axis[1]);
         VectorScale(axis[2], c * KAMI_SHOCKWAVE2_MAXRADIUS / KAMI_SHOCKWAVEMODEL_RADIUS, shockwave.axis[2]);
         shockwave.nonNormalizedAxes = qtrue;
+        // a room-sized expanding flash, scaled well past its model bounds - light,
+        // not matter, and the box around it would darken half the map
+        shockwave.renderfx |= RF_NOOCCLUDE;
 
         if (t > KAMI_SHOCKWAVE2FADE_STARTTIME) {
             c = (float)(t - KAMI_SHOCKWAVE2FADE_STARTTIME) / (float)(KAMI_SHOCKWAVE2_ENDTIME - KAMI_SHOCKWAVE2FADE_STARTTIME);
@@ -796,6 +827,28 @@ void CG_AddLocalEntities(void) {
             CG_FreeLocalEntity(le);
             continue;
         }
+        /*
+        [QL] What a local entity is, as far as the occlusion structure cares.
+
+        One place rather than one per handler, because the last two rounds of
+        this were whack-a-mole: the explosion flash was flagged in
+        CG_MakeExplosion and the lightning crackle then turned up doing the same
+        thing from somewhere else entirely. Every leType below is an effect made
+        of light - explosions, trails, bubbles, blood, score plums, the kamikaze
+        and the invulnerability shells - and none of them should stand a box up
+        on a wall. LE_FRAGMENT is the one exception: gibs and shell casings are
+        real objects, small and round, so they occlude as ellipsoids.
+
+        A leType added later lands in the "light" case by default, which is the
+        right way round: the failure it produces is a missing contact shadow on
+        something small, not a hard-edged square in the middle of a wall.
+        */
+        if (le->leType == LE_FRAGMENT) {
+            le->refEntity.renderfx |= RF_OCCLUDE_ROUND;
+        } else {
+            le->refEntity.renderfx |= RF_NOOCCLUDE;
+        }
+
         switch (le->leType) {
             default:
                 CG_Error("Bad leType: %i", le->leType);

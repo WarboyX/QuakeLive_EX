@@ -1160,7 +1160,7 @@ void Info_RemoveKey(char* s, const char* key) {
         }
         *o = 0;
 
-        if (!strcmp(key, pkey)) {
+        if (!Q_stricmp(key, pkey)) {
             memmove(start, s, strlen(s) + 1);  // remove this part
 
             return;
@@ -1211,7 +1211,7 @@ void Info_RemoveKey_Big(char* s, const char* key) {
         }
         *o = 0;
 
-        if (!strcmp(key, pkey)) {
+        if (!Q_stricmp(key, pkey)) {
             memmove(start, s, strlen(s) + 1);  // remove this part
             return;
         }
@@ -1230,12 +1230,40 @@ can mess up the server's parsing
 ==================
 */
 qboolean Info_Validate(const char* s) {
-    if (strchr(s, '\"')) {
-        return qfalse;
+    /*
+    [QL] Taken from ioq3 a6f949c ("Stricter Info_Validate"), with the reason for
+    a rejection reported rather than swallowed.
+
+    The old check looked for '"' and ';' only. Everything below 0x20 got
+    through - newline and carriage return included - and an infostring is
+    line-structured, so a name carrying one can forge the rest of a line in
+    anything that logs or re-parses it. Rejecting the whole non-printable range
+    closes that.
+
+    The reason this prints instead of just returning qfalse: the only caller is
+    ClientUserinfoChanged, and it responds by dropping the client with the flat
+    message "Invalid userinfo". Widening what counts as invalid without saying
+    which byte did it turns any false positive into an unexplainable kick - and
+    Q_isprint is 0x20..0x7E, so a client sending a high-byte name that Quake Live
+    itself accepts would now be rejected here and nowhere else. That is the
+    "Seen by: stock QL only" shape from CLAUDE.md: invisible to us, wrong for
+    everyone else. If that turns out to happen, this print is what makes it
+    findable, and relaxing the range to allow >= 0x80 is the one-line answer.
+    */
+    const char* ch;
+
+    for (ch = s; *ch != '\0'; ++ch) {
+        if (*ch == '\"' || *ch == ';') {
+            Com_Printf("^3Info_Validate: rejected infostring containing '%c'\n", *ch);
+            return qfalse;
+        }
+        if (!Q_isprint(*ch)) {
+            Com_Printf("^3Info_Validate: rejected infostring containing byte 0x%02x\n",
+                       (unsigned char)*ch);
+            return qfalse;
+        }
     }
-    if (strchr(s, ';')) {
-        return qfalse;
-    }
+
     return qtrue;
 }
 

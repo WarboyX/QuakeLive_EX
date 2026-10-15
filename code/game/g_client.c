@@ -174,20 +174,256 @@ SelectRandomFurthestSpawnPoint
 Chooses a player start, deathmatch start, etc
 ============
 */
-gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qboolean isbot) {
-    gentity_t* spot;
-    vec3_t delta;
-    float dist;
+/* [QL] ms a deathmatch point stays "just used" - the same window the team
+   spawns use, see SPAWN_REUSE_COOLDOWN in g_team.c. */
+#define SPAWN_REUSE_COOLDOWN_DM 1500
+
+/* [QL] How many spawns this map has had to place someone on an occupied point.
+   File scope rather than a function static so the end of map report can read it
+   - the number is the answer to "can this map hold this many players", and it
+   was previously only visible in a line printed every thirty seconds. */
+static int spawnSaturated;
+
+int G_SpawnSaturationCount(void) {
+    return spawnSaturated;
+}
+
+/*
+[QL] id's choice: sort by distance from the point to avoid (where you died) and
+take a random one out of the furthest half. The reuse cooldown is applied *here*,
+inside that half, rather than by the caller removing candidates before the sort.
+
+That distinction is the whole of a regression. Filtering cooldown points out
+first looks equivalent and is not: on a busy map it leaves one or two points
+standing, and "a random one out of the furthest half" of a two-entry list is not
+random at all - it is always the same point. So preferring the uncontested
+points funnelled everybody onto whichever one or two happened to be off cooldown
+and made citycrossings worse than it was before any of this. The pool has to stay
+the size id had it; the cooldown may only choose *within* the half, and is
+ignored when every candidate there is warm.
+
+The pick is also `rand() % n` now. id's `random() * (numSpots / 2)` yields
+exactly 0 for any pool of three or fewer, so small pools had no randomness even
+before the cooldown got involved.
+*/
+static gentity_t* G_PickFurthestSpawnPoint(gentity_t** list, int numSpots, vec3_t avoidPoint) {
     float list_dist[MAX_SPAWN_POINTS];
     gentity_t* list_spot[MAX_SPAWN_POINTS];
-    int numSpots, rnd, i, j;
+    int sorted = 0;
+    int n, i, j;
 
-    numSpots = 0;
-    spot = NULL;
+    for (n = 0; n < numSpots; n++) {
+        vec3_t delta;
+        float dist;
 
-    while ((spot = G_Find(spot, FOFS(classname), "info_player_deathmatch")) != NULL) {
-        if (SpotWouldTelefrag(spot))
+        VectorSubtract(list[n]->s.origin, avoidPoint, delta);
+        dist = VectorLength(delta);
+
+        for (i = 0; i < sorted; i++) {
+            if (dist > list_dist[i]) {
+                if (sorted >= MAX_SPAWN_POINTS)
+                    sorted = MAX_SPAWN_POINTS - 1;
+
+                for (j = sorted; j > i; j--) {
+                    list_dist[j] = list_dist[j - 1];
+                    list_spot[j] = list_spot[j - 1];
+                }
+
+                list_dist[i] = dist;
+                list_spot[i] = list[n];
+                sorted++;
+                break;
+            }
+        }
+
+        if (i >= sorted && sorted < MAX_SPAWN_POINTS) {
+            list_dist[sorted] = dist;
+            list_spot[sorted] = list[n];
+            sorted++;
+        }
+    }
+
+    if (!sorted) {
+        return NULL;
+    }
+
+    {
+        gentity_t* fresh[MAX_SPAWN_POINTS];
+        int numFresh = 0;
+        int half = sorted / 2;
+
+        if (half < 1) {
+            half = 1;
+        }
+
+        for (i = 0; i < half; i++) {
+            if (level.time - list_spot[i]->lastSpawnTime >= SPAWN_REUSE_COOLDOWN_DM) {
+                fresh[numFresh++] = list_spot[i];
+            }
+        }
+        if (numFresh) {
+            return fresh[rand() % numFresh];
+        }
+        return list_spot[rand() % half];
+    }
+}
+
+/*
+[QL] The least recently used point, for when every one of them is occupied.
+
+This is the case id did not really handle, and at high player counts it is not
+an edge case at all - it is most respawns. See the note in
+SelectRandomFurthestSpawnPoint.
+*/
+static gentity_t* G_PickLeastRecentSpawnPoint(gentity_t** list, int numSpots) {
+    int oldest = 0x7FFFFFFF;
+    int numTied = 0;
+    int i;
+    gentity_t* tied[MAX_SPAWN_POINTS];
+
+    for (i = 0; i < numSpots; i++) {
+        if (list[i]->lastSpawnTime < oldest) {
+            oldest = list[i]->lastSpawnTime;
+        }
+    }
+    for (i = 0; i < numSpots; i++) {
+        if (list[i]->lastSpawnTime == oldest && numTied < MAX_SPAWN_POINTS) {
+            tied[numTied++] = list[i];
+        }
+    }
+    if (!numTied) {
+        return NULL;
+    }
+    return tied[rand() % numTied];
+}
+
+/*
+[QL] Every classname a non-team gametype can legitimately spawn somebody on.
+
+info_player_deathmatch first, because on a map built for deathmatch that is the
+author's answer and the rest should never be reached. The others are the
+fallback, and they are real spawn pads: SP_team_CTF_redspawn and its blue twin
+are empty stubs, so those entities sit in the world with their classnames intact
+in every gametype and are never freed. In a free-for-all there are no teams, so
+a team pad is simply a place to appear.
+
+info_player_start is absent deliberately - SP_info_player_start renames itself to
+info_player_deathmatch, so it is already in the first list.
+*/
+static const char* const dmSpawnPrimary = "info_player_deathmatch";
+static const char* const dmSpawnFallback[] = {
+    "team_CTF_redspawn",
+    "team_CTF_bluespawn",
+    "team_CTF_redplayer",
+    "team_CTF_blueplayer",
+};
+
+static int G_CountSpawnPoints(const char* classname, qboolean includeReserve) {
+    gentity_t* spot = NULL;
+    int count = 0;
+
+    while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
+        if ((spot->flags & FL_SPAWN_RESERVE) && !includeReserve) {
             continue;
+        }
+        count++;
+    }
+    return count;
+}
+
+/*
+[QL] Report what the map actually offers, once per level.
+
+A map built for sixteen players does not say anywhere that it has twelve spawn
+points, and the difference between "the spawn code is broken" and "there is
+nowhere to put the sixty-fourth player" is exactly this number. The fallback
+classnames are counted too, because the interesting case turned out to be a map
+with *two* info_player_deathmatch and all its real pads under another name.
+*/
+static void G_ReportSpawnPointCount(void) {
+    static int reportedLevel = -1;
+    int primary, fallback, i;
+
+    if (reportedLevel == level.startTime) {
+        return;
+    }
+    reportedLevel = level.startTime;
+
+    primary = G_CountSpawnPoints(dmSpawnPrimary, qfalse);
+    fallback = 0;
+    for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback); i++) {
+        fallback += G_CountSpawnPoints(dmSpawnFallback[i], qtrue);
+    }
+    fallback += G_CountSpawnPoints(dmSpawnPrimary, qtrue) - primary;
+
+    G_Printf("Spawn points: %i %s + %i held in reserve for this gametype, for up to %i players%s\n",
+             primary, dmSpawnPrimary, fallback, level.maxclients,
+             (primary + fallback > 0 && level.maxclients > (primary + fallback) * 2)
+                 ? " - expect contested spawns" : "");
+}
+
+/*
+[QL] Two pools plus a widened search, because "no free point" is normal on a
+full server and on some maps it is the only state there is.
+
+id's version collected every point that would not telefrag, sorted them by
+distance from where you died, and picked out of the furthest half. If none was
+free it fell back to G_Find(NULL, ...) - the first spawn entity in the map,
+deterministically, every time - which is what turned a saturated map into a
+self-sustaining telefrag chain. That part is fixed by the tiers below.
+
+The tiers were not enough on their own, and the point count printed above is why:
+**citycrossings has two info_player_deathmatch entities.** Two, for sixty-four
+players, with every other pad in the map under team_CTF_redspawn /
+team_CTF_bluespawn. No selection strategy fixes two points, which is why that map
+read as 3306 telefrags against 117 weapon deaths whichever way the picking was
+done. So when the map's own deathmatch points are exhausted the search widens to
+the team pads, which in a free-for-all are perfectly good places to appear.
+
+  1. clear - would not telefrag, not used inside SPAWN_REUSE_COOLDOWN_DM.
+     id's furthest-half pick, unchanged.
+  2. warm  - would not telefrag but was just used. Same pick.
+  3. widen - nothing clear or warm among the deathmatch points: gather the team
+     pads as well and re-run 1 and 2 over the larger set. Gated on there being
+     nothing clear *or* warm, so a real deathmatch map whose points are merely
+     all in cooldown still uses its own.
+  4. taken - everything, everywhere, would telefrag. Least recently used, random
+     among ties. Somebody is still telefragged; the next player goes elsewhere,
+     so the chain cannot form.
+
+The cooldown and lastSpawnTime are the mechanism SelectRandomTeamSpawnPoint
+already used for CTF. The deathmatch path never got it.
+*/
+typedef struct {
+    gentity_t* clear[MAX_SPAWN_POINTS];
+    gentity_t* warm[MAX_SPAWN_POINTS];
+    gentity_t* taken[MAX_SPAWN_POINTS];
+    int numClear, numWarm, numTaken;
+} spawnCandidates_t;
+
+/*
+[QL] Which points a gather pass is allowed to take.
+
+RESERVE_ONLY exists because the widened search re-walks the deathmatch classname
+to pick up points a gametype filter set aside, and without it that pass also
+re-collects every point the first pass already had. On thunderstruck - five
+points, no team pads at all - that reported "all 10 usable points were occupied"
+for a map with five, and fed G_PickLeastRecentSpawnPoint a list where every point
+appeared twice, which skews a random tie-break among equal timestamps. Both are
+failures of the anti-chain work rather than of the search.
+*/
+typedef enum {
+    SPAWNGATHER_KEPT,      // the points this gametype kept
+    SPAWNGATHER_RESERVE,   // only the ones a filter set aside
+    SPAWNGATHER_ANY        // both; safe for a classname not gathered before
+} spawnGather_t;
+
+static void G_GatherSpawnPoints(spawnCandidates_t* c, const char* classname, qboolean isbot,
+                                spawnGather_t which) {
+    gentity_t* spot = NULL;
+
+    while ((spot = G_Find(spot, FOFS(classname), classname)) != NULL) {
+        qboolean reserve;
 
         if (((spot->flags & FL_NO_BOTS) && isbot) ||
             ((spot->flags & FL_NO_HUMANS) && !isbot)) {
@@ -195,54 +431,102 @@ gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3
             continue;
         }
 
-        VectorSubtract(spot->s.origin, avoidPoint, delta);
-        dist = VectorLength(delta);
+        /* [QL] A point this gametype's filters rejected. G_SpawnGEntityFromSpawnVars
+           keeps rather than deletes those now; they are for when the map's own
+           points have run out, not before. */
+        reserve = (spot->flags & FL_SPAWN_RESERVE) ? qtrue : qfalse;
+        if (reserve && which == SPAWNGATHER_KEPT) {
+            continue;
+        }
+        if (!reserve && which == SPAWNGATHER_RESERVE) {
+            continue;
+        }
 
-        for (i = 0; i < numSpots; i++) {
-            if (dist > list_dist[i]) {
-                if (numSpots >= MAX_SPAWN_POINTS)
-                    numSpots = MAX_SPAWN_POINTS - 1;
+        if (SpotWouldTelefrag(spot)) {
+            if (c->numTaken < MAX_SPAWN_POINTS) {
+                c->taken[c->numTaken++] = spot;
+            }
+            continue;
+        }
 
-                for (j = numSpots; j > i; j--) {
-                    list_dist[j] = list_dist[j - 1];
-                    list_spot[j] = list_spot[j - 1];
-                }
+        if (level.time - spot->lastSpawnTime < SPAWN_REUSE_COOLDOWN_DM) {
+            if (c->numWarm < MAX_SPAWN_POINTS) {
+                c->warm[c->numWarm++] = spot;
+            }
+            continue;
+        }
 
-                list_dist[i] = dist;
-                list_spot[i] = spot;
+        if (c->numClear < MAX_SPAWN_POINTS) {
+            c->clear[c->numClear++] = spot;
+        }
+    }
+}
 
-                numSpots++;
-                break;
+gentity_t* SelectRandomFurthestSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qboolean isbot) {
+    spawnCandidates_t c;
+    gentity_t* chosen = NULL;
+    int i;
+
+    G_ReportSpawnPointCount();
+
+    memset(&c, 0, sizeof(c));
+    G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot, SPAWNGATHER_KEPT);
+
+    if (!c.numClear && !c.numWarm) {
+        for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback); i++) {
+            G_GatherSpawnPoints(&c, dmSpawnFallback[i], isbot, SPAWNGATHER_ANY);
+        }
+        /* and this gametype's own points that a filter had set aside - only
+           those, or the pass above gets collected a second time */
+        G_GatherSpawnPoints(&c, dmSpawnPrimary, isbot, SPAWNGATHER_RESERVE);
+    }
+
+    if (c.numClear) {
+        chosen = G_PickFurthestSpawnPoint(c.clear, c.numClear, avoidPoint);
+    } else if (c.numWarm) {
+        chosen = G_PickFurthestSpawnPoint(c.warm, c.numWarm, avoidPoint);
+    } else if (c.numTaken) {
+        chosen = G_PickLeastRecentSpawnPoint(c.taken, c.numTaken);
+
+        /* Rate limited: when this happens it happens on most respawns. */
+        {
+            static int nextReport;
+            static int reportLevel = -1;
+
+            if (reportLevel != level.startTime) {
+                reportLevel = level.startTime;
+                spawnSaturated = 0;
+                nextReport = 0;
+            }
+            spawnSaturated++;
+            if (level.time >= nextReport) {
+                nextReport = level.time + 30000;
+                G_Printf("Spawns: %i so far found no free point - all %i usable points "
+                         "(deathmatch and team pads) were occupied. This map cannot hold "
+                         "%i players without telefrags.\n",
+                         spawnSaturated, c.numTaken, level.maxclients);
             }
         }
+    }
 
-        if (i >= numSpots && numSpots < MAX_SPAWN_POINTS) {
-            list_dist[numSpots] = dist;
-            list_spot[numSpots] = spot;
-            numSpots++;
+    if (!chosen) {
+        // nothing this player is allowed to use at all
+        chosen = G_Find(NULL, FOFS(classname), dmSpawnPrimary);
+        for (i = 0; i < (int)ARRAY_LEN(dmSpawnFallback) && !chosen; i++) {
+            chosen = G_Find(NULL, FOFS(classname), dmSpawnFallback[i]);
+        }
+        if (!chosen) {
+            G_Error("Couldn't find a spawn point");
         }
     }
 
-    if (!numSpots) {
-        spot = G_Find(NULL, FOFS(classname), "info_player_deathmatch");
+    chosen->lastSpawnTime = level.time;
 
-        if (!spot)
-            G_Error("Couldn't find a spawn point");
-
-        VectorCopy(spot->s.origin, origin);
-        origin[2] += 9;
-        VectorCopy(spot->s.angles, angles);
-        return spot;
-    }
-
-    // select a random spot from the spawn points furthest away
-    rnd = random() * (numSpots / 2);
-
-    VectorCopy(list_spot[rnd]->s.origin, origin);
+    VectorCopy(chosen->s.origin, origin);
     origin[2] += 9;
-    VectorCopy(list_spot[rnd]->s.angles, angles);
+    VectorCopy(chosen->s.angles, angles);
 
-    return list_spot[rnd];
+    return chosen;
 }
 
 /*
@@ -716,6 +1000,17 @@ void ClientUserinfoChanged(int clientNum) {
         client->pers.predictItemPickup = qtrue;
     }
 
+    /*
+    [QL] Does this client speak our extensions?
+
+    Our engine registers "iqlclient" as a CVAR_ROM userinfo cvar, so it arrives
+    with the connect packet. Anything the server sends that stock Quake Live has
+    no handler for has to be gated on this: an unknown command is not ignored by
+    the stock client, it prints "Unknown client game command" for every one, and
+    tinfo2 goes out twice a second per player.
+    */
+    client->pers.extendedClient = (qboolean)(atoi(Info_ValueForKey(userinfo, "iqlclient")) > 0);
+
     // set name
     Q_strncpyz(oldname, client->pers.netname, sizeof(oldname));
     s = Info_ValueForKey(userinfo, "name");
@@ -1062,6 +1357,7 @@ void ClientSpawn(gentity_t* ent) {
     int savedPing;
     //	char	*savedAreaBits;
     int accuracy_hits, accuracy_shots;
+    expandedStatObj_t savedStats;
     int eventSequence;
     char userinfo[MAX_INFO_STRING];
 
@@ -1078,6 +1374,32 @@ void ClientSpawn(gentity_t* ent) {
         // [QL] Race: use initial spawn point (near race start) rather than furthest
         spawnPoint = SelectInitialSpawnPoint(
             spawn_origin, spawn_angles, !!(ent->r.svFlags & SVF_BOT));
+    } else if (g_gametype.integer >= GT_CTF && (client->sess.sessionTeam == TEAM_RED ||
+                                               client->sess.sessionTeam == TEAM_BLUE)) {
+        /*
+        [QL] Team gametypes spawn in their own base.
+
+        This branch had been folded into the unified SelectSpawnPoint call
+        below - "unified SelectSpawnPoint for all gametypes" - and
+        SelectCTFSpawnPoint was left with no callers at all. SelectSpawnPoint
+        picks from info_player_deathmatch and knows nothing about teams, so in
+        CTF it scattered both sides across the map: a red player starting in the
+        blue base is that, exactly.
+
+        SelectCTFSpawnPoint only ever looks at this team's own points - the
+        TEAM_BEGIN set first, then this team's respawn points - and only drops
+        to the neutral info_player_deathmatch spots if the map has neither.
+        The other team's base is never a candidate at any stage.
+        */
+        spawnPoint = SelectCTFSpawnPoint(
+            client->sess.sessionTeam, client->pers.teamState.state,
+            spawn_origin, spawn_angles, !!(ent->r.svFlags & SVF_BOT));
+        if (!spawnPoint) {
+            client->respawnTime = level.time + 600;
+            client->ps.pm_type = PM_SPECTATOR;
+            client->pers.teamState.state = TEAM_ACTIVE;
+            return;
+        }
     } else {
         spawnPoint = SelectSpawnPoint(
             client->ps.origin,
@@ -1108,6 +1430,28 @@ void ClientSpawn(gentity_t* ent) {
     accuracy_hits = client->accuracy_hits;
     accuracy_shots = client->accuracy_shots;
 
+    /*
+    [QL] expandedStats survives the respawn, like pers, sess and persistant[].
+
+    It is a match accumulator - kills, deaths, damage dealt and taken, shots
+    fired and hit per weapon - and the Com_Memset below clears the whole
+    gclient_t. Q3 saves everything that has to outlive a life by hand;
+    expandedStats is a Quake Live addition and was never added to that list, so
+    every one of those counters was reset on every respawn.
+
+    That is the whole of "K/D, accuracy and damage are wrong on the scoreboard".
+    The score column was right because PERS_SCORE is in persistant[] and is
+    restored; the columns beside it only ever showed the current life. Deaths
+    could never show anything at all - numDeaths is incremented at the moment of
+    death and wiped by the respawn that follows - which is why every player on
+    the board read 0 deaths, and why a player who had not died yet was the only
+    one whose row looked right.
+
+    killStreak is not exempted: STAT_AddPlayerDeathStat already zeroes it on
+    death, which is where a streak is supposed to end.
+    */
+    savedStats = client->expandedStats;
+
     for (i = 0; i < MAX_PERSISTANT; i++) {
         persistant[i] = client->ps.persistant[i];
     }
@@ -1121,6 +1465,7 @@ void ClientSpawn(gentity_t* ent) {
     //	client->areabits = savedAreaBits;
     client->accuracy_hits = accuracy_hits;
     client->accuracy_shots = accuracy_shots;
+    client->expandedStats = savedStats;
     client->lastkilled_client = -1;
 
     for (i = 0; i < MAX_PERSISTANT; i++) {
@@ -1446,9 +1791,48 @@ void ClientSpawn(gentity_t* ent) {
             // positively link the client, even if the command times are weird
             VectorCopy(ent->client->ps.origin, ent->r.currentOrigin);
 
+            /*
+            [QL] Step aside before resorting to the kill box.
+
+            G_NudgeSpawnClear looks for a clear, reachable, floored position
+            near the pad when somebody is already standing on it. On a map with
+            any room this turns a telefrag into a spawn a few units to one side,
+            which nobody notices. When it fails - and on a five-point map with
+            sixty-four players it will - the kill box still runs, but the
+            telefrag it causes is marked as ours rather than the victim's.
+            */
+            G_NudgeSpawnClear(ent);
+            VectorCopy(ent->client->ps.origin, ent->r.currentOrigin);
+
             // [QL] G_KillBox after SetClientViewAngle (binary order)
+            ent->client->spawnKillBox = qtrue;
             G_KillBox(ent);
+            ent->client->spawnKillBox = qfalse;
             trap_LinkEntity(ent);
+
+            /*
+            [QL] A moment of protection, and no shooting during it.
+
+            The nudge above stops most telefrags, but it cannot stop somebody
+            standing next to the pad shooting whoever appears on it - which on a
+            full server is most of what happens after a spawn. Protection covers
+            that, and it matters more now than it used to: before the nudge, a
+            player camping a spawn pad got telefragged for it, and now they do
+            not.
+
+            The firing lockout is the half that keeps it honest. Invulnerability
+            without it is just a licence to walk out and kill people for a second
+            and a half. Pressing attack ends the protection immediately rather
+            than being ignored, so nobody is held in a shield they do not want -
+            they simply cannot be invulnerable and shooting at the same time.
+            */
+            if (g_spawnProtectionTime.integer > 0) {
+                ent->client->spawnProtectTime = level.time + g_spawnProtectionTime.integer;
+                ent->client->ps.eFlags |= EF_SPAWNPROTECT;
+            } else {
+                ent->client->spawnProtectTime = 0;
+                ent->client->ps.eFlags &= ~EF_SPAWNPROTECT;
+            }
         }
     } else {
         // move players to intermission
@@ -1721,11 +2105,81 @@ void Team_LivingTeamCounts(int *outRed, int *outBlue) {
         else if (cl->sess.sessionTeam == TEAM_BLUE) aliveBlue++;
     }
 
-    trap_SetConfigstring(CS_TEAMCOUNT_RED, va("%i", aliveRed));
-    trap_SetConfigstring(CS_TEAMCOUNT_BLUE, va("%i", aliveBlue));
+    /*
+    [QL] These two configstrings are what took the server down on a full server.
+
+    A configstring write is a reliable server command broadcast to every client,
+    and the engine only skips it when the value is unchanged - which an alive
+    count never is. This function is called on every spawn and every death, so at
+    64 players in instagib each of the two counts was broadcast to all 64 clients
+    hundreds of times a minute. MAX_RELIABLE_COMMANDS is 64 deep and a client
+    whose queue fills is dropped, so filling a server and starting a match
+    evicted everybody, one after another, with "Server command overflow" - which
+    presents as the server crashing at the end of warmup.
+
+    A pending-queue dump from the field: 28 of the 39 queued commands were these
+    two indices, fourteen each.
+
+    Two limits now.
+
+    Round-based only. The number means "how many are still alive this round",
+    which is a thing in Clan Arena, Freeze Tag, Attack & Defend and Red Rover and
+    nothing at all in CTF, TDM or free-for-all, where it just tracks how many
+    people happen to be respawning. Those modes also have the deaths, so they
+    were paying the whole cost for a number with no meaning in them. Worth
+    knowing: cgs.teamCountRed and teamCountBlue are assigned by our own cgame and
+    then read by nothing, so on this client the flood was feeding two dead
+    variables.
+
+    Gametype gating alone is not enough for the modes that keep the counts.
+    map_restart respawns every client in the same frame, so on a full server the
+    count walked 1, 2, 3 ... 30 within that one frame and every step was its own
+    broadcast - and Clan Arena, Freeze Tag and Attack & Defend do that at the
+    start of every round, not just once a map.
+
+    So the write is queued and flushed once per frame, the same treatment
+    G_ScheduleScoreConfigstrings already gives the HUD scores for the same
+    reason. Sixty writes in a frame become one.
+    */
+    if (BG_IsRoundBasedGameType(g_gametype.integer)) {
+        level.pendingTeamCountRed = aliveRed;
+        level.pendingTeamCountBlue = aliveBlue;
+        level.teamCountsPending = qtrue;
+    }
 
     if (outRed) *outRed = aliveRed;
     if (outBlue) *outBlue = aliveBlue;
+}
+
+/*
+============
+G_FlushTeamCountConfigstrings
+
+[QL] The queued alive counts, written at most once per frame. Keyed on
+level.startTime because the cache is static and a map change would otherwise
+leave the first count of the new map looking unchanged and never sent.
+============
+*/
+void G_FlushTeamCountConfigstrings(void) {
+    static int lastRed = -1, lastBlue = -1, lastLevel = -1;
+
+    if (!level.teamCountsPending) {
+        return;
+    }
+    level.teamCountsPending = qfalse;
+
+    if (lastLevel != level.startTime) {
+        lastLevel = level.startTime;
+        lastRed = lastBlue = -1;
+    }
+    if (level.pendingTeamCountRed != lastRed) {
+        lastRed = level.pendingTeamCountRed;
+        trap_SetConfigstring(CS_TEAMCOUNT_RED, va("%i", lastRed));
+    }
+    if (level.pendingTeamCountBlue != lastBlue) {
+        lastBlue = level.pendingTeamCountBlue;
+        trap_SetConfigstring(CS_TEAMCOUNT_BLUE, va("%i", lastBlue));
+    }
 }
 
 // G_GetAccessLevel used to sit here: an IP-keyed stub that always returned 0,

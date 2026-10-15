@@ -55,6 +55,7 @@ vmCvar_t g_gravity;
 vmCvar_t g_cheats;
 vmCvar_t g_knockback;
 vmCvar_t g_forcerespawn;
+vmCvar_t g_spawnProtectionTime;
 vmCvar_t g_inactivity;
 vmCvar_t g_inactivityWarning;  // [QL] seconds before kick to start warning
 vmCvar_t g_dropInactive;       // [QL] 1=kick, 0=move-to-spectator
@@ -75,6 +76,8 @@ vmCvar_t g_allowVote;
 vmCvar_t g_allowVoteMidGame;
 vmCvar_t g_allowSpecVote;
 vmCvar_t g_voteFlags;
+vmCvar_t g_endMapVoteTime;  // [QL] arena-vote window, seconds
+vmCvar_t g_matchStartGrace;  // [QL] seconds after level start where deaths do not score
 vmCvar_t g_voteDelay;
 vmCvar_t g_voteLimit;
 vmCvar_t g_teamAutoJoin;
@@ -114,7 +117,27 @@ vmCvar_t bot_showAreas;
 vmCvar_t bot_showAvoidSpots;
 vmCvar_t bot_showPath;
 vmCvar_t bot_showTourPoints;
+vmCvar_t bot_aimDrift;
+vmCvar_t bot_aimSweep;
+vmCvar_t bot_debugTactics;
+vmCvar_t bot_debugMovement;
+vmCvar_t bot_debugTrack;
+vmCvar_t bot_debugAim;   // [QL] E230
+vmCvar_t bot_debugRoutes;   // [QL] E231
+vmCvar_t bot_crowdsteer;
+vmCvar_t bot_chatlimit;  // [QL] E139, see G_BotChatReachesHumans
+vmCvar_t bot_skill;      // [QL] E139: 0 rolls a D10 per bot, 1-10 fixes it (g_bot.c)
+vmCvar_t bot_targetCommit;
+vmCvar_t bot_viewSmooth;
+vmCvar_t bot_dodge;
+vmCvar_t bot_squadRange;
 vmCvar_t bot_startingSkill;
+vmCvar_t bot_tactics;
+vmCvar_t bot_tacticsTeams;   // [QL] E224
+vmCvar_t bot_ctfIntercept;   // [QL] E224
+vmCvar_t bot_ctfDetours;     // [QL] E226
+vmCvar_t bot_ctfObjectiveMove;   // [QL] E226
+vmCvar_t bot_ctfRouteIntel;   // [QL] E232
 vmCvar_t bot_teamkill;
 vmCvar_t bot_training;
 vmCvar_t g_accessFile;
@@ -322,6 +345,7 @@ vmCvar_t weapon_gravity_ng;
 
 // [QL] nailgun cvars
 vmCvar_t g_nailspeed;
+vmCvar_t g_devWeapons;
 vmCvar_t g_nailcount;
 vmCvar_t g_nailspread;
 vmCvar_t g_nailbounce;
@@ -342,6 +366,8 @@ vmCvar_t g_spawnItemAmmo;
 // [QL] game state management
 vmCvar_t g_gameState;
 vmCvar_t g_debugWarmup;
+vmCvar_t g_debugFreeze;
+vmCvar_t bot_fillRate;
 vmCvar_t sv_warmupReadyPercentage;
 vmCvar_t g_warmupDelay;
 vmCvar_t g_warmupReadyDelay;
@@ -402,9 +428,11 @@ vmCvar_t g_adCaptureScoreBonus;  // [QL] consumed by cgame from serverinfo
 
 // [QL] freeze tag cvars
 vmCvar_t g_freezeThawTick;
+vmCvar_t g_freezeThawGrace;
 vmCvar_t g_freezeProtectedSpawnTime;
 vmCvar_t g_freezeThawTime;
 vmCvar_t g_freezeAutoThawTime;
+vmCvar_t g_freezeWarmupThawTime;
 vmCvar_t g_freezeThawRadius;
 vmCvar_t g_freezeThawThroughSurface;
 vmCvar_t g_freezeThawWinningTeam;
@@ -415,6 +443,8 @@ vmCvar_t g_freezeResetWeaponsOnRound;
 vmCvar_t g_freezeAllowRespawn;
 
 // [QL] lag compensation
+vmCvar_t g_scoreUpdateInterval;
+vmCvar_t g_teamOverlayInterval;
 vmCvar_t g_lagHaxHistory;
 vmCvar_t g_lagHaxMs;
 
@@ -653,7 +683,13 @@ static cvarTable_t gameCvarTable[] = {
     {&g_doWarmup, "g_doWarmup", "1", CVAR_ARCHIVE, 0, NULL},
     {&g_gameState, "g_gameState", "PRE_GAME", CVAR_ROM | CVAR_SERVERINFO, 0, NULL},
     // [QL] traces the warmup -> countdown -> live state machine (see SetWarmupState)
-    {&g_debugWarmup, "g_debugWarmup", "0", 0, 0, NULL},  // [QL] binary: 0x44
+    {&g_debugWarmup, "g_debugWarmup", "0", 0, 0, NULL},
+    // [QL] traces the Freeze Tag round state and every declined freeze
+    {&g_debugFreeze, "g_debugFreeze", "0", 0, 0, NULL},
+    // [QL] bots added per G_CheckMinimumPlayers tick, which runs once a second.
+    // See G_FillBots - 1 is the quiet default, higher reaches a player count
+    // fast when reproducing something that only happens at scale.
+    {&bot_fillRate, "bot_fillRate", "1", CVAR_ARCHIVE, 0, NULL},  // [QL] binary: 0x44
     {&sv_warmupReadyPercentage, "sv_warmupReadyPercentage", "0.51", CVAR_LATCH | CVAR_ARCHIVE, 0, NULL},  // [QL] binary: 0x21
     {&g_warmupDelay, "g_warmupDelay", "15", 0, 0, NULL},
     {&g_warmupReadyDelay, "g_warmupReadyDelay", "0", 0, 0, NULL},
@@ -679,6 +715,9 @@ static cvarTable_t gameCvarTable[] = {
     {&g_knockback, "g_knockback", "1000", CVAR_GAMERULE, 0, NULL},
     {&g_weaponRespawn, "g_weaponRespawn", "5", CVAR_GAMERULE | CVAR_SERVERINFO, 0, NULL},  // [QL] note capital R; binary: 0x100004
     {&g_forcerespawn, "g_forcerespawn", "20", 0, 0, NULL},
+    // [QL] ms of spawn protection. 0 disables it. Not archived: a shipped default
+    // written into a config is a default that stops applying.
+    {&g_spawnProtectionTime, "g_spawnProtectionTime", "1500", 0, 0, NULL},
     {&g_inactivity, "g_inactivity", "0", 0, 0, NULL},
     {&g_inactivityWarning, "g_inactivityWarning", "10", 0, 0, NULL},  // [QL]
     {&g_dropInactive, "g_dropInactive", "1", 0, 0, NULL},              // [QL] binary default "1"
@@ -695,6 +734,14 @@ static cvarTable_t gameCvarTable[] = {
     {&g_allowVoteMidGame, "g_allowVoteMidGame", "0", 0, 0, NULL},
     {&g_allowSpecVote, "g_allowSpecVote", "0", 0, 0, NULL},
     {&g_voteFlags, "g_voteFlags", "0", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, NULL},  // [QL] binary: 0x5
+    // [QL] how long the end-of-match arena vote stays open, in seconds. Clamped
+    // 10..120 by G_MapVoteWindowMsec and published to clients so the countdown
+    // on the match summary is the same clock the server exits on.
+    {&g_endMapVoteTime, "g_endMapVoteTime", "30", CVAR_ARCHIVE, 0, NULL},
+    // [QL] seconds from level start during which a suicide or a world death
+    // costs neither a point nor a death on the record - the opening scramble is
+    // nobody's fault. 0 disables. See G_InMatchStartGrace.
+    {&g_matchStartGrace, "g_matchStartGrace", "10", CVAR_ARCHIVE, 0, NULL},
     {&g_voteDelay, "g_voteDelay", "0", 0, 0, NULL},
     {&g_voteLimit, "g_voteLimit", "0", 0, 0, NULL},
 
@@ -809,6 +856,20 @@ static cvarTable_t gameCvarTable[] = {
 
     // [QL] nailgun cvars
     {&g_nailspeed, "g_nailspeed", "1000", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},
+    /*
+    [QL] Put the Team Arena weapons back on maps that carry them.
+
+    CVAR_CHEAT, so it is 0 on any server without sv_cheats and cannot be left on
+    by accident - which is the shape asked for: the weapons are off unless
+    somebody deliberately turns developer weapons on. Quake Live's own answer
+    was the same in effect, the weapons reachable through cheats and through
+    community modes but absent from ordinary play.
+
+    Not archived, for the reason CLAUDE.md gives: a value we choose is not a
+    value a user set, and an archived default stops applying the moment it is
+    written to a config.
+    */
+    {&g_devWeapons, "g_devWeapons", "0", CVAR_CHEAT, 0, NULL},
     {&g_nailcount, "g_nailcount", "10", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},
     {&g_nailspread, "g_nailspread", "400", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},
     {&g_nailbounce, "g_nailbounce", "1", CVAR_GAMERULE | CVAR_GAMERULE_REPL, 0, NULL},
@@ -953,10 +1014,61 @@ static cvarTable_t gameCvarTable[] = {
 
     // [QL] freeze tag cvars
     {&g_freezeThawTick, "g_freezeThawTick", "1", CVAR_GAMERULE, 0, NULL},  // [QL] binary: CVAR_GAMERULE only
+    /*
+    [QL] How long the thaw survives losing contact, before it resets to full.
+
+    There are two different things that look identical for one frame: a thawer
+    who has stepped behind a pillar or drifted to the edge of the radius, and a
+    thawer who has given up and left. Treating them the same is what made this
+    mechanic feel broken in both directions - a full reset every frame meant no
+    thaw ever finished on uneven ground, and the quarter-rate decay that replaced
+    it meant walking away barely cost anything.
+
+    So contact is remembered for this long. Inside the window the progress simply
+    holds; past it, it snaps back to full. Half a second is long enough to cover
+    a corner or a bad line-of-sight trace and far too short to walk anywhere.
+    */
+    {&g_freezeThawGrace, "g_freezeThawGrace", "500", CVAR_GAMERULE, 0, NULL},
     {&g_freezeProtectedSpawnTime, "g_freezeProtectedSpawnTime", "0", CVAR_GAMERULE, 0, NULL},  // [QL] binary: CVAR_GAMERULE only
-    {&g_freezeThawTime, "g_freezeThawTime", "2000", CVAR_GAMERULE, 0, NULL},
-    {&g_freezeAutoThawTime, "g_freezeAutoThawTime", "120000", CVAR_GAMERULE, 0, NULL},
-    {&g_freezeThawRadius, "g_freezeThawRadius", "96", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] How long a teammate has to stand over a frozen player to thaw them.
+    Freeze_ClientThawCheck counts this down only while a teammate is in range
+    and with line of sight, and lets it decay back up when they leave, so this
+    is a continuous-presence requirement rather than a total. Two seconds made
+    thawing incidental - you got it in passing. Three is long enough that the thawer
+    is exposed while doing it, without turning a rescue into a chore.
+    */
+    {&g_freezeThawTime, "g_freezeThawTime", "3000", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] 0 - no auto-thaw during a live round.
+
+    In a round, the only way out of the ice is a teammate standing over you;
+    that is the mode. This shipped at 120000, so a statue nobody reached melted
+    on its own after two minutes and the round could resolve without anyone
+    doing the thawing. Set it non-zero to put that timeout back.
+
+    Warmup is separate and always self-thaws - see g_freezeWarmupThawTime.
+    */
+    {&g_freezeAutoThawTime, "g_freezeAutoThawTime", "0", CVAR_GAMERULE, 0, NULL},
+    // [QL] how long a warmup freeze lasts before it thaws itself. Warmup is
+    // practice, so it should demonstrate freezing without parking anyone.
+    {&g_freezeWarmupThawTime, "g_freezeWarmupThawTime", "5000", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] Thaw reach, raised from 96.
+
+    This one is a real cvar - Freeze_ClientThawCheck reads it every frame to size
+    the trap_EntitiesInBox scan - so it was always tunable; the default was just
+    mean. 96 units is a box of +/-96 around the statue, and since EntitiesInBox
+    tests bounding boxes rather than origins the effective reach is about 111,
+    roughly a player and a half. That is "standing on top of them" and it does not
+    survive either player drifting, which is the same brittleness that made the
+    line-of-sight test and the progress decay feel broken.
+
+    160 gives about 175 units of reach - close enough to still be a commitment
+    with someone shooting at you, far enough that circling the statue or backing
+    off a step does not drop the thaw.
+    */
+    {&g_freezeThawRadius, "g_freezeThawRadius", "160", CVAR_GAMERULE, 0, NULL},
     {&g_freezeThawThroughSurface, "g_freezeThawThroughSurface", "0", CVAR_GAMERULE, 0, NULL},
     {&g_freezeThawWinningTeam, "g_freezeThawWinningTeam", "1", CVAR_GAMERULE, 0, NULL},
     {&g_freezeRemovePowerupsOnRound, "g_freezeRemovePowerupsOnRound", "1", CVAR_GAMERULE, 0, NULL},
@@ -966,6 +1078,18 @@ static cvarTable_t gameCvarTable[] = {
     {&g_freezeAllowRespawn, "g_freezeAllowRespawn", "0", 0, 0, NULL},
 
     // [QL] lag compensation / weapon modifiers
+    /*
+    [QL] The two broadcast throttles, as cvars rather than #defines so they can
+    be moved without a rebuild - and because the right value depends on the
+    gametype. A quarter second of stale teammate health is nothing in CTF and
+    useless in instagib, where they have been alive and dead twice.
+
+    They are not the same animal and should not be tuned as if they were. See
+    the comments at each use site: the team overlay is sent per client, the score
+    configstrings are broadcast to every client and multiply by the player count.
+    */
+    {&g_scoreUpdateInterval, "g_scoreUpdateInterval", "250", 0, 0, NULL},
+    {&g_teamOverlayInterval, "g_teamOverlayInterval", "250", 0, 0, NULL},
     {&g_lagHaxHistory, "g_lagHaxHistory", "4", CVAR_LATCH, 0, NULL},
     {&g_lagHaxMs, "g_lagHaxMs", "80", CVAR_LATCH, 0, NULL},  // [QL] CVAR_LATCH per QLDS qagamex86.dll cvar table (0x1008e800)
     {&g_ironsights_mg, "g_ironsights_mg", "1.0", CVAR_GAMERULE | CVAR_GAMERULE_REPL | CVAR_TEMP, 0, NULL},  // [QL] binary: 0x140100
@@ -1017,7 +1141,58 @@ static cvarTable_t gameCvarTable[] = {
     {&bot_showAvoidSpots, "bot_showAvoidSpots", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_showPath, "bot_showPath", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_showTourPoints, "bot_showTourPoints", "0", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] The tactical layer in ai_tactics.c. bot_tactics 0 restores the stock
+    Quake 3 behaviour exactly, which is what makes the whole thing testable
+    against itself on a live server without a restart.
+    */
+    /*
+    [QL] The three that decide whether a bot reads as a person or as a machine
+    having a fit. Each restores the stock behaviour at 0. See ai_main.c
+    BotChangeViewAngles, BotAimAtEnemy and BotFindEnemy.
+    */
+    {&bot_aimDrift, "bot_aimDrift", "1", CVAR_GAMERULE, 0, NULL},
+    {&bot_aimSweep, "bot_aimSweep", "1", CVAR_GAMERULE, 0, NULL},
+    {&bot_debugTactics, "bot_debugTactics", "0", 0, 0, NULL},
+    // [QL] E133. Seconds between bot movement reports; 0 is off (ai_main.c)
+    {&bot_debugMovement, "bot_debugMovement", "0", 0, 0, NULL},
+    // [QL] E133. Milliseconds between bot position lines ("bottrack"); 0 is off
+    {&bot_debugTrack, "bot_debugTrack", "0", 0, 0, NULL},
+    // [QL] E230. Client number whose per-frame aim is logged ("botaim"); -1 is off
+    {&bot_debugAim, "bot_debugAim", "-1", 0, 0, NULL},
+    // [QL] E231. 1 logs every carrier route decision ("routepick"); print only
+    {&bot_debugRoutes, "bot_debugRoutes", "0", 0, 0, NULL},
+    // [QL] E133. Bots steer round each other before colliding (botlib BotCrowdSteer)
+    {&bot_crowdsteer, "bot_crowdsteer", "1", 0, 0, NULL},
+    {&bot_chatlimit, "bot_chatlimit", "1", 0, 0, NULL},
+    {&bot_skill, "bot_skill", "0", 0, 0, NULL},
+    {&bot_targetCommit, "bot_targetCommit", "2500", CVAR_GAMERULE, 0, NULL},
+    {&bot_viewSmooth, "bot_viewSmooth", "1", CVAR_GAMERULE, 0, NULL},
+    {&bot_dodge, "bot_dodge", "1", CVAR_GAMERULE, 0, NULL},
+    {&bot_squadRange, "bot_squadRange", "800", CVAR_GAMERULE, 0, NULL},
     {&bot_startingSkill, "bot_startingSkill", "1", CVAR_GAMERULE, 0, NULL},
+    {&bot_tactics, "bot_tactics", "1", CVAR_GAMERULE, 0, NULL},
+    /*
+    [QL] E224. Head-to-head testing: which teams get the tactical layer (1 red,
+    2 blue, 3 both) and which get CTF18's interception-aware escort choice. Red
+    on one policy against blue on the other in the same match, sides swapped
+    next match, is a far smaller-noise comparison than separate builds. Bots
+    with no team (FFA, duel) follow bot_tactics alone. See ai_main.c.
+    */
+    {&bot_tacticsTeams, "bot_tacticsTeams", "3", 0, 0, NULL},
+    {&bot_ctfIntercept, "bot_ctfIntercept", "3", 0, 0, NULL},
+    /*
+    [QL] E226. Two more per-team masks (1 red, 2 blue, 3 both - the default,
+    which is current behaviour), so one behaviour can be compared alone:
+    bot_ctfDetours off sends a carrier straight home (no alternate-route
+    waypoint); bot_ctfObjectiveMove off stops objective bots overriding the
+    combat choice (retreat-while-moving, no chase, no squad fallback).
+    */
+    {&bot_ctfDetours, "bot_ctfDetours", "3", 0, 0, NULL},
+    {&bot_ctfObjectiveMove, "bot_ctfObjectiveMove", "3", 0, 0, NULL},
+    // [QL] E232. Per team: carrier route risk from team reports (R1, E228) or, off,
+    // the pre-R1 true enemy count per room. 3 (both) is current behaviour.
+    {&bot_ctfRouteIntel, "bot_ctfRouteIntel", "3", 0, 0, NULL},
     {&bot_teamkill, "bot_teamkill", "0", CVAR_GAMERULE, 0, NULL},
     {&bot_training, "bot_training", "0", CVAR_GAMERULE, 0, NULL},
     {&g_accessFile, "g_accessFile", "access.txt", 0, 0, NULL},
@@ -1190,6 +1365,68 @@ void QDECL G_Printf(const char* fmt, ...) {
     va_end(argptr);
 
     trap_Print(text);
+}
+
+/*
+===============
+G_ScoreboardTruncated
+
+[QL] True when the next scoreboard entry will not fit, and says so once.
+
+Truncation here is not cosmetic. The entry count goes in the message header, so
+a client told about N players will read N players' worth of fields out of a
+string that stops mid-entry - every field past the cut comes from whatever
+follows, or from nothing. A scoreboard that is short is a bug; a scoreboard
+full of numbers that were never sent is a worse one, and it looked like scoring
+was broken rather than like a message that did not fit.
+
+Once per level: this is called per player per scoreboard request, and a
+scoreboard is requested every time anyone holds TAB.
+===============
+*/
+qboolean G_ScoreboardTruncated(int wouldBe, int sent) {
+    static int reportedAtLevelTime;
+    static int reportedSent, reportedTotal;
+
+    if (wouldBe < MAX_SCOREBOARD_PAYLOAD) {
+        return qfalse;
+    }
+
+    // [QL] Report again whenever the pair changes, not just once per level, so
+    // the log shows the point at which players start being dropped as they
+    // join - "20 of 21", "20 of 22" - rather than one line naming whatever the
+    // count happened to be the first time it overflowed.
+    if (reportedAtLevelTime != level.startTime || reportedSent != sent ||
+        reportedTotal != level.numConnectedClients) {
+        reportedAtLevelTime = level.startTime;
+        reportedSent = sent;
+        reportedTotal = level.numConnectedClients;
+        G_Printf(S_COLOR_YELLOW "WARNING: the scoreboard does not fit in one reliable command "
+                 "(%d of %d players sent, %d byte limit). Players past that point are missing "
+                 "from every client's scoreboard.\n",
+                 sent, level.numConnectedClients, MAX_SCOREBOARD_PAYLOAD);
+    }
+
+    return qtrue;
+}
+
+/*
+===============
+G_ScoreboardBudget
+
+[QL] How many bytes of player entries fit after a header of the given length.
+
+32 bytes cover the entry count and the two team scores that every chunked
+emitter appends between its header and the entries, plus the terminator and a
+little slack. The continuation messages carry a much shorter header than the
+first one, so budgeting all chunks against the first is conservative in the
+right direction.
+===============
+*/
+int G_ScoreboardBudget(int headerLength) {
+    int budget = MAX_STRING_CHARS - 32 - headerLength;
+
+    return (budget > 0) ? budget : 0;
 }
 
 void QDECL G_Error(const char* fmt, ...) {
@@ -1709,6 +1946,9 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
     memset(&level, 0, sizeof(level));
     level.time = levelTime;
     level.startTime = levelTime;
+    /* [QL] deaths do not score for the first g_matchStartGrace seconds after a
+       load; SetWarmupState arms it again when the match actually begins. */
+    level.graceEndTime = levelTime + g_matchStartGrace.integer * 1000;
     level.warmupTime = -1;  // PRE_GAME until warmup state machine transitions
 
     level.snd_fry = G_SoundIndex("sound/player/fry.wav");  // FIXME standing in lava / slime
@@ -1741,6 +1981,22 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
 
     // initialize all clients for this game
     level.maxclients = g_maxclients.integer;
+
+    // [QL] g_clients is a fixed MAX_CLIENTS array and every loop below runs to
+    // level.maxclients, so a larger sv_maxclients corrupts memory rather than
+    // failing. The engine clamps the cvar now; this is the second half of that,
+    // because a game module can be loaded by a server that does not - and a
+    // silent clamp here would leave the admin wondering where their slots went.
+    if (level.maxclients > MAX_CLIENTS) {
+        G_Printf(S_COLOR_RED "sv_maxclients %d exceeds the %d-client limit this build is compiled for; "
+                             "using %d.\n",
+                 level.maxclients, MAX_CLIENTS, MAX_CLIENTS);
+        level.maxclients = MAX_CLIENTS;
+    }
+    if (level.maxclients < 1) {
+        level.maxclients = 1;
+    }
+
     memset(g_clients, 0, MAX_CLIENTS * sizeof(g_clients[0]));
     level.clients = g_clients;
 
@@ -1800,6 +2056,18 @@ void G_InitGame(int levelTime, int randomSeed, int restart) {
     case GT_RR:
         RR_InitRoundState();
         break;
+    case GT_FREEZE:
+        // [QL] Freeze Tag is round-based too and had no case here, so its round
+        // state machine was never started and nobody ever froze.
+        Freeze_InitRoundState();
+        break;
+    case GT_CA:
+        // [QL] and neither did CA or A&D - same symptom, rounds never ended
+        CA_InitRoundState();
+        break;
+    case GT_AD:
+        AD_InitRoundState();
+        break;
     default:
         break;
     }
@@ -1832,6 +2100,28 @@ G_ShutdownGame
 */
 void G_ShutdownGame(int restart) {
     G_Printf("==== ShutdownGame ====\n");
+
+    /*
+    [QL] Everything worth knowing about the map that just ended, written to the
+    log without anyone having to be at the console to type it.
+
+    The reason this exists: every diagnostic on this branch has to be asked for
+    at the moment it matters, and the moment it matters is usually while
+    something else is going wrong. A log handed over after the fact then turns
+    out not to contain the one number that would have answered the question.
+    */
+    if (trap_Cvar_VariableIntegerValue("sv_mapEndReport")) {
+        int saturated = G_SpawnSaturationCount();
+
+        G_Printf("---- map report ----\n");
+        if (saturated > 0) {
+            G_Printf("spawns that had to take an occupied point: %i\n", saturated);
+        } else {
+            G_Printf("spawns: every player got a free point\n");
+        }
+        BotTacticsReport();
+        G_Printf("--------------------\n");
+    }
 
     if (level.logFile) {
         G_LogPrintf("ShutdownGame:\n");
@@ -2075,6 +2365,27 @@ int QDECL SortRanks(const void* a, const void* b) {
     if (ca->ps.persistant[PERS_SCORE] < cb->ps.persistant[PERS_SCORE]) {
         return 1;
     }
+
+    /*
+    [QL] Break ties by client number rather than declaring them equal.
+
+    qsort is not stable and the array it sorts changes every time somebody
+    connects, so with a field of tied players the order among them was arbitrary
+    and different on each call. CalculateRanks runs on every frag, and it writes
+    the leader's and runner-up's names into CS_SCORES1PLAYER / CS_SCORES2PLAYER;
+    each reshuffle therefore broadcast two configstring updates to every client
+    for a lead that had not actually changed.
+
+    On a sixty-player server at match start - everyone tied on zero while the
+    bots are still connecting - that was enough to fill the 64-slot reliable
+    command queue and drop players with "Server command overflow".
+    */
+    if (*(const int*)a < *(const int*)b) {
+        return -1;
+    }
+    if (*(const int*)a > *(const int*)b) {
+        return 1;
+    }
     return 0;
 }
 
@@ -2240,6 +2551,34 @@ void CalculateRanks(void) {
     }
 
     // set the CS_SCORES1/2 configstrings, which will be visible to everyone
+    G_ScheduleScoreConfigstrings();
+
+    // if we are at the intermission, send the new info to everyone
+    if (level.intermissionTime) {
+        for (i = 0; i < level.maxclients; i++) {
+            if (level.clients[i].pers.connected == CON_CONNECTED) {
+                MoveClientToIntermission(g_entities + i);
+            }
+        }
+        SendScoreboardMessageToAllClients();
+    }
+}
+
+/*
+============
+G_UpdateScoreConfigstrings
+
+[QL] Publish the leader and runner-up to the HUD.
+
+Split out of CalculateRanks so that it can be rate limited. Every configstring
+written here is a reliable command broadcast to every connected client, and
+CalculateRanks runs on every frag; on a busy sixty-player server that is a
+steady stream of updates against a 64-slot queue, and a client that stops
+acknowledging for a moment - loading a map after map_restart, most of all - is
+dropped for "Server command overflow".
+============
+*/
+static void G_UpdateScoreConfigstrings(void) {
     if (g_gametype.integer >= GT_TEAM && g_gametype.integer != GT_RR) {
         trap_SetConfigstring(CS_SCORES1, va("%i", level.teamScores[TEAM_RED]));
         trap_SetConfigstring(CS_SCORES2, va("%i", level.teamScores[TEAM_BLUE]));
@@ -2307,16 +2646,72 @@ void CalculateRanks(void) {
             }
         }
     }
+}
 
-    // if we are at the intermission, send the new info to everyone
-    if (level.intermissionTime) {
-        for (i = 0; i < level.maxclients; i++) {
-            if (level.clients[i].pers.connected == CON_CONNECTED) {
-                MoveClientToIntermission(g_entities + i);
-            }
-        }
-        SendScoreboardMessageToAllClients();
+/*
+============
+G_ScheduleScoreConfigstrings
+
+[QL] Write the HUD score configstrings now, or mark them for the next tick that
+is allowed to.
+
+SCORE_CONFIGSTRING_INTERVAL is the shortest gap between broadcasts. The values
+are a leader name and two numbers on the HUD; four updates a second is more
+than the eye can follow, and it bounds what CalculateRanks can cost no matter
+how fast frags are coming in. Intermission bypasses the limit, because the final
+figures have to be right and nothing follows them.
+
+G_RunFrame flushes the pending flag, so a value that arrives during a quiet
+moment is never left unpublished.
+============
+*/
+/*
+[QL] How often the HUD score configstrings may go out.
+
+**The expensive one.** These are configstrings, so each write is a reliable
+command broadcast to *every* client - four of them, times the player count. At 64
+players one update is 256 reliable commands into 64-deep queues, which is the
+same shape as the flood that used to evict the whole server (TRACKER E62).
+
+The engine skips an identical configstring, so the real rate is bounded by how
+often the top two scores and names actually change - but in a 64 player instagib
+that is often. Lower this carefully and watch for "reliable command buffer" in
+the log; it is not free the way the team overlay is.
+
+250ms is four updates a second, which is already faster than anyone reads a
+number off a HUD.
+*/
+static int G_ScoreUpdateInterval(void) {
+    int i = g_scoreUpdateInterval.integer;
+
+    if (i < 50) {
+        i = 50;
+    } else if (i > 2000) {
+        i = 2000;
     }
+    return i;
+}
+
+void G_ScheduleScoreConfigstrings(void) {
+    if (!level.intermissionQueued && !level.intermissionTime &&
+        level.time < level.nextScoreConfigstringTime) {
+        level.scoreConfigstringsPending = qtrue;
+        return;
+    }
+
+    level.nextScoreConfigstringTime = level.time + G_ScoreUpdateInterval();
+    level.scoreConfigstringsPending = qfalse;
+    G_UpdateScoreConfigstrings();
+}
+
+void G_FlushScoreConfigstrings(void) {
+    if (!level.scoreConfigstringsPending) {
+        return;
+    }
+    if (level.time < level.nextScoreConfigstringTime) {
+        return;
+    }
+    G_ScheduleScoreConfigstrings();
 }
 
 /*
@@ -2408,6 +2803,324 @@ void FindIntermissionPoint(void) {
 
 /*
 ==================
+G_BuildNextMapsFromInstalledMaps
+
+[QL] Give the end-of-match arena vote something to vote on.
+
+The whole map-vote path - Cmd_IntermissionVote_f, the tally configstring, the
+tie-break in ExitLevel, the three panels the match summary draws - is gated on
+a "nextmaps" cvar that nothing in this repository has ever set. Quake Live's
+own servers filled it from their rotation; ours has no rotation, so the feature
+was complete, correct and permanently switched off. Setting "nextmaps" by hand
+in a server config is still the way to choose the three arenas deliberately;
+this is what happens when nobody has.
+
+Picks up to three maps at random from the installed .bsp files, never the
+one just played.
+Written into the same infostring "nextmaps" holds, so there is one format and
+one parser rather than a second path through the same code.
+==================
+*/
+static void G_BuildNextMapsFromInstalledMaps(char *out, int outSize) {
+    char list[8192];
+    char current[MAX_QPATH];
+    char serverinfo[MAX_INFO_STRING];
+    const char *names[256];
+    int count, i, n = 0, picked = 0;
+    char *p;
+
+    out[0] = '\0';
+
+    trap_GetServerinfo(serverinfo, sizeof(serverinfo));
+    Q_strncpyz(current, Info_ValueForKey(serverinfo, "mapname"), sizeof(current));
+
+    count = trap_FS_GetFileList("maps", ".bsp", list, sizeof(list));
+    if (count <= 0) {
+        return;
+    }
+
+    /*
+    FS_GetFileList packs the names back to back, each NUL terminated.
+
+    Only maps the server's own arena data knows about are eligible. Offering
+    anything with a .bsp next to it is how this went wrong: 149 maps ship, and
+    plenty of them are not playable in an arbitrary gametype - race courses,
+    practice ranges, duel-only layouts with no team spawns. Winning the vote
+    then hands ExitLevel a map the next G_InitGame cannot spawn anybody into,
+    which fails during the load, after the vote, and looks exactly like voting
+    having crashed the game.
+
+    G_GetArenaInfoByMap reads scripts/arenas.txt, which is the list the server
+    is actually configured to rotate through. A map with no entry there is not
+    a map this server is meant to be sending people to.
+    */
+    p = list;
+    for (i = 0; i < count && n < (int)ARRAY_LEN(names); i++) {
+        int len = strlen(p);
+
+        if (len > 4 && !Q_stricmp(p + len - 4, ".bsp")) {
+            p[len - 4] = '\0';
+        }
+        if (p[0] && Q_stricmp(p, current) != 0 && G_GetArenaInfoByMap(p) != NULL) {
+            names[n++] = p;
+        }
+        p += len + 1;
+    }
+    if (n < 2) {
+        /* One choice is not a vote. Leave the panel off rather than show a
+           ballot with a single option on it. */
+        G_Printf("map vote: %i of %i installed maps are in the arena list - "
+                 "not enough to vote on. Set \"nextmaps\" to choose the three "
+                 "arenas explicitly.\n", n, count);
+        out[0] = '\0';
+        return;
+    }
+
+    // Fisher-Yates over the candidates, then take the first three. Shuffling
+    // rather than drawing three times is what keeps the same map off two of
+    // the three panels on a server with only a handful of maps installed.
+    for (i = n - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        const char *t = names[i];
+        names[i] = names[j];
+        names[j] = t;
+    }
+
+    for (i = 0; i < n && picked < 3; i++) {
+        char key[16];
+
+        Com_sprintf(key, sizeof(key), "map_%d", picked);
+        Info_SetValueForKey(out, key, names[i]);
+        picked++;
+    }
+
+    /* Say which three, so a failure on the next map load names the map that
+       caused it instead of leaving the vote to be blamed for it. */
+    G_Printf("map vote: offering %i of %i eligible arenas -%s%s%s\n", picked, n,
+             picked > 0 ? va(" %s", Info_ValueForKey(out, "map_0")) : "",
+             picked > 1 ? va(", %s", Info_ValueForKey(out, "map_1")) : "",
+             picked > 2 ? va(", %s", Info_ValueForKey(out, "map_2")) : "");
+    (void)outSize;
+}
+
+/*
+==================
+G_SendMapVoteTallies
+
+[QL] CS_ROTATIONVOTES is an infostring, not three numbers.
+
+The server wrote it as "%d %d %d" and the client reads it with
+Info_ValueForKey(info, "0" / "1" / "2") - see CG_DrawVotes. Those never agree,
+so Info_ValueForKey returned nothing and CG_VOTECOUNT1..3 drew nothing at all:
+the vote panels showed no tally however many people had voted, including your
+own vote, which makes a working vote look like a broken one.
+
+One function so the two places that publish it cannot drift apart again.
+==================
+*/
+void G_SendMapVoteTallies(void) {
+    char info[MAX_INFO_STRING];
+    int i;
+
+    info[0] = '\0';
+    for (i = 0; i < 3; i++) {
+        char key[4];
+
+        Com_sprintf(key, sizeof(key), "%d", i);
+        Info_SetValueForKey(info, key, va("%d", level.intermissionMapVotes[i]));
+    }
+    trap_SetConfigstring(CS_ROTATIONVOTES, info);
+}
+
+/*
+==================
+G_MapVoteWindowMsec
+
+[QL] How long the arena vote is open, and the one number the client counts to.
+
+g_endMapVoteTime is the length of the voting window in seconds. It is published
+into CS_ROTATIONMAPS as "secs" so CG_DrawVoteTimer counts the same clock rather
+than assuming a value: a client and a server disagreeing about when voting shuts
+is the difference between "my vote did not count" and a bug.
+==================
+*/
+int G_MapVoteWindowMsec(void) {
+    int secs = g_endMapVoteTime.integer;
+
+    if (secs < 10) {
+        secs = 10;
+    } else if (secs > 120) {
+        secs = 120;
+    }
+    return secs * 1000;
+}
+
+/*
+==================
+G_ResolveMapVote
+
+[QL] Which arena won, with the tie broken once.
+
+Called when the voting window closes, not when the level exits - the tie-break
+is random, so resolving it twice can give two different answers, and the server
+would then announce one arena and load another.
+==================
+*/
+int G_ResolveMapVote(void) {
+    int tiedMaps[3];
+    int numTied = 0;
+    int bestVotes = 0;
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        if (level.intermissionMapNames[i][0]) {
+            if (level.intermissionMapVotes[i] > bestVotes) {
+                bestVotes = level.intermissionMapVotes[i];
+                numTied = 0;
+            }
+            if (level.intermissionMapVotes[i] == bestVotes) {
+                tiedMaps[numTied++] = i;
+            }
+        }
+    }
+    if (numTied > 0) {
+        return tiedMaps[rand() % numTied];
+    }
+    return 0;
+}
+
+/*
+==================
+G_PublishMapVoteInfo
+
+[QL] CS_ROTATIONMAPS: the three arenas and the moment voting shuts.
+
+"end" is an absolute server time, not a duration, so the client counts down to
+the same instant the server will act on - and stays right when the window is
+shortened underneath it because everybody has already voted. CG_DrawVoteTimer
+reads it and falls back to the old fixed 20 seconds if it is missing.
+==================
+*/
+void G_PublishMapVoteInfo(void) {
+    char info[MAX_INFO_STRING];
+    int i;
+
+    info[0] = '\0';
+    for (i = 0; i < 3; i++) {
+        if (level.intermissionMapNames[i][0]) {
+            char k[16];
+
+            Com_sprintf(k, sizeof(k), "map_%d", i);
+            Info_SetValueForKey(info, k, level.intermissionMapNames[i]);
+            Com_sprintf(k, sizeof(k), "title_%d", i);
+            Info_SetValueForKey(info, k,
+                level.intermissionMapTitles[i][0] ? level.intermissionMapTitles[i] : level.intermissionMapNames[i]);
+        }
+    }
+    Info_SetValueForKey(info, "end", va("%i", level.mapVoteEndTime));
+
+    /* [QL] Once voting has closed the decision itself goes on the wire. The
+       client is not asked to work out that the clock ran out and it is not
+       asked to guess what won - it renders what the server decided, the same
+       way it renders the tallies. */
+    if (level.mapVoteWinner >= 0) {
+        Info_SetValueForKey(info, "winner", va("%i", level.mapVoteWinner));
+    }
+
+    trap_SetConfigstring(CS_ROTATIONMAPS, info);
+}
+
+/*
+==================
+G_CheckMapVoteAllIn
+
+[QL] Everybody has voted - stop making them wait out the clock.
+
+Called after each vote is recorded. Bots do not vote and are not counted;
+neither are clients who have not finished connecting. When every human on the
+server has picked something and there is more than MAP_VOTE_ALLIN_MSEC left,
+the window is pulled in to that, re-published so the countdown on every client
+follows it, and said out loud. Anyone who changes their mind still has those
+seconds to do it - which is why this shortens the window rather than closing it.
+==================
+*/
+#define MAP_VOTE_ALLIN_MSEC 10000
+
+void G_CheckMapVoteAllIn(void) {
+    int i, humans = 0, voted = 0;
+
+    if (level.mapVoteEndTime <= 0 || !level.intermissionMapNames[0][0]) {
+        return;
+    }
+
+    for (i = 0; i < level.maxclients; i++) {
+        if (level.clients[i].pers.connected != CON_CONNECTED) {
+            continue;
+        }
+        if (g_entities[i].r.svFlags & SVF_BOT) {
+            continue;
+        }
+        humans++;
+        if (level.clients[i].pers.lastMapVoteIndex > 0) {
+            voted++;
+        }
+    }
+
+    if (humans == 0 || voted < humans) {
+        return;
+    }
+    if (level.mapVoteEndTime - level.time <= MAP_VOTE_ALLIN_MSEC) {
+        return;  // already inside the window, nothing to shorten
+    }
+
+    level.mapVoteEndTime = level.time + MAP_VOTE_ALLIN_MSEC;
+    G_PublishMapVoteInfo();
+    trap_SendServerCommand(-1, va("print \"Everyone has voted - %i seconds left to change your mind.\n\"",
+                                  MAP_VOTE_ALLIN_MSEC / 1000));
+}
+
+/*
+==================
+G_AnnounceMapVoteResult
+
+[QL] Say what won before loading it.
+
+The vote used to close silently and the map simply changed, which from the
+outside is indistinguishable from the vote having been ignored. Announced on
+the centre print as well as the console, because the match summary is on screen
+and the console is not.
+==================
+*/
+static void G_AnnounceMapVoteResult(void) {
+    const char *name;
+    int i, total = 0;
+
+    level.mapVoteWinner = G_ResolveMapVote();
+
+    for (i = 0; i < 3; i++) {
+        total += level.intermissionMapVotes[i];
+    }
+
+    name = level.intermissionMapTitles[level.mapVoteWinner][0]
+           ? level.intermissionMapTitles[level.mapVoteWinner]
+           : level.intermissionMapNames[level.mapVoteWinner];
+
+    if (total > 0) {
+        trap_SendServerCommand(-1, va("print \"Voting closed - %s wins with %i of %i vote%s.\n\"",
+                                      name, level.intermissionMapVotes[level.mapVoteWinner],
+                                      total, total == 1 ? "" : "s"));
+    } else {
+        trap_SendServerCommand(-1, va("print \"Voting closed - nobody voted, %s chosen at random.\n\"", name));
+    }
+    trap_SendServerCommand(-1, va("cp \"Next arena: %s\n\"", name));
+
+    // and put the decision in the configstring, so the summary panel shows it
+    // rather than deciding for itself that the clock has run out.
+    G_PublishMapVoteInfo();
+}
+
+/*
+==================
 BeginIntermission
 ==================
 */
@@ -2445,8 +3158,10 @@ void BeginIntermission(void) {
 
     // [QL] Parse "nextmaps" info string for end-of-match map voting
     trap_Cvar_VariableStringBuffer("nextmaps", nextmaps, sizeof(nextmaps));
+    if (!nextmaps[0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
+        G_BuildNextMapsFromInstalledMaps(nextmaps, sizeof(nextmaps));
+    }
     if (nextmaps[0]) {
-        char mapInfo[MAX_INFO_STRING];
 
         for (i = 0; i < 3; i++) {
             char key[16];
@@ -2467,21 +3182,11 @@ void BeginIntermission(void) {
             level.intermissionMapVotes[i] = 0;
         }
 
-        // Build map info configstring for clients
-        mapInfo[0] = '\0';
-        for (i = 0; i < 3; i++) {
-            if (level.intermissionMapNames[i][0]) {
-                char k[16];
-                Com_sprintf(k, sizeof(k), "map_%d", i);
-                Info_SetValueForKey(mapInfo, k, level.intermissionMapNames[i]);
-                Com_sprintf(k, sizeof(k), "title_%d", i);
-                Info_SetValueForKey(mapInfo, k,
-                    level.intermissionMapTitles[i][0] ? level.intermissionMapTitles[i] : level.intermissionMapNames[i]);
-            }
-        }
+        level.mapVoteWinner = -1;
+        level.mapVoteEndTime = level.time + G_MapVoteWindowMsec();
 
-        trap_SetConfigstring(CS_ROTATIONMAPS, mapInfo);
-        trap_SetConfigstring(CS_ROTATIONVOTES, "0 0 0");
+        G_PublishMapVoteInfo();
+        G_SendMapVoteTallies();
         level.voteTime = level.time;
         trap_SetConfigstring(CS_VOTE_TIME, va("%i", level.voteTime));
     }
@@ -2517,7 +3222,6 @@ void ExitLevel(void) {
     gclient_t* cl;
     char mapname[MAX_STRING_CHARS];
     char serverinfo[MAX_INFO_STRING];
-    char nextmaps[MAX_STRING_CHARS];
     int bestMap = 0;
 
     // [QL] Bot-only server: kill on exit
@@ -2549,30 +3253,18 @@ void ExitLevel(void) {
         return;
     }
 
-    // [QL] resolve map voting if active
-    trap_Cvar_VariableStringBuffer("nextmaps", nextmaps, sizeof(nextmaps));
-    if (nextmaps[0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
-        // [QL] Random tie-breaking for map votes
-        {
-            int tiedMaps[3];
-            int numTied = 0;
-            int bestVotes = 0;
+    /* [QL] resolve map voting if active.
 
-            for ( i = 0; i < 3; i++ ) {
-                if ( level.intermissionMapNames[i][0] ) {
-                    if ( level.intermissionMapVotes[i] > bestVotes ) {
-                        bestVotes = level.intermissionMapVotes[i];
-                        numTied = 0;
-                    }
-                    if ( level.intermissionMapVotes[i] == bestVotes ) {
-                        tiedMaps[numTied++] = i;
-                    }
-                }
-            }
-            if ( numTied > 0 ) {
-                bestMap = tiedMaps[rand() % numTied];
-            }
-        }
+       Tested against the candidates BeginIntermission actually published, not
+       against the "nextmaps" cvar. They are the same thing when an admin set
+       the cvar, and only intermissionMapNames is filled when the three arenas
+       were drawn from the installed maps instead. */
+    if (level.intermissionMapNames[0][0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
+        /* [QL] The winner is whatever G_ResolveMapVote settled on when the
+           voting window closed, not a fresh count taken now. The tie-break is
+           random, so re-rolling it here would sometimes load a different arena
+           from the one the server just announced. */
+        bestMap = (level.mapVoteWinner >= 0) ? level.mapVoteWinner : G_ResolveMapVote();
 
         // Get current map name
         trap_GetServerinfo(serverinfo, sizeof(serverinfo));
@@ -2615,7 +3307,7 @@ void ExitLevel(void) {
     level.lastTeamRoundScores[TEAM_RED] = 0;
     level.lastTeamRoundScores[TEAM_BLUE] = 0;
 
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -2628,7 +3320,7 @@ void ExitLevel(void) {
 
     // change all client states to connecting, so the early players into the
     // next level will know the others aren't done reconnecting
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         if (level.clients[i].pers.connected == CON_CONNECTED) {
             level.clients[i].pers.connected = CON_CONNECTING;
         }
@@ -2771,19 +3463,25 @@ void CheckIntermissionExit(void) {
     gclient_t* cl;
     int readyMask;
     int timeout;
-    char nextmaps[MAX_STRING_CHARS];
 
-    // [QL] Determine timeout: 20s if map voting active, 10s otherwise
-    trap_Cvar_VariableStringBuffer("nextmaps", nextmaps, sizeof(nextmaps));
-    if (nextmaps[0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
-        timeout = 20000;
+    /* [QL] When the summary ends.
+
+       With an arena vote running that is level.mapVoteEndTime - the deadline
+       published to every client in CS_ROTATIONMAPS, so the countdown on screen
+       and the moment the server acts are the same instant, including after
+       G_CheckMapVoteAllIn pulls it in. Without one, the old flat ten seconds. */
+    if (level.intermissionMapNames[0][0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
+        timeout = level.mapVoteEndTime - level.intermissionTime;
+        if (timeout < 1000) {
+            timeout = 1000;
+        }
     } else {
         timeout = 10000;
     }
 
     // Build ready mask from per-client ready state
     readyMask = 0;
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -2799,7 +3497,7 @@ void CheckIntermissionExit(void) {
     }
 
     // Broadcast ready mask to all connected clients
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -2807,10 +3505,13 @@ void CheckIntermissionExit(void) {
         cl->ps.stats[STAT_CLIENTS_READY] = readyMask;
     }
 
-    // [QL] Mark voting ended after timeout expires
+    // [QL] Mark voting ended after timeout expires, and say what won.
     if (!level.votingEnded &&
         level.time >= level.intermissionTime + timeout) {
         level.votingEnded = qtrue;
+        if (level.intermissionMapNames[0][0] && !(g_voteFlags.integer & VF_ENDMAP_VOTING)) {
+            G_AnnounceMapVoteResult();
+        }
     }
 
     // [QL] Hard exit after timeout + 3s minimum
@@ -2933,7 +3634,7 @@ void CheckExitRules(void) {
             return;
         }
 
-        for (i = 0; i < g_maxclients.integer; i++) {
+        for (i = 0; i < level.maxclients; i++) {
             cl = level.clients + i;
             if (cl->pers.connected != CON_CONNECTED) {
                 continue;
@@ -3032,6 +3733,10 @@ void SetWarmupState(int warmupTime) {
         gameState = "PRE_GAME";
     } else if (warmupTime == 0) {
         gameState = "IN_PROGRESS";
+        /* [QL] the match is starting now - re-arm the scoring grace, so it
+           covers the opening scramble rather than having expired during a
+           warmup that may have lasted minutes. */
+        level.graceEndTime = level.time + g_matchStartGrace.integer * 1000;
     } else {
         gameState = "COUNT_DOWN";
     }
@@ -3144,8 +3849,15 @@ static void WarmupBlocked(const char *reason) {
     lastReason = reason;
     lastPrint = level.time;
 
-    G_Printf("^3warmup^7 held: %s  (playing %d, connected %d, red %d, blue %d)\n",
+    // numReadyHumans is the one that is invisible from outside and is usually
+    // the answer: bots count toward numReadyClients through bot_autoReady but
+    // never toward numReadyHumans, so a server full of bots and one human who
+    // has not pressed ready sits in warmup forever with nothing on screen
+    // saying whose turn it is.
+    G_Printf("^3warmup^7 held: %s  (playing %d, connected %d, ready %d of %d, humans ready %d, "
+             "red %d, blue %d)\n",
              reason, level.numPlayingClients, level.numConnectedClients,
+             level.numReadyClients, level.numPlayingClients, level.numReadyHumans,
              TeamCount(-1, TEAM_RED), TeamCount(-1, TEAM_BLUE));
 }
 
@@ -3257,8 +3969,17 @@ static qboolean CheckWarmupConditions(void) {
                 sv_warmupReadyPercentage.value == 0.0f) {
                 return qtrue;
             }
-            WarmupBlocked("not enough ready: needs a readied human and the "
-                          "sv_warmupReadyPercentage fraction");
+            // [QL] Two separate conditions, and welding them into one message
+            // made a trace that named the gate still not say which half failed.
+            // The first is the common one and it is not obvious: bots are
+            // "playing" via bot_autoReady but never "ready", so a server of
+            // bots plus one human waits on that human indefinitely.
+            if (numReady == 0) {
+                WarmupBlocked("no human has readied - bots never count as ready, "
+                              "so someone has to run readyup (or set g_doWarmup 0)");
+            } else {
+                WarmupBlocked("readied fraction is below sv_warmupReadyPercentage");
+            }
         }
     } else {
         // During COUNT_DOWN: re-freeze every connected client. Binary tests only
@@ -3487,6 +4208,12 @@ static void CheckWarmupAndForfeit(void) {
         // Countdown was running: drop back to PRE_GAME. (Binary inlines the
         // SetWarmupState(-1) transition and also calls G_AutoRecordAndScreenshot(-1),
         // which ioquakelive does not model.)
+        if (g_debugWarmup.integer) {
+            G_Printf("^1warmup^7 countdown ABANDONED at %d - conditions stopped being met "
+                     "mid-countdown, dropping to PRE_GAME and clearing every ready flag\n",
+                     level.time);
+        }
+
         SetWarmupState(-1);
         G_LogPrintf("Warmup:\n");
 
@@ -3885,6 +4612,9 @@ void G_RunFrame(int levelTime) {
     // get any cvar changes
     G_UpdateCvars();
 
+    // [QL] publish any HUD score change that the rate limit deferred
+    G_FlushScoreConfigstrings();
+
     // [QL] Respawn-delay computation (== QL G_RunFrame @0x100594e0, DAT_105df41c).
     // player_die reads the effective delay from level.forceRespawnDelay whenever
     // g_forcerespawn is set (its default is 20, so this is the normal path); it
@@ -4073,6 +4803,9 @@ void G_RunFrame(int levelTime) {
 
     // update to team status?
     CheckTeamStatus();
+
+    // [QL] one write per frame for the alive counts, not one per respawn
+    G_FlushTeamCountConfigstrings();
 
     // cancel vote if timed out
     CheckVote();

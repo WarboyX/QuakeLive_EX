@@ -349,33 +349,57 @@ void SV_DirectConnect(netadr_t from) {
         }
     }
 
+    /*
+    [QL] A person outranks a bot for the last slot.
+
+    Stock code made room only for a connection from the local address, and only
+    when every slot in range was a bot - so the moment one person was on a
+    bot-filled server nobody else could get in, and the local host hit
+    Com_Error(ERR_FATAL, "server is full on local connect"), taking the whole
+    game down over a full server. Remote connections were simply told the server
+    was full, which on a server whose population is bot_minplayers is not a
+    meaningful answer: the slots are filled by the server itself and it can give
+    one back.
+
+    So any real connection that finds no free slot drops a bot instead. The
+    highest-numbered one goes: SV_BotAllocateClient fills from the bottom, so
+    that is the most recently added and the least invested in the match. The
+    game re-fills it once someone leaves, because G_CheckMinimumPlayers is
+    running the whole time and G_FillBots will not take the room back while a
+    person is holding it.
+
+    Bots do not take this path - SV_BotAllocateClient finds its own slot - but
+    the address type is checked anyway so a bot connection can never evict
+    another bot here.
+    */
     if (!newcl) {
-        if (NET_IsLocalAddress(from)) {
-            count = 0;
-            for (i = startIndex; i < sv_maxclients->integer; i++) {
+        client_t* victim = NULL;
+
+        if (from.type != NA_BOT) {
+            for (i = sv_maxclients->integer - 1; i >= startIndex; i--) {
                 cl = &svs.clients[i];
-                if (cl->netchan.remoteAddress.type == NA_BOT) {
-                    count++;
+                if (cl->state != CS_FREE && cl->netchan.remoteAddress.type == NA_BOT) {
+                    victim = cl;
+                    break;
                 }
             }
-            // if they're all bots
-            if (count >= sv_maxclients->integer - startIndex) {
-                SV_DropClient(&svs.clients[sv_maxclients->integer - 1], "only bots on server");
-                newcl = &svs.clients[sv_maxclients->integer - 1];
-            } else {
-                Com_Error(ERR_FATAL, "server is full on local connect");
-                return;
-            }
-        } else {
+        }
+
+        if (!victim) {
             NET_OutOfBandPrint(NS_SERVER, from, "print\nServer is full.\n");
             Com_DPrintf("Rejected a connection.\n");
             return;
         }
+
+        Com_Printf("Server full: dropping bot %s to make room for %s\n",
+                   victim->name, NET_AdrToString(from));
+        SV_DropClient(victim, "making room for a player");
+        newcl = victim;
     }
 
     // we got a newcl, so reset the reliableSequence and reliableAcknowledge
-    cl->reliableAcknowledge = 0;
-    cl->reliableSequence = 0;
+    newcl->reliableAcknowledge = 0;
+    newcl->reliableSequence = 0;
 
 gotnewcl:
     // build a new connection
@@ -464,6 +488,9 @@ or unwillingly.  This is NOT called if the entire server is quiting
 or crashing -- SV_FinalMessage() will handle that
 =====================
 */
+// [QL] Set while a drop is being announced - see the broadcast below.
+static qboolean sv_droppingClient = qfalse;
+
 void SV_DropClient(client_t* drop, const char* reason) {
     int i;
     challenge_t* challenge;
@@ -501,8 +528,38 @@ void SV_DropClient(client_t* drop, const char* reason) {
     // will receive many server commands during the drop
     drop->gamestateMessageNum = -1;
 
-    // tell everyone why they got dropped
-    SV_SendServerCommand(NULL, "print \"%s" S_COLOR_WHITE " %s\n\"", drop->name, reason);
+    /*
+    [QL] Announce the drop to everyone else - unless we are already inside one.
+
+    This broadcast is what makes a single overflow take the server down. A
+    client whose reliable buffer is full gets dropped by SV_AddServerCommand;
+    dropping it broadcasts the reason to every client; that broadcast is one
+    more reliable command, so it overflows the next client that was also near
+    the ceiling, which drops that one, which broadcasts again. Each level is a
+    nested SV_SendServerCommand, and on a full server the recursion runs about
+    as deep as there are clients - exception 0xc00000fd, a stack overflow, with
+    SV_DropClient and SV_SendServerCommand alternating down the whole report.
+
+    The log tail from the field shows it exactly:
+
+        cmd 139: print "Lucy^7 Server command overflow"
+        SV_DropClient: dropping client 61 (Klesk), reason='Server command overflow'
+
+    gamestateMessageNum = -1 above already stops the client being dropped from
+    recursing on itself. It does nothing about the broadcast landing on someone
+    else, which is the case that actually happens - clients go over the ceiling
+    together, because what fills the buffer is broadcast traffic they all
+    receive.
+
+    So a drop that happens during a drop is silent. Everyone still gets told
+    about the first one, the dropped clients still get their own disconnect
+    command, and the console still records each one.
+    */
+    if (!sv_droppingClient) {
+        sv_droppingClient = qtrue;
+        SV_SendServerCommand(NULL, "print \"%s" S_COLOR_WHITE " %s\n\"", drop->name, reason);
+        sv_droppingClient = qfalse;
+    }
 
     // call the prog function for removing a client
     // this will remove the body, among other things

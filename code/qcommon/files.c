@@ -507,6 +507,13 @@ qboolean FS_CreatePath(char* OSPath) {
 	char* ofs;
 	char path[MAX_OSPATH];
 
+	// [QL] ioq3 693c1f1. Several callers build this path out of cvars
+	// (fs_homepath, fs_game) that can be empty, and the loop below starts at
+	// OSPath[1] - so an empty string was read past its own terminator.
+	if (!OSPath || !*OSPath) {
+		return qfalse;
+	}
+
 	// make absolutely sure that it can't back up the path
 	// FIXME: is c: allowed???
 	if (strstr(OSPath, "..") || strstr(OSPath, "::")) {
@@ -599,6 +606,54 @@ qboolean FS_FileInPathExists(const char* testpath) {
 	}
 
 	return qfalse;
+}
+
+
+/*
+================
+[QL] FS_ReportShadowedFile
+
+Say which copy of a config file exec actually used, and name any it shadowed.
+
+FS_FOpenFileRead stops on the first hit, and fs_homepath is searched before
+fs_basepath - so a stale autoexec.cfg in %APPDATA% silently wins over the one
+that ships in the release archive, and the log says only "execing autoexec.cfg"
+either way. That cost several builds' worth of autoexec changes in the field
+before anyone thought to look: the file was being updated and read, just not the
+same file.
+
+Only the directory search paths are examined. A config inside a .pk3 is not
+something anyone edits by hand and is not the confusion this exists to clear up.
+================
+*/
+void FS_ReportShadowedFile(const char* filename) {
+	searchpath_t* sp;
+	char ospath[MAX_OSPATH];
+	int found = 0;
+
+	if (!fs_searchpaths) {
+		return;
+	}
+
+	for (sp = fs_searchpaths; sp; sp = sp->next) {
+		if (sp->dir == NULL) {
+			continue;  // pak file, see above
+		}
+		Com_sprintf(ospath, sizeof(ospath), "%s%c%s", sp->dir->fullpath, PATH_SEP, filename);
+		if (!FS_FileInPathExists(ospath)) {
+			continue;
+		}
+		found++;
+		if (found == 1) {
+			Com_Printf("%s: using %s\n", filename, ospath);
+		} else {
+			if (found == 2) {
+				Com_Printf(S_COLOR_YELLOW "  NOTE: %s also exists further down the search path "
+					"and is being ignored:\n", filename);
+			}
+			Com_Printf(S_COLOR_YELLOW "    %s\n", ospath);
+		}
+	}
 }
 
 /*
@@ -1307,7 +1362,14 @@ long FS_FOpenFileRead(const char* filename, fileHandle_t* file, qboolean uniqueF
 	if (!fs_searchpaths)
 		Com_Error(ERR_FATAL, "Filesystem call made without initialization");
 
+	// [QL] repconfig.cfg belongs on this list too. A config never comes out of a
+	// pk3 - a pak shipping one is a pak trying to overwrite user settings - and
+	// the split into two files left the replicated half unguarded. Unrelated to
+	// where the files live; it was wrong before that question came up.
 	isLocalConfig = !strcmp(filename, "autoexec.cfg") || !strcmp(filename, QZCONFIG_CFG);
+#ifdef REPCONFIG_CFG
+	isLocalConfig = isLocalConfig || !strcmp(filename, REPCONFIG_CFG);
+#endif
 	for (search = fs_searchpaths; search; search = search->next) {
 		// autoexec.cfg and qzconfig.cfg can only be loaded outside of pk3 files.
 		if (isLocalConfig && search->pack)
@@ -2101,7 +2163,8 @@ char** FS_ListFilteredFiles(const char* path, const char* extension, char* filte
 	}
 
 	pathLength = strlen(path);
-	if (path[pathLength - 1] == '\\' || path[pathLength - 1] == '/') {
+	// [QL] "" is a real argument - UI_LoadTeams lists the root - and read path[-1]
+	if (pathLength && (path[pathLength - 1] == '\\' || path[pathLength - 1] == '/')) {
 		pathLength--;
 	}
 	extensionLength = strlen(extension);
@@ -2774,7 +2837,9 @@ void FS_AddGameDirectory(const char* path, const char* dir) {
 		// Get top level directories (we'll filter them later since the Sys_ListFiles filtering is terrible)
 		pakdirs = Sys_ListFiles(curpath, "/", NULL, &numdirs, qfalse);
 
-		qsort(pakdirs, numdirs, sizeof(char*), paksort);
+		if (pakdirs) {  // NULL for an empty directory; qsort's argument is nonnull
+			qsort(pakdirs, numdirs, sizeof(char*), paksort);
+		}
 	}
 
 	pakfilesi = 0;
@@ -3372,6 +3437,95 @@ static qboolean FS_FindSteamQLPath(char *qlPath, int pathSize) {
 FS_CopyFileWithProgress - Copy a file with console progress display.
 Returns qtrue on success.
 */
+/*
+===================
+FS_StripImportedLightingCvars
+
+[QL] A config copied from Quake Live carries Quake Live's r_gamma, and the
+number does not mean the same thing here. Quake Live applied it as a hardware
+gamma ramp together with r_overBrightBits/r_mapOverBrightBits; this renderer
+forces overbright off (E81) and applies r_gamma in its own pass, so Quake Live's
+1.3 came out washed out - reported on a fresh laptop install, where this copy is
+what set it, and archived from then on. Same trap as r_ambientScale (E111):
+same name, different scale. Drop those lines; our defaults apply instead.
+===================
+*/
+static void FS_StripImportedLightingCvars(const char *path) {
+	static const char *const drop[] = {
+		"r_gamma", "r_overBrightBits", "r_mapOverBrightBits", "r_intensity"
+	};
+	FILE *f;
+	char *buf, *out, *line, *next;
+	long len;
+	int removed = 0;
+	size_t o = 0, i;
+
+	f = fopen(path, "rb");
+	if (!f) {
+		return;
+	}
+	fseek(f, 0, SEEK_END);
+	len = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	if (len <= 0 || len > 4 * 1024 * 1024) {
+		fclose(f);
+		return;
+	}
+	buf = malloc((size_t)len + 1);
+	out = malloc((size_t)len + 1);
+	if (!buf || !out || fread(buf, 1, (size_t)len, f) != (size_t)len) {
+		fclose(f);
+		free(buf);
+		free(out);
+		return;
+	}
+	fclose(f);
+	buf[len] = '\0';
+
+	for (line = buf; *line; line = next) {
+		const char *p = line;
+		qboolean skip = qfalse;
+		size_t n;
+
+		next = strchr(line, '\n');
+		next = next ? next + 1 : line + strlen(line);
+
+		// "seta r_gamma ..." / "set r_gamma ..." / "r_gamma ..."
+		while (*p == ' ' || *p == '\t') p++;
+		if (!Q_stricmpn(p, "seta ", 5) || !Q_stricmpn(p, "sets ", 5) || !Q_stricmpn(p, "setu ", 5)) {
+			p += 5;
+		} else if (!Q_stricmpn(p, "set ", 4)) {
+			p += 4;
+		}
+		while (*p == ' ' || *p == '\t') p++;
+		for (i = 0; i < ARRAY_LEN(drop); i++) {
+			n = strlen(drop[i]);
+			if (!Q_stricmpn(p, drop[i], n) && (p[n] == ' ' || p[n] == '\t' || p[n] == '"')) {
+				skip = qtrue;
+				break;
+			}
+		}
+		if (skip) {
+			removed++;
+			continue;
+		}
+		memcpy(out + o, line, (size_t)(next - line));
+		o += (size_t)(next - line);
+	}
+
+	if (removed) {
+		f = fopen(path, "wb");
+		if (f) {
+			fwrite(out, 1, o, f);
+			fclose(f);
+			Com_Printf("  %s: left out %d Quake Live lighting setting(s) (r_gamma and friends) - "
+			           "they do not mean the same thing in this renderer\n", path, removed);
+		}
+	}
+	free(buf);
+	free(out);
+}
+
 static qboolean FS_CopyFileWithProgress(const char *src, const char *dst,
                                          const char *displayName) {
 	FILE *fin, *fout;
@@ -3731,6 +3885,7 @@ static void FS_CopyFromSteam(void) {
 			Com_sprintf(dest, sizeof(dest), "%s\\%s", homeDir, filename);
 			if (FS_CopyFileWithProgress(configFiles[i], dest, filename)) {
 				Com_Printf("  Copied %s\n", filename);
+				FS_StripImportedLightingCvars(dest);
 			} else {
 				Com_Printf("  WARNING: Failed to copy %s\n", filename);
 			}
@@ -4139,6 +4294,57 @@ OS path is returned via outOSPath. This function ensures that only
 validated gamecode is loaded in pure server environments.
 =====================
 */
+/*
+=====================
+FS_ChecksumOSFile
+
+[QL] Checksum a file by its real path, outside the game filesystem.
+
+Deliberately not FS_ReadFile: the target of an extraction lives in the homepath
+and is also present inside the pk3 we are extracting from, so a search-path read
+can return either one. This has to see what is actually on disk.
+
+Returns qfalse if the file cannot be read at all, which is the "nothing there
+yet" case and not an error.
+=====================
+*/
+static qboolean FS_ChecksumOSFile(const char* ospath, unsigned int* outChecksum, int* outLen) {
+	FILE* f;
+	byte* buf;
+	long len;
+	size_t got;
+
+	f = Sys_FOpen(ospath, "rb");
+	if (!f) {
+		return qfalse;
+	}
+
+	fseek(f, 0, SEEK_END);
+	len = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	if (len <= 0 || len > 64 * 1024 * 1024) {
+		fclose(f);
+		return qfalse;
+	}
+
+	buf = Z_Malloc(len);
+	got = fread(buf, 1, len, f);
+	fclose(f);
+
+	if ((long)got != len) {
+		Z_Free(buf);
+		return qfalse;
+	}
+
+	*outChecksum = Com_BlockChecksum(buf, len);
+	*outLen = (int)len;
+
+	Z_Free(buf);
+
+	return qtrue;
+}
+
 qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 	char filename[MAX_QPATH];
 	searchpath_t* search;
@@ -4149,9 +4355,50 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 	int hash;
 	void* buffer;
 	int fileLen;
+	unsigned int srcChecksum, dstChecksum;
+	int dstLen;
+	qboolean needsWrite = qtrue;
+	qboolean wasStale = qfalse;
 
 	// Build expected filename (e.g., "cgamex86.dll", "uix86_64.dll" etc)
 	Com_sprintf(filename, sizeof(filename), "%s" ARCH_STRING DLL_EXT, module);
+
+	// [QL] Say so when more than one iobin.pk3 is in the search path.
+	//
+	// Game modules are extracted from the *first* matching pak, and the
+	// homepath is searched before the basepath - so a stale iobin.pk3 left in
+	// %APPDATA%\quakelive\baseq3 (or ~/.quakelive/baseq3) silently wins over
+	// the one that was just installed next to the executable, for as long as it
+	// is there. Every module keeps running the old code and the only visible
+	// symptom is that a fix "did not work".
+	//
+	// Not resolved automatically: which one an admin wants is genuinely
+	// ambiguous, and picking for them would be a worse surprise than saying
+	// what is going on. The extraction line below names the pak actually used.
+	{
+		const searchpath_t* sp;
+		int numGamecodePaks = 0;
+
+		for (sp = fs_searchpaths; sp != NULL; sp = sp->next) {
+			if (sp->pack && FS_IsGamecodePak(sp->pack->pakBasename)) {
+				numGamecodePaks++;
+			}
+		}
+
+		if (numGamecodePaks > 1) {
+			Com_Printf(S_COLOR_YELLOW "WARNING: %d copies of " IOBIN_FILENAME " are loaded. "
+					   "Game modules come from the first one, which is the one earliest in the "
+					   "search path - normally the homepath, not the install directory:\n",
+					   numGamecodePaks);
+			for (sp = fs_searchpaths; sp != NULL; sp = sp->next) {
+				if (sp->pack && FS_IsGamecodePak(sp->pack->pakBasename)) {
+					Com_Printf(S_COLOR_YELLOW "  %s\n", sp->pack->pakFilename);
+				}
+			}
+			Com_Printf(S_COLOR_YELLOW "Delete the stale one, or an update will appear not to "
+					   "take effect.\n");
+		}
+	}
 
 	for (search = fs_searchpaths; search != NULL; search = search->next) {
 		pak = search->pack;
@@ -4222,37 +4469,93 @@ qboolean FS_ExtractGamecode(const char* module, char* outOSPath) {
 			unzOpenCurrentFile(pak->handle);
 			fhdIn->zipFilePos = fileEntry->pos;
 
-			// Remove existing file
-			if (FS_FileExists(filename)) {
-				char* path = FS_BuildOSPath(fs_homepath->string, fs_gamedir, filename);
-				remove(path);
-			}
-
-			// Open output file
-			handleOut = FS_FOpenFileWrite(filename);
-			char* path = FS_BuildOSPath(fs_homepath->string, fs_gamedir, filename);
-			Q_strncpyz(outOSPath, path, MAX_OSPATH);
-
-			if (!handleOut) {
-				Com_Error(ERR_FATAL, "FS_ExtractGamecode: failed to open %s for writing", filename);
-			}
-
-			// Read entire file from zip and write to disk
+			// Read the authoritative copy out of the pk3 first, so it can be
+			// checksummed and compared against whatever is already on disk.
 			fileLen = fileEntry->len;
 			buffer = Z_Malloc(fileLen);
 
 			if (FS_Read(buffer, fileLen, handleIn) != fileLen) {
 				Com_Error(ERR_FATAL, "FS_ExtractGamecode: short read");
 			}
-			if (FS_Write(buffer, fileLen, handleOut) != fileLen) {
-				Com_Error(ERR_FATAL, "FS_ExtractGamecode: short write");
+
+			srcChecksum = Com_BlockChecksum(buffer, fileLen);
+
+			{
+				char* path = FS_BuildOSPath(fs_homepath->string, fs_gamedir, filename);
+				Q_strncpyz(outOSPath, path, MAX_OSPATH);
 			}
 
-			Com_Printf("Extracted '%s' (%d bytes) from '%s/%s.pk3' to '%s'\n", filename, fileLen, pak->pakGamename, pak->pakBasename, path);
+			/*
+			[QL] Verify what is already there before replacing it.
+
+			The extracted module is what actually gets loaded, and until now
+			nothing compared it against the pk3 it was supposed to come from.
+			When the two disagreed there was no way to tell from inside the
+			game: the log said "Extracted ..." either way, and a stale module
+			looked exactly like a fix that had not worked. That cost two rounds
+			of a real bug hunt.
+
+			So: checksum the copy on disk, checksum the copy in the pak, and say
+			which case this is. A mismatch is reported as a mismatch, the file is
+			replaced, and the replacement is verified by reading it back.
+			*/
+			if (FS_ChecksumOSFile(outOSPath, &dstChecksum, &dstLen)) {
+				if (dstChecksum == srcChecksum && dstLen == fileLen) {
+					Com_Printf("Verified '%s' (%d bytes, checksum 0x%08x) against '%s/%s.pk3'\n",
+							   filename, fileLen, srcChecksum, pak->pakGamename, pak->pakBasename);
+					needsWrite = qfalse;
+				} else {
+					Com_Printf(S_COLOR_YELLOW "MISMATCH: '%s'\n", outOSPath);
+					Com_Printf(S_COLOR_YELLOW "    on disk: %d bytes, checksum 0x%08x\n", dstLen, dstChecksum);
+					Com_Printf(S_COLOR_YELLOW "    in %s.pk3: %d bytes, checksum 0x%08x\n",
+							   pak->pakBasename, fileLen, srcChecksum);
+					Com_Printf(S_COLOR_YELLOW "    replacing the copy on disk with the one from the pak\n");
+					wasStale = qtrue;
+				}
+			}
+
+			if (needsWrite) {
+				remove(outOSPath);
+
+				handleOut = FS_FOpenFileWrite(filename);
+				if (!handleOut) {
+					Com_Error(ERR_FATAL, "FS_ExtractGamecode: failed to open %s for writing. If the "
+							  "file is in use or read-only, the module cannot be updated and the "
+							  "old one would be loaded instead", filename);
+				}
+
+				if (FS_Write(buffer, fileLen, handleOut) != fileLen) {
+					Com_Error(ERR_FATAL, "FS_ExtractGamecode: short write");
+				}
+
+				FS_FCloseFile(handleOut);
+
+				// Read it back. A write that reported success and produced
+				// different bytes is exactly the failure this is here to catch,
+				// so it is not taken on trust.
+				if (!FS_ChecksumOSFile(outOSPath, &dstChecksum, &dstLen) ||
+					dstChecksum != srcChecksum || dstLen != fileLen) {
+					Com_Error(ERR_FATAL, "FS_ExtractGamecode: '%s' does not match '%s.pk3' after "
+							  "writing it (wrote %d bytes / checksum 0x%08x, read back %d / 0x%08x). "
+							  "The module on disk is not the one that shipped",
+							  outOSPath, pak->pakBasename, fileLen, srcChecksum, dstLen, dstChecksum);
+				}
+
+				// Two different events, worth two different sentences. Repeating
+				// the pak's checksum after a mismatch reads as if the two sides
+				// agreed all along - they do now, and that is the whole point,
+				// but only the second line is saying so.
+				if (wasStale) {
+					Com_Printf("    replaced - '%s' now matches %s.pk3 (checksum 0x%08x)\n",
+							   filename, pak->pakBasename, srcChecksum);
+				} else {
+					Com_Printf("Extracted '%s' (%d bytes, checksum 0x%08x) from '%s/%s.pk3' to '%s'\n",
+							   filename, fileLen, srcChecksum, pak->pakGamename, pak->pakBasename, outOSPath);
+				}
+			}
 
 			Z_Free(buffer);
 			FS_FCloseFile(handleIn);
-			FS_FCloseFile(handleOut);
 
 			// Set module checksum
 			if (Q_stricmp(module, "ui") == 0) {

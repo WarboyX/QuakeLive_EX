@@ -410,6 +410,7 @@ typedef void (*completionFunc_t)(char* args, int argNum);
 void Cmd_RemoveCommandSafe(const char* cmd_name);
 
 void Cmd_CommandCompletion(void (*callback)(const char* s));
+qboolean Cmd_Exists(const char* cmd_name);
 // callback with each valid string
 void Cmd_SetCommandCompletionFunc(const char* command,
                                   completionFunc_t complete);
@@ -486,6 +487,8 @@ void Cvar_SetSafe(const char* var_name, const char* value);
 // sometimes we set variables from an untrusted source: fail if flags & CVAR_PROTECTED
 
 void Cvar_SetLatched(const char* var_name, const char* value);
+void Cvar_SetFromClientVM(const char* var_name, const char* value);  // [QL] E198 ui/cgame sets
+void Cvar_SetValueFromClientVM(const char* var_name, float value);   // [QL] E198
 // don't set the cvar immediately
 
 void Cvar_SetValue(const char* var_name, float value);
@@ -496,8 +499,9 @@ float Cvar_VariableValue(const char* var_name);
 int Cvar_VariableIntegerValue(const char* var_name);
 // returns 0 if not defined or non numeric
 
-char* Cvar_VariableString(const char* var_name);
+const char* Cvar_VariableString(const char* var_name);
 void Cvar_VariableStringBuffer(const char* var_name, char* buffer, int bufsize);
+void Cvar_LatchedStringBuffer(const char* var_name, char* buffer, int bufsize);  // [QL] E183
 // returns an empty string if not defined
 
 int Cvar_Flags(const char* var_name);
@@ -589,6 +593,9 @@ char** FS_ListFiles(const char* directory, const char* extension, int* numfiles)
 void FS_FreeFileList(char** list);
 
 qboolean FS_FileExists(const char* file);
+
+/* [QL] print which copy of a config exec used, and name any it shadowed */
+void FS_ReportShadowedFile(const char* filename);
 const char* FS_FindSystemFile(const char* file);
 
 qboolean FS_CreatePath(char* OSPath);
@@ -786,6 +793,8 @@ void Info_Print(const char* s);
 void Com_BeginRedirect(char* buffer, int buffersize, void (*flush)(char*));
 void Com_EndRedirect(void);
 void QDECL Com_Printf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+// [QL] The log file currently being written - see logfile_keep.
+const char* Com_LogFileName(void);
 void QDECL Com_DPrintf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void QDECL Com_Error(int code, const char* fmt, ...) __attribute__((noreturn, format(printf, 2, 3)));
 void Com_Quit_f(void) __attribute__((noreturn));
@@ -813,6 +822,10 @@ int QDECL Com_strCompare(const void* a, const void* b);
 extern cvar_t* com_developer;
 extern cvar_t* com_dedicated;
 extern cvar_t* com_speeds;
+/* [QL] E222: com_cpuTimings - microseconds this frame, filled where they run */
+extern cvar_t* com_cpuTimings;
+extern int64_t com_usBots, com_usGame, com_usScene, com_usSubmit;
+extern int64_t com_usBotStages[BOT_TIMING_STAGES];
 extern cvar_t* com_timescale;
 extern cvar_t* com_sv_running;
 extern cvar_t* com_cl_running;
@@ -1032,6 +1045,8 @@ NON-PORTABLE SYSTEM SERVICES
 #define MAX_JOYSTICK_AXIS 16
 
 void Sys_Init(void);
+void Sys_CpuFrame(void);   // [QL] E222
+extern int com_cmdlineTruncated;   // [QL] E223: arguments left off a command line too long to hold
 
 // general development dll loading for virtual machine testing
 void* QDECL Sys_LoadGameDll(const char* name, vmMainProc* entryPoint, intptr_t(QDECL* systemcalls)(intptr_t, ...));
@@ -1050,6 +1065,11 @@ void Sys_Print(const char* msg);
 // Sys_Milliseconds should only be used for profiling purposes,
 // any game related timing information should come from event timestamps
 int Sys_Milliseconds(void);
+
+// [QL] Monotonic microsecond clock. For the frame limiter only - the engine's
+// time base is integer milliseconds everywhere else, on the wire included, and
+// this does not change that. See the com_framePacing block in Com_Frame.
+int64_t Sys_Microseconds(void);
 
 qboolean Sys_RandomBytes(byte* string, int len);
 

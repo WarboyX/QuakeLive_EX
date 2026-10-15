@@ -353,6 +353,15 @@ qhandle_t RE_RegisterModel( const char *name ) {
 		}
 	}
 
+	// [QL] Name what failed. hModel 0 means every loader declined the file, and
+	// every caller treats 0 as "draw nothing" - an invisible model with no
+	// message. Same silent-failure shape as RE_RegisterShader; see the note
+	// there. Developer-level, and `developer` defaults to 1 on this branch.
+	if ( !hModel ) {
+		ri.Printf( PRINT_DEVELOPER, "RE_RegisterModel: '%s' not found - returning 0, "
+		           "so whatever asked for it will draw nothing\n", name );
+	}
+
 	return hModel;
 }
 

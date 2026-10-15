@@ -815,13 +815,13 @@ qboolean CG_OwnerDrawVisible(int flags, int flags2) {
     }
 
     if (flags & CG_SHOW_IF_NOT_WARMUP) {
-        if (!cg.warmup) {
+        if (!CG_InWarmup()) {
             return qtrue;
         }
     }
 
     if (flags & CG_SHOW_IF_WARMUP) {
-        if (cg.warmup) {
+        if (CG_InWarmup()) {
             return qtrue;
         }
     }
@@ -850,8 +850,12 @@ qboolean CG_OwnerDrawVisible(int flags, int flags2) {
         }
     }
 
+    // A tie counts as red first. hud.menu draws each team frame twice, once
+    // under each of these two flags, so exactly one of them has to hold: with a
+    // strict > on both, a tied score (every CA/CTF/TDM start) drew no team frame,
+    // no flag status and no players-remaining count at all.
     if (flags & CG_SHOW_IF_RED_IS_FIRST_PLACE) {
-        if (cgs.scores1 > cgs.scores2) {
+        if (cgs.scores1 >= cgs.scores2) {
             return qtrue;
         }
     }
@@ -929,12 +933,59 @@ const char* CG_GetKillerText(void) {
     return s;
 }
 
-static void CG_DrawKiller(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
-    // fragged by ... line
-    if (cg.killerName[0]) {
-        int x = rect->x + rect->w / 2;
-        CG_OwnerDrawText(x - (CG_OwnerDrawTextWidth(CG_GetKillerText(), scale, 0) / 2), rect->y, scale, color, CG_GetKillerText(), 0, 0, textStyle);
+static float CG_OwnerDrawAlignX(rectDef_t *rect, const char *text, float scale, int align);
+
+/* [QL] Where the game-status line starts, in 640-space, recorded by
+   CG_DrawGameStatus as it draws. See the note in CG_DrawKiller. */
+static float cg_gameStatusX;
+
+/*
+[QL] "Fragged by X", where the menu puts it.
+
+This centred the text inside its own rect and ignored the align argument. Quake
+Live's scoreboard declares the item as "rect 75 100 330 10" with "align 0" -
+left - so a 330-wide rect centred a short line about a hundred and fifty units
+to the right of where the menu asked for it, straight across the top of the
+board. The same fault CG_DrawRedName had; the same fix.
+*/
+static void CG_DrawKiller(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle, int align) {
+    const char* s = CG_GetKillerText();
+    float x;
+
+    if (!s[0]) {
+        return;
     }
+
+    x = CG_OwnerDrawAlignX(rect, s, scale, align);
+
+    /*
+    [QL] Aligned with the status line above it, and it does not move.
+
+    Both of this line's anchors used to be measured from text that changes.
+    Horizontally it started under the *trailing* character of the status line,
+    which is a different x for "63rd place with 20" than for "Tied for 51st
+    place with 3". Vertically it was offset by the height of the killer's own
+    name, so a name with a descender sat lower than one without. The label
+    therefore shifted on both axes every time somebody fragged you, which is
+    not something a label should do.
+
+    So both anchors are fixed now. Horizontally it lines up with where the
+    status line *starts* - the status item's own rect x, which does not depend
+    on what the status says - rather than where it happens to end. That reads
+    as deliberately aligned instead of the near miss that plain left-alignment
+    in its own rect gave (five units to the left of the status text, close
+    enough to look like a mistake).
+
+    Vertically it drops by the height of a fixed reference string rather than
+    of the name, which keeps the half-line gap that stops the two crowding
+    into one block while scaling with the font rather than with the obituary.
+    */
+    if (cg_gameStatusX > 0.0f) {
+        x = cg_gameStatusX;
+    }
+
+    CG_OwnerDrawText(x, rect->y + CG_Text_Height("Ay", scale, 0) * 0.6f,
+                     scale, color, s, 0, 0, textStyle);
 }
 
 static void CG_DrawCapFragLimit(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
@@ -976,7 +1027,7 @@ const char* CG_GetMatchStatusText(void) {
 
     if (cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION) {
         prefix = "MATCH SUMMARY";
-    } else if (cg.warmup) {
+    } else if (CG_InWarmup()) {
         prefix = "MATCH WARMUP";
     } else {
         prefix = "MATCH IN PROGRESS";
@@ -1008,8 +1059,23 @@ const char* CG_GetMatchStatusText(void) {
     }
 }
 
+/*
+[QL] Where the status line ("Teams are tied at 0") ends, in 640-space.
+
+Recorded as it is drawn rather than derived from the menu, because it is the
+only honest source: the string changes with the score, both items come out of
+Quake Live's pak rather than anything we can edit, and hardcoding either the
+rect or the text scale is what has already gone wrong twice on this board.
+Zero until the status line has been drawn at least once.
+*/
 static void CG_DrawGameStatus(rectDef_t* rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
-    CG_OwnerDrawText(rect->x, rect->y + rect->h, scale, color, CG_GetGameStatusText(), 0, 0, textStyle);
+    const char* s = CG_GetGameStatusText();
+
+    /* Where this line starts - the killer line below aligns to it. The rect,
+       not the text, so it is the same x whatever the status says. */
+    cg_gameStatusX = rect->x;
+
+    CG_OwnerDrawText(rect->x, rect->y + rect->h, scale, color, s, 0, 0, textStyle);
 }
 
 const char* CG_GameTypeString(void) {
@@ -1350,6 +1416,25 @@ static void CG_DrawBestWeaponName(rectDef_t *rect, float scale, vec4_t color, in
     }
 }
 
+/*
+[QL] The "Accuracy:" figure on the scoreboard's player-stats bar.
+
+This owner draw was sharing a case label with CG_FOLLOW_PLAYER_NAME - a note
+against it said "CG_DrawFollowPlayerName (binary offset)", so it looks to have
+been mapped from a disassembly that put the two next to each other. The result
+was that the field beside the Accuracy label drew a follow-target name, which is
+empty unless you are spectating someone, so the label sat there with nothing
+after it while Best Weapon beside it worked.
+
+Same selection as Best Weapon, so the two always describe the same row.
+*/
+static void CG_DrawSelectedPlayerAccuracy(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
+    if (cg.selectedScore >= 0 && cg.selectedScore < cg.numScores) {
+        CG_OwnerDrawText(rect->x, rect->y, scale, color,
+                         va("%d%%", cg.scores[cg.selectedScore].accuracy), 0, 0, textStyle);
+    }
+}
+
 // [QL] Game limit display (frag/cap/round/score limit based on gametype)
 static void CG_DrawGameLimit(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     const char *s;
@@ -1372,7 +1457,7 @@ static void CG_DrawGameLimit(rectDef_t *rect, float scale, vec4_t color, int tex
 // [QL] Match details: "Game State - Gametype - Map"
 static void CG_DrawMatchDetails(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     const char *state;
-    if (cg.warmup) {
+    if (CG_InWarmup()) {
         state = "Warmup";
     } else if (cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION) {
         state = "Match Complete";
@@ -1391,7 +1476,7 @@ static void CG_DrawMatchStatus(rectDef_t *rect, float scale, vec4_t color, int t
 // [QL] Round number display for CA/FT
 static void CG_DrawRound(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE || cgs.gametype == GT_RR) {
-        if (cg.warmup) {
+        if (CG_InWarmup()) {
             CG_OwnerDrawText(rect->x, rect->y, scale, color, "Warmup", 0, 0, textStyle);
         } else {
             CG_OwnerDrawText(rect->x, rect->y, scale, color,
@@ -1417,7 +1502,7 @@ static void CG_DrawRoundTimer(rectDef_t *rect, float scale, vec4_t color, int te
 
 // [QL] Overtime display
 static void CG_DrawOvertime(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    if (!cg.warmup && cgs.timelimit && cgs.timelimit_overtime) {
+    if (!CG_InWarmup() && cgs.timelimit && cgs.timelimit_overtime) {
         int elapsed = (cg.time - cgs.levelStartTime) / 1000;
         int regulationTime = cgs.timelimit * 60;
         if (elapsed > regulationTime) {
@@ -1452,7 +1537,7 @@ static void CG_DrawLocalTime(rectDef_t *rect, float scale, vec4_t color, int tex
 // [QL] Match state: WARMUP / IN PROGRESS / SUMMARY
 static void CG_DrawMatchState(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
     const char *s;
-    if (cg.warmup) {
+    if (CG_InWarmup()) {
         s = "MATCH WARMUP";
     } else if (cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION) {
         s = "MATCH SUMMARY";
@@ -1488,15 +1573,28 @@ static void CG_DrawFollowPlayerName(rectDef_t *rect, float scale, vec4_t color, 
     }
 }
 
-// [QL] Team name display
-static void CG_DrawRedName(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    CG_OwnerDrawText(rect->x, rect->y, scale, color,
-        cgs.redTeam[0] ? cgs.redTeam : "RED", 0, 0, textStyle);
+static float CG_OwnerDrawAlignX(rectDef_t *rect, const char *text, float scale, int align);
+
+/*
+[QL] Team name display, honouring the item's alignment.
+
+These drew at rect->x unconditionally and ignored the align argument the
+owner-draw was given, which is why RED overlapped the left edge of its own score
+box while BLUE, on the other side of the centre, looked correct: the two labels
+are mirrored in the menu, so the one aligned to the right of its rect was the
+only one that showed the bug. CG_DrawTeamScore beside them already resolves this
+through CG_OwnerDrawAlignX; these now do the same.
+*/
+static void CG_DrawRedName(rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
+    const char *s = cgs.redTeam[0] ? cgs.redTeam : "RED";
+    CG_OwnerDrawText(CG_OwnerDrawAlignX(rect, s, scale, align), rect->y, scale, color,
+        s, 0, 0, textStyle);
 }
 
-static void CG_DrawBlueName(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    CG_OwnerDrawText(rect->x, rect->y, scale, color,
-        cgs.blueTeam[0] ? cgs.blueTeam : "BLUE", 0, 0, textStyle);
+static void CG_DrawBlueName(rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
+    const char *s = cgs.blueTeam[0] ? cgs.blueTeam : "BLUE";
+    CG_OwnerDrawText(CG_OwnerDrawAlignX(rect, s, scale, align), rect->y, scale, color,
+        s, 0, 0, textStyle);
 }
 
 // [QL] Team average ping
@@ -1746,16 +1844,80 @@ static void CG_DrawVoteGameType(rectDef_t *rect, float scale, vec4_t color, int 
 }
 
 
-static void CG_DrawVoteTimer(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-    if (cgs.voteTime) {
-        int sec = (cgs.voteTime + 20000 - cg.time) / 1000;
-        if (sec > 0) {
-            CG_OwnerDrawText(rect->x, rect->y, scale, color,
-                va("Voting ends in %d seconds.", sec), 0, 0, textStyle);
-        } else {
-            CG_OwnerDrawText(rect->x, rect->y, scale, color,
-                "Voting has ended.", 0, 0, textStyle);
+/*
+[QL] Show the vote's state as the server reports it, and decide nothing.
+
+Two client-side guesses used to live here. It counted down from a hardcoded 20
+seconds regardless of the window the server had actually chosen, and when its
+own count reached zero it declared "Voting has ended." on its own authority -
+so the panel could say voting was over while the server was still accepting
+votes, or the reverse.
+
+Everything comes off CS_ROTATIONMAPS now. "end" is an absolute server time, so
+the countdown is a rendering of the server's deadline rather than a second copy
+of it; "winner" appears only once the server has closed voting and settled the
+result, and while it is there that is what the panel says. No key, no line -
+a server that publishes neither gets an empty panel instead of an invented one.
+*/
+/*
+[QL] The countdown is right-aligned, and it was being drawn from the left.
+
+endgamevote.menu gives the item "rect 610 370 150 10" and "align 2"
+(ITEM_ALIGN_RIGHT). Drawn from rect->x the line starts at 610 in a 640-wide
+virtual screen and runs off the edge - "Voting ends in 5 seconds." is about 130
+units wide, so most of it was past the right of the display. Aligning it the way
+the rest of this file does - rect->x is the right-hand reference, see
+CG_DrawLocalTime, which sits in the same corner of the scoreboard and is correct
+- ends the line at 610 and puts it back over the vote panel, which runs to 600.
+*/
+static void CG_DrawVoteTimerText(rectDef_t *rect, float scale, vec4_t color,
+                                 int textStyle, int align, const char *s) {
+    float x = rect->x;
+
+    if (align == ITEM_ALIGN_CENTER) {
+        x -= CG_OwnerDrawTextWidth(s, scale, 0) * 0.5f;
+    } else if (align == ITEM_ALIGN_RIGHT) {
+        x -= CG_OwnerDrawTextWidth(s, scale, 0);
+    }
+    CG_OwnerDrawText(x, rect->y, scale, color, s, 0, 0, textStyle);
+}
+
+static void CG_DrawVoteTimer(rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
+    const char *info = CG_ConfigString(CS_ROTATIONMAPS);
+    const char *val;
+    int sec;
+
+    if (!Info_ValueForKey(info, "map_0")[0]) {
+        return;
+    }
+
+    val = Info_ValueForKey(info, "winner");
+    if (val[0]) {
+        char key[16];
+        const char *name;
+
+        Com_sprintf(key, sizeof(key), "title_%d", atoi(val));
+        name = Info_ValueForKey(info, key);
+        if (!name[0]) {
+            Com_sprintf(key, sizeof(key), "map_%d", atoi(val));
+            name = Info_ValueForKey(info, key);
         }
+        if (name[0]) {
+            CG_DrawVoteTimerText(rect, scale, color, textStyle, align,
+                va("Voting has ended - next arena: %s", name));
+        }
+        return;
+    }
+
+    val = Info_ValueForKey(info, "end");
+    if (!val[0]) {
+        return;
+    }
+
+    sec = (atoi(val) - cg.time + 999) / 1000;
+    if (sec > 0) {
+        CG_DrawVoteTimerText(rect, scale, color, textStyle, align,
+            va("Voting ends in %d second%s.", sec, sec == 1 ? "" : "s"));
     }
 }
 
@@ -1784,7 +1946,7 @@ static qboolean CG_DuelStatShown(const duelScore_t *ds) {
     if (!cg.duelScoresValid) {
         return qfalse;
     }
-    if (cg.warmup) {
+    if (CG_InWarmup()) {
         return qtrue;
     }
     if (ds->clientNum < 0 || ds->clientNum >= MAX_CLIENTS) {
@@ -1868,7 +2030,7 @@ static void CG_DrawDuelPlayerName(int ownerDraw, rectDef_t *rect, float scale, v
         return;
     }
     name = cgs.clientinfo[ds->clientNum].name;
-    if (cg.warmup && !name[0]) {
+    if (CG_InWarmup() && !name[0]) {
         return;
     }
     x = CG_OwnerDrawAlignX(rect, name, scale, align);
@@ -2487,10 +2649,12 @@ static void CG_DrawWinCondition(rectDef_t *rect, float scale, vec4_t color, int 
     CG_DrawText(rect->x, rect->y, 0, scale, color, s, 0, 0, textStyle);
 }
 
-// [QL] CG_DrawTeamAliveCount - per-team alive count for DOM/AD overlay
+// [QL] CG_DrawTeamAliveCount - control points held, for the DOM/AD overlay
 // Address: 0x100337a0  (binary guard: gametype == GT_DOMINATION || GT_AD)
+// Despite the name it draws CS_DOM_OWNED_RED/BLUE. Until E122 nothing ever wrote
+// the array it read, so Domination's "owned" counter sat at 0 all match.
 static void CG_DrawTeamAliveCount(rectDef_t *rect, int team, float scale, vec4_t color, int textStyle) {
-    const char *s = va("%d", cgs.teamAliveCount[team]);
+    const char *s = va("%d", cgs.domOwnedPoints[team]);
     CG_DrawText(rect->x, rect->y, 0, scale, color, s, 0, 0, textStyle);
 }
 
@@ -2721,7 +2885,7 @@ static void CG_DrawDuelStatusPlate(rectDef_t *rect, int selfIdx, qboolean rightS
     self  = &cg.duelScores[selfIdx];
     other = &cg.duelScores[selfIdx ^ 1];
 
-    if (cg.warmup) {
+    if (CG_InWarmup()) {
         text  = "READY";
         plate = rightSide ? cgs.media.duelStatusReady_right : cgs.media.duelStatusReady;
     } else if (other->score < self->score) {
@@ -2934,24 +3098,96 @@ static void CG_DrawEndGameResult(rectDef_t *rect, float scale, vec4_t color, int
     CG_OwnerDrawText(rect->x, rect->y, scale, color, s, 0, 0, textStyle);
 }
 
-// [QL] CG_DrawOpponentScore (0x64/0x65, round-based only). 0x64 draws your team's
-// round score, 0x65 the opposing team's.
-static void CG_DrawOpponentScore(int useOwnTeam, rectDef_t *rect, float scale, vec4_t color, int textStyle) {
+/*
+[QL] Players still alive this round, for the "remaining" slots: CG_TEAM_PLYR_COUNT
+and CG_ENEMY_PLYR_COUNT (Red Rover's rr_remaining_team / rr_remaining_enemy icons)
+and CG_RED_CLAN_PLYRS / CG_BLUE_CLAN_PLYRS (CA and Freeze Tag, under
+CG_SHOW_PLAYERS_REMAINING). The names say player count and hud.menu draws the
+team scores separately through CG_1ST_PLACE_SCORE / CG_2ND_PLACE_SCORE.
+
+These slots used to draw the team scores. The red clan slot even showed the blue
+score, because CG_DrawTeamScore picks scores1 only for CG_RED_SCORE and was passed
+1. The server has always sent the alive counts (CS_TEAMCOUNT_RED/BLUE,
+G_FlushTeamCountConfigstrings, round-based gametypes only). Nothing drew them.
+*/
+static void CG_DrawTeamRemaining(int team, rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
+    const char *s;
+
+    if (team != TEAM_RED && team != TEAM_BLUE) {
+        return;
+    }
+    s = va("%i", team == TEAM_RED ? cgs.teamCountRed : cgs.teamCountBlue);
+    CG_OwnerDrawText(CG_OwnerDrawAlignX(rect, s, scale, align), rect->y, scale, color, s, 0, 0, textStyle);
+}
+
+static void CG_DrawOwnEnemyRemaining(qboolean own, rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
     int team = cg.snap->ps.persistant[PERS_TEAM];
+
+    if (team != TEAM_RED && team != TEAM_BLUE) {
+        return;  // a spectator has neither an own nor an enemy team
+    }
+    if (!own) {
+        team = (team == TEAM_RED) ? TEAM_BLUE : TEAM_RED;
+    }
+    CG_DrawTeamRemaining(team, rect, scale, color, textStyle, align);
+}
+
+/*
+===============
+CG_DrawPlaceScore
+
+[QL] The two-bar tracker at the top left: the leader, and you.
+
+hud.menu asks for CG_1ST_PLACE_SCORE and CG_2ND_PLACE_SCORE with no
+ownerdrawflags at all - both are plain "visible 1" - so the four-item
+first-place/not-first-place arrangement in comp_hud.menu never applies to the
+HUD that actually loads. These two were mapped straight to CG_DrawRedScore and
+CG_DrawBlueScore, which read cgs.scores1 and cgs.scores2. In a team game those
+are the team scores and it is right; in a free-for-all they are 1st and 2nd
+place, so the tracker showed the top two players and never the viewer. A player
+sitting 40th with 1 point saw 39 and 38.
+
+What it should show, per the reported behaviour: the top line is the leader, the
+bottom line is your own score, and when you *are* the leader the bottom line
+becomes the runner-up so there is still something to chase. That is the same
+information comp_hud.menu builds out of four gated items, expressed as two.
+
+Team gametypes keep the team scores - there the two bars are red and blue, and
+the viewer's own score is not what belongs in them.
+===============
+*/
+static void CG_DrawPlaceScore(qboolean firstPlace, rectDef_t *rect, float scale, vec4_t color, qhandle_t shader,
+                              int textStyle) {
     int score;
 
-    if (!useOwnTeam) {
-        if (team == TEAM_RED) {
-            team = TEAM_BLUE;
-        } else if (team == TEAM_BLUE) {
-            team = TEAM_RED;
+    if (cgs.gametype >= GT_TEAM) {
+        if (firstPlace) {
+            CG_DrawRedScore(rect, scale, color, shader, textStyle);
+        } else {
+            CG_DrawBlueScore(rect, scale, color, shader, textStyle);
         }
+        return;
     }
-    score = (team == TEAM_RED) ? cgs.scores1 : cgs.scores2;
+
+    if (firstPlace) {
+        score = cgs.scores1;
+    } else if (cg.snap && cg.snap->ps.persistant[PERS_RANK] == 0) {
+        // the viewer is leading, so the second line has the runner-up
+        score = cgs.scores2;
+    } else if (cg.snap) {
+        score = cg.snap->ps.persistant[PERS_SCORE];
+    } else {
+        score = cgs.scores2;
+    }
+
+    if (score == SCORE_NOT_PRESENT || score == -999) {
+        return;
+    }
+
     CG_OwnerDrawText(rect->x, rect->y, scale, color, va("%i", score), 0, 0, textStyle);
 }
 
-// [QL] CG_DrawTeamScore (0x11c/0x138/0x122/0x13d). Numeric team score.
+// [QL] CG_DrawTeamScore (0x11c/0x138). Numeric team score.
 // Binary shows scores1 only for id 0x11c (CG_RED_SCORE); every other selector
 // shows scores2. -9999/-999 draw nothing.
 static void CG_DrawTeamScore(int which, rectDef_t *rect, float scale, vec4_t color, int textStyle, int align) {
@@ -2967,18 +3203,13 @@ static void CG_DrawTeamScore(int which, rectDef_t *rect, float scale, vec4_t col
     CG_OwnerDrawText(x, rect->y, scale, color, s, 0, 0, textStyle);
 }
 
-// [QL] CG_DrawWeaponIcon (0x225). Draws a weapon icon shader, gated by the
-// owner-draw visibility flags.
-static void CG_DrawWeaponIcon(rectDef_t *rect, vec4_t color, qhandle_t iconShader, int ownerDrawFlags) {
-    if (ownerDrawFlags && !CG_OwnerDrawVisible(ownerDrawFlags, 0)) {
-        return;
-    }
-    trap_R_SetColor(color);
-    if (iconShader) {
-        CG_DrawPic(rect->x, rect->y, rect->w, rect->h, iconShader);
-    }
-    trap_R_SetColor(NULL);
-}
+/* [QL] CG_DrawWeaponIcon was here. Its only caller was owner-draw 0x225, which
+   turned out to be the advertisement slot rather than a weapon icon - see the
+   UI_ADVERT case in CG_OwnerDraw below for why that now paints nothing and lets
+   the menu's defaultContent show instead. With the caller gone the function was
+   dead, and the compiler said so ("defined but not used"). Removed rather than
+   left in place: an unused static drawer reads like a slot still waiting to be
+   wired up, which is the thing this tree keeps a stub manifest to avoid. */
 
 //
 void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, float scale, vec4_t color, qhandle_t shader, int textStyle, int fontIndex) {
@@ -3099,7 +3330,7 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
             break;
         case CG_VOTETIMER:                  // 0x22
             // binary falls through to the respawn message here; kept separate.
-            CG_DrawVoteTimer(&rect, scale, color, textStyle);
+            CG_DrawVoteTimer(&rect, scale, color, textStyle, align);
             break;
         case CG_SPEC_MESSAGES:              // 0x23  CG_DrawSpectator (no data source)
             break;
@@ -3179,7 +3410,7 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
             CG_DrawTeamColor(&rect, color);
             break;
         case CG_KILLER:                     // 0x3f
-            CG_DrawKiller(&rect, scale, color, shader, textStyle);
+            CG_DrawKiller(&rect, scale, color, shader, textStyle, align);
             break;
         case CG_ACCURACY:                   // 0x40-0x42,0x44-0x47,0x4a  medals
         case CG_ASSISTS:
@@ -3209,14 +3440,14 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
         case CG_MATCH_WINNER:               // 0x52
             CG_DrawMatchWinner(&rect, scale, color, textStyle);
             break;
-        case CG_1ST_PLACE_SCORE:            // 0x54  CG_DrawRedScore
-            CG_DrawRedScore(&rect, scale, color, shader, textStyle);
+        case CG_1ST_PLACE_SCORE:            // 0x54
+            CG_DrawPlaceScore(qtrue, &rect, scale, color, shader, textStyle);
             break;
         case CG_1STPLACE_PLYR_MODEL:        // 0x55  CG_DrawSelectedPlayerModel
             CG_DrawSelectedPlayerModel(&rect);
             break;
-        case CG_2ND_PLACE_SCORE:            // 0x57  CG_DrawBlueScore
-            CG_DrawBlueScore(&rect, scale, color, shader, textStyle);
+        case CG_2ND_PLACE_SCORE:            // 0x57
+            CG_DrawPlaceScore(qfalse, &rect, scale, color, shader, textStyle);
             break;
         case CG_PLAYER_OBIT:                // 0x58
             CG_DrawPlayerObit(&rect, scale, color, textStyle);
@@ -3233,7 +3464,9 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
         case CG_SELECTED_PLYR_TEAM_COLOR:   // 0x5c
             CG_DrawSelectedPlayerTeamColor(&rect);
             break;
-        case CG_SELECTED_PLYR_ACCURACY:     // 0x5d  CG_DrawFollowPlayerName (binary offset)
+        case CG_SELECTED_PLYR_ACCURACY:     // 0x5d
+            CG_DrawSelectedPlayerAccuracy(&rect, scale, color, textStyle);
+            break;
         case CG_FOLLOW_PLAYER_NAME:         // 0x5e/0x5f  CG_DrawFollow
         case CG_FOLLOW_PLAYER_NAME_EX:
             CG_DrawFollowPlayerName(&rect, scale, color, textStyle);
@@ -3250,16 +3483,16 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
         case CG_TEAM_COLORIZED:             // 0x63
             CG_DrawTeamColorized(&rect, color, shader);
             break;
-        case CG_TEAM_PLYR_COUNT:            // 0x64  CG_DrawOpponentScore (round-based only)
+        case CG_TEAM_PLYR_COUNT:            // 0x64  own team, alive this round
             if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE ||
                 cgs.gametype == GT_AD || cgs.gametype == GT_RR) {
-                CG_DrawOpponentScore(1, &rect, scale, color, textStyle);
+                CG_DrawOwnEnemyRemaining(qtrue, &rect, scale, color, textStyle, align);
             }
             break;
         case CG_ENEMY_PLYR_COUNT:           // 0x65
             if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE ||
                 cgs.gametype == GT_AD || cgs.gametype == GT_RR) {
-                CG_DrawOpponentScore(0, &rect, scale, color, textStyle);
+                CG_DrawOwnEnemyRemaining(qfalse, &rect, scale, color, textStyle, align);
             }
             break;
         case CG_1STPLACE_PLYR_MODEL_ACTIVE: // 0x66  no binary handler
@@ -3393,10 +3626,10 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
             CG_DrawTeamScore(ownerDraw, &rect, scale, color, textStyle, align);
             break;
         case CG_RED_NAME:                   // 0x11d/0x137  CG_DrawTeamName
-            CG_DrawRedName(&rect, scale, color, textStyle);
+            CG_DrawRedName(&rect, scale, color, textStyle, align);
             break;
         case CG_BLUE_NAME:
-            CG_DrawBlueName(&rect, scale, color, textStyle);
+            CG_DrawBlueName(&rect, scale, color, textStyle, align);
             break;
         case CG_RED_OWNED_FLAGS:            // 0x11e  CG_DrawTeamAliveCount (DOM/AD)
             if (cgs.gametype == GT_DOMINATION || cgs.gametype == GT_AD) {
@@ -3420,16 +3653,16 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
         case CG_BLUE_PLAYER_COUNT:
             CG_DrawPlayerCount2(&rect, TEAM_BLUE, scale, color, textStyle, align);
             break;
-        case CG_RED_CLAN_PLYRS:             // 0x122  CG_DrawTeamScore(1) (round-based)
+        case CG_RED_CLAN_PLYRS:             // 0x122  red alive this round
             if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE ||
                 cgs.gametype == GT_AD || cgs.gametype == GT_RR) {
-                CG_DrawTeamScore(1, &rect, scale, color, textStyle, align);
+                CG_DrawTeamRemaining(TEAM_RED, &rect, scale, color, textStyle, align);
             }
             break;
-        case CG_BLUE_CLAN_PLYRS:            // 0x13d  CG_DrawTeamScore(2)
+        case CG_BLUE_CLAN_PLYRS:            // 0x13d  blue alive this round
             if (cgs.gametype == GT_CA || cgs.gametype == GT_FREEZE ||
                 cgs.gametype == GT_AD || cgs.gametype == GT_RR) {
-                CG_DrawTeamScore(2, &rect, scale, color, textStyle, align);
+                CG_DrawTeamRemaining(TEAM_BLUE, &rect, scale, color, textStyle, align);
             }
             break;
         case CG_RED_TIMEOUT_COUNT:          // 0x123  CG_DrawTimeoutCount
@@ -3486,8 +3719,17 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
             CG_DrawRaceTimes(&rect, scale, color, textStyle);
             break;
 
-        case UI_ADVERT:                     // 0x225  CG_DrawWeaponIcon
-            CG_DrawWeaponIcon(&rect, color, shader, ownerDrawFlags);
+        // [QL] 0x225. This is the in-map/scoreboard advertisement slot, not a
+        // weapon icon - it was wired to CG_DrawWeaponIcon, which drew a weapon
+        // into the panel on the scoreboard where a picture belongs.
+        //
+        // The menu item carries "style WINDOW_STYLE_SHADER" and a
+        // "defaultContent" shader (textures/ad_content/ad2x1.jpg), which the
+        // menu system paints when the owner-draw paints nothing. This build has
+        // no ad server - RE_Get_Advertisements reports none in both renderers -
+        // so painting nothing and letting defaultContent show is both the
+        // correct result and the one Quake Live gives without a live ad.
+        case UI_ADVERT:
             break;
 
         default:
@@ -3497,6 +3739,12 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
 
 void CG_MouseEvent(int x, int y) {
     int n;
+
+    /* [QL] see UI_SetInputTrace - the menu input path names each step it takes
+       so a crash inside it leaves the offending item as the last line in the
+       log. Tied to cg_scoreboardDebug because that is the flag already used
+       for "tell me what the scoreboard is doing". */
+    UI_SetInputTrace(cg_scoreboardDebug.integer);
 
     if ((cg.predictedPlayerState.pm_type == PM_NORMAL || cg.predictedPlayerState.pm_type == PM_SPECTATOR) && cg.showScores == qfalse) {
         trap_Key_SetCatcher(0);
@@ -3560,18 +3808,479 @@ CG_EventHandling
       2 - hud editor
 
 */
+/*
+[QL] Take and release the mouse.
+
+The CGAME_EVENT_SCOREBOARD branch was empty, and nothing anywhere in cgame ever
+set KEYCATCH_CGAME - the only calls were Key_SetCatcher(0). So the cgame never
+asked the engine for mouse or key input at all: no cursor, nothing clickable,
+and the match summary's "Vote for Next Arena" panels unreachable even though
+they were drawn. CG_MouseEvent and CG_KeyEvent were both written and both
+correct; the engine simply never routed anything to them.
+*/
 void CG_EventHandling(int type) {
     cgs.eventHandling = type;
     if (type == CGAME_EVENT_NONE) {
         CG_HideTeamMenu();
+        trap_Key_SetCatcher(trap_Key_GetCatcher() & ~KEYCATCH_CGAME);
     } else if (type == CGAME_EVENT_TEAMMENU) {
         // CG_ShowTeamMenu();
     } else if (type == CGAME_EVENT_SCOREBOARD) {
+        // [QL] Add our bit rather than replacing the catcher outright. The
+        // assignment form dropped KEYCATCH_CONSOLE and KEYCATCH_UI on the
+        // floor, so opening the scoreboard with the console down left the
+        // console visible and unable to take a keystroke.
+        trap_Key_SetCatcher(trap_Key_GetCatcher() | KEYCATCH_CGAME);
     }
 }
 
+/*
+==================
+CG_ScoreboardDebugDump
+
+[QL] Print the geometry the scoreboard's list boxes are actually working from.
+
+The team scoreboards come out of Quake Live's own menu files, which are read
+only here - pak00 is not ours to ship or edit - so when the two lists look
+asymmetric on screen there are two candidates and no way to tell them apart by
+looking: either the menu gives the two lists different rects, or our own
+scrollbar/content arithmetic differs between the left and right cases. This
+prints the rect and both derived columns for each feeder, so the answer is a
+number instead of a guess at a screenshot.
+==================
+*/
+extern menuDef_t* menuScoreboard;  // owned by cg_draw.c
+void CG_SetEndScoreboardMenu(void);
+
+void CG_ScoreboardDebugDump(void) {
+    static const struct {
+        int feeder;
+        const char* name;
+    } feeders[] = {
+        {FEEDER_SCOREBOARD, "SCOREBOARD"},
+        {FEEDER_ENDSCOREBOARD, "ENDSCOREBOARD"},
+        {FEEDER_REDTEAM_LIST, "REDTEAM"},
+        {FEEDER_BLUETEAM_LIST, "BLUETEAM"},
+    };
+    menuDef_t* menu;
+    int i, j;
+
+    if (!cg_scoreboardDebug.integer) {
+        return;
+    }
+
+    CG_Printf("scoreboardDebug: showScores %i, eventHandling %i, catcher 0x%x, "
+              "gametype %i, holdingMouse %i, cl_paused %i, warmup %i\n",
+              cg.showScores, cgs.eventHandling, trap_Key_GetCatcher(),
+              cgs.gametype, cgs.scoreboardHoldingMouse, cg_paused.integer, cg.warmup);
+
+    /*
+    menuScoreboard is resolved lazily by CG_DrawScoreboard, not at load, so it is
+    legitimately NULL here on the first +scores of a map even when everything
+    works - reporting that on its own would be a false lead. Run the same resolve
+    the draw path runs, then report what it produced. If it is still NULL after
+    that, Menus_FindByName has no menu of the expected name for this gametype,
+    which means the cgame menu set did not parse rather than that the scoreboard
+    is mispositioned.
+    */
+    if (!menuScoreboard) {
+        CG_SetEndScoreboardMenu();
+    }
+
+    menu = (menuDef_t*)menuScoreboard;
+    if (!menu) {
+        CG_Printf("scoreboardDebug: menuScoreboard still NULL after resolve - "
+                  "Menus_FindByName has no scoreboard menu for gametype %i, and "
+                  "%i menus are loaded. The cgame menu set did not parse; this is "
+                  "not a positioning problem.\n",
+                  cgs.gametype, Menu_Count());
+        return;
+    }
+    CG_Printf("scoreboardDebug: menu '%s' visible %i\n",
+              menu->window.name ? menu->window.name : "(unnamed)",
+              (menu->window.flags & WINDOW_VISIBLE) ? 1 : 0);
+
+    for (i = 0; i < menu->itemCount; i++) {
+        itemDef_t* item = menu->items[i];
+
+        for (j = 0; j < (int)ARRAY_LEN(feeders); j++) {
+            if (item->special != feeders[j].feeder) {
+                continue;
+            }
+            CG_Printf("scoreboardDebug: %-13s rect %.1f,%.1f %.1fx%.1f  bar %s  barX %.1f  contentX %.1f  contentW %.1f\n",
+                      feeders[j].name,
+                      item->window.rect.x, item->window.rect.y,
+                      item->window.rect.w, item->window.rect.h,
+                      (item->window.flags & WINDOW_LB_LEFTSCROLL) ? "left" : "right",
+                      (item->window.flags & WINDOW_LB_LEFTSCROLL)
+                          ? item->window.rect.x + 1
+                          : item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1,
+                      (item->window.flags & WINDOW_LB_LEFTSCROLL)
+                          ? item->window.rect.x + 1 + SCROLLBAR_SIZE
+                          : item->window.rect.x + 1,
+                      item->window.rect.w - SCROLLBAR_SIZE - 2);
+        }
+    }
+}
+
+/*
+===============================================================================
+[QL] E120. Right-click menu and stats panel for the replacement scoreboard.
+
+Right-click a player on an io_* board and a small menu opens beside their row:
+View Stats, Follow, Vote Kick, and an admin section (mute, unmute, kick for the
+match, ban, move to red/blue/spec). The admin commands are the server's own
+referee verbs - the same strings the ui module's admin scripts send - so the
+server decides who may use them, exactly as it does for the console.
+
+Buttons cannot carry a client number (menu scripts are fixed strings), so every
+button runs "io_sbaction <verb>" and this file supplies the player.
+
+Only on our boards: Quake Live's own board keeps its existing behaviour.
+===============================================================================
+*/
+void Menu_ShowItemByName(menuDef_t* menu, const char* p, qboolean bShow);
+
+#define SB_CTX "io_score_ctx"
+#define SB_STATS "io_score_stats"
+
+static qboolean CG_ScoreboardIsOurs(void) {
+    extern menuDef_t* menuScoreboard;
+    return menuScoreboard && menuScoreboard->window.name &&
+           !Q_stricmpn(menuScoreboard->window.name, "io_", 3);
+}
+
+static qboolean CG_MenuOpen(const char* name) {
+    menuDef_t* m = Menus_FindByName(name);
+    return m && (m->window.flags & WINDOW_VISIBLE);
+}
+
+static void CG_ScoreboardDisarm(void) {
+    menuDef_t* m = Menus_FindByName(SB_CTX);
+
+    cg.sbPending[0] = '\0';
+    if (m) {
+        Menu_ShowItemByName(m, "sbc_ask", qfalse);
+        Menu_ShowItemByName(m, "sbc_yes", qfalse);
+        Menu_ShowItemByName(m, "sbc_no", qfalse);
+    }
+}
+
+void CG_ScoreboardPopupsClose(void) {
+    CG_ScoreboardDisarm();
+    Menus_CloseByName(SB_CTX);
+    Menus_CloseByName(SB_STATS);
+    cg.sbCtxClient = -1;
+    cg.sbStatsClient = -1;
+}
+
+/*
+The listbox item carrying `feeder` on the scoreboard, so the row the list itself
+selected can be read back rather than recomputed from the cursor.
+*/
+static itemDef_t* CG_ScoreboardList(menuDef_t* menu, int feeder) {
+    int i;
+    if (!menu) {
+        return NULL;
+    }
+    for (i = 0; i < menu->itemCount; i++) {
+        if (menu->items[i]->type == ITEM_TYPE_LISTBOX && menu->items[i]->special == feeder) {
+            return menu->items[i];
+        }
+    }
+    return NULL;
+}
+
+/*
+Open the menu on the row under the cursor.
+
+The row is found by letting the list handle a left click first and reading back
+the row it selected. Menu_FeederAtPoint and the list's own hit test go through
+the widescreen transform and the scroll position; recomputing that here would
+be a second copy of it to fall out of step. It also highlights the row, which
+is what a right-click on a modern scoreboard does.
+
+The menu is anchored to that ROW rather than to the cursor, for the same reason:
+row geometry is in the board's own coordinates, while the cursor is in a
+different horizontal space on widescreen displays.
+*/
+static void CG_ScoreboardOpenContext(int x, int y) {
+    extern menuDef_t* menuScoreboard;
+    menuDef_t* ctx = Menus_FindByName(SB_CTX);
+    itemDef_t* list;
+    listBoxDef_t* lp;
+    int feeder, client;
+    float rowY;
+
+    /*
+    Close any open popup FIRST. The synthetic click below goes to the topmost
+    visible menu under the cursor, so with the menu still open, a right-click
+    landing on it would press whichever button was there - right-clicking over
+    BAN would arm a ban.
+    */
+    CG_ScoreboardPopupsClose();
+
+    feeder = Menu_FeederAtPoint(menuScoreboard, x, y);
+    if (feeder < 0 || !ctx) {
+        return;
+    }
+
+    Display_HandleKey(K_MOUSE1, qtrue, x, y);
+    cg.scoreboardSelected = qtrue;
+    cg.scoreboardSelectedFeeder = feeder;
+
+    list = CG_ScoreboardList(menuScoreboard, feeder);
+    lp = list ? (listBoxDef_t*)list->typeData : NULL;
+    if (!list || !lp || list->cursorPos < 0) {
+        CG_ScoreboardPopupsClose();
+        return;
+    }
+    client = CG_ScoreboardClientAt(feeder, list->cursorPos);
+    if (client < 0 || client >= MAX_CLIENTS || !cgs.clientinfo[client].infoValid) {
+        CG_ScoreboardPopupsClose();
+        return;
+    }
+
+    CG_ScoreboardDisarm();
+    Menus_CloseByName(SB_STATS);
+    cg.sbCtxClient = client;
+    trap_Cvar_Set("io_sb_name", cgs.clientinfo[client].name);
+
+    /* beside the name column, level with the row, kept on screen */
+    rowY = list->window.rect.y + 1 + (list->cursorPos - lp->startPos) * lp->elementHeight;
+    ctx->window.rect.x = list->window.rect.x + 128;
+    ctx->window.rect.y = rowY;
+    if (ctx->window.rect.x + ctx->window.rect.w > SCREEN_WIDTH - 4) {
+        ctx->window.rect.x = SCREEN_WIDTH - 4 - ctx->window.rect.w;
+    }
+    if (ctx->window.rect.y + ctx->window.rect.h > SCREEN_HEIGHT - 4) {
+        ctx->window.rect.y = SCREEN_HEIGHT - 4 - ctx->window.rect.h;
+    }
+    if (ctx->window.rect.y < 4) {
+        ctx->window.rect.y = 4;
+    }
+    Menu_UpdatePosition(ctx);
+    Menus_ActivateByName(SB_CTX);
+}
+
+/* Stats panel values, refreshed every frame it is up - scores move under it. */
+static void CG_ScoreboardStatsUpdate(void) {
+    const score_t* sp = NULL;
+    const clientInfo_t* ci;
+    int i, c = cg.sbStatsClient;
+    const char* team;
+
+    if (c < 0 || c >= MAX_CLIENTS || !cgs.clientinfo[c].infoValid) {
+        CG_ScoreboardPopupsClose();
+        return;
+    }
+    for (i = 0; i < cg.numScores; i++) {
+        if (cg.scores[i].client == c) {
+            sp = &cg.scores[i];
+            break;
+        }
+    }
+    ci = &cgs.clientinfo[c];
+    team = ci->team == TEAM_RED ? "Red" : ci->team == TEAM_BLUE ? "Blue" :
+           ci->team == TEAM_SPECTATOR ? "Spectator" : "Free";
+
+    trap_Cvar_Set("io_sb_s_name", ci->name);
+    trap_Cvar_Set("io_sb_s_team", team);
+    if (!sp) {
+        /* on the board a moment ago, not in this scores update */
+        trap_Cvar_Set("io_sb_s_score", "-");
+        return;
+    }
+    trap_Cvar_Set("io_sb_s_score", va("%d", sp->score));
+    trap_Cvar_Set("io_sb_s_kills", va("%d", sp->frags));
+    trap_Cvar_Set("io_sb_s_deaths", va("%d", sp->deaths));
+    trap_Cvar_Set("io_sb_s_kd", sp->deaths > 0 ? va("%.2f", (float)sp->frags / sp->deaths)
+                                                : va("%d.00", sp->frags));
+    trap_Cvar_Set("io_sb_s_net", va("%+d", sp->frags - sp->deaths));
+    trap_Cvar_Set("io_sb_s_damage", va("%d", sp->damageDone));
+    trap_Cvar_Set("io_sb_s_acc", va("%d%%", sp->accuracy));
+    trap_Cvar_Set("io_sb_s_time", va("%d min", sp->time));
+    trap_Cvar_Set("io_sb_s_ping", sp->ping < 0 ? "connecting" : va("%d ms", sp->ping));
+    if (cgs.gametype == GT_CTF || cgs.gametype == GT_1FCTF) {
+        trap_Cvar_Set("io_sb_s_obj", va("%d caps  %d assists  %d defends",
+                                        sp->captures, sp->assistCount, sp->defendCount));
+    } else if (cgs.gametype == GT_FREEZE) {
+        trap_Cvar_Set("io_sb_s_obj", va("%d thaws", sp->thaws));
+    } else {
+        trap_Cvar_Set("io_sb_s_obj", "-");
+    }
+}
+
+/*
+Painted here, after the board, rather than by Menu_PaintAll: cgame only runs
+Menu_PaintAll while the scoreboard is NOT up, so nothing else would draw them.
+*/
+void CG_ScoreboardPopupsPaint(void) {
+    menuDef_t* m;
+
+    if (!cg.showScores || !CG_ScoreboardIsOurs()) {
+        if (CG_MenuOpen(SB_CTX) || CG_MenuOpen(SB_STATS)) {
+            CG_ScoreboardPopupsClose();
+        }
+        return;
+    }
+    if ((m = Menus_FindByName(SB_STATS)) && (m->window.flags & WINDOW_VISIBLE)) {
+        CG_ScoreboardStatsUpdate();
+        Menu_Paint(m, qtrue);
+    }
+    if ((m = Menus_FindByName(SB_CTX)) && (m->window.flags & WINDOW_VISIBLE)) {
+        Menu_Paint(m, qtrue);
+    }
+}
+
+/*
+One entry point for every button. The context menu must actually be open: cg is
+zeroed at map load, so sbCtxClient reads as client 0 before any menu was opened.
+*/
+void CG_ScoreboardAction(const char* verb) {
+    int c = cg.sbCtxClient;
+    const char* cmd = NULL;
+
+    if (!CG_MenuOpen(SB_CTX) || c < 0 || c >= MAX_CLIENTS || !cgs.clientinfo[c].infoValid) {
+        CG_ScoreboardPopupsClose();
+        return;
+    }
+
+    if (!Q_stricmp(verb, "stats")) {
+        cg.sbStatsClient = c;
+        CG_ScoreboardDisarm();
+        Menus_CloseByName(SB_CTX);
+        Menus_ActivateByName(SB_STATS);
+        return;
+    }
+
+    /* Kick and ban arm first; the confirm row runs the pending verb. */
+    if (!Q_stricmp(verb, "arm")) {
+        char what[16];
+        trap_Argv(2, what, sizeof(what));
+        if (Q_stricmp(what, "tempban") && Q_stricmp(what, "ban")) {
+            return;
+        }
+        Q_strncpyz(cg.sbPending, what, sizeof(cg.sbPending));
+        trap_Cvar_Set("io_sb_pending", va("%s %s?", !Q_stricmp(what, "ban") ? "Ban" : "Kick",
+                                          cgs.clientinfo[c].name));
+        return;
+    }
+    if (!Q_stricmp(verb, "disarm")) {
+        CG_ScoreboardDisarm();
+        return;
+    }
+    if (!Q_stricmp(verb, "confirm")) {
+        if (!cg.sbPending[0]) {
+            return;
+        }
+        cmd = va("%s %d\n", cg.sbPending, c);
+    } else if (!Q_stricmp(verb, "follow")) {
+        cmd = va("follow %d\n", c);
+    } else if (!Q_stricmp(verb, "votekick")) {
+        /* by id, not name: names with spaces or colour codes do not survive */
+        cmd = va("callvote clientkick %d\n", c);
+    } else if (!Q_stricmp(verb, "mute")) {
+        cmd = va("mute %d\n", c);
+    } else if (!Q_stricmp(verb, "unmute")) {
+        cmd = va("unmute %d\n", c);
+    } else if (!Q_stricmp(verb, "red")) {
+        cmd = va("put %d r\n", c);
+    } else if (!Q_stricmp(verb, "blue")) {
+        cmd = va("put %d b\n", c);
+    } else if (!Q_stricmp(verb, "spec")) {
+        cmd = va("put %d s\n", c);
+    }
+
+    if (cmd) {
+        trap_SendConsoleCommand(cmd);
+    }
+    CG_ScoreboardPopupsClose();
+}
+
 void CG_KeyEvent(int key, qboolean down) {
+    UI_SetInputTrace(cg_scoreboardDebug.integer);
+
     if (!down) {
+        /* [QL] E132. A mouse button coming up ends any drag it started. */
+        if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3) {
+            Display_ReleaseCapture();
+        }
+        return;
+    }
+
+    /* [QL] ...unless the scoreboard is what is holding the mouse.
+
+       This branch exists to drop the capture as soon as the player is back in
+       normal play, which is right for the team menu and the match summary. It
+       is wrong for a held +scores: the first key pressed while holding it -
+       mouse button included - would hand the mouse straight back, so nothing
+       in the list could ever be clicked. The hold owns the capture until the
+       key comes up (CG_ScoresUp_f). */
+    if (cgs.eventHandling == CGAME_EVENT_SCOREBOARD && cg.showScores) {
+        /*
+        [QL] Only the mouse drives a held scoreboard.
+
+        The key holding the board open repeats. Every repeat arrived here, went
+        through Display_HandleKey into Menu_HandleKey, found nothing that wanted
+        it, and fell into the default handler - where K_TAB is "next item".
+        Menu_SetNextCursorItem then walked the focus round the menu's three
+        focusable items, playing the focus sound on each hop:
+
+          handleKey menu 'teamscore_menu_ctf' key 9 down 1 focused 'playerlistRED'
+          FOCUS SOUND on 'playerlistBLUE' (took it from 'playerlistRED')
+
+        88 of those in three and a half seconds of holding TAB, and the mouse
+        kept dragging the focus back to whichever list it was over, so the two
+        fought and the sound repeated for as long as the board was up. It was
+        never a mouse-over sound; it was TAB cycling the focus underneath it.
+
+        Keyboard navigation has no meaning on a board held open by a key - there
+        is no focus rectangle to see and the other keys are the player's
+        movement binds - so the mouse buttons are all that is forwarded. Escape
+        still works: CL_KeyDownEvent drops KEYCATCH_CGAME before dispatching it.
+        */
+        if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3 ||
+            key == K_MWHEELUP || key == K_MWHEELDOWN) {
+            /*
+            [QL] A click on a player list is a choice, and it has to stick.
+
+            CG_TrackLocalPlayerOnScoreboard re-points the highlight at the local
+            player every frame, which is right when the board opens and wrong the
+            moment somebody picks a row: the selection was overwritten before it
+            could be seen. Same shape as cg.scoreboardScrolled - once the player
+            has said what they want to look at, stop moving it for them.
+            */
+            /* [QL] E120. Right-click opens the player menu on our boards. It is
+               consumed here: MOUSE2 has no meaning to the list itself. */
+            if (key == K_MOUSE2 && CG_ScoreboardIsOurs()) {
+                CG_ScoreboardOpenContext(cgs.cursorX, cgs.cursorY);
+                return;
+            }
+            /* A left click anywhere but on an open popup closes it. */
+            if (key == K_MOUSE1 && CG_ScoreboardIsOurs() &&
+                (CG_MenuOpen(SB_CTX) || CG_MenuOpen(SB_STATS))) {
+                menuDef_t* under = (menuDef_t*)Display_CaptureItem(cgs.cursorX, cgs.cursorY);
+                if (under != Menus_FindByName(SB_CTX) && under != Menus_FindByName(SB_STATS)) {
+                    CG_ScoreboardPopupsClose();
+                }
+            }
+
+            if (key == K_MOUSE1 && down) {
+                extern menuDef_t* menuScoreboard;
+                int feeder = Menu_FeederAtPoint(menuScoreboard, cgs.cursorX, cgs.cursorY);
+
+                if (feeder >= 0) {
+                    cg.scoreboardSelected = qtrue;
+                    cg.scoreboardSelectedFeeder = feeder;
+                }
+            }
+
+            Display_HandleKey(key, down, cgs.cursorX, cgs.cursorY);
+            if (cgs.capturedItem) {
+                cgs.capturedItem = NULL;
+            }
+        }
         return;
     }
 
@@ -3591,11 +4300,18 @@ void CG_KeyEvent(int key, qboolean down) {
 
     if (cgs.capturedItem) {
         cgs.capturedItem = NULL;
-    } else {
-        if (key == K_MOUSE2 && down) {
-            cgs.capturedItem = Display_CaptureItem(cgs.cursorX, cgs.cursorY);
-        }
     }
+    /*
+    [QL] No right-button menu dragging.
+
+    This used to capture the menu under the cursor on K_MOUSE2 and hand it to
+    Display_MouseMove, which adds the mouse delta straight to menu->window.rect
+    - Quake 3's menu-editor drag. It was harmless only for as long as cgame
+    painted menus that the input path could not see. Now that the scoreboard is
+    reachable, a right-click at the match summary would pick the whole board up
+    and carry it off the screen, with no way to put it back short of a map
+    change. The ui module does not do this either.
+    */
 }
 
 int CG_ClientNumFromName(const char* p) {
@@ -3624,6 +4340,30 @@ void CG_ShowResponseHead(void) {
 // with no script actions - the interactive menu vocabulary belongs to the ui
 // module, whose UI_RunMenuScript is fully implemented. Not a porting gap.
 void CG_RunMenuScript(char** args) {
+}
+
+/*
+[QL] The display context's console-command hook, for cgame.
+
+This was commented out with `// cgDC.executeText = &trap_Cmd_ExecuteText;` -
+cgame has no trap by that name, so the line could not be uncommented as it
+stood and the slot was left NULL. That is not a dormant stub: Script_Exec is
+
+    DC->executeText(EXEC_APPEND, va("%s ; ", val));
+
+as the last statement of the function, which gcc at -O3 turns into a tail call
+- `jmp *%rax` - so `exec` in any cgame menu script jumped straight to address
+zero. No return address is pushed by a tail call, which is why the crash report
+named Item_RunScript as the caller rather than Script_Exec.
+
+That is the map-vote crash. The intermission vote buttons are cgame menu items
+whose actions are `exec` lines, so voting called a null pointer every time.
+
+trap_SendConsoleCommand is cgame's equivalent and appends, which is the only
+exec_when Script_Exec ever asks for.
+*/
+void CG_ExecuteText(int exec_when, const char* text) {
+    trap_SendConsoleCommand(text);
 }
 
 void CG_GetTeamColor(vec4_t* color) {

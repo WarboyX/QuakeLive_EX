@@ -27,6 +27,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 static int g_numBots;
 static char* g_botInfos[MAX_BOTS];
 
+/* [QL] Names from baseq3/botnames.txt, used in place of the bot character's
+   own. See G_LoadBotNames. */
+#define MAX_BOTNAMES 128
+#define MAX_BOTNAMES_TEXT 8192
+static int g_numBotNames;
+static char* g_botNames[MAX_BOTNAMES];
+// defined further down, next to the loader that fills the list
+static const char* G_NextBotName(void);
+
 int g_numArenas;
 static char* g_arenaInfos[MAX_ARENAS];
 
@@ -204,7 +213,7 @@ int G_CountBotPlayersByName(const char* name, int team) {
     gclient_t* cl;
 
     num = 0;
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected == CON_DISCONNECTED) {
             continue;
@@ -275,6 +284,50 @@ int G_SelectRandomBotInfo(int team) {
 
 /*
 ===============
+Bot skill: 1-10, rolled on a D10
+
+[QL] E139. Our bot skill runs 1 to 10. A bot added without one rolls a D10
+(or takes bot_skill, when that is set to 1-10), so a server full of bots is a
+spread of players rather than thirty copies of one. With every bot equal, a
+flag should almost never be capped; with a spread, a strong attacker meets a
+weak defender now and then and gets through, which is what a real server
+looks like.
+
+botlib and the character files know skills 1 to 5 - each bot file holds skill
+1, 4 and 5 and everything between is interpolated (be_ai_char.c) - so 1-10
+maps evenly onto 1.0-5.0: 1 is stock "I Can Win", 10 is "Nightmare". Ten
+steps, not twenty: three real levels interpolated leave little to tell apart
+at a twentieth, and every distinct skill of a bot is one more cached
+character that is never freed.
+
+"addbot <name> <skill>" takes the 1-10 scale (fractions allowed). Quake
+Live's own menus and g_spSkill are 1-5; ui_main.c converts them.
+===============
+*/
+#define BOT_SKILL_SIDES 10
+
+static float G_BotSkillToLib(float skill10) {
+    if (skill10 < 1) {
+        skill10 = 1;
+    } else if (skill10 > BOT_SKILL_SIDES) {
+        skill10 = BOT_SKILL_SIDES;
+    }
+    return 1.0f + (skill10 - 1.0f) * 4.0f / (BOT_SKILL_SIDES - 1);
+}
+
+static float G_BotSkillDefault(const char* name) {
+    int roll;
+
+    if (bot_skill.value >= 1 && bot_skill.value <= BOT_SKILL_SIDES) {
+        return bot_skill.value;
+    }
+    roll = 1 + rand() % BOT_SKILL_SIDES;
+    G_Printf("%s rolls a D%d: skill %d\n", name, BOT_SKILL_SIDES, roll);
+    return (float)roll;
+}
+
+/*
+===============
 G_AddRandomBot
 ===============
 */
@@ -282,7 +335,7 @@ void G_AddRandomBot(int team) {
     char* teamstr;
     float skill;
 
-    skill = trap_Cvar_VariableValue("g_spSkill");
+    skill = G_BotSkillDefault("random bot");  // [QL] E139: on our 1-10 scale
     if (team == TEAM_RED)
         teamstr = "red";
     else if (team == TEAM_BLUE)
@@ -301,7 +354,7 @@ int G_RemoveRandomBot(int team) {
     int i;
     gclient_t* cl;
 
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -328,7 +381,7 @@ int G_CountHumanPlayers(int team) {
     gclient_t* cl;
 
     num = 0;
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected != CON_CONNECTED) {
             continue;
@@ -356,7 +409,7 @@ int G_CountBotPlayers(int team) {
     gclient_t* cl;
 
     num = 0;
-    for (i = 0; i < g_maxclients.integer; i++) {
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
         if (cl->pers.connected == CON_DISCONNECTED) {
             continue;
@@ -376,8 +429,29 @@ int G_CountBotPlayers(int team) {
 ===============
 G_CountBotPlayersWithQueued
 
-[QL] Like G_CountBotPlayers but also counts bots queued to spawn whose spawn
-time is already due. (binary G_CountBotPlayersWithQueued 0x10036ee0)
+[QL] Like G_CountBotPlayers but also counts bots queued to spawn.
+
+This is the "Unable to add bot. All player slots are in use." bug.
+
+G_AddBot takes a client slot up front (trap_BotAllocateClient), runs
+ClientConnect - which leaves the bot at CON_CONNECTING - and only then queues it
+for a delayed ClientBegin. So between the add and the spawn, a bot holds a real
+slot while sitting at CON_CONNECTING.
+
+This function used to miss those twice over. The connected loop tested
+`!= CON_CONNECTED`, which skips CON_CONNECTING, and the queue loop only counted
+entries whose spawnTime had already come due, which skips exactly the ones still
+waiting. A bot in its delay window was therefore counted zero times while
+occupying a slot, so G_CheckMinimumPlayers saw the same shortfall a second later
+and added another, every second, until all sixteen slots were spent on bots that
+had not spawned yet - seven refusals in a row in the reported log. The queue loop
+also had no team filter, so queued red bots counted toward blue and vice versa.
+
+Count connecting bots in the first loop (this is what stock G_CountBotPlayers
+does), and keep the queue loop only as a backstop for a queue entry whose client
+slot has somehow been released - every normal entry is now already counted above,
+so counting it again is what would inflate the number.
+(binary G_CountBotPlayersWithQueued 0x10036ee0)
 ===============
 */
 static int G_CountBotPlayersWithQueued(int team) {
@@ -385,10 +459,10 @@ static int G_CountBotPlayersWithQueued(int team) {
     gclient_t* cl;
 
     num = 0;
-    // connected bots
-    for (i = 0; i < g_maxclients.integer; i++) {
+    // connected bots, plus bots still connecting - a connecting bot holds a slot
+    for (i = 0; i < level.maxclients; i++) {
         cl = level.clients + i;
-        if (cl->pers.connected != CON_CONNECTED) {
+        if (cl->pers.connected == CON_DISCONNECTED) {
             continue;
         }
         if (!(g_entities[i].r.svFlags & SVF_BOT)) {
@@ -399,11 +473,23 @@ static int G_CountBotPlayersWithQueued(int team) {
         }
         num++;
     }
-    // bots queued to spawn that are already due
+    // queued bots whose client slot is no longer occupied (not counted above)
     for (i = 0; i < BOT_SPAWN_QUEUE_DEPTH; i++) {
-        if (botSpawnQueue[i].spawnTime && botSpawnQueue[i].spawnTime <= level.time) {
-            num++;
+        int n = botSpawnQueue[i].clientNum;
+
+        if (!botSpawnQueue[i].spawnTime) {
+            continue;
         }
+        if (n < 0 || n >= level.maxclients) {
+            continue;
+        }
+        if (level.clients[n].pers.connected != CON_DISCONNECTED) {
+            continue;  // already counted by the loop above
+        }
+        if (team >= 0 && level.clients[n].sess.sessionTeam != team) {
+            continue;
+        }
+        num++;
     }
     return num;
 }
@@ -417,26 +503,96 @@ G_CheckMinimumPlayers
 ===============
 G_FillBots
 
-[QL] Adds bots toward a target, several per tick rather than one.
+[QL] Adds bots toward a target, at most bot_fillRate per call.
 
-G_CheckMinimumPlayers used to issue a single G_AddRandomBot per call and is
-throttled to once a second, so bot_minplayers 40 took forty seconds to fill and
-looked like it had stalled at whatever number you happened to look at. Quake 3
-was worse still - its throttle was ten seconds.
+G_CheckMinimumPlayers issues this once a second, so the rate here is also the
+fill rate: bot_minplayers 40 takes forty seconds at one per tick. That is slow,
+and it is the reason the 21-bot ceiling looked like a stall for so long. Raising
+it to 4 was blamed for crashing dedicated servers while filling; the crash was
+G_Alloc pool exhaustion at bot 26 (see g_mem.c), which a faster fill only
+reached sooner.
 
-Capped per tick because each add goes out as a console command via EXEC_INSERT;
-letting a large shortfall issue forty at once would push that many commands into
-the buffer in a single frame.
+So it is a cvar rather than a number. 1 is the quiet default; higher reaches a
+player count fast when reproducing something that only happens at scale.
+BOT_FILL_RATE_MAX is a sanity clamp - each add is a ClientBegin, a botlib
+character load and an AAS client, and there is no reason to want more than a
+handful of those between two server frames.
 ===============
 */
-#define BOT_FILL_PER_TICK 4
+#define BOT_FILL_RATE_MAX 16
+
+/*
+===============
+G_CountConnectedClients
+
+Everyone holding a client slot, regardless of team - including spectators, and
+including clients still connecting. This is the number that has to stay under
+sv_maxclients, and it is deliberately not any of the per-team counts.
+===============
+*/
+static int G_CountConnectedClients(void) {
+    int i, num = 0;
+
+    for (i = 0; i < level.maxclients; i++) {
+        if (level.clients[i].pers.connected != CON_DISCONNECTED) {
+            num++;
+        }
+    }
+    return num;
+}
+
+/*
+[QL] The filler is not allowed to consume the server.
+
+`bot_minplayers 6` produced sixteen bots on a sixteen-slot Freeze Tag server and
+then refused every human connection. The cause was elsewhere (bots inheriting
+g_teamSpawnAsSpec and parking in spectator, where the per-team counts could not
+see them - see G_ReadSessionData), but the shape of the failure is worth
+guarding against on its own: every count this function works from is per team,
+and any bot the per-team counts cannot see is a bot the filler will try to
+replace, once a second, forever.
+
+So there are two hard limits here that do not depend on the counting being
+right:
+
+  - leave BOT_RESERVED_SLOTS free, so a person can always get in. A server that
+    is full of bots is not serving anybody.
+  - if there is no room and bots are sitting in spectator, kick one of those
+    rather than asking for a slot that does not exist. That is the self-healing
+    case: a spectator bot is doing nothing and counts toward no team, so it is
+    exactly the wrong thing to be holding the last slot. Only when the server is
+    out of room, so an admin's deliberately-spectating bot survives on a server
+    that has space.
+*/
+#define BOT_RESERVED_SLOTS 1
 
 static void G_FillBots(int team, int shortfall) {
-    int i;
+    int i, rate, room;
 
-    if (shortfall > BOT_FILL_PER_TICK) {
-        shortfall = BOT_FILL_PER_TICK;
+    trap_Cvar_Update(&bot_fillRate);
+    rate = bot_fillRate.integer;
+    if (rate < 1) {
+        rate = 1;
+    } else if (rate > BOT_FILL_RATE_MAX) {
+        rate = BOT_FILL_RATE_MAX;
     }
+
+    if (shortfall > rate) {
+        shortfall = rate;
+    }
+
+    room = level.maxclients - BOT_RESERVED_SLOTS - G_CountConnectedClients();
+    if (room <= 0) {
+        // out of room: reclaim a bot that is not playing before giving up
+        if (G_CountBotPlayers(TEAM_SPECTATOR) > 0) {
+            G_RemoveRandomBot(TEAM_SPECTATOR);
+        }
+        return;
+    }
+    if (shortfall > room) {
+        shortfall = room;
+    }
+
     for (i = 0; i < shortfall; i++) {
         G_AddRandomBot(team);
     }
@@ -460,14 +616,38 @@ void G_CheckMinimumPlayers(void) {
         return;
 
     if (g_gametype.integer >= GT_TEAM) {
-        // Team modes apply minplayers *per team*, so the ceiling is half the slots.
-        if (minplayers >= g_maxclients.integer / 2) {
-            if (bot_minplayers.integer >= g_maxclients.integer / 2) {
-                G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d per team: sv_maxclients "
-                         "is %d (latched - a full 'map' command is needed after changing it)\n",
-                         bot_minplayers.integer, (g_maxclients.integer / 2) - 1, g_maxclients.integer);
+        /*
+        Team modes apply minplayers *per team*, so the ceiling is half the slots.
+
+        It used to be half the slots minus one, which reserved a slot on each
+        team and so cost two of them: bot_minplayers 32 on a 64-slot server
+        stopped at 62 and printed nothing, because the cap was only announced
+        when it was hit at or above half. Keeping a slot free for a person is
+        already G_FillBots' job and it does that once for the whole server, not
+        once per team, so the per-team subtraction was the same reservation
+        counted twice. 32 per team now means 32 per team, and BOT_RESERVED_SLOTS
+        is what stops the last slot going to a bot.
+        */
+        /*
+        [QL] Announced once per value, not once per second.
+
+        This check runs on a one-second throttle and the cap does not go away by
+        itself, so the old unconditional print produced a line a second for the
+        whole match - two and a half thousand of them in one field log, which is
+        a fifth of the file and buries everything a log is read for.
+        */
+        if (minplayers > level.maxclients / 2) {
+            static int announced = -1;
+
+            if (announced != bot_minplayers.integer) {
+                announced = bot_minplayers.integer;
+                G_Printf(S_COLOR_YELLOW "bot_minplayers %d is per team in this gametype, so it "
+                         "asks for %d players; capped to %d per team by sv_maxclients %d "
+                         "(latched - a full 'map' command is needed after changing it)\n",
+                         bot_minplayers.integer, bot_minplayers.integer * 2,
+                         level.maxclients / 2, level.maxclients);
             }
-            minplayers = (g_maxclients.integer / 2) - 1;
+            minplayers = level.maxclients / 2;
         }
 
         humanplayers = G_CountHumanPlayers(TEAM_RED);
@@ -488,14 +668,16 @@ void G_CheckMinimumPlayers(void) {
             G_RemoveRandomBot(TEAM_BLUE);
         }
     } else if (g_gametype.integer == GT_DUEL) {
-        if (minplayers >= g_maxclients.integer) {
-            minplayers = g_maxclients.integer - 1;
+        if (minplayers >= level.maxclients) {
+            minplayers = level.maxclients - 1;
         }
         humanplayers = G_CountHumanPlayers(-1);
         botplayers = G_CountBotPlayersWithQueued(-1);
         //
         if (humanplayers + botplayers < minplayers) {
-            G_AddRandomBot(TEAM_FREE);
+            // [QL] through G_FillBots like every other branch, so duel gets the
+            // same "never consume the last slots" guard
+            G_FillBots(TEAM_FREE, 1);
         } else if (humanplayers + botplayers > minplayers && botplayers) {
             // try to remove spectators first
             if (!G_RemoveRandomBot(TEAM_SPECTATOR)) {
@@ -509,13 +691,19 @@ void G_CheckMinimumPlayers(void) {
         // does nothing until a full "map" command - map_restart is not enough -
         // so this clamp is usually hit because the new value has not taken effect
         // yet, and silently capping made that indistinguishable from a bot limit.
-        if (minplayers >= g_maxclients.integer) {
-            if (bot_minplayers.integer >= g_maxclients.integer) {
+        if (minplayers >= level.maxclients) {
+            /* [QL] E188: once per value, not on every check - one session's
+               log carried this line 369 times */
+            static int warnedFor = -1, warnedMax = -1;
+            if (bot_minplayers.integer >= level.maxclients &&
+                (bot_minplayers.integer != warnedFor || level.maxclients != warnedMax)) {
+                warnedFor = bot_minplayers.integer;
+                warnedMax = level.maxclients;
                 G_Printf(S_COLOR_YELLOW "bot_minplayers %d capped to %d: sv_maxclients is %d "
                          "(latched - a full 'map' command is needed after changing it)\n",
-                         bot_minplayers.integer, g_maxclients.integer - 1, g_maxclients.integer);
+                         bot_minplayers.integer, level.maxclients - 1, level.maxclients);
             }
-            minplayers = g_maxclients.integer - 1;
+            minplayers = level.maxclients - 1;
         }
         humanplayers = G_CountHumanPlayers(TEAM_FREE);
         botplayers = G_CountBotPlayersWithQueued(TEAM_FREE);
@@ -615,6 +803,70 @@ qboolean G_BotConnect(int clientNum, qboolean restart) {
 
 /*
 ===============
+G_BotSlotsExhausted
+
+[QL] "Unable to add bot. All player slots are in use." with the evidence.
+
+This has now been chased twice from the code alone and been wrong both times,
+so it prints the slot table instead of the bare complaint. The refusal means the
+*server* found no client_t in CS_FREE, which the game module cannot see; what it
+can see is who it thinks is occupying each index, and that is enough to tell the
+three candidate causes apart:
+
+  - every slot named and connected  -> the fill target is simply too high for
+    sv_maxclients, and the cap arithmetic in G_CheckMinimumPlayers is wrong
+  - slots held by bots stuck at CON_CONNECTING -> a delayed spawn that never
+    ran, so the queue is the leak
+  - slots the game believes are DISCONNECTED   -> the server holds a client_t
+    the game has already let go of, i.e. a genuine leak on the server side
+
+Throttled to once a second, which also collapses the seven-in-a-row spam: at
+bot_fillRate > 1 the whole shortfall is retried inside one tick and each attempt
+printed its own pair of lines.
+===============
+*/
+static void G_BotSlotsExhausted(void) {
+    static int lastComplaint = -99999;
+    int i;
+
+    if (level.time - lastComplaint < 1000) {
+        return;
+    }
+    lastComplaint = level.time;
+
+    G_Printf(S_COLOR_RED "Unable to add bot. All player slots are in use.\n");
+    G_Printf(S_COLOR_RED "Start server with more 'open' slots (or check setting of sv_maxclients cvar).\n");
+    G_Printf(S_COLOR_YELLOW "slot table (sv_maxclients %i, bot_minplayers %i, gametype %i):\n",
+             level.maxclients, bot_minplayers.integer, g_gametype.integer);
+
+    for (i = 0; i < level.maxclients; i++) {
+        gclient_t* cl = level.clients + i;
+        const char* state;
+        int q;
+
+        switch (cl->pers.connected) {
+            case CON_DISCONNECTED: state = "disconnected"; break;
+            case CON_CONNECTING:   state = "connecting";   break;
+            case CON_CONNECTED:    state = "connected";    break;
+            default:               state = "?";            break;
+        }
+
+        G_Printf("  %2i %-12s %-4s team %i inuse %i name \"%s\"", i, state,
+                 (g_entities[i].r.svFlags & SVF_BOT) ? "bot" : "human",
+                 cl->sess.sessionTeam, g_entities[i].inuse, cl->pers.netname);
+
+        for (q = 0; q < BOT_SPAWN_QUEUE_DEPTH; q++) {
+            if (botSpawnQueue[q].spawnTime && botSpawnQueue[q].clientNum == i) {
+                G_Printf(" queued(+%ims)", botSpawnQueue[q].spawnTime - level.time);
+                break;
+            }
+        }
+        G_Printf("\n");
+    }
+}
+
+/*
+===============
 G_AddBot
 ===============
 */
@@ -633,8 +885,7 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     // have the server allocate a client slot
     clientNum = trap_BotAllocateClient();
     if (clientNum == -1) {
-        G_Printf(S_COLOR_RED "Unable to add bot. All player slots are in use.\n");
-        G_Printf(S_COLOR_RED "Start server with more 'open' slots (or check setting of sv_maxclients cvar).\n");
+        G_BotSlotsExhausted();
         return;
     }
 
@@ -692,7 +943,20 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     if (!botname[0]) {
         botname = Info_ValueForKey(botinfo, "name");
     }
+    /*
+    [QL] A name from botnames.txt, if the file has one going spare. Only the
+    name - the bot keeps its own model, skin, skill and behaviour.
+    */
+    {
+        const char* fromfile = G_NextBotName();
+
+        if (fromfile) {
+            botname = (char*)fromfile;
+        }
+    }
     // check for an alternative name
+    // [QL] still wins: this is the explicit fifth argument to "addbot", and
+    // somebody who typed a name meant it
     if (altname && altname[0]) {
         botname = altname;
     }
@@ -760,16 +1024,57 @@ static void G_AddBot(const char* name, float skill, const char* team, int delay,
     Info_SetValueForKey(userinfo, "skill", va("%5.2f", skill));
     Info_SetValueForKey(userinfo, "team", team);
 
-    // [QL] mark entity as bot before ClientConnect
+    /*
+    [QL] Mark the entity as a bot before ClientConnect, but do not mark it in
+    use.
+
+    SVF_BOT has to be set here: G_InitSessionData reads it off the entity to
+    decide whether the bot inherits g_teamSpawnAsSpec, and it runs inside
+    ClientConnect before the isBot branch that would otherwise set the flag.
+
+    inuse was set here too, and that was doing real damage. ClientConnect opens
+    with
+
+        if (ent->inuse) {
+            G_LogPrintf("Forcing disconnect on active client: %i\n", clientNum);
+            ClientDisconnect(clientNum);
+        }
+
+    which is there to catch a player reconnecting so fast that their disconnect
+    never arrived. Setting inuse two lines before the call made every single bot
+    add trip it against itself - 878 times in one match log, once per bot. On a
+    recycled slot ClientDisconnect then ran in full: it blanks
+    CS_PLAYERS + clientNum, broadcasts a "disconnected" print to everyone and
+    calls CalculateRanks, so each bot arriving cost a burst of reliable commands
+    that nothing needed. That is the pressure behind "CL_GetServerCommand: a
+    reliable command was cycled out" while a server fills with bots.
+
+    ClientConnect sets both flags itself for a bot (g_client.c, the isBot
+    branch), so nothing is lost by leaving inuse to it.
+    */
     g_entities[clientNum].r.svFlags |= SVF_BOT;
-    g_entities[clientNum].inuse = qtrue;
 
     // register the userinfo
     trap_SetUserinfo(clientNum, userinfo);
 
     // have it connect to the game as a normal client
-    if (ClientConnect(clientNum, qtrue, qtrue)) {
-        return;
+    //
+    // [QL] Give the slot back when the connect is refused. This path used to
+    // return with the slot still allocated: trap_BotAllocateClient has already
+    // put the server's client_t into CS_ACTIVE, and nothing else ever releases
+    // it, so a refused bot burned a slot for the rest of the map. Every other
+    // early return in this function frees it; this one did not, and it is the
+    // one that fires when a connect is rejected (bot AI setup failure, a full
+    // or locked team) rather than when the bot definition is malformed.
+    {
+        char* reason = ClientConnect(clientNum, qtrue, qtrue);
+        if (reason) {
+            G_Printf(S_COLOR_YELLOW "Bot connect refused for slot %i: %s\n", clientNum, reason);
+            g_entities[clientNum].r.svFlags &= ~SVF_BOT;
+            g_entities[clientNum].inuse = qfalse;
+            trap_BotFreeClient(clientNum);
+            return;
+        }
     }
 
     if (delay == 0) {
@@ -808,19 +1113,22 @@ void Svcmd_AddBot_f(void) {
     // name
     trap_Argv(1, name, sizeof(name));
     if (!name[0]) {
-        trap_Print("Usage: Addbot <botname> [skill 1-5] [team] [msec delay] [altname]\n");
+        trap_Print("Usage: Addbot <botname> [skill 1-10, 0 or none to roll a D10] [team] [msec delay] [altname]\n");
         return;
     }
 
     // skill
     // [QL] default skill comes from g_spSkill (not a hardcoded 4), and the
     // supplied value is NOT clamped here - the binary just atof()s it. (0x10037a10)
+    /* [QL] E139: our 1-10 scale, a D10 when none is given (G_BotSkillToLib);
+       what goes into the userinfo, and on to botlib, is its 1-5 equivalent */
     trap_Argv(2, string, sizeof(string));
-    if (!string[0]) {
-        skill = trap_Cvar_VariableValue("g_spSkill");
+    if (!string[0] || !Q_stricmp(string, "random") || atof(string) <= 0) {
+        skill = G_BotSkillDefault(name);  // none given, or 0/"random" to roll and still name a team
     } else {
         skill = atof(string);
     }
+    skill = G_BotSkillToLib(skill);
 
     // team
     trap_Argv(3, team, sizeof(team));
@@ -917,6 +1225,128 @@ static void G_LoadBotsFromFile(char* filename) {
 
 /*
 ===============
+G_LoadBotNames
+
+[QL] Read baseq3/botnames.txt into g_botNames.
+
+Bots are named from their character file - Klesk, Sarge, Anarki - and the only
+way to change that was the fifth argument to "addbot", which bot_minplayers
+never passes because it goes through G_AddRandomBot. So on a server that fills
+itself there was no way to name a bot at all.
+
+One name per line. Blank lines and lines starting with // are skipped; there is
+deliberately no end-of-line comment, because a name is allowed to contain almost
+anything and guessing where one ends is worse than requiring the comment to be
+on its own line.
+
+Read at every map load, since G_InitBots runs then - so editing the file and
+changing map is enough, and the memory comes from the level pool that is freed
+with it.
+===============
+*/
+static void G_LoadBotNames(void) {
+    vmCvar_t namesFile;
+    fileHandle_t f;
+    char buf[MAX_BOTNAMES_TEXT];
+    char* p;
+    int len;
+
+    g_numBotNames = 0;
+
+    /* [QL] not CVAR_ARCHIVE: this is a default we choose, and archiving it would
+       freeze the first value into a config that then wins forever */
+    trap_Cvar_Register(&namesFile, "g_botNamesFile", "botnames.txt", 0);
+    if (!namesFile.string[0]) {
+        return;  // deliberately off
+    }
+
+    len = trap_FS_FOpenFile(namesFile.string, &f, FS_READ);
+    if (!f) {
+        return;  // no file is not an error; bots keep their own names
+    }
+    if (len >= MAX_BOTNAMES_TEXT) {
+        G_Printf(S_COLOR_YELLOW "%s is %i bytes, max is %i - not loaded\n",
+                 namesFile.string, len, MAX_BOTNAMES_TEXT);
+        trap_FS_FCloseFile(f);
+        return;
+    }
+    trap_FS_Read(buf, len, f);
+    buf[len] = 0;
+    trap_FS_FCloseFile(f);
+
+    p = buf;
+    while (*p && g_numBotNames < MAX_BOTNAMES) {
+        char* line = p;
+        char* end;
+
+        while (*p && *p != '\n') {
+            p++;
+        }
+        if (*p) {
+            *p++ = 0;
+        }
+        // strip the carriage return a Windows editor leaves, and any padding
+        end = line + strlen(line);
+        while (end > line && (end[-1] == '\r' || end[-1] == ' ' || end[-1] == '\t')) {
+            *--end = 0;
+        }
+        while (*line == ' ' || *line == '\t') {
+            line++;
+        }
+        if (!*line || (line[0] == '/' && line[1] == '/')) {
+            continue;
+        }
+        g_botNames[g_numBotNames++] = G_NewString(line);
+    }
+    if (g_numBotNames) {
+        G_Printf("%i bot names from %s\n", g_numBotNames, namesFile.string);
+    }
+}
+
+/*
+===============
+G_NextBotName
+
+[QL] The first name in the file nobody is currently using, or NULL.
+
+By file order rather than at random, so the list reads as a roster: the first
+bot to join takes the first line. Skipping names in use is what lets a bot that
+disconnects hand its name back, and is also the whole of the duplicate
+protection - two bots called the same thing is confusing in a way two bots
+called Klesk never was, because nobody expects these to repeat.
+
+Returning NULL when the list is short is not a failure. The bot falls through to
+its character name, so eight names on a sixty-bot server gives eight named bots
+and fifty-two ordinary ones, which is a reasonable thing to want.
+===============
+*/
+static const char* G_NextBotName(void) {
+    int i, j;
+
+    for (i = 0; i < g_numBotNames; i++) {
+        qboolean taken = qfalse;
+
+        for (j = 0; j < level.maxclients; j++) {
+            if (!g_entities[j].inuse || !g_entities[j].client) {
+                continue;
+            }
+            if (g_entities[j].client->pers.connected == CON_DISCONNECTED) {
+                continue;
+            }
+            if (!Q_stricmp(g_entities[j].client->pers.netname, g_botNames[i])) {
+                taken = qtrue;
+                break;
+            }
+        }
+        if (!taken) {
+            return g_botNames[i];
+        }
+    }
+    return NULL;
+}
+
+/*
+===============
 G_LoadBots
 ===============
 */
@@ -993,6 +1423,7 @@ G_InitBots
 */
 void G_InitBots(qboolean restart) {
     G_LoadBots();
+    G_LoadBotNames();
     G_LoadArenas();
 
     trap_Cvar_Register(&bot_minplayers, "bot_minplayers", "0", CVAR_SERVERINFO);

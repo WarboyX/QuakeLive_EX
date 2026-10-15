@@ -64,6 +64,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define FL_NOPOWERUP 0x00040000           // [QL] player can't pick up IT_POWERUP
 #define FL_DROPPED_ITEM_TIMED 0x00080000  // [QL] dropped powerup: ground age reduces duration
 #define FL_ITEM_TIMER 0x00100000          // [QL] item has an armed respawn timer
+#define FL_SPAWN_RESERVE 0x00200000       // [QL] spawn point a gametype filter would have deleted; kept as a last resort
 
 // movers are things like doors, plats, buttons, etc
 typedef enum {
@@ -94,6 +95,7 @@ struct gentity_s {
     qboolean inuse;
 
     char* classname;  // set in QuakeEd
+    int lastSpawnTime;  // [QL] spawn points: level.time this one was last used, for the reuse cooldown
     int spawnflags;   // set in QuakeEd
 
     qboolean neverFree;  // if true, FreeEntity will only unlink
@@ -267,6 +269,14 @@ typedef struct {
     clientConnected_t connected;       // 0x00 (0x250)
     usercmd_t cmd;                     // 0x04 (0x254) - 28 bytes
     qboolean localClient;              // 0x20 (0x270)
+    /*
+    [QL] Set when the client's userinfo carries "iqlclient" - i.e. it is one of
+    ours and can parse the commands stock Quake Live has no handler for. Read in
+    ClientUserinfoChanged. Gate any extension command on this: sending one to a
+    stock client is not ignored, it prints "Unknown client game command" for
+    every single one.
+    */
+    qboolean extendedClient;
     qboolean initialSpawn;             // 0x24 (0x274)
     qboolean predictItemPickup;        // 0x28 (0x278)
     char netname[40];                  // 0x2C (0x27C) - [QL] was 36, now 40
@@ -405,6 +415,15 @@ struct gclient_s {
 
     int lastClientKilled;       // [QL]
     int lastkilled_client;      // last client that this client killed
+    // [QL] spawn-caused telefrags. spawnKillBox is set on the arriving player
+    // for the duration of ClientSpawn's kill box; spawnTelefragged is set on
+    // whoever it kills, so player_die can decline to score a death the server
+    // caused. See G_NudgeSpawnClear.
+    qboolean spawnKillBox;
+    qboolean spawnTelefragged;
+    // [QL] spawn protection: no damage taken and no shot fired until this
+    // expires, or until the player presses attack and gives it up.
+    int spawnProtectTime;
     int lasthurt_client[2];     // [QL] expanded to 2-element array
     int lasthurt_mod[2];        // [QL] expanded to 2-element array
     int lasthurt_time[2];       // [QL]
@@ -417,6 +436,12 @@ struct gclient_s {
     // timers
     int respawnTime;             // can respawn when time > this
     int rewardTime;              // clear the EF_AWARD_IMPRESSIVE, etc when time > this
+    // [QL] Freeze Tag: level.time of the last frame a valid thawer was in range.
+    // Server-side only - the thaw runs entirely in Freeze_ClientThawCheck - and
+    // the grace period it feeds is what separates a momentary break in contact
+    // from the thawer actually leaving. Not networked: the client sees the
+    // result through the generic1 progress bits.
+    int lastThawContactTime;
     int airOutTime;
 
     qboolean fireHeld;  // used for hook
@@ -486,6 +511,7 @@ typedef struct {
     int             time;
     int             frametime;              /* [QL] */
     int             startTime;
+    int             graceEndTime;           /* [QL] deaths do not score before this; see G_InMatchStartGrace */
     int             teamScores[4];
     int             nextTeamInfoTime;       /* [QL] */
     qboolean        newSession;
@@ -512,6 +538,11 @@ typedef struct {
     int             pendingVoteCaller;      /* [QL] */
     qboolean        spawning;
     int             numSpawnVars;
+
+    // [QL] Team Arena weapon/ammo entities this map had that g_devWeapons kept
+    // from spawning. Reported once at load so a map that quietly loses items
+    // says so rather than just being different from the .bsp.
+    int             devWeaponsSuppressed;
     char            *spawnVars[64][2];
     int             numSpawnVarChars;
     char            spawnVarChars[4096];
@@ -519,6 +550,8 @@ typedef struct {
     int             intermissionTime;
     qboolean        readyToExit;
     qboolean        votingEnded;            /* [QL] */
+    int      mapVoteWinner;   // [QL] resolved once when voting closes, -1 until then
+    int      mapVoteEndTime;  // [QL] server time the arena vote shuts; published to clients
     int             exitTime;
     vec3_t          intermission_origin;
     vec3_t          intermission_angle;
@@ -607,6 +640,18 @@ typedef struct {
     int             rrInfectedCounters[4];  /* [QL] Red Rover infection tracking */
     int             rrInfectedSpreadStart;  /* [QL] */
     int             rrSurvivorScoreTimer;   /* [QL] */
+    /* [QL] rate limit on the HUD score configstrings - see
+       G_ScheduleScoreConfigstrings. Each of those is a reliable command
+       broadcast to every client, and CalculateRanks runs on every frag. */
+    int             nextScoreConfigstringTime;
+    qboolean        scoreConfigstringsPending;
+    /* [QL] Same treatment for the alive counts - see Team_LivingTeamCounts.
+       map_restart respawns every client in one frame, so on a full server the
+       count changed sixty times in that frame and each change was a reliable
+       command broadcast to all sixty-four. Collapse to one write per frame. */
+    int             pendingTeamCountRed;
+    int             pendingTeamCountBlue;
+    qboolean        teamCountsPending;
 } level_locals_t;
 
 //
@@ -628,6 +673,7 @@ void StopFollowing(gentity_t* ent);
 void BroadcastTeamChange(gclient_t* client, int oldTeam);
 void SetTeam(gentity_t* ent, const char* s);
 void Cmd_FollowCycle_f(gentity_t* ent, int dir);
+void G_FollowCycleKeepTeam(gentity_t* ent, int dir);  // [QL] follow without losing your team
 void ClearVote(void);
 
 //
@@ -663,6 +709,7 @@ int G_ModelIndex(char* name);
 int G_SoundIndex(char* name);
 void G_TeamCommand(team_t team, char* cmd);
 void G_KillBox(gentity_t* ent);
+qboolean G_NudgeSpawnClear(gentity_t* ent);
 gentity_t* G_Find(gentity_t* from, int fieldofs, const char* match);
 gentity_t* G_PickTarget(char* targetname);
 void G_UseTargets(gentity_t* ent, gentity_t* activator);
@@ -760,9 +807,16 @@ int TeamLeader(int team);
 team_t PickTeam(int ignoreClientNum);
 void SetClientViewAngle(gentity_t* ent, vec3_t angle);
 gentity_t* SelectSpawnPoint(vec3_t avoidPoint, vec3_t origin, vec3_t angles, qboolean isbot);
+gentity_t* SelectCTFSpawnPoint(team_t team, int teamstate, vec3_t origin, vec3_t angles, qboolean isbot);
 void CopyToBodyQue(gentity_t* ent);
 void ClientRespawn(gentity_t* ent);
 void BeginIntermission(void);
+void G_SendMapVoteTallies(void);
+void G_PublishMapVoteInfo(void);   // [QL] CS_ROTATIONMAPS: arenas + the close time
+void G_CheckMapVoteAllIn(void);    // [QL] shorten the window once every human has voted
+int  G_MapVoteWindowMsec(void);
+int  G_ResolveMapVote(void);
+const char* G_GetArenaInfoByMap(const char* map);  // [QL] scripts/arenas.txt lookup (g_bot.c)  // [QL] CS_ROTATIONVOTES, as the infostring the client parses
 void InitBodyQue(void);
 void ClientSpawn(gentity_t* ent);
 void player_die(gentity_t* self, gentity_t* inflictor, gentity_t* attacker, int damage, int mod);
@@ -771,6 +825,8 @@ qboolean FreezeTagInGame(void);      // [QL] 0x10067e00
 qboolean FreezeTagInWarmup(void);    // [QL] 0x10067e30
 void CalculateRanks(void);
 qboolean SpotWouldTelefrag(gentity_t* spot);
+qboolean G_IsSpawnPointClassname(const char* classname);
+qboolean G_IsDevWeaponClassname(const char* classname);   // [QL] Team Arena weapons, gated by g_devWeapons
 
 //
 // g_svcmds.c
@@ -932,6 +988,9 @@ int Freeze_GetRoundState(void);
 void Freeze_InstaKill(gentity_t *self, int mode);  // [QL] .so Freeze_InstaKill (0x76fa0); mode 1 = destroy frozen body (gib), mode 0 = auto-thaw respawn
 void Freeze_Think(void);
 void Freeze_ClientThawCheck(gentity_t *ent, int msec);  // [QL] msec = clamped pmove frame delta from ClientThink_real (binary 0x1004cdc0)
+void Freeze_InitRoundState(void);
+void CA_InitRoundState(void);
+void AD_InitRoundState(void);
 void Freeze_PlayerFrozen(gentity_t *self);
 void Freeze_AutoThaw(int team);   // [QL] 0x1004cca0 (twin of CA_PlayerKilled; last-man-standing announce)
 void G_ThrowFlag(gentity_t *self, vec3_t point);        // [QL] 0x10051420 (gauntlet flag toss, g_dropFlag)
@@ -988,6 +1047,7 @@ void ClearClientReadyToExit(void);            // [QL] reset at intermission star
 //
 qboolean OnSameTeam(gentity_t* ent1, gentity_t* ent2);
 void Team_CheckDroppedItem(gentity_t* dropped);
+flagStatus_t Team_GetFlagStatus(int team);
 qboolean CheckObeliskAttack(gentity_t* obelisk, gentity_t* attacker);
 
 //
@@ -1041,12 +1101,57 @@ int BotAILoadMap(int restart);
 int BotAISetupClient(int client, struct bot_settings_s* settings, qboolean restart);
 int BotAIShutdownClient(int client, qboolean restart);
 int BotAIStartFrame(int time);
+// [QL] the "bots" console command; defined in ai_tactics.c. Declared here rather
+// than in ai_tactics.h so g_svcmds.c does not have to pull in the whole botlib
+// include chain to dispatch one command.
+void G_FlushTeamCountConfigstrings(void);
+void BotTacticsReport(void);
+// [QL] spawns that had to take an occupied point; for the end of map report
+int G_SpawnSaturationCount(void);
 void BotTestAAS(vec3_t origin);
 
 #include "g_team.h"  // teamplay specific stuff
 
 extern level_locals_t level;
 extern gentity_t g_entities[MAX_GENTITIES];
+/*
+[QL] How much scoreboard payload fits in one reliable command.
+
+A scoreboard message is sent with trap_SendServerCommand, which lands in
+client->reliableCommands[][MAX_STRING_CHARS] and is truncated there without a
+word to anyone. Every emitter sized its buffer at or above MAX_STRING_CHARS and
+then guarded on sizeof(that buffer), so the guard could not fire before the
+truncation did - and the command name plus the three leading numbers were never
+counted at all.
+
+Truncation does not merely drop the tail players. The count of entries is sent
+in the header, so the client is told to read N players' worth of fields out of a
+string that stops mid-entry: every field after the cut is read from whatever
+comes next, or from nothing. That is a scoreboard with garbage in it, not a
+short one.
+
+64 bytes of headroom covers "scores_ffa " plus three ints and the separators,
+with room to spare.
+*/
+#define MAX_SCOREBOARD_PAYLOAD (MAX_STRING_CHARS - 64)
+
+qboolean G_ScoreboardTruncated(int wouldBe, int sent);
+
+void G_ScheduleScoreConfigstrings(void);
+void G_FlushScoreConfigstrings(void);
+
+/*
+[QL] Payload budget for an emitter whose header is not three small numbers.
+
+MAX_SCOREBOARD_PAYLOAD assumes the FFA header. The team gametypes put far more
+in front of the entries - scores_tdm leads with twenty-eight team totals, some
+of them possession times in milliseconds - and for those a fixed 64 bytes of
+headroom is not headroom at all. Pass the length of the header actually built
+and get back what is left for entries, with a margin for the count and the two
+team scores that are appended after it.
+*/
+int G_ScoreboardBudget(int headerLength);
+
 extern gclient_t g_clients[MAX_CLIENTS];
 extern gameImport_t *imports;  // [QL] engine syscall table
 
@@ -1071,6 +1176,7 @@ extern vmCvar_t g_gravity;
 extern vmCvar_t g_speed;
 extern vmCvar_t g_knockback;
 extern vmCvar_t g_forcerespawn;
+extern vmCvar_t g_spawnProtectionTime;
 extern vmCvar_t g_inactivity;
 extern vmCvar_t g_inactivityWarning;  // [QL]
 extern vmCvar_t g_dropInactive;       // [QL]
@@ -1084,6 +1190,8 @@ extern vmCvar_t g_warmup;
 extern vmCvar_t g_doWarmup;
 extern vmCvar_t g_gameState;
 extern vmCvar_t g_debugWarmup;
+extern vmCvar_t g_debugFreeze;
+extern vmCvar_t bot_fillRate;
 extern vmCvar_t sv_warmupReadyPercentage;
 extern vmCvar_t g_warmupDelay;
 extern vmCvar_t g_warmupReadyDelay;
@@ -1096,6 +1204,8 @@ extern vmCvar_t g_allowVote;
 extern vmCvar_t g_allowVoteMidGame;
 extern vmCvar_t g_allowSpecVote;
 extern vmCvar_t g_voteFlags;
+extern vmCvar_t g_endMapVoteTime;
+extern vmCvar_t g_matchStartGrace;
 extern vmCvar_t g_voteDelay;
 extern vmCvar_t g_voteLimit;
 extern vmCvar_t g_teamAutoJoin;
@@ -1216,6 +1326,9 @@ extern vmCvar_t weapon_gravity_pg;
 extern vmCvar_t weapon_gravity_bfg;
 extern vmCvar_t weapon_gravity_ng;
 
+// [QL] Team Arena weapons (nailgun, prox launcher, chaingun) on maps
+extern vmCvar_t g_devWeapons;
+
 // [QL] nailgun cvars
 extern vmCvar_t g_nailspeed;
 extern vmCvar_t g_nailcount;
@@ -1296,7 +1409,9 @@ extern vmCvar_t g_adCaptureScoreBonus;
 extern vmCvar_t g_freezeThawTick;
 extern vmCvar_t g_freezeProtectedSpawnTime;
 extern vmCvar_t g_freezeThawTime;
+extern vmCvar_t g_freezeWarmupThawTime;
 extern vmCvar_t g_freezeAutoThawTime;
+extern vmCvar_t g_freezeThawGrace;
 extern vmCvar_t g_freezeThawRadius;
 extern vmCvar_t g_freezeThawThroughSurface;
 extern vmCvar_t g_freezeThawWinningTeam;
@@ -1366,7 +1481,29 @@ extern vmCvar_t bot_showAreas;
 extern vmCvar_t bot_showAvoidSpots;
 extern vmCvar_t bot_showPath;
 extern vmCvar_t bot_showTourPoints;
+extern vmCvar_t g_scoreUpdateInterval;
+extern vmCvar_t g_teamOverlayInterval;
+extern vmCvar_t bot_aimDrift;
+extern vmCvar_t bot_aimSweep;
+extern vmCvar_t bot_debugTactics;
+extern vmCvar_t bot_debugMovement;
+extern vmCvar_t bot_debugTrack;
+extern vmCvar_t bot_debugAim;   // [QL] E230
+extern vmCvar_t bot_debugRoutes;   // [QL] E231
+extern vmCvar_t bot_crowdsteer;
+extern vmCvar_t bot_chatlimit;
+extern vmCvar_t bot_skill;
+extern vmCvar_t bot_targetCommit;
+extern vmCvar_t bot_viewSmooth;
+extern vmCvar_t bot_dodge;
+extern vmCvar_t bot_squadRange;
 extern vmCvar_t bot_startingSkill;
+extern vmCvar_t bot_tactics;
+extern vmCvar_t bot_tacticsTeams;   // [QL] E224
+extern vmCvar_t bot_ctfIntercept;   // [QL] E224
+extern vmCvar_t bot_ctfDetours;     // [QL] E226
+extern vmCvar_t bot_ctfObjectiveMove;   // [QL] E226
+extern vmCvar_t bot_ctfRouteIntel;   // [QL] E232
 extern vmCvar_t bot_teamkill;
 extern vmCvar_t bot_training;
 extern vmCvar_t g_accessFile;
@@ -1688,3 +1825,6 @@ void trap_SnapVector(float* v);
 void trap_IncrementSteamStat(int clientNum, int statID);
 int trap_GetSteamStat(int clientNum, int statID);
 uint64_t trap_GetSteamID(int clientNum);
+
+// Team route warning from confirmed enemy damage; does not reveal attacker.
+void BotRouteReportDamage(int client, vec3_t origin, qboolean fatal);

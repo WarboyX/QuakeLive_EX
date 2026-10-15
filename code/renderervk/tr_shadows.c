@@ -34,90 +34,151 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 */
 
+/*
+[QL] E160: silhouette edges by signed count, not by pairing.
+
+Quake 3 kept up to 32 edges per vertex (MAX_EDGE_DEFS) and called an edge a
+silhouette when no light-facing triangle ran along it the other way. Two ways
+that goes wrong, both common in Quake Live's denser models:
+
+  - a vertex shared by more than 32 triangles (the centre of a fan, a
+    tightly packed barrel) silently dropped the rest, so an interior edge
+    lost its partner and was extruded as a silhouette
+  - an edge shared by three or more triangles ("overfanned", as the old
+    comment called it) extruded as many sides as it had unpaired uses
+
+Each such stray side is a single blade, not a closed volume. Depth-pass (Quake
+3's counting) only saw it in front of the visible surface, where it is rarely
+anything but a sliver; depth-fail (E155) counts what is behind the surface
+too, so a blade under the floor became a black line across it - the floating
+shotgun's line through the floor.
+
+Instead: every light-facing triangle adds +1 to each of its edges walked one
+way and -1 walked the other, in a hash on the vertex pair. Interior edges sum
+to zero whatever the mesh looks like; what is left over is the silhouette,
+with the sign giving its direction and the magnitude how many sides it needs.
+No per-vertex limit, and the volume closes on any mesh.
+*/
+#define EDGE_HASH_SIZE	( 1 << 16 )	/* power of two, > 2x the most edges SHADER_MAX_INDEXES allows */
+
 typedef struct {
-	int		i2;
-	int		facing;
-} edgeDef_t;
+	int		lo, hi;		// vertex pair, lo < hi
+	int		count;		// +1 per facing triangle walking lo->hi, -1 per hi->lo
+	int		stamp;		// == edgeStamp when this slot is in use this pass
+} shadowEdge_t;
 
-#define	MAX_EDGE_DEFS	32
+static	shadowEdge_t	edgeHash[EDGE_HASH_SIZE];
+static	int				edgeUsed[SHADER_MAX_INDEXES];	// slots in use, in insertion order
+static	int				numEdgesUsed;
+static	int				edgeStamp;
+/* [QL] E155: the light-facing triangles, kept for the caps - R_CalcShadowEdges
+   overwrites tess.indexes with the volume */
+static	int			capTris[SHADER_MAX_INDEXES/3][3];
+static	int			numCapTris;
 
-static	edgeDef_t	edgeDefs[SHADER_MAX_VERTEXES][MAX_EDGE_DEFS];
-static	int			numEdgeDefs[SHADER_MAX_VERTEXES];
-static	int			facing[SHADER_MAX_INDEXES/3];
+static void R_AddShadowEdge( int a, int b ) {
+	const int lo = a < b ? a : b;
+	const int hi = a < b ? b : a;
+	unsigned int h = ( (unsigned int)lo * 73856093u ) ^ ( (unsigned int)hi * 19349663u );
+	shadowEdge_t *e;
 
-static void R_AddEdgeDef( int i1, int i2, int f ) {
-	int		c;
-
-	c = numEdgeDefs[ i1 ];
-	if ( c == MAX_EDGE_DEFS ) {
-		return;		// overflow
+	if ( a == b ) {
+		return;		// a degenerate triangle's edge has no side to extrude
 	}
-	edgeDefs[ i1 ][ c ].i2 = i2;
-	edgeDefs[ i1 ][ c ].facing = f;
-
-	numEdgeDefs[ i1 ]++;
+	h &= EDGE_HASH_SIZE - 1;
+	for ( ;; ) {
+		e = &edgeHash[ h ];
+		if ( e->stamp != edgeStamp ) {
+			if ( numEdgesUsed >= ARRAY_LEN( edgeUsed ) ) {
+				return;		// cannot happen with EDGE_HASH_SIZE as set; never loop forever
+			}
+			e->stamp = edgeStamp;
+			e->lo = lo;
+			e->hi = hi;
+			e->count = 0;
+			edgeUsed[ numEdgesUsed++ ] = (int)h;
+			break;
+		}
+		if ( e->lo == lo && e->hi == hi ) {
+			break;
+		}
+		h = ( h + 1 ) & ( EDGE_HASH_SIZE - 1 );
+	}
+	e->count += ( a < b ) ? 1 : -1;
 }
 
 
 static void R_CalcShadowEdges( void ) {
-	qboolean sil_edge;
 	int		i;
-	int		c, c2;
-	int		j, k;
+	int		c;
+	int		j;
 	int		i2;
 	color4ub_t *colors;
 
 	tess.numIndexes = 0;
 
-	// an edge is NOT a silhouette edge if its face doesn't face the light,
-	// or if it has a reverse paired edge that also faces the light.
-	// A well behaved polyhedron would have exactly two faces for each edge,
-	// but lots of models have dangling edges or overfanned edges
-	for ( i = 0; i < tess.numVertexes; i++ ) {
-		c = numEdgeDefs[ i ];
-		for ( j = 0 ; j < c ; j++ ) {
-			if ( !edgeDefs[ i ][ j ].facing ) {
-				continue;
-			}
+	// what is left of each edge after the light-facing triangles on both
+	// sides cancel is the silhouette - see R_AddShadowEdge
+	for ( j = 0; j < numEdgesUsed; j++ ) {
+		const shadowEdge_t *e = &edgeHash[ edgeUsed[ j ] ];
+		const int dir = e->count > 0 ? 1 : -1;
 
-			sil_edge = qtrue;
-			i2 = edgeDefs[ i ][ j ].i2;
-			c2 = numEdgeDefs[ i2 ];
-			for ( k = 0 ; k < c2 ; k++ ) {
-				if ( edgeDefs[ i2 ][ k ].i2 == i && edgeDefs[ i2 ][ k ].facing ) {
-					sil_edge = qfalse;
-					break;
-				}
-			}
+		/* the directed edge as a facing triangle walks it */
+		i = ( dir > 0 ) ? e->lo : e->hi;
+		i2 = ( dir > 0 ) ? e->hi : e->lo;
 
-			// if it doesn't share the edge with another front facing
-			// triangle, it is a sil edge
-			if ( sil_edge ) {
-				if ( tess.numIndexes > ARRAY_LEN( tess.indexes ) - 6 ) {
-					i = tess.numVertexes;
-					break;
-				}
+		for ( c = e->count * dir; c > 0; c-- ) {
+			if ( tess.numIndexes > ARRAY_LEN( tess.indexes ) - 6 ) {
+				j = numEdgesUsed;
+				break;
+			}
 #ifdef USE_VULKAN
-				tess.indexes[ tess.numIndexes + 0 ] = i;
-				tess.indexes[ tess.numIndexes + 1 ] = i2;
-				tess.indexes[ tess.numIndexes + 2 ] = i + tess.numVertexes;
-				tess.indexes[ tess.numIndexes + 3 ] = i2;
-				tess.indexes[ tess.numIndexes + 4 ] = i2 + tess.numVertexes;
-				tess.indexes[ tess.numIndexes + 5 ] = i + tess.numVertexes;
+			tess.indexes[ tess.numIndexes + 0 ] = i;
+			tess.indexes[ tess.numIndexes + 1 ] = i2;
+			tess.indexes[ tess.numIndexes + 2 ] = i + tess.numVertexes;
+			tess.indexes[ tess.numIndexes + 3 ] = i2;
+			tess.indexes[ tess.numIndexes + 4 ] = i2 + tess.numVertexes;
+			tess.indexes[ tess.numIndexes + 5 ] = i + tess.numVertexes;
 #else
-				tess.indexes[ tess.numIndexes + 0 ] = i;
-				tess.indexes[ tess.numIndexes + 1 ] = i + tess.numVertexes;
-				tess.indexes[ tess.numIndexes + 2 ] = i2;
-				tess.indexes[ tess.numIndexes + 3 ] = i2;
-				tess.indexes[ tess.numIndexes + 4 ] = i + tess.numVertexes;
-				tess.indexes[ tess.numIndexes + 5 ] = i2 + tess.numVertexes;
+			tess.indexes[ tess.numIndexes + 0 ] = i;
+			tess.indexes[ tess.numIndexes + 1 ] = i + tess.numVertexes;
+			tess.indexes[ tess.numIndexes + 2 ] = i2;
+			tess.indexes[ tess.numIndexes + 3 ] = i2;
+			tess.indexes[ tess.numIndexes + 4 ] = i + tess.numVertexes;
+			tess.indexes[ tess.numIndexes + 5 ] = i2 + tess.numVertexes;
 #endif
-				tess.numIndexes += 6;
-			}
+			tess.numIndexes += 6;
 		}
 	}
 
 #ifdef USE_VULKAN
+	/*
+	[QL] E155. Close the volume - depth-fail counting needs it closed.
+
+	The sides above are the silhouette pushed away from the light. Every
+	light-facing triangle then caps it twice: where it is (the near cap) and
+	where the push took it (the far cap). Windings chosen to face out of the
+	volume in the same sense the sides do: the sides here are (a, b, a'),
+	the Vulkan reverse of the GL build's order, so the near cap is the facing
+	triangle reversed, (a, c, b), and the far cap is (a', b', c').
+	*/
+	/* [QL] E159: only for depth-fail (see SHADOW_EDGES). Depth-pass does not
+	   need caps, and the near one would z-fight with the model. */
+	for ( i = 0; i < numCapTris && vk.depthClamp; i++ ) {
+		const int a = capTris[i][0], b = capTris[i][1], c = capTris[i][2];
+
+		if ( tess.numIndexes > ARRAY_LEN( tess.indexes ) - 6 ) {
+			break;   // an incomplete cap leaves a leak in one shadow, not a crash
+		}
+		tess.indexes[ tess.numIndexes + 0 ] = a;
+		tess.indexes[ tess.numIndexes + 1 ] = c;
+		tess.indexes[ tess.numIndexes + 2 ] = b;
+		tess.indexes[ tess.numIndexes + 3 ] = a + tess.numVertexes;
+		tess.indexes[ tess.numIndexes + 4 ] = b + tess.numVertexes;
+		tess.indexes[ tess.numIndexes + 5 ] = c + tess.numVertexes;
+		tess.numIndexes += 6;
+	}
+
 	tess.numVertexes *= 2;
 
 	colors = &tess.svars.colors[0][0]; // we need at least 2x SHADER_MAX_VERTEXES there
@@ -156,7 +217,7 @@ void RB_ShadowTessEnd( void ) {
 	}
 
 #ifdef USE_PMLIGHT
-	if ( r_dlightMode->integer == 2 && r_shadows->integer == 2 )
+	if ( r_dlightMode->integer == 2 && R_STENCIL_SHADOWS )
 		VectorCopy( backEnd.currentEntity->shadowLightDir, lightDir );
 	else
 #endif
@@ -173,8 +234,37 @@ void RB_ShadowTessEnd( void ) {
 		VectorMA( tess.xyz[i], -512, lightDir, tess.xyz[i+tess.numVertexes] );
 	}
 
+#ifdef USE_VULKAN
+	/*
+	[QL] E159: lift the near end of the volume one unit off the model.
+
+	The near cap is the model's own triangles, so it sits at exactly the depth
+	the model wrote. Depth-fail counts it when it fails the depth test - and at
+	equal depth whether it does is down to rounding, so the model's side away
+	from the light speckled in and out of its own shadow as the light angle
+	changed ("self-player under the right lighting"). One unit away from the
+	light puts the cap in front of that surface, where it always passes. After
+	the far vertices are made, so the volume's length is untouched.
+	*/
+	if ( vk.depthClamp ) {
+		vec3_t away;
+		VectorCopy( lightDir, away );
+		if ( VectorNormalize( away ) > 0.0f ) {
+			for ( i = 0; i < tess.numVertexes; i++ ) {
+				VectorMA( tess.xyz[i], -1.0f, away, tess.xyz[i] );
+			}
+		}
+	}
+#endif
+
 	// decide which triangles face the light
-	Com_Memset( numEdgeDefs, 0, tess.numVertexes * sizeof( numEdgeDefs[0] ) );
+	edgeStamp++;          // [QL] E160: empties the edge hash without clearing it
+	if ( edgeStamp == 0 ) {   // wrapped: stale stamps could now match
+		Com_Memset( edgeHash, 0, sizeof( edgeHash ) );
+		edgeStamp = 1;
+	}
+	numEdgesUsed = 0;
+	numCapTris = 0;   // [QL] E155
 
 	numTris = tess.numIndexes / 3;
 	for ( i = 0 ; i < numTris ; i++ ) {
@@ -196,16 +286,21 @@ void RB_ShadowTessEnd( void ) {
 		CrossProduct( d1, d2, normal );
 
 		d = DotProduct( normal, lightDir );
-		if ( d > 0 ) {
-			facing[ i ] = 1;
-		} else {
-			facing[ i ] = 0;
+		if ( d <= 0 ) {
+			continue;   // [QL] E160: only light-facing triangles make edges or caps
+		}
+
+		{   // [QL] E155: a cap triangle
+			capTris[ numCapTris ][0] = i1;
+			capTris[ numCapTris ][1] = i2;
+			capTris[ numCapTris ][2] = i3;
+			numCapTris++;
 		}
 
 		// create the edges
-		R_AddEdgeDef( i1, i2, facing[ i ] );
-		R_AddEdgeDef( i2, i3, facing[ i ] );
-		R_AddEdgeDef( i3, i1, facing[ i ] );
+		R_AddShadowEdge( i1, i2 );
+		R_AddShadowEdge( i2, i3 );
+		R_AddShadowEdge( i3, i1 );
 	}
 
 	R_CalcShadowEdges();
@@ -307,7 +402,7 @@ void RB_ShadowFinish( void ) {
 
 	backEnd.doneShadows = qfalse;
 
-	if ( r_shadows->integer != 2 ) {
+	if ( !R_STENCIL_SHADOWS ) {
 		return;
 	}
 	if ( glConfig.stencilBits < 4 ) {
@@ -399,7 +494,7 @@ void RB_ProjectionShadowDeform( void ) {
 	groundDist = backEnd.or.origin[2] - backEnd.currentEntity->e.shadowPlane;
 
 #ifdef USE_PMLIGHT
-	if ( r_dlightMode->integer == 2 && r_shadows->integer == 2 )
+	if ( r_dlightMode->integer == 2 && R_STENCIL_SHADOWS )
 		VectorCopy( backEnd.currentEntity->shadowLightDir, lightDir );
 	else
 #endif

@@ -33,7 +33,36 @@
 #define USE_DEDICATED_ALLOCATION
 #endif
 //#define MIN_IMAGE_ALIGN (128*1024)
-#define MAX_ATTACHMENTS_IN_POOL (8+VK_NUM_BLOOM_PASSES*2) // depth + msaa + msaa-resolve + depth-resolve + screenmap.msaa + screenmap.resolve + screenmap.depth + bloom_extract + blur pairs
+/*
+[QL] Every attachment vk_create_attachments can allocate, as a sum rather than
+a total.
+
+It was "8 + VK_NUM_BLOOM_PASSES*2" with the eight listed in a comment, and the
+eight were exactly what the function created - no headroom at all. Adding the
+two ray-traced occlusion targets therefore turned a working configuration into
+"Attachments array overflow" and a fatal exit at startup, but only with r_fbo 1
+and bloom on, because that is the only combination that allocates the whole set.
+Off by two, invisible in every build where either was off.
+
+Written as one term per attachment so the number cannot drift from the code
+again: a new attachment adds its line here next to the others, and a term that
+no longer corresponds to anything is visible as such. Do not collapse it back
+into a total.
+*/
+#define MAX_ATTACHMENTS_IN_POOL ( \
+	1 +                          /* bloom extract                     */ \
+	VK_NUM_BLOOM_PASSES * 2 +    /* blur ping-pong pairs              */ \
+	1 +                          /* color / msaa resolve              */ \
+	1 +                          /* screenmap msaa                    */ \
+	1 +                          /* screenmap resolve                 */ \
+	1 +                          /* screenmap depth                   */ \
+	1 +                          /* msaa                              */ \
+	1 +                          /* capture (r_ext_supersample)       */ \
+	2 +                          /* rt ambient occlusion targets      */ \
+	4 +                          /* [QL] E196 AO + shadow history      */ \
+	1 +                          /* screen-space reflection target    */ \
+	2 +                          /* [QL] E171 projected soft shadows  */ \
+	1 )                          /* depth                             */
 
 #define VK_DESC_STORAGE      0
 #define VK_DESC_UNIFORM      0
@@ -59,6 +88,18 @@ typedef enum {
 	TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR,
 
 	TYPE_SIGNLE_TEXTURE_DF,
+
+	/*
+	[QL] R25. The static bump pass: modulates what the world already drew by
+	how a normal map changes its response to the deluxemap's light direction.
+	Outside TYPE_GENERIC_BEGIN because it has no env/fog variants - it is one
+	shader pair with two specialization constants.
+	*/
+	TYPE_BUMP,
+
+	/* [QL] E161: the level's shadow on a model (r_rtModelShadows) - a
+	   multiplicative pass with a ray toward the light grid's direction */
+	TYPE_RT_MODEL_SHADOW,
 
 	TYPE_GENERIC_BEGIN, // start of non-env/env shader pairs
 	TYPE_SIGNLE_TEXTURE = TYPE_GENERIC_BEGIN,
@@ -188,12 +229,58 @@ typedef struct {
 		byte rgb;
 		byte alpha;
 	} color;
+	/*
+	[QL] R25, TYPE_BUMP only. Specialization constants, so they belong to the
+	pipeline rather than to a uniform this pass does not have. Being part of the
+	def means vk_find_pipeline_ext's memcmp treats a different value as a
+	different pipeline and allocates one - so r_qlBumpScale takes effect
+	immediately instead of needing a restart, at the cost of one pipeline per
+	distinct value. The caller quantises it to keep that bounded.
+	*/
+	float bump_scale;
+	int bump_debug;
+	int bump_tc_swap;
+	float bump_parallax;
+	float bump_specular;
+	/*
+	[QL] R27, stochastic hex-tiling. Also specialization constants, for the same
+	reason. hex_tile names the texture to break the repeat in rather than being
+	a flag: 0 none, 1 texture0, 2 texture1 - because on a collapsed world shader
+	the other one is the lightmap and hex-tiling a lightmap wrecks the lighting
+	of the surface. On TYPE_BUMP it is 0 or 1 and means the normal map.
+
+	Anything added AFTER these moves no offsets, but anything added BEFORE moves
+	all of them, and vk_find_pipeline_ext compares this struct with memcmp - so
+	every field has to be written on every path or padding decides how many
+	pipelines exist. Every site memsets the def first; the one that does not is
+	the fogCollapse path in tr_shader.c, which copies a whole def out of an
+	existing pipeline and is therefore safe by construction.
+	*/
+	int hex_tile;
+	float hex_rot;
+	float hex_contrast;
+	// [QL] E104. Effective green flip for this draw: the global cvar XORed with
+	// the stage's qlNormalFlipG. TYPE_BUMP only.
+	int bump_flip_green;
+	// [QL] E161: TYPE_SIGNLE_TEXTURE_LIGHTING(_LINEAR) with the ray-query light
+	// shader (r_rtDlightShadows)
+	int rt_shadow;
 } Vk_Pipeline_Def;
 
 typedef struct VK_Pipeline {
 	Vk_Pipeline_Def def;
 	VkPipeline handle[ RENDER_PASS_COUNT ];
 } VK_Pipeline_t;
+
+/* [QL] E165: ray-tracing instance masks, see vk_rt_build_dynamic_tlas */
+#define RT_MAX_SHADOW_ACTORS	64	/* [QL] E204: spheres the shadow pass tests per pixel */
+#define RT_MASK_LEVEL	0x01
+#define RT_MASK_ACTORS	0x02	/* players and items as proxy boxes/balls - occlusion, reflections */
+#define RT_MASK_SILHOUETTE	0x04	/* [QL] E166: players and items as their real triangles - shadows */
+#define RT_MASK_OCCLUSION	( RT_MASK_LEVEL | RT_MASK_ACTORS )
+/* what the traced shadows' rays stop at: the level and its movers, and with
+   r_rtShadowCasters 1 the players' and items' silhouettes */
+#define RT_SHADOW_MASK		( RT_MASK_LEVEL | ( r_rtShadowCasters->integer ? RT_MASK_SILHOUETTE : 0 ) )
 
 // this structure must be in sync with shader uniforms!
 typedef struct vkUniform_s {
@@ -214,6 +301,12 @@ typedef struct vkUniform_s {
 	vec4_t fogDepthVector;		// vertex
 	vec4_t fogEyeT;				// vertex
 	vec4_t fogColor;			// fragment
+	/* [QL] E161: ray-traced shadows - read only by the USE_RT light shaders and
+	   the model-shadow pass, at offsets 128.. in their uniform blocks */
+	vec4_t rtOrigin;			// object-to-world origin
+	vec4_t rtAxis[3];			// object-to-world axes (w: model pass ambient/directed)
+	vec4_t rtLight;				// model pass: object-space light direction, w reach
+	vec4_t rtParams;			// strength, rays, softness, stop short of light
 } vkUniform_t;
 
 #define TESS_XYZ   (1)
@@ -236,6 +329,80 @@ typedef struct vkUniform_s {
 // Initializes VK_Instance structure.
 // After calling this function we get fully functional vulkan subsystem.
 void vk_initialize( void );
+
+// [QL] is an offscreen colour target being used? r_fbo asks for one; r_rts
+// needs one. Every structural decision reads this and not r_fbo directly.
+qboolean vk_fbo_wanted( void );
+
+// [QL] print the next dynamic acceleration structure build's contents
+void vk_rt_request_dump( void );
+
+/*
+[QL] The map's liquid surfaces, collected at load.
+
+A reflection needs to know which pixels are liquid and what plane they lie on.
+Doing that per surface at draw time means new pipeline state and a stencil bit;
+doing it from the plane means a handful of numbers and a test in the shader,
+because a map has a few distinct water heights, not a few thousand.
+
+Collected before anything is built on top of it, and reported, because the whole
+approach rests on QL's water being planar faces carrying CONTENTS_WATER - and if
+it is not, that is worth finding out in fifty lines rather than five hundred.
+*/
+#define VK_MAX_WATER_PLANES 32
+
+typedef struct {
+	float normal[3];
+	float dist;
+	/*
+	[QL] The plane is infinite and the water is not.
+
+	Without these, a test against the plane alone matches every surface in the
+	map that happens to lie at the water's height - which on a map with a
+	wooden floor at the same z as a pool means the floor is treated as water.
+	It shows up as bands and speckles along the height lines rather than as
+	anything resembling a mistake about water, which is why it needs saying
+	here.
+
+	World-space bounds of the surfaces found on this plane, so the test is
+	"on the plane AND inside where the water actually is".
+	*/
+	float mins[3];
+	float maxs[3];
+} vkWaterPlane_t;
+
+/*
+[QL] E144. The sides of the pools, from the level geometry.
+
+A water brush is usually bigger than the pool it fills - it runs on under the
+decking and into the walls - so its bounds are not where the water stops. The
+walls are: every drawn, solid face of the map, a sheer wall or a sloping bank,
+that crosses a water surface's height beside it. Each is kept as a line in the
+water's plane (n.x*x + n.y*y = d, n pointing out of the wall into the water)
+and the segment of it that is actually there - where the face cuts the water's
+height - so a ripple bounces off the stretch of shore that is opposite it and
+not off the far end of a long face's box. Panels of one wall are merged into
+one segment, and anything shorter than VK_WATER_WALL_MIN after that - a post,
+a rock standing in the pond - is dropped: an obstacle that small scatters a
+wave, it does not mirror it.
+*/
+#define VK_MAX_WATER_WALLS 4096
+#define VK_MAX_RIPPLE_WALLS 4
+#define VK_WATER_WALL_MIN 24.0f
+
+typedef struct {
+	float n[2];
+	float d;
+	float a[2];     // the shoreline segment, a to b
+	float b[2];
+	float weight;   // how much of a wave it sends back: 1 a sheer wall, less a sloping bank
+	int plane;
+} vkWaterWall_t;
+
+/* The function is declared next to vk_rt_build_world, below the forward
+   declaration of struct world_s. Declaring it here would put the tag in this
+   prototype's own scope, which makes it a different type from the real one and
+   every caller a pointer mismatch. */
 
 // Called after initialization or renderer restart
 void vk_init_descriptors( void );
@@ -293,6 +460,32 @@ qboolean vk_bloom( void );
 qboolean vk_alloc_vbo( const byte *vbo_data, int vbo_size );
 void vk_update_mvp( const float *m );
 
+/* [QL] R13 step 2: the world's acceleration structures. Both are no-ops unless
+   ray query is active, so the call sites need no guard of their own.
+   world_t rather than void* so a wrong argument is a compile error - this is
+   called from tr_bsp.c, which is the other side of the renderer. */
+struct world_s;
+void vk_rt_build_world( const struct world_s *world );
+
+/* [QL] the map's water planes - see VK_MAX_WATER_PLANES above */
+void vk_find_water_planes( const struct world_s *world );
+
+/* [QL] R19: reflect the scene in them. A no-op unless r_ssr is on, the map has
+   a water plane, and the pass was created. */
+qboolean vk_ssr( void );
+void vk_rt_prebuild_dynamic( void );   /* [QL] E165: before the 3D, for the shadow rays */
+qboolean vk_actor_shadows( void );     /* [QL] E166: players' traced shadows on the level */
+void vk_actor_shadow_create( void );
+void vk_actor_shadow_destroy( void );
+/* [QL] E152: r_pipelineCache */
+#define VK_PIPELINE_CACHE_FILE "vkpipelines.cache"
+void vk_save_pipeline_cache( void );
+void vk_prewarm_pipelines( void );
+void vk_rt_destroy_world( void );
+/* [QL] R13 step 3: the ambient occlusion pass. Returns qtrue when it ran and
+   therefore left its own render pass open in place of the main one. */
+qboolean vk_rt_ao( void );
+
 uint32_t vk_tess_index( uint32_t numIndexes, const void *src );
 void vk_bind_index_buffer( VkBuffer buffer, uint32_t offset );
 #ifdef USE_VBO
@@ -349,6 +542,23 @@ typedef struct vk_tess_s {
 } vk_tess_t;
 
 
+/*
+[QL] One proxy shape a dynamic entity can be instanced from: the geometry, and
+the bottom level structure built over it. Grouped because there are two of them
+and the create/destroy paths are identical - the only difference is the mesh
+handed in.
+*/
+typedef struct {
+	VkAccelerationStructureKHR	blas;
+	VkBuffer		blas_buffer;
+	VkDeviceMemory	blas_memory;
+	VkBuffer		vertex_buffer;
+	VkDeviceMemory	vertex_memory;
+	VkBuffer		index_buffer;
+	VkDeviceMemory	index_memory;
+} vk_rt_proxy_t;
+
+
 // Vk_Instance contains engine-specific vulkan resources that persist entire renderer lifetime.
 // This structure is initialized/deinitialized by vk_initialize/vk_shutdown functions correspondingly.
 typedef struct {
@@ -384,6 +594,20 @@ typedef struct {
 		VkRenderPass bloom_extract;
 		VkRenderPass blur[VK_NUM_BLOOM_PASSES*2]; // horizontal-vertical pairs
 		VkRenderPass post_bloom;
+		/* [QL] R13: same attachments as post_bloom and the same framebuffer,
+		   but with the depth reference in DEPTH_STENCIL_READ_ONLY_OPTIMAL so
+		   the AO shader may sample it. Reading an attachment the subpass can
+		   also write is a feedback loop and is not allowed; read-only is the
+		   exception that makes depth-as-texture legal. */
+		VkRenderPass rtao;
+		/* [QL] E150: rtao with depth writable again - where the frame goes on
+		   after a composite, so the HUD does not draw into read-only depth */
+		VkRenderPass after_composite;
+		/* [QL] R13: one single-channel colour attachment and nothing else -
+		   the target the trace writes and the horizontal denoise pass writes.
+		   One render pass for both, because they differ only in which
+		   framebuffer they are begun with. */
+		VkRenderPass rtao_offscreen;
 	} render_pass;
 
 	VkDescriptorPool descriptor_pool;
@@ -438,6 +662,10 @@ typedef struct {
 		VkFramebuffer gamma[MAX_SWAPCHAIN_IMAGES];
 		VkFramebuffer screenmap;
 		VkFramebuffer capture;
+		/* [QL] R13: [0] the raw trace target, [1] the half-denoised one. The
+		   trace writes 0, the horizontal pass reads 0 and writes 1, the
+		   vertical pass reads 1 and writes the scene. */
+		VkFramebuffer rtao[6];   // [QL] E196: + AO and shadow history, two each
 	} framebuffers;
 
 #ifdef USE_UPLOAD_QUEUE
@@ -494,10 +722,16 @@ typedef struct {
 			VkShaderModule fixed[2][2];  // tx[0,1], fog[0,1]
 			VkShaderModule ent[1][2];    // tx[0], fog[0,1]
 			VkShaderModule light[2][2];  // linear[0,1] fog[0,1]
+			VkShaderModule light_rt[2][2];  // [QL] E161: the same with a shadow ray
+			VkShaderModule rt_model_shadow; // [QL] E161
 		} frag;
 
 		VkShaderModule color_fs;
 		VkShaderModule color_vs;
+
+		// [QL] R25 static bump pass
+		VkShaderModule bump_vs;
+		VkShaderModule bump_fs;
 
 		VkShaderModule bloom_fs;
 		VkShaderModule blur_fs;
@@ -511,6 +745,38 @@ typedef struct {
 
 		VkShaderModule dot_fs;
 		VkShaderModule dot_vs;
+
+		/* [QL] R13. Two builds of the AO shader - the _ms one reads a
+		   multisampled depth attachment through sampler2DMS. Which is used is
+		   decided by vkSamples at pipeline creation. */
+		VkShaderModule rtao_fs;
+		VkShaderModule rtao_ms_fs;
+
+		/* [QL] R13 step 3c. Same two-variant split and the same reason: the
+		   denoiser samples depth to weigh its taps. Fires no rays, so these are
+		   ordinary SPIR-V rather than 1.4 modules. */
+		VkShaderModule rtao_blur_fs;
+		VkShaderModule rtao_blur_ms_fs;
+		VkShaderModule rtao_temporal_fs;     // [QL] E196
+		VkShaderModule rtao_temporal_ms_fs;
+
+		/* [QL] R19. Screen-space reflections. Same two-variant split, same
+		   reason - it marches the depth buffer, which is multisampled when
+		   r_ext_multisample is on. The composite reads only the offscreen
+		   result and needs no variant. */
+		VkShaderModule ssr_fs;
+		VkShaderModule ssr_ms_fs;
+		VkShaderModule ssr_composite_fs;
+		VkShaderModule actor_shadow_fs;     // [QL] E166: players' traced shadows on the level
+		VkShaderModule actor_shadow_ms_fs;
+		VkShaderModule actor_shadow_pen_fs;   // [QL] E171: one ray at the light's centre
+		VkShaderModule actor_shadow_pen_ms_fs;
+		VkShaderModule penumbra_fs;           // [QL] E171: the projected soft edge
+		VkShaderModule penumbra_ms_fs;
+		VkShaderModule ssr_rt_fs;    // [QL] E156: the march + ray-traced fallback
+		VkShaderModule ssr_rt_ms_fs;
+		VkShaderModule ssao_fs;      // [QL] E154: screen-space AO trace
+		VkShaderModule ssao_ms_fs;
 	} modules;
 
 	VkPipelineCache pipelineCache;
@@ -518,6 +784,27 @@ typedef struct {
 	VK_Pipeline_t pipelines[ MAX_VK_PIPELINES ];
 	uint32_t pipelines_count;
 	uint32_t pipelines_world_base;
+
+	/*
+	[QL] R28. An index over the above, because vk_find_pipeline_ext used to be a
+	linear memcmp scan of every pipeline ever made.
+
+	That was free for as long as it was only called at load: every call site in
+	vk.c and tr_shader.c runs once, when the shader is finished or the renderer
+	starts. R25's static bump pass made it a PER-DRAW call - the def carries the
+	live cvars as specialization constants, so the pipeline has to be looked up
+	again for every surface, every frame. Measured at 84 bytes per def: 1200
+	pipelines and 400 bump surfaces cost 0.78 ms of memcmp per frame, which at
+	125 fps is a tenth of the budget spent deciding something that had not
+	changed. Hashed, the same case is 0.038 ms.
+
+	The chain is next-index-into-pipelines[], terminated by ~0U, so it costs one
+	uint32 per pipeline and no allocation. Hashing the same bytes memcmp compares
+	is safe for exactly the reason the memcmp is: every def is memset before use,
+	so padding is zero rather than stack garbage.
+	*/
+	uint32_t pipeline_hash[ 4096 ];
+	uint32_t pipeline_next[ MAX_VK_PIPELINES ];
 
 	// pipeline statistics
 	int32_t pipeline_create_count;
@@ -547,7 +834,20 @@ typedef struct {
 	// cullType[3], polygonOffset[2], fogStage[2], absLight[2]
 #ifdef USE_PMLIGHT
 	uint32_t dlight_pipelines_x[3][2][2][2];
+
+	/*
+	[QL] R25. [modulate/replace][debug mode]. Two blends because the debug views
+	must REPLACE what is under them to be readable, where the real pass
+	multiplies it. Indexed by r_deluxeMapping at draw time, so switching views
+	costs nothing and needs no restart.
+	*/
+	uint32_t bump_pipelines[2][4];
 	uint32_t dlight1_pipelines_x[3][2][2][2];
+	/* [QL] E161: the same with a shadow ray toward the light, and the
+	   model-shadow pass [cull][polygonOffset]. Only with ray query. */
+	uint32_t dlight_rt_pipelines_x[3][2][2][2];
+	uint32_t dlight1_rt_pipelines_x[3][2][2][2];
+	uint32_t rt_model_shadow_pipelines[3][2];
 #endif
 
 	// debug visualization pipelines
@@ -577,8 +877,35 @@ typedef struct {
 	qboolean active;
 	qboolean wideLines;
 	qboolean samplerAnisotropy;
+	/* [QL] E159: depthClamp is enabled - the stencil shadow volumes use it, and
+	   depth-fail counting (own-player shadow) is only offered with it */
+	qboolean depthClamp;
+	qboolean storeOpNone;   // [QL] E173: VK_KHR/EXT_load_store_op_none - read-only depth is not stored
+	qboolean memoryBudget;  // [QL] E194: VK_EXT_memory_budget - vkmem reports use and budget
 	qboolean fragmentStores;
 	qboolean dedicatedAllocation;
+	/* [QL] R13 ray query state. Three separate facts, deliberately not one:
+
+	     rayQuery      the device advertises all four extensions
+	     rtActive      they are enabled on the device created this run, their
+	                   feature bits came back VK_TRUE, and the entry points
+	                   loaded - so a ray query would actually work
+	     instanceVersion  what the loader gave us. Acceleration structures need
+	                   a 1.1 instance; a 1.0 one cannot enable them however
+	                   willing the card is.
+
+	   rayQuery without rtActive is the ordinary state: the card can, and r_rt
+	   is 0, so nothing was asked of it. Collapsing the two would make "your
+	   card cannot" and "you did not switch it on" the same message. */
+	qboolean rayQuery;
+	qboolean rtActive;
+	/* [QL] R13 step 3: the depth attachment can be created sampleable at the
+	   format and sample count actually in use, so the AO pass has something to
+	   reconstruct position from. Asked of the driver rather than assumed -
+	   adding VK_IMAGE_USAGE_SAMPLED_BIT can narrow the sample counts a depth
+	   format supports, and that is a per-device answer. */
+	qboolean rtDepthSampled;
+	uint32_t instanceVersion;
 	qboolean debugMarkers;
 
 	float maxAnisotropy;
@@ -593,6 +920,143 @@ typedef struct {
 
 	qboolean clearAttachment;		// requires VK_IMAGE_USAGE_TRANSFER_DST_BIT for swapchains
 	qboolean fboActive;
+	/* [QL] Which topology the render passes and framebuffers were actually
+	   built for. fboActive says what the draw path intends to do; this says
+	   what it has to do it with. They must agree - see vk_fbo_wanted(). */
+	qboolean fboRenderPasses;
+
+	/* [QL] the map's water planes - see vk_find_water_planes */
+	vkWaterPlane_t	waterPlanes[ VK_MAX_WATER_PLANES ];
+	int				numWaterPlanes;
+	vkWaterWall_t	waterWalls[ VK_MAX_WATER_WALLS ];	// [QL] E144
+	int				numWaterWalls;
+
+	/*
+	[QL] R19: screen-space reflections on those planes.
+
+	Two passes, because the trace samples the scene colour and the composite
+	writes to it, and a pass cannot read the attachment it writes. The trace
+	resolves into `image` with alpha carrying how much of it to keep; the
+	composite is an ordinary source-alpha blend of that image over the scene,
+	which is why the water test exists in one shader and not both.
+
+	The composite borrows vk.render_pass.rtao - same attachments, same formats,
+	same sample count, so it is render-pass compatible and needs no framebuffer
+	or pass of its own.
+	*/
+	struct {
+		qboolean				ready;
+		/*
+		[QL] R19: the reflection target's format, which is NOT vk.color_format
+		and must not be assumed to be.
+
+		The trace writes coverage into alpha and the composite blends by it, so
+		this target has to have an alpha channel. The scene's format need not:
+		r_rts 2 selects B10G11R11_UFLOAT, which has none, and Vulkan reads the
+		missing channel back as 1.0 - so every pixel would arrive fully opaque,
+		the composite's discard would never fire, and the whole screen would be
+		replaced by the reflection image.
+
+		Chosen once, in vk_ssr_create_render_pass, and used by both the pass and
+		the image so the two cannot drift.
+		*/
+		VkFormat				format;
+		VkImage					image;
+		VkImageView				image_view;
+		VkFramebuffer			framebuffer;
+		VkRenderPass			offscreen_pass;
+		VkSampler				sampler;
+
+		VkDescriptorSetLayout	trace_set_layout;
+		VkDescriptorSetLayout	composite_set_layout;
+		VkDescriptorPool		pool;
+		/* One per command buffer: each names that frame's uniform buffer. */
+		VkDescriptorSet			trace_descriptor[ NUM_COMMAND_BUFFERS ];
+		VkDescriptorSet			composite_descriptor;
+
+		VkPipelineLayout		trace_pipeline_layout;
+		VkPipelineLayout		composite_pipeline_layout;
+		VkPipeline				trace_pipeline;
+		VkPipeline				composite_pipeline;
+		/* [QL] E151: the same at half resolution (r_ssrResolution 2) - a
+		   half-size viewport for the trace, a quarter-reading composite */
+		VkPipeline				trace_pipeline_half;
+		VkPipeline				composite_pipeline_half;
+		VkPipeline				debug_pipeline_half;
+		/*
+		[QL] R19: the same composite with blending switched off, used whenever
+		r_ssrDebug is on.
+
+		A debug view that is blended with the scene is not a debug view - it
+		shows the scene tinted, which is what the pass does anyway, and every
+		conclusion drawn from it is about the blend as much as about the trace.
+		That cost two rounds: the classification view came back a red/green mix
+		over a scene that was itself the occlusion debug view, and reading a
+		three-colour answer out of that is guesswork.
+
+		Off, r_ssrDebug 1/2/3 show exactly what the trace wrote, and the
+		composite's discard still leaves every pixel the trace did not claim.
+		*/
+		VkPipeline				debug_pipeline;
+
+		VkBuffer				uniform_buffer[ NUM_COMMAND_BUFFERS ];
+		VkDeviceMemory			uniform_memory[ NUM_COMMAND_BUFFERS ];
+		void					*uniform_ptr[ NUM_COMMAND_BUFFERS ];
+
+		/*
+		[QL] E156: r_ssrRayTrace. The same march with the world's acceleration
+		structure and light grid added (bindings 3 and 4), so a set, a layout
+		and two pipelines of its own. Made only with ray query.
+
+		rtReady says bindings 3 and 4 have been written for the current map.
+		They name per-map objects, so they are written at world build and
+		cleared at world teardown, and the pipeline is not bound without them.
+		*/
+		VkDescriptorSetLayout	rt_set_layout;
+		VkDescriptorPool		rt_pool;
+		VkDescriptorSet			rt_descriptor[ NUM_COMMAND_BUFFERS ];
+		VkPipelineLayout		rt_pipeline_layout;
+		VkPipeline				rt_trace_pipeline;
+		VkPipeline				rt_trace_pipeline_half;
+		qboolean				rtReady;
+	} ssr;
+
+	/*
+	[QL] E166: players' and items' traced shadows on the level (r_rtActorShadows).
+	A fullscreen multiply over the scene in the occlusion composite pass: from
+	each pixel, one ray toward the light grid's light against the players' and
+	items' real triangles. The set names depth, the per-frame structure, this
+	pass's parameters and the light grid; the last two change per map
+	(vk_rt_update_actor_descriptor) and ready says they have been written.
+	*/
+	struct {
+		VkDescriptorSetLayout	set_layout;
+		VkDescriptorPool		pool;
+		VkDescriptorSet			descriptor[ NUM_COMMAND_BUFFERS ];
+		VkPipelineLayout		pipeline_layout;
+		VkPipeline				pipeline;
+		VkPipeline				pipeline_offscreen;	/* [QL] E169: into the occlusion target, for the denoise */
+		/* [QL] E171: projected soft edges (r_rtShadowSoftMode 1). Two RGBA16F
+		   targets - occlusion, blocker distance, light distance, light lost -
+		   ping-ponged by the search and the two filter passes. The images and
+		   framebuffers live with the attachments; the rest with this pass. */
+		VkFormat				pen_format;
+		VkImage					pen_image[2];
+		VkImageView				pen_view[2];
+		VkRenderPass			pen_pass;
+		VkFramebuffer			pen_fb[2];
+		VkDescriptorSetLayout	pen_set_layout;
+		VkDescriptorPool		pen_pool;
+		VkDescriptorSet			pen_descriptor[2];	/* [i] reads pen_image[i] (and depth) */
+		VkPipelineLayout		pen_pipeline_layout;
+		VkPipeline				pen_trace;			/* actorshadow USE_PEN, into pen_image[0] */
+		VkPipeline				pen_filter;			/* penumbra modes 0 and 1, offscreen */
+		VkPipeline				pen_composite;		/* penumbra mode 2, multiplied into the scene */
+		VkBuffer				uniform_buffer[ NUM_COMMAND_BUFFERS ];
+		VkDeviceMemory			uniform_memory[ NUM_COMMAND_BUFFERS ];
+		void					*uniform_ptr[ NUM_COMMAND_BUFFERS ];
+		qboolean				ready;
+	} actorShadow;
 	qboolean blitEnabled;
 	qboolean msaaActive;
 
@@ -633,6 +1097,272 @@ typedef struct {
 		VkDeviceSize offset;
 #endif
 	} staging_buffer;
+
+	/*
+	[QL] R13 step 2: the world's acceleration structures.
+
+	Positions and indices only - a ray query for ambient occlusion asks "is
+	anything in the way", which needs geometry and nothing else. No normals, no
+	texcoords, no lightmap: carrying them would multiply the vertex buffer for
+	data no trace reads.
+
+	Built once when the world loads and freed with it. Static world geometry
+	only; models are step 3 and need a rebuild or refit per frame, which is the
+	expensive half and is exactly why world-only ships first.
+	*/
+	struct rt_s {
+		/*
+		[QL] Everything that belongs to the loaded map, in its own struct so
+		that vk_rt_destroy_world can clear it wholesale.
+
+		It used to be flat, and vk_rt_destroy_world ended with
+		Com_Memset(&vk.rt, 0, sizeof(vk.rt)) - which also zeroed every field
+		below, the ambient occlusion pass included. Since that function runs at
+		the top of every world build, the first map after a vid_restart kept its
+		AO (the early-out fires when nothing has been built yet) and every map
+		after it lost the pass, silently, with aoReady cleared and the Vulkan
+		handles leaked rather than destroyed. The report was "AO works, then
+		stops working when I change map".
+
+		The sub-struct is the fix rather than a list of assignments because the
+		failure was a wholesale memset outliving the assumption that everything
+		in rt_s had the same lifetime. A field added here is cleared with the
+		map; a field added below is not; neither can be got wrong by forgetting
+		to update a clear function.
+		*/
+		struct {
+			qboolean		worldBuilt;
+			uint32_t		numVertices;
+			uint32_t		numTriangles;
+			uint32_t		numSurfacesUsed;
+			uint32_t		numSurfacesSkipped;
+
+			VkBuffer		vertex_buffer;
+			VkDeviceMemory	vertex_memory;
+			VkBuffer		index_buffer;
+			VkDeviceMemory	index_memory;
+
+			VkAccelerationStructureKHR	blas;
+			VkBuffer		blas_buffer;
+			VkDeviceMemory	blas_memory;
+
+			VkAccelerationStructureKHR	tlas;
+			VkBuffer		tlas_buffer;
+			VkDeviceMemory	tlas_memory;
+			VkBuffer		instance_buffer;
+			VkDeviceMemory	instance_memory;
+
+			/*
+			[QL] R13 step 4: the dynamic half of the scene.
+
+			The structures above hold the map and nothing else, so players,
+			items, gibs and movers cast no occlusion at all - someone standing
+			beside you does not darken the wall. These give them one.
+
+			A shared proxy rather than their real meshes. An MD3 is
+			vertex-morphed per frame, so exact geometry would mean rebuilding a
+			bottom level structure for every visible entity every frame - the
+			expensive half of ray tracing - to sharpen a term that is
+			deliberately blurry. A proxy at the entity's bounds costs a few
+			dozen triangles built once and an instance transform per frame, and
+			occlusion this soft cannot tell the difference at the distances it
+			acts over.
+
+			Two proxies, because one shape does not fit both halves of what is
+			in here. A door is a box and a player standing on the floor wants
+			the full footprint a box gives; a rocket is not a box at all, and
+			the box around it laid a hard-edged rectangle on the floor and slid
+			it across the room. The ball is the ellipsoid inscribed in the same
+			bounds - strictly smaller, no corners, and for a projectile or a gib
+			a far closer account of the volume. cgame says which an entity gets;
+			see RF_OCCLUDE_ROUND.
+
+			Doubled per command buffer. The top level is rebuilt every frame,
+			and with two frames in flight the one being rebuilt could otherwise
+			still be in use by the frame before it - so each command buffer
+			gets its own, and its own descriptor set naming it.
+			*/
+			vk_rt_proxy_t	proxy_box;
+			vk_rt_proxy_t	proxy_ball;
+
+			VkAccelerationStructureKHR	dyn_tlas[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		dyn_tlas_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	dyn_tlas_memory[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		dyn_instance_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	dyn_instance_memory[ NUM_COMMAND_BUFFERS ];
+			void			*dyn_instance_ptr[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		dyn_scratch_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	dyn_scratch_memory[ NUM_COMMAND_BUFFERS ];
+			VkDeviceAddress	dyn_scratch_address[ NUM_COMMAND_BUFFERS ];
+
+			uint32_t		dyn_maxInstances;
+			qboolean		dynReady;
+
+			/*
+			[QL] E166: players and items as their real, animated triangles, in
+			one bottom-level structure per command buffer rebuilt each frame
+			(RT_MASK_SILHOUETTE) - what they cast traced shadows with. Their
+			vertices are lerped and put into the world on the CPU, the same
+			lerp RB_SurfaceMesh draws them with.
+			*/
+			VkBuffer		actor_vertex_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	actor_vertex_memory[ NUM_COMMAND_BUFFERS ];
+			void			*actor_vertex_ptr[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		actor_index_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	actor_index_memory[ NUM_COMMAND_BUFFERS ];
+			void			*actor_index_ptr[ NUM_COMMAND_BUFFERS ];
+			VkAccelerationStructureKHR actor_blas[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		actor_blas_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	actor_blas_memory[ NUM_COMMAND_BUFFERS ];
+			VkBuffer		actor_scratch_buffer[ NUM_COMMAND_BUFFERS ];
+			VkDeviceMemory	actor_scratch_memory[ NUM_COMMAND_BUFFERS ];
+			VkDeviceAddress	actor_scratch_address[ NUM_COMMAND_BUFFERS ];
+			qboolean		actorReady;
+			uint32_t		actorTris;		// in this frame's structure
+			uint32_t		actorEntities;
+			uint32_t		actorCulled;		/* [QL] E203: left out by rt_in_reach this frame */
+			/* [QL] E204/E214: the casters in the silhouette mesh this frame -
+			   one per player or item, its parts grouped by lighting origin:
+			   bounding sphere over every part and both animation frames (xyz
+			   centre, w radius), the light grid's direction at it (xyz, w 1 if
+			   the grid has directed light there), and its contiguous triangle
+			   range (x first, y end). actorSphereCount -1 = no mesh this frame.
+			   Casters past RT_MAX_SHADOW_ACTORS go after actorRestStart and are
+			   not listed: the early out is then off (actorListComplete). */
+			float			actorSphere[RT_MAX_SHADOW_ACTORS][4];
+			float			actorLight[RT_MAX_SHADOW_ACTORS][4];
+			float			actorRange[RT_MAX_SHADOW_ACTORS][4];
+			int				actorSphereCount;
+			uint32_t		actorRestStart;
+			uint32_t		actorDropped;	/* [QL] E219: casters/parts left out whole - no room this frame */
+			qboolean		actorListComplete;
+			/* [QL] E205: what each command buffer's silhouette structure was
+			   last built from, so an unchanged set can be refitted */
+			uint32_t		actorBuiltSig[NUM_COMMAND_BUFFERS];
+			qboolean		actorBuiltValid[NUM_COMMAND_BUFFERS];
+			int				actorRefits[NUM_COMMAND_BUFFERS];
+			uint32_t		actorRefitFrames, actorBuildFrames;	/* counters for the rtshadows report */
+
+			/* [QL] E156: the map's light grid, as the BSP stores it, for the
+			   reflection's ray-traced fallback to light what it hits. */
+			/* [QL] E161: the main pass's uniform sets name this map's static
+			   structure (binding 1), so the shadow rays may be traced */
+			qboolean		mainTlasWritten;
+			VkBuffer		grid_buffer;
+			VkDeviceMemory	grid_memory;
+			void			*grid_ptr;
+			qboolean		haveGrid;   // false: a stand-in word, nothing to read
+			qboolean		haveLightField;   // [QL] E176: R_BuildLightField's result after the grid
+		} world;
+
+		/* ---- the ambient occlusion pass ---- */
+
+		/* A second view of the depth image with only the DEPTH aspect. The
+		   attachment view carries DEPTH|STENCIL where the format has stencil,
+		   and a combined image sampler must name exactly one aspect - so this
+		   cannot reuse vk.depth_image_view. */
+		VkImageView		depth_view;
+		VkSampler		depth_sampler;
+
+		VkDescriptorSetLayout	set_layout;
+		VkDescriptorPool		pool;
+		/* One per command buffer: each names that frame's top level structure,
+		   which is rebuilt every frame and so cannot be shared. Both name the
+		   same depth image. */
+		VkDescriptorSet			descriptor[ NUM_COMMAND_BUFFERS ];
+		VkPipelineLayout		pipeline_layout;
+
+		/*
+		[QL] The frame's dynamic lights, for the trace to fade occlusion inside.
+
+		Binding 2 of the trace set. One buffer per command buffer for the same
+		reason the sets are: it is rewritten every frame and the previous frame
+		may still be reading it.
+
+		A uniform buffer rather than more push constants because rtaoPush_t is
+		already 96 of the 128 bytes every implementation guarantees, which
+		leaves room for two lights - enough for an explosion, not enough for a
+		stream of plasma, which is the case this exists for.
+		*/
+		VkBuffer				light_buffer[ NUM_COMMAND_BUFFERS ];
+		VkDeviceMemory			light_memory[ NUM_COMMAND_BUFFERS ];
+		void					*light_ptr[ NUM_COMMAND_BUFFERS ];
+
+		/*
+		[QL] R13 step 3c: the denoise targets and the passes that use them.
+
+		[0] is what the trace writes, [1] what the horizontal blur writes. Both
+		are single-channel and single-sample whatever the scene's sample count
+		is - occlusion is computed once per pixel and applied to all of that
+		pixel's samples when it is composited.
+
+		The vertical blur is also the composite: it reads [1], blurs down the
+		other axis, and multiplies the result into the scene in one draw. So
+		there are three fullscreen passes for AO, not four, and pipeline_blur
+		and pipeline differ only in their render pass and blend state.
+		*/
+		/* [QL] E196: R16G16_SFLOAT, was R8_UNORM. The two history targets
+		   (2 and 3) keep each texel's view depth beside its occlusion, to tell
+		   a reprojected texel that still shows the same surface from one that
+		   does not; sharing the format lets all four share the render pass,
+		   framebuffer setup and denoise layout. */
+		VkFormat				ao_format;
+		VkImage					ao_image[6];	// trace, denoise, AO history A/B, shadow history A/B
+		VkImageView				ao_image_view[6];
+		VkSampler				ao_sampler;
+
+		VkDescriptorSetLayout	blur_set_layout;
+		/* [n] samples ao_image[n]. Binding 1 of all is depth, which the
+		   bilateral weight needs. */
+		VkDescriptorSet			blur_descriptor[6];
+		VkPipelineLayout		blur_pipeline_layout;
+
+		/* [QL] E196: temporal accumulation (r_rtaoTemporal, r_rtShadowTemporal).
+		   Reads this frame's trace in ao_image[0], depth and last frame's
+		   history; writes the other history target. Two channels, each with
+		   its own pair of targets and state: 0 the occlusion, 1 the sampled
+		   shadows, which run through the same targets (E169).
+		   temporal_descriptor[ch * 2 + p] writes 2 + ch * 2 + p and reads
+		   2 + ch * 2 + (1 - p). */
+		VkDescriptorSetLayout	temporal_set_layout;
+		VkDescriptorSet			temporal_descriptor[4];
+		VkPipelineLayout		temporal_pipeline_layout;
+		VkPipeline				pipeline_temporal;
+		VkPipeline				pipeline_temporal_half;
+		struct {
+			int					parity;			// history target written next: 2 + ch * 2 + parity
+			qboolean			valid;
+			int					frame;			// tr.frameCount when it was written
+			int					scale;			// trace scale it was written at
+			float				viewproj[16];	// the view-projection it was written with
+		} hist[2];
+
+		VkPipeline				pipeline_gen;	// trace        -> ao_image[0]
+		VkPipeline				pipeline_blur;	// ao_image[0]  -> ao_image[1]
+		/* [QL] E150: the same two at half resolution - their viewport is baked
+		   into the pipeline, so r_rtaoResolution picks between two pairs */
+		VkPipeline				pipeline_gen_half;
+		VkPipeline				pipeline_blur_half;
+		/* [QL] E154: screen-space AO's trace - its own set (depth only, no
+		   acceleration structure) and layout; everything after the trace is
+		   shared with the ray-traced one */
+		VkDescriptorSetLayout	ssao_set_layout;
+		VkPipelineLayout		ssao_pipeline_layout;
+		VkDescriptorSet			ssao_descriptor;
+		VkPipeline				pipeline_ssao;
+		VkPipeline				pipeline_ssao_half;
+		VkPipeline				pipeline;		// ao_image[1]  -> scene, multiply
+		/* [QL] Same shader as pipeline, replace instead of multiply, so
+		   r_rtao 2 shows the occlusion term rather than its effect on the
+		   scene. "Is it working" is otherwise a question about a subtle
+		   darkening that a screenshot cannot settle. */
+		VkPipeline				pipeline_debug;
+
+		/* Everything above exists and the pass may run. Separate from
+		   worldBuilt: the structures can be fine while the pass failed to
+		   build, and the two want different messages. */
+		qboolean		aoReady;
+	} rt;
 
 	struct samplers_s {
 		int count;
@@ -682,3 +1412,18 @@ typedef struct {
 
 extern Vk_Instance	vk;				// shouldn't be cleared during ref re-init
 extern Vk_World		vk_world;		// this data is cleared during ref re-init
+
+/* [QL] E177: GPU time per ray-tracing pass, r_rtTimings 1 */
+enum { RTT_FRAME, RTT_TLAS, RTT_AO, RTT_SHADOW, RTT_SSR, RTT_LIT,
+	/* [QL] E206: parts of the two above, so a field log says which part of a
+	   pass the time is in - the trace, or the composite into the scene */
+	RTT_AO_TRACE, RTT_AO_COMP, RTT_SH_TRACE, RTT_SH_COMP, RTT_COUNT };
+void vk_rt_caps_reset( void );   // [QL] E188: RE_Shutdown, before ri.FreeAll
+void vk_timing_begin( int section );
+void vk_print_memory( qboolean brief );   // [QL] E194: vkmem
+void vk_timing_end( int section );
+/* [QL] K10: what a pass needs when it commits to running - see vk_pass_check */
+#define PASS_NEEDS_SCENE_DEPTH	1	/* this frame's world view is in the depth buffer */
+#define PASS_NEEDS_WORLD_AS		2	/* the level's acceleration structure is bound */
+#define PASS_NEEDS_DYNAMIC_AS	4	/* this frame's players/items structure is built */
+void vk_pass_check( const char *pass, int needs );

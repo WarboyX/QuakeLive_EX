@@ -217,9 +217,178 @@ Ring colour always uses cg_teamRailColor1 (QL quirk).
 Static in the binary; ci passed implicitly (EAX), an explicit parameter here.
 ==========================
 */
+/*
+==========================
+CG_HueToRGB
+
+Fully saturated hue (0..1) to RGB. Small enough not to want a general HSV
+converter: saturation and value are fixed at the two values that keep a rail
+readable against both a dark map and a bright skybox.
+==========================
+*/
+static void CG_HueToRGB(float hue, float* color) {
+    const float s = 0.85f;   // keep a little white in it so it does not go neon
+    const float v = 1.0f;
+    float h = (hue - floor(hue)) * 6.0f;
+    int sector = (int)h;
+    float f = h - sector;
+    float p = v * (1.0f - s);
+    float q = v * (1.0f - s * f);
+    float t = v * (1.0f - s * (1.0f - f));
+
+    switch (sector) {
+        case 0:  color[0] = v; color[1] = t; color[2] = p; break;
+        case 1:  color[0] = q; color[1] = v; color[2] = p; break;
+        case 2:  color[0] = p; color[1] = v; color[2] = t; break;
+        case 3:  color[0] = p; color[1] = q; color[2] = v; break;
+        case 4:  color[0] = t; color[1] = p; color[2] = v; break;
+        default: color[0] = v; color[1] = p; color[2] = q; break;
+    }
+}
+
+/*
+==========================
+CG_RandomRailColor
+
+A distinct rail colour per player, for the free-for-all modes.
+
+Deliberately *not* random per shot or per client. Two constraints kill that:
+every client has to agree on what colour a given player's rail is, or the same
+shot is a different colour on each screen and the colour stops meaning anything;
+and it has to hold still for the whole match, or a player's beam strobes and is
+worse than the one colour they picked.
+
+So it is a hash of the client slot, spread by the golden ratio. Multiplying the
+slot by 0.618 and taking the fraction is the standard trick for generating hues
+that stay far apart no matter how many you ask for - stepping through slots
+gives orange, blue-green, purple, yellow rather than a rainbow ramp where
+neighbouring slots are nearly the same colour. Same input on every client, so
+everyone sees the same thing.
+==========================
+*/
+static void CG_RandomRailColor(int clientNum, float* color) {
+    CG_HueToRGB((float)clientNum * 0.6180339887f + 0.11f, color);
+}
+
+/*
+==========================
+CG_GametypeRailColor
+
+[QL] Rail colour chosen by gametype (cg_railColorMode).
+
+The stock rail takes its colour from the shooter's own color1/color2 userinfo.
+In a team mode that is exactly backwards: the one piece of information a beam
+could carry - whose side fired it - is replaced by a colour that player picked
+for themselves. In a free-for-all it is fine, and it is the player's choice, so
+it stays.
+
+QL's own cg_forceTeamRailColor1/2 do not fill the team gap: they are a
+viewer-side friend/foe override with two arbitrary colours, and
+CG_GetRailColorFloat returns early for viewer == owner, so your own rail is
+never touched by them.
+
+  0  off      - stock, every player's own colour1/colour2 everywhere
+  1  auto     - team colours in team gametypes; own colour in FFA/Duel/Race
+  2  varied   - team colours in team gametypes; a distinct colour per player in
+                FFA/Duel/Race (see CG_RandomRailColor)
+  3  white    - every rail white, everywhere
+
+Mode 1 is the default. GT_TEAM is the first team gametype in QL's enum and
+everything above it is a team mode, so >= GT_TEAM is the test; GT_FFA, GT_DUEL
+and GT_RACE sit below it.
+
+This is absolute rather than relative - red team fires red, blue team fires
+blue, for every player including you - and it reaches the core beam, the ring
+sprites, the impact mark and the railgun model tint, because all of those read
+their colour through CG_GetRailColorFloat/Byte.
+
+Returns qfalse when the override does not apply, so the caller falls through to
+QL's own rail-forcing logic and then to the shooter's own colour.
+==========================
+*/
+static qboolean CG_GametypeRailColor(clientInfo_t* ci, float* color) {
+    int mode = cg_railColorMode.integer;
+
+    if (mode == 0) {
+        return qfalse;
+    }
+
+    if (mode == 3) {
+        color[0] = 1.0f;
+        color[1] = 1.0f;
+        color[2] = 1.0f;
+        return qtrue;
+    }
+
+    if (cgs.gametype >= GT_TEAM) {
+        switch (ci->team) {
+            case TEAM_RED:
+                color[0] = 1.0f;
+                color[1] = 0.15f;
+                color[2] = 0.15f;
+                return qtrue;
+            case TEAM_BLUE:
+                color[0] = 0.25f;
+                color[1] = 0.40f;
+                color[2] = 1.0f;
+                return qtrue;
+            default:
+                // no team yet (connecting, spectating): leave it alone rather
+                // than painting a team colour that changes under the player
+                return qfalse;
+        }
+    }
+
+    // free-for-all modes
+    if (mode == 2) {
+        CG_RandomRailColor((int)(ci - cgs.clientinfo), color);
+        return qtrue;
+    }
+
+    /*
+    Mode 1 in a free-for-all: the player's own pick is the right answer - unless
+    they have not made one.
+
+    [QL] CG_ColorFromString gives white for anything outside 1..7, which is what
+    an unset or missing color1 lands on, and 7 is white as well. So "white" is
+    both a real choice and the no-choice default, and there is no telling them
+    apart. Yellow is the better thing to do with it either way: a white rail is
+    the hardest one to pick out against a bright skybox or a lit corridor, and it
+    is the colour a player gets by doing nothing, so it is the one most rails on
+    a public server end up being.
+
+    Anyone who actually wants white sets color1 to something else and back, or
+    turns this off with cg_railColorMode 0.
+    */
+    if (ci->color1[0] > 0.95f && ci->color1[1] > 0.95f && ci->color1[2] > 0.95f) {
+        color[0] = 1.0f;
+        color[1] = 0.85f;
+        color[2] = 0.1f;
+        return qtrue;
+    }
+
+    return qfalse;
+}
+
 static qboolean CG_GetRailColorFloat(clientInfo_t* ci, float* coreColor, byte* ringColor) {
     int viewer, owner;
     qboolean forceTeamSkin;
+    vec3_t gtColor;
+
+    if (CG_GametypeRailColor(ci, gtColor)) {
+        // 0.75 to match the scale every other path here applies to the core beam
+        if (coreColor) {
+            coreColor[0] = gtColor[0] * 0.75f;
+            coreColor[1] = gtColor[1] * 0.75f;
+            coreColor[2] = gtColor[2] * 0.75f;
+        }
+        if (ringColor) {
+            ringColor[0] = (byte)(gtColor[0] * 255.0f);
+            ringColor[1] = (byte)(gtColor[1] * 255.0f);
+            ringColor[2] = (byte)(gtColor[2] * 255.0f);
+        }
+        return qtrue;
+    }
 
     if (cg_forceTeamRailColor1.integer != 1 && cg_forceTeamRailColor2.integer != 1) {
         return qfalse;
@@ -280,6 +449,14 @@ selection logic as CG_GetRailColorFloat; used for the ring sprite shaderRGBA.
 static qboolean CG_GetRailColorByte(clientInfo_t* ci, byte* color) {
     int viewer, owner;
     qboolean forceTeamSkin;
+    vec3_t gtColor;
+
+    if (CG_GametypeRailColor(ci, gtColor)) {
+        color[0] = (byte)(gtColor[0] * 255.0f);
+        color[1] = (byte)(gtColor[1] * 255.0f);
+        color[2] = (byte)(gtColor[2] * 255.0f);
+        return qtrue;
+    }
 
     if (cg_forceTeamRailColor1.integer != 1 && cg_forceTeamRailColor2.integer != 1) {
         return qfalse;
@@ -604,13 +781,25 @@ static void CG_RocketTrail(centity_t* ent, const weaponInfo_t* wi) {
         return;
     }
 
-    // [QL] trail radius comes from cvars, disabled radius returns early. The binary
-    // replaced Q3's cg_noProjectileTrail early-return with this.
+    /* [QL] E101. Trail radius comes from cvars, 0 returns early - the binary
+       replaced Q3's cg_noProjectileTrail early-return with this.
+
+       The cvar READ here is cg_smokeRadius_*, not cg_*TrailRadius, and that is
+       a fix rather than a rename. Quake Live's own options menu drives
+       cg_smokeRadius_RL / _GL / _NG ("No/Thin/Medium/Thick") and mentions
+       cg_rocketTrailRadius nowhere - so a player setting smoke thickness in the
+       menu was changing a cvar this code never read, and nothing happened.
+
+       The defaults settle which set is real: cg_smokeRadius_RL defaults to 32
+       and GL to 64, exactly the "Thick" entries in Quake Live's own lists,
+       while our cg_rocketTrailRadius/cg_grenadeTrailRadius pair defaults 64/32 -
+       the same two numbers with RL and GL swapped. They were transcribed wrong
+       and then read instead of the real ones. */
     if (wi->missileTrailFunc == CG_RocketTrail) {
-        trailRadius = cg_rocketTrailRadius.value;
+        trailRadius = cg_smokeRadius_RL.value;
     }
     if (wi->missileTrailFunc == CG_GrenadeTrail) {
-        trailRadius = cg_grenadeTrailRadius.value;
+        trailRadius = cg_smokeRadius_GL.value;
     }
     if (trailRadius == 0.0f) {
         return;
@@ -648,9 +837,9 @@ static void CG_NailTrail(centity_t* ent, const weaponInfo_t* wi) {
     localEntity_t* smoke;
     float trailRadius;
 
-    // [QL] nail trail radius comes from cg_nailTrailRadius; 0 disables the trail
-    // (binary replaced the cg_noProjectileTrail early-return with this).
-    trailRadius = cg_nailTrailRadius.value;
+    // [QL] E101. cg_smokeRadius_NG, which is what Quake Live's menu drives; 0
+    // disables the trail. See CG_MissileTrail above for why not cg_nailTrailRadius.
+    trailRadius = cg_smokeRadius_NG.value;
     if (trailRadius == 0.0f) {
         return;
     }
@@ -1103,6 +1292,25 @@ void CG_RegisterWeapon(int weaponNum) {
             //		weaponInfo->missileModel = cgs.media.invulnerabilityPowerupModel;
             weaponInfo->missileTrailFunc = CG_PlasmaTrail;
             weaponInfo->missileSound = trap_S_RegisterSound("sound/weapons/plasma/lasfly.ogg", qfalse);
+            /*
+            [QL] The plasma ball lights what it flies past.
+
+            It set flashDlightColor and stopped, so the only light a plasma shot
+            ever cast was at the muzzle - the ball itself, which is a glowing
+            sphere by every other account the game gives of it, lit nothing.
+            CG_Missile's dlight block runs before the sprite branch returns, so
+            this is all it needed.
+
+            100 rather than the rocket's 200, and the reason is rate of fire.
+            The rocket is one light every 800ms; the plasma gun is ten a second,
+            each alive for as long as the ball flies, so a full budget of them
+            is in the air at once against a ceiling of 64. A tight glow that
+            travels with the ball is also what it should look like - a plasma
+            bolt is not a flare, and at 200 a stream of them floods a corridor
+            into one flat sheet with no individual bolts visible in it.
+            */
+            weaponInfo->missileDlight = 100;
+            MAKERGB(weaponInfo->missileDlightColor, 0.6f, 0.6f, 1.0f);
             MAKERGB(weaponInfo->flashDlightColor, 0.6f, 0.6f, 1.0f);
             weaponInfo->flashSound[0] = trap_S_RegisterSound("sound/weapons/plasma/hyprbf1a.ogg", qfalse);
             cgs.media.plasmaExplosionShader = trap_R_RegisterShader("plasmaExplosion");
@@ -1382,6 +1590,28 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
 
     trap_R_AddRefEntityToScene(&beam);
 
+    /*
+    [QL] And the bolt lights what it crosses, for as long as it is held.
+
+    Same linear light as the rail, but continuous rather than a fade: the
+    lightning gun is fired as a held beam, so this is re-added every frame the
+    bolt exists and stops the frame it does not.
+
+    The light is a straight line between the two ends. The bolt's twist is in
+    the four rotated quads RB_SurfaceLightningBolt builds, and a linear light
+    has no shape beyond its axis, so the room lights along the beam while the
+    beam itself is what looks alive. Making the light itself twist would mean
+    several lights stepped along the bolt, which is several times the per-pixel
+    light cost for a difference nothing in the scene is sharp enough to show.
+
+    A little blue, a little under the rail's reach - the lightning is a
+    close-range weapon and a 200 unit column from a gun you are firing at a wall
+    six feet away washes the room out.
+    */
+    if (cg_beamLights.integer) {
+        trap_R_AddLinearLightToScene(beam.origin, beam.oldorigin, 150.0f, 0.6f, 0.7f, 1.0f);
+    }
+
     // [QL] add the impact flare if it hit something and cg_lightningImpact is set
     if (cg_lightningImpact.integer && trace.fraction < 1.0) {
         vec3_t angles;
@@ -1393,6 +1623,15 @@ static void CG_LightningBolt(centity_t* cent, vec3_t origin) {
 
         memset(&beam, 0, sizeof(beam));
         beam.hModel = cgs.media.lightningExplosionModel;
+        /*
+        [QL] The crackle is light. It is also the worst case for a box proxy:
+        the orientation below is random on all three axes, not just one, so what
+        it put on the wall was a polygon at an arbitrary angle rather than even
+        a consistent diamond. This one is added straight to the scene and never
+        goes near a local entity, which is why the leType rule in
+        CG_AddLocalEntities does not reach it.
+        */
+        beam.renderfx |= RF_NOOCCLUDE;
 
         VectorMA(trace.endpos, -16, dir, beam.origin);
 
@@ -1523,17 +1762,31 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     // player's colour as the reload completes.
     if (weaponNum == WP_RAILGUN) {
         clientInfo_t* ci = &cgs.clientinfo[cent->currentState.clientNum];
+        // [QL] the gun tint follows cg_railColorMode too, so the weapon in your
+        // hands matches the beam it fires instead of staying on colour1
+        vec3_t tint;
+        if (!CG_GametypeRailColor(ci, tint)) {
+            VectorCopy(ci->color1, tint);
+        }
         if (!ps) {
             gun.shaderRGBA[0] = 0;
             gun.shaderRGBA[1] = 255;
             gun.shaderRGBA[2] = 0;
-        } else if (ps->weaponstate == WEAPON_FIRING) {
+        } else if (ps->weaponstate == WEAPON_FIRING && cg_railReloadTime.integer > 0) {
+            // cg_railReloadTime 0 divided by zero; its byte casts of inf/NaN are undefined
             float fscale = (1.0f - (float)ps->weaponTime / (float)cg_railReloadTime.integer) * 255.0f;
-            gun.shaderRGBA[0] = (byte)(ci->color1[0] * fscale);
-            gun.shaderRGBA[1] = (byte)(ci->color1[1] * fscale);
-            gun.shaderRGBA[2] = (byte)(ci->color1[2] * fscale);
+            if (fscale < 0.0f) {
+                fscale = 0.0f;
+            } else if (fscale > 255.0f) {
+                fscale = 255.0f;
+            }
+            gun.shaderRGBA[0] = (byte)(tint[0] * fscale);
+            gun.shaderRGBA[1] = (byte)(tint[1] * fscale);
+            gun.shaderRGBA[2] = (byte)(tint[2] * fscale);
         } else {
-            Byte4Copy(ci->c1RGBA, gun.shaderRGBA);
+            gun.shaderRGBA[0] = (byte)(tint[0] * 255.0f);
+            gun.shaderRGBA[1] = (byte)(tint[1] * 255.0f);
+            gun.shaderRGBA[2] = (byte)(tint[2] * 255.0f);
         }
         gun.shaderRGBA[3] = 255;
     }
@@ -1673,11 +1926,16 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
     // colorize the railgun blast
     if (weaponNum == WP_RAILGUN) {
         clientInfo_t* ci;
+        vec3_t tint;
 
         ci = &cgs.clientinfo[cent->currentState.clientNum];
-        flash.shaderRGBA[0] = 255 * ci->color1[0];
-        flash.shaderRGBA[1] = 255 * ci->color1[1];
-        flash.shaderRGBA[2] = 255 * ci->color1[2];
+        // [QL] the muzzle blast follows cg_railColorMode with everything else
+        if (!CG_GametypeRailColor(ci, tint)) {
+            VectorCopy(ci->color1, tint);
+        }
+        flash.shaderRGBA[0] = 255 * tint[0];
+        flash.shaderRGBA[1] = 255 * tint[1];
+        flash.shaderRGBA[2] = 255 * tint[2];
     }
 
     CG_PositionRotatedEntityOnTag(&flash, &gun, weapon->weaponModel, "tag_flash");
@@ -1705,8 +1963,25 @@ void CG_AddPlayerWeapon(refEntity_t* parent, playerState_t* ps, centity_t* cent,
         // QL binary: cg_muzzleFlash.integer also gates the dlight
         if ((!ps || cg_muzzleFlash.integer) &&
             (weapon->flashDlightColor[0] || weapon->flashDlightColor[1] || weapon->flashDlightColor[2])) {
-            trap_R_AddLightToScene(flash.origin, 300 + (rand() & 31), weapon->flashDlightColor[0],
-                                   weapon->flashDlightColor[1], weapon->flashDlightColor[2]);
+            /* [QL] E146: cg_muzzleFlashLight scales the rapid-fire guns' flash
+               light - its brightness, not its radius, so the pool of light
+               stays the same size and just dims. Everyone's flashes, not only
+               our own: the strobing comes as much from a teammate firing
+               beside you. Zero adds no light at all rather than a black one. */
+            float scale = 1.0f;
+
+            if (weaponNum == WP_MACHINEGUN || weaponNum == WP_HMG || weaponNum == WP_PLASMAGUN) {
+                scale = cg_muzzleFlashLight.value;
+                if (scale < 0.0f) {
+                    scale = 0.0f;
+                } else if (scale > 1.0f) {
+                    scale = 1.0f;
+                }
+            }
+            if (scale > 0.0f) {
+                trap_R_AddLightToScene(flash.origin, 300 + (rand() & 31), weapon->flashDlightColor[0] * scale,
+                                       weapon->flashDlightColor[1] * scale, weapon->flashDlightColor[2] * scale);
+            }
         }
     }
 }
@@ -2681,6 +2956,26 @@ static void CG_ShotgunPellet(vec3_t start, vec3_t end, int skipNum, vec3_t hitOu
     if (hitOut && tr.fraction < 1.0f) {
         VectorCopy(tr.endpos, hitOut);
         (*numHits)++;
+    }
+
+    /*
+    [QL] R19: this pellet's own splash.
+
+    Here rather than on the EV_SHOTGUN event because this is where the pattern
+    actually is. These traces reproduce the server's exactly - same basis, same
+    seed, same serverinfo spread - so the splashes land in the shape the shot
+    was really fired in, and anything that changes the pattern changes them with
+    it for free.
+
+    Every pellet, not a sample of them: the scatter is the whole character of a
+    shotgun hitting water, and picking every third one would read as a much
+    lighter weapon. CG_WaterRipple drops the ones that missed the water.
+    */
+    if (tr.fraction < 1.0f) {
+        float rippleRadius, rippleStrength;
+
+        CG_WaterImpactSize(WP_SHOTGUN, &rippleRadius, &rippleStrength);
+        CG_WaterRipple(start, tr.endpos, rippleRadius, rippleStrength);
     }
 
     sourceContentType = CG_PointContents(start, 0);

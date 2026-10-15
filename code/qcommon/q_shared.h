@@ -29,10 +29,28 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // BEGIN Thomas changes
 // END Thomas changes
 
-#define PRODUCT_NAME            "Quake Live"
+/*
+[QL] Two names, and only one of them is ours to change.
+
+PRODUCT_NAME is **cosmetic identity**: the window title, the version stamps in
+the console and the main menu, the pid filename. Rename the project here and
+nothing on the wire moves.
+
+GAMENAME_NETWORK is **protocol identity**. com_gamename is CVAR_SERVERINFO, so it
+goes out in the serverinfo string and is what server browsers and stock Quake
+Live clients filter on, alongside com_protocol 91 and BASEGAME. Change it and a
+stock client stops seeing our servers - which throws away the compatibility that
+most of the "seen by: every client" work in TRACKER.md exists to preserve. It
+stays "Quake Live" whatever the product ends up being called.
+
+(GAMENAME_FOR_MASTER in qcommon.h is a third one, spelled without the space
+because a dpmaster filters on a single token.)
+*/
+#define PRODUCT_NAME            "Quake Live Ex"
+#define GAMENAME_NETWORK        "Quake Live"  // do not change - see above
 #define BASEGAME                "baseqz"  // [QL] protocol/game name (sent over network)
 #define BASEGAME_DIR            "baseq3"  // filesystem directory for game data
-#define CLIENT_WINDOW_TITLE     "Quake Live"
+#define CLIENT_WINDOW_TITLE     PRODUCT_NAME
 #define HOMEPATH_NAME_UNIX      ".quakelive"
 #define HOMEPATH_NAME_WIN       "quakelive"
 #define HOMEPATH_NAME_MACOSX    HOMEPATH_NAME_WIN
@@ -174,6 +192,16 @@ typedef union {
     int i;
     unsigned int ui;
 } floatint_t;
+
+// [QL] A packed RGBA quadruple, addressable as four bytes or one 32-bit word.
+// Same size and alignment as the byte[4] it replaces, so structures read
+// straight off disk (drawVert_t over the BSP lump) are unaffected - verified.
+// Introduced for the Vulkan renderer, which is vendored from Quake3e and uses
+// this shape throughout.
+typedef union {
+    byte rgba[4];
+    uint32_t u32;
+} color4ub_t;
 
 typedef int qhandle_t;
 typedef int sfxHandle_t;
@@ -818,6 +846,13 @@ default values.
 // Exact semantics unverified, but the pattern (only on CVAR_ARCHIVE cvars, in cgame only) suggests
 // it marks cvars that get persisted to a per-user save file (Steam cloud profile, etc).
 #define CVAR_USERSAVE        0x080000
+// [QL] Quake3e's CVAR_ARCHIVE_ND: archived only once it differs from its
+// default. The renderer registered its cvars with ARCHIVE_ND and this engine
+// aliased that to plain ARCHIVE, so every default was written into qzconfig.cfg
+// on first run and a later change of default never reached an existing
+// install (r_dlightMode, con_scale, and the water splash defaults). Engine-side
+// only; no VM or Quake Live flag uses this bit.
+#define CVAR_NODEFAULT       0x200000
 // These flags are only returned by the Cvar_Flags() function
 #define CVAR_MODIFIED 0x40000000     // Cvar was modified
 #define CVAR_NONEXISTENT 0x80000000  // Cvar doesn't exist.
@@ -1354,6 +1389,14 @@ typedef enum _flag_status {
 #define SAY_TELL 2
 
 #define MAX_MAP_ADVERTISEMENTS 30
+
+// Internal native-game timing markers through the existing BotLibVarSet import.
+// No import-table or network ABI change. Older engines treat this as a libvar.
+#define BOT_TIMING_MARKER "__ql_botTiming"
+typedef enum {
+    BOT_TIMING_SETUP, BOT_TIMING_WORLD, BOT_TIMING_AI, BOT_TIMING_INPUT,
+    BOT_TIMING_STAGES
+} botTimingStage_t;
 
 #define LERP(a, b, w) ((a) * (1.0f - (w)) + (b) * (w))
 #define LUMA(red, green, blue) (0.2126f * (red) + 0.7152f * (green) + 0.0722f * (blue))

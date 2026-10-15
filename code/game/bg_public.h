@@ -174,6 +174,11 @@ typedef enum {
 #define CS_GENERIC_COUNT_BLUE 699
 #define CS_AD_SCORES 700
 #define CS_ROUND_WINNER 701
+// [QL] Domination publishes the control points each team holds on the same two
+// indices (DOM_CheckPlayers). Nothing in either module uses the AD/round-winner
+// meanings, so the numbers do not collide in practice.
+#define CS_DOM_OWNED_RED 700
+#define CS_DOM_OWNED_BLUE 701
 // [QL] g_customSettings publishes to CS 704 (binary G_UpdateCvars sets 0x2c0; wolfcam's
 // CS91_CUSTOM_SETTINGS = 704). The old 702 was wrong, nothing read it. End-map vote data
 // sits at 705/706: BeginIntermission fills 0x2c1 with the map options and 0x2c2 with the
@@ -390,6 +395,27 @@ typedef enum {
 #define EF_PLAYER_EVENT 0x00000010
 #define EF_BOUNCE 0x00000010          // for missiles
 #define EF_BOUNCE_HALF 0x00000020     // for missiles
+/*
+[QL] Spawn protection, and it shares a bit on purpose.
+
+entityState_t.eFlags is sent as 19 bits and EF_AWARD_DENIED is bit 18, so there
+is no free flag left; entityState_t.powerups is 16 bits and all 16 PW_ slots are
+defined; generic1 is 8 bits and carries harvester cubes plus a damage tier. There
+was nowhere to put this without widening the protocol, and protocol 91 is shared
+with stock Quake Live clients.
+
+So it reuses EF_BOUNCE_HALF, which is missile-only - the same context-dependent
+reuse the engine already does with 0x10 (EF_PLAYER_EVENT for players,
+EF_BOUNCE for missiles). A stock client reads this bit inside missile handling,
+which a player entity never reaches; the worst it can do there is nothing.
+
+The cost of the sharing is that our own cgame has to be as careful as a stock one
+is by accident: anything reading this bit must first know it is looking at a
+player. CG_AddRefEntityWithPowerups is the one place that does not get that for
+free, because CG_Missile calls it too - it tests eType == ET_PLAYER for exactly
+this reason, and a grenade renders as a ghost if that test is ever dropped.
+*/
+#define EF_SPAWNPROTECT 0x00000020    // players only - see above
 #define EF_AWARD_GAUNTLET 0x00000040  // draw a gauntlet sprite
 #define EF_NODRAW 0x00000080          // may have an event, but no model (unspawned items)
 #define EF_FIRING 0x00000100          // for lightning gun

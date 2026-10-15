@@ -83,6 +83,29 @@ int CA_GetRoundState(void) {
 //   RS_WARMUP(0), RS_COUNTDOWN(1), RS_PLAYING(3), RS_ROUND_OVER(4), RS_EXIT(5)
 //   State 2 is unused and causes an error.
 // ============================================================================
+/*
+============================================================================
+CA_InitRoundState
+
+[QL] Start the Clan Arena round machine, as Freeze_InitRoundState does for
+Freeze Tag.
+
+Nothing did. G_InitGame's round switch had cases for RR and FT only, so a CA
+level kept its zero-initialised roundState: RS_WARMUP with no pending timer.
+Every CA_RoundStateTransition call is reachable only once the machine is
+already turning, and CA_Think returns unless the state is RS_PLAYING, so it
+never turned. Seen on screen in the visual pass: blue eliminated, no round
+over, no point, the round clock running on. Nobody froze for the countdown
+either, and because CA's exit rules belong to the round logic, a CA match
+could not end.
+============================================================================
+*/
+void CA_InitRoundState(void) {
+    level.roundState.tNext = 0;
+    level.roundState.eCurrent = (level.warmupTime == 0) ? RS_COUNTDOWN : RS_WARMUP;
+    CA_RoundStateTransition();
+}
+
 void CA_RoundStateTransition(void) {
     int i;
     int winTeam = 0;
@@ -118,6 +141,10 @@ void CA_RoundStateTransition(void) {
             level.roundState.tNext = 0;
             level.roundState.eCurrent = RS_PLAYING;
             CA_RoundStateTransition();
+            /* [QL] the playing branch has published its own status; the
+               countdown status below would overwrite it (a "countdown"
+               showing while the round is live) */
+            return;
         } else {
             level.roundState.tNext = level.time + g_roundWarmupDelay.integer;
             level.roundState.eNext = RS_PLAYING;
@@ -142,7 +169,10 @@ void CA_RoundStateTransition(void) {
                 cl->round_damage = 0;
                 cl->expandedStats.killStreak = 0;
                 if (g_spawnArmor.integer != 0) {
-                    cl->ps.powerups[PW_QUAD] =
+                    /* [QL] the spawn-protection timer lives in powerups[0]
+                       (PW_NONE), as FT and AD have it and g_combat.c reads it;
+                       PW_QUAD here handed out quad damage instead */
+                    cl->ps.powerups[PW_NONE] =
                         (level.time / 1000) * 1000 + g_spawnArmor.integer;
                 }
             }
@@ -517,8 +547,14 @@ void CA_Think(void) {
 
     Team_LivingTeamCounts(&redAlive, &blueAlive);
 
-    // Check if round is over (one team eliminated)
-    if (redAlive == 0 || blueAlive == 0) {
+    /* Check if round is over: one team eliminated, or [QL] E224 roundtimelimit
+       run out. RS_ROUND_OVER already decides a both-alive round by living count
+       then health (g_roundDrawLivingCount / g_roundDrawHealthCount) - a branch
+       only a timeout can reach - but nothing here ever timed out, so a CA round
+       that nobody finished ran forever. RR, FT and AD all apply the limit. */
+    if (redAlive == 0 || blueAlive == 0 ||
+        (roundtimelimit.integer != 0 &&
+         level.time - level.roundState.startTime >= roundtimelimit.integer * 1000)) {
         level.roundState.eCurrent = RS_ROUND_OVER;
         CA_RoundStateTransition();
         return;
@@ -589,7 +625,7 @@ void ClanArenaStatisticsMessage(gentity_t *ent) {
             Com_sprintf(entry, sizeof(entry), " %i %i",
                         weapAcc, cl->expandedStats.numWeaponKills[w]);
             j = strlen(entry);
-            if (stringlength + j >= (int)sizeof(string))
+            if (G_ScoreboardTruncated(stringlength + j, i))
                 break;
             strcpy(string + stringlength, entry);
             stringlength += j;
@@ -603,13 +639,18 @@ void ClanArenaStatisticsMessage(gentity_t *ent) {
 // ============================================================================
 void ClanArenaScoreboardMessage(gentity_t *ent) {
     char entry[1024];
-    char string[1024];
+    char string[MAX_STRING_CHARS];
     int stringlength;
+    int chunkStart, numInChunk;
+    qboolean firstChunk;
     int i, j;
     gclient_t *cl;
 
     string[0] = 0;
     stringlength = 0;
+    chunkStart = 0;
+    numInChunk = 0;
+    firstChunk = qtrue;
 
     for (i = 0; i < level.numConnectedClients; i++) {
         int ping, accuracy, perfect, bestWeapon, bestWeaponAccuracy;
@@ -656,14 +697,36 @@ void ClanArenaScoreboardMessage(gentity_t *ent) {
                     cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
                     perfect, alive);
         j = strlen(entry);
-        if (stringlength + j >= (int)sizeof(string))
-            break;
+
+        // [QL] see the comment in g_gametype_ffa.c: flush a chunk rather than
+        // stop at the first message.
+        if (stringlength + j >= MAX_SCOREBOARD_PAYLOAD && numInChunk > 0) {
+            if (firstChunk) {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_ca %i %i %i%s", numInChunk,
+                                          level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+                firstChunk = qfalse;
+            } else {
+                trap_SendServerCommand(ent - g_entities,
+                                       va("scores_ca2 %i %i%s", chunkStart, numInChunk, string));
+            }
+            chunkStart = i;
+            numInChunk = 0;
+            stringlength = 0;
+            string[0] = '\0';
+        }
+
         strcpy(string + stringlength, entry);
         stringlength += j;
+        numInChunk++;
     }
 
-    trap_SendServerCommand(ent - g_entities,
-        va("scores_ca %i %i %i%s", i,
-           level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE],
-           string));
+    if (firstChunk) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_ca %i %i %i%s", numInChunk,
+                                  level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string));
+    } else if (numInChunk > 0) {
+        trap_SendServerCommand(ent - g_entities,
+                               va("scores_ca2 %i %i%s", chunkStart, numInChunk, string));
+    }
 }

@@ -1,0 +1,440 @@
+#version 460
+/*
+[QL] E154: screen-space ambient occlusion - GENERATED from rtao.tmpl by the
+script in the E154 commit, and kept in step with it by hand since: everything
+but the occlusion test is rtao.tmpl's (depth reconstruction, the neighbour
+normal, the weapon band, the hemisphere, the output), so the two AO modes
+agree on what a surface is and differ only in how they ask whether something
+is in the way.
+
+The ray query below is replaced by the classic screen-space question: project
+the sample point back into the frame, read the depth buffer there, and call it
+occluded if the surface the frame actually drew at that pixel is nearer the
+eye than the sample point - and within the radius of this pixel's surface, so
+a wall far behind a thin pole does not occlude the floor under it. It can only
+see what is on screen, and it fires no rays, so it runs on any GPU that can
+sample depth: SPIR-V 1.0, no ray query, no acceleration structure. The
+descriptor set is depth alone.
+*/
+
+/*
+[QL] R13 step 3: ray-traced ambient occlusion.
+
+A fullscreen pass over the depth buffer. For each pixel it reconstructs the
+world position and a normal, fires a handful of short rays into the hemisphere,
+and returns the fraction that hit nothing.
+
+It writes that to a single-channel offscreen target rather than into the scene,
+because four rays per pixel is far too noisy to look at directly. rtao_blur.tmpl
+denoises it and does the multiply against the lit image on its second pass. The
+values here are therefore raw per-pixel estimates, and are meant to be.
+
+The lighting stays baked. This does not compute light - it computes how much of
+the sky-and-bounce ambient a corner is shut off from, which is the part
+lightmaps at Quake 3's resolution get worst. That is the whole hybrid from R10:
+ray trace the term the bake cannot express, keep everything else.
+
+Two things about this shader are chosen and not accidents:
+
+  No G-buffer. This is a forward renderer with no normal buffer, and adding one
+  would mean a second attachment on the main pass and a matching change to every
+  geometry pipeline in the renderer. The normal is reconstructed from depth
+  instead - not with dFdx/dFdy, which is exact on a flat surface and wrong on
+  every silhouette, but from the better of two neighbours on each axis. See the
+  block where it is built.
+
+  Cosine-weighted directions, not uniform. Ambient occlusion is a cosine-
+  weighted integral over the hemisphere; sampling uniformly and multiplying by
+  cos(theta) spends most of the rays near the horizon where the weight is
+  smallest. Cosine sampling puts them where the answer is.
+
+USE_MSAA builds the variant that reads a multisampled depth attachment. With
+r_ext_multisample on, vk.depth_image has samples > 1 and an ordinary sampler2D
+cannot read it at all - so this is two shaders rather than one, chosen by the
+sample count at pipeline creation.
+
+Sample 0 rather than an average of all of them. AO is a low-frequency term that
+gets denoised afterwards, the sample positions within a pixel differ by less
+than the trace radius by orders of magnitude, and resolving N depths per pixel
+to feed a 4-ray occlusion estimate is precision nobody can see paid for N times.
+
+The target is single-sample even when the scene is multisampled. AO is computed
+once per pixel and applied to every sample of it at composite time, which is
+what anti-aliasing an already-smooth term is worth.
+*/
+
+#ifdef USE_MSAA
+layout(set = 0, binding = 0) uniform sampler2DMS depthMap;
+#else
+layout(set = 0, binding = 0) uniform sampler2D depthMap;
+#endif
+
+/*
+[QL] This frame's dynamic lights.
+
+Ambient occlusion estimates how much *ambient* light reaches a point. Where a
+rocket, a plasma bolt or a powerup is doing the lighting, the ambient term is a
+small part of what is there and its contact shadow should stop being drawn -
+left in, it reads as dirt on a lit surface rather than as shading.
+
+lights[i].xyz is the world origin and .w is 1/(radius*radius), which is the same
+falloff term light_frag.tmpl uses. Same number, same shape, so the region the
+occlusion fades in is exactly the region the light lit, with nothing to tune to
+make the two agree.
+
+lightParams.x is how many are filled, .y is r_rtaoLights.
+*/
+#define RT_MAX_AO_LIGHTS 32
+
+/* E154: no light list - the fade-inside-dynamic-lights step below compiles
+   to nothing with a zero count */
+vec4 lights[RT_MAX_AO_LIGHTS];
+const vec4 lightParams = vec4(0.0);
+
+layout(location = 0) in vec2 frag_tex_coord;
+layout(location = 0) out vec4 out_color;
+
+layout(push_constant) uniform Push {
+	mat4 invViewProj;   // clip -> world
+	vec4 eye;           // xyz = view origin
+	vec4 params;        // x = radius, y = intensity, z = frame index, w = bias
+	/*
+	Which depth values mean "not a surface to shade", supplied rather than
+	assumed because both depend on engine build options this shader cannot see.
+
+	  x  the value the depth buffer is cleared to - nothing was drawn there
+	  y  where the weapon's compressed depth range begins
+	  z  +1 when near is 1.0 and far is 0.0 (USE_REVERSED_DEPTH), -1 otherwise
+	  w  nonzero to take the normal from dFdx/dFdy instead of from neighbouring
+	     depth taps - r_rtaoNormals, so the two can be compared in a frame
+
+	Getting x backwards is not a subtle error: it traces the sky, from a
+	position reconstructed at the far plane, and skips the near plane instead.
+	*/
+	vec4 depthInfo;
+	/* [QL] E150: x = r_rtaoResolution's scale - full-resolution pixels per
+	   traced texel, 1 or 2. At 2 this pass draws a half-size viewport and
+	   reads depth at the full-resolution pixel it stands for. */
+	vec4 res;
+} pc;
+
+layout(constant_id = 0) const int sampleCount = 4;
+
+/*
+Hash-based per-pixel rotation. A fixed sample set produces banding you can read
+the pattern of; rotating it per pixel turns that into noise, which the spatial
+denoise then removes. Including the frame index means successive frames use
+different sets, so anything accumulating over time converges instead of
+repeating.
+*/
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+/*
+[QL] World position for an arbitrary pixel, from its depth.
+
+Needed because the normal below is built from neighbouring pixels rather than
+from the hardware derivative of this one, so it has to reconstruct positions
+the derivative would have given it for free.
+*/
+/*
+textureSize takes a mip level for sampler2D and none at all for sampler2DMS -
+a multisampled image has no mip chain to index - so the two spellings differ
+even though the answer does not.
+*/
+ivec2 depthSize() {
+#ifdef USE_MSAA
+	return textureSize(depthMap);
+#else
+	return textureSize(depthMap, 0);
+#endif
+}
+
+/*
+One body for both variants: texelFetch's third argument is a sample index for
+sampler2DMS and a mip level for sampler2D, and 0 is what this wants either way.
+*/
+/*
+[QL] Is this depth the view weapon rather than the world?
+
+The view model is drawn through a squashed viewport depth range so it cannot
+poke through a wall. depthInfo.y is the band edge and depthInfo.z the sign that
+makes one test serve both depth conventions.
+*/
+bool inWeaponBand(float d) {
+	return pc.depthInfo.z * (d - pc.depthInfo.y) >= 0.0;
+}
+
+/*
+[QL] Undo that squash.
+
+The viewport maps normalized depth linearly onto [minDepth, maxDepth], so it
+inverts exactly - there is no approximation here and no second matrix. The band
+runs between depthInfo.y and the value the near plane stores, and the near value
+falls out of the cleared one: far is depthInfo.x and the two ends of a depth
+buffer are 0 and 1 either way round, so near is 1 - depthInfo.x. Which end is
+which in normalized depth then depends on the convention, hence the flip on the
+sign.
+
+The result goes through the same inverse view-projection as everything else,
+because the weapon is drawn with the scene's projection matrix and only its
+viewport differs. That is the whole reason this is three lines rather than a
+second pass: the information was never lost, only remapped.
+*/
+float unsquashWeaponDepth(float d) {
+	float nearEdge = 1.0 - pc.depthInfo.x;
+	float t = (d - pc.depthInfo.y) / (nearEdge - pc.depthInfo.y);
+	return (pc.depthInfo.z > 0.0) ? t : (1.0 - t);
+}
+
+vec3 worldAt(ivec2 p, vec2 invSize) {
+	float d = texelFetch(depthMap, p, 0).r;
+	if (inWeaponBand(d)) {
+		d = unsquashWeaponDepth(d);
+	}
+	vec2 uv = (vec2(p) + 0.5) * invSize;
+	vec4 clip = vec4(uv * 2.0 - 1.0, d, 1.0);
+	vec4 w = pc.invViewProj * clip;
+	return w.xyz / w.w;
+}
+
+void main() {
+	/*
+	[QL] One pixel index, one depth fetch, one convention - and this is a fix,
+	not a tidy-up.
+
+	The multisampled variant read depth with texelFetch at gl_FragCoord while
+	the world position below was reconstructed from frag_tex_coord. Those are
+	not the same point. frag_tex_coord is the pixel centre; sample 0 of a
+	multisampled pixel sits at a sub-pixel offset from it. So P was built from a
+	centre coordinate paired with an off-centre depth, and on a surface seen at
+	a glancing angle - a floor, most of a Quake map by area - half a pixel of
+	screen offset is a long way in depth. P landed off the surface, and when it
+	landed above it the rays started in free space and missed geometry they
+	should have hit. Less occlusion, everywhere, only with multisampling on.
+
+	That is why the world term looked weaker: not a build, a configuration.
+	r_fbo and r_ext_multisample are archived, so it followed the config across
+	every build that was tried, including the old ones.
+
+	Everything now goes through the same integer pixel index and the same
+	texelFetch, which for the single-sample variant is what it was already
+	doing - texture() with a nearest sampler on a fullscreen pass returns that
+	same texel.
+	*/
+	ivec2 size = depthSize();
+	int traceScale = max(int(pc.res.x + 0.5), 1);
+	ivec2 pix = clamp(ivec2(gl_FragCoord.xy) * traceScale, ivec2(0), size - ivec2(1));
+	vec2 invSize = 1.0 / vec2(size);
+
+	float depth = texelFetch(depthMap, pix, 0).r;
+
+	/*
+	Nothing was drawn here - sky, or outside the world. Returning unoccluded is
+	not only the cheap answer but the correct one: a ray fired from the far
+	plane starts outside the world and hits the first thing behind the camera.
+
+	Written against pc.depthInfo rather than a literal because this renderer
+	uses reversed depth, where the cleared value is 0.0 and the near plane is
+	1.0 - the opposite of the obvious test.
+	*/
+	if (pc.depthInfo.z * (depth - pc.depthInfo.x) <= 0.0) {
+		out_color = vec4(1.0);
+		return;
+	}
+
+	/*
+	[QL] The view weapon is shaded with everything else now.
+
+	It used to return unoccluded here, on the grounds that a squashed depth
+	range does not describe where the gun is - true, and the reason the first
+	attempt at this produced a patch of noise over the gun that looked like
+	memory corruption. But the squash is a linear viewport mapping, so it
+	inverts exactly; worldAt undoes it and hands back the position the gun is
+	really at. See unsquashWeaponDepth.
+
+	What that buys is the gun darkening against the world - pushed into a
+	corner, under a low ceiling, up against a wall. What it does not buy is the
+	gun shadowing itself, because the view model is deliberately not in the
+	acceleration structure: a box around the camera occludes everything from
+	inside and blacks out the screen. So this is contact shading, not a
+	self-shadowing gun, and the two should not be confused when judging it.
+
+	r_rtaoWeapon 0 puts the early-out back.
+	*/
+	if ((pc.depthInfo.w == 2.0 || pc.depthInfo.w == 3.0) && inWeaponBand(depth)) {
+		out_color = vec4(1.0);
+		return;
+	}
+
+	// clip -> world, on the same grid the neighbours below use
+	vec3 P = worldAt(pix, invSize);
+
+	/*
+	[QL] The normal, from the best pair of neighbours rather than from dFdx/dFdy.
+
+	The derivative version is exact on a flat surface and wrong on every
+	silhouette, because a 2x2 quad that straddles a depth discontinuity spans
+	two surfaces and the cross product of that is a normal belonging to neither.
+	On a Quake map the silhouettes are exactly the edges AO is supposed to
+	darken, so the error lands where the term is most visible: rays fired into
+	the geometry they were meant to graze, and a dark fringe tracing every
+	object against what is behind it.
+
+	So this takes four taps - left, right, up, down - and for each axis keeps
+	the side whose depth agrees better with the centre. Along an edge that is
+	the side still on this surface; in the interior both agree and the result is
+	the same as the derivative. Four extra depth fetches, no attachment, no
+	change to any other pipeline.
+
+	The remaining case is a one-pixel sliver with a discontinuity on both sides,
+	where there is no good neighbour to be had. That reads as a wrong normal on
+	a single pixel, which the denoise then averages away - the failure the
+	derivative version had was a wrong normal along every edge in the frame,
+	which it could not.
+	*/
+	ivec2 lo = ivec2(0);
+	ivec2 hi = size - ivec2(1);
+
+	vec3 Pl = worldAt(clamp(pix + ivec2(-1, 0), lo, hi), invSize);
+	vec3 Pr = worldAt(clamp(pix + ivec2( 1, 0), lo, hi), invSize);
+	vec3 Pd = worldAt(clamp(pix + ivec2( 0,-1), lo, hi), invSize);
+	vec3 Pu = worldAt(clamp(pix + ivec2( 0, 1), lo, hi), invSize);
+
+	// keep the closer neighbour on each axis; the far one is across an edge
+	vec3 dx = (abs(dot(Pr - P, Pr - P)) < abs(dot(P - Pl, P - Pl))) ? (Pr - P) : (P - Pl);
+	vec3 dy = (abs(dot(Pu - P, Pu - P)) < abs(dot(P - Pd, P - Pd))) ? (Pu - P) : (P - Pd);
+
+	vec3 N = cross(dx, dy);
+
+	/*
+	[QL] ...or the derivative normal, when r_rtaoNormals says so.
+
+	The neighbour version above replaced cross(dFdx(P), dFdy(P)) and the world
+	term got lighter at the same radius and strength, with the trace maths
+	otherwise unchanged - so the normal is the only thing it can be, and the
+	way to find out which is right is to be able to switch between them in a
+	frame rather than in a build.
+
+	Both are computed and one is selected, rather than branching around the
+	derivatives. dFdx and dFdy are undefined in divergent control flow; the
+	branch here is on a push constant and so is uniform across the quad, but
+	computing both costs two subtractions and removes the question.
+	*/
+	vec3 Nd = cross(dFdx(P), dFdy(P));
+	// bit 0 of the flag word; bit 1 is the weapon toggle handled above
+	if (pc.depthInfo.w == 1.0 || pc.depthInfo.w == 3.0) {
+		N = Nd;
+	}
+
+	float nlen = length(N);
+	if (nlen < 1e-8) {
+		// degenerate - every tap landed on the same point. Nothing sensible to
+		// trace a hemisphere around, so leave the pixel unoccluded.
+		out_color = vec4(1.0);
+		return;
+	}
+	N /= nlen;
+
+	vec3 V = normalize(pc.eye.xyz - P);
+	if (dot(N, V) < 0.0) {
+		N = -N;
+	}
+
+	// orthonormal basis around N
+	vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 T = normalize(cross(up, N));
+	vec3 B = cross(N, T);
+
+	float radius = pc.params.x;
+	float bias = pc.params.w;
+	float rot = hash12(gl_FragCoord.xy + pc.params.z) * 6.2831853;
+
+	float occluded = 0.0;
+	mat4 viewProj = inverse(pc.invViewProj);   // E154: world -> clip, to project sample points
+
+	for (int i = 0; i < sampleCount; i++) {
+		/*
+		Cosine-weighted hemisphere direction. r = sqrt(u) and z = sqrt(1-u) is
+		the concentric-disc mapping: the disc radius grows as sqrt so equal-area
+		annuli get equal sample counts, and lifting it onto the hemisphere gives
+		the cosine distribution for free, with no rejection loop.
+		*/
+		float u = (float(i) + 0.5) / float(sampleCount);
+		float r = sqrt(u);
+		float phi = rot + float(i) * 2.39996323;   // golden angle, so the few
+		                                           // samples we have spread out
+		vec3 dir = normalize(T * (r * cos(phi)) + B * (r * sin(phi)) + N * sqrt(1.0 - u));
+
+		/*
+		E154: a point inside the hemisphere rather than a ray through it,
+		spread evenly out to the radius. (A squared spread, bunching them
+		near the surface, left most samples inside the same-surface
+		tolerance below and the result far weaker than the ray-traced AO.)
+		*/
+		float reach = mix(0.15, 1.0, (float(i) + 0.5) / float(sampleCount));
+		vec3 S = P + N * bias + dir * (radius * reach);
+
+		vec4 sc = viewProj * vec4(S, 1.0);
+		if (sc.w <= 0.0) {
+			continue;               // behind the eye
+		}
+		vec2 suv = (sc.xy / sc.w) * 0.5 + 0.5;
+		if (any(lessThan(suv, vec2(0.0))) || any(greaterThan(suv, vec2(1.0)))) {
+			continue;               // off screen - nothing to ask
+		}
+		ivec2 sp = clamp(ivec2(suv * vec2(size)), ivec2(0), size - ivec2(1));
+
+		/* the surface the frame drew there, back in world space */
+		vec3 Q = worldAt(sp, invSize);
+
+		/* in front of the sample point, as the eye sees it, by more than the
+		   depth buffer can resolve at that distance - less than that is the
+		   same surface. Proportional, because depth precision falls off with
+		   distance: a fixed allowance is too loose up close and too tight far
+		   away. */
+		float dS = distance(pc.eye.xyz, S);
+		float dQ = distance(pc.eye.xyz, Q);
+		if (dQ < dS - max(0.5, dS * 0.002)) {
+			/* and near this pixel's surface, along the view - the usual SSAO
+			   range check: full weight while the occluder's depth is within
+			   the radius of this pixel's, smoothly less beyond, so a wall far
+			   behind a thin pole does not darken the floor under it. (A 3D
+			   distance weight, tried first, left a corner seen at an angle
+			   with most of the radius between its two faces and a fraction of
+			   the ray-traced term.) */
+			float dP = distance(pc.eye.xyz, P);
+			occluded += smoothstep(0.0, 1.0, radius / max(abs(dP - dQ), 1e-3));
+		}
+	}
+
+	float ao = 1.0 - (occluded / float(sampleCount)) * pc.params.y;
+
+	/*
+	[QL] Fade the occlusion out inside whatever is lighting this point.
+
+	Accumulated across the lights rather than taken as a maximum, so two bolts
+	overlapping clear more than either alone - which is what the light they add
+	does. Clamped once at the end, so the sum cannot invert the term.
+
+	Uses the light's own falloff, so the shape of the fade is the shape of the
+	light and a small tight bolt clears a small tight area.
+	*/
+	if ( lightParams.y > 0.0 && lightParams.x > 0.0 ) {
+		int lightCount = int(lightParams.x);
+		float lit = 0.0;
+		int li;
+
+		for ( li = 0; li < lightCount; li++ ) {
+			vec3 d = lights[li].xyz - P;
+			lit += max( 0.0, 1.0 - dot(d, d) * lights[li].w );
+		}
+
+		ao = mix( ao, 1.0, clamp( lit * lightParams.y, 0.0, 1.0 ) );
+	}
+
+	out_color = vec4(clamp(ao, 0.0, 1.0));
+}

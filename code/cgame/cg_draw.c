@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "cg_local.h"
 
 #include "../ui/ui_shared.h"
+#include "cg_crosshaircolors.h"
 
 // used for scoreboard
 extern displayContextDef_t cgDC;
@@ -82,6 +83,35 @@ static int CG_IndexForFontPtr(const fontInfo_t* font) {
 	return 0;
 }
 
+
+/*
+[QL] Does a cgame-owned *full screen* UI have the input?
+
+The widescreen-bias tests below need to know that, and they were asking
+trap_Key_GetCatcher() & KEYCATCH_CGAME, which is not the same question. Until
+now the only thing that ever set KEYCATCH_CGAME was the intermission match
+summary - a full-screen menu - so the two coincided and the shortcut held.
+
+Holding +scores for the mouse (cg_scoreboardMouse) breaks that. The in-game
+scoreboard is drawn in the same 640x480 space as the rest of the HUD, so
+applying the menu bias to it shifted it sideways by cgs.widescreenBias and put
+it off the edge of a widescreen display - which reads as the scoreboard having
+stopped opening altogether.
+
+So the held case is excluded explicitly, by a flag set where the hold is taken
+rather than by inferring it, and everything else that takes KEYCATCH_CGAME keeps
+the old behaviour.
+*/
+qboolean CG_CgameUIOwnsScreen(void) {
+	if (!(trap_Key_GetCatcher() & KEYCATCH_CGAME)) {
+		return qfalse;
+	}
+	if (cgs.scoreboardHoldingMouse) {
+		return qfalse;
+	}
+	return qtrue;
+}
+
 // Pixel font size for a text scale (QL: screenFontScale = (vidHeight/768)*96).
 static float CG_FontPixelSize(float scale) {
 	return (((float)cgs.glconfig.vidHeight / 768.0f) * 96.0f) * scale;
@@ -90,7 +120,7 @@ static float CG_FontPixelSize(float scale) {
 // Horizontal scale mapping 640-space x to screen pixels, honouring widescreen.
 static float CG_TextXScale(void) {
 	int ws = cg_currentWidescreen;
-	if (cgs.widescreenBias > 0.0f && (ws != 0 || (trap_Key_GetCatcher() & KEYCATCH_CGAME)))
+	if (cgs.widescreenBias > 0.0f && (ws != 0 || CG_CgameUIOwnsScreen()))
 		return (cgs.glconfig.vidHeight * 4.0f / 3.0f) / 640.0f;
 	return cgs.screenXScale;
 }
@@ -101,8 +131,8 @@ static void CG_TextToScreen(float* x, float* y) {
 	float xscale = CG_TextXScale();
 	float xbias = 0.0f;
 	int ws = cg_currentWidescreen;
-	if (cgs.widescreenBias > 0.0f && (ws != 0 || (trap_Key_GetCatcher() & KEYCATCH_CGAME))) {
-		if (ws == 2 || (trap_Key_GetCatcher() & KEYCATCH_CGAME))
+	if (cgs.widescreenBias > 0.0f && (ws != 0 || CG_CgameUIOwnsScreen())) {
+		if (ws == 2 || CG_CgameUIOwnsScreen())
 			xbias = cgs.widescreenBias;
 		else if (ws == 3)
 			xbias = cgs.widescreenBias * 2.0f;
@@ -202,9 +232,31 @@ float CG_TextHeight_DC(const char* text, float scale, int limit, int fontIndex) 
 
 void CG_DrawTextWithCursor_DC(float x, float y, float scale, vec4_t color, const char* text,
 							  int cursorPos, char cursor, int limit, int style, int fontIndex) {
-	(void)cursorPos;
-	(void)cursor;
+	// this used to drop cursorPos and cursor, so a text field being edited drew no
+	// caret (same fix as UI_DrawTextWithCursor_DC)
+	if (!text) {
+		return;
+	}
 	CG_PaintText(x, y, fontIndex, scale, color, text, limit, style);
+
+	if (!((trap_Milliseconds() / BLINK_DIVISOR) & 1)) {
+		int w640 = 0;
+		int cp = cursorPos;
+		int tl = (int)strlen(text);
+		char cbuf[2];
+
+		if (cp < 0) {
+			cp = 0;
+		} else if (cp > tl) {
+			cp = tl;
+		}
+		if (cp > 0) {
+			CG_MeasureText(text, scale, fontIndex, cp, &w640, NULL);
+		}
+		cbuf[0] = cursor;
+		cbuf[1] = '\0';
+		CG_PaintText(x + (float)w640, y, fontIndex, scale, color, cbuf, 1, style);
+	}
 }
 
 // [QL] CG_DrawText - matching binary's 0x10008440 in cgamex86.dll. Renders text
@@ -588,6 +640,21 @@ CG_DrawTeamOverlay
 =================
 */
 
+/*
+[QL] Vertical space the overlay is allowed, in 480-space, and the smallest
+character cell it will shrink to in order to stay inside it.
+
+A row is TINYCHAR_HEIGHT tall, so the stock overlay's eight rows cost 64 units.
+Thirty-two rows at that size is 256 - over half the screen height, down the side
+of the view, which is what raising cg_teamOverlayMaxPlayers bought. Sizing the
+cell from the row count keeps a big team inside a third of the screen and
+narrows the panel by the same ratio, since every column is measured in
+characters. The floor is where it stops being readable rather than where it
+stops fitting.
+*/
+#define TEAM_OVERLAY_MAXHEIGHT 160
+#define TEAM_OVERLAY_MINCHAR   5
+
 static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 	int x, w, h, xx;
 	int i, j, len;
@@ -599,6 +666,7 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 	clientInfo_t* ci;
 	gitem_t* item;
 	int ret_y, count;
+	int cw, ch;
 
 	if (!cg_drawTeamOverlay.integer) {
 		return y;
@@ -612,7 +680,23 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 
 	// max player name width
 	pwidth = 0;
-	count = (numSortedTeamPlayers > 8) ? 8 : numSortedTeamPlayers;
+	/*
+	[QL] How many team-mates the overlay lists.
+
+	Hardcoded to 8, including yourself, which is a full team in most gametypes
+	and half of one on a large CTF server - and the rows are simply dropped, so
+	the people missing from it are missing silently. cg_teamOverlayMaxPlayers
+	is the number of rows, clamped to something the screen can hold.
+	*/
+	count = cg_teamOverlayMaxPlayers.integer;
+	if (count < 1) {
+		count = 1;
+	} else if (count > MAX_CLIENTS) {
+		count = MAX_CLIENTS;
+	}
+	if (count > numSortedTeamPlayers) {
+		count = numSortedTeamPlayers;
+	}
 	for (i = 0; i < count; i++) {
 		ci = cgs.clientinfo + sortedTeamPlayers[i];
 		if (ci->infoValid && ci->team == cg.snap->ps.persistant[PERS_TEAM]) {
@@ -643,14 +727,24 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 	if (lwidth > TEAM_OVERLAY_MAXLOCATION_WIDTH)
 		lwidth = TEAM_OVERLAY_MAXLOCATION_WIDTH;
 
-	w = (pwidth + lwidth + 4 + 7) * TINYCHAR_WIDTH;
+	// size the character cell to the number of rows actually being drawn
+	ch = TINYCHAR_HEIGHT;
+	if (plyrs * ch > TEAM_OVERLAY_MAXHEIGHT) {
+		ch = TEAM_OVERLAY_MAXHEIGHT / plyrs;
+		if (ch < TEAM_OVERLAY_MINCHAR) {
+			ch = TEAM_OVERLAY_MINCHAR;
+		}
+	}
+	cw = TINYCHAR_WIDTH * ch / TINYCHAR_HEIGHT;
+
+	w = (pwidth + lwidth + 4 + 7) * cw;
 
 	if (right)
 		x = 640 - w;
 	else
 		x = 0;
 
-	h = plyrs * TINYCHAR_HEIGHT;
+	h = plyrs * ch;
 
 	if (upper) {
 		ret_y = y + h;
@@ -677,75 +771,147 @@ static float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper) {
 	for (i = 0; i < count; i++) {
 		ci = cgs.clientinfo + sortedTeamPlayers[i];
 		if (ci->infoValid && ci->team == cg.snap->ps.persistant[PERS_TEAM]) {
-			hcolor[0] = hcolor[1] = hcolor[2] = hcolor[3] = 1.0;
+			/*
+			[QL] A frozen teammate is the one thing this overlay exists to tell
+			you in Freeze Tag - they are stood still somewhere waiting for
+			someone to walk over, and nothing else on screen says so. The whole
+			row goes ice blue so it reads at a glance without having to find the
+			name, and the health/armour pair below is replaced with FROZEN,
+			since a statue's numbers are 0/0 and mean nothing.
+			*/
+			if (ci->frozen) {
+				hcolor[0] = 0.55f;
+				hcolor[1] = 0.85f;
+				hcolor[2] = 1.0f;
+				hcolor[3] = 1.0f;
+			} else {
+				hcolor[0] = hcolor[1] = hcolor[2] = hcolor[3] = 1.0;
+			}
 
-			xx = x + TINYCHAR_WIDTH;
+			xx = x + cw;
 
 			CG_DrawStringExt(xx, y,
 							 ci->name, hcolor, qfalse, qfalse,
-							 TINYCHAR_WIDTH, TINYCHAR_HEIGHT, TEAM_OVERLAY_MAXNAME_WIDTH);
+							 cw, ch, TEAM_OVERLAY_MAXNAME_WIDTH);
 
 			if (lwidth) {
-				p = CG_ConfigString(CS_LOCATIONS + ci->location);
-				if (!p || !*p)
-					p = "unknown";
+				/*
+				[QL] A statue's location is FROZEN.
+
+				This column is the only text field on the row, so it is where a
+				word belongs - and where a frozen player is matters far less than
+				that they are frozen and need someone to come and get them.
+				"unknown" is what it read otherwise: most maps carry no
+				target_location entities, so ci->location is 0 and
+				CS_LOCATIONS + 0 is empty. Quake Live's own overlay shows
+				"unknown" on those maps too, so that fallback is not ours to
+				fix - it is just not worth a column here.
+
+				Health and armour keep their real numbers, which for a statue is
+				0 0, rather than being replaced by the word.
+				*/
+				if (ci->frozen) {
+					p = "FROZEN";
+				} else if (ci->location > 0) {
+					p = CG_ConfigString(CS_LOCATIONS + ci->location);
+				} else {
+					p = NULL;
+				}
+				if (!p || !*p) {
+					/*
+					[QL] "ALIVE", not "unknown".
+
+					Index 0 is the sentinel, not an empty string. G_LinkLocations
+					writes the literal "unknown" into CS_LOCATIONS + 0 and hands
+					that index to every player the map has no target_location for,
+					so testing the returned string for empty never fired - it came
+					back with six characters in it every time. The test that works
+					is on the index.
+
+					And the column is better spent: it answers a question with two
+					useful states in Freeze Tag - is that teammate a statue, or
+					still playing - where they are being the bonus. On a map that
+					does carry locations the real name still wins.
+					*/
+					p = "ALIVE";
+				}
 				//				len = CG_DrawStrlen(p);
 				//				if (len > lwidth)
 				//					len = lwidth;
 
-				//				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth +
-				//					((lwidth/2 - len/2) * TINYCHAR_WIDTH);
-				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth;
+				//				xx = x + cw * 2 + cw * pwidth +
+				//					((lwidth/2 - len/2) * cw);
+				xx = x + cw * 2 + cw * pwidth;
 				CG_DrawStringExt(xx, y,
-								 p, hcolor, qfalse, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
+								 p, hcolor, qfalse, qfalse, cw, ch,
 								 TEAM_OVERLAY_MAXLOCATION_WIDTH);
 			}
 
-			CG_GetColorForHealth(ci->health, ci->armor, hcolor);
-
+			// [QL] the ice colour stays on a frozen row: CG_GetColorForHealth
+			// would paint a statue critical-red off its zero health, and red is
+			// already what a dying teammate looks like
+			if (!ci->frozen) {
+				CG_GetColorForHealth(ci->health, ci->armor, hcolor);
+			}
 			Com_sprintf(st, sizeof(st), "%3i %3i", ci->health, ci->armor);
 
-			xx = x + TINYCHAR_WIDTH * 3 +
-				TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
+			xx = x + cw * 3 +
+				cw * pwidth + cw * lwidth;
 
 			CG_DrawStringExt(xx, y,
 							 st, hcolor, qfalse, qfalse,
-							 TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0);
+							 cw, ch, 0);
 
 			// draw weapon icon
-			xx += TINYCHAR_WIDTH * 3;
+			xx += cw * 3;
 
-			if (CG_WeaponInfo(ci->curWeapon)->weaponIcon) {
-				CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
-						   CG_WeaponInfo(ci->curWeapon)->weaponIcon);
-			} else {
-				CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
-						   cgs.media.deferShader);
+			/*
+			[QL] Not for a statue.
+
+			The icon sits three characters into a field sized for "%3i %3i",
+			which lands it in the gap between health and armour. FROZEN is six
+			characters with no gap, so the icon was drawn straight over the Z.
+
+			Skipping it is the right fix rather than moving the text, because
+			there is nothing to draw either way: PM_Weapon sets ps.weapon to
+			WP_NONE while health is <= 0, and a frozen player's health is 0, so
+			curWeapon is WP_NONE and the icon falls through to deferShader - the
+			red no-entry circle that was sitting on the word. What weapon a
+			statue is holding is not information anyone needs.
+			*/
+			if (!ci->frozen) {
+				if (CG_WeaponInfo(ci->curWeapon)->weaponIcon) {
+					CG_DrawPic(xx, y, cw, ch,
+							   CG_WeaponInfo(ci->curWeapon)->weaponIcon);
+				} else {
+					CG_DrawPic(xx, y, cw, ch,
+							   cgs.media.deferShader);
+				}
 			}
 
 			// Draw powerup icons
 			if (right) {
 				xx = x;
 			} else {
-				xx = x + w - TINYCHAR_WIDTH;
+				xx = x + w - cw;
 			}
 			for (j = 0; j <= PW_NUM_POWERUPS; j++) {
 				if (ci->powerups & (1 << j)) {
 					item = BG_FindItemForPowerup(j);
 
 					if (item) {
-						CG_DrawPic(xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
+						CG_DrawPic(xx, y, cw, ch,
 								   trap_R_RegisterShader(item->icon));
 						if (right) {
-							xx -= TINYCHAR_WIDTH;
+							xx -= cw;
 						} else {
-							xx += TINYCHAR_WIDTH;
+							xx += cw;
 						}
 					}
 				}
 			}
 
-			y += TINYCHAR_HEIGHT;
+			y += ch;
 		}
 	}
 
@@ -1300,6 +1466,13 @@ CROSSHAIR
 ================================================================================
 */
 
+// [QL] E132. Moves color toward to by k (0 = unchanged, 1 = to).
+static void CG_CrosshairBlend(vec4_t color, const vec3_t to, float k) {
+	color[0] += (to[0] - color[0]) * k;
+	color[1] += (to[1] - color[1]) * k;
+	color[2] += (to[2] - color[2]) * k;
+}
+
 /*
 =================
 CG_DrawCrosshair
@@ -1311,6 +1484,7 @@ static void CG_DrawCrosshair(void) {
 	float f;
 	float x, y;
 	int ca;
+	float hitScale = 1.0f;
 
 	if (!cg_drawCrosshair.integer) {
 		return;
@@ -1324,21 +1498,116 @@ static void CG_DrawCrosshair(void) {
 		return;
 	}
 
-	// set color based on health
-	if (cg_crosshairHealth.integer) {
-		vec4_t hcolor;
+	/* [QL] E102. cg_crosshairBrightness scales the crosshair's RGB.
 
-		CG_ColorForHealth(hcolor);
-		trap_R_SetColor(hcolor);
-	} else {
-		trap_R_SetColor(NULL);
+	   It is a multiply on the colour and NOT transparency, and the shader is
+	   what settles that rather than the name. gfx/2d/crosshair%i is
+	   "blendfunc blend" with "rgbGen exactVertex" and no alphaGen, so alphaGen
+	   stays AGEN_IDENTITY - the skip at tr_shader.c decide-which-agens only
+	   fires for CGEN_IDENTITY / CGEN_LIGHTING_DIFFUSE, and this is
+	   CGEN_EXACT_VERTEX. At draw time exactVertex copies the full RGBA across
+	   and the AGEN_IDENTITY branch then overwrites rgba[3] with 255. An alpha
+	   passed to trap_R_SetColor is thrown away; only RGB survives.
+
+	   The two are hard to tell apart in practice, which is why the question
+	   comes up: over a dark scene, scaling RGB down looks like fading out. They
+	   differ against a bright background, where 0 gives a BLACK crosshair and
+	   not an absent one - and Quake Live labels 0 "No", not "Invisible".
+
+	   Values from Quake Live's own menu: 0 "No", .3 "Low", .6 "Medium",
+	   1 "Bright" (docs/ql-cvar-semantics.txt). Default is 1.0, which is what
+	   trap_R_SetColor(NULL) already meant, so nothing changes until it is set.
+
+	   Applied to the health colour too: that is a colour, and dimming a colour
+	   is the same operation as dimming white. */
+	{
+		float bright = cg_crosshairBrightness.value;
+		vec4_t color;
+
+		if (bright < 0.0f) {
+			bright = 0.0f;
+		} else if (bright > 1.0f) {
+			bright = 1.0f;
+		}
+
+		if (cg_crosshairHealth.integer) {
+			CG_ColorForHealth(color);
+		} else {
+			/* [QL] E131. cg_crosshairColor, 1..26, the position of the thumb
+			   on Quake Live's colour bar (menu/art/fx_base). Was read by the
+			   menu's slider and nothing else, so every crosshair drew white. */
+			int c = cg_crosshairColor.integer;
+
+			if (c < 1 || c > CROSSHAIR_COLORS) {
+				c = CROSSHAIR_DEFAULT_COLOR;
+			}
+			VectorCopy(cg_crosshairColors[c - 1], color);
+			color[3] = 1.0f;
+		}
+		/* [QL] E132. cg_crosshairHitStyle: what the crosshair does when you
+		   land a hit, for cg_crosshairHitTime ms.
+
+		   Quake Live's menu lists 0 "No", 1 "Damage Color", 2 "Color Flash",
+		   6 "Pulse", 7 "Damage Pulse", 8 "Color Pulse", and enables the hit
+		   colour slider only for 2, 5 and 8 (docs/ql-cvar-semantics.txt, its
+		   disableCvar list). So the value is two fields, not a list:
+		     style % 3   0 no colour, 1 by damage, 2 cg_crosshairHitColor
+		     style / 3   2 = pulse; 1 (3..5) is never offered by QL's menu
+		                 and is drawn as colour only.
+		   The colour starts at full and blends back to the normal crosshair
+		   over the hit time; the pulse starts 1.5x and settles the same way.
+		   "By damage" uses the tier the server sends with each hit and the
+		   same four colours as the damage numbers (CG_DamagePlum style 2):
+		   blue under 25, yellow, orange, red from 75. */
+		{
+			int style = cg_crosshairHitStyle.integer;
+			int len = cg_crosshairHitTime.integer;
+			int t = cg.time - cg.crosshairHitTime;
+
+			if (style > 0 && cg.crosshairHitTime && len > 0 && t >= 0 && t < len) {
+				float k = 1.0f - (float)t / (float)len;
+				vec3_t hit;
+				int c;
+
+				switch (style % 3) {
+				case 1:
+					switch (cg.crosshairHitTier) {
+					case 3:  VectorSet(hit, 1.0f, 0.0f, 0.0f); break;
+					case 2:  VectorSet(hit, 1.0f, 0.5f, 0.0f); break;
+					case 1:  VectorSet(hit, 1.0f, 1.0f, 0.0f); break;
+					default: VectorSet(hit, 0.25f, 0.5f, 1.0f); break;
+					}
+					CG_CrosshairBlend(color, hit, k);
+					break;
+				case 2:
+					c = cg_crosshairHitColor.integer;
+					if (c < 1 || c > CROSSHAIR_COLORS) {
+						c = 1;
+					}
+					CG_CrosshairBlend(color, cg_crosshairColors[c - 1], k);
+					break;
+				}
+				if (style / 3 == 2) {
+					hitScale = 1.0f + 0.5f * k;
+				}
+			}
+		}
+
+		color[0] *= bright;
+		color[1] *= bright;
+		color[2] *= bright;
+
+		trap_R_SetColor(color);
 	}
 
-	w = h = cg_crosshairSize.value;
+	w = h = cg_crosshairSize.value * hitScale;
 
 	// pulse the size of the crosshair when picking up items
+	//
+	// [QL] E97. cg_crosshairPulse gates it; it was unconditional and the cvar
+	// was read by nothing. Defaults to 1, so nothing changes until it is set.
 	f = cg.time - cg.itemPickupBlendTime;
-	if (f > 0 && f < ITEM_BLOB_TIME) {
+	if (cg_crosshairPulse.integer && f > 0 && f < ITEM_BLOB_TIME) {
 		f /= ITEM_BLOB_TIME;
 		w *= (1 + f);
 		h *= (1 + f);
@@ -1392,9 +1661,10 @@ static void CG_DrawCrosshair3D(void) {
 
 	w = cg_crosshairSize.value;
 
-	// pulse the size of the crosshair when picking up items
+	// pulse the size of the crosshair when picking up items - [QL] E97, same
+	// gate as the other crosshair draw above; both sites or neither
 	f = cg.time - cg.itemPickupBlendTime;
-	if (f > 0 && f < ITEM_BLOB_TIME) {
+	if (cg_crosshairPulse.integer && f > 0 && f < ITEM_BLOB_TIME) {
 		f /= ITEM_BLOB_TIME;
 		w *= (1 + f);
 	}
@@ -1668,6 +1938,259 @@ static void CG_DrawTeamVote(void) {
 	CG_Text_Paint(4, 324, 0.22f, colorYellow, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED);
 }
 
+/*
+[QL] The non-team scoreboards' column headings.
+
+Quake Live heads the number columns of its FFA / duel / race / RR boards with a
+single text item:
+
+    text "SCORE     K/D         DMG        WEAP        TIME     PING"
+
+and space-pads it so the words land over the columns. Those runs of spaces were
+counted against Quake Live's own font. We draw through a different one, so every
+label picks up the error of the ones before it and the drift grows across the
+row - SCORE lands about right, PING ends up furthest out. The team boards are
+not affected because they give each heading its own itemDef with its own rect;
+nothing in our code was ever wrong here, the heading is simply data that assumes
+a font we do not have.
+
+So the padded item is hidden and the six words are drawn at the list's own
+column positions. Item_ListBox_Paint puts row text at contentX +
+columnInfo[c].pos, so a heading placed the same way is nailed to its column and
+cannot drift whatever the font does. The columns are the ones
+CG_FeederColumnsFfa fills: 7 score, 8 frags/deaths, 9 damage, 10 the weapon
+icon, 12 time, 13 ping. (Column 11, the best-weapon percentage, shares the WEAP
+heading with the icon, and 6 is unused.)
+*/
+typedef struct {
+	int column;
+	const char *label;
+} scoreboardHeading_t;
+
+static const scoreboardHeading_t cg_scoreboardHeadings[] = {
+	{ 7,  "SCORE" },
+	{ 8,  "K/D"   },
+	{ 9,  "DMG"   },
+	{ 10, "WEAP"  },
+	{ 12, "TIME"  },
+	{ 13, "PING"  },
+};
+
+/* Matched on its text rather than its name: every heading in these menus is
+   called "teamheadings", and the PLAYER one - which has its own rect and is
+   correct as it stands - would match a name test too. */
+static itemDef_t *CG_FindPaddedHeading(menuDef_t *menu) {
+	int i;
+
+	if (!menu) {
+		return NULL;
+	}
+	for (i = 0; i < menu->itemCount; i++) {
+		itemDef_t *item = menu->items[i];
+
+		if (item->type == ITEM_TYPE_LISTBOX || !item->text) {
+			continue;
+		}
+		if (strstr(item->text, "K/D") && strstr(item->text, "PING")) {
+			return item;
+		}
+	}
+	return NULL;
+}
+
+static void CG_HidePaddedHeading(menuDef_t *menu) {
+	itemDef_t *heading = CG_FindPaddedHeading(menu);
+
+	if (heading) {
+		heading->window.flags &= ~WINDOW_VISIBLE;
+	}
+}
+
+/* Runs after Menu_Paint, so the labels land over the finished board. */
+static void CG_DrawScoreboardHeadings(menuDef_t *menu) {
+	itemDef_t *heading, *list = NULL;
+	listBoxDef_t *listPtr;
+	float contentX;
+	int i;
+
+	heading = CG_FindPaddedHeading(menu);
+	if (!heading) {
+		return;     // a team board: its headings are positioned already
+	}
+
+	for (i = 0; i < menu->itemCount; i++) {
+		if (menu->items[i]->special == FEEDER_SCOREBOARD ||
+			menu->items[i]->special == FEEDER_ENDSCOREBOARD) {
+			list = menu->items[i];
+			break;
+		}
+	}
+	if (!list) {
+		return;
+	}
+	listPtr = (listBoxDef_t *)list->typeData;
+	if (!listPtr || listPtr->numColumns <= 13) {
+		return;     // not the layout these labels belong to
+	}
+
+	contentX = list->window.rect.x + 1.0f;
+
+	for (i = 0; i < (int)ARRAY_LEN(cg_scoreboardHeadings); i++) {
+		CG_Text_Paint(contentX + listPtr->columnInfo[cg_scoreboardHeadings[i].column].pos,
+					  heading->window.rect.y, heading->textscale,
+					  heading->window.foreColor, cg_scoreboardHeadings[i].label,
+					  0, 0, heading->textStyle);
+	}
+}
+
+/*
+[QL] Drop the scoreboard's player list clear of its column headers.
+
+Item_ListBox_Paint draws the first row at rect.y + 1. Quake Live's scoreboard
+menus put the PLAYER / SCORE / K/D / THAWS labels *inside* the top of the list
+rect - in ingame_scoreboard_ft.menu the labels sit at y 170 and the list box is
+"rect 73 165 284 130" - so row one is painted over the header band.
+
+Quake Live's own list box evidently starts its content below that. Rather than
+change Item_ListBox_Paint, which every list in the game shares (server browser,
+demo list, map list), this nudges only the scoreboard feeders: move the top down
+by one element height and take the same amount off the height, so the bottom
+edge and the scroll bar stay where the menu put them.
+
+That is true of the *team* boards only, and applying it everywhere is what is
+wrong with FFA. The non-team menus put their headings above the list, not in it:
+ingame_scoreboard_ffa has PLAYER at y 156 and the list at "rect 77 161 486 180",
+so row one already clears them. Shifting it down anyway pushes the rows and the
+scroll bar 8 units past the bottom of the panel art (list bottom 311, panel body
+ends 306) and out across the frame into the stats bar. So the shift now applies
+to the team feeders that need it and to nothing else.
+
+The non-team lists need the other correction instead. Item_ListBox_Paint puts
+the bar at the right-hand end of the list rect, and where that lands relative to
+the panel behind it is the menu's business: the team lists overhang their panel,
+so the bar sits on the frame; the non-team lists stop short of theirs, so the
+same arithmetic leaves the bar floating 14 units inside the panel with the row
+highlight ending short of it. Both non-team layouts are inset from their panel
+identically - list x 77 against body 81..559 in game, list x 122 against body
+126..604 at the end, each 486 wide against a 478+10 panel - so one correction
+covers both: give the rect the 20 units it is missing on the right and the bar
+lands on the frame edge the way the team boards' does.
+
+Applied once per menu. Menus_FindByName hands back the same menuDef every time,
+so without the guard a gametype change would stack a second offset.
+*/
+static void CG_OffsetScoreboardList(menuDef_t *menu) {
+	static const menuDef_t *adjusted[16];
+	static int numAdjusted;
+	int i;
+
+	if (!menu) {
+		return;
+	}
+	/*
+	[QL] E119. Not ours. This shifts a board's list down to clear the header
+	band Quake Live's art puts over its first row. The io_* boards are generated
+	with the list already below their headings, so shifting them would open a
+	gap and drop the last visible row.
+	*/
+	if (menu->window.name && !Q_stricmpn(menu->window.name, "io_", 3)) {
+		return;
+	}
+	for (i = 0; i < numAdjusted; i++) {
+		if (adjusted[i] == menu) {
+			return;
+		}
+	}
+	if (numAdjusted < (int)ARRAY_LEN(adjusted)) {
+		adjusted[numAdjusted++] = menu;
+	}
+
+	CG_HidePaddedHeading(menu);
+
+	for (i = 0; i < menu->itemCount; i++) {
+		itemDef_t *item = menu->items[i];
+		listBoxDef_t *listPtr;
+		qboolean teamList;
+		float shift;
+
+		if (item->special != FEEDER_SCOREBOARD &&
+			item->special != FEEDER_ENDSCOREBOARD &&
+			item->special != FEEDER_REDTEAM_LIST &&
+			item->special != FEEDER_BLUETEAM_LIST) {
+			continue;
+		}
+		teamList = (item->special == FEEDER_REDTEAM_LIST ||
+					item->special == FEEDER_BLUETEAM_LIST);
+
+		listPtr = (listBoxDef_t *)item->typeData;
+		if (!listPtr || listPtr->elementHeight <= 0) {
+			continue;
+		}
+
+		/* [QL] The scoreboard's lists get a scroll *position* bar rather than a
+		   scroll bar: a thin track with a proportional indicator, no arrows and
+		   no thumb. The arrows were three clickable regions down the edge of
+		   each list that swallowed clicks meant for the row underneath, and they
+		   cost every row a scroll bar's width. The wheel over the list you want
+		   is what actually scrolls these. */
+		item->window.flags |= WINDOW_LB_SLIMSCROLL;
+
+		if (!teamList) {
+			/* [QL] The 20 units the non-team list rects are short of their
+			   panel on the right - see the header comment. This moves the bar
+			   onto the frame edge and lets the row highlight reach it, and it
+			   is the whole of the correction these lists need: their headings
+			   are already above the rows, so they get no vertical shift. */
+			item->window.rect.w += 20.0f;
+			continue;
+		}
+
+		/*
+		[QL] How far down is a matter of taste and of the menu being drawn, and
+		I cannot see the result from here - one element height overshot and left
+		a visible gap. So it is a cvar rather than another guess: raise
+		cg_scoreboardListOffset to push the rows down, lower it to bring them up,
+		0 to leave the menu's own geometry alone.
+		*/
+		shift = cg_scoreboardListOffset.value;
+		if (shift < 0.0f) {
+			shift = 0.0f;
+		}
+		if (shift >= item->window.rect.h) {
+			continue;   // nothing left to show
+		}
+
+		/*
+		[QL] The red list's scroll bar used to be mirrored to the outside edge -
+		WINDOW_LB_LEFTSCROLL plus a rect shifted left by SCROLLBAR_SIZE - on the
+		theory that two bars facing each other read as symmetric. Quake Live does
+		not do that: neither playerlistRED nor playerlistBLUE sets a left scroll,
+		both bars sit inside their own box on the right, and the box art is drawn
+		to match. Shifting the rect put the bar and the row highlight sixteen
+		units outside the red panel, which is the overhang in the screenshot.
+
+		The original complaint the mirroring answered - "scroll bars are not
+		symmetrical" - was the content-column arithmetic disagreeing between the
+		left and right cases, and that is fixed in Item_ListBox_Paint. With equal
+		rects and equal contentW the two lists are already mirror images.
+		*/
+
+		/*
+		[QL] Move the rows down; do not take the height back off.
+
+		Item_ListBox_Paint fits floor((h - 2) / elementHeight) rows and leaves
+		the remainder as slack at the bottom, which on these lists is most of an
+		element - that is the empty strip under the last name inside the panel
+		art. Shrinking h by the same amount we shift by spends that slack a
+		second time and can cross the boundary that drops a whole row, which is
+		what "one element height overshot and left a visible gap" was. Leaving h
+		alone moves the block of rows into the slack instead, so the row count
+		never changes.
+		*/
+		item->window.rect.y += shift;
+	}
+}
+
 // [QL] Set both in-game and end-of-game scoreboard menus by gametype
 void CG_SetEndScoreboardMenu(void) {
 	switch (cgs.gametype) {
@@ -1685,33 +2208,414 @@ void CG_SetEndScoreboardMenu(void) {
 	case GT_AD:         menuScoreboard = Menus_FindByName("teamscore_menu_ad");      menuEndScoreboard = Menus_FindByName("endteamscore_menu_ad"); break;
 	default:            menuScoreboard = Menus_FindByName("teamscore_menu");         menuEndScoreboard = Menus_FindByName("endteamscore_menu"); break;
 	}
+
+	/*
+	[QL] E119. The replacement scoreboard, in the in-game menu's style.
+
+	Gated on cg_ioScoreboard, which is unadvertised and off by default; test
+	builds turn it on from autoexec.cfg. It replaces the in-game (TAB) board
+	only - the end-of-game board stays Quake Live's, which carries awards and
+	per-weapon stats this one does not.
+
+	Mapped by which column set the feeder uses for each gametype (cg_main.c),
+	because a board shows the feeder's fields by index and a mismatch would put
+	captures under a DMG heading. Race has a layout of its own and Round Robin
+	its own rules, so both keep Quake Live's board. Falls back to Quake Live's
+	whenever ours is missing, so a failed parse degrades to the stock board
+	rather than to no board at all.
+	*/
+	if (cg_ioScoreboard.integer) {
+		const char *ours = NULL;
+		menuDef_t *m;
+
+		switch (cgs.gametype) {
+		case GT_FFA:
+		case GT_DUEL:       ours = "io_score_ffa"; break;
+		case GT_TEAM:
+		case GT_FREEZE:     ours = "io_score_tdm"; break;
+		case GT_CA:         ours = "io_score_ca";  break;
+		case GT_CTF:
+		case GT_1FCTF:
+		case GT_HARVESTER:
+		case GT_DOMINATION:
+		case GT_AD:         ours = "io_score_ctf"; break;
+		default:            break;
+		}
+		if (ours) {
+			m = Menus_FindByName(ours);
+			if (m) {
+				menuScoreboard = m;
+			} else {
+				Com_Printf(S_COLOR_YELLOW "cg_ioScoreboard: %s not loaded - using Quake Live's scoreboard\n", ours);
+			}
+		}
+	}
+
+	CG_OffsetScoreboardList(menuScoreboard);
+	CG_OffsetScoreboardList(menuEndScoreboard);
 }
 
-static qboolean CG_DrawScoreboard(void) {
+/*
+[QL] Keep the highlight and the visible page on the local player.
+
+Run every frame the scoreboard is drawn, not once when it opens. The list
+re-sorts as scores change, so a row index recorded at open drifts onto whoever
+happens to be standing there a few frags later - which is how the highlight
+ended up on another player's line and the view opened on a page the local player
+was not on. Scrolling by hand takes the view back (cg.scoreboardScrolled); the
+highlight keeps following.
+
+CG_SetScoreSelection cannot do this job: it goes through
+Menu_SetFeederSelection, which resets startPos whenever the index is zero, so a
+player in first place could never scroll away.
+*/
+static void CG_TrackLocalPlayerOnScoreboard(menuDef_t *menu) {
+	int i, index = -1, teamIndex = 0;
+	int feeder;
+
+	if (!cg.snap) {
+		return;
+	}
+
+	// The team scoreboards split the players across two lists, so the row a
+	// player sits on is their position within their own team's list, not their
+	// position in cg.scores.
+	for (i = 0; i < cg.numScores; i++) {
+		if (cg.scores[i].client != cg.snap->ps.clientNum) {
+			continue;
+		}
+		index = i;
+		break;
+	}
+	if (index < 0) {
+		return;
+	}
+	for (i = 0; i < index; i++) {
+		if (cg.scores[i].team == cg.scores[index].team) {
+			teamIndex++;
+		}
+	}
+
+	if (cg.scores[index].team == TEAM_RED) {
+		feeder = FEEDER_REDTEAM_LIST;
+	} else if (cg.scores[index].team == TEAM_BLUE) {
+		feeder = FEEDER_BLUETEAM_LIST;
+	} else {
+		feeder = FEEDER_SCOREBOARD;
+		teamIndex = index;
+	}
+
+	/*
+	[QL] Once a row has been clicked the highlight belongs to the player.
+
+	This test used to sit below the block that blanks the other team's list,
+	which meant a click on the enemy team was wiped again on the very next
+	frame: the local player is blue, so every frame set the red list's cursor to
+	-1, and only the blue list could hold a selection. Now the clearing is
+	skipped entirely once a row has been picked - except on the list that was
+	not picked, which still gets blanked so a board never shows two highlights.
+	*/
+	if (cg.scoreboardSelected) {
+		if (cg.scoreboardSelectedFeeder != FEEDER_REDTEAM_LIST) {
+			Menu_SetFeederCursor(menu, FEEDER_REDTEAM_LIST, -1);
+		}
+		if (cg.scoreboardSelectedFeeder != FEEDER_BLUETEAM_LIST) {
+			Menu_SetFeederCursor(menu, FEEDER_BLUETEAM_LIST, -1);
+		}
+		return;
+	}
+
+	/*
+	[QL] Only the list the local player is actually in gets a highlight.
+
+	Item_ListBox_Paint fills the row where i == item->cursorPos, and cursorPos
+	starts at 0 - so the other team's list always drew a highlight on whoever
+	happened to be top of it, as though that player were selected. Two
+	highlights on a team board, one of them meaningless. -1 matches no row.
+	*/
+	if (feeder == FEEDER_REDTEAM_LIST) {
+		Menu_SetFeederCursor(menu, FEEDER_BLUETEAM_LIST, -1);
+	} else if (feeder == FEEDER_BLUETEAM_LIST) {
+		Menu_SetFeederCursor(menu, FEEDER_REDTEAM_LIST, -1);
+	} else {
+		Menu_SetFeederCursor(menu, FEEDER_REDTEAM_LIST, -1);
+		Menu_SetFeederCursor(menu, FEEDER_BLUETEAM_LIST, -1);
+	}
+
+	Menu_SetFeederCursor(menu, feeder, teamIndex);
+	if (feeder == FEEDER_SCOREBOARD) {
+		Menu_SetFeederCursor(menu, FEEDER_ENDSCOREBOARD, teamIndex);
+	}
+
+	// Leave the view where the player put it once they have scrolled.
+	if (cg.scoreboardScrolled) {
+		return;
+	}
+	Menu_ShowFeederIndex(menu, feeder, teamIndex);
+	if (feeder == FEEDER_SCOREBOARD) {
+		Menu_ShowFeederIndex(menu, FEEDER_ENDSCOREBOARD, teamIndex);
+	}
+}
+
+/*
+[QL] Tell the client whether the scoreboard is on screen.
+
+CL_ScoreboardScrollKey needs to know, so that it only takes the wheel and the
+page keys away from their bindings while there is a scoreboard for them to
+scroll. Written every frame rather than on change: a stuck value would cost the
+player their weapon switch, and one Cvar_Set of an unchanged string per frame is
+not worth being clever about.
+*/
+static void CG_PublishScoreboardState(qboolean showing) {
+	trap_Cvar_Set("cg_scoreboardActive", showing ? "1" : "0");
+}
+
+/*
+[QL] E134. Who is on the server: players per team, and all of it against the
+slot count with spectators broken out - "29 players" under each banner and
+"63/64 (59 + 4 spec)" in the info strip. The board shows them as cvar text
+(io_sb_redcount, io_sb_bluecount, io_sb_total), written only when they change.
+
+Counted from the client info, not the score list: the scores arrive every two
+seconds and leave out whoever connected since, while a configstring is there
+the moment someone joins. Anyone with valid info counts, bots included.
+*/
+static void CG_SetIfChanged(const char* name, const char* value) {
+	char cur[64];
+
+	trap_Cvar_VariableStringBuffer(name, cur, sizeof(cur));
+	if (strcmp(cur, value)) {
+		trap_Cvar_Set(name, value);
+	}
+}
+
+static void CG_ScoreboardCounts(void) {
+	int i, red = 0, blue = 0, spec = 0, play = 0;
+
+	for (i = 0; i < MAX_CLIENTS; i++) {
+		if (!cgs.clientinfo[i].infoValid) {
+			continue;
+		}
+		switch (cgs.clientinfo[i].team) {
+			case TEAM_RED:
+				red++;
+				break;
+			case TEAM_BLUE:
+				blue++;
+				break;
+			case TEAM_SPECTATOR:
+				spec++;
+				continue;
+			default:
+				break;
+		}
+		play++;
+	}
+	CG_SetIfChanged("io_sb_redcount", va("%d player%s", red, red == 1 ? "" : "s"));
+	CG_SetIfChanged("io_sb_bluecount", va("%d player%s", blue, blue == 1 ? "" : "s"));
+	if (spec) {
+		CG_SetIfChanged("io_sb_total", va("%d/%d  (%d + %d spec)", play + spec, cgs.maxclients, play, spec));
+	} else {
+		CG_SetIfChanged("io_sb_total", va("%d/%d players", play, cgs.maxclients));
+	}
+}
+
+/*
+[QL] Ask the server for scores again while the board is being held.
+
+CG_ScoresDown_f sends "score" on the key press and nothing after it, so a
+scoreboard held open showed whatever arrived at the moment it was opened. On a
+sixty-player instagib server the numbers are visibly stale within a second, and
+holding TAB to watch the match is precisely when they need to move.
+
+Same two-second throttle CG_ScoresDown_f already applies, so this costs no more
+than tapping TAB does - it just stops the display freezing while the key is down.
+*/
+#define SCOREBOARD_REFRESH_TIME 2000
+
+static void CG_ScoreboardCounts(void);
+
+static void CG_RefreshScoreboard(void) {
+	CG_ScoreboardCounts();
+	if (cg.predictedPlayerState.pm_type == PM_INTERMISSION) {
+		return;   // the final scores are not going to change
+	}
+	if (cg.scoresRequestTime + SCOREBOARD_REFRESH_TIME >= cg.time) {
+		return;
+	}
+	cg.scoresRequestTime = cg.time;
+	trap_SendClientCommand("score");
+}
+
+/*
+[QL] Say which gate stopped the scoreboard, once per second.
+
+Every return below is a silent qfalse, and from the outside they are
+indistinguishable from each other and from "the menu did not load" - which is
+what turned this into three rounds of guessing. Throttled because this runs
+every frame; reported only under cg_scoreboardDebug.
+*/
+static void CG_ScoreboardBlocked(const char *why) {
+	static int lastTime;
+
+	if (!cg_scoreboardDebug.integer) {
+		return;
+	}
+	if (cg.time - lastTime < 1000) {
+		return;
+	}
+	lastTime = cg.time;
+	CG_Printf("scoreboardDebug: not drawn - %s [showScores %i, warmup %i, paused %i]\n",
+			  why, cg.showScores, cg.warmup, cg_paused.integer);
+}
+
+/* The other half of the trace: say when it *is* painted, so a press-and-hold
+   produces a positive line rather than only the absence of a negative one. */
+static void CG_ScoreboardPainted(const menuDef_t *menu) {
+	static int lastTime;
+
+	if (!cg_scoreboardDebug.integer) {
+		return;
+	}
+	if (cg.time - lastTime < 1000) {
+		return;
+	}
+	lastTime = cg.time;
+	CG_Printf("scoreboardDebug: PAINTING '%s' (%i items) [showScores %i, warmup %i]\n",
+			  menu->window.name ? menu->window.name : "(unnamed)", menu->itemCount,
+			  cg.showScores, cg.warmup);
+}
+
+/*
+[QL] Hand the scoreboard to the input path, or take it back.
+
+cgame paints its scoreboard with a bare Menu_Paint, which draws a menuDef
+without putting it on the menu stack. Everything on the input side asks the
+opposite question: Display_CaptureItem, Display_MouseMove and
+Menu_HandleMouseMove all skip any menu without WINDOW_VISIBLE, and
+Display_HandleKey falls back to Menu_GetFocused, which is looking at the same
+flag. Nothing in cgame ever set it.
+
+So the board was painted and inert. That is one cause under both of the
+symptoms here: the team lists could not be scrolled - no wheel, no scrollbar,
+no drag, because Item_ListBox_HandleKey needs the item to have focus and focus
+is only ever granted through Menu_HandleMouseMove - and at intermission the
+match summary's "Vote for Next Arena" panels could not be clicked, for exactly
+the same reason.
+
+Set on the menu being painted, cleared on the other one and on every path that
+declines to paint, so a board that is not on screen cannot swallow a click.
+*/
+static void CG_ScoreboardSetVisible(menuDef_t *menu, qboolean visible) {
+	if (!menu) {
+		return;
+	}
+	if (visible) {
+		menu->window.flags |= WINDOW_VISIBLE;
+	} else {
+		menu->window.flags &= ~(WINDOW_VISIBLE | WINDOW_HASFOCUS | WINDOW_MOUSEOVER);
+	}
+}
+
+static void CG_ScoreboardHidden(void) {
+	CG_ScoreboardSetVisible(menuScoreboard, qfalse);
+	CG_ScoreboardSetVisible(menuEndScoreboard, qfalse);
+}
+
+static qboolean CG_DrawScoreboardMenu(void) {
 	static qboolean firstTime = qtrue;
 
 	if (menuScoreboard) {
 		menuScoreboard->window.flags &= ~WINDOW_FORCED;
 	}
-	if (cg_paused.integer) {
+	if (cg_paused.integer && !cg.showScores) {
+		/*
+		[QL] Honour an explicit request even while paused.
+
+		cg_paused is cl_paused, which the in-game menu sets to 1 on the way in
+		and clears on the way out. Left set for any reason, this gate silently
+		killed the scoreboard for the rest of the session: the menu resolves,
+		the geometry is right, and nothing is ever painted, with no way from
+		outside to tell that apart from a menu that failed to load.
+
+		The gate's point is to stop the board *auto*-showing over a paused game
+		- while dead, or fading after a death. Someone holding +scores has asked
+		for it, and a pause is not a reason to refuse. Adding the showScores test
+		keeps the original behaviour and removes the trap.
+		*/
+		CG_ScoreboardBlocked("cl_paused is 1 and showScores is 0");
+		CG_ScoreboardHidden();
 		cg.deferredPlayerLoading = 0;
 		firstTime = qtrue;
 		return qfalse;
 	}
 
-	// don't draw scoreboard during death while warmup up
-	if (cg.warmup && !cg.showScores) {
+	/*
+	[QL] Don't auto-show the scoreboard during a death in warmup.
+
+	The test was "cg.warmup && !cg.showScores", inherited from Quake 3 where
+	cg.warmup is the warmup end time and plain 0 when the match is live. Quake
+	Live does not use 0 for that - it uses -1, which is what CS_WARMUP carries
+	between matches and what ui_warmup's own UI_SHOW_IF_WARMUP / _NOT_WARMUP
+	pair tests as ">= 0" and "< 0". So a live match sits at warmup -1, which is
+	truthy, and this gate fired on every frame of every match:
+
+	  scoreboardDebug: not drawn - warmup and showScores is 0
+	                   [showScores 0, warmup -1, paused 0]
+
+	The board still came up while +scores was held, because that sets
+	showScores, which is why this survived - what it actually killed was the
+	automatic show on death, for the entire life of the build.
+	*/
+	if (cg.warmup > 0 && !cg.showScores) {
+		CG_ScoreboardBlocked("warmup and showScores is 0");
+		CG_ScoreboardHidden();
 		return qfalse;
 	}
 
-	if (cg.showScores || cg.predictedPlayerState.pm_type == PM_DEAD || cg.predictedPlayerState.pm_type == PM_INTERMISSION) {
+	/*
+	[QL] A frozen player is not a dead one.
+
+	The scoreboard shows itself automatically while dead, and a Freeze Tag
+	statue sits at zero health for its whole life - so it kept popping up
+	mid-round. PM_FREEZE is its own pm_type, but there is a frame or two around
+	the death where pm_type is still PM_DEAD and PW_FREEZE is already set, which
+	is the "sometimes" in the report; the powerup is the reliable test.
+	*/
+	if (cg.showScores ||
+		(cg.predictedPlayerState.pm_type == PM_DEAD &&
+		 !cg.predictedPlayerState.powerups[PW_FREEZE]) ||
+		cg.predictedPlayerState.pm_type == PM_INTERMISSION) {
 	} else {
 		if (!CG_FadeColor(cg.scoreFadeTime, FADE_TIME)) {
 			// next time scoreboard comes up, don't print killer
+			CG_ScoreboardBlocked("showScores is 0, not dead, not intermission, fade expired");
+			CG_ScoreboardHidden();
 			cg.deferredPlayerLoading = 0;
 			cg.killerName[0] = 0;
 			firstTime = qtrue;
 			return qfalse;
+		}
+	}
+
+	/*
+	[QL] E119. Re-resolve when cg_ioScoreboard changes. The board is otherwise
+	chosen once and kept, so flipping the cvar would do nothing until the next
+	map - which makes it impossible to compare the two boards in one sitting.
+	*/
+	{
+		static int ioScoreboardMod = -1;
+		if (cg_ioScoreboard.modificationCount != ioScoreboardMod) {
+			ioScoreboardMod = cg_ioScoreboard.modificationCount;
+			/*
+			Hide the outgoing board before forgetting it. Menu_PaintAll paints
+			every menu whose visible flag is set (cg_draw.c runs it for the HUD),
+			and once menuScoreboard points elsewhere nothing would ever clear the
+			old board's flag - it would keep drawing under the new one, the same
+			double draw E112 fixed in the in-game menu.
+			*/
+			CG_ScoreboardSetVisible(menuScoreboard, qfalse);
+			menuScoreboard = NULL;
 		}
 	}
 
@@ -1728,12 +2632,37 @@ static qboolean CG_DrawScoreboard(void) {
 			activeMenu = menuScoreboard;
 		}
 
+		if (!activeMenu) {
+			CG_ScoreboardBlocked("no menu resolved for this gametype");
+		}
 		if (activeMenu) {
 			if (firstTime) {
-				CG_SetScoreSelection(activeMenu);
+				cg.scoreboardScrolled = qfalse;
+				cg.scoreboardSelected = qfalse;
+				cg.scoreboardSelectedFeeder = -1;
 				firstTime = qfalse;
 			}
+			/*
+			The board being painted is the one the mouse and the keyboard are
+			allowed to reach; the other one must not catch a click.
+
+			Only while cgame actually holds the mouse, though. WINDOW_VISIBLE is
+			also what Menu_PaintAll goes by, and that runs for the HUD a few
+			lines further down - a board left flagged visible after the fade
+			following a respawn would be painted a second time over the HUD.
+			With no mouse there is no input to route, so the flag has no work to
+			do then anyway.
+			*/
+			CG_ScoreboardSetVisible(activeMenu == menuEndScoreboard ? menuScoreboard : menuEndScoreboard, qfalse);
+			CG_ScoreboardSetVisible(activeMenu, cgs.eventHandling != CGAME_EVENT_NONE);
+			CG_RefreshScoreboard();
+			CG_SetScoreSelection(NULL);
+			CG_TrackLocalPlayerOnScoreboard(activeMenu);
+			CG_ScoreboardPainted(activeMenu);
+			Display_RunCapture();   // [QL] E132 - a dragged scroll thumb
 			Menu_Paint(activeMenu, qtrue);
+			CG_DrawScoreboardHeadings(activeMenu);
+			CG_ScoreboardPopupsPaint();   // [QL] E120 - after the board, so on top of it
 		}
 	}
 
@@ -1745,6 +2674,50 @@ static qboolean CG_DrawScoreboard(void) {
 	return qtrue;
 }
 
+static qboolean CG_DrawScoreboard(void) {
+	qboolean showing = CG_DrawScoreboardMenu();
+
+	CG_PublishScoreboardState(showing);
+	return showing;
+}
+
+/*
+=================
+CG_DrawCgameCursor
+
+[QL] Draw a pointer whenever cgame is holding the mouse.
+
+This lived inside CG_DrawIntermission, so the match summary got a cursor and
+the in-game scoreboard did not - and the in-game scoreboard is the other thing
+that takes the mouse. Holding +scores with cg_scoreboardMouse on therefore cost
+mouselook and gave nothing back to aim with: the pointer was moving, items were
+lighting up under it and playing their mouse-over sounds, and there was nothing
+on screen saying where it was. Which is a fair description of "broken with the
+mouse enabled".
+
+cgs.eventHandling is the condition either way - it is set exactly while cgame
+owns the input, by the intermission and by the +scores hold alike.
+=================
+*/
+static void CG_DrawCgameCursor(void) {
+	qhandle_t cursor;
+
+	if (cgs.eventHandling == CGAME_EVENT_NONE) {
+		return;
+	}
+
+	// Prefer whatever the loaded HUD declared in its assets block - that is
+	// the cursor the menus themselves use, and it is parsed into
+	// cgDC.Assets.cursor by CG_ParseMenu. cgs.media.cursor is the fallback.
+	cursor = cgDC.Assets.cursor ? cgDC.Assets.cursor : cgs.media.cursor;
+	if (!cursor) {
+		return;
+	}
+
+	CG_SetWidescreen(WIDESCREEN_STRETCH);
+	CG_DrawPic(cgs.cursorX - 16, cgs.cursorY - 16, 32, 32, cursor);
+}
+
 /*
 =================
 CG_DrawIntermission
@@ -1753,6 +2726,20 @@ CG_DrawIntermission
 static void CG_DrawIntermission(void) {
 	cg.scoreFadeTime = cg.time;
 	cg.scoreBoardShowing = CG_DrawScoreboard();
+
+	/*
+	[QL] Draw the cursor while cgame holds the mouse.
+
+	The ui module draws its own (UI_DrawHandlePic with Assets.cursor) but cgame
+	never drew one, so once cgame took the key catcher at intermission the mouse
+	moved and hovered - audibly, since items play a sound on mouse-enter - with
+	nothing on screen to show where it was.
+
+	cgs.media.cursor is already registered in CG_RegisterGraphics; it just had
+	no drawer. Same 32x32 at the same -16 offset the ui uses, so the hotspot
+	lands in the middle of the pointer and matches the menus.
+	*/
+	CG_DrawCgameCursor();
 }
 
 /*
@@ -2065,6 +3052,54 @@ static void CG_DrawWarmup(void) {
 		w = CG_Text_Width(line2, 0.35f, 0);
 		CG_Text_Paint(320 - w / 2, 108, 0.35f, colorWhite, line2, 0, 0, ITEM_TEXTSTYLE_SHADOWEDMORE);
 	}
+
+	/*
+	[QL] Say whether *you* are ready, and which key changes it.
+
+	Everything needed for this was already here and simply never drawn. The
+	server broadcasts the ready set as a bitmask in STAT_CLIENTS_READY - the
+	scoreboard's ready marker and two owner-draws already read it - and readyup
+	is a registered client command on both sides. What was missing was the line
+	that turns "the match will begin when more players are ready" from a
+	statement about other people into something you can act on, because nothing
+	on screen said whether you were one of the players it was waiting for.
+
+	The key is looked up rather than hardcoded: Quake Live prints F3 because F3
+	is what readyup is bound to there, and printing F3 at someone who has bound
+	it elsewhere - or not at all - is worse than saying nothing. trap_Key_
+	KeynumToStringBuf over the actual binding keeps the two in step, and the
+	fallback names the command so the line is still useful with no bind.
+
+	A spectator is not a participant in the ready count, so they get nothing.
+	*/
+	{
+		qboolean ready;
+		int keynum;
+		char key[32];
+		const char* line3;
+
+		if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR) {
+			return;
+		}
+
+		ready = (cg.snap->ps.stats[STAT_CLIENTS_READY] & (1 << cg.snap->ps.clientNum)) != 0;
+
+		keynum = trap_Key_GetKey("readyup");
+		if (keynum > 0) {
+			trap_Key_KeynumToStringBuf(keynum, key, sizeof(key));
+			Q_strupr(key);
+			line3 = va("Press %s to %s", key,
+					   ready ? "unready yourself" : "ready up");
+		} else {
+			line3 = va("Type \\readyup in the console to %s",
+					   ready ? "unready yourself" : "ready up");
+		}
+
+		w = CG_Text_Width(line3, 0.3f, 0);
+		CG_Text_Paint(320 - w / 2, 126, 0.3f,
+					  ready ? colorGreen : colorYellow,
+					  line3, 0, 0, ITEM_TEXTSTYLE_SHADOWEDMORE);
+	}
 }
 
 //==================================================================================
@@ -2194,6 +3229,9 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 		// don't draw any status if dead or the scoreboard is being explicitly shown
 		if (!cg.showScores && cg.snap->ps.stats[STAT_HEALTH] > 0) {
 			if (cg_drawStatus.integer) {
+				/* [QL] E120. The scoreboard is down, so this closes any popup left
+				   open - otherwise Menu_PaintAll would draw it over the HUD. */
+				CG_ScoreboardPopupsPaint();
 				Menu_PaintAll();
 				CG_DrawTimedMenus();
 			}
@@ -2248,6 +3286,9 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 		CG_DrawCenterString();
 		CG_SetWidescreen(WIDESCREEN_STRETCH);
 	}
+
+	// last, so it is on top of the board it belongs to
+	CG_DrawCgameCursor();
 }
 
 /*

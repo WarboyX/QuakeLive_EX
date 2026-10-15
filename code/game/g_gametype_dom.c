@@ -429,8 +429,8 @@ void DOM_CheckPlayers(void) {
             blue++;
     }
 
-    trap_SetConfigstring(700, va("%d", red));
-    trap_SetConfigstring(701, va("%d", blue));
+    trap_SetConfigstring(CS_DOM_OWNED_RED, va("%d", red));
+    trap_SetConfigstring(CS_DOM_OWNED_BLUE, va("%d", blue));
 }
 
 // ============================================================================

@@ -34,6 +34,38 @@ static	shaderStage_t	stages[MAX_SHADER_STAGES];
 static	shader_t		shader;
 static	texModInfo_t	texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS+1]; // reserve one additional texmod for lightmap atlas correction
 
+// [QL] R20 Stage A
+extern	cvar_t	*r_qlNormalMaps;
+extern	cvar_t	*r_qlNormalScale;
+extern	cvar_t	*r_qlNormalMaxTilt;
+extern	cvar_t	*r_qlNaturalTextures;
+extern	cvar_t	*r_qlNaturalRotate;
+extern	cvar_t	*r_qlNaturalContrast;
+
+
+/*
+===============
+[QL] ResetStage
+
+Put one slot of the working stage array back to its initial state.
+
+The memset is not the whole of it, and that is the point of having this in one
+place: stages[i].bundle[0].texMods is a *pointer* into the static texMods array,
+handed out one row per stage index, and zeroing the slot zeroes the pointer with
+it. The next stage parsed into that slot then writes its first tcMod through
+NULL.
+
+That is a hard crash with nothing in the log, and it is what "crashed on launch"
+was: the console shader's first stage was dropped for a missing image, the
+second was parsed into the reused slot, and its tcMod went through the pointer
+the memset had just cleared.
+===============
+*/
+static void ResetStage( int index ) {
+	Com_Memset( &stages[index], 0, sizeof( stages[0] ) );
+	stages[index].bundle[0].texMods = texMods[index];
+}
+
 #define FILE_HASH_SIZE		1024
 static	shader_t*		hashTable[FILE_HASH_SIZE];
 
@@ -108,14 +140,14 @@ static qboolean ParseVector( const char **text, int count, float *v ) {
 	int		i;
 
 	// FIXME: spaces are currently required after parens, should change parseext...
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( strcmp( token, "(" ) ) {
 		ri.Printf( PRINT_WARNING, "WARNING: missing parenthesis in shader '%s'\n", shader.name );
 		return qfalse;
 	}
 
 	for ( i = 0 ; i < count ; i++ ) {
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( !token[0] ) {
 			ri.Printf( PRINT_WARNING, "WARNING: missing vector element in shader '%s'\n", shader.name );
 			return qfalse;
@@ -123,7 +155,7 @@ static qboolean ParseVector( const char **text, int count, float *v ) {
 		v[i] = Q_atof( token );
 	}
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( strcmp( token, ")" ) ) {
 		ri.Printf( PRINT_WARNING, "WARNING: missing parenthesis in shader '%s'\n", shader.name );
 		return qfalse;
@@ -297,7 +329,7 @@ static void ParseWaveForm( const char **text, waveForm_t *wave )
 {
 	const char *token;
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 )
 	{
 		ri.Printf( PRINT_WARNING, "WARNING: missing waveform parm in shader '%s'\n", shader.name );
@@ -306,7 +338,7 @@ static void ParseWaveForm( const char **text, waveForm_t *wave )
 	wave->func = NameToGenFunc( token );
 
 	// BASE, AMP, PHASE, FREQ
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 )
 	{
 		ri.Printf( PRINT_WARNING, "WARNING: missing waveform parm in shader '%s'\n", shader.name );
@@ -314,7 +346,7 @@ static void ParseWaveForm( const char **text, waveForm_t *wave )
 	}
 	wave->base = Q_atof( token );
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 )
 	{
 		ri.Printf( PRINT_WARNING, "WARNING: missing waveform parm in shader '%s'\n", shader.name );
@@ -322,7 +354,7 @@ static void ParseWaveForm( const char **text, waveForm_t *wave )
 	}
 	wave->amplitude = Q_atof( token );
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 )
 	{
 		ri.Printf( PRINT_WARNING, "WARNING: missing waveform parm in shader '%s'\n", shader.name );
@@ -330,7 +362,7 @@ static void ParseWaveForm( const char **text, waveForm_t *wave )
 	}
 	wave->phase = Q_atof( token );
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 )
 	{
 		ri.Printf( PRINT_WARNING, "WARNING: missing waveform parm in shader '%s'\n", shader.name );
@@ -359,35 +391,35 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 	tmi = &stage->bundle[0].texMods[stage->bundle[0].numTexMods];
 	stage->bundle[0].numTexMods++;
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 
 	//
 	// turb
 	//
 	if ( !Q_stricmp( token, "turb" ) )
 	{
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing tcMod turb parms in shader '%s'\n", shader.name );
 			return;
 		}
 		tmi->wave.base = Q_atof( token );
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing tcMod turb in shader '%s'\n", shader.name );
 			return;
 		}
 		tmi->wave.amplitude = Q_atof( token );
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing tcMod turb in shader '%s'\n", shader.name );
 			return;
 		}
 		tmi->wave.phase = Q_atof( token );
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing tcMod turb in shader '%s'\n", shader.name );
@@ -402,7 +434,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 	//
 	else if ( !Q_stricmp( token, "scale" ) )
 	{
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing scale parms in shader '%s'\n", shader.name );
@@ -410,7 +442,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->scale[0] = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing scale parms in shader '%s'\n", shader.name );
@@ -424,14 +456,14 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 	//
 	else if ( !Q_stricmp( token, "scroll" ) )
 	{
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing scale scroll parms in shader '%s'\n", shader.name );
 			return;
 		}
 		tmi->scroll[0] = Q_atof( token );
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing scale scroll parms in shader '%s'\n", shader.name );
@@ -445,7 +477,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 	//
 	else if ( !Q_stricmp( token, "stretch" ) )
 	{
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing stretch parms in shader '%s'\n", shader.name );
@@ -453,7 +485,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->wave.func = NameToGenFunc( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing stretch parms in shader '%s'\n", shader.name );
@@ -461,7 +493,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->wave.base = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing stretch parms in shader '%s'\n", shader.name );
@@ -469,7 +501,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->wave.amplitude = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing stretch parms in shader '%s'\n", shader.name );
@@ -477,7 +509,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->wave.phase = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing stretch parms in shader '%s'\n", shader.name );
@@ -492,7 +524,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 	//
 	else if ( !Q_stricmp( token, "transform" ) )
 	{
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing transform parms in shader '%s'\n", shader.name );
@@ -500,7 +532,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->matrix[0][0] = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing transform parms in shader '%s'\n", shader.name );
@@ -508,7 +540,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->matrix[0][1] = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing transform parms in shader '%s'\n", shader.name );
@@ -516,7 +548,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->matrix[1][0] = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing transform parms in shader '%s'\n", shader.name );
@@ -524,7 +556,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->matrix[1][1] = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing transform parms in shader '%s'\n", shader.name );
@@ -532,7 +564,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 		}
 		tmi->translate[0] = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing transform parms in shader '%s'\n", shader.name );
@@ -547,7 +579,7 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 	//
 	else if ( !Q_stricmp( token, "rotate" ) )
 	{
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing tcMod rotate parms in shader '%s'\n", shader.name );
@@ -575,17 +607,72 @@ static void ParseTexMod( const char *_text, shaderStage_t *stage )
 ParseStage
 ===================
 */
+
+/*
+===============
+R_ShaderKeywordIgnored
+
+[QL] Unknown shader keywords are ignored, not fatal.
+
+Both parsers used to answer an unrecognised keyword with "return qfalse", and
+ParseShader turns that into defaultShader on the *whole shader* - one keyword
+it has never heard of and the entire material is replaced by the black box with
+the white border. There is no recovery and no way to tell from the screen what
+happened.
+
+That is the wrong trade for a renderer reading someone else's shader scripts.
+Quake Live's own keywords do not exist in Quake3e's parser and never will;
+novlcollapse is on every player skin in the game, and it is a *hint*, not
+geometry. Skipping a keyword whose meaning we lack renders the shader slightly
+wrong. Failing it renders the shader completely wrong, and takes the model with
+it.
+
+So: skip the line and keep going. Report each keyword once, with the first
+shader it appeared in - a per-shader message means 40 identical lines for one
+keyword across 40 player skins, which is what the console looked like.
+===============
+*/
+#define MAX_IGNORED_KEYWORDS 64
+
+static char ignoredKeyword[MAX_IGNORED_KEYWORDS][32];
+static int numIgnoredKeywords;
+
+static void R_ShaderKeywordIgnored( const char *keyword, const char *shaderName, qboolean inStage )
+{
+	int i;
+
+	for ( i = 0; i < numIgnoredKeywords; i++ ) {
+		if ( Q_stricmp( ignoredKeyword[i], keyword ) == 0 ) {
+			return;
+		}
+	}
+
+	if ( numIgnoredKeywords < MAX_IGNORED_KEYWORDS ) {
+		Q_strncpyz( ignoredKeyword[numIgnoredKeywords], keyword, sizeof( ignoredKeyword[0] ) );
+		numIgnoredKeywords++;
+	}
+
+	ri.Printf( PRINT_DEVELOPER, "shader keyword '%s' is not known to this renderer and is being "
+		"ignored (first seen %s '%s')\n", keyword, inStage ? "in a stage of" : "in", shaderName );
+}
+
+
 static qboolean ParseStage( shaderStage_t *stage, const char **text )
 {
 	const char *token;
 	int i, depthMaskBits = GLS_DEPTHMASK_TRUE, blendSrcBits = 0, blendDstBits = 0, atestBits = 0, depthFuncBits = 0;
 	qboolean depthMaskExplicit = qfalse;
+	// [QL] set when the stage declares itself a normal or specular map - see
+	// the material-keyword block below.
+	qboolean materialStage = qfalse;
+	qboolean materialIsSpecular = qfalse;
+	qboolean missingImage = qfalse;
 
 	stage->active = qfalse;
 
 	while ( 1 )
 	{
-		token = COM_ParseExt( text, qtrue );
+		token = R_ParseExt( text, qtrue );
 		if ( !token[0] )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: no matching '}' found\n" );
@@ -601,7 +688,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		//
 		else if ( !Q_stricmp( token, "map" ) )
 		{
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( !token[0] )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for 'map' keyword in shader '%s'\n", shader.name );
@@ -651,8 +738,9 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 
 				if ( !stage->bundle[0].image[0] )
 				{
-					ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s'\n", token, shader.name );
-					return qfalse;
+					ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - dropping that stage\n", token, shader.name );
+					missingImage = qtrue;
+					continue;
 				}
 			}
 		}
@@ -673,7 +761,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 				flags = IMGFLAG_CLAMPTOEDGE;
 			}
 
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( !token[0] )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for '%s' keyword in shader '%s'\n",
@@ -693,8 +781,9 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			stage->bundle[0].image[0] = R_FindImageFile( token, flags );
 			if ( !stage->bundle[0].image[0] )
 			{
-				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s'\n", token, shader.name );
-				return qfalse;
+				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - dropping that stage\n", token, shader.name );
+				missingImage = qtrue;
+				continue;
 			}
 		}
 		//
@@ -705,7 +794,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			int	totalImages = 0;
 			int maxAnimations = s_extendedShader ? MAX_IMAGE_ANIMATIONS : MAX_IMAGE_ANIMATIONS_VQ3;
 
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( !token[0] )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for 'animMap' keyword in shader '%s'\n", shader.name );
@@ -717,7 +806,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			while ( 1 ) {
 				int num;
 
-				token = COM_ParseExt( text, qfalse );
+				token = R_ParseExt( text, qfalse );
 				if ( !token[0] ) {
 					break;
 				}
@@ -737,12 +826,23 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 					stage->bundle[0].image[num] = R_FindImageFile( token, flags );
 					if ( !stage->bundle[0].image[num] )
 					{
-						ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s'\n", token, shader.name );
-						return qfalse;
+						/* [QL] One frame, not the whole animation. The
+						   remaining frames still load into this slot, so a
+						   sequence missing a frame plays the frames it has
+						   rather than disappearing. Only an animMap with
+						   nothing left drops its stage, below. */
+						ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - skipping that frame\n", token, shader.name );
+						totalImages++;
+						continue;
 					}
 					stage->bundle[0].numImageAnimations++;
 				}
 				totalImages++;
+			}
+
+			if ( stage->bundle[0].numImageAnimations == 0 ) {
+				ri.Printf( PRINT_WARNING, "WARNING: no frame of the 'animMap' in shader '%s' could be loaded - dropping that stage\n", shader.name );
+				missingImage = qtrue;
 			}
 
 			if ( totalImages > maxAnimations ) {
@@ -753,7 +853,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		else if ( !Q_stricmp( token, "videoMap" ) )
 		{
 			int handle;
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( !token[0] )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for 'videoMap' keyword in shader '%s'\n", shader.name );
@@ -776,7 +876,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		//
 		else if ( !Q_stricmp( token, "alphaFunc" ) )
 		{
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( !token[0] )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for 'alphaFunc' keyword in shader '%s'\n", shader.name );
@@ -790,7 +890,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		//
 		else if ( !Q_stricmp( token, "depthfunc" ) )
 		{
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 
 			if ( !token[0] )
 			{
@@ -825,7 +925,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		//
 		else if ( !Q_stricmp( token, "blendfunc" ) )
 		{
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( token[0] == 0 )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parm for blendFunc in shader '%s'\n", shader.name );
@@ -845,7 +945,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 				// complex double blends
 				blendSrcBits = NameToSrcBlendMode( token );
 
-				token = COM_ParseExt( text, qfalse );
+				token = R_ParseExt( text, qfalse );
 				if ( token[0] == '\0' )
 				{
 					ri.Printf( PRINT_WARNING, "WARNING: missing parm for blendFunc in shader '%s'\n", shader.name );
@@ -866,7 +966,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		//
 		else if ( !Q_stricmp( token, "rgbGen" ) )
 		{
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( token[0] == 0 )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parameters for rgbGen in shader '%s'\n", shader.name );
@@ -937,7 +1037,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		//
 		else if ( !Q_stricmp( token, "alphaGen" ) )
 		{
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( token[0] == 0 )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parameters for alphaGen in shader '%s'\n", shader.name );
@@ -951,7 +1051,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			}
 			else if ( !Q_stricmp( token, "const" ) )
 			{
-				token = COM_ParseExt( text, qfalse );
+				token = R_ParseExt( text, qfalse );
 				stage->bundle[0].constantColor.rgba[3] = 255 * Q_atof( token );
 				stage->bundle[0].alphaGen = AGEN_CONST;
 			}
@@ -982,7 +1082,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			else if ( !Q_stricmp( token, "portal" ) )
 			{
 				stage->bundle[0].alphaGen = AGEN_PORTAL;
-				token = COM_ParseExt( text, qfalse );
+				token = R_ParseExt( text, qfalse );
 				if ( token[0] == 0 )
 				{
 					shader.portalRange = 256;
@@ -1009,7 +1109,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		//
 		else if ( !Q_stricmp(token, "texgen") || !Q_stricmp( token, "tcGen" ) )
 		{
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( token[0] == 0 )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing texgen parm in shader '%s'\n", shader.name );
@@ -1020,7 +1120,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			{
 				const char *t = *text;
 				stage->bundle[0].tcGen = TCGEN_ENVIRONMENT_MAPPED;
-				token = COM_ParseExt( text, qfalse );
+				token = R_ParseExt( text, qfalse );
 				if ( Q_stricmp( token, "firstPerson" ) == 0 )
 				{
 					stage->bundle[0].tcGen = TCGEN_ENVIRONMENT_MAPPED_FP;
@@ -1059,7 +1159,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 
 			while ( 1 )
 			{
-				token = COM_ParseExt( text, qfalse );
+				token = R_ParseExt( text, qfalse );
 				if ( token[0] == 0 )
 					break;
 				Q_strcat( buffer, sizeof (buffer), token );
@@ -1089,11 +1189,287 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		{
 			stage->bundle[0].dlight = 1;
 		}
+		//
+		// [QL] renderergl2 material keywords.
+		//
+		// Quake Live's shaders carry the renderergl2 material set - stage,
+		// diffuseMap, normalMap/bumpMap, specularMap, normalScale,
+		// specularScale, gloss, roughness, parallaxDepth, vertexLit and the
+		// rest. Quake3e's parser has never seen any of them, and one unknown
+		// keyword does not skip a line here: it returns qfalse, which makes
+		// ParseShader set defaultShader on the *whole shader*.
+		//
+		// That is why the Vulkan build drew item pads, wall teleporters, the
+		// lightning beam and grenades as tr.defaultImage - a near-black box
+		// with a white border - while ordinary map surfaces, which carry no
+		// material keywords, were fine. It was never a missing texture.
+		//
+		// This renderer has no material pipeline, so the honest handling is
+		// the one a non-material renderer should give: accept the keywords,
+		// consume their arguments, and render the diffuse. The exception is a
+		// stage explicitly declared as a normal or specular map - painting a
+		// normal map onto a surface as if it were colour is worse than not
+		// drawing it, so those stages are dropped.
+		//
+		else if ( !Q_stricmp( token, "stage" ) )
+		{
+			token = R_ParseExt( text, qfalse );
+			if ( token[0] == 0 ) {
+				ri.Printf( PRINT_WARNING, "WARNING: missing parameters for stage in shader '%s'\n", shader.name );
+				continue;
+			}
+			if ( !Q_stricmp( token, "diffuseMap" ) ) {
+				continue; // the only one this renderer can draw
+			}
+			/*
+			[QL] "stage normalMap" - the whole stage is a material map, and its
+			image arrives on the "map" line below like any other.
+
+			This used to set materialStage and drop the stage, image and all,
+			which threw away the very thing the dynamic light pass now wants.
+			The stage is still dropped - it is not something to draw - but the
+			image it parsed is carried out on stage->normalMap, and ParseShader
+			hands it to the diffuse stage in front of it.
+
+			This form and "normalMap <image>" inside a diffuse stage are both in
+			use and neither is the odd one; renderergl2 accepts either.
+			*/
+			if ( !Q_stricmp( token, "normalMap" ) || !Q_stricmp( token, "bumpMap" ) ||
+				 !Q_stricmp( token, "normalParallaxMap" ) || !Q_stricmp( token, "bumpParallaxMap" ) ) {
+				materialStage = qtrue;
+				materialIsSpecular = qfalse;
+				continue;
+			}
+			if ( !Q_stricmp( token, "specularMap" ) ) {
+				materialStage = qtrue;
+				materialIsSpecular = qtrue;
+				continue;
+			}
+			ri.Printf( PRINT_WARNING, "WARNING: unknown stage parameter '%s' in shader '%s'\n", token, shader.name );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "diffuseMap" ) )
+		{
+			// "diffuseMap <image>" - the same thing "map <image>" does
+			imgFlags_t flags = IMGFLAG_NONE;
+
+			token = R_ParseExt( text, qfalse );
+			if ( token[0] == 0 ) {
+				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for diffuseMap in shader '%s'\n", shader.name );
+				return qfalse;
+			}
+
+			if ( !shader.noMipMaps )
+				flags |= IMGFLAG_MIPMAP;
+			if ( !shader.noPicMip )
+				flags |= IMGFLAG_PICMIP;
+			if ( shader.noLightScale )
+				flags |= IMGFLAG_NOLIGHTSCALE;
+
+			stage->bundle[0].image[0] = R_FindImageFile( token, flags );
+			if ( !stage->bundle[0].image[0] ) {
+				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - dropping that stage\n", token, shader.name );
+				missingImage = qtrue;
+				continue;
+			}
+			continue;
+		}
+		else if ( !Q_stricmp( token, "normalMap" ) || !Q_stricmp( token, "bumpMap" ) ||
+				  !Q_stricmp( token, "normalParallaxMap" ) || !Q_stricmp( token, "bumpParallaxMap" ) ||
+				  !Q_stricmp( token, "specularMap" ) )
+		{
+			/*
+			[QL] "<kind>Map <image>" beside a diffuse in the same stage.
+
+			These used to drop the stage, on the grounds that this renderer had
+			no material pipeline and painting a normal map on as if it were
+			colour is worse than not drawing it. The dynamic light pass has one
+			now, so the map is loaded and kept: it perturbs the normal that pass
+			lights with.
+
+			The parallax variants are taken as ordinary normal maps. The height
+			they also carry needs a displacement step there is nowhere to put,
+			and the normal half of them is correct on its own.
+
+			A missing file here is not a reason to lose the stage - the diffuse
+			is still perfectly drawable - so it warns and carries on with no
+			map, unlike "map" where the stage has nothing left to show.
+			*/
+			qboolean isSpecular = ( Q_stricmp( token, "specularMap" ) == 0 );
+			/*
+			[QL] NO_COMPRESSION alongside NOLIGHTSCALE. A normal map is data and
+			must not be gamma-corrected, which is what NOLIGHTSCALE says - and
+			its alpha is now the height field the parallax march steps through,
+			so a 16-bit format quantising it to four bits would turn a smooth
+			surface into terraces. The derived maps already set both.
+			*/
+			imgFlags_t flags = IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION;
+			image_t *img;
+
+			if ( !shader.noMipMaps )
+				flags |= IMGFLAG_MIPMAP;
+			if ( !shader.noPicMip )
+				flags |= IMGFLAG_PICMIP;
+
+			token = R_ParseExt( text, qfalse );
+			if ( token[0] == 0 ) {
+				ri.Printf( PRINT_WARNING, "WARNING: missing parameter for material map in shader '%s'\n", shader.name );
+				continue;
+			}
+
+			img = R_FindImageFile( token, flags );
+			if ( !img ) {
+				ri.Printf( PRINT_WARNING, "WARNING: R_FindImageFile could not find '%s' in shader '%s' - "
+					"drawing this stage without it\n", token, shader.name );
+				R_SkipRestOfLine( text );
+				continue;
+			}
+
+			if ( isSpecular ) {
+				stage->specularMap = img;
+			} else {
+				stage->normalMap = img;
+			}
+			R_SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "qlNoPerturb" ) )
+		{
+			/*
+			[QL] R20 Stage A opt-out. A surface whose diffuse texture already
+			paints the shape it wants - decals, screens, liquids, anything flat
+			by intent - says so here and keeps the flat fallback.
+			*/
+			stage->noNormalPerturb = qtrue;
+			R_SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "qlNormalFlipG" ) )
+		{
+			/*
+			[QL] E104. This stage's normal map uses the opposite green-channel
+			convention from our default.
+
+			The two conventions are the same data with Y negated, and the wrong
+			one is not subtle once you know to look: bumps read as dents. It is
+			a property of how the art was baked, so it belongs on the material
+			rather than on a cvar the player has to discover.
+
+			No parameter. It is a declaration about this stage's normal map, not
+			a strength.
+			*/
+			stage->normalFlipG = qtrue;
+			R_SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "qlNaturalTexture" ) )
+		{
+			/*
+			[QL] R27 opt-in. This stage's texture is stochastic enough to be
+			hex-tiled: rubble, rock, moss, dirt, gravel, sand - anything whose
+			look does not depend on where a feature is. Anything with structure
+			must NOT say this. Three randomly offset copies of a brick wall
+			blended together is not a brick wall.
+
+			No parameters. Strength and contrast are global (r_qlNaturalRotate,
+			r_qlNaturalContrast) rather than per-stage, because they are a look
+			to be tuned once by whoever is looking at the screen, and a per-stage
+			float would be a number nobody ever revisits.
+			*/
+			stage->naturalTexture = qtrue;
+			R_SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "normalScale" ) )
+		{
+			/*
+			[QL] Consumed, not stored.
+
+			It was being parsed into a field on the stage that nothing ever
+			read - the lighting shader perturbs by the map at full strength and
+			has no uniform slot to receive a per-stage scale, the light path's
+			uniform block being fixed by vkUniform_t. A field that looks like a
+			setting and changes nothing is the same trap as a cvar nothing
+			reads, so there is no field.
+
+			Applying it means a slot in that block, which is a change to the
+			shader interface. Worth doing with the specular term, not before.
+			*/
+			R_SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "specularScale" ) ||
+				  !Q_stricmp( token, "specularExponent" ) || !Q_stricmp( token, "specularReflectance" ) ||
+				  !Q_stricmp( token, "gloss" ) || !Q_stricmp( token, "roughness" ) ||
+				  !Q_stricmp( token, "parallaxDepth" ) )
+		{
+			R_SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "vertexLit" ) || !Q_stricmp( token, "exactVertexLit" ) )
+		{
+			// renderergl2 shorthand for rgbGen vertex with an identity alpha;
+			// say the same thing in the terms this renderer has.
+			stage->bundle[0].rgbGen = CGEN_VERTEX;
+			stage->bundle[0].alphaGen = AGEN_VERTEX;
+			continue;
+		}
 		else
 		{
-			ri.Printf( PRINT_WARNING, "WARNING: unknown parameter '%s' in shader '%s'\n", token, shader.name );
-			return qfalse;
+			R_ShaderKeywordIgnored( token, shader.name, qtrue );
+			R_SkipRestOfLine( text );
+			continue;
 		}
+	}
+
+	/*
+	[QL] A stage that declared itself a material map is not drawn - painting a
+	normal map on as if it were colour is worse than leaving it out - but the
+	image it loaded is not thrown away. It leaves on the fields ParseShader
+	looks at, and goes to the diffuse stage in front of this one.
+
+	Leaving active qfalse is what drops the stage and keeps the rest of the
+	shader.
+	*/
+	if ( materialStage ) {
+		if ( stage->bundle[0].image[0] ) {
+			if ( materialIsSpecular ) {
+				stage->specularMap = stage->bundle[0].image[0];
+			} else {
+				stage->normalMap = stage->bundle[0].image[0];
+			}
+		}
+		return qtrue;
+	}
+
+	/*
+	[QL] A stage whose image is missing is dropped the same way, and for the
+	same reason the material keywords are tolerated above: one bad stage used to
+	discard the entire shader.
+
+	R_FindImageFile returning NULL made ParseStage return qfalse, ParseShader
+	return qfalse, and the shader become tr.defaultShader - the black and white
+	grid - for every surface using it. So a model lost all of its texturing
+	because one stage it barely needed referred to a file that is not there.
+
+	The nailgun is the case that found this. Quake Live's own
+	models/weapons/nailgun/nailgun shader asks for nailgun_env.tga, an
+	environment map that did not survive the conversion to .png: the pak has no
+	nailgun_env under any extension, and only three *_env files in total, all
+	map textures. The nailgun therefore drew as the default grid in every build
+	this renderer has ever produced, view model and world model alike, while the
+	base texture it needed - nailgun.png - was sitting in the pak unused.
+
+	Dropping the stage keeps every other stage, so the model renders with its
+	diffuse and without the shine. A shader whose stages are *all* missing ends
+	up with none, and FinishShader gives that the default shader, which is the
+	right answer for a shader with nothing to draw.
+
+	Deliberately not tr.defaultImage for the stage: painting the grid onto one
+	stage of an otherwise correct shader is the same mistake in miniature.
+	*/
+	if ( missingImage ) {
+		return qtrue;
 	}
 
 	//
@@ -1190,7 +1566,7 @@ static void ParseDeform( const char **text ) {
 	const char	*token;
 	deformStage_t	*ds;
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 )
 	{
 		ri.Printf( PRINT_WARNING, "WARNING: missing deform parm in shader '%s'\n", shader.name );
@@ -1232,7 +1608,7 @@ static void ParseDeform( const char **text ) {
 	}
 
 	if ( !Q_stricmp( token, "bulge" ) )	{
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing deformVertexes bulge parm in shader '%s'\n", shader.name );
@@ -1240,7 +1616,7 @@ static void ParseDeform( const char **text ) {
 		}
 		ds->bulgeWidth = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing deformVertexes bulge parm in shader '%s'\n", shader.name );
@@ -1248,7 +1624,7 @@ static void ParseDeform( const char **text ) {
 		}
 		ds->bulgeHeight = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing deformVertexes bulge parm in shader '%s'\n", shader.name );
@@ -1263,7 +1639,7 @@ static void ParseDeform( const char **text ) {
 	if ( !Q_stricmp( token, "wave" ) )
 	{
 		float f;
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing deformVertexes parm in shader '%s'\n", shader.name );
@@ -1288,7 +1664,7 @@ static void ParseDeform( const char **text ) {
 
 	if ( !Q_stricmp( token, "normal" ) )
 	{
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing deformVertexes parm in shader '%s'\n", shader.name );
@@ -1296,7 +1672,7 @@ static void ParseDeform( const char **text ) {
 		}
 		ds->deformationWave.amplitude = Q_atof( token );
 
-		token = COM_ParseExt( text, qfalse );
+		token = R_ParseExt( text, qfalse );
 		if ( token[0] == 0 )
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: missing deformVertexes parm in shader '%s'\n", shader.name );
@@ -1312,7 +1688,7 @@ static void ParseDeform( const char **text ) {
 		int		i;
 
 		for ( i = 0 ; i < 3 ; i++ ) {
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( token[0] == 0 ) {
 				ri.Printf( PRINT_WARNING, "WARNING: missing deformVertexes parm in shader '%s'\n", shader.name );
 				return;
@@ -1348,7 +1724,7 @@ static void ParseSkyParms( const char **text ) {
 	}
 
 	// outerbox
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 ) {
 		ri.Printf( PRINT_WARNING, "WARNING: 'skyParms' missing parameter in shader '%s'\n", shader.name );
 		return;
@@ -1366,7 +1742,7 @@ static void ParseSkyParms( const char **text ) {
 	}
 
 	// cloudheight
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 ) {
 		ri.Printf( PRINT_WARNING, "WARNING: 'skyParms' missing parameter in shader '%s'\n", shader.name );
 		return;
@@ -1378,7 +1754,7 @@ static void ParseSkyParms( const char **text ) {
 	R_InitSkyTexCoords( shader.sky.cloudHeight );
 
 	// innerbox
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 ) {
 		ri.Printf( PRINT_WARNING, "WARNING: 'skyParms' missing parameter in shader '%s'\n", shader.name );
 		return;
@@ -1406,7 +1782,7 @@ ParseSort
 static void ParseSort( const char **text ) {
 	const char	*token;
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	if ( token[0] == 0 ) {
 		ri.Printf( PRINT_WARNING, "WARNING: missing sort parameter in shader '%s'\n", shader.name );
 		return;
@@ -1499,7 +1875,7 @@ static void ParseSurfaceParm( const char **text ) {
 	int		numInfoParms = ARRAY_LEN( infoParms );
 	int		i;
 
-	token = COM_ParseExt( text, qfalse );
+	token = R_ParseExt( text, qfalse );
 	for ( i = 0 ; i < numInfoParms ; i++ ) {
 		if ( !Q_stricmp( token, infoParms[i].name ) ) {
 			shader.surfaceFlags |= infoParms[i].surfaceFlags;
@@ -1794,7 +2170,7 @@ static qboolean ParseShader( const char **text )
 
 	s_extendedShader = (*text >= s_extensionOffset);
 
-	token = COM_ParseExt( text, qtrue );
+	token = R_ParseExt( text, qtrue );
 	if ( token[0] != '{' )
 	{
 		ri.Printf( PRINT_WARNING, "WARNING: expecting '{', found '%s' instead in shader '%s'\n", token, shader.name );
@@ -1805,7 +2181,7 @@ static qboolean ParseShader( const char **text )
 
 	while ( 1 )
 	{
-		//token = COM_ParseExt( text, qtrue );
+		//token = R_ParseExt( text, qtrue );
 		token = COM_ParseComplex( text, qtrue );
 		if ( !token[0] )
 		{
@@ -1830,37 +2206,92 @@ static qboolean ParseShader( const char **text )
 				return qfalse;
 			}
 
+			/*
+			[QL] A stage that asked to be dropped leaves no hole.
+
+			ParseStage drops a stage by returning qtrue with active still false
+			- a normal or specular map this renderer cannot draw, or a stage
+			whose image the pak does not contain. numStages was incremented
+			anyway, so the dropped stage stayed in the array as an inactive slot
+			with live stages behind it.
+
+			FinishShader walks stages until the first inactive one and stops
+			there. An inactive slot is therefore not a gap, it is a terminator:
+			every stage after it is discarded. Drop stage 0 of a two-stage
+			shader and the shader ends up with nothing to draw, and a surface
+			with no stages is not the default grid - it is invisible.
+
+			That is what took the nailgun from wrong to absent. Its shader's
+			first stage is an environment map Quake Live no longer ships, so
+			dropping it also threw away the diffuse stage behind it.
+
+			Reusing the slot compacts the array as it is built, which is cheaper
+			than compacting afterwards and cannot leave the two counts
+			disagreeing. The slot is reset because ParseStage only clears
+			'active', so a reused one would otherwise inherit the dropped
+			stage's blend bits and tcMods - and ResetStage rather than a bare
+			memset because the slot owns a pointer that a memset would null.
+			*/
+			if ( !stages[numStages].active )
+			{
+				/*
+				[QL] A dropped stage that was a material map gives its image to
+				the stage in front of it.
+
+				"stage normalMap" declares a whole stage to be the map, so the
+				image arrives here on a stage that is not drawn, and the diffuse
+				it belongs to is the last one kept. Without this hand-off the
+				image is loaded and then discarded, which is what the first cut
+				of this did - and the whole feature would have been silently
+				inert on every shader written in that form.
+
+				Guarded on numStages: a material stage with no diffuse before it
+				has nothing to attach to, and a shader that opens that way is
+				not describing a surface this renderer can draw anyway.
+				*/
+				if ( numStages > 0 ) {
+					if ( stages[numStages].normalMap && !stages[numStages - 1].normalMap ) {
+						stages[numStages - 1].normalMap = stages[numStages].normalMap;
+					}
+					if ( stages[numStages].specularMap && !stages[numStages - 1].specularMap ) {
+						stages[numStages - 1].specularMap = stages[numStages].specularMap;
+					}
+				}
+				ResetStage( numStages );
+				continue;
+			}
+
 			FinishStage( &stages[numStages] );
 			numStages++;
 			continue;
 		}
 		// skip stuff that only the QuakeEdRadient needs
 		else if ( !Q_stricmpn( token, "qer", 3 ) ) {
-			SkipRestOfLine( text );
+			R_SkipRestOfLine( text );
 			continue;
 		}
 		// sun parms
 		else if ( !Q_stricmp( token, "q3map_sun" ) || !Q_stricmp( token, "q3map_sunExt" ) ) {
 			float	a, b;
 
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			tr.sunLight[0] = Q_atof( token );
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			tr.sunLight[1] = Q_atof( token );
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			tr.sunLight[2] = Q_atof( token );
 
 			VectorNormalize( tr.sunLight );
 
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			a = Q_atof( token );
 			VectorScale( tr.sunLight, a, tr.sunLight );
 
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			a = Q_atof( token );
 			a = a / 180 * M_PI;
 
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			b = Q_atof( token );
 			b = b / 180 * M_PI;
 
@@ -1868,7 +2299,7 @@ static qboolean ParseShader( const char **text )
 			tr.sunDirection[1] = sin( a ) * cos( b );
 			tr.sunDirection[2] = sin( b );
 
-			SkipRestOfLine( text );
+			R_SkipRestOfLine( text );
 			continue;
 		}
 		else if ( !Q_stricmp( token, "deformVertexes" ) ) {
@@ -1876,18 +2307,18 @@ static qboolean ParseShader( const char **text )
 			continue;
 		}
 		else if ( !Q_stricmp( token, "tesssize" ) ) {
-			SkipRestOfLine( text );
+			R_SkipRestOfLine( text );
 			continue;
 		}
 		else if ( !Q_stricmp( token, "clampTime" ) ) {
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( token[0] ) {
 				shader.clampTime = Q_atof( token );
 			}
 		}
 		// skip stuff that only the q3map needs
 		else if ( !Q_stricmpn( token, "q3map", 5 ) ) {
-			SkipRestOfLine( text );
+			R_SkipRestOfLine( text );
 			continue;
 		}
 		// skip stuff that only q3map or the server needs
@@ -1935,7 +2366,7 @@ static qboolean ParseShader( const char **text )
 				return qfalse;
 			}
 
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( !token[0] )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing parm for 'fogParms' keyword in shader '%s'\n", shader.name );
@@ -1944,7 +2375,7 @@ static qboolean ParseShader( const char **text )
 			shader.fogParms.depthForOpaque = Q_atof( token );
 
 			// skip any old gradient directions
-			SkipRestOfLine( text );
+			R_SkipRestOfLine( text );
 			continue;
 		}
 		// portal
@@ -1966,13 +2397,13 @@ static qboolean ParseShader( const char **text )
 		// light <value> determines flaring in q3map, not needed here
 		else if ( !Q_stricmp(token, "light") )
 		{
-			COM_ParseExt( text, qfalse );
+			R_ParseExt( text, qfalse );
 			continue;
 		}
 		// cull <face>
 		else if ( !Q_stricmp( token, "cull") )
 		{
-			token = COM_ParseExt( text, qfalse );
+			token = R_ParseExt( text, qfalse );
 			if ( token[0] == 0 )
 			{
 				ri.Printf( PRINT_WARNING, "WARNING: missing cull parms in shader '%s'\n", shader.name );
@@ -2030,11 +2461,11 @@ static qboolean ParseShader( const char **text )
 
 			if ( res == res_false )	{
 				// skip next stage or keyword until newline
-				token = COM_ParseExt( text, qtrue );
+				token = R_ParseExt( text, qtrue );
 				if ( token[0] == '{' )
-					SkipBracedSection( text, 1 /* depth */ );
+					R_SkipBracedSection( text, 1 /* depth */ );
 				else
-					SkipRestOfLine( text );
+					R_SkipRestOfLine( text );
 			} else {
 				// parse next tokens as usual
 			}
@@ -2046,10 +2477,23 @@ static qboolean ParseShader( const char **text )
 
 			continue;
 		}
+		//
+		// [QL] novlcollapse - Quake Live's "do not collapse the vertex lighting
+		// stage". renderergl2 has had this since the port; renderervk had not,
+		// and because an unknown general keyword was fatal it took every shader
+		// carrying it down with it. That is every player skin in the game,
+		// which is why player models did not draw.
+		//
+		else if ( !Q_stricmp( token, "novlcollapse" ) )
+		{
+			shader.lightmapIndex = LIGHTMAP_NONE;
+			continue;
+		}
 		else
 		{
-			ri.Printf( PRINT_WARNING, "WARNING: unknown general shader parameter '%s' in '%s'\n", token, shader.name );
-			return qfalse;
+			R_ShaderKeywordIgnored( token, shader.name, qfalse );
+			R_SkipRestOfLine( text );
+			continue;
 		}
 	}
 
@@ -2325,6 +2769,52 @@ static int CollapseMultitexture( unsigned int st0bits, shaderStage_t *st0, shade
 	}
 
 	st0->numTexBundles++;
+
+	/*
+	[QL] R20/R25. Carry the material maps across the collapse.
+
+	The two stages merge into one and st1 is about to be memmoved out of
+	existence. A shader writes normalMap on the stage that has the texture on
+	it, and with the lightmap stage first - which is what R_CreateDefaultShading
+	builds and what most world shaders are - that is st1, the one being
+	discarded. Without this the map is dropped here and the surface lights flat.
+
+	It failed exactly that quietly: the registration line read "0 stage(s) with
+	a normal map" while the shader plainly declared one, and R20 then derived a
+	map for the same stage because normalMap was NULL by the time it looked.
+	Found from a log, not from the screen - the surface just looks unlit-ish,
+	which is also what a correct flat surface looks like.
+
+	qlNoPerturb travels too, or a stage that declined perturbation quietly
+	starts getting it the moment it is collapsed - which is how the "control"
+	panel in qltest_bump stopped being a control.
+	*/
+	if ( st1->normalMap != NULL && st0->normalMap == NULL ) {
+		st0->normalMap = st1->normalMap;
+	}
+	if ( st1->specularMap != NULL && st0->specularMap == NULL ) {
+		st0->specularMap = st1->specularMap;
+	}
+	if ( st1->noNormalPerturb ) {
+		st0->noNormalPerturb = qtrue;
+	}
+	/*
+	[QL] R27. qlNaturalTexture travels for the same reason, with one difference
+	that matters: it is declared on the DIFFUSE stage, and after the collapse the
+	surviving stage carries both the diffuse and the lightmap. So the flag alone
+	is not enough downstream - which bundle the diffuse ended up in is what
+	decides whether hex-tiling is applied to texture0 or texture1, and applying
+	it to the wrong one hex-tiles the lightmap. shader.lightingBundle already
+	records that, and FinishShader reads it.
+	*/
+	if ( st1->naturalTexture ) {
+		st0->naturalTexture = qtrue;
+	}
+	// [QL] E104. Same reasoning: the keyword sits on the diffuse stage, which is
+	// the one being discarded when the lightmap stage came first.
+	if ( st1->normalFlipG ) {
+		st0->normalFlipG = qtrue;
+	}
 
 	//
 	// move down subsequent shaders
@@ -2995,7 +3485,6 @@ static void InitShader( const char *name, int lightmapIndex ) {
 
 	// clear the global shader
 	Com_Memset( &shader, 0, sizeof( shader ) );
-	Com_Memset( &stages, 0, sizeof( stages ) );
 
 	Q_strncpyz( shader.name, name, sizeof( shader.name ) );
 	shader.lightmapIndex = lightmapIndex;
@@ -3006,7 +3495,7 @@ static void InitShader( const char *name, int lightmapIndex ) {
 	shader.lightmapSearchIndex = shader.lightmapIndex;
 
 	for ( i = 0 ; i < MAX_SHADER_STAGES ; i++ ) {
-		stages[i].bundle[0].texMods = texMods[i];
+		ResetStage( i );
 	}
 
 #ifdef USE_PMLIGHT
@@ -3314,6 +3803,23 @@ static shader_t *FinishShader( void ) {
 	//
 	// compute number of passes
 	//
+	/*
+	[QL] Count the material maps that survived to a finished shader.
+
+	The whole value of reading these depends on Quake Live's art actually
+	carrying them, and that is not something to take on trust from a commit
+	message - so the build says how many it found rather than leaving "is this
+	doing anything" to be judged by looking at a wall.
+	*/
+	for ( i = 0; i < stage; i++ ) {
+		if ( stages[i].normalMap ) {
+			tr.numNormalMappedStages++;
+		}
+		if ( stages[i].specularMap ) {
+			tr.numSpecularStages++;
+		}
+	}
+
 	shader.numUnfoggedPasses = stage;
 
 	// fogonly shaders don't have any normal passes
@@ -3399,6 +3905,52 @@ static shader_t *FinishShader( void ) {
 			int env_mask;
 			shaderStage_t *pStage = &stages[i];
 			def.state_bits = pStage->stateBits;
+
+			/*
+			[QL] R27. Which texture, if any, this stage hex-tiles.
+
+			The answer is "the diffuse bundle", and after a multitexture collapse
+			that is whichever of the two is NOT the lightmap - stage order in the
+			.shader decides, and both orders are ordinary. Getting it backwards
+			does not look like a texture bug: it randomises the LIGHTMAP lookup,
+			so the surface's lighting scrambles and bleeds in the lightmap texels
+			of unrelated surfaces sharing the atlas page.
+
+			Only bundles 0 and 1 can be tiled - gen_frag.tmpl does not wrap
+			texture2 - so a diffuse that landed in bundle 2 opts itself out
+			rather than being silently mis-applied to bundle 0.
+
+			Mode 2 forces it on any stage with a lightmap beside it, which is as
+			close to "world diffuse surfaces" as this loop can see.
+			*/
+			def.hex_tile = 0;
+			def.hex_rot = 0.0f;
+			def.hex_contrast = 0.0f;
+
+			if ( r_qlNaturalTextures->integer ) {
+				qboolean wants = pStage->naturalTexture;
+				int diffuseBundle = -1;
+				int hasLightmap = 0;
+				int n;
+
+				for ( n = 0; n < (int)pStage->numTexBundles && n < NUM_TEXTURE_BUNDLES; n++ ) {
+					if ( pStage->bundle[n].lightmap != LIGHTMAP_INDEX_NONE ) {
+						hasLightmap = 1;
+					} else if ( diffuseBundle < 0 ) {
+						diffuseBundle = n;
+					}
+				}
+
+				if ( r_qlNaturalTextures->integer >= 2 && hasLightmap ) {
+					wants = qtrue;
+				}
+
+				if ( wants && diffuseBundle >= 0 && diffuseBundle <= 1 ) {
+					def.hex_tile = diffuseBundle + 1;
+					def.hex_rot = r_qlNaturalRotate->value;
+					def.hex_contrast = r_qlNaturalContrast->value;
+				}
+			}
 
 			if ( pStage->mtEnv3 ) {
 				switch ( pStage->mtEnv3 ) {
@@ -3629,6 +4181,62 @@ static shader_t *FinishShader( void ) {
 
 #ifdef USE_PMLIGHT
 	FindLightingBundle();
+
+	/*
+	[QL] R25. Count the shaders the static bump pass can run on, so whether it
+	is doing anything is a number at load rather than a judgement about a wall.
+	Needs all three: a lighting stage to hang the map on, a lightmap to modulate,
+	and a map that carries the direction to modulate by.
+	*/
+	if ( shader.lightingStage >= 0 && shader.lightmapIndex >= 0
+		&& tr.world != NULL && tr.world->deluxeMaps
+		&& stages[ shader.lightingStage ].normalMap != NULL
+		&& stages[ shader.lightingStage ].normalMap != tr.flatNormalImage ) {
+		tr.numStaticBumpShaders++;
+	}
+
+	/*
+	[QL] R20 Stage A: derive the normal map here, and only for the one stage and
+	bundle the dynamic light pass will actually bind.
+
+	Not in ParseStage(), which is the obvious place and the wrong one. The
+	lighting stage is chosen by FindLightingStage() after the stages exist, and
+	FindLightingBundle() picks the bundle after multitexture collapsing - so at
+	parse time bundle[0] is not reliably the texture that gets lit, and on a
+	collapsed shader it is often the lightmap. Deriving per stage would also
+	generate a map for every HUD icon, sprite and skin in the game to use a
+	handful of them.
+
+	An explicit normalMap from the shader always wins; qlNoPerturb and an
+	underivable base both leave normalMap NULL and the light pass falls back to
+	tr.flatNormalImage, which is the identity.
+	*/
+	if ( r_qlNormalMaps->integer && shader.lightingStage >= 0 ) {
+		shaderStage_t *lstage = &stages[ shader.lightingStage ];
+		if ( !lstage->noNormalPerturb && lstage->normalMap == NULL ) {
+			lstage->normalMap = R_DeriveNormalMap( lstage->bundle[ shader.lightingBundle ].image[0],
+				r_qlNormalScale->value, r_qlNormalMaxTilt->value );
+			if ( lstage->normalMap ) {
+				/*
+				Counted apart from numNormalMappedStages on purpose. That one
+				answers "does Quake Live's art ship normal maps", and its answer
+				is 0 on every map; folding derived maps into it would erase the
+				fact and make the next reader think the art had changed.
+				*/
+				tr.numDerivedNormalMaps++;
+			} else {
+				/*
+				A derivation that fails does so silently - the re-read misses,
+				or the base is a lightmap or procedural - and the surface just
+				lights as it did. That is the right behaviour and the wrong
+				diagnostic, so the failures are counted too: "0 derived" with
+				no second number would look the same whether the feature was
+				working on art that declines it or not working at all.
+				*/
+				tr.numUnderivableStages++;
+			}
+		}
+	}
 #endif
 
 #if 1
@@ -3704,7 +4312,7 @@ static const char *FindShaderInShaderText( const char *shadername ) {
 		for (i = 0; shaderTextHashTable[hash][i]; i++)
 		{
 			p = shaderTextHashTable[hash][i];
-			token = COM_ParseExt(&p, qtrue);
+			token = R_ParseExt(&p, qtrue);
 			if(!Q_stricmp(token, shadername))
 				return p;
 		}
@@ -3895,6 +4503,13 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImag
 			ri.Printf( PRINT_ALL, "*SHADER* %s\n", name );
 		}
 
+		/*
+		[QL] A shader that loses every stage to a missing image needs no guard
+		here: ParseShader's own tail already returns qfalse when numStages is 0
+		and the shader is neither sky nor fog, so it lands on defaultShader
+		below - the grid, which says where the problem is, with the console line
+		above it naming the file.
+		*/
 		if ( !ParseShader( &shaderText ) ) {
 			// had errors, so use default shader
 			shader.defaultShader = qtrue;
@@ -4050,6 +4665,21 @@ qhandle_t RE_RegisterShader( const char *name ) {
 	// something calls RE_RegisterShader again with
 	// the same name, we don't try looking for it again
 	if ( sh->defaultShader ) {
+	/*
+	[QL] Name what failed.
+
+	Returning 0 here is silent, and every caller in the game treats 0 as "draw
+	nothing" - so a shader that is missing, misspelled or in a pak that did not
+	load produces an invisible thing with no message anywhere. That failure shape
+	has cost several rounds on this branch already (invented Freeze Tag asset
+	names, a menu shader, a weapon icon), and the only place that knows the name
+	is right here.
+
+	Developer-level, and `developer` defaults to 1 on this branch, so it shows
+	without having to guess the cause first.
+	*/
+		ri.Printf( PRINT_DEVELOPER, "RE_RegisterShader: '%s' not found - returning 0, "
+		           "so whatever asked for it will draw nothing\n", name );
 		return 0;
 	}
 
@@ -4080,6 +4710,9 @@ qhandle_t RE_RegisterShaderNoMip( const char *name ) {
 	// something calls RE_RegisterShader again with
 	// the same name, we don't try looking for it again
 	if ( sh->defaultShader ) {
+		// [QL] see RE_RegisterShader - same silent 0, same reason to name it
+		ri.Printf( PRINT_DEVELOPER, "RE_RegisterShaderNoMip: '%s' not found - returning 0, "
+		           "so whatever asked for it will draw nothing\n", name );
 		return 0;
 	}
 
@@ -4128,6 +4761,18 @@ void	R_ShaderList_f (void) {
 		} else {
 			sh = tr.shaders[i];
 		}
+
+		/*
+		[QL] The sort value, which this listing has never printed.
+
+		Draw order for anything blended is decided by sort first and depth only
+		within a sort, so "why is A drawn over B" is a question about these two
+		numbers - and the one command named after listing shaders could not
+		answer it. Cost a round trip finding that out. Two decimals because
+		FinishShader assigns fractional sorts to break ties between shaders that
+		would otherwise land on the same value.
+		*/
+		ri.Printf( PRINT_ALL, "%6.2f ", sh->sort );
 
 		ri.Printf( PRINT_ALL, "%i ", sh->numUnfoggedPasses );
 
@@ -4219,7 +4864,7 @@ static int loadShaderBuffers( char **shaderFiles, const int numShaderFiles, char
 
 		while ( 1 )
 		{
-			token = COM_ParseExt( &p, qtrue );
+			token = R_ParseExt( &p, qtrue );
 
 			if ( !*token )
 				break;
@@ -4227,7 +4872,7 @@ static int loadShaderBuffers( char **shaderFiles, const int numShaderFiles, char
 			Q_strncpyz( shaderName, token, sizeof( shaderName ) );
 			shaderLine = COM_GetCurrentParseLine();
 
-			token = COM_ParseExt( &p, qtrue );
+			token = R_ParseExt( &p, qtrue );
 			if ( token[0] != '{' || token[1] != '\0' )
 			{
 				ri.Printf( PRINT_DEVELOPER, "File %s: shader \"%s\" " \
@@ -4245,12 +4890,12 @@ static int loadShaderBuffers( char **shaderFiles, const int numShaderFiles, char
 					break;
 				}
 
-				SkipRestOfLine( &p );
+				R_SkipRestOfLine( &p );
 				shaderStart = p;
 				continue;
 			}
 
-			if ( !SkipBracedSection( &p, 1 ) )
+			if ( !R_SkipBracedSection( &p, 1 ) )
 			{
 				ri.Printf(PRINT_WARNING, "WARNING: Ignoring shader file %s. Shader \"%s\" " \
 					"on line %d missing closing brace.\n", filename, shaderName, shaderLine );
@@ -4369,14 +5014,14 @@ static void ScanAndLoadShaderFiles( void )
 	p = s_shaderText;
 	// look for shader names
 	while ( 1 ) {
-		token = COM_ParseExt( &p, qtrue );
+		token = R_ParseExt( &p, qtrue );
 		if ( token[0] == 0 ) {
 			break;
 		}
 		hash = generateHashValue(token, MAX_SHADERTEXT_HASH);
 		shaderTextHashTableSizes[hash]++;
 		size++;
-		SkipBracedSection(&p, 0);
+		R_SkipBracedSection(&p, 0);
 	}
 
 	size += MAX_SHADERTEXT_HASH;
@@ -4392,7 +5037,7 @@ static void ScanAndLoadShaderFiles( void )
 	// look for shader names
 	while ( 1 ) {
 		oldp = p;
-		token = COM_ParseExt( &p, qtrue );
+		token = R_ParseExt( &p, qtrue );
 		if ( token[0] == 0 ) {
 			break;
 		}
@@ -4400,7 +5045,7 @@ static void ScanAndLoadShaderFiles( void )
 		hash = generateHashValue(token, MAX_SHADERTEXT_HASH);
 		shaderTextHashTable[hash][--shaderTextHashTableSizes[hash]] = (char*)oldp;
 
-		SkipBracedSection(&p, 0);
+		R_SkipBracedSection(&p, 0);
 	}
 }
 

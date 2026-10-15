@@ -86,7 +86,11 @@ void CG_CheckAmmo(void) {
     }
 
     // play a sound on transitions
-    if (cg.lowAmmoWarning != previous) {
+    //
+    // [QL] E97. cg_lowAmmoWarningSound gates the sound and nothing else - the
+    // on-screen warning cg.lowAmmoWarning drives is a separate thing and stays.
+    // Defaults to 1, so this changes nothing until someone sets it.
+    if (cg.lowAmmoWarning != previous && cg_lowAmmoWarningSound.integer) {
         trap_S_StartLocalSound(cgs.media.noAmmoSound, CHAN_LOCAL_SOUND);
     }
 }
@@ -329,19 +333,48 @@ void CG_CheckLocalSounds(playerState_t* ps, playerState_t* ops) {
         return;
     }
 
-    // hit changes
+    /*
+    hit changes
+
+    [QL] E97, and this one is deliberately a PARTIAL wiring - say so rather
+    than let the manifest row claim more than was done.
+
+    cg_hitBeep defaults to "2", not to 0 or 1, so it is not a boolean: Quake
+    Live has at least a 0/1/2/3 here and 2 is the shipped choice. What 1 and 3
+    select is not knowable from this tree - the decompilation the rest of these
+    gates cite is not available - so guessing would mean inventing a sound
+    scheme and calling it Quake Live's.
+
+    0 meaning off is the one value that is not a guess, so that is the only one
+    implemented. Every non-zero value behaves as it does today. The manifest row
+    records the rest as still open.
+    */
+    // [QL] E132. The crosshair's hit reaction (cg_crosshairHitStyle) keys off
+    // the same counter, whatever cg_hitBeep says. The server writes the hit's
+    // damage tier into the top two bits of generic1 in the same frame
+    // (DamageTier in g_combat.c; Quake Live's own binary notes it is "for the
+    // crosshair hit-marker"), so stock servers send it too.
     if (ps->persistant[PERS_HITS] > ops->persistant[PERS_HITS]) {
-        armor = ps->persistant[PERS_ATTACKEE_ARMOR] & 0xff;
-        health = ps->persistant[PERS_ATTACKEE_ARMOR] >> 8;
-        if (armor > 50) {
-            trap_S_StartLocalSound(cgs.media.hitSoundHighArmor, CHAN_LOCAL_SOUND);
-        } else if (armor || health > 100) {
-            trap_S_StartLocalSound(cgs.media.hitSoundLowArmor, CHAN_LOCAL_SOUND);
-        } else {
-            trap_S_StartLocalSound(cgs.media.hitSound, CHAN_LOCAL_SOUND);
+        cg.crosshairHitTime = cg.time;
+        cg.crosshairHitTier = (ps->generic1 >> 6) & 3;
+    }
+
+    if (cg_hitBeep.integer) {
+        if (ps->persistant[PERS_HITS] > ops->persistant[PERS_HITS]) {
+            armor = ps->persistant[PERS_ATTACKEE_ARMOR] & 0xff;
+            health = ps->persistant[PERS_ATTACKEE_ARMOR] >> 8;
+            if (armor > 50) {
+                trap_S_StartLocalSound(cgs.media.hitSoundHighArmor, CHAN_LOCAL_SOUND);
+            } else if (armor || health > 100) {
+                trap_S_StartLocalSound(cgs.media.hitSoundLowArmor, CHAN_LOCAL_SOUND);
+            } else {
+                trap_S_StartLocalSound(cgs.media.hitSound, CHAN_LOCAL_SOUND);
+            }
+        } else if (ps->persistant[PERS_HITS] < ops->persistant[PERS_HITS]) {
+            // the team-hit sound is a hit beep too, so 0 silences it as well -
+            // gating only the enemy branch would leave it firing on its else
+            trap_S_StartLocalSound(cgs.media.hitTeamSound, CHAN_LOCAL_SOUND);
         }
-    } else if (ps->persistant[PERS_HITS] < ops->persistant[PERS_HITS]) {
-        trap_S_StartLocalSound(cgs.media.hitTeamSound, CHAN_LOCAL_SOUND);
     }
 
     // health changes of more than -1 should make pain sounds
@@ -496,6 +529,24 @@ void CG_TransitionPlayerState(playerState_t* ps, playerState_t* ops) {
         cg.thisFrameTeleport = qtrue;
         // make sure we don't get any unwanted transition effects
         *ops = *ps;
+        /*
+        [QL] E201: and start the drawn player's animation over.
+
+        The viewed player is drawn through cg.predictedPlayerEntity, whose
+        animation state (pe.legs / pe.torso) belongs to whoever was viewed
+        before - in that client's model's frame numbers. Following someone
+        else kept it: going spectator as a penguin and following an Anarki bot
+        handed Anarki's 146-frame torso the penguin's TORSO_STAND, frame 151
+        ("no such frame 151 to ..."). Found in the harness with a debug print
+        on the predicted entity. memset, as CG_ResetPlayerEntity does: frame
+        0 exists in every model, and the next animation step rebuilds the rest
+        from the followed player's own table.
+        */
+        memset(&cg.predictedPlayerEntity.pe.legs, 0, sizeof(cg.predictedPlayerEntity.pe.legs));
+        memset(&cg.predictedPlayerEntity.pe.torso, 0, sizeof(cg.predictedPlayerEntity.pe.torso));
+        cg.predictedPlayerEntity.pe.legs.yawAngle = ps->viewangles[YAW];
+        cg.predictedPlayerEntity.pe.torso.yawAngle = ps->viewangles[YAW];
+        cg.predictedPlayerEntity.pe.torso.pitchAngle = ps->viewangles[PITCH];
     }
 
     // damage events (player is getting wounded)

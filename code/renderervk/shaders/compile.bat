@@ -26,6 +26,43 @@ for %%f in (*.frag) do (
     del /Q "%tmpf%"
 )
 
+@rem ray query (R13)
+@rem
+@rem GL_EXT_ray_query needs SPIR-V 1.4, and glslang will NOT tell you otherwise:
+@rem compile it without --target-env and you get a SPIR-V 1.0 module full of
+@rem ray-query opcodes, exit code 0, and no output. No driver will accept it.
+@rem
+@rem rtao is a .tmpl and not a .frag for that reason as much as for its
+@rem variants - the loop above uses the default target, so a ray-query shader
+@rem named .frag would be swept up by it and quietly emitted as a 1.0 module.
+@rem
+@rem Two variants: the depth attachment is multisampled when r_ext_multisample
+@rem is on, and sampler2D cannot read a multisampled image.
+@rem
+@rem compile.sh additionally verifies the version word in the result; batch has
+@rem no clean way to do that, so if you are debugging a rejected shader module
+@rem run compile.sh instead and let it check.
+
+"%cl%" -S frag -V --target-env spirv1.4 -o "%tmpf%" rtao.tmpl
+"%bh%" "%tmpf%" %outf% rtao_frag_spv
+del /Q "%tmpf%"
+
+"%cl%" -S frag -V --target-env spirv1.4 -o "%tmpf%" rtao.tmpl -DUSE_MSAA
+"%bh%" "%tmpf%" %outf% rtao_frag_ms_spv
+del /Q "%tmpf%"
+
+@rem The denoiser fires no rays - it reads the target the trace wrote - so the
+@rem default SPIR-V target is right for it and --target-env is deliberately
+@rem absent. Still a .tmpl, for the same two variants: it samples depth.
+
+"%cl%" -S frag -V -o "%tmpf%" rtao_blur.tmpl
+"%bh%" "%tmpf%" %outf% rtao_blur_frag_spv
+del /Q "%tmpf%"
+
+"%cl%" -S frag -V -o "%tmpf%" rtao_blur.tmpl -DUSE_MSAA
+"%bh%" "%tmpf%" %outf% rtao_blur_frag_ms_spv
+del /Q "%tmpf%"
+
 @rem compile lighting shader variations from templates
 
 "%cl%" -S vert -V -o "%tmpf%" light_vert.tmpl
