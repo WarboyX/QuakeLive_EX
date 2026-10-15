@@ -373,6 +373,18 @@ lifts take part.
   into the flag room. Close range uses a gun rather than a launcher, and fewer
   rockets are fired into nearby walls.
 - **Skill** runs 1 to 10, and bots chat less when humans are present.
+- **Aim.** The human-like aim sweep held the view still for over half the frames
+  and then stepped. Measured head-to-head, it lost bots most of their fights:
+  4 captures to 32 against bots with the tactical layer off. It now tracks
+  continuously (A1). The tactical layer went from losing 1-10 to about even,
+  and from 1.7x to 1.2x the deaths.
+- **Carrier routes from what the team has seen** (R1): carriers judge a route by
+  the enemies their team has seen or been hit by, not by an exact enemy count no
+  player has. It is fairer, and measurably weaker - see Known issues.
+- **More per-team switches** for side-by-side tests: `bot_ctfDetours`,
+  `bot_ctfObjectiveMove`, `bot_ctfRouteIntel` (1 = red, 2 = blue, 3 = both, the
+  default). `bot_debugAim <client>` logs one bot's aim every frame, and
+  `bot_debugRoutes 1` logs every carrier route decision.
 
 ## Diagnostics (Alpha 2)
 
@@ -391,6 +403,8 @@ lifts take part.
   launcher's trailing `+connect` simply did not happen.
 - Fixed a crash on the second map load of a session, and the followed player
   drawn with the previous player's animation (Anarki "no such frame").
+- **Clan Arena:** a player who died mid-round was moved to the spectator team
+  for good, and a round nobody finished never ended. Both fixed.
 
 ## Known issues
 
@@ -493,15 +507,26 @@ in and which client sees it. Worth knowing before you run a server:
   will grow bumps that track the artwork. A shader declines with `qlNoPerturb`,
   and `r_qlNormalMaps 0` plus `vid_restart` turns the whole thing off.
 
+**Bot CTF strength is still being worked on.** With the default
+`bot_ctfRouteIntel 3`, carriers use team reports (R1). Bots with it off beat bots
+with it on 18 captures to 5, because the old count is information no player has.
+`bot_ctfRouteIntel 0` gives the stronger, all-knowing carriers. The default may
+change. Whether the new aim looks human has not been judged by eye.
+
 **Ray-traced shadows on macOS and on non-NVIDIA GPUs** have not been seen by a
 tester. The macOS CPU detection compiles for nobody here; the first Mac build is
 its test.
 
 ## Before cutting the release
 
-`developer` still defaults to `1` in `common.c`, and that is a decision rather
-than an oversight: **it stays on for the Alpha 2 release candidates and goes to
-`0` when a candidate becomes the actual Alpha 2.** Every diagnostic in the tree
+**Done for Alpha 2:** `developer` now defaults to `0`. Turn it on with
+`+set developer 1` (or `/developer 1`) when reporting something; it is
+`CVAR_TEMP`, so it never sticks in a config.
+
+The reasoning, kept for the next cycle: `developer` defaulted to `1` throughout
+the release candidates, and that was a decision rather than an oversight: **it
+stays on for the release candidates and goes to `0` when a candidate becomes the
+actual release.** Every diagnostic in the tree
 is gated on it, so a tester on a candidate build who hits something odd already
 has the evidence in the console instead of being asked to reproduce it — which
 is how a one-off report turns into no report. When the candidate is promoted it

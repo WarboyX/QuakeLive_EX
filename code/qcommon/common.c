@@ -2613,8 +2613,11 @@ void Com_Init(char* commandLine) {
     RELEASE: set this back to "0" before shipping a release build. It is
     CVAR_TEMP, so it is never written to a config and a user can turn it off for
     the session without it sticking - the default here is the only switch.
+
+    [QL] Alpha 2: set to "0" for the release. Set it back to "1" while the next
+    candidates are being tested.
     */
-    com_developer = Cvar_Get("developer", "1", CVAR_TEMP);
+    com_developer = Cvar_Get("developer", "0", CVAR_TEMP);
 
     // done early so bind command exists
     CL_InitKeyCommands();
