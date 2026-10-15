@@ -23,7 +23,7 @@ ogg.pc
 ogg-uninstalled.pc
 stamp-h1
 .project
-include/ogg/config_types.h
+# include/ogg/config_types.h - committed in this tree, see the file
 src/*.o
 src/*.lo
 src/lib*.la
